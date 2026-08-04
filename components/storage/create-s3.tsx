@@ -22,6 +22,11 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 import { useRouter } from "next/navigation";
 import { usePendingCreate } from "@/components/shared/pending-create";
 import { gqlAction } from "@/lib/graphql-client";
@@ -38,9 +43,18 @@ const PROVIDERS: { id: S3Provider; name: string; endpointHint: string }[] = [
   { id: "other", name: "Other S3-compatible", endpointHint: "https://..." },
 ];
 
-export function CreateS3({ autoOpen = false }: { autoOpen?: boolean } = {}) {
+export function CreateS3({
+  canCreate,
+  autoOpen = false,
+}: {
+  /** Whether the current user may connect a bucket (`manage_s3`). False shows
+   *  the button disabled with a tooltip saying so, and nothing can open the
+   *  dialog — not even the ?new=s3 deep link. */
+  canCreate: boolean;
+  autoOpen?: boolean;
+}) {
   const router = useRouter();
-  const [open, setOpen] = React.useState(autoOpen);
+  const [open, setOpen] = React.useState(autoOpen && canCreate);
   const { create } = usePendingCreate();
 
   // Arrived via ?new=s3 (e.g. the global "New ▸ S3 destination" menu) → drop the
@@ -110,12 +124,33 @@ export function CreateS3({ autoOpen = false }: { autoOpen?: boolean } = {}) {
 
   return (
     <Dialog open={open} onOpenChange={setOpen}>
-      <DialogTrigger asChild>
-        <Button size="sm">
-          <Plus className="size-4" />
-          Add S3 Destination
-        </Button>
-      </DialogTrigger>
+      <Tooltip>
+        <TooltipTrigger asChild>
+          {canCreate ? (
+            <DialogTrigger asChild>
+              <Button size="sm">
+                <Plus className="size-4" />
+                Add S3 Destination
+              </Button>
+            </DialogTrigger>
+          ) : (
+            // Disabled buttons swallow pointer events, so wrap in a focusable
+            // span to keep the tooltip reachable. No DialogTrigger here means a
+            // click can never open a dialog the server would refuse.
+            <span tabIndex={0}>
+              <Button size="sm" disabled>
+                <Plus className="size-4" />
+                Add S3 Destination
+              </Button>
+            </span>
+          )}
+        </TooltipTrigger>
+        <TooltipContent>
+          {canCreate
+            ? "Connect an S3-compatible bucket"
+            : "You don't have permission to connect S3 destinations"}
+        </TooltipContent>
+      </Tooltip>
       <DialogContent className="max-w-lg">
         <DialogHeader>
           <DialogTitle>Add S3 destination</DialogTitle>

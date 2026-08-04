@@ -40,10 +40,18 @@ import type { DatabaseType } from "@/lib/types";
 
 export function CreateDatabase({
   servers,
+  canCreate,
   canExposePorts = false,
   autoOpen = false,
 }: {
   servers: { id: string; name: string }[];
+  /**
+   * Whether the current user may create a database (`create_databases`). When
+   * false the button is shown DISABLED with a tooltip saying so, and nothing
+   * can open the dialog — not even the ?new=database deep link. Without this
+   * the whole form could be filled in only to be refused on submit.
+   */
+  canCreate: boolean;
   /**
    * Whether the current user holds the publish-ports grant. When false the
    * "Expose publicly" control is shown DISABLED with an explanatory tooltip —
@@ -59,7 +67,9 @@ export function CreateDatabase({
   autoOpen?: boolean;
 }) {
   const router = useRouter();
-  const [open, setOpen] = React.useState(autoOpen && servers.length > 0);
+  const [open, setOpen] = React.useState(
+    autoOpen && canCreate && servers.length > 0,
+  );
   const [pending, startTransition] = React.useTransition();
   const { create } = usePendingCreate();
 
@@ -92,6 +102,13 @@ export function CreateDatabase({
 
   const creds = ENGINE_CREDS[type];
   const noServers = servers.length === 0;
+  // Why the button can't be clicked, if it can't. The missing permission wins:
+  // it is the one a server can't fix.
+  const blocked = !canCreate
+    ? "You don't have permission to create databases"
+    : noServers
+      ? "Provision a server first"
+      : null;
   // The useState initializer runs only on mount, but `servers` arrives via a
   // soft router.refresh() that reconciles this component in place (no remount) —
   // e.g. when a server finishes provisioning while the page is open (0→1). Derive
@@ -209,10 +226,10 @@ export function CreateDatabase({
     <Dialog open={open} onOpenChange={setOpen}>
       <Tooltip>
         <TooltipTrigger asChild>
-          {noServers ? (
+          {blocked ? (
             // Disabled buttons swallow pointer events, so wrap in a focusable
             // span to keep the tooltip reachable. No DialogTrigger here means a
-            // click can never open the dialog while no server is provisioned.
+            // click can never open the dialog while it is blocked.
             <span tabIndex={0}>
               <Button size="sm" disabled>
                 <Plus className="size-4" />
@@ -228,11 +245,7 @@ export function CreateDatabase({
             </DialogTrigger>
           )}
         </TooltipTrigger>
-        <TooltipContent>
-          {noServers
-            ? "Provision a server first"
-            : "Create a managed database"}
-        </TooltipContent>
+        <TooltipContent>{blocked ?? "Create a managed database"}</TooltipContent>
       </Tooltip>
       <DialogContent>
         <DialogHeader>

@@ -43,22 +43,32 @@ import {
  * team member, or (for instance admins) a global user. Each creation flow reuses
  * the same dialog component as its dedicated page, so behaviour stays in sync.
  *
- * Items are gated to match the dedicated pages: adding a member needs the
- * `manage_members` capability, and registering a user is instance-admin only.
- * Creating an app or a team is available to everyone (a new team makes the
- * viewer its owner).
+ * Every item is gated on exactly the capability its flow needs — an entry that
+ * only leads to "you don't have permission" is not offered at all. Creating a
+ * team is the one thing available to everyone (a new team makes the viewer its
+ * owner).
  */
 export function AddNewMenu({
+  canCreateApp,
+  canCreateDatabase,
   canManageMembers,
   canCreateFolder,
+  canCreateProject,
   isAdmin,
   parentFolder = null,
   placement = null,
 }: {
+  /** Whether the viewer may create apps (`create_apps`) — gates both the
+   *  from-scratch wizard and the template catalogue, which only lead there. */
+  canCreateApp: boolean;
+  /** Whether the viewer may create databases (`create_databases`). */
+  canCreateDatabase: boolean;
   canManageMembers: boolean;
-  /** Whether the viewer may create folders (has the deploy capability, or is an
-   *  instance admin). */
+  /** Whether the viewer may create folders (`create_folders`). */
   canCreateFolder: boolean;
+  /** Whether the viewer may create projects (`create_projects`) — a separate
+   *  permission from folders, so the two entries appear separately. */
+  canCreateProject: boolean;
   isAdmin: boolean;
   /** The folder currently open on the Overview, if any. A folder created from
    *  this menu nests under it (ADR-0009: folders nest via `parentId`). Null at the
@@ -87,34 +97,41 @@ export function AddNewMenu({
           </Button>
         </DropdownMenuTrigger>
         <DropdownMenuContent align="end" className="w-52">
-          <DropdownMenuSub>
-            <DropdownMenuSubTrigger className="cursor-pointer">
-              <Rocket className="size-4" />
-              New app
-            </DropdownMenuSubTrigger>
-            <DropdownMenuSubContent>
-              <DropdownMenuItem asChild>
-                <Link href={newAppHref(placement)} className="cursor-pointer">
-                  <Sparkles className="size-4" />
-                  From Scratch
-                </Link>
-              </DropdownMenuItem>
-              <DropdownMenuItem asChild>
-                <Link href={templatesHref(placement)} className="cursor-pointer">
-                  <LayoutTemplate className="size-4" />
-                  From Template
-                </Link>
-              </DropdownMenuItem>
-            </DropdownMenuSubContent>
-          </DropdownMenuSub>
-          <DropdownMenuItem asChild>
-            {/* Opens the create-database modal straight away on the Storage
-                page (the databases tab) via the ?new=database param. */}
-            <Link href="/storage?new=database" className="cursor-pointer">
-              <Database className="size-4" />
-              New database
-            </Link>
-          </DropdownMenuItem>
+          {canCreateApp && (
+            <DropdownMenuSub>
+              <DropdownMenuSubTrigger className="cursor-pointer">
+                <Rocket className="size-4" />
+                New app
+              </DropdownMenuSubTrigger>
+              <DropdownMenuSubContent>
+                <DropdownMenuItem asChild>
+                  <Link href={newAppHref(placement)} className="cursor-pointer">
+                    <Sparkles className="size-4" />
+                    From Scratch
+                  </Link>
+                </DropdownMenuItem>
+                <DropdownMenuItem asChild>
+                  <Link
+                    href={templatesHref(placement)}
+                    className="cursor-pointer"
+                  >
+                    <LayoutTemplate className="size-4" />
+                    From Template
+                  </Link>
+                </DropdownMenuItem>
+              </DropdownMenuSubContent>
+            </DropdownMenuSub>
+          )}
+          {canCreateDatabase && (
+            <DropdownMenuItem asChild>
+              {/* Opens the create-database modal straight away on the Storage
+                  page (the databases tab) via the ?new=database param. */}
+              <Link href="/storage?new=database" className="cursor-pointer">
+                <Database className="size-4" />
+                New database
+              </Link>
+            </DropdownMenuItem>
+          )}
           {canCreateFolder && (
             <DropdownMenuItem
               className="cursor-pointer"
@@ -124,7 +141,7 @@ export function AddNewMenu({
               {parentFolder ? "New subfolder" : "New folder"}
             </DropdownMenuItem>
           )}
-          {canCreateFolder && (
+          {canCreateProject && (
             <DropdownMenuItem
               className="cursor-pointer"
               onSelect={() => setProjectOpen(true)}
@@ -182,7 +199,7 @@ export function AddNewMenu({
           }
         />
       )}
-      {canCreateFolder && (
+      {canCreateProject && (
         <CreateProjectDialog open={projectOpen} onOpenChange={setProjectOpen} />
       )}
       {canManageMembers && (

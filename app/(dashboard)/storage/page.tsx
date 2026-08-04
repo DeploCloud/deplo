@@ -55,6 +55,9 @@ export default async function StoragePage(props: PageProps<"/storage">) {
     services,
     mayExposePorts,
     canManageDatabases,
+    canCreateDatabase,
+    canManageS3,
+    canManageBackups,
   ] = await Promise.all([
     listDatabases(),
     listS3(),
@@ -68,6 +71,13 @@ export default async function StoragePage(props: PageProps<"/storage">) {
     // Gates drag-to-reorder of the databases grid (persisted team-wide) — the
     // same capability every database mutation is gated on.
     hasCapability("configure_databases"),
+    // The three create surfaces of this page, each gated on exactly the
+    // capability its mutation requires. Without them the button is disabled
+    // (tooltip says why) and the empty state says what to ask for, instead of
+    // opening a form the server refuses on submit.
+    hasCapability("create_databases"),
+    hasCapability("manage_s3"),
+    hasCapability("manage_backups"),
   ]);
 
   // Only provisioned servers can host a database (provisioning routes through a
@@ -122,6 +132,7 @@ export default async function StoragePage(props: PageProps<"/storage">) {
               </p>
               <CreateDatabase
                 servers={dbServers}
+                canCreate={canCreateDatabase}
                 canExposePorts={mayExposePorts}
                 autoOpen={autoOpenDatabase}
               />
@@ -132,12 +143,21 @@ export default async function StoragePage(props: PageProps<"/storage">) {
                 <EmptyState
                   icon={Database}
                   title="No databases yet"
-                  description="Create a managed database to connect to your apps."
+                  // Nothing here and no way to add one: say which permission is
+                  // missing rather than offering a button that gets refused.
+                  description={
+                    canCreateDatabase
+                      ? "Create a managed database to connect to your apps."
+                      : "You don't have permission to create databases. Ask a team admin for the “Create databases” permission."
+                  }
                   action={
-                    <CreateDatabase
-                      servers={dbServers}
-                      canExposePorts={mayExposePorts}
-                    />
+                    canCreateDatabase ? (
+                      <CreateDatabase
+                        servers={dbServers}
+                        canCreate
+                        canExposePorts={mayExposePorts}
+                      />
+                    ) : undefined
                   }
                 />
               }
@@ -169,7 +189,7 @@ export default async function StoragePage(props: PageProps<"/storage">) {
               <p className="text-sm text-muted-foreground">
                 Connect any S3-compatible storage for backups and assets.
               </p>
-              <CreateS3 autoOpen={autoOpenS3} />
+              <CreateS3 canCreate={canManageS3} autoOpen={autoOpenS3} />
             </div>
             <PendingList
               empty={destinations.length === 0}
@@ -177,8 +197,12 @@ export default async function StoragePage(props: PageProps<"/storage">) {
                 <EmptyState
                   icon={Cloud}
                   title="No S3 destinations"
-                  description="Add a bucket (R2, S3, B2, MinIO…) to store backups and assets."
-                  action={<CreateS3 />}
+                  description={
+                    canManageS3
+                      ? "Add a bucket (R2, S3, B2, MinIO…) to store backups and assets."
+                      : "You don't have permission to connect S3 destinations. Ask a team admin for the “Manage S3 destinations” permission."
+                  }
+                  action={canManageS3 ? <CreateS3 canCreate /> : undefined}
                 />
               }
             >
@@ -202,6 +226,7 @@ export default async function StoragePage(props: PageProps<"/storage">) {
               databases={databases.map((d) => ({ id: d.id, name: d.name }))}
               services={services.map((p) => ({ id: p.id, name: p.name }))}
               destinations={destinations.map(toDestinationOption)}
+              canCreate={canManageBackups}
               autoOpen={autoOpenBackup}
             />
           </div>
@@ -209,7 +234,11 @@ export default async function StoragePage(props: PageProps<"/storage">) {
             <EmptyState
               icon={Archive}
               title="No backups scheduled"
-              description="Schedule automatic backups of your databases to S3."
+              description={
+                canManageBackups
+                  ? "Schedule automatic backups of your databases to S3."
+                  : "You don't have permission to schedule backups. Ask a team admin for the “Manage backups” permission."
+              }
             />
           ) : (
             <div className="rounded-xl border border-border">

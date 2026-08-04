@@ -41,17 +41,23 @@ export function CreateBackup({
   databases,
   services = [],
   destinations,
+  canCreate = true,
   autoOpen = false,
 }: {
   databases: { id: string; name: string }[];
   services?: { id: string; name: string }[];
   destinations: DestinationOption[];
+  /** Whether the current user may schedule a backup (`manage_backups`). False
+   *  shows the button disabled with a tooltip saying so and nothing can open the
+   *  dialog. Defaults to true for the per-app and per-database backup tabs,
+   *  whose pages already refuse the whole surface without the capability. */
+  canCreate?: boolean;
   /** Open on mount — used by the global "New ▸ Schedule backup" menu
    *  (which links to /storage?new=backup). */
   autoOpen?: boolean;
 }) {
   const router = useRouter();
-  const [open, setOpen] = React.useState(autoOpen);
+  const [open, setOpen] = React.useState(autoOpen && canCreate);
   const [pending, startTransition] = React.useTransition();
 
   // Drop the ?new=backup param after opening so a refresh/Back doesn't reopen it.
@@ -80,6 +86,13 @@ export function CreateBackup({
   const [retention, setRetention] = React.useState(14);
 
   const noDeps = destinations.length === 0;
+  // Why the button can't be clicked, if it can't. The missing permission wins:
+  // adding an S3 destination would not unblock it.
+  const blocked = !canCreate
+    ? "You don't have permission to schedule backups"
+    : noDeps
+      ? "Add an S3 destination first"
+      : null;
   // The chosen target must have a concrete id selected — otherwise the schedule
   // would point at nothing.
   const targetId = targetKind === "database" ? databaseId : appId;
@@ -120,10 +133,10 @@ export function CreateBackup({
     <Dialog open={open} onOpenChange={setOpen}>
       <Tooltip>
         <TooltipTrigger asChild>
-          {noDeps ? (
+          {blocked ? (
             // Disabled buttons swallow pointer events, so wrap in a focusable
             // span to keep the tooltip reachable. No DialogTrigger here means a
-            // click can never open the dialog while dependencies are missing.
+            // click can never open the dialog while it is blocked.
             <span tabIndex={0}>
               <Button size="sm" disabled>
                 <Plus className="size-4" />
@@ -139,9 +152,7 @@ export function CreateBackup({
             </DialogTrigger>
           )}
         </TooltipTrigger>
-        <TooltipContent>
-          {noDeps ? "Add an S3 destination first" : "Schedule a backup"}
-        </TooltipContent>
+        <TooltipContent>{blocked ?? "Schedule a backup"}</TooltipContent>
       </Tooltip>
       <DialogContent>
         <DialogHeader>

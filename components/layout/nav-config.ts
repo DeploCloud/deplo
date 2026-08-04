@@ -114,6 +114,9 @@ export const NAV: NavSection[] = [
         href: "/templates",
         icon: LayoutTemplate,
         tooltip: "One-click deploy templates",
+        // Every card in the catalogue deploys a NEW app, so without that
+        // permission the whole section is a dead end (the page says so too).
+        requires: "create_apps",
       },
       // Plugins deliberately have NO nav entry: the feature is deferred and its
       // UI/API are withdrawn (ADR-0013). The `/plugins/<slug>` path stays

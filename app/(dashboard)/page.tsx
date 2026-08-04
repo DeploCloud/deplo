@@ -59,6 +59,9 @@ export default async function OverviewPage(props: PageProps<"/">) {
     canManageTeam,
     canManageMembers,
     canDeploy,
+    canCreateDatabase,
+    canCreateFolder,
+    canCreateProject,
   ] = await Promise.all([
     listApps(),
     listFolders(),
@@ -68,12 +71,21 @@ export default async function OverviewPage(props: PageProps<"/">) {
     hasCapability("manage_team"),
     hasCapability("manage_members"),
     hasCapability("create_apps"),
+    // The "Add New ▸ New database" entry links to the Storage page's create
+    // dialog, so it is offered only to someone who may actually create one.
+    hasCapability("create_databases"),
+    // Folders and projects each have their OWN create capability, and
+    // `requireCapability` gives an instance admin no bypass — so asking for
+    // exactly what createFolder/createProject ask for is what keeps a menu
+    // entry from opening a dialog the server then refuses.
+    hasCapability("create_folders"),
+    hasCapability("create_projects"),
   ]);
   const canManageOrder = isAdmin || canManageTeam;
-  // Creating a folder or a project container is gated the same as creating an
-  // app: any `deploy` holder (or an instance admin) may do it — NOT the
-  // manage_team super-user gate.
-  const canCreateFolder = isAdmin || canDeploy;
+  // Shown instead of a create button wherever the viewer can't create apps, so
+  // an empty Overview says what is missing instead of looking broken.
+  const noCreateAppsNote =
+    "You don't have permission to create apps. Ask a team admin for the “Create apps” permission.";
   // Team-wide bulk/reorder actions (and the manage menu on folders one doesn't
   // own) stay on the super-user flag; aliased for clarity at the call sites.
   const canManageAllFolders = canManageOrder;
@@ -251,8 +263,11 @@ export default async function OverviewPage(props: PageProps<"/">) {
         <div className="flex items-center justify-between gap-3">
           <h1 className="text-2xl font-semibold tracking-tight">Overview</h1>
           <AddNewMenu
+            canCreateApp={canDeploy}
+            canCreateDatabase={canCreateDatabase}
             canManageMembers={canManageMembers}
             canCreateFolder={canCreateFolder}
+            canCreateProject={canCreateProject}
             isAdmin={isAdmin}
             // Drill-in context so "New folder" nests under the folder currently
             // open (ADR-0009: folders nest via parentId). Null inside a project —
@@ -315,17 +330,24 @@ export default async function OverviewPage(props: PageProps<"/">) {
               <EmptyState
                 icon={Folder}
                 title={`${openFolder.name} is empty`}
-                description="Create an app here, drag apps onto this folder from the Overview, or use an app’s “Move to folder” menu."
+                description={
+                  canDeploy
+                    ? "Create an app here, drag apps onto this folder from the Overview, or use an app’s “Move to folder” menu."
+                    : noCreateAppsNote
+                }
                 action={
                   <div className="flex gap-2">
                     {/* Creating from inside the folder creates IN the folder —
-                        the drill-in rides along as ?folder=. */}
-                    <Button asChild>
-                      <Link href={newAppHref(placement)}>
-                        <Plus className="size-4" />
-                        New app
-                      </Link>
-                    </Button>
+                        the drill-in rides along as ?folder=. Offered only to
+                        someone createApp won't refuse. */}
+                    {canDeploy && (
+                      <Button asChild>
+                        <Link href={newAppHref(placement)}>
+                          <Plus className="size-4" />
+                          New app
+                        </Link>
+                      </Button>
+                    )}
                     <Button asChild variant="outline">
                       <Link href={view === "list" ? "/?view=list" : "/"}>
                         Back to overview
@@ -347,16 +369,22 @@ export default async function OverviewPage(props: PageProps<"/">) {
                     ? `No apps in ${selectedEnv.name}`
                     : `${openProject.name} is empty`
                 }
-                description="Create an app here, drag apps onto this project from the Overview, or use an app’s “Move to folder” menu."
+                description={
+                  canDeploy
+                    ? "Create an app here, drag apps onto this project from the Overview, or use an app’s “Move to folder” menu."
+                    : noCreateAppsNote
+                }
                 action={
                   <div className="flex gap-2">
                     {/* Created in the SELECTED environment of this project. */}
-                    <Button asChild>
-                      <Link href={newAppHref(placement)}>
-                        <Plus className="size-4" />
-                        New app
-                      </Link>
-                    </Button>
+                    {canDeploy && (
+                      <Button asChild>
+                        <Link href={newAppHref(placement)}>
+                          <Plus className="size-4" />
+                          New app
+                        </Link>
+                      </Button>
+                    )}
                     <Button asChild variant="outline">
                       <Link href={view === "list" ? "/?view=list" : "/"}>
                         Back to overview
@@ -370,22 +398,28 @@ export default async function OverviewPage(props: PageProps<"/">) {
             <EmptyState
               icon={Rocket}
               title="No apps yet"
-              description="Import a Git repository or start from a template to deploy your first app."
+              description={
+                canDeploy
+                  ? "Import a Git repository or start from a template to deploy your first app."
+                  : noCreateAppsNote
+              }
               action={
-                <div className="flex gap-2">
-                  <Button asChild>
-                    <Link href={newAppHref(placement)}>
-                      <Plus className="size-4" />
-                      Import App
-                    </Link>
-                  </Button>
-                  <Button asChild variant="outline">
-                    <Link href={templatesHref(placement)}>
-                      Browse Templates
-                      <ArrowUpRight className="size-4" />
-                    </Link>
-                  </Button>
-                </div>
+                canDeploy ? (
+                  <div className="flex gap-2">
+                    <Button asChild>
+                      <Link href={newAppHref(placement)}>
+                        <Plus className="size-4" />
+                        Import App
+                      </Link>
+                    </Button>
+                    <Button asChild variant="outline">
+                      <Link href={templatesHref(placement)}>
+                        Browse Templates
+                        <ArrowUpRight className="size-4" />
+                      </Link>
+                    </Button>
+                  </div>
+                ) : undefined
               }
             />
           )
@@ -416,7 +450,11 @@ export default async function OverviewPage(props: PageProps<"/">) {
             canReorder={canReorder}
             canCreateFolder={canCreateFolder}
             canManageAllFolders={canManageAllFolders}
-            canManageProjects={canCreateFolder}
+            // The project card's manage menu (rename, recolor, delete, its
+            // environments) — each item has its own capability server-side, so
+            // this stays the wider "can shape the fleet" proxy it has always
+            // been rather than borrowing the folder gate.
+            canManageProjects={isAdmin || canDeploy}
             environments={
               openProject
                 ? environments.map((e) => ({ id: e.id, name: e.name }))
