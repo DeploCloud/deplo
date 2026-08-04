@@ -236,53 +236,27 @@ export async function listUserAccessTree(
   return buildScopeTree(await teamsForUser(userId));
 }
 
-/**
- * The roles assignable in each of `teamIds`, keyed by team — one query for the
- * whole page rather than one per team row. Instance admin only.
- *
- * `ensureTeamRoles` is lazy, so a team that has never opened its Roles page has
- * no rows yet; seeding here is what stops the picker being empty for it.
- */
-export async function listRoleOptions(
-  teamIds: string[],
-): Promise<Record<string, TeamRoleOption[]>> {
+/** The roles assignable in one team, for the per-team picker. Instance admin only. */
+export async function listTeamRoleOptions(
+  teamId: string,
+): Promise<TeamRoleOption[]> {
   await requireInstanceAdmin();
   const db = getDb();
-  if (teamIds.length === 0) return {};
-  for (const teamId of teamIds) await ensureTeamRoles(db, teamId);
+  await ensureTeamRoles(db, teamId);
   const rows = await db
     .select({
       id: teamRolesTable.id,
-      teamId: teamRolesTable.teamId,
       name: teamRolesTable.name,
       builtinKey: teamRolesTable.builtinKey,
     })
     .from(teamRolesTable)
-    .where(inArray(teamRolesTable.teamId, teamIds))
+    .where(eq(teamRolesTable.teamId, teamId))
     .orderBy(asc(teamRolesTable.createdAt));
-  const out: Record<string, TeamRoleOption[]> = {};
-  for (const teamId of teamIds) out[teamId] = [];
-  for (const r of rows) {
-    out[r.teamId]?.push({
-      id: r.id,
-      name: r.name,
-      rank: r.builtinKey ?? "member",
-    });
-  }
-  return out;
-}
-
-/** Teams this person is NOT in yet — what "Add to a team" offers. Admin only. */
-export async function listJoinableTeams(
-  userId: string,
-): Promise<{ id: string; name: string }[]> {
-  await requireInstanceAdmin();
-  const mine = new Set((await teamsForUser(userId)).map((t) => t.id));
-  const rows = await getDb()
-    .select({ id: teamsTable.id, name: teamsTable.name })
-    .from(teamsTable)
-    .orderBy(asc(teamsTable.createdAt));
-  return rows.filter((t) => !mine.has(t.id));
+  return rows.map((r) => ({
+    id: r.id,
+    name: r.name,
+    rank: r.builtinKey ?? "member",
+  }));
 }
 
 /**

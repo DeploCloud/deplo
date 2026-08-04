@@ -37,9 +37,7 @@
  * lease name) so multiple instances don't double-fire.
  *
  * Node runtime only: the reconcile + scheduler touch the `server-only` store. The
- * Edge runtime has neither, so guard on NEXT_RUNTIME. That guard is a RUNTIME
- * one — this file is still COMPILED for Edge, so every Node-only thing it does
- * must stay behind an `await import(...)` or Turbopack rejects it statically.
+ * Edge runtime has neither, so guard on NEXT_RUNTIME.
  */
 export async function register(): Promise<void> {
   if (process.env.NEXT_RUNTIME !== "nodejs") return;
@@ -157,13 +155,25 @@ export async function register(): Promise<void> {
     }
   }
   // Teardown, registered OUTSIDE the fragile blocks above so a failed start can
-  // never skip it: the metrics streams and the two scheduler leases must be
-  // handed back on SIGTERM/SIGINT (see lib/shutdown.ts, which also explains why
-  // the signal handlers can't live in this file).
-  try {
-    const { registerShutdownHooks } = await import("./lib/shutdown");
-    registerShutdownHooks();
-  } catch (e) {
-    console.error("[deplo] shutdown hook registration failed:", e);
+  // never skip it. Unlike the interval-based collector this replaced, the metrics
+  // streams MUST be torn down: each holds an open gRPC channel here and a ticker
+  // plus a `docker events` child on the agent. An unref()'d interval could be left
+  // to leak; these cannot — and dev HMR re-runs register() on every edit. The two
+  // scheduler leases are handed back too, so the NEXT instance's first tick claims
+  // them immediately — a lease left behind blocks backups + cleanup for up to the
+  // 2h staleness window. Fire-and-forget (Next's own signal handler owns the
+  // actual exit); each teardown is guarded so one failure never blocks the others.
+  for (const sig of ["SIGTERM", "SIGINT"] as const) {
+    process.once(sig, () => {
+      void import("./lib/monitoring/supervisor")
+        .then(({ stopMetricsStreams }) => stopMetricsStreams())
+        .catch(() => {});
+      void import("./lib/backups/scheduler")
+        .then(({ releaseBackupSchedulerLease }) => releaseBackupSchedulerLease())
+        .catch(() => {});
+      void import("./lib/docker-cleanup/scheduler")
+        .then(({ releaseDockerCleanupLease }) => releaseDockerCleanupLease())
+        .catch(() => {});
+    });
   }
 }

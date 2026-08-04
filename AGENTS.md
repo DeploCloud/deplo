@@ -69,9 +69,8 @@ from the start: a team, up to a whole company, working in the same instance unde
 Concretely:
 
 - **Multi-person is the default assumption, never a later plan.** Everything is scoped to the
-  active team, every mutating action is Capability-gated server-side, and per-node grants (an
-  App, a Folder, a Project) let a member hold exactly one corner of the fleet — overriding
-  their team role there, ADR-0016. Never ship a feature whose happy path needs
+  active team, every mutating action is Capability-gated server-side, and per-folder grants let a
+  member hold exactly one corner of the fleet. Never ship a feature whose happy path needs
   instance ownership.
 - **The collaboration surfaces are product, not plumbing.** Roles, members, folders and grants,
   Activity, API tokens, the 2FA policy: same UX bar as deploying an App, obvious to a non-expert,
@@ -134,9 +133,9 @@ route `UI → GraphQL → lib/data/* → connectAgent(serverId) → agent`.
   the only live caller is the boot sweep that removes ones an older version left behind. Don't
   wire anything new to it, and read ADR-0013 before reviving it — the return is expected to go
   through the agent, not the socket.
-  `lib/deploy/build.ts` still calls host `ensureNetwork`/`mkdir` at deploy start; the build
-  itself is agent-side only (the in-process `lib/deploy/builders.ts` is GONE — its unreachable
-  `fs`/`docker` calls were also what made Turbopack trace the whole project). Don't revive it.
+  `lib/deploy/build.ts` also retains a now-dead local build path + host `ensureNetwork`/`mkdir`;
+  the live path passes `skipBuild:true → runAgentDeploy`. Don't mistake the dead path for a
+  violation and don't revive it.
 
 ## Tech stack
 
@@ -222,15 +221,9 @@ Single endpoint `app/api/graphql/route.ts` (thin) → `lib/graphql/yoga.ts`. One
   `.returning()` length or an `xInTeam` probe. ids via `newId("prefix")`, timestamps via
   `nowIso()`; multi-row writes in `getDb().transaction`.
 - **Keep BOTH gates (defense in depth):** the field `authScopes` (introspectable contract) AND the
-  data-layer call inside the `lib/data` function (the real boundary — `lib/graphql/context.ts`
-  is a convenience snapshot, and since ADR-0016 an explicitly WIDE one: it unions in every
-  capability a node grant reaches). Which data-layer gate depends on what is being acted on:
-  **anything under an App** takes `await requireAppCapability(appId, cap)` (ADR-0016 — ONE
-  call that does membership, app-in-team, token scope and the node's own capability set);
-  team-wide actions keep `requireCapability(cap)` / `requireInstanceAdmin()`. Never re-split
-  the app gate into a team check plus a node check: a node grant may exceed the team role, so
-  the team check would refuse first. Reads that answer "nothing" rather than throwing use
-  `hasAppCapability`, and list pages resolve many apps at once with `appCapabilitiesForTeam`.
+  `requireCapability` / `requireInstanceAdmin` call inside the `lib/data` function (the real
+  boundary — `lib/graphql/context.ts` is a convenience snapshot, not the boundary). Resources
+  under a **folder** need a second gate: `await requireFolderCapabilityForApp(appId, cap)`.
 - Auth helpers: `getCurrentUser()` (nullable), `assertUser()` (**throws** — resolvers/data),
   `requireUser()` (**redirects** — RSC/pages). `recordActivity(...)` runs **outside** any open
   transaction (own connection; deadlocks pglite otherwise) and is fire-and-forget.

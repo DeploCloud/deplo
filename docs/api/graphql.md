@@ -105,18 +105,8 @@ keeps working unchanged. They are never returned. The other five old names
 (`view`, `manage_domains`, `manage_env`, `manage_members`, `manage_team`) survived
 the split as capabilities in their own right and mean exactly themselves.
 
-A capability can also be held on ONE node — an app, a folder or a project —
-instead of team-wide (ADR-0016). A node grant REPLACES the role's set inside that
-node and may exceed it, so the same token can be refused `manage_env` on one app
-and allowed it on another. Precedence is most-specific-wins: app, nearest ancestor
-folder, further ancestors, project, then the team role. A token is still bounded by
-its own capability set on top of whatever the node says, so a node grant can never
-widen a credential past what it was minted with.
-
 Some queries/mutations require **instance admin** (global): managing all users,
-minting registration links, the per-user account page — including
-`setUserTeamAccess`, `addUserToTeam` and `removeUserFromTeam`, which set one
-person's role and node grants in any team — and Docker cleanup
+minting registration links, the per-user admin editor, and Docker cleanup
 (`dockerCleanupPolicy`, `dockerCleanupRuns`, `updateDockerCleanupPolicy`,
 `runDockerCleanupNow`) — one instance-wide policy over hosts every team shares.
 
