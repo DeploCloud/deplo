@@ -10,6 +10,7 @@ import {
   Copy,
   Link2,
   Loader2,
+  Search,
   UserPlus,
   Users,
 } from "lucide-react";
@@ -25,6 +26,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Skeleton } from "@/components/ui/skeleton";
+import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { ChoiceCard } from "@/components/shared/choice-card";
 import { WizardStepper } from "@/components/shared/wizard-stepper";
 import { atClock } from "@/components/settings/registration-link-row";
@@ -79,6 +81,7 @@ export function RegisterUserWizard({
   const [teamsLoaded, setTeamsLoaded] = React.useState(false);
   const [loadingTeams, setLoadingTeams] = React.useState(false);
   const [assign, setAssign] = React.useState<Record<string, Assignment>>({});
+  const [teamQuery, setTeamQuery] = React.useState("");
 
   function reset() {
     setStep("access");
@@ -88,6 +91,7 @@ export function RegisterUserWizard({
     setAssign({});
     setTeams([]);
     setTeamsLoaded(false);
+    setTeamQuery("");
   }
 
   // Close from our own footer buttons. Flipping the controlled `open` prop does
@@ -152,6 +156,12 @@ export function RegisterUserWizard({
   }
 
   const selectedCount = Object.keys(assign).length;
+  const teamFilter = teamQuery.trim().toLowerCase();
+  // Filtering only hides rows — a ticked team the query hides stays ticked, which
+  // is why the step's subtitle carries the running count.
+  const shownTeams = teamFilter
+    ? teams.filter((tm) => tm.name.toLowerCase().includes(teamFilter))
+    : teams;
 
   // The fork IS the step count: the own-team branch has nothing to configure, so
   // it never shows an empty middle step.
@@ -300,22 +310,49 @@ export function RegisterUserWizard({
                     <h2 className="text-base font-semibold">Which teams?</h2>
                     <p className="text-sm text-balance text-muted-foreground">
                       They can be in more than one.
+                      {selectedCount > 0 && ` ${selectedCount} selected.`}
                     </p>
                   </div>
 
+                  <div className="relative">
+                    <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
+                    <Input
+                      value={teamQuery}
+                      onChange={(e) => setTeamQuery(e.target.value)}
+                      placeholder="Search teams"
+                      aria-label="Search teams"
+                      className="h-9 pl-9"
+                      // A filter box, not a field of the form: Enter here would
+                      // otherwise mint the link mid-search.
+                      onKeyDown={(e) => e.key === "Enter" && e.preventDefault()}
+                    />
+                  </div>
+
+                  {/* No scroller of its own: the dialog's body is the ONE
+                      scrolling region, so a long team list never traps the wheel
+                      in a nested box. */}
                   <div className="space-y-2">
                     {loadingTeams &&
                       [0, 1].map((i) => (
                         <div key={i} className="rounded-lg border border-border p-3">
                           <div className="flex items-center gap-2">
                             <Skeleton shimmer className="size-4 rounded" />
+                            <Skeleton shimmer className="size-5 rounded-full" />
                             <Skeleton shimmer className="h-4 w-32 rounded" />
                           </div>
                         </div>
                       ))}
 
+                    {!loadingTeams && shownTeams.length === 0 && (
+                      <p className="rounded-lg border border-dashed border-border px-3 py-6 text-center text-sm text-muted-foreground">
+                        {teamFilter
+                          ? `No team matches “${teamQuery.trim()}”.`
+                          : "You are not in any team yet."}
+                      </p>
+                    )}
+
                     {!loadingTeams &&
-                      teams.map((tm) => {
+                      shownTeams.map((tm) => {
                         const a = assign[tm.id];
                         return (
                           <div
@@ -333,6 +370,14 @@ export function RegisterUserWizard({
                                   toggleTeam(tm.id, v === true)
                                 }
                               />
+                              {/* A team has no logo of its own: its identity
+                                  everywhere in deplo is the two-letter avatar
+                                  the topbar switcher shows. */}
+                              <Avatar className="size-5">
+                                <AvatarFallback className="bg-foreground text-[9px] text-background">
+                                  {tm.name.slice(0, 2).toUpperCase()}
+                                </AvatarFallback>
+                              </Avatar>
                               <span className="text-sm font-medium">{tm.name}</span>
                             </label>
                             {/* Which of that team's two joinable default roles they
