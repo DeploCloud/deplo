@@ -60,7 +60,12 @@ const DialogContent = React.forwardRef<
         else if (ref) ref.current = node;
       }}
       className={cn(
-        "fixed left-[50%] top-[50%] z-50 grid w-full max-w-lg translate-x-[-50%] translate-y-[-50%] gap-4 border border-border bg-card p-6 shadow-2xl duration-200 data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 data-[state=closed]:zoom-out-95 data-[state=open]:zoom-in-95 rounded-xl",
+        // grid-cols-[minmax(0,1fr)]: a grid item's automatic minimum size is its
+        // min-content width, so one wide child (an unwrapped <pre>, a long URL)
+        // would stretch the column past max-w-* and push the content out of the
+        // modal instead of scrolling inside it. Pinning the column to min 0 makes
+        // the child's own overflow-auto do its job.
+        "fixed left-[50%] top-[50%] z-50 grid grid-cols-[minmax(0,1fr)] w-full max-w-lg translate-x-[-50%] translate-y-[-50%] gap-4 border border-border bg-card p-6 shadow-2xl duration-200 data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 data-[state=closed]:zoom-out-95 data-[state=open]:zoom-in-95 rounded-xl",
         className
       )}
       onInteractOutside={(event) => {
