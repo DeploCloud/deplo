@@ -14,15 +14,10 @@ import {
   Trash2,
   UserCheck,
 } from "lucide-react";
-import {
-  Accordion,
-  AccordionContent,
-  AccordionItem,
-  AccordionTrigger,
-} from "@/components/ui/accordion";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import { FieldLabel, InfoTip } from "@/components/ui/info-tip";
 import { Switch } from "@/components/ui/switch";
 import { ConfirmAction } from "@/components/shared/confirm-action";
@@ -72,6 +67,7 @@ export function UserEditor({
   joinable,
   activity,
   isSelf,
+  viewerIsOwner,
 }: {
   user: UserDetailDTO;
   access: UserTeamAccessDTO[];
@@ -80,6 +76,8 @@ export function UserEditor({
   joinable: { id: string; name: string }[];
   activity: React.ReactNode;
   isSelf: boolean;
+  /** The viewer owns the instance — the only one who may hand the crown on. */
+  viewerIsOwner: boolean;
 }) {
   const router = useRouter();
   const [pending, startTransition] = React.useTransition();
@@ -106,11 +104,8 @@ export function UserEditor({
   const [confirmSuspend, setConfirmSuspend] = React.useState(false);
   const [confirmDelete, setConfirmDelete] = React.useState(false);
   const [confirmResetTwoFactor, setConfirmResetTwoFactor] = React.useState(false);
-  // Folded away is not hidden: a grant that is ON opens the panel, or the admin
-  // would have to go looking for state nothing on screen mentions.
-  const [advancedOpen, setAdvancedOpen] = React.useState(
-    user.canExposePorts || user.canMountHostVolumes,
-  );
+  const [confirmTransfer, setConfirmTransfer] = React.useState(false);
+  const [transferPassword, setTransferPassword] = React.useState("");
 
   // The instance owner's account is editable only by the owner themselves — no
   // other admin may demote, suspend, reset or delete them, because all of those
@@ -120,6 +115,14 @@ export function UserEditor({
   /** Ownership leaves only through a transfer that names a successor. */
   const ownerFlagsLocked = user.isInstanceOwner;
   const showDanger = !isSelf && !user.isInstanceOwner;
+  // Offer the crown only where the server would take it: owner → an active
+  // instance admin. `savedGrants`, not the form: an unsaved admin toggle would
+  // put up a button the server refuses.
+  const canTransfer =
+    viewerIsOwner &&
+    showDanger &&
+    savedGrants.isInstanceAdmin &&
+    !suspended;
 
   const dirty =
     admin !== savedGrants.isInstanceAdmin ||
@@ -277,7 +280,7 @@ export function UserEditor({
           <CardContent className="space-y-2">
             <Row
               title="Instance admin"
-              info="Manage every user, mint registration links, and administer every team and server. Instance admins also hold both advanced grants implicitly."
+              info="Manage every user, mint registration links, and administer every team and server. An instance admin holds the two below implicitly."
               control={
                 <Switch
                   aria-label="Instance admin"
@@ -297,50 +300,41 @@ export function UserEditor({
               </p>
             )}
 
-            <Accordion
-              type="single"
-              collapsible
-              value={advancedOpen ? "advanced" : ""}
-              onValueChange={(v) => setAdvancedOpen(v === "advanced")}
-            >
-              <AccordionItem value="advanced" className="border-none">
-                <AccordionTrigger className="py-1 text-xs text-muted-foreground hover:no-underline">
-                  Advanced grants
-                </AccordionTrigger>
-                <AccordionContent className="space-y-2 pb-1 pt-1">
-                  <Row
-                    title="Publish ports"
-                    info="Declare published ports in a compose stack — a service's ports: (bound to the host) or expose:. Public domains and routes don't need this."
-                    control={
-                      <Switch
-                        aria-label="Publish ports"
-                        checked={admin || exposePorts}
-                        disabled={admin || ownerLocked}
-                        onCheckedChange={setExposePorts}
-                      />
-                    }
-                  />
-                  <Row
-                    title="Bind server folders"
-                    info="Let this account point an app at a folder that already exists on the server (the Bind kind in an app's Storage settings)."
-                    control={
-                      <Switch
-                        aria-label="Bind server folders"
-                        checked={admin || mountHostVolumes}
-                        disabled={admin || ownerLocked}
-                        onCheckedChange={setMountHostVolumes}
-                      />
-                    }
-                  />
-                  {admin && (
-                    <p className="text-xs text-muted-foreground">
-                      On because this account is an instance admin — these two
-                      only matter once that switch is off.
-                    </p>
-                  )}
-                </AccordionContent>
-              </AccordionItem>
-            </Accordion>
+            {/* Plain rows, not an "Advanced grants" panel: this card is already
+                the instance-wide switches, and folding two of the three away
+                behind a heading that repeats the card's own title hid state an
+                admin has to see. They sit under the admin switch because that is
+                what turns them on implicitly. */}
+            <Row
+              title="Publish ports"
+              info="Declare published ports in a compose stack — a service's ports: (bound to the host) or expose:. Public domains and routes don't need this."
+              control={
+                <Switch
+                  aria-label="Publish ports"
+                  checked={admin || exposePorts}
+                  disabled={admin || ownerLocked}
+                  onCheckedChange={setExposePorts}
+                />
+              }
+            />
+            <Row
+              title="Bind server folders"
+              info="Let this account point an app at a folder that already exists on the server (the Bind kind in an app's Storage settings)."
+              control={
+                <Switch
+                  aria-label="Bind server folders"
+                  checked={admin || mountHostVolumes}
+                  disabled={admin || ownerLocked}
+                  onCheckedChange={setMountHostVolumes}
+                />
+              }
+            />
+            {admin && (
+              <p className="text-xs text-muted-foreground">
+                Both are on because this account is an instance admin — they only
+                matter once that switch is off.
+              </p>
+            )}
           </CardContent>
         </Card>
 
@@ -492,6 +486,24 @@ export function UserEditor({
                 Suspending signs them out and blocks sign-in, and is reversible.
                 Deleting is not.
               </p>
+              {canTransfer && (
+                <div className="border-t border-destructive/40 pt-3">
+                  <Button
+                    type="button"
+                    variant="outline"
+                    className="w-full border-destructive/40 text-destructive hover:bg-destructive/10 hover:text-destructive"
+                    disabled={pending}
+                    onClick={() => setConfirmTransfer(true)}
+                  >
+                    <Crown className="size-4" />
+                    Transfer ownership
+                  </Button>
+                  <p className="mt-1 text-xs text-muted-foreground">
+                    They take the crown. You stay an instance admin, and only
+                    they can give it back.
+                  </p>
+                </div>
+              )}
             </CardContent>
           </Card>
         )}
@@ -525,6 +537,42 @@ export function UserEditor({
         successMessage="Two-factor reset"
         onConfirm={resetTwoFactor}
       />
+      {confirmTransfer && (
+        <ConfirmAction
+          open={confirmTransfer}
+          onOpenChange={(v) => {
+            setConfirmTransfer(v);
+            if (!v) setTransferPassword("");
+          }}
+          title={`Make @${user.username} the instance owner?`}
+          description="They become the only person who can edit their own account, transfer ownership, or be locked out of nothing. You stay an instance admin — but they can demote you, and only they can give the crown back."
+          confirmLabel="Transfer ownership"
+          confirmText={user.username}
+          successMessage="Instance ownership transferred"
+          extra={
+            <div className="space-y-2">
+              <Label htmlFor="transfer-password">Your password</Label>
+              <Input
+                id="transfer-password"
+                type="password"
+                autoComplete="current-password"
+                value={transferPassword}
+                onChange={(e) => setTransferPassword(e.target.value)}
+              />
+            </div>
+          }
+          onConfirm={async () => {
+            const res = await gqlAction(
+              `mutation ($userId: String!, $password: String!) {
+                transferInstanceOwner(userId: $userId, password: $password)
+              }`,
+              { userId: user.userId, password: transferPassword },
+            );
+            if (res.ok) router.refresh();
+            return res;
+          }}
+        />
+      )}
       {confirmDelete && (
         <DeleteUserDialog
           userId={user.userId}

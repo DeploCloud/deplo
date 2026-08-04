@@ -5,6 +5,7 @@ import { ArrowLeft, Ban, Crown, ShieldCheck } from "lucide-react";
 import { getCurrentUser } from "@/lib/auth";
 import { isInstanceAdmin } from "@/lib/membership";
 import { getUserDetail } from "@/lib/data/members";
+import { viewerIsInstanceOwner } from "@/lib/data/instance-owner";
 import {
   listJoinableTeams,
   listRoleOptions,
@@ -33,14 +34,16 @@ export default async function UserPage(props: PageProps<"/settings/users/[id]">)
   // answers, so the page is never an oracle for which accounts exist.
   if (!(await isInstanceAdmin())) notFound();
 
-  const [user, access, tree, activity, joinable, viewer] = await Promise.all([
-    getUserDetail(id),
-    listUserAccess(id),
-    listUserAccessTree(id),
-    listUserActivity(id, 10),
-    listJoinableTeams(id),
-    getCurrentUser(),
-  ]);
+  const [user, access, tree, activity, joinable, viewer, viewerIsOwner] =
+    await Promise.all([
+      getUserDetail(id),
+      listUserAccess(id),
+      listUserAccessTree(id),
+      listUserActivity(id, 10),
+      listJoinableTeams(id),
+      getCurrentUser(),
+      viewerIsInstanceOwner(),
+    ]);
   if (!user) notFound();
   const roles = await listRoleOptions(access.map((a) => a.teamId));
 
@@ -103,6 +106,7 @@ export default async function UserPage(props: PageProps<"/settings/users/[id]">)
         joinable={joinable}
         activity={<UserActivityCard activity={activity} />}
         isSelf={viewer?.id === user.userId}
+        viewerIsOwner={viewerIsOwner}
       />
     </div>
   );
