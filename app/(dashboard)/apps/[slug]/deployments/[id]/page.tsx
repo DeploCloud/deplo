@@ -1,7 +1,9 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { ArrowLeft, GitBranch, Clock, ExternalLink } from "lucide-react";
+import { ArrowLeft, GitBranch, Clock, ExternalLink, Lock } from "lucide-react";
 import { getAppBySlug } from "@/lib/data/apps";
+import { hasAppCapability } from "@/lib/data/node-access";
+import { EmptyState } from "@/components/shared/empty-state";
 import {
   getDeployment,
   getLogs,
@@ -28,7 +30,12 @@ export default async function DeploymentDetailPage(
   const deployment = await getDeployment(id);
   if (!deployment || deployment.appId !== project.id) notFound();
 
-  const logs = await getLogs(id);
+  // Build logs print the app's build-time variables, so they are their own
+  // permission, held per app (ADR-0016). `getLogs` answers an EMPTY list when
+  // the viewer lacks it - which renders as a blank terminal that looks broken -
+  // so ask first and say why instead, exactly as the Logs tab does.
+  const canReadLogs = await hasAppCapability(project.id, "view_logs");
+  const logs = canReadLogs ? await getLogs(id) : [];
   // Its live slot in the owning server's build queue (null unless still queued),
   // so the "in queue" banner paints its position without waiting on the first poll.
   const queuePosition = await getQueuePosition(id);
@@ -114,13 +121,21 @@ export default async function DeploymentDetailPage(
 
       <div className="space-y-2">
         <p className="text-sm font-medium">Build Logs</p>
-        <BuildLogStream
-          deploymentId={id}
-          initialLogs={logs}
-          initialStatus={deployment.status}
-          initialQueuePosition={queuePosition}
-          showQueueBanner
-        />
+        {canReadLogs ? (
+          <BuildLogStream
+            deploymentId={id}
+            initialLogs={logs}
+            initialStatus={deployment.status}
+            initialQueuePosition={queuePosition}
+            showQueueBanner
+          />
+        ) : (
+          <EmptyState
+            icon={Lock}
+            title="No access to logs"
+            description="You don't have permission to read this app's logs. Ask a team admin for the “View logs” permission."
+          />
+        )}
       </div>
     </div>
   );

@@ -1,7 +1,7 @@
 "use client";
 
 import * as React from "react";
-import { Search, ScrollText, FileSearch } from "lucide-react";
+import { Search, ScrollText, FileSearch, Lock } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { CopyButton } from "@/components/shared/copy-button";
 import { DownloadButton } from "@/components/shared/download-button";
@@ -45,9 +45,13 @@ function fmtTime(ts: string): string {
 export function LogViewer({
   deployments,
   logsById,
+  closedIds = [],
 }: {
   deployments: DeploymentSummary[];
   logsById: Record<string, LogLine[]>;
+  /** Deployments whose logs the viewer may not read (`view_logs` is per app).
+   *  Their pane says so instead of reading as a build that printed nothing. */
+  closedIds?: string[];
 }) {
   const [selectedId, setSelectedId] = React.useState(deployments[0]?.id ?? "");
   const [query, setQuery] = React.useState("");
@@ -61,6 +65,8 @@ export function LogViewer({
   );
 
   const allLines = logsById[selected?.id ?? ""] ?? [];
+  const closed = React.useMemo(() => new Set(closedIds), [closedIds]);
+  const selectionClosed = Boolean(selected && closed.has(selected.id));
 
   const filteredLines = React.useMemo(() => {
     const q = query.trim().toLowerCase();
@@ -191,11 +197,17 @@ export function LogViewer({
         <LogLines className="max-h-[540px] rounded-b-xl text-xs">
           {filteredLines.length === 0 ? (
             <div className="flex flex-col items-center justify-center gap-2 py-16 text-center">
-              <FileSearch className="size-5 text-muted-foreground" />
+              {selectionClosed ? (
+                <Lock className="size-5 text-muted-foreground" />
+              ) : (
+                <FileSearch className="size-5 text-muted-foreground" />
+              )}
               <p className="text-muted-foreground">
-                {allLines.length === 0
-                  ? "No logs available for this deployment."
-                  : "No log lines match your filters."}
+                {selectionClosed
+                  ? "You don't have permission to read this app's logs. Ask a team admin for the “View logs” permission."
+                  : allLines.length === 0
+                    ? "No logs available for this deployment."
+                    : "No log lines match your filters."}
               </p>
             </div>
           ) : (
