@@ -239,7 +239,9 @@ export async function createBackup(input: {
     throw new Error("Select a destination");
   if (targetKind === "database") {
     if (!databaseId) throw new Error("Select a database to back up");
-    if (!(await databaseNameFor(databaseId, teamId)))
+    // A project-scoped token can't see any database, so it can't schedule a dump
+    // of one either — same answer its own reads give (`loadDatabase`).
+    if (narrowedScope() || !(await databaseNameFor(databaseId, teamId)))
       throw new Error("Database not found");
   } else {
     if (!appId) throw new Error("Select a project to back up");
@@ -702,6 +704,13 @@ async function requireBackupCapability(
     await requireAppCapability(target.appId, cap);
     return;
   }
+  // A database belongs to no Project, so a project-scoped token reaches none of
+  // them — and both capabilities here survive the project clamp (they mean
+  // something on an app), so the team-wide `requireCapability` below would let
+  // one through. NOT FOUND rather than a scope error, the same answer
+  // {@link deleteBackupArtifacts} gives: a scope must never become an oracle for
+  // which backup ids exist.
+  if (narrowedScope()) throw new Error("Not found");
   await requireCapability(cap);
 }
 
@@ -1116,6 +1125,11 @@ export async function deleteAllBackupArtifacts(input: {
     input.kind === "app"
       ? await requireAppCapability(input.targetId, "delete_apps")
       : await requireCapability("manage_backups");
+  // `manage_backups` survives the project clamp, so the database branch above
+  // would otherwise let a narrowed token wipe a target it can't reach. Mirrors
+  // the check in {@link deleteBackupArtifacts}.
+  if (!(await backupTargetInScope(input.kind, input.targetId, teamId)))
+    throw new Error("Not found");
   // Resolve the owning server straight off the target row — no agent round-trip
   // (a project's full descriptor needs `readStack`, which we don't need just to
   // delete objects). A missing/foreign row yields no server and nothing to do.

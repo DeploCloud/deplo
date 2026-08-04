@@ -736,7 +736,7 @@ export async function updateRole(input: {
 
 /** Restore a default role to exactly what deplo ships. Built-ins only. */
 export async function resetRole(id: string): Promise<void> {
-  const { teamId } = await requireCapability("manage_roles");
+  const { teamId, membership } = await requireCapability("manage_roles");
   let name = "";
   await getDb().transaction(async (tx) => {
     const role = await roleInTeam(tx, teamId, id);
@@ -747,7 +747,11 @@ export async function resetRole(id: string): Promise<void> {
       );
     const defaults = ROLE_DEFAULTS[key];
     name = defaults.name;
-    const capabilities = capabilitiesForRole(key);
+    // Bounded exactly like authoring the same role by hand (`updateRole`). A
+    // reset rewrites the capabilities of everyone holding the role — the actor
+    // included — so without this a `manage_roles` holder whose own role had been
+    // narrowed could widen it back to the shipped preset in one call.
+    const capabilities = withinActor(capabilitiesForRole(key), membership);
     await assertNameFree(tx, teamId, defaults.name, role.id);
     await lockTeamMemberships(tx, teamId);
     await tx

@@ -383,6 +383,13 @@ export async function listAppliedSharedVarsByApp(): Promise<AppliedSharedVarDTO[
 export async function revealSharedVar(id: string): Promise<string> {
   // Reading a value back is `reveal_secrets`, exactly like an app's own var —
   // editing shared variables (`manage_env`) never implies reading one.
+  //
+  // The library itself is team-level, and BOTH capabilities that reach it
+  // (`reveal_secrets`, `manage_env`) survive the project clamp because they mean
+  // something on an app. So the refusal has to be explicit here, exactly as it is
+  // on the two list functions — otherwise a token narrowed to one project reads
+  // back every shared secret in the team by id.
+  requireUnscoped("shared variables");
   const { teamId } = await requireCapability("reveal_secrets");
   const rows = await getDb()
     .select({ valueEnc: varsTable.valueEnc })
@@ -482,6 +489,11 @@ export async function saveSharedVar(input: {
    */
   appIds?: string[];
 }): Promise<string> {
+  // A team-wide var is injected into every app in the team at the highest deploy
+  // precedence, so authoring one from a project-scoped token would be that token
+  // setting variables on apps outside its own boundary. The per-app toggle
+  // (`setSharedVarAppLink`) stays open — it names one app and is gated on it.
+  requireUnscoped("shared variables");
   const { teamId, userId } = await requireCapability("manage_env");
   const user = (await getCurrentUser())!;
   const key = input.key.trim();
@@ -627,6 +639,7 @@ export async function setSharedVarAppLink(
 }
 
 export async function deleteSharedVar(id: string): Promise<void> {
+  requireUnscoped("shared variables");
   const { teamId } = await requireCapability("manage_env");
   const user = (await getCurrentUser())!;
   const rows = await getDb()
