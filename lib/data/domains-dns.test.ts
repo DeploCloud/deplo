@@ -20,6 +20,7 @@ import {
 } from "./app-graph-test-helpers";
 import {
   addDomain,
+  ensureAutoDomain,
   updateDomain,
   verifyDomain,
   __setDnsResolve4ForTest,
@@ -268,6 +269,28 @@ test("rename onto a proxied host respects a certificate the user DID change", as
   const renamed = rows.find((r) => r.id === d.id)!;
   assert.equal(renamed.status, "cloudflare");
   assert.equal(renamed.certProvider, "none");
+});
+
+test("rename of the generated nip.io domain checks the new host, not its provenance", async () => {
+  // The row a fresh app starts with: deplo's own nip.io host, born valid.
+  __setDnsResolve4ForTest(async () => [SERVER_IP]);
+  await ensureAutoDomain("prj_1", {
+    slug: "app",
+    ip: SERVER_IP,
+    defaultPort: 3000,
+  });
+  const [auto] = await db.select().from(domainsTable);
+  assert.equal(auto.source, "auto");
+  assert.equal(auto.status, "valid");
+
+  // The user edits that row and types their own hostname, which points nowhere
+  // yet. It must NOT inherit the nip.io row's valid/ssl.
+  __setDnsResolve4ForTest(async () => []);
+  await asUser1(() => updateDomain(auto.id, { name: "mine.example.io" }));
+  const [renamed] = await db.select().from(domainsTable);
+  assert.equal(renamed.name, "mine.example.io");
+  assert.equal(renamed.status, "pending");
+  assert.equal(renamed.ssl, false);
 });
 
 test("rename to an unresolvable host drops to pending and stops ssl", async () => {

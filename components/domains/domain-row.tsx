@@ -196,9 +196,11 @@ export function DomainRow({
       return;
     }
     startTransition(async () => {
-      const res = await gqlAction<{ updateDomain: { id: string } }, undefined>(
+      const res = await gqlAction<{
+        updateDomain: { id: string; status: string };
+      }>(
         `mutation($id: String!, $patch: DomainPatchInput!) {
-          updateDomain(id: $id, patch: $patch) { id }
+          updateDomain(id: $id, patch: $patch) { id status }
         }`,
         {
           id: domain.id,
@@ -217,10 +219,26 @@ export function DomainRow({
             www: resolved.www,
           },
         },
-        () => undefined,
       );
       if (res.ok) {
-        toast.success("Domain updated");
+        // A rename re-checks the NEW hostname's DNS server-side, so the toast
+        // reports what the check found — same as the add does. A flat "updated"
+        // after typing a hostname nothing points at reads as "and it works".
+        const status = res.data?.updateDomain.status;
+        if (trimmedName === domain.name || status === "valid")
+          toast.success("Domain updated");
+        else if (status === "cloudflare")
+          toast.warning(
+            "Domain updated - proxied through Cloudflare, so deplo can’t confirm it reaches this app; check its origin IP on the row",
+          );
+        else if (status === "misconfigured")
+          toast.warning(
+            "Domain updated, but its DNS points at another address - see the hint on its row",
+          );
+        else
+          toast.warning(
+            "Domain updated - point its DNS at the server and it verifies automatically",
+          );
         setEditOpen(false);
         // No revalidatePath on the GraphQL API — refresh so the edited row
         // reflects the new routing config.

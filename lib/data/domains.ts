@@ -748,13 +748,20 @@ export async function updateDomain(
     next.stripPrefix = strip ? true : undefined;
   }
   if (patch.service !== undefined) next.service = nextApp ?? undefined;
-  // A renamed custom domain points at a new host whose DNS the stored status
-  // says nothing about — so check the NEW name right now, exactly like addDomain
+  // A renamed domain points at a new host whose DNS the stored status says
+  // nothing about — so check the NEW name right now, exactly like addDomain
   // does: a pre-pointed host keeps routing across the rename with zero manual
   // steps, an unpointed one drops to pending/misconfigured and stops routing
-  // until the automatic re-checks see it settle. An auto nip.io host always
-  // resolves, so it stays valid untouched.
-  if (renamed && next.source !== "auto") {
+  // until the automatic re-checks see it settle.
+  //
+  // Provenance buys NO exemption. The generated nip.io host is the row most
+  // people rename (on a fresh app it is the only row there is), and skipping the
+  // check for `source: "auto"` left a hostname the user typed sitting on the
+  // nip.io row's inherited `valid` + ssl: green badge, routed, and never
+  // corrected — the domains page only re-checks unsettled rows and Verify hides
+  // itself on a valid one. Status is a fact about the hostname, not about who
+  // first put it there.
+  if (renamed) {
     next.status = await checkDomainDns(nextName, await appServerIp(current.appId));
     next.ssl = next.status === "valid" || next.status === "cloudflare";
     // The rename's check can discover the NEW host is proxied, so it gets the
