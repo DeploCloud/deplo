@@ -546,14 +546,19 @@ function MountRow({
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
+                    {/* Each option names the docker keyword it writes. The
+                        phrase is what a non-expert picks by; the token in
+                        parentheses is what someone who already knows mount
+                        propagation (or is reading a forum answer that says
+                        "use rslave") searches the screen for. */}
                     <SelectItem value={PROPAGATION_NONE}>
-                      Only what is already there
+                      Only what is already there (rprivate)
                     </SelectItem>
                     <SelectItem value="rslave">
-                      Keep up with the server
+                      Keep up with the server (rslave)
                     </SelectItem>
                     <SelectItem value="rshared">
-                      Keep up, and let the server see this app&apos;s own
+                      Keep up, and let the server see this app&apos;s own (rshared)
                     </SelectItem>
                   </SelectContent>
                 </Select>
@@ -566,7 +571,7 @@ function MountRow({
                 className="cursor-pointer text-xs font-normal"
                 info="The app can read this data but never write to it. Handy for a config file you want to stay exactly as you wrote it."
               >
-                Let the app read but not change it
+                Let the app read but not change it (ro)
               </FieldLabel>
               <Switch
                 id={readOnlyId}
