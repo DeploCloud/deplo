@@ -135,9 +135,9 @@ export function RoleEditor({
     <form className="grid items-start gap-6 xl:grid-cols-[1fr_320px]" onSubmit={submit}>
       <div className="space-y-4">
         {locked && (
-          <div className="flex items-start gap-2.5 rounded-lg border border-border bg-muted/40 px-3 py-2.5 text-sm">
-            <Lock className="mt-0.5 size-4 shrink-0 text-muted-foreground" />
-            <p className="text-muted-foreground">
+          <div className="flex items-start gap-2.5 rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 py-2.5 text-sm text-amber-600 dark:text-amber-400">
+            <Lock className="mt-0.5 size-4 shrink-0" />
+            <p>
               The Owner role always has every permission and can&apos;t be edited.
               A team that could edit its way out of administering itself would have
               no way back.
