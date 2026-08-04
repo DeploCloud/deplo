@@ -2,7 +2,7 @@ import { redirect } from "next/navigation";
 import { requireUser } from "@/lib/auth";
 import { getTeam, listMyTeams } from "@/lib/data/teams";
 import {
-  currentCapabilities,
+  reachableCapabilities,
   isInstanceAdmin,
   TwoFactorRequiredError,
 } from "@/lib/membership";
@@ -31,7 +31,12 @@ export default async function DashboardLayout({
   try {
     team = await getTeam();
     [capabilities, isAdmin, breadcrumb] = await Promise.all([
-      currentCapabilities(),
+      // What they could do SOMEWHERE in the team, not only team-wide: a
+      // per-folder grant is exactly how someone holds one corner of the fleet
+      // (ADR-0016), and a nav item hidden from them would hide the only apps
+      // they have. Wider than the truth on purpose — nothing here decides
+      // anything, every page and mutation re-checks per app.
+      reachableCapabilities(),
       isInstanceAdmin(),
       getBreadcrumbGraph(),
     ]);

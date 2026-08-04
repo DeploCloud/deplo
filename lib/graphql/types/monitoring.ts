@@ -169,8 +169,8 @@ builder.queryFields((t) => ({
     type: ServerMetricsRef,
     // Every call dials the owning server's agent (fresh mTLS connect + cert
     // work) with no rate limit — an infra action, not a dashboard read. The
-    // dashboards seed from `serverMetricsHistory` below, which stays at the
-    // logged-in floor.
+    // buffered reads below are cheap by comparison but answer the same
+    // question, so they carry the same permission.
     authScopes: { capability: "view_metrics" },
     description: "A fresh live metrics snapshot for one server.",
     args: { serverId: t.arg.string({ required: true }) },
@@ -178,7 +178,7 @@ builder.queryFields((t) => ({
   }),
   serverMetricsHistory: t.field({
     type: [ServerMetricsRef],
-    authScopes: { loggedIn: true },
+    authScopes: { capability: "view_metrics" },
     description:
       "The metrics history buffered on the control plane for one server (oldest " +
       "first) — what the Monitoring charts seed from on load. Empty when saving " +
@@ -198,14 +198,14 @@ builder.queryFields((t) => ({
   appMetrics: t.field({
     type: ContainerMetricsRef,
     nullable: true,
-    authScopes: { loggedIn: true },
+    authScopes: { capability: "view_metrics" },
     description: "A fresh live per-container metrics snapshot for one app.",
     args: { appId: t.arg.string({ required: true }) },
     resolve: (_r, { appId }) => getAppMetrics(appId),
   }),
   appMetricsHistory: t.field({
     type: [ContainerMetricsSampleRef],
-    authScopes: { loggedIn: true },
+    authScopes: { capability: "view_metrics" },
     description:
       "The metrics history buffered for one app (oldest first) — what the app's " +
       "Monitoring charts seed from. Empty when the owning server's telemetry " +
@@ -216,14 +216,14 @@ builder.queryFields((t) => ({
   databaseMetrics: t.field({
     type: ContainerMetricsRef,
     nullable: true,
-    authScopes: { loggedIn: true },
+    authScopes: { capability: "view_metrics" },
     description: "A fresh live per-container metrics snapshot for one database.",
     args: { databaseId: t.arg.string({ required: true }) },
     resolve: (_r, { databaseId }) => getDatabaseMetrics(databaseId),
   }),
   databaseMetricsHistory: t.field({
     type: [ContainerMetricsSampleRef],
-    authScopes: { loggedIn: true },
+    authScopes: { capability: "view_metrics" },
     description:
       "The metrics history buffered for one database (oldest first). Empty when " +
       "the owning server's telemetry stream has not delivered a frame for it yet.",

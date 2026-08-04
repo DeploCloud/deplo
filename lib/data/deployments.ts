@@ -137,11 +137,22 @@ export async function getDeployment(id: string): Promise<Deployment | null> {
   return (await appInTeam(dep.appId, teamId)) ? dep : null;
 }
 
+/**
+ * A build's log. Gated on `view_logs`, NOT on bare membership: a build log
+ * carries the app's build-time variables and whatever its Dockerfile echoed, so
+ * it is exactly the read the permission names.
+ *
+ * Answers EMPTY rather than throwing, like the two lines above it: an
+ * unreadable log, an unknown deployment and another team's deployment are one
+ * answer, so no caller can use it to learn which is which. The honest refusal
+ * for an API client is the `view_logs` scope on the `Deployment.logs` field.
+ */
 export async function getLogs(deploymentId: string): Promise<LogLine[]> {
   const teamId = await requireActiveTeamId();
   const dep = await loadDeployment(deploymentId);
   if (!dep) return [];
   if (!(await appInTeam(dep.appId, teamId))) return [];
+  if (!(await hasAppCapability(dep.appId, "view_logs"))) return [];
   return loadDeploymentLogs(deploymentId);
 }
 

@@ -109,7 +109,7 @@ test("an assigned owner (not the founder, not an admin) is rejected", async () =
 
   await assert.rejects(
     runWithIdentity({ userId: USER_2, teamId: TEAM_A }, () => deleteTeam(TEAM_A)),
-    /primary owner or an instance admin/,
+    /don't have permission to delete this team/,
   );
   assert.equal(await teamExists(TEAM_A), true);
 });

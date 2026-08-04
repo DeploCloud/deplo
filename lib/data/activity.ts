@@ -11,7 +11,7 @@ import {
 import { assembleActivity, activityToRow } from "./infra-rows";
 import { getCurrentUser } from "../auth";
 import { newId, nowIso } from "../ids";
-import { requireActiveTeamId } from "../membership";
+import { hasCapability, requireActiveTeamId } from "../membership";
 import { appScopeWhere } from "./app-graph-load";
 import { narrowedScope } from "../auth/request-context";
 import type { Activity, ActivityType } from "../types";
@@ -19,6 +19,10 @@ import type { Activity, ActivityType } from "../types";
 /** Activity for the active team only, newest-first, with the LIMIT pushed into SQL. */
 export async function listActivity(limit = 20): Promise<Activity[]> {
   const teamId = await requireActiveTeamId();
+  // The trail is who-did-what across the whole team, so it is `view_activity`
+  // and not the `view` floor. Soft (empty) rather than a throw: this feeds the
+  // Overview card and the Activity page, which both already render "nothing yet".
+  if (!(await hasCapability("view_activity"))) return [];
   const rows = await getDb()
     .select()
     .from(activitiesTable)

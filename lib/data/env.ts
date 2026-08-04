@@ -166,7 +166,10 @@ export async function listAllAppEnv(): Promise<AppEnvGroup[]> {
 export async function revealEnv(id: string): Promise<string> {
   const e = await loadEnvVar(id);
   if (!e) throw new Error("Not found");
-  await requireAppCapability(e.appId, "manage_env");
+  // `reveal_secrets`, not `manage_env`: setting a variable and reading one back
+  // are different powers, which is the whole reason they are two permissions
+  // (and why the write-only model holds for a role that only edits config).
+  await requireAppCapability(e.appId, "reveal_secrets");
   return decryptSecret(e.valueEnc);
 }
 

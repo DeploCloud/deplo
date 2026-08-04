@@ -11,7 +11,7 @@ import {
   users as usersTable,
 } from "../db/schema/control-plane";
 import { assertUser, getCurrentUser } from "../auth";
-import { membershipFor } from "../membership";
+import { isInstanceAdmin, membershipFor } from "../membership";
 import {
   CAPABILITY_META,
   NODE_GRANTABLE_CAPABILITIES,
@@ -305,7 +305,7 @@ async function requireFolderOwnerOrAdmin(folderId: string): Promise<{
   const user = await assertUser();
   const f = await folderRow(folderId);
   if (!f) throw new Error("Folder not found");
-  const admin = Boolean(user.isInstanceAdmin);
+  const admin = await isInstanceAdmin();
   // Ownership requires LIVE team membership: a folder's owner_user_id is NOT
   // cleared when the owner merely leaves the team (only on account deletion — see
   // the schema comment), so a bare `ownerUserId === user.id` would let an

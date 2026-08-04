@@ -1,6 +1,6 @@
 import "server-only";
 
-import { requireActiveTeamId } from "../membership";
+import { hasCapability, requireActiveTeamId } from "../membership";
 import { loadTeamApp } from "./app-graph-load";
 import { loadDatabaseForTeam } from "./databases";
 import type { ContainerStat as PbContainerStat } from "../agent/gen/agent";
@@ -193,6 +193,7 @@ function toSample(m: ContainerMetrics): ContainerMetricsSample {
  */
 export async function getAppMetrics(appId: string): Promise<ContainerMetrics | null> {
   const teamId = await requireActiveTeamId();
+  if (!(await hasCapability("view_metrics"))) return null;
   const app = await loadTeamApp(appId, teamId);
   if (!app) return null;
   return fromBuffer(app.id);
@@ -220,6 +221,7 @@ export async function getAppMetricsHistory(
   appId: string,
 ): Promise<ContainerMetricsSample[]> {
   const teamId = await requireActiveTeamId();
+  if (!(await hasCapability("view_metrics"))) return [];
   const app = await loadTeamApp(appId, teamId);
   if (!app) return [];
   return getContainerHistory(app.id);
@@ -235,6 +237,7 @@ export async function getDatabaseMetrics(
   databaseId: string,
 ): Promise<ContainerMetrics | null> {
   const teamId = await requireActiveTeamId();
+  if (!(await hasCapability("view_metrics"))) return null;
   const db = await loadDatabaseForTeam(databaseId, teamId);
   if (!db) return null;
   return fromBuffer(db.id);
@@ -245,6 +248,7 @@ export async function getDatabaseMetricsHistory(
   databaseId: string,
 ): Promise<ContainerMetricsSample[]> {
   const teamId = await requireActiveTeamId();
+  if (!(await hasCapability("view_metrics"))) return [];
   const db = await loadDatabaseForTeam(databaseId, teamId);
   if (!db) return [];
   return getContainerHistory(db.id);

@@ -1,5 +1,7 @@
 import Link from "next/link";
-import { ArrowLeft } from "lucide-react";
+import { ArrowLeft, Lock } from "lucide-react";
+import { hasCapability } from "@/lib/membership";
+import { EmptyState } from "@/components/shared/empty-state";
 import { PageHeader } from "@/components/shared/page-header";
 import { Button } from "@/components/ui/button";
 import { NewAppWizard } from "@/components/apps/new-app-wizard";
@@ -18,6 +20,24 @@ import {
 export const metadata = { title: "New App" };
 
 export default async function NewAppPage(props: PageProps<"/new">) {
+  // The Overview hides its "New app" button without this permission, but the
+  // URL is still typeable (and a template's Deploy button lands here). Say so up
+  // front rather than letting someone fill the whole wizard in and be refused on
+  // submit — createApp re-checks either way.
+  if (!(await hasCapability("create_apps")))
+    return (
+      <EmptyState
+        icon={Lock}
+        title="You can't create apps"
+        description="Ask a team admin for permission to create apps, or pick an app you already have from the overview."
+        action={
+          <Button asChild size="sm">
+            <Link href="/">Back to overview</Link>
+          </Button>
+        }
+      />
+    );
+
   const sp = await props.searchParams;
   const templateId = Array.isArray(sp.template) ? sp.template[0] : sp.template;
   const repoParam = Array.isArray(sp.repo) ? sp.repo[0] : sp.repo;

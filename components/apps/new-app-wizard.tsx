@@ -474,19 +474,22 @@ export function NewAppWizard({
       }
 
       // Non-upload sources deploy on create; a fileless upload stays idle until
-      // the user uploads from Settings — don't claim it's deploying.
-      toast.success(
-        source === "upload"
-          ? "App created — upload an archive from Settings to deploy"
-          : "App created — deploying…",
-      );
-      // Every non-upload source kicks off a first deployment inside createApp
-      // (startDeployment sets latestDeployment synchronously before it returns), so
-      // land on that deployment's live build logs — the same destination the
-      // upload path above uses — instead of a still-empty overview. A fileless
-      // "upload" app is born idle with no deployment, so it falls back to its
-      // overview.
+      // the user uploads from Settings — don't claim it's deploying. Neither does
+      // an app created by someone without permission to deploy: it is born idle
+      // for a teammate who has it, and `latestDeployment` is what says which.
       const firstDeploymentId = service.latestDeployment?.id;
+      toast.success(
+        firstDeploymentId
+          ? "App created - deploying now"
+          : source === "upload"
+            ? "App created - upload an archive from Settings to deploy"
+            : "App created - it needs someone with permission to deploy",
+      );
+      // A first deployment kicked off inside createApp (startDeployment sets
+      // latestDeployment synchronously before it returns) means landing on its
+      // live build logs — the same destination the upload path above uses —
+      // instead of a still-empty overview. An app born idle (a fileless upload,
+      // or a creator who can't deploy) falls back to its overview.
       router.push(
         firstDeploymentId
           ? `/apps/${service.slug}/deployments/${firstDeploymentId}`

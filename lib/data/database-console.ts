@@ -1,6 +1,6 @@
 import "server-only";
 
-import { requireActiveTeamId, requireCapability } from "../membership";
+import { hasCapability, requireActiveTeamId, requireCapability } from "../membership";
 import { loadDatabaseForTeam } from "./databases";
 import {
   connectAgent,
@@ -195,6 +195,10 @@ export async function getDatabaseLogsInfo(id: string): Promise<LogsInfo | null> 
   const teamId = await requireActiveTeamId();
   const db = await loadDatabaseForTeam(id, teamId);
   if (!db) return null;
+  // Same `view_logs` gate as an app's viewer — a database's log is where its
+  // connection errors (and their DSNs) come out. Team-level: a database has no
+  // folder to grant on.
+  if (!(await hasCapability("view_logs"))) return null;
   const found = await listForDisplay(db);
   return {
     running: found.instances.some((i) => i.running),
@@ -261,20 +265,23 @@ export async function resolveDatabaseAttachTarget(
 }
 
 /**
- * Authorise a logs stream and resolve the container. Reads are team-scoped
- * (parity with app logs — a viewer may read logs, never type into the engine).
- * Does NOT refuse a stopped container: `docker logs` still has its output.
+ * Authorise a logs stream and resolve the container. Gated on `view_logs`
+ * (parity with app logs — a member who may read logs still never types into the
+ * engine). Does NOT refuse a stopped container: `docker logs` still has its output.
  */
 export async function resolveDatabaseLogsTarget(
   id: string,
   target?: string,
 ): Promise<
   | { ok: true; instance: ConsoleInstance; serverId: string }
-  | { ok: false; reason: "not-found" | "no-instance" | "unreachable" }
+  | { ok: false; reason: "not-found" | "no-instance" | "unreachable" | "forbidden" }
 > {
   const teamId = await requireActiveTeamId();
   const db = await loadDatabaseForTeam(id, teamId);
   if (!db) return { ok: false, reason: "not-found" };
+  // A reason, not a throw: the caller is an SSE route that turns this into 403.
+  if (!(await hasCapability("view_logs")))
+    return { ok: false, reason: "forbidden" };
 
   let instances: ConsoleInstance[];
   try {

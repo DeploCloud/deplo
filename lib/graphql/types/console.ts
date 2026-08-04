@@ -199,7 +199,7 @@ builder.queryFields((t) => ({
   logsInfo: t.field({
     type: LogsInfoRef,
     nullable: true,
-    authScopes: { loggedIn: true },
+    authScopes: { capability: "view_logs" },
     description: "Lighter instance list for the logs viewer.",
     args: { appId: t.arg.string({ required: true }) },
     resolve: (_r, { appId }) => getLogsInfo(appId),
@@ -245,7 +245,7 @@ builder.queryFields((t) => ({
   databaseLogsInfo: t.field({
     type: LogsInfoRef,
     nullable: true,
-    authScopes: { loggedIn: true },
+    authScopes: { capability: "view_logs" },
     description: "Container list for a database's logs viewer.",
     args: { databaseId: t.arg.string({ required: true }) },
     resolve: (_r, { databaseId }) => getDatabaseLogsInfo(databaseId),

@@ -89,6 +89,7 @@ export const NAV: NavSection[] = [
         href: "/logs",
         icon: ScrollText,
         tooltip: "Runtime and build logs",
+        requires: "view_logs",
       },
     ],
   },
@@ -129,12 +130,14 @@ export const NAV: NavSection[] = [
         href: "/activity",
         icon: Activity,
         tooltip: "Audit log of workspace events",
+        requires: "view_activity",
       },
       {
         label: "Monitoring",
         href: "/monitoring",
         icon: LineChart,
         tooltip: "Real-time server metrics",
+        requires: "view_metrics",
       },
       {
         label: "Settings",
@@ -193,7 +196,7 @@ export const SETTINGS_NAV: NavSection[] = [
         href: "/settings/registries",
         icon: Package,
         tooltip: "Container image registries",
-        requires: "manage_infra",
+        requires: "manage_registries",
       },
       {
         label: "Git",
@@ -356,6 +359,7 @@ export function appNav(slug: string, f: AppNavFlags): NavSection[] {
       href: `${base}/logs`,
       icon: ScrollText,
       tooltip: "Runtime & build logs",
+      requires: "view_logs",
     },
     // Monitoring is always visible (like Logs): live per-container resource
     // usage while running, an "update the agent" / "not running" state otherwise.
@@ -364,6 +368,7 @@ export function appNav(slug: string, f: AppNavFlags): NavSection[] {
       href: `${base}/monitoring`,
       icon: LineChart,
       tooltip: "Live resource usage",
+      requires: "view_metrics",
     },
     // Files — only when an on-disk files dir exists and the viewer can manage it.
     ...(f.showFiles || on("/files")
@@ -551,7 +556,7 @@ export function databaseNav(
                 href: `${base}/console`,
                 icon: SquareTerminal,
                 tooltip: "Container console",
-                requires: "manage_infra",
+                requires: "open_database_console",
               } as NavItem,
             ]
           : []),
@@ -560,7 +565,7 @@ export function databaseNav(
           href: `${base}/backups`,
           icon: Archive,
           tooltip: "Backups & restore",
-          requires: "manage_infra",
+          requires: "manage_backups",
         },
         {
           label: "Settings",

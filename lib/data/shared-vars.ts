@@ -381,7 +381,9 @@ export async function listAppliedSharedVarsByApp(): Promise<AppliedSharedVarDTO[
 }
 
 export async function revealSharedVar(id: string): Promise<string> {
-  const { teamId } = await requireCapability("manage_env");
+  // Reading a value back is `reveal_secrets`, exactly like an app's own var —
+  // editing shared variables (`manage_env`) never implies reading one.
+  const { teamId } = await requireCapability("reveal_secrets");
   const rows = await getDb()
     .select({ valueEnc: varsTable.valueEnc })
     .from(varsTable)

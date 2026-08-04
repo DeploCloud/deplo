@@ -2,7 +2,7 @@ import "server-only";
 
 import { getServerById } from "./servers";
 import { requireActiveTeamId } from "../membership";
-import { requireAppCapability } from "./node-access";
+import { hasAppCapability, requireAppCapability } from "./node-access";
 import { loadTeamApp } from "./app-graph-load";
 import { primaryDomainApp } from "./domains";
 import { composeServiceNames } from "../deploy/compose-stack";
@@ -204,7 +204,10 @@ export async function getLogsInfo(appId: string): Promise<LogsInfo | null> {
   const teamId = await requireActiveTeamId();
   const p = await loadTeamApp(appId, teamId);
   if (!p) return null;
-  await requireAppCapability(appId, "view");
+  // The viewer's own gate: without `view_logs` there is nothing to point a log
+  // stream at, so the picker resolves nothing rather than listing containers a
+  // caller may not read. Soft (null) because it feeds a page, not an action.
+  if (!(await hasAppCapability(appId, "view_logs"))) return null;
   const found = await listInstancesForDisplay(p);
   return {
     running: found.instances.some((i) => i.running),
@@ -514,12 +517,16 @@ export async function resolveLogsTarget(
   target?: string,
 ): Promise<
   | { ok: true; instance: ConsoleInstance; server: Server | undefined }
-  | { ok: false; reason: "not-found" | "no-instance" | "unreachable" }
+  | { ok: false; reason: "not-found" | "no-instance" | "unreachable" | "forbidden" }
 > {
   const teamId = await requireActiveTeamId();
   const p = await loadTeamApp(appId, teamId);
   if (!p) return { ok: false, reason: "not-found" };
-  await requireAppCapability(appId, "view");
+  // Runtime logs are the `view_logs` read (they print whatever the app prints,
+  // secrets included). Answered as a REASON rather than a throw: the caller is
+  // an SSE route, which turns this into a 403 instead of a 500.
+  if (!(await hasAppCapability(appId, "view_logs")))
+    return { ok: false, reason: "forbidden" };
 
   let instances: ConsoleInstance[];
   try {

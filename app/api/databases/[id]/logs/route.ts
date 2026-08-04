@@ -51,9 +51,11 @@ export async function GET(
     const status =
       resolved.reason === "not-found"
         ? 404
-        : resolved.reason === "unreachable"
-          ? 503
-          : 409;
+        : resolved.reason === "forbidden"
+          ? 403
+          : resolved.reason === "unreachable"
+            ? 503
+            : 409;
     return Response.json({ error: resolved.reason }, { status });
   }
 

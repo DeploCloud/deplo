@@ -71,13 +71,24 @@ export async function POST(
   // A token's scope can span teams, so say which one this call is about: the
   // team that owns the app in the URL. An un-gated id → team_id lookup, which
   // leaks nothing on its own — every check below still runs as the token.
-  const principal = raw
-    ? await authenticateToken(raw, await owningTeamId(hookAppId))
-    : null;
+  // A token whose member is under an unmet two-factor policy makes
+  // `authenticateToken` THROW rather than answer — it is a refusal with a reason
+  // ("the X role requires two-factor authentication"), and a CI job debugging a
+  // suddenly-failing hook deserves to read it instead of a bare 500.
+  let principal = null;
+  let refusal = "";
+  try {
+    principal = raw
+      ? await authenticateToken(raw, await owningTeamId(hookAppId))
+      : null;
+  } catch (e) {
+    refusal = (e as Error).message;
+  }
   if (!principal)
     return Response.json(
       {
         error:
+          refusal ||
           "Missing or invalid API token. Send an `Authorization: Bearer deplo_…` header — create the token in Settings → API tokens.",
       },
       { status: 401 },

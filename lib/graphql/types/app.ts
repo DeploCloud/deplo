@@ -117,6 +117,9 @@ export const DeploymentRef = builder
       creator: t.exposeString("creator"),
       logs: t.field({
         type: [LogLineRef],
+        // A build log prints the app's build-time variables; `view_logs` is the
+        // permission that names exactly this read (re-checked in `getLogs`).
+        authScopes: { capability: "view_logs" },
         description: "Build logs for this deployment (most recent lines, capped).",
         // Cap the serialized payload so `apps { deployments { logs } }` can't
         // amplify into unbounded memory; the full stream is available live via

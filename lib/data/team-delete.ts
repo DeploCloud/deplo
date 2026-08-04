@@ -7,9 +7,9 @@ import {
   installedPlugins as installedPluginsTable,
   teams as teamsTable,
 } from "../db/schema/control-plane";
-import { getCurrentUser } from "../auth";
 import { currentIdentity } from "../auth/request-context";
 import {
+  isInstanceAdmin,
   requireMembership,
   setActiveTeam,
   teamsForUser,
@@ -25,11 +25,11 @@ import { removeUploads } from "../deploy/upload";
  * Deleting a team is the one action that outranks `manage_team`: it implicitly
  * removes every membership INCLUDING the founder's, so letting any assigned
  * owner fire it would sidestep the "founder is unremovable" invariant
- * (lib/data/members.ts). Hence the tighter gate: the founder ("crown"), an
- * instance admin (who must still be a MEMBER — the delete operates on the
- * active team, and a team can only be active for its members), or — on a
- * legacy team whose founder column was never backfilled / whose founder
- * account is gone — any owner.
+ * (lib/data/members.ts). Hence the tighter gate: the founder ("crown") holding
+ * `delete_team`, an instance admin (who must still be a MEMBER — the delete
+ * operates on the active team, and a team can only be active for its members),
+ * or — on a legacy team whose founder column was never backfilled / whose
+ * founder account is gone — any owner holding `delete_team`.
  *
  * Lives in its own module (not teams.ts) because the teardown pulls in the
  * app-graph loader and the agent client; teams.ts stays a light identity
@@ -57,7 +57,6 @@ async function deleteTeamContext(): Promise<DeleteTeamContext> {
       "This token is scoped to a team the user no longer belongs to",
     );
   }
-  const user = (await getCurrentUser())!;
   const rows = await getDb()
     .select({ founderUserId: teamsTable.founderUserId })
     .from(teamsTable)
@@ -65,9 +64,16 @@ async function deleteTeamContext(): Promise<DeleteTeamContext> {
     .limit(1);
   if (!rows[0]) throw new Error("No team");
   const founderId = rows[0].founderUserId;
+  // Two independent gates, and both matter for a BEARER TOKEN:
+  //  - `isInstanceAdmin()` (not the stored flag) because instance-admin is
+  //    opt-in per token — a plain token minted by an admin is not an admin;
+  //  - `delete_team` because being the founder says WHO you are, not what the
+  //    credential in hand may do. Without it a Read-only token minted by the
+  //    founder could destroy the team.
   const allowed =
-    user.isInstanceAdmin ||
-    (founderId ? userId === founderId : membership.role === "owner");
+    (await isInstanceAdmin()) ||
+    ((founderId ? userId === founderId : membership.role === "owner") &&
+      membership.capabilities.includes("delete_team"));
   const onlyTeam = (await teamsForUser(userId)).length <= 1;
   return { userId, teamId, allowed, onlyTeam };
 }
@@ -196,7 +202,7 @@ export async function deleteTeam(teamId: string): Promise<void> {
     );
   if (!ctx.allowed)
     throw new Error(
-      "Only the team's primary owner or an instance admin can delete the team",
+      "You don't have permission to delete this team — only its primary owner, with permission to delete the team, or an instance admin can",
     );
   // Fast-path only — the enforcement re-check runs under the lock below.
   if (ctx.onlyTeam)

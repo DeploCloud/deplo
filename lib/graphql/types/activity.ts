@@ -51,7 +51,7 @@ const ActivityRef = builder.objectRef<Activity>("Activity").implement({
 builder.queryFields((t) => ({
   activity: t.field({
     type: [ActivityRef],
-    authScopes: { loggedIn: true },
+    authScopes: { capability: "view_activity" },
     description: "Recent activity in the active team, newest first.",
     args: { limit: t.arg.int({ required: false }) },
     resolve: (_r, { limit }) => listActivity(limit ?? undefined),

@@ -1,6 +1,7 @@
 import "server-only";
 
 import { listServersForCurrentTeam, getServer } from "./servers";
+import { hasCapability, requireCapability } from "../membership";
 import { hostFacts } from "../infra/host";
 import { connectAgent } from "../infra/agent-client";
 import { markServerSeen, observedTraefik } from "./servers";
@@ -211,6 +212,9 @@ async function metricsFor(server: Server, expected: string): Promise<ServerMetri
 }
 
 export async function getServerMetrics(serverId: string): Promise<ServerMetrics> {
+  // `view_metrics` is what the permission catalog promises ("see live and
+  // historical usage"), enforced here and not only in the resolver.
+  await requireCapability("view_metrics");
   // Team-scoped: getServer returns null for a server this team can't target, so
   // a member can't poll the live metrics of a server restricted to other teams.
   const server = await getServer(serverId);
@@ -230,6 +234,8 @@ export async function getServerMetrics(serverId: string): Promise<ServerMetrics>
  * is off (the switch drops the buffers) or nothing has been sampled yet.
  */
 export async function getServerMetricsHistory(serverId: string): Promise<ServerMetrics[]> {
+  // Soft (empty) rather than a throw: this one seeds a chart on page load.
+  if (!(await hasCapability("view_metrics"))) return [];
   const server = await getServer(serverId);
   if (!server) throw new Error("Server not found");
   return getMetricsHistory(serverId);
@@ -304,6 +310,7 @@ export async function hydrateServerSpecs(servers: Server[]): Promise<Server[]> {
 }
 
 export async function getInitialServerMetrics(): Promise<ServerMetrics[]> {
+  if (!(await hasCapability("view_metrics"))) return [];
   const facts = hostFacts();
   const expected = await resolveExpectedAgentVersion();
   return (await listServersForCurrentTeam()).map((s) => ({

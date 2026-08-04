@@ -120,7 +120,7 @@ import {
   volumesToRows,
 } from "./app-graph-rows";
 import { detectDefaultApp } from "../deploy/compose-stack";
-import { requireAppCapability } from "./node-access";
+import { hasAppCapability, requireAppCapability } from "./node-access";
 
 /** Heuristic: treat secret-looking keys as masked secrets. */
 function isSecretKey(key: string): boolean {
@@ -780,14 +780,26 @@ export async function createApp(
   // an upload's extracted tree), guarded so it only ever fills a still-empty
   // logo. A git/github app deploys immediately below, so its icon lands on
   // that first deploy; nothing to kick off here.
-  if (!isUpload) {
-    // Kick off the first real build + deploy. Runs in the background and flips
-    // the project to active (or error) once the container is up.
+  // Kick off the first real build + deploy. Runs in the background and flips
+  // the project to active (or error) once the container is up.
+  //
+  // `create_apps` is NOT `deploy_apps`: the two are separate permissions
+  // precisely so a role can add an app without being allowed to ship code onto
+  // the fleet, and creating one must not be the loophole that ships it anyway.
+  // Asked ON THE NEW APP (a folder grant counts), and only after it exists.
+  // Without it the app is born idle — exactly like a fileless upload — for
+  // someone who can deploy to pick up.
+  if (!isUpload && (await hasAppCapability(project.id, "deploy_apps"))) {
     await startDeployment(project.id, {
       environment: "production",
       creator: user.name,
       commitMessage: input.repo ? "Initial import" : "Initial deployment",
     });
+  } else if (!isUpload) {
+    await getDb()
+      .update(appsTable)
+      .set({ status: "idle", updatedAt: nowIso() })
+      .where(eq(appsTable.id, project.id));
   }
 
   return summarizeOne((await loadAppGraph(project.id))!);
