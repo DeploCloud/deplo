@@ -26,8 +26,14 @@ import {
   appScopeWhere,
 } from "./app-graph-load";
 import { assembleDeployment } from "./app-graph-rows";
+import { narrowedScope } from "../auth/request-context";
 import { loadDeploymentLogs } from "./deployment-logs";
-import { hasAppCapability, requireAppCapability } from "./node-access";
+import {
+  appCapabilities,
+  appCapabilitiesForTeam,
+  hasAppCapability,
+  requireAppCapability,
+} from "./node-access";
 import type { Deployment, DeploymentEnvironment, LogLine } from "../types";
 
 export async function listDeployments(filter?: {
@@ -57,18 +63,37 @@ export async function listDeployments(filter?: {
   // The caller's team apps, by id (the deployment join target + the name/slug
   // decoration, the owning server for the server column, plus the repo columns
   // needed to build the commit link).
-  const teamApps = await getDb()
+  const scopedApps = await getDb()
     .select({
       id: appsTable.id,
       name: appsTable.name,
       slug: appsTable.slug,
       serverId: appsTable.serverId,
+      folderId: appsTable.folderId,
+      projectId: appsTable.projectId,
       repoProvider: appsTable.repoProvider,
       repoRepo: appsTable.repoRepo,
       repoUrl: appsTable.repoUrl,
     })
     .from(appsTable)
     .where(and(eq(appsTable.teamId, teamId), appScopeWhere()));
+  // A deployment names its app, its commit and its URL, so an app the caller
+  // can't reach (one inside a folder they can't see) must not appear here
+  // either. One batched resolution for the team, not one per app.
+  const reach = await appCapabilitiesForTeam(
+    teamId,
+    scopedApps.map((p) => ({
+      id: p.id,
+      folderId: p.folderId ?? null,
+      projectId: p.projectId ?? null,
+    })),
+  );
+  // A narrowed token is exempt: `appScopeWhere` already cut the list down to
+  // what its scope names, and that scope is its authorization (see `listApps`).
+  const narrowed = narrowedScope() !== null;
+  const teamApps = scopedApps.filter(
+    (p) => narrowed || (reach.get(p.id)?.length ?? 0) > 0,
+  );
   const byId = new Map(teamApps.map((p) => [p.id, p] as const));
   const appIds = filter?.appId
     ? byId.has(filter.appId)
@@ -134,7 +159,12 @@ export async function getDeployment(id: string): Promise<Deployment | null> {
   const teamId = await requireActiveTeamId();
   const dep = await loadDeployment(id);
   if (!dep) return null;
-  return (await appInTeam(dep.appId, teamId)) ? dep : null;
+  if (!(await appInTeam(dep.appId, teamId))) return null;
+  // …and the app has to be one the caller can reach at all - same answer for
+  // "no such deployment" and "not yours", so neither can be told apart. A
+  // narrowed token is exempt, exactly as in `listDeployments` above.
+  if (narrowedScope()) return dep;
+  return (await appCapabilities(dep.appId)).length > 0 ? dep : null;
 }
 
 /**

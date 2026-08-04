@@ -4,6 +4,7 @@ import { getAppBySlug } from "@/lib/data/apps";
 import { faviconSourceKind } from "@/lib/apps/favicon-shared";
 import { SettingsSection } from "@/components/apps/settings/settings-shared";
 import { GeneralSettingsForm } from "@/components/apps/settings/general-settings-form";
+import { CapabilityFieldset } from "@/components/apps/app-capabilities";
 
 export const metadata = { title: "General" };
 
@@ -22,12 +23,14 @@ export default async function AppGeneralSettingsPage(
   return (
     <section className="space-y-4">
       <SettingsSection icon={Settings2} title="General" />
-      <GeneralSettingsForm
-        appId={project.id}
-        name={project.name}
-        logo={project.logo}
-        detectable={detectable}
-      />
+      <CapabilityFieldset cap="configure_apps">
+        <GeneralSettingsForm
+          appId={project.id}
+          name={project.name}
+          logo={project.logo}
+          detectable={detectable}
+        />
+      </CapabilityFieldset>
     </section>
   );
 }

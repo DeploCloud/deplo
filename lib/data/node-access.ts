@@ -1,5 +1,6 @@
 import "server-only";
 
+import { cache } from "react";
 import { and, eq } from "drizzle-orm";
 
 import { getDb } from "../db/client";
@@ -446,6 +447,30 @@ export async function requireAppCapability(
 }
 
 /**
+ * Everything the caller may do to ONE app - the read-side twin of
+ * {@link requireAppCapability}, answering `[]` instead of throwing when the app
+ * isn't reachable (gone, another team, out of the token's scope, in a folder
+ * they can't see, or they aren't a member at all).
+ *
+ * **`[]` means "no access", never "read-only"** - `view` is implied for anyone
+ * who can reach the app - so this doubles as the visibility test that keeps an
+ * app inside a private folder out of the UI entirely.
+ *
+ * Request-cached: the page, its layout and every gate below it ask the same
+ * question, and one render should cost one resolution, not one per asker.
+ */
+export const appCapabilities = cache(async function appCapabilities(
+  appId: string,
+): Promise<Capability[]> {
+  try {
+    return (await appGate(appId))?.caps ?? [];
+  } catch {
+    // Not a member / 2FA unmet - the same answer as an app that isn't there.
+    return [];
+  }
+});
+
+/**
  * The soft twin of {@link requireAppCapability}, for READS that answer "nothing"
  * rather than throwing when the caller can't reach an app.
  */
@@ -453,8 +478,7 @@ export async function hasAppCapability(
   appId: string,
   cap: Capability,
 ): Promise<boolean> {
-  const gate = await appGate(appId);
-  return Boolean(gate?.caps.includes(cap));
+  return (await appCapabilities(appId)).includes(cap);
 }
 
 /** Membership + app ownership + token scope + the caller's caps ON the app. */

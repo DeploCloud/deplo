@@ -880,6 +880,7 @@ export function DeploymentsTable({
                         status={d.status}
                         environment={d.environment}
                         canDelete={canManage}
+                        canDeploy={canManage}
                       />
                     </TableCell>
                   </TableRow>

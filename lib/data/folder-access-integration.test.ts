@@ -15,7 +15,7 @@ import { currentCapabilities } from "../membership";
 import { seedIdentity, TEAM_A } from "./identity-test-helpers";
 import { seedApp, seedServer } from "./app-graph-test-helpers";
 import { seedS3 } from "./backup-test-helpers";
-import { createApp, renameApp } from "./apps";
+import { createApp, getAppBySlug, listApps, renameApp } from "./apps";
 import { createBackup, runAppBackup, deleteBackup } from "./backups";
 import {
   folderCapabilities,
@@ -132,6 +132,33 @@ test("a team member without folder access can't act on a project inside the fold
   // The rename never happened.
   const row = (await db.select().from(appsTable).where(eq(appsTable.id, PRJ_IN)))[0]!;
   assert.equal(row.name, PRJ_IN, "project name unchanged after the blocked rename");
+});
+
+test("an app in a folder they can't see is INVISIBLE, not merely unwritable", async () => {
+  // The rule the UI leans on: no capability on the app at all ⇒ it is not listed
+  // and its page won't load, so a member can't browse its domains and settings
+  // and be refused one control at a time.
+  await as(MEMBER, async () => {
+    assert.deepEqual(
+      (await listApps()).map((a) => a.id),
+      [PRJ_TOP],
+      "the folder's app is filtered out of the list",
+    );
+    assert.equal(await getAppBySlug(PRJ_IN), null, "and its page refuses to load");
+    assert.ok(await getAppBySlug(PRJ_TOP), "the top-level app still opens");
+  });
+
+  // The folder owner sees both, and a grant makes it visible to the grantee.
+  await as(OWNER, async () => {
+    assert.deepEqual((await listApps()).map((a) => a.id).sort(), [PRJ_IN, PRJ_TOP]);
+  });
+  // `view` alone is never stored (it is implied), so a real grant is what makes
+  // the folder - and the app inside it - visible.
+  await as(OWNER, () => setFolderGrant(FLD, GRANTEE, ["configure_apps"]));
+  await as(GRANTEE, async () => {
+    assert.deepEqual((await listApps()).map((a) => a.id).sort(), [PRJ_IN, PRJ_TOP]);
+    assert.ok(await getAppBySlug(PRJ_IN), "the granted folder's app opens");
+  });
 });
 
 test("the same member CAN act on a TOP-LEVEL project (team caps govern)", async () => {

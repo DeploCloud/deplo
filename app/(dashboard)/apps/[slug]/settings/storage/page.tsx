@@ -6,6 +6,7 @@ import { hasAppCapability } from "@/lib/data/node-access";
 import { containerWorkdir } from "@/lib/apps/volume-model";
 import { SettingsSection } from "@/components/apps/settings/settings-shared";
 import { StorageSettingsForm } from "@/components/apps/settings/storage-settings-form";
+import { CapabilityFieldset } from "@/components/apps/app-capabilities";
 import {
   composeServiceNames,
   detectDefaultApp,
@@ -46,26 +47,28 @@ export default async function AppStorageSettingsPage(
   return (
     <section className="space-y-4">
       <SettingsSection icon={HardDrive} title="Storage" />
-      <StorageSettingsForm
-        appId={project.id}
-        slug={project.slug}
-        volumes={project.volumes ?? []}
-        composeServices={composeServices}
-        // The same heuristic the renderer falls back to, so the picker's
-        // placeholder names the service a blank row will actually mount into.
-        defaultComposeService={
-          isComposeStack ? detectDefaultApp(project.compose)?.service : null
-        }
-        canMountHostVolumes={mayBind}
-        canManageFiles={mayEditFiles}
-        // "Path inside the app" is the field a non-expert cannot guess. For
-        // anything deplo builds, the answer is a fact (the generated Dockerfile's
-        // WORKDIR), so the editor states it instead of leaving a blank box.
-        containerWorkdir={containerWorkdir(
-          project.source,
-          project.build.rootDirectory,
-        )}
-      />
+      <CapabilityFieldset cap="configure_apps">
+        <StorageSettingsForm
+          appId={project.id}
+          slug={project.slug}
+          volumes={project.volumes ?? []}
+          composeServices={composeServices}
+          // The same heuristic the renderer falls back to, so the picker's
+          // placeholder names the service a blank row will actually mount into.
+          defaultComposeService={
+            isComposeStack ? detectDefaultApp(project.compose)?.service : null
+          }
+          canMountHostVolumes={mayBind}
+          canManageFiles={mayEditFiles}
+          // "Path inside the app" is the field a non-expert cannot guess. For
+          // anything deplo builds, the answer is a fact (the generated Dockerfile's
+          // WORKDIR), so the editor states it instead of leaving a blank box.
+          containerWorkdir={containerWorkdir(
+            project.source,
+            project.build.rootDirectory,
+          )}
+        />
+      </CapabilityFieldset>
     </section>
   );
 }

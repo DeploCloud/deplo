@@ -1,6 +1,7 @@
 import "server-only";
 
 import { hasCapability, requireActiveTeamId } from "../membership";
+import { hasAppCapability } from "./node-access";
 import { loadTeamApp } from "./app-graph-load";
 import { loadDatabaseForTeam } from "./databases";
 import type { ContainerStat as PbContainerStat } from "../agent/gen/agent";
@@ -193,7 +194,10 @@ function toSample(m: ContainerMetrics): ContainerMetricsSample {
  */
 export async function getAppMetrics(appId: string): Promise<ContainerMetrics | null> {
   const teamId = await requireActiveTeamId();
-  if (!(await hasCapability("view_metrics"))) return null;
+  // Per-app: a node grant REPLACES the team role inside the app (ADR-0016), so
+  // `view_metrics` held elsewhere in the team is not permission to read this
+  // app's usage - and one granted here alone is.
+  if (!(await hasAppCapability(appId, "view_metrics"))) return null;
   const app = await loadTeamApp(appId, teamId);
   if (!app) return null;
   return fromBuffer(app.id);
@@ -221,7 +225,7 @@ export async function getAppMetricsHistory(
   appId: string,
 ): Promise<ContainerMetricsSample[]> {
   const teamId = await requireActiveTeamId();
-  if (!(await hasCapability("view_metrics"))) return [];
+  if (!(await hasAppCapability(appId, "view_metrics"))) return [];
   const app = await loadTeamApp(appId, teamId);
   if (!app) return [];
   return getContainerHistory(app.id);

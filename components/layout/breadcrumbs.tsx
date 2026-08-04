@@ -69,14 +69,20 @@ export function Breadcrumbs({
   const service = useAppNav();
   const slug = pathname.match(/^\/apps\/([^/]+)/)?.[1] ?? null;
 
+  // Inside an app, gate the section menu on what the viewer holds on THAT app
+  // (published by the app layout); the prop is the team-wide union, which is
+  // deliberately wider than the truth. Outside an app, and until the store
+  // catches up, the union stands in.
+  const appCaps = service?.slug === slug ? service.capabilities : null;
+  const capKey = appCaps ? appCaps.join(",") : capabilities.join(",");
   const caps = React.useMemo(() => {
-    const set = new Set(capabilities);
+    const set = new Set(capKey ? capKey.split(",") : []);
     return {
       manageEnv: set.has("manage_env"),
-      manageInfra: set.has("manage_infra"),
-      manageDomains: set.has("manage_domains"),
+      manageBackups: set.has("manage_backups"),
+      manageBasicAuth: set.has("manage_basic_auth"),
     };
-  }, [capabilities]);
+  }, [capKey]);
 
   const segments = buildBreadcrumb(
     { pathname, openFolderId, openProjectId, view },

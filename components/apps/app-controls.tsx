@@ -8,6 +8,7 @@ import { Button } from "@/components/ui/button";
 import { SimpleTooltip } from "@/components/ui/tooltip";
 import { gqlAction } from "@/lib/graphql-client";
 import { useLiveStatus } from "@/components/apps/app-live-status";
+import { CapabilityTip, useAppCan } from "@/components/apps/app-capabilities";
 import type { AppStatus } from "@/lib/types";
 
 export function AppControls({
@@ -24,6 +25,10 @@ export function AppControls({
   // label is driven by the persisted "stopping" status, so it survives reload
   // and every viewer sees it, not just the user who clicked.
   const status = useLiveStatus(serverStatus);
+  // Start / Stop / Reload are all one permission. Without it every button here
+  // is disabled rather than hidden, so the app still reads as an app - it just
+  // isn't this viewer's to power on and off.
+  const can = useAppCan("control_apps");
   const stopped = status === "idle";
   const stopping = status === "stopping";
 
@@ -65,6 +70,25 @@ export function AppControls({
       );
       router.refresh();
     });
+  }
+
+  if (!can) {
+    return (
+      <>
+        <CapabilityTip cap="control_apps">
+          <Button variant="outline" size="sm" disabled>
+            {stopped ? <Play className="size-4" /> : <Square className="size-4" />}
+            {stopped ? "Start" : "Stop"}
+          </Button>
+        </CapabilityTip>
+        <CapabilityTip cap="control_apps">
+          <Button variant="outline" size="sm" disabled>
+            <RefreshCw className="size-4" />
+            Reload
+          </Button>
+        </CapabilityTip>
+      </>
+    );
   }
 
   return (

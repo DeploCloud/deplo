@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import { RefreshCw } from "lucide-react";
 import { gqlAction } from "@/lib/graphql-client";
+import { useAppCan } from "@/components/apps/app-capabilities";
 
 /** How often the page re-checks unsettled domains' DNS. 30s is a deliberate
  * middle ground: fast enough that a freshly-created record is picked up about
@@ -33,10 +34,11 @@ export interface UnsettledDomain {
  * turns green — the user never has to find the Verify button (it still exists
  * for an impatient immediate re-check).
  *
- * Checks reuse the `verifyDomain` mutation, which is `manage_domains`-gated —
- * a viewer's checks would fail on every tick, so after two consecutive rounds
- * where every call failed the polling stops and the callout drops its
- * "automatic" claim rather than promise something it can't do.
+ * Checks reuse the `verifyDomain` mutation, which is `manage_domains`-gated, so
+ * a viewer without it never polls at all and the callout drops its "automatic"
+ * claim rather than promise something it can't do. The same stop happens after
+ * two consecutive rounds where every call failed, which covers the cases the
+ * capability can't predict (an unreachable server, a revoked grant mid-page).
  */
 export function DomainDnsAutoCheck({
   domains,
@@ -53,8 +55,9 @@ export function DomainDnsAutoCheck({
   serverIp?: string;
 }) {
   const router = useRouter();
+  const canVerify = useAppCan("manage_domains");
   const [checking, setChecking] = React.useState(false);
-  const [disabled, setDisabled] = React.useState(false);
+  const [disabled, setDisabled] = React.useState(!canVerify);
 
   // The poll loop reads the CURRENT props through a ref so the single mounted
   // interval survives router.refresh() prop updates without re-arming. Synced
@@ -65,6 +68,7 @@ export function DomainDnsAutoCheck({
   }, [domains]);
 
   React.useEffect(() => {
+    if (!canVerify) return;
     let cancelled = false;
     let running = false;
     let failedRounds = 0;
@@ -126,7 +130,7 @@ export function DomainDnsAutoCheck({
       cancelled = true;
       clearInterval(timer);
     };
-  }, [router]);
+  }, [router, canVerify]);
 
   return (
     <div className="flex items-start gap-2.5 rounded-lg border border-border bg-secondary/40 px-3.5 py-2.5 text-sm">
@@ -155,7 +159,11 @@ export function DomainDnsAutoCheck({
           ) : null}
           .{" "}
           {disabled ? (
-            <>Once the record is in place, hit Verify on the domain.</>
+            canVerify ? (
+              <>Once the record is in place, hit Verify on the domain.</>
+            ) : (
+              <>It starts routing on its own once the record is in place.</>
+            )
           ) : (
             <>
               While you’re on this page deplo re-checks DNS every 30 seconds

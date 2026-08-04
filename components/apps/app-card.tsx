@@ -43,7 +43,7 @@ import { DeleteWithArtifacts } from "@/components/shared/delete-with-artifacts";
 import { appTypeLabel, cn, timeAgo } from "@/lib/utils";
 import { gqlAction } from "@/lib/graphql-client";
 import type { AppSummary } from "@/lib/data/apps";
-import type { AppStatus } from "@/lib/types";
+import type { AppStatus, Capability } from "@/lib/types";
 
 /**
  * The menu-primitive set used to render the card's action list once and reuse it
@@ -142,6 +142,11 @@ export function AppCard({
   const [pending, startTransition] = React.useTransition();
   const [confirmOpen, setConfirmOpen] = React.useState(false);
   const dep = project.latestDeployment;
+  // What the viewer may do to THIS app (per-app, so a folder grant counts).
+  // Absent means the list didn't resolve them - leave the item enabled and let
+  // the server answer, rather than greying out an action they may well hold.
+  const caps = project.capabilities;
+  const can = (c: Capability) => !caps || caps.includes(c);
   // A repo ⇒ a git deploy (real branch + repo). Otherwise the app has no
   // git, so we describe its source instead of inventing a branch. Shared with
   // the app overview page so the two never disagree (see app-source.tsx).
@@ -281,7 +286,7 @@ export function AppCard({
                 "Container started",
               )
             }
-            disabled={pending}
+            disabled={pending || !can("control_apps")}
           >
             <Play className="size-4" />
             Start
@@ -299,7 +304,7 @@ export function AppCard({
                 "Container stopped",
               )
             }
-            disabled={pending}
+            disabled={pending || !can("control_apps")}
           >
             <Square className="size-4" />
             Stop
@@ -310,7 +315,7 @@ export function AppCard({
         content="Re-apply domains and basic auth to the running container — no rebuild"
         side="left"
       >
-        <K.Item onSelect={reload} disabled={pending}>
+        <K.Item onSelect={reload} disabled={pending || !can("control_apps")}>
           <RefreshCw className="size-4" />
           Reload
         </K.Item>
@@ -319,7 +324,7 @@ export function AppCard({
         content="Redeploy the latest successful build"
         side="left"
       >
-        <K.Item onSelect={redeploy} disabled={pending}>
+        <K.Item onSelect={redeploy} disabled={pending || !can("deploy_apps")}>
           <RotateCw className="size-4" />
           Redeploy
         </K.Item>
@@ -364,7 +369,10 @@ export function AppCard({
                 content="Move back to the top level (ungrouped)"
                 side="left"
               >
-                <K.Item onSelect={() => moveTo(null)} disabled={pending}>
+                <K.Item
+                  onSelect={() => moveTo(null)}
+                  disabled={pending || !can("move_apps")}
+                >
                   Ungrouped
                 </K.Item>
               </SimpleTooltip>
@@ -379,7 +387,9 @@ export function AppCard({
             >
               <K.Item
                 onSelect={() => moveTo(f.id)}
-                disabled={pending || f.id === project.folderId}
+                disabled={
+                  pending || !can("move_apps") || f.id === project.folderId
+                }
               >
                 {f.name}
               </K.Item>
@@ -409,7 +419,9 @@ export function AppCard({
             >
               <K.Item
                 onSelect={() => moveToEnvironment(e.id)}
-                disabled={pending || e.id === project.environmentId}
+                disabled={
+                  pending || !can("move_apps") || e.id === project.environmentId
+                }
               >
                 {e.name}
               </K.Item>
@@ -424,7 +436,7 @@ export function AppCard({
               >
                 <K.Item
                   onSelect={() => moveToEnvironment(null)}
-                  disabled={pending}
+                  disabled={pending || !can("move_apps")}
                 >
                   Out of project
                 </K.Item>
@@ -438,7 +450,11 @@ export function AppCard({
         content="Permanently delete this app and its deployments"
         side="left"
       >
-        <K.Item variant="destructive" onSelect={() => setConfirmOpen(true)}>
+        <K.Item
+          variant="destructive"
+          onSelect={() => setConfirmOpen(true)}
+          disabled={!can("delete_apps")}
+        >
           <Trash2 className="size-4" />
           Delete
         </K.Item>

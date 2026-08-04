@@ -7,6 +7,7 @@ import { RotateCw } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { SimpleTooltip } from "@/components/ui/tooltip";
 import { gqlAction } from "@/lib/graphql-client";
+import { CapabilityTip, useAppCan } from "@/components/apps/app-capabilities";
 
 export function RedeployButton({
   appId,
@@ -22,6 +23,7 @@ export function RedeployButton({
 }) {
   const [pending, startTransition] = React.useTransition();
   const router = useRouter();
+  const can = useAppCan("deploy_apps");
 
   function redeploy() {
     startTransition(async () => {
@@ -47,11 +49,24 @@ export function RedeployButton({
     });
   }
 
+  // Without the capability the button is plainly disabled (and says why on
+  // hover) instead of failing on click - the server would refuse it anyway.
+  if (!can) {
+    return (
+      <CapabilityTip cap="deploy_apps">
+        <Button variant={variant} size={size} disabled>
+          <RotateCw className="size-4" />
+          Redeploy
+        </Button>
+      </CapabilityTip>
+    );
+  }
+
   return (
     <SimpleTooltip content="Redeploy the latest successful build">
       <Button variant={variant} size={size} onClick={redeploy} disabled={pending}>
         <RotateCw className={pending ? "size-4 animate-spin" : "size-4"} />
-        {pending ? "Redeploying…" : "Redeploy"}
+        {pending ? "Redeploying" : "Redeploy"}
       </Button>
     </SimpleTooltip>
   );

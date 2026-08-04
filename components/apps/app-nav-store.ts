@@ -3,18 +3,23 @@
 import * as React from "react";
 
 /**
- * The per-app facts the global sidebar can't work out on its own. The slug
- * comes from the URL and the capability-gated entries (Environment, Backups)
- * come from the sidebar's own capability list — but whether the container is
- * *running* (Console/Logs) and
- * whether it has an on-disk files dir (Files) are known only to the app
- * layout. It publishes them here so the sidebar's app sub-menu can offer the
- * same entries the old horizontal tabs did.
+ * The per-app facts the global sidebar can't work out on its own: the slug comes
+ * from the URL, but whether the container is *running* (Console/Logs), whether
+ * it has an on-disk files dir (Files) and what this viewer may do to THIS app
+ * are known only to the app layout, which publishes them here so the sidebar's
+ * app sub-menu can offer the same entries the old horizontal tabs did.
+ *
+ * The capabilities matter because the sidebar's own list is the team-wide union
+ * (see the dashboard layout): a member who holds `manage_env` in one folder
+ * would otherwise be offered an Environment tab on every app in the team, most
+ * of which would then refuse them.
  */
 export type AppNavState = {
   slug: string;
   running: boolean;
   showFiles: boolean;
+  /** The viewer's effective capabilities on this app. */
+  capabilities: string[];
 };
 
 // Client-only module state: each browser tab owns its own instance. It is never

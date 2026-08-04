@@ -352,6 +352,7 @@ export function appNav(slug: string, f: AppNavFlags): NavSection[] {
             href: `${base}/console`,
             icon: SquareTerminal,
             tooltip: "Container console",
+            requires: "open_app_console",
           } as NavItem,
         ]
       : []),
@@ -479,10 +480,10 @@ export function appSettingsNav(slug: string): NavSection[] {
           href: `${base}/access`,
           icon: ShieldCheck,
           tooltip: "HTTP basic auth",
-          // Basic auth is a domains concern — its data loader requires
-          // manage_domains (and throws without it), so only surface the entry to
-          // holders. Mirrors how Environment/Backups are capability-gated.
-          requires: "manage_domains",
+          // Basic auth has its own permission, and it can be held on this app
+          // alone (ADR-0016) - so the entry follows what the page's own loader
+          // asks for. Mirrors how Environment/Backups are capability-gated.
+          requires: "manage_basic_auth",
         },
         {
           label: "Advanced",

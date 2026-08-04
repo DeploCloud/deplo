@@ -25,7 +25,7 @@ export default async function AppBackupsPage(
       <EmptyState
         icon={Lock}
         title="No access to backups"
-        description="You don't have permission to manage this app's backups. Ask a team admin for the “Manage infrastructure” permission."
+        description="You don't have permission to manage this app's backups. Ask a team admin for the “Manage backups” permission."
       />
     );
   }

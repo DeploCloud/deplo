@@ -19,6 +19,7 @@ import { gql } from "@/lib/graphql-client";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { SimpleTooltip } from "@/components/ui/tooltip";
+import { CapabilityTip, useAppCan } from "@/components/apps/app-capabilities";
 import { EmptyState } from "@/components/shared/empty-state";
 import { TextEditor } from "@/components/apps/text-editor";
 import {
@@ -112,6 +113,9 @@ function errMessage(e: unknown): string {
 }
 
 export function FileExplorer({ appId }: { appId: string }) {
+  // Reading files and changing them are separate permissions: a read-only
+  // viewer keeps the tree and the editor, and loses only the write actions.
+  const canWrite = useAppCan("write_app_files");
   const [dir, setDir] = React.useState("");
   const [entries, setEntries] = React.useState<FileEntry[]>([]);
   const [loading, setLoading] = React.useState(true);
@@ -272,10 +276,16 @@ export function FileExplorer({ appId }: { appId: string }) {
             </SimpleTooltip>
           </div>
           {open.text !== null && (
-            <Button size="sm" onClick={save} disabled={!dirty || saving}>
-              <Save className="size-4" />
-              {saving ? "Saving…" : "Save"}
-            </Button>
+            <CapabilityTip cap="write_app_files">
+              <Button
+                size="sm"
+                onClick={save}
+                disabled={!dirty || saving || !canWrite}
+              >
+                <Save className="size-4" />
+                {saving ? "Saving" : "Save"}
+              </Button>
+            </CapabilityTip>
           )}
         </div>
 
@@ -348,41 +358,46 @@ export function FileExplorer({ appId }: { appId: string }) {
               <RotateCw className="size-4" />
             </Button>
           </SimpleTooltip>
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={() => fileInputRef.current?.click()}
-          >
-            <Upload className="size-4" />
-            Upload
-          </Button>
-          <input
-            ref={fileInputRef}
-            type="file"
-            className="hidden"
-            onChange={onUpload}
-          />
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={() => {
-              setCreating("folder");
-              setNewName("");
-            }}
-          >
-            <FolderPlus className="size-4" />
-            Folder
-          </Button>
-          <Button
-            size="sm"
-            onClick={() => {
-              setCreating("file");
-              setNewName("");
-            }}
-          >
-            <FilePlus className="size-4" />
-            New file
-          </Button>
+          <CapabilityTip cap="write_app_files" className="items-center gap-2">
+            <Button
+              variant="outline"
+              size="sm"
+              disabled={!canWrite}
+              onClick={() => fileInputRef.current?.click()}
+            >
+              <Upload className="size-4" />
+              Upload
+            </Button>
+            <input
+              ref={fileInputRef}
+              type="file"
+              className="hidden"
+              onChange={onUpload}
+            />
+            <Button
+              variant="outline"
+              size="sm"
+              disabled={!canWrite}
+              onClick={() => {
+                setCreating("folder");
+                setNewName("");
+              }}
+            >
+              <FolderPlus className="size-4" />
+              Folder
+            </Button>
+            <Button
+              size="sm"
+              disabled={!canWrite}
+              onClick={() => {
+                setCreating("file");
+                setNewName("");
+              }}
+            >
+              <FilePlus className="size-4" />
+              New file
+            </Button>
+          </CapabilityTip>
         </div>
       </div>
 
@@ -423,16 +438,18 @@ export function FileExplorer({ appId }: { appId: string }) {
               <span className="shrink-0 text-xs tabular-nums text-muted-foreground">
                 {entry.kind === "file" ? formatSize(entry.size) : "—"}
               </span>
-              <SimpleTooltip content="Delete">
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  className="shrink-0 text-muted-foreground opacity-0 transition-opacity hover:text-destructive group-hover:opacity-100"
-                  onClick={() => remove(entry)}
-                >
-                  <Trash2 className="size-4" />
-                </Button>
-              </SimpleTooltip>
+              {canWrite && (
+                <SimpleTooltip content="Delete">
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="shrink-0 text-muted-foreground opacity-0 transition-opacity hover:text-destructive group-hover:opacity-100"
+                    onClick={() => remove(entry)}
+                  >
+                    <Trash2 className="size-4" />
+                  </Button>
+                </SimpleTooltip>
+              )}
             </div>
           ))}
         </div>

@@ -16,17 +16,28 @@ export function AppNavSync({
   slug,
   running: serverRunning,
   showFiles,
+  capabilities,
 }: {
   slug: string;
   /** Server-rendered running state; the live subscription takes over after mount. */
   running: boolean;
   showFiles: boolean;
+  /** The viewer's capabilities on this app - gates the sub-menu's entries. */
+  capabilities: string[];
 }) {
   const running = useLiveRunning(serverRunning);
+  // The array identity changes on every RSC payload; its contents don't, so key
+  // the effect on the contents or it would re-publish on every render.
+  const caps = capabilities.join(",");
 
   React.useEffect(() => {
-    setAppNav({ slug, running, showFiles });
-  }, [slug, running, showFiles]);
+    setAppNav({
+      slug,
+      running,
+      showFiles,
+      capabilities: caps ? caps.split(",") : [],
+    });
+  }, [slug, running, showFiles, caps]);
 
   // Clear only on unmount (leaving the app). Keeping this separate from the
   // publish effect above means a live `running` change re-publishes in place

@@ -54,6 +54,7 @@ import { buildConfigFor } from "../frameworks";
 import type {
   BuildConfig,
   BuildMethod,
+  Capability,
   Deployment,
   DeploySource,
   EnvTarget,
@@ -98,7 +99,11 @@ import {
 import { listGithubInstallations } from "./github";
 import { AgentUnreachableError } from "../infra/agent-client";
 import { publishAppChanged } from "../graphql/pubsub";
-import { inAppScope, inProjectScope } from "../auth/request-context";
+import {
+  inAppScope,
+  inProjectScope,
+  narrowedScope,
+} from "../auth/request-context";
 import {
   insertEnvVars,
   loadDomainsForApp,
@@ -120,7 +125,12 @@ import {
   volumesToRows,
 } from "./app-graph-rows";
 import { detectDefaultApp } from "../deploy/compose-stack";
-import { hasAppCapability, requireAppCapability } from "./node-access";
+import {
+  appCapabilities,
+  appCapabilitiesForTeam,
+  hasAppCapability,
+  requireAppCapability,
+} from "./node-access";
 
 /** Heuristic: treat secret-looking keys as masked secrets. */
 function isSecretKey(key: string): boolean {
@@ -150,6 +160,13 @@ function errMsg(e: unknown): string {
 export interface AppSummary extends App {
   latestDeployment: Deployment | null;
   domainCount: number;
+  /**
+   * What the CURRENT caller may do to this app (node grants included) - carried
+   * on the list so the Overview grid can grey out an action the server would
+   * refuse, without asking per card. Absent on the engine paths that summarize
+   * without a caller; treat that as "unknown", never as "denied".
+   */
+  capabilities?: Capability[];
 }
 
 // The pure read-time normalizers moved to `./normalize-app` so the
@@ -246,13 +263,41 @@ export async function listApps(): Promise<AppSummary[]> {
   // `loadAppsByTeam` is an engine primitive (the deploy queue and team teardown
   // read through it too) and must never filter itself — the project scope of an
   // API token is applied HERE, where the answer is a user-facing list.
-  const proj = all.filter((p) => inAppScope(p));
+  const scoped = all.filter((p) => inAppScope(p));
+  // …and so is per-app access: an app the caller holds nothing on (one inside a
+  // folder they can't see) is not theirs to list. One batched resolution for the
+  // whole team, not one per app.
+  //
+  // A NARROWED token is exempt: `inAppScope` above already reduced the list to
+  // exactly what its scope names, and that scope IS its authorization - a token
+  // pointed at one folder must still list that folder's apps, whether or not its
+  // bearer would reach the folder through ownership or a grant.
+  const reach = await appCapabilitiesForTeam(
+    teamId,
+    scoped.map((p) => ({
+      id: p.id,
+      folderId: p.folderId ?? null,
+      projectId: p.projectId ?? null,
+    })),
+  );
+  const narrowed = narrowedScope() !== null;
+  const proj = scoped.filter(
+    (p) => narrowed || (reach.get(p.id)?.length ?? 0) > 0,
+  );
   const pre = await preloadSummaries(proj);
   // Honour the team's manual order (Overview drag-and-drop) when present:
   // explicitly-ordered apps come first in that order, anything not listed
   // (a brand-new project, or before any reorder) falls back to newest-first.
   return proj
-    .map((p) => summarize(p, pre))
+    .map((p) => {
+      // Empty only happens for a narrowed token (exempted above); leave it
+      // undefined there so a consumer reads "unknown", never "denied".
+      const caps = reach.get(p.id);
+      return {
+        ...summarize(p, pre),
+        capabilities: caps?.length ? caps : undefined,
+      };
+    })
     .sort((a, b) => {
       const ra = rank.get(a.id) ?? Infinity;
       const rb = rank.get(b.id) ?? Infinity;
@@ -321,13 +366,27 @@ export const getAppBySlug = cache(async function getAppBySlug(
 ): Promise<AppSummary | null> {
   const teamId = await requireActiveTeamId();
   const p = await loadAppGraphBySlug(slug);
-  return p && p.teamId === teamId && inAppScope(p)
+  return p && p.teamId === teamId && inAppScope(p) && (await canReachApp(p.id))
     ? summarizeOne(p)
     : null;
 });
 
 export async function getAppById(id: string): Promise<App | null> {
-  return loadTeamApp(id, await requireActiveTeamId());
+  const p = await loadTeamApp(id, await requireActiveTeamId());
+  return p && (await canReachApp(p.id)) ? p : null;
+}
+
+/**
+ * Whether the caller holds ANYTHING on this app. `view` is implied for anyone
+ * with any access, so an empty set means they can't reach a single section of it
+ * - and a page they may not read one field of is a page they may not open.
+ * Every app page loads through the two functions above, so this one guard is
+ * what keeps an app in a folder they can't see out of the whole UI.
+ */
+async function canReachApp(id: string): Promise<boolean> {
+  // A narrowed token's scope is its authorization (see `listApps`).
+  if (narrowedScope()) return true;
+  return (await appCapabilities(id)).length > 0;
 }
 
 /**

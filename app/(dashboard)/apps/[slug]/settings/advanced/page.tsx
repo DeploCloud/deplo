@@ -2,10 +2,12 @@ import { notFound } from "next/navigation";
 import Link from "next/link";
 import { SlidersHorizontal, SquareTerminal } from "lucide-react";
 import { getAppBySlug } from "@/lib/data/apps";
+import { hasAppCapability } from "@/lib/data/node-access";
 import { SettingsSection } from "@/components/apps/settings/settings-shared";
 import { DangerSettings } from "@/components/apps/settings/danger-settings";
 import { RebuildContainerCard } from "@/components/apps/settings/rebuild-container-card";
 import { Button } from "@/components/ui/button";
+import { CapabilityTip } from "@/components/apps/app-capabilities";
 import {
   Card,
   CardDescription,
@@ -29,6 +31,9 @@ export default async function AppAdvancedSettingsPage(
   const { slug } = await props.params;
   const project = await getAppBySlug(slug);
   if (!project) notFound();
+  // The console page refuses without this, so the way in says so up front
+  // instead of leading to a 404.
+  const canConsole = await hasAppCapability(project.id, "open_app_console");
 
   return (
     <section className="space-y-4">
@@ -51,12 +56,21 @@ export default async function AppAdvancedSettingsPage(
           </CardDescription>
         </CardHeader>
         <CardFooter className="justify-end">
-          <Button asChild size="sm" variant="outline">
-            <Link href={`/apps/${slug}/console`}>
-              <SquareTerminal className="size-4" />
-              Open console
-            </Link>
-          </Button>
+          {canConsole ? (
+            <Button asChild size="sm" variant="outline">
+              <Link href={`/apps/${slug}/console`}>
+                <SquareTerminal className="size-4" />
+                Open console
+              </Link>
+            </Button>
+          ) : (
+            <CapabilityTip cap="open_app_console">
+              <Button size="sm" variant="outline" disabled>
+                <SquareTerminal className="size-4" />
+                Open console
+              </Button>
+            </CapabilityTip>
+          )}
         </CardFooter>
       </Card>
 

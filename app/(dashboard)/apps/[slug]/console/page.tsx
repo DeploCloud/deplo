@@ -1,5 +1,6 @@
 import { notFound } from "next/navigation";
 import { getAppBySlug } from "@/lib/data/apps";
+import { hasAppCapability } from "@/lib/data/node-access";
 import { getConsoleInfo } from "@/lib/data/console";
 import { PageHeader } from "@/components/shared/page-header";
 import { LiveConsole } from "@/components/apps/live-console";
@@ -13,6 +14,9 @@ export default async function AppConsolePage(
   const { slug } = await props.params;
   const project = await getAppBySlug(slug);
   if (!project) notFound();
+  // Re-gate on the page, not just the sidebar entry: the terminal's own RPCs
+  // require this, so a direct URL hit would render a shell that refuses to open.
+  if (!(await hasAppCapability(project.id, "open_app_console"))) notFound();
 
   // No shell probe here — getConsoleInfo skips it so the console renders
   // instantly. ContainerConsole resolves the shell label after mount and

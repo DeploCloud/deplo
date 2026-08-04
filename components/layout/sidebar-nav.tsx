@@ -103,6 +103,16 @@ export function SidebarNav({
         ? "settings"
         : "main";
 
+  // Inside an app, the gate is what the viewer holds on THAT app (published by
+  // the app layout), not the team-wide union this sidebar is handed - that union
+  // is deliberately wider than the truth so a per-folder grant doesn't hide the
+  // nav, and offering a section the app itself would refuse is exactly what it
+  // costs. Only trusted while the store matches the slug in the URL, so a stale
+  // value from the app you just left can't leak into the next one; until then
+  // (SSR, first paint) the union stands in.
+  const appCaps =
+    appSlug && service?.slug === appSlug ? new Set(service.capabilities) : caps;
+
   let sections: NavSection[];
   if (dbId && inDbSettings) {
     sections = databaseSettingsNav(dbId);
@@ -111,15 +121,12 @@ export function SidebarNav({
   } else if (appSlug && inAppSettings) {
     sections = appSettingsNav(appSlug);
   } else if (appSlug) {
-    // Capability-gated entries come from the sidebar's own capability list; the
-    // live/per-app flags come from the store — but only when it matches the
-    // slug in the URL, so a stale value from the app you just left can't
-    // leak its Console/Logs/Files into the next one.
+    // The live/per-app flags come from the same store as the capabilities above.
     const matches = service?.slug === appSlug;
     sections = appNav(appSlug, {
       pathname,
-      canManageEnv: caps.has("manage_env"),
-      canBackup: caps.has("manage_infra"),
+      canManageEnv: appCaps.has("manage_env"),
+      canBackup: appCaps.has("manage_backups"),
       running: matches ? service!.running : false,
       showFiles: matches ? service!.showFiles : false,
       consoleAcknowledged,
@@ -138,7 +145,7 @@ export function SidebarNav({
       ...section,
       items: section.items.filter(
         (item) =>
-          (!item.requires || caps.has(item.requires)) &&
+          (!item.requires || (appSlug ? appCaps : caps).has(item.requires)) &&
           (!item.requiresAdmin || isAdmin),
       ),
     }))

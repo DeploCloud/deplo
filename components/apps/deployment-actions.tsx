@@ -34,6 +34,7 @@ export function DeploymentActions({
   status,
   environment,
   canDelete = false,
+  canDeploy = false,
 }: {
   id: string;
   appId: string;
@@ -45,6 +46,10 @@ export function DeploymentActions({
   /** Show the "Delete" item (a finished deployment only). Cosmetic — the data
    *  layer re-checks `deploy` on the app's folder. */
   canDelete?: boolean;
+  /** Whether the viewer may deploy this app. Redeploy / Promote / Cancel are
+   *  greyed out without it instead of failing on click. Cosmetic - every one of
+   *  them is re-checked in the data layer. */
+  canDeploy?: boolean;
 }) {
   const router = useRouter();
   const [pending, startTransition] = React.useTransition();
@@ -166,12 +171,12 @@ export function DeploymentActions({
           </Button>
         </DropdownMenuTrigger>
         <DropdownMenuContent align="end" className="w-52">
-          <DropdownMenuItem onClick={redeploy} disabled={pending}>
+          <DropdownMenuItem onClick={redeploy} disabled={pending || !canDeploy}>
             <RotateCw className="size-4" />
             Redeploy
           </DropdownMenuItem>
           {isPreview && (
-            <DropdownMenuItem onClick={promote} disabled={pending}>
+            <DropdownMenuItem onClick={promote} disabled={pending || !canDeploy}>
               <ArrowUpToLine className="size-4" />
               Promote to Production
             </DropdownMenuItem>
@@ -182,7 +187,7 @@ export function DeploymentActions({
               <DropdownMenuItem
                 variant="destructive"
                 onClick={cancel}
-                disabled={pending}
+                disabled={pending || !canDeploy}
               >
                 <Ban className="size-4" />
                 {isBuilding ? "Stop build" : "Cancel deploy"}

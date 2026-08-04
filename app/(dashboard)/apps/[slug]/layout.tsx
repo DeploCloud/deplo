@@ -2,8 +2,10 @@ import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import { ExternalLink } from "lucide-react";
 import { getAppBySlug } from "@/lib/data/apps";
+import { appCapabilities } from "@/lib/data/node-access";
 import { appTypeLabel, truncate } from "@/lib/utils";
 import { appFilesExist } from "@/lib/data/app-files";
+import { AppCapabilitiesProvider } from "@/components/apps/app-capabilities";
 import { Button } from "@/components/ui/button";
 import { SimpleTooltip } from "@/components/ui/tooltip";
 import { AppLogo } from "@/components/shared/project-logo";
@@ -46,8 +48,12 @@ export default async function AppLayout(props: LayoutProps<"/apps/[slug]">) {
   // The Files entry only appears when the caller can manage files AND the app
   // actually has an on-disk files dir (appFilesExist returns false for both
   // a missing capability and a missing directory, so this one call covers both).
-  // Environment/Backups visibility is capability-gated in the sidebar itself.
   const showFiles = await appFilesExist(project.id);
+  // What this viewer may do to THIS app - grants included, which the sidebar's
+  // team-wide union can't answer. It drives both the sub-menu (a section they
+  // can't read isn't listed) and every control below (an action they can't take
+  // is visibly disabled instead of erroring on click).
+  const capabilities = await appCapabilities(project.id);
 
   // Seed for the live-status subscription (kept current client-side thereafter).
   const initialLive: LiveApp = {
@@ -61,6 +67,7 @@ export default async function AppLayout(props: LayoutProps<"/apps/[slug]">) {
 
   return (
     <AppLiveStatusProvider key={initialLive.slug} initial={initialLive}>
+    <AppCapabilitiesProvider capabilities={capabilities}>
     {/* An app's pages are forms and detail views, not grids — they stay at a
         readable width instead of the wide shell the list pages use. */}
     <div className="mx-auto w-full max-w-6xl space-y-6">
@@ -128,10 +135,12 @@ export default async function AppLayout(props: LayoutProps<"/apps/[slug]">) {
         slug={slug}
         running={project.status === "active"}
         showFiles={showFiles}
+        capabilities={capabilities}
       />
 
       {props.children}
     </div>
+    </AppCapabilitiesProvider>
     </AppLiveStatusProvider>
   );
 }

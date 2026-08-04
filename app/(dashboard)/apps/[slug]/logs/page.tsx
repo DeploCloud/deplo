@@ -1,7 +1,10 @@
 import { notFound } from "next/navigation";
+import { Lock } from "lucide-react";
 import { getAppBySlug } from "@/lib/data/apps";
 import { getLogsInfo } from "@/lib/data/console";
 import { getLogs } from "@/lib/data/deployments";
+import { hasAppCapability } from "@/lib/data/node-access";
+import { EmptyState } from "@/components/shared/empty-state";
 import { PageHeader } from "@/components/shared/page-header";
 import { LiveLogs } from "@/components/apps/live-logs";
 
@@ -13,6 +16,18 @@ export default async function AppLogsPage(
   const { slug } = await props.params;
   const project = await getAppBySlug(slug);
   if (!project) notFound();
+
+  // Held per app (ADR-0016). Without it every stream below answers nothing, so
+  // say why instead of rendering an empty log viewer.
+  if (!(await hasAppCapability(project.id, "view_logs"))) {
+    return (
+      <EmptyState
+        icon={Lock}
+        title="No access to logs"
+        description="You don't have permission to read this app's logs. Ask a team admin for the “View logs” permission."
+      />
+    );
+  }
 
   const latest = project.latestDeployment;
   // Reuse the console's instance discovery: the same containers, the app's own

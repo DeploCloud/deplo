@@ -3,6 +3,7 @@ import { Cpu } from "lucide-react";
 import { getAppBySlug } from "@/lib/data/apps";
 import { SettingsSection } from "@/components/apps/settings/settings-shared";
 import { ResourceLimitsForm } from "@/components/apps/settings/resource-limits-form";
+import { CapabilityFieldset } from "@/components/apps/app-capabilities";
 import { usesComposeStack } from "@/lib/utils";
 
 export const metadata = { title: "Resources" };
@@ -34,11 +35,13 @@ export default async function AppResourcesSettingsPage(
         title="Resources"
         info="Cap how much RAM, CPU, disk and processes this app may use. Applied on the next deploy."
       />
-      <ResourceLimitsForm
-        appId={project.id}
-        resources={project.resources}
-        isComposeStack={isComposeStack}
-      />
+      <CapabilityFieldset cap="configure_apps">
+        <ResourceLimitsForm
+          appId={project.id}
+          resources={project.resources}
+          isComposeStack={isComposeStack}
+        />
+      </CapabilityFieldset>
     </section>
   );
 }

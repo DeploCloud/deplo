@@ -51,6 +51,7 @@ import {
   type DomainConfigState,
 } from "@/components/domains/domain-config-fields";
 import { gqlAction } from "@/lib/graphql-client";
+import { useAppCan } from "@/components/apps/app-capabilities";
 import { deriveWwwRedirect } from "@/lib/www-redirect";
 import type { Domain } from "@/lib/types";
 
@@ -110,6 +111,9 @@ export function DomainRow({
   serverIp?: string;
 }) {
   const router = useRouter();
+  // Every entry in the row menu except Visit changes routing, so one permission
+  // greys them all out - the row itself stays readable.
+  const canManage = useAppCan("manage_domains");
   const [pending, startTransition] = React.useTransition();
   const [confirmOpen, setConfirmOpen] = React.useState(false);
   const [editOpen, setEditOpen] = React.useState(false);
@@ -492,7 +496,7 @@ export function DomainRow({
                 Visit
               </a>
             </DropdownMenuItem>
-            <DropdownMenuItem onSelect={() => openEdit()}>
+            <DropdownMenuItem onSelect={() => openEdit()} disabled={!canManage}>
               <Pencil className="size-4" />
               Edit
             </DropdownMenuItem>
@@ -534,7 +538,7 @@ export function DomainRow({
                     router.refresh();
                   })
                 }
-                disabled={pending}
+                disabled={pending || !canManage}
               >
                 <RefreshCw className="size-4" />
                 Verify
@@ -559,7 +563,7 @@ export function DomainRow({
                 // A misconfigured domain has no working DNS to this server, so it
                 // can't be the canonical host — disabled here, and the server
                 // rejects it too.
-                disabled={pending || domain.status === "misconfigured"}
+                disabled={pending || !canManage || domain.status === "misconfigured"}
               >
                 <Star className="size-4" />
                 Set as primary
@@ -569,6 +573,7 @@ export function DomainRow({
             <DropdownMenuItem
               variant="destructive"
               onSelect={() => setConfirmOpen(true)}
+              disabled={!canManage}
             >
               <Trash2 className="size-4" />
               Remove

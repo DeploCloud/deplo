@@ -87,11 +87,13 @@ export interface BreadcrumbSegment {
   items: DropItem[];
 }
 
-/** Per-team capabilities that gate which app sections are offered. */
+/** The capabilities that gate which app sections are offered. Resolved PER APP
+ *  by the caller (a grant can hold one of these on a single app), so a section
+ *  the viewer can't read is never listed. */
 export interface BreadcrumbCaps {
   manageEnv: boolean;
-  manageInfra: boolean;
-  manageDomains: boolean;
+  manageBackups: boolean;
+  manageBasicAuth: boolean;
 }
 
 /**
@@ -120,7 +122,7 @@ const MAIN_SECTIONS: {
   { seg: "console", label: "Console", flag: "running" },
   { seg: "logs", label: "Logs" },
   { seg: "files", label: "Files", flag: "showFiles" },
-  { seg: "backups", label: "Backups", requires: "manageInfra" },
+  { seg: "backups", label: "Backups", requires: "manageBackups" },
   { seg: "settings", label: "Settings" },
 ];
 
@@ -131,7 +133,7 @@ const SETTINGS_SUBS: { seg: string; label: string; requires?: keyof BreadcrumbCa
     { seg: "deployments", label: "Deployments" },
     { seg: "storage", label: "Storage" },
     { seg: "resources", label: "Resources" },
-    { seg: "access", label: "Access", requires: "manageDomains" },
+    { seg: "access", label: "Access", requires: "manageBasicAuth" },
     { seg: "advanced", label: "Advanced" },
   ];
 

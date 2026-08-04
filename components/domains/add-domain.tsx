@@ -19,6 +19,7 @@ import {
   DialogTrigger,
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
+import { CapabilityTip, useAppCan } from "@/components/apps/app-capabilities";
 import { Input } from "@/components/ui/input";
 import { FieldLabel } from "@/components/ui/info-tip";
 import {
@@ -99,6 +100,7 @@ function regenerateNipDomain(suggested: string): string {
 }
 
 export function AddDomain({ project, suggestedDomain }: AddDomainProps) {
+  const canManage = useAppCan("manage_domains");
   const [open, setOpen] = React.useState(false);
   const { create } = usePendingCreate();
   const [name, setName] = React.useState("");
@@ -198,6 +200,19 @@ export function AddDomain({ project, suggestedDomain }: AddDomainProps) {
           setOpen(true);
         },
       },
+    );
+  }
+
+  // Read-only viewers keep the table and the row menu's Visit entry; the one
+  // thing that changes is that nothing here opens a dialog the server refuses.
+  if (!canManage) {
+    return (
+      <CapabilityTip cap="manage_domains">
+        <Button size="sm" disabled>
+          <Plus className="size-4" />
+          Add Domain
+        </Button>
+      </CapabilityTip>
     );
   }
 

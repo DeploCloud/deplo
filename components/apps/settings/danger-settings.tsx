@@ -14,6 +14,7 @@ import { InfoTip } from "@/components/ui/info-tip";
 import { DeleteWithArtifacts } from "@/components/shared/delete-with-artifacts";
 import { TransferTeamDialog } from "@/components/apps/settings/transfer-team-dialog";
 import { gqlAction } from "@/lib/graphql-client";
+import { CapabilityTip, useAppCan } from "@/components/apps/app-capabilities";
 
 /**
  * Danger zone: the two actions that take this app away from the team —
@@ -31,6 +32,10 @@ export function DangerSettings({
   name: string;
 }) {
   const router = useRouter();
+  // Two different permissions: someone may be allowed to hand the app over
+  // without being allowed to destroy it, so each button asks for its own.
+  const canMove = useAppCan("move_apps");
+  const canDelete = useAppCan("delete_apps");
   return (
     <Card className="border-destructive/40">
       <CardHeader>
@@ -53,16 +58,25 @@ export function DangerSettings({
               team loses access to it.
             </p>
           </div>
-          <TransferTeamDialog
-            appId={appId}
-            appName={name}
-            trigger={
-              <Button variant="outline" size="sm">
+          {canMove ? (
+            <TransferTeamDialog
+              appId={appId}
+              appName={name}
+              trigger={
+                <Button variant="outline" size="sm">
+                  <ArrowLeftRight className="size-4" />
+                  Transfer
+                </Button>
+              }
+            />
+          ) : (
+            <CapabilityTip cap="move_apps">
+              <Button variant="outline" size="sm" disabled>
                 <ArrowLeftRight className="size-4" />
                 Transfer
               </Button>
-            }
-          />
+            </CapabilityTip>
+          )}
         </div>
 
         <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-destructive/30 p-4">
@@ -73,6 +87,7 @@ export function DangerSettings({
               environment variables. This cannot be undone.
             </p>
           </div>
+          {canDelete ? (
           <DeleteWithArtifacts
             trigger={
               <Button variant="destructive" size="sm">
@@ -94,6 +109,14 @@ export function DangerSettings({
             }
             onDeleted={() => router.push("/")}
           />
+          ) : (
+            <CapabilityTip cap="delete_apps">
+              <Button variant="destructive" size="sm" disabled>
+                <Trash2 className="size-4" />
+                Delete App
+              </Button>
+            </CapabilityTip>
+          )}
         </div>
       </CardContent>
     </Card>

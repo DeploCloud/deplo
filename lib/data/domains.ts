@@ -43,7 +43,8 @@ import {
   appScopeWhere,
 } from "./app-graph-load";
 import { domainToRow, domainMiddlewaresToRows } from "./app-graph-rows";
-import { requireAppCapability } from "./node-access";
+import { narrowedScope } from "../auth/request-context";
+import { appCapabilitiesForTeam, requireAppCapability } from "./node-access";
 import { getServerById } from "./servers";
 import {
   wwwCounterpart,
@@ -343,17 +344,33 @@ export async function listDomains(
   // Only the active team's apps own routable domains; a appId filter
   // that points outside the team (or outside an API token's project scope)
   // resolves to no project and so yields nothing.
+  const scopedApps = await getDb()
+    .select({
+      id: appsTable.id,
+      name: appsTable.name,
+      slug: appsTable.slug,
+      folderId: appsTable.folderId,
+      projectId: appsTable.projectId,
+    })
+    .from(appsTable)
+    .where(and(eq(appsTable.teamId, teamId), appScopeWhere()));
+  // A domain names its app and its hostname, so an app the caller can't reach
+  // (one inside a folder they can't see) contributes none. A narrowed token is
+  // exempt - its scope already picked the apps, and that scope is what
+  // authorizes it (see `listApps`).
+  const reach = await appCapabilitiesForTeam(
+    teamId,
+    scopedApps.map((p) => ({
+      id: p.id,
+      folderId: p.folderId ?? null,
+      projectId: p.projectId ?? null,
+    })),
+  );
+  const narrowed = narrowedScope() !== null;
   const teamApps = new Map(
-    (
-      await getDb()
-        .select({
-          id: appsTable.id,
-          name: appsTable.name,
-          slug: appsTable.slug,
-        })
-        .from(appsTable)
-        .where(and(eq(appsTable.teamId, teamId), appScopeWhere()))
-    ).map((p) => [p.id, p] as const),
+    scopedApps
+      .filter((p) => narrowed || (reach.get(p.id)?.length ?? 0) > 0)
+      .map((p) => [p.id, p] as const),
   );
   const ids = appId
     ? teamApps.has(appId)

@@ -3,12 +3,12 @@ import "server-only";
 import { realpath } from "node:fs/promises";
 import { join, sep } from "node:path";
 import { status as GrpcStatus } from "@grpc/grpc-js";
-import { hasCapability, getActiveTeamId } from "../membership";
+import { getActiveTeamId } from "../membership";
 import type { Capability } from "../types";
 import { getCurrentUser } from "../auth";
 import { recordActivity } from "./activity";
 import { loadTeamApp } from "./app-graph-load";
-import { requireAppCapability } from "./node-access";
+import { hasAppCapability, requireAppCapability } from "./node-access";
 import {
   connectAgent,
   AgentUnreachableError,
@@ -149,7 +149,10 @@ function toEntry(e: {
  * no files dir, simply yields false and the tab is hidden.
  */
 export async function appFilesExist(appId: string): Promise<boolean> {
-  if (!(await hasCapability("read_app_files"))) return false;
+  // Per-app, not team-wide: `read_app_files` held somewhere else in the team is
+  // not permission to read THIS app's files, and the tab must match what the
+  // read itself (requireAppCapability) will allow.
+  if (!(await hasAppCapability(appId, "read_app_files"))) return false;
   const teamId = await getActiveTeamId();
   if (!teamId) return false;
   const project = await loadTeamApp(appId, teamId);

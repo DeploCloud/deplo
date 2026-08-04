@@ -13,6 +13,7 @@ import {
 } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { gqlAction } from "@/lib/graphql-client";
+import { CapabilityTip, useAppCan } from "@/components/apps/app-capabilities";
 
 /**
  * Advanced settings: rebuild the container. Surfaces the `rebuildApp` mutation —
@@ -32,6 +33,8 @@ export function RebuildContainerCard({
 }) {
   const router = useRouter();
   const [pending, startTransition] = React.useTransition();
+  // A rebuild IS a deployment, so it answers to the deploy permission.
+  const can = useAppCan("deploy_apps");
 
   function rebuild() {
     startTransition(async () => {
@@ -75,10 +78,17 @@ export function RebuildContainerCard({
         </CardDescription>
       </CardHeader>
       <CardFooter className="justify-end">
-        <Button size="sm" variant="outline" onClick={rebuild} disabled={pending}>
-          <Hammer className={pending ? "size-4 animate-pulse" : "size-4"} />
-          {pending ? "Starting rebuild…" : "Rebuild container"}
-        </Button>
+        <CapabilityTip cap="deploy_apps">
+          <Button
+            size="sm"
+            variant="outline"
+            onClick={rebuild}
+            disabled={pending || !can}
+          >
+            <Hammer className={pending ? "size-4 animate-pulse" : "size-4"} />
+            {pending ? "Starting rebuild" : "Rebuild container"}
+          </Button>
+        </CapabilityTip>
       </CardFooter>
     </Card>
   );
