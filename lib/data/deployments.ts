@@ -26,7 +26,6 @@ import {
   appScopeWhere,
 } from "./app-graph-load";
 import { assembleDeployment } from "./app-graph-rows";
-import { narrowedScope } from "../auth/request-context";
 import { loadDeploymentLogs } from "./deployment-logs";
 import {
   appCapabilities,
@@ -88,12 +87,11 @@ export async function listDeployments(filter?: {
       projectId: p.projectId ?? null,
     })),
   );
-  // A narrowed token is exempt: `appScopeWhere` already cut the list down to
-  // what its scope names, and that scope is its authorization (see `listApps`).
-  const narrowed = narrowedScope() !== null;
-  const teamApps = scopedApps.filter(
-    (p) => narrowed || (reach.get(p.id)?.length ?? 0) > 0,
-  );
+  // A narrowed principal is NOT exempt. It used to be, on the grounds that the
+  // scope was its own authorization — `listApps` retracted that (see the note
+  // there): a scope ticked onto a folder its author cannot see would otherwise
+  // list, here, the name, slug, commit and URL of every app inside it.
+  const teamApps = scopedApps.filter((p) => (reach.get(p.id)?.length ?? 0) > 0);
   const byId = new Map(teamApps.map((p) => [p.id, p] as const));
   const appIds = filter?.appId
     ? byId.has(filter.appId)
@@ -162,8 +160,7 @@ export async function getDeployment(id: string): Promise<Deployment | null> {
   if (!(await appInTeam(dep.appId, teamId))) return null;
   // …and the app has to be one the caller can reach at all - same answer for
   // "no such deployment" and "not yours", so neither can be told apart. A
-  // narrowed token is exempt, exactly as in `listDeployments` above.
-  if (narrowedScope()) return dep;
+  // narrowed principal is not exempt, exactly as in `listDeployments` above.
   return (await appCapabilities(dep.appId)).length > 0 ? dep : null;
 }
 

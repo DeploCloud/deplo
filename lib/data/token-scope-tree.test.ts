@@ -6,6 +6,7 @@ import type { PGlite } from "@electric-sql/pglite";
 import { makeTestDb, type TestDb } from "../db/test-harness";
 import { __setTestDb, __resetTestDb } from "../db/client";
 import {
+  domains as domainsTable,
   folders as foldersTable,
   memberships as membershipsTable,
   membershipCapabilities as membershipCapabilitiesTable,
@@ -21,6 +22,7 @@ import {
 } from "./identity-test-helpers";
 import {
   seedApp,
+  seedDeployment,
   seedServer,
   TRUNCATE_PROJECT_GRAPH,
 } from "./app-graph-test-helpers";
@@ -28,6 +30,8 @@ import { ALL_CAPABILITIES, type Capability } from "../types";
 import { capabilitiesForRole } from "../membership-shared";
 
 import { listApps } from "./apps";
+import { getDeployment, listDeployments } from "./deployments";
+import { listDomains } from "./domains";
 import { listProjects } from "./projects";
 import { listFolders } from "./folders";
 import { listMembers } from "./members";
@@ -495,6 +499,26 @@ async function seedPrivateFolder(): Promise<void> {
     slug: "private-app",
     folderId: "fld_private",
   });
+  // A deployment and a domain on it: both name the app, its commit and its
+  // hostname, so both are reads the folder exists to keep private.
+  await seedDeployment(db, { id: "dep_private", appId: "prj_private" });
+  await db.insert(domainsTable).values({
+    id: "dom_private",
+    appId: "prj_private",
+    name: "private.example.io",
+    status: "active",
+    isPrimary: true,
+    redirectTo: null,
+    ssl: true,
+    source: null,
+    port: null,
+    entrypoint: null,
+    certProvider: "none",
+    pathPrefix: null,
+    stripPrefix: null,
+    service: null,
+    createdAt: T0,
+  });
   // A second member of TEAM_A who owns nothing and was granted nothing.
   await db.insert(membershipsTable).values({
     id: "mem_outsider",
@@ -591,6 +615,24 @@ test("a token ticked onto a folder its author can't see reads nothing", async ()
       "the folder's app stays invisible — a token is never more than its author",
     );
     assert.deepEqual((await listFolders()).map((f) => f.id), []);
+    // The same app, read through its deployments and its domains. Both used to
+    // exempt a narrowed principal from the per-app check, so both listed what
+    // the folder exists to hide.
+    assert.deepEqual(
+      (await listDeployments()).map((d) => d.id),
+      [],
+      "nor its deployments, which carry the app's name, slug and commit",
+    );
+    assert.equal(
+      await getDeployment("dep_private"),
+      null,
+      "nor one asked for by id",
+    );
+    assert.deepEqual(
+      (await listDomains()).map((d) => d.id),
+      [],
+      "nor its domains, which carry its hostname",
+    );
   });
 
   // The control the old exemption existed for: the folder's OWNER ticks the same
@@ -609,6 +651,10 @@ test("a token ticked onto a folder its author can't see reads nothing", async ()
   await runWithIdentity(ownerIdentity!, async () => {
     assert.deepEqual((await listApps()).map((a) => a.id), ["prj_private"]);
     assert.deepEqual((await listFolders()).map((f) => f.id), ["fld_private"]);
+    // The control that keeps the fix honest: dropping the exemption must not
+    // blind the token that IS entitled to the folder.
+    assert.deepEqual((await listDeployments()).map((d) => d.id), ["dep_private"]);
+    assert.deepEqual((await listDomains()).map((d) => d.id), ["dom_private"]);
   });
 });
 

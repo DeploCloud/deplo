@@ -43,7 +43,6 @@ import {
   appScopeWhere,
 } from "./app-graph-load";
 import { domainToRow, domainMiddlewaresToRows } from "./app-graph-rows";
-import { narrowedScope } from "../auth/request-context";
 import { appCapabilitiesForTeam, requireAppCapability } from "./node-access";
 import { getServerById } from "./servers";
 import {
@@ -355,9 +354,9 @@ export async function listDomains(
     .from(appsTable)
     .where(and(eq(appsTable.teamId, teamId), appScopeWhere()));
   // A domain names its app and its hostname, so an app the caller can't reach
-  // (one inside a folder they can't see) contributes none. A narrowed token is
-  // exempt - its scope already picked the apps, and that scope is what
-  // authorizes it (see `listApps`).
+  // (one inside a folder they can't see) contributes none. A narrowed principal
+  // is NOT exempt: `listApps` retracted that exemption, and a scope ticked onto
+  // an invisible folder would otherwise read every hostname inside it.
   const reach = await appCapabilitiesForTeam(
     teamId,
     scopedApps.map((p) => ({
@@ -366,10 +365,9 @@ export async function listDomains(
       projectId: p.projectId ?? null,
     })),
   );
-  const narrowed = narrowedScope() !== null;
   const teamApps = new Map(
     scopedApps
-      .filter((p) => narrowed || (reach.get(p.id)?.length ?? 0) > 0)
+      .filter((p) => (reach.get(p.id)?.length ?? 0) > 0)
       .map((p) => [p.id, p] as const),
   );
   const ids = appId
@@ -1234,7 +1232,9 @@ export interface RoutableDomain {
   entrypoint: string;
   /** Whether the router terminates TLS (`false` for the `none` provider). */
   tls: boolean;
-  /** Resolved ACME resolver name (empty when `tls` is false). */
+  /** Resolved ACME resolver name. Empty when `tls` is false, and also when the
+   *  provider is `custom` — TLS from a certificate already in the proxy's store
+   *  asks no ACME provider for one. */
   certResolver: string;
   /** Traefik middlewares applied to this host's router, in order (empty ⇒ none). */
   middlewares: string[];
