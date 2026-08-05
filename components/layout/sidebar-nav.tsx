@@ -145,11 +145,7 @@ export function SidebarNav({
       ...section,
       items: section.items.filter(
         (item) =>
-          // A list of capabilities is an ANY-OF: one is enough to earn the entry.
-          (!item.requires ||
-            [item.requires]
-              .flat()
-              .some((cap) => (appSlug ? appCaps : caps).has(cap))) &&
+          (!item.requires || (appSlug ? appCaps : caps).has(item.requires)) &&
           (!item.requiresAdmin || isAdmin),
       ),
     }))
