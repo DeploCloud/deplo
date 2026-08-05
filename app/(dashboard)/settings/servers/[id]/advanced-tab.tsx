@@ -38,6 +38,7 @@ import { CommandLine } from "@/components/shared/code-block";
 import { SimpleTooltip } from "@/components/ui/tooltip";
 import { TimezonePicker } from "@/components/servers/timezone-picker";
 import { gqlAction } from "@/lib/graphql-client";
+import { regenerateNipDomain } from "@/lib/nip-suggestion";
 import { formatBytes } from "@/lib/utils";
 import type { ServerSummary } from "./server-detail-tabs";
 
@@ -65,6 +66,7 @@ type HostInfo = {
   uptimeSec: number;
   timezone: string;
   timeUnixMs: number;
+  controlPlaneTimeUnixMs: number;
   utcOffsetMinutes: number;
   traefikManaged: boolean;
   traefikDashboardDomain: string | null;
@@ -74,7 +76,7 @@ type HostInfo = {
 const HOST_INFO_FIELDS = `
   cpuModel cpuCores cpuThreads memTotalBytes diskTotalBytes diskUsedBytes
   osPretty kernel arch dockerVersion dockerRootDir uptimeSec
-  timezone timeUnixMs utcOffsetMinutes
+  timezone timeUnixMs controlPlaneTimeUnixMs utcOffsetMinutes
   traefikManaged traefikDashboardDomain canRestartControlPlane
 `;
 
@@ -263,10 +265,15 @@ function ServerClock({
   // Adopt the host's zone into the field when a fresh reading lands. Adjusting
   // state during render is the supported pattern (cleanup-panel.tsx does the
   // same with a saved policy); an effect would render the old zone first.
+  //
+  // Unless the operator has an unsaved pick of their own: Refresh sits next to
+  // this card and re-reads the host, and throwing away a zone someone just chose
+  // is not what pressing Refresh means.
   const [seen, setSeen] = React.useState(reading);
   if (seen !== reading) {
+    const theirs = zone !== "" && zone !== seen?.info.timezone;
     setSeen(reading);
-    if (reading?.info.timezone) setZone(reading.info.timezone);
+    if (reading?.info.timezone && !theirs) setZone(reading.info.timezone);
   }
 
   React.useEffect(() => {
@@ -300,11 +307,12 @@ function ServerClock({
     });
   }
 
-  // How far the host's clock is from the browser's, measured at the moment the
-  // reading landed (both tick at the same rate afterwards, so this does not
-  // drift on its own). It is the one number a wall clock cannot show you, and it
-  // is what explains a certificate that will not issue or a cron that fires late.
-  const skewMs = reading ? reading.info.timeUnixMs - reading.readAt : 0;
+  // How far the host's clock is from DEPLO's, both stamped server-side around the
+  // same agent call. Never against the browser: that measures the browser, and a
+  // laptop an hour out would paint every healthy server in the fleet red. It is
+  // the one number a wall clock cannot show you, and it is what explains a
+  // certificate that will not issue or a cron that fires late.
+  const skewMs = info ? info.timeUnixMs - info.controlPlaneTimeUnixMs : 0;
 
   return (
     <Card>
@@ -314,7 +322,7 @@ function ServerClock({
           Server time
         </CardTitle>
         <p className="mt-1 text-sm text-muted-foreground">
-          The clock this server runs on. Scheduled jobs and log timestamps follow it.
+          The clock this machine runs on. Deplo&apos;s own schedules stay on UTC.
         </p>
       </CardHeader>
       <CardContent>
@@ -328,7 +336,7 @@ function ServerClock({
                 <div className="min-w-0">
                   <div className="flex items-baseline gap-1 font-mono tabular-nums">
                     <span className="text-4xl font-semibold leading-none">
-                      {partsIn(hostNow, info.timezone, { hour: "2-digit", minute: "2-digit" })}
+                      {partsIn(hostNow, info, { hour: "2-digit", minute: "2-digit" })}
                     </span>
                     {/* Seconds come from the instant itself: every current IANA
                         offset is a whole number of minutes, and asking Intl for
@@ -338,7 +346,7 @@ function ServerClock({
                     </span>
                   </div>
                   <div className="mt-1 text-sm text-muted-foreground">
-                    {partsIn(hostNow, info.timezone, {
+                    {partsIn(hostNow, info, {
                       weekday: "long",
                       day: "numeric",
                       month: "long",
@@ -368,7 +376,7 @@ function ServerClock({
           <div className="space-y-2">
             <FieldLabel
               htmlFor="server-timezone"
-              info="Pick the region you operate in. Changing it does not restart anything, but log timestamps and schedules shift to the new zone."
+              info="The zone this machine reports its own time in. Nothing restarts, and nothing in Deplo moves with it: backups and cleanup run on UTC, and each container keeps the zone from its image."
             >
               Timezone
             </FieldLabel>
@@ -390,11 +398,14 @@ function ServerClock({
 }
 
 /**
- * How far this host's clock is from the viewer's, said plainly.
+ * How far this host's clock is from DEPLO's, said plainly.
  *
- * Under five seconds is noise (network latency is inside this number), so it
- * reads as in sync. Past a minute it is the destructive one: a clock that far
- * out breaks certificate issuance and TOTP before it breaks anything visible.
+ * Deplo's and not the viewer's: the browser is a third machine with a clock of
+ * its own, and comparing against it would report the viewer's laptop as the
+ * fleet drifting. Under five seconds is noise (the agent round trip is inside
+ * this number), so it reads as in sync. Past a minute it is the destructive one:
+ * a clock that far out breaks certificate issuance and TOTP before it breaks
+ * anything visible.
  */
 function SkewChip({ skewMs }: { skewMs: number }) {
   const abs = Math.abs(skewMs);
@@ -411,9 +422,9 @@ function SkewChip({ skewMs }: { skewMs: number }) {
       : abs < 5_400_000
         ? `${Math.round(abs / 60_000)}m`
         : `${Math.round(abs / 3_600_000)}h`;
-  const label = `${amount} ${skewMs > 0 ? "ahead of" : "behind"} your clock`;
+  const label = `${amount} ${skewMs > 0 ? "ahead of" : "behind"} Deplo`;
   return abs >= 60_000 ? (
-    <SimpleTooltip content="A clock this far out breaks certificate renewal and two-factor codes. Check the host's time sync.">
+    <SimpleTooltip content="A clock this far out breaks certificate renewal and two-factor codes. Check this server's time sync.">
       <span className="inline-flex">
         <Badge variant="destructive" className="gap-1">
           <TriangleAlert className="size-3" />
@@ -426,14 +437,31 @@ function SkewChip({ skewMs }: { skewMs: number }) {
   );
 }
 
-/** One `Intl` read of an instant in the host's zone. The pieces of the clock
- *  are formatted separately so the seconds can be styled apart from the rest. */
-function partsIn(at: Date, zone: string, opts: Intl.DateTimeFormatOptions): string {
-  try {
-    return at.toLocaleString("en-GB", { timeZone: zone || "UTC", ...opts });
-  } catch {
-    return at.toLocaleString("en-GB", { timeZone: "UTC", ...opts });
+/**
+ * One `Intl` read of an instant in the HOST's zone. The pieces of the clock are
+ * formatted separately so the seconds can be styled apart from the rest.
+ *
+ * A host can report an offset but no zone NAME (a copied /etc/localtime with no
+ * /etc/timezone beside it: Alpine, slim images). Falling back to UTC there
+ * printed a clock two hours off the offset badge right next to it, so the
+ * fallback shifts the instant by the offset the host DID report and reads it as
+ * UTC: same wall time, no zone database needed. Every current IANA offset is a
+ * whole number of minutes, so the seconds are unaffected by the shift.
+ */
+function partsIn(
+  at: Date,
+  info: Pick<HostInfo, "timezone" | "utcOffsetMinutes">,
+  opts: Intl.DateTimeFormatOptions,
+): string {
+  if (info.timezone) {
+    try {
+      return at.toLocaleString("en-GB", { timeZone: info.timezone, ...opts });
+    } catch {
+      // An IANA name this browser does not carry; fall through to the offset.
+    }
   }
+  const shifted = new Date(at.getTime() + info.utcOffsetMinutes * 60_000);
+  return shifted.toLocaleString("en-GB", { timeZone: "UTC", ...opts });
 }
 
 /** "+01:00" / "-03:30" — minutes, because Kathmandu is +05:45. */
@@ -478,7 +506,10 @@ function TraefikPanel({
   const published = info ? info.traefikDashboardDomain : (server.traefikDashboard?.domain ?? null);
   const recorded = server.traefikDashboard?.domain ?? null;
   const canManage = info?.traefikManaged ?? false;
-  const suggested = server.suggestedTraefikDomain;
+  // The free hostname currently on offer. Seeded with the server's own (already
+  // fresh) suggestion and re-rolled in the browser on every Generate, so the
+  // tooltip always names the one the button would drop into the field.
+  const [suggested, setSuggested] = React.useState(server.suggestedTraefikDomain);
 
   // Adopt the host's answer whenever a fresh reading arrives. Adjusting state
   // during render is the supported pattern (ServerClock above does the same with
@@ -621,8 +652,8 @@ function TraefikPanel({
                           suggested ? (
                             <>
                               No domain? <span className="font-mono">{suggested}</span>{" "}
-                              is filled in for you and already points at this
-                              server, with zero DNS setup.
+                              is filled in for you and works with zero DNS setup.
+                              Click Generate for a different one.
                             </>
                           ) : (
                             "Point this domain's DNS at this server first, or the certificate cannot be issued."
@@ -631,19 +662,23 @@ function TraefikPanel({
                       >
                         Domain
                       </FieldLabel>
-                      {/* The way back to the zero-config hostname after typing
-                          over it. Hidden when the field already holds it. */}
-                      {suggested && domain.trim().toLowerCase() !== suggested ? (
+                      {/* Rolls new words onto the same server, endlessly, and is
+                          also the way back after typing over the field. */}
+                      {suggested ? (
                         <Button
                           type="button"
                           variant="ghost"
                           size="sm"
                           className="h-7 px-2 text-xs text-muted-foreground"
-                          onClick={() => setDomain(suggested)}
+                          onClick={() => {
+                            const next = regenerateNipDomain(suggested);
+                            setSuggested(next);
+                            setDomain(next);
+                          }}
                           disabled={pending}
                         >
                           <Sparkles className="size-3.5" />
-                          Use a free domain
+                          Generate
                         </Button>
                       ) : null}
                     </div>

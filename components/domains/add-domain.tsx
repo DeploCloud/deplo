@@ -3,11 +3,6 @@
 import * as React from "react";
 import yaml from "js-yaml";
 import { toast } from "sonner";
-import {
-  uniqueNamesGenerator,
-  adjectives,
-  animals,
-} from "unique-names-generator";
 import { Plus, Sparkles } from "lucide-react";
 import {
   Dialog,
@@ -30,6 +25,7 @@ import {
 } from "@/components/domains/domain-config-fields";
 import { usePendingCreate } from "@/components/shared/pending-create";
 import { gqlAction } from "@/lib/graphql-client";
+import { regenerateNipDomain } from "@/lib/nip-suggestion";
 
 /** A project as the dialog needs it: id, name, its compose YAML (when it is a
  * compose stack) so the service selector can be populated client-side, and its
@@ -63,40 +59,6 @@ function composeServices(compose?: string | null): string[] {
   } catch {
     return [];
   }
-}
-
-/**
- * A server-provided suggestion has the shape
- * `<label>-<adjective>-<animal>-<hexip>.nip.io`. This peels off the app label and
- * the trailing hex-IP suffix (both of which must stay fixed for the host to keep
- * resolving to the right server) so only the two random words get regenerated.
- * `.*` is greedy, so the label absorbs any hyphens in the slug and only the last
- * two `[a-z0-9]+` tokens before the hex IP are treated as the words.
- */
-const NIP_SUGGESTION_RE = /^(.*)-[a-z0-9]+-[a-z0-9]+-([0-9a-f]{8}\.nip\.io)$/i;
-
-/** A fresh `adjective-animal` pair (same generator the server uses), in the
- * browser, so every click yields new words with no round-trip. */
-function freshWords(): string {
-  return uniqueNamesGenerator({
-    dictionaries: [adjectives, animals],
-    separator: "-",
-    length: 2,
-  });
-}
-
-/**
- * Produce a brand-new zero-config nip.io host from the server's suggestion by
- * swapping only its random words — the app label and hex-IP suffix are preserved,
- * so the result still routes to the correct server. Each call is independent (no
- * limit, no caching), so the Generate button can be clicked indefinitely. Falls
- * back to the original suggestion if it doesn't match the expected shape.
- */
-function regenerateNipDomain(suggested: string): string {
-  const m = NIP_SUGGESTION_RE.exec(suggested);
-  if (!m) return suggested;
-  const [, label, hexSuffix] = m;
-  return `${label}-${freshWords()}-${hexSuffix}`;
 }
 
 export function AddDomain({ project, suggestedDomain }: AddDomainProps) {
