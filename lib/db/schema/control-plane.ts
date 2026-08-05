@@ -412,6 +412,12 @@ export const teamRoles = pgTable(
     // count". Holders of this role resolve no capabilities until they enroll a
     // TOTP factor — same gate as `teams.require_two_factor`, narrower blast radius.
     requireTwoFactor: boolean("require_two_factor").notNull().default(false),
+    // The INTENT to reach only part of the team, stored apart from the junctions
+    // below for the reason `api_tokens.scoped` exists: deleting a project in the
+    // scope cascades its row away, and an emptied scope with no flag would read
+    // as "no scope" and silently WIDEN the role to everything. Scoped with zero
+    // rows means "reaches nothing".
+    scoped: boolean("scoped").notNull().default(false),
     createdAt: isoTimestamptz("created_at").notNull(),
   },
   (t) => [
@@ -420,6 +426,64 @@ export const teamRoles = pgTable(
       .on(t.teamId, t.builtinKey)
       .where(sql`${t.builtinKey} is not null`),
     uniqueIndex("team_roles_name_uq").on(t.teamId, sql`lower(${t.name})`),
+  ],
+);
+
+/**
+ * What a scoped role REACHES: whole projects, whole folders (subtree included,
+ * expanded at resolve time), or single apps.
+ *
+ * Three junctions rather than one polymorphic `(node_kind, node_id)` table, for
+ * the same two reasons the API token's scope is four: a Postgres PRIMARY KEY
+ * cannot contain a nullable column, and a real FK per kind is what makes the
+ * cascade the whole cleanup story. Deleting a project empties the scope by
+ * itself, which is exactly what `scoped` above is there to keep honest.
+ */
+export const teamRoleScopeProjects = pgTable(
+  "team_role_scope_projects",
+  {
+    roleId: text("role_id")
+      .notNull()
+      .references(() => teamRoles.id, { onDelete: "cascade" }),
+    projectId: text("project_id")
+      .notNull()
+      .references(() => projects.id, { onDelete: "cascade" }),
+  },
+  (t) => [
+    primaryKey({ columns: [t.roleId, t.projectId] }),
+    index("team_role_scope_projects_project_idx").on(t.projectId),
+  ],
+);
+
+export const teamRoleScopeFolders = pgTable(
+  "team_role_scope_folders",
+  {
+    roleId: text("role_id")
+      .notNull()
+      .references(() => teamRoles.id, { onDelete: "cascade" }),
+    folderId: text("folder_id")
+      .notNull()
+      .references(() => folders.id, { onDelete: "cascade" }),
+  },
+  (t) => [
+    primaryKey({ columns: [t.roleId, t.folderId] }),
+    index("team_role_scope_folders_folder_idx").on(t.folderId),
+  ],
+);
+
+export const teamRoleScopeApps = pgTable(
+  "team_role_scope_apps",
+  {
+    roleId: text("role_id")
+      .notNull()
+      .references(() => teamRoles.id, { onDelete: "cascade" }),
+    appId: text("app_id")
+      .notNull()
+      .references(() => apps.id, { onDelete: "cascade" }),
+  },
+  (t) => [
+    primaryKey({ columns: [t.roleId, t.appId] }),
+    index("team_role_scope_apps_app_idx").on(t.appId),
   ],
 );
 
