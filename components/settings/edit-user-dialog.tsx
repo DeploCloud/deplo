@@ -1,6 +1,7 @@
 "use client";
 
 import * as React from "react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import {
@@ -435,6 +436,16 @@ export function EditUserDialog({
                   ))}
                 </div>
               )}
+              {/* The chips say WHICH teams; the page behind this button says what
+                  they may do in each one, down to a single app. It is a route,
+                  not another section here: it carries a tree per team and would
+                  dwarf everything this dialog is actually for. */}
+              <Button asChild variant="outline" size="sm" className="w-fit">
+                <Link href={`/settings/users/${user.userId}`}>
+                  <KeyRound className="size-4" />
+                  Team access
+                </Link>
+              </Button>
 
               <Section
                 icon={ShieldCheck}
@@ -443,7 +454,7 @@ export function EditUserDialog({
                   <>
                     Instance-wide: they apply in every team and on every server.
                     What this person may do inside a single team is a separate
-                    thing, set on that team&apos;s Members page.
+                    thing, set under Team access above.
                   </>
                 }
               >

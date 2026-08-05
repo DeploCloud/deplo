@@ -56,11 +56,19 @@ export function ScopePicker({
   emptyNote = "You aren't in any team yet, so there is nothing to narrow this token to.",
   footer,
   renderMeta,
+  teamPickable = true,
 }: {
   tree: ScopeTreeTeam[];
   selection: ScopeSelection;
   onChange: (next: ScopeSelection) => void;
   disabled?: boolean;
+  /**
+   * Whether a whole TEAM can be ticked. False for the user access editor, where
+   * team-wide access is the person's role and a node grant only ever names a
+   * project, a folder or an app. A team checkbox there would be a second way to
+   * say the same thing, and the mutation has nowhere to put it.
+   */
+  teamPickable?: boolean;
   /** The card heading. Defaults to the token wording. */
   title?: string;
   /** The heading's tooltip. */
@@ -134,7 +142,7 @@ export function ScopePicker({
   }
 
   function toggleTeam(team: ScopeTreeTeam, on: boolean) {
-    if (disabled) return;
+    if (disabled || !teamPickable) return;
     const t = new Set(teams);
     const p = new Set(projects);
     const f = new Set(folders);
@@ -303,6 +311,7 @@ export function ScopePicker({
                       mark={<TeamMark name={team.name} />}
                       label={team.name}
                       meta={teamMeta(team)}
+                      checkbox={teamPickable}
                       checked={teamOn}
                       disabled={disabled}
                       onCheckedChange={(v) => toggleTeam(team, v)}
@@ -568,6 +577,7 @@ function Row({
   mark,
   label,
   meta,
+  checkbox = true,
   checked,
   disabled,
   onCheckedChange,
@@ -582,6 +592,8 @@ function Row({
   mark: React.ReactNode;
   label: string;
   meta?: string;
+  /** False renders the row as a header: nothing to tick, only children to open. */
+  checkbox?: boolean;
   checked: boolean;
   disabled?: boolean;
   onCheckedChange: (on: boolean) => void;
@@ -618,17 +630,21 @@ function Row({
       ) : (
         <span className="size-4" aria-hidden />
       )}
-      <Checkbox
-        id={id}
-        checked={checked}
-        disabled={disabled}
-        onCheckedChange={(v) => onCheckedChange(v === true)}
-      />
+      {checkbox ? (
+        <Checkbox
+          id={id}
+          checked={checked}
+          disabled={disabled}
+          onCheckedChange={(v) => onCheckedChange(v === true)}
+        />
+      ) : (
+        <span className="size-4" aria-hidden />
+      )}
       <label
         htmlFor={id}
         className={cn(
           "flex min-w-0 flex-1 items-center gap-2",
-          !disabled && "cursor-pointer",
+          checkbox && !disabled && "cursor-pointer",
         )}
       >
         <span className="flex size-4 shrink-0 items-center justify-center">

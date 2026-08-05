@@ -49,8 +49,13 @@ export interface NavItem {
    * Per-team capability required to SEE this item. Absent ⇒ always visible.
    * The sidebar filters items the current member lacks (the destination page
    * also guards server-side). Matches the Capability strings in lib/types.ts.
+   *
+   * A LIST means any one of them is enough — for a page that collects several
+   * unrelated actions (Advanced: console, rebuild, transfer, delete), where
+   * naming a single capability would hide it from someone who holds one of the
+   * others.
    */
-  requires?: string;
+  requires?: string | string[];
   /** Visible only to instance admins (orthogonal to team capabilities). */
   requiresAdmin?: boolean;
 }
@@ -487,6 +492,11 @@ export function appSettingsNav(slug: string): NavSection[] {
           href: `${base}/advanced`,
           icon: SlidersHorizontal,
           tooltip: "Console access & danger zone",
+          // Unlike its siblings, this page has nothing to READ: it is four
+          // actions (console, rebuild, transfer, delete) and nothing else, so a
+          // member holding none of them gets an entry where every control is
+          // dead. One of the four is enough to earn it.
+          requires: ["open_app_console", "deploy_apps", "move_apps", "delete_apps"],
         },
       ],
     },

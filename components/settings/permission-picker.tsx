@@ -33,6 +33,7 @@ export function PermissionPicker({
   onChange,
   disabled = false,
   hint = "Every action deplo can gate, one permission each. Tick exactly what this role should be able to do — search by what you want it to reach.",
+  only,
 }: {
   capabilities: Capability[];
   onChange: (caps: Capability[]) => void;
@@ -40,9 +41,26 @@ export function PermissionPicker({
   disabled?: boolean;
   /** Tooltip beside the heading — name the thing being granted. */
   hint?: string;
+  /**
+   * Offer only these, in the same categories. For a set that CAN'T hold every
+   * capability: a per-node grant, bounded to `NODE_GRANTABLE_CAPABILITIES`
+   * server-side. Showing the rest would offer ticks the save then refuses.
+   */
+  only?: Capability[];
 }) {
   const [query, setQuery] = React.useState("");
   const enabled = React.useMemo(() => new Set(capabilities), [capabilities]);
+  // Key the memo on the CONTENTS: the caller passes a fresh array every render,
+  // and a new Set each time would re-render every row for nothing.
+  const onlyKey = only?.join(",") ?? "";
+  const offered = React.useMemo(
+    () => (onlyKey ? new Set(onlyKey.split(",") as Capability[]) : null),
+    [onlyKey],
+  );
+  const inScope = React.useCallback(
+    (cap: Capability) => !offered || offered.has(cap),
+    [offered],
+  );
 
   const terms = query.trim().toLowerCase().split(/\s+/).filter(Boolean);
   const matches = React.useCallback(
@@ -54,15 +72,18 @@ export function PermissionPicker({
     [terms],
   );
 
-  const sections = CAPABILITY_CATEGORIES.map((cat) => ({
-    ...cat,
-    shown: cat.caps.filter(matches),
-  })).filter((cat) => cat.shown.length > 0);
+  const sections = CAPABILITY_CATEGORIES.map((cat) => {
+    const caps = cat.caps.filter(inScope);
+    return { ...cat, caps, shown: caps.filter(matches) };
+  }).filter((cat) => cat.shown.length > 0);
   /** The always-on floor is listed like any other permission — it just can't be unticked. */
-  const viewShown = matches("view");
+  const viewShown = matches("view") && inScope("view");
   const shownCount =
     sections.reduce((n, s) => n + s.shown.length, 0) + (viewShown ? 1 : 0);
-  const grantedCount = capabilities.filter((c) => c !== "view").length;
+  const optional = OPTIONAL.filter(inScope);
+  const grantedCount = capabilities.filter(
+    (c) => c !== "view" && inScope(c),
+  ).length;
 
   function write(next: Set<Capability>) {
     next.add("view");
@@ -96,12 +117,12 @@ export function PermissionPicker({
         </div>
         <div className="flex items-center gap-2 text-xs text-muted-foreground">
           <span className="tabular-nums">
-            {grantedCount} of {OPTIONAL.length} granted
+            {grantedCount} of {optional.length} granted
           </span>
           {!disabled && grantedCount > 0 && (
             <button
               type="button"
-              onClick={() => setMany(OPTIONAL, false)}
+              onClick={() => setMany(optional, false)}
               className="rounded font-medium transition-colors hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
             >
               Clear all
