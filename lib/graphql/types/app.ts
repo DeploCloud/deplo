@@ -1100,10 +1100,11 @@ builder.subscriptionFields((t) => ({
       "Emits the app whenever its status (power / deployment) changes. " +
       "Fires once immediately with the current snapshot, then on every change.",
     // `loggedIn` (synchronous `!!ctx.viewer` — no cookie call) gates opening the
-    // stream; the generator enforces team ownership of the app below.
+    // stream; the generator enforces team ownership AND per-app access below.
     authScopes: { loggedIn: true },
     args: { slug: t.arg.string({ required: true }) },
-    subscribe: (_root, { slug }, ctx) => appStatusStream(slug, ctx.teamId),
+    subscribe: (_root, { slug }, ctx) =>
+      appStatusStream(slug, ctx.teamId, ctx.viewer?.id ?? null),
     // The generator yields fully-resolved, team-scoped snapshots already.
     resolve: (project) => project,
   }),
@@ -1114,12 +1115,16 @@ builder.subscriptionFields((t) => ({
 export async function* appStatusStream(
   slug: string,
   teamId: string | null,
+  userId: string | null,
 ): AsyncGenerator<AppSummary> {
-  if (!teamId) throw new Error("App not found");
-  // Cookie-free (PLAN §6): both lookups take the explicit `teamId` and query
-  // Postgres directly — they never call a cookie-reading helper, so they remain
-  // callable across the async-iteration ticks of this long-lived SSE response.
-  const project = await findAppSummaryBySlugForTeam(slug, teamId);
+  if (!teamId || !userId) throw new Error("App not found");
+  // Cookie-free (PLAN §6): both lookups take the explicit `teamId` + `userId`
+  // and query Postgres directly — they never call a cookie-reading helper, so
+  // they remain callable across the async-iteration ticks of this long-lived SSE
+  // response. They also answer the per-app access question, so an app inside a
+  // folder this member can't see is "not found" here exactly as it is on its own
+  // page — a live status feed must not be the way around folder privacy.
+  const project = await findAppSummaryBySlugForTeam(slug, teamId, userId);
   if (!project) throw new Error("App not found");
   const appId = project.id;
 
@@ -1127,10 +1132,11 @@ export async function* appStatusStream(
   yield project;
 
   // Forward each change ping as a freshly-reloaded snapshot. The payload is the
-  // changed app's id (always this app's, given the keyed channel). If
-  // the app was deleted mid-stream, summarizeForTeam returns null → end.
+  // changed app's id (always this app's, given the keyed channel). If the app was
+  // deleted — or moved somewhere this member can no longer reach — mid-stream,
+  // summarizeForTeam returns null → end.
   for await (const changedId of pubSub.subscribe("appChanged", appId)) {
-    const next = await summarizeForTeam(changedId, teamId);
+    const next = await summarizeForTeam(changedId, teamId, userId);
     if (!next) return;
     yield next;
   }

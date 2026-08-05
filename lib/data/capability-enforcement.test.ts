@@ -180,7 +180,13 @@ async function outcome(fn: () => Promise<unknown>): Promise<"refused" | "allowed
     return "allowed";
   } catch (e) {
     const m = (e as Error).message;
-    if (/permission|not found|Unauthorized|can't|cannot/i.test(m)) return "refused";
+    // `only …` covers the refusals that name WHO may act instead of what is
+    // missing ("Only the folder owner can share this folder") — a refusal that
+    // says so plainly, which a caller who can SEE the folder should get instead
+    // of a pretend "not found". Same set the sibling helper in
+    // authz-escape.test.ts recognises.
+    if (/permission|not found|Unauthorized|can't|cannot|only /i.test(m))
+      return "refused";
     throw e;
   }
 }

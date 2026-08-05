@@ -10,11 +10,13 @@ import {
   apiTokens,
   apiTokenCapabilities,
   apiTokenProjects,
+  memberships,
+  membershipCapabilities,
   projects as projectsTable,
 } from "../db/schema/control-plane";
 import { runWithIdentity } from "../auth/request-context";
 import { seedIdentity, TEAM_A, TEAM_B, USER_1 } from "./leaf-test-helpers";
-import { ALL_CAPABILITIES } from "../types";
+import { ALL_CAPABILITIES, type Capability } from "../types";
 import {
   authenticateToken,
   createToken,
@@ -385,4 +387,141 @@ test("listTokens is scoped to the active team", async () => {
     await createToken({ name: "A-token" });
     assert.equal((await listTokens()).length, 1);
   });
+});
+
+/* ------------------------------------------------------------------ */
+/* Re-authoring SOMEONE ELSE's token                                    */
+/* ------------------------------------------------------------------ */
+
+/**
+ * A token's live clamp measures it against its CREATOR, so it says nothing about
+ * whoever edits it afterwards. Editing is allowed from the team the token was
+ * created in — but a token's reach can span teams, and being an administrator in
+ * the home team is not authority in the others.
+ */
+
+/** Give `userId` a membership in `teamId` with exactly `caps`. */
+async function seedMembership(
+  userId: string,
+  teamId: string,
+  caps: Capability[],
+): Promise<void> {
+  const id = `mem_${userId}_${teamId}`;
+  await db
+    .insert(memberships)
+    .values({ id, userId, teamId, role: "member", createdAt: T0 });
+  await db
+    .insert(membershipCapabilities)
+    .values(caps.map((capability) => ({ membershipId: id, capability })));
+}
+
+test("re-scoping someone else's token can't hand it power the editor lacks there", async () => {
+  await pg.exec(TRUNCATE);
+  await seedIdentity(db, {
+    users: [
+      { id: "u_creator", teamId: TEAM_A, role: "owner" },
+      { id: "u_editor", teamId: TEAM_A, role: "owner" },
+    ],
+  });
+  // Both belong to team B as well — the creator fully, the editor read-only.
+  await seedMembership("u_creator", TEAM_B, [...ALL_CAPABILITIES]);
+  await seedMembership("u_editor", TEAM_B, ["view"]);
+
+  const { raw } = await runWithIdentity(
+    { userId: "u_creator", teamId: TEAM_A },
+    () =>
+      createToken({
+        name: "ci",
+        capabilities: ["view", "delete_apps"],
+        teamIds: [TEAM_A],
+      }),
+  );
+  const tokenId = (await db.select().from(apiTokens))[0]!.id;
+
+  // The editor administers team A, so the token is theirs to edit — but pointing
+  // it at team B would arm a credential with a permission they don't hold there.
+  await assert.rejects(
+    () =>
+      runWithIdentity({ userId: "u_editor", teamId: TEAM_A }, () =>
+        updateToken({
+          id: tokenId,
+          name: "ci",
+          capabilities: ["view", "delete_apps"],
+          teamIds: [TEAM_B],
+        }),
+      ),
+    /permissions you hold yourself/i,
+  );
+
+  // Narrowing it to what they DO hold in team B is fine — the bound is a
+  // ceiling, and revoking is always available.
+  await runWithIdentity({ userId: "u_editor", teamId: TEAM_A }, () =>
+    updateToken({
+      id: tokenId,
+      name: "ci",
+      capabilities: ["view"],
+      teamIds: [TEAM_B],
+    }),
+  );
+  const grant = await authenticateToken(raw, TEAM_B);
+  assert.deepEqual(grant?.token?.capabilities, ["view"]);
+});
+
+test("an unrestricted token reaching a team the editor isn't in can only be revoked", async () => {
+  await pg.exec(TRUNCATE);
+  await seedIdentity(db, {
+    users: [
+      { id: "u_creator", teamId: TEAM_A, role: "owner" },
+      { id: "u_editor", teamId: TEAM_A, role: "owner" },
+    ],
+  });
+  // Only the creator is in team B, so an unrestricted token reaches a team the
+  // editor cannot even see — there is no set to measure the edit against.
+  await seedMembership("u_creator", TEAM_B, [...ALL_CAPABILITIES]);
+
+  await runWithIdentity({ userId: "u_creator", teamId: TEAM_A }, () =>
+    createToken({ name: "ci", capabilities: ["view"] }),
+  );
+  const tokenId = (await db.select().from(apiTokens))[0]!.id;
+
+  await assert.rejects(
+    () =>
+      runWithIdentity({ userId: "u_editor", teamId: TEAM_A }, () =>
+        updateToken({
+          id: tokenId,
+          name: "ci",
+          capabilities: ["view", "delete_apps"],
+        }),
+      ),
+    /team you're not a member of/i,
+  );
+  // Revoking it is still the lever they have.
+  await runWithIdentity({ userId: "u_editor", teamId: TEAM_A }, () =>
+    revokeToken(tokenId),
+  );
+  assert.equal((await db.select().from(apiTokens)).length, 0);
+});
+
+test("the creator editing their own token is untouched by the cross-team bound", async () => {
+  await pg.exec(TRUNCATE);
+  await seedIdentity(db, { users: [{ id: "u_creator", teamId: TEAM_A, role: "owner" }] });
+  await seedMembership("u_creator", TEAM_B, ["view"]);
+
+  const { raw } = await runWithIdentity(
+    { userId: "u_creator", teamId: TEAM_A },
+    () => createToken({ name: "ci", capabilities: ["view", "delete_apps"] }),
+  );
+  const tokenId = (await db.select().from(apiTokens))[0]!.id;
+  // Unrestricted, so it reaches team B too — where the creator is read-only. The
+  // edit stands, because the live clamp already answers for it there.
+  await runWithIdentity({ userId: "u_creator", teamId: TEAM_A }, () =>
+    updateToken({ id: tokenId, name: "ci", capabilities: ["view", "delete_apps"] }),
+  );
+  const inB = await authenticateToken(raw, TEAM_B);
+  const { currentCapabilities } = await import("../membership");
+  assert.deepEqual(
+    await runWithIdentity(inB!, () => currentCapabilities()),
+    ["view"],
+    "the clamp against the creator is what bounds it in team B",
+  );
 });

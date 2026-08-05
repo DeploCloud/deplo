@@ -16,9 +16,15 @@ import {
   seedApp,
   TRUNCATE_PROJECT_GRAPH,
 } from "./app-graph-test-helpers";
+import { eq } from "drizzle-orm";
 import { publishAppChanged } from "../graphql/pubsub";
+import { setFolderGrant } from "./folder-access";
 import { runWithIdentity } from "../auth/request-context";
-import { projects as projectsTable } from "../db/schema/control-plane";
+import {
+  apps as appsTable,
+  folders as foldersTable,
+  projects as projectsTable,
+} from "../db/schema/control-plane";
 import { ALL_CAPABILITIES } from "../types";
 import { appStatusStream } from "../graphql/types/app";
 
@@ -57,7 +63,7 @@ test("appStatusStream yields the initial snapshot + multiple change pings (cooki
 
   // NO runWithIdentity — there is no request scope. If the generator read a
   // cookie it would throw here.
-  const gen = appStatusStream("alpha", TEAM_A);
+  const gen = appStatusStream("alpha", TEAM_A, USER_1);
 
   // Initial snapshot.
   const first = await gen.next();
@@ -85,14 +91,14 @@ test("appStatusStream yields the initial snapshot + multiple change pings (cooki
 
 test("appStatusStream rejects an unknown slug / wrong team", async () => {
   await seedApp(db, { id: "prj_1", slug: "alpha", teamId: TEAM_A, status: "active" });
-  await assert.rejects(() => appStatusStream("nope", TEAM_A).next(), /App not found/);
-  await assert.rejects(() => appStatusStream("alpha", "team_other").next(), /App not found/);
-  await assert.rejects(() => appStatusStream("alpha", null).next(), /App not found/);
+  await assert.rejects(() => appStatusStream("nope", TEAM_A, USER_1).next(), /App not found/);
+  await assert.rejects(() => appStatusStream("alpha", "team_other", USER_1).next(), /App not found/);
+  await assert.rejects(() => appStatusStream("alpha", null, USER_1).next(), /App not found/);
 });
 
 test("appStatusStream ends when the project is deleted mid-stream", async () => {
   await seedApp(db, { id: "prj_1", slug: "alpha", teamId: TEAM_A, status: "active" });
-  const gen = appStatusStream("alpha", TEAM_A);
+  const gen = appStatusStream("alpha", TEAM_A, USER_1);
   await gen.next(); // initial
   // Delete the project, then ping — the reload returns null → the generator ends.
   const p = gen.next();
@@ -147,7 +153,7 @@ test("a project scope holds on EVERY tick of the stream, not just the first", as
     runWithIdentity({ userId: USER_1, teamId: TEAM_A, token }, fn);
 
   // Tick 0: the initial snapshot is refused, exactly like an unknown slug.
-  const gen = asScoped(() => appStatusStream("alpha", TEAM_A));
+  const gen = asScoped(() => appStatusStream("alpha", TEAM_A, USER_1));
   await assert.rejects(() => asScoped(() => gen.next()), /App not found/);
 
   // And with the scope covering the app, the stream survives past tick 1 — the
@@ -167,10 +173,111 @@ test("a project scope holds on EVERY tick of the stream, not just the first", as
   };
   const asOk = <T>(fn: () => T) =>
     runWithIdentity({ userId: USER_1, teamId: TEAM_A, token: ok }, fn);
-  const gen2 = asOk(() => appStatusStream("alpha", TEAM_A));
+  const gen2 = asOk(() => appStatusStream("alpha", TEAM_A, USER_1));
   assert.equal((await asOk(() => gen2.next())).value.id, "prj_1");
   const pending = asOk(() => gen2.next());
   publishAppChanged("prj_1");
   assert.equal((await pending).value.id, "prj_1");
   await asOk(() => gen2.return(undefined as never));
+});
+
+/* ------------------------------------------------------------------ */
+/* Folder privacy — a live feed is not a way around it                 */
+/* ------------------------------------------------------------------ */
+
+test("a member who can't see the folder can't watch the app inside it", async () => {
+  // OWNER owns a private folder; MEMBER holds real team capabilities but no
+  // access to it, which is exactly what makes the app invisible to them
+  // (lib/data/folder-access-integration.test.ts proves the list + page side).
+  await pg.exec(`truncate table users, teams restart identity cascade;`);
+  await seedIdentity(db, {
+    users: [
+      { id: "u_folder_owner", teamId: TEAM_A, role: "owner" },
+      {
+        id: "u_outsider",
+        teamId: TEAM_A,
+        role: "member",
+        isInstanceAdmin: false,
+        capabilities: ["view", "create_apps", "deploy_apps", "manage_env"],
+      },
+    ],
+  });
+  await db.insert(foldersTable).values({
+    id: "fld_private",
+    teamId: TEAM_A,
+    name: "Private",
+    parentId: null,
+    color: null,
+    ownerUserId: "u_folder_owner",
+    createdAt: "2026-01-01T00:00:00.000Z",
+    updatedAt: "2026-01-01T00:00:00.000Z",
+  });
+  await seedApp(db, { id: "prj_1", slug: "alpha", teamId: TEAM_A, status: "active" });
+  await db
+    .update(appsTable)
+    .set({ folderId: "fld_private" })
+    .where(eq(appsTable.id, "prj_1"));
+
+  // The snapshot carries the app's name, source repo, URL and every deployment —
+  // a member refused the app's own page must not read it off a live feed either.
+  await assert.rejects(
+    () => appStatusStream("alpha", TEAM_A, "u_outsider").next(),
+    /App not found/,
+    "the status stream leaked an app inside a folder the member can't see",
+  );
+
+  // The control: the folder's owner watches it, and a grant opens it up.
+  assert.equal(
+    (await appStatusStream("alpha", TEAM_A, "u_folder_owner").next()).value.id,
+    "prj_1",
+  );
+  await runWithIdentity({ userId: "u_folder_owner", teamId: TEAM_A }, () =>
+    setFolderGrant("fld_private", "u_outsider", ["view_logs"]),
+  );
+  assert.equal(
+    (await appStatusStream("alpha", TEAM_A, "u_outsider").next()).value.id,
+    "prj_1",
+    "a grantee watches it like any other app",
+  );
+});
+
+test("an app moved into a folder the watcher can't see ends their stream", async () => {
+  await pg.exec(`truncate table users, teams restart identity cascade;`);
+  await seedIdentity(db, {
+    users: [
+      { id: "u_folder_owner", teamId: TEAM_A, role: "owner" },
+      {
+        id: "u_outsider",
+        teamId: TEAM_A,
+        role: "member",
+        isInstanceAdmin: false,
+        capabilities: ["view", "create_apps", "deploy_apps"],
+      },
+    ],
+  });
+  await db.insert(foldersTable).values({
+    id: "fld_private",
+    teamId: TEAM_A,
+    name: "Private",
+    parentId: null,
+    color: null,
+    ownerUserId: "u_folder_owner",
+    createdAt: "2026-01-01T00:00:00.000Z",
+    updatedAt: "2026-01-01T00:00:00.000Z",
+  });
+  await seedApp(db, { id: "prj_1", slug: "alpha", teamId: TEAM_A, status: "active" });
+
+  // Opens fine: the app is at the top level, where team capabilities govern.
+  const gen = appStatusStream("alpha", TEAM_A, "u_outsider");
+  assert.equal((await gen.next()).value.id, "prj_1");
+
+  // Filed away mid-stream — the revocation has to bite on the next tick, or a
+  // subscription opened a second before the move outlives it.
+  const pending = gen.next();
+  await db
+    .update(appsTable)
+    .set({ folderId: "fld_private" })
+    .where(eq(appsTable.id, "prj_1"));
+  publishAppChanged("prj_1");
+  assert.equal((await pending).done, true, "the stream must end, not keep feeding");
 });

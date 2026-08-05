@@ -15,7 +15,9 @@ process.env.DEPLO_PUBLIC_URL = "https://deplo.test";
 import { makeTestDb, type TestDb } from "../db/test-harness";
 import { __setTestDb, __resetTestDb } from "../db/client";
 import {
+  apps as appsTable,
   deployments as deploymentsTable,
+  folders as foldersTable,
   projects as projectsTable,
   teams as teamsTable,
 } from "../db/schema/control-plane";
@@ -24,6 +26,7 @@ import { seedIdentity, TEAM_A, TEAM_B, USER_1 } from "./identity-test-helpers";
 import { seedApp, seedServer, TRUNCATE_PROJECT_GRAPH } from "./app-graph-test-helpers";
 import { createToken } from "./tokens";
 import { revealDeployHook, setDeployHookEnabled } from "./deploy-hook";
+import { setFolderGrant } from "./folder-access";
 import {
   __setRunnerForTest,
   __resetQueueForTest,
@@ -312,3 +315,38 @@ test("the right token and the right permission queue a deploy", async () => {
 async function deploymentCount(): Promise<number> {
   return (await db.select({ id: deploymentsTable.id }).from(deploymentsTable)).length;
 }
+
+test("a hook can't reach into a folder its token's creator can't see", async () => {
+  // The URL secret is minted BEFORE the app is filed away, which is how a leaked
+  // link outlives the access that produced it: the folder is the gate that has
+  // to catch up, and `redeploy`'s app gate is where it does.
+  const token = await hookToken();
+  await db.insert(foldersTable).values({
+    id: "fld_private",
+    teamId: TEAM_A,
+    name: "Private",
+    parentId: null,
+    color: null,
+    ownerUserId: USER_1,
+    createdAt: T0,
+    updatedAt: T0,
+  });
+  await db
+    .update(appsTable)
+    .set({ folderId: "fld_private" })
+    .where(eq(appsTable.id, APP));
+
+  // DEPLOYER holds team `deploy_apps` but nothing on the folder, so the app is
+  // not theirs to see — and a hook is never more than the person behind it.
+  const bearer = await mint(DEPLOYER, TEAM_A, ["view", "deploy_apps"]);
+  const res = await post(APP, token, bearer);
+  assert.equal(res.status, 403);
+  assert.match(String(res.body.error), /not found|permission/i);
+  assert.equal(await deploymentCount(), 0);
+
+  // A grant on the folder is what makes the same call work again.
+  await as(USER_1, TEAM_A, () =>
+    setFolderGrant("fld_private", DEPLOYER, ["deploy_apps"]),
+  );
+  assert.equal((await post(APP, token, bearer)).status, 200);
+});

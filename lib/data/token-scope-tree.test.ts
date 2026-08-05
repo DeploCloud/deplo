@@ -465,3 +465,149 @@ test("a folder in a team you don't belong to can't be put in a scope", async () 
     );
   });
 });
+
+/* ------------------------------------------------------------------ */
+/* A scope can only name what its author can see                       */
+/* ------------------------------------------------------------------ */
+
+/**
+ * A folder is private to its owner and its grantees. The picker draws the tree
+ * the scope is ticked in, and the tree is bounded by the AUTHOR's memberships —
+ * but membership of the team is not access to every folder in it, so the picker
+ * has to ask the per-node question too. It used to list every private folder in
+ * the team by name, with the apps inside it; and because the list paths then
+ * exempted a narrowed token from the per-app access check, a token ticked onto
+ * one read those apps in full.
+ */
+async function seedPrivateFolder(): Promise<void> {
+  await db.insert(foldersTable).values({
+    id: "fld_private",
+    teamId: TEAM_A,
+    name: "Private",
+    parentId: null,
+    color: null,
+    ownerUserId: USER_1,
+    createdAt: T0,
+    updatedAt: T0,
+  });
+  await seedApp(db, {
+    id: "prj_private",
+    slug: "private-app",
+    folderId: "fld_private",
+  });
+  // A second member of TEAM_A who owns nothing and was granted nothing.
+  await db.insert(membershipsTable).values({
+    id: "mem_outsider",
+    userId: "u_outsider",
+    teamId: TEAM_A,
+    role: "member",
+    createdAt: T0,
+  });
+  await db
+    .insert(membershipCapabilitiesTable)
+    .values(
+      (["view", "manage_tokens", "deploy_apps"] as Capability[]).map((c) => ({
+        membershipId: "mem_outsider",
+        capability: c,
+      })),
+    );
+}
+
+const asOutsider = <T>(fn: () => Promise<T>): Promise<T> =>
+  runWithIdentity({ userId: "u_outsider", teamId: TEAM_A }, fn);
+
+test("the scope picker never offers a folder its author can't see", async () => {
+  await db.insert(
+    (await import("../db/schema/control-plane")).users,
+  ).values({
+    id: "u_outsider",
+    email: "outsider@example.io",
+    username: "u_outsider",
+    name: "u_outsider",
+    role: "member",
+    isInstanceAdmin: false,
+    avatarColor: "#abc",
+    createdAt: T0,
+    updatedAt: T0,
+  });
+  await seedPrivateFolder();
+
+  await asOutsider(async () => {
+    // The control: neither the folder nor its app is theirs to see.
+    assert.equal((await listFolders()).length, 0);
+    assert.ok(!(await listApps()).some((a) => a.id === "prj_private"));
+
+    const teamA = (await listScopeTree()).find((t) => t.id === TEAM_A)!;
+    assert.deepEqual(
+      teamA.folders.map((f) => f.id),
+      [],
+      "a private folder must not be listed by name in the picker",
+    );
+    assert.ok(
+      !teamA.looseApps.some((a) => a.id === "prj_private"),
+      "nor its app anywhere in the tree",
+    );
+  });
+
+  // The owner's own picker still shows it — the bound is access, not existence.
+  const mine = (await asUser1(() => listScopeTree())).find((t) => t.id === TEAM_A)!;
+  assert.deepEqual(mine.folders.map((f) => f.id), ["fld_private"]);
+});
+
+test("a token ticked onto a folder its author can't see reads nothing", async () => {
+  await db.insert(
+    (await import("../db/schema/control-plane")).users,
+  ).values({
+    id: "u_outsider",
+    email: "outsider@example.io",
+    username: "u_outsider",
+    name: "u_outsider",
+    role: "member",
+    isInstanceAdmin: false,
+    avatarColor: "#abc",
+    createdAt: T0,
+    updatedAt: T0,
+  });
+  await seedPrivateFolder();
+
+  // The picker won't offer it, but the API takes ids — so the read path is what
+  // has to hold, not the tree.
+  const raw = await asOutsider(
+    async () =>
+      (
+        await createToken({
+          name: "peek",
+          capabilities: ["view", "deploy_apps"],
+          folderIds: ["fld_private"],
+        })
+      ).raw,
+  );
+  const identity = await authenticateToken(raw);
+  assert.ok(identity);
+  await runWithIdentity(identity!, async () => {
+    assert.deepEqual(
+      (await listApps()).map((a) => a.id),
+      [],
+      "the folder's app stays invisible — a token is never more than its author",
+    );
+    assert.deepEqual((await listFolders()).map((f) => f.id), []);
+  });
+
+  // The control the old exemption existed for: the folder's OWNER ticks the same
+  // folder and their token reads it, with its own capabilities.
+  const ownerRaw = await asUser1(
+    async () =>
+      (
+        await createToken({
+          name: "mine",
+          capabilities: ["view", "deploy_apps"],
+          folderIds: ["fld_private"],
+        })
+      ).raw,
+  );
+  const ownerIdentity = await authenticateToken(ownerRaw);
+  await runWithIdentity(ownerIdentity!, async () => {
+    assert.deepEqual((await listApps()).map((a) => a.id), ["prj_private"]);
+    assert.deepEqual((await listFolders()).map((f) => f.id), ["fld_private"]);
+  });
+});

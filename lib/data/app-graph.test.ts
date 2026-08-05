@@ -217,10 +217,10 @@ test("reorderApps writes the team_app_order junction; dead ids drop", async () =
 test("summarizeForTeam is cookie-free and team-scoped", async () => {
   await seedApp(db, { id: "prj_1", teamId: TEAM_A, status: "active" });
   // No runWithIdentity wrapper — proves it never reads a cookie/active team.
-  const mine = await summarizeForTeam("prj_1", TEAM_A);
+  const mine = await summarizeForTeam("prj_1", TEAM_A, USER_1);
   assert.ok(mine, "found for the owning team");
   assert.equal(mine!.id, "prj_1");
-  const other = await summarizeForTeam("prj_1", TEAM_B);
+  const other = await summarizeForTeam("prj_1", TEAM_B, USER_1);
   assert.equal(other, null, "not visible to another team");
 });
 

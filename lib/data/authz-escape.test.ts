@@ -47,6 +47,7 @@ import {
   updateBackup,
 } from "./backups";
 import { createRole, listRoles, resetRole, updateRole } from "./roles";
+import { createToken } from "./tokens";
 import { updateMember } from "./members";
 import { deployHookUrlMasked, revealDeployHook, verifyDeployHookToken } from "./deploy-hook";
 
@@ -531,5 +532,141 @@ test("the masked hook URL is a mask, not a prefix of the secret", async () => {
   assert.ok(
     !masked.includes(secret.slice(0, 4)),
     "nor its leading characters",
+  );
+});
+
+/* ------------------------------------------------------------------ */
+/* 5. Rank is not authority — the bound reads capabilities, never role  */
+/* ------------------------------------------------------------------ */
+
+/**
+ * `memberships.role` is a RANK, and it is the one part of a membership the API
+ * token clamp does NOT narrow: a token gets its creator's `role` verbatim and
+ * only their capabilities intersected. So every place that used to read
+ * `actor.role === "owner"` as "may hand out anything" was a door out of the
+ * token's own capability set — the owner behind an ordinary token could mint an
+ * all-powerful successor, re-scope the role every member holds, or promote a
+ * member, from a token that was granted one administrative permission.
+ *
+ * The bound is the actor's CAPABILITIES everywhere now. A real owner holds all
+ * of them, so nothing legitimate changed; what changed is that a token stops at
+ * what it was given.
+ */
+
+/** An owner's token holding exactly one administrative capability. */
+const adminToken = (cap: Capability): TokenGrant => ({
+  id: "tok_admin",
+  capabilities: ["view", cap],
+  scope: null,
+  instanceAdmin: false,
+});
+
+const asToken = <T>(cap: Capability, fn: () => Promise<T>): Promise<T> =>
+  runWithIdentity(
+    { userId: USER_1, teamId: TEAM_A, token: adminToken(cap) },
+    fn,
+  );
+
+test("an owner's manage_tokens token can't mint a successor above itself", async () => {
+  await refused(
+    () =>
+      asToken("manage_tokens", () =>
+        createToken({ name: "Successor", capabilities: [...ALL_CAPABILITIES] }),
+      ),
+    "a one-permission token minted an all-powerful one",
+  );
+  // It still mints what it actually holds — the bound is a ceiling, not a ban.
+  const ok = await asToken("manage_tokens", () =>
+    createToken({ name: "Sibling", capabilities: ["view", "manage_tokens"] }),
+  );
+  assert.deepEqual(ok.token.capabilities, ["view", "manage_tokens"]);
+});
+
+test("an owner's manage_roles token can't widen the role every member holds", async () => {
+  const member = await memberRole();
+  await refused(
+    () =>
+      asToken("manage_roles", () =>
+        updateRole({
+          id: member.id,
+          name: "Member",
+          capabilities: [...ALL_CAPABILITIES],
+        }),
+      ),
+    "a one-permission token re-scoped a role to full access",
+  );
+  await refused(
+    () =>
+      asToken("manage_roles", () =>
+        createRole({ name: "Godmode", capabilities: [...ALL_CAPABILITIES] }),
+      ),
+    "a one-permission token authored an all-powerful role",
+  );
+  assert.deepEqual(
+    (await asUser(() => listRoles())).find((r) => r.id === member.id)?.capabilities,
+    member.capabilities,
+    "the Member role is untouched",
+  );
+});
+
+test("an owner's manage_members token can't promote anyone past itself", async () => {
+  // The legacy rank + capabilities path CLAMPS rather than refusing (that is its
+  // documented contract, and what the registration links rely on) — so the proof
+  // is the set that lands, not an error.
+  await asToken("manage_members", () =>
+    updateMember({
+      userId: "u_roles",
+      role: "member",
+      capabilities: [...ALL_CAPABILITIES],
+    }),
+  );
+  const { membershipFor } = await import("../membership");
+  assert.deepEqual(
+    (await membershipFor("u_roles", TEAM_A))?.capabilities,
+    ["view", "manage_members"],
+    "the member got the token's own set, never the owner's",
+  );
+
+  // And the role path, which refuses outright, agrees.
+  const member = await memberRole();
+  await refused(
+    () => asToken("manage_members", () => updateMember({ userId: "u_roles", roleId: member.id })),
+    "a one-permission token assigned a role richer than itself",
+  );
+});
+
+test("an owner-RANK member with a narrowed set can't author their way out", async () => {
+  // The legacy `role` + `capabilities` path (the public API, registration links)
+  // can mint an owner-rank membership that holds only some capabilities. Rank
+  // used to be read as full authority, so such a member could grant themselves
+  // the rest in one call.
+  await asUser(() =>
+    updateMember({
+      userId: "u_roles",
+      role: "owner",
+      capabilities: ["view", "manage_roles", "manage_members"],
+    }),
+  );
+  await refused(
+    () =>
+      as("u_roles", () =>
+        createRole({ name: "Godmode", capabilities: ["view", "delete_team"] }),
+      ),
+    "an owner-rank member authored a role above their own permissions",
+  );
+  // The legacy path clamps instead of refusing, so what proves it is the set
+  // that lands: their own, not the everything they asked for.
+  await as("u_roles", () =>
+    updateMember({
+      userId: "u_roles",
+      role: "owner",
+      capabilities: [...ALL_CAPABILITIES],
+    }),
+  );
+  const { membershipFor } = await import("../membership");
+  assert.deepEqual(
+    (await membershipFor("u_roles", TEAM_A))?.capabilities,
+    ["view", "manage_members", "manage_roles"],
+    "still exactly what the founder gave them",
   );
 });

@@ -129,6 +129,7 @@ import {
   appCapabilities,
   appCapabilitiesForTeam,
   hasAppCapability,
+  nodeCapabilitiesFor,
   requireAppCapability,
 } from "./node-access";
 
@@ -268,10 +269,11 @@ export async function listApps(): Promise<AppSummary[]> {
   // folder they can't see) is not theirs to list. One batched resolution for the
   // whole team, not one per app.
   //
-  // A NARROWED token is exempt: `inAppScope` above already reduced the list to
-  // exactly what its scope names, and that scope IS its authorization - a token
-  // pointed at one folder must still list that folder's apps, whether or not its
-  // bearer would reach the folder through ownership or a grant.
+  // A narrowed token is NOT exempt. It used to be, because the token clamp
+  // strips `manage_team` and so blinded a super-user's scoped token to every
+  // folder — that is fixed at the source (`holdsManageTeam` reads the person),
+  // and the exemption it justified was how a token scoped to a folder its
+  // creator cannot see listed the apps inside.
   const reach = await appCapabilitiesForTeam(
     teamId,
     scoped.map((p) => ({
@@ -280,24 +282,13 @@ export async function listApps(): Promise<AppSummary[]> {
       projectId: p.projectId ?? null,
     })),
   );
-  const narrowed = narrowedScope() !== null;
-  const proj = scoped.filter(
-    (p) => narrowed || (reach.get(p.id)?.length ?? 0) > 0,
-  );
+  const proj = scoped.filter((p) => (reach.get(p.id)?.length ?? 0) > 0);
   const pre = await preloadSummaries(proj);
   // Honour the team's manual order (Overview drag-and-drop) when present:
   // explicitly-ordered apps come first in that order, anything not listed
   // (a brand-new project, or before any reorder) falls back to newest-first.
   return proj
-    .map((p) => {
-      // Empty only happens for a narrowed token (exempted above); leave it
-      // undefined there so a consumer reads "unknown", never "denied".
-      const caps = reach.get(p.id);
-      return {
-        ...summarize(p, pre),
-        capabilities: caps?.length ? caps : undefined,
-      };
-    })
+    .map((p) => ({ ...summarize(p, pre), capabilities: reach.get(p.id) }))
     .sort((a, b) => {
       const ra = rank.get(a.id) ?? Infinity;
       const rb = rank.get(b.id) ?? Infinity;
@@ -384,33 +375,54 @@ export async function getAppById(id: string): Promise<App | null> {
  * what keeps an app in a folder they can't see out of the whole UI.
  */
 async function canReachApp(id: string): Promise<boolean> {
-  // A narrowed token's scope is its authorization (see `listApps`).
-  if (narrowedScope()) return true;
   return (await appCapabilities(id)).length > 0;
 }
 
 /**
- * App summary by id for an already-resolved team, WITHOUT reading the
- * request's cookies. The live `appStatus` subscription resolves the caller's
- * team once from the GraphQL context (`ctx.teamId`, established in request
- * scope) and then reloads snapshots through this seam on each change — Next's
- * `cookies()` is NOT callable across the async-iteration ticks of a long-lived
- * SSE response (it runs after the request scope closes), so the team is passed
- * explicitly rather than re-derived. The same applies to the slug lookup below.
- * Stays cookie-free: it queries Postgres with the passed `teamId` directly and
+ * The cookie-free twin of {@link canReachApp}, for the subscription seams.
+ *
+ * `appCapabilities` resolves the caller through `getCurrentUser()`, which reads
+ * cookies — not callable across the async-iteration ticks of a long-lived SSE
+ * response. So the principal is passed in and the per-app answer comes from
+ * `nodeCapabilitiesFor`, which takes an explicit user id and touches nothing
+ * request-scoped beyond the token identity (safe: yoga re-establishes it around
+ * every tick).
+ */
+async function reachableByUser(userId: string, appId: string): Promise<boolean> {
+  return (
+    (await nodeCapabilitiesFor(userId, { kind: "app", id: appId })).length > 0
+  );
+}
+
+/**
+ * App summary by id for an already-resolved team and principal, WITHOUT reading
+ * the request's cookies. The live `appStatus` subscription resolves the caller
+ * once from the GraphQL context (`ctx.teamId` / `ctx.viewer`, established in
+ * request scope) and then reloads snapshots through this seam on each change —
+ * Next's `cookies()` is NOT callable across the async-iteration ticks of a
+ * long-lived SSE response (it runs after the request scope closes), so both are
+ * passed explicitly rather than re-derived. The same applies to the slug lookup
+ * below. Stays cookie-free: it queries Postgres with the passed ids directly and
  * never calls `requireActiveTeamId()` / a cookie-reading helper (PLAN §6 "SSE
  * generators must stay cookie-free").
  *
- * `appInScope` is safe here for the same reason: it reads the request identity,
+ * `inAppScope` is safe here for the same reason: it reads the request identity,
  * which the yoga subscribe hook re-establishes around every iterator tick, and
  * never touches cookies or a request-scoped cache.
+ *
+ * The per-app reachability check is the same one `getAppBySlug` applies: an app
+ * whose folder the caller can't see is not theirs to watch either. Without it a
+ * live status feed — name, source repo, URL, every deployment — was readable for
+ * an app they are refused everywhere else, which made the subscription the one
+ * way around folder privacy.
  */
 export async function summarizeForTeam(
   id: string,
   teamId: string,
+  userId: string,
 ): Promise<AppSummary | null> {
   const p = await loadAppGraph(id);
-  return p && p.teamId === teamId && inAppScope(p)
+  return p && p.teamId === teamId && inAppScope(p) && (await reachableByUser(userId, p.id))
     ? summarizeOne(p)
     : null;
 }
@@ -419,9 +431,10 @@ export async function summarizeForTeam(
 export async function findAppSummaryBySlugForTeam(
   slug: string,
   teamId: string,
+  userId: string,
 ): Promise<AppSummary | null> {
   const p = await loadAppGraphBySlug(slug);
-  return p && p.teamId === teamId && inAppScope(p)
+  return p && p.teamId === teamId && inAppScope(p) && (await reachableByUser(userId, p.id))
     ? summarizeOne(p)
     : null;
 }

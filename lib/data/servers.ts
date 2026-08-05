@@ -12,7 +12,12 @@ import {
 } from "../db/schema/control-plane";
 import { assembleServer, serverToRow } from "./infra-rows";
 import { getCurrentUser } from "../auth";
-import { requireActiveTeamId, requireInstanceAdmin } from "../membership";
+import {
+  requireActiveTeamId,
+  requireInstanceAdmin,
+  requireUnscoped,
+} from "../membership";
+import { narrowedScope } from "../auth/request-context";
 import { newId, nowIso } from "../ids";
 import { resolvePublicBaseUrl } from "../public-url";
 import { recordActivity } from "./activity";
@@ -73,6 +78,10 @@ export async function listServers(): Promise<Server[]> {
 }
 
 export async function getServer(id: string): Promise<Server | null> {
+  // A point lookup answers NOT FOUND rather than "your token is limited", so a
+  // narrowed scope can never become an oracle for which server ids exist. The
+  // collection above says plainly that it is limited; existence does not.
+  if (narrowedScope()) return null;
   const teamId = await requireActiveTeamId();
   const server = await getServerById(id);
   if (!server) return null;
@@ -125,8 +134,18 @@ export async function listServersForTeam(teamId: string): Promise<Server[]> {
   return rows.map(assembleServer);
 }
 
-/** {@link listServersForTeam} for the caller's active team (asserts membership). */
+/**
+ * {@link listServersForTeam} for the caller's active team (asserts membership).
+ *
+ * A host is a TEAM-LEVEL resource with no per-Project meaning, so a token
+ * narrowed to a project reaches none of them — same answer `listDatabases` and
+ * `listRegistries` give, and for the same reason: the fleet's names, addresses
+ * and live metrics are not part of one project. The deploy path is unaffected —
+ * it resolves its picklist through {@link listServersForTeam}, which takes an
+ * explicit team and is the engine primitive.
+ */
 export async function listServersForCurrentTeam(): Promise<Server[]> {
+  requireUnscoped("servers");
   const teamId = await requireActiveTeamId();
   return listServersForTeam(teamId);
 }

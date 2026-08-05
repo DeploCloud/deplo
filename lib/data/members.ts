@@ -395,15 +395,13 @@ async function resolveAssignment(
 ): Promise<ResolvedAssignment> {
   if (input.roleId) {
     const a = await roleAssignment(db, teamId, input.roleId);
-    if (actor.role !== "owner") {
-      const beyond = a.capabilities.filter(
-        (c) => !actor.capabilities.includes(c),
+    const beyond = a.capabilities.filter(
+      (c) => !actor.capabilities.includes(c),
+    );
+    if (beyond.length > 0)
+      throw new Error(
+        `You can only assign a role whose permissions you hold yourself — ${a.name} grants more than you do`,
       );
-      if (beyond.length > 0)
-        throw new Error(
-          `You can only assign a role whose permissions you hold yourself — ${a.name} grants more than you do`,
-        );
-    }
     return {
       rank: a.rank,
       roleId: a.roleId,
@@ -413,12 +411,17 @@ async function resolveAssignment(
   }
   if (!input.role) throw new Error("Choose a role for this member");
   const raw = cleanCapabilities(input.capabilities, input.role);
-  // A non-owner can only hand out capabilities they hold THEMSELVES — bounding
-  // the assignment to the actor's own caps (same clamp as folder grants) closes
-  // the escalation where a plain `manage_members` holder mints a member with
-  // capabilities above their own rank.
-  const caps =
-    actor.role === "owner" ? raw : withView(boundedBy(raw, actor.capabilities));
+  // A caller can only hand out capabilities they hold THEMSELVES — bounding the
+  // assignment to the actor's own caps (same clamp as folder grants) closes the
+  // escalation where a plain `manage_members` holder mints a member with
+  // capabilities above their own.
+  //
+  // The bound is the actor's capabilities, never their rank: an API token's
+  // clamp narrows a membership's capabilities but not its `role`, so exempting
+  // rank `owner` let an owner's `manage_members`-only token hand a member every
+  // capability there is. A real owner holds them all, so the bound is a no-op
+  // for them. Mirrors `withinActor` in lib/data/roles.ts.
+  const caps = withView(boundedBy(raw, actor.capabilities));
   const matched = await matchTeamRole(db, teamId, input.role, caps);
   return {
     rank: input.role,

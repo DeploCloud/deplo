@@ -25,6 +25,7 @@ import { listGithubApps } from "./github";
 import { getNotificationSettings } from "./notifications";
 import { getTeam } from "./teams";
 import { listSharedVars } from "./shared-vars";
+import { getServer, listServers, getPrimaryServer } from "./servers";
 
 /**
  * What a project-scoped API token is refused OUTRIGHT.
@@ -103,6 +104,10 @@ test("every team-wide collection is refused, and says why", async () => {
     await assert.rejects(() => getNotificationSettings(), LIMITED);
     await assert.rejects(() => getTeam(), LIMITED);
     await assert.rejects(() => listSharedVars(), LIMITED);
+    // A host has no per-Project meaning either: its name, address and live
+    // metrics belong to the team, not to one project inside it.
+    await assert.rejects(() => listServers(), LIMITED);
+    await assert.rejects(() => getPrimaryServer(), LIMITED);
   });
 });
 
@@ -118,6 +123,7 @@ test("the same reads all work over a cookie session", async () => {
 
 test("a point lookup by id reads as NOT FOUND, never as a scope error", async () => {
   await scoped(async () => {
+    assert.equal(await getServer("srv_whatever"), null);
     assert.equal(await getDatabase("db_whatever"), null);
     // Never the scope message: that would confirm the id is worth guessing at.
     await assert.rejects(

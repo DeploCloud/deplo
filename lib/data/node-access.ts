@@ -9,6 +9,8 @@ import {
   apps as appsTable,
   folderGrants as folderGrantsTable,
   folders as foldersTable,
+  membershipCapabilities as membershipCapabilitiesTable,
+  memberships as membershipsTable,
   projectGrants as projectGrantsTable,
   projects as projectsTable,
   users as usersTable,
@@ -87,7 +89,19 @@ interface GrantIndex {
   userId: string;
   /** The member's base capabilities (already token-clamped by `membershipFor`). */
   base: Capability[];
-  /** Instance admin or `manage_team`: their base set applies to every node. */
+  /**
+   * Instance admin or `manage_team`: their base set applies to every node.
+   *
+   * Read from the PERSON's stored capabilities, not the token-clamped ones —
+   * REACH is a property of the human, POWER is what the token narrows. A
+   * super-user acting through a token scoped to one folder must still see that
+   * folder (they see it in the dashboard), while what they may DO there stays
+   * clamped to the token, because `resolveFrom` returns the clamped `base`.
+   * Reading the clamped set here instead made every narrowed token blind to
+   * every folder, which is why the list paths used to skip this check entirely
+   * for a narrowed token — and skipping it is what let a token scoped to a
+   * folder its creator cannot see read the apps inside.
+   */
   superUser: boolean;
   folders: Map<
     string,
@@ -142,52 +156,68 @@ async function buildIndex(
   if (!admin && base.length === 0) return null;
 
   const db = getDb();
-  const [folderRows, projectRows, fGrants, pGrants, aGrants] = await Promise.all([
-    db
-      .select({
-        id: foldersTable.id,
-        parentId: foldersTable.parentId,
-        projectId: foldersTable.projectId,
-        ownerUserId: foldersTable.ownerUserId,
-      })
-      .from(foldersTable)
-      .where(eq(foldersTable.teamId, teamId)),
-    db
-      .select({ id: projectsTable.id, ownerUserId: projectsTable.ownerUserId })
-      .from(projectsTable)
-      .where(eq(projectsTable.teamId, teamId)),
-    db
-      .select({
-        key: folderGrantsTable.folderId,
-        capability: folderGrantsTable.capability,
-      })
-      .from(folderGrantsTable)
-      .innerJoin(foldersTable, eq(foldersTable.id, folderGrantsTable.folderId))
-      .where(
-        and(eq(folderGrantsTable.userId, userId), eq(foldersTable.teamId, teamId)),
-      ),
-    db
-      .select({
-        key: projectGrantsTable.projectId,
-        capability: projectGrantsTable.capability,
-      })
-      .from(projectGrantsTable)
-      .innerJoin(projectsTable, eq(projectsTable.id, projectGrantsTable.projectId))
-      .where(
-        and(eq(projectGrantsTable.userId, userId), eq(projectsTable.teamId, teamId)),
-      ),
-    db
-      .select({ key: appGrantsTable.appId, capability: appGrantsTable.capability })
-      .from(appGrantsTable)
-      .innerJoin(appsTable, eq(appsTable.id, appGrantsTable.appId))
-      .where(and(eq(appGrantsTable.userId, userId), eq(appsTable.teamId, teamId))),
-  ]);
+  const [folderRows, projectRows, fGrants, pGrants, aGrants, superUser] =
+    await Promise.all([
+      db
+        .select({
+          id: foldersTable.id,
+          parentId: foldersTable.parentId,
+          projectId: foldersTable.projectId,
+          ownerUserId: foldersTable.ownerUserId,
+        })
+        .from(foldersTable)
+        .where(eq(foldersTable.teamId, teamId)),
+      db
+        .select({ id: projectsTable.id, ownerUserId: projectsTable.ownerUserId })
+        .from(projectsTable)
+        .where(eq(projectsTable.teamId, teamId)),
+      db
+        .select({
+          key: folderGrantsTable.folderId,
+          capability: folderGrantsTable.capability,
+        })
+        .from(folderGrantsTable)
+        .innerJoin(foldersTable, eq(foldersTable.id, folderGrantsTable.folderId))
+        .where(
+          and(
+            eq(folderGrantsTable.userId, userId),
+            eq(foldersTable.teamId, teamId),
+          ),
+        ),
+      db
+        .select({
+          key: projectGrantsTable.projectId,
+          capability: projectGrantsTable.capability,
+        })
+        .from(projectGrantsTable)
+        .innerJoin(
+          projectsTable,
+          eq(projectsTable.id, projectGrantsTable.projectId),
+        )
+        .where(
+          and(
+            eq(projectGrantsTable.userId, userId),
+            eq(projectsTable.teamId, teamId),
+          ),
+        ),
+      db
+        .select({
+          key: appGrantsTable.appId,
+          capability: appGrantsTable.capability,
+        })
+        .from(appGrantsTable)
+        .innerJoin(appsTable, eq(appsTable.id, appGrantsTable.appId))
+        .where(
+          and(eq(appGrantsTable.userId, userId), eq(appsTable.teamId, teamId)),
+        ),
+      holdsManageTeam(userId, teamId),
+    ]);
 
   return {
     teamId,
     userId,
     base,
-    superUser: admin || base.includes("manage_team"),
+    superUser: admin || superUser,
     folders: new Map(
       folderRows.map((f) => [
         f.id,
@@ -203,6 +233,38 @@ async function buildIndex(
     projectGrants: groupCaps(pGrants),
     appGrants: groupCaps(aGrants),
   };
+}
+
+/**
+ * Whether the PERSON holds `manage_team` in this team, straight off the
+ * junction — deliberately NOT through `membershipFor`, whose set is clamped to
+ * the API token making the request.
+ *
+ * Reach is a property of the human and power is what the token narrows: a
+ * super-user acting through a scoped token must still SEE every folder (they see
+ * them in the dashboard), while what they may do there stays clamped. Shared
+ * with `lib/data/folder-access.ts`, which asks the same question.
+ */
+export async function holdsManageTeam(
+  userId: string,
+  teamId: string,
+): Promise<boolean> {
+  const rows = await getDb()
+    .select({ capability: membershipCapabilitiesTable.capability })
+    .from(membershipCapabilitiesTable)
+    .innerJoin(
+      membershipsTable,
+      eq(membershipsTable.id, membershipCapabilitiesTable.membershipId),
+    )
+    .where(
+      and(
+        eq(membershipsTable.userId, userId),
+        eq(membershipsTable.teamId, teamId),
+        eq(membershipCapabilitiesTable.capability, "manage_team"),
+      ),
+    )
+    .limit(1);
+  return rows.length > 0;
 }
 
 /** The team that owns a node, or null when it doesn't exist. */

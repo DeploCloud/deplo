@@ -535,13 +535,22 @@ function sanitizeCapabilities(caps: Capability[] | undefined): Capability[] {
 }
 
 /**
- * A non-owner can only put capabilities they hold THEMSELVES into a role (or an
+ * A caller can only put capabilities they hold THEMSELVES into a role (or an
  * API token) — without it, a plain `manage_members` holder could author an
  * all-powerful role and hand it out, and a `manage_tokens` holder could mint a
  * token more powerful than themselves. Unlike the member-level clamp this
  * REFUSES rather than silently dropping: an editor that saves fewer permissions
  * than were ticked, with no explanation, is how an admin ends up believing a
  * role grants something it doesn't.
+ *
+ * The bound is the actor's CAPABILITIES, never their rank. `memberships.role` is
+ * only a rank, and it is the one part of a membership the API-token clamp does
+ * not narrow — so exempting rank `owner` here meant an owner's token restricted
+ * to `manage_tokens` could mint an all-powerful successor, and one restricted to
+ * `manage_roles` could re-scope the role every member already holds. A real
+ * owner holds all forty-one capabilities, so the bound costs them nothing; what
+ * it costs is that escalation. Same reason the assignment path in
+ * `lib/data/members.ts` dropped its own rank exemption.
  *
  * Shared with `lib/data/tokens.ts` — `subject` only names the thing in the
  * error, the rule is identical. It also carries `sanitizeCapabilities` along, so
@@ -553,7 +562,6 @@ export function withinActor(
   subject: "role" | "token" = "role",
 ): Capability[] {
   const wanted = sanitizeCapabilities(caps);
-  if (actor.role === "owner") return wanted;
   const beyond = wanted.filter((c) => !actor.capabilities.includes(c));
   if (beyond.length > 0)
     throw new Error(

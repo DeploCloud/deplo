@@ -34,7 +34,14 @@ export const builder = new SchemaBuilder<{
     authScopes: (ctx) => ({
       loggedIn: !!ctx.viewer,
       capability: (cap: Capability) => ctx.capabilities.includes(cap),
-      instanceAdmin: !!ctx.viewer?.isInstanceAdmin,
+      // Instance administration is opt-in PER TOKEN, never inherited from the
+      // person (see `tokenHoldsInstanceAdmin` in lib/membership.ts). The data
+      // layer's `requireInstanceAdmin` already says so, but a field whose whole
+      // body is a generator — the cleanup-runs subscription — never reaches it,
+      // so the scope has to agree with the boundary rather than approximate it.
+      instanceAdmin:
+        !!ctx.viewer?.isInstanceAdmin &&
+        (!ctx.identity?.token || ctx.identity.token.instanceAdmin),
     }),
   },
 });

@@ -12,6 +12,8 @@ import {
   isObjectType,
   isScalarType,
   isUnionType,
+  parse,
+  subscribe,
   type GraphQLField,
   type GraphQLInputType,
   type GraphQLOutputType,
@@ -485,7 +487,7 @@ test("an instance admin's token administers the instance only when it was grante
   assert.equal(
     principal.ctx.viewer?.isInstanceAdmin,
     true,
-    "fixture: the field-level scope sees the admin behind the token, so the refusal has to come from the data layer",
+    "fixture: the PERSON behind the token really is an admin, so the refusal has to come from the token's own switch",
   );
   const leaks: string[] = [];
   for (const e of ADMIN_ENDPOINTS) {
@@ -496,6 +498,75 @@ test("an instance admin's token administers the instance only when it was grante
     [],
     `a token that was never given instance administration reached: ${leaks.join(", ")}`,
   );
+});
+
+/**
+ * The same question for the SUBSCRIPTIONS, which {@link EXECUTABLE} leaves out.
+ *
+ * A subscription's whole body is a generator, so it never reaches the data
+ * layer's `requireInstanceAdmin` — the field scope is the only gate it has. That
+ * is why the `instanceAdmin` scope asks the token's own switch rather than only
+ * the person's admin flag: without it, an admin's ordinary token could open the
+ * fleet-wide cleanup history the same admin's ordinary token is refused
+ * everywhere else.
+ */
+const ADMIN_SUBSCRIPTIONS = ENDPOINTS.filter(
+  (e) => e.kind === "subscription" && e.gate.kind === "instanceAdmin",
+);
+
+/**
+ * Open one subscription as one principal and pull its FIRST event. `[]` ⇒ the
+ * subscriber received a payload.
+ *
+ * Pulling matters: a scope-auth refusal can land either on `subscribe` (no
+ * iterator at all) or on the per-event `resolve` (an iterator that only ever
+ * yields errors). Both are a refusal; an iterator on its own is not.
+ */
+async function open(p: Principal, e: Endpoint): Promise<string[]> {
+  const result = await runWithIdentity(p.identity, () =>
+    subscribe({ schema, document: parse(e.doc), contextValue: p.ctx }),
+  );
+  if (!(Symbol.asyncIterator in result))
+    return (result.errors ?? []).map((err) => err.message);
+  const it = result as AsyncGenerator<{ errors?: readonly { message: string }[] }>;
+  try {
+    const first = await runWithIdentity(p.identity, () => it.next());
+    return (first.value?.errors ?? []).map((err: { message: string }) => err.message);
+  } finally {
+    // Close it so the pubSub listener doesn't outlive the test.
+    await it.return?.(undefined as never);
+  }
+}
+
+test(`an instance admin's token can't open the ${ADMIN_SUBSCRIPTIONS.length} admin subscriptions either`, async () => {
+  assert.ok(ADMIN_SUBSCRIPTIONS.length > 0, "fixture: there is one to test");
+  await reset(ALL_CAPABILITIES);
+
+  const plain = await asToken(await mintToken(ALL_CAPABILITIES, USER_1));
+  assert.ok(plain, "the token must authenticate");
+  const leaks: string[] = [];
+  for (const e of ADMIN_SUBSCRIPTIONS) {
+    if (!refused(await open(plain, e))) leaks.push(e.label);
+  }
+  assert.deepEqual(
+    leaks,
+    [],
+    `a token that was never given instance administration opened: ${leaks.join(", ")}`,
+  );
+
+  // The control: with the switch ON, the very same stream opens — the gate is
+  // the token's grant, not a subscription nobody can ever reach.
+  const admin = await asToken(
+    await mintToken(ALL_CAPABILITIES, USER_1, { instanceAdmin: true }),
+  );
+  assert.ok(admin, "the admin token must authenticate");
+  for (const e of ADMIN_SUBSCRIPTIONS) {
+    assert.deepEqual(
+      await open(admin, e),
+      [],
+      `${e.label} refused a token that WAS given instance administration`,
+    );
+  }
 });
 
 /* ------------------------------------------------------------------ */

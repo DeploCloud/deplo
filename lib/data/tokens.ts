@@ -27,6 +27,8 @@ import {
   teamsForUser,
 } from "../membership";
 import { withinActor } from "./roles";
+import { visibleFolderIds } from "./folder-access";
+import { appCapabilitiesForTeam } from "./node-access";
 import { recordActivity } from "./activity";
 import { assertUser, getCurrentUser } from "../auth";
 import { sha256Hex, randomToken } from "../crypto";
@@ -271,12 +273,15 @@ export interface ScopeTreeTeam {
 export async function listScopeTree(): Promise<ScopeTreeTeam[]> {
   // Deliberately NOT gated on `manage_tokens`: a member without it still opens a
   // token page (read-only, like the roles page), and the tree holds nothing they
-  // can't already see — it is built from their OWN memberships, which is also
-  // what bounds it. A narrowed token is refused: it must not enumerate the teams
-  // its creator belongs to.
+  // can't already see. A narrowed token is refused: it must not enumerate the
+  // teams its creator belongs to.
   const user = await assertUser();
   requireUnscoped("the token scope picker");
-  return buildScopeTree(await teamsForUser(user.id));
+  // Their memberships bound WHICH teams; per-node access bounds what shows up
+  // inside one. Team membership alone is not enough — a folder is private to its
+  // owner and grantees, and a picker that listed every private folder (and the
+  // apps in it) by name would disclose exactly what the folder exists to hide.
+  return buildScopeTree(await teamsForUser(user.id), { asCaller: true });
 }
 
 /**
@@ -287,6 +292,7 @@ export async function listScopeTree(): Promise<ScopeTreeTeam[]> {
  */
 export async function buildScopeTree(
   mine: { id: string; name: string }[],
+  opts: { asCaller?: boolean } = {},
 ): Promise<ScopeTreeTeam[]> {
   if (mine.length === 0) return [];
   const teamIds = mine.map((t) => t.id);
@@ -327,12 +333,23 @@ export async function buildScopeTree(
       .where(inArray(appsTable.teamId, teamIds)),
   ]);
 
+  // Per-node visibility, when the tree is the CALLER's own picker: a folder they
+  // can't see, and an app they hold nothing on, must not be listed — the same
+  // answer `listFolders` and `listApps` give. The instance-admin user editor
+  // passes nothing and keeps the full tree, which is what an admin already sees.
+  const { folders: visibleFolders, apps: visibleApps } = opts.asCaller
+    ? await visibleNodes(teamIds, folderRows, appRows)
+    : { folders: null, apps: null };
+  const folderVisible = (id: string) => !visibleFolders || visibleFolders.has(id);
+  const appVisible = (id: string) => !visibleApps || visibleApps.has(id);
+
   const byName = (a: { name: string }, b: { name: string }) =>
     a.name.localeCompare(b.name);
 
   /** Apps keyed by the ONE container they live in (folder, else project, else team). */
   const appsIn = new Map<string, ScopeTreeApp[]>();
   for (const a of appRows) {
+    if (!appVisible(a.id)) continue;
     const key = a.folderId ?? a.projectId ?? a.teamId;
     appsIn.set(key, [
       ...(appsIn.get(key) ?? []),
@@ -342,7 +359,7 @@ export async function buildScopeTree(
   /** Child folders keyed by their parent folder id. */
   const subfoldersOf = new Map<string, typeof folderRows>();
   for (const f of folderRows)
-    if (f.parentId)
+    if (f.parentId && folderVisible(f.id))
       subfoldersOf.set(f.parentId, [...(subfoldersOf.get(f.parentId) ?? []), f]);
 
   // Cycle-safe, like every other walk over this tree: a stale parent chain must
@@ -365,7 +382,7 @@ export async function buildScopeTree(
   };
   const rootFolders = (predicate: (f: (typeof folderRows)[number]) => boolean) =>
     folderRows
-      .filter((f) => !f.parentId && predicate(f))
+      .filter((f) => !f.parentId && folderVisible(f.id) && predicate(f))
       .sort(byName)
       .map((f) => build(f, new Set()));
 
@@ -385,6 +402,51 @@ export async function buildScopeTree(
     folders: rootFolders((f) => f.teamId === t.id && !f.projectId),
     looseApps: (appsIn.get(t.id) ?? []).sort(byName),
   }));
+}
+
+/**
+ * The folder and app ids the CURRENT caller may see, across several teams — the
+ * per-node half of the picker's bound.
+ *
+ * Six queries per team (one `visibleFolderIds`, one batched
+ * `appCapabilitiesForTeam`), not one per node: a picker draws the whole fleet.
+ */
+async function visibleNodes(
+  teamIds: string[],
+  folderRows: { id: string; teamId: string }[],
+  appRows: {
+    id: string;
+    teamId: string;
+    projectId: string | null;
+    folderId: string | null;
+  }[],
+): Promise<{ folders: Set<string>; apps: Set<string> }> {
+  const folders = new Set<string>();
+  const apps = new Set<string>();
+  for (const teamId of teamIds) {
+    try {
+      const seen = await visibleFolderIds(teamId);
+      for (const f of folderRows)
+        if (f.teamId === teamId && (seen === "all" || seen.has(f.id)))
+          folders.add(f.id);
+      const reach = await appCapabilitiesForTeam(
+        teamId,
+        appRows
+          .filter((a) => a.teamId === teamId)
+          .map((a) => ({
+            id: a.id,
+            folderId: a.folderId ?? null,
+            projectId: a.projectId ?? null,
+          })),
+      );
+      for (const [id, caps] of reach) if (caps.length > 0) apps.add(id);
+    } catch {
+      // A team the caller can't currently resolve at all — an unmet two-factor
+      // policy is the live example. It contributes nothing rather than taking
+      // down the whole picker: they could not use that team's nodes anyway.
+    }
+  }
+  return { folders, apps };
 }
 
 /* ------------------------------------------------------------------ */
@@ -497,6 +559,7 @@ export async function updateToken(
       .select({
         instanceAdmin: apiTokens.instanceAdmin,
         homeTeamId: apiTokens.teamId,
+        createdByUserId: apiTokens.userId,
       })
       .from(apiTokens)
       .where(eq(apiTokens.id, input.id))
@@ -515,6 +578,18 @@ export async function updateToken(
   // manage_tokens holder must not be able to rename it, re-scope it, or keep the
   // bit alive under a permission set of their own choosing.
   if (existing.instanceAdmin) await requireInstanceAdmin();
+  // Re-authoring SOMEONE ELSE's token: the live clamp only measures it against
+  // its creator, so bound the edit by the actor's own capabilities in every team
+  // this token will reach.
+  if (existing.createdByUserId !== userId)
+    await assertWithinActorEverywhere(
+      capabilities,
+      userId,
+      teamId,
+      scoped
+        ? scope.teamsReached
+        : (await teamsForUser(existing.createdByUserId)).map((t) => t.id),
+    );
 
   await db.transaction(async (tx) => {
     await tx
@@ -672,6 +747,13 @@ interface ResolvedScope {
   projectIds: string[];
   folderIds: string[];
   appIds: string[];
+  /**
+   * Every team the ticked nodes put in reach — the whole teams plus the owning
+   * team of each project, folder and app. All of them are teams the ACTOR
+   * belongs to (that is what {@link resolveScopeInput} validates), so this is
+   * what {@link assertWithinActorEverywhere} measures the edit against.
+   */
+  teamsReached: string[];
 }
 
 /**
@@ -715,11 +797,18 @@ async function resolveScopeInput(
   const folderIds = [...new Set(input.folderIds ?? [])];
   const appIds = [...new Set(input.appIds ?? [])];
   if (teamIds.length + projectIds.length + folderIds.length + appIds.length === 0)
-    return { teamIds: [], projectIds: [], folderIds: [], appIds: [] };
+    return {
+      teamIds: [],
+      projectIds: [],
+      folderIds: [],
+      appIds: [],
+      teamsReached: [],
+    };
 
   const mine = new Set((await teamsForUser(userId)).map((t) => t.id));
   for (const id of teamIds)
     if (!mine.has(id)) throw new Error("You're not a member of one of those teams");
+  const reached = new Set<string>(teamIds);
 
   const db = getDb();
   if (projectIds.length > 0) {
@@ -729,6 +818,7 @@ async function resolveScopeInput(
       .where(inArray(projectsTable.id, projectIds));
     if (rows.length !== projectIds.length || rows.some((r) => !mine.has(r.teamId)))
       throw new Error("One of those projects isn't in a team you belong to");
+    for (const r of rows) reached.add(r.teamId);
   }
   if (folderIds.length > 0) {
     const rows = await db
@@ -737,6 +827,7 @@ async function resolveScopeInput(
       .where(inArray(foldersTable.id, folderIds));
     if (rows.length !== folderIds.length || rows.some((r) => !mine.has(r.teamId)))
       throw new Error("One of those folders isn't in a team you belong to");
+    for (const r of rows) reached.add(r.teamId);
   }
   if (appIds.length > 0) {
     const rows = await db
@@ -745,8 +836,44 @@ async function resolveScopeInput(
       .where(inArray(appsTable.id, appIds));
     if (rows.length !== appIds.length || rows.some((r) => !mine.has(r.teamId)))
       throw new Error("One of those apps isn't in a team you belong to");
+    for (const r of rows) reached.add(r.teamId);
   }
-  return { teamIds, projectIds, folderIds, appIds };
+  return { teamIds, projectIds, folderIds, appIds, teamsReached: [...reached] };
+}
+
+/**
+ * Bound a token edit by what the ACTOR may do in every team the token will act
+ * in — not merely in the team it is managed from.
+ *
+ * The live clamp measures a token against its CREATOR, so it says nothing about
+ * whoever re-authors it later. Without this, an admin of the home team could
+ * hand someone else's credential capabilities they do not hold themselves in
+ * another team that token reaches: a `manage_tokens` holder who is a plain
+ * viewer in team B could point Alice's token at B with `delete_apps` on it, and
+ * the runtime clamp — which only asks about Alice — would let it through.
+ *
+ * Only runs when the actor is not the creator; editing your own token is already
+ * bounded, in every team, by the clamp against yourself. A token the actor
+ * cannot measure at all (an unrestricted one whose creator belongs to teams the
+ * actor doesn't) is refused rather than silently gutted: revoking it is the
+ * lever a team has over a credential it can't author.
+ */
+async function assertWithinActorEverywhere(
+  capabilities: Capability[],
+  actorUserId: string,
+  homeTeamId: string,
+  reach: string[],
+): Promise<void> {
+  for (const teamId of reach) {
+    // The home team is already bounded by the `withinActor` call at the top.
+    if (teamId === homeTeamId) continue;
+    const membership = await membershipFor(actorUserId, teamId);
+    if (!membership)
+      throw new Error(
+        "This token can act in a team you're not a member of. You can revoke it here, but not change what it may do.",
+      );
+    withinActor(capabilities, membership, "token");
+  }
 }
 
 async function writeScope(

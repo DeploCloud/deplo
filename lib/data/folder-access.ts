@@ -17,7 +17,7 @@ import {
   NODE_GRANTABLE_CAPABILITIES,
   boundedBy,
 } from "../membership-shared";
-import { nodeCapabilities, withView } from "./node-access";
+import { holdsManageTeam, nodeCapabilities, withView } from "./node-access";
 import { type Capability } from "../types";
 
 /**
@@ -115,6 +115,11 @@ async function isFolderSuperUser(
   admin: boolean,
 ): Promise<boolean> {
   if (admin) return true;
+  // The token-CLAMPED capability on purpose. This answers the sharing question
+  // ({@link requireFolderOwnerOrAdmin}), which consults no capability of its own
+  // — so a token that was never given `manage_team` must not inherit the power
+  // to re-share someone else's folder from the person who minted it. Visibility
+  // asks a different question and reads the person: see {@link visibleFolderIds}.
   return (await teamCapsFor(userId, teamId)).includes("manage_team");
 }
 
@@ -217,7 +222,10 @@ export async function folderIsOwnerOrAdmin(folderId: string): Promise<boolean> {
   if (!user) return false;
   const f = await folderRow(folderId);
   if (!f) return false;
-  if (await isFolderSuperUser(user.id, f.teamId, Boolean(user.isInstanceAdmin)))
+  // `isInstanceAdmin()`, not the stored flag: administration is opt-in per API
+  // token, and this answer has to match `requireFolderOwnerOrAdmin` — a Share
+  // button that appears and then refuses is worse than one that never appeared.
+  if (await isFolderSuperUser(user.id, f.teamId, await isInstanceAdmin()))
     return true;
   return f.ownerUserId === user.id;
 }
@@ -237,8 +245,15 @@ export async function visibleFolderIds(
 ): Promise<Set<string> | "all"> {
   const user = await getCurrentUser();
   if (!user) return new Set();
-  const admin = Boolean(user.isInstanceAdmin);
-  if (await isFolderSuperUser(user.id, teamId, admin)) return "all";
+  // VISIBILITY, not power: reach is a property of the person, and the token
+  // narrows only what may be done with it. So `manage_team` is read unclamped
+  // ({@link holdsManageTeam}) — otherwise a super-user's scoped token went blind
+  // to every folder, which is what the list paths used to paper over by skipping
+  // this check entirely for a narrowed token. The instance-admin flag stays
+  // per-TOKEN (`tokenHoldsInstanceAdmin`), so a plain token minted by an admin
+  // who is not a member here still sees nothing.
+  const admin = await isInstanceAdmin();
+  if (admin || (await holdsManageTeam(user.id, teamId))) return "all";
   // Not a super-user and not a member ⇒ nothing visible.
   if (!admin && (await teamCapsFor(user.id, teamId)).length === 0)
     return new Set();
