@@ -28,6 +28,12 @@ export interface LogsSession {
   id: string;
   /** App that authorised this session — the GET must match it. */
   appId: string;
+  /**
+   * The principal the GET opened this session as. A session id is a capability
+   * on its own — anyone holding one could close somebody else's live log stream
+   * — so the DELETE re-checks it, the same way the attach session does.
+   */
+  userId: string;
   /** Real container name being streamed. */
   containerName: string;
   handle: AttachHandle;
@@ -99,6 +105,7 @@ function enforceSessionCaps(appId: string) {
  */
 export function open(
   appId: string,
+  userId: string,
   containerName: string,
   handle: AttachHandle,
   cleanup?: () => void,
@@ -108,6 +115,7 @@ export function open(
   const session: LogsSession = {
     id,
     appId,
+    userId,
     containerName,
     handle,
     subscribers: new Set(),

@@ -98,14 +98,22 @@ export function PendingCreateProvider({
   const [pending, setPending] = React.useState<PendingCreate[]>([]);
   const [, startTransition] = React.useTransition();
   const nextId = React.useRef(0);
-  const seen = React.useRef(count);
+  // The last `count` this provider reacted to. STATE, not a ref: this is React's
+  // documented "adjusting state when a prop changes" escape hatch, and it is
+  // only correct with state — a ref written during render keeps its new value
+  // even when React throws that render away (a discarded concurrent attempt, a
+  // Strict Mode double-invoke), after which the arrival is gone and the
+  // placeholder never retires. Writing a ref during render is also what
+  // `react-hooks/refs` flags.
+  const [seen, setSeen] = React.useState(count);
 
-  // Adjusting state during render (React's own "derive from props" escape
-  // hatch): the alternative, an effect, runs AFTER the commit, which is exactly
-  // one frame of the placeholder and the real row side by side.
-  if (count !== seen.current) {
-    const landed = count - seen.current;
-    seen.current = count;
+  // Adjusting state during render: the alternative, an effect, runs AFTER the
+  // commit, which is exactly one frame of the placeholder and the real row side
+  // by side. React re-runs this component immediately, before painting, so the
+  // extra pass costs nothing visible.
+  if (count !== seen) {
+    const landed = count - seen;
+    setSeen(count);
     if (landed > 0) {
       const retiring = pending.filter((p) => p.settled).slice(0, landed);
       if (retiring.length > 0) {

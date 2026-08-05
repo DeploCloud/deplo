@@ -101,6 +101,7 @@ import { AgentUnreachableError } from "../infra/agent-client";
 import { publishAppChanged } from "../graphql/pubsub";
 import {
   inAppScope,
+  inFolderScope,
   inProjectScope,
   narrowedScope,
 } from "../auth/request-context";
@@ -495,11 +496,19 @@ async function resolveNewAppPlacement(
   environmentId: string | null;
 }> {
   const placement = await resolvePlacement(input, teamId);
-  // A project-scoped API token creates INSIDE its scope or not at all —
-  // otherwise the create path is how a token walks out of its own boundary.
-  // Same message the destination lookups use, so nothing leaks.
-  if (!inProjectScope(placement.projectId))
+  // A narrowed API token creates INSIDE its scope or not at all — otherwise the
+  // create path is how a token walks out of its own boundary. Which question to
+  // ask depends on where the app is being filed: an app lives in exactly ONE
+  // place, and a FOLDER has no `project_id` of its own, so asking about the
+  // project for a folder destination answered "no project ⇒ out of scope" and
+  // refused a folder-scoped token its own folder. The team top level (neither
+  // set) is outside every narrowed scope, which is the fail-closed default.
+  // Same messages the destination lookups use, so nothing leaks.
+  if (placement.folderId) {
+    if (!inFolderScope(placement.folderId)) throw new Error("Folder not found");
+  } else if (!inProjectScope(placement.projectId)) {
     throw new Error("Project not found");
+  }
   return placement;
 }
 

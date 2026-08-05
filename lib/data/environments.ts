@@ -279,14 +279,23 @@ export async function deleteEnvironment(id: string): Promise<void> {
   const siblings = await getDb()
     .select({ id: environmentsTable.id, isDefault: environmentsTable.isDefault })
     .from(environmentsTable)
-    .where(eq(environmentsTable.projectId, env.projectId));
+    .where(eq(environmentsTable.projectId, env.projectId))
+    .orderBy(asc(environmentsTable.position));
   if (siblings.length <= 1)
     throw new Error("A project must keep at least one environment.");
-  const fallback = siblings.find((e) => e.isDefault && e.id !== id) ?? null;
+  // The project's default, else its FIRST remaining environment — never null.
+  // An app whose `environment_id` is cleared while its `project_id` stays is an
+  // app filed in a project and in none of its environments: invisible on the
+  // Overview drill-in, which browses per environment. The default is normally
+  // there (this refuses to delete it), so the fallback only bites on a project
+  // that somehow has none — exactly when silently orphaning apps would be
+  // hardest to notice. `siblings.length > 1` makes it always defined.
+  const others = siblings.filter((e) => e.id !== id);
+  const fallback = others.find((e) => e.isDefault) ?? others[0];
   await getDb().transaction(async (tx) => {
     await tx
       .update(appsTable)
-      .set({ environmentId: fallback?.id ?? null, updatedAt: nowIso() })
+      .set({ environmentId: fallback.id, updatedAt: nowIso() })
       .where(eq(appsTable.environmentId, id));
     await tx.delete(environmentsTable).where(eq(environmentsTable.id, id));
   });

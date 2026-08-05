@@ -64,7 +64,7 @@ export async function GET(
   try {
     const conn = await connectAgent(resolved.serverId);
     const handle = conn.followLogs(databaseId, resolved.instance.name, tail);
-    session = logs.open(databaseId, resolved.instance.name, handle, () =>
+    session = logs.open(databaseId, user.id, resolved.instance.name, handle, () =>
       conn.close(),
     );
   } catch {
@@ -159,6 +159,9 @@ export async function DELETE(
   const { id: databaseId } = await ctx.params;
   const sessionId = request.nextUrl.searchParams.get("sessionId") ?? "";
   const session = sessionId ? logs.get(sessionId, databaseId) : undefined;
-  if (session) logs.destroy(sessionId);
+  // Only the principal that opened it may close it: a session id is otherwise a
+  // capability anyone can use to cut short somebody else's live log stream.
+  // Silent either way — a stranger learns nothing about which ids are live.
+  if (session && session.userId === user.id) logs.destroy(sessionId);
   return Response.json({ ok: true });
 }

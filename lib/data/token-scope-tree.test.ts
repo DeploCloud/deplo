@@ -611,3 +611,41 @@ test("a token ticked onto a folder its author can't see reads nothing", async ()
     assert.deepEqual((await listFolders()).map((f) => f.id), ["fld_private"]);
   });
 });
+
+/* ------------------------------------------------------------------ */
+/* A folder-scoped token can work INSIDE its folder                    */
+/* ------------------------------------------------------------------ */
+
+test("a folder-scoped token creates apps in its own folder, and nowhere else", async () => {
+  await seedFolders();
+  const { createApp } = await import("./apps");
+  const newApp = (name: string, where: { folderId?: string; projectId?: string }) =>
+    createApp({ name, source: "upload" as const, repo: null, ...where });
+
+  await underToken(
+    { name: "Folder CI", capabilities: ["create_apps"], folderIds: ["fld_root"] },
+    async () => {
+      // The scope IS a folder, and a folder has no `project_id` of its own — so
+      // asking "is your PROJECT in scope?" answered "you have no project" and
+      // refused the token the one place it was pointed at.
+      const made = await newApp("in-folder", { folderId: "fld_root" });
+      assert.equal(made.folderId, "fld_root");
+
+      // Everywhere else still refuses: the nested folder is in scope (a folder
+      // scope reaches its subtree), the unrelated one and the team top level
+      // are not.
+      const nested = await newApp("in-child", { folderId: "fld_child" });
+      assert.equal(nested.folderId, "fld_child");
+      await assert.rejects(
+        () => newApp("outside", { folderId: "fld_loose" }),
+        /not found/i,
+        "a folder outside the scope is not a destination",
+      );
+      await assert.rejects(
+        () => newApp("top", {}),
+        /not found/i,
+        "nor the team top level, which no narrowed scope covers",
+      );
+    },
+  );
+});
