@@ -21,6 +21,7 @@ import {
   requireMembership,
   requireUnscoped,
 } from "../membership";
+import { narrowedScope } from "../auth/request-context";
 import { recordActivity } from "./activity";
 import {
   appCapabilitiesForTeam,
@@ -260,7 +261,33 @@ export interface AppSharedVarDTO {
  * from any app. Filtering to in-scope vars would strand a link-only var the
  * moment its last link is removed, and would hide everything from a top-level
  * app (no project/environment).
+ *
+ * …for a caller who reaches the whole team. A NARROWED one gets only the vars
+ * that pertain to this app — linked here, or suggested by a project or
+ * environment it lives in. `manage_env` survives the project clamp on purpose
+ * (it is what makes an app's own variables editable inside a scope), so without
+ * this the team's entire shared catalogue was one in-scope app away: every key
+ * by name, and the plaintext of every non-secret one, since only `secret` rows
+ * are masked below. The five sibling functions all refuse a narrowed caller
+ * outright; this one can't, because it IS the page inside their scope.
  */
+/**
+ * Whether one shared var pertains to one app: linked to it, or suggested by a
+ * project or environment the app lives in. A `teamWide` var is deliberately NOT
+ * reachable this way — team-wide is the whole team, which is exactly what a
+ * narrowed scope excludes, and `listSharedVars` already refuses it outright.
+ */
+function reachableFromApp(
+  v: { appIds: string[]; projectIds: string[]; environmentIds: string[] },
+  app: { appId: string; projectId: string | null; environmentId: string | null },
+): boolean {
+  return (
+    v.appIds.includes(app.appId) ||
+    (app.projectId != null && v.projectIds.includes(app.projectId)) ||
+    (app.environmentId != null && v.environmentIds.includes(app.environmentId))
+  );
+}
+
 export async function listSharedVarsForApp(
   appId: string,
 ): Promise<AppSharedVarDTO[]> {
@@ -278,7 +305,10 @@ export async function listSharedVarsForApp(
   )[0];
   const projectId = app?.projectId ?? null;
   const environmentId = app?.environmentId ?? null;
-  const vars = await loadSharedVarsForTeam(teamId);
+  const all = await loadSharedVarsForTeam(teamId);
+  const vars = narrowedScope()
+    ? all.filter((v) => reachableFromApp(v, { appId, projectId, environmentId }))
+    : all;
   // One identity query for every shared row on the app's Environment page.
   const authors = await loadUserIdentities(authorIds(vars));
   return vars
@@ -603,6 +633,39 @@ export async function saveSharedVar(input: {
   return savedId;
 }
 
+/**
+ * The write-side twin of the filter in {@link listSharedVarsForApp}: may a
+ * narrowed caller name this variable from this app at all? Loads the team's
+ * shared vars rather than the one row, so the two answers come from the same
+ * predicate — a mutation that ran a second, subtly different rule is how the
+ * list and the link end up disagreeing.
+ */
+async function linkableFromApp(
+  varId: string,
+  appId: string,
+  teamId: string,
+): Promise<boolean> {
+  const app = (
+    await getDb()
+      .select({
+        projectId: appsTable.projectId,
+        environmentId: appsTable.environmentId,
+      })
+      .from(appsTable)
+      .where(eq(appsTable.id, appId))
+      .limit(1)
+  )[0];
+  const v = (await loadSharedVarsForTeam(teamId)).find((x) => x.id === varId);
+  return (
+    v != null &&
+    reachableFromApp(v, {
+      appId,
+      projectId: app?.projectId ?? null,
+      environmentId: app?.environmentId ?? null,
+    })
+  );
+}
+
 /** Attach or detach one shared var to one app (idempotent, the per-app link). */
 export async function setSharedVarAppLink(
   varId: string,
@@ -617,6 +680,13 @@ export async function setSharedVarAppLink(
     .where(and(eq(varsTable.id, varId), eq(varsTable.teamId, teamId)))
     .limit(1);
   if (!v[0]) throw new Error("Variable not found");
+  // Belonging to the team is not enough for a NARROWED caller. A link injects
+  // the value at the highest precedence of the deploy edge, into an app they
+  // hold a console and logs on — so linking a team-wide variable would be a way
+  // to read one, and `revealSharedVar` refusing them would mean nothing. Same
+  // message as an unknown id: a scope must never say which ids exist.
+  if (narrowedScope() && !(await linkableFromApp(varId, appId, teamId)))
+    throw new Error("Variable not found");
   if (linked) {
     await getDb().insert(appJunction).values({ varId, appId }).onConflictDoNothing();
   } else {

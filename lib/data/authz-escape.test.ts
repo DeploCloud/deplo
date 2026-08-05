@@ -34,8 +34,10 @@ import { ALL_CAPABILITIES, type Capability } from "../types";
 import {
   deleteSharedVar,
   listSharedVars,
+  listSharedVarsForApp,
   revealSharedVar,
   saveSharedVar,
+  setSharedVarAppLink,
 } from "./shared-vars";
 import {
   createBackup,
@@ -243,6 +245,87 @@ test("nor author one — a team-wide var reaches every app in the team", async (
     await asUser(() => revealSharedVar(id)),
     "sk_live_hunter2",
     "and the stored value is untouched",
+  );
+});
+
+test("nor enumerate them from an app it does reach", async () => {
+  await teamWideSecret();
+  // A plain one too: only `secret` rows are masked, so a team-wide plain var is
+  // the value itself, not just its name.
+  await asUser(() =>
+    saveSharedVar({
+      key: "SENTRY_DSN",
+      value: "https://team-wide-dsn",
+      type: "plain",
+      teamWide: true,
+      environmentIds: [],
+      projectIds: [],
+    }),
+  );
+
+  // The control: over a session the same app's page shows the whole team set,
+  // which is ADR-0012's "scopes only suggest" and must not regress.
+  const mine = await asUser(() => listSharedVarsForApp(APP_IN));
+  assert.deepEqual(
+    mine.map((v) => v.key).sort(),
+    ["SENTRY_DSN", "STRIPE_KEY"],
+    "a session still sees the whole team's shared vars from any app",
+  );
+
+  // The scoped token holds `manage_env` on APP_IN — it survives the project
+  // clamp on purpose — so this page is INSIDE its scope and cannot refuse. What
+  // it must not do is hand over the team's catalogue while it's there.
+  const theirs = await scoped(() => listSharedVarsForApp(APP_IN));
+  assert.deepEqual(
+    theirs.map((v) => v.key),
+    [],
+    "a narrowed token read the team's shared variables from an app it reaches",
+  );
+  assert.ok(
+    !JSON.stringify(theirs).includes("team-wide-dsn"),
+    "and no plaintext of a team-wide var came with it",
+  );
+});
+
+test("nor link one into an app it controls", async () => {
+  const id = await teamWideSecret();
+
+  // Linking injects the value at the highest deploy precedence into an app the
+  // token holds a console and logs on, so it is `revealSharedVar` by other
+  // means — which is why that one is `requireUnscoped`.
+  const refusal = await refused(
+    () => scoped(() => setSharedVarAppLink(id, APP_IN, true)),
+    "a narrowed token linked a team-wide secret into its own app",
+  );
+  const unknown = await refused(
+    () => scoped(() => setSharedVarAppLink("env_nope", APP_IN, true)),
+    "an unknown variable id",
+  );
+  assert.equal(
+    refusal,
+    unknown,
+    "the refusal must be the unknown-id message: a scope is no existence oracle",
+  );
+
+  // The control: a var whose own scope names the token's project IS theirs to
+  // link. The rule is "does this variable pertain to this app", not "is the
+  // caller narrowed".
+  const ownId = await asUser(async () => {
+    await saveSharedVar({
+      key: "PROJECT_KEY",
+      value: "p",
+      type: "plain",
+      teamWide: false,
+      environmentIds: [],
+      projectIds: [PRC_IN],
+    });
+    return (await listSharedVars()).find((v) => v.key === "PROJECT_KEY")!.id;
+  });
+  await scoped(() => setSharedVarAppLink(ownId, APP_IN, true));
+  const linked = await scoped(() => listSharedVarsForApp(APP_IN));
+  assert.deepEqual(
+    linked.map((v) => ({ key: v.key, linked: v.linked })),
+    [{ key: "PROJECT_KEY", linked: true }],
   );
 });
 
