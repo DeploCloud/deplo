@@ -655,13 +655,28 @@ export const servers = pgTable(
     // historical instance-wide behaviour. `false` restricts the server to the
     // teams enumerated in `server_teams`. See [Server.allTeams](../../types.ts).
     allTeams: boolean("all_teams").notNull().default(true),
-    // How many deployments this server's agent runs at once (the Coolify
-    // `concurrent_builds` analogue). Default 1 = strict per-server serialization:
+    // How many deployments this server's agent runs at once.
+    // Default 1 = strict per-server serialization:
     // deploys on THIS server run one at a time; deploys on OTHER servers run in
     // parallel. The deploy queue (lib/deploy/deploy-queue.ts) reads it as the
     // per-server slot count; a same-service deploy never overlaps regardless.
     // Editable from Settings → Servers (instance-admin). Clamped >=1 at read.
     deployConcurrency: integer("deploy_concurrency").notNull().default(1),
+    // The Traefik web panel: Traefik's own dashboard, published on a domain.
+    // NULL domain = off, which is the default and where it stays unless an
+    // instance admin opts in from Settings → Servers → Advanced.
+    //
+    // The three move together. The dashboard lists every router, service and
+    // certificate on the host, so publishing one without credentials would put
+    // the fleet's routing table on the open internet — `setServerTraefikDashboard`
+    // refuses a domain without both a username and a password.
+    traefikDashboardDomain: text("traefik_dashboard_domain"),
+    traefikDashboardUser: text("traefik_dashboard_user"),
+    // Encrypted (AES-256-GCM via DEPLO_SECRET), never projected into a DTO and
+    // with no reveal path. Stored rather than write-once because the htpasswd
+    // line is re-derived every time the stack file is rewritten: changing the
+    // domain must not mean retyping the password.
+    traefikDashboardPasswordEnc: text("traefik_dashboard_password_enc"),
     createdAt: isoTimestamptz("created_at").notNull(),
   },
   (t) => [

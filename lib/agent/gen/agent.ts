@@ -1906,6 +1906,129 @@ export interface MetricsSample {
   source: string;
 }
 
+export interface HostInfoRequest {
+  /**
+   * The path whose filesystem to measure, same contract as MetricsRequest.
+   * Empty => the agent's own --data-dir.
+   */
+  dataDir: string;
+  /**
+   * The caller's own hostname. Inside a container that IS the short container
+   * id, which is how the agent can tell whether the control plane runs HERE and
+   * hand back a restartable container id. Empty => control_plane_container is
+   * left empty; it is never guessed from the image name, because "a container
+   * built from the deplo image" and "the container you are talking to me from"
+   * are different claims and only the second one is safe to restart.
+   */
+  controlPlaneHint: string;
+}
+
+/**
+ * What this host IS, as opposed to what it is currently doing. Every field is
+ * best-effort: a value the agent could not read comes back empty/zero rather
+ * than failing the call, because a missing /etc/os-release must not cost the
+ * operator their CPU model too.
+ */
+export interface HostInfoResponse {
+  /** e.g. "AMD Ryzen 5 5600X 6-Core Processor" (/proc/cpuinfo "model name"). */
+  cpuModel: string;
+  /** PHYSICAL cores, deduplicated by (physical id, core id). 6 on the chip above. */
+  cpuCores: number;
+  /** Logical processors — what schedulers and `nproc` count. 12 on the chip above. */
+  cpuThreads: number;
+  /** bytes */
+  memTotalBytes: number;
+  diskTotalBytes: number;
+  diskUsedBytes: number;
+  /** /etc/os-release PRETTY_NAME, e.g. "Ubuntu 24.04.1 LTS". */
+  osPretty: string;
+  /** uname -r, e.g. "6.8.0-136-generic". */
+  kernel: string;
+  /** uname -m, e.g. "x86_64" / "aarch64". */
+  arch: string;
+  /** Docker server version, "" when the daemon is unreachable. */
+  dockerVersion: string;
+  /**
+   * Docker's data root (`docker info -f {{.DockerRootDir}}`) — where images and
+   * volumes actually live, which is not always the disk the operator assumes.
+   */
+  dockerRootDir: string;
+  uptimeSec: number;
+  /** IANA zone name, e.g. "Europe/Rome". Read from the /etc/localtime symlink. */
+  timezone: string;
+  /**
+   * The host's clock at the moment of the read, and its offset from UTC in
+   * MINUTES (not hours: Kathmandu is +345, India +330).
+   */
+  timeUnixMs: number;
+  utcOffsetMinutes: number;
+  /**
+   * The current $AGENT_DATA/traefik/docker-compose.yml, verbatim. Empty when
+   * Deplo did not install Traefik here — which is exactly the signal that
+   * TraefikConfig must refuse to write.
+   */
+  traefikComposeYaml: string;
+  /**
+   * The resolved container id for control_plane_hint, or "" when the hint named
+   * nothing running. Non-empty means RestartControlPlane can do its job.
+   */
+  controlPlaneContainer: string;
+}
+
+export interface SetTimezoneRequest {
+  /** IANA zone name. Must exist under /usr/share/zoneinfo. */
+  timezone: string;
+  /** Passed straight through to the HostInfoResponse this answers with. */
+  dataDir: string;
+  controlPlaneHint: string;
+}
+
+export interface TraefikConfigRequest {
+  /**
+   * The full docker-compose.yml for the deplo-traefik stack, rendered control
+   * plane-side. Ignored when restart_only.
+   */
+  composeYaml: string;
+  /**
+   * Restart the existing stack without touching its file on disk. This is the
+   * plain "restart Traefik" button; a config change sends the YAML instead.
+   */
+  restartOnly: boolean;
+}
+
+export interface TraefikConfigResponse {
+  ok: boolean;
+  /**
+   * Why not, verbatim for the operator — most usefully "this host runs a Traefik
+   * Deplo did not install".
+   */
+  error: string;
+  /**
+   * The stack file as it stands AFTER the operation, so the control plane never
+   * has to assume its write landed byte-for-byte.
+   */
+  composeYaml: string;
+}
+
+export interface RestartControlPlaneRequest {
+  /** The caller's own hostname / container id — see HostInfoRequest. */
+  controlPlaneHint: string;
+}
+
+export interface RestartControlPlaneResponse {
+  /**
+   * True => a restart was SCHEDULED (moments from now), not completed: the reply
+   * has to outrun the restart it triggers, so the agent cannot report the result.
+   */
+  ok: boolean;
+  error: string;
+  /**
+   * The container the agent is about to restart, echoed back so the operator can
+   * see WHICH thing was named.
+   */
+  container: string;
+}
+
 function createBaseRenewalCSRRequest(): RenewalCSRRequest {
   return {};
 }
@@ -12163,6 +12286,916 @@ export const MetricsSample: MessageFns<MetricsSample> = {
   },
 };
 
+function createBaseHostInfoRequest(): HostInfoRequest {
+  return { dataDir: "", controlPlaneHint: "" };
+}
+
+export const HostInfoRequest: MessageFns<HostInfoRequest> = {
+  encode(message: HostInfoRequest, writer: BinaryWriter = new BinaryWriter()): BinaryWriter {
+    if (message.dataDir !== "") {
+      writer.uint32(10).string(message.dataDir);
+    }
+    if (message.controlPlaneHint !== "") {
+      writer.uint32(18).string(message.controlPlaneHint);
+    }
+    return writer;
+  },
+
+  decode(input: BinaryReader | Uint8Array, length?: number): HostInfoRequest {
+    const reader = input instanceof BinaryReader ? input : new BinaryReader(input);
+    const end = length === undefined ? reader.len : reader.pos + length;
+    const message = createBaseHostInfoRequest();
+    while (reader.pos < end) {
+      const tag = reader.uint32();
+      switch (tag >>> 3) {
+        case 1: {
+          if (tag !== 10) {
+            break;
+          }
+
+          message.dataDir = reader.string();
+          continue;
+        }
+        case 2: {
+          if (tag !== 18) {
+            break;
+          }
+
+          message.controlPlaneHint = reader.string();
+          continue;
+        }
+      }
+      if ((tag & 7) === 4 || tag === 0) {
+        break;
+      }
+      reader.skip(tag & 7);
+    }
+    return message;
+  },
+
+  fromJSON(object: any): HostInfoRequest {
+    return {
+      dataDir: isSet(object.dataDir)
+        ? globalThis.String(object.dataDir)
+        : isSet(object.data_dir)
+        ? globalThis.String(object.data_dir)
+        : "",
+      controlPlaneHint: isSet(object.controlPlaneHint)
+        ? globalThis.String(object.controlPlaneHint)
+        : isSet(object.control_plane_hint)
+        ? globalThis.String(object.control_plane_hint)
+        : "",
+    };
+  },
+
+  toJSON(message: HostInfoRequest): unknown {
+    const obj: any = {};
+    if (message.dataDir !== "") {
+      obj.dataDir = message.dataDir;
+    }
+    if (message.controlPlaneHint !== "") {
+      obj.controlPlaneHint = message.controlPlaneHint;
+    }
+    return obj;
+  },
+
+  create<I extends Exact<DeepPartial<HostInfoRequest>, I>>(base?: I): HostInfoRequest {
+    return HostInfoRequest.fromPartial(base ?? ({} as any));
+  },
+  fromPartial<I extends Exact<DeepPartial<HostInfoRequest>, I>>(object: I): HostInfoRequest {
+    const message = createBaseHostInfoRequest();
+    message.dataDir = object.dataDir ?? "";
+    message.controlPlaneHint = object.controlPlaneHint ?? "";
+    return message;
+  },
+};
+
+function createBaseHostInfoResponse(): HostInfoResponse {
+  return {
+    cpuModel: "",
+    cpuCores: 0,
+    cpuThreads: 0,
+    memTotalBytes: 0,
+    diskTotalBytes: 0,
+    diskUsedBytes: 0,
+    osPretty: "",
+    kernel: "",
+    arch: "",
+    dockerVersion: "",
+    dockerRootDir: "",
+    uptimeSec: 0,
+    timezone: "",
+    timeUnixMs: 0,
+    utcOffsetMinutes: 0,
+    traefikComposeYaml: "",
+    controlPlaneContainer: "",
+  };
+}
+
+export const HostInfoResponse: MessageFns<HostInfoResponse> = {
+  encode(message: HostInfoResponse, writer: BinaryWriter = new BinaryWriter()): BinaryWriter {
+    if (message.cpuModel !== "") {
+      writer.uint32(10).string(message.cpuModel);
+    }
+    if (message.cpuCores !== 0) {
+      writer.uint32(16).int32(message.cpuCores);
+    }
+    if (message.cpuThreads !== 0) {
+      writer.uint32(24).int32(message.cpuThreads);
+    }
+    if (message.memTotalBytes !== 0) {
+      writer.uint32(32).int64(message.memTotalBytes);
+    }
+    if (message.diskTotalBytes !== 0) {
+      writer.uint32(40).int64(message.diskTotalBytes);
+    }
+    if (message.diskUsedBytes !== 0) {
+      writer.uint32(48).int64(message.diskUsedBytes);
+    }
+    if (message.osPretty !== "") {
+      writer.uint32(58).string(message.osPretty);
+    }
+    if (message.kernel !== "") {
+      writer.uint32(66).string(message.kernel);
+    }
+    if (message.arch !== "") {
+      writer.uint32(74).string(message.arch);
+    }
+    if (message.dockerVersion !== "") {
+      writer.uint32(82).string(message.dockerVersion);
+    }
+    if (message.dockerRootDir !== "") {
+      writer.uint32(90).string(message.dockerRootDir);
+    }
+    if (message.uptimeSec !== 0) {
+      writer.uint32(96).int64(message.uptimeSec);
+    }
+    if (message.timezone !== "") {
+      writer.uint32(106).string(message.timezone);
+    }
+    if (message.timeUnixMs !== 0) {
+      writer.uint32(112).int64(message.timeUnixMs);
+    }
+    if (message.utcOffsetMinutes !== 0) {
+      writer.uint32(120).int32(message.utcOffsetMinutes);
+    }
+    if (message.traefikComposeYaml !== "") {
+      writer.uint32(130).string(message.traefikComposeYaml);
+    }
+    if (message.controlPlaneContainer !== "") {
+      writer.uint32(138).string(message.controlPlaneContainer);
+    }
+    return writer;
+  },
+
+  decode(input: BinaryReader | Uint8Array, length?: number): HostInfoResponse {
+    const reader = input instanceof BinaryReader ? input : new BinaryReader(input);
+    const end = length === undefined ? reader.len : reader.pos + length;
+    const message = createBaseHostInfoResponse();
+    while (reader.pos < end) {
+      const tag = reader.uint32();
+      switch (tag >>> 3) {
+        case 1: {
+          if (tag !== 10) {
+            break;
+          }
+
+          message.cpuModel = reader.string();
+          continue;
+        }
+        case 2: {
+          if (tag !== 16) {
+            break;
+          }
+
+          message.cpuCores = reader.int32();
+          continue;
+        }
+        case 3: {
+          if (tag !== 24) {
+            break;
+          }
+
+          message.cpuThreads = reader.int32();
+          continue;
+        }
+        case 4: {
+          if (tag !== 32) {
+            break;
+          }
+
+          message.memTotalBytes = longToNumber(reader.int64());
+          continue;
+        }
+        case 5: {
+          if (tag !== 40) {
+            break;
+          }
+
+          message.diskTotalBytes = longToNumber(reader.int64());
+          continue;
+        }
+        case 6: {
+          if (tag !== 48) {
+            break;
+          }
+
+          message.diskUsedBytes = longToNumber(reader.int64());
+          continue;
+        }
+        case 7: {
+          if (tag !== 58) {
+            break;
+          }
+
+          message.osPretty = reader.string();
+          continue;
+        }
+        case 8: {
+          if (tag !== 66) {
+            break;
+          }
+
+          message.kernel = reader.string();
+          continue;
+        }
+        case 9: {
+          if (tag !== 74) {
+            break;
+          }
+
+          message.arch = reader.string();
+          continue;
+        }
+        case 10: {
+          if (tag !== 82) {
+            break;
+          }
+
+          message.dockerVersion = reader.string();
+          continue;
+        }
+        case 11: {
+          if (tag !== 90) {
+            break;
+          }
+
+          message.dockerRootDir = reader.string();
+          continue;
+        }
+        case 12: {
+          if (tag !== 96) {
+            break;
+          }
+
+          message.uptimeSec = longToNumber(reader.int64());
+          continue;
+        }
+        case 13: {
+          if (tag !== 106) {
+            break;
+          }
+
+          message.timezone = reader.string();
+          continue;
+        }
+        case 14: {
+          if (tag !== 112) {
+            break;
+          }
+
+          message.timeUnixMs = longToNumber(reader.int64());
+          continue;
+        }
+        case 15: {
+          if (tag !== 120) {
+            break;
+          }
+
+          message.utcOffsetMinutes = reader.int32();
+          continue;
+        }
+        case 16: {
+          if (tag !== 130) {
+            break;
+          }
+
+          message.traefikComposeYaml = reader.string();
+          continue;
+        }
+        case 17: {
+          if (tag !== 138) {
+            break;
+          }
+
+          message.controlPlaneContainer = reader.string();
+          continue;
+        }
+      }
+      if ((tag & 7) === 4 || tag === 0) {
+        break;
+      }
+      reader.skip(tag & 7);
+    }
+    return message;
+  },
+
+  fromJSON(object: any): HostInfoResponse {
+    return {
+      cpuModel: isSet(object.cpuModel)
+        ? globalThis.String(object.cpuModel)
+        : isSet(object.cpu_model)
+        ? globalThis.String(object.cpu_model)
+        : "",
+      cpuCores: isSet(object.cpuCores)
+        ? globalThis.Number(object.cpuCores)
+        : isSet(object.cpu_cores)
+        ? globalThis.Number(object.cpu_cores)
+        : 0,
+      cpuThreads: isSet(object.cpuThreads)
+        ? globalThis.Number(object.cpuThreads)
+        : isSet(object.cpu_threads)
+        ? globalThis.Number(object.cpu_threads)
+        : 0,
+      memTotalBytes: isSet(object.memTotalBytes)
+        ? globalThis.Number(object.memTotalBytes)
+        : isSet(object.mem_total_bytes)
+        ? globalThis.Number(object.mem_total_bytes)
+        : 0,
+      diskTotalBytes: isSet(object.diskTotalBytes)
+        ? globalThis.Number(object.diskTotalBytes)
+        : isSet(object.disk_total_bytes)
+        ? globalThis.Number(object.disk_total_bytes)
+        : 0,
+      diskUsedBytes: isSet(object.diskUsedBytes)
+        ? globalThis.Number(object.diskUsedBytes)
+        : isSet(object.disk_used_bytes)
+        ? globalThis.Number(object.disk_used_bytes)
+        : 0,
+      osPretty: isSet(object.osPretty)
+        ? globalThis.String(object.osPretty)
+        : isSet(object.os_pretty)
+        ? globalThis.String(object.os_pretty)
+        : "",
+      kernel: isSet(object.kernel) ? globalThis.String(object.kernel) : "",
+      arch: isSet(object.arch) ? globalThis.String(object.arch) : "",
+      dockerVersion: isSet(object.dockerVersion)
+        ? globalThis.String(object.dockerVersion)
+        : isSet(object.docker_version)
+        ? globalThis.String(object.docker_version)
+        : "",
+      dockerRootDir: isSet(object.dockerRootDir)
+        ? globalThis.String(object.dockerRootDir)
+        : isSet(object.docker_root_dir)
+        ? globalThis.String(object.docker_root_dir)
+        : "",
+      uptimeSec: isSet(object.uptimeSec)
+        ? globalThis.Number(object.uptimeSec)
+        : isSet(object.uptime_sec)
+        ? globalThis.Number(object.uptime_sec)
+        : 0,
+      timezone: isSet(object.timezone) ? globalThis.String(object.timezone) : "",
+      timeUnixMs: isSet(object.timeUnixMs)
+        ? globalThis.Number(object.timeUnixMs)
+        : isSet(object.time_unix_ms)
+        ? globalThis.Number(object.time_unix_ms)
+        : 0,
+      utcOffsetMinutes: isSet(object.utcOffsetMinutes)
+        ? globalThis.Number(object.utcOffsetMinutes)
+        : isSet(object.utc_offset_minutes)
+        ? globalThis.Number(object.utc_offset_minutes)
+        : 0,
+      traefikComposeYaml: isSet(object.traefikComposeYaml)
+        ? globalThis.String(object.traefikComposeYaml)
+        : isSet(object.traefik_compose_yaml)
+        ? globalThis.String(object.traefik_compose_yaml)
+        : "",
+      controlPlaneContainer: isSet(object.controlPlaneContainer)
+        ? globalThis.String(object.controlPlaneContainer)
+        : isSet(object.control_plane_container)
+        ? globalThis.String(object.control_plane_container)
+        : "",
+    };
+  },
+
+  toJSON(message: HostInfoResponse): unknown {
+    const obj: any = {};
+    if (message.cpuModel !== "") {
+      obj.cpuModel = message.cpuModel;
+    }
+    if (message.cpuCores !== 0) {
+      obj.cpuCores = Math.round(message.cpuCores);
+    }
+    if (message.cpuThreads !== 0) {
+      obj.cpuThreads = Math.round(message.cpuThreads);
+    }
+    if (message.memTotalBytes !== 0) {
+      obj.memTotalBytes = Math.round(message.memTotalBytes);
+    }
+    if (message.diskTotalBytes !== 0) {
+      obj.diskTotalBytes = Math.round(message.diskTotalBytes);
+    }
+    if (message.diskUsedBytes !== 0) {
+      obj.diskUsedBytes = Math.round(message.diskUsedBytes);
+    }
+    if (message.osPretty !== "") {
+      obj.osPretty = message.osPretty;
+    }
+    if (message.kernel !== "") {
+      obj.kernel = message.kernel;
+    }
+    if (message.arch !== "") {
+      obj.arch = message.arch;
+    }
+    if (message.dockerVersion !== "") {
+      obj.dockerVersion = message.dockerVersion;
+    }
+    if (message.dockerRootDir !== "") {
+      obj.dockerRootDir = message.dockerRootDir;
+    }
+    if (message.uptimeSec !== 0) {
+      obj.uptimeSec = Math.round(message.uptimeSec);
+    }
+    if (message.timezone !== "") {
+      obj.timezone = message.timezone;
+    }
+    if (message.timeUnixMs !== 0) {
+      obj.timeUnixMs = Math.round(message.timeUnixMs);
+    }
+    if (message.utcOffsetMinutes !== 0) {
+      obj.utcOffsetMinutes = Math.round(message.utcOffsetMinutes);
+    }
+    if (message.traefikComposeYaml !== "") {
+      obj.traefikComposeYaml = message.traefikComposeYaml;
+    }
+    if (message.controlPlaneContainer !== "") {
+      obj.controlPlaneContainer = message.controlPlaneContainer;
+    }
+    return obj;
+  },
+
+  create<I extends Exact<DeepPartial<HostInfoResponse>, I>>(base?: I): HostInfoResponse {
+    return HostInfoResponse.fromPartial(base ?? ({} as any));
+  },
+  fromPartial<I extends Exact<DeepPartial<HostInfoResponse>, I>>(object: I): HostInfoResponse {
+    const message = createBaseHostInfoResponse();
+    message.cpuModel = object.cpuModel ?? "";
+    message.cpuCores = object.cpuCores ?? 0;
+    message.cpuThreads = object.cpuThreads ?? 0;
+    message.memTotalBytes = object.memTotalBytes ?? 0;
+    message.diskTotalBytes = object.diskTotalBytes ?? 0;
+    message.diskUsedBytes = object.diskUsedBytes ?? 0;
+    message.osPretty = object.osPretty ?? "";
+    message.kernel = object.kernel ?? "";
+    message.arch = object.arch ?? "";
+    message.dockerVersion = object.dockerVersion ?? "";
+    message.dockerRootDir = object.dockerRootDir ?? "";
+    message.uptimeSec = object.uptimeSec ?? 0;
+    message.timezone = object.timezone ?? "";
+    message.timeUnixMs = object.timeUnixMs ?? 0;
+    message.utcOffsetMinutes = object.utcOffsetMinutes ?? 0;
+    message.traefikComposeYaml = object.traefikComposeYaml ?? "";
+    message.controlPlaneContainer = object.controlPlaneContainer ?? "";
+    return message;
+  },
+};
+
+function createBaseSetTimezoneRequest(): SetTimezoneRequest {
+  return { timezone: "", dataDir: "", controlPlaneHint: "" };
+}
+
+export const SetTimezoneRequest: MessageFns<SetTimezoneRequest> = {
+  encode(message: SetTimezoneRequest, writer: BinaryWriter = new BinaryWriter()): BinaryWriter {
+    if (message.timezone !== "") {
+      writer.uint32(10).string(message.timezone);
+    }
+    if (message.dataDir !== "") {
+      writer.uint32(18).string(message.dataDir);
+    }
+    if (message.controlPlaneHint !== "") {
+      writer.uint32(26).string(message.controlPlaneHint);
+    }
+    return writer;
+  },
+
+  decode(input: BinaryReader | Uint8Array, length?: number): SetTimezoneRequest {
+    const reader = input instanceof BinaryReader ? input : new BinaryReader(input);
+    const end = length === undefined ? reader.len : reader.pos + length;
+    const message = createBaseSetTimezoneRequest();
+    while (reader.pos < end) {
+      const tag = reader.uint32();
+      switch (tag >>> 3) {
+        case 1: {
+          if (tag !== 10) {
+            break;
+          }
+
+          message.timezone = reader.string();
+          continue;
+        }
+        case 2: {
+          if (tag !== 18) {
+            break;
+          }
+
+          message.dataDir = reader.string();
+          continue;
+        }
+        case 3: {
+          if (tag !== 26) {
+            break;
+          }
+
+          message.controlPlaneHint = reader.string();
+          continue;
+        }
+      }
+      if ((tag & 7) === 4 || tag === 0) {
+        break;
+      }
+      reader.skip(tag & 7);
+    }
+    return message;
+  },
+
+  fromJSON(object: any): SetTimezoneRequest {
+    return {
+      timezone: isSet(object.timezone) ? globalThis.String(object.timezone) : "",
+      dataDir: isSet(object.dataDir)
+        ? globalThis.String(object.dataDir)
+        : isSet(object.data_dir)
+        ? globalThis.String(object.data_dir)
+        : "",
+      controlPlaneHint: isSet(object.controlPlaneHint)
+        ? globalThis.String(object.controlPlaneHint)
+        : isSet(object.control_plane_hint)
+        ? globalThis.String(object.control_plane_hint)
+        : "",
+    };
+  },
+
+  toJSON(message: SetTimezoneRequest): unknown {
+    const obj: any = {};
+    if (message.timezone !== "") {
+      obj.timezone = message.timezone;
+    }
+    if (message.dataDir !== "") {
+      obj.dataDir = message.dataDir;
+    }
+    if (message.controlPlaneHint !== "") {
+      obj.controlPlaneHint = message.controlPlaneHint;
+    }
+    return obj;
+  },
+
+  create<I extends Exact<DeepPartial<SetTimezoneRequest>, I>>(base?: I): SetTimezoneRequest {
+    return SetTimezoneRequest.fromPartial(base ?? ({} as any));
+  },
+  fromPartial<I extends Exact<DeepPartial<SetTimezoneRequest>, I>>(object: I): SetTimezoneRequest {
+    const message = createBaseSetTimezoneRequest();
+    message.timezone = object.timezone ?? "";
+    message.dataDir = object.dataDir ?? "";
+    message.controlPlaneHint = object.controlPlaneHint ?? "";
+    return message;
+  },
+};
+
+function createBaseTraefikConfigRequest(): TraefikConfigRequest {
+  return { composeYaml: "", restartOnly: false };
+}
+
+export const TraefikConfigRequest: MessageFns<TraefikConfigRequest> = {
+  encode(message: TraefikConfigRequest, writer: BinaryWriter = new BinaryWriter()): BinaryWriter {
+    if (message.composeYaml !== "") {
+      writer.uint32(10).string(message.composeYaml);
+    }
+    if (message.restartOnly !== false) {
+      writer.uint32(16).bool(message.restartOnly);
+    }
+    return writer;
+  },
+
+  decode(input: BinaryReader | Uint8Array, length?: number): TraefikConfigRequest {
+    const reader = input instanceof BinaryReader ? input : new BinaryReader(input);
+    const end = length === undefined ? reader.len : reader.pos + length;
+    const message = createBaseTraefikConfigRequest();
+    while (reader.pos < end) {
+      const tag = reader.uint32();
+      switch (tag >>> 3) {
+        case 1: {
+          if (tag !== 10) {
+            break;
+          }
+
+          message.composeYaml = reader.string();
+          continue;
+        }
+        case 2: {
+          if (tag !== 16) {
+            break;
+          }
+
+          message.restartOnly = reader.bool();
+          continue;
+        }
+      }
+      if ((tag & 7) === 4 || tag === 0) {
+        break;
+      }
+      reader.skip(tag & 7);
+    }
+    return message;
+  },
+
+  fromJSON(object: any): TraefikConfigRequest {
+    return {
+      composeYaml: isSet(object.composeYaml)
+        ? globalThis.String(object.composeYaml)
+        : isSet(object.compose_yaml)
+        ? globalThis.String(object.compose_yaml)
+        : "",
+      restartOnly: isSet(object.restartOnly)
+        ? globalThis.Boolean(object.restartOnly)
+        : isSet(object.restart_only)
+        ? globalThis.Boolean(object.restart_only)
+        : false,
+    };
+  },
+
+  toJSON(message: TraefikConfigRequest): unknown {
+    const obj: any = {};
+    if (message.composeYaml !== "") {
+      obj.composeYaml = message.composeYaml;
+    }
+    if (message.restartOnly !== false) {
+      obj.restartOnly = message.restartOnly;
+    }
+    return obj;
+  },
+
+  create<I extends Exact<DeepPartial<TraefikConfigRequest>, I>>(base?: I): TraefikConfigRequest {
+    return TraefikConfigRequest.fromPartial(base ?? ({} as any));
+  },
+  fromPartial<I extends Exact<DeepPartial<TraefikConfigRequest>, I>>(object: I): TraefikConfigRequest {
+    const message = createBaseTraefikConfigRequest();
+    message.composeYaml = object.composeYaml ?? "";
+    message.restartOnly = object.restartOnly ?? false;
+    return message;
+  },
+};
+
+function createBaseTraefikConfigResponse(): TraefikConfigResponse {
+  return { ok: false, error: "", composeYaml: "" };
+}
+
+export const TraefikConfigResponse: MessageFns<TraefikConfigResponse> = {
+  encode(message: TraefikConfigResponse, writer: BinaryWriter = new BinaryWriter()): BinaryWriter {
+    if (message.ok !== false) {
+      writer.uint32(8).bool(message.ok);
+    }
+    if (message.error !== "") {
+      writer.uint32(18).string(message.error);
+    }
+    if (message.composeYaml !== "") {
+      writer.uint32(26).string(message.composeYaml);
+    }
+    return writer;
+  },
+
+  decode(input: BinaryReader | Uint8Array, length?: number): TraefikConfigResponse {
+    const reader = input instanceof BinaryReader ? input : new BinaryReader(input);
+    const end = length === undefined ? reader.len : reader.pos + length;
+    const message = createBaseTraefikConfigResponse();
+    while (reader.pos < end) {
+      const tag = reader.uint32();
+      switch (tag >>> 3) {
+        case 1: {
+          if (tag !== 8) {
+            break;
+          }
+
+          message.ok = reader.bool();
+          continue;
+        }
+        case 2: {
+          if (tag !== 18) {
+            break;
+          }
+
+          message.error = reader.string();
+          continue;
+        }
+        case 3: {
+          if (tag !== 26) {
+            break;
+          }
+
+          message.composeYaml = reader.string();
+          continue;
+        }
+      }
+      if ((tag & 7) === 4 || tag === 0) {
+        break;
+      }
+      reader.skip(tag & 7);
+    }
+    return message;
+  },
+
+  fromJSON(object: any): TraefikConfigResponse {
+    return {
+      ok: isSet(object.ok) ? globalThis.Boolean(object.ok) : false,
+      error: isSet(object.error) ? globalThis.String(object.error) : "",
+      composeYaml: isSet(object.composeYaml)
+        ? globalThis.String(object.composeYaml)
+        : isSet(object.compose_yaml)
+        ? globalThis.String(object.compose_yaml)
+        : "",
+    };
+  },
+
+  toJSON(message: TraefikConfigResponse): unknown {
+    const obj: any = {};
+    if (message.ok !== false) {
+      obj.ok = message.ok;
+    }
+    if (message.error !== "") {
+      obj.error = message.error;
+    }
+    if (message.composeYaml !== "") {
+      obj.composeYaml = message.composeYaml;
+    }
+    return obj;
+  },
+
+  create<I extends Exact<DeepPartial<TraefikConfigResponse>, I>>(base?: I): TraefikConfigResponse {
+    return TraefikConfigResponse.fromPartial(base ?? ({} as any));
+  },
+  fromPartial<I extends Exact<DeepPartial<TraefikConfigResponse>, I>>(object: I): TraefikConfigResponse {
+    const message = createBaseTraefikConfigResponse();
+    message.ok = object.ok ?? false;
+    message.error = object.error ?? "";
+    message.composeYaml = object.composeYaml ?? "";
+    return message;
+  },
+};
+
+function createBaseRestartControlPlaneRequest(): RestartControlPlaneRequest {
+  return { controlPlaneHint: "" };
+}
+
+export const RestartControlPlaneRequest: MessageFns<RestartControlPlaneRequest> = {
+  encode(message: RestartControlPlaneRequest, writer: BinaryWriter = new BinaryWriter()): BinaryWriter {
+    if (message.controlPlaneHint !== "") {
+      writer.uint32(10).string(message.controlPlaneHint);
+    }
+    return writer;
+  },
+
+  decode(input: BinaryReader | Uint8Array, length?: number): RestartControlPlaneRequest {
+    const reader = input instanceof BinaryReader ? input : new BinaryReader(input);
+    const end = length === undefined ? reader.len : reader.pos + length;
+    const message = createBaseRestartControlPlaneRequest();
+    while (reader.pos < end) {
+      const tag = reader.uint32();
+      switch (tag >>> 3) {
+        case 1: {
+          if (tag !== 10) {
+            break;
+          }
+
+          message.controlPlaneHint = reader.string();
+          continue;
+        }
+      }
+      if ((tag & 7) === 4 || tag === 0) {
+        break;
+      }
+      reader.skip(tag & 7);
+    }
+    return message;
+  },
+
+  fromJSON(object: any): RestartControlPlaneRequest {
+    return {
+      controlPlaneHint: isSet(object.controlPlaneHint)
+        ? globalThis.String(object.controlPlaneHint)
+        : isSet(object.control_plane_hint)
+        ? globalThis.String(object.control_plane_hint)
+        : "",
+    };
+  },
+
+  toJSON(message: RestartControlPlaneRequest): unknown {
+    const obj: any = {};
+    if (message.controlPlaneHint !== "") {
+      obj.controlPlaneHint = message.controlPlaneHint;
+    }
+    return obj;
+  },
+
+  create<I extends Exact<DeepPartial<RestartControlPlaneRequest>, I>>(base?: I): RestartControlPlaneRequest {
+    return RestartControlPlaneRequest.fromPartial(base ?? ({} as any));
+  },
+  fromPartial<I extends Exact<DeepPartial<RestartControlPlaneRequest>, I>>(object: I): RestartControlPlaneRequest {
+    const message = createBaseRestartControlPlaneRequest();
+    message.controlPlaneHint = object.controlPlaneHint ?? "";
+    return message;
+  },
+};
+
+function createBaseRestartControlPlaneResponse(): RestartControlPlaneResponse {
+  return { ok: false, error: "", container: "" };
+}
+
+export const RestartControlPlaneResponse: MessageFns<RestartControlPlaneResponse> = {
+  encode(message: RestartControlPlaneResponse, writer: BinaryWriter = new BinaryWriter()): BinaryWriter {
+    if (message.ok !== false) {
+      writer.uint32(8).bool(message.ok);
+    }
+    if (message.error !== "") {
+      writer.uint32(18).string(message.error);
+    }
+    if (message.container !== "") {
+      writer.uint32(26).string(message.container);
+    }
+    return writer;
+  },
+
+  decode(input: BinaryReader | Uint8Array, length?: number): RestartControlPlaneResponse {
+    const reader = input instanceof BinaryReader ? input : new BinaryReader(input);
+    const end = length === undefined ? reader.len : reader.pos + length;
+    const message = createBaseRestartControlPlaneResponse();
+    while (reader.pos < end) {
+      const tag = reader.uint32();
+      switch (tag >>> 3) {
+        case 1: {
+          if (tag !== 8) {
+            break;
+          }
+
+          message.ok = reader.bool();
+          continue;
+        }
+        case 2: {
+          if (tag !== 18) {
+            break;
+          }
+
+          message.error = reader.string();
+          continue;
+        }
+        case 3: {
+          if (tag !== 26) {
+            break;
+          }
+
+          message.container = reader.string();
+          continue;
+        }
+      }
+      if ((tag & 7) === 4 || tag === 0) {
+        break;
+      }
+      reader.skip(tag & 7);
+    }
+    return message;
+  },
+
+  fromJSON(object: any): RestartControlPlaneResponse {
+    return {
+      ok: isSet(object.ok) ? globalThis.Boolean(object.ok) : false,
+      error: isSet(object.error) ? globalThis.String(object.error) : "",
+      container: isSet(object.container) ? globalThis.String(object.container) : "",
+    };
+  },
+
+  toJSON(message: RestartControlPlaneResponse): unknown {
+    const obj: any = {};
+    if (message.ok !== false) {
+      obj.ok = message.ok;
+    }
+    if (message.error !== "") {
+      obj.error = message.error;
+    }
+    if (message.container !== "") {
+      obj.container = message.container;
+    }
+    return obj;
+  },
+
+  create<I extends Exact<DeepPartial<RestartControlPlaneResponse>, I>>(base?: I): RestartControlPlaneResponse {
+    return RestartControlPlaneResponse.fromPartial(base ?? ({} as any));
+  },
+  fromPartial<I extends Exact<DeepPartial<RestartControlPlaneResponse>, I>>(object: I): RestartControlPlaneResponse {
+    const message = createBaseRestartControlPlaneResponse();
+    message.ok = object.ok ?? false;
+    message.error = object.error ?? "";
+    message.container = object.container ?? "";
+    return message;
+  },
+};
+
 export type AgentService = typeof AgentService;
 export const AgentService = {
   /**
@@ -12930,6 +13963,82 @@ export const AgentService = {
     responseSerialize: (value: StackResult): Buffer => Buffer.from(StackResult.encode(value).finish()),
     responseDeserialize: (value: Buffer): StackResult => StackResult.decode(value),
   },
+  /**
+   * Static host identity — the neofetch answer, not the gauge. Metrics/
+   * StreamMetrics already carry the USAGE numbers (cpu %, mem used, disk used);
+   * this carries what the hardware and OS actually ARE, plus the host clock and
+   * the two pieces of host state the control plane can act on (the Traefik stack
+   * file and whether a given container id resolves). Read live, persisted
+   * nowhere agent-side.
+   */
+  hostInfo: {
+    path: "/deplo.agent.v1.Agent/HostInfo" as const,
+    requestStream: false as const,
+    responseStream: false as const,
+    requestSerialize: (value: HostInfoRequest): Buffer => Buffer.from(HostInfoRequest.encode(value).finish()),
+    requestDeserialize: (value: Buffer): HostInfoRequest => HostInfoRequest.decode(value),
+    responseSerialize: (value: HostInfoResponse): Buffer => Buffer.from(HostInfoResponse.encode(value).finish()),
+    responseDeserialize: (value: Buffer): HostInfoResponse => HostInfoResponse.decode(value),
+  },
+  /**
+   * Set the host's timezone (IANA name, e.g. "Europe/Rome"). `timedatectl` when
+   * present, otherwise relinking /etc/localtime. The name is validated against
+   * /usr/share/zoneinfo before anything is written — defence in depth, since the
+   * control plane validates too. Answers with a FRESH HostInfoResponse so the UI
+   * shows the moved clock without a second round trip.
+   */
+  setTimezone: {
+    path: "/deplo.agent.v1.Agent/SetTimezone" as const,
+    requestStream: false as const,
+    responseStream: false as const,
+    requestSerialize: (value: SetTimezoneRequest): Buffer => Buffer.from(SetTimezoneRequest.encode(value).finish()),
+    requestDeserialize: (value: Buffer): SetTimezoneRequest => SetTimezoneRequest.decode(value),
+    responseSerialize: (value: HostInfoResponse): Buffer => Buffer.from(HostInfoResponse.encode(value).finish()),
+    responseDeserialize: (value: Buffer): HostInfoResponse => HostInfoResponse.decode(value),
+  },
+  /**
+   * Rewrite and/or restart THIS host's `deplo-traefik` stack — the reverse proxy
+   * the installer put at $AGENT_DATA/traefik/docker-compose.yml. Per ADR-0006 the
+   * agent renders NOTHING: the compose YAML is authored control-plane-side and
+   * shipped opaque, exactly like an app stack, so the Traefik label grammar stays
+   * in one place (lib/deploy) and never leaks into Go.
+   *
+   * Refuses when that file is absent or the running Traefik is not deplo-traefik:
+   * the installer explicitly leaves an operator's own proxy alone, and so does
+   * this. The previous file is kept as docker-compose.yml.bak before any write —
+   * a config change that takes :80/:443 down must be reversible from the host.
+   */
+  traefikConfig: {
+    path: "/deplo.agent.v1.Agent/TraefikConfig" as const,
+    requestStream: false as const,
+    responseStream: false as const,
+    requestSerialize: (value: TraefikConfigRequest): Buffer => Buffer.from(TraefikConfigRequest.encode(value).finish()),
+    requestDeserialize: (value: Buffer): TraefikConfigRequest => TraefikConfigRequest.decode(value),
+    responseSerialize: (value: TraefikConfigResponse): Buffer =>
+      Buffer.from(TraefikConfigResponse.encode(value).finish()),
+    responseDeserialize: (value: Buffer): TraefikConfigResponse => TraefikConfigResponse.decode(value),
+  },
+  /**
+   * Restart the container running the Deplo control plane on THIS host (agent 0
+   * only — a remote has no panel to restart). The caller names itself: it sends
+   * its own hostname, which inside a container IS the short container id.
+   *
+   * The restart is DETACHED and delayed by a moment on purpose: it kills the very
+   * process waiting on this RPC, so the reply has to win the race. An unresolvable
+   * hint answers ok=false with a reason — never a silent success, because "did my
+   * panel restart?" is not a question the operator can answer by looking.
+   */
+  restartControlPlane: {
+    path: "/deplo.agent.v1.Agent/RestartControlPlane" as const,
+    requestStream: false as const,
+    responseStream: false as const,
+    requestSerialize: (value: RestartControlPlaneRequest): Buffer =>
+      Buffer.from(RestartControlPlaneRequest.encode(value).finish()),
+    requestDeserialize: (value: Buffer): RestartControlPlaneRequest => RestartControlPlaneRequest.decode(value),
+    responseSerialize: (value: RestartControlPlaneResponse): Buffer =>
+      Buffer.from(RestartControlPlaneResponse.encode(value).finish()),
+    responseDeserialize: (value: Buffer): RestartControlPlaneResponse => RestartControlPlaneResponse.decode(value),
+  },
 } as const;
 
 export interface AgentServer extends UntypedServiceImplementation {
@@ -13299,6 +14408,47 @@ export interface AgentServer extends UntypedServiceImplementation {
    * and hot-reloads its TLS config so new handshakes present the fresh cert.
    */
   installRenewedCert: handleUnaryCall<InstallRenewedCertRequest, StackResult>;
+  /**
+   * Static host identity — the neofetch answer, not the gauge. Metrics/
+   * StreamMetrics already carry the USAGE numbers (cpu %, mem used, disk used);
+   * this carries what the hardware and OS actually ARE, plus the host clock and
+   * the two pieces of host state the control plane can act on (the Traefik stack
+   * file and whether a given container id resolves). Read live, persisted
+   * nowhere agent-side.
+   */
+  hostInfo: handleUnaryCall<HostInfoRequest, HostInfoResponse>;
+  /**
+   * Set the host's timezone (IANA name, e.g. "Europe/Rome"). `timedatectl` when
+   * present, otherwise relinking /etc/localtime. The name is validated against
+   * /usr/share/zoneinfo before anything is written — defence in depth, since the
+   * control plane validates too. Answers with a FRESH HostInfoResponse so the UI
+   * shows the moved clock without a second round trip.
+   */
+  setTimezone: handleUnaryCall<SetTimezoneRequest, HostInfoResponse>;
+  /**
+   * Rewrite and/or restart THIS host's `deplo-traefik` stack — the reverse proxy
+   * the installer put at $AGENT_DATA/traefik/docker-compose.yml. Per ADR-0006 the
+   * agent renders NOTHING: the compose YAML is authored control-plane-side and
+   * shipped opaque, exactly like an app stack, so the Traefik label grammar stays
+   * in one place (lib/deploy) and never leaks into Go.
+   *
+   * Refuses when that file is absent or the running Traefik is not deplo-traefik:
+   * the installer explicitly leaves an operator's own proxy alone, and so does
+   * this. The previous file is kept as docker-compose.yml.bak before any write —
+   * a config change that takes :80/:443 down must be reversible from the host.
+   */
+  traefikConfig: handleUnaryCall<TraefikConfigRequest, TraefikConfigResponse>;
+  /**
+   * Restart the container running the Deplo control plane on THIS host (agent 0
+   * only — a remote has no panel to restart). The caller names itself: it sends
+   * its own hostname, which inside a container IS the short container id.
+   *
+   * The restart is DETACHED and delayed by a moment on purpose: it kills the very
+   * process waiting on this RPC, so the reply has to win the race. An unresolvable
+   * hint answers ok=false with a reason — never a silent success, because "did my
+   * panel restart?" is not a question the operator can answer by looking.
+   */
+  restartControlPlane: handleUnaryCall<RestartControlPlaneRequest, RestartControlPlaneResponse>;
 }
 
 export interface AgentClient extends Client {
@@ -14242,6 +15392,103 @@ export interface AgentClient extends Client {
     metadata: Metadata,
     options: Partial<CallOptions>,
     callback: (error: ServiceError | null, response: StackResult) => void,
+  ): ClientUnaryCall;
+  /**
+   * Static host identity — the neofetch answer, not the gauge. Metrics/
+   * StreamMetrics already carry the USAGE numbers (cpu %, mem used, disk used);
+   * this carries what the hardware and OS actually ARE, plus the host clock and
+   * the two pieces of host state the control plane can act on (the Traefik stack
+   * file and whether a given container id resolves). Read live, persisted
+   * nowhere agent-side.
+   */
+  hostInfo(
+    request: HostInfoRequest,
+    callback: (error: ServiceError | null, response: HostInfoResponse) => void,
+  ): ClientUnaryCall;
+  hostInfo(
+    request: HostInfoRequest,
+    metadata: Metadata,
+    callback: (error: ServiceError | null, response: HostInfoResponse) => void,
+  ): ClientUnaryCall;
+  hostInfo(
+    request: HostInfoRequest,
+    metadata: Metadata,
+    options: Partial<CallOptions>,
+    callback: (error: ServiceError | null, response: HostInfoResponse) => void,
+  ): ClientUnaryCall;
+  /**
+   * Set the host's timezone (IANA name, e.g. "Europe/Rome"). `timedatectl` when
+   * present, otherwise relinking /etc/localtime. The name is validated against
+   * /usr/share/zoneinfo before anything is written — defence in depth, since the
+   * control plane validates too. Answers with a FRESH HostInfoResponse so the UI
+   * shows the moved clock without a second round trip.
+   */
+  setTimezone(
+    request: SetTimezoneRequest,
+    callback: (error: ServiceError | null, response: HostInfoResponse) => void,
+  ): ClientUnaryCall;
+  setTimezone(
+    request: SetTimezoneRequest,
+    metadata: Metadata,
+    callback: (error: ServiceError | null, response: HostInfoResponse) => void,
+  ): ClientUnaryCall;
+  setTimezone(
+    request: SetTimezoneRequest,
+    metadata: Metadata,
+    options: Partial<CallOptions>,
+    callback: (error: ServiceError | null, response: HostInfoResponse) => void,
+  ): ClientUnaryCall;
+  /**
+   * Rewrite and/or restart THIS host's `deplo-traefik` stack — the reverse proxy
+   * the installer put at $AGENT_DATA/traefik/docker-compose.yml. Per ADR-0006 the
+   * agent renders NOTHING: the compose YAML is authored control-plane-side and
+   * shipped opaque, exactly like an app stack, so the Traefik label grammar stays
+   * in one place (lib/deploy) and never leaks into Go.
+   *
+   * Refuses when that file is absent or the running Traefik is not deplo-traefik:
+   * the installer explicitly leaves an operator's own proxy alone, and so does
+   * this. The previous file is kept as docker-compose.yml.bak before any write —
+   * a config change that takes :80/:443 down must be reversible from the host.
+   */
+  traefikConfig(
+    request: TraefikConfigRequest,
+    callback: (error: ServiceError | null, response: TraefikConfigResponse) => void,
+  ): ClientUnaryCall;
+  traefikConfig(
+    request: TraefikConfigRequest,
+    metadata: Metadata,
+    callback: (error: ServiceError | null, response: TraefikConfigResponse) => void,
+  ): ClientUnaryCall;
+  traefikConfig(
+    request: TraefikConfigRequest,
+    metadata: Metadata,
+    options: Partial<CallOptions>,
+    callback: (error: ServiceError | null, response: TraefikConfigResponse) => void,
+  ): ClientUnaryCall;
+  /**
+   * Restart the container running the Deplo control plane on THIS host (agent 0
+   * only — a remote has no panel to restart). The caller names itself: it sends
+   * its own hostname, which inside a container IS the short container id.
+   *
+   * The restart is DETACHED and delayed by a moment on purpose: it kills the very
+   * process waiting on this RPC, so the reply has to win the race. An unresolvable
+   * hint answers ok=false with a reason — never a silent success, because "did my
+   * panel restart?" is not a question the operator can answer by looking.
+   */
+  restartControlPlane(
+    request: RestartControlPlaneRequest,
+    callback: (error: ServiceError | null, response: RestartControlPlaneResponse) => void,
+  ): ClientUnaryCall;
+  restartControlPlane(
+    request: RestartControlPlaneRequest,
+    metadata: Metadata,
+    callback: (error: ServiceError | null, response: RestartControlPlaneResponse) => void,
+  ): ClientUnaryCall;
+  restartControlPlane(
+    request: RestartControlPlaneRequest,
+    metadata: Metadata,
+    options: Partial<CallOptions>,
+    callback: (error: ServiceError | null, response: RestartControlPlaneResponse) => void,
   ): ClientUnaryCall;
 }
 

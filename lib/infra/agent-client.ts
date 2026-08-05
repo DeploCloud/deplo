@@ -36,6 +36,18 @@ import {
   type StackResult,
   type DockerCleanupRequest,
   type DockerCleanupResponse,
+  type HostInfoRequest,
+  type HostInfoResponse,
+  type SetTimezoneRequest,
+  type TraefikConfigRequest,
+  type TraefikConfigResponse,
+  type RestartControlPlaneRequest,
+  type RestartControlPlaneResponse,
+} from "../agent/gen/agent";
+export type {
+  HostInfoResponse,
+  TraefikConfigResponse,
+  RestartControlPlaneResponse,
 } from "../agent/gen/agent";
 import type { AttachHandle } from "./docker";
 import { getServerById, markServerSeen, observedTraefik } from "../data/servers";
@@ -130,6 +142,13 @@ const PROBE_HTTP_DEADLINE_MS = 12_000;
 // one. It stays MANDATORY all the same: an agent that wedges mid-sweep must fail
 // the run rather than pin the request forever.
 const CLEANUP_DEADLINE_MS = 30 * 60_000;
+// Host ops. HostInfo/SetTimezone/RestartControlPlane are file reads, a relink and
+// a detached spawn — interactive, so an unresponsive host must fail fast rather
+// than hold a settings page open. TraefikConfig is the outlier: it can pull an
+// image and recreate the container, and the agent caps its own docker call at
+// 180s, so it gets that plus dial slack.
+const HOSTOPS_DEADLINE_MS = 20_000;
+const TRAEFIK_DEADLINE_MS = 200_000;
 
 /** What to ask an app's own container for — never an address (see `probeHttp`). */
 export interface AgentProbeHttpRequest {
@@ -361,6 +380,26 @@ export interface AgentConnection {
    *  rejects with UNIMPLEMENTED (mapped to AgentCleanupUnsupportedError by the
    *  caller — go through {@link runAgentCleanup}, which pre-flights the capability). */
   dockerCleanup(req: DockerCleanupRequest): Promise<DockerCleanupResponse>;
+
+  // ---- Host ops: the four host-level verbs behind the "hostops" capability ----
+  /** What this host IS (CPU model, distro, kernel, clock, Docker root dir) plus
+   *  the two pieces of host state the control plane can act on: the deplo-traefik
+   *  stack file and whether the control-plane container hint resolves. Never
+   *  fails on a half-broken host — an unreadable field comes back empty. */
+  hostInfo(req: HostInfoRequest): Promise<HostInfoResponse>;
+  /** Move the host clock to an IANA zone; answers with a FRESH HostInfoResponse
+   *  so the caller sees the clock that actually moved. The agent re-validates the
+   *  name against /usr/share/zoneinfo — it ends in a relink of /etc/localtime. */
+  setTimezone(req: SetTimezoneRequest): Promise<HostInfoResponse>;
+  /** Rewrite and/or restart the deplo-traefik stack from control-plane-rendered
+   *  YAML (ADR-0006). Refuses — as `ok:false`, not an RPC error — when Deplo did
+   *  not install Traefik on that host. */
+  traefikConfig(req: TraefikConfigRequest): Promise<TraefikConfigResponse>;
+  /** Bounce the container the Deplo panel runs in on this host. `ok:true` means
+   *  SCHEDULED, not done: the restart kills the process waiting on the reply. */
+  restartControlPlane(
+    req: RestartControlPlaneRequest,
+  ): Promise<RestartControlPlaneResponse>;
 
   // ---- Backups: dump/restore to S3 + the S3 affordances (ADR-0007) ----
   /** Dump a database or project to S3, streaming progress; yields BackupEvents
@@ -723,6 +762,32 @@ async function remoteTarget(server: Server): Promise<DialTarget> {
 /** Normalise a tls PeerCertificate fingerprint ("AA:BB:..") to lowercase hex. */
 function peerFingerprint(cert: PeerCertificate): string {
   return (cert.fingerprint256 ?? "").replace(/:/g, "").toLowerCase();
+}
+
+/**
+ * One promise wrapper for a plain unary call whose response IS the DTO. The
+ * generated client's callback signature is identical for all of them, so the
+ * host-ops methods share this instead of four near-identical Promise bodies that
+ * could drift in their error mapping.
+ */
+function unary<Req, Resp>(
+  call: (
+    req: Req,
+    md: Metadata,
+    opts: { deadline: Date },
+    cb: (err: ServiceError | null, resp: Resp) => void,
+  ) => unknown,
+  req: Req,
+  deadlineMs: number,
+): Promise<Resp> {
+  return new Promise<Resp>((resolve, reject) => {
+    call(
+      req,
+      new Metadata(),
+      { deadline: new Date(Date.now() + deadlineMs) },
+      (err, resp) => (err ? reject(toAgentError(err)) : resolve(resp)),
+    );
+  });
 }
 
 /** Build a typed connection over an mTLS channel to the given target. */
@@ -1384,6 +1449,40 @@ function dial(target: DialTarget): AgentConnection {
       });
     },
 
+    // ---- Host ops (hostops) ----
+    // All four are plain unary calls whose response IS the DTO, so they share one
+    // helper rather than four near-identical Promise wrappers.
+    hostInfo(req: HostInfoRequest) {
+      return unary<HostInfoRequest, HostInfoResponse>(
+        (r, md, opts, cb) => client.hostInfo(r, md, opts, cb),
+        req,
+        HOSTOPS_DEADLINE_MS,
+      );
+    },
+    setTimezone(req: SetTimezoneRequest) {
+      return unary<SetTimezoneRequest, HostInfoResponse>(
+        (r, md, opts, cb) => client.setTimezone(r, md, opts, cb),
+        req,
+        HOSTOPS_DEADLINE_MS,
+      );
+    },
+    traefikConfig(req: TraefikConfigRequest) {
+      return unary<TraefikConfigRequest, TraefikConfigResponse>(
+        (r, md, opts, cb) => client.traefikConfig(r, md, opts, cb),
+        req,
+        // A config change pulls an image and recreates the container; the agent
+        // caps its own docker call at 180s, so allow for that plus the round trip.
+        TRAEFIK_DEADLINE_MS,
+      );
+    },
+    restartControlPlane(req: RestartControlPlaneRequest) {
+      return unary<RestartControlPlaneRequest, RestartControlPlaneResponse>(
+        (r, md, opts, cb) => client.restartControlPlane(r, md, opts, cb),
+        req,
+        HOSTOPS_DEADLINE_MS,
+      );
+    },
+
     // ---- Backups: dump/restore to S3 + the S3 affordances (ADR-0007) ----
     backup(req: BackupRequest) {
       return streamEvents(
@@ -1913,4 +2012,129 @@ export async function runAgentCleanup(
   } finally {
     conn.close();
   }
+}
+
+/* ------------------------------------------------------------------ */
+/* Host ops (hostops)                                                  */
+/* ------------------------------------------------------------------ */
+
+/** The Hello capability gating the four host-level RPCs. */
+const HOSTOPS_CAPABILITY = "hostops";
+
+/**
+ * The reachable agent is too old for the host-ops RPCs — it cannot report what
+ * the hardware is, move the clock, restart Traefik or restart the panel.
+ *
+ * A distinct error rather than a generic failure because the fix is specific and
+ * the operator can do it from the same page: update the agent. Mirrors
+ * {@link AgentCleanupUnsupportedError}.
+ */
+export class AgentHostOpsUnsupportedError extends Error {}
+
+/** One message wherever the gap surfaces — the Hello pre-flight or UNIMPLEMENTED
+ *  on the call itself — so the two paths cannot tell two different stories. */
+const HOSTOPS_UNSUPPORTED_MESSAGE =
+  "The agent on this server is too old for host management. " +
+  "Update the agent on this server, then try again.";
+
+/** UNIMPLEMENTED from a host-ops call means the same thing as a missing
+ *  capability: an agent one version behind can advertise it and still not
+ *  implement the RPC. Every other error passes through untouched. */
+function mapHostOpsUnsupported(e: unknown): Error {
+  if (e instanceof AgentHostOpsUnsupportedError) return e;
+  if ((e as Partial<ServiceError> | null)?.code === GrpcStatus.UNIMPLEMENTED) {
+    return new AgentHostOpsUnsupportedError(HOSTOPS_UNSUPPORTED_MESSAGE);
+  }
+  return e instanceof Error ? e : new Error(String(e));
+}
+
+/**
+ * Run one host-ops call against a server: resolve the pinned target, pre-flight
+ * the capability via Hello, invoke, and always close the channel.
+ *
+ * Every host-ops entry point below is this plus a one-line body, so the
+ * capability gate cannot be forgotten on a future fifth verb — the mistake that
+ * would show up as a confusing UNIMPLEMENTED instead of "update the agent".
+ */
+async function withHostOps<T>(
+  serverId: string,
+  fn: (conn: AgentConnection) => Promise<T>,
+): Promise<T> {
+  const target = await resolveTarget(serverId);
+  const conn = dial(target);
+  try {
+    const hello = await conn.hello();
+    if (!hello.capabilities?.includes(HOSTOPS_CAPABILITY)) {
+      throw new AgentHostOpsUnsupportedError(HOSTOPS_UNSUPPORTED_MESSAGE);
+    }
+    return await fn(conn);
+  } catch (e) {
+    throw mapHostOpsUnsupported(e);
+  } finally {
+    conn.close();
+  }
+}
+
+/** What this host IS: CPU model, distro, kernel, clock, Docker root dir, plus the
+ *  deplo-traefik stack file and whether `controlPlaneHint` names a live container. */
+export function fetchHostInfo(
+  serverId: string,
+  opts: { dataDir?: string; controlPlaneHint?: string } = {},
+): Promise<HostInfoResponse> {
+  return withHostOps(serverId, (conn) =>
+    conn.hostInfo({
+      dataDir: opts.dataDir ?? "",
+      controlPlaneHint: opts.controlPlaneHint ?? "",
+    }),
+  );
+}
+
+/** Move the host clock to an IANA zone, answering with a fresh reading of it. */
+export function setHostTimezone(
+  serverId: string,
+  timezone: string,
+  opts: { dataDir?: string; controlPlaneHint?: string } = {},
+): Promise<HostInfoResponse> {
+  return withHostOps(serverId, (conn) =>
+    conn.setTimezone({
+      timezone,
+      dataDir: opts.dataDir ?? "",
+      controlPlaneHint: opts.controlPlaneHint ?? "",
+    }),
+  );
+}
+
+/**
+ * Restart the host's Traefik, or rewrite its stack and recreate it.
+ *
+ * `composeYaml` is rendered by lib/deploy/traefik-stack.ts and applied verbatim
+ * (ADR-0006). A refusal — a host running a Traefik Deplo did not install — comes
+ * back as `ok:false` with a reason, not as a thrown error: it is an answer about
+ * the host, not a failure to reach it.
+ */
+export function applyTraefikConfig(
+  serverId: string,
+  req: { composeYaml?: string; restartOnly?: boolean },
+): Promise<TraefikConfigResponse> {
+  return withHostOps(serverId, (conn) =>
+    conn.traefikConfig({
+      composeYaml: req.composeYaml ?? "",
+      restartOnly: req.restartOnly ?? false,
+    }),
+  );
+}
+
+/**
+ * Bounce the container the Deplo panel runs in on this host.
+ *
+ * `ok:true` means SCHEDULED: the restart kills the process waiting on the reply,
+ * so the agent answers first and restarts a moment later. The caller identifies
+ * itself with `controlPlaneHint` — its own hostname, which inside a container is
+ * the short container id.
+ */
+export function restartControlPlaneOn(
+  serverId: string,
+  controlPlaneHint: string,
+): Promise<RestartControlPlaneResponse> {
+  return withHostOps(serverId, (conn) => conn.restartControlPlane({ controlPlaneHint }));
 }

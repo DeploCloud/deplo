@@ -502,13 +502,24 @@ export interface Server {
   allTeams: boolean;
   /**
    * How many deployments this server runs concurrently — the per-server slot count
-   * the deploy queue enforces (the Coolify `concurrent_builds` analogue). 1 (the
+   * the deploy queue enforces. 1 (the
    * default a server is born with) = strict serialization: one deploy at a time on
    * this host, deploys on other servers still run in parallel. A same-app
    * deploy never overlaps regardless of this value. Editable from Settings →
    * Servers (instance-admin), clamped to >= 1.
    */
   deployConcurrency: number;
+  /**
+   * The Traefik web panel: the host's own Traefik dashboard, published here.
+   * Absent = off, which is where every server starts.
+   *
+   * The password is deliberately NOT part of this shape. It is stored encrypted
+   * so the htpasswd line can be re-derived when the stack is rewritten, and it
+   * never leaves the data layer — the dashboard exposes every route and
+   * certificate on the host, so its credentials get the same write-only
+   * treatment as any other secret.
+   */
+  traefikDashboard?: { domain: string; username: string };
   createdAt: string;
   /**
    * Agent trust material — present once a server is provisioned (Part B). Absent

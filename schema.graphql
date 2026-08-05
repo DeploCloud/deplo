@@ -1374,6 +1374,11 @@ type Mutation {
   ): Server
 
   """
+  Read what this server IS, right now: CPU model and core count, installed RAM, disk, distribution, kernel, architecture, Docker version and data root, uptime, and the host's own clock and timezone. Also reports whether Deplo manages the Traefik here and whether the Deplo panel runs in a container the agent could restart. Persists nothing. Errors clearly when the agent is unreachable or too old for host management.
+  """
+  checkServerHostInfo(id: String!): ServerHostInfo
+
+  """
   Check whether ONE server's installation is complete enough to run deployments, right now. Dials the agent (Hello), bind-tests host ports 80 and 443, and reads host metrics, then reports what it found: the agent's handshake/protocol/version and which build methods and platform features it supports, whether Docker answers, whether a Traefik container is running and holds the web ports, disk headroom, and this server's team access and deploy concurrency. Never persisted — it does not touch `status`, so it can neither create nor cure a stale badge. Degrades honestly: an agent too old to bind-test ports reports those rows as skipped, never as a pass.
   """
   checkServerReadiness(id: String!): ServerReadinessReport
@@ -1687,6 +1692,21 @@ type Mutation {
   restartDatabase(id: String!): Database
 
   """
+  Restart the Deplo control plane on the host that runs it. Refused for any other server. Returns once the restart is SCHEDULED, not once it is done: the restart ends the process serving this request, so the answer necessarily arrives first — expect the dashboard to be briefly unreachable.
+  """
+  restartDeploPanel(id: String!): Boolean
+
+  """
+  Restart the Traefik reverse proxy on this server. The configuration is untouched — this is the 'it is wedged, bounce it' action. Routing on this host is interrupted for the few seconds Traefik takes to come back. Errors when Deplo did not install Traefik there.
+  """
+  restartServerTraefik(id: String!): Boolean
+
+  """
+  Restart every App and database Deplo runs on this server, one at a time. Containers Deplo did not deploy are never touched, and workloads that are already stopped are skipped rather than started — restarting and starting are different actions. Reports per-workload failures instead of stopping at the first one.
+  """
+  restartServerWorkloads(id: String!): ServerRestartReport
+
+  """
   Restore a backup run in place (overwrites the live target). Returns true.
   """
   restoreBackup(runId: String!): Boolean
@@ -1830,6 +1850,16 @@ type Mutation {
   Set a server's team access. allTeams: true makes it available to every team; false restricts it to teamIds. Blocked (clear error) when a team that still has apps or databases on the server would lose access.
   """
   setServerTeams(input: SetServerTeamsInput!): Server
+
+  """
+  Set the host clock's timezone to an IANA zone name (e.g. "Europe/Rome"). Returns a fresh reading of the host, so the moved clock is visible without a second call. Rejects a name this instance does not recognise, and the agent rejects one the host does not carry.
+  """
+  setServerTimezone(id: String!, timezone: String!): ServerHostInfo
+
+  """
+  Publish Traefik's own web dashboard for this server on a domain, protected by basic auth, or turn it off by passing no input. A domain, a username and a password are ALL required to enable it — the dashboard lists every route, service and certificate on the host, so it is never published unprotected. On an edit that only changes the domain the stored password is reused; the password itself can never be read back. Applying the change recreates the Traefik container, so routing on this host is interrupted for a few seconds.
+  """
+  setServerTraefikDashboard(id: String!, input: TraefikDashboardInput): Server
 
   """Link or unlink a shared variable to one app. Returns true."""
   setSharedVarAppLink(appId: String!, linked: Boolean!, varId: String!): Boolean
@@ -2435,6 +2465,16 @@ input ResourceLimitsInput {
   swapMb: Int
 }
 
+"""One workload that could not be restarted, and why."""
+type RestartedWorkload {
+  """The failure, verbatim from the host."""
+  error: String
+
+  """"app" or "database"."""
+  kind: String
+  name: String
+}
+
 enum Role {
   member
   owner
@@ -2594,6 +2634,11 @@ type Server {
   id: ID
   ip: String
 
+  """
+  Whether this is the host running Deplo itself (the dashboard and API), as opposed to a remote that only runs the deploy agent. It cannot be removed, and it is the only server that can restart the Deplo panel.
+  """
+  isDeploHost: Boolean
+
   """Heartbeat cache (P5) — a hint, not the source of truth."""
   lastSeenAt: String
   memoryMb: Int
@@ -2618,8 +2663,95 @@ type Server {
   Teams explicitly granted access when `allTeams` is false (empty otherwise — every team has access). Requires manage_infra.
   """
   teams: [Team!]
+
+  """
+  The domain this server publishes Traefik's own dashboard on, or null when it is off (the default). Requires instanceAdmin. The credentials guarding it are never readable.
+  """
+  traefikDashboardDomain: String
+
+  """
+  The username for the Traefik dashboard's basic auth, so the form can show whose credentials are in place. The password has no read path at all.
+  """
+  traefikDashboardUser: String
   traefikEnabled: Boolean
   type: ServerType
+}
+
+"""
+What a server IS — its hardware, OS and clock — read live from its agent and stored nowhere. Distinct from the usage gauges on Monitoring: this is the make and model, not the load.
+"""
+type ServerHostInfo {
+  """Machine architecture, e.g. "x86_64"."""
+  arch: String
+
+  """
+  Whether the Deplo panel runs in a container on this host that the agent could restart. False when Deplo was started some other way, in which case the restart action is not offered.
+  """
+  canRestartControlPlane: Boolean
+
+  """
+  PHYSICAL cores. A 6-core/12-thread chip reports 6 here and 12 in cpuThreads; reporting threads as cores is the usual way a spec sheet overstates a box.
+  """
+  cpuCores: Int
+
+  """
+  The processor as it names itself, e.g. "AMD Ryzen 5 5600X 6-Core Processor". Empty when the host does not report one.
+  """
+  cpuModel: String
+
+  """Logical processors — what schedulers and `nproc` count."""
+  cpuThreads: Int
+
+  """Size of the filesystem the agent's data lives on, in bytes."""
+  diskTotalBytes: Float
+
+  """Used bytes on that filesystem."""
+  diskUsedBytes: Float
+
+  """
+  Where Docker actually keeps images and volumes — on a host with a mounted data disk this is not the root filesystem.
+  """
+  dockerRootDir: String
+
+  """Docker engine version, empty when the daemon is unreachable."""
+  dockerVersion: String
+
+  """Kernel release (uname -r)."""
+  kernel: String
+
+  """Installed RAM, in bytes."""
+  memTotalBytes: Float
+
+  """The distribution, e.g. "Ubuntu 24.04.1 LTS"."""
+  osPretty: String
+
+  """
+  The host's own clock at the moment of the read (epoch ms). Compare it with the client's to spot a drifting box.
+  """
+  timeUnixMs: Float
+
+  """
+  The host clock's IANA zone, e.g. "Europe/Rome". Empty if it reports none.
+  """
+  timezone: String
+
+  """
+  The domain the host is CURRENTLY serving Traefik's dashboard on, read from the live stack file rather than from what Deplo stored — so a host reconfigured out of band reports the truth.
+  """
+  traefikDashboardDomain: String
+
+  """
+  Whether Deplo installed the Traefik on this host. False for a server behind the operator's own proxy, where Deplo will not reconfigure anything — the dashboard cannot be published there.
+  """
+  traefikManaged: Boolean
+
+  """Seconds since the host booted."""
+  uptimeSec: Float
+
+  """
+  Offset from UTC in MINUTES, not hours — Kathmandu is +345 and Kolkata +330.
+  """
+  utcOffsetMinutes: Int
 }
 
 """
@@ -2727,6 +2859,19 @@ type ServerRemoval {
   A non-blocking hazard the operator must know about (e.g. an App was mid-move off this host, so its data volumes are now stranded there), or null.
   """
   warning: String
+}
+
+"""
+The outcome of restarting everything Deplo runs on a server. Partial success is normal and is reported as such — one wedged stack must not hide that the other twenty came back.
+"""
+type ServerRestartReport {
+  failures: [RestartedWorkload!]
+  restarted: Int
+
+  """
+  Workloads that were already stopped. They are left alone: starting them is a different action than restarting them.
+  """
+  skipped: Int
 }
 
 enum ServerStatus {
@@ -2888,6 +3033,22 @@ enum TestNotificationChannel {
   discord
   email
   webhook
+}
+
+"""
+Where to publish Traefik's dashboard and who may open it. Credentials are not optional: the dashboard exposes every router, service and certificate on the host.
+"""
+input TraefikDashboardInput {
+  """The host the dashboard answers on. Point its DNS at this server first."""
+  domain: String!
+
+  """
+  Basic-auth password. Required the first time the dashboard is turned on; omit it on a later edit to keep the stored one. It can never be read back.
+  """
+  password: String
+
+  """Basic-auth username. No colons."""
+  username: String!
 }
 
 """

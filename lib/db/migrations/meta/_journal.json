@@ -470,6 +470,13 @@
       "when": 1784674400000,
       "tag": "0066_add_volume_propagation",
       "breakpoints": true
+    },
+    {
+      "idx": 67,
+      "version": "7",
+      "when": 1784674600000,
+      "tag": "0067_traefik_dashboard",
+      "breakpoints": true
     }
   ]
 }

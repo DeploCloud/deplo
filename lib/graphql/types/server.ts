@@ -14,6 +14,18 @@ import {
   type ServerRemoval,
 } from "@/lib/data/servers";
 import { checkServerHealth, checkAllServerHealth } from "@/lib/data/server-health";
+import {
+  serverHostInfo,
+  setServerTimezone,
+  restartServerWorkloads,
+  restartServerTraefik,
+  restartDeploPanel,
+  setServerTraefikDashboard,
+  type ServerHostInfo,
+  type ServerRestartReport,
+  type RestartedWorkload,
+} from "@/lib/data/server-maintenance";
+import { deploHostSelfAddresses, isDeploHostServer } from "@/lib/deploy/domains";
 import { refreshAgentVersion } from "@/lib/data/updates";
 import { checkServerReadiness } from "@/lib/data/server-readiness";
 import {
@@ -154,8 +166,134 @@ export const ServerRef = builder.objectRef<Server>("Server").implement({
         "Why `status` is not `online` — e.g. \"The agent is up but Docker is unreachable\". Null when online or never probed. Requires instanceAdmin.",
       resolve: (s) => s.statusMessage ?? null,
     }),
+    isDeploHost: t.boolean({
+      description:
+        "Whether this is the host running Deplo itself (the dashboard and API), as opposed to a remote that only runs the deploy agent. It cannot be removed, and it is the only server that can restart the Deplo panel.",
+      resolve: (s) => isDeploHostServer(s, deploHostSelfAddresses()),
+    }),
+    traefikDashboardDomain: t.string({
+      nullable: true,
+      // Instance-admin for the same reason statusMessage is: it describes shared
+      // infrastructure the operator administers, not something every member who
+      // can merely deploy here needs to know the address of.
+      authScopes: { instanceAdmin: true },
+      description:
+        "The domain this server publishes Traefik's own dashboard on, or null when it is off (the default). Requires instanceAdmin. The credentials guarding it are never readable.",
+      resolve: (s) => s.traefikDashboard?.domain ?? null,
+    }),
+    traefikDashboardUser: t.string({
+      nullable: true,
+      authScopes: { instanceAdmin: true },
+      description:
+        "The username for the Traefik dashboard's basic auth, so the form can show whose credentials are in place. The password has no read path at all.",
+      resolve: (s) => s.traefikDashboard?.username ?? null,
+    }),
   }),
 });
+
+/* ------------------------------------------------------------------ */
+/* Host info (what the box IS, read live from the agent)               */
+/* ------------------------------------------------------------------ */
+
+const ServerHostInfoRef = builder
+  .objectRef<ServerHostInfo>("ServerHostInfo")
+  .implement({
+    description:
+      "What a server IS — its hardware, OS and clock — read live from its agent and stored nowhere. Distinct from the usage gauges on Monitoring: this is the make and model, not the load.",
+    fields: (t) => ({
+      cpuModel: t.exposeString("cpuModel", {
+        description:
+          'The processor as it names itself, e.g. "AMD Ryzen 5 5600X 6-Core Processor". Empty when the host does not report one.',
+      }),
+      cpuCores: t.exposeInt("cpuCores", {
+        description:
+          "PHYSICAL cores. A 6-core/12-thread chip reports 6 here and 12 in cpuThreads; reporting threads as cores is the usual way a spec sheet overstates a box.",
+      }),
+      cpuThreads: t.exposeInt("cpuThreads", {
+        description: "Logical processors — what schedulers and `nproc` count.",
+      }),
+      memTotalBytes: t.exposeFloat("memTotalBytes", { description: "Installed RAM, in bytes." }),
+      diskTotalBytes: t.exposeFloat("diskTotalBytes", {
+        description: "Size of the filesystem the agent's data lives on, in bytes.",
+      }),
+      diskUsedBytes: t.exposeFloat("diskUsedBytes", { description: "Used bytes on that filesystem." }),
+      osPretty: t.exposeString("osPretty", {
+        description: 'The distribution, e.g. "Ubuntu 24.04.1 LTS".',
+      }),
+      kernel: t.exposeString("kernel", { description: "Kernel release (uname -r)." }),
+      arch: t.exposeString("arch", { description: 'Machine architecture, e.g. "x86_64".' }),
+      dockerVersion: t.exposeString("dockerVersion", {
+        description: "Docker engine version, empty when the daemon is unreachable.",
+      }),
+      dockerRootDir: t.exposeString("dockerRootDir", {
+        description:
+          "Where Docker actually keeps images and volumes — on a host with a mounted data disk this is not the root filesystem.",
+      }),
+      uptimeSec: t.exposeFloat("uptimeSec", { description: "Seconds since the host booted." }),
+      timezone: t.exposeString("timezone", {
+        description: 'The host clock\'s IANA zone, e.g. "Europe/Rome". Empty if it reports none.',
+      }),
+      timeUnixMs: t.exposeFloat("timeUnixMs", {
+        description:
+          "The host's own clock at the moment of the read (epoch ms). Compare it with the client's to spot a drifting box.",
+      }),
+      utcOffsetMinutes: t.exposeInt("utcOffsetMinutes", {
+        description:
+          "Offset from UTC in MINUTES, not hours — Kathmandu is +345 and Kolkata +330.",
+      }),
+      traefikManaged: t.exposeBoolean("traefikManaged", {
+        description:
+          "Whether Deplo installed the Traefik on this host. False for a server behind the operator's own proxy, where Deplo will not reconfigure anything — the dashboard cannot be published there.",
+      }),
+      traefikDashboardDomain: t.string({
+        nullable: true,
+        description:
+          "The domain the host is CURRENTLY serving Traefik's dashboard on, read from the live stack file rather than from what Deplo stored — so a host reconfigured out of band reports the truth.",
+        resolve: (i) => i.traefikDashboardDomain,
+      }),
+      canRestartControlPlane: t.exposeBoolean("canRestartControlPlane", {
+        description:
+          "Whether the Deplo panel runs in a container on this host that the agent could restart. False when Deplo was started some other way, in which case the restart action is not offered.",
+      }),
+    }),
+  });
+
+/* ------------------------------------------------------------------ */
+/* Whole-server restart report                                         */
+/* ------------------------------------------------------------------ */
+
+const RestartedWorkloadRef = builder
+  .objectRef<RestartedWorkload>("RestartedWorkload")
+  .implement({
+    description: "One workload that could not be restarted, and why.",
+    fields: (t) => ({
+      kind: t.exposeString("kind", { description: '"app" or "database".' }),
+      name: t.exposeString("name"),
+      error: t.string({
+        nullable: true,
+        description: "The failure, verbatim from the host.",
+        resolve: (w) => w.error,
+      }),
+    }),
+  });
+
+const ServerRestartReportRef = builder
+  .objectRef<ServerRestartReport>("ServerRestartReport")
+  .implement({
+    description:
+      "The outcome of restarting everything Deplo runs on a server. Partial success is normal and is reported as such — one wedged stack must not hide that the other twenty came back.",
+    fields: (t) => ({
+      restarted: t.exposeInt("restarted"),
+      skipped: t.exposeInt("skipped", {
+        description:
+          "Workloads that were already stopped. They are left alone: starting them is a different action than restarting them.",
+      }),
+      failures: t.field({
+        type: [RestartedWorkloadRef],
+        resolve: (r) => r.failures,
+      }),
+    }),
+  });
 
 /**
  * The result of registering a remote server: the new row PLUS the one-time
@@ -265,6 +403,23 @@ const SetServerTeamsInputType = builder.inputType("SetServerTeamsInput", {
     serverId: t.string({ required: true }),
     allTeams: t.boolean({ required: true }),
     teamIds: t.stringList({ required: false }),
+  }),
+});
+
+const TraefikDashboardInputType = builder.inputType("TraefikDashboardInput", {
+  description:
+    "Where to publish Traefik's dashboard and who may open it. Credentials are not optional: the dashboard exposes every router, service and certificate on the host.",
+  fields: (t) => ({
+    domain: t.string({
+      required: true,
+      description: "The host the dashboard answers on. Point its DNS at this server first.",
+    }),
+    username: t.string({ required: true, description: "Basic-auth username. No colons." }),
+    password: t.string({
+      required: false,
+      description:
+        "Basic-auth password. Required the first time the dashboard is turned on; omit it on a later edit to keep the stored one. It can never be read back.",
+    }),
   }),
 });
 
@@ -411,6 +566,84 @@ builder.mutationFields((t) => ({
       "Check whether ONE server's installation is complete enough to run deployments, right now. Dials the agent (Hello), bind-tests host ports 80 and 443, and reads host metrics, then reports what it found: the agent's handshake/protocol/version and which build methods and platform features it supports, whether Docker answers, whether a Traefik container is running and holds the web ports, disk headroom, and this server's team access and deploy concurrency. Never persisted — it does not touch `status`, so it can neither create nor cure a stale badge. Degrades honestly: an agent too old to bind-test ports reports those rows as skipped, never as a pass.",
     args: { id: t.arg.string({ required: true }) },
     resolve: (_r, { id }) => checkServerReadiness(id),
+  }),
+  // ---- Host ops. Like the two health checks above, checkServerHostInfo is a
+  // MUTATION despite writing nothing: it dials out over the network, and
+  // app/api/graphql/route.ts serves GET, so a side-effecting query would be
+  // reachable by a plain link (prefetch, crawler, CSRF) and would turn the
+  // control plane into a fan-out dialer on someone else's click. Each takes an
+  // opaque serverId resolved through the pinned dial target, never an address.
+  checkServerHostInfo: t.field({
+    type: ServerHostInfoRef,
+    authScopes: { instanceAdmin: true },
+    description:
+      "Read what this server IS, right now: CPU model and core count, installed RAM, disk, distribution, kernel, architecture, Docker version and data root, uptime, and the host's own clock and timezone. Also reports whether Deplo manages the Traefik here and whether the Deplo panel runs in a container the agent could restart. Persists nothing. Errors clearly when the agent is unreachable or too old for host management.",
+    args: { id: t.arg.string({ required: true }) },
+    resolve: (_r, { id }) => serverHostInfo(id),
+  }),
+  setServerTimezone: t.field({
+    type: ServerHostInfoRef,
+    authScopes: { instanceAdmin: true },
+    description:
+      'Set the host clock\'s timezone to an IANA zone name (e.g. "Europe/Rome"). Returns a fresh reading of the host, so the moved clock is visible without a second call. Rejects a name this instance does not recognise, and the agent rejects one the host does not carry.',
+    args: {
+      id: t.arg.string({ required: true }),
+      timezone: t.arg.string({ required: true }),
+    },
+    resolve: (_r, { id, timezone }) => setServerTimezone(id, timezone),
+  }),
+  restartServerWorkloads: t.field({
+    type: ServerRestartReportRef,
+    authScopes: { instanceAdmin: true },
+    description:
+      "Restart every App and database Deplo runs on this server, one at a time. Containers Deplo did not deploy are never touched, and workloads that are already stopped are skipped rather than started — restarting and starting are different actions. Reports per-workload failures instead of stopping at the first one.",
+    args: { id: t.arg.string({ required: true }) },
+    resolve: (_r, { id }) => restartServerWorkloads(id),
+  }),
+  restartServerTraefik: t.field({
+    type: "Boolean",
+    authScopes: { instanceAdmin: true },
+    description:
+      "Restart the Traefik reverse proxy on this server. The configuration is untouched — this is the 'it is wedged, bounce it' action. Routing on this host is interrupted for the few seconds Traefik takes to come back. Errors when Deplo did not install Traefik there.",
+    args: { id: t.arg.string({ required: true }) },
+    resolve: async (_r, { id }) => {
+      await restartServerTraefik(id);
+      return true;
+    },
+  }),
+  restartDeploPanel: t.field({
+    type: "Boolean",
+    authScopes: { instanceAdmin: true },
+    description:
+      "Restart the Deplo control plane on the host that runs it. Refused for any other server. Returns once the restart is SCHEDULED, not once it is done: the restart ends the process serving this request, so the answer necessarily arrives first — expect the dashboard to be briefly unreachable.",
+    args: { id: t.arg.string({ required: true }) },
+    resolve: async (_r, { id }) => {
+      await restartDeploPanel(id);
+      return true;
+    },
+  }),
+  setServerTraefikDashboard: t.field({
+    type: ServerRef,
+    authScopes: { instanceAdmin: true },
+    description:
+      "Publish Traefik's own web dashboard for this server on a domain, protected by basic auth, or turn it off by passing no input. A domain, a username and a password are ALL required to enable it — the dashboard lists every route, service and certificate on the host, so it is never published unprotected. On an edit that only changes the domain the stored password is reused; the password itself can never be read back. Applying the change recreates the Traefik container, so routing on this host is interrupted for a few seconds.",
+    args: {
+      id: t.arg.string({ required: true }),
+      input: t.arg({ type: TraefikDashboardInputType, required: false }),
+    },
+    resolve: async (_r, { id, input }) => {
+      await setServerTraefikDashboard(
+        id,
+        input
+          ? {
+              domain: input.domain,
+              username: input.username,
+              password: input.password ?? "",
+            }
+          : null,
+      );
+      return (await getServer(id))!;
+    },
   }),
   checkAgentUpdates: t.field({
     type: "String",
