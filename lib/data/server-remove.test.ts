@@ -34,6 +34,16 @@ let pg: PGlite;
 
 const SERVER = "srv_target";
 const OTHER = "srv_other";
+/**
+ * RFC 5737 TEST-NET-1, not the helper's default 10.0.0.1. removeServer now refuses
+ * the host running Deplo, and `isDeploHostServer` classifies by comparing a row's
+ * ip/host against this machine's real NIC addresses — so a private default could
+ * make a removal test pass or fail depending on whose box it runs on. A TEST-NET
+ * address is guaranteed never to be assigned to an interface.
+ */
+const REMOTE_IP = "192.0.2.10";
+/** What this instance believes its OWN address is, for the Deplo-host case. */
+const SELF_IP = "192.0.2.200";
 
 before(async () => {
   ({ db, pg } = await makeTestDb());
@@ -41,6 +51,9 @@ before(async () => {
   // removeServer builds the uninstall one-liner from the public base URL; pin it
   // so the assertion below isn't asserting the no-request-scope placeholder.
   process.env.DEPLO_PUBLIC_URL = "https://deplo.test";
+  // Pin what this instance thinks its own address is, so the Deplo-host guard is
+  // testing a decision we control rather than whatever NICs the runner happens to have.
+  process.env.DEPLO_SERVER_IP = SELF_IP;
 });
 
 after(async () => {
@@ -60,6 +73,8 @@ beforeEach(async () => {
   await seedServerRow(db, {
     id: SERVER,
     name: "target",
+    ip: REMOTE_IP,
+    host: REMOTE_IP,
     agent: {
       port: 9443,
       certFingerprint: "sha256:pinned",
@@ -67,7 +82,12 @@ beforeEach(async () => {
       version: "1.0.0",
     },
   });
-  await seedServerRow(db, { id: OTHER, name: "other" });
+  await seedServerRow(db, {
+    id: OTHER,
+    name: "other",
+    ip: "192.0.2.11",
+    host: "192.0.2.11",
+  });
 });
 
 const asAdmin = <T>(fn: () => Promise<T>): Promise<T> =>
@@ -146,6 +166,64 @@ test("warns (but does not block) when an App is mid-move OFF the server", async 
   assert.ok(result.warning, "a stranded-volume hazard must be surfaced");
   assert.match(result.warning!, /api/);
   assert.match(result.warning!, /mid-move/i);
+});
+
+test("refuses to remove the host running Deplo itself", async () => {
+  // Registered under the very address this instance answers on — that IS the
+  // control-plane box. Removing it revokes the trust Deplo needs to reach its own
+  // server and forgets the row, with no in-product way back.
+  await seedServerRow(db, { id: "srv_self", name: "this-host", ip: SELF_IP, host: SELF_IP });
+
+  await assert.rejects(
+    () => asAdmin(() => removeServer("srv_self")),
+    (e: Error) => {
+      assert.match(e.message, /host running Deplo itself/i);
+      assert.match(e.message, /this-host/);
+      return true;
+    },
+  );
+  assert.ok(await getServerById("srv_self"), "the row must survive the refusal");
+});
+
+test("the Deplo-host refusal fires BEFORE any side effect", async () => {
+  await seedServerRow(db, {
+    id: "srv_self",
+    name: "this-host",
+    ip: SELF_IP,
+    host: SELF_IP,
+    agent: {
+      port: 9443,
+      certFingerprint: "sha256:self-pinned",
+      certPem: "-----BEGIN CERTIFICATE-----",
+      version: "1.0.0",
+    },
+  });
+
+  await assert.rejects(() => asAdmin(() => removeServer("srv_self")));
+
+  // Same trap the workload guards fell into once: refusing AFTER revoking trust
+  // would leave the control plane unable to dial its own host.
+  const self = await getServerById("srv_self");
+  assert.equal(self?.agent?.certFingerprint, "sha256:self-pinned");
+});
+
+test("the guard matches on host as well as ip, and spares unrelated remotes", async () => {
+  // Registered by hostname rather than IP: DEPLO_PUBLIC_URL's host is a self-signal too.
+  await seedServerRow(db, {
+    id: "srv_by_name",
+    name: "by-name",
+    ip: "192.0.2.99",
+    host: "deplo.test",
+  });
+  await assert.rejects(
+    () => asAdmin(() => removeServer("srv_by_name")),
+    /host running Deplo itself/i,
+  );
+
+  // And the remote at a TEST-NET address is still perfectly removable — the guard
+  // must not turn into "no server can ever be deleted".
+  await asAdmin(() => removeServer(OTHER));
+  assert.equal(await getServerById(OTHER), null);
 });
 
 test("only an instance admin can remove a server", async () => {

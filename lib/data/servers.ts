@@ -11,6 +11,7 @@ import {
   teams as teamsTable,
 } from "../db/schema/control-plane";
 import { assembleServer, serverToRow } from "./infra-rows";
+import { isDeploHostServer } from "../deploy/domains";
 import { getCurrentUser } from "../auth";
 import {
   requireActiveTeamId,
@@ -419,6 +420,19 @@ export async function removeServer(id: string): Promise<ServerRemoval> {
   const user = (await getCurrentUser())!;
   const server = await getServerById(id);
   if (!server) throw new Error("Server not found");
+
+  // (0) The host running Deplo itself is NOT removable, by anyone, ever. Removing
+  // it revokes the trust the control plane needs to reach its own box and forgets
+  // the row — the dashboard you are clicking in loses its own server, and no UI
+  // path exists to get it back (re-adding means re-bootstrapping the agent from a
+  // shell, which is exactly what Deplo promises you never need). The check lives
+  // HERE, not only in the UI: this is the boundary, and the mutation is reachable
+  // from the bearer API too.
+  if (isDeploHostServer(server))
+    throw new Error(
+      `${server.name} is the host running Deplo itself — it can't be removed, ` +
+        `because doing so would cut this dashboard off from its own server.`,
+    );
 
   // (a) Block on live workloads — before any side effect.
   await assertServerRemovable(id);

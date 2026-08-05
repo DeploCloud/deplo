@@ -127,8 +127,10 @@ export function instanceHost(): string {
 /**
  * The addresses that identify the CONTROL-PLANE HOST — the single server in the
  * fleet that also runs Deplo itself ("agent 0"; CONTEXT.md: "the host running Deplo
- * is an agent too"). Purely a DISPLAY signal, used to badge that one server apart
- * from the pure deploy targets on the Servers page — never a security boundary.
+ * is an agent too"). Used to badge that one server apart from the pure deploy targets
+ * on the Servers page, AND — in `removeServer` — to refuse deleting the box the
+ * control plane runs on. It is a SELF-IDENTIFICATION signal, not an authorization
+ * one: it answers "is this row us?", never "may this caller do X".
  *
  * Resolved with ZERO extra config by reusing the very signals that already seed this
  * instance's public identity: `DEPLO_SERVER_IP` (the operator registers "this host"
@@ -161,8 +163,10 @@ export function deploHostSelfAddresses(): Set<string> {
  * addresses matches this instance's own {@link deploHostSelfAddresses}. Pass the
  * precomputed set when classifying many servers in a loop (compute it once). A
  * no-match — unusual networking, or the host registered under an address none of the
- * self-signals name — simply yields `false`: no card is mislabeled as the Deplo host,
- * at worst the real one goes unbadged.
+ * self-signals name — yields `false`, so it fails OPEN: no card is mislabeled as the
+ * Deplo host and no remote is wrongly locked against removal, but the real control-plane
+ * host goes unbadged and unprotected. `DEPLO_SERVER_IP` (or a `DEPLO_PUBLIC_URL` whose
+ * host matches how the server was registered) is what makes the match reliable.
  */
 export function isDeploHostServer(
   server: { ip?: string; host?: string },
