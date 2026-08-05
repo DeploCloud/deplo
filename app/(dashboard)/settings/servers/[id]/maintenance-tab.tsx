@@ -1,0 +1,326 @@
+"use client";
+
+import * as React from "react";
+import Link from "next/link";
+import { useRouter } from "next/navigation";
+import { toast } from "sonner";
+import { Brush, RefreshCw, RotateCcw, Route, Settings2 } from "lucide-react";
+
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import { Button } from "@/components/ui/button";
+import { DeploMark } from "@/components/logo";
+import { CleanupHistory } from "@/components/settings/cleanup-history";
+import { gqlAction } from "@/lib/graphql-client";
+import type { CleanupPolicy, CleanupRunDTO } from "@/lib/data/docker-cleanup";
+import type { ServerSummary } from "./server-detail-tabs";
+
+/**
+ * The Maintenance tab: the four things an operator used to need SSH for.
+ *
+ * Every one of them interrupts something, so every one of them is a confirm that
+ * says what — in the plainest terms available, because "restart Traefik" reads
+ * harmless and means "every site on this host is unreachable for a few seconds".
+ */
+
+type ActionId = "workloads" | "traefik" | "panel" | null;
+
+type RestartReport = {
+  restarted: number;
+  skipped: number;
+  failures: Array<{ kind: string; name: string; error: string | null }>;
+};
+
+export function ServerMaintenanceTab({
+  server,
+  cleanup,
+}: {
+  server: ServerSummary;
+  cleanup: { policy: CleanupPolicy; runs: CleanupRunDTO[]; serverCount: number };
+}) {
+  const router = useRouter();
+  const [pending, startTransition] = React.useTransition();
+  const [confirm, setConfirm] = React.useState<ActionId>(null);
+  const [runs, setRuns] = React.useState(cleanup.runs);
+
+  function restartWorkloads() {
+    startTransition(async () => {
+      const res = await gqlAction<{ restartServerWorkloads: RestartReport }>(
+        `mutation RestartServerWorkloads($id: String!) {
+          restartServerWorkloads(id: $id) {
+            restarted
+            skipped
+            failures { kind name error }
+          }
+        }`,
+        { id: server.id },
+      );
+      if (!res.ok) {
+        toast.error(res.error);
+        return;
+      }
+      setConfirm(null);
+      const report = res.data?.restartServerWorkloads;
+      if (!report) return;
+      // Partial success is the normal outcome and is reported as one: a summary
+      // that only counted the wins would hide the stack that did not come back.
+      if (report.failures.length > 0) {
+        toast.warning(
+          `Restarted ${report.restarted}; ${report.failures.length} failed: ` +
+            report.failures.map((f) => `${f.name} (${f.error})`).join(", "),
+        );
+      } else if (report.restarted === 0) {
+        toast.info(
+          report.skipped > 0
+            ? `Nothing to restart — ${report.skipped} stopped and left alone`
+            : "Nothing is running on this server",
+        );
+      } else {
+        toast.success(
+          `Restarted ${report.restarted} workload${report.restarted === 1 ? "" : "s"}` +
+            (report.skipped > 0 ? `, skipped ${report.skipped} stopped` : ""),
+        );
+      }
+      router.refresh();
+    });
+  }
+
+  function restartTraefik() {
+    startTransition(async () => {
+      const res = await gqlAction(
+        `mutation RestartServerTraefik($id: String!) { restartServerTraefik(id: $id) }`,
+        { id: server.id },
+      );
+      if (!res.ok) {
+        // Includes "Deplo did not install Traefik on this host" — the host's own
+        // answer, which is more useful than anything we could word for it.
+        toast.error(res.error);
+        return;
+      }
+      setConfirm(null);
+      toast.success("Traefik restarted");
+    });
+  }
+
+  function restartPanel() {
+    startTransition(async () => {
+      const res = await gqlAction(
+        `mutation RestartDeploPanel($id: String!) { restartDeploPanel(id: $id) }`,
+        { id: server.id },
+      );
+      if (!res.ok) {
+        toast.error(res.error);
+        return;
+      }
+      setConfirm(null);
+      // Not "restarted": the mutation returns once the restart is SCHEDULED,
+      // because the restart ends the process that would have reported it done.
+      toast.success("Deplo is restarting — this page will be briefly unavailable");
+    });
+  }
+
+  function runCleanup() {
+    startTransition(async () => {
+      const res = await gqlAction<{ runDockerCleanupNow: CleanupRunDTO }>(
+        `mutation RunDockerCleanupNow($serverId: String!) {
+          runDockerCleanupNow(serverId: $serverId) {
+            id serverId serverName trigger actor status error reclaimedBytes
+            startedAt finishedAt
+            items { scope reclaimedBytes itemsRemoved skipped error }
+          }
+        }`,
+        { serverId: server.id },
+      );
+      if (!res.ok) {
+        toast.error(res.error);
+        return;
+      }
+      // The sweep runs in the background; the run row IS the progress indicator,
+      // so show it at once rather than pretending the click was the whole job.
+      if (res.data) setRuns((prev) => [res.data!.runDockerCleanupNow, ...prev]);
+      toast.success("Cleanup started");
+    });
+  }
+
+  const sweeping = runs.some((r) => r.status === "running");
+
+  return (
+    <>
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2 text-base">
+            <RotateCcw className="size-4" />
+            Restart
+          </CardTitle>
+          <p className="mt-1 text-sm text-muted-foreground">
+            Bring things back up on this server. Each one interrupts something —
+            you will be told what before it runs.
+          </p>
+        </CardHeader>
+        <CardContent className="space-y-3">
+          <ActionRow
+            icon={RefreshCw}
+            title="Apps and databases"
+            description="Restarts everything Deplo runs here. Anything already stopped is left alone."
+            action={
+              <Button variant="outline" onClick={() => setConfirm("workloads")} disabled={pending}>
+                Restart all
+              </Button>
+            }
+          />
+          <ActionRow
+            icon={Route}
+            title="Traefik"
+            description="The reverse proxy that routes traffic to every site on this server."
+            action={
+              <Button variant="outline" onClick={() => setConfirm("traefik")} disabled={pending}>
+                Restart Traefik
+              </Button>
+            }
+          />
+          {/* Only on the host that runs the panel: on a remote there is nothing
+              to restart, and offering a button that can only fail is worse than
+              not offering it. */}
+          {server.isDeploHost ? (
+            <ActionRow
+              icon={DeploMark}
+              title="Deplo panel"
+              description="Restarts Deplo itself. Your deployed apps keep running."
+              action={
+                <Button variant="outline" onClick={() => setConfirm("panel")} disabled={pending}>
+                  Restart Deplo
+                </Button>
+              }
+            />
+          ) : null}
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2 text-base">
+            <Brush className="size-4" />
+            Docker cleanup
+          </CardTitle>
+          <p className="mt-1 text-sm text-muted-foreground">
+            Reclaim build cache and unused images on this server. Stopped apps,
+            their data volumes and their networks are never touched.
+          </p>
+        </CardHeader>
+        <CardContent className="flex flex-wrap items-center gap-2">
+          <Button onClick={() => runCleanup()} disabled={pending || sweeping}>
+            <Brush className="size-4" />
+            {sweeping ? "Cleaning up" : "Clean up now"}
+          </Button>
+          {/* The schedule is ONE row for the whole fleet, so it is edited where it
+              lives rather than duplicated per server with a per-server meaning it
+              does not have. */}
+          <Button variant="ghost" asChild>
+            <Link href="/settings/cleanup">
+              <Settings2 className="size-4" />
+              Schedule and scopes
+            </Link>
+          </Button>
+        </CardContent>
+      </Card>
+
+      <CleanupHistory runs={runs} />
+
+      <Dialog open={confirm === "workloads"} onOpenChange={(o) => !o && setConfirm(null)}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Restart everything on {server.name}?</DialogTitle>
+            <DialogDescription>
+              Every app and database Deplo runs on this server is stopped and
+              started again, one at a time. Each is briefly unreachable. Anything
+              already stopped stays stopped.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setConfirm(null)} disabled={pending}>
+              Cancel
+            </Button>
+            <Button onClick={() => restartWorkloads()} disabled={pending}>
+              {pending ? "Restarting" : "Restart all"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={confirm === "traefik"} onOpenChange={(o) => !o && setConfirm(null)}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Restart Traefik on {server.name}?</DialogTitle>
+            <DialogDescription>
+              Traefik routes traffic to every site on this server, so all of them
+              are unreachable for the few seconds it takes to come back. The
+              containers themselves keep running.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setConfirm(null)} disabled={pending}>
+              Cancel
+            </Button>
+            <Button onClick={() => restartTraefik()} disabled={pending}>
+              {pending ? "Restarting" : "Restart Traefik"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={confirm === "panel"} onOpenChange={(o) => !o && setConfirm(null)}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Restart Deplo?</DialogTitle>
+            <DialogDescription>
+              This dashboard goes away for a few seconds and comes back on its
+              own. Your deployed apps and databases are not affected — they keep
+              serving traffic throughout.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setConfirm(null)} disabled={pending}>
+              Cancel
+            </Button>
+            <Button onClick={() => restartPanel()} disabled={pending}>
+              {pending ? "Restarting" : "Restart Deplo"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    </>
+  );
+}
+
+/** One labelled action: icon + title + one line of what it does + the button. */
+function ActionRow({
+  icon: Icon,
+  title,
+  description,
+  action,
+}: {
+  icon: React.ElementType;
+  title: string;
+  description: string;
+  action: React.ReactNode;
+}) {
+  return (
+    <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-border p-3">
+      <div className="flex min-w-0 items-start gap-3">
+        <Icon className="mt-0.5 size-4 shrink-0 text-muted-foreground" />
+        <div className="min-w-0">
+          <div className="text-sm font-medium">{title}</div>
+          <p className="mt-1 text-sm text-muted-foreground">{description}</p>
+        </div>
+      </div>
+      {action}
+    </div>
+  );
+}

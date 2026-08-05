@@ -1,4 +1,5 @@
 import { notFound } from "next/navigation";
+import Link from "next/link";
 import type { ElementType } from "react";
 import {
   Server as ServerIcon,
@@ -6,13 +7,13 @@ import {
   MemoryStick,
   HardDrive,
   Boxes,
+  Settings2,
 } from "lucide-react";
 
 import { PageHeader } from "@/components/shared/page-header";
 import { EmptyState } from "@/components/shared/empty-state";
 import { DeploMark } from "@/components/logo";
 import { AddServer } from "@/components/servers/add-server";
-import { ServerActions } from "@/components/servers/server-actions";
 import {
   Card,
   CardHeader,
@@ -20,6 +21,7 @@ import {
   CardContent,
 } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import { InfoTip } from "@/components/ui/info-tip";
 import { listAllServers, listAllServerTeamIds } from "@/lib/data/servers";
 import {
@@ -78,13 +80,11 @@ function Spec({
 function ServerCard({
   server,
   expectedAgentVersion,
-  teams,
   accessTeamIds,
   isDeploHost,
 }: {
   server: Server;
   expectedAgentVersion: string;
-  teams: TeamOption[];
   accessTeamIds: string[];
   /**
    * True for the ONE host that also runs the Deplo control plane (dashboard + API),
@@ -147,24 +147,20 @@ function ServerCard({
             {accessLabel}
           </Badge>
           {/* Every server is a bootstrapped agent now (the host running Deplo
-              included), so the management actions apply to all of them. */}
+              included), so the management page applies to all of them. The card
+              stays a summary: everything you can DO to a server lives on its own
+              page, where each action has room to say what it interrupts. */}
           <div className="ml-auto flex items-center gap-1">
             <CheckStatusButton
               serverId={server.id}
               serverName={serverLabel(server)}
             />
-            <ServerActions
-              serverId={server.id}
-              serverName={serverLabel(server)}
-              provisioning={server.status === "provisioning"}
-              outdated={outdated}
-              expectedVersion={expectedAgentVersion}
-              canManageInfra
-              teams={teams}
-              accessAllTeams={server.allTeams}
-              accessTeamIds={accessTeamIds}
-              deployConcurrency={server.deployConcurrency}
-            />
+            <Button variant="outline" size="sm" asChild>
+              <Link href={`/settings/servers/${server.id}`}>
+                <Settings2 className="size-4" />
+                Manage
+              </Link>
+            </Button>
           </div>
         </div>
         <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5 text-xs">
@@ -330,7 +326,6 @@ export default async function ServersPage(
                 key={server.id}
                 server={server}
                 expectedAgentVersion={expectedAgentVersion}
-                teams={teams}
                 accessTeamIds={serverTeamIds.get(server.id) ?? []}
                 isDeploHost={isDeploHostServer(server, selfAddrs)}
               />
