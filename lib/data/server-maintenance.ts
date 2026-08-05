@@ -336,6 +336,10 @@ export type TraefikDashboardInput = {
  * from a template — see lib/deploy/traefik-stack.ts for why. The row is written
  * only after the agent confirms the stack came up, so a stored domain always
  * means a dashboard that is actually being served.
+ *
+ * A request that would not change the host's file is answered by reading the host
+ * and stopping there: applying recreates the proxy, and nothing on this box should
+ * lose its routing for a few seconds to have the same bytes written back.
  */
 export async function setServerTraefikDashboard(
   id: string,
@@ -396,9 +400,18 @@ export async function setServerTraefikDashboard(
     composeYaml = withTraefikDashboard(current.traefikComposeYaml, null);
   }
 
-  const res = await applyTraefikConfig(id, { composeYaml });
-  if (!res.ok)
-    throw new Error(res.error || `Could not apply the Traefik configuration on ${server.name}`);
+  // A rewrite that would change nothing is never applied. Applying recreates the
+  // proxy, and that takes every site on the host down for a few seconds — doing it
+  // to write the same bytes back is the worst kind of surprise. The case this
+  // exists for is "turn off the panel" on a host that never published one: it now
+  // costs one read of the host and nothing else. The transform is byte-stable, so
+  // this comparison is exact (see lib/deploy/traefik-stack.ts).
+  const changesTheHost = composeYaml !== current.traefikComposeYaml;
+  if (changesTheHost) {
+    const res = await applyTraefikConfig(id, { composeYaml });
+    if (!res.ok)
+      throw new Error(res.error || `Could not apply the Traefik configuration on ${server.name}`);
+  }
 
   // Only now — the row describes what the host is serving, not what we asked for.
   await getDb()
@@ -410,15 +423,20 @@ export async function setServerTraefikDashboard(
     })
     .where(eq(serversTable.id, id));
 
-  await recordActivity(
-    "member",
-    stored
-      ? `Published the Traefik panel for ${server.name} on ${stored.domain}`
-      : `Turned off the Traefik panel for ${server.name}`,
-    user.name,
-    null,
-    teamId,
-  );
+  // Only a real change is an event. Bringing a stale row back in line with a host
+  // that publishes nothing is bookkeeping, and an Activity line claiming someone
+  // turned off a panel that was never on is a small lie in the audit trail.
+  if (changesTheHost) {
+    await recordActivity(
+      "member",
+      stored
+        ? `Published the Traefik panel for ${server.name} on ${stored.domain}`
+        : `Turned off the Traefik panel for ${server.name}`,
+      user.name,
+      null,
+      teamId,
+    );
+  }
 }
 
 /** The stored dashboard password, so changing the domain does not mean retyping

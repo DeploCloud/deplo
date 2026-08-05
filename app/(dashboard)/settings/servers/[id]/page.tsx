@@ -10,7 +10,14 @@ import { listAllTeamsForAdmin } from "@/lib/data/teams";
 import { getCleanupPolicy, listCleanupRuns } from "@/lib/data/docker-cleanup";
 import { isInstanceAdmin } from "@/lib/membership";
 import { hydrateServerSpecs } from "@/lib/data/monitoring";
-import { deploHostSelfAddresses, isDeploHostServer } from "@/lib/deploy/domains";
+import {
+  deploHostSelfAddresses,
+  isDeploHostServer,
+  isLoopbackIp,
+  nipDomain,
+  randomWords,
+  resolveServerIp,
+} from "@/lib/deploy/domains";
 import { serverLabel } from "@/lib/utils";
 import { resolveExpectedAgentVersion, reportedAgentVersion, isAgentOutdated } from "@/lib/version";
 import type { TeamOption } from "@/components/servers/server-team-access";
@@ -58,6 +65,21 @@ export default async function ServerDetailPage(props: PageProps<"/settings/serve
   const isDeploHost = isDeploHostServer(server, deploHostSelfAddresses());
   const teams: TeamOption[] = teamsRaw.map((t) => ({ id: t.id, name: t.name }));
   const agentVersion = reportedAgentVersion(hydrated);
+
+  // A working hostname for the Traefik panel that needs no DNS at all, the same
+  // zero-config nip.io host an App's domains are offered. Fresh words on every
+  // render, like the Add domain dialog's suggestion — it is a suggestion until
+  // something is published with it. Null on a loopback-only host, where such a
+  // name would resolve for nobody.
+  // ponytail: suggested without knowing the host's ACME challenge — a proxy the
+  // operator switched to DNS-01 only cannot validate a nip.io name and would serve
+  // a self-signed cert for it. Reading the challenge type means dialing the agent,
+  // which this page deliberately does not do; wire it through HostInfo if a
+  // DNS-01-only host ever turns up in practice.
+  const serverIp = resolveServerIp(hydrated);
+  const suggestedTraefikDomain = isLoopbackIp(serverIp)
+    ? null
+    : nipDomain("traefik", randomWords(), serverIp);
 
   const seed: Record<string, ServerHealthState> = {
     [server.id]: {
@@ -117,6 +139,7 @@ export default async function ServerDetailPage(props: PageProps<"/settings/serve
             allTeams: hydrated.allTeams,
             deployConcurrency: hydrated.deployConcurrency,
             traefikDashboard: hydrated.traefikDashboard ?? null,
+            suggestedTraefikDomain,
             isDeploHost,
             provisioning: hydrated.status === "provisioning",
             agentVersion,

@@ -79,6 +79,9 @@ export type ServerSummary = {
   allTeams: boolean;
   deployConcurrency: number;
   traefikDashboard: { domain: string; username: string } | null;
+  /** A zero-config nip.io hostname for the Traefik panel on THIS server, resolved
+   *  server-side. Null when the host has no address such a name could point at. */
+  suggestedTraefikDomain: string | null;
   isDeploHost: boolean;
   provisioning: boolean;
   /** null when the agent has never reported one — a distinct state from "old". */

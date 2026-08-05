@@ -186,6 +186,11 @@ async function applyCertificates(
 ): Promise<void> {
   const { applyTraefikConfig } = await import("../infra/agent-client");
   const composeYaml = withTraefikCertificates(currentYaml, certificates);
+  // Nothing to write, nothing to restart: applying recreates the proxy and takes
+  // every site on the host down for a few seconds, and pasting the same
+  // certificate in twice must not cost that. The transform is byte-stable, so
+  // this comparison is exact.
+  if (composeYaml === currentYaml) return;
   const res = await applyTraefikConfig(serverId, { composeYaml });
   if (!res.ok)
     throw new Error(res.error || `Could not apply the certificate on ${serverName}`);

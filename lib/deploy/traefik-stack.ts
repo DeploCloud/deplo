@@ -1,4 +1,13 @@
-import yaml from "js-yaml";
+import {
+  isMap,
+  isScalar,
+  isSeq,
+  parse,
+  parseDocument,
+  stringify,
+  type Document,
+  type YAMLMap,
+} from "yaml";
 
 /**
  * The `deplo-traefik` stack file, control-plane side.
@@ -15,6 +24,13 @@ import yaml from "js-yaml";
  * a template would silently drop all of it, and the operator would find out when
  * their certificates stopped renewing.
  *
+ * "Transform" is meant literally, down to the comments: the file is parsed as a
+ * DOCUMENT and edited in place (see {@link Stack}), because on a host whose proxy
+ * the operator maintains by hand, the line explaining a flag is as load-bearing
+ * as the flag. A load/dump through plain objects keeps every setting and erases
+ * every word explaining it — the same loss this module exists to refuse, one
+ * layer down.
+ *
  * The dashboard is Traefik's own web UI. Two pieces are needed and only one can
  * come from a label: `--api.dashboard=true` is STATIC config, so enabling it
  * genuinely requires rewriting this file and recreating the container. The
@@ -30,6 +46,15 @@ const AUTH_MIDDLEWARE = `${ROUTER}-auth`;
 
 /** The static flag that turns the dashboard on. Not settable via a label. */
 const DASHBOARD_FLAG = "--api.dashboard=true";
+
+/**
+ * Written beside our router labels when WE are the ones who added
+ * {@link DASHBOARD_FLAG}, so unpublishing can take the flag back out without
+ * stealing a dashboard the operator had enabled themselves. It is a plain Docker
+ * label (not `traefik.*`), so Traefik never looks at it; it exists so the file
+ * answers "whose flag is this?" instead of us guessing from what else is there.
+ */
+const FLAG_MARKER = "deplo.traefik.dashboard-flag=deplo";
 
 export type TraefikDashboard = {
   /** The host the dashboard answers on. */
@@ -55,22 +80,28 @@ export function withTraefikDashboard(
   const doc = parseCompose(currentYaml);
   const service = traefikService(doc);
 
-  const command = asList(service.command);
-  const labels = asList(service.labels);
+  const command = listOf(service.get("command", true));
+  const labels = listOf(service.get("labels", true));
 
-  // Our own labels always go first, so enabling twice is idempotent and
+  // Our own labels always come off first, so enabling twice is idempotent and
   // disabling leaves whatever the operator added untouched. `traefik.enable` is
   // deliberately NOT treated as ours here — see the disable branch.
   const kept = labels.filter((l) => !isOurs(l) && !l.startsWith("traefik.enable="));
 
   if (!dashboard) {
-    service.command = command.filter((c) => c !== DASHBOARD_FLAG);
+    // The static flag comes out only when we put it there. The installer writes
+    // no `--api.dashboard`, but an operator who turned Traefik's dashboard on
+    // themselves (typically with `--api.insecure` on a loopback port) did, and
+    // stripping it would take away a page Deplo never published.
+    if (labels.includes(FLAG_MARKER)) {
+      setList(doc, service, "command", command.filter((c) => c !== DASHBOARD_FLAG));
+    }
     // `traefik.enable=true` is ours only when nothing else on this container
     // needs it. The installer's Traefik carries no labels at all, so an orphan
     // enable is our leftover — but an operator who added their own route to this
     // container still needs it, and removing it would silently unpublish them.
     const needsEnable = kept.some((l) => l.startsWith("traefik."));
-    setLabels(service, needsEnable ? ["traefik.enable=true", ...kept] : kept);
+    setList(doc, service, "labels", needsEnable ? ["traefik.enable=true", ...kept] : kept);
     return dump(doc);
   }
 
@@ -79,11 +110,15 @@ export function withTraefikDashboard(
   if (!dashboard.htpasswdUsers.trim())
     throw new Error("Credentials are required to publish the Traefik dashboard");
 
+  // Claim the flag only when we are the one adding it — a host that already had
+  // it keeps it when the panel is turned off again.
+  const ourFlag = !command.includes(DASHBOARD_FLAG) || labels.includes(FLAG_MARKER);
   if (!command.includes(DASHBOARD_FLAG)) command.push(DASHBOARD_FLAG);
-  service.command = command;
+  setList(doc, service, "command", command);
 
-  setLabels(service, [
+  setList(doc, service, "labels", [
     "traefik.enable=true",
+    ...(ourFlag ? [FLAG_MARKER] : []),
     `traefik.http.routers.${ROUTER}.rule=Host(\`${domain}\`)`,
     `traefik.http.routers.${ROUTER}.entrypoints=websecure`,
     `traefik.http.routers.${ROUTER}.tls.certresolver=${certResolver(command)}`,
@@ -115,7 +150,7 @@ export function withTraefikDashboard(
 export function acmeEmail(currentYaml: string): string | null {
   let command: string[];
   try {
-    command = asList(traefikService(parseCompose(currentYaml)).command);
+    command = listOf(traefikService(parseCompose(currentYaml)).get("command", true));
   } catch {
     return null;
   }
@@ -144,7 +179,7 @@ export function withAcmeEmail(currentYaml: string, email: string): string {
 
   const doc = parseCompose(currentYaml);
   const service = traefikService(doc);
-  const command = asList(service.command);
+  const command = listOf(service.get("command", true));
   if (!command.some((c) => c.startsWith("--certificatesresolvers.")))
     throw new Error(
       "This server's proxy has no Let's Encrypt resolver configured, so there is no certificate account to change.",
@@ -156,7 +191,7 @@ export function withAcmeEmail(currentYaml: string, email: string): string {
   // Appended rather than inserted in place: flag order is irrelevant to Traefik,
   // and appending keeps the diff on the host's file to one line.
   next.push(`${flag}${address}`);
-  service.command = next;
+  setList(doc, service, "command", next);
   return dump(doc);
 }
 
@@ -176,25 +211,20 @@ const FILE_WATCH_FLAG = "--providers.file.watch=true";
 
 /**
  * The certificates Deplo installed on this host, read back out of its own stack
- * file, the same read-live-not-stored rule the ACME email follows, so a host
+ * file — the same read-live-not-stored rule the ACME email follows, so a host
  * someone edited by hand reports what it is actually serving.
  */
 export function traefikCertificates(currentYaml: string): CustomCertificate[] {
-  let doc: ComposeDoc;
+  let text: unknown;
   try {
-    doc = parseCompose(currentYaml);
+    text = parseCompose(currentYaml).getIn(["configs", CERT_CONFIG, "content"]);
   } catch {
     return [];
   }
-  const content = topLevelConfigs(doc)[CERT_CONFIG];
-  const text =
-    content && typeof content === "object"
-      ? (content as { content?: unknown }).content
-      : undefined;
   if (typeof text !== "string") return [];
   let parsed: unknown;
   try {
-    parsed = yaml.load(text);
+    parsed = parse(text);
   } catch {
     return [];
   }
@@ -216,17 +246,12 @@ export function traefikCertificates(currentYaml: string): CustomCertificate[] {
  *
  * Two pieces are needed and neither can come from a label: Traefik only reads
  * certificates from its FILE provider, and the file has to exist inside the
- * container. Both ride in the stack file itself: a compose `configs` entry with
+ * container. Both ride in the stack file itself — a compose `configs` entry with
  * inline `content`, which Docker materialises into the container on `up`. That
  * is deliberate: the agent has no RPC that writes an arbitrary path on the host
  * (ADR-0006 keeps host writes to the ones it exposes), and the stack file is
- * something Deplo is already allowed to rewrite. The PEM goes in verbatim:
+ * something Deplo is already allowed to rewrite. The PEM goes in verbatim —
  * Traefik's `certFile`/`keyFile` take either a path or the certificate itself.
- *
- * Known ceiling: the key therefore lives in that stack file, which the agent
- * writes 0644 (its acme.json is 0600). On a box with untrusted local users that
- * is weaker than it should be, and tightening it is an agent-side change
- * (hostops.go), not something this renderer can decide.
  *
  * The operator's own file provider is respected when they have one: our file is
  * dropped into THEIR directory rather than a second provider being declared,
@@ -240,59 +265,60 @@ export function withTraefikCertificates(
 ): string {
   const doc = parseCompose(currentYaml);
   const service = traefikService(doc);
-  const command = asList(service.command);
+  const command = listOf(service.get("command", true));
 
   // Ours always comes off first, so installing twice replaces rather than stacks.
-  const otherConfigs = withoutOurConfig(service.configs);
-  const otherTopLevel = { ...topLevelConfigs(doc) };
-  delete otherTopLevel[CERT_CONFIG];
+  dropOurConfig(doc, service);
 
   if (certificates.length === 0) {
     // The flags come out only when they are ours. An operator who pointed the
     // file provider somewhere of their own keeps it: removing our certificates
     // must not unload their middlewares along with them.
-    service.command = ourDynamicDir(command)
-      ? command.filter(
+    if (ourDynamicDir(command)) {
+      setList(
+        doc,
+        service,
+        "command",
+        command.filter(
           (c) => c !== `${FILE_DIRECTORY_FLAG}${DEPLO_DYNAMIC_DIR}` && c !== FILE_WATCH_FLAG,
-        )
-      : command;
-    setConfigs(service, doc, otherConfigs, otherTopLevel);
+        ),
+      );
+    }
     return dump(doc);
   }
 
   const existingDir = fileProviderDir(command);
   if (!existingDir) {
-    command.push(`${FILE_DIRECTORY_FLAG}${DEPLO_DYNAMIC_DIR}`, FILE_WATCH_FLAG);
-    service.command = command;
+    setList(doc, service, "command", [
+      ...command,
+      `${FILE_DIRECTORY_FLAG}${DEPLO_DYNAMIC_DIR}`,
+      FILE_WATCH_FLAG,
+    ]);
   }
   const dir = existingDir ?? DEPLO_DYNAMIC_DIR;
 
-  setConfigs(
-    service,
-    doc,
-    [...otherConfigs, { source: CERT_CONFIG, target: `${dir}/${CERT_FILE}` }],
-    {
-      ...otherTopLevel,
-      [CERT_CONFIG]: {
-        content: yaml.dump(
-          {
-            tls: {
-              certificates: certificates.map((c) => ({
-                certFile: c.certPem,
-                keyFile: c.keyPem,
-              })),
-            },
+  addTo(doc, service, "configs", { source: CERT_CONFIG, target: `${dir}/${CERT_FILE}` });
+  doc.setIn(
+    ["configs", CERT_CONFIG],
+    doc.createNode({
+      content: stringify(
+        {
+          tls: {
+            certificates: certificates.map((c) => ({
+              certFile: c.certPem,
+              keyFile: c.keyPem,
+            })),
           },
-          { lineWidth: -1, noRefs: true },
-        ),
-      },
-    },
+        },
+        { lineWidth: 0 },
+      ),
+    }),
   );
   return dump(doc);
 }
 
 /** The file provider's directory when the stack already declares one. Throws for
- *  a provider pinned to one filename (see withTraefikCertificates). */
+ *  a provider pinned to one filename — see withTraefikCertificates. */
 function fileProviderDir(command: string[]): string | null {
   if (command.some((c) => c.startsWith("--providers.file.filename=")))
     throw new Error(
@@ -307,51 +333,43 @@ function ourDynamicDir(command: string[]): boolean {
   return command.includes(`${FILE_DIRECTORY_FLAG}${DEPLO_DYNAMIC_DIR}`);
 }
 
-function topLevelConfigs(doc: ComposeDoc): Record<string, unknown> {
-  const configs = doc.configs;
-  return configs && typeof configs === "object" && !Array.isArray(configs)
-    ? (configs as Record<string, unknown>)
-    : {};
+/**
+ * Take our certificate config off both the service and the top level, in either
+ * compose syntax, leaving every other entry — and the comments attached to them —
+ * where they are.
+ */
+function dropOurConfig(doc: Stack, service: YAMLMap): void {
+  const mounts = service.get("configs", true);
+  if (isSeq(mounts)) {
+    mounts.items = mounts.items.filter((entry) => configSource(entry) !== CERT_CONFIG);
+    if (mounts.items.length === 0) service.delete("configs");
+  }
+  const configs = doc.get("configs", true);
+  if (isMap(configs)) {
+    configs.delete(CERT_CONFIG);
+    if (configs.items.length === 0) doc.delete("configs");
+  }
 }
 
-/** Every config on the service EXCEPT ours, in either compose syntax. */
-function withoutOurConfig(value: unknown): unknown[] {
-  if (!Array.isArray(value)) return [];
-  return value.filter((entry) =>
-    typeof entry === "string"
-      ? entry !== CERT_CONFIG
-      : !(
-          entry &&
-          typeof entry === "object" &&
-          (entry as { source?: unknown }).source === CERT_CONFIG
-        ),
-  );
-}
-
-function setConfigs(
-  service: ComposeService,
-  doc: ComposeDoc,
-  serviceConfigs: unknown[],
-  topLevel: Record<string, unknown>,
-): void {
-  if (serviceConfigs.length === 0) delete service.configs;
-  else service.configs = serviceConfigs;
-  if (Object.keys(topLevel).length === 0) delete doc.configs;
-  else doc.configs = topLevel;
+/** The config a service `configs` entry names, in either syntax (`- name` or
+ *  `- source: name`). */
+function configSource(entry: unknown): string {
+  if (isScalar(entry)) return String(entry.value);
+  if (isMap(entry)) return String(entry.get("source") ?? "");
+  return "";
 }
 
 /** Whether this stack currently publishes the dashboard, and on which host. */
 export function traefikDashboardDomain(currentYaml: string): string | null {
-  let doc: ComposeDoc;
+  let service: YAMLMap | null;
   try {
-    doc = parseCompose(currentYaml);
+    service = traefikServiceNode(parseCompose(currentYaml));
   } catch {
     return null;
   }
-  const service = doc.services?.[traefikServiceName(doc) ?? ""];
   if (!service) return null;
-  if (!asList(service.command).includes(DASHBOARD_FLAG)) return null;
-  for (const label of asList(service.labels)) {
+  if (!listOf(service.get("command", true)).includes(DASHBOARD_FLAG)) return null;
+  for (const label of listOf(service.get("labels", true))) {
     const m = label.match(
       new RegExp(`^traefik\\.http\\.routers\\.${ROUTER}\\.rule=Host\\(\`([^\`]+)\`\\)$`),
     );
@@ -364,54 +382,125 @@ export function traefikDashboardDomain(currentYaml: string): string | null {
 /* Internals                                                           */
 /* ------------------------------------------------------------------ */
 
-type ComposeService = {
-  image?: string;
-  container_name?: string;
-  command?: unknown;
-  labels?: unknown;
-  [k: string]: unknown;
-};
-type ComposeDoc = { services?: Record<string, ComposeService>; [k: string]: unknown };
+/**
+ * The host's stack, parsed as a YAML document and edited in place.
+ *
+ * A document rather than plain objects because a plain object cannot hold a
+ * comment: `parseDocument` → mutate → `toString` keeps the file's comments,
+ * quoting and layout and touches only the keys we actually change. See the file
+ * comment for why that is a requirement rather than a nicety.
+ */
+type Stack = Document.Parsed;
 
-function parseCompose(text: string): ComposeDoc {
-  let doc: unknown;
-  try {
-    doc = yaml.load(text);
-  } catch (e) {
+function parseCompose(text: string): Stack {
+  const doc = parseDocument(text);
+  if (doc.errors.length > 0)
     throw new Error(
-      `Could not read this server's Traefik configuration: ${
-        e instanceof Error ? e.message : String(e)
-      }`,
+      `Could not read this server's Traefik configuration: ${doc.errors[0].message}`,
     );
-  }
-  if (!doc || typeof doc !== "object" || Array.isArray(doc))
+  if (!isMap(doc.contents))
     throw new Error("This server's Traefik configuration is not a compose file");
-  return doc as ComposeDoc;
+  return doc;
 }
 
 /**
- * The service key holding Traefik. Matched by container_name first (the
- * installer pins `deplo-traefik`), then by image, then by the conventional
- * `traefik` key — so a hand-renamed service still resolves.
+ * The service holding Traefik. Matched by container_name first (the installer
+ * pins `deplo-traefik`), then by image, then by the conventional `traefik` key —
+ * so a hand-renamed service still resolves.
  */
-function traefikServiceName(doc: ComposeDoc): string | null {
-  const services = doc.services ?? {};
-  for (const [name, svc] of Object.entries(services)) {
-    if (svc?.container_name === TRAEFIK_CONTAINER) return name;
+function traefikServiceNode(doc: Stack): YAMLMap | null {
+  const services = doc.get("services", true);
+  if (!isMap(services)) return null;
+
+  const byName = new Map<string, YAMLMap>();
+  for (const pair of services.items) {
+    if (isMap(pair.value)) byName.set(scalar(pair.key), pair.value);
   }
-  for (const [name, svc] of Object.entries(services)) {
-    if (typeof svc?.image === "string" && svc.image.toLowerCase().includes("traefik"))
-      return name;
+  for (const svc of byName.values()) {
+    if (String(svc.get("container_name") ?? "") === TRAEFIK_CONTAINER) return svc;
   }
-  return services.traefik ? "traefik" : null;
+  for (const svc of byName.values()) {
+    if (String(svc.get("image") ?? "").toLowerCase().includes("traefik")) return svc;
+  }
+  return byName.get("traefik") ?? null;
 }
 
-function traefikService(doc: ComposeDoc): ComposeService {
-  const name = traefikServiceName(doc);
-  const service = name ? doc.services?.[name] : undefined;
+function traefikService(doc: Stack): YAMLMap {
+  const service = traefikServiceNode(doc);
   if (!service)
     throw new Error("This server's Traefik configuration has no Traefik service in it");
   return service;
+}
+
+/**
+ * compose accepts `labels`/`command` as either a list or a map (`KEY: value`).
+ * Everything here works on the list form, which is also what the installer
+ * writes and what every other Deplo renderer emits.
+ */
+function listOf(node: unknown): string[] {
+  if (isSeq(node)) return node.items.map(scalar);
+  if (isMap(node)) return node.items.map((p) => `${scalar(p.key)}=${scalar(p.value)}`);
+  if (isScalar(node)) return [String(node.value)];
+  return [];
+}
+
+/** A node's scalar text, for the flag and label lists this module reads. */
+function scalar(node: unknown): string {
+  if (isScalar(node)) return String(node.value);
+  return node == null ? "" : String(node);
+}
+
+/**
+ * Replace a `command`/`labels` list, KEEPING the item nodes that survive.
+ *
+ * Keeping nodes is what keeps comments: a comment belongs to the item it sits
+ * above, so on a hand-maintained proxy "# Let's Encrypt via HTTP-01 on :80"
+ * lives INSIDE the command list. Rebuilding that list from strings would leave
+ * every flag in place and drop every line explaining them.
+ *
+ * An entry whose NAME (everything up to the first `=`) is unchanged is treated as
+ * the same entry with a new value, so it keeps its node — that is what makes
+ * changing the ACME email keep the paragraph written above the email flag. Only
+ * genuinely new names get a fresh node, appended at the end.
+ */
+function setList(doc: Stack, owner: YAMLMap, key: string, next: string[]): void {
+  const node = owner.get(key, true);
+  if (isSeq(node)) {
+    const pending = new Map<string, string[]>();
+    for (const value of next) {
+      const bucket = pending.get(entryName(value));
+      if (bucket) bucket.push(value);
+      else pending.set(entryName(value), [value]);
+    }
+    node.items = node.items.filter((item) => {
+      const bucket = pending.get(entryName(scalar(item)));
+      const replacement = bucket?.shift();
+      if (replacement === undefined) return false;
+      if (isScalar(item)) item.value = replacement;
+      return true;
+    });
+    for (const bucket of pending.values()) {
+      for (const value of bucket) node.add(doc.createNode(value));
+    }
+    if (node.items.length === 0) owner.delete(key);
+    return;
+  }
+  if (next.length === 0) owner.delete(key);
+  else owner.set(key, doc.createNode(next));
+}
+
+/** A `--flag=value` / `label=value` entry's name, i.e. what makes two entries the
+ *  same setting with different values. Valueless entries are their own name. */
+function entryName(entry: string): string {
+  const eq = entry.indexOf("=");
+  return eq === -1 ? entry : entry.slice(0, eq);
+}
+
+/** Append one entry to a service list, creating the list if it has none. */
+function addTo(doc: Stack, owner: YAMLMap, key: string, value: unknown): void {
+  const node = owner.get(key, true);
+  if (isSeq(node)) node.add(doc.createNode(value));
+  else owner.set(key, doc.createNode([value]));
 }
 
 /**
@@ -438,33 +527,14 @@ function certResolver(command: string[]): string {
 function isOurs(label: string): boolean {
   return (
     label.startsWith(`traefik.http.routers.${ROUTER}.`) ||
-    label.startsWith(`traefik.http.middlewares.${AUTH_MIDDLEWARE}.`)
+    label.startsWith(`traefik.http.middlewares.${AUTH_MIDDLEWARE}.`) ||
+    label === FLAG_MARKER
   );
 }
 
-/**
- * compose accepts `labels`/`command` as either a list or a map (`KEY: value`).
- * Everything here works on the list form, which is also what the installer
- * writes and what every other Deplo renderer emits.
- */
-function asList(value: unknown): string[] {
-  if (Array.isArray(value)) return value.map((v) => String(v));
-  if (value && typeof value === "object")
-    return Object.entries(value as Record<string, unknown>).map(
-      ([k, v]) => `${k}=${String(v)}`,
-    );
-  if (typeof value === "string") return [value];
-  return [];
-}
-
-function setLabels(service: ComposeService, labels: string[]): void {
-  if (labels.length === 0) delete service.labels;
-  else service.labels = labels;
-}
-
-function dump(doc: ComposeDoc): string {
-  // lineWidth: -1 disables folding — a wrapped basicauth hash or a wrapped
+function dump(doc: Stack): string {
+  // lineWidth 0 disables folding — a wrapped basicauth hash or a wrapped
   // `Host(...)` rule is still valid YAML but unreadable in the file the operator
   // may end up looking at on the host.
-  return yaml.dump(doc, { lineWidth: -1, noRefs: true });
+  return doc.toString({ lineWidth: 0 });
 }

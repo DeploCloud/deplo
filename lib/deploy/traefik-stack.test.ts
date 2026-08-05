@@ -192,6 +192,70 @@ test("disabling keeps labels the operator added themselves", () => {
   assert.ok(!labels.some((l) => l.includes("deplo-traefik-dashboard")));
 });
 
+/**
+ * A host whose proxy the operator maintains by hand: comments explaining the
+ * flags, and a dashboard flag of their own on a loopback port. Both are things
+ * only that host has, and both have to survive Deplo editing the file.
+ */
+const HAND_MAINTAINED = `# Traefik - edge router for every site on this host.
+#
+# Keep the static config in \`command:\` flags: a config file would win over them.
+services:
+  traefik:
+    image: traefik:v3.6
+    container_name: deplo-traefik
+    command:
+      # Let's Encrypt via HTTP-01 on the web (:80) entrypoint. The resolver name
+      # MUST stay \`letsencrypt\`: every deployed app's labels reference it.
+      - --certificatesresolvers.letsencrypt.acme.email=ops@acme.com
+      - --certificatesresolvers.letsencrypt.acme.httpchallenge=true
+      - --entrypoints.web.address=:80
+      - --entrypoints.websecure.address=:443
+      # Our own dashboard, bound to loopback only.
+      - --api.dashboard=true
+      - --api.insecure=true
+    ports:
+      - "80:80"
+      - "127.0.0.1:8080:8080"
+`;
+
+const commentsIn = (s: string) => (s.match(/^\s*#/gm) ?? []).length;
+
+test("editing the stack keeps the comments the operator wrote in it", () => {
+  // A load/dump through plain objects keeps every setting and erases every line
+  // explaining it. On a hand-maintained proxy those lines are the documentation
+  // of the box, and there is one backup on the host, not a history.
+  const before = commentsIn(HAND_MAINTAINED);
+  assert.equal(before, 6);
+
+  assert.equal(commentsIn(withTraefikDashboard(HAND_MAINTAINED, DASH)), before);
+  assert.equal(commentsIn(withTraefikCertificates(HAND_MAINTAINED, [CERT])), before);
+  // Including the paragraph written above the flag being CHANGED: an entry keeps
+  // its node (and its comment) when only its value moves.
+  const remailed = withAcmeEmail(HAND_MAINTAINED, "certs@acme.com");
+  assert.equal(commentsIn(remailed), before);
+  assert.ok(remailed.includes("MUST stay `letsencrypt`"));
+  assert.equal(acmeEmail(remailed), "certs@acme.com");
+});
+
+test("turning the panel off leaves a dashboard flag that was never ours", () => {
+  // Nothing of ours was ever published here, so there is nothing to unpublish:
+  // the file must come back untouched, byte for byte.
+  assert.equal(withTraefikDashboard(HAND_MAINTAINED, null), HAND_MAINTAINED);
+
+  // And after a full publish/unpublish cycle, THEIR flag is still there — it is
+  // the loopback dashboard they were using before Deplo existed.
+  const cycled = withTraefikDashboard(withTraefikDashboard(HAND_MAINTAINED, DASH), null);
+  assert.ok(commandOf(cycled).includes("--api.dashboard=true"));
+  assert.ok(commandOf(cycled).includes("--api.insecure=true"));
+  assert.deepEqual(labelsOf(cycled), [], "nothing of ours may linger either");
+
+  // On a host where WE added the flag, we still take it back out (INSTALLED has
+  // none of its own) — that is the case the marker label tells apart.
+  const installedCycle = withTraefikDashboard(withTraefikDashboard(INSTALLED, DASH), null);
+  assert.ok(!commandOf(installedCycle).includes("--api.dashboard=true"));
+});
+
 test("a domain or credentials cannot be omitted", () => {
   assert.throws(
     () => withTraefikDashboard(INSTALLED, { domain: "  ", htpasswdUsers: "a:b" }),
