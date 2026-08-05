@@ -277,7 +277,7 @@ function TeamAccessCard({
                 </SelectContent>
               </Select>
               {!roleId && (
-                <p className="mt-1 text-xs text-muted-foreground">
+                <p className="text-xs text-muted-foreground">
                   They hold a hand-picked set of permissions. Saving here puts
                   them on a role instead.
                 </p>
@@ -288,9 +288,8 @@ function TeamAccessCard({
               <div className="min-w-0">
                 <p className="text-sm font-medium">Per-node overrides</p>
                 <p className="mt-1 text-xs text-muted-foreground">
-                  Give them a different set of permissions inside single
-                  projects, folders or apps. The role keeps applying everywhere
-                  else.
+                  Give them a different set inside single projects, folders or
+                  apps, with the role still applying everywhere else.
                 </p>
               </div>
               <Switch
