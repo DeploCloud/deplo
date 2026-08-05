@@ -124,7 +124,12 @@ const appColumns = {
  */
 export const appTransferInfo = cache(
   async (appId: string): Promise<AppTransferInfo> => {
-    const { userId, teamId } = await requireCapability("move_apps");
+    // The APP's gate, not the team's — the same one `transferAppToTeam` below
+    // applies, so what this screen shows and what the move allows agree. Holding
+    // team `move_apps` is not access to an app inside a folder you can't see,
+    // and this DTO is the app's name, its server, its counts and — through
+    // `homeLabel` — the name of that very folder.
+    const { userId, teamId } = await requireAppCapability(appId, "move_apps");
     const db = getDb();
     const app = (
       await db

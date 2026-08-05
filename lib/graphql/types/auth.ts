@@ -1,7 +1,7 @@
 import { builder } from "../builder";
 import { ViewerRef } from "./viewer";
 import { z } from "zod";
-import { headers } from "next/headers";
+import { cookies, headers } from "next/headers";
 import {
   login,
   logout,
@@ -19,6 +19,7 @@ import {
 } from "@/lib/data/members";
 import { normalizeUsername, validateUsername } from "@/lib/username";
 import { rateLimit } from "@/lib/security";
+import { sha256Hex } from "@/lib/crypto";
 
 /**
  * Authentication mutations. These are PUBLIC (no auth scope) and run in the
@@ -39,6 +40,33 @@ async function clientKey(scope: string): Promise<string> {
     h.get("x-real-ip") ||
     "local";
   return `${scope}:${ip}`;
+}
+
+/**
+ * A limiter bucket for the LOGIN ATTEMPT a two-factor challenge belongs to.
+ *
+ * Better Auth sets a `two_factor` cookie (under deplo's `cookiePrefix`) once the
+ * password half succeeds, so its value names this one pending login. Hashed,
+ * because a limiter key ends up in memory next to a token that is still live.
+ * Empty when the cookie is absent — there is no challenge to bound, and the
+ * verification is about to fail on its own.
+ */
+async function pendingLoginKey(): Promise<
+  { key: string; limit: number; windowMs: number }[]
+> {
+  const store = await cookies();
+  const pending = store
+    .getAll()
+    .find((c) => c.name.endsWith("two_factor") && c.value);
+  return pending
+    ? [
+        {
+          key: `2fa-attempt:${sha256Hex(pending.value).slice(0, 32)}`,
+          limit: 5,
+          windowMs: 15 * 60_000,
+        },
+      ]
+    : [];
 }
 
 /** Returns an error message when any limiter trips, else null. */
@@ -147,10 +175,19 @@ builder.mutationFields((t) => ({
       const code = args.code.trim();
       if (!code) throw new Error("Enter the code from your authenticator app");
       // Tighter than the password limiter: a 6-digit code is guessable in a way
-      // a password is not, so cap attempts hard. The plugin ALSO locks the
-      // factor out after repeated failures; this is the cheap outer bound.
+      // a password is not, so cap attempts hard.
+      //
+      // TWO buckets, for the reason `login` above gives: an address-only limit
+      // is no limit at all against an attacker who rotates addresses, and the
+      // twoFactor plugin is configured with its defaults — it does NOT lock an
+      // account out after repeated failures, so nothing else here counts. The
+      // second bucket is the PENDING LOGIN itself, keyed on the cookie Better
+      // Auth set when the password was accepted: it caps the attempts against
+      // one challenge no matter how many addresses they arrive from, without
+      // this resolver having to learn which account is behind it.
       const limited = checkLimits([
         { key: await clientKey("2fa"), limit: 5, windowMs: 15 * 60_000 },
+        ...(await pendingLoginKey()),
       ]);
       if (limited) throw new Error(limited);
       const res = await verifyTwoFactorCode(
