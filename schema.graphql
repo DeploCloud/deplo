@@ -1362,6 +1362,11 @@ type Mutation {
   addRegistry(input: AddRegistryInput!): Boolean
   addServer(input: AddServerInput!): AddServerPayload
 
+  """
+  Install a TLS certificate on this server. The certificate and its key are checked as a pair before the host is touched: a key that does not match, or a certificate that has already expired, is refused. The proxy then serves it for every domain named in it — taking precedence over Let's Encrypt, which stops issuing for domains a certificate already covers. Uploading one for the same domains replaces it. Applying recreates the proxy, so routing on this host is interrupted for a few seconds. Returns the certificates installed afterwards.
+  """
+  addServerCertificate(id: String!, input: ServerCertificateInput!): [ServerCertificate!]
+
   """Put this person in a team with a role."""
   addUserToTeam(input: UserTeamInput!): [UserTeamAccess!]
 
@@ -1669,6 +1674,11 @@ type Mutation {
   removeServer(id: String!): ServerRemoval
 
   """
+  Remove a certificate from this server by its fingerprint. Its domains fall back to whatever else covers them — usually Let's Encrypt, which issues for them again once the proxy comes back. Recreates the proxy, so routing on this host blips.
+  """
+  removeServerCertificate(certificateId: String!, id: String!): [ServerCertificate!]
+
+  """
   Take this person out of a team. Since node grants are scoped to a team, this is the one action that revokes all of them at once.
   """
   removeUserFromTeam(input: UserTeamInput!): [UserTeamAccess!]
@@ -1822,6 +1832,11 @@ type Mutation {
   Read the Let's Encrypt account email off every server's proxy, live. Per host, because the address is a flag in each host's own stack file and a fleet installed over time can genuinely disagree with itself. A host Deplo cannot manage reports why instead of an address.
   """
   serverCertificateAccounts: [CertificateAccount!]
+
+  """
+  List the TLS certificates installed on this server by hand, read live from its proxy. Deplo keeps no copy of them, so this is what the host is actually serving. Errors when Deplo did not install the proxy there.
+  """
+  serverCertificates(id: String!): [ServerCertificate!]
   setAppAutoDeploy(id: String!, value: Boolean!): App
 
   """
@@ -2744,6 +2759,56 @@ type Server {
   traefikDashboardUser: String
   traefikEnabled: Boolean
   type: ServerType
+}
+
+"""
+A TLS certificate the operator installed on a server themselves, described from the certificate itself. It lives in that host's proxy and nowhere else — Deplo stores no copy — and its private key has no read path at all.
+"""
+type ServerCertificate {
+  """
+  Every hostname this certificate is valid for. Traefik picks a certificate by the domain the browser asked for, so these are the domains it will serve on this host.
+  """
+  domains: [String!]
+
+  """
+  Whether it is already past its expiry. A certificate can lapse in place long after it was installed, so this is computed, not stored.
+  """
+  expired: Boolean
+
+  """
+  Whole days left before it expires, negative once it has. Nothing renews these — the only warning is this number.
+  """
+  expiresInDays: Int
+
+  """
+  The certificate's SHA-256 fingerprint, which is also how it is addressed for removal. Nothing is minted: a certificate identifies itself.
+  """
+  id: String
+
+  """Who signed it."""
+  issuer: String
+
+  """Expires at (ISO-8601)."""
+  notAfter: String
+
+  """Valid from (ISO-8601)."""
+  notBefore: String
+
+  """Its common name, or its first domain when it carries none."""
+  subject: String
+}
+
+"""A certificate and the private key it was issued for, as PEM text."""
+input ServerCertificateInput {
+  """
+  The certificate in PEM form. Paste the FULL chain (certificate followed by any intermediates) — browsers need the intermediates.
+  """
+  certificate: String!
+
+  """
+  The matching private key in PEM form, without a passphrase. It is sent to the server and is never readable afterwards.
+  """
+  privateKey: String!
 }
 
 """

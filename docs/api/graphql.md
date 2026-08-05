@@ -112,7 +112,10 @@ minting registration links, the per-user admin editor, Docker cleanup
 hosts every team shares — and the instance's own settings (`instanceSettings`,
 `setPanelUrl`, `checkPanelUrl`, `serverCertificateAccounts`, `setCertificateEmail`):
 the address this Deplo answers on, and the Let's Encrypt account every host's
-proxy issues certificates under.
+proxy issues certificates under. A host's own TLS certificates are the same kind
+of thing (`serverCertificates`, `addServerCertificate`, `removeServerCertificate`):
+they front whatever any team runs on that server, they live in that host's proxy
+rather than in Deplo, and the private key is write-only, with no read path.
 
 ## Shape of the API
 

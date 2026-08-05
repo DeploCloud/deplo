@@ -160,6 +160,186 @@ export function withAcmeEmail(currentYaml: string, email: string): string {
   return dump(doc);
 }
 
+/* ------------------------------------------------------------------ */
+/* Custom certificates                                                 */
+/* ------------------------------------------------------------------ */
+
+/** One certificate the operator brought themselves: the PEM chain and its key. */
+export type CustomCertificate = { certPem: string; keyPem: string };
+
+/** Our compose config, the file it becomes, and the directory we serve it from. */
+const CERT_CONFIG = "deplo-certificates";
+const CERT_FILE = "deplo-certificates.yml";
+const DEPLO_DYNAMIC_DIR = "/deplo-dynamic";
+const FILE_DIRECTORY_FLAG = "--providers.file.directory=";
+const FILE_WATCH_FLAG = "--providers.file.watch=true";
+
+/**
+ * The certificates Deplo installed on this host, read back out of its own stack
+ * file, the same read-live-not-stored rule the ACME email follows, so a host
+ * someone edited by hand reports what it is actually serving.
+ */
+export function traefikCertificates(currentYaml: string): CustomCertificate[] {
+  let doc: ComposeDoc;
+  try {
+    doc = parseCompose(currentYaml);
+  } catch {
+    return [];
+  }
+  const content = topLevelConfigs(doc)[CERT_CONFIG];
+  const text =
+    content && typeof content === "object"
+      ? (content as { content?: unknown }).content
+      : undefined;
+  if (typeof text !== "string") return [];
+  let parsed: unknown;
+  try {
+    parsed = yaml.load(text);
+  } catch {
+    return [];
+  }
+  const list = (parsed as { tls?: { certificates?: unknown } } | null)?.tls?.certificates;
+  if (!Array.isArray(list)) return [];
+  return list
+    .map((entry) => {
+      const e = (entry ?? {}) as { certFile?: unknown; keyFile?: unknown };
+      return {
+        certPem: typeof e.certFile === "string" ? e.certFile : "",
+        keyPem: typeof e.keyFile === "string" ? e.keyFile : "",
+      };
+    })
+    .filter((c) => c.certPem && c.keyPem);
+}
+
+/**
+ * Install (or, with an empty list, remove) custom certificates on a host.
+ *
+ * Two pieces are needed and neither can come from a label: Traefik only reads
+ * certificates from its FILE provider, and the file has to exist inside the
+ * container. Both ride in the stack file itself: a compose `configs` entry with
+ * inline `content`, which Docker materialises into the container on `up`. That
+ * is deliberate: the agent has no RPC that writes an arbitrary path on the host
+ * (ADR-0006 keeps host writes to the ones it exposes), and the stack file is
+ * something Deplo is already allowed to rewrite. The PEM goes in verbatim:
+ * Traefik's `certFile`/`keyFile` take either a path or the certificate itself.
+ *
+ * Known ceiling: the key therefore lives in that stack file, which the agent
+ * writes 0644 (its acme.json is 0600). On a box with untrusted local users that
+ * is weaker than it should be, and tightening it is an agent-side change
+ * (hostops.go), not something this renderer can decide.
+ *
+ * The operator's own file provider is respected when they have one: our file is
+ * dropped into THEIR directory rather than a second provider being declared,
+ * which Traefik would refuse. A provider pinned to a single `filename` has no
+ * room for another file, and that is a refusal, not something to work around
+ * by replacing the file they configured.
+ */
+export function withTraefikCertificates(
+  currentYaml: string,
+  certificates: CustomCertificate[],
+): string {
+  const doc = parseCompose(currentYaml);
+  const service = traefikService(doc);
+  const command = asList(service.command);
+
+  // Ours always comes off first, so installing twice replaces rather than stacks.
+  const otherConfigs = withoutOurConfig(service.configs);
+  const otherTopLevel = { ...topLevelConfigs(doc) };
+  delete otherTopLevel[CERT_CONFIG];
+
+  if (certificates.length === 0) {
+    // The flags come out only when they are ours. An operator who pointed the
+    // file provider somewhere of their own keeps it: removing our certificates
+    // must not unload their middlewares along with them.
+    service.command = ourDynamicDir(command)
+      ? command.filter(
+          (c) => c !== `${FILE_DIRECTORY_FLAG}${DEPLO_DYNAMIC_DIR}` && c !== FILE_WATCH_FLAG,
+        )
+      : command;
+    setConfigs(service, doc, otherConfigs, otherTopLevel);
+    return dump(doc);
+  }
+
+  const existingDir = fileProviderDir(command);
+  if (!existingDir) {
+    command.push(`${FILE_DIRECTORY_FLAG}${DEPLO_DYNAMIC_DIR}`, FILE_WATCH_FLAG);
+    service.command = command;
+  }
+  const dir = existingDir ?? DEPLO_DYNAMIC_DIR;
+
+  setConfigs(
+    service,
+    doc,
+    [...otherConfigs, { source: CERT_CONFIG, target: `${dir}/${CERT_FILE}` }],
+    {
+      ...otherTopLevel,
+      [CERT_CONFIG]: {
+        content: yaml.dump(
+          {
+            tls: {
+              certificates: certificates.map((c) => ({
+                certFile: c.certPem,
+                keyFile: c.keyPem,
+              })),
+            },
+          },
+          { lineWidth: -1, noRefs: true },
+        ),
+      },
+    },
+  );
+  return dump(doc);
+}
+
+/** The file provider's directory when the stack already declares one. Throws for
+ *  a provider pinned to one filename (see withTraefikCertificates). */
+function fileProviderDir(command: string[]): string | null {
+  if (command.some((c) => c.startsWith("--providers.file.filename=")))
+    throw new Error(
+      "This server's proxy loads a single Traefik configuration file, so Deplo cannot add a certificate file alongside it. Point it at a directory (--providers.file.directory) to use custom certificates here.",
+    );
+  const found = command.find((c) => c.startsWith(FILE_DIRECTORY_FLAG));
+  return found ? found.slice(FILE_DIRECTORY_FLAG.length) : null;
+}
+
+/** Whether the file provider on this host is the one WE added. */
+function ourDynamicDir(command: string[]): boolean {
+  return command.includes(`${FILE_DIRECTORY_FLAG}${DEPLO_DYNAMIC_DIR}`);
+}
+
+function topLevelConfigs(doc: ComposeDoc): Record<string, unknown> {
+  const configs = doc.configs;
+  return configs && typeof configs === "object" && !Array.isArray(configs)
+    ? (configs as Record<string, unknown>)
+    : {};
+}
+
+/** Every config on the service EXCEPT ours, in either compose syntax. */
+function withoutOurConfig(value: unknown): unknown[] {
+  if (!Array.isArray(value)) return [];
+  return value.filter((entry) =>
+    typeof entry === "string"
+      ? entry !== CERT_CONFIG
+      : !(
+          entry &&
+          typeof entry === "object" &&
+          (entry as { source?: unknown }).source === CERT_CONFIG
+        ),
+  );
+}
+
+function setConfigs(
+  service: ComposeService,
+  doc: ComposeDoc,
+  serviceConfigs: unknown[],
+  topLevel: Record<string, unknown>,
+): void {
+  if (serviceConfigs.length === 0) delete service.configs;
+  else service.configs = serviceConfigs;
+  if (Object.keys(topLevel).length === 0) delete doc.configs;
+  else doc.configs = topLevel;
+}
+
 /** Whether this stack currently publishes the dashboard, and on which host. */
 export function traefikDashboardDomain(currentYaml: string): string | null {
   let doc: ComposeDoc;

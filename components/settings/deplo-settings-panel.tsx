@@ -8,6 +8,7 @@ import {
   Check,
   Globe,
   Loader2,
+  Pencil,
   Server as ServerIcon,
   ShieldCheck,
   TriangleAlert,
@@ -376,13 +377,24 @@ function CertificatesCard() {
                       <ServerIcon className="size-4 shrink-0 text-muted-foreground" />
                       <span className="truncate">{account.serverName}</span>
                     </span>
-                    {account.unavailable ? (
-                      <span className="text-xs text-muted-foreground">{account.unavailable}</span>
-                    ) : (
-                      <span className="font-mono text-xs text-muted-foreground">
-                        {account.email || "No address set"}
-                      </span>
-                    )}
+                    <span className="flex items-center gap-2">
+                      {account.unavailable ? (
+                        <span className="text-xs text-muted-foreground">{account.unavailable}</span>
+                      ) : (
+                        <span className="font-mono text-xs text-muted-foreground">
+                          {account.email || "No address set"}
+                        </span>
+                      )}
+                      {/* Straight to THIS server's certificates: the fleet-wide
+                          email is edited above, everything else about a host's
+                          certificates belongs to the host. */}
+                      <Button variant="ghost" size="sm" asChild>
+                        <Link href={`/settings/servers/${account.serverId}?tab=certificates`}>
+                          <Pencil className="size-4" />
+                          Edit
+                        </Link>
+                      </Button>
+                    </span>
                   </div>
                 ))}
               </div>

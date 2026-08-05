@@ -489,6 +489,18 @@ plain HTTP), container port, compose service, optional path prefix and middlewar
 Exactly one domain per app is **primary** — the *canonical host*, the app's
 `productionUrl`.
 
+**Custom certificate**:
+A TLS certificate the operator brought themselves (a wildcard, a company CA, a domain no
+HTTP challenge can reach), installed on ONE **server** from Settings, Servers, its
+Certificates tab. It lives in that host's own Traefik stack file and nowhere else: Deplo
+keeps no copy, the list is read back off the host, and the private key has no read path.
+The proxy picks it by the hostname the browser asked for, so it covers every **Domain** on
+that server named in the certificate and stops Let's Encrypt issuing for those. Distinct
+from a Domain's `certProvider`, which is per hostname and is about who ISSUES the
+certificate. Instance-admin only, and expiry is nobody's job but the operator's: nothing
+renews one.
+_Avoid_: SSL cert upload, bring-your-own-cert (feature-brochure names), certificate store.
+
 **Redirect domain**:
 A Domain that serves nothing and answers a permanent 301 to another hostname of the same
 app, named in its `redirect_to`. It exists so the `www` and non-`www` spellings of one

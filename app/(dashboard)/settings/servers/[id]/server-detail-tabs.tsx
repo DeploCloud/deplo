@@ -13,6 +13,7 @@ import {
   LayoutDashboard,
   ListChecks,
   MemoryStick,
+  ShieldCheck,
   SlidersHorizontal,
   Users,
   Wrench,
@@ -53,9 +54,10 @@ import { AgentVersionBadge } from "../agent-version-badge";
 import { ServerMaintenanceTab } from "./maintenance-tab";
 import { ServerCleanupTab } from "./cleanup-tab";
 import { ServerAdvancedTab } from "./advanced-tab";
+import { ServerCertificatesTab } from "./certificates-tab";
 
 /**
- * The five tabs of a server's management page. Horizontal, using the same
+ * The six tabs of a server's management page. Horizontal, using the same
  * underline nav Storage and Variables already use — the sidebar is untouched.
  *
  * The active tab rides in `?tab=`, so a link can point at the thing being talked
@@ -85,7 +87,14 @@ export type ServerSummary = {
   expectedAgentVersion: string;
 };
 
-const TABS = ["overview", "access", "maintenance", "cleanup", "advanced"] as const;
+const TABS = [
+  "overview",
+  "access",
+  "certificates",
+  "maintenance",
+  "cleanup",
+  "advanced",
+] as const;
 type TabId = (typeof TABS)[number];
 
 export function ServerDetailTabs({
@@ -126,6 +135,10 @@ export function ServerDetailTabs({
           <Users className="size-4" />
           Access
         </UnderlineTabsTrigger>
+        <UnderlineTabsTrigger value="certificates">
+          <ShieldCheck className="size-4" />
+          Certificates
+        </UnderlineTabsTrigger>
         <UnderlineTabsTrigger value="maintenance">
           <Wrench className="size-4" />
           Maintenance
@@ -145,6 +158,9 @@ export function ServerDetailTabs({
       </TabsContent>
       <TabsContent value="access" className="space-y-4 pt-4">
         <AccessTab server={server} teams={teams} accessTeamIds={accessTeamIds} />
+      </TabsContent>
+      <TabsContent value="certificates" className="space-y-4 pt-4">
+        <ServerCertificatesTab server={server} />
       </TabsContent>
       <TabsContent value="maintenance" className="space-y-4 pt-4">
         <ServerMaintenanceTab server={server} />

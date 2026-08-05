@@ -7,6 +7,8 @@ import {
   withAcmeEmail,
   withTraefikDashboard,
   traefikDashboardDomain,
+  traefikCertificates,
+  withTraefikCertificates,
   TRAEFIK_CONTAINER,
 } from "./traefik-stack";
 import { htpasswdLine } from "../crypto";
@@ -277,4 +279,84 @@ test("a proxy that issues no certificates refuses the setting instead of pretend
     .join("\n");
   assert.throws(() => withAcmeEmail(noAcme, "certs@example.com"), /no Let's Encrypt resolver/i);
   assert.throws(() => withAcmeEmail(INSTALLED, "   "), /Enter the email/i);
+});
+
+/* ------------------------------------------------------------------ */
+/* Custom certificates                                                 */
+/* ------------------------------------------------------------------ */
+
+/**
+ * The certificate half locks three things:
+ *   1. a round trip: what goes in comes back out of the host's own file, which
+ *      is where the list in the UI is read from (nothing is stored control-plane
+ *      side, so a lossy write would lose the certificate itself);
+ *   2. removal puts the file back exactly as it was, flags included, so
+ *      installing and removing one is not a slow way to accumulate config;
+ *   3. an operator's own file provider is used, never duplicated. Traefik
+ *      refuses a second file provider, and a stack that will not start is a host
+ *      with no routing at all.
+ */
+const CERT = { certPem: "-----BEGIN CERTIFICATE-----\nAAA\n-----END CERTIFICATE-----\n", keyPem: "-----BEGIN PRIVATE KEY-----\nBBB\n-----END PRIVATE KEY-----\n" };
+const CERT2 = { certPem: "-----BEGIN CERTIFICATE-----\nCCC\n-----END CERTIFICATE-----\n", keyPem: "-----BEGIN PRIVATE KEY-----\nDDD\n-----END PRIVATE KEY-----\n" };
+
+test("an installed certificate survives the round trip through the stack file", () => {
+  const out = withTraefikCertificates(INSTALLED, [CERT, CERT2]);
+  assert.deepEqual(traefikCertificates(out), [CERT, CERT2]);
+
+  // The file provider is what makes Traefik read it at all, and the file has to
+  // land in the directory that provider watches.
+  assert.ok(commandOf(out).includes("--providers.file.directory=/deplo-dynamic"));
+  assert.ok(commandOf(out).includes("--providers.file.watch=true"));
+  const doc = parse(out) as Doc & { configs?: Record<string, { content?: string }> };
+  const mount = (doc.services.traefik.configs as Array<{ source: string; target: string }>)[0];
+  assert.equal(mount.source, "deplo-certificates");
+  assert.equal(mount.target, "/deplo-dynamic/deplo-certificates.yml");
+  assert.ok(doc.configs?.["deplo-certificates"]?.content?.includes("BEGIN CERTIFICATE"));
+
+  // Everything the host already had is still there, same rule as the dashboard.
+  assert.ok(commandOf(out).includes("--certificatesresolvers.letsencrypt.acme.email=ops@acme.com"));
+  assert.deepEqual(parse(out).services.traefik.volumes, parse(INSTALLED).services.traefik.volumes);
+});
+
+test("installing the same certificate twice replaces it rather than stacking", () => {
+  const once = withTraefikCertificates(INSTALLED, [CERT]);
+  const twice = withTraefikCertificates(once, [CERT]);
+  assert.deepEqual(traefikCertificates(twice), [CERT]);
+  assert.equal(commandOf(twice).filter((c) => c.startsWith("--providers.file.")).length, 2);
+});
+
+test("removing the last certificate leaves the file as it was found", () => {
+  const withCert = withTraefikCertificates(INSTALLED, [CERT]);
+  const cleared = withTraefikCertificates(withCert, []);
+  assert.deepEqual(traefikCertificates(cleared), []);
+  assert.deepEqual(parse(cleared), parse(INSTALLED));
+});
+
+test("an operator's own file provider is reused, never a second one declared", () => {
+  const custom = INSTALLED.replace(
+    "      - --providers.docker=true",
+    "      - --providers.docker=true\n      - --providers.file.directory=/etc/traefik/dynamic",
+  );
+  const out = withTraefikCertificates(custom, [CERT]);
+  assert.equal(commandOf(out).filter((c) => c.startsWith("--providers.file.directory=")).length, 1);
+  const mount = (parse(out).services.traefik.configs as Array<{ target: string }>)[0];
+  assert.equal(mount.target, "/etc/traefik/dynamic/deplo-certificates.yml");
+
+  // Their flag is theirs: removing our certificate must not unload their config.
+  const cleared = withTraefikCertificates(out, []);
+  assert.ok(commandOf(cleared).includes("--providers.file.directory=/etc/traefik/dynamic"));
+  assert.equal(traefikCertificates(cleared).length, 0);
+});
+
+test("a proxy pinned to a single config file refuses instead of replacing it", () => {
+  const pinned = INSTALLED.replace(
+    "      - --providers.docker=true",
+    "      - --providers.docker=true\n      - --providers.file.filename=/etc/traefik/dynamic.yml",
+  );
+  assert.throws(() => withTraefikCertificates(pinned, [CERT]), /single Traefik configuration file/i);
+});
+
+test("a stack with no certificates of ours reports none", () => {
+  assert.deepEqual(traefikCertificates(INSTALLED), []);
+  assert.deepEqual(traefikCertificates("not: [a, compose, file"), []);
 });
