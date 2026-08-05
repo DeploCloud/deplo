@@ -23,6 +23,7 @@ import {
   canSeeFolder,
   visibleFolderIds,
 } from "./folder-access";
+import { appCapabilitiesForTeam, requireAppCapability } from "./node-access";
 import { recordActivity } from "./activity";
 import { inFolderScope } from "../auth/request-context";
 import { normalizeHexColor } from "../utils";
@@ -424,7 +425,12 @@ export async function moveAppToFolder(
   appId: string,
   folderId: string | null,
 ): Promise<void> {
-  const { teamId } = await requireCapability("move_apps");
+  // The SOURCE gate, and the only one that covers every placement: the ladder
+  // resolves the app through its folder chain, its project, then the membership
+  // (ADR-0016), so this is the folder-source check it replaces AND the one an
+  // app inside a project never had. Without it, team-wide `move_apps` was enough
+  // to pull any project app into a folder the mover controls.
+  const { teamId } = await requireAppCapability(appId, "move_apps");
   const userName = (await getCurrentUser())?.name ?? "Someone";
   const proj = await getDb()
     .select({ id: appsTable.id, name: appsTable.name, folderId: appsTable.folderId })
@@ -433,12 +439,6 @@ export async function moveAppToFolder(
     .limit(1);
   const p = proj[0];
   if (!p) throw new Error("App not found");
-  // Pulling a project OUT of its current folder needs `deploy` on that source
-  // folder (a no-op when the project is already at the top level). This blocks
-  // a member from evicting a project from a folder they don't control.
-  if (p.folderId && p.folderId !== folderId) {
-    await requireFolderCapability(p.folderId, "move_apps");
-  }
   let msg = "";
   if (folderId) {
     // Filing INTO a folder needs `deploy` on that destination folder.
@@ -493,23 +493,36 @@ export async function moveAppsToFolder(
   }
   // Only the caller's own team apps that actually change folder.
   const owned = await getDb()
-    .select({ id: appsTable.id, folderId: appsTable.folderId })
+    .select({
+      id: appsTable.id,
+      folderId: appsTable.folderId,
+      projectId: appsTable.projectId,
+    })
     .from(appsTable)
     .where(and(eq(appsTable.teamId, teamId), inArray(appsTable.id, [...new Set(appIds)])));
   const toMove = owned
     .filter((p) => (p.folderId ?? null) !== folderId)
     .map((p) => p.id);
   if (toMove.length === 0) return 0;
-  // Pulling apps OUT of their current folders needs `deploy` on each distinct
-  // source folder the selection touches — so a member can't evict apps from a
-  // folder they don't control via the bulk path.
-  const sourceFolders = new Set(
+  // The same source gate as the single move, batched: `move_apps` ON EACH APP,
+  // resolved through its own folder chain and project. It used to check the
+  // distinct source FOLDERS, which left every app inside a project ungated on
+  // this path too. One resolution for the selection, not one per app.
+  const reach = await appCapabilitiesForTeam(
+    teamId,
     owned
-      .filter((p) => (p.folderId ?? null) !== folderId && p.folderId)
-      .map((p) => p.folderId as string),
+      .filter((p) => toMove.includes(p.id))
+      .map((p) => ({
+        id: p.id,
+        folderId: p.folderId ?? null,
+        projectId: p.projectId ?? null,
+      })),
   );
-  for (const src of sourceFolders) {
-    await requireFolderCapability(src, "move_apps");
+  for (const id of toMove) {
+    // Same message an unknown id gets: which of the selection they may not move
+    // is not something a refusal should spell out.
+    if (!(reach.get(id) ?? []).includes("move_apps"))
+      throw new Error("App not found");
   }
   await getDb()
     .update(appsTable)

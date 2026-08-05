@@ -15,6 +15,8 @@ import { runWithIdentity } from "../auth/request-context";
 import { seedIdentity, TEAM_A, TEAM_B } from "./identity-test-helpers";
 import { seedApp, seedServer } from "./app-graph-test-helpers";
 import { nodeCapabilities } from "./node-access";
+import { listApps } from "./apps";
+import { moveAppToFolder } from "./folders";
 import type { Capability } from "../types";
 
 /**
@@ -214,6 +216,53 @@ test("a project grant governs the apps filed under it, and never hides them", as
   // unlike a folder, a Project has no privacy rule.
   await db.delete(projectGrantsTable);
   assert.deepEqual(await capsOn({ kind: "app", id: APP_IN_PRC }), ROLE_CAPS.sort());
+});
+
+/**
+ * The gate a move runs, rather than the set it resolves. A grant REPLACES the
+ * role inside its node, so a team-wide capability must stop at the boundary of
+ * a node whose grant withholds it — and `moveAppToFolder` used to ask the TEAM
+ * for `move_apps` and then gate only the source FOLDER, which left every app
+ * inside a project answering to the team-wide set alone.
+ */
+test("a project grant that withholds move_apps stops the team-wide one", async () => {
+  await pg.exec(
+    `insert into membership_capabilities (membership_id, capability)
+     select id, 'move_apps' from memberships where user_id = '${DEV}'`,
+  );
+  // A destination they own outright, so nothing about the move fails there.
+  const dest = "fld_dev";
+  await db.insert(foldersTable).values({
+    id: dest,
+    teamId: TEAM_A,
+    name: "Dev's own",
+    parentId: null,
+    color: null,
+    ownerUserId: DEV,
+    projectId: null,
+    createdAt: T0,
+    updatedAt: T0,
+  });
+
+  // Free to move an app that answers to their role.
+  await as(DEV, () => moveAppToFolder(APP_TOP, dest));
+  assert.equal(
+    (await as(ADMIN, () => listApps())).find((a) => a.id === APP_TOP)?.folderId,
+    dest,
+  );
+
+  // Not one inside a project whose grant says otherwise: the grant replaces the
+  // role there, and `move_apps` is not in it.
+  await grantProject(PRC, ["deploy_apps"]);
+  await assert.rejects(
+    () => as(DEV, () => moveAppToFolder(APP_IN_PRC, dest)),
+    /permission to move/i,
+  );
+  assert.equal(
+    (await as(ADMIN, () => listApps())).find((a) => a.id === APP_IN_PRC)?.folderId,
+    null,
+    "and the app stayed in its project",
+  );
 });
 
 test("losing the membership revokes every node grant, live", async () => {

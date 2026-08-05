@@ -48,6 +48,9 @@ import {
   toggleBackup,
   updateBackup,
 } from "./backups";
+import { listApps } from "./apps";
+import { createFolder, listFolders, moveAppToFolder } from "./folders";
+import { moveAppToProject } from "./projects";
 import { createRole, listRoles, resetRole, updateRole } from "./roles";
 import { createToken } from "./tokens";
 import { updateMember } from "./members";
@@ -339,6 +342,37 @@ test("nor delete one", async () => {
     (await asUser(() => listSharedVars())).length,
     1,
     "the variable survives",
+  );
+});
+
+/* ------------------------------------------------------------------ */
+/* 1b. A narrowed API token vs. the placement of apps                  */
+/* ------------------------------------------------------------------ */
+
+/**
+ * A move is the one verb that changes what a scope CONTAINS, from inside it —
+ * and the reason it is not an escape today is upstream of every gate:
+ * `move_apps` is deliberately absent from `PROJECT_SCOPED_CAPABILITIES`
+ * ("a token editing its own boundary"), so the clamp strips it and a narrowed
+ * token cannot move anything at all. This pins that, because it is the whole
+ * defence: put `move_apps` back in that list and every mover below opens.
+ */
+test("a narrowed token holds no move at all, in or out of its scope", async () => {
+  await asUser(() => createFolder("Mine"));
+  const fld = (await asUser(() => listFolders()))[0]!.id;
+
+  for (const [what, call] of [
+    ["an app it doesn't reach, into a folder", () => moveAppToFolder(APP_OUT, fld)],
+    ["its own app, into a folder", () => moveAppToFolder(APP_IN, fld)],
+    ["its own app, into an out-of-scope project", () => moveAppToProject(APP_IN, PRC_OUT)],
+  ] as const) {
+    await refused(() => scoped(call), `a narrowed token moved ${what}`);
+  }
+
+  assert.equal(
+    (await asUser(() => listApps())).find((a) => a.id === APP_IN)?.projectId,
+    PRC_IN,
+    "nothing moved",
   );
 });
 

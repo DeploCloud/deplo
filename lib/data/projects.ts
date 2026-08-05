@@ -478,7 +478,10 @@ export async function moveAppToProject(
         .where(and(eq(projectsTable.id, projectId), eq(projectsTable.teamId, teamId)))
         .limit(1)
     )[0];
-    if (!p) throw new Error("Project not found");
+    // The DESTINATION, which was only ever checked against the team: a narrowed
+    // caller could file an app it controls into a project outside its own
+    // scope. Same message as an unknown id, so no id is confirmed by refusing.
+    if (!p || !inProjectScope(projectId)) throw new Error("Project not found");
     const env = await defaultEnvironmentFor(projectId);
     environmentId = env?.id ?? null;
     msg = env
@@ -537,7 +540,10 @@ export async function moveAppToEnvironment(
       .where(eq(environmentsTable.id, environmentId))
       .limit(1)
   )[0];
-  if (!env || env.teamId !== teamId) throw new Error("Environment not found");
+  // Its owning project is the destination, and it is checked the same way
+  // `moveAppToProject` checks one: in the team, and inside the caller's scope.
+  if (!env || env.teamId !== teamId || !inProjectScope(env.projectId))
+    throw new Error("Environment not found");
   await getDb()
     .update(appsTable)
     .set({
