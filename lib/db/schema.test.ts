@@ -72,6 +72,12 @@ const CONTROL_PLANE = [
   // per team plus the team's own); memberships.role_id points at one.
   "team_roles",
   "team_role_capabilities",
+  // …and what a scoped role REACHES, one junction per node kind, mirroring the
+  // API token's scope. `team_roles.scoped` is the intent that survives their
+  // cascade.
+  "team_role_scope_projects",
+  "team_role_scope_folders",
+  "team_role_scope_apps",
   "invites",
   "invite_capabilities",
   "registration_links",
