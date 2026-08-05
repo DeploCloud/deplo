@@ -3,6 +3,8 @@ import assert from "node:assert/strict";
 import yaml from "js-yaml";
 
 import {
+  acmeEmail,
+  withAcmeEmail,
   withTraefikDashboard,
   traefikDashboardDomain,
   TRAEFIK_CONTAINER,
@@ -216,4 +218,63 @@ test("traefikDashboardDomain reports what the host is actually publishing", () =
   );
   assert.equal(traefikDashboardDomain(labelsOnly), null);
   assert.equal(traefikDashboardDomain("nonsense: ["), null);
+});
+
+/* ------------------------------------------------------------------ */
+/* The Let's Encrypt account email                                     */
+/* ------------------------------------------------------------------ */
+
+test("acmeEmail reads the address off the host's own resolver", () => {
+  assert.equal(acmeEmail(INSTALLED), "ops@acme.com");
+  // A resolver with no email flag is a resolver with no address, which is a
+  // different answer from "there is no resolver here" (null) below.
+  const noEmail = INSTALLED.replace(
+    "      - --certificatesresolvers.letsencrypt.acme.email=ops@acme.com\n",
+    "",
+  );
+  assert.equal(acmeEmail(noEmail), "");
+  // A host behind someone else's TLS termination issues no certificates at all.
+  const noAcme = INSTALLED.split("\n")
+    .filter((l) => !l.includes("--certificatesresolvers."))
+    .join("\n");
+  assert.equal(acmeEmail(noAcme), null);
+  assert.equal(acmeEmail("not a compose file"), null);
+});
+
+test("changing the email moves ONE flag and leaves the rest of the host alone", () => {
+  const out = withAcmeEmail(INSTALLED, "  Certs@Example.com ".trim());
+  const before = parse(INSTALLED).services.traefik;
+  const after = parse(out).services.traefik;
+
+  assert.equal(acmeEmail(out), "Certs@Example.com");
+  assert.equal(
+    commandOf(out).filter((c) => c.includes(".acme.email=")).length,
+    1,
+    "two email flags would leave Traefik reading whichever it saw last",
+  );
+  // Everything only that host knows survives: the storage path, the challenge,
+  // the ports, the acme volume.
+  assert.ok(commandOf(out).includes("--certificatesresolvers.letsencrypt.acme.storage=/acme/acme.json"));
+  assert.ok(commandOf(out).includes("--certificatesresolvers.letsencrypt.acme.httpchallenge=true"));
+  assert.deepEqual(after.volumes, before.volumes);
+  assert.deepEqual(after.ports, before.ports);
+  assert.equal(after.image, before.image);
+});
+
+test("the resolver's real name is used, not the installer's default", () => {
+  const dnsResolver = INSTALLED.replace(/certificatesresolvers\.letsencrypt\./g, "certificatesresolvers.cloudflare.");
+  const out = withAcmeEmail(dnsResolver, "certs@example.com");
+  assert.ok(
+    commandOf(out).includes("--certificatesresolvers.cloudflare.acme.email=certs@example.com"),
+    "a flag on a resolver this host does not define would silently do nothing",
+  );
+  assert.equal(commandOf(out).filter((c) => c.includes(".acme.email=")).length, 1);
+});
+
+test("a proxy that issues no certificates refuses the setting instead of pretending", () => {
+  const noAcme = INSTALLED.split("\n")
+    .filter((l) => !l.includes("--certificatesresolvers."))
+    .join("\n");
+  assert.throws(() => withAcmeEmail(noAcme, "certs@example.com"), /no Let's Encrypt resolver/i);
+  assert.throws(() => withAcmeEmail(INSTALLED, "   "), /Enter the email/i);
 });

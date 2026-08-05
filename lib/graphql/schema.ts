@@ -20,6 +20,7 @@ import "./types/environment";
 import "./types/global-env";
 import "./types/folder";
 import "./types/github";
+import "./types/instance";
 import "./types/member";
 import "./types/monitoring";
 import "./types/notifications";

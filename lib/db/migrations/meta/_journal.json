@@ -477,6 +477,13 @@
       "when": 1784674600000,
       "tag": "0067_traefik_dashboard",
       "breakpoints": true
+    },
+    {
+      "idx": 68,
+      "version": "7",
+      "when": 1784674800000,
+      "tag": "0068_instance_panel_url",
+      "breakpoints": true
     }
   ]
 }

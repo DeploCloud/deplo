@@ -5,6 +5,7 @@ import {
   listCleanupRuns,
   listCleanupRunsForSubscriber,
   runCleanupNow,
+  setServerCleanupExcluded,
   updateCleanupPolicy,
   type CleanupPolicy,
   type CleanupRunDTO,
@@ -195,6 +196,17 @@ builder.mutationFields((t) => ({
           ? [...input.excludedServerIds]
           : undefined,
       }),
+  }),
+  setServerCleanupExcluded: t.field({
+    type: DockerCleanupPolicyRef,
+    authScopes: { instanceAdmin: true },
+    description:
+      "Include ONE server in the scheduled sweep, or leave it out, without touching any other host's membership. This is what a server's own Cleanup tab writes: sending the whole exclusion list from a per-host page would rewrite every other host from a stale snapshot. Manual `runDockerCleanupNow` ignores the list either way.",
+    args: {
+      serverId: t.arg.string({ required: true }),
+      excluded: t.arg.boolean({ required: true }),
+    },
+    resolve: (_r, { serverId, excluded }) => setServerCleanupExcluded(serverId, excluded),
   }),
   runDockerCleanupNow: t.field({
     type: DockerCleanupRunRef,

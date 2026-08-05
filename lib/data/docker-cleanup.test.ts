@@ -28,6 +28,7 @@ import {
   reconcileInFlightCleanupRuns,
   runCleanupNow,
   serversWithDeploySweepInFlight,
+  setServerCleanupExcluded,
   sweepSupersededAppImages,
   updateCleanupPolicy,
 } from "./docker-cleanup";
@@ -255,7 +256,47 @@ async function assertEveryEntryPointRefused() {
     "write of the policy",
   );
   await assert.rejects(() => runCleanupNow(SERVER_1), denied, "the sweep itself");
+  await assert.rejects(
+    () => setServerCleanupExcluded(SERVER_1, true),
+    denied,
+    "leaving a host out of the schedule",
+  );
 }
+
+/* ------------------------------------------------------------------ */
+/* Per-host membership                                                 */
+/* ------------------------------------------------------------------ */
+
+test("a server's own page toggles only ITS membership, never the whole list", async () => {
+  await seedCleanupPolicy(db, { enabled: true });
+  await seedServer(db, "srv_second");
+
+  await asOwner(async () => {
+    // Two hosts left out, as the fleet-wide save would have written them.
+    await updateCleanupPolicy({
+      ...VALID_INPUT,
+      scopes: [...VALID_INPUT.scopes],
+      excludedServerIds: [SERVER_1, "srv_second"],
+    });
+
+    // The per-host toggle brings ONE back in. The other host's membership is a
+    // decision someone else made on another page, and it must survive this one.
+    const after = await setServerCleanupExcluded(SERVER_1, false);
+    assert.deepEqual(after.excludedServerIds, ["srv_second"]);
+
+    // Idempotent both ways: a double click is not an error, and re-excluding does
+    // not write a second row.
+    await setServerCleanupExcluded(SERVER_1, true);
+    const twice = await setServerCleanupExcluded(SERVER_1, true);
+    assert.deepEqual(twice.excludedServerIds.sort(), [SERVER_1, "srv_second"].sort());
+  });
+});
+
+test("a per-host toggle for a server that does not exist is refused", async () => {
+  await asOwner(async () => {
+    await assert.rejects(() => setServerCleanupExcluded("srv_nope", true), /Server not found/);
+  });
+});
 
 test("a plain member is refused by every entry point", async () => {
   await seedCleanupPolicy(db, { enabled: true });

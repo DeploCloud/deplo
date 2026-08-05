@@ -1,6 +1,5 @@
 import "server-only";
 
-import { headers } from "next/headers";
 import {
   and,
   asc,
@@ -45,7 +44,7 @@ import {
 import { cleanCapabilities } from "../membership-shared";
 import { ensureTeamRoles, matchTeamRole, roleAssignment } from "./roles";
 import { boundedBy, withView } from "./folder-access";
-import { resolvePublicBaseUrl } from "../public-url";
+import { instancePublicBaseUrl } from "./instance-settings";
 import type {
   Capability,
   RegistrationLink,
@@ -1119,7 +1118,7 @@ export async function mintRegistrationLink(input: {
       .values({ ...baseRow, mode: "own_team" });
   }
 
-  const base = resolvePublicBaseUrl(await headers());
+  const base = await instancePublicBaseUrl();
   return { link: `${base}/register/${rawToken}` };
 }
 
@@ -1185,7 +1184,7 @@ export async function listRegistrationLinks(): Promise<RegistrationLinkDTO[]> {
  */
 async function publicBaseUrl(): Promise<string> {
   try {
-    return resolvePublicBaseUrl(await headers());
+    return await instancePublicBaseUrl();
   } catch {
     return "";
   }
@@ -1227,7 +1226,7 @@ export async function revealRegistrationLink(id: string): Promise<string> {
     throw new Error(
       "This link could not be decrypted. Revoke it and mint a new one.",
     );
-  return `${resolvePublicBaseUrl(await headers())}/register/${rawToken}`;
+  return `${await instancePublicBaseUrl()}/register/${rawToken}`;
 }
 
 /** Revoke a pending registration link. */

@@ -4,16 +4,20 @@ import * as React from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import {
+  Check,
   Clock,
   Cpu,
+  Globe,
   KeyRound,
   Loader2,
   RefreshCw,
   ShieldAlert,
   Trash2,
+  TriangleAlert,
   LayoutDashboard,
 } from "lucide-react";
 
+import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import {
   Dialog,
@@ -30,6 +34,7 @@ import { Switch } from "@/components/ui/switch";
 import { FieldLabel, InfoTip } from "@/components/ui/info-tip";
 import { CommandLine } from "@/components/shared/code-block";
 import { SimpleTooltip } from "@/components/ui/tooltip";
+import { TimezonePicker } from "@/components/servers/timezone-picker";
 import { gqlAction } from "@/lib/graphql-client";
 import { formatBytes } from "@/lib/utils";
 import type { ServerSummary } from "./server-detail-tabs";
@@ -233,17 +238,6 @@ function formatUptime(sec: number): string {
 /* Server time                                                         */
 /* ------------------------------------------------------------------ */
 
-/** The canonical IANA zones, from the browser's own database — no list to ship
- *  and no dependency. The data layer accepts aliases too, so a zone missing here
- *  is still settable through the API. */
-function allTimezones(): string[] {
-  try {
-    return Intl.supportedValuesOf("timeZone");
-  } catch {
-    return ["UTC"];
-  }
-}
-
 function ServerClock({
   server,
   reading,
@@ -255,7 +249,6 @@ function ServerClock({
 }) {
   const [pending, startTransition] = React.useTransition();
   const [zone, setZone] = React.useState("");
-  const zones = React.useMemo(() => allTimezones(), []);
   const info = reading?.info ?? null;
 
   // `nowMs` is written only by the interval below — never during render, and
@@ -305,6 +298,12 @@ function ServerClock({
     });
   }
 
+  // How far the host's clock is from the browser's, measured at the moment the
+  // reading landed (both tick at the same rate afterwards, so this does not
+  // drift on its own). It is the one number a wall clock cannot show you, and it
+  // is what explains a certificate that will not issue or a cron that fires late.
+  const skewMs = reading ? reading.info.timeUnixMs - reading.readAt : 0;
+
   return (
     <Card>
       <CardHeader>
@@ -318,18 +317,52 @@ function ServerClock({
       </CardHeader>
       <CardContent>
         <form className="space-y-4" onSubmit={save}>
-          <div className="rounded-lg border border-border bg-muted/30 p-3">
-            <div className="text-xs text-muted-foreground">Current server time</div>
-            <div className="mt-1 font-mono text-lg tabular-nums">
-              {hostNow && info
-                ? `${hostNow.toLocaleString("en-GB", {
-                    timeZone: info.timezone || "UTC",
-                    dateStyle: "medium",
-                    timeStyle: "medium",
-                  })} ${formatOffset(info.utcOffsetMinutes)}`
-                : "—"}
-            </div>
+          {/* The clock itself: big, live, and in the SERVER's zone, so a host
+              whose clock is wrong shows its wrong time rather than the browser's
+              right one. */}
+          <div className="rounded-lg border border-border bg-muted/30 p-4">
+            {hostNow && info ? (
+              <div className="flex flex-wrap items-end justify-between gap-x-6 gap-y-3">
+                <div className="min-w-0">
+                  <div className="flex items-baseline gap-1 font-mono tabular-nums">
+                    <span className="text-4xl font-semibold leading-none">
+                      {partsIn(hostNow, info.timezone, { hour: "2-digit", minute: "2-digit" })}
+                    </span>
+                    {/* Seconds come from the instant itself: every current IANA
+                        offset is a whole number of minutes, and asking Intl for
+                        seconds alone yields an unpadded "7". */}
+                    <span className="text-xl leading-none text-muted-foreground">
+                      :{String(hostNow.getUTCSeconds()).padStart(2, "0")}
+                    </span>
+                  </div>
+                  <div className="mt-1 text-sm text-muted-foreground">
+                    {partsIn(hostNow, info.timezone, {
+                      weekday: "long",
+                      day: "numeric",
+                      month: "long",
+                      year: "numeric",
+                    })}
+                  </div>
+                </div>
+                <div className="flex flex-wrap items-center gap-1.5">
+                  <Badge variant="muted" className="gap-1">
+                    <Globe className="size-3" />
+                    {info.timezone || "Unknown zone"}
+                  </Badge>
+                  <Badge variant="muted" className="font-mono">
+                    {formatOffset(info.utcOffsetMinutes)}
+                  </Badge>
+                  <SkewChip skewMs={skewMs} />
+                </div>
+              </div>
+            ) : (
+              <div className="space-y-2">
+                <div className="h-9 w-40 animate-pulse rounded bg-muted/60" />
+                <div className="h-4 w-56 animate-pulse rounded bg-muted/50" />
+              </div>
+            )}
           </div>
+
           <div className="space-y-2">
             <FieldLabel
               htmlFor="server-timezone"
@@ -337,22 +370,13 @@ function ServerClock({
             >
               Timezone
             </FieldLabel>
-            {/* A datalist rather than a 400-item select: typing "Rome" beats
-                scrolling, and it still accepts a zone the list does not carry. */}
-            <Input
+            <TimezonePicker
               id="server-timezone"
-              list="deplo-timezones"
               value={zone}
-              onChange={(e) => setZone(e.target.value)}
-              placeholder="Europe/Rome"
+              onChange={setZone}
               disabled={pending || !info}
-              className="max-w-sm"
+              now={hostNow ? hostNow.getTime() : nowMs}
             />
-            <datalist id="deplo-timezones">
-              {zones.map((z) => (
-                <option key={z} value={z} />
-              ))}
-            </datalist>
           </div>
           <Button type="submit" disabled={pending || !info || !zone || zone === info?.timezone}>
             {pending ? "Saving" : "Save timezone"}
@@ -361,6 +385,53 @@ function ServerClock({
       </CardContent>
     </Card>
   );
+}
+
+/**
+ * How far this host's clock is from the viewer's, said plainly.
+ *
+ * Under five seconds is noise (network latency is inside this number), so it
+ * reads as in sync. Past a minute it is the destructive one: a clock that far
+ * out breaks certificate issuance and TOTP before it breaks anything visible.
+ */
+function SkewChip({ skewMs }: { skewMs: number }) {
+  const abs = Math.abs(skewMs);
+  if (abs < 5_000)
+    return (
+      <Badge variant="muted" className="gap-1">
+        <Check className="size-3" />
+        In sync
+      </Badge>
+    );
+  const amount =
+    abs < 90_000
+      ? `${Math.round(abs / 1000)}s`
+      : abs < 5_400_000
+        ? `${Math.round(abs / 60_000)}m`
+        : `${Math.round(abs / 3_600_000)}h`;
+  const label = `${amount} ${skewMs > 0 ? "ahead of" : "behind"} your clock`;
+  return abs >= 60_000 ? (
+    <SimpleTooltip content="A clock this far out breaks certificate renewal and two-factor codes. Check the host's time sync.">
+      <span className="inline-flex">
+        <Badge variant="destructive" className="gap-1">
+          <TriangleAlert className="size-3" />
+          {label}
+        </Badge>
+      </span>
+    </SimpleTooltip>
+  ) : (
+    <Badge variant="muted">{label}</Badge>
+  );
+}
+
+/** One `Intl` read of an instant in the host's zone. The pieces of the clock
+ *  are formatted separately so the seconds can be styled apart from the rest. */
+function partsIn(at: Date, zone: string, opts: Intl.DateTimeFormatOptions): string {
+  try {
+    return at.toLocaleString("en-GB", { timeZone: zone || "UTC", ...opts });
+  } catch {
+    return at.toLocaleString("en-GB", { timeZone: "UTC", ...opts });
+  }
 }
 
 /** "+01:00" / "-03:30" — minutes, because Kathmandu is +05:45. */

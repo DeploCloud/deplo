@@ -110,14 +110,12 @@ const linkRow = (id: string, rawToken: string, hoursFromNow: number) => ({
 test("mintRegistrationLink stamps an automatic 24h expiry", async () => {
   await seedIdentity(db);
   const before = Date.now();
-  // The link row is committed before mint formats its share URL from the request
-  // headers — which don't exist under node:test. Pinning that specific rejection
-  // proves mint got all the way past the write, so the row below is what it stored.
-  await assert.rejects(
-    () => asOwner(() => mintRegistrationLink({ mode: "own_team" })),
-    /request scope/,
-  );
+  // Mint runs to completion under node:test: the share URL is built from the
+  // instance's stored panel address (lib/data/instance-settings), which degrades
+  // to the configured DEPLO_PUBLIC_URL rather than demanding request headers.
+  const { link } = await asOwner(() => mintRegistrationLink({ mode: "own_team" }));
   const after = Date.now();
+  assert.match(link, /\/register\//, "the share URL carries the raw token");
 
   const rows = await db
     .select({ expiresAt: registrationLinksTable.expiresAt })
@@ -133,12 +131,7 @@ test("mintRegistrationLink stamps an automatic 24h expiry", async () => {
 
 test("mintRegistrationLink keeps the token readable back, and the hash still matches", async () => {
   await seedIdentity(db);
-  // Same trick as above: the row is written before mint formats the share URL,
-  // which needs request headers node:test has none of.
-  await assert.rejects(
-    () => asOwner(() => mintRegistrationLink({ mode: "own_team" })),
-    /request scope/,
-  );
+  await asOwner(() => mintRegistrationLink({ mode: "own_team" }));
 
   const [row] = await db
     .select({

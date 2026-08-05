@@ -2253,5 +2253,16 @@ export const instanceSettings = pgTable("instance_settings", {
   id: text("id").primaryKey().default("default"),
   /** The instance owner — see the table comment. NULL means "unowned". */
   ownerUserId: text("owner_user_id").references(() => users.id),
+  /**
+   * The address this Deplo answers on (`https://deplo.example.com`), as the
+   * operator set it in Settings → Deplo. It is what every copy-and-run string
+   * Deplo hands out is built from (a server's install command, a deploy hook
+   * URL, an invite link), so it has to be editable without shell access to the
+   * box that holds `DEPLO_PUBLIC_URL`.
+   *
+   * NULL means "not configured here" and the resolver falls back to
+   * `DEPLO_PUBLIC_URL`, then to the request's own host (`lib/public-url.ts`).
+   */
+  panelUrl: text("panel_url"),
   updatedAt: isoTimestamptz("updated_at").notNull(),
 });

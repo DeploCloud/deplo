@@ -106,9 +106,13 @@ keeps working unchanged. They are never returned. The other five old names
 the split as capabilities in their own right and mean exactly themselves.
 
 Some queries/mutations require **instance admin** (global): managing all users,
-minting registration links, the per-user admin editor, and Docker cleanup
+minting registration links, the per-user admin editor, Docker cleanup
 (`dockerCleanupPolicy`, `dockerCleanupRuns`, `updateDockerCleanupPolicy`,
-`runDockerCleanupNow`) — one instance-wide policy over hosts every team shares.
+`setServerCleanupExcluded`, `runDockerCleanupNow`) — one instance-wide policy over
+hosts every team shares — and the instance's own settings (`instanceSettings`,
+`setPanelUrl`, `checkPanelUrl`, `serverCertificateAccounts`, `setCertificateEmail`):
+the address this Deplo answers on, and the Let's Encrypt account every host's
+proxy issues certificates under.
 
 ## Shape of the API
 

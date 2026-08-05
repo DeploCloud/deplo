@@ -469,6 +469,16 @@ enum CertProvider {
 }
 
 """
+One server's Let's Encrypt account, read from that host's own proxy configuration. `email` is null when Deplo cannot manage certificates there; `unavailable` says why, in the host's own words.
+"""
+type CertificateAccount {
+  email: String
+  serverId: String
+  serverName: String
+  unavailable: String
+}
+
+"""
 Console attach info for an app (no shell probe — fetch the shell label separately via shellLabel).
 """
 type ConsoleInfo {
@@ -1241,6 +1251,26 @@ type GlobalUser {
 }
 
 """
+Settings that belong to this Deplo instance rather than to a team or a host: the address the panel answers on, and what version it runs.
+"""
+type InstanceSettings {
+  deploHostId: String
+  deploHostName: String
+
+  """
+  The address Deplo uses for itself right now. Every install command, deploy hook URL and invite link is built from it.
+  """
+  panelUrl: String
+
+  """
+  `stored` (set here), `environment` (DEPLO_PUBLIC_URL, set at install time) or `request` (derived from the browser's own host, which is a guess).
+  """
+  panelUrlSource: String
+  storedPanelUrl: String
+  version: String
+}
+
+"""
 The `JSON` scalar type represents JSON values as specified by [ECMA-404](http://www.ecma-international.org/publications/files/ECMA-ST/ECMA-404.pdf).
 """
 scalar JSON
@@ -1361,6 +1391,11 @@ type Mutation {
 
   """Re-run the upstream release check and return the latest update info."""
   checkForUpdates: UpdateInfo
+
+  """
+  Ask an address whether it reaches this Deplo, by calling the panel's own liveness endpoint from the server side. Persists nothing. Reports what answered instead when it does not: a DNS failure, a 502 and 'something else lives here' all need different fixes.
+  """
+  checkPanelUrl(url: String!): PanelReachability
 
   """
   Probe ONE server's agent right now (a live Hello) and persist what it reports: online, warning (agent up, Docker unreachable), error (agent untrusted or broken) or offline. Returns the refreshed server. Throttled server-side even when forced, so it cannot be used to hammer a host; an inconclusive probe leaves the previous observation untouched rather than guessing.
@@ -1782,6 +1817,11 @@ type Mutation {
 
   """Create or update a shared variable; returns the saved entity."""
   saveSharedVar(input: SaveSharedVarInput!): SharedVar
+
+  """
+  Read the Let's Encrypt account email off every server's proxy, live. Per host, because the address is a flag in each host's own stack file and a fleet installed over time can genuinely disagree with itself. A host Deplo cannot manage reports why instead of an address.
+  """
+  serverCertificateAccounts: [CertificateAccount!]
   setAppAutoDeploy(id: String!, value: Boolean!): App
 
   """
@@ -1808,6 +1848,11 @@ type Mutation {
   Replace an app's volumes (named, app-files, and host bind mounts). Compose-stack apps included — each volume names the service it mounts into.
   """
   setAppVolumes(id: String!, volumes: [VolumeInput!]!): App
+
+  """
+  Point every manageable server's certificates at this account email, where Let's Encrypt sends expiry and revocation notices. Each host's proxy is recreated to pick it up, one host at a time, so routing there is interrupted for a few seconds; certificates already issued keep working. Servers Deplo cannot manage are skipped and reported as skipped, never counted as done.
+  """
+  setCertificateEmail(email: String!): [CertificateAccount!]
   setDatabaseRunning(id: String!, running: Boolean!): Database
 
   """Make an environment the project's default (unsets the previous one)."""
@@ -1828,6 +1873,11 @@ type Mutation {
   """
   setFolderGrant(capabilities: [String!]!, folderId: ID!, userId: ID!): [FolderGrant!]
 
+  """
+  Set the address this Deplo answers on, or pass no url to fall back to DEPLO_PUBLIC_URL. A bare domain becomes https://. The value is validated as a hostname with no path, no credentials and no shell metacharacters, because it is interpolated into copy-and-run strings such as a server's install command. This does not move the panel's routing: that follows your DNS and proxy; use checkPanelUrl to prove the address reaches this instance.
+  """
+  setPanelUrl(url: String): InstanceSettings
+
   """Make this domain its app's primary (canonical) host. Returns true."""
   setPrimaryDomain(id: String!): Boolean
 
@@ -1840,6 +1890,11 @@ type Mutation {
   Turn saving server metrics on the control plane on or off. Turning it off also drops the buffered history.
   """
   setSaveMetrics(enabled: Boolean!): MonitoringSettings
+
+  """
+  Include ONE server in the scheduled sweep, or leave it out, without touching any other host's membership. This is what a server's own Cleanup tab writes: sending the whole exclusion list from a per-host page would rewrite every other host from a stale snapshot. Manual `runDockerCleanupNow` ignores the list either way.
+  """
+  setServerCleanupExcluded(excluded: Boolean!, serverId: String!): DockerCleanupPolicy
 
   """
   Set how many deployments this server runs at once (the per-server slot count the deploy queue enforces). 1 = strict serialization. Whole number in [1, 50].
@@ -2034,6 +2089,15 @@ type NotificationSettings {
   Per-event delivery map (deployment_failed, server_offline, …) -> boolean.
   """
   events: JSON
+}
+
+"""
+Whether an address actually reaches this Deplo, asked of the address itself. DNS and the proxy in front of the panel belong to the operator, so this reports what the address answered rather than claiming it works.
+"""
+type PanelReachability {
+  error: String
+  ok: Boolean
+  url: String
 }
 
 """
@@ -2259,6 +2323,11 @@ type Query {
   Instance-wide env vars — injected into every app of every team. Instance admin only.
   """
   instanceEnv: [GlobalEnvVar!]
+
+  """
+  This instance's own settings. A plain database read: it never dials a server, so it answers even when the fleet is down.
+  """
+  instanceSettings: InstanceSettings
 
   """Lighter instance list for the logs viewer."""
   logsInfo(appId: String!): LogsInfo

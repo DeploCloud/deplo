@@ -4,17 +4,18 @@ import * as React from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { toast } from "sonner";
 import {
+  Boxes,
+  Brush,
+  CircleFadingArrowUp,
   Cpu,
   Gauge,
   HardDrive,
+  LayoutDashboard,
   ListChecks,
   MemoryStick,
-  Boxes,
+  SlidersHorizontal,
   Users,
   Wrench,
-  SlidersHorizontal,
-  LayoutDashboard,
-  CircleFadingArrowUp,
 } from "lucide-react";
 
 import {
@@ -50,10 +51,11 @@ import { ServerReadinessDialog } from "@/components/servers/server-readiness-dia
 import type { CleanupPolicy, CleanupRunDTO } from "@/lib/data/docker-cleanup";
 import { AgentVersionBadge } from "../agent-version-badge";
 import { ServerMaintenanceTab } from "./maintenance-tab";
+import { ServerCleanupTab } from "./cleanup-tab";
 import { ServerAdvancedTab } from "./advanced-tab";
 
 /**
- * The four tabs of a server's management page. Horizontal, using the same
+ * The five tabs of a server's management page. Horizontal, using the same
  * underline nav Storage and Variables already use — the sidebar is untouched.
  *
  * The active tab rides in `?tab=`, so a link can point at the thing being talked
@@ -83,7 +85,7 @@ export type ServerSummary = {
   expectedAgentVersion: string;
 };
 
-const TABS = ["overview", "access", "maintenance", "advanced"] as const;
+const TABS = ["overview", "access", "maintenance", "cleanup", "advanced"] as const;
 type TabId = (typeof TABS)[number];
 
 export function ServerDetailTabs({
@@ -95,7 +97,7 @@ export function ServerDetailTabs({
   server: ServerSummary;
   teams: TeamOption[];
   accessTeamIds: string[];
-  cleanup: { policy: CleanupPolicy; runs: CleanupRunDTO[]; serverCount: number };
+  cleanup: { policy: CleanupPolicy; runs: CleanupRunDTO[] };
 }) {
   const router = useRouter();
   const params = useSearchParams();
@@ -128,6 +130,10 @@ export function ServerDetailTabs({
           <Wrench className="size-4" />
           Maintenance
         </UnderlineTabsTrigger>
+        <UnderlineTabsTrigger value="cleanup">
+          <Brush className="size-4" />
+          Cleanup
+        </UnderlineTabsTrigger>
         <UnderlineTabsTrigger value="advanced">
           <SlidersHorizontal className="size-4" />
           Advanced
@@ -141,7 +147,10 @@ export function ServerDetailTabs({
         <AccessTab server={server} teams={teams} accessTeamIds={accessTeamIds} />
       </TabsContent>
       <TabsContent value="maintenance" className="space-y-4 pt-4">
-        <ServerMaintenanceTab server={server} cleanup={cleanup} />
+        <ServerMaintenanceTab server={server} />
+      </TabsContent>
+      <TabsContent value="cleanup" className="space-y-4 pt-4">
+        <ServerCleanupTab server={server} cleanup={cleanup} />
       </TabsContent>
       <TabsContent value="advanced" className="space-y-4 pt-4">
         <ServerAdvancedTab server={server} />

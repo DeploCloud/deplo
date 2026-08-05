@@ -560,6 +560,47 @@ export async function updateCleanupPolicy(
   return loadPolicy();
 }
 
+/**
+ * Include ONE server in the scheduled sweep, or leave it out.
+ *
+ * The whole-policy save above can carry the exclusion list too, but a per-host
+ * page must not send it: it would rewrite every OTHER host's membership from a
+ * snapshot taken when the tab was opened, so two admins on two server pages
+ * would silently undo each other. This writes the one row it is about.
+ */
+export async function setServerCleanupExcluded(
+  serverId: string,
+  excluded: boolean,
+): Promise<CleanupPolicy> {
+  await requireInstanceAdmin();
+  const teamId = await requireActiveTeamId();
+  const user = (await getCurrentUser())!;
+  const server = await getServerById(serverId);
+  if (!server) throw new Error("Server not found");
+
+  if (excluded) {
+    await getDb()
+      .insert(dockerCleanupExcludedServers)
+      .values({ serverId })
+      .onConflictDoNothing();
+  } else {
+    await getDb()
+      .delete(dockerCleanupExcludedServers)
+      .where(eq(dockerCleanupExcludedServers.serverId, serverId));
+  }
+
+  await recordActivity(
+    "cleanup",
+    excluded
+      ? `Excluded ${server.name} from the scheduled Docker cleanup`
+      : `Included ${server.name} in the scheduled Docker cleanup`,
+    user.name,
+    null,
+    teamId,
+  );
+  return loadPolicy();
+}
+
 /* ------------------------------------------------------------------ */
 /* The executor                                                        */
 /* ------------------------------------------------------------------ */

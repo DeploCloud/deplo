@@ -1,10 +1,9 @@
 "use client";
 
 import * as React from "react";
-import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
-import { Brush, RefreshCw, RotateCcw, Route, Settings2 } from "lucide-react";
+import { RefreshCw, RotateCcw, Route } from "lucide-react";
 
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import {
@@ -17,13 +16,11 @@ import {
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { DeploMark } from "@/components/logo";
-import { CleanupHistory } from "@/components/settings/cleanup-history";
 import { gqlAction } from "@/lib/graphql-client";
-import type { CleanupPolicy, CleanupRunDTO } from "@/lib/data/docker-cleanup";
 import type { ServerSummary } from "./server-detail-tabs";
 
 /**
- * The Maintenance tab: the four things an operator used to need SSH for.
+ * The Maintenance tab: the restarts an operator used to need SSH for.
  *
  * Every one of them interrupts something, so every one of them is a confirm that
  * says what — in the plainest terms available, because "restart Traefik" reads
@@ -38,17 +35,10 @@ type RestartReport = {
   failures: Array<{ kind: string; name: string; error: string | null }>;
 };
 
-export function ServerMaintenanceTab({
-  server,
-  cleanup,
-}: {
-  server: ServerSummary;
-  cleanup: { policy: CleanupPolicy; runs: CleanupRunDTO[]; serverCount: number };
-}) {
+export function ServerMaintenanceTab({ server }: { server: ServerSummary }) {
   const router = useRouter();
   const [pending, startTransition] = React.useTransition();
   const [confirm, setConfirm] = React.useState<ActionId>(null);
-  const [runs, setRuns] = React.useState(cleanup.runs);
 
   function restartWorkloads() {
     startTransition(async () => {
@@ -126,31 +116,6 @@ export function ServerMaintenanceTab({
     });
   }
 
-  function runCleanup() {
-    startTransition(async () => {
-      const res = await gqlAction<{ runDockerCleanupNow: CleanupRunDTO }>(
-        `mutation RunDockerCleanupNow($serverId: String!) {
-          runDockerCleanupNow(serverId: $serverId) {
-            id serverId serverName trigger actor status error reclaimedBytes
-            startedAt finishedAt
-            items { scope reclaimedBytes itemsRemoved skipped error }
-          }
-        }`,
-        { serverId: server.id },
-      );
-      if (!res.ok) {
-        toast.error(res.error);
-        return;
-      }
-      // The sweep runs in the background; the run row IS the progress indicator,
-      // so show it at once rather than pretending the click was the whole job.
-      if (res.data) setRuns((prev) => [res.data!.runDockerCleanupNow, ...prev]);
-      toast.success("Cleanup started");
-    });
-  }
-
-  const sweeping = runs.some((r) => r.status === "running");
-
   return (
     <>
       <Card>
@@ -202,36 +167,6 @@ export function ServerMaintenanceTab({
           ) : null}
         </CardContent>
       </Card>
-
-      <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2 text-base">
-            <Brush className="size-4" />
-            Docker cleanup
-          </CardTitle>
-          <p className="mt-1 text-sm text-muted-foreground">
-            Reclaim build cache and unused images on this server. Stopped apps,
-            their data volumes and their networks are never touched.
-          </p>
-        </CardHeader>
-        <CardContent className="flex flex-wrap items-center gap-2">
-          <Button onClick={() => runCleanup()} disabled={pending || sweeping}>
-            <Brush className="size-4" />
-            {sweeping ? "Cleaning up" : "Clean up now"}
-          </Button>
-          {/* The schedule is ONE row for the whole fleet, so it is edited where it
-              lives rather than duplicated per server with a per-server meaning it
-              does not have. */}
-          <Button variant="ghost" asChild>
-            <Link href="/settings/cleanup">
-              <Settings2 className="size-4" />
-              Schedule and scopes
-            </Link>
-          </Button>
-        </CardContent>
-      </Card>
-
-      <CleanupHistory runs={runs} />
 
       <Dialog open={confirm === "workloads"} onOpenChange={(o) => !o && setConfirm(null)}>
         <DialogContent>

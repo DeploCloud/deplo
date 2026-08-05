@@ -100,6 +100,66 @@ export function withTraefikDashboard(
   return dump(doc);
 }
 
+/* ------------------------------------------------------------------ */
+/* The Let's Encrypt account email                                     */
+/* ------------------------------------------------------------------ */
+
+/**
+ * The address this host's certificates are issued under, read off its own flags.
+ *
+ * `null` when the stack defines no ACME resolver at all: a host behind a proxy
+ * that terminates TLS elsewhere, or one installed without HTTPS. That is a
+ * different answer from "no email set" and the caller must be able to tell them
+ * apart, because only one of the two is worth offering to change.
+ */
+export function acmeEmail(currentYaml: string): string | null {
+  let command: string[];
+  try {
+    command = asList(traefikService(parseCompose(currentYaml)).command);
+  } catch {
+    return null;
+  }
+  if (!command.some((c) => c.startsWith("--certificatesresolvers."))) return null;
+  const resolver = certResolver(command);
+  const flag = `--certificatesresolvers.${resolver}.acme.email=`;
+  const found = command.find((c) => c.startsWith(flag));
+  return found ? found.slice(flag.length) : "";
+}
+
+/**
+ * Point this host's ACME resolver at a different account email.
+ *
+ * Only the email flag moves. Everything else in the file (the resolver name the
+ * host actually uses, the challenge type, the storage path, the operator's own
+ * flags) is left exactly as it was, for the reason this whole module transforms
+ * instead of rendering (see the file comment).
+ *
+ * Throws when the stack has no ACME resolver: adding a bare email flag to a
+ * proxy that issues no certificates would write a setting that does nothing and
+ * report it as applied.
+ */
+export function withAcmeEmail(currentYaml: string, email: string): string {
+  const address = email.trim();
+  if (!address) throw new Error("Enter the email address certificates should be issued under");
+
+  const doc = parseCompose(currentYaml);
+  const service = traefikService(doc);
+  const command = asList(service.command);
+  if (!command.some((c) => c.startsWith("--certificatesresolvers.")))
+    throw new Error(
+      "This server's proxy has no Let's Encrypt resolver configured, so there is no certificate account to change.",
+    );
+
+  const resolver = certResolver(command);
+  const flag = `--certificatesresolvers.${resolver}.acme.email=`;
+  const next = command.filter((c) => !c.startsWith(flag));
+  // Appended rather than inserted in place: flag order is irrelevant to Traefik,
+  // and appending keeps the diff on the host's file to one line.
+  next.push(`${flag}${address}`);
+  service.command = next;
+  return dump(doc);
+}
+
 /** Whether this stack currently publishes the dashboard, and on which host. */
 export function traefikDashboardDomain(currentYaml: string): string | null {
   let doc: ComposeDoc;

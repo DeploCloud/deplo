@@ -1,6 +1,5 @@
 import "server-only";
 
-import { headers } from "next/headers";
 import { and, eq } from "drizzle-orm";
 
 import { getDb } from "../db/client";
@@ -8,7 +7,7 @@ import { apps as appsTable } from "../db/schema/control-plane";
 import { getCurrentUser } from "../auth";
 import { nowIso } from "../ids";
 import { constantTimeEquals, decryptSecret, encryptSecret, randomToken } from "../crypto";
-import { resolvePublicBaseUrl } from "../public-url";
+import { instancePublicBaseUrl } from "./instance-settings";
 import { recordActivity } from "./activity";
 import { appInTeam } from "./app-graph-load";
 import { requireAppCapability } from "./node-access";
@@ -47,16 +46,13 @@ async function hookPrefix(appId: string): Promise<string> {
 }
 
 /**
- * This instance's public base URL. The configured `DEPLO_PUBLIC_URL` is checked
- * BEFORE `headers()` on purpose: an operator who set it has already answered the
- * question, and reading the request headers when the answer is known would tie
- * this module to a request scope for nothing. (`resolvePublicBaseUrl` prefers
- * the same value; this only avoids paying for the headers to reach it.)
+ * This instance's public base URL: the address an admin set in Settings → Deplo,
+ * otherwise the `DEPLO_PUBLIC_URL` it was installed with, otherwise the request's
+ * own host. A hook URL is copied into someone else's CI, so it has to spell the
+ * address this instance actually answers on today, not the one it was born with.
  */
 async function baseUrl(): Promise<string> {
-  const configured = process.env.DEPLO_PUBLIC_URL?.trim();
-  if (configured) return configured.replace(/\/+$/, "");
-  return resolvePublicBaseUrl(await headers());
+  return instancePublicBaseUrl();
 }
 
 /**

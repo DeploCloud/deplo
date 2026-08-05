@@ -1,6 +1,5 @@
 import "server-only";
 
-import { headers } from "next/headers";
 import { and, asc, eq, inArray, or, sql } from "drizzle-orm";
 import { getDb, type DrizzleClient, type DbTx } from "../db/client";
 import {
@@ -20,7 +19,7 @@ import {
 } from "../membership";
 import { narrowedScope } from "../auth/request-context";
 import { newId, nowIso } from "../ids";
-import { resolvePublicBaseUrl } from "../public-url";
+import { instancePublicBaseUrl } from "./instance-settings";
 import { recordActivity } from "./activity";
 import {
   mintBootstrap,
@@ -238,7 +237,7 @@ export async function addServer(input: AddServerInput): Promise<AddServerResult>
   const host = input.host.trim();
 
   const { rawToken, stored } = mintBootstrap();
-  const baseUrl = resolvePublicBaseUrl(await headers());
+  const baseUrl = await instancePublicBaseUrl();
   // Best-effort: read the control plane's own TLS fingerprint to pin in the
   // command (P3). Empty over plain HTTP — the agent then uses the HMAC path.
   const fingerprint = await controlPlaneCertFingerprint(baseUrl);
@@ -305,7 +304,7 @@ export async function reissueBootstrap(id: string): Promise<AddServerResult> {
   if (!server) throw new Error("Server not found");
 
   const { rawToken, stored } = mintBootstrap();
-  const baseUrl = resolvePublicBaseUrl(await headers());
+  const baseUrl = await instancePublicBaseUrl();
   const fingerprint = await controlPlaneCertFingerprint(baseUrl);
   await getDb()
     .update(serversTable)
@@ -340,19 +339,14 @@ export interface ServerRemoval {
 }
 
 /**
- * The instance's public base URL, tolerating a call from OUTSIDE a request scope.
- * `headers()` throws there, and removeServer is driven directly by the data-layer
- * tests — the base URL only feeds a display string (the uninstall one-liner), so
- * degrading to the DEPLO_PUBLIC_URL / placeholder path is right, while throwing
- * would fail a removal that has already happened. In every real caller (resolver,
- * RSC) the headers are present and this is exactly resolvePublicBaseUrl.
+ * The instance's public base URL: the address an admin set in Settings → Deplo,
+ * otherwise DEPLO_PUBLIC_URL, otherwise the request's own host. It tolerates a
+ * call from OUTSIDE a request scope, which removeServer needs: the base URL only
+ * feeds a display string (the uninstall one-liner), so degrading is right where
+ * throwing would fail a removal that has already happened.
  */
 async function publicBaseUrl(): Promise<string> {
-  try {
-    return resolvePublicBaseUrl(await headers());
-  } catch {
-    return resolvePublicBaseUrl(new Headers());
-  }
+  return instancePublicBaseUrl();
 }
 
 /** Format a blocked-by list for an error message: at most `max` names, then a count. */

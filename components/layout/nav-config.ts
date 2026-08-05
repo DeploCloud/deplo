@@ -7,7 +7,6 @@ import {
   LayoutTemplate,
   Server,
   Settings,
-  Brush,
   Activity,
   LineChart,
   Braces,
@@ -255,14 +254,12 @@ export const SETTINGS_NAV: NavSection[] = [
         requiresAdmin: true,
       },
       {
-        label: "Docker cleanup",
-        href: "/settings/cleanup",
-        icon: Brush,
-        tooltip: "Reclaim Docker disk on your servers",
-        // Instance admins, like its neighbours: the policy is ONE instance-wide
-        // schedule and a sweep deletes on hosts every team shares, so holding
-        // manage_infra in one team is not authority over it. Matches the page and
-        // lib/data/docker-cleanup, which both gate on instance-admin.
+        label: "Deplo",
+        href: "/settings/deplo",
+        icon: SlidersHorizontal,
+        tooltip: "How this Deplo instance addresses itself & issues certificates",
+        // Instance admins, like its neighbours: everything on it is one setting
+        // for the whole instance, and applying it touches every host.
         requiresAdmin: true,
       },
       {
@@ -649,9 +646,9 @@ export const NON_TEAM_SETTINGS_PREFIXES = [
   "/settings/tokens",
   "/settings/users",
   "/settings/servers",
-  // The cleanup policy is instance-wide and its runs belong to hosts, not teams —
-  // servers are the one shared cross-team resource, so there is no team to act in.
-  "/settings/cleanup",
+  // Instance-wide: the panel's own address and the certificate account are facts
+  // about this Deplo, not about whichever team you happen to be looking at.
+  "/settings/deplo",
 ];
 
 /** True when the path is a personal/system settings route (team header hidden). */

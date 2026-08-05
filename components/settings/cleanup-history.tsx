@@ -40,7 +40,15 @@ const STATUS_LABELS: Record<CleanupRunDTO["status"], string> = {
  * because a sweep is a background job and this table is how it is watched: `CleanupLive`
  * above it owns the rows and pushes each transition in from the live subscription.
  */
-export function CleanupHistory({ runs }: { runs: CleanupRunDTO[] }) {
+export function CleanupHistory({
+  runs,
+  /** Drop the Server column. A server's own Cleanup tab shows one host's runs,
+   *  where repeating its name on every row is noise, not information. */
+  hideServer,
+}: {
+  runs: CleanupRunDTO[];
+  hideServer?: boolean;
+}) {
   return (
     <Card>
       <CardHeader>
@@ -62,7 +70,7 @@ export function CleanupHistory({ runs }: { runs: CleanupRunDTO[] }) {
             <Table>
               <TableHeader>
                 <TableRow>
-                  <TableHead>Server</TableHead>
+                  {hideServer ? null : <TableHead>Server</TableHead>}
                   <TableHead>Trigger</TableHead>
                   <TableHead>Actor</TableHead>
                   <TableHead>Status</TableHead>
@@ -74,7 +82,9 @@ export function CleanupHistory({ runs }: { runs: CleanupRunDTO[] }) {
               <TableBody>
                 {runs.map((run) => (
                   <TableRow key={run.id}>
-                    <TableCell className="font-medium">{run.serverName}</TableCell>
+                    {hideServer ? null : (
+                      <TableCell className="font-medium">{run.serverName}</TableCell>
+                    )}
                     <TableCell className="text-muted-foreground capitalize">
                       {run.trigger}
                     </TableCell>

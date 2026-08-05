@@ -5,7 +5,7 @@ import { ArrowLeft, Server as ServerIcon } from "lucide-react";
 import { DeploMark } from "@/components/logo";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { listAllServers, getServerById, getServerTeamIds } from "@/lib/data/servers";
+import { getServerById, getServerTeamIds } from "@/lib/data/servers";
 import { listAllTeamsForAdmin } from "@/lib/data/teams";
 import { getCleanupPolicy, listCleanupRuns } from "@/lib/data/docker-cleanup";
 import { isInstanceAdmin } from "@/lib/membership";
@@ -44,15 +44,13 @@ export default async function ServerDetailPage(props: PageProps<"/settings/serve
   const server = await getServerById(id);
   if (!server) notFound();
 
-  const [expectedAgentVersion, teamIds, teamsRaw, policy, runs, allServers] =
-    await Promise.all([
-      resolveExpectedAgentVersion(),
-      getServerTeamIds(id),
-      listAllTeamsForAdmin(),
-      getCleanupPolicy(),
-      listCleanupRuns(),
-      listAllServers(),
-    ]);
+  const [expectedAgentVersion, teamIds, teamsRaw, policy, runs] = await Promise.all([
+    resolveExpectedAgentVersion(),
+    getServerTeamIds(id),
+    listAllTeamsForAdmin(),
+    getCleanupPolicy(),
+    listCleanupRuns({ serverId: id }),
+  ]);
 
   // Fills in capacity specs for a server that has never been measured, reusing
   // the same helper the list page uses; no per-second polling.
@@ -130,10 +128,9 @@ export default async function ServerDetailPage(props: PageProps<"/settings/serve
           cleanup={{
             policy,
             // This server's own sweeps. The policy stays instance-wide (it is one
-            // row for the whole fleet) and the panel links out to it rather than
-            // pretending it can be set per host.
-            runs: runs.filter((r) => r.serverId === server.id),
-            serverCount: allServers.length,
+            // row for the whole fleet); the tab says so where it is edited, and
+            // only this host's membership, button and history are per-server.
+            runs,
           }}
         />
       </div>
