@@ -1,5 +1,7 @@
 import "server-only";
 
+import { lookup } from "node:dns/promises";
+
 import { and, desc, eq } from "drizzle-orm";
 
 import { listAllServers } from "./servers";
@@ -82,21 +84,48 @@ export const S3_PROVIDERS: { id: S3Provider; name: string; endpointHint: string 
 ];
 
 /**
- * Guard a user-supplied outbound URL (S3 endpoint, notification webhook)
- * against SSRF: the control plane / the agents dial it, so it must be http(s)
- * and must never aim INSIDE the deployment. Literal loopback, RFC1918, CGNAT,
- * link-local (incl. the cloud metadata IP 169.254.169.254) and IPv6
- * loopback/link-local/ULA hosts are rejected. A DNS name passes — it cannot be
- * resolved here without racing the actual dial — but every private-address
- * literal is stopped, which is what turns these fields into a port scan.
- * (WHATWG URL canonicalizes octal/hex/decimal IPv4 forms, so `0177.0.0.1`
- * lands on the dotted-decimal checks below.)
+ * The one name resolver the outbound guard goes through, swappable so the pglite
+ * suite stays hermetic (a real lookup would hit the network — and answer
+ * differently on every machine). Production always uses node's resolver.
  */
-export function assertSafeOutboundUrl(
+let dnsLookup: (host: string) => Promise<{ address: string }[]> = (host) =>
+  lookup(host, { all: true });
+
+export function __setDnsLookupForTest(
+  fn: (host: string) => Promise<{ address: string }[]>,
+): void {
+  dnsLookup = fn;
+}
+
+export function __resetDnsLookupForTest(): void {
+  dnsLookup = (host) => lookup(host, { all: true });
+}
+
+/**
+ * Guard a user-supplied outbound URL (S3 endpoint, notification webhook)
+ * against SSRF: the control plane dials the webhooks itself and the agents dial
+ * the endpoint, so it must be http(s) and must never aim INSIDE the deployment.
+ * Literal loopback, RFC1918, CGNAT, link-local (incl. the cloud metadata IP
+ * 169.254.169.254) and IPv6 loopback/link-local/ULA hosts are rejected.
+ * (WHATWG URL canonicalizes octal/hex/decimal IPv4 forms, so `0177.0.0.1` lands
+ * on the dotted-decimal checks below.)
+ *
+ * A HOSTNAME is resolved and every address it answers with runs through the same
+ * check — otherwise the guard only stopped the naive spelling of the attack, and
+ * `http://internal.example.com/` walked straight past it into the control
+ * plane's own network. That is also why the callers dial with
+ * `redirect: "manual"`: a 302 is the other way out of a checked URL.
+ *
+ * The ceiling this does NOT reach is a rebinding race — the name is resolved
+ * here and again by the dial, and only pinning the address through to the socket
+ * closes that. A name that fails to resolve is left alone: the dial will fail
+ * too, and refusing to SAVE a webhook because DNS blipped is a worse trade.
+ */
+export async function assertSafeOutboundUrl(
   raw: string,
   label: string,
   opts?: { allowHttp?: boolean },
-): void {
+): Promise<void> {
   let url: URL;
   try {
     url = new URL(raw);
@@ -106,8 +135,19 @@ export function assertSafeOutboundUrl(
   if (url.protocol !== "https:" && !(opts?.allowHttp && url.protocol === "http:"))
     throw new Error(`${label} must be an ${opts?.allowHttp ? "http(s)" : "https"} URL`);
   const host = url.hostname.replace(/^\[|\]$/g, "").toLowerCase();
-  if (isInternalHost(host))
+  const refuse = () => {
     throw new Error(`${label} must not point at a private or internal address`);
+  };
+  if (isInternalHost(host)) refuse();
+  // A literal is its own answer; only a NAME has to be resolved.
+  if (/^[\d.]+$/.test(host) || host.includes(":")) return;
+  let addresses: { address: string }[];
+  try {
+    addresses = await dnsLookup(host);
+  } catch {
+    return; // unresolvable today — the dial fails too, see the docblock
+  }
+  if (addresses.some((a) => isInternalHost(a.address.toLowerCase()))) refuse();
 }
 
 /** True for a host literal inside the deployment's own network (see above). */
@@ -259,7 +299,7 @@ export async function createS3(input: {
   // The endpoint is dialed from the agents (bucket probe, backups) — never let
   // it aim inside the network. http stays allowed for a self-hosted MinIO
   // fronted without TLS.
-  assertSafeOutboundUrl(input.endpoint.trim(), "Endpoint", { allowHttp: true });
+  await assertSafeOutboundUrl(input.endpoint.trim(), "Endpoint", { allowHttp: true });
 
   const s: S3Destination = {
     id: newId("s3"),

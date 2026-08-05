@@ -40,9 +40,12 @@ export async function updateNotificationSettings(
   // dispatch) — reject private/internal targets before they are ever
   // persisted, so no dispatcher can be fed one (SSRF).
   if (next.channels.discord.webhookUrl)
-    assertSafeOutboundUrl(next.channels.discord.webhookUrl, "Discord webhook URL");
+    await assertSafeOutboundUrl(
+      next.channels.discord.webhookUrl,
+      "Discord webhook URL",
+    );
   if (next.channels.webhook.url)
-    assertSafeOutboundUrl(next.channels.webhook.url, "Webhook URL");
+    await assertSafeOutboundUrl(next.channels.webhook.url, "Webhook URL");
   const row = settingsToRow(teamId, next);
   // One row per team (team_id PK): upsert so the first save inserts and later
   // saves overwrite — never a duplicate row.
@@ -77,11 +80,14 @@ export async function sendTestNotification(
     if (!c.discord.webhookUrl) throw new Error("Add a Discord webhook URL first");
     // Re-checked at the dial (rows saved before this gate existed): the URL
     // must never aim inside the network (SSRF).
-    assertSafeOutboundUrl(c.discord.webhookUrl, "Discord webhook URL");
+    await assertSafeOutboundUrl(c.discord.webhookUrl, "Discord webhook URL");
     const res = await fetch(c.discord.webhookUrl, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ content: `**${title}**\n${body}` }),
+      // A redirect is the other way out of a checked URL: the guard above ran on
+      // THIS host, and following a 302 would dial one nobody checked.
+      redirect: "manual",
     });
     if (!res.ok) throw new Error(`Discord webhook returned ${res.status}`);
     return;
@@ -90,7 +96,7 @@ export async function sendTestNotification(
   if (channel === "webhook") {
     if (!c.webhook.url) throw new Error("Add a webhook URL first");
     // Re-checked at the dial (rows saved before this gate existed).
-    assertSafeOutboundUrl(c.webhook.url, "Webhook URL");
+    await assertSafeOutboundUrl(c.webhook.url, "Webhook URL");
     const res = await fetch(c.webhook.url, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -100,6 +106,9 @@ export async function sendTestNotification(
         body,
         ts: new Date().toISOString(),
       }),
+      // See the Discord branch: a checked URL must not be able to redirect the
+      // control plane somewhere unchecked.
+      redirect: "manual",
     });
     if (!res.ok) throw new Error(`Webhook returned ${res.status}`);
     return;

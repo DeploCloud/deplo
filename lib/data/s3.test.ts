@@ -24,6 +24,9 @@ import {
   TRUNCATE_BACKUPS,
 } from "./backup-test-helpers";
 import {
+  __resetDnsLookupForTest,
+  __setDnsLookupForTest,
+  assertSafeOutboundUrl,
   createS3,
   deleteS3,
   getS3WithSecrets,
@@ -293,4 +296,82 @@ test("s3TestReport: the last verdict rides the DTO, so the card can explain the 
 test("s3TestReport refuses a cross-team destination", async () => {
   await seedS3(db, { id: "s3_other", teamId: TEAM_B });
   await assert.rejects(asUser1(() => s3TestReport("s3_other")), /not found/i);
+});
+
+/* ------------------------------------------------------------------ */
+/* The outbound guard (SSRF)                                           */
+/* ------------------------------------------------------------------ */
+
+/**
+ * The control plane dials notification webhooks itself, and the agents dial the
+ * S3 endpoint, so these fields are the two places a member picks a URL somebody
+ * else's process will fetch. The guard used to inspect only the literal spelling
+ * of the host — which stopped `http://169.254.169.254/` and nothing else, since
+ * a NAME pointing at the same address sailed past.
+ */
+test("the outbound guard refuses every private-address literal", async () => {
+  const bad = [
+    "http://127.0.0.1/x",
+    "http://localhost/x",
+    "http://10.1.2.3/x",
+    "http://172.16.0.9/x",
+    "http://192.168.1.1/x",
+    "http://169.254.169.254/latest/meta-data/",
+    "http://100.64.0.1/x",
+    "http://0177.0.0.1/x", // octal — WHATWG canonicalises it to 127.0.0.1
+    "http://[::1]/x",
+    "http://[fd00::1]/x",
+    "http://[::ffff:127.0.0.1]/x",
+  ];
+  for (const url of bad) {
+    await assert.rejects(
+      () => assertSafeOutboundUrl(url, "Endpoint", { allowHttp: true }),
+      /private or internal/,
+      `${url} must be refused`,
+    );
+  }
+});
+
+test("a hostname is resolved, so a name pointing inside is refused too", async () => {
+  __setDnsLookupForTest(async (host) =>
+    host === "internal.example.com"
+      ? [{ address: "10.0.0.5" }]
+      : host === "split.example.com"
+        ? [{ address: "93.184.216.34" }, { address: "127.0.0.1" }]
+        : [{ address: "93.184.216.34" }],
+  );
+  try {
+    await assert.rejects(
+      () => assertSafeOutboundUrl("https://internal.example.com/hook", "Webhook URL"),
+      /private or internal/,
+      "a name that answers with a private address is the same attack, spelled politely",
+    );
+    // ANY answer being internal is enough — a round-robin that mixes one in is
+    // still a way in.
+    await assert.rejects(
+      () => assertSafeOutboundUrl("https://split.example.com/hook", "Webhook URL"),
+      /private or internal/,
+    );
+    // The control: a public name passes, and so does the scheme check.
+    await assertSafeOutboundUrl("https://hooks.example.com/x", "Webhook URL");
+    await assert.rejects(
+      () => assertSafeOutboundUrl("http://hooks.example.com/x", "Webhook URL"),
+      /must be an https URL/,
+    );
+  } finally {
+    __resetDnsLookupForTest();
+  }
+});
+
+test("a name that doesn't resolve is left alone, not refused", async () => {
+  __setDnsLookupForTest(async () => {
+    throw new Error("ENOTFOUND");
+  });
+  try {
+    // Refusing to SAVE a webhook because DNS blipped is the worse trade: the
+    // dial fails on its own, and the literal checks already ran.
+    await assertSafeOutboundUrl("https://maybe.example.com/x", "Webhook URL");
+  } finally {
+    __resetDnsLookupForTest();
+  }
 });
