@@ -270,34 +270,6 @@ export function RoleEditor({
               title="Scope"
               info="Where this role can work. Everything is ticked to begin with - untick what its holders should not reach."
               emptyNote="This team has nothing to limit a role to yet."
-              footer={
-                <p className="text-xs text-muted-foreground">
-                  {scoped && ticked === 0 ? (
-                    <>
-                      <span className="font-medium text-foreground">
-                        Reaches nothing.
-                      </span>{" "}
-                      Nothing is ticked, so its holders can&apos;t open anything
-                      in this team. Tick where they work.
-                    </>
-                  ) : scoped ? (
-                    <>
-                      <span className="font-medium text-foreground">
-                        Limited to {describeScope(scope)}.
-                      </span>{" "}
-                      Permissions that only work team-wide stop applying, and are
-                      struck through below.
-                    </>
-                  ) : (
-                    <>
-                      <span className="font-medium text-foreground">
-                        The whole team.
-                      </span>{" "}
-                      Everything in it, including whatever gets created later.
-                    </>
-                  )}
-                </p>
-              }
             />
           </CardContent>
         </Card>

@@ -370,55 +370,12 @@ export function MemberDetailTabs({
                   disabled={readOnly || !reachEditable}
                   teamPickable={false}
                   title="Where they can work"
-                  info="Everywhere their role reaches is ticked. Untick what this one person shouldn't touch, or tick something extra to let them in. Everything under a ticked node follows it."
-                  emptyNote="This team has nothing to scope to yet."
-                  footer={
-                    <div className="space-y-1 text-xs text-muted-foreground">
-                      <p>
-                        {!reachEditable ? (
-                          <>
-                            <span className="font-medium text-foreground">
-                              Set by their role.
-                            </span>{" "}
-                            {role?.name} is limited to specific environments,
-                            which can only be changed on the role.
-                          </>
-                        ) : nothingTicked ? (
-                          <>
-                            <span className="font-medium text-foreground">
-                              Nothing ticked.
-                            </span>{" "}
-                            Tick where they work, or remove them from the team.
-                          </>
-                        ) : covers ? (
-                          <>
-                            <span className="font-medium text-foreground">
-                              Everywhere their {role?.name ?? "role"} reaches.
-                            </span>{" "}
-                            {tickedIds(extra).length > 0
-                              ? "Plus what was shared with them directly."
-                              : "Edit the role to move everyone who holds it at once."}
-                          </>
-                        ) : (
-                          <>
-                            <span className="font-medium text-foreground">
-                              Only these {ticked.length} place
-                              {ticked.length === 1 ? "" : "s"}.
-                            </span>{" "}
-                            Their role reaches further, this person stops here.
-                            Permissions that only work team-wide stop applying,
-                            and are struck through below.
-                          </>
-                        )}
-                      </p>
-                      {groups.length > 1 && (
-                        <p>
-                          Some of these were shared with their own permissions.
-                          Changing the list below replaces those.
-                        </p>
-                      )}
-                    </div>
+                  info={
+                    reachEditable
+                      ? "Everywhere their role reaches is ticked. Untick what this one person shouldn't touch, or tick something extra to let them in. Everything under a ticked node follows it."
+                      : `Set by their role: ${role?.name} is limited to specific environments, which can only be changed on the role.`
                   }
+                  emptyNote="This team has nothing to scope to yet."
                 />
               </CardContent>
             </Card>

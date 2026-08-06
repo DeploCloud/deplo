@@ -45,8 +45,7 @@ export interface ScopeSelection {
  * disagreeing with their parent.
  *
  * Nothing ticked means unrestricted. That is deliberate: an empty scope with a
- * separate "all / specific" radio above it is two controls for one decision, and
- * the sentence under the tree says which one you are in at all times.
+ * separate "all / specific" radio above it is two controls for one decision.
  */
 export function ScopePicker({
   tree,
@@ -56,7 +55,6 @@ export function ScopePicker({
   title = "Scope",
   info = "What this token can reach. Tick a team for all of it, a project or a folder for everything inside it, or single apps. Tick nothing and it reaches everything you can.",
   emptyNote = "You aren't in any team yet, so there is nothing to narrow this token to.",
-  footer,
   renderMeta,
   teamPickable = true,
 }: {
@@ -77,8 +75,6 @@ export function ScopePicker({
   info?: React.ReactNode;
   /** Shown instead of the tree when there is nothing to pick from. */
   emptyNote?: React.ReactNode;
-  /** Replaces the sentence under the tree. Undefined keeps the token one. */
-  footer?: React.ReactNode;
   /**
    * An extra control on the right of a row — the per-node affordance the user
    * editor hangs its capability sets off. Rendered OUTSIDE the row's `<label>`,
@@ -285,10 +281,6 @@ export function ScopePicker({
       </div>
     );
   }
-
-  const nothingPicked =
-    teams.size === 0 && projects.size === 0 && folders.size === 0 && apps.size === 0;
-  const narrowed = projects.size > 0 || folders.size > 0 || apps.size > 0;
 
   return (
     <div className="space-y-3">
@@ -523,30 +515,6 @@ export function ScopePicker({
           )}
         </>
       )}
-
-      {footer ?? (
-      <p className="text-xs text-muted-foreground">
-        {nothingPicked ? (
-          <>
-            <span className="font-medium text-foreground">
-              Everything you can access.
-            </span>{" "}
-            This token reaches every team you belong to, and everything in it. It
-            still can&apos;t do more than you can.
-          </>
-        ) : (
-          <>
-            <span className="font-medium text-foreground">
-              Limited to{" "}
-              {describe(teams.size, projects.size, folders.size, apps.size)}.
-            </span>{" "}
-            {narrowed
-              ? "Naming a project, a folder or an app narrows the token inside its team, so team-wide permissions such as Manage members, Manage roles and Manage team settings stop applying there, even while they are ticked below."
-              : "Whole teams, so every permission ticked below applies in all of them."}
-          </>
-        )}
-      </p>
-      )}
     </div>
   );
 }
@@ -708,21 +676,6 @@ const teamMeta = (t: ScopeTreeTeam) =>
       t.looseApps.length,
     "app",
   );
-
-function describe(
-  teams: number,
-  projects: number,
-  folders: number,
-  apps: number,
-): string {
-  const parts: string[] = [];
-  if (teams > 0) parts.push(plural(teams, "team"));
-  if (projects > 0) parts.push(plural(projects, "project"));
-  if (folders > 0) parts.push(plural(folders, "folder"));
-  if (apps > 0) parts.push(plural(apps, "app"));
-  if (parts.length <= 1) return parts[0] ?? "nothing";
-  return `${parts.slice(0, -1).join(", ")} and ${parts[parts.length - 1]}`;
-}
 
 function Row({
   depth,
