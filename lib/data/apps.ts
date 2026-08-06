@@ -281,6 +281,7 @@ export async function listApps(): Promise<AppSummary[]> {
       id: p.id,
       folderId: p.folderId ?? null,
       projectId: p.projectId ?? null,
+      environmentId: p.environmentId ?? null,
     })),
   );
   const proj = scoped.filter((p) => (reach.get(p.id)?.length ?? 0) > 0);

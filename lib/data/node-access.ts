@@ -80,11 +80,18 @@ export type NodeRef =
   | { kind: "folder"; id: string }
   | { kind: "project"; id: string };
 
-/** An app as the resolver needs it — the two columns that place it. */
+/**
+ * An app as the resolver needs it — the columns that place it. An app lives in
+ * exactly ONE of them: a folder, or a project's environment, or the team top
+ * level (ADR-0009's one-home rule, which the movers enforce by clearing the
+ * others). `environmentId` is optional so a caller that never asks about
+ * environments keeps compiling; it only ever widens the answer.
+ */
 export interface AppPlacement {
   id: string;
   folderId: string | null;
   projectId: string | null;
+  environmentId?: string | null;
 }
 
 /**
@@ -319,7 +326,13 @@ async function teamOf(node: NodeRef): Promise<string | null> {
  */
 function ladder(
   index: GrantIndex,
-  node: { kind: NodeRef["kind"]; id: string; folderId?: string | null; projectId?: string | null },
+  node: {
+    kind: NodeRef["kind"];
+    id: string;
+    folderId?: string | null;
+    projectId?: string | null;
+    environmentId?: string | null;
+  },
 ): { kind: NodeRef["kind"]; id: string; owner: boolean; grants: Capability[] }[] {
   const rungs: { kind: NodeRef["kind"]; id: string; owner: boolean; grants: Capability[] }[] = [];
   let projectId = node.projectId ?? null;
@@ -381,7 +394,13 @@ function ladder(
  */
 function hasOwnGrant(
   index: GrantIndex,
-  node: { kind: NodeRef["kind"]; id: string; folderId?: string | null; projectId?: string | null },
+  node: {
+    kind: NodeRef["kind"];
+    id: string;
+    folderId?: string | null;
+    projectId?: string | null;
+    environmentId?: string | null;
+  },
 ): boolean {
   return ladder(index, node).some((r) => r.owner || r.grants.length > 0);
 }
@@ -401,7 +420,13 @@ function hasOwnGrant(
  */
 function reachesNode(
   index: GrantIndex,
-  node: { kind: NodeRef["kind"]; id: string; folderId?: string | null; projectId?: string | null },
+  node: {
+    kind: NodeRef["kind"];
+    id: string;
+    folderId?: string | null;
+    projectId?: string | null;
+    environmentId?: string | null;
+  },
 ): boolean {
   if (index.instanceAdmin || !index.roleScope) return true;
   if (node.kind === "app")
@@ -409,6 +434,7 @@ function reachesNode(
       id: node.id,
       folderId: node.folderId ?? null,
       projectId: node.projectId ?? null,
+      environmentId: node.environmentId ?? null,
     });
   if (node.kind === "folder") return folderInScope(index.roleScope, node.id);
   return projectInScope(index.roleScope, node.id);
@@ -417,7 +443,13 @@ function reachesNode(
 /** Walk the ladder. See the module docblock for the rules it implements. */
 function resolveFrom(
   index: GrantIndex,
-  node: { kind: NodeRef["kind"]; id: string; folderId?: string | null; projectId?: string | null },
+  node: {
+    kind: NodeRef["kind"];
+    id: string;
+    folderId?: string | null;
+    projectId?: string | null;
+    environmentId?: string | null;
+  },
 ): Capability[] {
   const clamp = (caps: Capability[]) =>
     withView(clampCapabilitiesToToken(caps, index.userId, index.teamId));
@@ -508,7 +540,11 @@ async function resolveOne(
 
   if (node.kind !== "app") return resolveFrom(index, node);
   const rows = await getDb()
-    .select({ folderId: appsTable.folderId, projectId: appsTable.projectId })
+    .select({
+      folderId: appsTable.folderId,
+      projectId: appsTable.projectId,
+      environmentId: appsTable.environmentId,
+    })
     .from(appsTable)
     .where(eq(appsTable.id, node.id))
     .limit(1);
@@ -517,6 +553,7 @@ async function resolveOne(
     id: node.id,
     folderId: rows[0]?.folderId ?? null,
     projectId: rows[0]?.projectId ?? null,
+    environmentId: rows[0]?.environmentId ?? null,
   });
 }
 

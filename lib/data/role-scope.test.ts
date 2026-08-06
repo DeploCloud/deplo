@@ -93,6 +93,7 @@ const folder = (id: string, opts: { projectId?: string | null } = {}) => ({
 beforeEach(async () => {
   await pg.exec(`truncate table
     team_role_scope_apps, team_role_scope_folders, team_role_scope_projects,
+    team_role_scope_environments, environment_grants, environments,
     app_grants, folder_grants, project_grants,
     team_role_capabilities, team_roles,
     app_build_method_settings, app_build, apps, folders, projects, servers,
@@ -230,6 +231,71 @@ test("naming one app reaches that app alone", async () => {
   assert.ok(await reaches({ kind: "app", id: APP_TOP }));
   assert.equal(await reaches({ kind: "app", id: APP_IN_PRC }), false);
   assert.deepEqual((await as(DEV, () => listApps())).map((a) => a.id), [APP_TOP]);
+});
+
+test("an environment scope reaches one environment of a project", async () => {
+  const { updateRole } = await import("./roles");
+  const envs = await import("../db/schema/control-plane");
+  // Two environments of PRC_IN, an app in each.
+  await db.insert(envs.environments).values([
+    {
+      id: "environ_stg",
+      projectId: PRC_IN,
+      name: "Staging",
+      slug: "staging",
+      kind: "custom",
+      gitBranch: "",
+      isDefault: false,
+      position: 1,
+      createdAt: T0,
+      updatedAt: T0,
+    },
+    {
+      id: "environ_prod",
+      projectId: PRC_IN,
+      name: "Production",
+      slug: "production",
+      kind: "production",
+      gitBranch: "",
+      isDefault: true,
+      position: 0,
+      createdAt: T0,
+      updatedAt: T0,
+    },
+  ]);
+  await seedApp(db, {
+    id: "prj_stg",
+    projectId: PRC_IN,
+    environmentId: "environ_stg",
+  });
+  await seedApp(db, {
+    id: "prj_prod",
+    projectId: PRC_IN,
+    environmentId: "environ_prod",
+  });
+
+  await as(ADMIN, () =>
+    updateRole({
+      id: ROLE,
+      name: "Scoped",
+      capabilities: ["view", "deploy_apps"],
+      scope: { environmentIds: ["environ_stg"] },
+    }),
+  );
+
+  assert.ok(await reaches({ kind: "app", id: "prj_stg" }));
+  assert.equal(
+    await reaches({ kind: "app", id: "prj_prod" }),
+    false,
+    "the other environment of the same project is out",
+  );
+  // The project container stays navigable — you cannot drill into staging
+  // without seeing the project that holds it.
+  assert.ok(await reaches({ kind: "project", id: PRC_IN }));
+  assert.deepEqual(
+    (await as(DEV, () => listApps())).map((a) => a.id),
+    ["prj_stg"],
+  );
 });
 
 test("a scope emptied by a cascade reaches nothing, not everything", async () => {

@@ -5,10 +5,12 @@ import { and, eq, inArray } from "drizzle-orm";
 
 import { getDb } from "../db/client";
 import {
+  environments as environmentsTable,
   folders as foldersTable,
   memberships as membershipsTable,
   teamRoles as teamRolesTable,
   teamRoleScopeApps,
+  teamRoleScopeEnvironments,
   teamRoleScopeFolders,
   teamRoleScopeProjects,
 } from "../db/schema/control-plane";
@@ -39,6 +41,13 @@ import {
 /** What a scope names. `null` anywhere below means "unrestricted". */
 export interface NodeScope {
   projectIds: string[];
+  /**
+   * Ticked environments. An app lives in exactly one (ADR-0009), so this is the
+   * finest cut inside a project a scope can make. Filing an app into a folder
+   * CLEARS its environment, which is why the app predicate asks the folder
+   * first: the two are alternatives, never both.
+   */
+  environmentIds: string[];
   /** Ticked folders and their whole subtrees, expanded once at read time. */
   folderIds: string[];
   appIds: string[];
@@ -150,11 +159,22 @@ export async function loadRoleScope(
   teamId: string,
 ): Promise<NodeScope> {
   const db = getDb();
-  const [projRows, folderRows, appRows] = await Promise.all([
+  const [projRows, envRows, folderRows, appRows] = await Promise.all([
     db
       .select({ id: teamRoleScopeProjects.projectId })
       .from(teamRoleScopeProjects)
       .where(eq(teamRoleScopeProjects.roleId, roleId)),
+    db
+      .select({
+        id: teamRoleScopeEnvironments.environmentId,
+        projectId: environmentsTable.projectId,
+      })
+      .from(teamRoleScopeEnvironments)
+      .innerJoin(
+        environmentsTable,
+        eq(environmentsTable.id, teamRoleScopeEnvironments.environmentId),
+      )
+      .where(eq(teamRoleScopeEnvironments.roleId, roleId)),
     db
       .select({
         id: teamRoleScopeFolders.folderId,
@@ -177,13 +197,19 @@ export async function loadRoleScope(
   );
   return {
     projectIds,
+    environmentIds: envRows.map((r) => r.id),
     folderIds,
     appIds: appRows.map((r) => r.id),
     appProjectIds: [
       ...new Set(
-        [...folderRows.map((r) => r.projectId), ...folderProjectIds].filter(
-          (id): id is string => id != null,
-        ),
+        [
+          // A named environment makes its project navigable, exactly as a named
+          // folder does: you cannot drill into staging without seeing the
+          // project that holds it.
+          ...envRows.map((r) => r.projectId),
+          ...folderRows.map((r) => r.projectId),
+          ...folderProjectIds,
+        ].filter((id): id is string => id != null),
       ),
     ],
   };
@@ -202,12 +228,31 @@ export async function loadRoleScope(
  */
 export function appInScope(
   scope: NodeScope | null,
-  app: { id: string; folderId?: string | null; projectId?: string | null },
+  app: {
+    id: string;
+    folderId?: string | null;
+    projectId?: string | null;
+    environmentId?: string | null;
+  },
 ): boolean {
   if (!scope) return true;
   if (scope.appIds.includes(app.id)) return true;
   if (app.folderId != null && scope.folderIds.includes(app.folderId)) return true;
+  if (
+    app.environmentId != null &&
+    scope.environmentIds.includes(app.environmentId)
+  )
+    return true;
   return app.projectId != null && scope.projectIds.includes(app.projectId);
+}
+
+/** Strict, like a folder: an environment is reached by being named. */
+export function environmentInScope(
+  scope: NodeScope | null,
+  environmentId: string | null,
+): boolean {
+  if (!scope) return true;
+  return environmentId != null && scope.environmentIds.includes(environmentId);
 }
 
 /** Strict: the subtree is already flattened into `folderIds`, so no walk here. */

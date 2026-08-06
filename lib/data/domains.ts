@@ -350,6 +350,7 @@ export async function listDomains(
       slug: appsTable.slug,
       folderId: appsTable.folderId,
       projectId: appsTable.projectId,
+      environmentId: appsTable.environmentId,
     })
     .from(appsTable)
     .where(and(eq(appsTable.teamId, teamId), appScopeWhere()));
@@ -363,6 +364,7 @@ export async function listDomains(
       id: p.id,
       folderId: p.folderId ?? null,
       projectId: p.projectId ?? null,
+      environmentId: p.environmentId ?? null,
     })),
   );
   const teamApps = new Map(

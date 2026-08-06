@@ -497,6 +497,7 @@ export async function moveAppsToFolder(
       id: appsTable.id,
       folderId: appsTable.folderId,
       projectId: appsTable.projectId,
+      environmentId: appsTable.environmentId,
     })
     .from(appsTable)
     .where(and(eq(appsTable.teamId, teamId), inArray(appsTable.id, [...new Set(appIds)])));
@@ -516,6 +517,7 @@ export async function moveAppsToFolder(
         id: p.id,
         folderId: p.folderId ?? null,
         projectId: p.projectId ?? null,
+        environmentId: p.environmentId ?? null,
       })),
   );
   for (const id of toMove) {

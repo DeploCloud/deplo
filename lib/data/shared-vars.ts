@@ -374,6 +374,7 @@ export async function listAppliedSharedVarsByApp(): Promise<AppliedSharedVarDTO[
           id: appsTable.id,
           folderId: appsTable.folderId,
           projectId: appsTable.projectId,
+          environmentId: appsTable.environmentId,
         })
         .from(appsTable)
         .where(and(inArray(appsTable.id, linkedAppIds), eq(appsTable.teamId, teamId)))

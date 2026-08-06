@@ -383,6 +383,30 @@ export const appGrants = pgTable(
 );
 
 /**
+ * The ENVIRONMENT rung of the same ladder. An app lives in exactly one
+ * environment of its project (ADR-0009's membership axis), and until this table
+ * the resolver walked app → folders → project and stepped straight over it — so
+ * "deploy to staging and nowhere near production" was inexpressible even though
+ * every app carries the answer.
+ */
+export const environmentGrants = pgTable(
+  "environment_grants",
+  {
+    environmentId: text("environment_id")
+      .notNull()
+      .references(() => environments.id, { onDelete: "cascade" }),
+    userId: text("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    capability: text("capability").notNull(),
+  },
+  (t) => [
+    primaryKey({ columns: [t.environmentId, t.userId, t.capability] }),
+    index("environment_grants_user_idx").on(t.userId),
+  ],
+);
+
+/**
  * A named, per-team capability set a member can be assigned — the team's Roles
  * (Settings → Team → Roles). Every team owns its own rows: three built-ins
  * (`builtin_key` 'owner' | 'member' | 'viewer', seeded lazily by
@@ -468,6 +492,22 @@ export const teamRoleScopeFolders = pgTable(
   (t) => [
     primaryKey({ columns: [t.roleId, t.folderId] }),
     index("team_role_scope_folders_folder_idx").on(t.folderId),
+  ],
+);
+
+export const teamRoleScopeEnvironments = pgTable(
+  "team_role_scope_environments",
+  {
+    roleId: text("role_id")
+      .notNull()
+      .references(() => teamRoles.id, { onDelete: "cascade" }),
+    environmentId: text("environment_id")
+      .notNull()
+      .references(() => environments.id, { onDelete: "cascade" }),
+  },
+  (t) => [
+    primaryKey({ columns: [t.roleId, t.environmentId] }),
+    index("team_role_scope_environments_environment_idx").on(t.environmentId),
   ],
 );
 

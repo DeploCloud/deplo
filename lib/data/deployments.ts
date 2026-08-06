@@ -70,6 +70,7 @@ export async function listDeployments(filter?: {
       serverId: appsTable.serverId,
       folderId: appsTable.folderId,
       projectId: appsTable.projectId,
+      environmentId: appsTable.environmentId,
       repoProvider: appsTable.repoProvider,
       repoRepo: appsTable.repoRepo,
       repoUrl: appsTable.repoUrl,
@@ -85,6 +86,7 @@ export async function listDeployments(filter?: {
       id: p.id,
       folderId: p.folderId ?? null,
       projectId: p.projectId ?? null,
+      environmentId: p.environmentId ?? null,
     })),
   );
   // A narrowed principal is NOT exempt. It used to be, on the grounds that the

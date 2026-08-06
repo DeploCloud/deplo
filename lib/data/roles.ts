@@ -8,7 +8,10 @@ import {
   membershipCapabilities as membershipCapabilitiesTable,
   teamRoles as teamRolesTable,
   teamRoleCapabilities as teamRoleCapabilitiesTable,
+  environments as environmentsTable,
+  projects as projectsTable,
   teamRoleScopeApps,
+  teamRoleScopeEnvironments,
   teamRoleScopeFolders,
   teamRoleScopeProjects,
   users as usersTable,
@@ -76,7 +79,7 @@ export interface TeamRoleDTO {
    * every role until someone limits one. Distinct from `capabilities`: that is
    * what its holders may DO, this is where.
    */
-  scope: { projectIds: string[]; folderIds: string[]; appIds: string[] } | null;
+  scope: ResolvedScope | null;
   createdAt: string;
 }
 
@@ -497,7 +500,12 @@ async function assertTeamAdminCoverage(
 }
 
 /** A role that reaches nothing left — every node it named was deleted. */
-const EMPTY_SCOPE = { projectIds: [], folderIds: [], appIds: [] };
+const EMPTY_SCOPE: ResolvedScope = {
+  projectIds: [],
+  environmentIds: [],
+  folderIds: [],
+  appIds: [],
+};
 
 /**
  * The scope junctions of several roles at once — three queries for a page, never
@@ -507,17 +515,21 @@ const EMPTY_SCOPE = { projectIds: [], folderIds: [], appIds: [] };
 async function loadRoleScopes(
   db: Db,
   roleIds: string[],
-): Promise<Map<string, { projectIds: string[]; folderIds: string[]; appIds: string[] }>> {
-  const out = new Map<
-    string,
-    { projectIds: string[]; folderIds: string[]; appIds: string[] }
-  >();
+): Promise<Map<string, ResolvedScope>> {
+  const out = new Map<string, ResolvedScope>();
   if (roleIds.length === 0) return out;
-  const [projects, folders, apps] = await Promise.all([
+  const [projects, environments, folders, apps] = await Promise.all([
     db
       .select({ roleId: teamRoleScopeProjects.roleId, id: teamRoleScopeProjects.projectId })
       .from(teamRoleScopeProjects)
       .where(inArray(teamRoleScopeProjects.roleId, roleIds)),
+    db
+      .select({
+        roleId: teamRoleScopeEnvironments.roleId,
+        id: teamRoleScopeEnvironments.environmentId,
+      })
+      .from(teamRoleScopeEnvironments)
+      .where(inArray(teamRoleScopeEnvironments.roleId, roleIds)),
     db
       .select({ roleId: teamRoleScopeFolders.roleId, id: teamRoleScopeFolders.folderId })
       .from(teamRoleScopeFolders)
@@ -528,11 +540,14 @@ async function loadRoleScopes(
       .where(inArray(teamRoleScopeApps.roleId, roleIds)),
   ]);
   const at = (roleId: string) => {
-    const cur = out.get(roleId) ?? { projectIds: [], folderIds: [], appIds: [] };
+    const cur =
+      out.get(roleId) ??
+      { projectIds: [], environmentIds: [], folderIds: [], appIds: [] };
     out.set(roleId, cur);
     return cur;
   };
   for (const r of projects) at(r.roleId).projectIds.push(r.id);
+  for (const r of environments) at(r.roleId).environmentIds.push(r.id);
   for (const r of folders) at(r.roleId).folderIds.push(r.id);
   for (const r of apps) at(r.roleId).appIds.push(r.id);
   return out;
@@ -541,9 +556,18 @@ async function loadRoleScopes(
 /** The nodes a role is limited to, as the editor sends them. */
 export interface RoleScopeInput {
   projectIds?: string[];
+  environmentIds?: string[];
   folderIds?: string[];
   appIds?: string[];
 }
+
+/** The four id lists a scope stores, resolved. */
+type ResolvedScope = {
+  projectIds: string[];
+  environmentIds: string[];
+  folderIds: string[];
+  appIds: string[];
+};
 
 /**
  * Validate a scope against the team and against the ACTOR's own reach.
@@ -560,7 +584,7 @@ async function resolveRoleScope(
   teamId: string,
   actingUserId: string,
   input: RoleScopeInput | null,
-): Promise<{ projectIds: string[]; folderIds: string[]; appIds: string[] } | null> {
+): Promise<ResolvedScope | null> {
   const actorScope = await roleScopeFor(actingUserId, teamId);
   if (input === null) {
     if (actorScope)
@@ -569,8 +593,9 @@ async function resolveRoleScope(
       );
     return null;
   }
-  const out = {
+  const out: ResolvedScope = {
     projectIds: [...new Set(input.projectIds ?? [])],
+    environmentIds: [...new Set(input.environmentIds ?? [])],
     folderIds: [...new Set(input.folderIds ?? [])],
     appIds: [...new Set(input.appIds ?? [])],
   };
@@ -585,6 +610,32 @@ async function resolveRoleScope(
         throw new Error("One of those isn't in this team any more");
     }
   }
+  // An environment is checked through its PROJECT: it is not a node of the grant
+  // ladder in its own right, and an actor who reaches the project reaches the
+  // environments inside it.
+  if (out.environmentIds.length > 0) {
+    const envs = await getDb()
+      .select({
+        id: environmentsTable.id,
+        projectId: environmentsTable.projectId,
+        teamId: projectsTable.teamId,
+      })
+      .from(environmentsTable)
+      .innerJoin(projectsTable, eq(projectsTable.id, environmentsTable.projectId))
+      .where(inArray(environmentsTable.id, out.environmentIds));
+    if (envs.length !== out.environmentIds.length)
+      throw new Error("One of those isn't in this team any more");
+    for (const e of envs) {
+      if (e.teamId !== teamId)
+        throw new Error("One of those isn't in this team any more");
+      const mine = await nodeCapabilitiesFor(actingUserId, teamId, {
+        kind: "project",
+        id: e.projectId,
+      });
+      if (mine.length === 0)
+        throw new Error("One of those isn't in this team any more");
+    }
+  }
   return out;
 }
 
@@ -592,11 +643,14 @@ async function resolveRoleScope(
 async function writeRoleScope(
   tx: DbTx,
   roleId: string,
-  scope: { projectIds: string[]; folderIds: string[]; appIds: string[] } | null,
+  scope: ResolvedScope | null,
 ): Promise<void> {
   await tx
     .delete(teamRoleScopeProjects)
     .where(eq(teamRoleScopeProjects.roleId, roleId));
+  await tx
+    .delete(teamRoleScopeEnvironments)
+    .where(eq(teamRoleScopeEnvironments.roleId, roleId));
   await tx
     .delete(teamRoleScopeFolders)
     .where(eq(teamRoleScopeFolders.roleId, roleId));
@@ -606,6 +660,12 @@ async function writeRoleScope(
     await tx
       .insert(teamRoleScopeProjects)
       .values(scope.projectIds.map((projectId) => ({ roleId, projectId })));
+  if (scope.environmentIds.length)
+    await tx
+      .insert(teamRoleScopeEnvironments)
+      .values(
+        scope.environmentIds.map((environmentId) => ({ roleId, environmentId })),
+      );
   if (scope.folderIds.length)
     await tx
       .insert(teamRoleScopeFolders)

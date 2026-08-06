@@ -63,6 +63,7 @@ const CONTROL_PLANE = [
   "projects",
   "project_grants",
   "app_grants",
+  "environment_grants",
   "team_project_order",
   "environments",
   "app_environments",
@@ -76,6 +77,7 @@ const CONTROL_PLANE = [
   // API token's scope. `team_roles.scoped` is the intent that survives their
   // cascade.
   "team_role_scope_projects",
+  "team_role_scope_environments",
   "team_role_scope_folders",
   "team_role_scope_apps",
   "invites",
