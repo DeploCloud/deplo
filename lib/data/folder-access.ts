@@ -11,13 +11,14 @@ import {
   users as usersTable,
 } from "../db/schema/control-plane";
 import { assertUser, getCurrentUser } from "../auth";
-import { isInstanceAdmin, membershipFor } from "../membership";
+import { getActiveTeamId, isInstanceAdmin, membershipFor } from "../membership";
 import {
   CAPABILITY_META,
   NODE_GRANTABLE_CAPABILITIES,
   boundedBy,
 } from "../membership-shared";
 import { holdsManageTeam, nodeCapabilities, withView } from "./node-access";
+import { roleScopeFor } from "./node-scope";
 import { type Capability } from "../types";
 
 /**
@@ -83,13 +84,22 @@ export { withView };
 async function folderRow(
   folderId: string,
 ): Promise<{ teamId: string; ownerUserId: string | null } | null> {
+  // Scoped to the ACTIVE team, not merely looked up by id. This is the second
+  // place a folder id used to name its own team: the sharing gates
+  // (requireFolderOwnerOrAdmin, folderIsOwnerOrAdmin) read `teamId` from the row
+  // and then asked the caller's membership THERE, so an id from another team
+  // answered with the caller's permissions in that other team. `null` here means
+  // "no such folder", which is the answer every caller already handles and the
+  // one that never leaks whether the id exists somewhere else.
+  const activeTeamId = await getActiveTeamId();
+  if (!activeTeamId) return null;
   const rows = await getDb()
     .select({
       teamId: foldersTable.teamId,
       ownerUserId: foldersTable.ownerUserId,
     })
     .from(foldersTable)
-    .where(eq(foldersTable.id, folderId))
+    .where(and(eq(foldersTable.id, folderId), eq(foldersTable.teamId, activeTeamId)))
     .limit(1);
   const f = rows[0];
   return f ? { teamId: f.teamId, ownerUserId: f.ownerUserId ?? null } : null;
@@ -253,12 +263,20 @@ export async function visibleFolderIds(
   // per-TOKEN (`tokenHoldsInstanceAdmin`), so a plain token minted by an admin
   // who is not a member here still sees nothing.
   const admin = await isInstanceAdmin();
-  if (admin || (await holdsManageTeam(user.id, teamId))) return "all";
+  const scope = admin ? null : await roleScopeFor(user.id, teamId);
+  // A scoped ROLE is not a super-user, whatever `manage_team` says. Writing a
+  // scope clamps that capability away at the source, so this state should not
+  // arise — and the sentinel is the one answer that would hand a limited member
+  // every folder in the team, so it is checked here too rather than trusted.
+  if (!scope && (admin || (await holdsManageTeam(user.id, teamId)))) return "all";
   // Not a super-user and not a member ⇒ nothing visible.
   if (!admin && (await teamCapsFor(user.id, teamId)).length === 0)
     return new Set();
 
   const visible = new Set<string>();
+  // What the role reaches, before anything they own or were granted: those are
+  // added below and EXTEND the scope rather than being filtered by it.
+  for (const id of scope?.folderIds ?? []) visible.add(id);
   const owned = await getDb()
     .select({ id: foldersTable.id })
     .from(foldersTable)

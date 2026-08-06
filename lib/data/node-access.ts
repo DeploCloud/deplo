@@ -18,12 +18,20 @@ import {
 import { getCurrentUser } from "../auth";
 import {
   clampCapabilitiesToToken,
+  getActiveTeamId,
   isInstanceAdmin,
   membershipFor,
   requireMembership,
   type ActiveMembership,
 } from "../membership";
 import { inAppScope } from "../auth/request-context";
+import {
+  appInScope,
+  folderInScope,
+  projectInScope,
+  roleScopeFor,
+  type NodeScope,
+} from "./node-scope";
 import { CAPABILITY_META } from "../membership-shared";
 import { ALL_CAPABILITIES, type Capability } from "../types";
 
@@ -103,6 +111,18 @@ interface GrantIndex {
    * folder its creator cannot see read the apps inside.
    */
   superUser: boolean;
+  /**
+   * Instance admin specifically, as opposed to {@link superUser}, which also
+   * counts `manage_team`. The two part company at exactly one place: the role
+   * scope below limits a member of the team, and an instance admin is not one.
+   */
+  instanceAdmin: boolean;
+  /**
+   * What the member's ROLE reaches in this team, or null when it is
+   * unrestricted. REACH, not power: a node outside it resolves to `[]`, which is
+   * the same answer a folder they were never shown gives.
+   */
+  roleScope: NodeScope | null;
   folders: Map<
     string,
     { parentId: string | null; projectId: string | null; ownerUserId: string | null }
@@ -156,7 +176,7 @@ async function buildIndex(
   if (!admin && base.length === 0) return null;
 
   const db = getDb();
-  const [folderRows, projectRows, fGrants, pGrants, aGrants, superUser] =
+  const [folderRows, projectRows, fGrants, pGrants, aGrants, superUser, roleScope] =
     await Promise.all([
       db
         .select({
@@ -211,6 +231,7 @@ async function buildIndex(
           and(eq(appGrantsTable.userId, userId), eq(appsTable.teamId, teamId)),
         ),
       holdsManageTeam(userId, teamId),
+      roleScopeFor(userId, teamId),
     ]);
 
   return {
@@ -218,6 +239,8 @@ async function buildIndex(
     userId,
     base,
     superUser: admin || superUser,
+    instanceAdmin: admin,
+    roleScope,
     folders: new Map(
       folderRows.map((f) => [
         f.id,
@@ -342,6 +365,55 @@ function ladder(
   return rungs;
 }
 
+/**
+ * Whether this person holds something of their own on the node or an ancestor —
+ * ownership, or a grant row.
+ *
+ * A node grant EXTENDS reach rather than intersecting with it, which is the one
+ * contentious rule of the model and the right one for two reasons. Intersecting
+ * would silently revoke every live folder share the moment its holder was put on
+ * a scoped role, which is a data-destroying default; and a grant is a deliberate
+ * act by someone who holds the node, so refusing it because of an unrelated role
+ * scope would make the Share dialog lie about what it just saved. Safety is kept
+ * elsewhere: `NODE_GRANTABLE_CAPABILITIES` keeps every team-administration
+ * capability off a node, so extending reach can never extend the team-wide
+ * surface.
+ */
+function hasOwnGrant(
+  index: GrantIndex,
+  node: { kind: NodeRef["kind"]; id: string; folderId?: string | null; projectId?: string | null },
+): boolean {
+  return ladder(index, node).some((r) => r.owner || r.grants.length > 0);
+}
+
+/**
+ * Whether the member's ROLE reaches this node at all. Answered before anything
+ * else in {@link resolveFrom}, including the super-user branch, and the order is
+ * load-bearing: `holdsManageTeam` deliberately reads the person's raw, unclamped
+ * junction row, so a member whose role is limited to one project but who still
+ * held `manage_team` would otherwise resolve the whole team here. Writing a
+ * scoped role clamps that capability away at the source, and this is the second
+ * lock on the same door.
+ *
+ * An instance admin is exempt because they are not a member acting under a team
+ * role — they administer the instance, and every other cross-team guard in this
+ * file (`resolveOne`, `appGate`) still applies to them.
+ */
+function reachesNode(
+  index: GrantIndex,
+  node: { kind: NodeRef["kind"]; id: string; folderId?: string | null; projectId?: string | null },
+): boolean {
+  if (index.instanceAdmin || !index.roleScope) return true;
+  if (node.kind === "app")
+    return appInScope(index.roleScope, {
+      id: node.id,
+      folderId: node.folderId ?? null,
+      projectId: node.projectId ?? null,
+    });
+  if (node.kind === "folder") return folderInScope(index.roleScope, node.id);
+  return projectInScope(index.roleScope, node.id);
+}
+
 /** Walk the ladder. See the module docblock for the rules it implements. */
 function resolveFrom(
   index: GrantIndex,
@@ -349,6 +421,12 @@ function resolveFrom(
 ): Capability[] {
   const clamp = (caps: Capability[]) =>
     withView(clampCapabilitiesToToken(caps, index.userId, index.teamId));
+
+  // REACH first: outside the role's scope nothing exists, which is the same
+  // empty answer a folder they were never shown gives, so neither can be told
+  // from the other. A node grant is what puts a node BACK in reach (ADR-0016
+  // says a grant may exceed the role), so it is checked below, not here.
+  if (!reachesNode(index, node) && !hasOwnGrant(index, node)) return [];
 
   // Super-user: their full team set on every node, grants and folder privacy
   // alike. An instance admin who isn't a member still administers it, with
@@ -359,11 +437,27 @@ function resolveFrom(
 
   const rungs = ladder(index, node);
 
-  // Folder privacy, unchanged: a folder is invisible unless you own one in the
-  // chain or hold a grant on one. A grant on an ancestor reaches its subtree,
-  // which is the tree the admin ticks in.
+  // Folder privacy: a folder is invisible unless you own one in the chain or
+  // hold a grant on one. A grant on an ancestor reaches its subtree, which is
+  // the tree the admin ticks in.
+  //
+  // A role SCOPE naming the folder satisfies it too, and has to: an admin who
+  // limits a role to "Prod" is saying its holders work there, so hiding Prod
+  // from them would make the scope useless at the one place it is most wanted.
+  // It grants no power — what they may DO there is still their role's set, or a
+  // grant's when there is one.
   const folders = rungs.filter((r) => r.kind === "folder");
-  if (folders.length > 0 && !folders.some((r) => r.owner || r.grants.length > 0)) {
+  if (
+    folders.length > 0 &&
+    !folders.some(
+      (r) =>
+        r.owner ||
+        r.grants.length > 0 ||
+        // Not `folderInScope`: a null scope means unrestricted, which must NOT
+        // dissolve folder privacy for everyone who has no scope at all.
+        Boolean(index.roleScope?.folderIds.includes(r.id)),
+    )
+  ) {
     return [];
   }
 
@@ -394,9 +488,21 @@ async function resolveOne(
   userId: string,
   node: NodeRef,
   admin: boolean,
+  activeTeamId: string,
 ): Promise<Capability[]> {
   const teamId = await teamOf(node);
-  if (!teamId) return [];
+  // A node belonging to ANOTHER team does not exist for this request. Taking the
+  // team from the node and answering from the caller's membership THERE is how a
+  // read-only token minted in one team deleted a folder in another: the token
+  // clamp keys on the (user, team) pair, so it goes silent the moment the team
+  // under test is not the one the token authenticated into, and the caller is
+  // resolved with their full human permissions in the other team. `appGate`
+  // below has always had this check (`app.teamId !== ctx.teamId`); the node
+  // resolver never did, and the folder gates are its only unguarded users.
+  //
+  // Instance admins are NOT exempt, exactly as they are not in `appGate`: reach
+  // across teams is switching team, not passing an id from one.
+  if (!teamId || teamId !== activeTeamId) return [];
   const index = await buildIndex(userId, teamId, admin);
   if (!index) return [];
 
@@ -414,11 +520,14 @@ async function resolveOne(
   });
 }
 
-/** The CURRENT caller's effective capabilities on a node. `[]` ⇒ no access. */
+/** The CURRENT caller's effective capabilities on a node. `[]` ⇒ no access,
+ *  which now includes "the node is in a team this request is not acting in". */
 export async function nodeCapabilities(node: NodeRef): Promise<Capability[]> {
   const user = await getCurrentUser();
   if (!user) return [];
-  return resolveOne(user.id, node, await isInstanceAdmin());
+  const activeTeamId = await getActiveTeamId();
+  if (!activeTeamId) return [];
+  return resolveOne(user.id, node, await isInstanceAdmin(), activeTeamId);
 }
 
 /**
@@ -427,12 +536,18 @@ export async function nodeCapabilities(node: NodeRef): Promise<Capability[]> {
  * {@link isInstanceAdmin}, which additionally asks whether the API token making
  * THIS request may act as an admin; that question is about the caller, not about
  * the person being displayed.
+ *
+ * The team is an ARGUMENT here, not read from the request: this is the seam the
+ * subscriptions use, and it must not touch cookies (see `reachableByUser` in
+ * ./apps.ts). Naming it also keeps the boundary explicit rather than optional —
+ * a `null` that meant "skip the check" is how the hole would come back.
  */
 export async function nodeCapabilitiesFor(
   userId: string,
+  teamId: string,
   node: NodeRef,
 ): Promise<Capability[]> {
-  return resolveOne(userId, node, await storedInstanceAdmin(userId));
+  return resolveOne(userId, node, await storedInstanceAdmin(userId), teamId);
 }
 
 /**

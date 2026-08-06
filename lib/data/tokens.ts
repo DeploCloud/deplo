@@ -29,6 +29,10 @@ import {
 import { withinActor } from "./roles";
 import { visibleFolderIds } from "./folder-access";
 import { appCapabilitiesForTeam } from "./node-access";
+// The folder-subtree walk a scope needs, shared with the ROLE scope that reuses
+// this same shape. It lives in the leaf module so neither side has to import the
+// other (`node-scope.ts` explains why).
+import { expandFolders } from "./node-scope";
 import { recordActivity } from "./activity";
 import { assertUser, getCurrentUser } from "../auth";
 import { sha256Hex, randomToken } from "../crypto";
@@ -980,65 +984,6 @@ async function loadScope(tokenId: string): Promise<TokenScope> {
       ),
     ],
   };
-}
-
-/**
- * Every folder a scope actually reaches: the ticked ones, everything nested
- * under them, and everything filed under a ticked project — plus the projects
- * those folders sit in, so the containers stay navigable.
- *
- * One query for the whole folder set of the token's teams, then a walk in
- * memory: folder trees are small (an Overview a person browses), and this runs
- * once per authentication, not once per query. Cycle-safe by the seen-set, the
- * same tolerance the rest of the folder-tree code applies to a stale parent.
- */
-async function expandFolders(
-  teamIds: string[],
-  ticked: string[],
-  scopedProjectIds: string[],
-): Promise<{ folderIds: string[]; folderProjectIds: string[] }> {
-  if (teamIds.length === 0 || (ticked.length === 0 && scopedProjectIds.length === 0))
-    return { folderIds: [], folderProjectIds: [] };
-  const rows = await getDb()
-    .select({
-      id: foldersTable.id,
-      parentId: foldersTable.parentId,
-      projectId: foldersTable.projectId,
-    })
-    .from(foldersTable)
-    .where(inArray(foldersTable.teamId, teamIds));
-
-  const childrenOf = new Map<string, string[]>();
-  for (const f of rows)
-    if (f.parentId)
-      childrenOf.set(f.parentId, [...(childrenOf.get(f.parentId) ?? []), f.id]);
-
-  // Roots: the ticked folders, plus every folder filed DIRECTLY under a ticked
-  // project (their own subtrees follow below).
-  const projects = new Set(scopedProjectIds);
-  const roots = [
-    ...ticked,
-    ...rows.filter((f) => f.projectId && projects.has(f.projectId)).map((f) => f.id),
-  ];
-
-  const reached = new Set<string>();
-  const stack = [...roots];
-  while (stack.length) {
-    const id = stack.pop()!;
-    if (reached.has(id)) continue;
-    reached.add(id);
-    for (const child of childrenOf.get(id) ?? []) stack.push(child);
-  }
-
-  const byId = new Map(rows.map((f) => [f.id, f] as const));
-  const folderProjectIds = [
-    ...new Set(
-      ticked
-        .map((id) => byId.get(id)?.projectId)
-        .filter((id): id is string => id != null),
-    ),
-  ];
-  return { folderIds: [...reached], folderProjectIds };
 }
 
 async function actorUsername(): Promise<string> {
