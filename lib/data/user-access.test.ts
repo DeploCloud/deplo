@@ -21,6 +21,7 @@ import {
   listUserAccess,
   listUserActivity,
   removeUserFromTeam,
+  setMemberAccess,
   setUserTeamAccess,
 } from "./user-access";
 
@@ -364,4 +365,132 @@ test("the change lands in the affected team's Activity", async () => {
   const feed = await as(ADMIN, () => listUserActivity(ADMIN, 10));
   assert.equal(feed.length, 1);
   assert.equal(feed[0].teamName, "team-a");
+});
+
+/* ------------------------------------------------------------------ */
+/* The four guards that make the team-side door safe                   */
+/* ------------------------------------------------------------------ */
+
+test("nobody edits their own access, instance admin included", async () => {
+  const roles = await rolesOfTeamB();
+  const owner = roles.find((r) => r.builtinKey === "owner")!;
+  await assert.rejects(
+    () =>
+      as(ADMIN, () =>
+        setUserTeamAccess({
+          userId: ADMIN,
+          teamId: TEAM_B,
+          roleId: owner.id,
+          granular: false,
+        }),
+      ),
+    /your own access/i,
+    "an actor who can widen themselves has no boundary",
+  );
+});
+
+test("the team-side door takes its team from the actor, never from the input", async () => {
+  const rolesA = await rolesOfTeamA();
+  const viewer = rolesA.find((r) => r.builtinKey === "viewer")!;
+
+  // The founder administers TEAM_A, where they hold manage_members.
+  const after = await as(
+    FOUNDER,
+    () => setMemberAccess({ userId: DEV, roleId: viewer.id, granular: false }),
+    TEAM_A,
+  );
+  assert.deepEqual(
+    after.map((a) => a.teamId),
+    [TEAM_A],
+    "and answers for that team alone",
+  );
+  assert.equal(after[0].roleName, viewer.name);
+
+  // There is no id to pass: acting in TEAM_B, the same call can only ever write
+  // TEAM_B, so a role of TEAM_A is simply not one of its roles.
+  await assert.rejects(
+    () =>
+      as(
+        ADMIN,
+        () => setMemberAccess({ userId: DEV, roleId: viewer.id, granular: false }),
+        TEAM_B,
+      ),
+    /not found|permission|not in this team/i,
+  );
+});
+
+test("an admin can't hand out what they don't hold on the node themselves", async () => {
+  const roles = await rolesOfTeamA();
+  const viewer = roles.find((r) => r.builtinKey === "viewer")!;
+
+  // A second member of TEAM_A who may manage members but owns no folder and
+  // holds no grant on FLD — which the founder owns.
+  await db.insert(
+    (await import("../db/schema/control-plane")).users,
+  ).values({
+    id: "u_hr",
+    email: "hr@example.io",
+    username: "u_hr",
+    name: "u_hr",
+    role: "member",
+    isInstanceAdmin: false,
+    avatarColor: "#abc",
+    createdAt: T0,
+    updatedAt: T0,
+  });
+  await db.insert(membershipsTable).values({
+    id: "mem_hr",
+    userId: "u_hr",
+    teamId: TEAM_A,
+    role: "member",
+    createdAt: T0,
+  });
+  await db
+    .insert((await import("../db/schema/control-plane")).membershipCapabilities)
+    .values(
+      ["view", "manage_members"].map((capability) => ({
+        membershipId: "mem_hr",
+        capability,
+      })),
+    );
+
+  // `manage_members` is the one capability this door asks for, and on its own it
+  // must not become a way to deal out someone else's private folder.
+  await assert.rejects(
+    () =>
+      as(
+        "u_hr",
+        () =>
+          setMemberAccess({
+            userId: DEV,
+            roleId: viewer.id,
+            granular: true,
+            grants: [{ folderIds: [FLD], capabilities: ["manage_env"] }],
+          }),
+        TEAM_A,
+      ),
+    /isn't in this team any more/,
+    "a folder they cannot see must answer as one that isn't there",
+  );
+
+  // The founder owns it, so for them the same call goes through.
+  await as(
+    FOUNDER,
+    () =>
+      setMemberAccess({
+        userId: DEV,
+        roleId: viewer.id,
+        granular: true,
+        grants: [{ folderIds: [FLD], capabilities: ["manage_env"] }],
+      }),
+    TEAM_A,
+  );
+  const grants = await db
+    .select()
+    .from(folderGrantsTable)
+    .where(eq(folderGrantsTable.userId, DEV));
+  assert.deepEqual(
+    grants.map((g) => g.capability),
+    ["manage_env"],
+  );
 });

@@ -20,14 +20,23 @@ import {
 import { getCurrentUser } from "../auth";
 import { assembleActivity } from "./infra-rows";
 import { newId, nowIso } from "../ids";
-import { requireInstanceAdmin, teamsForUser } from "../membership";
-import { NODE_GRANTABLE_CAPABILITIES, boundedBy } from "../membership-shared";
+import {
+  isInstanceAdmin,
+  requireCapability,
+  requireInstanceAdmin,
+  teamsForUser,
+} from "../membership";
+import {
+  CAPABILITY_META,
+  NODE_GRANTABLE_CAPABILITIES,
+  boundedBy,
+} from "../membership-shared";
 import { recordActivity } from "./activity";
 import { assertAdminCoverage, teamFounderUserId } from "./members";
 import { instanceOwnerUserId } from "./instance-owner";
 import { ensureTeamRoles, roleAssignment } from "./roles";
 import { buildScopeTree, type ScopeTreeTeam } from "./tokens";
-import { withView } from "./node-access";
+import { nodeCapabilitiesFor, withView } from "./node-access";
 import type { Activity, Capability } from "../types";
 
 /**
@@ -103,6 +112,17 @@ export async function listUserAccess(
   userId: string,
 ): Promise<UserTeamAccessDTO[]> {
   await requireInstanceAdmin();
+  return loadUserAccess(userId);
+}
+
+/**
+ * The same read with no gate of its own, for a caller that has already been
+ * gated and knows which team it may answer for. `teamId` narrows it to one.
+ */
+async function loadUserAccess(
+  userId: string,
+  teamId?: string,
+): Promise<UserTeamAccessDTO[]> {
   const db = getDb();
 
   const rows = await db
@@ -119,7 +139,14 @@ export async function listUserAccess(
     .from(membershipsTable)
     .innerJoin(teamsTable, eq(teamsTable.id, membershipsTable.teamId))
     .leftJoin(teamRolesTable, eq(teamRolesTable.id, membershipsTable.roleId))
-    .where(eq(membershipsTable.userId, userId))
+    .where(
+      teamId
+        ? and(
+            eq(membershipsTable.userId, userId),
+            eq(membershipsTable.teamId, teamId),
+          )
+        : eq(membershipsTable.userId, userId),
+    )
     .orderBy(asc(teamsTable.createdAt));
   if (rows.length === 0) return [];
 
@@ -228,12 +255,23 @@ async function nodeGrantsFor(
 /**
  * The scope tree rooted at the TARGET's teams — the same picker the token editor
  * draws, built from someone else's memberships. Instance admin only.
+ *
+ * `asCaller` is what keeps the tree honest about private folders. Skipping it is
+ * defensible for an instance admin, who already sees every folder in every team;
+ * it would not be for anyone else, because the tree names folders and the apps
+ * inside them, which is precisely what a private folder exists to withhold. The
+ * flag is therefore derived here rather than passed in, so a second caller
+ * cannot arrive with it set.
  */
 export async function listUserAccessTree(
   userId: string,
 ): Promise<ScopeTreeTeam[]> {
   await requireInstanceAdmin();
-  return buildScopeTree(await teamsForUser(userId));
+  // Derived from the answer, not from the gate above: re-gate this function and
+  // the filter follows on its own, instead of leaking every private folder in
+  // every team the target belongs to.
+  const unfiltered = await isInstanceAdmin();
+  return buildScopeTree(await teamsForUser(userId), { asCaller: !unfiltered });
 }
 
 /** The roles assignable in one team, for the per-team picker. Instance admin only. */
@@ -300,11 +338,51 @@ export async function setUserTeamAccess(input: {
   grants?: NodeGrantInput[];
 }): Promise<UserTeamAccessDTO[]> {
   const { userId: actingUserId } = await requireInstanceAdmin();
+  await writeAccess(actingUserId, input);
+  return listUserAccess(input.userId);
+}
+
+/**
+ * The same write, for a team administering its OWN member: `manage_members`,
+ * and the team comes from the actor rather than from the input.
+ *
+ * That is the whole difference, and it is the reason this is a second door
+ * instead of a looser gate on the one above. `setUserTeamAccess` takes a
+ * `teamId` because cross-team administration is its entire purpose; the moment a
+ * team-scoped capability could reach it with an id of its choosing, the admin of
+ * team A would be rewriting memberships in team B.
+ *
+ * Everything past the gate is shared, guards included: the founder's crown, the
+ * instance owner's row, the self-edit refusal, the last-administrator check and
+ * the granter bound on every node.
+ */
+export async function setMemberAccess(input: {
+  userId: string;
+  roleId: string;
+  granular: boolean;
+  grants?: NodeGrantInput[];
+}): Promise<UserTeamAccessDTO[]> {
+  const { teamId, userId: actingUserId } = await requireCapability("manage_members");
+  await writeAccess(actingUserId, { ...input, teamId });
+  // Their access in THIS team, which is the only one this door may answer for.
+  return loadUserAccess(input.userId, teamId);
+}
+
+async function writeAccess(
+  actingUserId: string,
+  input: {
+    userId: string;
+    teamId: string;
+    roleId: string;
+    granular: boolean;
+    grants?: NodeGrantInput[];
+  },
+): Promise<void> {
   const db = getDb();
   await ensureTeamRoles(db, input.teamId);
   const assignment = await roleAssignment(db, input.teamId, input.roleId);
   const resolved = input.granular
-    ? await resolveGrants(input.teamId, input.grants ?? [])
+    ? await resolveGrants(input.teamId, actingUserId, input.grants ?? [])
     : [];
 
   await db.transaction(async (tx) => {
@@ -343,7 +421,6 @@ export async function setUserTeamAccess(input: {
       ? `granular access (${resolved.length} nodes) with the ${assignment.name} role`
       : `the ${assignment.name} role`,
   );
-  return listUserAccess(input.userId);
 }
 
 /** Add this person to a team with a role. Instance admin only. */
@@ -442,6 +519,15 @@ async function requireEditableMembership(
   teamId: string,
   actingUserId: string,
 ): Promise<{ id: string }> {
+  // Nobody edits their own access here, rank and instance-admin flag included.
+  // This function writes reach as well as capabilities, and the one thing a
+  // boundary must never be is self-serve: an actor who could widen themselves
+  // has no boundary. `updateMember` has always refused a non-owner self-edit;
+  // this refuses everyone, because there is no version of "widening yourself"
+  // that a rank makes legitimate.
+  if (userId === actingUserId) {
+    throw new Error("You can't change your own access. Ask another admin.");
+  }
   if (userId === (await teamFounderUserId(tx, teamId))) {
     throw new Error("The team's primary owner's access can't be changed.");
   }
@@ -476,12 +562,20 @@ interface ResolvedGrant {
 }
 
 /**
- * Check every ticked node really belongs to `teamId` and bound each set to
+ * Check every ticked node really belongs to `teamId`, that the ACTOR can reach
+ * it and holds there what they are handing out, and bound each set to
  * {@link NODE_GRANTABLE_CAPABILITIES}. Refuses loudly rather than silently
  * dropping, so an admin is told why `manage_members` isn't on offer per node.
+ *
+ * The granter bound is the same one `setFolderGrant` applies, and ADR-0016 calls
+ * it "what keeps the model safe": without it, holding the single capability that
+ * opens this function is enough to hand a confederate `reveal_secrets` and
+ * `open_app_console` on a private folder the granter cannot even see. An
+ * instance admin resolves everything on every node, so for them it is a no-op.
  */
 async function resolveGrants(
   teamId: string,
+  actingUserId: string,
   grants: NodeGrantInput[],
 ): Promise<ResolvedGrant[]> {
   const db = getDb();
@@ -494,7 +588,7 @@ async function resolveGrants(
         `${beyond[0]} applies to the whole team, so it can't be given on a single project, folder or app`,
       );
     }
-    const bounded = boundedBy(caps, NODE_GRANTABLE_CAPABILITIES);
+    const wanted = boundedBy(caps, NODE_GRANTABLE_CAPABILITIES);
     for (const [kind, ids] of [
       ["project", g.projectIds ?? []],
       ["folder", g.folderIds ?? []],
@@ -510,8 +604,26 @@ async function resolveGrants(
       if (found.length !== new Set(ids).size) {
         throw new Error("One of those isn't in this team any more");
       }
-      for (const id of new Set(ids))
+      for (const id of new Set(ids)) {
+        // The team is an ARGUMENT, not the cookie's active team: this door is
+        // cross-team by design (an admin answering "who can touch Prod?" is
+        // editing teams they may not belong to), and the request-scoped twin
+        // answers `[]` for every node outside the team being acted in.
+        // Resolved BEFORE any transaction opens: it queries on its own
+        // connection, and under pglite that would hang against an open one.
+        const mine = await nodeCapabilitiesFor(actingUserId, teamId, { kind, id });
+        if (mine.length === 0)
+          // A node they can't reach answers exactly as one that isn't there:
+          // the refusal must not confirm which private folders exist.
+          throw new Error("One of those isn't in this team any more");
+        const bounded = boundedBy(wanted, mine);
+        const over = wanted.filter((c) => !bounded.includes(c));
+        if (over.length > 0)
+          throw new Error(
+            `You don't have ${CAPABILITY_META[over[0]].label.toLowerCase()} there yourself, so you can't give it away`,
+          );
         out.push({ kind, nodeId: id, capabilities: bounded });
+      }
     }
   }
   return out;
