@@ -1,9 +1,9 @@
 import { notFound } from "next/navigation";
 import { Globe } from "lucide-react";
 import { getAppBySlug } from "@/lib/data/apps";
-import { getServer } from "@/lib/data/servers";
+import { serverIpForApp } from "@/lib/data/servers";
 import { listDomains } from "@/lib/data/domains";
-import { resolveServerIp, productionDomain } from "@/lib/deploy/domains";
+import { productionDomain } from "@/lib/deploy/domains";
 import { composeServiceNames } from "@/lib/deploy/compose-stack";
 import { usesComposeStack } from "@/lib/utils";
 import { EmptyState } from "@/components/shared/empty-state";
@@ -31,13 +31,13 @@ export default async function AppDomainsPage(
   const { slug } = await props.params;
   const project = await getAppBySlug(slug);
   if (!project) notFound();
-  // The host THIS app runs on, by id — not the fleet. Listing every server to
-  // find one is a team-wide read, and a member limited to part of the team is
-  // refused it; the address their own app's DNS record must point at is not the
-  // fleet's inventory.
-  const [domains, server] = await Promise.all([
+  // The ADDRESS of the host this app runs on, asked about the app — not the
+  // fleet. Listing every server to find one is a team-wide read that a member
+  // limited to part of the team is refused, and the value a DNS record must
+  // point at is part of their own app rather than the inventory.
+  const [domains, serverIp] = await Promise.all([
     listDomains(project.id),
-    project.serverId ? getServer(project.serverId) : null,
+    serverIpForApp(project.id),
   ]);
   // A zero-config nip.io hostname (`<slug>-<adjective>-<animal>-<hexip>.nip.io`)
   // the user can drop into the Domain field with one click — resolved here so the
@@ -49,7 +49,6 @@ export default async function AppDomainsPage(
   // server-side and threaded to both the nip.io suggestion and the misconfigured
   // hint on each domain row, so the server-only IP detection never reaches the
   // client bundle.
-  const serverIp = resolveServerIp(server ?? undefined);
   const suggestedDomain = productionDomain(project.slug, serverIp);
   // Whether each row routes to a compose service or to the app's single
   // container — the authoritative source check, not "does the app carry compose

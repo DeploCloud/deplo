@@ -94,6 +94,7 @@ beforeEach(async () => {
   await pg.exec(`truncate table
     team_role_scope_apps, team_role_scope_folders, team_role_scope_projects,
     team_role_scope_environments, environment_grants, environments,
+    backup_runs, backups, s3_destination, databases,
     app_grants, folder_grants, project_grants,
     team_role_capabilities, team_roles,
     app_build_method_settings, app_build, apps, folders, projects, servers,
@@ -522,6 +523,26 @@ test("no list read hands a scoped member anything outside their scope", async ()
       );
     }
   }
+});
+
+test("nothing that belongs to the whole team is reachable through a point lookup", async () => {
+  const { seedDatabase } = await import("./backup-test-helpers");
+  await seedDatabase(db, { id: "db_main", name: "main" });
+  await scopeTo({ projects: [PRC_IN] });
+
+  // A collection says plainly that the caller is limited; a POINT LOOKUP must
+  // answer as if the id did not exist, or the refusal becomes an oracle. These
+  // two carried a token-only check and answered a limited member in full: the
+  // database with its whole row, the host with its address and status.
+  const { getDatabase } = await import("./databases");
+  const { getServer } = await import("./servers");
+  assert.equal(await as(DEV, () => getDatabase("db_main")), null);
+  assert.equal(await as(DEV, () => getServer("srv_1")), null);
+
+  // The control: unscoped, both answer.
+  await db.update(teamRolesTable).set({ scoped: false }).where(eq(teamRolesTable.id, ROLE));
+  assert.ok(await as(DEV, () => getDatabase("db_main")));
+  assert.ok(await as(DEV, () => getServer("srv_1")));
 });
 
 test("every team-wide read refuses a scoped member, in their own words", async () => {

@@ -19,6 +19,7 @@ import { resourceLimitsToRow } from "./app-graph-rows";
 import { getCurrentUser } from "../auth";
 import { newId, nowIso } from "../ids";
 import {
+  reachesWholeTeam,
   requireActiveTeamId,
   requireCapability,
   canExposePorts,
@@ -301,7 +302,13 @@ async function loadDatabase(
   id: string,
   teamId: string,
 ): Promise<Database | null> {
+  // A database belongs to the team and to no project, so a principal who
+  // reaches only part of the team reaches none of them — a token narrowed to a
+  // project, and equally a member on a limited role. NOT FOUND rather than a
+  // scope error: the collection says plainly that it is limited, and existence
+  // must never be something a refusal confirms.
   if (narrowedScope()) return null;
+  if (!(await reachesWholeTeam())) return null;
   const rows = await getDb()
     .select()
     .from(databasesTable)

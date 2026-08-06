@@ -10,9 +10,11 @@ import {
   teams as teamsTable,
 } from "../db/schema/control-plane";
 import { assembleServer, serverToRow } from "./infra-rows";
-import { isDeploHostServer } from "../deploy/domains";
+import { appCapabilities } from "./node-access";
+import { isDeploHostServer, resolveServerIp } from "../deploy/domains";
 import { getCurrentUser } from "../auth";
 import {
+  reachesWholeTeam,
   requireActiveTeamId,
   requireInstanceAdmin,
   requireTeamWide,
@@ -81,7 +83,13 @@ export async function getServer(id: string): Promise<Server | null> {
   // A point lookup answers NOT FOUND rather than "your token is limited", so a
   // narrowed scope can never become an oracle for which server ids exist. The
   // collection above says plainly that it is limited; existence does not.
+  //
+  // A host is team-level and has no per-project meaning, so this is closed to a
+  // limited MEMBER for the same reason it is closed to a narrowed token. What a
+  // member still needs from a host their own app runs on - its address, for a
+  // DNS record - is {@link serverIpForApp}, which asks about the app.
   if (narrowedScope()) return null;
+  if (!(await reachesWholeTeam())) return null;
   const teamId = await requireActiveTeamId();
   const server = await getServerById(id);
   if (!server) return null;
@@ -173,6 +181,29 @@ export async function listServerChoices(): Promise<
     name: s.name,
     type: s.type,
   }));
+}
+
+/**
+ * The public address of the host ONE app runs on — the value a custom domain's
+ * A record has to point at.
+ *
+ * Gated on the app rather than on the fleet: someone limited to one project
+ * manages that project's domains, and the address of the machine their own app
+ * runs on is part of the app, not part of the inventory. An app that isn't
+ * theirs answers the same as a host with no address recorded.
+ */
+export async function serverIpForApp(appId: string): Promise<string> {
+  const reach = await appCapabilities(appId);
+  if (reach.length === 0) return resolveServerIp(undefined);
+  const rows = await getDb()
+    .select({ ip: serversTable.ip, host: serversTable.host })
+    .from(appsTable)
+    .innerJoin(serversTable, eq(serversTable.id, appsTable.serverId))
+    .where(eq(appsTable.id, appId))
+    .limit(1);
+  // `resolveServerIp` already has the fallback for a host with no address
+  // recorded, so this returns the same shape the fleet read did.
+  return resolveServerIp({ ip: rows[0]?.ip ?? undefined });
 }
 
 /** The team ids a non-`all_teams` server is restricted to (empty for an unscoped one). */
