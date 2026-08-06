@@ -317,12 +317,6 @@ export function MemberDetailTabs({
             </Button>
           )}
         </div>
-        {lockReason && (
-          <div className="flex items-center gap-3 rounded-lg border border-[var(--warning)]/30 bg-[var(--warning)]/5 p-3">
-            <Lock className="size-5 shrink-0 text-[var(--warning)]" />
-            <p className="text-sm">{lockReason}</p>
-          </div>
-        )}
       </header>
 
       <Tabs value={active} onValueChange={selectTab}>
@@ -342,6 +336,14 @@ export function MemberDetailTabs({
           }}
         >
           <TabsContent value="permissions" className="space-y-4 pt-4">
+            {/* Why nothing on this tab can be edited, above the things that
+                can't be: it belongs to the editors, not to the person. */}
+            {lockReason && (
+              <div className="flex items-center gap-3 rounded-lg border border-[var(--warning)]/30 bg-[var(--warning)]/5 p-3">
+                <Lock className="size-5 shrink-0 text-[var(--warning)]" />
+                <p className="text-sm">{lockReason}</p>
+              </div>
+            )}
             {/* The role comes first: the two editors below are filled from it,
                 so picking another one re-fills them. The founder is the one
                 membership with nothing to say here — the banner above already
