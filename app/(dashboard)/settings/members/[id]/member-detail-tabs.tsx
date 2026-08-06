@@ -412,7 +412,7 @@ export function MemberDetailTabs({
                 {nothingAllowed && (
                   <p className="text-xs text-destructive">
                     {reachLimited
-                      ? "Pick a permission that works where they have access: the ones ticked only mean something team-wide, and they no longer reach the whole team."
+                      ? "Everything ticked works only on a whole team, and they reach part of one. Tick a permission that works on a project, a folder or an app, or give them the whole team above."
                       : "Pick at least one permission. Someone who may only look at this team is a Viewer — give them that role instead."}
                   </p>
                 )}
