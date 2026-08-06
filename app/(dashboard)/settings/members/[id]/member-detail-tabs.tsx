@@ -226,9 +226,10 @@ export function MemberDetailTabs({
   const nothingAllowed =
     (reachLimited ? onNodes : caps).filter((c) => c !== "view").length === 0;
   const blocked = readOnly || !roleId || nothingTicked || nothingAllowed;
-  // A disabled Save with no reason is the same as a broken one, and every reason
-  // it has lives on a different card — so it is said HERE, next to the button
-  // somebody just clicked, rather than once per card they'd have to go find.
+  // A disabled Save with no reason is the same as a broken one. All four reasons
+  // read as one warning at the top of the editor, not one line per card: an
+  // admin sees it while editing, instead of after clicking a button that does
+  // nothing.
   const blockedReason = readOnly
     ? null
     : !roleId
@@ -400,6 +401,7 @@ export function MemberDetailTabs({
                       : `Set by their role: ${role?.name} is limited to specific environments, which can only be changed on the role.`
                   }
                   emptyNote="This team has nothing to give access to yet."
+                  notice={blockedReason}
                 />
               </CardContent>
             </Card>
@@ -452,12 +454,7 @@ export function MemberDetailTabs({
           </TabsContent>
 
           {!readOnly && onTeamTab && (
-            <div className="flex flex-wrap items-center justify-end gap-3">
-              {blockedReason && (
-                <p className="min-w-0 flex-1 text-right text-xs text-muted-foreground">
-                  {blockedReason}
-                </p>
-              )}
+            <div className="flex justify-end">
               <Button type="submit" disabled={!dirty || pending || blocked}>
                 {pending ? (
                   <Loader2 className="size-4 animate-spin" />
