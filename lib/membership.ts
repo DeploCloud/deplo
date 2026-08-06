@@ -25,6 +25,8 @@ import {
   boundedBy,
 } from "./membership-shared";
 import { currentIdentity, narrowedScope } from "./auth/request-context";
+// The leaf module: a role's reach, with no dependency back on this one.
+import { roleScopeFor } from "./data/node-scope";
 
 export {
   CAPABILITY_PRESETS,
@@ -493,24 +495,41 @@ function tokenHoldsInstanceAdmin(): boolean {
 }
 
 /**
- * Refuse a resource that has no per-Project meaning to a narrowed token.
+ * Refuse a resource that has no per-Project meaning to a principal who reaches
+ * only part of this team — a narrowed API token, or a member whose ROLE is
+ * scoped.
  *
- * A token narrowed below the whole of this team reaches its apps and nothing else.
- * Its capability set already drops every team-wide permission (see
- * {@link PROJECT_SCOPED_CAPABILITIES}), which closes the MUTATIONS — but `view`
- * is an always-on floor that no capability check consults, so team-wide READS
- * need this explicit refusal: the member roster, the other tokens, the
- * registries, the databases (which carry no `project_id` to scope by at all).
+ * Either way the capability set has already dropped every team-wide permission
+ * (see {@link PROJECT_SCOPED_CAPABILITIES}, applied by `clampToToken` for a
+ * token and at write time for a role), which closes the MUTATIONS. But `view` is
+ * an always-on floor that no capability check consults, so team-wide READS need
+ * this explicit refusal: the member roster, the other tokens, the registries,
+ * the databases (which carry no `project_id` to scope by at all).
  *
  * Use it for collections and team-level actions. For a point lookup by id,
  * prefer behaving as NOT FOUND instead — a scope must never become an oracle for
- * whether some id exists. Synchronous and query-free, so it is safe inside a
- * transaction. A no-op for every cookie request and every unscoped token.
+ * whether some id exists.
+ *
+ * The message names the right subject. Telling a person their SESSION is "an API
+ * token limited to specific projects" is both confusing and a statement about
+ * the enforcement mechanism that they did not ask for.
+ *
+ * Async, unlike the token half it replaces: a person's reach lives in the
+ * database. Call it BEFORE opening a transaction — a query issued while one is
+ * open waits on it, and under pglite that is a hang rather than a slow query.
  */
-export function requireUnscoped(what: string): void {
+export async function requireTeamWide(what: string): Promise<void> {
   if (narrowedScope())
     throw new Error(
       `This API token is limited to specific projects and can't access ${what}.`,
+    );
+  const user = await getCurrentUser();
+  if (!user) return;
+  const teamId = await getActiveTeamId();
+  if (!teamId) return;
+  if (await roleScopeFor(user.id, teamId))
+    throw new Error(
+      `Your role only reaches part of this team, so it can't access ${what}.`,
     );
 }
 

@@ -267,6 +267,70 @@ test("a folder share extends the scope instead of being clamped by it", async ()
   assert.equal(await reaches({ kind: "app", id: APP_OUT_PRC }), false);
 });
 
+test("every team-wide read refuses a scoped member, in their own words", async () => {
+  const { listMembers } = await import("./members");
+  const { listRoles } = await import("./roles");
+  const { listTokens } = await import("./tokens");
+  const { listRegistries } = await import("./registries");
+  const { listDatabases } = await import("./databases");
+  const { listSharedVars } = await import("./shared-vars");
+  const { getTeam } = await import("./teams");
+  const { listGithubApps } = await import("./github");
+  const { listS3 } = await import("./s3");
+  const { getNotificationSettings } = await import("./notifications");
+
+  const reads: [string, () => Promise<unknown>][] = [
+    ["members", listMembers],
+    ["roles", listRoles],
+    ["tokens", listTokens],
+    ["registries", listRegistries],
+    ["databases", listDatabases],
+    ["shared variables", listSharedVars],
+    ["team settings", getTeam],
+    ["git connections", listGithubApps],
+    ["S3 destinations", listS3],
+    ["notifications", getNotificationSettings],
+  ];
+
+  // The control: unscoped, none of them refuses FOR THIS REASON. Some still
+  // refuse on capabilities (DEV holds only view + deploy_apps), which is the
+  // other axis entirely and not what this test is about.
+  for (const [what, call] of reads) {
+    await as(DEV, call).catch((e: Error) => {
+      assert.doesNotMatch(
+        e.message,
+        /only reaches part of this team/,
+        `${what} refused an unscoped member as if they were scoped`,
+      );
+    });
+  }
+
+  await scopeTo({ projects: [PRC_IN] });
+
+  for (const [what, call] of reads) {
+    await assert.rejects(
+      () => as(DEV, call),
+      (e: Error) => {
+        assert.match(
+          e.message,
+          /only reaches part of this team/,
+          `${what} refused for the wrong reason: ${e.message}`,
+        );
+        // A person is not an API token, and the enforcement mechanism is not
+        // theirs to be told about. Matched on the sentence, not on the words
+        // "API token" — one of these resources IS the team's API tokens.
+        assert.doesNotMatch(
+          e.message,
+          /This API token is limited/,
+          `${what} told a person their session was an API token`,
+        );
+        return true;
+      },
+      `${what} was readable by a member limited to one project`,
+    );
+  }
+});
+
 test("a scoped role cannot hold a team-wide capability, however it was authored", async () => {
   // Authored with the lot, including the three that lock a team out if nobody
   // holds them. The AUTHORED set is what the role editor shows.

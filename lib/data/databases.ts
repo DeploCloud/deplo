@@ -22,7 +22,7 @@ import {
   requireActiveTeamId,
   requireCapability,
   canExposePorts,
-  requireUnscoped,
+  requireTeamWide,
 } from "../membership";
 import { recordActivity } from "./activity";
 import { encryptSecret, decryptSecret, randomToken } from "../crypto";
@@ -323,7 +323,7 @@ async function databaseOrderRank(teamId: string): Promise<Map<string, number>> {
 }
 
 export async function listDatabases(): Promise<DatabaseDTO[]> {
-  requireUnscoped("databases");
+  await requireTeamWide("databases");
   const teamId = await requireActiveTeamId();
   const [rows, rank] = await Promise.all([
     getDb()

@@ -23,7 +23,7 @@ import {
   requireActiveTeamId,
   requireCapability,
   requireInstanceAdmin,
-  requireUnscoped,
+  requireTeamWide,
   teamsForUser,
 } from "../membership";
 import { withinActor } from "./roles";
@@ -148,7 +148,7 @@ export async function listTokens(): Promise<ApiTokenDTO[]> {
   const teamId = await requireActiveTeamId();
   // A narrowed token must not enumerate the team's OTHER credentials: its
   // capability clamp already stops it minting one, this stops it reading them.
-  requireUnscoped("API tokens");
+  await requireTeamWide("API tokens");
   const reaching = await tokenIdsReaching(teamId);
   if (reaching.size === 0) return [];
   const rows = await getDb()
@@ -280,7 +280,7 @@ export async function listScopeTree(): Promise<ScopeTreeTeam[]> {
   // can't already see. A narrowed token is refused: it must not enumerate the
   // teams its creator belongs to.
   const user = await assertUser();
-  requireUnscoped("the token scope picker");
+  await requireTeamWide("the token scope picker");
   // Their memberships bound WHICH teams; per-node access bounds what shows up
   // inside one. Team membership alone is not enough — a folder is private to its
   // owner and grantees, and a picker that listed every private folder (and the

@@ -15,7 +15,7 @@ import { getCurrentUser } from "../auth";
 import {
   requireActiveTeamId,
   requireInstanceAdmin,
-  requireUnscoped,
+  requireTeamWide,
 } from "../membership";
 import { narrowedScope } from "../auth/request-context";
 import { newId, nowIso } from "../ids";
@@ -145,7 +145,7 @@ export async function listServersForTeam(teamId: string): Promise<Server[]> {
  * explicit team and is the engine primitive.
  */
 export async function listServersForCurrentTeam(): Promise<Server[]> {
-  requireUnscoped("servers");
+  await requireTeamWide("servers");
   const teamId = await requireActiveTeamId();
   return listServersForTeam(teamId);
 }

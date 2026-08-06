@@ -15,7 +15,7 @@ import {
 } from "./infra-rows";
 import { getCurrentUser } from "../auth";
 import { newId, nowIso } from "../ids";
-import { requireActiveTeamId, requireCapability, requireUnscoped } from "../membership";
+import { requireActiveTeamId, requireCapability, requireTeamWide } from "../membership";
 import { encryptSecret } from "../crypto";
 import { recordActivity } from "./activity";
 import type { GithubApp, GithubInstallation } from "../types";
@@ -83,7 +83,7 @@ function toAppDTO(app: GithubApp, installs: GithubInstallation[]): GithubAppDTO 
 }
 
 export async function listGithubApps(): Promise<GithubAppDTO[]> {
-  requireUnscoped("Git connections");
+  await requireTeamWide("Git connections");
   const teamId = await requireActiveTeamId();
   const db = getDb();
   const appRows = await db

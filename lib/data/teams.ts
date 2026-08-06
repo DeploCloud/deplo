@@ -18,7 +18,7 @@ import {
   setActiveTeam,
   teamsForUser,
   capabilitiesForRole,
-  requireUnscoped,
+  requireTeamWide,
 } from "../membership";
 import { recordActivity } from "./activity";
 import type { Team } from "../types";
@@ -53,7 +53,7 @@ function rowToTeam(t: {
 
 /** The active team. */
 export async function getTeam(): Promise<Team> {
-  requireUnscoped("team settings");
+  await requireTeamWide("team settings");
   const teamId = await requireActiveTeamId();
   const rows = await getDb()
     .select()

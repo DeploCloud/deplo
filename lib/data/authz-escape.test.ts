@@ -295,7 +295,7 @@ test("nor link one into an app it controls", async () => {
 
   // Linking injects the value at the highest deploy precedence into an app the
   // token holds a console and logs on, so it is `revealSharedVar` by other
-  // means — which is why that one is `requireUnscoped`.
+  // means — which is why that one is `requireTeamWide`.
   const refusal = await refused(
     () => scoped(() => setSharedVarAppLink(id, APP_IN, true)),
     "a narrowed token linked a team-wide secret into its own app",

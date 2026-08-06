@@ -21,7 +21,7 @@ import {
 import { getCurrentUser } from "../auth";
 import { serverLabel } from "../utils";
 import { newId, nowIso } from "../ids";
-import { requireActiveTeamId, requireCapability, requireUnscoped } from "../membership";
+import { requireActiveTeamId, requireCapability, requireTeamWide } from "../membership";
 import { recordActivity } from "./activity";
 import { encryptSecret, decryptSecret } from "../crypto";
 import {
@@ -245,7 +245,7 @@ export async function getS3WithSecrets(id: string): Promise<S3WithSecrets> {
   // token has no business READING one — while the session-free core above stays
   // open, because a scoped token backing up an app it CAN reach still needs the
   // bucket's credentials to do it.
-  requireUnscoped("S3 destinations");
+  await requireTeamWide("S3 destinations");
   return getS3WithSecretsForTeam(teamId, id);
 }
 
@@ -270,7 +270,7 @@ export function s3TargetFor(s: S3WithSecrets, objectKey: string): S3Target {
 }
 
 export async function listS3(): Promise<S3DestinationDTO[]> {
-  requireUnscoped("S3 destinations");
+  await requireTeamWide("S3 destinations");
   const teamId = await requireActiveTeamId();
   // Newest-first sort pushed into SQL (matches s3_destination_team_created_idx).
   const rows = await getDb()
@@ -490,7 +490,7 @@ async function serverLabelFor(serverId: string): Promise<string> {
  */
 export async function s3TestReport(id: string): Promise<S3TestReport> {
   const teamId = await requireActiveTeamId();
-  requireUnscoped("S3 destinations");
+  await requireTeamWide("S3 destinations");
   const s = await loadS3(id, teamId);
   if (!s) throw new Error("Not found");
   const target = testTargetOf(toDTO(s));

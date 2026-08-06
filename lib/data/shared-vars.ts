@@ -19,7 +19,7 @@ import { newId, nowIso } from "../ids";
 import {
   requireCapability,
   requireMembership,
-  requireUnscoped,
+  requireTeamWide,
 } from "../membership";
 import { narrowedScope } from "../auth/request-context";
 import { recordActivity } from "./activity";
@@ -185,7 +185,7 @@ async function teamLookups(teamId: string): Promise<{
 
 /** Every shared variable of the active team, key-sorted, decorated for the UI. */
 export async function listSharedVars(): Promise<SharedVarDTO[]> {
-  requireUnscoped("shared variables");
+  await requireTeamWide("shared variables");
   const { teamId } = await requireCapability("manage_env");
   const [vars, lookups] = await Promise.all([
     loadSharedVarsForTeam(teamId),
@@ -358,7 +358,7 @@ export interface AppliedSharedVarDTO {
  * (no per-app query fan-out).
  */
 export async function listAppliedSharedVarsByApp(): Promise<AppliedSharedVarDTO[]> {
-  requireUnscoped("shared variables");
+  await requireTeamWide("shared variables");
   const { teamId } = await requireCapability("manage_env");
   const vars = await loadSharedVarsForTeam(teamId);
   // One identity query for every card on the page.
@@ -419,7 +419,7 @@ export async function revealSharedVar(id: string): Promise<string> {
   // something on an app. So the refusal has to be explicit here, exactly as it is
   // on the two list functions — otherwise a token narrowed to one project reads
   // back every shared secret in the team by id.
-  requireUnscoped("shared variables");
+  await requireTeamWide("shared variables");
   const { teamId } = await requireCapability("reveal_secrets");
   const rows = await getDb()
     .select({ valueEnc: varsTable.valueEnc })
@@ -523,7 +523,7 @@ export async function saveSharedVar(input: {
   // precedence, so authoring one from a project-scoped token would be that token
   // setting variables on apps outside its own boundary. The per-app toggle
   // (`setSharedVarAppLink`) stays open — it names one app and is gated on it.
-  requireUnscoped("shared variables");
+  await requireTeamWide("shared variables");
   const { teamId, userId } = await requireCapability("manage_env");
   const user = (await getCurrentUser())!;
   const key = input.key.trim();
@@ -709,7 +709,7 @@ export async function setSharedVarAppLink(
 }
 
 export async function deleteSharedVar(id: string): Promise<void> {
-  requireUnscoped("shared variables");
+  await requireTeamWide("shared variables");
   const { teamId } = await requireCapability("manage_env");
   const user = (await getCurrentUser())!;
   const rows = await getDb()

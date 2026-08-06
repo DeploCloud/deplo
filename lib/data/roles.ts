@@ -13,7 +13,7 @@ import {
 import { newId, nowIso } from "../ids";
 import { getCurrentUser } from "../auth";
 import { recordActivity } from "./activity";
-import { requireActiveTeamId, requireCapability, requireUnscoped } from "../membership";
+import { requireActiveTeamId, requireCapability, requireTeamWide } from "../membership";
 import {
   BUILTIN_ROLE_KEYS,
   CAPABILITY_META,
@@ -225,7 +225,7 @@ async function capabilitiesByMembership(
 
 /** Every role of the active team: defaults first, then custom roles by age. */
 export async function listRoles(): Promise<TeamRoleDTO[]> {
-  requireUnscoped("roles");
+  await requireTeamWide("roles");
   const teamId = await requireActiveTeamId();
   const db = getDb();
   await ensureTeamRoles(db, teamId);

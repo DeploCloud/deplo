@@ -31,7 +31,7 @@ import {
   requireMembership,
   requireMountHostVolumes,
   isInstanceAdmin,
-  requireUnscoped,
+  requireTeamWide,
 } from "../membership";
 import {
   composeHasHostBindMount,
@@ -313,7 +313,7 @@ export async function reorderApps(orderedIds: string[]): Promise<void> {
   // A team-wide arrangement is not something a project-scoped token rewrites —
   // and this is the one gate an instance admin bypasses, so the clamp on
   // `manage_team` wouldn't have covered it.
-  requireUnscoped("the team-wide app order");
+  await requireTeamWide("the team-wide app order");
   // Instance admins bypass team capabilities; everyone else needs manage_team.
   if (!(await isInstanceAdmin())) {
     await requireCapability("manage_team");
@@ -389,9 +389,14 @@ async function canReachApp(id: string): Promise<boolean> {
  * request-scoped beyond the token identity (safe: yoga re-establishes it around
  * every tick).
  */
-async function reachableByUser(userId: string, appId: string): Promise<boolean> {
+async function reachableByUser(
+  userId: string,
+  teamId: string,
+  appId: string,
+): Promise<boolean> {
   return (
-    (await nodeCapabilitiesFor(userId, { kind: "app", id: appId })).length > 0
+    (await nodeCapabilitiesFor(userId, teamId, { kind: "app", id: appId }))
+      .length > 0
   );
 }
 
@@ -423,7 +428,7 @@ export async function summarizeForTeam(
   userId: string,
 ): Promise<AppSummary | null> {
   const p = await loadAppGraph(id);
-  return p && p.teamId === teamId && inAppScope(p) && (await reachableByUser(userId, p.id))
+  return p && p.teamId === teamId && inAppScope(p) && (await reachableByUser(userId, teamId, p.id))
     ? summarizeOne(p)
     : null;
 }
@@ -435,7 +440,7 @@ export async function findAppSummaryBySlugForTeam(
   userId: string,
 ): Promise<AppSummary | null> {
   const p = await loadAppGraphBySlug(slug);
-  return p && p.teamId === teamId && inAppScope(p) && (await reachableByUser(userId, p.id))
+  return p && p.teamId === teamId && inAppScope(p) && (await reachableByUser(userId, teamId, p.id))
     ? summarizeOne(p)
     : null;
 }
