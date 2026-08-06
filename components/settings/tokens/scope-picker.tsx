@@ -3,6 +3,7 @@
 import * as React from "react";
 import { Boxes, ChevronRight, FolderTree, Folder, Box, Search, X } from "lucide-react";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
+import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { LogoImage } from "@/components/shared/project-logo";
 import { Input } from "@/components/ui/input";
@@ -282,11 +283,48 @@ export function ScopePicker({
     );
   }
 
+  // "All of it" is said in the vocabulary this picker has: whole teams when a
+  // team can be ticked, else every top-level node of the one team it edits.
+  const allOn = teamPickable
+    ? tree.every((t) => teams.has(t.id))
+    : coversEverything(tree, selection);
+  function tickAll(on: boolean) {
+    const picked =
+      !on || tree.length === 0
+        ? { teamIds: [], projectIds: [], folderIds: [], appIds: [] }
+        : teamPickable
+          ? {
+              teamIds: tree.map((t) => t.id),
+              projectIds: [],
+              folderIds: [],
+              appIds: [],
+            }
+          : everythingSelection(tree);
+    // Nothing below a ticked top-level node needs saying, and the field must
+    // stay absent for a consumer that cannot express an environment.
+    onChange({
+      ...picked,
+      environmentIds: selection.environmentIds === undefined ? undefined : [],
+    });
+  }
+
   return (
     <div className="space-y-3">
       <div className="flex items-center gap-1.5">
         <h3 className="text-sm font-medium">{title}</h3>
         <InfoTip content={info} />
+        {tree.length > 0 && (
+          <Button
+            type="button"
+            variant="ghost"
+            size="sm"
+            disabled={disabled}
+            onClick={() => tickAll(!allOn)}
+            className="ml-auto h-7 text-xs"
+          >
+            {allOn ? "Unselect all" : "Select all"}
+          </Button>
+        )}
       </div>
 
       {tree.length === 0 ? (
