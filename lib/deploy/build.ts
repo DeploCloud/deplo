@@ -19,6 +19,7 @@ import { resolveEnvEntries } from "./env-resolve";
 import { loadInstanceEnv } from "../data/global-env";
 import { loadSharedVarsForApp } from "../data/shared-vars";
 import { recordActivity } from "../data/activity";
+import { dispatchAlert } from "../notify/dispatch";
 import {
   loadDeployment,
   loadDomainsForApp,
@@ -214,16 +215,40 @@ async function markStopped(depId: string, appId: string): Promise<void> {
  */
 async function commitOutcome(
   depId: string,
-  appId: string,
+  app: DeployAlertTarget,
   depPatch: Partial<Deployment>,
   appPatch: Partial<typeof appsTable.$inferInsert>,
 ): Promise<boolean> {
   if (!(await setDep(depId, depPatch, { onlyIfNotCanceled: true }))) {
-    await markStopped(depId, appId);
+    await markStopped(depId, app.id);
+    // No alert: a cancel is somebody pressing "Stop build", and they know.
     return false;
   }
-  await setApp(appId, appPatch);
+  await setApp(app.id, appPatch);
+  // Every terminal outcome of every deploy funnels through here, so this one
+  // hook covers success, build failure, an unreachable agent, an agent too old
+  // and a thrown error, on both the single-image and the compose path. The
+  // runner is detached and has no request identity, which is exactly why the
+  // team is passed rather than resolved.
+  const ok = depPatch.status === "ready";
+  dispatchAlert({
+    teamId: app.teamId,
+    key: ok ? "deployment_succeeded" : "deployment_failed",
+    title: `${app.name} ${ok ? "deployed" : "failed to deploy"}`,
+    body: ok
+      ? "The new version is live."
+      : "The build log has the error that stopped it.",
+    path: `/apps/${app.slug}`,
+  });
   return true;
+}
+
+/** What an alert about a deploy needs to name it. Every field is already loaded. */
+interface DeployAlertTarget {
+  id: string;
+  teamId: string;
+  name: string;
+  slug: string;
 }
 
 /**
@@ -731,8 +756,16 @@ export async function reconcileInFlightDeployments(): Promise<number> {
   // them error and settle their app off the transient build state. (Scoped to
   // `building` only now — queued rows are handled durably below.)
   const orphaned = await db
-    .select({ id: deploymentsTable.id, appId: deploymentsTable.appId })
+    .select({
+      id: deploymentsTable.id,
+      appId: deploymentsTable.appId,
+      // Joined so the alert below can be raised once PER TEAM instead of once
+      // per row: a restart with twenty in-flight deploys is one thing that
+      // happened, not twenty.
+      teamId: appsTable.teamId,
+    })
     .from(deploymentsTable)
+    .innerJoin(appsTable, eq(appsTable.id, deploymentsTable.appId))
     .where(eq(deploymentsTable.status, "building"));
   if (orphaned.length > 0) {
     const affectedApps = new Set(orphaned.map((d) => d.appId));
@@ -754,6 +787,19 @@ export async function reconcileInFlightDeployments(): Promise<number> {
         ),
       );
     for (const appId of affectedApps) publishAppChanged(appId);
+    // One alert per team, not one per deployment: this is a bulk flip that
+    // bypasses commitOutcome entirely, and a restart must not fan out N alerts.
+    const perTeam = new Map<string, number>();
+    for (const d of orphaned)
+      perTeam.set(d.teamId, (perTeam.get(d.teamId) ?? 0) + 1);
+    for (const [teamId, n] of perTeam)
+      dispatchAlert({
+        teamId,
+        key: "deployment_interrupted",
+        title: `${n} deployment${n > 1 ? "s were" : " was"} interrupted`,
+        body: "Deplo restarted while they were building. Redeploy when ready.",
+        path: "/deployments",
+      });
     console.warn(
       `[deplo] reconciled ${orphaned.length} interrupted deployment(s) to error on startup`,
     );
@@ -1124,7 +1170,7 @@ async function runDeployment(depId: string): Promise<void> {
           );
           await commitOutcome(
             depId,
-            project.id,
+            project,
             { status: "error", buildDurationMs: Date.now() - started },
             { status: "error" },
           );
@@ -1138,7 +1184,7 @@ async function runDeployment(depId: string): Promise<void> {
         );
         await commitOutcome(
           depId,
-          project.id,
+          project,
           { status: "error", buildDurationMs: Date.now() - started },
           { status: "error" },
         );
@@ -1361,7 +1407,7 @@ async function runDeployment(depId: string): Promise<void> {
       // data-migration hook then run ONLY when the outcome actually applied.
       const applied = await commitOutcome(
         depId,
-        project.id,
+        project,
         {
           status: "ready",
           readyAt: nowIso(),
@@ -1402,7 +1448,7 @@ async function runDeployment(depId: string): Promise<void> {
     } else {
       await commitOutcome(
         depId,
-        project.id,
+        project,
         { status: "error", buildDurationMs },
         { status: "error" },
       );
@@ -1412,7 +1458,7 @@ async function runDeployment(depId: string): Promise<void> {
     // A cancel that raced the failure wins: commitOutcome's CAS keeps `canceled`.
     await commitOutcome(
       depId,
-      project.id,
+      project,
       { status: "error", buildDurationMs: Date.now() - started },
       { status: "error" },
     );
@@ -1432,6 +1478,11 @@ async function runDeployment(depId: string): Promise<void> {
  */
 interface ComposeStackApp {
   id: string;
+  /** Named so a terminal alert can say whose deploy it was — the full app row is
+   * what callers actually pass, so these are already there at runtime. */
+  teamId: string;
+  name: string;
+  slug: string;
   compose: string | null;
   /** The app's extra flags for the `compose up`, as stored (null ⇒ none). */
   composeUpArgs?: string | null;
@@ -1542,7 +1593,7 @@ async function finishComposeStack(
   if (running) {
     const applied = await commitOutcome(
       depId,
-      project.id,
+      project,
       { status: "ready", readyAt: nowIso(), buildDurationMs },
       {
         status: "active",
@@ -1572,7 +1623,7 @@ async function finishComposeStack(
     if (
       await commitOutcome(
         depId,
-        project.id,
+        project,
         { status: "error", buildDurationMs },
         { status: "error" },
       )

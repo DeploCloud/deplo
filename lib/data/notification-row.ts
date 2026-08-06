@@ -1,73 +1,93 @@
-import type { InferInsertModel, InferSelectModel } from "drizzle-orm";
+import type { InferSelectModel } from "drizzle-orm";
 
 import { notificationSettings } from "../db/schema/control-plane";
-import type { NotificationEvent, NotificationSettings } from "../types";
+import type { EmailProvider, NotificationSettings } from "../types";
 
 /**
- * The ONE flat-columns ↔ nested-object mapping for `notification_settings`
- * (relational-store PLAN §2 "notification_settings"), shared by every reader and
- * writer in the data layer (`lib/data/notifications.ts`) so reads and writes can't
- * drift. Pure — no `server-only`, no store, no db handle — so a `server-only`
- * module can import it freely.
+ * The ONE flat-columns ↔ nested-object mapping for `notification_settings`,
+ * shared by every reader and writer in the data layer (`lib/data/notifications.ts`)
+ * so reads and writes can't drift. Pure — no `server-only`, no store, no db
+ * handle, and no crypto: the ciphertext is resolved by the caller (which is the
+ * only place that can apply the "empty means keep the stored one" rule) and
+ * handed in already encrypted.
  *
- * The relational table flattens the `{channels, events}` object into one boolean/
- * text column per field (no JSONB map). `settingsToRow` explodes the object into
- * columns; `rowToSettings` reassembles it. The `EVENT_COLUMNS` table below is
- * declared `satisfies Record<NotificationEvent, …>`, so adding a new event to the
- * union fails to compile until it is mapped here — a settings event can never be
- * silently dropped on either path (PLAN §7 "exhaustive … coverage").
+ * Only the CHANNELS live in this row. The subscribed alerts are a list and live
+ * in `notification_alerts`; see `lib/data/notifications.ts`.
+ *
+ * The DTO never carries a secret in either direction: a stored credential
+ * surfaces as a `…Set: boolean`, which is the one bit the UI needs and cannot
+ * leak a length. There is no reveal path, by design.
  */
 
-type NotificationRow = InferSelectModel<typeof notificationSettings>;
-type NotificationInsert = InferInsertModel<typeof notificationSettings>;
+export type NotificationRow = InferSelectModel<typeof notificationSettings>;
 
-/**
- * Each {@link NotificationEvent} ↔ its flat column name. The single source of
- * truth for the event mapping, exhaustiveness-checked at compile time.
- */
-const EVENT_COLUMNS = {
-  deployment_failed: "deploymentFailed",
-  deployment_succeeded: "deploymentSucceeded",
-  server_offline: "serverOffline",
-  high_resource_usage: "highResourceUsage",
-  update_available: "updateAvailable",
-} as const satisfies Record<NotificationEvent, keyof NotificationRow>;
+/** The ciphertext for a write, already resolved (new value or the stored one). */
+export interface ChannelSecretsEnc {
+  smtpPasswordEnc: string;
+  resendApiKeyEnc: string;
+  telegramBotTokenEnc: string;
+}
 
-/** Explode a {@link NotificationSettings} into its flat `notification_settings` row. */
-export function settingsToRow(
-  teamId: string,
-  s: NotificationSettings,
-): NotificationInsert {
+/** Reassemble a flat `notification_settings` row into the DTO's channel map. */
+export function rowToChannels(
+  row: NotificationRow,
+): NotificationSettings["channels"] {
   return {
-    teamId,
-    pushEnabled: s.channels.push.enabled,
-    emailEnabled: s.channels.email.enabled,
-    emailAddress: s.channels.email.address,
-    discordEnabled: s.channels.discord.enabled,
-    discordWebhookUrl: s.channels.discord.webhookUrl,
-    webhookEnabled: s.channels.webhook.enabled,
-    webhookUrl: s.channels.webhook.url,
-    deploymentFailed: s.events.deployment_failed,
-    deploymentSucceeded: s.events.deployment_succeeded,
-    serverOffline: s.events.server_offline,
-    highResourceUsage: s.events.high_resource_usage,
-    updateAvailable: s.events.update_available,
+    push: { enabled: row.pushEnabled },
+    email: {
+      enabled: row.emailEnabled,
+      address: row.emailAddress,
+      from: row.emailFrom,
+      provider: (row.emailProvider === "resend" ? "resend" : "smtp") as EmailProvider,
+      smtp: {
+        host: row.smtpHost,
+        port: row.smtpPort,
+        user: row.smtpUser,
+        passwordSet: row.smtpPasswordEnc !== "",
+      },
+      resend: { apiKeySet: row.resendApiKeyEnc !== "" },
+    },
+    discord: { enabled: row.discordEnabled, webhookUrl: row.discordWebhookUrl },
+    slack: { enabled: row.slackEnabled, webhookUrl: row.slackWebhookUrl },
+    telegram: {
+      enabled: row.telegramEnabled,
+      chatId: row.telegramChatId,
+      botTokenSet: row.telegramBotTokenEnc !== "",
+    },
+    webhook: { enabled: row.webhookEnabled, url: row.webhookUrl },
   };
 }
 
-/** Reassemble a flat `notification_settings` row into a {@link NotificationSettings}. */
-export function rowToSettings(row: NotificationRow): NotificationSettings {
-  const events = {} as Record<NotificationEvent, boolean>;
-  for (const event of Object.keys(EVENT_COLUMNS) as NotificationEvent[]) {
-    events[event] = row[EVENT_COLUMNS[event]];
-  }
+/**
+ * Explode the DTO's channel map into its flat `notification_settings` row.
+ * Returns the SELECT shape (every column set), so the caller can both insert it
+ * and hand it straight back to `rowToChannels` for the response.
+ */
+export function channelsToRow(
+  teamId: string,
+  c: NotificationSettings["channels"],
+  enc: ChannelSecretsEnc,
+): NotificationRow {
   return {
-    channels: {
-      push: { enabled: row.pushEnabled },
-      email: { enabled: row.emailEnabled, address: row.emailAddress },
-      discord: { enabled: row.discordEnabled, webhookUrl: row.discordWebhookUrl },
-      webhook: { enabled: row.webhookEnabled, url: row.webhookUrl },
-    },
-    events,
+    teamId,
+    pushEnabled: c.push.enabled,
+    emailEnabled: c.email.enabled,
+    emailAddress: c.email.address,
+    emailFrom: c.email.from,
+    emailProvider: c.email.provider,
+    smtpHost: c.email.smtp.host,
+    smtpPort: c.email.smtp.port,
+    smtpUser: c.email.smtp.user,
+    smtpPasswordEnc: enc.smtpPasswordEnc,
+    resendApiKeyEnc: enc.resendApiKeyEnc,
+    discordEnabled: c.discord.enabled,
+    discordWebhookUrl: c.discord.webhookUrl,
+    slackEnabled: c.slack.enabled,
+    slackWebhookUrl: c.slack.webhookUrl,
+    telegramEnabled: c.telegram.enabled,
+    telegramBotTokenEnc: enc.telegramBotTokenEnc,
+    telegramChatId: c.telegram.chatId,
+    webhookEnabled: c.webhook.enabled,
+    webhookUrl: c.webhook.url,
   };
 }

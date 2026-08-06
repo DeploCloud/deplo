@@ -1649,27 +1649,152 @@ export interface InstalledPlugin {
 }
 
 /**
- * Notification / anomaly-alert configuration. Deplo can deliver alerts through
- * browser push, email, a Discord webhook and a generic outbound webhook; the
- * `events` map decides which conditions actually fire an alert.
+ * Notification / alert configuration. Deplo delivers alerts through a Discord
+ * webhook, a generic outbound webhook, email, Slack, Telegram and browser push;
+ * the `alerts` set decides which conditions actually fire one.
+ *
+ * ONE set of channels, not a routing matrix: every subscribed alert goes to
+ * every enabled channel. A per-alert channel picker is a table the size of the
+ * catalog on the first-run path, for a choice almost nobody makes.
  */
-export type NotificationChannel = "push" | "email" | "discord" | "webhook";
+export type NotificationChannel =
+  | "push"
+  | "email"
+  | "discord"
+  | "webhook"
+  | "slack"
+  | "telegram";
 
-export type NotificationEvent =
+/** Which transport delivers the team's email. */
+export type EmailProvider = "smtp" | "resend";
+
+/**
+ * One notifiable event a team can subscribe to, catalogued with its label,
+ * description and default in `lib/alerts.ts`.
+ *
+ * Every key here MUST have a real emitter. A key nobody dispatches is exactly
+ * the bug this feature was built to fix: a switch that promises an alert and
+ * delivers silence.
+ */
+export type AlertKey =
+  // Deployments
   | "deployment_failed"
   | "deployment_succeeded"
+  | "deployment_interrupted"
+  // Apps
+  | "app_crash_loop"
+  // Databases
+  | "database_ready"
+  | "database_failed"
+  | "database_rebuilt"
+  | "database_deleted"
+  // Backups
+  | "backup_succeeded"
+  | "backup_failed"
+  | "restore_succeeded"
+  | "restore_failed"
+  // Servers
   | "server_offline"
-  | "high_resource_usage"
-  | "update_available";
+  | "server_online"
+  | "server_unmanageable"
+  | "server_trust_changed"
+  | "server_resources_high"
+  | "server_disk_low"
+  | "agent_update_available"
+  | "agent_certificate_failed"
+  | "cleanup_failed"
+  // This Deplo instance
+  | "deplo_update_available"
+  // Security
+  | "member_joined"
+  | "member_removed"
+  | "member_access_changed"
+  | "token_created"
+  | "token_revoked"
+  | "two_factor_policy_changed"
+  | "team_ownership_changed"
+  | "failed_logins"
+  // Domains & TLS
+  | "certificate_expiring"
+  | "domain_dns_drift";
+
+/**
+ * Canonical order of every alert — the order the picker lists them in and the
+ * order a stored set is normalised to. Keep it in step with `ALERT_CATEGORIES`
+ * in `lib/alerts.ts` (a test pins the two together).
+ */
+export const ALL_ALERTS: AlertKey[] = [
+  "deployment_failed",
+  "deployment_succeeded",
+  "deployment_interrupted",
+  "app_crash_loop",
+  "database_ready",
+  "database_failed",
+  "database_rebuilt",
+  "database_deleted",
+  "backup_succeeded",
+  "backup_failed",
+  "restore_succeeded",
+  "restore_failed",
+  "server_offline",
+  "server_online",
+  "server_unmanageable",
+  "server_trust_changed",
+  "server_resources_high",
+  "server_disk_low",
+  "agent_update_available",
+  "agent_certificate_failed",
+  "cleanup_failed",
+  "deplo_update_available",
+  "member_joined",
+  "member_removed",
+  "member_access_changed",
+  "token_created",
+  "token_revoked",
+  "two_factor_policy_changed",
+  "team_ownership_changed",
+  "failed_logins",
+  "certificate_expiring",
+  "domain_dns_drift",
+];
 
 export interface NotificationSettings {
   channels: {
+    /** Browser push (beta). Endpoints live per user in `push_subscriptions`. */
     push: { enabled: boolean };
-    email: { enabled: boolean; address: string };
+    email: {
+      enabled: boolean;
+      /** Where alerts are delivered. */
+      address: string;
+      /** The From: address the provider sends as. */
+      from: string;
+      provider: EmailProvider;
+      /** `passwordSet` is a bit, never the password — there is no reveal path. */
+      smtp: { host: string; port: number; user: string; passwordSet: boolean };
+      resend: { apiKeySet: boolean };
+    };
     discord: { enabled: boolean; webhookUrl: string };
+    slack: { enabled: boolean; webhookUrl: string };
+    telegram: { enabled: boolean; chatId: string; botTokenSet: boolean };
     webhook: { enabled: boolean; url: string };
   };
-  events: Record<NotificationEvent, boolean>;
+  /** The subscribed alerts, in `ALL_ALERTS` order. */
+  alerts: AlertKey[];
+}
+
+/**
+ * What the settings form sends: the DTO, plus the plaintext credentials for any
+ * the user actually retyped. They ride in their own bag so a masked `…Set` bit
+ * can never be mistaken for a value. **An absent or empty secret means "keep the
+ * stored one"** — an edit that only moves the SMTP host must not require
+ * retyping the password, and there is no reveal path to fill it back in.
+ */
+export interface NotificationSettingsInput extends NotificationSettings {
+  secrets?: {
+    smtpPassword?: string;
+    resendApiKey?: string;
+    telegramBotToken?: string;
+  };
 }
 
 /**
@@ -1716,21 +1841,5 @@ export interface GithubInstallation {
   createdAt: string;
 }
 
-/** Default notification settings for a team that has none persisted yet. */
-export function defaultNotificationSettings(): NotificationSettings {
-  return {
-    channels: {
-      push: { enabled: false },
-      email: { enabled: false, address: "" },
-      discord: { enabled: false, webhookUrl: "" },
-      webhook: { enabled: false, url: "" },
-    },
-    events: {
-      deployment_failed: true,
-      deployment_succeeded: false,
-      server_offline: true,
-      high_resource_usage: true,
-      update_available: true,
-    },
-  };
-}
+/* `defaultNotificationSettings()` lives in `lib/alerts.ts` — it needs the alert
+ * catalog's defaults, and the catalog imports these types. */

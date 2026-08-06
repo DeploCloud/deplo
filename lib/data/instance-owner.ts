@@ -1,6 +1,6 @@
 import "server-only";
 
-import { and, eq } from "drizzle-orm";
+import { and, eq, isNull } from "drizzle-orm";
 import { getDb, type DbTx } from "../db/client";
 import {
   instanceSettings,
@@ -86,7 +86,16 @@ export async function claimInstanceOwner(
   await tx
     .insert(instanceSettings)
     .values({ id: SETTINGS_ID, ownerUserId: userId, updatedAt: nowIso() })
-    .onConflictDoNothing({ target: instanceSettings.id });
+    // An UPDATE guarded on `owner_user_id IS NULL`, not DO NOTHING: the row can
+    // already exist for a reason that has nothing to do with ownership (the
+    // panel address, the VAPID keypair), and "do nothing" would then leave the
+    // instance permanently unowned with no error anywhere. The guard keeps the
+    // original promise — an existing owner is never overwritten.
+    .onConflictDoUpdate({
+      target: instanceSettings.id,
+      set: { ownerUserId: userId, updatedAt: nowIso() },
+      setWhere: isNull(instanceSettings.ownerUserId),
+    });
 }
 
 /**

@@ -660,6 +660,7 @@ export async function addExistingMember(input: {
     await actorUsername(),
     null,
     teamId,
+    "member_joined",
   );
   return {
     userId: target.id,
@@ -871,6 +872,7 @@ export async function removeMember(userId: string): Promise<void> {
     await actorUsername(),
     null,
     teamId,
+    "member_removed",
   );
 }
 
@@ -1108,6 +1110,8 @@ export async function updateUserAdmin(input: {
       (newPassword ? " (password reset)" : ""),
     await actorUsername(),
     null,
+    null,
+    "member_access_changed",
   );
 }
 
@@ -1171,6 +1175,8 @@ export async function resetUserTwoFactor(userId: string): Promise<void> {
     `Reset two-factor authentication for @${target.username}`,
     await actorUsername(),
     null,
+    null,
+    "member_access_changed",
   );
 }
 

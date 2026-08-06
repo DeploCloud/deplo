@@ -573,6 +573,7 @@ export async function createToken(
     await actorUsername(),
     null,
     teamId,
+    "token_created",
   );
   return {
     raw,
@@ -786,6 +787,7 @@ export async function revokeToken(id: string): Promise<void> {
     await actorUsername(),
     null,
     teamId,
+    "token_revoked",
   );
 }
 

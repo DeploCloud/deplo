@@ -13,6 +13,7 @@ import { getCurrentUser } from "../auth";
 import { newId, nowIso } from "../ids";
 import { requireActiveTeamId } from "../membership";
 import { recordActivity } from "./activity";
+import { dispatchAlert } from "../notify/dispatch";
 import { assertLetsencryptQuota } from "../deploy/domains";
 import yaml from "js-yaml";
 import {
@@ -1159,6 +1160,62 @@ export async function verifyDomain(
 /** The public IPv4 a project's custom domains must resolve to: the IP of the
  * server the project is deployed on, falling back to this instance's host when
  * that server has no usable recorded IP (mirrors the deploy path's choice). */
+/**
+ * Re-check every domain that was last seen pointing HERE, and report the ones
+ * that no longer do.
+ *
+ * `checkDomainDns` runs at write time only, so a domain whose A record is later
+ * repointed (or whose server IP changed) keeps claiming `valid` forever unless
+ * somebody happens to have the domains page open. This is the background half:
+ * UNGATED and team-agnostic, like `recordServerHealth`, because it runs on the
+ * maintenance sweep with no request and no active team.
+ *
+ * Only `valid` rows are checked. A `cloudflare` domain resolves to an anycast
+ * edge that legitimately changes, and `pending`/`misconfigured` are already
+ * flagged in the UI — re-alerting them would be noise.
+ */
+export async function sweepDomainDns(): Promise<void> {
+  const db = getDb();
+  const rows = await db
+    .select({
+      id: domainsTable.id,
+      name: domainsTable.name,
+      appId: domainsTable.appId,
+      teamId: appsTable.teamId,
+      slug: appsTable.slug,
+      appName: appsTable.name,
+    })
+    .from(domainsTable)
+    .innerJoin(appsTable, eq(appsTable.id, domainsTable.appId))
+    .where(eq(domainsTable.status, "valid"));
+
+  for (const row of rows) {
+    try {
+      const status = await checkDomainDns(row.name, await appServerIp(row.appId));
+      if (status === "valid") continue;
+      // Write the new status too, so the page and the alert agree.
+      await db
+        .update(domainsTable)
+        .set({ status, ssl: status === "cloudflare" })
+        .where(eq(domainsTable.id, row.id));
+      dispatchAlert({
+        teamId: row.teamId,
+        key: "domain_dns_drift",
+        dedupe: { id: `dns:${row.id}`, state: status },
+        title: `${row.name} no longer points here`,
+        body:
+          status === "pending"
+            ? "It stopped resolving. Traffic and certificate renewals will fail."
+            : `Its DNS now answers with an address that is not ${row.appName}'s server.`,
+        path: `/apps/${row.slug}`,
+      });
+    } catch (e) {
+      // One unresolvable domain must never end the sweep.
+      console.warn(`[deplo] dns sweep failed for ${row.name}:`, e);
+    }
+  }
+}
+
 async function appServerIp(appId: string): Promise<string> {
   const project = await loadAppGraph(appId);
   const server = project?.serverId

@@ -32,6 +32,7 @@ import type {
   HelloResponse,
   MetricsSample,
 } from "../agent/gen/agent";
+import { checkResourceThresholds } from "../notify/thresholds";
 import { pruneMetricsHistoryTo, recordMetricsSample } from "./history";
 import {
   pruneContainerHistoryTo,
@@ -220,6 +221,8 @@ interface ConnectionFacts {
   agentVersion: string | null;
   traefik: boolean;
   expectedAgentVersion: string;
+  /** Carried so a threshold alert can name the host, not its id. */
+  serverName: string;
 }
 
 /** Map one wire frame's host half onto the ServerMetrics the buffer + charts use.
@@ -276,6 +279,10 @@ async function ingestFrame(
   facts: ConnectionFacts,
 ): Promise<Map<string, ContainerStat[]>> {
   const host = hostSampleFrom(serverId, frame, facts);
+  // ABOVE the save-metrics gate, deliberately: that switch means "keep 16 minutes
+  // of chart history in RAM", and turning charts off must never turn ALERTING
+  // off. Free in the steady state — a Map lookup per metric, no query.
+  if (host) checkResourceThresholds(serverId, facts.serverName || serverId, host);
   if (host && (await isMetricsSavingEnabled())) recordMetricsSample(host);
 
   // Group this host's containers by the App / Database they belong to. The
@@ -332,7 +339,11 @@ function sleep(ms: number, signal: AbortSignal): Promise<void> {
  * replayed — unlike a deploy event, a metrics sample missed is a sample with no
  * remaining value, and the honest rendering of the gap is a gap.
  */
-async function runStreamLoop(serverId: string, signal: AbortSignal): Promise<void> {
+async function runStreamLoop(
+  serverId: string,
+  serverName: string,
+  signal: AbortSignal,
+): Promise<void> {
   let attempt = 0;
 
   while (!signal.aborted && !state.stopping) {
@@ -357,6 +368,7 @@ async function runStreamLoop(serverId: string, signal: AbortSignal): Promise<voi
         agentVersion: hello.agentVersion || null,
         traefik: hello.traefikRunning,
         expectedAgentVersion: await resolveExpectedAgentVersion(),
+        serverName,
       };
 
       // The honest health of this connection, computed ONCE from the Hello and
@@ -544,7 +556,7 @@ export async function reconcileMetricsStreams(): Promise<void> {
     state.servers.set(s.id, entry);
     entry.loop = (mode === "poll"
       ? runPollLoop(s.id, abort.signal)
-      : runStreamLoop(s.id, abort.signal)
+      : runStreamLoop(s.id, s.name, abort.signal)
     ).catch((e) => {
       console.warn(
         `[monitoring] stream loop for ${s.name} exited: ${e instanceof Error ? e.message : String(e)}`,

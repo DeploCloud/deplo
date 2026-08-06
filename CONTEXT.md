@@ -519,6 +519,32 @@ Instance-admin only, and expiry is nobody's job but the operator's: nothing rene
 the certificate account page warns in the last three weeks.
 _Avoid_: SSL cert upload, bring-your-own-cert (feature-brochure names), certificate store.
 
+**Alert**:
+One notifiable EVENT a team subscribes to, dispatched to every channel that team has
+switched on. The catalogue lives in `lib/alerts.ts` (label, one-line description, search
+keywords, default) and is browsed with the same picker as a role's **Capabilities**:
+search box, categories, a description per row. Distinct from **Activity**, which is the
+audit ROW written for what somebody did — an Alert interrupts, an Activity is looked up
+later, and many things write one without the other. Storage splits the two halves the way
+the schema rules demand: the CHANNELS are flat columns on the team's single
+`notification_settings` row, the subscribed alerts are rows in `notification_alerts`,
+where an ABSENT row means "never decided" and falls back to the catalogue default — which
+is what lets a new alert key ship with no backfill. Every key must have a real emitter;
+one that dispatches nothing is a switch that promises an alert and delivers silence.
+_Avoid_: notification (say Alert for the event, **channel** for where it goes,
+notification settings only for the page); event (that is the audit type); subscription
+(reserve it for GraphQL SSE).
+
+**Channel**:
+Where a team's Alerts are delivered: a Discord or Slack incoming webhook, a Telegram bot,
+a generic outbound webhook, email (through the team's own SMTP server or a Resend key), or
+browser push. ONE set per team — every subscribed Alert goes to every enabled channel,
+there is no per-alert routing matrix. Slack, Telegram and browser push are **beta**.
+Credentials are `*_enc` with no reveal path; a stored one surfaces to the UI as a
+`…Set: boolean`, and leaving its field blank on save keeps what is stored.
+_Avoid_: integration, provider (that is the email TRANSPORT: `smtp` | `resend`),
+notifier.
+
 **Redirect domain**:
 A Domain that serves nothing and answers a permanent 301 to another hostname of the same
 app, named in its `redirect_to`. It exists so the `www` and non-`www` spellings of one

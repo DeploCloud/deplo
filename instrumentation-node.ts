@@ -159,10 +159,18 @@ export async function register(): Promise<void> {
         const { sweepExpiringAgentCerts } = await import(
           "./lib/agent/cert-renewal"
         );
-        const run = () =>
+        const { runMaintenanceSweep } = await import("./lib/notify/maintenance");
+        const run = () => {
           void sweepExpiringAgentCerts().catch((e) =>
             console.error("[cert-renewal] sweep failed:", e),
           );
+          // Piggybacks the same twice-daily tick: a new Deplo release, an
+          // outdated agent, a custom certificate about to lapse and a domain
+          // whose DNS moved are all things nothing else ever polls.
+          void runMaintenanceSweep().catch((e) =>
+            console.error("[deplo] maintenance sweep failed:", e),
+          );
+        };
         setInterval(run, 12 * 60 * 60 * 1000).unref?.();
         setTimeout(run, 60_000).unref?.();
       } catch (e) {

@@ -48,6 +48,10 @@ export function proxy(request: NextRequest) {
     `script-src 'self' 'nonce-${nonce}' 'strict-dynamic'${
       isDev ? " 'unsafe-eval'" : ""
     }`,
+    // Browser push registers /sw.js. `worker-src` falls back to `script-src`,
+    // where `'strict-dynamic'` makes `'self'` inert — so without this line the
+    // service worker registration is refused outright.
+    `worker-src 'self'`,
     `style-src 'self' 'unsafe-inline'`,
     `img-src 'self' blob: data:`,
     `font-src 'self' data:`,

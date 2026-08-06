@@ -7,6 +7,7 @@ import { eq, isNotNull } from "drizzle-orm";
 import { getDb } from "../db/client";
 import { servers as serversTable } from "../db/schema/control-plane";
 import { connectAgent } from "../infra/agent-client";
+import { dispatchServerAlert } from "../notify/dispatch";
 import { signAgentCsr } from "./pki";
 
 /** Advertised by an agent that implements RenewalCSR + InstallRenewedCert. */
@@ -104,9 +105,17 @@ export async function sweepExpiringAgentCerts(): Promise<void> {
       const r = await renewAgentCertIfDue(s.id);
       if (r.renewed) console.log(`[cert-renewal] ${s.name}: ${r.reason}`);
     } catch (e) {
-      console.warn(
-        `[cert-renewal] ${s.name} (${s.id}): ${e instanceof Error ? e.message : String(e)}`,
-      );
+      const why = e instanceof Error ? e.message : String(e);
+      console.warn(`[cert-renewal] ${s.name} (${s.id}): ${why}`);
+      // A renewal that keeps failing ends with Deplo locked out of the host, and
+      // until now it only ever reached the console.
+      dispatchServerAlert(s.id, {
+        key: "agent_certificate_failed",
+        dedupe: { id: `certrenew:${s.id}`, state: "failed" },
+        title: `Could not renew the agent certificate on ${s.name}`,
+        body: `${why} Deplo will lose access to this server when it expires.`,
+        path: "/settings/servers",
+      });
     }
   }
 }

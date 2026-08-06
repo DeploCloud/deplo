@@ -153,5 +153,7 @@ export async function transferTeamOwnership(input: {
     `Transferred ownership of this team to @${targetUsername}`,
     actor.username,
     null,
+    null,
+    "team_ownership_changed",
   );
 }

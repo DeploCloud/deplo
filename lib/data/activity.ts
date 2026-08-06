@@ -18,7 +18,8 @@ import {
 } from "../membership";
 import { appScopeWhere } from "./app-graph-load";
 import { narrowedScope } from "../auth/request-context";
-import type { Activity, ActivityType } from "../types";
+import { dispatchAlert } from "../notify/dispatch";
+import type { Activity, ActivityType, AlertKey } from "../types";
 
 /** Activity for the active team only, newest-first, with the LIMIT pushed into SQL. */
 export async function listActivity(limit = 20): Promise<Activity[]> {
@@ -123,6 +124,13 @@ async function scopedActivityWhere(): Promise<SQL | undefined> {
  *
  * The actor's user id is resolved HERE (no caller passes it), so the log can render
  * a real identity for a human actor while `actor` stays free text.
+ *
+ * `alert` is the optional sixth argument: a call site that is also worth PUSHING
+ * to the team names its alert key here, and the dispatch happens once, in this
+ * function, on the team it already resolved. Naming the key at the call site
+ * rather than classifying `message` is deliberate — `type: "member"` covers
+ * everything from a role edit to a Traefik restart, and matching on free text
+ * would be a guess that breaks the first time somebody rewords a string.
  */
 export async function recordActivity(
   type: ActivityType,
@@ -130,6 +138,7 @@ export async function recordActivity(
   actor: string,
   appId: string | null = null,
   teamId: string | null = null,
+  alert: AlertKey | null = null,
 ): Promise<void> {
   // Best-effort (PLAN §1(c): an audit-log insert must NEVER roll back the user's
   // action — it stays a standalone, non-transactional, fire-and-forget insert).
@@ -167,6 +176,16 @@ export async function recordActivity(
       createdAt: nowIso(),
     };
     await db.insert(activitiesTable).values(activityToRow(activity));
+    // The audit row is already written in the dashboard's own voice, so the
+    // alert reuses it verbatim rather than inventing a second phrasing.
+    if (alert)
+      dispatchAlert({
+        teamId: resolved,
+        key: alert,
+        title: message,
+        body: `By ${actor}.`,
+        path: "/activity",
+      });
   } catch (e) {
     console.error("[deplo] recordActivity failed:", e);
   }

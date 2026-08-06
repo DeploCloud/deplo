@@ -50,7 +50,14 @@ const nextConfig: NextConfig = {
   // Keep native/server-only packages out of the bundler so their dynamic
   // requires resolve correctly at runtime. node-pty loads a native .node
   // (the interactive attach PTY); the Dockerfile rebuilds it for the runtime.
-  serverExternalPackages: ["pg", "better-auth", "node-pty"],
+  serverExternalPackages: [
+    "pg",
+    "better-auth",
+    "node-pty",
+    // Alert delivery: both reach for node crypto/net and must not be bundled.
+    "nodemailer",
+    "web-push",
+  ],
   async headers() {
     return [
       {

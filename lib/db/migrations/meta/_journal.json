@@ -505,6 +505,13 @@
       "when": 1784675400000,
       "tag": "0071_member_own_capabilities",
       "breakpoints": true
+    },
+    {
+      "idx": 72,
+      "version": "7",
+      "when": 1784675600000,
+      "tag": "0072_notification_alerts",
+      "breakpoints": true
     }
   ]
 }

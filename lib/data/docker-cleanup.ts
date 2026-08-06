@@ -16,6 +16,7 @@ import { publishCleanupRunsChanged } from "../graphql/pubsub";
 import { newId, nowIso } from "../ids";
 import { requireActiveTeamId, requireInstanceAdmin } from "../membership";
 import { recordActivity } from "./activity";
+import { dispatchAlert, dispatchServerAlert } from "../notify/dispatch";
 import { getServerById } from "./servers";
 import { parseCron } from "../backups/cron";
 import { runAgentCleanup } from "../infra/agent-client";
@@ -784,6 +785,20 @@ async function finishCleanupRun(args: {
     null,
     teamId,
   );
+  // Only the failure is worth pushing: a sweep that reclaimed disk is good news
+  // nobody needs woken for, and it is already in the trail above. A tick has no
+  // team, so it fans out to whoever runs something on the host.
+  if (failure) {
+    const alert = {
+      key: "cleanup_failed" as const,
+      title: `Cleanup failed on ${serverName}`,
+      body: failure,
+      path: "/settings/servers",
+      dedupe: { id: `cleanup:${serverId}`, state: "failed" },
+    };
+    if (teamId) dispatchAlert({ ...alert, teamId });
+    else dispatchServerAlert(serverId, alert);
+  }
 
   // LAST, after the row, its items and the retention pass are all settled: whoever is
   // watching re-reads a consistent history, and the row they were watching spin is the

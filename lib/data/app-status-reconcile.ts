@@ -11,6 +11,7 @@ import { publishAppChanged } from "../graphql/pubsub";
 import { nowIso } from "../ids";
 import type { ContainerStat as PbContainerStat } from "../agent/gen/agent";
 import type { Deployment } from "../types";
+import { reportAppHealth } from "../notify/apps";
 
 /**
  * Correct a stale `apps.status` from what the host is actually reporting.
@@ -135,9 +136,17 @@ export async function reconcileAppStatusFromTelemetry(
   // Database ids ride the same `deplo.project` label; they simply match no row in
   // `apps` and drop out of the UPDATE, so they need no special case here.
   const running: string[] = [];
+  // `restarting` is the crash-loop signal `telemetrySaysRunning` has always
+  // computed and discarded. Collected here — where the frame already is — and
+  // handed to the alerting side, which owns the hysteresis and writes nothing.
+  const crashing: string[] = [];
   for (const [id, stats] of byProject) {
     if (telemetrySaysRunning(stats)) running.push(id);
+    else if (stats.some((s) => s.state === "restarting")) crashing.push(id);
   }
+  void reportAppHealth(serverId, crashing, running).catch((e) =>
+    console.error("[deplo] app health alerting failed:", e),
+  );
   if (running.length === 0) return [];
 
   try {

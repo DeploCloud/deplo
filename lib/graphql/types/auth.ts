@@ -19,6 +19,7 @@ import {
 } from "@/lib/data/members";
 import { normalizeUsername, validateUsername } from "@/lib/username";
 import { rateLimit } from "@/lib/security";
+import { noteFailedLogin } from "@/lib/notify/security";
 import { sha256Hex } from "@/lib/crypto";
 
 /**
@@ -156,7 +157,13 @@ builder.mutationFields((t) => ({
       // client swap to the code step without treating it as a failed attempt.
       if (res.requiresTwoFactor)
         return { viewer: null, requiresTwoFactor: true };
-      if (!res.ok) throw new Error(res.error ?? "Invalid email or password");
+      if (!res.ok) {
+        // Counted here rather than in `lib/auth.ts`: this resolver has the
+        // normalised address in scope and already knows a credential rejection
+        // from a rate-limit one.
+        noteFailedLogin(email);
+        throw new Error(res.error ?? "Invalid email or password");
+      }
       return { viewer: await getCurrentUser() };
     },
   }),
@@ -194,7 +201,12 @@ builder.mutationFields((t) => ({
         code,
         args.recoveryCode ? "backup" : "totp",
       );
-      if (!res.ok) throw new Error(res.error ?? "That code is not valid");
+      if (!res.ok) {
+        // No address in scope on this half of the flow, so the client key is the
+        // subject: it is what the limiter above already counts by.
+        noteFailedLogin(await clientKey("2fa"));
+        throw new Error(res.error ?? "That code is not valid");
+      }
       return { viewer: await getCurrentUser() };
     },
   }),

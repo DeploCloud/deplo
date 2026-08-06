@@ -1870,30 +1870,103 @@ export const activities = pgTable(
 
 /**
  * [NotificationSettings](../../types.ts) — the `Record<teamId, …>` map → one row
- * per team: `team_id` IS the PK. Channels AND `events` flattened to columns (no
- * JSONB map): `*_enabled`/`*_url`/`email_address` + one boolean per event.
+ * per team: `team_id` IS the PK. The CHANNELS live here, flattened to columns
+ * (no JSONB map), because a channel is a fixed set of named heterogeneous
+ * fields, not a list. The subscribed ALERTS are a list, so they live one level
+ * down in `notification_alerts` (PLAN §1: "list → ordered/junction table").
  * Missing row = `defaultNotificationSettings()`. A LEAF collection (cut-set (a))
  * (PLAN §2 `notification_settings`).
+ *
+ * Every credential is `*_enc` and is NEVER projected into a DTO — the settings
+ * DTO carries a `…Set: boolean` instead, and there is no reveal path.
  */
 export const notificationSettings = pgTable("notification_settings", {
   teamId: text("team_id")
     .primaryKey()
     .references(() => teams.id, { onDelete: "cascade" }),
-  // Channels.
+  // Browser push (beta) — the endpoints themselves are per user, see below.
   pushEnabled: boolean("push_enabled").notNull(),
+  // Email. `email_provider` picks the transport; the other group is inert.
   emailEnabled: boolean("email_enabled").notNull(),
+  /** Where alerts are delivered. */
   emailAddress: text("email_address").notNull(),
+  /** The From: address the provider sends as. */
+  emailFrom: text("email_from").notNull().default(""),
+  /** `smtp` | `resend` — see `EmailProvider`. */
+  emailProvider: text("email_provider").notNull().default("smtp"),
+  smtpHost: text("smtp_host").notNull().default(""),
+  smtpPort: integer("smtp_port").notNull().default(587),
+  smtpUser: text("smtp_user").notNull().default(""),
+  smtpPasswordEnc: text("smtp_password_enc").notNull().default(""),
+  resendApiKeyEnc: text("resend_api_key_enc").notNull().default(""),
+  // Chat webhooks. Discord and Slack are both "paste one incoming-webhook URL".
   discordEnabled: boolean("discord_enabled").notNull(),
   discordWebhookUrl: text("discord_webhook_url").notNull(),
+  slackEnabled: boolean("slack_enabled").notNull().default(false),
+  slackWebhookUrl: text("slack_webhook_url").notNull().default(""),
+  telegramEnabled: boolean("telegram_enabled").notNull().default(false),
+  telegramBotTokenEnc: text("telegram_bot_token_enc").notNull().default(""),
+  telegramChatId: text("telegram_chat_id").notNull().default(""),
+  // The generic outbound webhook.
   webhookEnabled: boolean("webhook_enabled").notNull(),
   webhookUrl: text("webhook_url").notNull(),
-  // Events (one boolean per NotificationEvent).
-  deploymentFailed: boolean("deployment_failed").notNull(),
-  deploymentSucceeded: boolean("deployment_succeeded").notNull(),
-  serverOffline: boolean("server_offline").notNull(),
-  highResourceUsage: boolean("high_resource_usage").notNull(),
-  updateAvailable: boolean("update_available").notNull(),
 });
+
+/**
+ * One row per alert the team has DECIDED about — the `alerts` list of
+ * [NotificationSettings](../../types.ts) (PLAN §1: a list is a junction table,
+ * never a column per item).
+ *
+ * `enabled` is a real column rather than "a row means subscribed" because three
+ * states are real: on, off, and never said. A team that unticks a default-on
+ * alert must stay distinguishable from a team that has never opened the page —
+ * and an alert key added in a later release has to land on its catalog default
+ * (`ALERT_META[key].defaultOn`) for every existing team, with no backfill.
+ * Absent row = the catalog default.
+ */
+export const notificationAlerts = pgTable(
+  "notification_alerts",
+  {
+    teamId: text("team_id")
+      .notNull()
+      .references(() => teams.id, { onDelete: "cascade" }),
+    /** An `AlertKey`. Text, not an enum: the catalog changes, migrations shouldn't. */
+    alertKey: text("alert_key").notNull(),
+    enabled: boolean("enabled").notNull(),
+  },
+  (t) => [primaryKey({ columns: [t.teamId, t.alertKey] })],
+);
+
+/**
+ * One row per browser that opted into push (beta). Per USER because a push
+ * subscription belongs to a device, not to a team; per TEAM because the alert is
+ * the team's and the same person can hold two.
+ *
+ * The browser-issued `endpoint` IS the identity, so it carries the PK — nothing
+ * to mint — and both FKs cascade, which is the whole cleanup story when an
+ * account or a team goes. A dead endpoint (404/410 from the push service) is
+ * pruned at send time; that is the normal end of every subscription.
+ */
+export const pushSubscriptions = pgTable(
+  "push_subscriptions",
+  {
+    teamId: text("team_id")
+      .notNull()
+      .references(() => teams.id, { onDelete: "cascade" }),
+    userId: text("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    endpoint: text("endpoint").notNull(),
+    /** The subscription's public key and auth secret (RFC 8291), not secrets of ours. */
+    p256dh: text("p256dh").notNull(),
+    auth: text("auth").notNull(),
+    createdAt: isoTimestamptz("created_at").notNull(),
+  },
+  (t) => [
+    primaryKey({ columns: [t.teamId, t.userId, t.endpoint] }),
+    index("push_subscriptions_team_idx").on(t.teamId),
+  ],
+);
 
 /**
  * [Registry](../../types.ts). `password_enc` secret. `(team_id, created_at DESC)`
@@ -2374,5 +2447,14 @@ export const instanceSettings = pgTable("instance_settings", {
    * `DEPLO_PUBLIC_URL`, then to the request's own host (`lib/public-url.ts`).
    */
   panelUrl: text("panel_url"),
+  /**
+   * The VAPID keypair that identifies THIS Deplo to every browser push service
+   * (beta). Instance-wide by definition — one identity per panel, not per team —
+   * and minted lazily the first time somebody subscribes, so an instance that
+   * never uses push never holds one. NULL until then; the private half is
+   * encrypted like every other secret.
+   */
+  vapidPublicKey: text("vapid_public_key"),
+  vapidPrivateKeyEnc: text("vapid_private_key_enc"),
   updatedAt: isoTimestamptz("updated_at").notNull(),
 });

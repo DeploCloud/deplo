@@ -26,6 +26,7 @@ import {
   requireTeamWide,
 } from "../membership";
 import { recordActivity } from "./activity";
+import { dispatchAlert } from "../notify/dispatch";
 import { encryptSecret, decryptSecret, randomToken } from "../crypto";
 import { connectAgent, mapCheckPortUnsupported } from "../infra/agent-client";
 import {
@@ -618,6 +619,15 @@ export async function createDatabase(input: {
       .set({ status: "error" })
       .where(eq(databasesTable.id, db.id));
     publishDatabaseChanged(db.id);
+    // The request that asked for this database is long gone by now — this catch
+    // is floated — so the alert is the only way anybody learns it never came up.
+    dispatchAlert({
+      teamId,
+      key: "database_failed",
+      title: `Database ${name} could not be set up`,
+      body: "It was created but never finished provisioning on its server.",
+      path: "/storage",
+    });
   });
 
   return toDTO(db);
@@ -683,6 +693,13 @@ async function provisionDatabase(db: Database, password: string): Promise<void> 
       .set({ status: "running" })
       .where(eq(databasesTable.id, db.id));
     publishDatabaseChanged(db.id);
+    dispatchAlert({
+      teamId: db.teamId,
+      key: "database_ready",
+      title: `Database ${db.name} is ready`,
+      body: "It finished setting up and is accepting connections.",
+      path: "/storage",
+    });
   });
 }
 
@@ -1177,6 +1194,8 @@ export async function deleteDatabase(
         : `Deleted database ${db.name}`,
       user.name,
       null,
+      null,
+      "database_deleted",
     );
   });
 }
@@ -1517,6 +1536,8 @@ export async function rebuildDatabase(id: string): Promise<void> {
     "Rebuilt database from scratch (data volume wiped)",
     user.name,
     null,
+    null,
+    "database_rebuilt",
   );
 }
 

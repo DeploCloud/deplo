@@ -464,6 +464,7 @@ enum Capability {
 
 enum CertProvider {
   cloudflare
+  custom
   letsencrypt
   none
 }
@@ -472,7 +473,16 @@ enum CertProvider {
 One server's Let's Encrypt account, read from that host's own proxy configuration. `email` is null when Deplo cannot manage certificates there; `unavailable` says why, in the host's own words.
 """
 type CertificateAccount {
+  """
+  How many certificates the operator installed on this host themselves (see `serverCertificates`).
+  """
+  customCertificates: Int
   email: String
+
+  """
+  Whole days until the first of those expires, negative once one has, null when there are none. Nothing renews a certificate installed by hand, so this is the only warning there is.
+  """
+  expiresInDays: Int
   serverId: String
   serverName: String
   unavailable: String
@@ -610,6 +620,7 @@ input CreateRoleInput {
   description: String
   name: String!
   requireTwoFactor: Boolean
+  scope: RoleScopeInput
 }
 
 input CreateS3Input {
@@ -922,7 +933,7 @@ type Domain {
   appSlug: String
 
   """
-  How this domain's TLS certificate is issued. Set to `cloudflare` automatically when a DNS check finds the host proxied and it still had no certificate — Cloudflare already serves it over HTTPS. Null on rows written before the field existed (they route as `letsencrypt`).
+  How this domain's TLS certificate is issued. Set to `cloudflare` automatically when a DNS check finds the host proxied and it still had no certificate — Cloudflare already serves it over HTTPS. `custom` serves it over HTTPS from a certificate installed on the owning server (see `addServerCertificate`) and asks no ACME provider for one. Null on rows written before the field existed (they route as `letsencrypt`).
   """
   certProvider: CertProvider
   createdAt: String
@@ -1363,7 +1374,7 @@ type Mutation {
   addServer(input: AddServerInput!): AddServerPayload
 
   """
-  Install a TLS certificate on this server. The certificate and its key are checked as a pair before the host is touched: a key that does not match, or a certificate that has already expired, is refused. The proxy then serves it for every domain named in it — taking precedence over Let's Encrypt, which stops issuing for domains a certificate already covers. Uploading one for the same domains replaces it. Applying recreates the proxy, so routing on this host is interrupted for a few seconds. Returns the certificates installed afterwards.
+  Install a TLS certificate on this server. The certificate and its key are checked as a pair before the host is touched: a key that does not match, or a certificate that has already expired, is refused. The proxy then serves it for every domain named in it, taking precedence over Let's Encrypt, which stops issuing for domains a certificate already covers. Uploading one for the same domains replaces it. Applying recreates the proxy, so routing on this host is interrupted for a few seconds. Returns the certificates installed afterwards.
   """
   addServerCertificate(id: String!, input: ServerCertificateInput!): [ServerCertificate!]
 
@@ -1610,6 +1621,11 @@ type Mutation {
   """
   moveFolder(id: ID!, parentId: ID): Boolean
 
+  """
+  Read how the panel is served off the proxy that publishes it, live. A mutation despite writing nothing, for the same reason serverCertificateAccounts is one: it dials a server.
+  """
+  panelHttps: PanelHttps
+
   """Promote a preview deployment to production."""
   promoteDeployment(id: String!): Boolean
 
@@ -1674,7 +1690,7 @@ type Mutation {
   removeServer(id: String!): ServerRemoval
 
   """
-  Remove a certificate from this server by its fingerprint. Its domains fall back to whatever else covers them — usually Let's Encrypt, which issues for them again once the proxy comes back. Recreates the proxy, so routing on this host blips.
+  Remove a certificate from this server by its fingerprint. Its domains fall back to whatever else covers them, usually Let's Encrypt, which issues for them again once the proxy comes back. Recreates the proxy, so routing on this host blips.
   """
   removeServerCertificate(certificateId: String!, id: String!): [ServerCertificate!]
 
@@ -1747,7 +1763,7 @@ type Mutation {
   restartServerTraefik(id: String!): Boolean
 
   """
-  Restart every App and database Deplo runs on this server, one at a time. Containers Deplo did not deploy are never touched, and workloads that are already stopped are skipped rather than started — restarting and starting are different actions. Reports per-workload failures instead of stopping at the first one.
+  Restart every App and database Deplo runs on this server, one at a time. Containers Deplo did not deploy are never touched. Workloads that are already stopped are skipped rather than started (restarting and starting are different actions), as are workloads with a deploy in flight, which come back on their own. An App whose last deploy FAILED is restarted, not skipped: a failed deploy usually leaves the previous stack serving. Reports per-workload failures instead of stopping at the first one, and says explicitly when a workload stopped but did not start again.
   """
   restartServerWorkloads(id: String!): ServerRestartReport
 
@@ -1889,7 +1905,17 @@ type Mutation {
   setFolderGrant(capabilities: [String!]!, folderId: ID!, userId: ID!): [FolderGrant!]
 
   """
-  Set the address this Deplo answers on, or pass no url to fall back to DEPLO_PUBLIC_URL. A bare domain becomes https://. The value is validated as a hostname with no path, no credentials and no shell metacharacters, because it is interpolated into copy-and-run strings such as a server's install command. This does not move the panel's routing: that follows your DNS and proxy; use checkPanelUrl to prove the address reaches this instance.
+  Set one member's role and per-node overrides in the ACTIVE team. The team is the caller's own - there is no id to pass, which is what keeps it from reaching another one.
+  """
+  setMemberAccess(input: SetMemberAccessInput!): [UserTeamAccess!]
+
+  """
+  Serve the panel over https, or over plain http. Turning it off is for a panel whose address cannot get a certificate - it does not resolve publicly yet, :80 is closed, the box is internal - where https means a browser warning on a page nobody has logged into yet. Three things move together: the route goes to the :80 entrypoint (with that entrypoint's redirect pinned below it), the stored panel address takes the new scheme, and the session cookie drops its `__Secure-` prefix, without which the panel would load over http and be impossible to log into. The host's proxy is recreated to pick it up, so sites on that server - this panel included - are unreachable for the few seconds it takes to come back. On a Deplo installed before it published its own route, the first change ADOPTS that route: Deplo writes one beside the container labels the installer left and outranks them, after proving from inside the network that it knows where the panel listens.
+  """
+  setPanelHttps(enabled: Boolean!): PanelHttps
+
+  """
+  Set the address this Deplo answers on, or pass no url to fall back to DEPLO_PUBLIC_URL. A bare domain becomes https://. The value is validated as a hostname with no path, no credentials and no shell metacharacters, because it is interpolated into copy-and-run strings such as a server's install command. On a Deplo that publishes itself through its own proxy this MOVES the panel's route too, and puts the old one back if the new address does not answer; DNS still has to point at the server first.
   """
   setPanelUrl(url: String): InstanceSettings
 
@@ -1922,7 +1948,7 @@ type Mutation {
   setServerTeams(input: SetServerTeamsInput!): Server
 
   """
-  Set the host clock's timezone to an IANA zone name (e.g. "Europe/Rome"). Returns a fresh reading of the host, so the moved clock is visible without a second call. Rejects a name this instance does not recognise, and the agent rejects one the host does not carry.
+  Set the host clock's timezone to an IANA zone name (e.g. "Europe/Rome"). Changes the wall-clock LABEL, not the instant: nothing restarts, and Deplo's own schedules (backups, cleanup) stay on UTC. Aliases are accepted and canonicalised ("US/Eastern" is stored as "America/New_York"); a bare UTC offset is not a zone and is refused. Returns a fresh reading of the host, so the moved clock is visible without a second call. The agent rejects a zone the host does not carry.
   """
   setServerTimezone(id: String!, timezone: String!): ServerHostInfo
 
@@ -1950,6 +1976,9 @@ type Mutation {
   """
   startTwoFactorEnrolment(password: String!): TwoFactorEnrolment
   stopApp(id: String!): App
+
+  """Register this browser for push alerts in the active team."""
+  subscribeWebPush(auth: String!, endpoint: String!, p256dh: String!): Boolean
 
   """Switch the active team (sets a cookie server-side). Returns true."""
   switchTeam(teamId: String!): Boolean
@@ -1979,6 +2008,14 @@ type Mutation {
   Hand instance ownership to another instance admin. Owner-only; requires the caller's password. Returns true.
   """
   transferInstanceOwner(password: String!, userId: String!): Boolean
+
+  """
+  Hand the active team to another member, who is put on the Owner role with the whole team in reach as part of the same write. Primary-owner only; requires the caller's password, plus a two-factor code when their account has 2FA on. Returns true.
+  """
+  transferTeamOwnership(code: String, password: String!, userId: String!): Boolean
+
+  """Forget this browser's push registration."""
+  unsubscribeWebPush(endpoint: String!): Boolean
   updateAppBuild(build: BuildConfigInput!, id: String!): App
   updateAppLogo(id: String!, logo: String): App
 
@@ -2093,17 +2130,34 @@ input NodeGrantInput {
   projectIds: [String!]
 }
 
-"""Per-team notification channels + per-event delivery toggles."""
+"""Per-team notification channels + subscribed alerts."""
 type NotificationSettings {
-  """
-  Channel config map: push/email/discord/webhook enable flags + endpoints.
-  """
-  channels: JSON
+  """The subscribed alert keys (deployment_failed, server_offline, …)."""
+  alerts: JSON
 
   """
-  Per-event delivery map (deployment_failed, server_offline, …) -> boolean.
+  Channel config map: push/email/discord/slack/telegram/webhook enable flags + endpoints.
   """
-  events: JSON
+  channels: JSON
+}
+
+"""
+How the Deplo panel itself is served, read live off the router that publishes it. `unavailable` says why it is not Deplo's to change here - the host is not added as a server, its proxy is not one Deplo installed, or the panel is still published by its own container.
+"""
+type PanelHttps {
+  """The host the panel's route answers on, as the proxy has it."""
+  domain: String
+
+  """
+  Whether the panel is served over https. False means plain http on :80, for a panel whose address cannot get a certificate.
+  """
+  enabled: Boolean
+
+  """
+  The certificate resolver it is ordered from, named as this host names it. Null when https is off, or when this host orders from nobody and serves a certificate you installed.
+  """
+  provider: String
+  unavailable: String
 }
 
 """
@@ -2438,6 +2492,11 @@ type Query {
 
   """The active team."""
   viewerTeam: Team
+
+  """
+  This instance's VAPID public key, minted on first use. Public by design.
+  """
+  webPushPublicKey: String
 }
 
 """
@@ -2563,6 +2622,26 @@ enum Role {
   member
   owner
   viewer
+}
+
+"""
+The projects, folders and apps a role reaches. A folder brings its whole subtree. All three empty means it reaches nothing, which is what a scope whose nodes were all deleted becomes.
+"""
+type RoleScope {
+  appIds: [String!]
+  environmentIds: [String!]
+  folderIds: [String!]
+  projectIds: [String!]
+}
+
+"""
+The nodes a role reaches. Ticking a project, one of its environments or a folder covers everything inside it, now and later; omit the field entirely for the whole team.
+"""
+input RoleScopeInput {
+  appIds: [String!]
+  environmentIds: [String!]
+  folderIds: [String!]
+  projectIds: [String!]
 }
 
 """One container of an app, as the host actually has it now."""
@@ -2762,7 +2841,7 @@ type Server {
 }
 
 """
-A TLS certificate the operator installed on a server themselves, described from the certificate itself. It lives in that host's proxy and nowhere else — Deplo stores no copy — and its private key has no read path at all.
+A TLS certificate the operator installed on a server themselves, described from the certificate itself. It lives in that host's proxy and nowhere else (Deplo stores no copy), and its private key has no read path at all.
 """
 type ServerCertificate {
   """
@@ -2776,7 +2855,7 @@ type ServerCertificate {
   expired: Boolean
 
   """
-  Whole days left before it expires, negative once it has. Nothing renews these — the only warning is this number.
+  Whole days left before it expires, negative once it has. Nothing renews these, so the only warning is this number.
   """
   expiresInDays: Int
 
@@ -2801,7 +2880,7 @@ type ServerCertificate {
 """A certificate and the private key it was issued for, as PEM text."""
 input ServerCertificateInput {
   """
-  The certificate in PEM form. Paste the FULL chain (certificate followed by any intermediates) — browsers need the intermediates.
+  The certificate in PEM form. Paste the FULL chain: the certificate followed by any intermediates, which browsers need.
   """
   certificate: String!
 
@@ -2822,6 +2901,11 @@ type ServerHostInfo {
   Whether the Deplo panel runs in a container on this host that the agent could restart. False when Deplo was started some other way, in which case the restart action is not offered.
   """
   canRestartControlPlane: Boolean
+
+  """
+  Deplo's own clock when this reading landed (epoch ms). The pair with timeUnixMs is the honest drift measurement: measuring against the browser measures the browser, and a viewer whose laptop is an hour out would see the whole fleet reported as drifting.
+  """
+  controlPlaneTimeUnixMs: Float
 
   """
   PHYSICAL cores. A 6-core/12-thread chip reports 6 here and 12 in cpuThreads; reporting threads as cores is the usual way a spec sheet overstates a box.
@@ -2860,7 +2944,7 @@ type ServerHostInfo {
   osPretty: String
 
   """
-  The host's own clock at the moment of the read (epoch ms). Compare it with the client's to spot a drifting box.
+  The host's own clock at the moment of the read (epoch ms). Compare it with controlPlaneTimeUnixMs, never with the viewer's clock, to spot a drifting box.
   """
   timeUnixMs: Float
 
@@ -3003,7 +3087,7 @@ type ServerRestartReport {
   restarted: Int
 
   """
-  Workloads that were already stopped. They are left alone: starting them is a different action than restarting them.
+  Workloads left alone: the ones already stopped (starting them is a different action than restarting them) and the ones with a deploy in flight, which come back on their own.
   """
   skipped: Int
 }
@@ -3018,6 +3102,17 @@ enum ServerStatus {
 
 enum ServerType {
   remote
+}
+
+"""
+Deliberately carries no teamId: the active team is the caller's, and an id here would be a way to write another team's memberships.
+"""
+input SetMemberAccessInput {
+  capabilities: [Capability!]
+  grants: [NodeGrantInput!]
+  granular: Boolean!
+  roleId: String!
+  userId: String!
 }
 
 """
@@ -3161,11 +3256,19 @@ type TeamRole {
   Holders of this role must have two-factor authentication; without it they resolve no capabilities at all, over the UI and the API alike.
   """
   requireTwoFactor: Boolean
+
+  """
+  Where in the team this role reaches. Null means the whole of it, which is every role until one is limited. A scoped role also loses every capability that only means something team-wide.
+  """
+  scope: RoleScope
 }
 
 enum TestNotificationChannel {
   discord
   email
+  push
+  slack
+  telegram
   webhook
 }
 
@@ -3250,10 +3353,12 @@ input UpdateMemberInput {
 
 input UpdateRoleInput {
   capabilities: [Capability!]
+  clearScope: Boolean
   description: String
   id: String!
   name: String!
   requireTwoFactor: Boolean
+  scope: RoleScopeInput
 }
 
 input UpdateSourceInput {
@@ -3373,11 +3478,16 @@ type UserSession {
 
 """What one person can do in one team, as an instance admin sets it."""
 type UserTeamAccess {
-  """What applies outside every granted node."""
+  """
+  The set on the membership - their own when they hold one, else their role's.
+  """
   baseCapabilities: [Capability!]
 
+  """That set is theirs, so saving their role no longer rewrites it."""
+  customCapabilities: Boolean
+
   """
-  Per-node overrides are in play on top of the role. Stored as the admin's choice, so deleting the last granted node doesn't silently turn it off.
+  Their reach IS the nodes below: they touch those and nothing else, whatever their role reaches. Stored as the admin's choice, so deleting the last granted node doesn't silently turn it off.
   """
   granular: Boolean
 

@@ -14,6 +14,7 @@ import {
   type ServerHealth,
 } from "../infra/server-health";
 import { requireInstanceAdmin } from "../membership";
+import { dispatchServerAlert } from "../notify/dispatch";
 import { nowIso } from "../ids";
 import { getServerById, listAllServers, markServerSeen, observedTraefik } from "./servers";
 import type { HelloResponse } from "../agent/gen/agent";
@@ -172,7 +173,7 @@ export async function recordServerHealth(
   observedAt: string,
 ): Promise<void> {
   try {
-    await getDb()
+    const written = await getDb()
       .update(serversTable)
       .set({
         status: health.status,
@@ -193,12 +194,59 @@ export async function recordServerHealth(
             sql`${serversTable.statusCheckedAt} <= ${observedAt}`,
           ),
         ),
-      );
+      )
+      .returning({ name: serversTable.name });
+    // Every caller that learns something about a server's health lands here, so
+    // this one hook covers the prober, the metrics poll and all three supervisor
+    // writes. Keyed off the WRITE, not the intent: a stale observation that lost
+    // the watermark is not news. The dedupe state IS the status, so recovery
+    // ("back online") comes out of the same call with no extra bookkeeping.
+    if (written.length > 0) alertServerHealth(id, written[0].name, health);
   } catch (e) {
     // Best-effort, like markServerSeen: a failed heartbeat write must never take
     // down the page that triggered it.
     console.error("[deplo] recordServerHealth failed:", e);
   }
+}
+
+/**
+ * The four health verdicts map one-to-one onto four alerts. They are separate
+ * keys and not one "server is unhappy" switch because the answers differ: an
+ * offline host needs power, a Docker-less one needs a daemon, and a host whose
+ * identity changed needs somebody to ask why.
+ */
+function alertServerHealth(
+  id: string,
+  name: string,
+  health: ServerHealth,
+): void {
+  // `provisioning` is a server mid-setup, not an observed verdict — nothing to
+  // report until it has actually answered once.
+  if (health.status === "provisioning") return;
+  const dedupe = { id: `server:${id}`, state: health.status };
+  const alert = {
+    online: {
+      key: "server_online" as const,
+      title: `${name} is back online`,
+      body: "Deplo can reach it again.",
+    },
+    warning: {
+      key: "server_unmanageable" as const,
+      title: `${name} cannot run apps`,
+      body: health.message || "Deplo reached the server but not its container runtime.",
+    },
+    offline: {
+      key: "server_offline" as const,
+      title: `${name} is offline`,
+      body: health.message || "The server stopped answering.",
+    },
+    error: {
+      key: "server_trust_changed" as const,
+      title: `${name} was refused`,
+      body: health.message || "The server did not present the identity Deplo trusts.",
+    },
+  }[health.status];
+  dispatchServerAlert(id, { ...alert, dedupe, path: "/settings/servers" });
 }
 
 /**

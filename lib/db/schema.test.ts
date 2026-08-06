@@ -134,6 +134,10 @@ const CONTROL_PLANE = [
   "api_token_apps",
   "activities",
   "notification_settings",
+  // The subscribed alerts (a list, so a child table) and the browsers that
+  // opted into push, per user and team.
+  "notification_alerts",
+  "push_subscriptions",
   "registries",
   "installed_plugins",
   // unified shared variables (ADR-0010)

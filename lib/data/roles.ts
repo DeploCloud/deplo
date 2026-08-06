@@ -1123,6 +1123,7 @@ export async function updateRole(input: {
     await actorUsername(),
     null,
     teamId,
+    "member_access_changed",
   );
 }
 
@@ -1184,6 +1185,7 @@ export async function resetRole(id: string): Promise<void> {
     await actorUsername(),
     null,
     teamId,
+    "member_access_changed",
   );
 }
 
@@ -1230,5 +1232,6 @@ export async function deleteRole(id: string): Promise<void> {
     await actorUsername(),
     null,
     teamId,
+    "member_access_changed",
   );
 }

@@ -26,6 +26,7 @@ import {
   requireMembership,
 } from "../membership";
 import { recordActivity } from "./activity";
+import { dispatchAlert } from "../notify/dispatch";
 import {
   appCapabilities,
   appCapabilitiesForTeam,
@@ -609,6 +610,15 @@ async function executeBackup(
     activityAppId,
     teamId,
   );
+  // executeBackup already takes teamId as a parameter, so the scheduler tick —
+  // which has no request and no active team — alerts exactly like a manual run.
+  dispatchAlert({
+    teamId,
+    key: failure ? "backup_failed" : "backup_succeeded",
+    title: failure ? `Backup of ${label} failed` : `Backed up ${label}`,
+    body: failure ?? `${formatBytes(finished.sizeBytes)} uploaded.`,
+    path: "/storage",
+  });
 
   if (failure) throw new Error(failure);
   return finished;
@@ -897,6 +907,15 @@ export async function restoreBackup(runId: string): Promise<void> {
     target.appId,
     teamId,
   );
+  dispatchAlert({
+    teamId,
+    key: failure ? "restore_failed" : "restore_succeeded",
+    title: failure
+      ? `Restore of ${target.label} failed`
+      : `Restored ${target.label}`,
+    body: failure ?? "The data is back in place.",
+    path: "/storage",
+  });
   if (failure) throw new Error(failure);
 }
 
@@ -1248,7 +1267,12 @@ export async function reconcileInFlightBackupRuns(): Promise<number> {
           lt(backupRunsTable.startedAt, cutoffIso),
         ),
       )
-      .returning({ backupId: backupRunsTable.backupId });
+      .returning({
+        backupId: backupRunsTable.backupId,
+        // Carried out of the bulk flip so the alert below can be raised once per
+        // team instead of once per interrupted run.
+        teamId: backupRunsTable.teamId,
+      });
 
     const orphanedBackupIds = [
       ...new Set(flipped.map((r) => r.backupId).filter((id): id is string => !!id)),
@@ -1265,14 +1289,25 @@ export async function reconcileInFlightBackupRuns(): Promise<number> {
           ),
         );
     }
-    return flipped.length;
+    return flipped;
   });
-  if (reconciled > 0) {
+  if (reconciled.length > 0) {
+    const perTeam = new Map<string, number>();
+    for (const r of reconciled)
+      if (r.teamId) perTeam.set(r.teamId, (perTeam.get(r.teamId) ?? 0) + 1);
+    for (const [teamId, n] of perTeam)
+      dispatchAlert({
+        teamId,
+        key: "backup_failed",
+        title: `${n} backup run${n > 1 ? "s were" : " was"} interrupted`,
+        body: "Deplo restarted while they were running. They are marked failed.",
+        path: "/storage",
+      });
     console.warn(
-      `[deplo] reconciled ${reconciled} interrupted backup run(s) to failed on startup`,
+      `[deplo] reconciled ${reconciled.length} interrupted backup run(s) to failed on startup`,
     );
   }
-  return reconciled;
+  return reconciled.length;
 }
 
 /** Compact human bytes for the activity log ("12.3 MB"). */

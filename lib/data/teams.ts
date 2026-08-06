@@ -171,7 +171,7 @@ export async function updateTeam(input: {
         "Turn on two-factor authentication for your own account first, or you would lock yourself out.",
       );
   }
-  return getDb().transaction(async (tx) => {
+  const updated = await getDb().transaction(async (tx) => {
     const rows = await tx
       .select()
       .from(teamsTable)
@@ -191,8 +191,26 @@ export async function updateTeam(input: {
       .update(teamsTable)
       .set({ name, slug, requireTwoFactor })
       .where(eq(teamsTable.id, t.id));
-    return rowToTeam({ ...t, name, slug, requireTwoFactor });
+    return {
+      team: rowToTeam({ ...t, name, slug, requireTwoFactor }),
+      policyChanged: requireTwoFactor !== t.requireTwoFactor,
+    };
   });
+  // Outside the transaction, per the recordActivity rule (own connection). The
+  // sign-in policy is the one field here that changes who can reach the team at
+  // all, so it is the one worth a trail and an alert.
+  if (updated.policyChanged)
+    await recordActivity(
+      "member",
+      `Two-factor sign-in is now ${
+        updated.team.requireTwoFactor ? "required" : "optional"
+      } for this team`,
+      (await assertUser()).name,
+      null,
+      teamId,
+      "two_factor_policy_changed",
+    );
+  return updated.team;
 }
 
 /**
