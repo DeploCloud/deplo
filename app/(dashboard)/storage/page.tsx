@@ -4,7 +4,7 @@ import { listS3, toDestinationOption } from "@/lib/data/s3";
 import { listBackups } from "@/lib/data/backups";
 import { listServersForCurrentTeam } from "@/lib/data/servers";
 import { listApps } from "@/lib/data/apps";
-import { canExposePorts, hasCapability } from "@/lib/membership";
+import { canExposePorts, hasCapability, reachesWholeTeam } from "@/lib/membership";
 import { PageHeader } from "@/components/shared/page-header";
 import { EmptyState } from "@/components/shared/empty-state";
 import {
@@ -46,6 +46,25 @@ export default async function StoragePage(props: PageProps<"/storage">) {
   const autoOpenBackup = newKind === "backup";
   const initialTab =
     newKind === "s3" ? "s3" : newKind === "backup" ? "backups" : "databases";
+
+  // Every section of this page is team-level: a database belongs to the team and
+  // to no project, and so do the S3 destinations and the fleet. A member limited
+  // to part of the team therefore has none of it, and is told so rather than
+  // handed the error boundary.
+  if (!(await reachesWholeTeam()))
+    return (
+      <div className="space-y-6">
+        <PageHeader
+          title="Storage"
+          description="Databases, S3 destinations and backups."
+        />
+        <EmptyState
+          icon={Database}
+          title="Outside your access"
+          description="Your role reaches part of this team. Databases and destinations belong to the whole of it."
+        />
+      </div>
+    );
 
   const [
     databases,

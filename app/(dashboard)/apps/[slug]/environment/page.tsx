@@ -4,7 +4,7 @@ import { getAppBySlug } from "@/lib/data/apps";
 import { listEnv } from "@/lib/data/env";
 import { hasAppCapability } from "@/lib/data/node-access";
 import { listSharedVars, listSharedVarsForApp } from "@/lib/data/shared-vars";
-import { hasCapability } from "@/lib/membership";
+import { hasCapability, reachesWholeTeam } from "@/lib/membership";
 import { EnvManager } from "@/components/env/env-manager";
 import { EmptyState } from "@/components/shared/empty-state";
 
@@ -16,7 +16,11 @@ export default async function AppEnvPage(
   const { slug } = await props.params;
   const project = await getAppBySlug(slug);
   if (!project) notFound();
-  const teamWideEnv = await hasCapability("manage_env");
+  // The team's shared library is a team-wide read on BOTH axes: the capability
+  // has to be held team-wide, and the caller has to reach the whole team. A
+  // scoped role keeps `manage_env` on its own apps and loses the library.
+  const teamWideEnv =
+    (await hasCapability("manage_env")) && (await reachesWholeTeam());
 
   // Viewing env values requires manage_env ON THIS APP — it can be held here and
   // nowhere else (ADR-0016). Without it the tab is hidden, but guard the page too

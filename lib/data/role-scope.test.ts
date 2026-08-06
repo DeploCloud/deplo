@@ -288,6 +288,28 @@ test("the reads the dashboard layout makes still answer a scoped member", async 
   });
 });
 
+test("the app pages a scoped member owns still load", async () => {
+  const { listEnv } = await import("./env");
+  const { listSharedVarsForApp } = await import("./shared-vars");
+  const { listBackups, listBackupRuns } = await import("./backups");
+  const { listDomains } = await import("./domains");
+  const { listDeployments } = await import("./deployments");
+
+  await scopeTo({ projects: [PRC_IN] });
+
+  // Every tab of an app INSIDE the scope, as its own page loads it. These are
+  // the reads that used to sit next to a team-wide one in the same
+  // `Promise.all`, which is what took the page down with them.
+  await as(DEV, async () => {
+    await listEnv(APP_IN_PRC);
+    await listSharedVarsForApp(APP_IN_PRC);
+    await listBackups();
+    await listBackupRuns({ appId: APP_IN_PRC });
+    await listDomains(APP_IN_PRC);
+    await listDeployments({ appId: APP_IN_PRC });
+  });
+});
+
 test("a scoped member can still pick where an app runs", async () => {
   const { listServerChoices, listServersForCurrentTeam } = await import("./servers");
   await scopeTo({ projects: [PRC_IN] });
