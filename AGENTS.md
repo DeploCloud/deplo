@@ -93,6 +93,27 @@ having shell/root on the box (which the core mission already forbids). This neve
 priorities: **self-hosted and open source stay first-class**, and the cloud is an additional
 distribution of the same system — never a fork, never a reason to starve the self-hosted path.
 
+### Flag a mission conflict once, then build it
+
+If a request - the user's or a feature you are proposing yourself - conflicts with the mission
+above, say so **before** writing code, in **at most three lines**, then build the thing as asked.
+The default is always to deliver: the flag is information, not a veto, and never a reason to stop
+and wait for an answer.
+
+A conflict is one of these, named explicitly:
+
+- The happy path needs Docker, SSH, or hand-edited YAML.
+- You cannot say which of the two audiences it serves (non-expert default-on / expert advanced mode).
+- It adds surface to the first-run path that a new user must read past.
+- It only works when the actor owns the instance, or it breaks under active-team scoping.
+- The honest answer to "who did this, and how do I take the access away" is "look in the database".
+
+If none of those applies, do **not** flag it. "Feels like scope creep" is not a mission conflict,
+and a warning fired on every request is the same as no warning at all.
+
+Say: what it collides with, the cheaper thing that covers the same need, then proceed. If the user
+reaffirms, that is the decision: build the full version and never raise it again in that thread.
+
 ## This is NOT the Next.js you know
 
 APIs, conventions, and file structure may all differ from your training data. **Read the

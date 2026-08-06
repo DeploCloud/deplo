@@ -29,8 +29,13 @@ Also binding:
 - **Build everything so it could become a managed service.** deplo plans its own proprietary cloud
   later (idea still rough): keep things multi-tenant-safe and free of "operator == end user"
   assumptions — while self-hosted + open source stay first-class and never get starved for it.
+- **Flag a mission conflict once, then build it.** A request (yours or the user's) that collides
+  with the above gets at most three lines of warning *before* the code (what it collides with, the
+  cheaper thing covering the same need), and then you build it anyway. Only the five listed
+  conflicts count; "feels like scope creep" doesn't. If the user reaffirms, it's decided.
 
-Full statement in `AGENTS.md` → "Core mission".
+Full statement in `AGENTS.md` → "Core mission" (the five conflicts are listed under
+"Flag a mission conflict once, then build it").
 
 ## Agent skills
 
