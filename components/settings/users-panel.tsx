@@ -1,7 +1,7 @@
 "use client";
 
 import * as React from "react";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { toast } from "sonner";
 import {
   UserPlus,
@@ -58,6 +58,9 @@ export function UsersPanel({
 }) {
   const [registerOpen, setRegisterOpen] = React.useState(false);
   const pendingLinks = links.filter((l) => l.status === "pending");
+  // `?user=<id>` opens that account's editor on arrival — the deep link a
+  // member's page uses, since accounts are instance-wide and edited here.
+  const focusUserId = useSearchParams().get("user");
   return (
     <div className="space-y-4">
       <Card>
@@ -86,6 +89,7 @@ export function UsersPanel({
                 user={u}
                 isSelf={u.userId === currentUserId}
                 viewerIsOwner={viewerIsOwner}
+                defaultOpen={u.userId === focusUserId}
               />
             ))}
           </div>
@@ -115,13 +119,16 @@ function UserRow({
   user,
   isSelf,
   viewerIsOwner,
+  defaultOpen = false,
 }: {
   user: GlobalUserDTO;
   isSelf: boolean;
   viewerIsOwner: boolean;
+  /** Arrived here linked straight at this account — open its editor. */
+  defaultOpen?: boolean;
 }) {
   const router = useRouter();
-  const [open, setOpen] = React.useState(false);
+  const [open, setOpen] = React.useState(defaultOpen);
   const [confirmSuspend, setConfirmSuspend] = React.useState(false);
   const [confirmDelete, setConfirmDelete] = React.useState(false);
   const [confirmTransfer, setConfirmTransfer] = React.useState(false);
