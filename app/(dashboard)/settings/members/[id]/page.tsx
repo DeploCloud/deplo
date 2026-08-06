@@ -64,6 +64,11 @@ export default async function MemberPage(
   const viewerIsOwner = members.some(
     (m) => m.role === "owner" && m.userId === viewer?.id,
   );
+  // The crown, not the rank: an assigned owner may hand out the owner role but
+  // may not hand over the team itself (lib/data/team-ownership.ts).
+  const viewerIsPrimaryOwner = members.some(
+    (m) => m.isPrimaryOwner && m.userId === viewer?.id,
+  );
 
   return (
     <div className="mx-auto w-full max-w-5xl space-y-6">
@@ -83,6 +88,8 @@ export default async function MemberPage(
         isSelf={viewer?.id === member.userId}
         canManageAccount={isAdmin}
         activity={activity}
+        viewerIsPrimaryOwner={viewerIsPrimaryOwner}
+        viewerTwoFactorEnabled={viewer?.twoFactorEnabled ?? false}
       />
     </div>
   );

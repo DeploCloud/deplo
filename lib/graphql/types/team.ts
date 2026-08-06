@@ -8,6 +8,7 @@ import {
   switchTeam,
 } from "@/lib/data/teams";
 import { deleteTeam } from "@/lib/data/team-delete";
+import { transferTeamOwnership } from "@/lib/data/team-ownership";
 import type { Team, TeamSummary } from "@/lib/types";
 
 /* ------------------------------------------------------------------ */
@@ -114,6 +115,26 @@ builder.mutationFields((t) => ({
         slug: input.slug,
         requireTwoFactor: input.requireTwoFactor ?? undefined,
       }),
+  }),
+  transferTeamOwnership: t.field({
+    type: "Boolean",
+    // manage_team is the FLOOR, not the gate — the data layer additionally
+    // requires the caller to BE the team's primary owner, which no capability
+    // expresses.
+    authScopes: { capability: "manage_team" },
+    description:
+      "Hand the active team to another owner. Primary-owner only; requires the " +
+      "caller's password, plus a two-factor code when their account has 2FA on. " +
+      "Returns true.",
+    args: {
+      userId: t.arg.string({ required: true }),
+      password: t.arg.string({ required: true }),
+      code: t.arg.string({ required: false }),
+    },
+    resolve: async (_r, { userId, password, code }) => {
+      await transferTeamOwnership({ userId, password, code: code ?? undefined });
+      return true;
+    },
   }),
   createTeam: t.field({
     type: TeamRef,

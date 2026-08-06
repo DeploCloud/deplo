@@ -56,7 +56,7 @@ export interface TwoFactorEnrolment {
  * limiter is deliberately shared by the password and the code, so six wrong
  * guesses of either kind buys the same pause.
  */
-async function stepUpPassword(password: string) {
+export async function stepUpPassword(password: string) {
   const user = await assertUser();
   const limit = rateLimit(`2fa-step-up:${user.id}`, STEP_UP_LIMIT);
   if (!limit.ok)
@@ -75,7 +75,7 @@ async function stepUpPassword(password: string) {
  * does not first have to find a toggle. A recovery code is consumed by the
  * plugin on success, so this is called only once the action is going to happen.
  */
-async function stepUpCode(code: string) {
+export async function stepUpCode(code: string) {
   const value = code.trim();
   if (!value) throw new Error("Enter a code from your authenticator app");
   const res = await verifyTwoFactorCode(

@@ -19,6 +19,8 @@ import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import {
   Tabs,
   TabsContent,
@@ -79,7 +81,7 @@ import type { UserTeamAccessDTO } from "@/lib/data/user-access";
  * Hold it anywhere else and switching tabs silently discards the edit.
  */
 
-const TABS = ["permissions", "activity"] as const;
+const TABS = ["permissions", "activity", "advanced"] as const;
 type TabId = (typeof TABS)[number];
 
 export function MemberDetailTabs({
@@ -91,6 +93,8 @@ export function MemberDetailTabs({
   isSelf,
   canManageAccount,
   activity,
+  viewerIsPrimaryOwner,
+  viewerTwoFactorEnabled,
 }: {
   member: MemberDTO;
   access: UserTeamAccessDTO;
@@ -103,11 +107,18 @@ export function MemberDetailTabs({
   canManageAccount: boolean;
   /** Their last few events in this team, newest first. */
   activity: Activity[];
+  /** The VIEWER holds the crown, so the team is theirs to hand over. */
+  viewerIsPrimaryOwner: boolean;
+  /** The VIEWER's own 2FA, which decides whether the transfer asks for a code. */
+  viewerTwoFactorEnabled: boolean;
 }) {
   const router = useRouter();
   const params = useSearchParams();
   const [pending, startTransition] = React.useTransition();
   const [confirmRemove, setConfirmRemove] = React.useState(false);
+  const [confirmTransfer, setConfirmTransfer] = React.useState(false);
+  const [transferPassword, setTransferPassword] = React.useState("");
+  const [transferCode, setTransferCode] = React.useState("");
 
   const tab = params.get("tab") as TabId;
   const active: TabId = TABS.includes(tab) ? tab : "permissions";
@@ -213,6 +224,11 @@ export function MemberDetailTabs({
   // Removal follows the same rule as editing: the locks above are exactly the
   // people `removeMember` refuses.
   const canRemove = !readOnly;
+  // Only the crown can hand the crown on, and only to somebody who already holds
+  // the owner rank — the same two rules the data layer enforces, so the card is
+  // never offered for a transfer that would be refused.
+  const canTransfer =
+    viewerIsPrimaryOwner && !isSelf && !member.isPrimaryOwner;
   // What the ticked nodes can actually carry. A team-wide permission stays in
   // the list (struck through) because widening their reach brings it back, but
   // a node grant refuses it outright — so the payload is bounded here rather
@@ -340,6 +356,7 @@ export function MemberDetailTabs({
             Role &amp; permissions
           </UnderlineTabsTrigger>
           <UnderlineTabsTrigger value="activity">Activity</UnderlineTabsTrigger>
+          <UnderlineTabsTrigger value="advanced">Advanced</UnderlineTabsTrigger>
         </UnderlineTabsList>
 
         {/* Everything team-scoped, one form, one Save. */}
@@ -428,29 +445,6 @@ export function MemberDetailTabs({
               </CardContent>
             </Card>
 
-            {canRemove && (
-              <Card className="border-destructive/40">
-                <CardContent className="flex flex-wrap items-center justify-between gap-3 pt-6">
-                  <div className="min-w-0">
-                    <p className="text-sm font-medium">Remove from team</p>
-                    <p className="mt-1 text-xs text-muted-foreground">
-                      They lose access to this team. Their account and other
-                      teams are untouched.
-                    </p>
-                  </div>
-                  <Button
-                    type="button"
-                    variant="outline"
-                    size="sm"
-                    className="border-destructive/40 text-destructive hover:bg-destructive/10 hover:text-destructive"
-                    onClick={() => setConfirmRemove(true)}
-                  >
-                    <UserMinus className="size-4" />
-                    Remove
-                  </Button>
-                </CardContent>
-              </Card>
-            )}
           </TabsContent>
 
           {!readOnly && onTeamTab && (
@@ -507,7 +501,132 @@ export function MemberDetailTabs({
             </Card>
           )}
         </TabsContent>
+        {/* The two actions that end a membership rather than shape it: they are
+            not edits, they have no Save, and one of them hands the team over. */}
+        <TabsContent value="advanced" className="space-y-4 pt-4">
+          {canTransfer && (
+            <Card>
+              <CardContent className="flex flex-wrap items-center justify-between gap-3 pt-6">
+                <div className="min-w-0">
+                  <p className="text-sm font-medium">Transfer team ownership</p>
+                  <p className="mt-1 text-xs text-muted-foreground">
+                    @{member.username} becomes the team&apos;s primary owner. You
+                    stay an owner, but only they can hand it back.
+                  </p>
+                </div>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setConfirmTransfer(true)}
+                >
+                  <Crown className="size-4" />
+                  Transfer
+                </Button>
+              </CardContent>
+            </Card>
+          )}
+
+          {canRemove && (
+            <Card className="border-destructive/40">
+              <CardContent className="flex flex-wrap items-center justify-between gap-3 pt-6">
+                <div className="min-w-0">
+                  <p className="text-sm font-medium">Remove from team</p>
+                  <p className="mt-1 text-xs text-muted-foreground">
+                    They lose access to this team. Their account and other teams
+                    are untouched.
+                  </p>
+                </div>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  className="border-destructive/40 text-destructive hover:bg-destructive/10 hover:text-destructive"
+                  onClick={() => setConfirmRemove(true)}
+                >
+                  <UserMinus className="size-4" />
+                  Remove
+                </Button>
+              </CardContent>
+            </Card>
+          )}
+
+          {!canTransfer && !canRemove && (
+            <EmptyState
+              icon={Lock}
+              title="Nothing to do here"
+              description={
+                isSelf
+                  ? "You can't remove yourself or hand the team to yourself. Another owner can."
+                  : "This membership can't be removed or handed the team."
+              }
+            />
+          )}
+        </TabsContent>
       </Tabs>
+
+      {canTransfer && (
+        <ConfirmAction
+          open={confirmTransfer}
+          onOpenChange={(v) => {
+            setConfirmTransfer(v);
+            if (!v) {
+              setTransferPassword("");
+              setTransferCode("");
+            }
+          }}
+          title={`Make @${member.username} the primary owner?`}
+          description="They become the one person nobody in this team can remove, demote or edit — and the only one who can hand it back. You stay an owner, and they can take that away."
+          confirmLabel="Transfer ownership"
+          confirmText={member.username}
+          successMessage="Team ownership transferred"
+          extra={
+            <div className="grid gap-4">
+              <div className="space-y-2">
+                <Label htmlFor="transfer-password">Your password</Label>
+                <Input
+                  id="transfer-password"
+                  type="password"
+                  autoComplete="current-password"
+                  value={transferPassword}
+                  onChange={(e) => setTransferPassword(e.target.value)}
+                />
+              </div>
+              {/* Only when the account has a second factor: asking everyone for
+                  a code they may not have is a dead end, not a guard. */}
+              {viewerTwoFactorEnabled && (
+                <div className="space-y-2">
+                  <Label htmlFor="transfer-code">
+                    Code from your authenticator app
+                  </Label>
+                  <Input
+                    id="transfer-code"
+                    inputMode="numeric"
+                    autoComplete="one-time-code"
+                    placeholder="123456"
+                    value={transferCode}
+                    onChange={(e) => setTransferCode(e.target.value)}
+                  />
+                </div>
+              )}
+            </div>
+          }
+          onConfirm={async () => {
+            const res = await gqlAction(
+              `mutation ($userId: String!, $password: String!, $code: String) {
+                transferTeamOwnership(userId: $userId, password: $password, code: $code)
+              }`,
+              {
+                userId: member.userId,
+                password: transferPassword,
+                code: transferCode || null,
+              },
+            );
+            if (res.ok) router.refresh();
+            return res;
+          }}
+        />
+      )}
 
       <ConfirmAction
         open={confirmRemove}
