@@ -53,7 +53,6 @@ export function ScopePicker({
   selection,
   onChange,
   disabled = false,
-  title = "Scope",
   info = "What this token can reach. Tick a team for all of it, a project or a folder for everything inside it, or single apps. Tick nothing and it reaches everything you can.",
   emptyNote = "You aren't in any team yet, so there is nothing to narrow this token to.",
   renderMeta,
@@ -70,8 +69,6 @@ export function ScopePicker({
    * limit", which is what ticking nothing already says.
    */
   teamPickable?: boolean;
-  /** The card heading. Defaults to the token wording. */
-  title?: string;
   /** The heading's tooltip. */
   info?: React.ReactNode;
   /** Shown instead of the tree when there is nothing to pick from. */
@@ -311,7 +308,7 @@ export function ScopePicker({
   return (
     <div className="space-y-3">
       <div className="flex items-center gap-1.5">
-        <h3 className="text-sm font-medium">{title}</h3>
+        <h3 className="text-sm font-medium">Scope</h3>
         <InfoTip content={info} />
         {tree.length > 0 && (
           <Button

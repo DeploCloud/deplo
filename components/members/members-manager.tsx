@@ -205,7 +205,7 @@ function MemberCard({
           >
             <Badge variant="outline" className="gap-1">
               <FolderTree className="size-3" />
-              Limited reach
+              Limited scope
             </Badge>
           </SimpleTooltip>
         )}

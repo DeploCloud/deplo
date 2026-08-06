@@ -26,6 +26,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
+import { Switch } from "@/components/ui/switch";
 import { FieldLabel, InfoTip } from "@/components/ui/info-tip";
 import { DeploMark } from "@/components/logo";
 import { gqlAction } from "@/lib/graphql-client";
@@ -39,9 +40,10 @@ import type { InstanceSettings } from "@/lib/data/instance-settings";
  * variables that only an SSH session could change:
  *
  *  1. The address Deplo hands out for itself (install commands, deploy hooks,
- *     invite links). Deplo cannot move its own DNS, so the honest thing to offer
- *     alongside the field is proof: the Check button asks the address whether it
- *     reaches this instance and reports what answered instead when it does not.
+ *     invite links), and whether it is served over https at all. Deplo cannot
+ *     move its own DNS, so the honest thing to offer alongside the field is
+ *     proof: the Check button asks the address whether it reaches this instance
+ *     and reports what answered instead when it does not.
  *  2. The account certificates are issued under, read from and written to each
  *     host's own proxy, and shown per host so a fleet that disagrees with itself
  *     says so rather than hiding behind one field.
@@ -55,9 +57,21 @@ type CertificateAccount = {
   serverName: string;
   email: string | null;
   unavailable: string | null;
+  customCertificates: number;
+  expiresInDays: number | null;
 };
 
-const ACCOUNT_FIELDS = "serverId serverName email unavailable";
+type PanelHttps = {
+  domain: string | null;
+  enabled: boolean;
+  provider: string | null;
+  unavailable: string | null;
+};
+
+const ACCOUNT_FIELDS =
+  "serverId serverName email unavailable customCertificates expiresInDays";
+
+const PANEL_HTTPS_FIELDS = "domain enabled provider unavailable";
 
 export function DeploSettingsPanel({ settings }: { settings: InstanceSettings }) {
   return (
@@ -232,8 +246,128 @@ function PanelAddressCard({ settings }: { settings: InstanceSettings }) {
             </p>
           )}
         </form>
+        <PanelHttpsRow />
       </CardContent>
     </Card>
+  );
+}
+
+/**
+ * How the panel itself is served, on the card about the panel's own address -
+ * because it is a fact about that address, not about the fleet's certificates
+ * below.
+ *
+ * The off switch is the one that matters: a Deplo on a domain that cannot get a
+ * certificate yet greets its first visitor with a browser warning, on a page
+ * nobody has logged into. Plain http is the way out of that, and it has to be
+ * reachable from the panel, because the alternative is an SSH session.
+ *
+ * Fetched after mount for the same reason the accounts are: it reads the live
+ * proxy config off the host, and the settings page must not be as slow as the
+ * sickest server it describes.
+ */
+function PanelHttpsRow() {
+  const [cert, setCert] = React.useState<PanelHttps | null>(null);
+  const [loading, setLoading] = React.useState(true);
+  const [confirming, setConfirming] = React.useState<boolean | null>(null);
+  const [pending, startTransition] = React.useTransition();
+
+  const load = React.useCallback(async () => {
+    const res = await gqlAction<{ panelHttps: PanelHttps }>(
+      `mutation PanelHttps { panelHttps { ${PANEL_HTTPS_FIELDS} } }`,
+    );
+    setLoading(false);
+    if (res.ok) setCert(res.data?.panelHttps ?? null);
+  }, []);
+
+  React.useEffect(() => {
+    // Opening the page IS the read: same scoped exemption as the accounts below.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    void load();
+  }, [load]);
+
+  function toggle(enabled: boolean) {
+    startTransition(async () => {
+      const res = await gqlAction<{ setPanelHttps: PanelHttps }>(
+        `mutation SetPanelHttps($enabled: Boolean!) {
+          setPanelHttps(enabled: $enabled) { ${PANEL_HTTPS_FIELDS} }
+        }`,
+        { enabled },
+      );
+      if (!res.ok) {
+        toast.error(res.error);
+        return;
+      }
+      setCert(res.data?.setPanelHttps ?? null);
+      setConfirming(null);
+      toast.success(
+        enabled
+          ? "The panel is now served over https"
+          : "The panel is now served over http",
+      );
+    });
+  }
+
+  if (loading) return <div className="mt-4 h-14 animate-pulse rounded-lg bg-muted/50" />;
+  if (!cert) return null;
+
+  return (
+    <>
+      <div className="mt-4 flex flex-wrap items-center justify-between gap-x-4 gap-y-2 rounded-lg border border-border p-3">
+        <div className="min-w-0">
+          <div className="flex items-center gap-2 text-sm font-medium">
+            <ShieldCheck className="size-4 text-muted-foreground" />
+            HTTPS
+            <InfoTip content="Turn this off when the address cannot get a certificate: it does not resolve publicly yet, port 80 is closed, or the server is on an internal network. You can turn it back on once it can." />
+          </div>
+          <p className="mt-1 text-sm text-muted-foreground">
+            {cert.unavailable
+              ? cert.unavailable
+              : cert.enabled
+                ? `The panel is served at https://${cert.domain}, with a certificate Deplo renews.`
+                : `The panel is served at http://${cert.domain}, with no certificate.`}
+          </p>
+        </div>
+        <Switch
+          checked={cert.enabled}
+          disabled={pending || !!cert.unavailable}
+          onCheckedChange={setConfirming}
+          aria-label="Serve the panel over HTTPS"
+        />
+      </div>
+
+      {/* A confirm, like every other action that interrupts something: applying
+          this recreates the proxy on that host, which takes this page down with
+          it for a few seconds. */}
+      <Dialog open={confirming !== null} onOpenChange={(o) => !o && setConfirming(null)}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>
+              {confirming
+                ? `Serve the panel at https://${cert.domain}?`
+                : `Serve the panel at http://${cert.domain}?`}
+            </DialogTitle>
+            <DialogDescription>
+              {confirming
+                ? "Deplo requests a certificate and renews it. The address has to reach this server from the internet for that to work."
+                : "Anyone signing in sends their password unencrypted, so use this only until the address can get a certificate."}{" "}
+              Deplo restarts the proxy on this server to apply it, so sites there,
+              this page included, are unreachable for a few seconds. Then continue
+              on {confirming ? "https" : "http"}://{cert.domain} and sign in again:
+              the session cookie changes with the address.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setConfirming(null)} disabled={pending}>
+              Cancel
+            </Button>
+            <Button onClick={() => toggle(confirming!)} disabled={pending}>
+              {pending ? "Applying" : confirming ? "Turn HTTPS on" : "Turn HTTPS off"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    </>
   );
 }
 
@@ -378,6 +512,11 @@ function CertificatesCard() {
                       <span className="truncate">{account.serverName}</span>
                     </span>
                     <span className="flex items-center gap-2">
+                      {/* Nothing renews a certificate someone installed by hand,
+                          and the tab that holds it is not one anybody opens on a
+                          normal day. This is where certificates are thought about,
+                          so the expiry says so here. */}
+                      <CertificateExpiry account={account} />
                       {account.unavailable ? (
                         <span className="text-xs text-muted-foreground">{account.unavailable}</span>
                       ) : (
@@ -434,6 +573,28 @@ function CertificatesCard() {
         </DialogContent>
       </Dialog>
     </>
+  );
+}
+
+/**
+ * When this host's own certificates run out.
+ *
+ * Only ever shown while it MATTERS: a certificate the operator installed by hand
+ * is renewed by hand too, so the three weeks before it lapses are the whole
+ * warning, and there is nothing to say in the eleven months before that.
+ */
+function CertificateExpiry({ account }: { account: CertificateAccount }) {
+  const days = account.expiresInDays;
+  if (account.customCertificates === 0 || days === null || days > 21) return null;
+  return (
+    <Badge variant="destructive" className="gap-1">
+      <TriangleAlert className="size-3" />
+      {days < 0
+        ? "Certificate expired"
+        : days === 0
+          ? "Certificate expires today"
+          : `Certificate expires in ${days} day${days === 1 ? "" : "s"}`}
+    </Badge>
   );
 }
 

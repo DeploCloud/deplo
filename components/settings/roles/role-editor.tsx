@@ -267,7 +267,6 @@ export function RoleEditor({
               onChange={setScope}
               disabled={readOnly}
               teamPickable={false}
-              title="Scope"
               info="Where this role can work. Everything is ticked to begin with - untick what its holders should not reach."
               emptyNote="This team has nothing to limit a role to yet."
             />

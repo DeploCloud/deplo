@@ -369,7 +369,6 @@ export function MemberDetailTabs({
                   onChange={setSelection}
                   disabled={readOnly || !reachEditable}
                   teamPickable={false}
-                  title="Where they can work"
                   info={
                     reachEditable
                       ? "Everywhere their role reaches is ticked. Untick what this one person shouldn't touch, or tick something extra to let them in. Everything under a ticked node follows it."
@@ -386,7 +385,6 @@ export function MemberDetailTabs({
                   capabilities={caps}
                   onChange={setCaps}
                   disabled={readOnly}
-                  title="What they can do"
                   hint="Filled in from their role. Untick to take something away from this one person, tick to give them extra - the role, and everyone else holding it, stays as it is."
                   muted={
                     reachLimited
@@ -403,7 +401,7 @@ export function MemberDetailTabs({
                 {nothingAllowed && (
                   <p className="text-xs text-destructive">
                     {reachLimited
-                      ? "Pick a permission that works where they can work: the ones ticked only mean something team-wide, and they no longer reach the whole team."
+                      ? "Pick a permission that works inside their scope: the ones ticked only mean something team-wide, and they no longer reach the whole team."
                       : "Pick at least one permission. Someone who may only look at this team is a Viewer — give them that role instead."}
                   </p>
                 )}
