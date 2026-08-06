@@ -568,6 +568,33 @@ test("the trail and the shared library are cut to what they reach", async () => 
   );
 });
 
+test("a backup schedule is reachable only through the app it belongs to", async () => {
+  const { seedBackup, seedDatabase, seedS3 } = await import("./backup-test-helpers");
+  const { listBackups, toggleBackup } = await import("./backups");
+  await seedDatabase(db, { id: "db_main", name: "main" });
+  await seedS3(db, { id: "s3_main" });
+  await seedBackup(db, {
+    id: "bk_out", targetKind: "app", appId: APP_OUT_PRC, destinationId: "s3_main",
+  });
+  await seedBackup(db, { id: "bk_db", databaseId: "db_main", destinationId: "s3_main" });
+
+  await scopeTo({ projects: [PRC_IN] });
+  await pg.exec(
+    `insert into membership_capabilities (membership_id, capability)
+     select id, 'manage_backups' from memberships where user_id = '${DEV}'`,
+  );
+
+  assert.deepEqual(
+    (await as(DEV, () => listBackups())).map((b) => b.id),
+    [],
+    "the schedules of an app they can't reach, and of a database, are not theirs",
+  );
+  // `manage_backups` survives the clamp because it means something on an app,
+  // so the team-wide capability check alone would have let this through.
+  await assert.rejects(() => as(DEV, () => toggleBackup("bk_db", false)), /not found/i);
+  await assert.rejects(() => as(DEV, () => toggleBackup("bk_out", false)), /not found/i);
+});
+
 test("nothing that belongs to the whole team is reachable through a point lookup", async () => {
   const { seedDatabase } = await import("./backup-test-helpers");
   await seedDatabase(db, { id: "db_main", name: "main" });

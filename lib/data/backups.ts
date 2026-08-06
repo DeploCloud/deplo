@@ -20,13 +20,14 @@ import {
 import { getCurrentUser } from "../auth";
 import { newId, nowIso } from "../ids";
 import {
+  reachesWholeTeam,
   requireActiveTeamId,
   requireCapability,
   requireMembership,
 } from "../membership";
 import { recordActivity } from "./activity";
 import { narrowedScope } from "../auth/request-context";
-import { requireAppCapability } from "./node-access";
+import { appCapabilitiesForTeam, requireAppCapability } from "./node-access";
 import {
   loadAppGraph,
   loadTeamApp,
@@ -161,21 +162,39 @@ export async function listBackups(): Promise<BackupDTO[]> {
 async function filterBackupsToScope<T extends { targetKind: BackupTargetKind; appId: string | null }>(
   rows: T[],
 ): Promise<T[]> {
-  const scope = narrowedScope();
-  if (!scope) return rows;
+  // Either principal: a narrowed token and a member on a limited role reach the
+  // same part of the team, so they see the same schedules — and a DATABASE
+  // schedule belongs to neither, which is why the filter drops every row whose
+  // target is not an app they reach.
+  if (await reachesWholeTeam()) return rows;
   const appIds = [
     ...new Set(rows.map((r) => r.appId).filter((id): id is string => !!id)),
   ];
   if (appIds.length === 0) return [];
-  const inScope = new Set(
+  // Reach per app, resolved the one way a person's reach is resolved.
+  const reach = await appCapabilitiesForTeam(
+    (await requireMembership()).teamId,
     (
       await getDb()
-        .select({ id: appsTable.id })
+        .select({
+          id: appsTable.id,
+          folderId: appsTable.folderId,
+          projectId: appsTable.projectId,
+          environmentId: appsTable.environmentId,
+        })
         .from(appsTable)
         .where(and(inArray(appsTable.id, appIds), appScopeWhere()))
-    ).map((r) => r.id),
+    ).map((a) => ({
+      id: a.id,
+      folderId: a.folderId ?? null,
+      projectId: a.projectId ?? null,
+      environmentId: a.environmentId ?? null,
+    })),
   );
-  return rows.filter((r) => r.targetKind === "app" && r.appId && inScope.has(r.appId));
+  return rows.filter(
+    (r) =>
+      r.targetKind === "app" && r.appId && (reach.get(r.appId)?.length ?? 0) > 0,
+  );
 }
 
 /**
@@ -189,7 +208,7 @@ async function backupTargetInScope(
   targetId: string,
   teamId: string,
 ): Promise<boolean> {
-  if (!narrowedScope()) return true;
+  if (await reachesWholeTeam()) return true;
   if (kind !== "app" || !targetId) return false;
   return appInTeam(targetId, teamId);
 }
@@ -704,13 +723,13 @@ async function requireBackupCapability(
     await requireAppCapability(target.appId, cap);
     return;
   }
-  // A database belongs to no Project, so a project-scoped token reaches none of
-  // them — and both capabilities here survive the project clamp (they mean
-  // something on an app), so the team-wide `requireCapability` below would let
-  // one through. NOT FOUND rather than a scope error, the same answer
+  // A database belongs to no Project, so a principal who reaches only part of
+  // the team reaches none of them — and both capabilities here survive the
+  // clamp (they mean something on an app), so the team-wide `requireCapability`
+  // below would let one through. NOT FOUND rather than a scope error, the same answer
   // {@link deleteBackupArtifacts} gives: a scope must never become an oracle for
   // which backup ids exist.
-  if (narrowedScope()) throw new Error("Not found");
+  if (!(await reachesWholeTeam())) throw new Error("Not found");
   await requireCapability(cap);
 }
 
