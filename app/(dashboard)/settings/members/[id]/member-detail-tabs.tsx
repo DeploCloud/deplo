@@ -386,6 +386,25 @@ export function MemberDetailTabs({
                       : `Set by their role: ${role?.name} is limited to specific environments, which can only be changed on the role.`
                   }
                   emptyNote="This team has nothing to give access to yet."
+                  // The permissions they hold need a whole team and they have
+                  // part of one, so nothing they hold does anything. Said HERE
+                  // because ticking the team is the fix an admin usually wants.
+                  notice={
+                    nothingAllowed && reachLimited ? (
+                      <>
+                        <p className="font-medium">
+                          Nothing they can do right now
+                        </p>
+                        <p className="mt-1">
+                          Permissions like Manage members work on a whole team,
+                          never on a single project or app - and this person has
+                          only the parts ticked below. Give them the whole team
+                          with Select all, or tick a permission that works on an
+                          app, such as Deploy apps.
+                        </p>
+                      </>
+                    ) : null
+                  }
                 />
               </CardContent>
             </Card>
@@ -409,11 +428,14 @@ export function MemberDetailTabs({
                       : undefined
                   }
                 />
-                {nothingAllowed && (
+                {/* The other half of "nothing allowed" — an empty list with no
+                    reach to explain it — stays here, on the list it is about.
+                    Its twin lives in the Access card, which is where it gets
+                    fixed. */}
+                {nothingAllowed && !reachLimited && (
                   <p className="text-xs text-destructive">
-                    {reachLimited
-                      ? "Everything ticked works only on a whole team, and they reach part of one. Tick a permission that works on a project, a folder or an app, or give them the whole team above."
-                      : "Pick at least one permission. Someone who may only look at this team is a Viewer — give them that role instead."}
+                    Pick at least one permission. Someone who may only look at
+                    this team is a Viewer — give them that role instead.
                   </p>
                 )}
               </CardContent>
