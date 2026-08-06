@@ -1,17 +1,15 @@
 import { getCurrentUser } from "@/lib/auth";
 import { hasCapability, isInstanceAdmin } from "@/lib/membership";
 import { listMembers } from "@/lib/data/members";
-import { listRoles } from "@/lib/data/roles";
 import { PageHeader } from "@/components/shared/page-header";
 import { MembersManager } from "@/components/members/members-manager";
 
 export const metadata = { title: "Settings · Members" };
 
 export default async function MembersPage() {
-  const [user, members, roles, canManage, isAdmin] = await Promise.all([
+  const [user, members, canManage, isAdmin] = await Promise.all([
     getCurrentUser(),
     listMembers(),
-    listRoles(),
     hasCapability("manage_members"),
     isInstanceAdmin(),
   ]);
@@ -24,7 +22,6 @@ export default async function MembersPage() {
       />
       <MembersManager
         members={members}
-        roles={roles}
         currentUserId={user?.id ?? ""}
         canManage={canManage}
         isAdmin={isAdmin}

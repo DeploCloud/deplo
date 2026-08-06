@@ -274,11 +274,38 @@ export async function listUserAccessTree(
   return buildScopeTree(await teamsForUser(userId), { asCaller: !unfiltered });
 }
 
+/**
+ * One member's access in the ACTIVE team, for the team-side member page.
+ *
+ * Gated on `manage_members` rather than on membership, unlike the roster: the
+ * node list names folders, and a folder is private to its owner and grantees
+ * (ADR-0016). Rendering a teammate's access read-only to everybody would hand
+ * every member the NAME of every private folder anyone was ever shared into,
+ * which is exactly what the privacy rule withholds.
+ */
+export async function getMemberAccess(
+  userId: string,
+): Promise<UserTeamAccessDTO | null> {
+  const { teamId } = await requireCapability("manage_members");
+  return (await loadUserAccess(userId, teamId))[0] ?? null;
+}
+
+/** The roles assignable in the ACTIVE team. `manage_members`. */
+export async function listMemberRoleOptions(): Promise<TeamRoleOption[]> {
+  const { teamId } = await requireCapability("manage_members");
+  return loadTeamRoleOptions(teamId);
+}
+
 /** The roles assignable in one team, for the per-team picker. Instance admin only. */
 export async function listTeamRoleOptions(
   teamId: string,
 ): Promise<TeamRoleOption[]> {
   await requireInstanceAdmin();
+  return loadTeamRoleOptions(teamId);
+}
+
+/** The same list with no gate of its own, for a caller already gated. */
+async function loadTeamRoleOptions(teamId: string): Promise<TeamRoleOption[]> {
   const db = getDb();
   await ensureTeamRoles(db, teamId);
   const rows = await db
