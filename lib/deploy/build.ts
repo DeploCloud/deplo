@@ -33,7 +33,6 @@ import {
 } from "../data/deployment-logs";
 import { deploymentToRow } from "../data/app-graph-rows";
 import { ensureNetwork } from "../infra/docker";
-import { buildImage } from "./builders";
 import { extractArchive } from "./upload";
 import {
   detectTreeFavicon,
@@ -901,52 +900,6 @@ export async function runDeploymentGuarded(depId: string): Promise<void> {
 }
 
 /**
- * Build an image from a materialised source tree: resolve rootDirectory the one
- * shared way ({@link resolveBuildDir}) and dispatch to the selected build method.
- * The git / upload arms all funnel through here, so the
- * rootDirectory containment + the buildImage call live in exactly one place.
- */
-async function buildImageFromTree(opts: {
-  depId: string;
-  project: { id: string; build: Parameters<typeof normalizeBuildConfig>[0] };
-  slug: string;
-  workDir: string;
-  root: string;
-  imageRef: string;
-  /** Hard-fail on an explicit-but-missing rootDirectory (git); upload doesn't. */
-  failOnMissing: boolean;
-  notFoundMessage?: string;
-  /**
-   * When set, resolve rootDirectory but DO NOT build locally — the agent will
-   * build from the returned `buildDir` instead (Part A: the build moves
-   * agent-side). The rootDirectory containment still runs here, in one place.
-   */
-  skipBuild?: boolean;
-}): Promise<{ buildDir: string }> {
-  const { depId, project, slug, workDir, root, imageRef } = opts;
-  const buildDir = await resolveBuildDir({
-    root,
-    rootDirectory: project.build.rootDirectory,
-    failOnMissing: opts.failOnMissing,
-    notFoundMessage: opts.notFoundMessage,
-  });
-  if (opts.skipBuild) return { buildDir };
-  // Dispatch to the selected build method (Dockerfile / Nixpacks / Railpack /
-  // Heroku|Paketo buildpacks / Static). Each produces imageRef in the local
-  // store with the deplo.* labels, listening on build.port.
-  await buildImage({
-    build: normalizeBuildConfig(project.build),
-    workDir,
-    buildDir,
-    slug,
-    appId: project.id,
-    imageRef,
-    log: (level, text) => log(depId, level, text),
-  });
-  return { buildDir };
-}
-
-/**
  * Render the single-image (or compose) stack and stream it through the OWNING
  * agent. Returns "agent" when the agent fully built + ran the deploy, "failed"
  * when it reported a build failure OR was unreachable — there is no in-process
@@ -1232,15 +1185,16 @@ async function runDeployment(depId: string): Promise<void> {
       workDir: string;
       root: string;
       imageRef: string;
+      /** Hard-fail on an explicit-but-missing rootDirectory (git); upload doesn't. */
       failOnMissing: boolean;
       notFoundMessage?: string;
     }): Promise<void> => {
-      const { buildDir } = await buildImageFromTree({
-        depId,
-        project,
-        slug,
-        ...treeOpts,
-        skipBuild: true, // the agent builds; we only resolve the dir
+      // Only the rootDirectory containment happens here — the agent does the build.
+      const buildDir = await resolveBuildDir({
+        root: treeOpts.root,
+        rootDirectory: project.build.rootDirectory,
+        failOnMissing: treeOpts.failOnMissing,
+        notFoundMessage: treeOpts.notFoundMessage,
       });
       const { composeYaml, env } = await renderStack(treeOpts.imageRef);
       const { outcome } = await tryAgent({
