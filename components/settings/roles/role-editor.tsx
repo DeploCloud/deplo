@@ -71,6 +71,7 @@ export function RoleEditor({
       capabilities: role?.capabilities ?? basedOn?.capabilities ?? ["view" as Capability],
       requireTwoFactor: role?.requireTwoFactor ?? basedOn?.requireTwoFactor ?? false,
       scope: toSelection(role?.scope ?? basedOn?.scope ?? null),
+      limited: (role?.scope ?? basedOn?.scope ?? null) != null,
     }),
     [role, basedOn],
   );
@@ -85,12 +86,18 @@ export function RoleEditor({
   const readOnly = locked || !canManage;
   const granted = caps.filter((c) => c !== "view").length;
   const sensitive = caps.filter((c) => CAPABILITY_META[c].sensitive).length;
-  const scoped =
+  // Three states, not two. `limited` is the role's own answer (the DTO's scope
+  // is null or it is not), NOT a count of ticks: a scope whose every node was
+  // deleted still limits the role — it reaches nothing — and reading it as
+  // "unrestricted" would widen the role on the next save, at the exact moment
+  // somebody deleted something.
+  const [limited, setLimited] = React.useState(initial.limited);
+  const ticked =
     scope.projectIds.length +
-      (scope.environmentIds?.length ?? 0) +
-      scope.folderIds.length +
-      scope.appIds.length >
-    0;
+    (scope.environmentIds?.length ?? 0) +
+    scope.folderIds.length +
+    scope.appIds.length;
+  const scoped = limited || ticked > 0;
   // What the scope silences: everything a node cannot carry. The set is the
   // server's own (`NODE_GRANTABLE_CAPABILITIES`), so the picker and the save
   // cannot disagree about which ticks still mean something.
@@ -105,6 +112,7 @@ export function RoleEditor({
     description !== initial.description ||
     twoFactor !== initial.requireTwoFactor ||
     !sameCapabilities(caps, initial.capabilities) ||
+    limited !== initial.limited ||
     !sameScope(scope, initial.scope);
 
   function submit(e: React.FormEvent) {
@@ -120,7 +128,7 @@ export function RoleEditor({
               description,
               capabilities: caps,
               requireTwoFactor: twoFactor,
-              scope: scoped ? scope : null,
+              scope: scoped ? scopeInput(scope) : null,
             },
           },
           (d) => d.createRole,
@@ -145,7 +153,7 @@ export function RoleEditor({
             requireTwoFactor: twoFactor,
             // Two fields, because "absent" has to keep meaning "leave it alone"
             // for every client that predates the scope.
-            scope: scoped ? scope : undefined,
+            scope: scoped ? scopeInput(scope) : undefined,
             clearScope: !scoped,
           },
         },
@@ -244,7 +252,18 @@ export function RoleEditor({
             <ScopePicker
               tree={tree}
               selection={scope}
-              onChange={setScope}
+              onChange={(next) => {
+                setScope(next);
+                // Ticking limits; unticking the LAST node is the admin saying
+                // "unrestricted", which is the one act that clears the scope.
+                setLimited(
+                  next.projectIds.length +
+                    (next.environmentIds?.length ?? 0) +
+                    next.folderIds.length +
+                    next.appIds.length >
+                    0,
+                );
+              }}
               disabled={readOnly}
               teamPickable={false}
               title="Scope"
@@ -252,7 +271,15 @@ export function RoleEditor({
               emptyNote="This team has nothing to limit a role to yet."
               footer={
                 <p className="text-xs text-muted-foreground">
-                  {scoped ? (
+                  {scoped && ticked === 0 ? (
+                    <>
+                      <span className="font-medium text-foreground">
+                        Reaches nothing.
+                      </span>{" "}
+                      Everything this role was limited to has been deleted. Tick
+                      something, or untick to give it the whole team.
+                    </>
+                  ) : scoped ? (
                     <>
                       <span className="font-medium text-foreground">
                         Limited to {describeScope(scope)}.
@@ -331,7 +358,11 @@ export function RoleEditor({
               <div className="flex items-center gap-3">
                 <dt className="shrink-0 text-muted-foreground">Scope</dt>
                 <dd className="min-w-0 flex-1 truncate text-right font-medium">
-                  {scoped ? describeScope(scope) : "Whole team"}
+                  {!scoped
+                    ? "Whole team"
+                    : ticked === 0
+                      ? "Nothing"
+                      : describeScope(scope)}
                 </dd>
               </div>
               <div className="flex items-center gap-3">
@@ -515,6 +546,22 @@ function toSelection(
     environmentIds: scope?.environmentIds ?? [],
     folderIds: scope?.folderIds ?? [],
     appIds: scope?.appIds ?? [],
+  };
+}
+
+/**
+ * The four fields `RoleScopeInput` defines, and only those.
+ *
+ * The picker's selection also carries `teamIds`, which the input does not have —
+ * and GraphQL rejects an unknown field on an input object outright, so sending
+ * the whole selection made saving a scope fail every single time.
+ */
+function scopeInput(scope: ScopeSelection) {
+  return {
+    projectIds: scope.projectIds,
+    environmentIds: scope.environmentIds ?? [],
+    folderIds: scope.folderIds,
+    appIds: scope.appIds,
   };
 }
 

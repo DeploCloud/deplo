@@ -707,6 +707,12 @@ async function appGate(appId: string): Promise<{
       teamId: appsTable.teamId,
       folderId: appsTable.folderId,
       projectId: appsTable.projectId,
+      // An app lives in exactly one place, and for an app inside a project that
+      // place is its ENVIRONMENT. Omitting it here refused an
+      // environment-scoped role every app it actually reaches, through every
+      // gate that routes here — which is every app-shaped mutation and every
+      // REST edge.
+      environmentId: appsTable.environmentId,
     })
     .from(appsTable)
     .where(eq(appsTable.id, appId))
@@ -720,7 +726,12 @@ async function appGate(appId: string): Promise<{
     return null;
   }
   const caps = await appCapabilitiesForTeam(ctx.teamId, [
-    { id: appId, folderId: app.folderId ?? null, projectId: app.projectId ?? null },
+    {
+      id: appId,
+      folderId: app.folderId ?? null,
+      projectId: app.projectId ?? null,
+      environmentId: app.environmentId ?? null,
+    },
   ]);
   return {
     ctx,

@@ -237,6 +237,25 @@ test("naming one app reaches that app alone", async () => {
   assert.deepEqual((await as(DEV, () => listApps())).map((a) => a.id), [APP_TOP]);
 });
 
+test("naming one app keeps the project that holds it navigable", async () => {
+  await scopeTo({ apps: [APP_IN_PRC] });
+
+  // The app resolves…
+  assert.ok(await reaches({ kind: "app", id: APP_IN_PRC }));
+  // …and so does its container, or the Overview drill-in has nowhere to start
+  // and the holder sees an empty dashboard with an app they cannot navigate to.
+  assert.ok(
+    await reaches({ kind: "project", id: PRC_IN }),
+    "the project holding the named app was not navigable",
+  );
+  assert.equal(await reaches({ kind: "project", id: PRC_OUT }), false);
+  const { listProjects } = await import("./projects");
+  assert.deepEqual(
+    (await as(DEV, () => listProjects())).map((p) => p.id),
+    [PRC_IN],
+  );
+});
+
 test("an environment scope reaches one environment of a project", async () => {
   const { updateRole } = await import("./roles");
   const envs = await import("../db/schema/control-plane");
@@ -292,6 +311,15 @@ test("an environment scope reaches one environment of a project", async () => {
     await reaches({ kind: "app", id: "prj_prod" }),
     false,
     "the other environment of the same project is out",
+  );
+  // …and through the GATE every app-shaped mutation and every REST edge uses,
+  // not only through the resolver. `appGate` builds its own placement, so an
+  // omitted `environmentId` there refused the holder every app they reach.
+  const { requireAppCapability } = await import("./node-access");
+  await as(DEV, () => requireAppCapability("prj_stg", "deploy_apps"));
+  await assert.rejects(
+    () => as(DEV, () => requireAppCapability("prj_prod", "deploy_apps")),
+    /App not found/,
   );
   // The project container stays navigable — you cannot drill into staging
   // without seeing the project that holds it.

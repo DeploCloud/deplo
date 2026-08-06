@@ -400,7 +400,16 @@ export function ScopePicker({
                                       environment the primary axis of a project,
                                       and folders are their siblings, never
                                       their children. */}
-                                  {project.environments.map((env) => {
+                                  {/* Only a consumer whose selection carries
+                                      the field can express an environment: the
+                                      token scope and the per-node grant have
+                                      nowhere to put one, and an offered tick
+                                      that the save drops is worse than no tick.
+                                      The optional field IS the discriminator. */}
+                                  {(selection.environmentIds === undefined
+                                    ? []
+                                    : project.environments
+                                  ).map((env) => {
                                     const envOn =
                                       projOn || environments.has(env.id);
                                     const envExpanded = isOpen(env.id);
@@ -445,7 +454,19 @@ export function ScopePicker({
                                   {project.folders.map((f) =>
                                     renderFolder(f, 2, projOn),
                                   )}
-                                  {project.apps.map((app) => (
+                                  {/* When environments are not expressible the
+                                      rows above are not drawn, so the apps that
+                                      live in them are folded in here — hiding
+                                      the level must never hide its contents. */}
+                                  {(selection.environmentIds === undefined
+                                    ? [
+                                        ...project.environments.flatMap(
+                                          (e) => e.apps,
+                                        ),
+                                        ...project.apps,
+                                      ]
+                                    : project.apps
+                                  ).map((app) => (
                                     <Row
                                       key={app.id}
                                       depth={2}

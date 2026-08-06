@@ -97,9 +97,13 @@ export function MemberDetailTabs({
   const initial = React.useMemo(
     () => ({
       roleId: access.roleId,
-      granular: access.granular,
+      // What they HAVE, not the stored mode flag. A member can hold grants with
+      // `granular` false — the folder Share dialog writes the rows and never
+      // touches the flag — and seeding from the flag meant an admin who only
+      // changed the role saved `grants: []`, silently deleting every share.
+      granular: access.granular || access.nodes.length > 0,
       selection: toSelection(access.nodes),
-      caps: nodeCaps(access.nodes),
+      groups: groupNodes(access.nodes),
     }),
     [access],
   );
@@ -109,7 +113,19 @@ export function MemberDetailTabs({
   const [selection, setSelection] = React.useState<ScopeSelection>(
     initial.selection,
   );
-  const [caps, setCaps] = React.useState<Capability[]>(initial.caps);
+  // One entry per distinct capability set the member already holds. Flattening
+  // them to the first node's set is only correct when the admin authored all of
+  // them in this session; for anyone with two shares at different levels it
+  // silently levelled the lot.
+  const [groups, setGroups] = React.useState<NodeGroup[]>(initial.groups);
+  // The picker edits the FIRST group, which is the only one this page authors.
+  const caps = groups[0]?.capabilities ?? ["view"];
+  const setCaps = (next: Capability[]) =>
+    setGroups((prev) =>
+      prev.length === 0
+        ? [{ capabilities: next, nodeIds: [] }]
+        : [{ ...prev[0], capabilities: next }, ...prev.slice(1)],
+    );
 
   const ticked =
     selection.projectIds.length +
@@ -120,7 +136,7 @@ export function MemberDetailTabs({
     granular !== initial.granular ||
     (granular &&
       (!sameSelection(selection, initial.selection) ||
-        !sameCapabilities(caps, initial.caps)));
+        !sameCapabilities(caps, initial.groups[0]?.capabilities ?? ["view"])));
 
   // The founder's crown is immutable to everyone, and nobody edits their own
   // access. Both are refused server-side; saying so here spares a toast that
@@ -148,17 +164,7 @@ export function MemberDetailTabs({
             // this page lets an admin say. Different sets per node are the
             // folder Share dialog's job, and this page shows those rather than
             // rewriting them.
-            grants:
-              granular && ticked > 0
-                ? [
-                    {
-                      projectIds: selection.projectIds,
-                      folderIds: selection.folderIds,
-                      appIds: selection.appIds,
-                      capabilities: caps,
-                    },
-                  ]
-                : [],
+            grants: granular ? buildGrants(selection, groups) : [],
           },
         },
       );
@@ -448,8 +454,67 @@ function toSelection(
  * folder Share dialog, which is the surface that can say different things in
  * different places.
  */
-function nodeCaps(nodes: UserTeamAccessDTO["nodes"]): Capability[] {
-  return nodes[0]?.capabilities ?? ["view"];
+export interface NodeGroup {
+  capabilities: Capability[];
+  nodeIds: string[];
+}
+
+/**
+ * The member's existing grants, grouped by the set they carry. Two shares at
+ * different levels are two groups, and they stay two through a save.
+ */
+export function groupNodes(nodes: UserTeamAccessDTO["nodes"]): NodeGroup[] {
+  const by = new Map<string, NodeGroup>();
+  for (const n of nodes) {
+    const key = [...n.capabilities].sort().join(",");
+    const g = by.get(key) ?? { capabilities: n.capabilities, nodeIds: [] };
+    g.nodeIds.push(n.nodeId);
+    by.set(key, g);
+  }
+  return [...by.values()];
+}
+
+/**
+ * The payload: every ticked node, carrying the set it already had, plus the
+ * picker's set for the ones the admin just added.
+ *
+ * The write is a whole-set replace, so a node left out is a node revoked — which
+ * is why this rebuilds from the CURRENT selection rather than from the groups
+ * alone, and why a node whose group is gone falls back to what the picker shows.
+ */
+export function buildGrants(
+  selection: ScopeSelection,
+  groups: NodeGroup[],
+): {
+  projectIds: string[];
+  folderIds: string[];
+  appIds: string[];
+  capabilities: Capability[];
+}[] {
+  const setOf = new Map(groups.flatMap((g) => g.nodeIds.map((id) => [id, g])));
+  const authored = groups[0]?.capabilities ?? ["view"];
+  const kinds: [UserTeamAccessDTO["nodes"][number]["kind"], string[]][] = [
+    ["project", selection.projectIds],
+    ["folder", selection.folderIds],
+    ["app", selection.appIds],
+  ];
+  const out = new Map<
+    string,
+    { projectIds: string[]; folderIds: string[]; appIds: string[]; capabilities: Capability[] }
+  >();
+  for (const [kind, ids] of kinds) {
+    for (const id of ids) {
+      const caps = setOf.get(id)?.capabilities ?? authored;
+      const key = [...caps].sort().join(",");
+      const entry =
+        out.get(key) ?? { projectIds: [], folderIds: [], appIds: [], capabilities: caps };
+      if (kind === "project") entry.projectIds.push(id);
+      else if (kind === "folder") entry.folderIds.push(id);
+      else entry.appIds.push(id);
+      out.set(key, entry);
+    }
+  }
+  return [...out.values()];
 }
 
 function sameSelection(a: ScopeSelection, b: ScopeSelection): boolean {

@@ -5,6 +5,7 @@ import { and, eq, inArray } from "drizzle-orm";
 
 import { getDb } from "../db/client";
 import {
+  apps as appsTable,
   environments as environmentsTable,
   folders as foldersTable,
   memberships as membershipsTable,
@@ -184,8 +185,12 @@ export async function loadRoleScope(
       .innerJoin(foldersTable, eq(foldersTable.id, teamRoleScopeFolders.folderId))
       .where(eq(teamRoleScopeFolders.roleId, roleId)),
     db
-      .select({ id: teamRoleScopeApps.appId })
+      .select({
+        id: teamRoleScopeApps.appId,
+        projectId: appsTable.projectId,
+      })
       .from(teamRoleScopeApps)
+      .innerJoin(appsTable, eq(appsTable.id, teamRoleScopeApps.appId))
       .where(eq(teamRoleScopeApps.roleId, roleId)),
   ]);
 
@@ -203,10 +208,13 @@ export async function loadRoleScope(
     appProjectIds: [
       ...new Set(
         [
-          // A named environment makes its project navigable, exactly as a named
-          // folder does: you cannot drill into staging without seeing the
-          // project that holds it.
+          // A named node makes its project navigable, whatever kind it is: you
+          // cannot drill into staging, or into one app, without seeing the
+          // project that holds it. Leaving the APPS out of this list is what
+          // showed a role scoped to single apps an empty Overview — the apps
+          // resolved, and the container they live in did not.
           ...envRows.map((r) => r.projectId),
+          ...appRows.map((r) => r.projectId),
           ...folderRows.map((r) => r.projectId),
           ...folderProjectIds,
         ].filter((id): id is string => id != null),

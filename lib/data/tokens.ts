@@ -480,6 +480,9 @@ async function visibleNodes(
     teamId: string;
     projectId: string | null;
     folderId: string | null;
+    // The environment is where an app inside a project actually lives, so a
+    // placement without it is refused by an environment-shaped scope.
+    environmentId?: string | null;
   }[],
 ): Promise<{ folders: Set<string>; apps: Set<string> }> {
   const folders = new Set<string>();
@@ -498,6 +501,7 @@ async function visibleNodes(
             id: a.id,
             folderId: a.folderId ?? null,
             projectId: a.projectId ?? null,
+            environmentId: a.environmentId ?? null,
           })),
       );
       for (const [id, caps] of reach) if (caps.length > 0) apps.add(id);
