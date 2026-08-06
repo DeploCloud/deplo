@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import type { PGlite } from "@electric-sql/pglite";
 
 import { makeTestDb, type TestDb } from "../db/test-harness";
-import { __setTestDb, __resetTestDb } from "../db/client";
+import { __setTestDb, __resetTestDb, getDb } from "../db/client";
 import {
   folderGrants as folderGrantsTable,
   folders as foldersTable,
@@ -289,7 +289,9 @@ test("a scoped role cannot hold a team-wide capability, however it was authored"
   // Re-assigning the role is what writes the membership set, and it is where
   // the clamp lands: everything that only means something team-wide is gone.
   const { roleAssignment } = await import("./roles");
-  const assignment = await roleAssignment(db, TEAM_A, ROLE);
+  // Through `getDb()`, which the harness has already pointed at `db`: the real
+  // client is what the data layer's own types describe.
+  const assignment = await roleAssignment(getDb(), TEAM_A, ROLE);
   assert.deepEqual(
     assignment.capabilities,
     ["view", "deploy_apps", "manage_env"],
