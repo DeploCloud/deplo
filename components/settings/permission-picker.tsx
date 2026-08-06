@@ -127,13 +127,6 @@ export function PermissionPicker({
         </div>
       </div>
 
-      {muted && muted.caps.length > 0 && (
-        <p className="text-xs text-muted-foreground">
-          Struck-through permissions only work team-wide. They stay ticked, and
-          come back if you widen the scope.
-        </p>
-      )}
-
       <div className="relative">
         <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
         <Input
