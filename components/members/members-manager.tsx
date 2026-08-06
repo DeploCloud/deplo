@@ -22,6 +22,7 @@ import { Button } from "@/components/ui/button";
 import { AddMemberDialog } from "@/components/members/add-member-dialog";
 import { RegisterUserWizard } from "@/components/settings/users/register-user-wizard";
 import { SimpleTooltip } from "@/components/ui/tooltip";
+import { AccessDeltaBadge } from "@/components/members/access-delta-badge";
 import { InfoTip } from "@/components/ui/info-tip";
 import type { MemberDTO } from "@/lib/data/members";
 
@@ -200,14 +201,18 @@ function MemberCard({
             than one with two permissions and none. */}
         {member.roleScoped && (
           <SimpleTooltip
-            content={`Limited to part of the team by the ${member.roleName ?? "assigned"} role`}
+            content={`Their ${member.roleName ?? "assigned"} role only reaches part of this team`}
           >
             <Badge variant="outline" className="gap-1">
               <FolderTree className="size-3" />
-              Limited access
+              Limited reach
             </Badge>
           </SimpleTooltip>
         )}
+        {/* And the third thing: whether an admin moved THIS person away from
+            what their role gives. Coloured, because it is the only one of the
+            three that says "somebody made an exception here". */}
+        <AccessDeltaBadge delta={member.accessDelta} roleName={member.roleName} />
       </div>
     </div>
   );

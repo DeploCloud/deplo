@@ -10,7 +10,7 @@ import {
 } from "../db/schema/control-plane";
 import { newId, nowIso } from "../ids";
 import {
-  currentRoleScope,
+  currentMemberScope,
   requireActiveTeamId,
   requireCapability,
 } from "../membership";
@@ -91,7 +91,7 @@ async function requireOwnedProject(projectId: string): Promise<string> {
   if (
     rows[0]?.teamId !== teamId ||
     !inProjectScope(projectId) ||
-    !projectInScope(await currentRoleScope(), projectId)
+    !projectInScope(await currentMemberScope(), projectId)
   )
     throw new Error("Project not found");
   return teamId;
@@ -105,7 +105,7 @@ export async function listEnvironmentsForProject(
   // Both reaches: an environment belongs to a project, so a caller who cannot
   // reach the project cannot enumerate what is inside it.
   if (!inProjectScope(projectId)) return [];
-  if (!projectInScope(await currentRoleScope(), projectId)) return [];
+  if (!projectInScope(await currentMemberScope(), projectId)) return [];
   // Team-scope through the owning Project (as listAllEnvironmentsForTeam does):
   // a foreign or unknown project id yields nothing, never another team's rows.
   const rows = await getDb()
@@ -154,7 +154,7 @@ export async function listAllEnvironmentsForTeam(): Promise<TeamEnvironment[]> {
     .where(eq(projectsTable.teamId, teamId))
     .orderBy(asc(projectsTable.name), asc(environmentsTable.position));
   // One resolution for the whole list, never one per row.
-  const roleScope = await currentRoleScope();
+  const roleScope = await currentMemberScope();
   return rows
     .filter(
       (r) => inProjectScope(r.projectId) && projectInScope(roleScope, r.projectId),

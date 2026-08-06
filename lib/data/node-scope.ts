@@ -5,10 +5,14 @@ import { and, eq, inArray } from "drizzle-orm";
 
 import { getDb } from "../db/client";
 import {
+  appGrants,
   apps as appsTable,
   environments as environmentsTable,
+  folderGrants,
   folders as foldersTable,
   memberships as membershipsTable,
+  projectGrants,
+  projects as projectsTable,
   teamRoles as teamRolesTable,
   teamRoleScopeApps,
   teamRoleScopeEnvironments,
@@ -120,28 +124,43 @@ export async function expandFolders(
 }
 
 /**
- * The reach of the role this person holds in this team, or `null` when their
- * role is unrestricted — which is every role until someone limits one, and so
- * the answer for every instance today.
+ * The reach of this PERSON in this team, or `null` for the whole of it — which
+ * is every member until someone limits one, and so the answer for most of them.
+ *
+ * Two sources, in this order:
+ *
+ *  1. **the member's own nodes** (`memberships.granular`) — the member page
+ *     saved a set of nodes that is not the one their role reaches, so those
+ *     nodes ARE their reach. Their role no longer answers the question, which is
+ *     the whole point of personalising one person without touching the role
+ *     every one of their colleagues holds;
+ *  2. **their role's scope** otherwise.
  *
  * `team_roles.scoped` is asked, not "are there any rows": the junctions CASCADE,
  * so deleting the last project a role named empties the scope, and reading that
  * as "unrestricted" would widen the role at the exact moment somebody deleted
  * something. Scoped with nothing left reaches nothing.
  *
- * A membership with no role (`role_id` NULL — the legacy hand-picked set) is
- * unrestricted: there is no role to carry a scope.
+ * A membership with no role (`role_id` NULL — the legacy hand-picked set) and no
+ * nodes of its own is unrestricted: there is nothing carrying a scope.
  */
-export const roleScopeFor = cache(async function roleScopeFor(
+export const memberScopeFor = cache(async function memberScopeFor(
   userId: string,
   teamId: string,
 ): Promise<NodeScope | null> {
   const db = getDb();
   const row = (
     await db
-      .select({ roleId: teamRolesTable.id, scoped: teamRolesTable.scoped })
+      .select({
+        roleId: teamRolesTable.id,
+        scoped: teamRolesTable.scoped,
+        granular: membershipsTable.granular,
+      })
       .from(membershipsTable)
-      .innerJoin(teamRolesTable, eq(teamRolesTable.id, membershipsTable.roleId))
+      // LEFT, not inner: a granular membership carries its own reach whether or
+      // not it points at a role, and an inner join answered "unrestricted" for
+      // the hand-picked ones.
+      .leftJoin(teamRolesTable, eq(teamRolesTable.id, membershipsTable.roleId))
       .where(
         and(
           eq(membershipsTable.userId, userId),
@@ -150,9 +169,71 @@ export const roleScopeFor = cache(async function roleScopeFor(
       )
       .limit(1)
   )[0];
-  if (!row?.scoped) return null;
+  if (!row) return null;
+  if (row.granular) return loadMemberScope(userId, teamId);
+  if (!row.scoped || !row.roleId) return null;
   return loadRoleScope(row.roleId, teamId);
 });
+
+/**
+ * The nodes one person holds in a team, as a scope: the same rows that grant
+ * them capabilities there (ADR-0016) read as REACH rather than as power.
+ *
+ * Only ever asked for a `granular` membership. For everyone else these rows
+ * still extend what their role reaches (`hasOwnGrant` in
+ * `lib/data/node-access.ts`) — a folder shared with a member is not a boundary
+ * around them.
+ */
+async function loadMemberScope(
+  userId: string,
+  teamId: string,
+): Promise<NodeScope> {
+  const db = getDb();
+  const [projRows, folderRows, appRows] = await Promise.all([
+    db
+      .selectDistinct({ id: projectGrants.projectId })
+      .from(projectGrants)
+      .innerJoin(projectsTable, eq(projectsTable.id, projectGrants.projectId))
+      .where(and(eq(projectGrants.userId, userId), eq(projectsTable.teamId, teamId))),
+    db
+      .selectDistinct({
+        id: folderGrants.folderId,
+        projectId: foldersTable.projectId,
+      })
+      .from(folderGrants)
+      .innerJoin(foldersTable, eq(foldersTable.id, folderGrants.folderId))
+      .where(and(eq(folderGrants.userId, userId), eq(foldersTable.teamId, teamId))),
+    db
+      .selectDistinct({ id: appGrants.appId, projectId: appsTable.projectId })
+      .from(appGrants)
+      .innerJoin(appsTable, eq(appsTable.id, appGrants.appId))
+      .where(and(eq(appGrants.userId, userId), eq(appsTable.teamId, teamId))),
+  ]);
+
+  const projectIds = projRows.map((r) => r.id);
+  const { folderIds, folderProjectIds } = await expandFolders(
+    [teamId],
+    folderRows.map((r) => r.id),
+    projectIds,
+  );
+  return {
+    projectIds,
+    // No environment rung: a grant cannot name one, so the member page never
+    // offers it and this list is always empty here.
+    environmentIds: [],
+    folderIds,
+    appIds: appRows.map((r) => r.id),
+    appProjectIds: [
+      ...new Set(
+        [
+          ...appRows.map((r) => r.projectId),
+          ...folderRows.map((r) => r.projectId),
+          ...folderProjectIds,
+        ].filter((id): id is string => id != null),
+      ),
+    ],
+  };
+}
 
 /** The junctions of one scoped role, expanded. Split out so tests can drive it. */
 export async function loadRoleScope(

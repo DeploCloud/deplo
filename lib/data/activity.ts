@@ -12,7 +12,7 @@ import { assembleActivity, activityToRow } from "./infra-rows";
 import { getCurrentUser } from "../auth";
 import { newId, nowIso } from "../ids";
 import {
-  currentRoleScope,
+  currentMemberScope,
   hasCapability,
   requireActiveTeamId,
 } from "../membership";
@@ -83,7 +83,7 @@ async function queryActivity(
  * the two compose as a conjunction.
  */
 async function scopedActivityWhere(): Promise<SQL | undefined> {
-  const roleScope = await currentRoleScope();
+  const roleScope = await currentMemberScope();
   if (!narrowedScope() && !roleScope) return undefined;
   const clauses = [appScopeWhere()].filter(
     (c): c is SQL => c !== undefined,

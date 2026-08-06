@@ -14,9 +14,16 @@ import {
 } from "drizzle-orm";
 import { getDb, type DbTx } from "../db/client";
 import {
+  appGrants as appGrantsTable,
+  apps as appsTable,
+  folderGrants as folderGrantsTable,
+  folders as foldersTable,
   memberships as membershipsTable,
   membershipCapabilities as membershipCapabilitiesTable,
+  projectGrants as projectGrantsTable,
+  projects as projectsTable,
   teamRoles as teamRolesTable,
+  teamRoleCapabilities as teamRoleCapabilitiesTable,
   registrationLinks as registrationLinksTable,
   registrationLinkTeams as registrationLinkTeamsTable,
   registrationLinkTeamCapabilities as registrationLinkTeamCapabilitiesTable,
@@ -41,8 +48,14 @@ import {
   membershipFor,
   requireTeamWide,
 } from "../membership";
-import { cleanCapabilities } from "../membership-shared";
-import { ensureTeamRoles, matchTeamRole, roleAssignment } from "./roles";
+import { accessDelta, cleanCapabilities } from "../membership-shared";
+import {
+  effectiveRoleCapabilities,
+  ensureTeamRoles,
+  loadRoleScopes,
+  matchTeamRole,
+  roleAssignment,
+} from "./roles";
 import { boundedBy, withView } from "./folder-access";
 import { instancePublicBaseUrl } from "./instance-settings";
 import type {
@@ -82,6 +95,15 @@ export interface MemberDTO {
    */
   roleScoped: boolean;
   capabilities: Capability[];
+  /**
+   * How their access compares with the role they hold: `less` when an admin took
+   * something away from this one person, `more` when they were given something
+   * extra, `null` when they are exactly their role — which is almost everybody.
+   *
+   * Shown as a chip on the tile and on their page, because "same role, different
+   * access" is otherwise invisible until you open the editor and compare by eye.
+   */
+  accessDelta: "less" | "more" | null;
   /**
    * True for the team's ABSOLUTE owner — the founder who created the team (the
    * "crown" 👑). Derived from `teams.founder_user_id`, NOT from the role: a
@@ -248,6 +270,8 @@ export async function listMembers(): Promise<MemberDTO[]> {
       roleId: membershipsTable.roleId,
       roleName: teamRolesTable.name,
       roleScoped: teamRolesTable.scoped,
+      granular: membershipsTable.granular,
+      customCapabilities: membershipsTable.customCapabilities,
       createdAt: membershipsTable.createdAt,
       userId: usersTable.id,
       username: usersTable.username,
@@ -264,6 +288,7 @@ export async function listMembers(): Promise<MemberDTO[]> {
     db,
     rows.map((r) => r.membershipId),
   );
+  const deltas = await memberDeltas(db, teamId, rows, caps);
   return rows.map((r) => ({
     userId: r.userId,
     membershipId: r.membershipId,
@@ -274,11 +299,141 @@ export async function listMembers(): Promise<MemberDTO[]> {
     roleName: r.roleName ?? null,
     roleScoped: r.roleScoped ?? false,
     capabilities: caps.get(r.membershipId) ?? [],
+    accessDelta: deltas.get(r.membershipId) ?? null,
     isPrimaryOwner: r.userId === founderId,
     isInstanceAdmin: r.isInstanceAdmin ?? false,
     avatarColor: r.avatarColor,
     createdAt: r.createdAt,
   }));
+}
+
+/**
+ * Each member's access measured against the role they hold, for the chip on
+ * their tile.
+ *
+ * Costs NOTHING on a team where nobody has been personalised, which is the
+ * normal state: only the memberships that carry their own set or their own nodes
+ * make it ask anything, and a team with none of them returns here empty.
+ */
+async function memberDeltas(
+  db: ReturnType<typeof getDb>,
+  teamId: string,
+  rows: {
+    membershipId: string;
+    userId: string;
+    roleId: string | null;
+    roleScoped: boolean | null;
+    granular: boolean;
+    customCapabilities: boolean;
+  }[],
+  caps: Map<string, Capability[]>,
+): Promise<Map<string, "less" | "more" | null>> {
+  const out = new Map<string, "less" | "more" | null>();
+  const nodes = await memberNodeIds(
+    db,
+    teamId,
+    rows.map((r) => r.userId),
+  );
+  // A membership with no role has nothing to differ FROM: it is the legacy
+  // hand-picked set, which the roster already names "Custom". Everyone else is
+  // asked only when something about them is not the role: their own set, their
+  // own reach, or a folder somebody shared with them.
+  const personalised = rows.filter(
+    (r) =>
+      r.roleId != null &&
+      (r.granular ||
+        r.customCapabilities ||
+        (nodes.get(r.userId) ?? []).length > 0),
+  );
+  if (personalised.length === 0) return out;
+
+  const roleIds = [...new Set(personalised.map((r) => r.roleId!))];
+  const roleCapRows = await db
+    .select({
+      roleId: teamRoleCapabilitiesTable.roleId,
+      capability: teamRoleCapabilitiesTable.capability,
+    })
+    .from(teamRoleCapabilitiesTable)
+    .where(inArray(teamRoleCapabilitiesTable.roleId, roleIds));
+  const authored = new Map<string, Capability[]>();
+  for (const r of roleCapRows)
+    authored.set(r.roleId, [
+      ...(authored.get(r.roleId) ?? []),
+      r.capability as Capability,
+    ]);
+  const scopes = await loadRoleScopes(
+    db,
+    personalised.filter((r) => r.roleScoped).map((r) => r.roleId!),
+  );
+
+  for (const r of personalised) {
+    const scope = r.roleScoped ? scopes.get(r.roleId!) : null;
+    out.set(
+      r.membershipId,
+      accessDelta({
+        capabilities: caps.get(r.membershipId) ?? [],
+        roleCapabilities: effectiveRoleCapabilities(
+          authored.get(r.roleId!) ?? [],
+          r.roleScoped ?? false,
+        ),
+        granular: r.granular,
+        nodeIds: nodes.get(r.userId) ?? [],
+        roleNodeIds: scope
+          ? [
+              ...scope.projectIds,
+              ...scope.environmentIds,
+              ...scope.folderIds,
+              ...scope.appIds,
+            ]
+          : r.roleScoped
+            ? []
+            : null,
+      }),
+    );
+  }
+  return out;
+}
+
+/** The nodes these people hold grants on inside one team, by user. */
+async function memberNodeIds(
+  db: ReturnType<typeof getDb>,
+  teamId: string,
+  userIds: string[],
+): Promise<Map<string, string[]>> {
+  const out = new Map<string, string[]>();
+  if (userIds.length === 0) return out;
+  const [projects, folders, apps] = await Promise.all([
+    db
+      .selectDistinct({ userId: projectGrantsTable.userId, id: projectGrantsTable.projectId })
+      .from(projectGrantsTable)
+      .innerJoin(projectsTable, eq(projectsTable.id, projectGrantsTable.projectId))
+      .where(
+        and(
+          inArray(projectGrantsTable.userId, userIds),
+          eq(projectsTable.teamId, teamId),
+        ),
+      ),
+    db
+      .selectDistinct({ userId: folderGrantsTable.userId, id: folderGrantsTable.folderId })
+      .from(folderGrantsTable)
+      .innerJoin(foldersTable, eq(foldersTable.id, folderGrantsTable.folderId))
+      .where(
+        and(
+          inArray(folderGrantsTable.userId, userIds),
+          eq(foldersTable.teamId, teamId),
+        ),
+      ),
+    db
+      .selectDistinct({ userId: appGrantsTable.userId, id: appGrantsTable.appId })
+      .from(appGrantsTable)
+      .innerJoin(appsTable, eq(appsTable.id, appGrantsTable.appId))
+      .where(
+        and(inArray(appGrantsTable.userId, userIds), eq(appsTable.teamId, teamId)),
+      ),
+  ]);
+  for (const r of [...projects, ...folders, ...apps])
+    out.set(r.userId, [...(out.get(r.userId) ?? []), r.id]);
+  return out;
 }
 
 /**
@@ -518,6 +673,8 @@ export async function addExistingMember(input: {
     // have to guess at it.
     roleScoped: false,
     capabilities: caps,
+    // Added ON a role, so they are exactly it until somebody says otherwise.
+    accessDelta: null,
     // A freshly added member is never the founder (the team already has one).
     isPrimaryOwner: false,
     isInstanceAdmin: target.isInstanceAdmin ?? false,

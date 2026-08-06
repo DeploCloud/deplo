@@ -32,7 +32,7 @@ import {
   environmentInScope,
   folderInScope,
   projectInScope,
-  roleScopeFor,
+  memberScopeFor,
   type NodeScope,
 } from "./node-scope";
 import { CAPABILITY_META } from "../membership-shared";
@@ -254,7 +254,7 @@ async function buildIndex(
           and(eq(appGrantsTable.userId, userId), eq(appsTable.teamId, teamId)),
         ),
       holdsManageTeam(userId, teamId),
-      roleScopeFor(userId, teamId),
+      memberScopeFor(userId, teamId),
       db
         .select({ id: environmentsTable.id, projectId: environmentsTable.projectId })
         .from(environmentsTable)

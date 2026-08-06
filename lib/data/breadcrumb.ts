@@ -4,7 +4,7 @@ import { and, eq } from "drizzle-orm";
 
 import { getDb } from "../db/client";
 import { apps as appsTable } from "../db/schema/control-plane";
-import { currentRoleScope, requireActiveTeamId } from "../membership";
+import { currentMemberScope, requireActiveTeamId } from "../membership";
 import { listFolders } from "./folders";
 import { appScopeWhere } from "./app-graph-load";
 import { appInScope } from "./node-scope";
@@ -29,7 +29,7 @@ export async function getBreadcrumbGraph(): Promise<BreadcrumbGraph> {
   // role scope has to be applied by hand — `appScopeWhere` answers for a token
   // only. The topbar naming every app in the team is a small leak with a large
   // surface: it is on every page.
-  const roleScope = await currentRoleScope();
+  const roleScope = await currentMemberScope();
   const [folders, projects, appRows] = await Promise.all([
     listFolders(),
     listProjects(),

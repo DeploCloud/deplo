@@ -556,6 +556,46 @@ export function ScopePicker({
 /* ------------------------------------------------------------------ */
 
 /**
+ * Every top-level node of the tree, ticked — "all of it", said in the only
+ * vocabulary a picker with no team checkbox has.
+ *
+ * The editors that start from everything (a role, a member) show this rather
+ * than an empty tree: "nothing ticked" is a fine way to STORE unrestricted, and
+ * a terrible way to show it, because the one thing an admin wants to do next is
+ * untick the parts this person should not have.
+ */
+export function everythingSelection(tree: ScopeTreeTeam[]): ScopeSelection {
+  return {
+    teamIds: [],
+    projectIds: tree.flatMap((t) => t.projects.map((p) => p.id)),
+    folderIds: tree.flatMap((t) => t.folders.map((f) => f.id)),
+    appIds: tree.flatMap((t) => t.looseApps.map((a) => a.id)),
+  };
+}
+
+/**
+ * Whether a selection leaves nothing out — which is what gets STORED as
+ * unrestricted, so that a project created tomorrow is included too.
+ *
+ * Asked of the top level only: everything under a ticked node follows it, and a
+ * selection that ticked every app one by one instead of their project reaches
+ * the same apps today but is a genuine limit tomorrow.
+ */
+export function coversEverything(
+  tree: ScopeTreeTeam[],
+  selection: ScopeSelection,
+): boolean {
+  const all = everythingSelection(tree);
+  const has = (picked: string[], required: string[]) =>
+    required.every((id) => picked.includes(id));
+  return (
+    has(selection.projectIds, all.projectIds) &&
+    has(selection.folderIds, all.folderIds) &&
+    has(selection.appIds, all.appIds)
+  );
+}
+
+/**
  * Open whatever already holds a selection, so an edit lands on what it edits —
  * plus every TEAM, always. A collapsed team row is a dead end on first sight,
  * and most instances have exactly one; its projects and folders stay closed so

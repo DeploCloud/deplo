@@ -30,6 +30,8 @@ import {
   CAPABILITY_META,
   NODE_GRANTABLE_CAPABILITIES,
   boundedBy,
+  cleanCapabilities,
+  sameCapabilities,
 } from "../membership-shared";
 import { recordActivity } from "./activity";
 import { assertAdminCoverage, teamFounderUserId } from "./members";
@@ -55,11 +57,17 @@ import type { Activity, Capability, Membership } from "../types";
  * who can administer it. `updateMember` itself is untouched.
  *
  * Two modes per team (ADR-0016):
- *  - **role** — the membership points at a `team_roles` row, as it always has;
- *  - **granular** — the same role supplies the BASE, plus per-node capability
- *    sets that replace it inside the projects, folders and apps they name.
- * The role is never dropped in granular mode, so editing a Role still reaches
- * everyone who holds it.
+ *  - **role** — the membership points at a `team_roles` row and follows it, as
+ *    it always has;
+ *  - **granular** — the nodes on the membership ARE this person's reach: they
+ *    touch those projects, folders and apps and nothing else, with the
+ *    capability set each node carries. Their role stays on the row as the base
+ *    the admin started from (and as what they fall back to), which is why the
+ *    member page can still show it and put them back on it.
+ *
+ * Either mode can also carry the member's OWN capability set
+ * (`memberships.custom_capabilities`), which is what lets one person hold more
+ * or less than everyone else with the same role without editing the role.
  */
 
 /** One node an access set is attached to. */
@@ -79,10 +87,12 @@ export interface UserTeamAccessDTO {
   roleName: string | null;
   /** The membership RANK — `owner` outranks everyone. */
   rank: string;
-  /** Whether per-node overrides are in play (the admin's mode choice). */
+  /** Their reach is the nodes below, not their role's (the admin's choice). */
   granular: boolean;
-  /** What applies outside every granted node. */
+  /** The set on the membership: their own when they hold one, else the role's. */
   baseCapabilities: Capability[];
+  /** That set is theirs, so editing the role no longer rewrites it. */
+  customCapabilities: boolean;
   nodes: AccessNodeGrant[];
   /** The team's founder can't be edited by anyone, admins included. */
   isFounder: boolean;
@@ -128,6 +138,7 @@ async function loadUserAccess(
       roleId: membershipsTable.roleId,
       roleName: teamRolesTable.name,
       granular: membershipsTable.granular,
+      customCapabilities: membershipsTable.customCapabilities,
     })
     .from(membershipsTable)
     .innerJoin(teamsTable, eq(teamsTable.id, membershipsTable.teamId))
@@ -171,6 +182,7 @@ async function loadUserAccess(
     roleName: r.roleName ?? null,
     rank: r.rank,
     granular: r.granular,
+    customCapabilities: r.customCapabilities,
     baseCapabilities: withView(capsByMembership.get(r.membershipId) ?? []),
     nodes: nodes.get(r.teamId) ?? [],
     isFounder: r.founderUserId === userId,
@@ -349,6 +361,11 @@ export async function setMemberAccess(input: {
   roleId: string;
   granular: boolean;
   grants?: NodeGrantInput[];
+  /**
+   * This member's own capability set. Absent (the only thing every older client
+   * sends) means "whatever the role gives", which is what it has always meant.
+   */
+  capabilities?: Capability[];
 }): Promise<UserTeamAccessDTO[]> {
   const { teamId, userId: actingUserId, membership } =
     await requireCapability("manage_members");
@@ -365,6 +382,7 @@ async function writeAccess(
     roleId: string;
     granular: boolean;
     grants?: NodeGrantInput[];
+    capabilities?: Capability[];
   },
   /**
    * The ACTOR's own membership, on the team-side door. Null on the
@@ -379,13 +397,16 @@ async function writeAccess(
   const db = getDb();
   await ensureTeamRoles(db, input.teamId);
   const assignment = await roleAssignment(db, input.teamId, input.roleId);
+  const effective = memberCapabilities(assignment, input);
+  // Their set is not the role's, so the role must stop rewriting it.
+  const customCapabilities = !sameCapabilities(effective, assignment.capabilities);
   if (actor) {
-    const beyond = assignment.capabilities.filter(
+    const beyond = [...assignment.capabilities, ...effective].filter(
       (c) => !actor.capabilities.includes(c),
     );
     if (beyond.length > 0)
       throw new Error(
-        `You can only assign a role whose permissions you hold yourself — ${assignment.name} grants more than you do`,
+        `You can only give someone permissions you hold yourself — you don't have ${CAPABILITY_META[beyond[0]].label.toLowerCase()}`,
       );
     if (assignment.rank === "owner" && actor.role !== "owner")
       throw new Error("Only an owner can make someone an owner");
@@ -417,20 +438,21 @@ async function writeAccess(
       input.teamId,
       actingUserId,
     );
-    await assertAdminCoverage(tx, input.teamId, input.userId, assignment.capabilities);
+    await assertAdminCoverage(tx, input.teamId, input.userId, effective);
     await tx
       .update(membershipsTable)
       .set({
         role: assignment.rank,
         roleId: assignment.roleId,
         granular: input.granular,
+        customCapabilities,
       })
       .where(eq(membershipsTable.id, m.id));
     await tx
       .delete(membershipCapabilitiesTable)
       .where(eq(membershipCapabilitiesTable.membershipId, m.id));
     await tx.insert(membershipCapabilitiesTable).values(
-      assignment.capabilities.map((c) => ({
+      effective.map((c) => ({
         membershipId: m.id,
         capability: c,
       })),
@@ -443,9 +465,33 @@ async function writeAccess(
     input.userId,
     input.teamId,
     input.granular
-      ? `granular access (${resolved.length} nodes) with the ${assignment.name} role`
-      : `the ${assignment.name} role`,
+      ? `${resolved.length} node${resolved.length === 1 ? "" : "s"} of this team, with the ${assignment.name} role as their base`
+      : customCapabilities
+        ? `their own set of permissions, with the ${assignment.name} role as their base`
+        : `the ${assignment.name} role`,
   );
+}
+
+/**
+ * The set that lands in `membership_capabilities` — the member's own when the
+ * page sent one, the role's otherwise.
+ *
+ * Bounded by {@link NODE_GRANTABLE_CAPABILITIES} the moment the member does not
+ * reach the whole team, for the same reason a scoped ROLE is bounded by
+ * `effectiveRoleCapabilities`: `holdsManageTeam` reads this junction unclamped,
+ * so leaving `manage_team` on somebody limited to one folder would resolve them
+ * as a super-user over every folder in the team. The member page mutes exactly
+ * this set, so the picker and the save agree on what a tick still means.
+ */
+function memberCapabilities(
+  assignment: { capabilities: Capability[]; scoped: boolean },
+  input: { granular: boolean; capabilities?: Capability[] },
+): Capability[] {
+  if (!input.capabilities) return assignment.capabilities;
+  const own = withView(cleanCapabilities(input.capabilities, "viewer"));
+  return input.granular || assignment.scoped
+    ? boundedBy(own, NODE_GRANTABLE_CAPABILITIES)
+    : own;
 }
 
 /** Add this person to a team with a role. Instance admin only. */

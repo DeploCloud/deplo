@@ -34,7 +34,7 @@ import {
 } from "../membership-shared";
 import { withView } from "./folder-access";
 import { appCapabilitiesForTeam, nodeCapabilitiesFor } from "./node-access";
-import { roleScopeFor } from "./node-scope";
+import { memberScopeFor } from "./node-scope";
 import { ALL_CAPABILITIES, type Capability, type Membership, type Role } from "../types";
 
 /**
@@ -376,6 +376,8 @@ export interface RoleAssignment {
   rank: Role;
   capabilities: Capability[];
   name: string;
+  /** The role reaches part of the team, so its holders never reach all of it. */
+  scoped: boolean;
 }
 
 /**
@@ -403,6 +405,7 @@ export async function roleAssignment(
       role.scoped,
     ),
     name: role.name,
+    scoped: role.scoped,
   };
 }
 
@@ -564,7 +567,7 @@ const EMPTY_SCOPE: ResolvedScope = {
  * one per role. Only the SCOPED ones need asking, which is none of them on a
  * team that has limited nothing.
  */
-async function loadRoleScopes(
+export async function loadRoleScopes(
   db: Db,
   roleIds: string[],
 ): Promise<Map<string, ResolvedScope>> {
@@ -637,7 +640,7 @@ async function resolveRoleScope(
   actingUserId: string,
   input: RoleScopeInput | null,
 ): Promise<ResolvedScope | null> {
-  const actorScope = await roleScopeFor(actingUserId, teamId);
+  const actorScope = await memberScopeFor(actingUserId, teamId);
   if (input === null) {
     if (actorScope)
       throw new Error(
@@ -756,7 +759,15 @@ async function writeRoleScope(
 }
 
 /**
- * Re-write the effective capabilities of every member holding this role.
+ * Re-write the effective capabilities of every member holding this role — bar
+ * the ones whose set is their OWN (`memberships.custom_capabilities`, written by
+ * the member page when an admin gave one person more or less than the role).
+ *
+ * Skipping them is what makes a per-member adjustment survive: without it,
+ * renaming a role handed back every permission an admin had taken away from
+ * somebody, silently and at the worst possible moment. They rejoin the role the
+ * moment their set is put back to it, which is the member page's own "same as
+ * their role" state.
  *
  * Takes the AUTHORED set plus the role's reach and clamps here, rather than
  * trusting each caller to have done it: `membership_capabilities` is what every
@@ -778,6 +789,7 @@ async function syncMembersOfRole(
       and(
         eq(membershipsTable.teamId, teamId),
         eq(membershipsTable.roleId, roleId),
+        eq(membershipsTable.customCapabilities, false),
       ),
     );
   if (members.length === 0) return 0;
@@ -1121,7 +1133,7 @@ export async function resetRole(id: string): Promise<void> {
   // so it CLEARS the scope, which makes it a widening. An actor whose own role
   // reaches part of the team must not be able to perform it: the reset button
   // would be the one-click way out of their own boundary.
-  if (await roleScopeFor(userId, teamId))
+  if (await memberScopeFor(userId, teamId))
     throw new Error(
       "Your own role reaches part of this team, so you can't reset a role to full access.",
     );

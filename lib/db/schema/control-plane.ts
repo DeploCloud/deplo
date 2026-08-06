@@ -572,6 +572,12 @@ export const memberships = pgTable(
     // nodes they name (ADR-0016). Kept as a column because node rows cascade
     // away: "granular with nothing left ticked" must not read as Role mode.
     granular: boolean("granular").notNull().default(false),
+    // This member's capability set is THEIR OWN: the member page saved something
+    // other than what their role grants, so `syncMembersOfRole` leaves them
+    // alone. Without it a role rename handed back every permission an admin had
+    // taken away from one person. False for everyone who simply follows a role,
+    // which is almost everyone.
+    customCapabilities: boolean("custom_capabilities").notNull().default(false),
     createdAt: isoTimestamptz("created_at").notNull(),
   },
   (t) => [uniqueIndex("memberships_user_team_uq").on(t.userId, t.teamId)],

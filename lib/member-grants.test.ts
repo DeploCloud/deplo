@@ -40,6 +40,8 @@ test("two shares at different levels stay two, through a save", () => {
   const out = buildGrants(
     selection({ folderIds: ["fld_prod", "fld_stg"], appIds: ["prj_api"] }),
     groups,
+    ["view", "manage_env"],
+    false,
   );
   assert.equal(out.length, 2, "and two payload entries, not one flattened set");
   const byCaps = new Map(out.map((g) => [[...g.capabilities].sort().join(","), g]));
@@ -55,6 +57,8 @@ test("a node the admin just ticked carries the set the picker shows", () => {
   const out = buildGrants(
     selection({ folderIds: ["fld_prod"], appIds: ["prj_new"] }),
     groups,
+    ["view", "manage_env"],
+    false,
   );
   // The new app joins the authored group (the picker's set, which is group 0),
   // so it is one entry rather than two identical ones.
@@ -68,12 +72,32 @@ test("unticking a node drops it, which is how a share is revoked", () => {
     node("folder", "fld_prod", "view", "manage_env"),
     node("app", "prj_api", "view", "manage_env"),
   ]);
-  const out = buildGrants(selection({ folderIds: ["fld_prod"] }), groups);
+  const out = buildGrants(
+    selection({ folderIds: ["fld_prod"] }),
+    groups,
+    ["view", "manage_env"],
+    false,
+  );
   assert.equal(out.length, 1);
   assert.deepEqual(out[0].appIds, [], "the untickled app is gone from the payload");
 });
 
 test("nothing ticked writes nothing, and no group survives it", () => {
   const groups = groupNodes([node("app", "prj_api", "view", "manage_env")]);
-  assert.deepEqual(buildGrants(selection(), groups), []);
+  assert.deepEqual(buildGrants(selection(), groups, ["view"], false), []);
+});
+
+test("editing the permission list applies it to every node they hold", () => {
+  const groups = groupNodes([
+    node("folder", "fld_prod", "view", "manage_env"),
+    node("app", "prj_api", "view", "deploy_apps"),
+  ]);
+  const out = buildGrants(
+    selection({ folderIds: ["fld_prod"], appIds: ["prj_api"] }),
+    groups,
+    ["view", "view_logs"],
+    true,
+  );
+  assert.equal(out.length, 1, "one set, because the admin just said what it is");
+  assert.deepEqual(out[0].capabilities, ["view", "view_logs"]);
 });

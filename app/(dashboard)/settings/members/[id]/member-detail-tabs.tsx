@@ -8,7 +8,6 @@ import {
   Activity as ActivityIcon,
   Check,
   Crown,
-  FolderTree,
   Loader2,
   ShieldCheck,
   UserCog,
@@ -29,12 +28,21 @@ import { RoleSelect } from "@/components/members/role-select";
 import { PermissionPicker } from "@/components/settings/permission-picker";
 import { ConfirmAction } from "@/components/shared/confirm-action";
 import { EmptyState } from "@/components/shared/empty-state";
+import { AccessDeltaBadge } from "@/components/members/access-delta-badge";
 import {
   ScopePicker,
+  coversEverything,
+  everythingSelection,
   type ScopeSelection,
 } from "@/components/settings/tokens/scope-picker";
 import { gqlAction } from "@/lib/graphql-client";
-import { NODE_GRANTABLE_CAPABILITIES, sameCapabilities } from "@/lib/membership-shared";
+import {
+  NODE_GRANTABLE_CAPABILITIES,
+  PROJECT_SCOPED_CAPABILITIES,
+  accessDelta,
+  boundedBy,
+  sameCapabilities,
+} from "@/lib/membership-shared";
 import { ALL_CAPABILITIES, type Activity, type Capability } from "@/lib/types";
 import { timeAgo } from "@/lib/utils";
 import type { MemberDTO } from "@/lib/data/members";
@@ -43,17 +51,25 @@ import type { ScopeTreeTeam } from "@/lib/data/tokens";
 import type { UserTeamAccessDTO } from "@/lib/data/user-access";
 
 /**
- * Everything about one member OF THIS TEAM, in one place: role, per-node access,
- * and removal from the team. The roster tiles link straight here — there is no
- * menu and no modal in between, so this page is the only surface that acts on a
- * member.
+ * Everything about one member OF THIS TEAM, in one place: their role, where they
+ * can work, what they can do there, and removal from the team. The roster tiles
+ * link straight here — there is no menu and no modal in between, so this page is
+ * the only surface that acts on a member.
  *
  * The person's instance-wide account is deliberately NOT here: it is not
  * team-scoped, so it lives on Settings → Users and the header links an instance
  * admin straight at that account's editor (`?user=<id>` opens it on arrival).
  *
- * The role and the per-node overrides are ONE tab and ONE Save, deliberately:
- * the role is the base the overrides carve out of, so splitting them let an
+ * **Both editors open filled in from the role.** Where they can work and what
+ * they can do show exactly what this person already gets, so the page answers
+ * "what can they do here" without an admin opening the role in another tab and
+ * comparing by eye — and every edit is made by taking something away from that
+ * or adding to it, which is how an admin thinks about one person. Whatever ends
+ * up different from the role is what the chip in the header names, on this page
+ * and on the roster tile alike.
+ *
+ * The role, the reach and the permissions are ONE tab and ONE Save, deliberately:
+ * the role is the base the other two are carved out of, so splitting them let an
  * admin stage a role change on one tab while the other still showed an
  * inheritance that was already stale.
  *
@@ -113,51 +129,74 @@ export function MemberDetailTabs({
     window.history.replaceState(null, "", s ? `?${s}` : window.location.pathname);
   }
 
+  const savedRole = roles.find((r) => r.id === access.roleId) ?? null;
   const initial = React.useMemo(
     () => ({
       roleId: access.roleId,
-      // What they HAVE, not the stored mode flag. A member can hold grants with
-      // `granular` false — the folder Share dialog writes the rows and never
-      // touches the flag — and seeding from the flag meant an admin who only
-      // changed the role saved `grants: []`, silently deleting every share.
-      selection: toSelection(access.nodes),
+      // Where they REACH today: their own nodes when they have a set of their
+      // own, otherwise their role's reach plus whatever was shared with them on
+      // top. Never a blank tree, and never less than what they already hold — a
+      // node left unticked is a node this page revokes.
+      selection: access.granular
+        ? toSelection(access.nodes)
+        : union(reachOf(savedRole, tree), toSelection(access.nodes)),
+      // The live set on their membership: identical to the role's for everyone
+      // who simply follows one.
+      capabilities: access.baseCapabilities,
       groups: groupNodes(access.nodes),
     }),
-    [access],
+    [access, savedRole, tree],
   );
 
   const [roleId, setRoleId] = React.useState<string | null>(initial.roleId);
   const [selection, setSelection] = React.useState<ScopeSelection>(
     initial.selection,
   );
-  // One entry per distinct capability set the member already holds. Flattening
-  // them to the first node's set is only correct when the admin authored all of
-  // them in this session; for anyone with two shares at different levels it
-  // silently levelled the lot.
-  const [groups, setGroups] = React.useState<NodeGroup[]>(initial.groups);
-  // The picker edits the FIRST group, which is the only one this page authors.
-  const caps = groups[0]?.capabilities ?? ["view"];
-  const setCaps = (next: Capability[]) =>
-    setGroups((prev) =>
-      prev.length === 0
-        ? [{ capabilities: next, nodeIds: [] }]
-        : [{ ...prev[0], capabilities: next }, ...prev.slice(1)],
-    );
+  const [caps, setCaps] = React.useState<Capability[]>(initial.capabilities);
+  // One entry per distinct set they already hold on a node, so an admin who only
+  // moves the ticks around doesn't flatten two folder shares made at different
+  // levels onto one set.
+  const [groups] = React.useState<NodeGroup[]>(initial.groups);
 
-  const ticked =
-    selection.projectIds.length +
-    selection.folderIds.length +
-    selection.appIds.length;
-  // The overrides ARE the ticked nodes: nothing ticked means the role applies
-  // everywhere, which is what "off" used to mean. One control, not two saying
-  // the same thing — a mode switch left on with nothing ticked said nothing.
-  const granular = ticked > 0;
   const role = roles.find((r) => r.id === roleId) ?? null;
+  const roleReach = React.useMemo(() => reachOf(role, tree), [role, tree]);
+  const roleCaps = React.useMemo(() => effectiveCapabilities(role), [role]);
+  // A role limited to an ENVIRONMENT can't be redrawn here: a node grant has no
+  // environment rung, so the picker would show the ticks it can express and drop
+  // the rest on save. Their reach stays the role's; what they may do is still
+  // theirs to set.
+  const reachEditable = (role?.scope?.environmentIds.length ?? 0) === 0;
+
+  /** Picking a role re-fills both editors from it — it is the new base. */
+  function pickRole(id: string) {
+    const next = roles.find((r) => r.id === id) ?? null;
+    setRoleId(id);
+    setSelection(reachOf(next, tree));
+    setCaps(effectiveCapabilities(next));
+  }
+
+  const ticked = tickedIds(selection);
+  // Do the ticks still include everywhere the role reaches? When they don't,
+  // THEY are this person's reach from now on and the role stops answering for
+  // them — which is the one act on this page that takes a place away.
+  const covers = coversRoleReach(selection, role, tree);
+  const granular = reachEditable && !covers;
+  // Ticks the role doesn't reach: what an admin added here, plus every folder
+  // somebody shared with them. Written even while the role still supplies the
+  // reach, or saving this page would revoke those shares.
+  const extra = subtract(selection, roleReach);
+  const delta = accessDelta({
+    capabilities: caps,
+    roleCapabilities: roleCaps,
+    granular,
+    nodeIds: ticked,
+    roleNodeIds: role?.scope ? scopeIds(role.scope) : null,
+  });
+
   const dirty =
     roleId !== initial.roleId ||
     !sameSelection(selection, initial.selection) ||
-    (granular &&
-      !sameCapabilities(caps, initial.groups[0]?.capabilities ?? ["view"]));
+    !sameCapabilities(caps, initial.capabilities);
 
   // Who this viewer may not act on. All three are refused server-side; saying so
   // here spares a toast that arrives after the click, and is why the roster can
@@ -173,8 +212,19 @@ export function MemberDetailTabs({
   // Removal follows the same rule as editing: the locks above are exactly the
   // people `removeMember` refuses.
   const canRemove = !readOnly;
-  const emptyTicked = granular && ticked > 0 && caps.filter((c) => c !== "view").length === 0;
-  const blocked = readOnly || !roleId || emptyTicked;
+  // What the ticked nodes can actually carry. A team-wide permission stays in
+  // the list (struck through) because widening their reach brings it back, but
+  // a node grant refuses it outright — so the payload is bounded here rather
+  // than by an error toast after the click.
+  const onNodes = boundedBy(caps, NODE_GRANTABLE_CAPABILITIES);
+  // They don't reach the whole team — by their role's doing or by an admin's.
+  // Same question the server asks before it bounds their set, so a tick the
+  // save would drop is struck through here instead of silently disappearing.
+  const reachLimited = granular || role?.scope != null;
+  const nothingTicked = ticked.length === 0 && tree.length > 0;
+  const nothingAllowed =
+    (reachLimited ? onNodes : caps).filter((c) => c !== "view").length === 0;
+  const blocked = readOnly || !roleId || nothingTicked || nothingAllowed;
 
   function save() {
     if (blocked || !roleId) return;
@@ -188,11 +238,19 @@ export function MemberDetailTabs({
             userId: member.userId,
             roleId,
             granular,
-            // One payload: every ticked node carries the same set, which is what
-            // this page lets an admin say. Different sets per node are the
-            // folder Share dialog's job, and this page shows those rather than
-            // rewriting them.
-            grants: granular ? buildGrants(selection, groups) : [],
+            // Their reach when it is theirs; only what the role doesn't already
+            // reach when it isn't, so a share survives a save that never touched
+            // it.
+            grants: buildGrants(
+              granular ? selection : extra,
+              groups,
+              onNodes,
+              !sameCapabilities(caps, initial.capabilities),
+            ),
+            // Their own set. Identical to the role's until an admin changes it,
+            // and the server compares the two to decide whether the role still
+            // owns this membership's permissions.
+            capabilities: caps,
           },
         },
       );
@@ -224,6 +282,9 @@ export function MemberDetailTabs({
               {member.roleName && (
                 <Badge variant="outline">{member.roleName}</Badge>
               )}
+              {/* Live, not the stored verdict: while an admin edits, this says
+                  what the Save is about to make true. */}
+              <AccessDeltaBadge delta={delta} roleName={role?.name ?? null} />
               {member.isPrimaryOwner && (
                 <Badge variant="secondary" className="gap-1">
                   <Crown className="size-3" />
@@ -276,144 +337,146 @@ export function MemberDetailTabs({
             save();
           }}
         >
-        <TabsContent value="permissions" className="space-y-4 pt-4">
-          {/* The overrides sit ABOVE the role and are always on screen: they are
-              the only reason this member's access differs from everyone else's
-              with the same role, and behind a switch an admin had to flip
-              something to find out whether there were any. Ticking nothing IS
-              "no overrides" — the mode switch that used to say it was a second
-              control for one decision. */}
-          <Card>
-            <CardContent className="space-y-4 pt-6">
-              <ScopePicker
-                tree={tree}
-                selection={selection}
-                onChange={setSelection}
-                disabled={readOnly}
-                teamPickable={false}
-                title="Per-node overrides"
-                info="Tick a project, a folder or an app to give them a different set of permissions inside it, with their role still applying everywhere else. Everything under a ticked node follows it."
-                emptyNote="This team has nothing to scope to yet."
-                footer={
-                  <p className="text-xs text-muted-foreground">
-                    {ticked === 0 ? (
-                      <>
-                        <span className="font-medium text-foreground">
-                          Nothing ticked.
-                        </span>{" "}
-                        Their {role?.name ?? "role"} applies everywhere in this
-                        team.
-                      </>
-                    ) : (
-                      <>
-                        <span className="font-medium text-foreground">
-                          {ticked} node{ticked === 1 ? "" : "s"}.
-                        </span>{" "}
-                        Inside them this set replaces the role and can grant more
-                        than it does, so lowering the role won&apos;t lower it
-                        here. To take it away, untick the node or remove them
-                        from the team.
-                      </>
-                    )}
+          <TabsContent value="permissions" className="space-y-4 pt-4">
+            {/* The role comes first: the two editors below are filled from it,
+                so picking another one re-fills them. */}
+            <Card>
+              <CardContent className="pt-6">
+                {/* The founder's row is read-only, and RoleSelect has no
+                    disabled state of its own: not rendering the picker is the
+                    honest version of "there is nothing to choose here". */}
+                {readOnly ? (
+                  <p className="text-sm text-muted-foreground">
+                    Role: {member.roleName ?? "Custom"}
                   </p>
-                }
-              />
-              {granular && (
+                ) : (
+                  <RoleSelect
+                    roles={roles}
+                    value={roleId}
+                    onChange={pickRole}
+                    canAssignOwner={canAssignOwner}
+                    isCustom={access.roleId == null}
+                  />
+                )}
+              </CardContent>
+            </Card>
+
+            <Card>
+              <CardContent className="pt-6">
+                <ScopePicker
+                  tree={tree}
+                  selection={selection}
+                  onChange={setSelection}
+                  disabled={readOnly || !reachEditable}
+                  teamPickable={false}
+                  title="Where they can work"
+                  info="Everywhere their role reaches is ticked. Untick what this one person shouldn't touch, or tick something extra to let them in. Everything under a ticked node follows it."
+                  emptyNote="This team has nothing to scope to yet."
+                  footer={
+                    <div className="space-y-1 text-xs text-muted-foreground">
+                      <p>
+                        {!reachEditable ? (
+                          <>
+                            <span className="font-medium text-foreground">
+                              Set by their role.
+                            </span>{" "}
+                            {role?.name} is limited to specific environments,
+                            which can only be changed on the role.
+                          </>
+                        ) : nothingTicked ? (
+                          <>
+                            <span className="font-medium text-foreground">
+                              Nothing ticked.
+                            </span>{" "}
+                            Tick where they work, or remove them from the team.
+                          </>
+                        ) : covers ? (
+                          <>
+                            <span className="font-medium text-foreground">
+                              Everywhere their {role?.name ?? "role"} reaches.
+                            </span>{" "}
+                            {tickedIds(extra).length > 0
+                              ? "Plus what was shared with them directly."
+                              : "Edit the role to move everyone who holds it at once."}
+                          </>
+                        ) : (
+                          <>
+                            <span className="font-medium text-foreground">
+                              Only these {ticked.length} place
+                              {ticked.length === 1 ? "" : "s"}.
+                            </span>{" "}
+                            Their role reaches further, this person stops here.
+                            Permissions that only work team-wide stop applying,
+                            and are struck through below.
+                          </>
+                        )}
+                      </p>
+                      {groups.length > 1 && (
+                        <p>
+                          Some of these were shared with their own permissions.
+                          Changing the list below replaces those.
+                        </p>
+                      )}
+                    </div>
+                  }
+                />
+              </CardContent>
+            </Card>
+
+            <Card>
+              <CardContent className="space-y-3 pt-6">
                 <PermissionPicker
                   capabilities={caps}
                   onChange={setCaps}
                   disabled={readOnly}
-                  hint="What they may do inside the ticked nodes. Permissions that only work team-wide can't be given on a node, so they aren't offered."
-                  muted={{
-                    caps: ALL_CAPABILITIES.filter(
-                      (c) => !NODE_GRANTABLE_CAPABILITIES.includes(c),
-                    ),
-                    reason:
-                      "This one only works team-wide, so it can't be given on a single project, folder or app.",
-                  }}
+                  title="What they can do"
+                  hint="Filled in from their role. Untick to take something away from this one person, tick to give them extra - the role, and everyone else holding it, stays as it is."
+                  muted={
+                    reachLimited
+                      ? {
+                          caps: ALL_CAPABILITIES.filter(
+                            (c) => !NODE_GRANTABLE_CAPABILITIES.includes(c),
+                          ),
+                          reason:
+                            "They reach only part of the team, so this one has nothing to apply to.",
+                        }
+                      : undefined
+                  }
                 />
-              )}
-              {emptyTicked && (
-                <p className="text-xs text-destructive">
-                  Pick at least one permission, or untick the nodes: an override
-                  that grants nothing leaves the role applying there, which is
-                  the opposite of what a tick says.
-                </p>
-              )}
-            </CardContent>
-          </Card>
-
-          <Card>
-            <CardContent className="pt-6">
-              {/* The founder's row is read-only, and RoleSelect has no
-                  disabled state of its own: not rendering the picker is the
-                  honest version of "there is nothing to choose here". */}
-              {readOnly ? (
-                <p className="text-sm text-muted-foreground">
-                  Role: {member.roleName ?? "Custom"}
-                </p>
-              ) : (
-                <RoleSelect
-                  roles={roles}
-                  value={roleId}
-                  onChange={setRoleId}
-                  canAssignOwner={canAssignOwner}
-                  isCustom={access.roleId == null}
-                />
-              )}
-            </CardContent>
-          </Card>
-
-          {access.nodes.length > 0 && (
-            <Card>
-              <CardContent className="space-y-2 pt-6">
-                <h3 className="text-sm font-medium">Shared directly with them</h3>
-                <p className="mt-1 text-xs text-muted-foreground">
-                  Folders and apps someone shared with them outside their role.
-                </p>
-                <ul className="divide-y divide-border/60 rounded-lg border border-border">
-                  {access.nodes.map((n) => (
-                    <li
-                      key={`${n.kind}:${n.nodeId}`}
-                      className="flex items-center gap-2 px-3 py-2 text-sm"
-                    >
-                      <FolderTree className="size-3.5 text-muted-foreground" />
-                      <span className="min-w-0 flex-1 truncate">{n.name}</span>
-                      <Badge variant="muted">
-                        {n.capabilities.filter((c) => c !== "view").length}{" "}
-                        permissions
-                      </Badge>
-                    </li>
-                  ))}
-                </ul>
-              </CardContent>
-            </Card>
-          )}
-
-          {canRemove && (
-            <Card className="border-destructive/40">
-              <CardContent className="flex flex-wrap items-center justify-between gap-3 pt-6">
-                <div className="min-w-0">
-                  <p className="text-sm font-medium">Remove from team</p>
-                  <p className="mt-1 text-xs text-muted-foreground">
-                    They lose access to this team. Their account and other teams
-                    are untouched.
+                {nothingAllowed && (
+                  <p className="text-xs text-destructive">
+                    {reachLimited
+                      ? "Pick a permission that works where they can work: the ones ticked only mean something team-wide, and they no longer reach the whole team."
+                      : "Pick at least one permission. Someone who may only look at this team is a Viewer — give them that role instead."}
                   </p>
-                </div>
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="sm"
-                  className="border-destructive/40 text-destructive hover:bg-destructive/10 hover:text-destructive"
-                  onClick={() => setConfirmRemove(true)}
-                >
-                  <UserMinus className="size-4" />
-                  Remove
-                </Button>
+                )}
               </CardContent>
             </Card>
-          )}
-        </TabsContent>
+
+            {canRemove && (
+              <Card className="border-destructive/40">
+                <CardContent className="flex flex-wrap items-center justify-between gap-3 pt-6">
+                  <div className="min-w-0">
+                    <p className="text-sm font-medium">Remove from team</p>
+                    <p className="mt-1 text-xs text-muted-foreground">
+                      They lose access to this team. Their account and other
+                      teams are untouched.
+                    </p>
+                  </div>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    className="border-destructive/40 text-destructive hover:bg-destructive/10 hover:text-destructive"
+                    onClick={() => setConfirmRemove(true)}
+                  >
+                    <UserMinus className="size-4" />
+                    Remove
+                  </Button>
+                </CardContent>
+              </Card>
+            )}
+          </TabsContent>
 
           {!readOnly && onTeamTab && (
             <div className="flex justify-end">
@@ -498,9 +561,89 @@ export function MemberDetailTabs({
 /* Pure helpers                                                        */
 /* ------------------------------------------------------------------ */
 
-function toSelection(
-  nodes: UserTeamAccessDTO["nodes"],
+/** Where a role reaches, as ticks: everything when it isn't limited. */
+function reachOf(
+  role: TeamRoleDTO | null,
+  tree: ScopeTreeTeam[],
 ): ScopeSelection {
+  if (!role?.scope) return everythingSelection(tree);
+  return {
+    teamIds: [],
+    projectIds: role.scope.projectIds,
+    folderIds: role.scope.folderIds,
+    appIds: role.scope.appIds,
+  };
+}
+
+/**
+ * What a role actually gives its holders: its authored set once its own reach
+ * has clamped it, which is what `effectiveRoleCapabilities` writes onto every
+ * membership. Mirrored here so the picker opens on the set the member really
+ * holds, rather than on ticks the server dropped on the way in.
+ */
+function effectiveCapabilities(role: TeamRoleDTO | null): Capability[] {
+  if (!role) return ["view"];
+  return role.scope
+    ? boundedBy(role.capabilities, PROJECT_SCOPED_CAPABILITIES)
+    : role.capabilities;
+}
+
+/**
+ * Whether the ticks still include everywhere the role reaches. False means this
+ * person's ticks ARE their reach from now on, so it is asked of the role's own
+ * nodes rather than of a count.
+ */
+function coversRoleReach(
+  selection: ScopeSelection,
+  role: TeamRoleDTO | null,
+  tree: ScopeTreeTeam[],
+): boolean {
+  if (!role?.scope) return coversEverything(tree, selection);
+  const picked = new Set(tickedIds(selection));
+  return scopeIds(role.scope).every((id) => picked.has(id));
+}
+
+const scopeIds = (scope: {
+  projectIds: string[];
+  environmentIds: string[];
+  folderIds: string[];
+  appIds: string[];
+}) => [
+  ...scope.projectIds,
+  ...scope.environmentIds,
+  ...scope.folderIds,
+  ...scope.appIds,
+];
+
+const tickedIds = (s: ScopeSelection) => [
+  ...s.projectIds,
+  ...s.folderIds,
+  ...s.appIds,
+];
+
+/** Everything ticked in either. */
+function union(a: ScopeSelection, b: ScopeSelection): ScopeSelection {
+  const merge = (x: string[], y: string[]) => [...new Set([...x, ...y])];
+  return {
+    teamIds: [],
+    projectIds: merge(a.projectIds, b.projectIds),
+    folderIds: merge(a.folderIds, b.folderIds),
+    appIds: merge(a.appIds, b.appIds),
+  };
+}
+
+/** The ticks `a` has and `b` doesn't. */
+function subtract(a: ScopeSelection, b: ScopeSelection): ScopeSelection {
+  const less = (x: string[], y: string[]) => x.filter((id) => !y.includes(id));
+  return {
+    teamIds: [],
+    projectIds: less(a.projectIds, b.projectIds),
+    folderIds: less(a.folderIds, b.folderIds),
+    appIds: less(a.appIds, b.appIds),
+  };
+}
+
+function toSelection(nodes: UserTeamAccessDTO["nodes"]): ScopeSelection {
   return {
     teamIds: [],
     projectIds: nodes.filter((n) => n.kind === "project").map((n) => n.nodeId),
@@ -509,12 +652,7 @@ function toSelection(
   };
 }
 
-/**
- * The set the ticked nodes carry. This page writes ONE set across them, so it
- * seeds from the first node — a member whose nodes disagree got them from the
- * folder Share dialog, which is the surface that can say different things in
- * different places.
- */
+/** The set one node carries. */
 export interface NodeGroup {
   capabilities: Capability[];
   nodeIds: string[];
@@ -522,7 +660,8 @@ export interface NodeGroup {
 
 /**
  * The member's existing grants, grouped by the set they carry. Two shares at
- * different levels are two groups, and they stay two through a save.
+ * different levels are two groups, and they stay two through a save that only
+ * moved the ticks around.
  */
 export function groupNodes(nodes: UserTeamAccessDTO["nodes"]): NodeGroup[] {
   const by = new Map<string, NodeGroup>();
@@ -536,16 +675,19 @@ export function groupNodes(nodes: UserTeamAccessDTO["nodes"]): NodeGroup[] {
 }
 
 /**
- * The payload: every ticked node, carrying the set it already had, plus the
- * picker's set for the ones the admin just added.
+ * The payload: every node in `selection`, carrying `authored` — except nodes
+ * that already had a set of their own, which keep it unless the admin edited the
+ * permission list (then one set applies everywhere, which is what editing it
+ * says).
  *
- * The write is a whole-set replace, so a node left out is a node revoked — which
- * is why this rebuilds from the CURRENT selection rather than from the groups
- * alone, and why a node whose group is gone falls back to what the picker shows.
+ * The write is a whole-set replace, so a node left out is a node revoked: this
+ * rebuilds from the CURRENT ticks rather than from the groups alone.
  */
 export function buildGrants(
   selection: ScopeSelection,
   groups: NodeGroup[],
+  authored: Capability[],
+  capsEdited: boolean,
 ): {
   projectIds: string[];
   folderIds: string[];
@@ -553,7 +695,6 @@ export function buildGrants(
   capabilities: Capability[];
 }[] {
   const setOf = new Map(groups.flatMap((g) => g.nodeIds.map((id) => [id, g])));
-  const authored = groups[0]?.capabilities ?? ["view"];
   const kinds: [UserTeamAccessDTO["nodes"][number]["kind"], string[]][] = [
     ["project", selection.projectIds],
     ["folder", selection.folderIds],
@@ -561,14 +702,21 @@ export function buildGrants(
   ];
   const out = new Map<
     string,
-    { projectIds: string[]; folderIds: string[]; appIds: string[]; capabilities: Capability[] }
+    {
+      projectIds: string[];
+      folderIds: string[];
+      appIds: string[];
+      capabilities: Capability[];
+    }
   >();
   for (const [kind, ids] of kinds) {
     for (const id of ids) {
-      const caps = setOf.get(id)?.capabilities ?? authored;
+      const own = setOf.get(id)?.capabilities;
+      const caps = own && !capsEdited ? own : authored;
       const key = [...caps].sort().join(",");
       const entry =
-        out.get(key) ?? { projectIds: [], folderIds: [], appIds: [], capabilities: caps };
+        out.get(key) ??
+        { projectIds: [], folderIds: [], appIds: [], capabilities: caps };
       if (kind === "project") entry.projectIds.push(id);
       else if (kind === "folder") entry.folderIds.push(id);
       else entry.appIds.push(id);

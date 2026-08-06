@@ -25,7 +25,7 @@ import {
 import { getCurrentUser } from "../auth";
 import { newId, nowIso } from "../ids";
 import {
-  currentRoleScope,
+  currentMemberScope,
   requireActiveTeamId,
   requireCapability,
   requireExposePorts,
@@ -514,7 +514,7 @@ async function resolveNewAppPlacement(
   // fail-closed default. Same messages the destination lookups use, so nothing
   // leaks — and both principals are asked, a token through the request predicate
   // and a member through their role's reach.
-  const roleScope = await currentRoleScope();
+  const roleScope = await currentMemberScope();
   if (placement.folderId) {
     if (!inFolderScope(placement.folderId) || !folderInScope(roleScope, placement.folderId))
       throw new Error("Folder not found");

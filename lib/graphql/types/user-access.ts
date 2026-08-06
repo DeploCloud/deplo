@@ -1,4 +1,5 @@
 import { builder } from "../builder";
+import type { Capability } from "@/lib/types";
 import { CapabilityEnum } from "./enums";
 import {
   addUserToTeam,
@@ -48,12 +49,16 @@ export const UserTeamAccessRef = builder
       }),
       granular: t.exposeBoolean("granular", {
         description:
-          "Per-node overrides are in play on top of the role. Stored as the admin's choice, so deleting the last granted node doesn't silently turn it off.",
+          "Their reach IS the nodes below: they touch those and nothing else, whatever their role reaches. Stored as the admin's choice, so deleting the last granted node doesn't silently turn it off.",
       }),
       baseCapabilities: t.field({
         type: [CapabilityEnum],
-        description: "What applies outside every granted node.",
+        description: "The set on the membership - their own when they hold one, else their role's.",
         resolve: (a) => a.baseCapabilities,
+      }),
+      customCapabilities: t.exposeBoolean("customCapabilities", {
+        description:
+          "That set is theirs, so saving their role no longer rewrites it.",
       }),
       nodes: t.field({ type: [AccessNodeGrantRef], resolve: (a) => a.nodes }),
       isFounder: t.exposeBoolean("isFounder", {
@@ -98,6 +103,9 @@ const SetMemberAccessInputType = builder.inputType("SetMemberAccessInput", {
     roleId: t.string({ required: true }),
     granular: t.boolean({ required: true }),
     grants: t.field({ type: [NodeGrantInputType], required: false }),
+    // Absent means "whatever the role gives", which is what every client that
+    // predates a per-member set already means by leaving it out.
+    capabilities: t.field({ type: [CapabilityEnum], required: false }),
   }),
 });
 
@@ -154,6 +162,7 @@ builder.mutationFields((t) => ({
           appIds: g.appIds ?? undefined,
           capabilities: g.capabilities as never,
         })),
+        capabilities: (input.capabilities as Capability[] | null) ?? undefined,
       }),
   }),
   addUserToTeam: t.field({

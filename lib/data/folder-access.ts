@@ -18,7 +18,7 @@ import {
   boundedBy,
 } from "../membership-shared";
 import { holdsManageTeam, nodeCapabilities, withView } from "./node-access";
-import { roleScopeFor } from "./node-scope";
+import { memberScopeFor } from "./node-scope";
 import { type Capability } from "../types";
 
 /**
@@ -263,7 +263,7 @@ export async function visibleFolderIds(
   // per-TOKEN (`tokenHoldsInstanceAdmin`), so a plain token minted by an admin
   // who is not a member here still sees nothing.
   const admin = await isInstanceAdmin();
-  const scope = admin ? null : await roleScopeFor(user.id, teamId);
+  const scope = admin ? null : await memberScopeFor(user.id, teamId);
   // A scoped ROLE is not a super-user, whatever `manage_team` says. Writing a
   // scope clamps that capability away at the source, so this state should not
   // arise — and the sentinel is the one answer that would hand a limited member

@@ -32,6 +32,7 @@ export function PermissionPicker({
   capabilities,
   onChange,
   disabled = false,
+  title = "Permissions",
   hint = "Every action deplo can gate, one permission each. Tick exactly what this role should be able to do — search by what you want it to reach.",
   muted,
 }: {
@@ -39,6 +40,8 @@ export function PermissionPicker({
   onChange: (caps: Capability[]) => void;
   /** Read-only rendering (the locked Owner role, or a viewer). */
   disabled?: boolean;
+  /** The card heading. Defaults to the role/token wording. */
+  title?: string;
   /** Tooltip beside the heading — name the thing being granted. */
   hint?: string;
   /**
@@ -108,7 +111,7 @@ export function PermissionPicker({
     <div className="space-y-3">
       <div className="flex flex-wrap items-center justify-between gap-2">
         <div className="flex items-center gap-1.5">
-          <h3 className="text-sm font-medium">Permissions</h3>
+          <h3 className="text-sm font-medium">{title}</h3>
           <InfoTip content={hint} />
         </div>
         <div className="flex items-center gap-2 text-xs text-muted-foreground">

@@ -31,6 +31,8 @@ import { CAPABILITY_CATEGORIES, CAPABILITY_META } from "@/lib/capabilities";
 import { PROJECT_SCOPED_CAPABILITIES } from "@/lib/membership-shared";
 import {
   ScopePicker,
+  coversEverything,
+  everythingSelection,
   type ScopeSelection,
 } from "@/components/settings/tokens/scope-picker";
 import type { ScopeTreeTeam } from "@/lib/data/tokens";
@@ -70,10 +72,15 @@ export function RoleEditor({
       description: role?.description ?? basedOn?.description ?? "",
       capabilities: role?.capabilities ?? basedOn?.capabilities ?? ["view" as Capability],
       requireTwoFactor: role?.requireTwoFactor ?? basedOn?.requireTwoFactor ?? false,
-      scope: toSelection(role?.scope ?? basedOn?.scope ?? null),
-      limited: (role?.scope ?? basedOn?.scope ?? null) != null,
+      // Unrestricted shows as everything ticked, not as an empty tree: this is
+      // the control an admin narrows, and starting it blank made "reaches the
+      // whole team" look identical to "reaches nothing".
+      scope:
+        (role?.scope ?? basedOn?.scope ?? null) != null
+          ? toSelection(role?.scope ?? basedOn?.scope ?? null)
+          : everythingSelection(tree),
     }),
-    [role, basedOn],
+    [role, basedOn, tree],
   );
 
   const [name, setName] = React.useState(initial.name);
@@ -86,18 +93,17 @@ export function RoleEditor({
   const readOnly = locked || !canManage;
   const granted = caps.filter((c) => c !== "view").length;
   const sensitive = caps.filter((c) => CAPABILITY_META[c].sensitive).length;
-  // Three states, not two. `limited` is the role's own answer (the DTO's scope
-  // is null or it is not), NOT a count of ticks: a scope whose every node was
-  // deleted still limits the role — it reaches nothing — and reading it as
-  // "unrestricted" would widen the role on the next save, at the exact moment
-  // somebody deleted something.
-  const [limited, setLimited] = React.useState(initial.limited);
   const ticked =
     scope.projectIds.length +
     (scope.environmentIds?.length ?? 0) +
     scope.folderIds.length +
     scope.appIds.length;
-  const scoped = limited || ticked > 0;
+  // Untick anything at all and the role is limited; put every top-level node
+  // back and it is unrestricted again — which is stored as no scope at all, so
+  // the project somebody creates tomorrow is included. Zero ticks in a team that
+  // has nodes is NOT unrestricted: it is a role that reaches nothing, which is
+  // also what a scope left empty by a cascade becomes.
+  const scoped = !coversEverything(tree, scope);
   // What the scope silences. The set is the one the SAVE applies —
   // `PROJECT_SCOPED_CAPABILITIES`, via `effectiveRoleCapabilities`
   // (lib/data/roles.ts) — and it has to be, or the picker and the server
@@ -119,7 +125,6 @@ export function RoleEditor({
     description !== initial.description ||
     twoFactor !== initial.requireTwoFactor ||
     !sameCapabilities(caps, initial.capabilities) ||
-    limited !== initial.limited ||
     !sameScope(scope, initial.scope);
 
   function submit(e: React.FormEvent) {
@@ -259,22 +264,11 @@ export function RoleEditor({
             <ScopePicker
               tree={tree}
               selection={scope}
-              onChange={(next) => {
-                setScope(next);
-                // Ticking limits; unticking the LAST node is the admin saying
-                // "unrestricted", which is the one act that clears the scope.
-                setLimited(
-                  next.projectIds.length +
-                    (next.environmentIds?.length ?? 0) +
-                    next.folderIds.length +
-                    next.appIds.length >
-                    0,
-                );
-              }}
+              onChange={setScope}
               disabled={readOnly}
               teamPickable={false}
               title="Scope"
-              info="What this role reaches. Tick a project, one of its environments, a folder or an app, or tick nothing to reach the whole team."
+              info="Where this role can work. Everything is ticked to begin with - untick what its holders should not reach."
               emptyNote="This team has nothing to limit a role to yet."
               footer={
                 <p className="text-xs text-muted-foreground">
@@ -283,8 +277,8 @@ export function RoleEditor({
                       <span className="font-medium text-foreground">
                         Reaches nothing.
                       </span>{" "}
-                      Everything this role was limited to has been deleted. Tick
-                      something, or untick to give it the whole team.
+                      Nothing is ticked, so its holders can&apos;t open anything
+                      in this team. Tick where they work.
                     </>
                   ) : scoped ? (
                     <>
@@ -297,9 +291,9 @@ export function RoleEditor({
                   ) : (
                     <>
                       <span className="font-medium text-foreground">
-                        Unrestricted.
+                        The whole team.
                       </span>{" "}
-                      This role reaches every app in the team.
+                      Everything in it, including whatever gets created later.
                     </>
                   )}
                 </p>

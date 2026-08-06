@@ -15,7 +15,7 @@ import { defaultEnvironmentRows } from "./environments";
 import { getCurrentUser } from "../auth";
 import { newId, nowIso } from "../ids";
 import {
-  currentRoleScope,
+  currentMemberScope,
   requireActiveTeamId,
   requireCapability,
   requireMembership,
@@ -199,7 +199,7 @@ export const listProjects = cache(async function listProjects(): Promise<
   // Both reaches, because a project list is one of the few reads that assembles
   // its own rows instead of resolving them through `node-access.ts` — which is
   // where a role scope is applied for free, and why this one had to ask.
-  const roleScope = await currentRoleScope();
+  const roleScope = await currentMemberScope();
   const rows = (
     await getDb()
       .select()
@@ -233,7 +233,7 @@ export async function projectContents(projectId: string): Promise<{
   if (!inProjectScope(projectId)) return { folders: [], apps: [] };
   // Same answer for a member whose role doesn't reach it: a container out of
   // reach reads exactly like one that isn't there.
-  if (!projectInScope(await currentRoleScope(), projectId))
+  if (!projectInScope(await currentMemberScope(), projectId))
     return { folders: [], apps: [] };
   const folders = (
     await getDb()
@@ -272,7 +272,7 @@ export async function getProjectBySlug(slug: string): Promise<Project | null> {
   // not exist, so the refusal is never an oracle for which projects there are.
   return rows[0] &&
     inProjectScope(rows[0].id) &&
-    projectInScope(await currentRoleScope(), rows[0].id)
+    projectInScope(await currentMemberScope(), rows[0].id)
     ? assembleProject(rows[0])
     : null;
 }
@@ -496,7 +496,7 @@ export async function moveAppToProject(
   // no id to confirm, and telling someone their app would leave their own reach
   // is both safe and the only thing that explains the refusal.
   if (
-    !appInScope(await currentRoleScope(), {
+    !appInScope(await currentMemberScope(), {
       id: appId,
       folderId: null,
       projectId,
@@ -600,7 +600,7 @@ export async function moveAppToEnvironment(
     !env ||
     env.teamId !== teamId ||
     !inProjectScope(env.projectId) ||
-    !appInScope(await currentRoleScope(), {
+    !appInScope(await currentMemberScope(), {
       id: appId,
       folderId: null,
       projectId: env.projectId,

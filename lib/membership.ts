@@ -26,7 +26,7 @@ import {
 } from "./membership-shared";
 import { currentIdentity, narrowedScope } from "./auth/request-context";
 // The leaf module: a role's reach, with no dependency back on this one.
-import { roleScopeFor, type NodeScope } from "./data/node-scope";
+import { memberScopeFor, type NodeScope } from "./data/node-scope";
 
 export {
   CAPABILITY_PRESETS,
@@ -530,8 +530,9 @@ export async function requireTeamWide(what: string): Promise<void> {
 }
 
 /**
- * The CURRENT caller's role scope in the active team, or null when they reach
- * all of it.
+ * The CURRENT caller's reach in the active team, or null when they reach all of
+ * it — their own nodes when their membership carries a set, their role's scope
+ * otherwise ({@link memberScopeFor}).
  *
  * Most reads never need it: anything that resolves through
  * `appCapabilitiesForTeam` gets the scope applied for free, because that is
@@ -539,14 +540,14 @@ export async function requireTeamWide(what: string): Promise<void> {
  * the project list, the breadcrumb graph — that have to ask, and forgetting to
  * is exactly how those two shipped leaking.
  */
-export async function currentRoleScope(): Promise<NodeScope | null> {
+export async function currentMemberScope(): Promise<NodeScope | null> {
   const user = await getCurrentUser();
   if (!user) return null;
   const teamId = await getActiveTeamId();
   if (!teamId) return null;
   // An instance admin is not a member acting under a team role.
   if (await isInstanceAdmin()) return null;
-  return roleScopeFor(user.id, teamId);
+  return memberScopeFor(user.id, teamId);
 }
 
 /**
@@ -554,8 +555,8 @@ export async function currentRoleScope(): Promise<NodeScope | null> {
  * degrade rather than fail: a section outside someone's access should say so,
  * not render the error boundary over a healthy dashboard.
  *
- * True for every cookie session with an unscoped role and every unrestricted
- * token, which is every principal on every instance today.
+ * True for every cookie session whose role is unscoped and whose membership
+ * carries no nodes of its own, and for every unrestricted token.
  */
 export async function reachesWholeTeam(): Promise<boolean> {
   if (narrowedScope()) return false;
@@ -563,7 +564,7 @@ export async function reachesWholeTeam(): Promise<boolean> {
   if (!user) return true;
   const teamId = await getActiveTeamId();
   if (!teamId) return true;
-  return (await roleScopeFor(user.id, teamId)) == null;
+  return (await memberScopeFor(user.id, teamId)) == null;
 }
 
 /* ------------------------------------------------------------------ */

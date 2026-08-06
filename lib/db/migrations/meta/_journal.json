@@ -498,6 +498,13 @@
       "when": 1784675200000,
       "tag": "0070_role_scope_environments",
       "breakpoints": true
+    },
+    {
+      "idx": 71,
+      "version": "7",
+      "when": 1784675400000,
+      "tag": "0071_member_own_capabilities",
+      "breakpoints": true
     }
   ]
 }

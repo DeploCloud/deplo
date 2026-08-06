@@ -1015,3 +1015,180 @@ test("the picker mutes exactly what the save clamps away", async () => {
     "the editor would present a capability the save throws away",
   );
 });
+
+/* ------------------------------------------------------------------ */
+/* One member, moved off the role everyone else follows                */
+/* ------------------------------------------------------------------ */
+
+/**
+ * The member page edits ONE person against their role: untick a place and their
+ * ticks become their reach, untick a permission and the set becomes theirs.
+ *
+ * Both are the same trap in reverse — a limit that isn't enforced, and a limit
+ * the next role edit silently hands back — so each is asserted against data
+ * seeded OUTSIDE what the member ends up with.
+ */
+test("a member limited to one folder stops reaching the rest of the team", async () => {
+  const { setMemberAccess } = await import("./user-access");
+
+  // Control: the role is unscoped, so today they reach everything.
+  assert.ok(await reaches({ kind: "app", id: APP_OUT_PRC }));
+  assert.ok(await reaches({ kind: "app", id: APP_TOP }));
+
+  await as(ADMIN, () =>
+    setMemberAccess({
+      userId: DEV,
+      roleId: ROLE,
+      granular: true,
+      grants: [{ folderIds: [FLD_IN], capabilities: ["view", "deploy_apps"] }],
+      capabilities: ["view", "deploy_apps"],
+    }),
+  );
+
+  assert.deepEqual(await capsOn({ kind: "app", id: APP_IN_FLD }), [
+    "view",
+    "deploy_apps",
+  ]);
+  assert.deepEqual(
+    await capsOn({ kind: "app", id: APP_IN_CHILD }),
+    ["view", "deploy_apps"],
+    "and the subtree under it",
+  );
+  assert.equal(
+    await reaches({ kind: "app", id: APP_OUT_PRC }),
+    false,
+    "an app their role still reaches, and they no longer do",
+  );
+  assert.equal(await reaches({ kind: "app", id: APP_TOP }), false);
+  assert.deepEqual(
+    (await as(DEV, () => listApps())).map((a) => a.id).sort(),
+    [APP_IN_CHILD, APP_IN_FLD].sort(),
+    "the list agrees with the gate",
+  );
+  assert.deepEqual(
+    (await as(DEV, () => listFolders())).map((f) => f.id).sort(),
+    [FLD_CHILD, FLD_IN].sort(),
+    "the folder they were given, its subtree, and no sibling of it",
+  );
+});
+
+test("a permission taken from one member survives the next role edit", async () => {
+  const { setMemberAccess } = await import("./user-access");
+  const { updateRole } = await import("./roles");
+  const { listMembers } = await import("./members");
+
+  // Their role grants deploy_apps; this one person is not to have it.
+  await as(ADMIN, () =>
+    setMemberAccess({
+      userId: DEV,
+      roleId: ROLE,
+      granular: false,
+      grants: [],
+      capabilities: ["view"],
+    }),
+  );
+  assert.deepEqual(await capsOn({ kind: "app", id: APP_IN_PRC }), ["view"]);
+
+  // The role is saved again — a rename, touching nobody's permissions on
+  // purpose. Before `custom_capabilities`, this handed deploy_apps straight
+  // back, which is the failure that makes the whole editor a lie.
+  await as(ADMIN, () =>
+    updateRole({
+      id: ROLE,
+      name: "Renamed",
+      capabilities: ["view", "deploy_apps"],
+    }),
+  );
+  assert.deepEqual(
+    await capsOn({ kind: "app", id: APP_IN_PRC }),
+    ["view"],
+    "the role edit reached back into a member an admin had cut down",
+  );
+
+  // …and the roster says so, in the one place an admin would look.
+  const dev = (await as(ADMIN, () => listMembers())).find(
+    (m) => m.userId === DEV,
+  );
+  assert.equal(dev?.accessDelta, "less");
+});
+
+test("a member who follows their role still follows a role edit", async () => {
+  const { updateRole } = await import("./roles");
+  const { listMembers } = await import("./members");
+
+  await as(ADMIN, () =>
+    updateRole({
+      id: ROLE,
+      name: "Scoped",
+      capabilities: ["view", "deploy_apps", "view_logs"],
+    }),
+  );
+  assert.deepEqual(await capsOn({ kind: "app", id: APP_IN_PRC }), [
+    "view",
+    "deploy_apps",
+    "view_logs",
+  ]);
+  const dev = (await as(ADMIN, () => listMembers())).find(
+    (m) => m.userId === DEV,
+  );
+  assert.equal(dev?.accessDelta, null, "nothing about them differs from it");
+});
+
+test("a member given more than their role keeps it, and reads as more", async () => {
+  const { setMemberAccess } = await import("./user-access");
+  const { listMembers } = await import("./members");
+
+  await as(ADMIN, () =>
+    setMemberAccess({
+      userId: DEV,
+      roleId: ROLE,
+      granular: false,
+      grants: [],
+      capabilities: ["view", "deploy_apps", "view_logs"],
+    }),
+  );
+  assert.deepEqual(await capsOn({ kind: "app", id: APP_IN_PRC }), [
+    "view",
+    "deploy_apps",
+    "view_logs",
+  ]);
+  const dev = (await as(ADMIN, () => listMembers())).find(
+    (m) => m.userId === DEV,
+  );
+  assert.equal(dev?.accessDelta, "more");
+});
+
+test("a limited member never resolves as a team administrator", async () => {
+  const { setMemberAccess } = await import("./user-access");
+  const { hasCapability } = await import("../membership");
+
+  // The role hands out manage_team, which is what makes its holders folder
+  // super-users. Limiting the person must clamp it away at the source, or they
+  // resolve every private folder in the team through `holdsManageTeam`.
+  await as(ADMIN, () =>
+    updateRoleCaps(["view", "deploy_apps", "manage_team", "manage_members"]),
+  );
+  await as(ADMIN, () =>
+    setMemberAccess({
+      userId: DEV,
+      roleId: ROLE,
+      granular: true,
+      grants: [{ folderIds: [FLD_IN], capabilities: ["view", "deploy_apps"] }],
+      capabilities: ["view", "deploy_apps", "manage_team", "manage_members"],
+    }),
+  );
+
+  assert.equal(await as(DEV, () => hasCapability("manage_team")), false);
+  assert.equal(await as(DEV, () => hasCapability("manage_members")), false);
+  assert.equal(
+    await reaches({ kind: "folder", id: FLD_OUT }),
+    false,
+    "a folder they were never shown stays invisible",
+  );
+});
+
+/** Re-author the role's capabilities, the way the role editor does. */
+async function updateRoleCaps(capabilities: Capability[]): Promise<void> {
+  const { updateRole } = await import("./roles");
+  await updateRole({ id: ROLE, name: "Scoped", capabilities });
+}

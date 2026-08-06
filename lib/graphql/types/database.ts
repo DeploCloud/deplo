@@ -2,7 +2,7 @@ import { builder } from "../builder";
 import { DatabaseTypeEnum } from "./enums";
 import { ResourceLimitsRef, ResourceLimitsInputType } from "./resource-limits";
 import { pubSub } from "../pubsub";
-import { roleScopeFor } from "@/lib/data/node-scope";
+import { memberScopeFor } from "@/lib/data/node-scope";
 import {
   listDatabases,
   getDatabase,
@@ -458,7 +458,7 @@ export async function* databaseStatusStream(
   // it cannot resolve a user, which made this the one path where a limited
   // member was handed a database. A database belongs to no project, so anyone
   // whose role reaches only part of the team reaches none of them.
-  if (await roleScopeFor(userId, teamId)) throw new Error("Database not found");
+  if (await memberScopeFor(userId, teamId)) throw new Error("Database not found");
   const first = await getDatabaseForTeam(id, teamId);
   if (!first) throw new Error("Database not found");
 
