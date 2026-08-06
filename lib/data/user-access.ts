@@ -37,7 +37,7 @@ import { instanceOwnerUserId } from "./instance-owner";
 import { ensureTeamRoles, roleAssignment } from "./roles";
 import { buildScopeTree, type ScopeTreeTeam } from "./tokens";
 import { nodeCapabilitiesFor, withView } from "./node-access";
-import type { Activity, Capability } from "../types";
+import type { Activity, Capability, Membership } from "../types";
 
 /**
  * Instance-admin administration of ONE person's access across the whole
@@ -365,7 +365,9 @@ export async function setUserTeamAccess(input: {
   grants?: NodeGrantInput[];
 }): Promise<UserTeamAccessDTO[]> {
   const { userId: actingUserId } = await requireInstanceAdmin();
-  await writeAccess(actingUserId, input);
+  // No actor bound: administering the instance is exactly the power to assign a
+  // role you do not hold in a team you may not belong to.
+  await writeAccess(actingUserId, input, null);
   return listUserAccess(input.userId);
 }
 
@@ -389,8 +391,9 @@ export async function setMemberAccess(input: {
   granular: boolean;
   grants?: NodeGrantInput[];
 }): Promise<UserTeamAccessDTO[]> {
-  const { teamId, userId: actingUserId } = await requireCapability("manage_members");
-  await writeAccess(actingUserId, { ...input, teamId });
+  const { teamId, userId: actingUserId, membership } =
+    await requireCapability("manage_members");
+  await writeAccess(actingUserId, { ...input, teamId }, membership);
   // Their access in THIS team, which is the only one this door may answer for.
   return loadUserAccess(input.userId, teamId);
 }
@@ -404,10 +407,46 @@ async function writeAccess(
     granular: boolean;
     grants?: NodeGrantInput[];
   },
+  /**
+   * The ACTOR's own membership, on the team-side door. Null on the
+   * instance-admin one, which is exempt by definition.
+   *
+   * Without it, `manage_members` alone assigned ANY role — including Owner, to
+   * somebody else, above the actor's own rank. `updateMember` has refused that
+   * for as long as it has existed; this door reached the same table and did not.
+   */
+  actor: Membership | null,
 ): Promise<void> {
   const db = getDb();
   await ensureTeamRoles(db, input.teamId);
   const assignment = await roleAssignment(db, input.teamId, input.roleId);
+  if (actor) {
+    const beyond = assignment.capabilities.filter(
+      (c) => !actor.capabilities.includes(c),
+    );
+    if (beyond.length > 0)
+      throw new Error(
+        `You can only assign a role whose permissions you hold yourself — ${assignment.name} grants more than you do`,
+      );
+    if (assignment.rank === "owner" && actor.role !== "owner")
+      throw new Error("Only an owner can make someone an owner");
+    // …and an owner's access is an owner's to change. Read before the
+    // transaction opens: a query issued while one is open hangs under pglite.
+    const target = (
+      await db
+        .select({ role: membershipsTable.role })
+        .from(membershipsTable)
+        .where(
+          and(
+            eq(membershipsTable.userId, input.userId),
+            eq(membershipsTable.teamId, input.teamId),
+          ),
+        )
+        .limit(1)
+    )[0];
+    if (target?.role === "owner" && actor.role !== "owner")
+      throw new Error("Only an owner can change another owner's access");
+  }
   const resolved = input.granular
     ? await resolveGrants(input.teamId, actingUserId, input.grants ?? [])
     : [];

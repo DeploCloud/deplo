@@ -44,7 +44,7 @@ beforeEach(async () => {
 test("databaseStatusStream yields the initial snapshot + multiple change pings (cookie-free)", async () => {
   await seedDatabase(db, { id: "db_1", name: "main", status: "provisioning" });
 
-  const gen = databaseStatusStream("db_1", TEAM_A);
+  const gen = databaseStatusStream("db_1", TEAM_A, USER_1);
 
   // Initial snapshot — masked DTO, no secret projected.
   const first = await gen.next();
@@ -77,22 +77,29 @@ test("databaseStatusStream yields the initial snapshot + multiple change pings (
 test("databaseStatusStream rejects an unknown id / wrong team / no team", async () => {
   await seedDatabase(db, { id: "db_1", name: "main" });
   await assert.rejects(
-    () => databaseStatusStream("db_nope", TEAM_A).next(),
+    () => databaseStatusStream("db_nope", TEAM_A, USER_1).next(),
     /Database not found/,
   );
   await assert.rejects(
-    () => databaseStatusStream("db_1", "team_other").next(),
+    () => databaseStatusStream("db_1", "team_other", USER_1).next(),
     /Database not found/,
   );
   await assert.rejects(
-    () => databaseStatusStream("db_1", null).next(),
+    () => databaseStatusStream("db_1", null, USER_1).next(),
+    /Database not found/,
+  );
+  // No principal either: the generator runs after the HTTP handler returned, so
+  // it cannot go looking for one, and the gate it used to lean on answered
+  // "unrestricted" when it could not resolve a user.
+  await assert.rejects(
+    () => databaseStatusStream("db_1", TEAM_A, null).next(),
     /Database not found/,
   );
 });
 
 test("databaseStatusStream ends when the database is deleted mid-stream", async () => {
   await seedDatabase(db, { id: "db_1", name: "main" });
-  const gen = databaseStatusStream("db_1", TEAM_A);
+  const gen = databaseStatusStream("db_1", TEAM_A, USER_1);
   await gen.next(); // initial
   const p = gen.next();
   await pg.exec(`delete from databases where id = 'db_1';`);

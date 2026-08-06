@@ -268,7 +268,13 @@ export async function getProjectBySlug(slug: string): Promise<Project | null> {
     .from(projectsTable)
     .where(and(eq(projectsTable.teamId, teamId), eq(projectsTable.slug, slug)))
     .limit(1);
-  return rows[0] && inProjectScope(rows[0].id) ? assembleProject(rows[0]) : null;
+  // Both reaches, and null either way: a point lookup answers as if the id did
+  // not exist, so the refusal is never an oracle for which projects there are.
+  return rows[0] &&
+    inProjectScope(rows[0].id) &&
+    projectInScope(await currentRoleScope(), rows[0].id)
+    ? assembleProject(rows[0])
+    : null;
 }
 
 /** True if a container belongs to a team, and is in the caller's scope. */
@@ -489,10 +495,16 @@ export async function moveAppToProject(
         .where(and(eq(projectsTable.id, projectId), eq(projectsTable.teamId, teamId)))
         .limit(1)
     )[0];
-    // The DESTINATION, which was only ever checked against the team: a narrowed
-    // caller could file an app it controls into a project outside its own
-    // scope. Same message as an unknown id, so no id is confirmed by refusing.
-    if (!p || !inProjectScope(projectId)) throw new Error("Project not found");
+    // The DESTINATION, which was only ever checked against the team: a caller
+    // who reaches part of the team could file an app it controls into a project
+    // outside its own scope. Same message as an unknown id, so no id is
+    // confirmed by refusing.
+    if (
+      !p ||
+      !inProjectScope(projectId) ||
+      !projectInScope(await currentRoleScope(), projectId)
+    )
+      throw new Error("Project not found");
     const env = await defaultEnvironmentFor(projectId);
     environmentId = env?.id ?? null;
     msg = env
@@ -553,7 +565,12 @@ export async function moveAppToEnvironment(
   )[0];
   // Its owning project is the destination, and it is checked the same way
   // `moveAppToProject` checks one: in the team, and inside the caller's scope.
-  if (!env || env.teamId !== teamId || !inProjectScope(env.projectId))
+  if (
+    !env ||
+    env.teamId !== teamId ||
+    !inProjectScope(env.projectId) ||
+    !projectInScope(await currentRoleScope(), env.projectId)
+  )
     throw new Error("Environment not found");
   await getDb()
     .update(appsTable)

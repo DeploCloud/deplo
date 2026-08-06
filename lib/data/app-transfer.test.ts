@@ -177,6 +177,18 @@ test("transfers the app, and severs every tie to the team it came from", async (
   });
 
   await asOwner(async () => {
+    const { appGrants: agTable, teamRoles: trTable, teamRoleScopeApps: trsTable } =
+      await import("../db/schema/control-plane");
+    await db
+      .insert(agTable)
+      .values({ appId: APP, userId: USER_1, capability: "manage_env" });
+    await db.insert(trTable).values({
+      id: "role_src", teamId: TEAM_A, builtinKey: null, name: "Src",
+      description: null, requireTwoFactor: false, scoped: true,
+      createdAt: "2026-01-01T00:00:00.000Z",
+    });
+    await db.insert(trsTable).values({ roleId: "role_src", appId: APP });
+
     const folder = await createFolder("Marketing");
     await db
       .update(appsTable)
@@ -188,6 +200,28 @@ test("transfers the app, and severs every tie to the team it came from", async (
   const row = await appRow();
   assert.equal(row.teamId, TEAM_B, "the app now belongs to the destination team");
   assert.equal(row.folderId, null, "it left the source team's folder");
+  // Per-node access is a fact about the team it came FROM: a grant that
+  // travelled would hand a destination member capabilities their own team never
+  // voted on, and a scope row would limit a source-team role to an app that is
+  // no longer in it.
+  const { appGrants, teamRoleScopeApps } = await import(
+    "../db/schema/control-plane"
+  );
+  assert.equal(
+    (await db.select().from(appGrants).where(eq(appGrants.appId, APP))).length,
+    0,
+    "a per-app grant travelled with the app",
+  );
+  assert.equal(
+    (
+      await db
+        .select()
+        .from(teamRoleScopeApps)
+        .where(eq(teamRoleScopeApps.appId, APP))
+    ).length,
+    0,
+    "a role scope row travelled with the app",
+  );
   assert.equal(
     (await db.select().from(backupsTable).where(eq(backupsTable.appId, APP))).length,
     0,

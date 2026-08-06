@@ -623,6 +623,71 @@ test("a backup schedule is reachable only through the app it belongs to", async 
   await assert.rejects(() => as(DEV, () => toggleBackup("bk_out", false)), /not found/i);
 });
 
+test("a limited member creates and moves inside their scope, and nowhere else", async () => {
+  const { createApp } = await import("./apps");
+  const { moveAppToProject } = await import("./projects");
+  const { getProjectBySlug } = await import("./projects");
+  const { listEnvironmentsForProject } = await import("./environments");
+
+  await scopeTo({ projects: [PRC_IN] });
+  await pg.exec(
+    `insert into membership_capabilities (membership_id, capability)
+     select id, 'create_apps' from memberships where user_id = '${DEV}'
+     union all
+     select id, 'move_apps' from memberships where user_id = '${DEV}'`,
+  );
+
+  // Creating inside the scope works; outside it answers as a project that is
+  // not there. The create path is how anyone walks out of their own boundary.
+  const made = await as(DEV, () =>
+    createApp({ name: "mine", source: "upload", repo: null, projectId: PRC_IN }),
+  );
+  assert.equal(made.projectId, PRC_IN);
+  await assert.rejects(
+    () =>
+      as(DEV, () =>
+        createApp({ name: "theirs", source: "upload", repo: null, projectId: PRC_OUT }),
+      ),
+    /Project not found/,
+    "an app was created inside a project the role does not reach",
+  );
+
+  // Nor is an out-of-scope project a destination to move into.
+  await assert.rejects(
+    () => as(DEV, () => moveAppToProject(APP_IN_PRC, PRC_OUT)),
+    /Project not found/,
+  );
+
+  // Nor readable by name, nor enumerable through its environments.
+  assert.equal(await as(DEV, () => getProjectBySlug("out")), null);
+  assert.deepEqual(await as(DEV, () => listEnvironmentsForProject(PRC_OUT)), []);
+});
+
+test("the live database stream refuses a scoped member, with no request to read", async () => {
+  const { seedDatabase } = await import("./backup-test-helpers");
+  const { databaseStatusStream } = await import("../graphql/types/database");
+  await seedDatabase(db, { id: "db_main", name: "main" });
+  await scopeTo({ projects: [PRC_IN] });
+
+  // Driven exactly as production drives it: a generator's ticks run after the
+  // HTTP handler returned the streaming Response, so there is no request scope
+  // and no cookies. The principal has to ride in from the GraphQL context —
+  // leaning on a request-scoped gate here answered "unrestricted" and handed a
+  // limited member the database's host, port, user and masked connection string.
+  await assert.rejects(
+    () => databaseStatusStream("db_main", TEAM_A, DEV).next(),
+    /Database not found/,
+    "the stream handed a scoped member a database",
+  );
+
+  // The control: unscoped, the same call streams.
+  await db.update(teamRolesTable).set({ scoped: false }).where(eq(teamRolesTable.id, ROLE));
+  const gen = databaseStatusStream("db_main", TEAM_A, DEV);
+  const first = await gen.next();
+  assert.equal(first.value?.id, "db_main");
+  await gen.return(undefined as never);
+});
+
 test("nothing that belongs to the whole team is reachable through a point lookup", async () => {
   const { seedDatabase } = await import("./backup-test-helpers");
   await seedDatabase(db, { id: "db_main", name: "main" });

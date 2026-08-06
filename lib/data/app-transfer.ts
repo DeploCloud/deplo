@@ -19,7 +19,9 @@ import {
   servers as serversTable,
   serverTeams as serverTeamsTable,
   sharedEnvVarApps as sharedEnvVarAppsTable,
+  appGrants as appGrantsTable,
   teamAppOrder,
+  teamRoleScopeApps,
   teams as teamsTable,
 } from "../db/schema/control-plane";
 import { getCurrentUser } from "../auth";
@@ -406,6 +408,15 @@ export async function transferAppToTeam(
         .where(eq(appEnvironmentsTable.appId, appId));
       // Manual display order is per team; the app joins the destination's tail.
       await tx.delete(teamAppOrder).where(eq(teamAppOrder.appId, appId));
+      // Per-node access is a fact about the SOURCE team, exactly like the
+      // folder and project links cleared above. A grant that travelled would
+      // hand a destination member capabilities their own team never voted on,
+      // and a scope row would quietly limit a role of the source team to an app
+      // that is no longer in it.
+      await tx.delete(appGrantsTable).where(eq(appGrantsTable.appId, appId));
+      await tx
+        .delete(teamRoleScopeApps)
+        .where(eq(teamRoleScopeApps.appId, appId));
       // Shared variables stay with the team that owns them (ADR-0012: injection
       // is the per-app link and nothing else) — the links go, the values never
       // travel.

@@ -2,6 +2,7 @@ import { builder } from "../builder";
 import { DatabaseTypeEnum } from "./enums";
 import { ResourceLimitsRef, ResourceLimitsInputType } from "./resource-limits";
 import { pubSub } from "../pubsub";
+import { roleScopeFor } from "@/lib/data/node-scope";
 import {
   listDatabases,
   getDatabase,
@@ -434,7 +435,8 @@ builder.subscriptionFields((t) => ({
     // enforces team ownership through the cookie-free seam.
     authScopes: { loggedIn: true },
     args: { id: t.arg.string({ required: true }) },
-    subscribe: (_root, { id }, ctx) => databaseStatusStream(id, ctx.teamId),
+    subscribe: (_root, { id }, ctx) =>
+      databaseStatusStream(id, ctx.teamId, ctx.viewer?.id ?? null),
     resolve: (db) => db,
   }),
 }));
@@ -446,8 +448,17 @@ builder.subscriptionFields((t) => ({
 export async function* databaseStatusStream(
   id: string,
   teamId: string | null,
+  userId: string | null,
 ): AsyncGenerator<DatabaseDTO> {
-  if (!teamId) throw new Error("Database not found");
+  if (!teamId || !userId) throw new Error("Database not found");
+  // The REACH check, resolved from the principal the context carries rather than
+  // from the request. A generator's ticks run after the HTTP handler returned
+  // the streaming Response, so nothing here can read cookies — and the gate this
+  // used to lean on (`reachesWholeTeam` inside `loadDatabase`) answers TRUE when
+  // it cannot resolve a user, which made this the one path where a limited
+  // member was handed a database. A database belongs to no project, so anyone
+  // whose role reaches only part of the team reaches none of them.
+  if (await roleScopeFor(userId, teamId)) throw new Error("Database not found");
   const first = await getDatabaseForTeam(id, teamId);
   if (!first) throw new Error("Database not found");
 

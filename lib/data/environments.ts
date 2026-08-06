@@ -9,8 +9,13 @@ import {
   apps as appsTable,
 } from "../db/schema/control-plane";
 import { newId, nowIso } from "../ids";
-import { requireActiveTeamId, requireCapability } from "../membership";
+import {
+  currentRoleScope,
+  requireActiveTeamId,
+  requireCapability,
+} from "../membership";
 import { inProjectScope } from "../auth/request-context";
+import { projectInScope } from "./node-scope";
 import type { Environment, EnvironmentKind } from "../types";
 
 /**
@@ -83,7 +88,11 @@ async function requireOwnedProject(projectId: string): Promise<string> {
     .limit(1);
   // A container outside an API token's project scope reads exactly like one that
   // doesn't exist — same message, no existence oracle.
-  if (rows[0]?.teamId !== teamId || !inProjectScope(projectId))
+  if (
+    rows[0]?.teamId !== teamId ||
+    !inProjectScope(projectId) ||
+    !projectInScope(await currentRoleScope(), projectId)
+  )
     throw new Error("Project not found");
   return teamId;
 }
@@ -93,7 +102,10 @@ export async function listEnvironmentsForProject(
   projectId: string,
 ): Promise<Environment[]> {
   const teamId = await requireActiveTeamId();
+  // Both reaches: an environment belongs to a project, so a caller who cannot
+  // reach the project cannot enumerate what is inside it.
   if (!inProjectScope(projectId)) return [];
+  if (!projectInScope(await currentRoleScope(), projectId)) return [];
   // Team-scope through the owning Project (as listAllEnvironmentsForTeam does):
   // a foreign or unknown project id yields nothing, never another team's rows.
   const rows = await getDb()
@@ -141,8 +153,12 @@ export async function listAllEnvironmentsForTeam(): Promise<TeamEnvironment[]> {
     .innerJoin(projectsTable, eq(environmentsTable.projectId, projectsTable.id))
     .where(eq(projectsTable.teamId, teamId))
     .orderBy(asc(projectsTable.name), asc(environmentsTable.position));
+  // One resolution for the whole list, never one per row.
+  const roleScope = await currentRoleScope();
   return rows
-    .filter((r) => inProjectScope(r.projectId))
+    .filter(
+      (r) => inProjectScope(r.projectId) && projectInScope(roleScope, r.projectId),
+    )
     .map((r) => ({
     id: r.id,
     name: r.name,

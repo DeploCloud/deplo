@@ -25,6 +25,7 @@ import {
 import { getCurrentUser } from "../auth";
 import { newId, nowIso } from "../ids";
 import {
+  currentRoleScope,
   requireActiveTeamId,
   requireCapability,
   requireExposePorts,
@@ -105,6 +106,7 @@ import {
   inProjectScope,
   narrowedScope,
 } from "../auth/request-context";
+import { appInScope, folderInScope } from "./node-scope";
 import {
   insertEnvVars,
   loadDomainsForApp,
@@ -502,17 +504,29 @@ async function resolveNewAppPlacement(
   environmentId: string | null;
 }> {
   const placement = await resolvePlacement(input, teamId);
-  // A narrowed API token creates INSIDE its scope or not at all — otherwise the
-  // create path is how a token walks out of its own boundary. Which question to
-  // ask depends on where the app is being filed: an app lives in exactly ONE
-  // place, and a FOLDER has no `project_id` of its own, so asking about the
-  // project for a folder destination answered "no project ⇒ out of scope" and
-  // refused a folder-scoped token its own folder. The team top level (neither
-  // set) is outside every narrowed scope, which is the fail-closed default.
-  // Same messages the destination lookups use, so nothing leaks.
+  // A caller who reaches part of the team creates INSIDE that part or not at
+  // all — otherwise the create path is how anyone walks out of their own
+  // boundary. Which question to ask depends on where the app is being filed: an
+  // app lives in exactly ONE place, and a FOLDER has no `project_id` of its own,
+  // so asking about the project for a folder destination answered "no project ⇒
+  // out of scope" and refused a folder-scoped caller their own folder. The team
+  // top level (neither set) is outside every narrowed scope, which is the
+  // fail-closed default. Same messages the destination lookups use, so nothing
+  // leaks — and both principals are asked, a token through the request predicate
+  // and a member through their role's reach.
+  const roleScope = await currentRoleScope();
   if (placement.folderId) {
-    if (!inFolderScope(placement.folderId)) throw new Error("Folder not found");
-  } else if (!inProjectScope(placement.projectId)) {
+    if (!inFolderScope(placement.folderId) || !folderInScope(roleScope, placement.folderId))
+      throw new Error("Folder not found");
+  } else if (
+    !inProjectScope(placement.projectId) ||
+    !appInScope(roleScope, {
+      id: "",
+      folderId: null,
+      projectId: placement.projectId,
+      environmentId: placement.environmentId,
+    })
+  ) {
     throw new Error("Project not found");
   }
   return placement;

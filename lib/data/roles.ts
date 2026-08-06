@@ -198,11 +198,35 @@ async function adoptMatchingMemberships(
     list.push(r.capability as Capability);
     capsByRole.set(r.roleId, list);
   }
+  // Which of those built-ins are LIMITED: adoption compares against the
+  // effective set, so a hand-picked superset never gets adopted into a scoped
+  // role and quietly inherits its reach while keeping the capabilities the clamp
+  // exists to remove.
+  const scopedRoles = new Set(
+    roleIds.length
+      ? (
+          await db
+            .select({ id: teamRolesTable.id, scoped: teamRolesTable.scoped })
+            .from(teamRolesTable)
+            .where(inArray(teamRolesTable.id, roleIds))
+        )
+          .filter((r) => r.scoped)
+          .map((r) => r.id)
+      : [],
+  );
   const caps = await capabilitiesByMembership(db, rows.map((r) => r.id));
   for (const m of rows) {
     const targetId = byKey.get(m.role as Role);
     if (!targetId) continue;
-    if (!sameCapabilities(caps.get(m.id) ?? [], capsByRole.get(targetId) ?? []))
+    if (
+      !sameCapabilities(
+        caps.get(m.id) ?? [],
+        effectiveRoleCapabilities(
+          capsByRole.get(targetId) ?? [],
+          scopedRoles.has(targetId),
+        ),
+      )
+    )
       continue;
     await db
       .update(membershipsTable)
@@ -421,6 +445,7 @@ export async function matchTeamRole(
       id: teamRolesTable.id,
       name: teamRolesTable.name,
       builtinKey: teamRolesTable.builtinKey,
+      scoped: teamRolesTable.scoped,
     })
     .from(teamRolesTable)
     .where(eq(teamRolesTable.teamId, teamId));
@@ -449,8 +474,17 @@ export async function matchTeamRole(
     ...rows.filter((r) => r.builtinKey === rank),
     ...rows.filter((r) => r.builtinKey !== rank),
   ];
+  // Compared against the EFFECTIVE set, never the authored one. A scoped role's
+  // holders store a clamped set, so matching a hand-picked superset against the
+  // authored list handed that membership the role's name AND its scope while
+  // keeping every team-wide capability the clamp exists to remove. Falling
+  // through to null is the honest answer: a set that is not what the role gives
+  // is a Custom membership, unrestricted, which is what it always was.
   const match = ordered.find((r) =>
-    sameCapabilities(capsByRole.get(r.id) ?? [], caps),
+    sameCapabilities(
+      effectiveRoleCapabilities(capsByRole.get(r.id) ?? [], r.scoped),
+      caps,
+    ),
   );
   return match ? { id: match.id, name: match.name } : null;
 }
