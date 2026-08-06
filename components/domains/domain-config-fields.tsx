@@ -55,6 +55,7 @@ export const CERT_PROVIDERS: { value: CertProvider; label: string }[] = [
   { value: "none", label: "None (no certificate)" },
   { value: "letsencrypt", label: "Let's Encrypt" },
   { value: "cloudflare", label: "Cloudflare" },
+  { value: "custom", label: "Installed on the server" },
 ];
 
 /** The editable per-domain routing values, held as form state by the caller. */
@@ -242,6 +243,7 @@ export function advancedSummary(
   if (state.certProvider === "letsencrypt") parts.push("Let's Encrypt");
   else if (state.certProvider === "cloudflare")
     parts.push("Cloudflare certificate");
+  else if (state.certProvider === "custom") parts.push("Server certificate");
   // Mirrors `resolveDomainConfig`'s `manual` gate: with no certificate the
   // stored override is discarded, so naming it here would be a lie.
   if (state.certProvider !== "none" && state.manualEntrypoint) {
@@ -540,7 +542,7 @@ export function DomainConfigFields({
               <div className="space-y-2">
                 <FieldLabel
                   htmlFor={`${idPrefix}-cert`}
-                  info="The source of this domain's TLS certificate. A domain proxied through Cloudflare is set to Cloudflare automatically, since Cloudflare already serves it over HTTPS. Choosing None serves the domain over plain HTTP with no TLS."
+                  info="The source of this domain's TLS certificate. A domain proxied through Cloudflare is set to Cloudflare automatically, since Cloudflare already serves it over HTTPS. Pick Installed on the server when you added the certificate yourself under Settings, Servers. Choosing None serves the domain over plain HTTP with no TLS."
                 >
                   Certificate
                 </FieldLabel>

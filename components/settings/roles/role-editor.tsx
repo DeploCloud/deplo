@@ -328,7 +328,7 @@ export function RoleEditor({
                 </div>
               )}
               <div className="flex items-center gap-3">
-                <dt className="shrink-0 text-muted-foreground">Scope</dt>
+                <dt className="shrink-0 text-muted-foreground">Access</dt>
                 <dd className="min-w-0 flex-1 truncate text-right font-medium">
                   {!scoped
                     ? "Whole team"
@@ -346,8 +346,8 @@ export function RoleEditor({
               {outOfScope > 0 && (
                 <div className="flex items-center gap-3">
                   <dt className="flex shrink-0 items-center gap-1 text-muted-foreground">
-                    Out of scope
-                    <InfoTip content="These are ticked but do nothing while the role is limited. Widen the scope or untick them." />
+                    Out of reach
+                    <InfoTip content="These are ticked but do nothing while the role is limited. Widen its access or untick them." />
                   </dt>
                   <dd className="min-w-0 flex-1 truncate text-right font-medium tabular-nums">
                     {outOfScope}

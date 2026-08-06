@@ -51,15 +51,21 @@ export function ServerCertificatesTab({ server }: { server: ServerSummary }) {
   const [adding, setAdding] = React.useState(false);
   const [removing, setRemoving] = React.useState<Certificate | null>(null);
 
+  const read = React.useCallback(
+    () =>
+      gqlAction<{ serverCertificates: Certificate[] }>(
+        `mutation ServerCertificates($id: String!) {
+          serverCertificates(id: $id) { ${CERT_FIELDS} }
+        }`,
+        { id: server.id },
+      ),
+    [server.id],
+  );
+
   const load = React.useCallback(async () => {
     setLoading(true);
     setError(null);
-    const res = await gqlAction<{ serverCertificates: Certificate[] }>(
-      `mutation ServerCertificates($id: String!) {
-        serverCertificates(id: $id) { ${CERT_FIELDS} }
-      }`,
-      { id: server.id },
-    );
+    const res = await read();
     setLoading(false);
     if (!res.ok) {
       // Includes "Deplo did not install the proxy on this server", the one that
@@ -69,7 +75,31 @@ export function ServerCertificatesTab({ server }: { server: ServerSummary }) {
       return;
     }
     setCertificates(res.data?.serverCertificates ?? []);
-  }, [server.id]);
+  }, [read]);
+
+  /**
+   * What the host has, after a write said it failed.
+   *
+   * Installing recreates the proxy — and on the server running Deplo, this panel
+   * is behind that same proxy, so the reply to the write can die with the old
+   * container while the write itself succeeded. A failure is therefore a question,
+   * not an answer: ask the host what it is holding, and treat a list that changed
+   * as the write having landed. Returns null when nothing changed, i.e. when the
+   * failure was real.
+   */
+  const settled = React.useCallback(
+    async (before: Certificate[]): Promise<Certificate[] | null> => {
+      const res = await read();
+      if (!res.ok) return null;
+      const now = res.data?.serverCertificates ?? [];
+      const ids = new Set(before.map((c) => c.id));
+      const same = now.length === before.length && now.every((c) => ids.has(c.id));
+      if (same) return null;
+      setCertificates(now);
+      return now;
+    },
+    [read],
+  );
 
   React.useEffect(() => {
     // Opening the tab IS the read: it synchronises with an external system (this
@@ -89,8 +119,8 @@ export function ServerCertificatesTab({ server }: { server: ServerSummary }) {
               <InfoTip content="Deplo issues free certificates automatically. Add one here only when you already have your own: a wildcard, a company CA, or a domain that cannot be verified over HTTP." />
             </CardTitle>
             <p className="mt-1 text-sm text-muted-foreground">
-              Certificates you provide yourself. This server serves them for the
-              domains they cover, instead of asking Let&rsquo;s Encrypt.
+              Certificates you provide yourself. To use one, set a domain&rsquo;s
+              certificate to &ldquo;Installed on the server&rdquo;.
             </p>
           </div>
           <div className="flex items-center gap-1">
@@ -135,12 +165,16 @@ export function ServerCertificatesTab({ server }: { server: ServerSummary }) {
       <AddCertificateDialog
         server={server}
         open={adding}
+        installed={certificates ?? []}
+        settled={settled}
         onOpenChange={setAdding}
         onInstalled={setCertificates}
       />
       <RemoveCertificateDialog
         server={server}
         certificate={removing}
+        installed={certificates ?? []}
+        settled={settled}
         onOpenChange={(open) => !open && setRemoving(null)}
         onRemoved={(next) => {
           setCertificates(next);
@@ -188,7 +222,7 @@ function CertificateRow({
             </Badge>
           )}
         </div>
-        <p className="mt-1 truncate font-mono text-xs text-muted-foreground">
+        <p className="truncate font-mono text-xs text-muted-foreground">
           {certificate.domains.join(", ") || "No domains"}
         </p>
         <p className="text-xs text-muted-foreground">Issued by {certificate.issuer}</p>
@@ -208,17 +242,30 @@ function CertificateRow({
 function AddCertificateDialog({
   server,
   open,
+  installed,
+  settled,
   onOpenChange,
   onInstalled,
 }: {
   server: ServerSummary;
   open: boolean;
+  installed: Certificate[];
+  settled: (before: Certificate[]) => Promise<Certificate[] | null>;
   onOpenChange: (open: boolean) => void;
   onInstalled: (certificates: Certificate[]) => void;
 }) {
   const [pending, startTransition] = React.useTransition();
   const [certificate, setCertificate] = React.useState("");
   const [privateKey, setPrivateKey] = React.useState("");
+
+  function done() {
+    // The key is dropped the moment this closes, however it closed. It is the one
+    // thing typed here that has no read path anywhere else, and leaving it in
+    // state would put it back on screen the next time the dialog opens.
+    setCertificate("");
+    setPrivateKey("");
+    onOpenChange(false);
+  }
 
   function submit(e: React.FormEvent) {
     e.preventDefault();
@@ -230,29 +277,34 @@ function AddCertificateDialog({
         { id: server.id, input: { certificate, privateKey } },
       );
       if (!res.ok) {
-        // "That private key does not belong to that certificate" and friends:
-        // each names the fix, so they are surfaced as they came.
-        toast.error(res.error);
+        // A failed reply is not a failed install: recreating the proxy can kill
+        // the connection carrying it. Ask the host before saying it went wrong.
+        const after = await settled(installed);
+        if (!after) {
+          // "That private key does not belong to that certificate" and friends:
+          // each names the fix, so they are surfaced as they came.
+          toast.error(res.error);
+          return;
+        }
+        done();
+        toast.success(`Certificate installed on ${server.name}`);
         return;
       }
       onInstalled(res.data?.addServerCertificate ?? []);
-      setCertificate("");
-      setPrivateKey("");
-      onOpenChange(false);
+      done();
       toast.success(`Certificate installed on ${server.name}`);
     });
   }
 
   return (
-    <Dialog open={open} onOpenChange={(o) => !pending && onOpenChange(o)}>
+    <Dialog open={open} onOpenChange={(o) => !pending && (o ? onOpenChange(o) : done())}>
       <DialogContent className="sm:max-w-2xl">
         <DialogHeader>
           <DialogTitle>Add a certificate to {server.name}</DialogTitle>
           <DialogDescription>
-            Paste the certificate and its private key. This server serves it for
-            every domain it covers that has HTTPS turned on, instead of asking
-            Let&rsquo;s Encrypt. The proxy restarts, so sites here blink for a
-            few seconds.
+            Paste the certificate and its private key. Then set a domain&rsquo;s
+            certificate to &ldquo;Installed on the server&rdquo; to serve it with
+            this one. The proxy restarts, so sites here blink for a few seconds.
           </DialogDescription>
         </DialogHeader>
         <form className="grid gap-4" onSubmit={submit}>
@@ -295,12 +347,7 @@ function AddCertificateDialog({
             />
           </div>
           <DialogFooter>
-            <Button
-              type="button"
-              variant="outline"
-              onClick={() => onOpenChange(false)}
-              disabled={pending}
-            >
+            <Button type="button" variant="outline" onClick={done} disabled={pending}>
               Cancel
             </Button>
             <Button
@@ -323,11 +370,15 @@ function AddCertificateDialog({
 function RemoveCertificateDialog({
   server,
   certificate,
+  installed,
+  settled,
   onOpenChange,
   onRemoved,
 }: {
   server: ServerSummary;
   certificate: Certificate | null;
+  installed: Certificate[];
+  settled: (before: Certificate[]) => Promise<Certificate[] | null>;
   onOpenChange: (open: boolean) => void;
   onRemoved: (certificates: Certificate[]) => void;
 }) {
@@ -343,7 +394,15 @@ function RemoveCertificateDialog({
         { id: server.id, certificateId: certificate.id },
       );
       if (!res.ok) {
-        toast.error(res.error);
+        // Same as installing: recreating the proxy can take the reply with it, so
+        // the host has the last word on whether this happened.
+        const after = await settled(installed);
+        if (!after) {
+          toast.error(res.error);
+          return;
+        }
+        onRemoved(after);
+        toast.success(`Certificate for ${certificate.subject} removed`);
         return;
       }
       onRemoved(res.data?.removeServerCertificate ?? []);

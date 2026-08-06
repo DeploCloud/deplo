@@ -311,7 +311,9 @@ export function DomainRow({
               <ShieldCheck className="size-3 text-success" />
               {effectiveProvider === "cloudflare"
                 ? "Cloudflare"
-                : "Let's Encrypt"}
+                : effectiveProvider === "custom"
+                  ? "Server certificate"
+                  : "Let's Encrypt"}
             </Badge>
           )}
           {middlewares.length > 0 && (

@@ -226,7 +226,7 @@ export function PermissionPicker({
                                 <span className="leading-none text-muted-foreground">
                                   <Ban
                                     className="size-3.5"
-                                    aria-label="Out of scope"
+                                    aria-label="Out of reach"
                                   />
                                 </span>
                               </SimpleTooltip>

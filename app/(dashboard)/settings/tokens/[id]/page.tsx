@@ -7,6 +7,7 @@ import { getToken, listScopeTree } from "@/lib/data/tokens";
 import { PageHeader } from "@/components/shared/page-header";
 import { TokenEditor } from "@/components/settings/tokens/token-editor";
 import { timeAgo } from "@/lib/utils";
+import { instancePublicBaseUrl } from "@/lib/data/instance-settings";
 
 export async function generateMetadata(
   props: PageProps<"/settings/tokens/[id]">,
@@ -62,7 +63,7 @@ export default async function TokenPage(
         tree={tree}
         canManage={canManage}
         canGrantInstanceAdmin={canGrantInstanceAdmin}
-        publicUrl={process.env.DEPLO_PUBLIC_URL ?? ""}
+        publicUrl={await instancePublicBaseUrl()}
       />
     </div>
   );

@@ -335,7 +335,7 @@ export function TokenEditor({
                 </div>
               )}
               <div className="flex items-center gap-3">
-                <dt className="shrink-0 text-muted-foreground">Scope</dt>
+                <dt className="shrink-0 text-muted-foreground">Access</dt>
                 <dd className="min-w-0 flex-1 truncate text-right font-medium">
                   {scopeLabel}
                 </dd>
@@ -386,7 +386,7 @@ export function TokenEditor({
             {scoped && (
               <Badge variant="outline" className="w-full justify-center gap-1.5">
                 <FolderTree className="size-3" />
-                Limited scope
+                Limited access
               </Badge>
             )}
             {instanceAdmin && (

@@ -308,7 +308,7 @@ export function ScopePicker({
   return (
     <div className="space-y-3">
       <div className="flex items-center gap-1.5">
-        <h3 className="text-sm font-medium">Scope</h3>
+        <h3 className="text-sm font-medium">Access</h3>
         <InfoTip content={info} />
         {tree.length > 0 && (
           <Button
@@ -334,7 +334,7 @@ export function ScopePicker({
               value={query}
               onChange={(e) => setQuery(e.target.value)}
               placeholder="Search teams, projects, folders and apps"
-              aria-label="Search the scope"
+              aria-label="Search what this can access"
               className="pl-9 pr-9"
             />
             {query && (

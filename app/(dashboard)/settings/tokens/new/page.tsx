@@ -7,6 +7,7 @@ import { listScopeTree } from "@/lib/data/tokens";
 import { tokenPreset } from "@/lib/token-presets";
 import { PageHeader } from "@/components/shared/page-header";
 import { TokenEditor } from "@/components/settings/tokens/token-editor";
+import { instancePublicBaseUrl } from "@/lib/data/instance-settings";
 
 export const metadata = { title: "Settings · New API token" };
 
@@ -53,7 +54,7 @@ export default async function NewTokenPage(
         tree={tree}
         canManage
         canGrantInstanceAdmin={canGrantInstanceAdmin}
-        publicUrl={process.env.DEPLO_PUBLIC_URL ?? ""}
+        publicUrl={await instancePublicBaseUrl()}
       />
     </div>
   );

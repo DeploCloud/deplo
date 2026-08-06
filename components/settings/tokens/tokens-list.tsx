@@ -53,7 +53,7 @@ export function TokensList({
           <TableRow>
             <TableHead>Name</TableHead>
             <TableHead>Permissions</TableHead>
-            <TableHead>Scope</TableHead>
+            <TableHead>Access</TableHead>
             <TableHead>Last used</TableHead>
             <TableHead>Created by</TableHead>
             {canManage && <TableHead className="text-right">Actions</TableHead>}

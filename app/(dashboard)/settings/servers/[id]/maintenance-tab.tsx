@@ -67,15 +67,17 @@ export function ServerMaintenanceTab({ server }: { server: ServerSummary }) {
             report.failures.map((f) => `${f.name} (${f.error})`).join(", "),
         );
       } else if (report.restarted === 0) {
+        // "left alone" rather than "stopped": the bucket also holds workloads with
+        // a deploy in flight, and those are anything but stopped.
         toast.info(
           report.skipped > 0
-            ? `Nothing to restart — ${report.skipped} stopped and left alone`
+            ? `Nothing to restart, ${report.skipped} left alone`
             : "Nothing is running on this server",
         );
       } else {
         toast.success(
           `Restarted ${report.restarted} workload${report.restarted === 1 ? "" : "s"}` +
-            (report.skipped > 0 ? `, skipped ${report.skipped} stopped` : ""),
+            (report.skipped > 0 ? `, left ${report.skipped} alone` : ""),
         );
       }
       router.refresh();
@@ -133,7 +135,7 @@ export function ServerMaintenanceTab({ server }: { server: ServerSummary }) {
           <ActionRow
             icon={RefreshCw}
             title="Apps and databases"
-            description="Restarts everything Deplo runs here. Anything already stopped is left alone."
+            description="Restarts everything Deplo runs here. Anything stopped or mid-deploy is left alone."
             action={
               <Button variant="outline" onClick={() => setConfirm("workloads")} disabled={pending}>
                 Restart all
@@ -175,7 +177,8 @@ export function ServerMaintenanceTab({ server }: { server: ServerSummary }) {
             <DialogDescription>
               Every app and database Deplo runs on this server is stopped and
               started again, one at a time. Each is briefly unreachable. Anything
-              already stopped stays stopped.
+              already stopped stays stopped, and anything mid-deploy is left to
+              finish.
             </DialogDescription>
           </DialogHeader>
           <DialogFooter>

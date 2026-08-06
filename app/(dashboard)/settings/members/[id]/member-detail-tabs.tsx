@@ -385,7 +385,7 @@ export function MemberDetailTabs({
                       ? "Everywhere their role reaches is ticked. Untick what this one person shouldn't touch, or tick something extra to let them in. Everything under a ticked node follows it."
                       : `Set by their role: ${role?.name} is limited to specific environments, which can only be changed on the role.`
                   }
-                  emptyNote="This team has nothing to scope to yet."
+                  emptyNote="This team has nothing to give access to yet."
                 />
               </CardContent>
             </Card>
@@ -412,7 +412,7 @@ export function MemberDetailTabs({
                 {nothingAllowed && (
                   <p className="text-xs text-destructive">
                     {reachLimited
-                      ? "Pick a permission that works inside their scope: the ones ticked only mean something team-wide, and they no longer reach the whole team."
+                      ? "Pick a permission that works where they have access: the ones ticked only mean something team-wide, and they no longer reach the whole team."
                       : "Pick at least one permission. Someone who may only look at this team is a Viewer — give them that role instead."}
                   </p>
                 )}
