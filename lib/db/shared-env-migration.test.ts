@@ -98,12 +98,15 @@ before(async () => {
   // table that has existed since 0000, invisible to 0027's backfill. Its sibling
   // 0065 (app_grants) stays in the post-27 batch — it indexes
   // `activities.actor_user_id`, which only exists from 0029.
+  // custom_capabilities (0071) is 0064's case exactly: one additive ALTER with a
+  // default on `memberships` (0003), invisible to 0027's backfill.
   const preSeed = (f: string): boolean =>
     Number(f.slice(0, 4)) < 27 ||
     f.startsWith("0043_") ||
     f.startsWith("0054_") ||
     f.startsWith("0055_") ||
-    f.startsWith("0064_");
+    f.startsWith("0064_") ||
+    f.startsWith("0071_");
   const pre27 = files.filter(preSeed);
   const from27 = files.filter((f) => !preSeed(f));
 

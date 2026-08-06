@@ -1,11 +1,10 @@
 import {
+  Document,
   isMap,
   isScalar,
   isSeq,
   parse,
   parseDocument,
-  stringify,
-  type Document,
   type YAMLMap,
 } from "yaml";
 
@@ -79,6 +78,7 @@ export function withTraefikDashboard(
 ): string {
   const doc = parseCompose(currentYaml);
   const service = traefikService(doc);
+  withRedirectFallback(doc, service);
 
   const command = listOf(service.get("command", true));
   const labels = listOf(service.get("labels", true));
@@ -148,6 +148,24 @@ export function withTraefikDashboard(
  * apart, because only one of the two is worth offering to change.
  */
 export function acmeEmail(currentYaml: string): string | null {
+  const resolver = stackCertResolver(currentYaml);
+  if (resolver === null) return null;
+  const command = listOf(traefikService(parseCompose(currentYaml)).get("command", true));
+  const flag = `--certificatesresolvers.${resolver}.acme.email=`;
+  const found = command.find((c) => c.startsWith(flag));
+  return found ? found.slice(flag.length) : "";
+}
+
+/**
+ * The name of the ACME resolver this host actually defines, or null when it
+ * defines none - a proxy that terminates TLS with certificates from elsewhere.
+ *
+ * Read off the host's own flags rather than assumed: the installer names it
+ * `letsencrypt`, but a host configured for DNS-01 against another provider may
+ * not, and pointing a router at a resolver that does not exist yields Traefik's
+ * self-signed default - a browser warning on the page just secured.
+ */
+export function stackCertResolver(currentYaml: string): string | null {
   let command: string[];
   try {
     command = listOf(traefikService(parseCompose(currentYaml)).get("command", true));
@@ -155,10 +173,7 @@ export function acmeEmail(currentYaml: string): string | null {
     return null;
   }
   if (!command.some((c) => c.startsWith("--certificatesresolvers."))) return null;
-  const resolver = certResolver(command);
-  const flag = `--certificatesresolvers.${resolver}.acme.email=`;
-  const found = command.find((c) => c.startsWith(flag));
-  return found ? found.slice(flag.length) : "";
+  return certResolver(command);
 }
 
 /**
@@ -179,6 +194,7 @@ export function withAcmeEmail(currentYaml: string, email: string): string {
 
   const doc = parseCompose(currentYaml);
   const service = traefikService(doc);
+  withRedirectFallback(doc, service);
   const command = listOf(service.get("command", true));
   if (!command.some((c) => c.startsWith("--certificatesresolvers.")))
     throw new Error(
@@ -202,9 +218,18 @@ export function withAcmeEmail(currentYaml: string, email: string): string {
 /** One certificate the operator brought themselves: the PEM chain and its key. */
 export type CustomCertificate = { certPem: string; keyPem: string };
 
-/** Our compose config, the file it becomes, and the directory we serve it from. */
+/** Our compose configs, the files they become, and the directory we serve them from. */
 const CERT_CONFIG = "deplo-certificates";
 const CERT_FILE = "deplo-certificates.yml";
+const PANEL_CONFIG = "deplo-panel";
+const PANEL_FILE = "deplo-panel.yml";
+/**
+ * Every dynamic-config file Deplo owns. Membership decides one thing: whether
+ * the file provider is still needed after one of them is removed. Taking the
+ * flags out while another of ours is still mounted would unload it - which, for
+ * the panel's own route, means unpublishing the page issuing the request.
+ */
+const OUR_CONFIGS = [CERT_CONFIG, PANEL_CONFIG];
 const DEPLO_DYNAMIC_DIR = "/deplo-dynamic";
 const FILE_DIRECTORY_FLAG = "--providers.file.directory=";
 const FILE_WATCH_FLAG = "--providers.file.watch=true";
@@ -258,6 +283,9 @@ export function traefikCertificates(currentYaml: string): CustomCertificate[] {
  * which Traefik would refuse. A provider pinned to a single `filename` has no
  * room for another file, and that is a refusal, not something to work around
  * by replacing the file they configured.
+ *
+ * The file is mounted 0400 rather than compose's default 0444, because it holds
+ * private keys and every process in that container can read a 0444 file.
  */
 export function withTraefikCertificates(
   currentYaml: string,
@@ -265,29 +293,88 @@ export function withTraefikCertificates(
 ): string {
   const doc = parseCompose(currentYaml);
   const service = traefikService(doc);
-  const command = listOf(service.get("command", true));
+  withRedirectFallback(doc, service);
+
+  // Read before dropping: our config file is a Traefik dynamic-config file like
+  // any other, and an operator may have added a `tls.options` block or a
+  // middleware to it. Only the certificates in it are ours to rewrite.
+  const currentContent = doc.getIn(["configs", CERT_CONFIG, "content"]);
 
   // Ours always comes off first, so installing twice replaces rather than stacks.
-  dropOurConfig(doc, service);
+  dropOurConfig(doc, service, CERT_CONFIG);
 
   if (certificates.length === 0) {
-    // The flags come out only when they are ours. An operator who pointed the
-    // file provider somewhere of their own keeps it: removing our certificates
-    // must not unload their middlewares along with them.
-    if (ourDynamicDir(command)) {
-      setList(
-        doc,
-        service,
-        "command",
-        command.filter(
-          (c) => c !== `${FILE_DIRECTORY_FLAG}${DEPLO_DYNAMIC_DIR}` && c !== FILE_WATCH_FLAG,
-        ),
-      );
-    }
+    dropFileProvider(doc, service, CERT_CONFIG);
     return dump(doc);
   }
 
-  const existingDir = fileProviderDir(command);
+  mountDeploConfig(
+    doc,
+    service,
+    CERT_CONFIG,
+    CERT_FILE,
+    "a certificate file",
+    certificateFile(currentContent, certificates),
+  );
+  return dump(doc);
+}
+
+/**
+ * Our dynamic-config file: the current one with only its `tls.certificates`
+ * replaced, or a fresh one when there is nothing readable to keep.
+ *
+ * Edited as a document for the same reason the stack file is (see the file
+ * comment) - this one is a Traefik config an operator can hand-edit too, and
+ * re-rendering it from the certificate list alone would delete whatever else
+ * they put in it, silently, on the next install.
+ */
+function certificateFile(current: unknown, certificates: CustomCertificate[]): string {
+  const entries = certificates.map((c) => ({ certFile: c.certPem, keyFile: c.keyPem }));
+  const write = (doc: Document) => {
+    doc.setIn(["tls", "certificates"], doc.createNode(entries));
+    return doc.toString({ lineWidth: 0 });
+  };
+  if (typeof current === "string") {
+    const parsed = parseDocument(current);
+    if (parsed.errors.length === 0 && isMap(parsed.contents)) {
+      try {
+        return write(parsed);
+      } catch {
+        // Something in there is not the shape a Traefik config has - a `tls:`
+        // holding a string, say. Nothing to preserve then, and a certificate
+        // must still install: whatever was in the file was not working either.
+      }
+    }
+  }
+  return write(new Document({}));
+}
+
+/**
+ * Mount one of our dynamic-config files into the host's Traefik, declaring the
+ * file provider when the host has none.
+ *
+ * Both pieces are needed and neither can come from a label: Traefik reads
+ * dynamic configuration only from its FILE provider, and the file has to exist
+ * inside the container. Both ride in the stack file itself - a compose `configs`
+ * entry with inline `content`, which Docker materialises on `up`. That is
+ * deliberate: the agent has no RPC that writes an arbitrary path on the host
+ * (ADR-0006 keeps host writes to the ones it exposes), and the stack file is
+ * something Deplo is already allowed to rewrite.
+ *
+ * The operator's own file provider is respected when they have one: our file is
+ * dropped into THEIR directory rather than a second provider being declared,
+ * which Traefik would refuse.
+ */
+function mountDeploConfig(
+  doc: Stack,
+  service: YAMLMap,
+  name: string,
+  file: string,
+  purpose: string,
+  content: string,
+): void {
+  const command = listOf(service.get("command", true));
+  const existingDir = fileProviderDir(command, purpose);
   if (!existingDir) {
     setList(doc, service, "command", [
       ...command,
@@ -297,56 +384,128 @@ export function withTraefikCertificates(
   }
   const dir = existingDir ?? DEPLO_DYNAMIC_DIR;
 
-  addTo(doc, service, "configs", { source: CERT_CONFIG, target: `${dir}/${CERT_FILE}` });
-  doc.setIn(
-    ["configs", CERT_CONFIG],
-    doc.createNode({
-      content: stringify(
-        {
-          tls: {
-            certificates: certificates.map((c) => ({
-              certFile: c.certPem,
-              keyFile: c.keyPem,
-            })),
-          },
-        },
-        { lineWidth: 0 },
-      ),
-    }),
+  const readOnly = readOnlyMountOver(service, dir);
+  if (readOnly)
+    throw new Error(
+      `This server's proxy mounts ${readOnly} read-only, so Deplo cannot add ${purpose} to it. Make that mount writable, or point --providers.file.directory at a directory Deplo can add a file to.`,
+    );
+
+  addTo(doc, service, "configs", {
+    source: name,
+    target: `${dir}/${file}`,
+    // 0400, owned by root, which is who the official image runs Traefik as. A
+    // stack the operator moved onto a `user:` of their own keeps compose's 0444
+    // default instead: an unreadable certificate file is a proxy serving its
+    // self-signed default, which is worse than a file only that container can see.
+    //
+    // Decimal because compose's YAML reader takes a bare `0400` as octal and this
+    // one as the same number: 256 IS 0400, and it is the form that cannot be
+    // misread whichever way the file is parsed later.
+    ...(service.has("user") ? {} : { mode: 256 }),
+  });
+  doc.setIn(["configs", name], doc.createNode({ content }));
+}
+
+/**
+ * Take the file provider back out, but only when it was ours AND nothing else of
+ * ours still needs it.
+ *
+ * Two refusals in one: an operator who pointed the file provider somewhere of
+ * their own keeps it (removing our certificates must not unload their
+ * middlewares), and a second Deplo config still mounted keeps it too - stripping
+ * the flags while the panel's own route lives in that directory would unpublish
+ * the panel as a side effect of deleting a certificate.
+ *
+ * Call AFTER {@link dropOurConfig}, which is what makes "anything else of ours"
+ * an honest question.
+ */
+function dropFileProvider(doc: Stack, service: YAMLMap, removed: string): void {
+  const configs = doc.get("configs", true);
+  const othersRemain =
+    isMap(configs) &&
+    configs.items.some((pair) => {
+      const key = scalar(pair.key);
+      return key !== removed && OUR_CONFIGS.includes(key);
+    });
+  if (othersRemain) return;
+
+  const command = listOf(service.get("command", true));
+  if (!command.includes(`${FILE_DIRECTORY_FLAG}${DEPLO_DYNAMIC_DIR}`)) return;
+  setList(
+    doc,
+    service,
+    "command",
+    command.filter(
+      (c) => c !== `${FILE_DIRECTORY_FLAG}${DEPLO_DYNAMIC_DIR}` && c !== FILE_WATCH_FLAG,
+    ),
   );
-  return dump(doc);
 }
 
 /** The file provider's directory when the stack already declares one. Throws for
- *  a provider pinned to one filename — see withTraefikCertificates. */
-function fileProviderDir(command: string[]): string | null {
+ *  a provider pinned to one filename - see mountDeploConfig. */
+function fileProviderDir(command: string[], purpose: string): string | null {
   if (command.some((c) => c.startsWith("--providers.file.filename=")))
     throw new Error(
-      "This server's proxy loads a single Traefik configuration file, so Deplo cannot add a certificate file alongside it. Point it at a directory (--providers.file.directory) to use custom certificates here.",
+      `This server's proxy loads a single Traefik configuration file, so Deplo cannot add ${purpose} alongside it. Point it at a directory (--providers.file.directory) instead.`,
     );
   const found = command.find((c) => c.startsWith(FILE_DIRECTORY_FLAG));
   return found ? found.slice(FILE_DIRECTORY_FLAG.length) : null;
 }
 
-/** Whether the file provider on this host is the one WE added. */
-function ourDynamicDir(command: string[]): boolean {
-  return command.includes(`${FILE_DIRECTORY_FLAG}${DEPLO_DYNAMIC_DIR}`);
+/**
+ * The operator's read-only mount that would swallow a file written into `dir`,
+ * if there is one - its container path, so the message can name it.
+ *
+ * Compose materialises a `configs` entry as a bind mount of one FILE, and the
+ * kernel needs that file to already exist inside whatever is mounted over its
+ * parent. A parent the operator mounted `:ro` cannot get one, and the failure
+ * lands on `up` - AFTER the old container is gone, so the host's proxy stays
+ * down until someone with a shell fixes it, which is the trip Deplo exists to
+ * remove. Refusing before the write is the whole difference between a sentence
+ * and an outage. Verified against Docker, which answers:
+ *   openat etc/traefik/dynamic/deplo-certificates.yml: read-only file system
+ *
+ * An ancestor counts, not just the directory itself: mounting `/etc/traefik:ro`
+ * makes `/etc/traefik/dynamic` just as unwritable. Every other read-only mount
+ * (the docker socket, an acme store) is somewhere else entirely and is none of
+ * this function's business.
+ */
+function readOnlyMountOver(service: YAMLMap, dir: string): string | null {
+  const mounts = service.get("volumes", true);
+  if (!isSeq(mounts)) return null;
+  for (const entry of mounts.items) {
+    let target = "";
+    let readOnly = false;
+    if (isScalar(entry)) {
+      // Short form: `source:target[:opts]`, where opts is a comma-separated list
+      // that `ro` may share with others (`ro,z` on SELinux hosts).
+      const parts = String(entry.value).split(":");
+      if (parts.length < 2) continue;
+      target = parts[1];
+      readOnly = (parts[2] ?? "").split(",").includes("ro");
+    } else if (isMap(entry)) {
+      target = scalar(entry.get("target", true));
+      readOnly = entry.get("read_only") === true;
+    }
+    if (readOnly && target && (dir === target || dir.startsWith(`${target}/`))) return target;
+  }
+  return null;
 }
 
 /**
- * Take our certificate config off both the service and the top level, in either
+ * Take one of our configs off both the service and the top level, in either
  * compose syntax, leaving every other entry — and the comments attached to them —
  * where they are.
  */
-function dropOurConfig(doc: Stack, service: YAMLMap): void {
+function dropOurConfig(doc: Stack, service: YAMLMap, name: string): void {
   const mounts = service.get("configs", true);
   if (isSeq(mounts)) {
-    mounts.items = mounts.items.filter((entry) => configSource(entry) !== CERT_CONFIG);
+    mounts.items = mounts.items.filter((entry) => configSource(entry) !== name);
     if (mounts.items.length === 0) service.delete("configs");
   }
   const configs = doc.get("configs", true);
   if (isMap(configs)) {
-    configs.delete(CERT_CONFIG);
+    configs.delete(name);
     if (configs.items.length === 0) doc.delete("configs");
   }
 }
@@ -357,6 +516,260 @@ function configSource(entry: unknown): string {
   if (isScalar(entry)) return String(entry.value);
   if (isMap(entry)) return String(entry.get("source") ?? "");
   return "";
+}
+
+/* ------------------------------------------------------------------ */
+/* The panel's own route                                               */
+/* ------------------------------------------------------------------ */
+
+/**
+ * The router that publishes Deplo itself. Also the name of its service and the
+ * key both live under in our dynamic-config file.
+ */
+const PANEL_ROUTER = "deplo-panel";
+
+/**
+ * How this host publishes the Deplo panel.
+ *
+ * `certResolver: null` is the opt-out: the router still terminates TLS, but no
+ * certificate is ORDERED for it. Traefik then serves whatever matches from the
+ * certificates the operator installed themselves, or its self-signed default -
+ * which is exactly what a Cloudflare "Full" origin, a corporate proxy or an
+ * internal CA in front of the panel wants, and what a domain Let's Encrypt
+ * cannot validate (no public DNS, :80 closed) needs to stop retrying forever.
+ */
+export type PanelRoute = {
+  /** The host the panel answers on. */
+  domain: string;
+  /** https on :443, or plain http on :80. */
+  https: boolean;
+  /** The ACME resolver its certificate is ordered from. Null = none, and
+   *  meaningless when {@link https} is false. */
+  certResolver: string | null;
+  /** Where Traefik forwards, e.g. `http://deplo:3000`. Read live, never assumed. */
+  target: string;
+};
+
+/**
+ * The panel's router priority, and why it is 2 rather than 1.
+ *
+ * A whole-host router must stay a FALLBACK so an app's own route on the same
+ * host outranks it, which is what a low number buys. But 1 is taken twice over:
+ * it is where {@link withRedirectFallback} pins the entrypoint's
+ * http-to-https redirect, and it is what a Deplo installed before this existed
+ * pinned its own container LABEL router to. Sitting at 2 clears both - Traefik's
+ * tie-break between equal priorities is not something to bet a panel on - and
+ * still sits far below every real route: an app's Host() router gets its rule
+ * LENGTH (tens), a PathPrefix router gets PATH_PRIORITY_BASE (a million).
+ *
+ * One number for both schemes, and the same one `install.sh` seeds, so the file
+ * an operator reads on the host does not change under them on the first edit.
+ */
+const PANEL_PRIORITY = 2;
+
+/** Where the entrypoint redirect is pinned so an explicit route can outrank it. */
+const REDIRECT_PRIORITY = 1;
+
+/**
+ * Where the panel lives on a host `install.sh` set up: the control plane's own
+ * compose service name, resolved by Docker DNS on the shared `deplo` network.
+ *
+ * Only ever a STARTING GUESS, for adopting a panel that predates Deplo owning
+ * its own route. Every other path reads the target back out of the file, because
+ * a Deplo running from source on the host is reached through the docker gateway
+ * instead and re-rendering it from this constant would send every request into a
+ * container that does not exist. The caller proves the guess answers before
+ * writing it - see `adoptPanelRoute`.
+ */
+export const DEFAULT_PANEL_TARGET = "http://deplo:3000";
+
+/**
+ * The panel route this host serves, or null when Deplo does not own one.
+ *
+ * Null is a real answer, not a failure: a Deplo installed before this existed
+ * publishes itself with labels on its own container, which is a file no agent
+ * RPC can write - so the honest thing is to report that the route is not ours
+ * rather than to write a second one that fights it.
+ */
+export function panelRoute(currentYaml: string): PanelRoute | null {
+  let content: unknown;
+  try {
+    content = parseCompose(currentYaml).getIn(["configs", PANEL_CONFIG, "content"]);
+  } catch {
+    return null;
+  }
+  if (typeof content !== "string") return null;
+  let parsed: unknown;
+  try {
+    parsed = parse(content);
+  } catch {
+    return null;
+  }
+  const http = (parsed as { http?: { routers?: Record<string, unknown>; services?: Record<string, unknown> } } | null)
+    ?.http;
+  const router = http?.routers?.[PANEL_ROUTER] as
+    | { rule?: unknown; tls?: { certResolver?: unknown } }
+    | undefined;
+  const target = (
+    http?.services?.[PANEL_ROUTER] as
+      | { loadBalancer?: { servers?: { url?: unknown }[] } }
+      | undefined
+  )?.loadBalancer?.servers?.[0]?.url;
+  if (!router || typeof target !== "string" || !target) return null;
+
+  const rule = typeof router.rule === "string" ? router.rule.match(/^Host\(`([^`]+)`\)$/) : null;
+  if (!rule) return null;
+  const resolver = router.tls?.certResolver;
+  return {
+    domain: rule[1],
+    // The presence of `tls` IS the answer: a router without it terminates
+    // nothing, which is what plain http means here.
+    https: router.tls !== undefined && router.tls !== null,
+    certResolver: typeof resolver === "string" && resolver ? resolver : null,
+    target,
+  };
+}
+
+/**
+ * Publish the Deplo panel on this host's proxy (or, with `null`, stop).
+ *
+ * The route is a FILE, not labels on the panel's own container, and that is the
+ * whole point: the container's compose file belongs to the installer and no
+ * agent RPC can rewrite it, so a panel published by labels can never be changed
+ * from the panel. A dynamic-config file is something Deplo is already allowed to
+ * write (see {@link withTraefikCertificates}).
+ *
+ * It rides in the stack file as a compose `config`, so applying one DOES recreate
+ * the proxy: the same few seconds of interruption installing a certificate costs,
+ * for every site on that host and not only the panel. Traefik watches the
+ * directory, so an operator editing the file ON the host gets a hot reload -
+ * Deplo, writing it through the agent, does not. Callers must say so.
+ *
+ * `priority: 1` for the reason `install.sh` pinned the label router to 1: this
+ * is a whole-host rule, and Traefik's default priority is the rule's LENGTH, so
+ * an app's `PathPrefix` route on the same host would otherwise be swallowed by
+ * the panel. See `routing.ts` → PATH_PRIORITY_BASE.
+ *
+ * A plain-http route also pins the entrypoint redirect
+ * ({@link withRedirectFallback}), without which it would not be reachable at
+ * all - measured, not assumed: an entrypoint redirection outranks EVERY router
+ * on that entrypoint, including one at priority MaxInt32.
+ */
+export function withPanelRoute(currentYaml: string, route: PanelRoute | null): string {
+  const doc = parseCompose(currentYaml);
+  const service = traefikService(doc);
+  withRedirectFallback(doc, service);
+
+  // Read before dropping, same as the certificates: the file is a Traefik config
+  // like any other and an operator may have put a middleware of their own in it.
+  const currentContent = doc.getIn(["configs", PANEL_CONFIG, "content"]);
+  dropOurConfig(doc, service, PANEL_CONFIG);
+
+  if (!route) {
+    dropFileProvider(doc, service, PANEL_CONFIG);
+    return dump(doc);
+  }
+
+  const domain = route.domain.trim().toLowerCase();
+  if (!domain) throw new Error("A domain is required to publish the Deplo panel");
+  const target = route.target.trim();
+  if (!target)
+    throw new Error("Deplo does not know where its proxy should send the panel on this server");
+
+  mountDeploConfig(
+    doc,
+    service,
+    PANEL_CONFIG,
+    PANEL_FILE,
+    "the panel's own route",
+    panelFile(currentContent, { ...route, domain, target }),
+  );
+  return dump(doc);
+}
+
+/**
+ * Our dynamic-config file for the panel: the current one with only OUR router
+ * and service replaced, for the same reason {@link certificateFile} preserves
+ * the rest - an operator who added a middleware to it keeps it.
+ */
+function panelFile(current: unknown, route: PanelRoute): string {
+  const write = (doc: Document) => {
+    doc.setIn(
+      ["http", "routers", PANEL_ROUTER],
+      doc.createNode({
+        rule: `Host(\`${route.domain}\`)`,
+        entryPoints: [route.https ? "websecure" : "web"],
+        service: PANEL_ROUTER,
+        priority: PANEL_PRIORITY,
+        // No `tls` key at all on http - its absence is what makes the route
+        // plain. On https, `{}` when the host names no resolver: the router
+        // still terminates and serves a certificate the operator installed,
+        // instead of ordering one from a resolver that does not exist.
+        ...(route.https
+          ? { tls: route.certResolver ? { certResolver: route.certResolver } : {} }
+          : {}),
+      }),
+    );
+    doc.setIn(
+      ["http", "services", PANEL_ROUTER],
+      doc.createNode({
+        loadBalancer: { servers: [{ url: route.target }], passHostHeader: true },
+      }),
+    );
+    return doc.toString({ lineWidth: 0 });
+  };
+  if (typeof current === "string") {
+    const parsed = parseDocument(current);
+    if (parsed.errors.length === 0 && isMap(parsed.contents)) {
+      try {
+        return write(parsed);
+      } catch {
+        // Not the shape a Traefik config has. Nothing to preserve then, and the
+        // panel must still be routed: whatever was in there was not working.
+      }
+    }
+  }
+  return write(new Document({}));
+}
+
+/**
+ * Pin this host's http-to-https entrypoint redirect BELOW the routes on it, so a
+ * route that asks for plain http is actually served over plain http.
+ *
+ * Traefik implements `entryPoints.web.http.redirections` as a router of its own,
+ * at a priority no route can outrank - measured on traefik:v3.7, where a router
+ * pinned to MaxInt32 was still answered with a 301. The only lever is the
+ * redirection's OWN `priority`, and dropping it to {@link REDIRECT_PRIORITY}
+ * leaves the redirect doing exactly its job: a host with no route of its own
+ * still goes to https, while a host that HAS one is served.
+ *
+ * That is not only the panel's problem, and it is why this runs on EVERY write
+ * this module makes rather than only when publishing an http panel. Every domain
+ * on the `none` certificate provider - the DEFAULT for a new domain - renders a
+ * router on the `web` entrypoint (`domainTlsConfig`), so on a stock install
+ * every plain-http app URL Deplo hands out was being redirected to an https it
+ * has no certificate for. The installers now write the flag, but a host set up
+ * before that keeps the bug until something rewrites its stack; making every
+ * rewrite carry the fix means an existing fleet heals on the next ordinary
+ * action (a certificate, the account email, the dashboard) instead of needing
+ * every host re-installed by hand.
+ *
+ * Never taken back out: the routes that depend on it are exactly the routes
+ * Deplo renders, and removing it would silently un-serve them.
+ *
+ * An explicit priority the operator set themselves is left alone: they have
+ * ordered their own entrypoint on purpose.
+ */
+function withRedirectFallback(doc: Stack, service: YAMLMap): void {
+  const command = listOf(service.get("command", true));
+  const redirection = command.find((c) =>
+    /^--entrypoints\.[^.]+\.http\.redirections\.entrypoint\.to=/.test(c),
+  );
+  if (!redirection) return;
+  const prefix = redirection.slice(0, redirection.indexOf(".to="));
+  const priorityFlag = `${prefix}.priority=`;
+  if (command.some((c) => c.startsWith(priorityFlag))) return;
+  setList(doc, service, "command", [...command, `${priorityFlag}${REDIRECT_PRIORITY}`]);
 }
 
 /** Whether this stack currently publishes the dashboard, and on which host. */
