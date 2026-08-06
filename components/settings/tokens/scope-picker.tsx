@@ -2,7 +2,6 @@
 
 import * as React from "react";
 import {
-  AlertTriangle,
   Boxes,
   ChevronRight,
   FolderTree,
@@ -64,7 +63,6 @@ export function ScopePicker({
   disabled = false,
   info = "What this token can reach. Tick a team for all of it, a project or a folder for everything inside it, or single apps. Tick nothing and it reaches everything you can.",
   emptyNote = "You aren't in any team yet, so there is nothing to narrow this token to.",
-  notice,
   renderMeta,
   teamPickable = true,
 }: {
@@ -83,11 +81,6 @@ export function ScopePicker({
   info?: React.ReactNode;
   /** Shown instead of the tree when there is nothing to pick from. */
   emptyNote?: React.ReactNode;
-  /**
-   * A warning between the search box and the tree — for the one thing the tree
-   * itself fixes: ticks made somewhere else that this reach silences.
-   */
-  notice?: React.ReactNode;
   /**
    * An extra control on the right of a row — the per-node affordance the user
    * editor hangs its capability sets off. Rendered OUTSIDE the row's `<label>`,
@@ -363,14 +356,6 @@ export function ScopePicker({
               </button>
             )}
           </div>
-
-          {/* Above the tree, because the tree is where it gets fixed. */}
-          {notice && (
-            <div className="flex items-start gap-3 rounded-lg border border-[var(--warning)]/30 bg-[var(--warning)]/5 p-3">
-              <AlertTriangle className="mt-0.5 size-5 shrink-0 text-[var(--warning)]" />
-              <div className="min-w-0 text-sm">{notice}</div>
-            </div>
-          )}
 
           {shown.length === 0 ? (
             <div className="rounded-lg border border-dashed border-border px-3 py-6 text-center text-sm text-muted-foreground">

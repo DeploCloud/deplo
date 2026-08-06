@@ -226,6 +226,20 @@ export function MemberDetailTabs({
   const nothingAllowed =
     (reachLimited ? onNodes : caps).filter((c) => c !== "view").length === 0;
   const blocked = readOnly || !roleId || nothingTicked || nothingAllowed;
+  // A disabled Save with no reason is the same as a broken one, and every reason
+  // it has lives on a different card — so it is said HERE, next to the button
+  // somebody just clicked, rather than once per card they'd have to go find.
+  const blockedReason = readOnly
+    ? null
+    : !roleId
+      ? "Pick a role to save."
+      : nothingTicked
+        ? "Tick at least one place under Access."
+        : !nothingAllowed
+          ? null
+          : reachLimited
+            ? "Their permissions only work on a whole team. Use Select all under Access, or tick one that works on a single app, like Deploy apps."
+            : "Pick at least one permission, or give them the Viewer role.";
 
   function save() {
     if (blocked || !roleId) return;
@@ -386,23 +400,6 @@ export function MemberDetailTabs({
                       : `Set by their role: ${role?.name} is limited to specific environments, which can only be changed on the role.`
                   }
                   emptyNote="This team has nothing to give access to yet."
-                  // The permissions they hold need a whole team and they have
-                  // part of one, so nothing they hold does anything. Said HERE
-                  // because ticking the team is the fix an admin usually wants.
-                  notice={
-                    nothingAllowed && reachLimited ? (
-                      <>
-                        <p className="font-medium">
-                          Nothing they can do right now
-                        </p>
-                        <p className="mt-1">
-                          Their permissions only work on a whole team. Use
-                          Select all, or tick one that works on a single app,
-                          like Deploy apps.
-                        </p>
-                      </>
-                    ) : null
-                  }
                 />
               </CardContent>
             </Card>
@@ -426,16 +423,6 @@ export function MemberDetailTabs({
                       : undefined
                   }
                 />
-                {/* The other half of "nothing allowed" — an empty list with no
-                    reach to explain it — stays here, on the list it is about.
-                    Its twin lives in the Access card, which is where it gets
-                    fixed. */}
-                {nothingAllowed && !reachLimited && (
-                  <p className="text-xs text-destructive">
-                    Pick at least one permission. Someone who may only look at
-                    this team is a Viewer — give them that role instead.
-                  </p>
-                )}
               </CardContent>
             </Card>
 
@@ -465,7 +452,12 @@ export function MemberDetailTabs({
           </TabsContent>
 
           {!readOnly && onTeamTab && (
-            <div className="flex justify-end">
+            <div className="flex flex-wrap items-center justify-end gap-3">
+              {blockedReason && (
+                <p className="min-w-0 flex-1 text-right text-xs text-muted-foreground">
+                  {blockedReason}
+                </p>
+              )}
               <Button type="submit" disabled={!dirty || pending || blocked}>
                 {pending ? (
                   <Loader2 className="size-4 animate-spin" />
