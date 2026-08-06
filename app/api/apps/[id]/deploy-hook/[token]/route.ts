@@ -66,7 +66,11 @@ export async function POST(
   // of some team, the URL token must not be able to tell them whether an app
   // exists, or whether its hook is switched off.
   const header = request.headers.get("authorization") ?? "";
-  const raw = header.startsWith("Bearer ") ? header.slice(7).trim() : "";
+  // The scheme is case-INSENSITIVE (RFC 9110 §11.1) and `lib/graphql/context.ts`
+  // already treats it that way. Matching `Bearer ` exactly here meant a sender
+  // that writes `bearer` — some CI runners and HTTP clients do — got a 401 from
+  // the hook while the same credential worked on /api/graphql.
+  const raw = /^bearer /i.test(header) ? header.slice(7).trim() : "";
   const { id: hookAppId } = await ctx.params;
   // A token's scope can span teams, so say which one this call is about: the
   // team that owns the app in the URL. An un-gated id → team_id lookup, which

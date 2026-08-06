@@ -15,17 +15,20 @@ import { schema } from "./schema";
 import type { GraphQLContext } from "./context";
 import type { FieldScope } from "./introspect";
 import { runWithIdentity } from "@/lib/auth/request-context";
+import { safeMessage } from "./mask-error";
 import { CAPABILITY_META } from "@/lib/membership-shared";
 import type { Capability } from "@/lib/types";
 
 /**
- * Bound on selection-set nesting for a playground query — the same intent as
- * the real endpoint's `maxDepthPlugin({ n: 12 })` (lib/graphql/yoga.ts), which
- * the graphql-js `execute()` path below does NOT otherwise enforce. Keeps a
- * deeply-nested read-only query from amplifying load past what the hardened
- * endpoint allows.
+ * Bounds on a playground query — the same intent as the real endpoint's
+ * `maxDepthPlugin({ n: 12 })` and `maxAliasesPlugin({ n: 30 })`
+ * (lib/graphql/yoga.ts), which the graphql-js `execute()` path below does NOT
+ * otherwise enforce. Both are needed: depth alone leaves alias amplification
+ * open, and a flat document repeating one gated list field 400 times executes it
+ * 400 times for a caller the hardened endpoint would have refused at 30.
  */
 const MAX_QUERY_DEPTH = 12;
+const MAX_ALIASES = 30;
 
 /** Deepest selection-set nesting in an operation (fragments expanded). */
 function operationDepth(
@@ -53,6 +56,39 @@ function operationDepth(
     return max;
   };
   return depthOf(op.selectionSet);
+}
+
+/**
+ * Aliased fields in an operation, fragments expanded.
+ *
+ * Counts every OCCURRENCE, unlike {@link operationDepth}'s once-per-fragment
+ * walk: spreading the same fragment forty times is forty executions, which is
+ * the whole point of the bound. `validate()` has already rejected fragment
+ * cycles by the time this runs, so the recursion terminates; it also stops
+ * counting at the cap, so a pathological document is cheap to reject.
+ */
+function countAliases(op: OperationDefinitionNode, doc: DocumentNode): number {
+  const fragments = new Map<string, FragmentDefinitionNode>();
+  for (const def of doc.definitions) {
+    if (def.kind === Kind.FRAGMENT_DEFINITION) fragments.set(def.name.value, def);
+  }
+  let n = 0;
+  const walk = (selectionSet: SelectionSetNode | undefined) => {
+    if (!selectionSet || n > MAX_ALIASES) return;
+    for (const sel of selectionSet.selections) {
+      if (sel.kind === Kind.FIELD) {
+        if (sel.alias) n++;
+        walk(sel.selectionSet);
+      } else if (sel.kind === Kind.INLINE_FRAGMENT) {
+        walk(sel.selectionSet);
+      } else if (sel.kind === Kind.FRAGMENT_SPREAD) {
+        walk(fragments.get(sel.name.value)?.selectionSet);
+      }
+      if (n > MAX_ALIASES) return;
+    }
+  };
+  walk(op.selectionSet);
+  return n;
 }
 
 /**
@@ -113,7 +149,15 @@ function isAllowed(scope: FieldScope, ctx: GraphQLContext): boolean {
     case "loggedIn":
       return !!ctx.viewer;
     case "instanceAdmin":
-      return !!ctx.viewer?.isInstanceAdmin;
+      // Instance-admin is opt-in PER TOKEN (`tokenHoldsInstanceAdmin` in
+      // lib/membership.ts): a token minted by an admin does not inherit it, so
+      // reading the person's flag alone told a scoped token it was allowed
+      // something the real endpoint refuses. Read from `ctx.identity` rather
+      // than the ALS — a dry run never enters `runWithIdentity`.
+      return (
+        !!ctx.viewer?.isInstanceAdmin &&
+        (ctx.identity?.token?.instanceAdmin ?? true)
+      );
     case "capability":
       return ctx.capabilities.includes(scope.capability);
   }
@@ -298,7 +342,7 @@ export async function runPlayground(
   // ever sees their own team's data and the scope-auth layer still applies to
   // every field. A query cannot mutate, so this is safe to run verbatim.
 
-  // Match the real endpoint's depth bound (graphql-js execute() has none).
+  // Match the real endpoint's bounds (graphql-js execute() has none).
   if (operationDepth(op, doc) > MAX_QUERY_DEPTH) {
     return {
       kind: "error",
@@ -307,6 +351,12 @@ export async function runPlayground(
           message: `Query is too deeply nested (max depth ${MAX_QUERY_DEPTH}).`,
         },
       ],
+    };
+  }
+  if (countAliases(op, doc) > MAX_ALIASES) {
+    return {
+      kind: "error",
+      errors: [{ message: `Query uses too many aliases (max ${MAX_ALIASES}).` }],
     };
   }
 
@@ -329,8 +379,12 @@ export async function runPlayground(
   return {
     kind: "query",
     data: result.data ?? null,
+    // Through the SAME mask the real endpoint uses. `execute()` returns the
+    // resolver's error untouched, and a Drizzle failure carries the whole SQL
+    // statement and its bound parameters in `.message` — returning it verbatim
+    // handed that to anyone signed in, and to any bearer token.
     errors: result.errors?.length
-      ? result.errors.map((e) => ({ message: e.message }))
+      ? result.errors.map((e) => ({ message: safeMessage(e) }))
       : null,
   };
 }

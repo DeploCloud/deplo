@@ -7,6 +7,7 @@ import {
   verifyUserPassword,
 } from "../auth";
 import { requireAuth } from "../auth/better-auth";
+import { requirePersonalSession } from "../auth/request-context";
 import { twoFactorMandateForCurrentUser } from "../membership";
 import { rateLimit } from "../security";
 
@@ -20,6 +21,11 @@ import { rateLimit } from "../security";
  * and a phished password could turn 2FA off, or re-run `/two-factor/enable` to
  * swap the secret for one of their own, or quietly mint themselves ten recovery
  * codes while the account still reads "protected".
+ *
+ * An API token reaches none of it either ({@link requirePersonalSession}): the
+ * password re-check already stopped a token from completing any of these, but a
+ * credential should not be able to burn an account's step-up rate limit, and the
+ * account's own second factor is not a thing a CI job administers.
  *
  * So every state change here is PASSWORD + a live second factor, which is what
  * Google, GitHub and AWS all do for the same operations, and what NIST SP
@@ -91,6 +97,7 @@ async function stepUpCode(code: string) {
 export async function startTwoFactorEnrolment(
   password: string,
 ): Promise<TwoFactorEnrolment> {
+  requirePersonalSession("two-factor settings");
   const user = await stepUpPassword(password);
   if (user.twoFactorEnabled)
     throw new Error(
@@ -111,6 +118,7 @@ export async function startTwoFactorEnrolment(
  * `twoFactorEnabled` and re-issues the session as part of verifying.
  */
 export async function confirmTwoFactorEnrolment(code: string): Promise<void> {
+  requirePersonalSession("two-factor settings");
   const user = await assertUser();
   const limit = rateLimit(`2fa-step-up:${user.id}`, STEP_UP_LIMIT);
   if (!limit.ok)
@@ -130,6 +138,7 @@ export async function disableTwoFactor(input: {
   password: string;
   code: string;
 }): Promise<void> {
+  requirePersonalSession("two-factor settings");
   await stepUpPassword(input.password);
   const mandate = await twoFactorMandateForCurrentUser();
   if (mandate)
@@ -154,6 +163,7 @@ export async function regenerateRecoveryCodes(input: {
   password: string;
   code: string;
 }): Promise<string[]> {
+  requirePersonalSession("two-factor settings");
   await stepUpPassword(input.password);
   await stepUpCode(input.code);
   const res = await requireAuth().api.generateBackupCodes({

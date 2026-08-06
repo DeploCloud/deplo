@@ -130,6 +130,34 @@ export function narrowedScope(): TokenScope | null {
 }
 
 /**
+ * Refuse a PERSONAL-account action to an API token.
+ *
+ * The account surface — the signed-in device list, the profile, the password,
+ * the two-factor settings — belongs to the person, and is the one part of the
+ * data layer with no team and therefore no capability to gate on: it answers to
+ * `assertUser()` alone. A bearer request resolves that same person, so without
+ * this a token minted with nothing but the `view` floor, scoped to one project,
+ * could read its creator's devices (with IP addresses), sign them out of every
+ * one of them, and rename their account.
+ *
+ * That is precisely the impersonation this module's contract denies: a token is
+ * a principal with its own capabilities, never a stand-in for the member who
+ * minted it. There is no capability that could express "may administer the
+ * human", so the boundary is the principal itself — token, refused.
+ *
+ * The cost is that "sign out everywhere" is no longer reachable from the API. It
+ * is a dashboard action taken by a person who has lost a laptop, not something a
+ * CI job does, and leaving it reachable meant every credential that ever leaked
+ * could lock its owner out at will.
+ */
+export function requirePersonalSession(what: string): void {
+  if (currentIdentity()?.token)
+    throw new Error(
+      `An API token can't access ${what}. Sign in to the dashboard to do that.`,
+    );
+}
+
+/**
  * Whether a resource filed under `projectId` is reachable by this request.
  *
  * A resource with no Project (an app or folder at the team root) belongs to no

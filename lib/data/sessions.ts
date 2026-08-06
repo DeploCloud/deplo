@@ -4,6 +4,7 @@ import { cache } from "react";
 
 import { assertUser, currentSessionId } from "../auth";
 import { requireAuth } from "../auth/better-auth";
+import { requirePersonalSession } from "../auth/request-context";
 import { describeUserAgent, type DeviceKind } from "../user-agent";
 
 /**
@@ -27,6 +28,11 @@ import { describeUserAgent, type DeviceKind } from "../user-agent";
  * It is not a hash or an identifier, it is the credential itself — the value
  * inside the cookie. The DTO carries `id`, which is inert, and the token is
  * looked up server-side only when something is about to be deleted.
+ *
+ * And the second hard rule: **an API token reaches none of it.** With no team to
+ * scope by and no capability to gate on, `assertUser()` alone would let any
+ * bearer credential its holder ever minted enumerate their devices and sign them
+ * out — see {@link requirePersonalSession}.
  */
 
 export interface UserSessionDTO {
@@ -74,6 +80,7 @@ async function liveSessions(userId: string) {
  * cannot sign anyone in, and offering a "revoke" button for those is theatre.
  */
 export const listMySessions = cache(async (): Promise<UserSessionDTO[]> => {
+  requirePersonalSession("your signed-in devices");
   const user = await assertUser();
   const current = await currentSessionId();
   return (await liveSessions(user.id)).map((s) => {
@@ -102,6 +109,7 @@ export const listMySessions = cache(async (): Promise<UserSessionDTO[]> => {
  * in" as an id that never existed, so the caller learns nothing either way.
  */
 export async function revokeSession(id: string): Promise<void> {
+  requirePersonalSession("your signed-in devices");
   const user = await assertUser();
   const current = await currentSessionId();
   if (id === current)
@@ -120,12 +128,13 @@ export async function revokeSession(id: string): Promise<void> {
  * The panic button: it is what someone reaches for after losing a laptop, so it
  * must not also sign THEM out and leave them unable to change their password.
  *
- * With no current session (a bearer-token caller, which has none) there is
- * nothing to keep and this revokes ALL of the user's sessions. That is the
- * honest reading of "all except the current one" from a context that has no
- * current one, and it keeps "sign out everywhere" reachable from the API.
+ * A bearer caller has no current session, so "all except the current one" would
+ * have meant ALL of them — a stolen CI token could lock its owner out of their
+ * own instance on demand. It is refused instead: this is a dashboard action, and
+ * the person taking it is at a keyboard.
  */
 export async function revokeOtherSessions(): Promise<number> {
+  requirePersonalSession("your signed-in devices");
   const user = await assertUser();
   const current = await currentSessionId();
   const all = await (await adapter()).listSessions(user.id);

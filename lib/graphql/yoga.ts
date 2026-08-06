@@ -1,12 +1,12 @@
 import "server-only";
 
 import { createYoga, type Plugin } from "graphql-yoga";
-import { GraphQLError } from "graphql";
 import { maxDepthPlugin } from "@escape.tech/graphql-armor-max-depth";
 import { maxAliasesPlugin } from "@escape.tech/graphql-armor-max-aliases";
 import { costLimitPlugin } from "@escape.tech/graphql-armor-cost-limit";
 import { schema } from "./schema";
 import { buildContext, type GraphQLContext } from "./context";
+import { maskError } from "./mask-error";
 import {
   runWithIdentity,
   type RequestIdentity,
@@ -77,48 +77,42 @@ function withIdentityPerTick<T>(
 }
 
 /**
- * An INFRASTRUCTURE error whose message must never reach a client: a Drizzle
- * wrapper (its message embeds the raw SQL + bound params — which can include
- * secret values), a Postgres error (SQLSTATE `.code` + table/column identifiers),
- * or a Node/gRPC transport error (a string `.code` like `ECONNREFUSED` or a
- * numeric gRPC status — dial addresses, cert fingerprints). These are masked.
+ * A POST must be JSON. Nothing else is a legitimate way to reach this endpoint,
+ * and the alternatives Yoga's body parsers accept are exactly the content types
+ * a browser can send CROSS-ORIGIN with no preflight: `application/x-www-form-
+ * urlencoded`, `multipart/form-data`, `text/plain`. A form on any site could
+ * therefore POST a mutation and the session cookie would ride along.
+ *
+ * `SameSite=Lax` on the session cookie is what stops that today, but it is a
+ * default of the auth library rather than something this endpoint asserts, and
+ * a CSRF defence that lives in somebody else's config is one nobody notices
+ * losing. Refusing the content type costs one comparison and removes the class:
+ * `application/json` is not CORS-simple, so it cannot be sent cross-origin
+ * without a preflight that `cors: false` never answers.
+ *
+ * GET is untouched — GraphiQL's HTML and query-over-GET both still work, and a
+ * mutation over GET is refused by the GraphQL-over-HTTP spec anyway.
  */
-function isInternalError(e: unknown): boolean {
-  if (!(e instanceof Error)) return true; // a non-Error throw is never user copy
-  if (e.name === "DrizzleQueryError" || e.message.startsWith("Failed query:"))
-    return true;
-  // pg carries a string SQLSTATE; gRPC/Node carry a string or numeric code. A
-  // plain `new Error("You don't have permission")` has no `code`, so it is kept.
-  const code = (e as { code?: unknown }).code;
-  return typeof code === "string" || typeof code === "number";
-}
-
-/**
- * Never leak internals, but PRESERVE the repo's "surface the server's message
- * verbatim" contract for the intentional, user-facing errors resolvers and the
- * data layer throw ("You don't have permission to deploy", "Too many attempts",
- * validation messages). Those are plain `Error`s (or `GraphQLError`s) with no
- * infrastructure `.code`, so their message is forwarded; a Drizzle/pg/transport
- * error (see {@link isInternalError}) is masked to a generic string and logged
- * server-side only.
- */
-function userFacingMessage(error: unknown): string | null {
-  if (error instanceof GraphQLError) {
-    const orig = error.originalError;
-    // A GraphQLError our code threw directly (no non-GraphQL cause) is user copy.
-    if (!orig || orig instanceof GraphQLError) return error.message;
-    error = orig; // otherwise inspect the wrapped cause below
-  }
-  if (error instanceof Error && !isInternalError(error)) return error.message;
-  return null;
-}
-
-function maskError(error: unknown): GraphQLError {
-  const msg = userFacingMessage(error);
-  if (msg != null) return new GraphQLError(msg);
-  console.error("[graphql] masked internal error:", error);
-  return new GraphQLError("Something went wrong");
-}
+const requireJsonPost: Plugin = {
+  onRequest({ request, endResponse, fetchAPI }) {
+    if (request.method !== "POST") return;
+    const type = request.headers.get("content-type") ?? "";
+    if (type.split(";")[0].trim().toLowerCase() === "application/json") return;
+    endResponse(
+      new fetchAPI.Response(
+        JSON.stringify({
+          errors: [
+            {
+              message:
+                "A GraphQL request must be sent as application/json. Set `Content-Type: application/json`.",
+            },
+          ],
+        }),
+        { status: 415, headers: { "content-type": "application/json" } },
+      ),
+    );
+  },
+};
 
 export const yoga = createYoga({
   schema,
@@ -129,6 +123,7 @@ export const yoga = createYoga({
   cors: false,
   context: ({ request }) => buildContext(request),
   plugins: [
+    requireJsonPost,
     identityPlugin,
     // Public-API hardening: bound query complexity so an external client can't
     // craft a pathological query (deep nesting, alias amplification, huge cost).

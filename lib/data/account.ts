@@ -10,9 +10,20 @@ import {
   startSessionFor,
   verifyUserPassword,
 } from "../auth";
+import { requirePersonalSession } from "../auth/request-context";
+
+/**
+ * The current user's own account.
+ *
+ * Every function here is USER-scoped: no team, and therefore no capability to
+ * gate on. `requirePersonalSession` is what keeps an API token out — the account
+ * belongs to the person, not to a credential they minted. The password re-check
+ * on the two sensitive ones is a second factor, not the boundary.
+ */
 
 /** Update the current user's display name. */
 export async function updateProfile(input: { name: string }): Promise<void> {
+  requirePersonalSession("your account settings");
   const user = await assertUser();
   const name = input.name.trim();
   if (!name) throw new Error("Name is required");
@@ -29,6 +40,7 @@ export async function updateEmail(input: {
   email: string;
   currentPassword: string;
 }): Promise<void> {
+  requirePersonalSession("your account settings");
   const user = await assertUser();
   const email = input.email.toLowerCase().trim();
   if (!email.includes("@")) throw new Error("Enter a valid email address");
@@ -57,6 +69,7 @@ export async function changePassword(input: {
   currentPassword: string;
   newPassword: string;
 }): Promise<void> {
+  requirePersonalSession("your account settings");
   const user = await assertUser();
   if (input.newPassword.length < 8)
     throw new Error("Choose a password of at least 8 characters");
