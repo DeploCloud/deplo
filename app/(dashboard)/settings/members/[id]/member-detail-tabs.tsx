@@ -396,11 +396,9 @@ export function MemberDetailTabs({
                           Nothing they can do right now
                         </p>
                         <p className="mt-1">
-                          Permissions like Manage members work on a whole team,
-                          never on a single project or app - and this person has
-                          only the parts ticked below. Give them the whole team
-                          with Select all, or tick a permission that works on an
-                          app, such as Deploy apps.
+                          Their permissions only work on a whole team. Use
+                          Select all, or tick one that works on a single app,
+                          like Deploy apps.
                         </p>
                       </>
                     ) : null
