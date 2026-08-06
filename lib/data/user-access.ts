@@ -701,7 +701,7 @@ async function resolveGrants(
 }
 
 /** Drop every node grant this user holds inside one team. */
-async function clearNodeGrants(
+export async function clearNodeGrants(
   tx: Tx,
   userId: string,
   teamId: string,

@@ -2,11 +2,16 @@ import { test, before, after, beforeEach } from "node:test";
 import assert from "node:assert/strict";
 
 import type { PGlite } from "@electric-sql/pglite";
-import { eq } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 
 import { makeTestDb, type TestDb } from "../db/test-harness";
 import { __setTestDb, __resetTestDb } from "../db/client";
-import { teams as teamsTable } from "../db/schema/control-plane";
+import {
+  membershipCapabilities as membershipCapabilitiesTable,
+  memberships as membershipsTable,
+  teams as teamsTable,
+} from "../db/schema/control-plane";
+import { capabilitiesForRole } from "../membership-shared";
 import { runWithIdentity } from "../auth/request-context";
 import {
   seedIdentity,
@@ -102,15 +107,60 @@ test("a wrong password refuses the transfer", async () => {
   assert.equal(await founderOf(TEAM_A), FOUNDER);
 });
 
-test("the target must already hold the owner rank", async () => {
+/**
+ * The crown IS full access, so a plain member can receive it — the transfer puts
+ * them on the Owner role itself. Requiring the rank up front blocked nothing (the
+ * same admin grants it with one click) and allowed the incoherent end state this
+ * asserts against: a crowned member who reaches only part of their own team, and
+ * whose permissions no one is allowed to widen ever again.
+ */
+test("a plain member is put on the Owner role by the transfer", async () => {
   await seedTeam();
-  await asUser(FOUNDER, async () => {
-    await assert.rejects(
-      () => transferTeamOwnership({ userId: MEMBER, password: SEEDED_PW }),
-      /Give them the Owner role first/,
+  await asUser(FOUNDER, () =>
+    transferTeamOwnership({ userId: MEMBER, password: SEEDED_PW }),
+  );
+  assert.equal(await founderOf(TEAM_A), MEMBER);
+
+  const m = (
+    await db
+      .select({
+        rank: membershipsTable.role,
+        roleId: membershipsTable.roleId,
+        granular: membershipsTable.granular,
+        custom: membershipsTable.customCapabilities,
+      })
+      .from(membershipsTable)
+      .where(
+        and(
+          eq(membershipsTable.userId, MEMBER),
+          eq(membershipsTable.teamId, TEAM_A),
+        ),
+      )
+      .limit(1)
+  )[0]!;
+  assert.equal(m.rank, "owner");
+  assert.equal(m.granular, false);
+  assert.equal(m.custom, false);
+  assert.notEqual(m.roleId, null);
+
+  // The effective set every authorization check reads is the Owner one.
+  const caps = await db
+    .select({ capability: membershipCapabilitiesTable.capability })
+    .from(membershipCapabilitiesTable)
+    .innerJoin(
+      membershipsTable,
+      eq(membershipsTable.id, membershipCapabilitiesTable.membershipId),
+    )
+    .where(
+      and(
+        eq(membershipsTable.userId, MEMBER),
+        eq(membershipsTable.teamId, TEAM_A),
+      ),
     );
-  });
-  assert.equal(await founderOf(TEAM_A), FOUNDER);
+  assert.deepEqual(
+    caps.map((c) => c.capability).sort(),
+    [...capabilitiesForRole("owner")].sort(),
+  );
 });
 
 test("a suspended account can't be handed the team", async () => {

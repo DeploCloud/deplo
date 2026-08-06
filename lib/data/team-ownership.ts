@@ -3,6 +3,7 @@ import "server-only";
 import { and, eq } from "drizzle-orm";
 import { getDb } from "../db/client";
 import {
+  membershipCapabilities as membershipCapabilitiesTable,
   memberships as membershipsTable,
   teams as teamsTable,
   users as usersTable,
@@ -10,7 +11,10 @@ import {
 import { assertUser } from "../auth";
 import { requirePersonalSession } from "../auth/request-context";
 import { requireCapability } from "../membership";
+import { capabilitiesForRole } from "../membership-shared";
 import { recordActivity } from "./activity";
+import { ensureTeamRoles } from "./roles";
+import { clearNodeGrants } from "./user-access";
 import { stepUpCode, stepUpPassword } from "./two-factor";
 
 /**
@@ -24,6 +28,9 @@ import { stepUpCode, stepUpPassword } from "./two-factor";
  * rule means a founder who leaves the company owns the team forever, and the
  * honest answer to "how do we get it back" is a SQL prompt — which is exactly the
  * answer the product promises never to give.
+ *
+ * WHAT IT DOES TO THEM. The new primary owner is put on the Owner role with the
+ * whole team in reach, in the same transaction — see the note on the write.
  *
  * WHAT IT COSTS TO DO IT. The caller's password, plus a live second factor when
  * their account has one. Password-only is what the instance transfer asks, and it
@@ -51,7 +58,13 @@ export async function transferTeamOwnership(input: {
   await stepUpPassword(input.password);
   if (actor.twoFactorEnabled) await stepUpCode(input.code ?? "");
 
-  const targetUsername = await getDb().transaction(async (tx) => {
+  // Seeded outside the transaction (it commits its own inserts) so the crown
+  // always lands on a real Owner role, on a team that never read one before.
+  const db = getDb();
+  const ownerRoleId = (await ensureTeamRoles(db, teamId)).get("owner") ?? null;
+  const ownerCapabilities = capabilitiesForRole("owner");
+
+  const targetUsername = await db.transaction(async (tx) => {
     // Lock the team row first: two concurrent transfers must serialize, or both
     // could read "I am the founder" and the second would overwrite the first.
     const team = (
@@ -73,9 +86,9 @@ export async function transferTeamOwnership(input: {
     const target = (
       await tx
         .select({
+          membershipId: membershipsTable.id,
           username: usersTable.username,
           suspended: usersTable.suspended,
-          role: membershipsTable.role,
         })
         .from(membershipsTable)
         .innerJoin(usersTable, eq(usersTable.id, membershipsTable.userId))
@@ -90,13 +103,42 @@ export async function transferTeamOwnership(input: {
     if (!target) throw new Error("They aren't a member of this team");
     if (target.suspended)
       throw new Error("You can't hand this team to a suspended account");
-    // The crown implies the rank, so the rank has to be there already. Promoting
-    // them here instead would hand out the owner role as a side effect of a
-    // dialog that never mentioned it.
-    if (target.role !== "owner")
-      throw new Error(
-        "You can only hand this team to an owner. Give them the Owner role first.",
+
+    // The crown IS full access, so the transfer grants it rather than demanding
+    // it was arranged first. Asking the admin to set the Owner role, save, and
+    // come back added a step that blocked nothing — the same person can grant
+    // that role with one click — and it let the worse case through: crowning an
+    // owner whose access had been narrowed to one folder produced an IMMUTABLE
+    // half-owner, because a founder's role and permissions can no longer be
+    // edited by anyone (updateMember, lib/data/members.ts). Written
+    // unconditionally: for an owner who already follows the Owner role it is a
+    // no-op, and for everyone else it is the only coherent end state.
+    await tx
+      .update(membershipsTable)
+      .set({
+        role: "owner",
+        roleId: ownerRoleId,
+        granular: false,
+        customCapabilities: false,
+      })
+      .where(
+        and(
+          eq(membershipsTable.userId, input.userId),
+          eq(membershipsTable.teamId, teamId),
+        ),
       );
+    await tx
+      .delete(membershipCapabilitiesTable)
+      .where(eq(membershipCapabilitiesTable.membershipId, target.membershipId));
+    await tx.insert(membershipCapabilitiesTable).values(
+      ownerCapabilities.map((c) => ({
+        membershipId: target.membershipId,
+        capability: c,
+      })),
+    );
+    // Node grants are what "reaches part of the team" is made of; the crown
+    // reaches all of it, so they go with the rest.
+    await clearNodeGrants(tx, input.userId, teamId);
 
     await tx
       .update(teamsTable)

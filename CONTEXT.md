@@ -44,9 +44,11 @@ edit them, which is what stops an assigned owner from evicting the person whose 
 is. Distinct from the `owner` RANK: a team has many owners and exactly one primary owner
 (zero only on a legacy team whose founder account is gone). Not a dead end — ownership
 **transfers** (`transferTeamOwnership`, Settings → Members → the member → Advanced), but
-only by the primary owner, only to a member who already holds the owner rank, and only
-with their password re-entered plus a second factor when their account has one. An API
-token can never fire it.
+only by the primary owner, only to a member of the same team, and only with their password
+re-entered plus a second factor when their account has one. The transfer PUTS the new one
+on the Owner role with the whole team in reach, in the same transaction — the crown is
+full access by definition, and a crowned member whose access had been narrowed could never
+be widened again. An API token can never fire it.
 _Avoid_: team owner (that is the rank, which many members can hold), founder (fine in
 code and prose, but the UI and this glossary say primary owner), team admin.
 

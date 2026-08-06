@@ -123,9 +123,10 @@ builder.mutationFields((t) => ({
     // expresses.
     authScopes: { capability: "manage_team" },
     description:
-      "Hand the active team to another owner. Primary-owner only; requires the " +
-      "caller's password, plus a two-factor code when their account has 2FA on. " +
-      "Returns true.",
+      "Hand the active team to another member, who is put on the Owner role " +
+      "with the whole team in reach as part of the same write. Primary-owner " +
+      "only; requires the caller's password, plus a two-factor code when their " +
+      "account has 2FA on. Returns true.",
     args: {
       userId: t.arg.string({ required: true }),
       password: t.arg.string({ required: true }),
