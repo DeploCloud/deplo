@@ -88,13 +88,6 @@ export interface UserTeamAccessDTO {
   isFounder: boolean;
 }
 
-/** What the page needs to render one team's mode switch. */
-export interface TeamRoleOption {
-  id: string;
-  name: string;
-  rank: string;
-}
-
 /** One node grant as the client sends it back. */
 export interface NodeGrantInput {
   projectIds?: string[];
@@ -288,40 +281,6 @@ export async function getMemberAccess(
 ): Promise<UserTeamAccessDTO | null> {
   const { teamId } = await requireCapability("manage_members");
   return (await loadUserAccess(userId, teamId))[0] ?? null;
-}
-
-/** The roles assignable in the ACTIVE team. `manage_members`. */
-export async function listMemberRoleOptions(): Promise<TeamRoleOption[]> {
-  const { teamId } = await requireCapability("manage_members");
-  return loadTeamRoleOptions(teamId);
-}
-
-/** The roles assignable in one team, for the per-team picker. Instance admin only. */
-export async function listTeamRoleOptions(
-  teamId: string,
-): Promise<TeamRoleOption[]> {
-  await requireInstanceAdmin();
-  return loadTeamRoleOptions(teamId);
-}
-
-/** The same list with no gate of its own, for a caller already gated. */
-async function loadTeamRoleOptions(teamId: string): Promise<TeamRoleOption[]> {
-  const db = getDb();
-  await ensureTeamRoles(db, teamId);
-  const rows = await db
-    .select({
-      id: teamRolesTable.id,
-      name: teamRolesTable.name,
-      builtinKey: teamRolesTable.builtinKey,
-    })
-    .from(teamRolesTable)
-    .where(eq(teamRolesTable.teamId, teamId))
-    .orderBy(asc(teamRolesTable.createdAt));
-  return rows.map((r) => ({
-    id: r.id,
-    name: r.name,
-    rank: r.builtinKey ?? "member",
-  }));
 }
 
 /**

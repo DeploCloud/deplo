@@ -39,7 +39,7 @@ import { cn, timeAgo } from "@/lib/utils";
 import type { MemberDTO } from "@/lib/data/members";
 import type { TeamRoleDTO } from "@/lib/data/roles";
 import type { ScopeTreeTeam } from "@/lib/data/tokens";
-import type { TeamRoleOption, UserTeamAccessDTO } from "@/lib/data/user-access";
+import type { UserTeamAccessDTO } from "@/lib/data/user-access";
 
 /**
  * One member's access, as three tabs over one form.
@@ -71,7 +71,7 @@ export function MemberDetailTabs({
 }: {
   member: MemberDTO;
   access: UserTeamAccessDTO;
-  roles: TeamRoleOption[];
+  roles: TeamRoleDTO[];
   tree: ScopeTreeTeam[];
   canAssignOwner: boolean;
 }) {
@@ -249,7 +249,7 @@ export function MemberDetailTabs({
                 </p>
               ) : (
                 <RoleSelect
-                  roles={roles as unknown as TeamRoleDTO[]}
+                  roles={roles}
                   value={roleId}
                   onChange={setRoleId}
                   canAssignOwner={canAssignOwner}

@@ -2,9 +2,11 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { ArrowLeft } from "lucide-react";
 
+import { getCurrentUser } from "@/lib/auth";
 import { hasCapability } from "@/lib/membership";
 import { listMembers } from "@/lib/data/members";
-import { getMemberAccess, listMemberRoleOptions } from "@/lib/data/user-access";
+import { getMemberAccess } from "@/lib/data/user-access";
+import { listRoles } from "@/lib/data/roles";
 import { listTeamScopeTree } from "@/lib/data/tokens";
 import { MemberDetailTabs } from "./member-detail-tabs";
 
@@ -34,10 +36,14 @@ export default async function MemberPage(
   if (!(await hasCapability("manage_members"))) notFound();
   const { id } = await props.params;
 
-  const [members, access, roles, tree] = await Promise.all([
+  // The FULL role rows, not a stripped summary: the picker shows each role's
+  // permission count and hides Owner from anyone who can't hand out the rank,
+  // and both read fields a summary doesn't carry.
+  const [viewer, members, access, roles, tree] = await Promise.all([
+    getCurrentUser(),
     listMembers(),
     getMemberAccess(id),
-    listMemberRoleOptions(),
+    listRoles(),
     listTeamScopeTree(),
   ]);
   const member = members.find((m) => m.userId === id);
@@ -45,8 +51,11 @@ export default async function MemberPage(
   // way into, exactly as on the role and token pages.
   if (!member || !access) notFound();
 
+  // The VIEWER's rank, not the target's: only an owner may hand out the owner
+  // role, and reading it off the member you are editing answered "is this person
+  // already an owner", which is a different question.
   const viewerIsOwner = members.some(
-    (m) => m.role === "owner" && m.userId === member.userId,
+    (m) => m.role === "owner" && m.userId === viewer?.id,
   );
 
   return (
