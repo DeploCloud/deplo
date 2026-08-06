@@ -150,6 +150,31 @@ export async function listServersForCurrentTeam(): Promise<Server[]> {
   return listServersForTeam(teamId);
 }
 
+/**
+ * The server PICKER: id, name and type, and nothing else.
+ *
+ * Deliberately not team-wide-gated, unlike the listing above. Creating an app is
+ * a per-project act — `create_apps` is one of the capabilities that keeps its
+ * meaning inside a scope — and it has to say where the app runs. A member
+ * limited to one project who could create an app but never choose a host would
+ * hold a capability that does nothing, which is the opposite of what limiting a
+ * role is for.
+ *
+ * What the gate protects is the fleet itself: names paired with addresses,
+ * agent state and live metrics. A menu of hosts their own apps already run on is
+ * not that.
+ */
+export async function listServerChoices(): Promise<
+  { id: string; name: string; type: Server["type"] }[]
+> {
+  const teamId = await requireActiveTeamId();
+  return (await listServersForTeam(teamId)).map((s) => ({
+    id: s.id,
+    name: s.name,
+    type: s.type,
+  }));
+}
+
 /** The team ids a non-`all_teams` server is restricted to (empty for an unscoped one). */
 export async function getServerTeamIds(serverId: string): Promise<string[]> {
   const rows = await getDb()

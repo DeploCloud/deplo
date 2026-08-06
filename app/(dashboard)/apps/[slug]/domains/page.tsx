@@ -1,7 +1,7 @@
 import { notFound } from "next/navigation";
 import { Globe } from "lucide-react";
 import { getAppBySlug } from "@/lib/data/apps";
-import { listServers } from "@/lib/data/servers";
+import { getServer } from "@/lib/data/servers";
 import { listDomains } from "@/lib/data/domains";
 import { resolveServerIp, productionDomain } from "@/lib/deploy/domains";
 import { composeServiceNames } from "@/lib/deploy/compose-stack";
@@ -31,22 +31,25 @@ export default async function AppDomainsPage(
   const { slug } = await props.params;
   const project = await getAppBySlug(slug);
   if (!project) notFound();
-  const [domains, servers] = await Promise.all([
+  // The host THIS app runs on, by id — not the fleet. Listing every server to
+  // find one is a team-wide read, and a member limited to part of the team is
+  // refused it; the address their own app's DNS record must point at is not the
+  // fleet's inventory.
+  const [domains, server] = await Promise.all([
     listDomains(project.id),
-    listServers(),
+    project.serverId ? getServer(project.serverId) : null,
   ]);
   // A zero-config nip.io hostname (`<slug>-<adjective>-<animal>-<hexip>.nip.io`)
   // the user can drop into the Domain field with one click — resolved here so the
   // server-only IP detection never reaches the client bundle. This is a fresh
   // suggestion for ADDING a domain (the app's own auto domain already exists),
   // so freshly-generated words are fine.
-  const server = servers.find((s) => s.id === project.serverId);
   // The public IPv4 a custom domain's A record must point at — the IP of the
   // server THIS project runs on (server-specific, not a shared address). Resolved
   // server-side and threaded to both the nip.io suggestion and the misconfigured
   // hint on each domain row, so the server-only IP detection never reaches the
   // client bundle.
-  const serverIp = resolveServerIp(server);
+  const serverIp = resolveServerIp(server ?? undefined);
   const suggestedDomain = productionDomain(project.slug, serverIp);
   // Whether each row routes to a compose service or to the app's single
   // container — the authoritative source check, not "does the app carry compose

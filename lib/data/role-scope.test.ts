@@ -288,6 +288,28 @@ test("the reads the dashboard layout makes still answer a scoped member", async 
   });
 });
 
+test("a scoped member can still pick where an app runs", async () => {
+  const { listServerChoices, listServersForCurrentTeam } = await import("./servers");
+  await scopeTo({ projects: [PRC_IN] });
+
+  // `create_apps` keeps its meaning inside a scope, so the create page has to
+  // answer. A member who could create an app but never choose a host would hold
+  // a capability that does nothing.
+  const choices = await as(DEV, () => listServerChoices());
+  assert.ok(choices.length > 0, "the server picker came back empty");
+  assert.deepEqual(
+    Object.keys(choices[0]).sort(),
+    ["id", "name", "type"],
+    "the picker is a menu, not the fleet's inventory",
+  );
+
+  // The fleet itself stays team-wide: names paired with addresses and state.
+  await assert.rejects(
+    () => as(DEV, () => listServersForCurrentTeam()),
+    /only reaches part of this team/,
+  );
+});
+
 test("every team-wide read refuses a scoped member, in their own words", async () => {
   const { listMembers } = await import("./members");
   const { listRoles } = await import("./roles");

@@ -2,7 +2,7 @@ import { notFound } from "next/navigation";
 import { Rocket } from "lucide-react";
 import { getAppBySlug } from "@/lib/data/apps";
 import { deployHookUrlMasked } from "@/lib/data/deploy-hook";
-import { listServersForCurrentTeam } from "@/lib/data/servers";
+import { listServerChoices } from "@/lib/data/servers";
 import { listGithubInstallations } from "@/lib/data/github";
 import { SettingsSection } from "@/components/apps/settings/settings-shared";
 import { DeploymentSettingsForm } from "@/components/apps/settings/deployment-settings-form";
@@ -17,11 +17,7 @@ export default async function AppDeploymentSettingsPage(
   const project = await getAppBySlug(slug);
   if (!project) notFound();
 
-  const servers = (await listServersForCurrentTeam()).map((s) => ({
-    id: s.id,
-    name: s.name,
-    type: s.type,
-  }));
+  const servers = await listServerChoices();
   const installations = await listGithubInstallations();
 
   return (
