@@ -15,6 +15,7 @@ import { defaultEnvironmentRows } from "./environments";
 import { getCurrentUser } from "../auth";
 import { newId, nowIso } from "../ids";
 import {
+  currentRoleScope,
   requireActiveTeamId,
   requireCapability,
   requireMembership,
@@ -26,6 +27,7 @@ import { requireAppCapability } from "./node-access";
 import { mergeOrder } from "./folders";
 import { normalizeHexColor } from "../utils";
 import { inProjectScope } from "../auth/request-context";
+import { projectInScope } from "./node-scope";
 import { appScopeWhere } from "./app-graph-load";
 import type { Project, AppStatus } from "../types";
 
@@ -194,14 +196,19 @@ export const listProjects = cache(async function listProjects(): Promise<
   ProjectSummary[]
 > {
   const teamId = await requireActiveTeamId();
+  // Both reaches, because a project list is one of the few reads that assembles
+  // its own rows instead of resolving them through `node-access.ts` — which is
+  // where a role scope is applied for free, and why this one had to ask.
+  const roleScope = await currentRoleScope();
   const rows = (
     await getDb()
       .select()
       .from(projectsTable)
       .where(eq(projectsTable.teamId, teamId))
-  // A narrowed API token sees ONLY the containers it reaches — the ones it was
-  // given wholly, plus the ones holding an app it was given individually.
-  ).filter((p) => inProjectScope(p.id));
+  // A narrowed API token, or a member on a limited role, sees ONLY the
+  // containers it reaches — the ones given wholly, plus the ones holding a node
+  // it was given individually.
+  ).filter((p) => inProjectScope(p.id) && projectInScope(roleScope, p.id));
   const rank = await projectOrderRank(teamId);
   const { folders, apps, environments } = await counts(teamId);
   return rows
@@ -224,6 +231,10 @@ export async function projectContents(projectId: string): Promise<{
   // Out of scope reads exactly like a container that isn't there — never a
   // different answer that would confirm it exists.
   if (!inProjectScope(projectId)) return { folders: [], apps: [] };
+  // Same answer for a member whose role doesn't reach it: a container out of
+  // reach reads exactly like one that isn't there.
+  if (!projectInScope(await currentRoleScope(), projectId))
+    return { folders: [], apps: [] };
   const folders = (
     await getDb()
       .select({ id: foldersTable.id, name: foldersTable.name, color: foldersTable.color })

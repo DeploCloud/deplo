@@ -4,9 +4,10 @@ import { and, eq } from "drizzle-orm";
 
 import { getDb } from "../db/client";
 import { apps as appsTable } from "../db/schema/control-plane";
-import { requireActiveTeamId } from "../membership";
+import { currentRoleScope, requireActiveTeamId } from "../membership";
 import { listFolders } from "./folders";
 import { appScopeWhere } from "./app-graph-load";
+import { appInScope } from "./node-scope";
 import { listProjects } from "./projects";
 import type { BreadcrumbGraph } from "../breadcrumb-model";
 
@@ -24,6 +25,11 @@ import type { BreadcrumbGraph } from "../breadcrumb-model";
  */
 export async function getBreadcrumbGraph(): Promise<BreadcrumbGraph> {
   const teamId = await requireActiveTeamId();
+  // The apps here are queried directly rather than through `listApps`, so the
+  // role scope has to be applied by hand — `appScopeWhere` answers for a token
+  // only. The topbar naming every app in the team is a small leak with a large
+  // surface: it is on every page.
+  const roleScope = await currentRoleScope();
   const [folders, projects, appRows] = await Promise.all([
     listFolders(),
     listProjects(),
@@ -46,7 +52,16 @@ export async function getBreadcrumbGraph(): Promise<BreadcrumbGraph> {
       name: f.name,
       parentId: f.parentId ?? null,
     })),
-    apps: appRows.map((s) => ({
+    apps: appRows
+      .filter((s) =>
+        appInScope(roleScope, {
+          id: s.id,
+          folderId: s.folderId ?? null,
+          projectId: s.projectId ?? null,
+          environmentId: s.environmentId ?? null,
+        }),
+      )
+      .map((s) => ({
       id: s.id,
       slug: s.slug,
       name: s.name,

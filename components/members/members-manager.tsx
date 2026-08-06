@@ -11,6 +11,7 @@ import {
   MoreHorizontal,
   UserCog,
   Crown,
+  FolderTree,
   ShieldCheck,
 } from "lucide-react";
 import {
@@ -300,6 +301,19 @@ function MemberCard({
             ? "View only"
             : `${granted} permission${granted === 1 ? "" : "s"}`}
         </Badge>
+        {/* Half of "what can this person do" is the count beside this, and half
+            is this: a member with every permission and a scope touches less
+            than one with two permissions and none. */}
+        {member.roleScoped && (
+          <SimpleTooltip
+            content={`Limited to part of the team by the ${member.roleName ?? "assigned"} role`}
+          >
+            <Badge variant="outline" className="gap-1">
+              <FolderTree className="size-3" />
+              Limited access
+            </Badge>
+          </SimpleTooltip>
+        )}
       </div>
     </div>
   );

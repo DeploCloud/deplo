@@ -74,6 +74,13 @@ export interface MemberDTO {
   roleId: string | null;
   /** The assigned role's name, or null when the member holds a custom set. */
   roleName: string | null;
+  /**
+   * Their role reaches only part of the team. Shown on the card, because "what
+   * can this person do" is answered half by the permission count beside it and
+   * half by this: a member with every permission and a scope touches less than
+   * one with two permissions and none.
+   */
+  roleScoped: boolean;
   capabilities: Capability[];
   /**
    * True for the team's ABSOLUTE owner — the founder who created the team (the
@@ -240,6 +247,7 @@ export async function listMembers(): Promise<MemberDTO[]> {
       role: membershipsTable.role,
       roleId: membershipsTable.roleId,
       roleName: teamRolesTable.name,
+      roleScoped: teamRolesTable.scoped,
       createdAt: membershipsTable.createdAt,
       userId: usersTable.id,
       username: usersTable.username,
@@ -264,6 +272,7 @@ export async function listMembers(): Promise<MemberDTO[]> {
     role: r.role as Role,
     roleId: r.roleId ?? null,
     roleName: r.roleName ?? null,
+    roleScoped: r.roleScoped ?? false,
     capabilities: caps.get(r.membershipId) ?? [],
     isPrimaryOwner: r.userId === founderId,
     isInstanceAdmin: r.isInstanceAdmin ?? false,
@@ -504,6 +513,10 @@ export async function addExistingMember(input: {
     role: assignment.rank,
     roleId: assignment.roleId,
     roleName: assignment.roleName,
+    // A member is only ever ADDED on an existing role, and the card re-reads
+    // from `listMembers` on the next render, so the freshly-added row does not
+    // have to guess at it.
+    roleScoped: false,
     capabilities: caps,
     // A freshly added member is never the founder (the team already has one).
     isPrimaryOwner: false,

@@ -26,7 +26,7 @@ import {
 } from "./membership-shared";
 import { currentIdentity, narrowedScope } from "./auth/request-context";
 // The leaf module: a role's reach, with no dependency back on this one.
-import { roleScopeFor } from "./data/node-scope";
+import { roleScopeFor, type NodeScope } from "./data/node-scope";
 
 export {
   CAPABILITY_PRESETS,
@@ -527,6 +527,26 @@ export async function requireTeamWide(what: string): Promise<void> {
     throw new Error(
       `Your role only reaches part of this team, so it can't access ${what}.`,
     );
+}
+
+/**
+ * The CURRENT caller's role scope in the active team, or null when they reach
+ * all of it.
+ *
+ * Most reads never need it: anything that resolves through
+ * `appCapabilitiesForTeam` gets the scope applied for free, because that is
+ * where it lives. It is the handful of lists that assemble their own rows —
+ * the project list, the breadcrumb graph — that have to ask, and forgetting to
+ * is exactly how those two shipped leaking.
+ */
+export async function currentRoleScope(): Promise<NodeScope | null> {
+  const user = await getCurrentUser();
+  if (!user) return null;
+  const teamId = await getActiveTeamId();
+  if (!teamId) return null;
+  // An instance admin is not a member acting under a team role.
+  if (await isInstanceAdmin()) return null;
+  return roleScopeFor(user.id, teamId);
 }
 
 /**

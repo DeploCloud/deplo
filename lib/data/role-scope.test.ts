@@ -124,7 +124,7 @@ beforeEach(async () => {
     folder(FLD_OUT),
   ]);
   await seedApp(db, { id: APP_IN_PRC, projectId: PRC_IN });
-  await seedApp(db, { id: APP_OUT_PRC, projectId: PRC_OUT });
+  await seedApp(db, { id: APP_OUT_PRC, slug: "out-app", projectId: PRC_OUT });
   await seedApp(db, { id: APP_IN_FLD, folderId: FLD_IN });
   await seedApp(db, { id: APP_IN_CHILD, folderId: FLD_CHILD });
   await seedApp(db, { id: APP_OUT_FLD, folderId: FLD_OUT });
@@ -481,6 +481,47 @@ test("a scoped member can still pick where an app runs", async () => {
     () => as(DEV, () => listServersForCurrentTeam()),
     /only reaches part of this team/,
   );
+});
+
+/**
+ * The sweep that found two leaks the rest of this file could not: a read that
+ * assembles its OWN rows never passes through `node-access.ts`, which is where a
+ * role scope is applied for free — so it has to ask, and two of them didn't.
+ *
+ * Written as a loop over the reads rather than an assertion each, because the
+ * failure mode is "somebody adds a list and forgets", and a loop is what catches
+ * the next one.
+ */
+test("no list read hands a scoped member anything outside their scope", async () => {
+  const reads: [string, () => Promise<unknown>][] = [
+    ["listApps", async () => (await import("./apps")).listApps()],
+    ["listProjects", async () => (await import("./projects")).listProjects()],
+    ["listFolders", async () => (await import("./folders")).listFolders()],
+    [
+      "getBreadcrumbGraph",
+      async () => (await import("./breadcrumb")).getBreadcrumbGraph(),
+    ],
+    ["listActivity", async () => (await import("./activity")).listActivity()],
+    ["listAllAppEnv", async () => (await import("./env")).listAllAppEnv()],
+    ["listDeployments", async () => (await import("./deployments")).listDeployments()],
+    ["listDomains", async () => (await import("./domains")).listDomains()],
+    [
+      "projectContents",
+      async () => (await import("./projects")).projectContents(PRC_OUT),
+    ],
+  ];
+
+  await scopeTo({ projects: [PRC_IN] });
+
+  for (const [name, call] of reads) {
+    const json = JSON.stringify(await as(DEV, call));
+    for (const secret of [APP_OUT_PRC, PRC_OUT, "out-app"]) {
+      assert.ok(
+        !json.includes(secret),
+        `${name} named ${secret}, which is outside the member's scope`,
+      );
+    }
+  }
 });
 
 test("every team-wide read refuses a scoped member, in their own words", async () => {
