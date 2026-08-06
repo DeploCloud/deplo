@@ -3,6 +3,7 @@ import { CapabilityEnum } from "./enums";
 import {
   addUserToTeam,
   removeUserFromTeam,
+  setMemberAccess,
   setUserTeamAccess,
   type AccessNodeGrant,
   type UserTeamAccessDTO,
@@ -89,6 +90,17 @@ const SetUserTeamAccessInputType = builder.inputType("SetUserTeamAccessInput", {
   }),
 });
 
+const SetMemberAccessInputType = builder.inputType("SetMemberAccessInput", {
+  description:
+    "Deliberately carries no teamId: the active team is the caller's, and an id here would be a way to write another team's memberships.",
+  fields: (t) => ({
+    userId: t.string({ required: true }),
+    roleId: t.string({ required: true }),
+    granular: t.boolean({ required: true }),
+    grants: t.field({ type: [NodeGrantInputType], required: false }),
+  }),
+});
+
 const UserTeamInputType = builder.inputType("UserTeamInput", {
   fields: (t) => ({
     userId: t.string({ required: true }),
@@ -121,6 +133,25 @@ builder.mutationFields((t) => ({
           // The enum resolves to capability strings; the data layer re-validates
           // every one against NODE_GRANTABLE_CAPABILITIES anyway (same cast as
           // the role resolvers).
+          capabilities: g.capabilities as never,
+        })),
+      }),
+  }),
+  setMemberAccess: t.field({
+    type: [UserTeamAccessRef],
+    authScopes: { capability: "manage_members" },
+    description:
+      "Set one member's role and per-node overrides in the ACTIVE team. The team is the caller's own - there is no id to pass, which is what keeps it from reaching another one.",
+    args: { input: t.arg({ type: SetMemberAccessInputType, required: true }) },
+    resolve: (_root, { input }) =>
+      setMemberAccess({
+        userId: input.userId,
+        roleId: input.roleId,
+        granular: input.granular,
+        grants: (input.grants ?? []).map((g) => ({
+          projectIds: g.projectIds ?? undefined,
+          folderIds: g.folderIds ?? undefined,
+          appIds: g.appIds ?? undefined,
           capabilities: g.capabilities as never,
         })),
       }),

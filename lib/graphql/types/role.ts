@@ -13,6 +13,21 @@ import {
 /* Object types                                                        */
 /* ------------------------------------------------------------------ */
 
+/** What a scoped role reaches. Absent on a role that reaches the whole team. */
+const RoleScopeRef = builder
+  .objectRef<{ projectIds: string[]; folderIds: string[]; appIds: string[] }>(
+    "RoleScope",
+  )
+  .implement({
+    description:
+      "The projects, folders and apps a role reaches. A folder brings its whole subtree. All three empty means it reaches nothing, which is what a scope whose nodes were all deleted becomes.",
+    fields: (t) => ({
+      projectIds: t.exposeStringList("projectIds"),
+      folderIds: t.exposeStringList("folderIds"),
+      appIds: t.exposeStringList("appIds"),
+    }),
+  });
+
 export const TeamRoleRef = builder
   .objectRef<TeamRoleDTO>("TeamRole")
   .implement({
@@ -48,6 +63,13 @@ export const TeamRoleRef = builder
         description:
           "The Owner default: always full access, not editable, so a team can never edit its way out of administering itself.",
       }),
+      scope: t.field({
+        type: RoleScopeRef,
+        nullable: true,
+        description:
+          "Where in the team this role reaches. Null means the whole of it, which is every role until one is limited. A scoped role also loses every capability that only means something team-wide.",
+        resolve: (r) => r.scope,
+      }),
       createdAt: t.exposeString("createdAt"),
     }),
   });
@@ -56,6 +78,16 @@ export const TeamRoleRef = builder
 /* Inputs                                                              */
 /* ------------------------------------------------------------------ */
 
+const RoleScopeInputType = builder.inputType("RoleScopeInput", {
+  description:
+    "The nodes a role reaches. Ticking a project or a folder covers everything inside it, now and later; omit the field entirely for the whole team.",
+  fields: (t) => ({
+    projectIds: t.stringList({ required: false }),
+    folderIds: t.stringList({ required: false }),
+    appIds: t.stringList({ required: false }),
+  }),
+});
+
 const CreateRoleInputType = builder.inputType("CreateRoleInput", {
   fields: (t) => ({
     name: t.string({ required: true }),
@@ -63,6 +95,7 @@ const CreateRoleInputType = builder.inputType("CreateRoleInput", {
     // Omitted / empty ⇒ a view-only role. `view` is added server-side either way.
     capabilities: t.field({ type: [CapabilityEnum], required: false }),
     requireTwoFactor: t.boolean({ required: false }),
+    scope: t.field({ type: RoleScopeInputType, required: false }),
   }),
 });
 
@@ -73,6 +106,11 @@ const UpdateRoleInputType = builder.inputType("UpdateRoleInput", {
     description: t.string({ required: false }),
     capabilities: t.field({ type: [CapabilityEnum], required: false }),
     requireTwoFactor: t.boolean({ required: false }),
+    // Absent leaves the reach alone; present replaces it, and `{}` with no ids
+    // is a role that reaches nothing rather than one that reaches everything.
+    // Clearing a scope is `clearScope`, so "absent" can never mean "widen".
+    scope: t.field({ type: RoleScopeInputType, required: false }),
+    clearScope: t.boolean({ required: false }),
   }),
 });
 
@@ -106,6 +144,13 @@ builder.mutationFields((t) => ({
         description: input.description ?? null,
         capabilities: (input.capabilities ?? undefined) as never,
         requireTwoFactor: input.requireTwoFactor ?? false,
+        scope: input.scope
+          ? {
+              projectIds: input.scope.projectIds ?? undefined,
+              folderIds: input.scope.folderIds ?? undefined,
+              appIds: input.scope.appIds ?? undefined,
+            }
+          : null,
       }),
   }),
   updateRole: t.field({
@@ -121,6 +166,19 @@ builder.mutationFields((t) => ({
         description: input.description ?? null,
         capabilities: (input.capabilities ?? undefined) as never,
         requireTwoFactor: input.requireTwoFactor ?? false,
+        // Three states, not two: a scope to set, an explicit clear, or absent
+        // (leave the reach alone). Absent must never mean "widen", or every
+        // client that predates this field would quietly unlimit every role it
+        // renames.
+        scope: input.clearScope
+          ? null
+          : input.scope
+            ? {
+                projectIds: input.scope.projectIds ?? undefined,
+                folderIds: input.scope.folderIds ?? undefined,
+                appIds: input.scope.appIds ?? undefined,
+              }
+            : undefined,
       });
       return true;
     },
