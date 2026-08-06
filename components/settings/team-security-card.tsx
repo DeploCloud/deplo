@@ -2,6 +2,7 @@
 
 import * as React from "react";
 import { useRouter } from "next/navigation";
+import { AlertTriangle } from "lucide-react";
 import { toast } from "sonner";
 
 import {
@@ -73,7 +74,7 @@ export function TeamSecurityCard({
           <InfoTip content="Team-wide rules that apply to everyone in this team, whatever their role." />
         </CardTitle>
       </CardHeader>
-      <CardContent>
+      <CardContent className="space-y-3">
         <div className="flex items-start justify-between gap-4 rounded-lg border border-border p-3">
           <div className="space-y-1">
             <p className="text-sm font-medium">
@@ -83,15 +84,6 @@ export function TeamSecurityCard({
               Members without it cannot use this team, through the dashboard or
               the API, until they turn it on.
             </p>
-            {without > 0 && (
-              <p className="text-xs text-[var(--warning)]">
-                {without} of {total} member{total === 1 ? "" : "s"}{" "}
-                {without === 1 ? "does" : "do"} not have it yet
-                {on
-                  ? " and cannot use this team right now."
-                  : " and will be asked to set it up."}
-              </p>
-            )}
           </div>
           <Switch
             checked={on}
@@ -100,6 +92,18 @@ export function TeamSecurityCard({
             aria-label="Require two-factor authentication"
           />
         </div>
+        {without > 0 && (
+          <div className="flex items-center gap-3 rounded-lg border border-[var(--warning)]/30 bg-[var(--warning)]/5 p-3">
+            <AlertTriangle className="size-5 shrink-0 text-[var(--warning)]" />
+            <p className="text-sm">
+              {without} of {total} member{total === 1 ? "" : "s"}{" "}
+              {without === 1 ? "does" : "do"} not have it yet
+              {on
+                ? " and cannot use this team right now."
+                : " and will be asked to set it up."}
+            </p>
+          </div>
+        )}
       </CardContent>
     </Card>
   );
