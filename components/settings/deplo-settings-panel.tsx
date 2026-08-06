@@ -27,8 +27,7 @@ import {
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Switch } from "@/components/ui/switch";
-import { FieldLabel, InfoTip } from "@/components/ui/info-tip";
-import { DeploMark } from "@/components/logo";
+import { InfoTip } from "@/components/ui/info-tip";
 import { gqlAction } from "@/lib/graphql-client";
 import type { InstanceSettings } from "@/lib/data/instance-settings";
 
@@ -47,6 +46,11 @@ import type { InstanceSettings } from "@/lib/data/instance-settings";
  *  2. The account certificates are issued under, read from and written to each
  *     host's own proxy, and shown per host so a fleet that disagrees with itself
  *     says so rather than hiding behind one field.
+ *
+ * Both cards carry their explanation in ONE InfoTip on the title, like their
+ * siblings on Settings, General: the live address, the badges and the switch
+ * state say what is true right now, so a paragraph restating them would be
+ * furniture. Copy here only appears when something is wrong or about to change.
  *
  * The certificate half is fetched after mount, never during the page render: a
  * settings page must not be as slow as the sickest server it describes.
@@ -75,11 +79,10 @@ const PANEL_HTTPS_FIELDS = "domain enabled provider unavailable";
 
 export function DeploSettingsPanel({ settings }: { settings: InstanceSettings }) {
   return (
-    <>
+    <div className="space-y-4">
       <PanelAddressCard settings={settings} />
       <CertificatesCard />
-      <InstanceCard settings={settings} />
-    </>
+    </div>
   );
 }
 
@@ -157,95 +160,72 @@ function PanelAddressCard({ settings }: { settings: InstanceSettings }) {
 
   return (
     <Card>
-      <CardHeader>
-        <CardTitle className="flex items-center gap-2 text-base">
+      {/* The badge says where the address in the field came from, which is the
+          whole story for one nobody set here - no sentence needed under it. */}
+      <CardHeader className="flex-row flex-wrap items-center gap-2 space-y-0">
+        <CardTitle className="flex w-fit items-center gap-2 text-base">
           <Globe className="size-4" />
           Panel address
+          <InfoTip content="Install commands, deploy hooks and invite links are built from this address. Point its DNS at this server first: Deplo can hand the address out, it cannot move your DNS." />
         </CardTitle>
-        <p className="mt-1 text-sm text-muted-foreground">
-          The address Deplo uses for itself in install commands, deploy hooks and
-          invite links.
-        </p>
+        <Badge variant="muted">{SOURCE_LABEL[settings.panelUrlSource]}</Badge>
       </CardHeader>
-      <CardContent>
-        <form className="space-y-4" onSubmit={save}>
-          <div className="rounded-lg border border-border bg-muted/30 p-3">
-            <div className="text-xs text-muted-foreground">In use right now</div>
-            <div className="mt-1 flex flex-wrap items-center gap-2">
-              <span className="font-mono text-sm break-all">{settings.panelUrl}</span>
-              <Badge variant="muted">{SOURCE_LABEL[settings.panelUrlSource]}</Badge>
-              {reach ? (
-                reach.ok ? (
-                  <Badge variant="muted" className="gap-1">
-                    <Check className="size-3" />
-                    Answers
-                  </Badge>
-                ) : (
-                  <Badge variant="destructive" className="gap-1">
-                    <TriangleAlert className="size-3" />
-                    No answer
-                  </Badge>
-                )
-              ) : null}
-            </div>
-            {reach && !reach.ok ? (
-              <p className="mt-1 text-sm text-destructive">{reach.error}</p>
-            ) : null}
-          </div>
-
-          <div className="space-y-2">
-            <FieldLabel
-              htmlFor="panel-url"
-              info="A domain like deplo.example.com becomes https://. Point its DNS at this server and route it to the panel first: Deplo can hand out the address, but it cannot move your DNS."
-            >
-              Address
-            </FieldLabel>
-            <Input
-              id="panel-url"
-              value={value}
-              onChange={(e) => setValue(e.target.value)}
-              placeholder="deplo.example.com"
-              autoComplete="off"
-              spellCheck={false}
-              disabled={pending}
-              className="max-w-md font-mono text-sm"
-            />
-          </div>
-
-          <div className="flex flex-wrap items-center gap-2">
-            <Button type="submit" disabled={pending || !dirty}>
-              {pending ? "Saving" : "Save address"}
-            </Button>
+      <CardContent className="space-y-3">
+        <form className="flex flex-wrap items-center gap-2" onSubmit={save}>
+          <Input
+            id="panel-url"
+            aria-label="Panel address"
+            value={value}
+            onChange={(e) => setValue(e.target.value)}
+            placeholder="deplo.example.com"
+            autoComplete="off"
+            spellCheck={false}
+            disabled={pending}
+            className="w-full max-w-sm font-mono text-sm"
+          />
+          <Button type="submit" disabled={pending || !dirty}>
+            {pending ? "Saving" : "Save"}
+          </Button>
+          <Button
+            type="button"
+            variant="outline"
+            disabled={checking || pending || !value.trim()}
+            onClick={() => void check(value.trim())}
+          >
+            {checking ? <Loader2 className="size-4 animate-spin" /> : null}
+            {checking ? "Checking" : "Check"}
+          </Button>
+          {settings.storedPanelUrl ? (
             <Button
               type="button"
-              variant="outline"
-              disabled={checking || pending || !value.trim()}
-              onClick={() => void check(value.trim())}
+              variant="ghost"
+              disabled={pending}
+              onClick={() => {
+                setValue("");
+                setReach(null);
+              }}
             >
-              {checking ? <Loader2 className="size-4 animate-spin" /> : null}
-              {checking ? "Checking" : "Check it answers"}
+              Clear
             </Button>
-            {settings.storedPanelUrl ? (
-              <Button
-                type="button"
-                variant="ghost"
-                disabled={pending}
-                onClick={() => {
-                  setValue("");
-                  setReach(null);
-                }}
-              >
-                Clear
-              </Button>
-            ) : null}
-          </div>
-          {settings.storedPanelUrl ? null : (
-            <p className="text-xs text-muted-foreground">
-              Nothing is set here yet, so Deplo uses the address it was installed
-              with. Saving one takes over from it.
-            </p>
-          )}
+          ) : null}
         </form>
+
+        {/* What the address itself answered, verbatim when it did not: a DNS
+            failure and a 502 need different fixes. */}
+        {reach ? (
+          reach.ok ? (
+            <p className="flex items-center gap-1.5 text-sm text-[var(--success)]">
+              <Check className="size-4 shrink-0" />
+              That address reaches this Deplo.
+            </p>
+          ) : (
+            <p className="flex items-start gap-1.5 text-sm text-destructive">
+              <TriangleAlert className="mt-0.5 size-4 shrink-0" />
+              {reach.error}
+            </p>
+          )
+        ) : null}
+
         <PanelHttpsRow />
       </CardContent>
     </Card>
@@ -262,11 +242,15 @@ function PanelAddressCard({ settings }: { settings: InstanceSettings }) {
  * nobody has logged into. Plain http is the way out of that, and it has to be
  * reachable from the panel, because the alternative is an SSH session.
  *
+ * Says nothing while https is on - the address above already starts with it -
+ * and speaks up only when the switch is off or the choice is not Deplo's.
+ *
  * Fetched after mount for the same reason the accounts are: it reads the live
  * proxy config off the host, and the settings page must not be as slow as the
  * sickest server it describes.
  */
 function PanelHttpsRow() {
+  const router = useRouter();
   const [cert, setCert] = React.useState<PanelHttps | null>(null);
   const [loading, setLoading] = React.useState(true);
   const [confirming, setConfirming] = React.useState<boolean | null>(null);
@@ -300,6 +284,9 @@ function PanelHttpsRow() {
       }
       setCert(res.data?.setPanelHttps ?? null);
       setConfirming(null);
+      // The scheme moved the STORED address with it, and that address is what
+      // the card above renders: without this it would keep showing the old one.
+      router.refresh();
       toast.success(
         enabled
           ? "The panel is now served over https"
@@ -308,25 +295,25 @@ function PanelHttpsRow() {
     });
   }
 
-  if (loading) return <div className="mt-4 h-14 animate-pulse rounded-lg bg-muted/50" />;
+  if (loading) return <div className="h-14 animate-pulse rounded-lg bg-muted/50" />;
   if (!cert) return null;
 
   return (
     <>
-      <div className="mt-4 flex flex-wrap items-center justify-between gap-x-4 gap-y-2 rounded-lg border border-border p-3">
+      <div className="flex items-center justify-between gap-4 rounded-lg border border-border p-3">
         <div className="min-w-0">
           <div className="flex items-center gap-2 text-sm font-medium">
             <ShieldCheck className="size-4 text-muted-foreground" />
             HTTPS
             <InfoTip content="Turn this off when the address cannot get a certificate: it does not resolve publicly yet, port 80 is closed, or the server is on an internal network. You can turn it back on once it can." />
           </div>
-          <p className="mt-1 text-sm text-muted-foreground">
-            {cert.unavailable
-              ? cert.unavailable
-              : cert.enabled
-                ? `The panel is served at https://${cert.domain}, with a certificate Deplo renews.`
-                : `The panel is served at http://${cert.domain}, with no certificate.`}
-          </p>
+          {cert.unavailable ? (
+            <p className="mt-1 text-sm text-muted-foreground">{cert.unavailable}</p>
+          ) : cert.enabled ? null : (
+            <p className="mt-1 text-sm text-[var(--warning)]">
+              Anyone signing in sends their password unencrypted.
+            </p>
+          )}
         </div>
         <Switch
           checked={cert.enabled}
@@ -349,12 +336,11 @@ function PanelHttpsRow() {
             </DialogTitle>
             <DialogDescription>
               {confirming
-                ? "Deplo requests a certificate and renews it. The address has to reach this server from the internet for that to work."
-                : "Anyone signing in sends their password unencrypted, so use this only until the address can get a certificate."}{" "}
-              Deplo restarts the proxy on this server to apply it, so sites there,
-              this page included, are unreachable for a few seconds. Then continue
-              on {confirming ? "https" : "http"}://{cert.domain} and sign in again:
-              the session cookie changes with the address.
+                ? "The address has to reach this server from the internet for the certificate to be issued."
+                : "Anyone signing in sends their password unencrypted."}{" "}
+              The proxy restarts, so sites on this server are unreachable for a
+              few seconds. Then continue on {confirming ? "https" : "http"}://
+              {cert.domain} and sign in again.
             </DialogDescription>
           </DialogHeader>
           <DialogFooter>
@@ -455,75 +441,70 @@ function CertificatesCard() {
     <>
       <Card>
         <CardHeader>
-          <CardTitle className="flex items-center gap-2 text-base">
+          <CardTitle className="flex w-fit items-center gap-2 text-base">
             <ShieldCheck className="size-4" />
             Certificates
-            <InfoTip content="Deplo issues HTTPS certificates for your apps through Let's Encrypt. This is the account they are registered to, and where expiry warnings are sent." />
+            <InfoTip content="Deplo issues HTTPS certificates for your apps through Let's Encrypt. Expiry and revocation notices go to this address, on every server, so use one somebody reads." />
           </CardTitle>
-          <p className="mt-1 text-sm text-muted-foreground">
-            The email address your Let&rsquo;s Encrypt certificates are registered
-            to, on every server.
-          </p>
         </CardHeader>
         <CardContent>
           <form
-            className="space-y-4"
+            className="space-y-3"
             onSubmit={(e) => {
               e.preventDefault();
               if (dirty) setConfirming(true);
             }}
           >
-            <div className="space-y-2">
-              <FieldLabel
-                htmlFor="acme-email"
-                info="Let's Encrypt sends expiry and revocation notices here. Use an address someone reads: it is the only warning before a certificate lapses."
-              >
-                Account email
-              </FieldLabel>
+            <div className="flex flex-wrap items-center gap-2">
               <Input
                 id="acme-email"
                 type="email"
+                aria-label="Certificate account email"
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
                 placeholder="ops@example.com"
                 autoComplete="off"
                 disabled={pending || loading}
-                className="max-w-md"
+                className="w-full max-w-xs"
               />
+              <Button type="submit" disabled={pending || loading || !dirty}>
+                {pending ? "Applying" : "Save"}
+              </Button>
             </div>
 
             {loading ? (
-              <div className="space-y-2">
-                {Array.from({ length: 2 }).map((_, i) => (
-                  <div key={i} className="h-10 animate-pulse rounded bg-muted/50" />
-                ))}
-              </div>
+              <div className="h-[5.5rem] animate-pulse rounded-lg bg-muted/50" />
             ) : error ? (
               <p className="text-sm text-muted-foreground">{error}</p>
             ) : accounts && accounts.length > 0 ? (
-              <div className="space-y-2">
+              // One bordered list, not a stack of boxes: these rows are the same
+              // fact per host, and reading down the column is how a fleet that
+              // disagrees with itself becomes visible.
+              <div className="divide-y divide-border rounded-lg border border-border">
                 {accounts.map((account) => (
                   <div
                     key={account.serverId}
-                    className="flex flex-wrap items-center justify-between gap-x-4 gap-y-1 rounded-lg border border-border p-3"
+                    className="flex flex-wrap items-center justify-between gap-x-4 gap-y-1 py-1.5 pr-2 pl-3"
                   >
                     <span className="flex min-w-0 items-center gap-2 text-sm font-medium">
                       <ServerIcon className="size-4 shrink-0 text-muted-foreground" />
                       <span className="truncate">{account.serverName}</span>
                     </span>
-                    <span className="flex items-center gap-2">
+                    <span className="flex min-w-0 items-center gap-2">
                       {/* Nothing renews a certificate someone installed by hand,
                           and the tab that holds it is not one anybody opens on a
                           normal day. This is where certificates are thought about,
                           so the expiry says so here. */}
                       <CertificateExpiry account={account} />
-                      {account.unavailable ? (
-                        <span className="text-xs text-muted-foreground">{account.unavailable}</span>
-                      ) : (
-                        <span className="font-mono text-xs text-muted-foreground">
-                          {account.email || "No address set"}
-                        </span>
-                      )}
+                      <span
+                        className={
+                          account.unavailable
+                            ? "text-xs text-muted-foreground"
+                            : "font-mono text-xs text-muted-foreground"
+                        }
+                      >
+                        {account.unavailable ?? (account.email || "No address set")}
+                      </span>
                       {/* Straight to THIS server's certificates: the fleet-wide
                           email is edited above, everything else about a host's
                           certificates belongs to the host. */}
@@ -538,14 +519,8 @@ function CertificatesCard() {
                 ))}
               </div>
             ) : (
-              <p className="text-sm text-muted-foreground">
-                No servers connected yet.
-              </p>
+              <p className="text-sm text-muted-foreground">No servers connected yet.</p>
             )}
-
-            <Button type="submit" disabled={pending || loading || !dirty}>
-              {pending ? "Applying" : "Save email"}
-            </Button>
           </form>
         </CardContent>
       </Card>
@@ -555,11 +530,9 @@ function CertificatesCard() {
           <DialogHeader>
             <DialogTitle>Register certificates to {email.trim()}?</DialogTitle>
             <DialogDescription>
-              Deplo updates the proxy on {manageable.length} server
-              {manageable.length === 1 ? "" : "s"} and restarts each one, so sites
-              on that server are unreachable for the few seconds it takes to come
-              back. Certificates already issued keep working: only where the
-              renewal notices go changes.
+              Deplo restarts the proxy on {manageable.length} server
+              {manageable.length === 1 ? "" : "s"}, so sites there are unreachable
+              for a few seconds. Certificates already issued keep working.
             </DialogDescription>
           </DialogHeader>
           <DialogFooter>
@@ -567,7 +540,7 @@ function CertificatesCard() {
               Cancel
             </Button>
             <Button onClick={apply} disabled={pending}>
-              {pending ? "Applying" : "Save email"}
+              {pending ? "Applying" : "Save"}
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -587,7 +560,7 @@ function CertificateExpiry({ account }: { account: CertificateAccount }) {
   const days = account.expiresInDays;
   if (account.customCertificates === 0 || days === null || days > 21) return null;
   return (
-    <Badge variant="destructive" className="gap-1">
+    <Badge variant="destructive">
       <TriangleAlert className="size-3" />
       {days < 0
         ? "Certificate expired"
@@ -595,54 +568,5 @@ function CertificateExpiry({ account }: { account: CertificateAccount }) {
           ? "Certificate expires today"
           : `Certificate expires in ${days} day${days === 1 ? "" : "s"}`}
     </Badge>
-  );
-}
-
-/* ------------------------------------------------------------------ */
-/* This instance                                                       */
-/* ------------------------------------------------------------------ */
-
-function InstanceCard({ settings }: { settings: InstanceSettings }) {
-  return (
-    <Card>
-      <CardHeader>
-        <CardTitle className="flex items-center gap-2 text-base">
-          <DeploMark size={16} className="text-current" />
-          This instance
-        </CardTitle>
-        <p className="mt-1 text-sm text-muted-foreground">
-          What is running, and where.
-        </p>
-      </CardHeader>
-      <CardContent className="grid gap-x-8 sm:grid-cols-2">
-        <Row label="Deplo version" value={<span className="font-mono">{settings.version}</span>} />
-        <Row
-          label="Runs on"
-          value={
-            settings.deploHostId ? (
-              <Link
-                href={`/settings/servers/${settings.deploHostId}`}
-                className="underline underline-offset-4 hover:text-foreground"
-              >
-                {settings.deploHostName}
-              </Link>
-            ) : (
-              // Legitimate: the panel's own box is a server like any other and an
-              // operator may simply not have added it yet.
-              <span className="text-muted-foreground">Not added as a server</span>
-            )
-          }
-        />
-      </CardContent>
-    </Card>
-  );
-}
-
-function Row({ label, value }: { label: string; value: React.ReactNode }) {
-  return (
-    <div className="flex flex-wrap items-baseline justify-between gap-2 border-b border-border py-2 last:border-0">
-      <span className="text-sm text-muted-foreground">{label}</span>
-      <span className="text-right text-sm">{value}</span>
-    </div>
   );
 }

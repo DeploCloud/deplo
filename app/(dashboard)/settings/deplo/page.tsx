@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { notFound } from "next/navigation";
 
 import { PageHeader } from "@/components/shared/page-header";
@@ -25,9 +26,30 @@ export default async function DeploSettingsPage() {
 
   return (
     <div className="space-y-6">
+      {/* Version and host are read-only facts about this instance, so they ride
+          the header instead of taking a card of their own: a settings page should
+          open on what can be changed. */}
       <PageHeader
         title="Deplo"
-        description="How this instance addresses itself, and where its certificates are registered."
+        description={
+          <>
+            <span className="font-mono">v{settings.version}</span>
+            {" · "}
+            {settings.deploHostId ? (
+              <>
+                runs on{" "}
+                <Link
+                  href={`/settings/servers/${settings.deploHostId}`}
+                  className="underline underline-offset-4 hover:text-foreground"
+                >
+                  {settings.deploHostName}
+                </Link>
+              </>
+            ) : (
+              "runs on a server not added here yet"
+            )}
+          </>
+        }
       />
       <DeploSettingsPanel settings={settings} />
     </div>
