@@ -267,6 +267,27 @@ test("a folder share extends the scope instead of being clamped by it", async ()
   assert.equal(await reaches({ kind: "app", id: APP_OUT_PRC }), false);
 });
 
+test("the reads the dashboard layout makes still answer a scoped member", async () => {
+  const { getTeamIdentity } = await import("./teams");
+  const { reachableCapabilities } = await import("../membership");
+  const { getBreadcrumbGraph } = await import("./breadcrumb");
+  const { listMyTeams } = await import("./teams");
+
+  await scopeTo({ projects: [PRC_IN] });
+
+  // `app/(dashboard)/layout.tsx` awaits these four on EVERY page, and its catch
+  // handles only the two-factor case. One refusal here is the whole dashboard
+  // rendering its error boundary over a perfectly healthy page, which is why
+  // the team's identity is a separate read from its settings.
+  await as(DEV, async () => {
+    const team = await getTeamIdentity();
+    assert.equal(team.id, TEAM_A, "the topbar must still be able to name the team");
+    await reachableCapabilities();
+    await getBreadcrumbGraph();
+    await listMyTeams();
+  });
+});
+
 test("every team-wide read refuses a scoped member, in their own words", async () => {
   const { listMembers } = await import("./members");
   const { listRoles } = await import("./roles");

@@ -523,14 +523,27 @@ export async function requireTeamWide(what: string): Promise<void> {
     throw new Error(
       `This API token is limited to specific projects and can't access ${what}.`,
     );
-  const user = await getCurrentUser();
-  if (!user) return;
-  const teamId = await getActiveTeamId();
-  if (!teamId) return;
-  if (await roleScopeFor(user.id, teamId))
+  if (!(await reachesWholeTeam()))
     throw new Error(
       `Your role only reaches part of this team, so it can't access ${what}.`,
     );
+}
+
+/**
+ * The non-throwing twin of {@link requireTeamWide}, for a PAGE that has to
+ * degrade rather than fail: a section outside someone's access should say so,
+ * not render the error boundary over a healthy dashboard.
+ *
+ * True for every cookie session with an unscoped role and every unrestricted
+ * token, which is every principal on every instance today.
+ */
+export async function reachesWholeTeam(): Promise<boolean> {
+  if (narrowedScope()) return false;
+  const user = await getCurrentUser();
+  if (!user) return true;
+  const teamId = await getActiveTeamId();
+  if (!teamId) return true;
+  return (await roleScopeFor(user.id, teamId)) == null;
 }
 
 /* ------------------------------------------------------------------ */

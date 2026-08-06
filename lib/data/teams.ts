@@ -51,7 +51,38 @@ function rowToTeam(t: {
   };
 }
 
-/** The active team. */
+/**
+ * Who the active team IS: its id, name and slug, and nothing else.
+ *
+ * Split from {@link getTeam} because the dashboard layout reads it on EVERY
+ * page — the topbar names the team you are working in — while `getTeam` is a
+ * team-wide read that a limited member is refused. Without the split, the one
+ * `requireTeamWide` in `getTeam` took down every page under `(dashboard)` for
+ * them: the layout's `try` catches only `TwoFactorRequiredError`, so it would
+ * have surfaced as the error boundary on a perfectly healthy page.
+ *
+ * Nothing here is a setting, so nothing here needs the gate. A member of the
+ * team may always know which team they are in.
+ */
+export async function getTeamIdentity(): Promise<
+  Pick<Team, "id" | "name" | "slug">
+> {
+  const teamId = await requireActiveTeamId();
+  const rows = await getDb()
+    .select({
+      id: teamsTable.id,
+      name: teamsTable.name,
+      slug: teamsTable.slug,
+    })
+    .from(teamsTable)
+    .where(eq(teamsTable.id, teamId))
+    .limit(1);
+  const t = rows[0];
+  if (!t) throw new Error("No team");
+  return t;
+}
+
+/** The active team, settings included. A team-wide read. */
 export async function getTeam(): Promise<Team> {
   await requireTeamWide("team settings");
   const teamId = await requireActiveTeamId();

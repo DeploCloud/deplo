@@ -16,13 +16,13 @@ import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { CreateTeamDialog } from "@/components/teams/create-team-dialog";
 import { gqlAction } from "@/lib/graphql-client";
 import { teamSwitchDestination } from "@/lib/team-switch";
-import type { Team, TeamSummary } from "@/lib/types";
+import type { TeamIdentity, TeamSummary } from "@/lib/types";
 
 export function TeamSwitcher({
   team,
   teams,
 }: {
-  team: Team;
+  team: TeamIdentity;
   teams: TeamSummary[];
 }) {
   const router = useRouter();

@@ -1,6 +1,6 @@
 import { redirect } from "next/navigation";
 import { requireUser } from "@/lib/auth";
-import { getTeam, listMyTeams } from "@/lib/data/teams";
+import { getTeamIdentity, listMyTeams } from "@/lib/data/teams";
 import {
   reachableCapabilities,
   isInstanceAdmin,
@@ -29,7 +29,11 @@ export default async function DashboardLayout({
   // an error boundary instead of an explanation.
   let team, capabilities, isAdmin, breadcrumb;
   try {
-    team = await getTeam();
+    // The IDENTITY, not the settings: this runs on every page under the
+    // layout, and `getTeam` is a team-wide read that a member limited to part
+    // of the team is refused. Reading it here would take the whole dashboard
+    // down for them, since the catch below only handles the 2FA case.
+    team = await getTeamIdentity();
     [capabilities, isAdmin, breadcrumb] = await Promise.all([
       // What they could do SOMEWHERE in the team, not only team-wide: a
       // per-folder grant is exactly how someone holds one corner of the fleet

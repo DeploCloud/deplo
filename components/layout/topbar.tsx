@@ -14,7 +14,7 @@ import { TeamSwitcher } from "./team-switcher";
 import { Breadcrumbs } from "./breadcrumbs";
 import { isNonTeamSettings } from "./nav-config";
 import type { BreadcrumbGraph } from "@/lib/breadcrumb-model";
-import type { PublicUser, Team, TeamSummary } from "@/lib/types";
+import type { PublicUser, TeamIdentity, TeamSummary } from "@/lib/types";
 
 export function Topbar({
   user,
@@ -25,7 +25,7 @@ export function Topbar({
   isAdmin = false,
 }: {
   user: PublicUser;
-  team: Team;
+  team: TeamIdentity;
   teams: TeamSummary[];
   /** Team snapshot the breadcrumb navigates over (folders/apps/projects). */
   breadcrumb: BreadcrumbGraph;

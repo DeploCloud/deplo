@@ -288,6 +288,15 @@ export interface Team {
   createdAt: string;
 }
 
+/**
+ * Who a team IS, with none of its settings — what the shell needs to name the
+ * team you are working in, on every page.
+ *
+ * Distinct from {@link Team} on purpose: the full row is a team-wide READ, and a
+ * member limited to part of the team is refused it. The topbar is not a setting.
+ */
+export type TeamIdentity = Pick<Team, "id" | "name" | "slug">;
+
 /** A team as shown in the switcher: the user's role in it + its size. */
 export interface TeamSummary extends Team {
   role: string;
@@ -1205,6 +1214,14 @@ export type DomainEntrypoint = "websecure" | "web";
  *                 DNS check finds a cert-less domain proxied (status
  *                 `cloudflare`) — see `certProviderForDns` — and freely
  *                 changeable afterwards, like any other domain setting.
+ *  - custom       a certificate the operator installed on the owning SERVER
+ *                 themselves (Settings → Servers → Certificates). The router is
+ *                 served over HTTPS on `websecure` with NO `certresolver` label,
+ *                 so Traefik presents the certificate from its own store and
+ *                 never asks an ACME provider for one. Nothing here checks that
+ *                 a certificate covering this hostname is actually installed —
+ *                 the domains a certificate covers live on the host, not in the
+ *                 control plane.
  *  - none         no certificate — serve plain HTTP on the `web` entrypoint, no
  *                 TLS labels, no forced upgrade. The default for every NEW
  *                 domain (stored explicitly): a cert is only registered when
@@ -1212,7 +1229,7 @@ export type DomainEntrypoint = "websecure" | "web";
  *                 detection above — opts in.
  * Absent ⇒ `letsencrypt` (back-compat with domains created before this field).
  */
-export type CertProvider = "letsencrypt" | "cloudflare" | "none";
+export type CertProvider = "letsencrypt" | "cloudflare" | "none" | "custom";
 
 export interface Domain {
   id: ID;

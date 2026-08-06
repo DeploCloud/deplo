@@ -5,7 +5,7 @@ import { UpdateBanner } from "./update-banner";
 import { NavigationHistoryTracker } from "./navigation-history";
 import { TwoFactorReminder } from "@/components/security/two-factor-reminder";
 import type { BreadcrumbGraph } from "@/lib/breadcrumb-model";
-import type { PublicUser, Team, TeamSummary } from "@/lib/types";
+import type { PublicUser, TeamIdentity, TeamSummary } from "@/lib/types";
 
 export function AppShell({
   user,
@@ -17,7 +17,7 @@ export function AppShell({
   children,
 }: {
   user: PublicUser;
-  team: Team;
+  team: TeamIdentity;
   teams: TeamSummary[];
   /** Team snapshot for the topbar breadcrumb (folders/apps/projects). */
   breadcrumb: BreadcrumbGraph;
