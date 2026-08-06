@@ -8,6 +8,9 @@ import {
   membershipCapabilities as membershipCapabilitiesTable,
   teamRoles as teamRolesTable,
   teamRoleCapabilities as teamRoleCapabilitiesTable,
+  teamRoleScopeApps,
+  teamRoleScopeFolders,
+  teamRoleScopeProjects,
   users as usersTable,
 } from "../db/schema/control-plane";
 import { newId, nowIso } from "../ids";
@@ -26,6 +29,8 @@ import {
   sameCapabilities,
 } from "../membership-shared";
 import { withView } from "./folder-access";
+import { nodeCapabilitiesFor } from "./node-access";
+import { roleScopeFor } from "./node-scope";
 import { ALL_CAPABILITIES, type Capability, type Membership, type Role } from "../types";
 
 /**
@@ -66,6 +71,12 @@ export interface TeamRoleDTO {
   modified: boolean;
   /** Full access, not editable: the Owner default (see the module comment). */
   locked: boolean;
+  /**
+   * What the role REACHES, or null when it reaches the whole team — which is
+   * every role until someone limits one. Distinct from `capabilities`: that is
+   * what its holders may DO, this is where.
+   */
+  scope: { projectIds: string[]; folderIds: string[]; appIds: string[] } | null;
   createdAt: string;
 }
 
@@ -237,6 +248,7 @@ export async function listRoles(): Promise<TeamRoleDTO[]> {
       name: teamRolesTable.name,
       description: teamRolesTable.description,
       requireTwoFactor: teamRolesTable.requireTwoFactor,
+      scoped: teamRolesTable.scoped,
       createdAt: teamRolesTable.createdAt,
     })
     .from(teamRolesTable)
@@ -268,6 +280,10 @@ export async function listRoles(): Promise<TeamRoleDTO[]> {
     .from(membershipsTable)
     .where(eq(membershipsTable.teamId, teamId))
     .groupBy(membershipsTable.roleId);
+  // The scope junctions of the scoped roles only: three queries for the page,
+  // never one per role, and skipped entirely by a team that has limited none.
+  const scopedIds = rows.filter((r) => r.scoped).map((r) => r.id);
+  const scopeByRole = await loadRoleScopes(db, scopedIds);
   const countByRole = new Map(
     counts.filter((c) => c.roleId).map((c) => [c.roleId as string, Number(c.n)]),
   );
@@ -291,6 +307,7 @@ export async function listRoles(): Promise<TeamRoleDTO[]> {
           !sameCapabilities(capabilities, CAPABILITY_PRESETS[builtinKey])
         : false,
       locked: builtinKey === "owner",
+      scope: r.scoped ? (scopeByRole.get(r.id) ?? EMPTY_SCOPE) : null,
       createdAt: r.createdAt,
     };
   });
@@ -477,6 +494,126 @@ async function assertTeamAdminCoverage(
         `The team must keep at least one member who can ${label}`,
       );
   }
+}
+
+/** A role that reaches nothing left — every node it named was deleted. */
+const EMPTY_SCOPE = { projectIds: [], folderIds: [], appIds: [] };
+
+/**
+ * The scope junctions of several roles at once — three queries for a page, never
+ * one per role. Only the SCOPED ones need asking, which is none of them on a
+ * team that has limited nothing.
+ */
+async function loadRoleScopes(
+  db: Db,
+  roleIds: string[],
+): Promise<Map<string, { projectIds: string[]; folderIds: string[]; appIds: string[] }>> {
+  const out = new Map<
+    string,
+    { projectIds: string[]; folderIds: string[]; appIds: string[] }
+  >();
+  if (roleIds.length === 0) return out;
+  const [projects, folders, apps] = await Promise.all([
+    db
+      .select({ roleId: teamRoleScopeProjects.roleId, id: teamRoleScopeProjects.projectId })
+      .from(teamRoleScopeProjects)
+      .where(inArray(teamRoleScopeProjects.roleId, roleIds)),
+    db
+      .select({ roleId: teamRoleScopeFolders.roleId, id: teamRoleScopeFolders.folderId })
+      .from(teamRoleScopeFolders)
+      .where(inArray(teamRoleScopeFolders.roleId, roleIds)),
+    db
+      .select({ roleId: teamRoleScopeApps.roleId, id: teamRoleScopeApps.appId })
+      .from(teamRoleScopeApps)
+      .where(inArray(teamRoleScopeApps.roleId, roleIds)),
+  ]);
+  const at = (roleId: string) => {
+    const cur = out.get(roleId) ?? { projectIds: [], folderIds: [], appIds: [] };
+    out.set(roleId, cur);
+    return cur;
+  };
+  for (const r of projects) at(r.roleId).projectIds.push(r.id);
+  for (const r of folders) at(r.roleId).folderIds.push(r.id);
+  for (const r of apps) at(r.roleId).appIds.push(r.id);
+  return out;
+}
+
+/** The nodes a role is limited to, as the editor sends them. */
+export interface RoleScopeInput {
+  projectIds?: string[];
+  folderIds?: string[];
+  appIds?: string[];
+}
+
+/**
+ * Validate a scope against the team and against the ACTOR's own reach.
+ *
+ * Two rules, both the same one `withinActor` applies to capabilities: you can
+ * only hand out a corner you can reach yourself, and you can only leave a role
+ * unrestricted if you are unrestricted. Otherwise an admin whose own role is
+ * limited could mint an unrestricted one and step out through it.
+ *
+ * A node the actor cannot reach answers as one that isn't in the team: a refusal
+ * must never confirm which private folders exist.
+ */
+async function resolveRoleScope(
+  teamId: string,
+  actingUserId: string,
+  input: RoleScopeInput | null,
+): Promise<{ projectIds: string[]; folderIds: string[]; appIds: string[] } | null> {
+  const actorScope = await roleScopeFor(actingUserId, teamId);
+  if (input === null) {
+    if (actorScope)
+      throw new Error(
+        "Your own role reaches part of this team, so you can't give a role the whole of it.",
+      );
+    return null;
+  }
+  const out = {
+    projectIds: [...new Set(input.projectIds ?? [])],
+    folderIds: [...new Set(input.folderIds ?? [])],
+    appIds: [...new Set(input.appIds ?? [])],
+  };
+  for (const [kind, ids] of [
+    ["project", out.projectIds],
+    ["folder", out.folderIds],
+    ["app", out.appIds],
+  ] as const) {
+    for (const id of ids) {
+      const mine = await nodeCapabilitiesFor(actingUserId, teamId, { kind, id });
+      if (mine.length === 0)
+        throw new Error("One of those isn't in this team any more");
+    }
+  }
+  return out;
+}
+
+/** Whole-set replace of a role's scope junctions. */
+async function writeRoleScope(
+  tx: DbTx,
+  roleId: string,
+  scope: { projectIds: string[]; folderIds: string[]; appIds: string[] } | null,
+): Promise<void> {
+  await tx
+    .delete(teamRoleScopeProjects)
+    .where(eq(teamRoleScopeProjects.roleId, roleId));
+  await tx
+    .delete(teamRoleScopeFolders)
+    .where(eq(teamRoleScopeFolders.roleId, roleId));
+  await tx.delete(teamRoleScopeApps).where(eq(teamRoleScopeApps.roleId, roleId));
+  if (!scope) return;
+  if (scope.projectIds.length)
+    await tx
+      .insert(teamRoleScopeProjects)
+      .values(scope.projectIds.map((projectId) => ({ roleId, projectId })));
+  if (scope.folderIds.length)
+    await tx
+      .insert(teamRoleScopeFolders)
+      .values(scope.folderIds.map((folderId) => ({ roleId, folderId })));
+  if (scope.appIds.length)
+    await tx
+      .insert(teamRoleScopeApps)
+      .values(scope.appIds.map((appId) => ({ roleId, appId })));
 }
 
 /**
@@ -687,14 +824,17 @@ export async function createRole(input: {
   description?: string | null;
   capabilities?: Capability[];
   requireTwoFactor?: boolean;
+  /** What the role reaches. Absent or null = the whole team. */
+  scope?: RoleScopeInput | null;
 }): Promise<TeamRoleDTO> {
-  const { teamId, membership } = await requireCapability("manage_roles");
+  const { teamId, userId, membership } = await requireCapability("manage_roles");
   const name = cleanRoleName(input.name);
   const description = cleanDescription(input.description);
   const capabilities = withinActor(input.capabilities, membership);
   // No self-lockout check on create: a brand-new role has no members yet, so
   // turning the mandate on cannot cut anyone off, the author included.
   const requireTwoFactor = input.requireTwoFactor ?? false;
+  const scope = await resolveRoleScope(teamId, userId, input.scope ?? null);
   const db = getDb();
   await ensureTeamRoles(db, teamId);
 
@@ -711,11 +851,13 @@ export async function createRole(input: {
         name,
         description,
         requireTwoFactor,
+        scoped: scope !== null,
         createdAt,
       });
     await tx
       .insert(teamRoleCapabilitiesTable)
       .values(capabilities.map((c) => ({ roleId: id, capability: c })));
+    await writeRoleScope(tx, id, scope);
   });
   await recordActivity(
     "member",
@@ -734,6 +876,7 @@ export async function createRole(input: {
     memberCount: 0,
     modified: false,
     locked: false,
+    scope,
     createdAt,
   };
 }
@@ -749,6 +892,8 @@ export async function updateRole(input: {
   description?: string | null;
   capabilities?: Capability[];
   requireTwoFactor?: boolean;
+  /** What the role REACHES. Absent leaves it as it is; `null` clears it. */
+  scope?: RoleScopeInput | null;
 }): Promise<void> {
   const { teamId, userId, membership } = await requireCapability("manage_roles");
   const name = cleanRoleName(input.name);
@@ -756,6 +901,13 @@ export async function updateRole(input: {
   const capabilities = withinActor(input.capabilities, membership);
   const requireTwoFactor = input.requireTwoFactor ?? false;
   if (requireTwoFactor) await assertActorCanMandateTwoFactor(userId, input.id);
+  // Resolved BEFORE the transaction: it queries, and a query issued while one is
+  // open hangs under pglite. Also refuses an actor handing out reach they don't
+  // have themselves, which is why it needs the team and the actor.
+  const scope =
+    input.scope === undefined
+      ? undefined
+      : await resolveRoleScope(teamId, userId, input.scope);
 
   await getDb().transaction(async (tx) => {
     const role = await roleInTeam(tx, teamId, input.id);
@@ -765,19 +917,25 @@ export async function updateRole(input: {
       );
     await assertNameFree(tx, teamId, name, role.id);
     await lockTeamMemberships(tx, teamId);
+    const scoped = scope === undefined ? role.scoped : scope !== null;
     await tx
       .update(teamRolesTable)
-      .set({ name, description, requireTwoFactor })
+      .set({ name, description, requireTwoFactor, scoped })
       .where(
         and(eq(teamRolesTable.id, role.id), eq(teamRolesTable.teamId, teamId)),
       );
+    if (scope !== undefined) await writeRoleScope(tx, role.id, scope);
     await tx
       .delete(teamRoleCapabilitiesTable)
       .where(eq(teamRoleCapabilitiesTable.roleId, role.id));
     await tx
       .insert(teamRoleCapabilitiesTable)
       .values(capabilities.map((c) => ({ roleId: role.id, capability: c })));
-    await syncMembersOfRole(tx, teamId, role.id, capabilities, role.scoped);
+    await syncMembersOfRole(tx, teamId, role.id, capabilities, scoped);
+    // Runs AFTER the sync, and now catches a second way to lose the last
+    // administrator: scoping a role clamps its team-wide capabilities away, so
+    // "the team must keep one member who can manage members" is a question a
+    // reach change asks just as much as a capability change does.
     await assertTeamAdminCoverage(tx, teamId);
   });
   await recordActivity(
@@ -791,7 +949,15 @@ export async function updateRole(input: {
 
 /** Restore a default role to exactly what deplo ships. Built-ins only. */
 export async function resetRole(id: string): Promise<void> {
-  const { teamId, membership } = await requireCapability("manage_roles");
+  const { teamId, userId, membership } = await requireCapability("manage_roles");
+  // A reset restores the shipped default, and no shipped default is limited —
+  // so it CLEARS the scope, which makes it a widening. An actor whose own role
+  // reaches part of the team must not be able to perform it: the reset button
+  // would be the one-click way out of their own boundary.
+  if (await roleScopeFor(userId, teamId))
+    throw new Error(
+      "Your own role reaches part of this team, so you can't reset a role to full access.",
+    );
   let name = "";
   await getDb().transaction(async (tx) => {
     const role = await roleInTeam(tx, teamId, id);
@@ -814,19 +980,23 @@ export async function resetRole(id: string): Promise<void> {
       .set({
         name: defaults.name,
         description: defaults.description,
-        // A shipped default mandates nothing; "reset" means all the way back.
+        // A shipped default mandates nothing and reaches everything; "reset"
+        // means all the way back, on both axes.
         requireTwoFactor: false,
+        scoped: false,
       })
       .where(
         and(eq(teamRolesTable.id, role.id), eq(teamRolesTable.teamId, teamId)),
       );
+    await writeRoleScope(tx, role.id, null);
     await tx
       .delete(teamRoleCapabilitiesTable)
       .where(eq(teamRoleCapabilitiesTable.roleId, role.id));
     await tx
       .insert(teamRoleCapabilitiesTable)
       .values(capabilities.map((c) => ({ roleId: role.id, capability: c })));
-    await syncMembersOfRole(tx, teamId, role.id, capabilities, role.scoped);
+    // Unscoped: the reset just cleared it, so the clamp must not apply.
+    await syncMembersOfRole(tx, teamId, role.id, capabilities, false);
     await assertTeamAdminCoverage(tx, teamId);
   });
   await recordActivity(

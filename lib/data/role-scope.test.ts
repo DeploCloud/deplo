@@ -267,6 +267,91 @@ test("a folder share extends the scope instead of being clamped by it", async ()
   assert.equal(await reaches({ kind: "app", id: APP_OUT_PRC }), false);
 });
 
+/* ------------------------------------------------------------------ */
+/* Writing a scope                                                     */
+/* ------------------------------------------------------------------ */
+
+test("limiting a role limits its holders, and clearing it gives them the team back", async () => {
+  const { updateRole, listRoles } = await import("./roles");
+
+  await as(ADMIN, () =>
+    updateRole({
+      id: ROLE,
+      name: "Scoped",
+      capabilities: ["view", "deploy_apps"],
+      scope: { projectIds: [PRC_IN] },
+    }),
+  );
+  assert.ok(await reaches({ kind: "app", id: APP_IN_PRC }));
+  assert.equal(await reaches({ kind: "app", id: APP_OUT_PRC }), false);
+  const scoped = (await as(ADMIN, () => listRoles())).find((r) => r.id === ROLE)!;
+  assert.deepEqual(scoped.scope?.projectIds, [PRC_IN]);
+
+  // Clearing it is a widening, and the holders get the whole team back with no
+  // second act: the capabilities were never lost, only clamped.
+  await as(ADMIN, () =>
+    updateRole({
+      id: ROLE,
+      name: "Scoped",
+      capabilities: ["view", "deploy_apps"],
+      scope: null,
+    }),
+  );
+  assert.ok(await reaches({ kind: "app", id: APP_OUT_PRC }));
+  const wide = (await as(ADMIN, () => listRoles())).find((r) => r.id === ROLE)!;
+  assert.equal(wide.scope, null);
+});
+
+test("a limited admin can neither widen a role nor reset one", async () => {
+  const { updateRole, resetRole, listRoles } = await import("./roles");
+  // DEV administers roles, but their own role reaches one project.
+  await pg.exec(
+    `insert into membership_capabilities (membership_id, capability)
+     select id, 'manage_roles' from memberships where user_id = '${DEV}'`,
+  );
+  await db
+    .insert(teamRoleCapabilitiesTable)
+    .values({ roleId: ROLE, capability: "manage_roles" });
+  await scopeTo({ projects: [PRC_IN] });
+
+  await assert.rejects(
+    () =>
+      as(DEV, () =>
+        updateRole({
+          id: ROLE,
+          name: "Scoped",
+          capabilities: ["view", "deploy_apps", "manage_roles"],
+          scope: null,
+        }),
+      ),
+    /your own role reaches part of this team/i,
+    "an admin whose own role is limited minted an unrestricted one",
+  );
+
+  // Nor through a node they can't reach.
+  await assert.rejects(
+    () =>
+      as(DEV, () =>
+        updateRole({
+          id: ROLE,
+          name: "Scoped",
+          capabilities: ["view", "deploy_apps", "manage_roles"],
+          scope: { projectIds: [PRC_OUT] },
+        }),
+      ),
+    /isn't in this team any more/,
+  );
+
+  // And the reset button is not the way out either: a reset clears the scope.
+  const viewer = (await as(ADMIN, () => listRoles())).find(
+    (r) => r.builtinKey === "viewer",
+  )!;
+  await assert.rejects(
+    () => as(DEV, () => resetRole(viewer.id)),
+    /your own role reaches part of this team/i,
+  );
+});
+
 test("the reads the dashboard layout makes still answer a scoped member", async () => {
   const { getTeamIdentity } = await import("./teams");
   const { reachableCapabilities } = await import("../membership");
