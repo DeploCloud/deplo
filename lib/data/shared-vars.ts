@@ -19,6 +19,7 @@ import { newId, nowIso } from "../ids";
 import {
   requireCapability,
   requireMembership,
+  reachesWholeTeam,
   requireTeamWide,
 } from "../membership";
 import { narrowedScope } from "../auth/request-context";
@@ -306,9 +307,11 @@ export async function listSharedVarsForApp(
   const projectId = app?.projectId ?? null;
   const environmentId = app?.environmentId ?? null;
   const all = await loadSharedVarsForTeam(teamId);
-  const vars = narrowedScope()
-    ? all.filter((v) => reachableFromApp(v, { appId, projectId, environmentId }))
-    : all;
+  // Both principals, one rule: a narrowed token and a member on a limited role
+  // reach the same part of the team, so they see the same variables.
+  const vars = (await reachesWholeTeam())
+    ? all
+    : all.filter((v) => reachableFromApp(v, { appId, projectId, environmentId }));
   // One identity query for every shared row on the app's Environment page.
   const authors = await loadUserIdentities(authorIds(vars));
   return vars
@@ -686,7 +689,10 @@ export async function setSharedVarAppLink(
   // hold a console and logs on — so linking a team-wide variable would be a way
   // to read one, and `revealSharedVar` refusing them would mean nothing. Same
   // message as an unknown id: a scope must never say which ids exist.
-  if (narrowedScope() && !(await linkableFromApp(varId, appId, teamId)))
+  if (
+    !(await reachesWholeTeam()) &&
+    !(await linkableFromApp(varId, appId, teamId))
+  )
     throw new Error("Variable not found");
   if (linked) {
     await getDb().insert(appJunction).values({ varId, appId }).onConflictDoNothing();

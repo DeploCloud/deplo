@@ -5,6 +5,7 @@ import type { PGlite } from "@electric-sql/pglite";
 import { makeTestDb, type TestDb } from "../db/test-harness";
 import { __setTestDb, __resetTestDb, getDb } from "../db/client";
 import {
+  activities as activitiesTable,
   folderGrants as folderGrantsTable,
   folders as foldersTable,
   memberships as membershipsTable,
@@ -94,7 +95,9 @@ beforeEach(async () => {
   await pg.exec(`truncate table
     team_role_scope_apps, team_role_scope_folders, team_role_scope_projects,
     team_role_scope_environments, environment_grants, environments,
-    backup_runs, backups, s3_destination, databases,
+    backup_runs, backups, s3_destination, databases, activities,
+    shared_env_var_apps, shared_env_var_projects, shared_env_var_environments,
+    shared_env_var_targets, shared_env_vars,
     app_grants, folder_grants, project_grants,
     team_role_capabilities, team_roles,
     app_build_method_settings, app_build, apps, folders, projects, servers,
@@ -523,6 +526,46 @@ test("no list read hands a scoped member anything outside their scope", async ()
       );
     }
   }
+});
+
+test("the trail and the shared library are cut to what they reach", async () => {
+  const { listActivity } = await import("./activity");
+  const { listSharedVarsForApp, saveSharedVar } = await import("./shared-vars");
+
+  // An event on an out-of-scope app, and a TEAM-level one (a member added, a
+  // role edited): the second has no app at all, and is the team's own history.
+  await db.insert(activitiesTable).values([
+    { id: "act_out", teamId: TEAM_A, type: "app", message: "OUT-APP-EVENT",
+      actor: "someone", appId: APP_OUT_PRC, createdAt: T0 },
+    { id: "act_team", teamId: TEAM_A, type: "member", message: "TEAM-LEVEL-EVENT",
+      actor: "someone", appId: null, createdAt: T0 },
+  ]);
+  // A team-wide PLAIN variable: only `secret` rows are masked, so its value is
+  // returned in full to anyone who can list it.
+  await as(ADMIN, () =>
+    saveSharedVar({
+      key: "TEAM_WIDE", value: "PLAINTEXT-VALUE", type: "plain",
+      teamWide: true, environmentIds: [], projectIds: [],
+    }),
+  );
+
+  await scopeTo({ projects: [PRC_IN] });
+  await pg.exec(
+    `insert into membership_capabilities (membership_id, capability)
+     select id, 'view_activity' from memberships where user_id = '${DEV}'
+     union all
+     select id, 'manage_env' from memberships where user_id = '${DEV}'`,
+  );
+
+  const trail = JSON.stringify(await as(DEV, () => listActivity()));
+  assert.ok(!trail.includes("OUT-APP-EVENT"), "the trail named an app they can't reach");
+  assert.ok(!trail.includes("TEAM-LEVEL-EVENT"), "nor the team's own history");
+
+  const vars = JSON.stringify(await as(DEV, () => listSharedVarsForApp(APP_IN_PRC)));
+  assert.ok(
+    !vars.includes("PLAINTEXT-VALUE"),
+    "the team's shared library came back from an app inside the scope",
+  );
 });
 
 test("nothing that belongs to the whole team is reachable through a point lookup", async () => {

@@ -1,6 +1,6 @@
 import "server-only";
 
-import { and, desc, eq, inArray, sql, type SQL } from "drizzle-orm";
+import { and, desc, eq, inArray, or, sql, type SQL } from "drizzle-orm";
 
 import { getDb } from "../db/client";
 import {
@@ -11,7 +11,11 @@ import {
 import { assembleActivity, activityToRow } from "./infra-rows";
 import { getCurrentUser } from "../auth";
 import { newId, nowIso } from "../ids";
-import { hasCapability, requireActiveTeamId } from "../membership";
+import {
+  currentRoleScope,
+  hasCapability,
+  requireActiveTeamId,
+} from "../membership";
 import { appScopeWhere } from "./app-graph-load";
 import { narrowedScope } from "../auth/request-context";
 import type { Activity, ActivityType } from "../types";
@@ -32,7 +36,7 @@ export async function listActivity(limit = 20): Promise<Activity[]> {
         // An API token limited to Projects reads only its own apps' history.
         // Team-level events (`app_id IS NULL` — members, roles, tokens, the team
         // itself) belong to nothing it can reach, so they drop out with the rest.
-        scopedActivityWhere(),
+        await scopedActivityWhere(),
       ),
     )
     // `seq` (bigint identity) breaks a same-timestamp tie deterministically
@@ -42,15 +46,46 @@ export async function listActivity(limit = 20): Promise<Activity[]> {
   return rows.map(assembleActivity);
 }
 
-/** The scope predicate for the audit feed, or undefined for an unnarrowed caller. */
-function scopedActivityWhere(): SQL | undefined {
-  if (!narrowedScope()) return undefined;
-  const reachable = appScopeWhere();
+/**
+ * The scope predicate for the audit feed, or undefined for a caller who reaches
+ * the whole team.
+ *
+ * The trail is where "who did what" is answered, so a limited principal sees the
+ * events of the apps they reach and NOTHING else — team-level rows included
+ * (`app_id IS NULL`: member added, role edited, token minted), which are the
+ * team's own history rather than any app's.
+ *
+ * Async because a person's reach lives in the database, and it asks about both:
+ * a token narrows through `appScopeWhere`, a role through its own id list, and
+ * the two compose as a conjunction.
+ */
+async function scopedActivityWhere(): Promise<SQL | undefined> {
+  const roleScope = await currentRoleScope();
+  if (!narrowedScope() && !roleScope) return undefined;
+  const clauses = [appScopeWhere()].filter(
+    (c): c is SQL => c !== undefined,
+  );
+  if (roleScope) {
+    const alt: SQL[] = [];
+    if (roleScope.projectIds.length)
+      alt.push(inArray(appsTable.projectId, roleScope.projectIds));
+    if (roleScope.environmentIds.length)
+      alt.push(inArray(appsTable.environmentId, roleScope.environmentIds));
+    if (roleScope.folderIds.length)
+      alt.push(inArray(appsTable.folderId, roleScope.folderIds));
+    if (roleScope.appIds.length) alt.push(inArray(appsTable.id, roleScope.appIds));
+    // Spelled out rather than relying on `inArray(col, [])`, whose behaviour has
+    // changed across Drizzle versions: a scope with nothing left reaches nothing.
+    clauses.push(alt.length === 0 ? sql`false` : alt.length === 1 ? alt[0] : or(...alt)!);
+  }
   // Reuses the ONE app predicate the whole data layer scopes by, so the feed can
   // never disagree with what `listApps` shows.
   return inArray(
     activitiesTable.appId,
-    getDb().select({ id: appsTable.id }).from(appsTable).where(reachable),
+    getDb()
+      .select({ id: appsTable.id })
+      .from(appsTable)
+      .where(clauses.length === 1 ? clauses[0] : and(...clauses)),
   );
 }
 
