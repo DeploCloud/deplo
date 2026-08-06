@@ -13,6 +13,7 @@ import {
   TRUNCATE_IDENTITY,
   TEAM_A,
 } from "./identity-test-helpers";
+import { removeMember } from "./members";
 import { transferTeamOwnership } from "./team-ownership";
 
 /**
@@ -131,5 +132,55 @@ test("somebody outside the team can't be handed it", async () => {
       /aren't a member of this team/,
     );
   });
+  assert.equal(await founderOf(TEAM_A), FOUNDER);
+});
+
+/* ------------------------------------------------------------------ */
+/* The crown actually moves                                            */
+/* ------------------------------------------------------------------ */
+
+/**
+ * The column changing is not the point — every founder guard reading it is. So
+ * this drives the invariant from the other side: after the transfer the NEW
+ * founder is the unremovable one, and the old one is just an owner again.
+ */
+test("after the transfer, protection follows the crown", async () => {
+  await seedTeam();
+  await asUser(FOUNDER, () =>
+    transferTeamOwnership({ userId: OWNER, password: SEEDED_PW }),
+  );
+
+  await asUser(OWNER, async () => {
+    // The new founder is protected by the guard that used to protect FOUNDER.
+    await assert.rejects(
+      () => runWithIdentity({ userId: FOUNDER, teamId: TEAM_A }, () =>
+        removeMember(OWNER),
+      ),
+      /primary owner can't be removed/,
+    );
+    // And the ex-founder is now an ordinary owner: removable by the new one.
+    await removeMember(FOUNDER);
+  });
+});
+
+test("an API token can't hand the team over", async () => {
+  await seedTeam();
+  await assert.rejects(
+    () =>
+      runWithIdentity(
+        {
+          userId: FOUNDER,
+          teamId: TEAM_A,
+          token: {
+            id: "tok_1",
+            capabilities: ["view", "manage_team"],
+            scope: null,
+            instanceAdmin: false,
+          },
+        },
+        () => transferTeamOwnership({ userId: OWNER, password: SEEDED_PW }),
+      ),
+    /API token can't access team ownership/,
+  );
   assert.equal(await founderOf(TEAM_A), FOUNDER);
 });

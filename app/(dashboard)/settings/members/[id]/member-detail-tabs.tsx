@@ -224,11 +224,12 @@ export function MemberDetailTabs({
   // Removal follows the same rule as editing: the locks above are exactly the
   // people `removeMember` refuses.
   const canRemove = !readOnly;
-  // Only the crown can hand the crown on, and only to somebody who already holds
-  // the owner rank — the same two rules the data layer enforces, so the card is
-  // never offered for a transfer that would be refused.
-  const canTransfer =
-    viewerIsPrimaryOwner && !isSelf && !member.isPrimaryOwner;
+  // Only the crown hands the crown on. The card is shown to the founder for
+  // anybody else in the team; the RANK is a separate condition, because hiding
+  // the card from a non-owner answers "where is transfer" with silence — the
+  // button says what is missing instead (and the data layer refuses either way).
+  const showTransfer = viewerIsPrimaryOwner && !isSelf && !member.isPrimaryOwner;
+  const canTransfer = showTransfer && member.role === "owner";
   // What the ticked nodes can actually carry. A team-wide permission stays in
   // the list (struck through) because widening their reach brings it back, but
   // a node grant refuses it outright — so the payload is bounded here rather
@@ -504,20 +505,22 @@ export function MemberDetailTabs({
         {/* The two actions that end a membership rather than shape it: they are
             not edits, they have no Save, and one of them hands the team over. */}
         <TabsContent value="advanced" className="space-y-4 pt-4">
-          {canTransfer && (
+          {showTransfer && (
             <Card>
               <CardContent className="flex flex-wrap items-center justify-between gap-3 pt-6">
                 <div className="min-w-0">
                   <p className="text-sm font-medium">Transfer team ownership</p>
                   <p className="mt-1 text-xs text-muted-foreground">
-                    @{member.username} becomes the team&apos;s primary owner. You
-                    stay an owner, but only they can hand it back.
+                    {canTransfer
+                      ? `@${member.username} becomes the team's primary owner. You stay an owner, but only they can hand it back.`
+                      : `Only an owner can be handed the team. Give @${member.username} the Owner role first, on the Role & permissions tab.`}
                   </p>
                 </div>
                 <Button
                   type="button"
                   variant="outline"
                   size="sm"
+                  disabled={!canTransfer}
                   onClick={() => setConfirmTransfer(true)}
                 >
                   <Crown className="size-4" />
@@ -551,14 +554,16 @@ export function MemberDetailTabs({
             </Card>
           )}
 
-          {!canTransfer && !canRemove && (
+          {!showTransfer && !canRemove && (
             <EmptyState
               icon={Lock}
               title="Nothing to do here"
               description={
-                isSelf
-                  ? "You can't remove yourself or hand the team to yourself. Another owner can."
-                  : "This membership can't be removed or handed the team."
+                member.isPrimaryOwner
+                  ? "The team's primary owner can't be removed. To hand the team over, open the owner you want to give it to and transfer it there."
+                  : isSelf
+                    ? "You can't remove yourself from the team. Another owner can."
+                    : "This membership can't be removed."
               }
             />
           )}

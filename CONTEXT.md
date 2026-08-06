@@ -36,6 +36,20 @@ truth for what a user may do **in a team** — `User.role` is a legacy instance-
 kept only for back-compat / defaults.
 _Avoid_: team user, role (a membership *has* a role; it is not one).
 
+**Primary owner**:
+The one member who owns a **Team** — its founder "crown" (`teams.founder_user_id`), and
+the team-level twin of the **instance owner**. Claimed by whoever creates the team, and
+**immutable to every other hand**: no owner, and no instance admin, may remove, demote or
+edit them, which is what stops an assigned owner from evicting the person whose team it
+is. Distinct from the `owner` RANK: a team has many owners and exactly one primary owner
+(zero only on a legacy team whose founder account is gone). Not a dead end — ownership
+**transfers** (`transferTeamOwnership`, Settings → Members → the member → Advanced), but
+only by the primary owner, only to a member who already holds the owner rank, and only
+with their password re-entered plus a second factor when their account has one. An API
+token can never fire it.
+_Avoid_: team owner (that is the rank, which many members can hold), founder (fine in
+code and prose, but the UI and this glossary say primary owner), team admin.
+
 **Role**:
 A named capability set **owned by a team** (`team_roles`, id prefix `role_`) and assigned
 to its members from Settings → Team → Members. Every team has three **default** roles —
@@ -494,11 +508,13 @@ A TLS certificate the operator brought themselves (a wildcard, a company CA, a d
 HTTP challenge can reach), installed on ONE **server** from Settings, Servers, its
 Certificates tab. It lives in that host's own Traefik stack file and nowhere else: Deplo
 keeps no copy, the list is read back off the host, and the private key has no read path.
-The proxy picks it by the hostname the browser asked for, so it covers every **Domain** on
-that server named in the certificate and stops Let's Encrypt issuing for those. Distinct
-from a Domain's `certProvider`, which is per hostname and is about who ISSUES the
-certificate. Instance-admin only, and expiry is nobody's job but the operator's: nothing
-renews one.
+The proxy picks it by the hostname the browser asked for. Installing one is only half of
+it: a **Domain** reaches it by setting its `certProvider` to `custom` ("Installed on the
+server"), which serves that hostname over HTTPS with no ACME resolver named. A Domain left
+on `letsencrypt` also gets it — Traefik stops issuing for a hostname the store already
+covers — but one left on `none` never does, because its router is on plain HTTP.
+Instance-admin only, and expiry is nobody's job but the operator's: nothing renews one, so
+the certificate account page warns in the last three weeks.
 _Avoid_: SSL cert upload, bring-your-own-cert (feature-brochure names), certificate store.
 
 **Redirect domain**:
