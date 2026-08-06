@@ -9,6 +9,7 @@ import {
   Check,
   Crown,
   Loader2,
+  Lock,
   ShieldCheck,
   UserCog,
   UserMinus,
@@ -317,7 +318,10 @@ export function MemberDetailTabs({
           )}
         </div>
         {lockReason && (
-          <p className="text-sm text-muted-foreground">{lockReason}</p>
+          <div className="flex items-center gap-3 rounded-lg border border-[var(--warning)]/30 bg-[var(--warning)]/5 p-3">
+            <Lock className="size-5 shrink-0 text-[var(--warning)]" />
+            <p className="text-sm">{lockReason}</p>
+          </div>
         )}
       </header>
 
@@ -339,27 +343,32 @@ export function MemberDetailTabs({
         >
           <TabsContent value="permissions" className="space-y-4 pt-4">
             {/* The role comes first: the two editors below are filled from it,
-                so picking another one re-fills them. */}
-            <Card>
-              <CardContent className="pt-6">
-                {/* The founder's row is read-only, and RoleSelect has no
-                    disabled state of its own: not rendering the picker is the
-                    honest version of "there is nothing to choose here". */}
-                {readOnly ? (
-                  <p className="text-sm text-muted-foreground">
-                    Role: {member.roleName ?? "Custom"}
-                  </p>
-                ) : (
-                  <RoleSelect
-                    roles={roles}
-                    value={roleId}
-                    onChange={pickRole}
-                    canAssignOwner={canAssignOwner}
-                    isCustom={access.roleId == null}
-                  />
-                )}
-              </CardContent>
-            </Card>
+                so picking another one re-fills them. The founder is the one
+                membership with nothing to say here — the banner above already
+                names their role and why it is fixed, so the card would be that
+                same sentence twice. */}
+            {!access.isFounder && (
+              <Card>
+                <CardContent className="pt-6">
+                  {/* A locked row has no picker: RoleSelect has no disabled
+                      state of its own, and not rendering it is the honest
+                      version of "there is nothing to choose here". */}
+                  {readOnly ? (
+                    <p className="text-sm text-muted-foreground">
+                      Role: {member.roleName ?? "Custom"}
+                    </p>
+                  ) : (
+                    <RoleSelect
+                      roles={roles}
+                      value={roleId}
+                      onChange={pickRole}
+                      canAssignOwner={canAssignOwner}
+                      isCustom={access.roleId == null}
+                    />
+                  )}
+                </CardContent>
+              </Card>
+            )}
 
             <Card>
               <CardContent className="pt-6">
