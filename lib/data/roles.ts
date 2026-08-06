@@ -14,6 +14,7 @@ import {
   teamRoleScopeEnvironments,
   teamRoleScopeFolders,
   teamRoleScopeProjects,
+  apps as appsTable,
   users as usersTable,
 } from "../db/schema/control-plane";
 import { newId, nowIso } from "../ids";
@@ -32,7 +33,7 @@ import {
   sameCapabilities,
 } from "../membership-shared";
 import { withView } from "./folder-access";
-import { nodeCapabilitiesFor } from "./node-access";
+import { appCapabilitiesForTeam, nodeCapabilitiesFor } from "./node-access";
 import { roleScopeFor } from "./node-scope";
 import { ALL_CAPABILITIES, type Capability, type Membership, type Role } from "../types";
 
@@ -633,10 +634,37 @@ async function resolveRoleScope(
     folderIds: [...new Set(input.folderIds ?? [])],
     appIds: [...new Set(input.appIds ?? [])],
   };
+  // One resolution per NODE KIND rather than per node: `appCapabilitiesForTeam`
+  // builds the grant index once and answers a whole list from it, so ticking
+  // twenty apps costs the same five queries as ticking one.
+  if (out.appIds.length > 0) {
+    const rows = await getDb()
+      .select({
+        id: appsTable.id,
+        folderId: appsTable.folderId,
+        projectId: appsTable.projectId,
+        environmentId: appsTable.environmentId,
+      })
+      .from(appsTable)
+      .where(and(inArray(appsTable.id, out.appIds), eq(appsTable.teamId, teamId)));
+    if (rows.length !== out.appIds.length)
+      throw new Error("One of those isn't in this team any more");
+    const reach = await appCapabilitiesForTeam(
+      teamId,
+      rows.map((a) => ({
+        id: a.id,
+        folderId: a.folderId ?? null,
+        projectId: a.projectId ?? null,
+        environmentId: a.environmentId ?? null,
+      })),
+    );
+    for (const id of out.appIds)
+      if ((reach.get(id) ?? []).length === 0)
+        throw new Error("One of those isn't in this team any more");
+  }
   for (const [kind, ids] of [
     ["project", out.projectIds],
     ["folder", out.folderIds],
-    ["app", out.appIds],
   ] as const) {
     for (const id of ids) {
       const mine = await nodeCapabilitiesFor(actingUserId, teamId, { kind, id });

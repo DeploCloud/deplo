@@ -330,6 +330,42 @@ test("an environment scope reaches one environment of a project", async () => {
   );
 });
 
+test("an environment grant is a rung of its own, beating the project it sits in", async () => {
+  const envs = await import("../db/schema/control-plane");
+  await db.insert(envs.environments).values({
+    id: "environ_stg", projectId: PRC_IN, name: "Staging", slug: "staging",
+    kind: "custom", gitBranch: "", isDefault: false, position: 1,
+    createdAt: T0, updatedAt: T0,
+  });
+  await seedApp(db, {
+    id: "prj_stg2", projectId: PRC_IN, environmentId: "environ_stg",
+  });
+  // The project says one thing…
+  await db
+    .insert(envs.projectGrants)
+    .values({ projectId: PRC_IN, userId: DEV, capability: "view_logs" });
+  // …and the environment inside it says another. Most-specific-wins, and the
+  // environment is more specific than the project it belongs to.
+  await db
+    .insert(envs.environmentGrants)
+    .values({ environmentId: "environ_stg", userId: DEV, capability: "manage_env" });
+
+  assert.deepEqual(await capsOn({ kind: "app", id: "prj_stg2" }), [
+    "view",
+    "manage_env",
+  ]);
+  // An app of the same project but no environment still answers the project's.
+  assert.deepEqual(await capsOn({ kind: "app", id: APP_IN_PRC }), [
+    "view",
+    "view_logs",
+  ]);
+  // And the environment node itself resolves.
+  assert.deepEqual(await capsOn({ kind: "environment", id: "environ_stg" }), [
+    "view",
+    "manage_env",
+  ]);
+});
+
 test("a scope emptied by a cascade reaches nothing, not everything", async () => {
   await scopeTo({ projects: [PRC_IN] });
   assert.ok(await reaches({ kind: "app", id: APP_IN_PRC }));

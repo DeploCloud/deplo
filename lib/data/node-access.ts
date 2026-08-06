@@ -7,6 +7,8 @@ import { getDb } from "../db/client";
 import {
   appGrants as appGrantsTable,
   apps as appsTable,
+  environmentGrants as environmentGrantsTable,
+  environments as environmentsTable,
   folderGrants as folderGrantsTable,
   folders as foldersTable,
   membershipCapabilities as membershipCapabilitiesTable,
@@ -27,6 +29,7 @@ import {
 import { inAppScope } from "../auth/request-context";
 import {
   appInScope,
+  environmentInScope,
   folderInScope,
   projectInScope,
   roleScopeFor,
@@ -78,6 +81,7 @@ import { ALL_CAPABILITIES, type Capability } from "../types";
 export type NodeRef =
   | { kind: "app"; id: string }
   | { kind: "folder"; id: string }
+  | { kind: "environment"; id: string }
   | { kind: "project"; id: string };
 
 /**
@@ -135,7 +139,10 @@ interface GrantIndex {
     { parentId: string | null; projectId: string | null; ownerUserId: string | null }
   >;
   projectOwners: Map<string, string | null>;
+  /** environmentId → its project, so an environment rung can find its container. */
+  environmentProjects: Map<string, string>;
   folderGrants: Map<string, Capability[]>;
+  environmentGrants: Map<string, Capability[]>;
   projectGrants: Map<string, Capability[]>;
   appGrants: Map<string, Capability[]>;
 }
@@ -183,8 +190,17 @@ async function buildIndex(
   if (!admin && base.length === 0) return null;
 
   const db = getDb();
-  const [folderRows, projectRows, fGrants, pGrants, aGrants, superUser, roleScope] =
-    await Promise.all([
+  const [
+    folderRows,
+    projectRows,
+    fGrants,
+    pGrants,
+    aGrants,
+    superUser,
+    roleScope,
+    envRows,
+    eGrants,
+  ] = await Promise.all([
       db
         .select({
           id: foldersTable.id,
@@ -239,6 +255,28 @@ async function buildIndex(
         ),
       holdsManageTeam(userId, teamId),
       roleScopeFor(userId, teamId),
+      db
+        .select({ id: environmentsTable.id, projectId: environmentsTable.projectId })
+        .from(environmentsTable)
+        .innerJoin(projectsTable, eq(projectsTable.id, environmentsTable.projectId))
+        .where(eq(projectsTable.teamId, teamId)),
+      db
+        .select({
+          key: environmentGrantsTable.environmentId,
+          capability: environmentGrantsTable.capability,
+        })
+        .from(environmentGrantsTable)
+        .innerJoin(
+          environmentsTable,
+          eq(environmentsTable.id, environmentGrantsTable.environmentId),
+        )
+        .innerJoin(projectsTable, eq(projectsTable.id, environmentsTable.projectId))
+        .where(
+          and(
+            eq(environmentGrantsTable.userId, userId),
+            eq(projectsTable.teamId, teamId),
+          ),
+        ),
     ]);
 
   return {
@@ -259,7 +297,9 @@ async function buildIndex(
       ]),
     ),
     projectOwners: new Map(projectRows.map((p) => [p.id, p.ownerUserId ?? null])),
+    environmentProjects: new Map(envRows.map((e) => [e.id, e.projectId])),
     folderGrants: groupCaps(fGrants),
+    environmentGrants: groupCaps(eGrants),
     projectGrants: groupCaps(pGrants),
     appGrants: groupCaps(aGrants),
   };
@@ -300,6 +340,17 @@ export async function holdsManageTeam(
 /** The team that owns a node, or null when it doesn't exist. */
 async function teamOf(node: NodeRef): Promise<string | null> {
   const db = getDb();
+  // An Environment carries no `team_id` of its own — it belongs to a Project,
+  // and the team comes through it (ADR-0009).
+  if (node.kind === "environment") {
+    const rows = await db
+      .select({ teamId: projectsTable.teamId })
+      .from(environmentsTable)
+      .innerJoin(projectsTable, eq(projectsTable.id, environmentsTable.projectId))
+      .where(eq(environmentsTable.id, node.id))
+      .limit(1);
+    return rows[0]?.teamId ?? null;
+  }
   const table =
     node.kind === "app"
       ? appsTable
@@ -320,9 +371,14 @@ async function teamOf(node: NodeRef): Promise<string | null> {
 
 /**
  * The ancestor ladder for a node, most specific first: the app itself, then its
- * folder chain, then the Project container. Cycle-safe — `folders.parent_id` is a
- * self-reference with no acyclicity guarantee, and a resolver that hangs is a
- * worse outage than one that stops early.
+ * folder chain, then its ENVIRONMENT, then the Project container. Cycle-safe —
+ * `folders.parent_id` is a self-reference with no acyclicity guarantee, and a
+ * resolver that hangs is a worse outage than one that stops early.
+ *
+ * The environment sits between the folders and the project because that is where
+ * an app inside a project actually lives (ADR-0009): "you own staging" has to
+ * beat "you were given the project", or the finer statement could never win.
+ * An app filed into a FOLDER has no environment, so the two never both apply.
  */
 function ladder(
   index: GrantIndex,
@@ -344,6 +400,19 @@ function ladder(
       owner: false, // an App has no owner column
       grants: index.appGrants.get(node.id) ?? [],
     });
+  }
+
+  // The environment rung: the app's own, or the environment node itself.
+  const environmentId =
+    node.kind === "environment" ? node.id : (node.environmentId ?? null);
+  if (environmentId && node.kind !== "folder") {
+    rungs.push({
+      kind: "environment",
+      id: environmentId,
+      owner: false, // an Environment has no owner column
+      grants: index.environmentGrants.get(environmentId) ?? [],
+    });
+    projectId = index.environmentProjects.get(environmentId) ?? projectId;
   }
 
   // A folder's own `project_id` wins over the app's: filing an app into a folder
@@ -437,6 +506,15 @@ function reachesNode(
       environmentId: node.environmentId ?? null,
     });
   if (node.kind === "folder") return folderInScope(index.roleScope, node.id);
+  if (node.kind === "environment")
+    return (
+      environmentInScope(index.roleScope, node.id) ||
+      // …or its project, which covers every environment inside it.
+      projectInScope(
+        index.roleScope,
+        index.environmentProjects.get(node.id) ?? null,
+      )
+    );
   return projectInScope(index.roleScope, node.id);
 }
 

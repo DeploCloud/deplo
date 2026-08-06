@@ -5,7 +5,11 @@ import type { AppliedSharedVarDTO } from "@/lib/data/shared-vars";
 import { listInstanceEnv } from "@/lib/data/global-env";
 import { listProjects } from "@/lib/data/projects";
 import { listAllEnvironmentsForTeam } from "@/lib/data/environments";
-import { hasCapability, isInstanceAdmin } from "@/lib/membership";
+import {
+  hasCapability,
+  isInstanceAdmin,
+  reachesWholeTeam,
+} from "@/lib/membership";
 import { PageHeader } from "@/components/shared/page-header";
 import { EmptyState } from "@/components/shared/empty-state";
 import {
@@ -23,6 +27,7 @@ export const metadata = { title: "Environment Variables" };
 export default async function VariablesPage(props: PageProps<"/variables">) {
   const { tab: tabParam } = await props.searchParams;
   const rawTab = Array.isArray(tabParam) ? tabParam[0] : tabParam;
+  const wholeTeam = await reachesWholeTeam();
 
   // Env values are gated by manage_env. The sidebar link is hidden without it;
   // guard the page too for direct navigation.
@@ -50,8 +55,11 @@ export default async function VariablesPage(props: PageProps<"/variables">) {
     canManageTeam,
   ] = await Promise.all([
     listAllAppEnv(),
-    listSharedVars(),
-    listAppliedSharedVarsByApp(),
+    // The team's shared library is a team-wide read: a member limited to part of
+    // the team keeps the per-app tab and loses the library, rather than losing
+    // the page. Same shape the Storage and app Environment pages already use.
+    wholeTeam ? listSharedVars() : Promise.resolve([]),
+    wholeTeam ? listAppliedSharedVarsByApp() : Promise.resolve([]),
     listProjects(),
     listAllEnvironmentsForTeam(),
     // Instance-wide vars are admin-only; skip the (throwing) read otherwise.
