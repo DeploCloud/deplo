@@ -465,7 +465,13 @@ export function UserAccountSettings({
               {/* WHY the switch above is dead. A state, not field help, so it
                   stays on screen rather than hiding behind an icon. */}
               {(ownerFlagsLocked || isSelf) && (
-                <p className="text-xs text-muted-foreground">
+                <p
+                  className={
+                    ownerFlagsLocked
+                      ? "text-xs text-warning"
+                      : "text-xs text-muted-foreground"
+                  }
+                >
                   {ownerFlagsLocked
                     ? "The instance owner is always an instance admin — transfer ownership first."
                     : "You can't change your own admin status — another instance admin has to."}
