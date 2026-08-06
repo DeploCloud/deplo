@@ -1,6 +1,7 @@
-import { hasCapability } from "@/lib/membership";
+import { hasCapability, reachesWholeTeam } from "@/lib/membership";
 import { listRoles } from "@/lib/data/roles";
 import { PageHeader } from "@/components/shared/page-header";
+import { OutsideYourAccess } from "@/components/shared/outside-your-access";
 import { RolesRail } from "@/components/settings/roles/roles-rail";
 
 /**
@@ -11,6 +12,18 @@ import { RolesRail } from "@/components/settings/roles/roles-rail";
 export default async function RolesLayout({
   children,
 }: LayoutProps<"/settings/roles">) {
+  // The guard belongs in the LAYOUT, not the pages under it: this runs before
+  // every child, so a throw here took out the whole section — the read-only role
+  // viewer included.
+  if (!(await reachesWholeTeam()))
+    return (
+      <OutsideYourAccess
+        title="Roles"
+        description="What a member can do in this team. Assign a role to each member on the Members page."
+        what="The team's roles"
+      />
+    );
+
   const [roles, canManage] = await Promise.all([
     listRoles(),
     hasCapability("manage_roles"),

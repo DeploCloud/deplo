@@ -397,3 +397,155 @@ test("assigning a role stamps the rank the guards read", async () => {
     .where(eq(membershipsTable.userId, "m1"));
   assert.equal(after.role, "member");
 });
+
+/* ------------------------------------------------------------------ */
+/* The audit's regressions on the role WRITE path.                     */
+/* ------------------------------------------------------------------ */
+
+test("an absent field on updateRole means leave it alone, not clear it", async () => {
+  await seedIdentity(db, {
+    users: [
+      { id: USER_1, teamId: TEAM_A, role: "owner" },
+      { id: "u_dev", teamId: TEAM_A, role: "member", capabilities: ["view"] },
+    ],
+  });
+  const role = await asOwner(() =>
+    createRole({
+      name: "Deployer",
+      capabilities: ["view", "deploy_apps", "view_logs"],
+      requireTwoFactor: true,
+    }),
+  );
+  await asOwner(() => updateMember({ userId: "u_dev", roleId: role.id }));
+  assert.deepEqual(await capsOf("u_dev"), ["deploy_apps", "view", "view_logs"]);
+
+  // The rename an API client writes: `capabilities` and `requireTwoFactor` are
+  // both optional in the SDL, and both used to be read as "" and false. A bare
+  // rename stripped every holder to `view` and lifted the 2FA mandate.
+  await asOwner(() => updateRole({ id: role.id, name: "Deployers" }));
+
+  const after = byName(await asOwner(() => listRoles()), "Deployers");
+  assert.deepEqual(
+    after.capabilities.slice().sort(),
+    ["deploy_apps", "view", "view_logs"],
+    "a rename wiped the role's permissions",
+  );
+  assert.equal(after.requireTwoFactor, true, "a rename lifted the 2FA mandate");
+  assert.deepEqual(
+    await capsOf("u_dev"),
+    ["deploy_apps", "view", "view_logs"],
+    "a rename wiped every holder's permissions",
+  );
+
+  // Sending the field explicitly still replaces it, so this is not a refusal to
+  // write — only a refusal to invent an empty value.
+  await asOwner(() =>
+    updateRole({ id: role.id, name: "Deployers", capabilities: ["view"] }),
+  );
+  assert.deepEqual(await capsOf("u_dev"), ["view"]);
+});
+
+test("a scope-only edit re-syncs the holders without touching the authored set", async () => {
+  await seedIdentity(db, {
+    users: [
+      { id: USER_1, teamId: TEAM_A, role: "owner" },
+      { id: "u_dev", teamId: TEAM_A, role: "member", capabilities: ["view"] },
+    ],
+  });
+  const { projects } = await import("../db/schema/control-plane");
+  await db.insert(projects).values({
+    id: "prc_x", teamId: TEAM_A, name: "X", slug: "x",
+    createdAt: "2026-01-01T00:00:00.000Z", updatedAt: "2026-01-01T00:00:00.000Z",
+  });
+  const role = await asOwner(() =>
+    createRole({ name: "Ops", capabilities: ["view", "deploy_apps", "manage_members"] }),
+  );
+  await asOwner(() => updateMember({ userId: "u_dev", roleId: role.id }));
+  assert.ok((await capsOf("u_dev")).includes("manage_members"));
+
+  // Limiting the role, and NOTHING else — no capabilities in the payload. The
+  // authored set must survive; the EFFECTIVE one must lose the team-wide verb.
+  await asOwner(() =>
+    updateRole({ id: role.id, name: "Ops", scope: { projectIds: ["prc_x"] } }),
+  );
+  const after = byName(await asOwner(() => listRoles()), "Ops");
+  assert.deepEqual(after.capabilities.slice().sort(), [
+    "deploy_apps",
+    "manage_members",
+    "view",
+  ]);
+  assert.deepEqual(
+    await capsOf("u_dev"),
+    ["deploy_apps", "view"],
+    "the scope did not re-clamp the holders",
+  );
+});
+
+test("a scoped role is never matched by the legacy rank+capabilities shape", async () => {
+  await seedIdentity(db, {
+    users: [
+      { id: USER_1, teamId: TEAM_A, role: "owner" },
+      { id: "u_dev", teamId: TEAM_A, role: "member", capabilities: ["view"] },
+    ],
+  });
+  const { projects } = await import("../db/schema/control-plane");
+  await db.insert(projects).values({
+    id: "prc_x", teamId: TEAM_A, name: "X", slug: "x",
+    createdAt: "2026-01-01T00:00:00.000Z", updatedAt: "2026-01-01T00:00:00.000Z",
+  });
+  const scoped = await asOwner(() =>
+    createRole({
+      name: "Prod only",
+      capabilities: ["view", "deploy_apps"],
+      scope: { projectIds: ["prc_x"] },
+    }),
+  );
+
+  // rank + capabilities says nothing about REACH, and matching compares the
+  // CLAMPED set — which makes a limited role the likeliest match for a short
+  // list. Landing on it handed the membership a boundary nobody asked for.
+  await asOwner(() =>
+    updateMember({
+      userId: "u_dev",
+      role: "member",
+      capabilities: ["view", "deploy_apps"],
+    }),
+  );
+  const m = (
+    await db
+      .select({ roleId: membershipsTable.roleId })
+      .from(membershipsTable)
+      .where(eq(membershipsTable.userId, "u_dev"))
+  )[0];
+  assert.notEqual(m.roleId, scoped.id, "a legacy edit landed on a SCOPED role");
+  assert.deepEqual(await capsOf("u_dev"), ["deploy_apps", "view"]);
+});
+
+test("limiting a built-in marks it edited, so the way back stays offered", async () => {
+  await seedIdentity(db, { users: [{ id: USER_1, teamId: TEAM_A, role: "owner" }] });
+  const { projects } = await import("../db/schema/control-plane");
+  await db.insert(projects).values({
+    id: "prc_x", teamId: TEAM_A, name: "X", slug: "x",
+    createdAt: "2026-01-01T00:00:00.000Z", updatedAt: "2026-01-01T00:00:00.000Z",
+  });
+  const member = byName(await asOwner(() => listRoles()), "Member");
+  assert.equal(member.modified, false, "a freshly seeded default is pristine");
+
+  // A re-scope leaves `team_role_capabilities` untouched, so comparing
+  // capabilities alone read this as unchanged: no "Edited" badge in the rail,
+  // and no "Reset to default" on the one role that most needs the way back.
+  await asOwner(() =>
+    updateRole({
+      id: member.id,
+      name: member.name,
+      description: member.description,
+      capabilities: member.capabilities,
+      scope: { projectIds: ["prc_x"] },
+    }),
+  );
+  assert.equal(
+    byName(await asOwner(() => listRoles()), member.name).modified,
+    true,
+    "a built-in limited away from its default still reads as pristine",
+  );
+});

@@ -26,13 +26,12 @@ import {
   requireMembership,
 } from "../membership";
 import { recordActivity } from "./activity";
-import { appCapabilitiesForTeam, requireAppCapability } from "./node-access";
 import {
-  loadAppGraph,
-  loadTeamApp,
-  appInTeam,
-  appScopeWhere,
-} from "./app-graph-load";
+  appCapabilities,
+  appCapabilitiesForTeam,
+  requireAppCapability,
+} from "./node-access";
+import { loadAppGraph, loadTeamApp, appScopeWhere } from "./app-graph-load";
 import { decryptSecret } from "../crypto";
 import {
   DEFAULT_SCHEDULE,
@@ -198,18 +197,31 @@ async function filterBackupsToScope<T extends { targetKind: BackupTargetKind; ap
 
 /**
  * Whether a backup TARGET is reachable by this request. A database target never
- * is for a project-scoped token (a database belongs to no Project); an app
- * target is exactly when the app is. Inert for every unscoped caller, which is
- * every browser request.
+ * is for a principal who reaches part of the team (a database belongs to no
+ * Project); an app target is exactly when the app is. Inert for every unscoped
+ * caller, which is every principal on every instance until someone limits one.
+ *
+ * The app question is asked of {@link appCapabilities}, not of `appInTeam`. The
+ * latter's only scope clause is `appScopeWhere()`, which reads `narrowedScope()`
+ * — the API TOKEN's reach, and null for every cookie session. It was the whole
+ * gate here, and `backupRuns` carries no capability check of its own
+ * (`authScopes: { loggedIn: true }`), so a member on a role limited to one
+ * project read the full run history of every app in the team: status, timings,
+ * byte size, error text, destination id, and an `objectKey` naming the team and
+ * the target. `appCapabilities` answers for the human AND the token, and `[]`
+ * there is the same answer an app that isn't there gives.
+ *
+ * None of the five call sites runs inside `getDb().transaction()`, which is what
+ * makes this safe: `appCapabilities` opens its own connection, and one issued
+ * while a transaction is open hangs under pglite.
  */
 async function backupTargetInScope(
   kind: BackupTargetKind,
   targetId: string,
-  teamId: string,
 ): Promise<boolean> {
   if (await reachesWholeTeam()) return true;
   if (kind !== "app" || !targetId) return false;
-  return appInTeam(targetId, teamId);
+  return (await appCapabilities(targetId)).length > 0;
 }
 
 /**
@@ -899,7 +911,7 @@ export async function listBackupRuns(filter: {
   const teamId = await requireActiveTeamId();
   // A run history is reachable only through a target the caller can reach: an
   // out-of-scope app, or any database, yields nothing for a scoped token.
-  if (!(await backupTargetInScope(filter.appId ? "app" : "database", filter.appId ?? filter.databaseId ?? "", teamId)))
+  if (!(await backupTargetInScope(filter.appId ? "app" : "database", filter.appId ?? filter.databaseId ?? "")))
     return [];
   // Exactly one of appId/databaseId selects the target; neither ⇒ no runs.
   const targetWhere = filter.appId
@@ -1019,7 +1031,7 @@ export async function deleteBackupArtifacts(input: {
   const teamId = await requireActiveTeamId();
   // Destructive, and gated on the view floor alone — so the scope check has to
   // be here: a caller-supplied targetId must be one this request can reach.
-  if (!(await backupTargetInScope(input.kind, input.targetId, teamId)))
+  if (!(await backupTargetInScope(input.kind, input.targetId)))
     throw new Error("Not found");
   const creds = await getS3WithSecretsForTeam(teamId, input.destinationId);
   const prefix = targetPrefix(teamId, input.kind, input.targetId);
@@ -1079,7 +1091,7 @@ export async function countBackupArtifacts(input: {
   targetId: string;
 }): Promise<number> {
   const teamId = await requireActiveTeamId();
-  if (!(await backupTargetInScope(input.kind, input.targetId, teamId)))
+  if (!(await backupTargetInScope(input.kind, input.targetId)))
     return 0;
   const [row] = await getDb()
     .select({ n: count() })
@@ -1104,7 +1116,7 @@ export async function backupDestinationsForTarget(input: {
   targetId: string;
 }): Promise<string[]> {
   const teamId = await requireActiveTeamId();
-  if (!(await backupTargetInScope(input.kind, input.targetId, teamId)))
+  if (!(await backupTargetInScope(input.kind, input.targetId)))
     return [];
   const rows = await getDb()
     .selectDistinct({ destinationId: backupRunsTable.destinationId })
@@ -1148,7 +1160,7 @@ export async function deleteAllBackupArtifacts(input: {
   // `manage_backups` survives the project clamp, so the database branch above
   // would otherwise let a narrowed token wipe a target it can't reach. Mirrors
   // the check in {@link deleteBackupArtifacts}.
-  if (!(await backupTargetInScope(input.kind, input.targetId, teamId)))
+  if (!(await backupTargetInScope(input.kind, input.targetId)))
     throw new Error("Not found");
   // Resolve the owning server straight off the target row — no agent round-trip
   // (a project's full descriptor needs `readStack`, which we don't need just to

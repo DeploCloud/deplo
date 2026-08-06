@@ -27,7 +27,7 @@ import { requireAppCapability } from "./node-access";
 import { mergeOrder } from "./folders";
 import { normalizeHexColor } from "../utils";
 import { inProjectScope } from "../auth/request-context";
-import { projectInScope } from "./node-scope";
+import { appInScope, projectInScope } from "./node-scope";
 import { appScopeWhere } from "./app-graph-load";
 import type { Project, AppStatus } from "../types";
 
@@ -485,6 +485,29 @@ export async function moveAppToProject(
   )[0];
   if (!s) throw new Error("App not found");
   if ((s.projectId ?? null) === projectId) return;
+  // The destination, BOTH branches. `null` is the team top level, which sits
+  // inside no container and so inside no scope — a limited role moving its app
+  // there orphaned it out of everyone's reach, and that branch had no check at
+  // all. Hoisted out of the `if` for that reason; the named-project branch keeps
+  // its own team + token checks below.
+  //
+  // Two messages, because they answer different questions. A named project is
+  // "not found", so refusing never confirms which ids exist; the top level has
+  // no id to confirm, and telling someone their app would leave their own reach
+  // is both safe and the only thing that explains the refusal.
+  if (
+    !appInScope(await currentRoleScope(), {
+      id: appId,
+      folderId: null,
+      projectId,
+      environmentId: null,
+    })
+  )
+    throw new Error(
+      projectId
+        ? "Project not found"
+        : "Your role only reaches part of this team, so an app can't be moved out of it.",
+    );
   let msg: string;
   let environmentId: string | null = null;
   if (projectId) {
@@ -498,13 +521,10 @@ export async function moveAppToProject(
     // The DESTINATION, which was only ever checked against the team: a caller
     // who reaches part of the team could file an app it controls into a project
     // outside its own scope. Same message as an unknown id, so no id is
-    // confirmed by refusing.
-    if (
-      !p ||
-      !inProjectScope(projectId) ||
-      !projectInScope(await currentRoleScope(), projectId)
-    )
-      throw new Error("Project not found");
+    // confirmed by refusing. The role's reach was checked above, for both
+    // branches and with the stricter predicate; what is left here is the team
+    // and the API token.
+    if (!p || !inProjectScope(projectId)) throw new Error("Project not found");
     const env = await defaultEnvironmentFor(projectId);
     environmentId = env?.id ?? null;
     msg = env
@@ -563,13 +583,29 @@ export async function moveAppToEnvironment(
       .where(eq(environmentsTable.id, environmentId))
       .limit(1)
   )[0];
-  // Its owning project is the destination, and it is checked the same way
-  // `moveAppToProject` checks one: in the team, and inside the caller's scope.
+  // The DESTINATION, asked the way the app itself would be asked if it already
+  // lived there — `appInScope`, not `projectInScope`.
+  //
+  // `projectInScope` accepts `appProjectIds`, the set `loadRoleScope` fills
+  // purely so a named node's CONTAINER stays navigable. So a role limited to one
+  // environment reached every OTHER environment of the same project as a move
+  // destination, and moving its own app there made the app vanish: out of reach
+  // for every holder of the role, the mover included. `createApp` refuses the
+  // identical destination for the identical principal (`resolveNewAppPlacement`
+  // uses `appInScope`), so create and move disagreed about the same pair of ids.
+  //
+  // A project-scoped role still moves freely between the environments of a
+  // ticked project: `appInScope` matches on `projectIds` there.
   if (
     !env ||
     env.teamId !== teamId ||
     !inProjectScope(env.projectId) ||
-    !projectInScope(await currentRoleScope(), env.projectId)
+    !appInScope(await currentRoleScope(), {
+      id: appId,
+      folderId: null,
+      projectId: env.projectId,
+      environmentId: env.id,
+    })
   )
     throw new Error("Environment not found");
   await getDb()

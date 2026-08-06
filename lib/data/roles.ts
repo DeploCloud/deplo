@@ -329,8 +329,16 @@ export async function listRoles(): Promise<TeamRoleDTO[]> {
       capabilities,
       requireTwoFactor: r.requireTwoFactor ?? false,
       memberCount: countByRole.get(r.id) ?? 0,
+      // Both axes, not just power. No shipped default is limited or mandates
+      // 2FA, so either flag being on IS the difference — and a re-scope leaves
+      // `team_role_capabilities` untouched, so comparing capabilities alone read
+      // a built-in limited to one project as pristine: no "Edited" badge, the
+      // full pre-clamp permission count in the rail, and no "Reset to default"
+      // on the one role that most needs the way back.
       modified: builtinKey
-        ? r.name !== ROLE_DEFAULTS[builtinKey].name ||
+        ? r.scoped ||
+          (r.requireTwoFactor ?? false) ||
+          r.name !== ROLE_DEFAULTS[builtinKey].name ||
           (r.description ?? "") !== ROLE_DEFAULTS[builtinKey].description ||
           !sameCapabilities(capabilities, CAPABILITY_PRESETS[builtinKey])
         : false,
@@ -469,11 +477,20 @@ export async function matchTeamRole(
     list.push(r.capability as Capability);
     capsByRole.set(r.roleId, list);
   }
+  // A SCOPED role is never a candidate, whatever it grants. This shape is
+  // rank + capabilities and says nothing about REACH, so landing on a limited
+  // role would silently hand the membership a boundary the caller never asked
+  // for — and matching on the effective set below makes a scoped role the
+  // LIKELIEST match for a short list, because the clamp is what shortened it.
+  // Dropped before the rank split rather than after: a built-in can be scoped
+  // too (only Owner is locked), so filtering the fallback group alone still let
+  // a limited built-in Member win on rank.
+  const candidates = rows.filter((r) => !r.scoped);
   // Prefer the built-in named by the rank, so an owner/member/viewer set lands on
   // the role the caller meant even if a custom role happens to grant the same.
   const ordered = [
-    ...rows.filter((r) => r.builtinKey === rank),
-    ...rows.filter((r) => r.builtinKey !== rank),
+    ...candidates.filter((r) => r.builtinKey === rank),
+    ...candidates.filter((r) => r.builtinKey !== rank),
   ];
   // Compared against the EFFECTIVE set, never the authored one. A scoped role's
   // holders store a clamped set, so matching a hand-picked superset against the
@@ -789,6 +806,7 @@ async function roleInTeam(
   name: string;
   description: string | null;
   scoped: boolean;
+  requireTwoFactor: boolean;
 }> {
   const rows = await db
     .select({
@@ -797,6 +815,7 @@ async function roleInTeam(
       name: teamRolesTable.name,
       description: teamRolesTable.description,
       scoped: teamRolesTable.scoped,
+      requireTwoFactor: teamRolesTable.requireTwoFactor,
     })
     .from(teamRolesTable)
     .where(and(eq(teamRolesTable.id, roleId), eq(teamRolesTable.teamId, teamId)))
@@ -1020,8 +1039,20 @@ export async function updateRole(input: {
   const { teamId, userId, membership } = await requireCapability("manage_roles");
   const name = cleanRoleName(input.name);
   const description = cleanDescription(input.description);
-  const capabilities = withinActor(input.capabilities, membership);
-  const requireTwoFactor = input.requireTwoFactor ?? false;
+  // ABSENT MEANS "LEAVE IT ALONE" on every optional axis, which `scope` below
+  // already got right and these two did not. Both are optional in TypeScript and
+  // in the SDL (`UpdateRoleInput.capabilities`, `.requireTwoFactor`), so an API
+  // client sending only `{ id, name }` to rename a role stripped every holder to
+  // `view` (`withinActor(undefined)` sanitizes to `[]`, then `withView`) and
+  // lifted the role's 2FA mandate. The browser always sends both, so this was
+  // reachable only from a client — which is exactly who reads the SDL and
+  // believes the `?`.
+  const current = await roleInTeam(getDb(), teamId, input.id);
+  const capabilities =
+    input.capabilities === undefined
+      ? undefined
+      : withinActor(input.capabilities, membership);
+  const requireTwoFactor = input.requireTwoFactor ?? current.requireTwoFactor;
   if (requireTwoFactor) await assertActorCanMandateTwoFactor(userId, input.id);
   // Resolved BEFORE the transaction: it queries, and a query issued while one is
   // open hangs under pglite. Also refuses an actor handing out reach they don't
@@ -1047,13 +1078,27 @@ export async function updateRole(input: {
         and(eq(teamRolesTable.id, role.id), eq(teamRolesTable.teamId, teamId)),
       );
     if (scope !== undefined) await writeRoleScope(tx, role.id, scope);
-    await tx
-      .delete(teamRoleCapabilitiesTable)
-      .where(eq(teamRoleCapabilitiesTable.roleId, role.id));
-    await tx
-      .insert(teamRoleCapabilitiesTable)
-      .values(capabilities.map((c) => ({ roleId: role.id, capability: c })));
-    await syncMembersOfRole(tx, teamId, role.id, capabilities, scoped);
+    // Re-read under the lock rather than trusting the pre-transaction read: the
+    // authored set is what the members sync from, and a scope-only edit still
+    // has to re-sync (the clamp keys on `scoped`, so the same authored list
+    // confers a different effective one).
+    const authored =
+      capabilities ??
+      (
+        await tx
+          .select({ capability: teamRoleCapabilitiesTable.capability })
+          .from(teamRoleCapabilitiesTable)
+          .where(eq(teamRoleCapabilitiesTable.roleId, role.id))
+      ).map((r) => r.capability as Capability);
+    if (capabilities !== undefined) {
+      await tx
+        .delete(teamRoleCapabilitiesTable)
+        .where(eq(teamRoleCapabilitiesTable.roleId, role.id));
+      await tx
+        .insert(teamRoleCapabilitiesTable)
+        .values(capabilities.map((c) => ({ roleId: role.id, capability: c })));
+    }
+    await syncMembersOfRole(tx, teamId, role.id, authored, scoped);
     // Runs AFTER the sync, and now catches a second way to lose the last
     // administrator: scoping a role clamps its team-wide capabilities away, so
     // "the team must keep one member who can manage members" is a question a

@@ -28,7 +28,7 @@ import { PermissionPicker } from "@/components/settings/permission-picker";
 import { gqlAction } from "@/lib/graphql-client";
 import { ALL_CAPABILITIES, type Capability } from "@/lib/types";
 import { CAPABILITY_CATEGORIES, CAPABILITY_META } from "@/lib/capabilities";
-import { NODE_GRANTABLE_CAPABILITIES } from "@/lib/membership-shared";
+import { PROJECT_SCOPED_CAPABILITIES } from "@/lib/membership-shared";
 import {
   ScopePicker,
   type ScopeSelection,
@@ -98,12 +98,19 @@ export function RoleEditor({
     scope.folderIds.length +
     scope.appIds.length;
   const scoped = limited || ticked > 0;
-  // What the scope silences: everything a node cannot carry. The set is the
-  // server's own (`NODE_GRANTABLE_CAPABILITIES`), so the picker and the save
-  // cannot disagree about which ticks still mean something.
+  // What the scope silences. The set is the one the SAVE applies —
+  // `PROJECT_SCOPED_CAPABILITIES`, via `effectiveRoleCapabilities`
+  // (lib/data/roles.ts) — and it has to be, or the picker and the server
+  // disagree about which ticks still mean something. Muting
+  // `NODE_GRANTABLE_CAPABILITIES` instead left exactly three unstruck and
+  // uncounted (`move_apps`, `organize_folders`, `delete_folders`, the difference
+  // between the two sets): the admin ticked them, the role stored them, the DTO
+  // redrew them ticked forever, and not one holder ever got them.
   const mutedCaps = React.useMemo(
     () =>
-      scoped ? ALL_CAPABILITIES.filter((c) => !NODE_GRANTABLE_CAPABILITIES.includes(c)) : [],
+      scoped
+        ? ALL_CAPABILITIES.filter((c) => !PROJECT_SCOPED_CAPABILITIES.includes(c))
+        : [],
     [scoped],
   );
   const outOfScope = caps.filter((c) => mutedCaps.includes(c)).length;

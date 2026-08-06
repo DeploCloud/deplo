@@ -141,8 +141,14 @@ rather than in Deplo, and the private key is write-only, with no read path.
   (the per-resource "Save metrics" switch, `manage_infra`, default off),
   `createToken`, `updateTeam`, `createRole`/`updateRole`/`resetRole`/`deleteRole`
   (a role edit applies to every member holding it), `login`, `logout`, ….
+  On `updateRole` every optional field means "leave it as it is": omit
+  `capabilities`, `requireTwoFactor` or `scope` and they are untouched, so a bare
+  rename is a bare rename. Send the field to replace it, or `clearScope: true` to
+  make the role reach the whole team again.
   `addExistingMember`/`updateMember` take a `roleId`; the older `role` +
-  `capabilities` pair still works and lands on the matching role when there is one.
+  `capabilities` pair still works and lands on the matching role when there is
+  one — never a role limited to part of the team, since that shape says nothing
+  about reach.
 - **Subscriptions** (SSE via graphql-yoga): `appStatus(slug)` and
   `databaseStatus(id)` — each emits the entity on every state change (initial
   snapshot, then live), so a client tracks provisioning/start/stop/deploy with

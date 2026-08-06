@@ -1,5 +1,7 @@
+import { reachesWholeTeam } from "@/lib/membership";
 import { listGithubApps } from "@/lib/data/github";
 import { PageHeader } from "@/components/shared/page-header";
+import { OutsideYourAccess } from "@/components/shared/outside-your-access";
 import { GithubPanel } from "@/components/settings/github-panel";
 
 export const metadata = { title: "Settings · Git" };
@@ -10,6 +12,14 @@ export default async function SettingsGitPage(props: {
   const sp = await props.searchParams;
   // One-shot status from the GitHub OAuth-style redirect (?git=connected|error).
   const gitStatus = Array.isArray(sp.git) ? sp.git[0] : sp.git;
+  if (!(await reachesWholeTeam()))
+    return (
+      <OutsideYourAccess
+        title="Git"
+        description="Connect GitHub apps for repository access and auto-deploys."
+        what="Git connections"
+      />
+    );
   const githubApps = await listGithubApps();
 
   return (

@@ -870,3 +870,148 @@ test("manage_team does not lift a scope, only instance admin does", async () => 
   // The instance admin is not a member acting under a role, and is unaffected.
   assert.ok((await as(ADMIN, () => listApps())).length > 0);
 });
+
+/* ------------------------------------------------------------------ */
+/* The audit's regressions. Each of these leaked, escalated or broke.  */
+/* ------------------------------------------------------------------ */
+
+test("a backup RUN history is reachable only through the app it belongs to", async () => {
+  const { seedBackup, seedRun, seedS3 } = await import("./backup-test-helpers");
+  const { listBackupRuns, countBackupArtifacts, backupDestinationsForTarget } =
+    await import("./backups");
+  await seedS3(db, { id: "s3_main" });
+  await seedBackup(db, {
+    id: "bk_out", targetKind: "app", appId: APP_OUT_PRC, destinationId: "s3_main",
+  });
+  await seedBackup(db, {
+    id: "bk_in", targetKind: "app", appId: APP_IN_PRC, destinationId: "s3_main",
+  });
+  // REAL out-of-scope data to leak. A probe against an empty table proves
+  // nothing, and asserting on one is how this shipped.
+  await seedRun(db, {
+    id: "run_in", targetKind: "app", appId: APP_IN_PRC,
+    backupId: "bk_in", destinationId: "s3_main",
+  });
+  await seedRun(db, {
+    id: "run_out", targetKind: "app", appId: APP_OUT_PRC,
+    backupId: "bk_out", destinationId: "s3_main",
+  });
+
+  await scopeTo({ projects: [PRC_IN] });
+  await pg.exec(
+    `insert into membership_capabilities (membership_id, capability)
+     select id, 'manage_backups' from memberships where user_id = '${DEV}'`,
+  );
+
+  // The control FIRST: the app they do reach still answers, or a gate that
+  // simply refuses everything would pass this test.
+  assert.deepEqual(
+    (await as(DEV, () => listBackupRuns({ appId: APP_IN_PRC }))).map((r) => r.id),
+    ["run_in"],
+  );
+  // `backupTargetInScope` used to fall through to `appInTeam`, whose only scope
+  // clause reads `narrowedScope()` — the TOKEN's reach, null for this session.
+  // The run row carries status, timings, byte size, the destination id and an
+  // objectKey naming the team and the app.
+  assert.deepEqual(
+    await as(DEV, () => listBackupRuns({ appId: APP_OUT_PRC })),
+    [],
+    "the run history of an app outside the scope leaked",
+  );
+  assert.equal(
+    await as(DEV, () =>
+      countBackupArtifacts({ kind: "app", targetId: APP_OUT_PRC }),
+    ),
+    0,
+  );
+  assert.deepEqual(
+    await as(DEV, () =>
+      backupDestinationsForTarget({ kind: "app", targetId: APP_OUT_PRC }),
+    ),
+    [],
+  );
+});
+
+test("a move cannot file an app anywhere the role does not reach", async () => {
+  const { moveAppToEnvironment, moveAppToProject } = await import("./projects");
+  const { environments } = await import("../db/schema/control-plane");
+  await db.insert(environments).values([
+    {
+      id: "environ_prod", projectId: PRC_IN, name: "Production", slug: "production",
+      kind: "production", gitBranch: "", isDefault: true, position: 0,
+      createdAt: T0, updatedAt: T0,
+    },
+    {
+      id: "environ_stg", projectId: PRC_IN, name: "Staging", slug: "staging",
+      kind: "custom", gitBranch: "", isDefault: false, position: 1,
+      createdAt: T0, updatedAt: T0,
+    },
+  ]);
+  await seedApp(db, {
+    id: "prj_prod", projectId: PRC_IN, environmentId: "environ_prod",
+  });
+
+  // Scoped by raw insert, like `scopeTo`: `move_apps` is not in
+  // PROJECT_SCOPED_CAPABILITIES, so writing the role through `updateRole` would
+  // clamp the verb away and the destination check would never be reached. A
+  // holder gets it from a node grant instead (it IS in
+  // NODE_GRANTABLE_CAPABILITIES), which is the shape this reproduces.
+  const { teamRoleScopeEnvironments } = await import("../db/schema/control-plane");
+  await db.update(teamRolesTable).set({ scoped: true }).where(eq(teamRolesTable.id, ROLE));
+  await db
+    .insert(teamRoleScopeEnvironments)
+    .values({ roleId: ROLE, environmentId: "environ_prod" });
+  await pg.exec(
+    `insert into membership_capabilities (membership_id, capability)
+     select id, 'move_apps' from memberships where user_id = '${DEV}'`,
+  );
+
+  // Control: they really do hold the app and the verb.
+  assert.ok(await reaches({ kind: "app", id: "prj_prod" }));
+
+  // The sibling environment of the SAME project is reached only for
+  // navigability (`appProjectIds`), never as a destination: moving there put
+  // the app out of reach of every holder of the role, the mover included.
+  await assert.rejects(
+    () => as(DEV, () => moveAppToEnvironment("prj_prod", "environ_stg")),
+    /Environment not found/,
+    "an env-scoped role filed its app into an environment it cannot reach",
+  );
+  // The team TOP LEVEL sits inside no container and so inside no scope. This
+  // branch had no destination check of any kind.
+  await assert.rejects(
+    () => as(DEV, () => moveAppToProject("prj_prod", null)),
+    /only reaches part of this team/,
+    "a limited role orphaned its app out of everyone's reach",
+  );
+
+  // …and the legitimate move still works: a PROJECT-scoped role moves freely
+  // between the environments of the project it names, so this is a real gate
+  // and not a blanket refusal.
+  await db
+    .delete(teamRoleScopeEnvironments)
+    .where(eq(teamRoleScopeEnvironments.roleId, ROLE));
+  await scopeTo({ projects: [PRC_IN] });
+  await as(DEV, () => moveAppToEnvironment("prj_prod", "environ_stg"));
+  assert.ok(await reaches({ kind: "app", id: "prj_prod" }));
+});
+
+test("the picker mutes exactly what the save clamps away", async () => {
+  // The role editor draws its strikethrough from one set and the server clamps
+  // with another; when they differ, the difference is granted in the UI and
+  // dropped on the way in. Three capabilities sat in that gap.
+  const { PROJECT_SCOPED_CAPABILITIES } = await import("../membership-shared");
+  const { effectiveRoleCapabilities } = await import("./roles");
+  const { ALL_CAPABILITIES } = await import("../types");
+  const muted = ALL_CAPABILITIES.filter(
+    (c) => !PROJECT_SCOPED_CAPABILITIES.includes(c),
+  );
+  const dropped = ALL_CAPABILITIES.filter(
+    (c) => !effectiveRoleCapabilities([...ALL_CAPABILITIES], true).includes(c),
+  );
+  assert.deepEqual(
+    dropped,
+    muted,
+    "the editor would present a capability the save throws away",
+  );
+});
