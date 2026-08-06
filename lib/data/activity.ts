@@ -22,6 +22,26 @@ import type { Activity, ActivityType } from "../types";
 
 /** Activity for the active team only, newest-first, with the LIMIT pushed into SQL. */
 export async function listActivity(limit = 20): Promise<Activity[]> {
+  return queryActivity(limit);
+}
+
+/**
+ * The same feed narrowed to what ONE person did — the Activity tab of a member's
+ * page. Same gate and same scope as {@link listActivity}, deliberately: "what has
+ * this member been doing" is the team's trail read through one actor, not a
+ * softer question, and served by `activities_actor_created_idx`.
+ */
+export async function listActivityByActor(
+  userId: string,
+  limit = 10,
+): Promise<Activity[]> {
+  return queryActivity(limit, userId);
+}
+
+async function queryActivity(
+  limit: number,
+  actorUserId?: string,
+): Promise<Activity[]> {
   const teamId = await requireActiveTeamId();
   // The trail is who-did-what across the whole team, so it is `view_activity`
   // and not the `view` floor. Soft (empty) rather than a throw: this feeds the
@@ -33,6 +53,9 @@ export async function listActivity(limit = 20): Promise<Activity[]> {
     .where(
       and(
         eq(activitiesTable.teamId, teamId),
+        actorUserId
+          ? eq(activitiesTable.actorUserId, actorUserId)
+          : undefined,
         // An API token limited to Projects reads only its own apps' history.
         // Team-level events (`app_id IS NULL` — members, roles, tokens, the team
         // itself) belong to nothing it can reach, so they drop out with the rest.

@@ -5,6 +5,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { toast } from "sonner";
 import {
+  Activity as ActivityIcon,
   Check,
   Crown,
   FolderTree,
@@ -27,13 +28,14 @@ import {
 import { RoleSelect } from "@/components/members/role-select";
 import { PermissionPicker } from "@/components/settings/permission-picker";
 import { ConfirmAction } from "@/components/shared/confirm-action";
+import { EmptyState } from "@/components/shared/empty-state";
 import {
   ScopePicker,
   type ScopeSelection,
 } from "@/components/settings/tokens/scope-picker";
 import { gqlAction } from "@/lib/graphql-client";
 import { NODE_GRANTABLE_CAPABILITIES, sameCapabilities } from "@/lib/membership-shared";
-import { ALL_CAPABILITIES, type Capability } from "@/lib/types";
+import { ALL_CAPABILITIES, type Activity, type Capability } from "@/lib/types";
 import { timeAgo } from "@/lib/utils";
 import type { MemberDTO } from "@/lib/data/members";
 import type { TeamRoleDTO } from "@/lib/data/roles";
@@ -71,6 +73,7 @@ export function MemberDetailTabs({
   canAssignOwner,
   isSelf,
   canManageAccount,
+  activity,
 }: {
   member: MemberDTO;
   access: UserTeamAccessDTO;
@@ -81,6 +84,8 @@ export function MemberDetailTabs({
   isSelf: boolean;
   /** Instance admin — the link to this person's global account is theirs alone. */
   canManageAccount: boolean;
+  /** Their last few events in this team, newest first. */
+  activity: Activity[];
 }) {
   const router = useRouter();
   const params = useSearchParams();
@@ -425,20 +430,44 @@ export function MemberDetailTabs({
         </form>
 
         <TabsContent value="activity" className="space-y-4 pt-4">
-          <Card>
-            <CardContent className="pt-6">
-              <p className="text-sm text-muted-foreground">
-                Everything @{member.username} does in this team shows up in{" "}
-                <Link
-                  href="/activity"
-                  className="font-medium text-foreground underline-offset-4 hover:underline"
-                >
-                  Activity
-                </Link>
-                .
-              </p>
-            </CardContent>
-          </Card>
+          {/* What they have actually done here, not a pointer to where it lives:
+              the tab answering "what has this person been up to" with a sentence
+              about another page was an empty state pretending to be content. */}
+          {activity.length === 0 ? (
+            <EmptyState
+              icon={ActivityIcon}
+              title="Nothing yet"
+              description={`@${member.username} hasn't done anything in this team that gets logged.`}
+              action={
+                <Button variant="outline" size="sm" asChild>
+                  <Link href="/activity">Open Activity</Link>
+                </Button>
+              }
+            />
+          ) : (
+            <Card>
+              <CardContent className="space-y-4 pt-6">
+                <ol className="space-y-4">
+                  {activity.map((a) => (
+                    <li key={a.id} className="flex items-start gap-3">
+                      <span className="flex size-7 shrink-0 items-center justify-center rounded-full border border-border bg-secondary">
+                        <ActivityIcon className="size-3.5 text-muted-foreground" />
+                      </span>
+                      <div className="min-w-0 flex-1">
+                        <p className="text-sm">{a.message}</p>
+                        <p className="mt-1 text-xs text-muted-foreground">
+                          {timeAgo(a.createdAt)}
+                        </p>
+                      </div>
+                    </li>
+                  ))}
+                </ol>
+                <Button variant="outline" size="sm" className="w-full" asChild>
+                  <Link href="/activity">Open Activity</Link>
+                </Button>
+              </CardContent>
+            </Card>
+          )}
         </TabsContent>
       </Tabs>
 
