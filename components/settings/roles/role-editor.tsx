@@ -28,6 +28,12 @@ import { PermissionPicker } from "@/components/settings/permission-picker";
 import { gqlAction } from "@/lib/graphql-client";
 import { ALL_CAPABILITIES, type Capability } from "@/lib/types";
 import { CAPABILITY_CATEGORIES, CAPABILITY_META } from "@/lib/capabilities";
+import { NODE_GRANTABLE_CAPABILITIES } from "@/lib/membership-shared";
+import {
+  ScopePicker,
+  type ScopeSelection,
+} from "@/components/settings/tokens/scope-picker";
+import type { ScopeTreeTeam } from "@/lib/data/tokens";
 import { sameCapabilities } from "@/lib/membership-shared";
 import type { TeamRoleDTO } from "@/lib/data/roles";
 
@@ -42,6 +48,7 @@ export function RoleEditor({
   role,
   basedOn,
   canManage,
+  tree,
 }: {
   mode: "create" | "edit";
   /** The role being edited. */
@@ -49,6 +56,8 @@ export function RoleEditor({
   /** The role a new one was started from (chosen in the "New role" menu). */
   basedOn?: TeamRoleDTO | null;
   canManage: boolean;
+  /** The team's projects, folders and apps — the tree the Scope card draws. */
+  tree: ScopeTreeTeam[];
 }) {
   const router = useRouter();
   const [pending, startTransition] = React.useTransition();
@@ -61,6 +70,7 @@ export function RoleEditor({
       description: role?.description ?? basedOn?.description ?? "",
       capabilities: role?.capabilities ?? basedOn?.capabilities ?? ["view" as Capability],
       requireTwoFactor: role?.requireTwoFactor ?? basedOn?.requireTwoFactor ?? false,
+      scope: toSelection(role?.scope ?? basedOn?.scope ?? null),
     }),
     [role, basedOn],
   );
@@ -69,16 +79,29 @@ export function RoleEditor({
   const [description, setDescription] = React.useState(initial.description);
   const [caps, setCaps] = React.useState<Capability[]>(initial.capabilities);
   const [twoFactor, setTwoFactor] = React.useState(initial.requireTwoFactor);
+  const [scope, setScope] = React.useState<ScopeSelection>(initial.scope);
 
   const locked = role?.locked ?? false;
   const readOnly = locked || !canManage;
   const granted = caps.filter((c) => c !== "view").length;
   const sensitive = caps.filter((c) => CAPABILITY_META[c].sensitive).length;
+  const scoped =
+    scope.projectIds.length + scope.folderIds.length + scope.appIds.length > 0;
+  // What the scope silences: everything a node cannot carry. The set is the
+  // server's own (`NODE_GRANTABLE_CAPABILITIES`), so the picker and the save
+  // cannot disagree about which ticks still mean something.
+  const mutedCaps = React.useMemo(
+    () =>
+      scoped ? ALL_CAPABILITIES.filter((c) => !NODE_GRANTABLE_CAPABILITIES.includes(c)) : [],
+    [scoped],
+  );
+  const outOfScope = caps.filter((c) => mutedCaps.includes(c)).length;
   const dirty =
     name !== initial.name ||
     description !== initial.description ||
     twoFactor !== initial.requireTwoFactor ||
-    !sameCapabilities(caps, initial.capabilities);
+    !sameCapabilities(caps, initial.capabilities) ||
+    !sameScope(scope, initial.scope);
 
   function submit(e: React.FormEvent) {
     e.preventDefault();
@@ -93,6 +116,7 @@ export function RoleEditor({
               description,
               capabilities: caps,
               requireTwoFactor: twoFactor,
+              scope: scoped ? scope : null,
             },
           },
           (d) => d.createRole,
@@ -115,6 +139,10 @@ export function RoleEditor({
             description,
             capabilities: caps,
             requireTwoFactor: twoFactor,
+            // Two fields, because "absent" has to keep meaning "leave it alone"
+            // for every client that predates the scope.
+            scope: scoped ? scope : undefined,
+            clearScope: !scoped,
           },
         },
       );
@@ -205,12 +233,58 @@ export function RoleEditor({
           </CardContent>
         </Card>
 
+        {/* Scope before Permissions, as the token editor orders them: the reach
+            decides what the permissions MEAN, so it is read first. */}
+        <Card>
+          <CardContent className="pt-6">
+            <ScopePicker
+              tree={tree}
+              selection={scope}
+              onChange={setScope}
+              disabled={readOnly}
+              teamPickable={false}
+              title="Scope"
+              info="What this role reaches. Tick a project, a folder or an app, or tick nothing to reach the whole team."
+              emptyNote="This team has nothing to limit a role to yet."
+              footer={
+                <p className="text-xs text-muted-foreground">
+                  {scoped ? (
+                    <>
+                      <span className="font-medium text-foreground">
+                        Limited to {describeScope(scope)}.
+                      </span>{" "}
+                      Permissions that only work team-wide stop applying, and are
+                      struck through below.
+                    </>
+                  ) : (
+                    <>
+                      <span className="font-medium text-foreground">
+                        Unrestricted.
+                      </span>{" "}
+                      This role reaches every app in the team.
+                    </>
+                  )}
+                </p>
+              }
+            />
+          </CardContent>
+        </Card>
+
         <Card>
           <CardContent className="pt-6">
             <PermissionPicker
               capabilities={caps}
               onChange={setCaps}
               disabled={readOnly}
+              muted={
+                mutedCaps.length > 0
+                  ? {
+                      caps: mutedCaps,
+                      reason:
+                        "This role only reaches part of the team, so this one has nothing to apply to.",
+                    }
+                  : undefined
+              }
             />
           </CardContent>
         </Card>
@@ -251,11 +325,28 @@ export function RoleEditor({
                 </div>
               )}
               <div className="flex items-center gap-3">
+                <dt className="shrink-0 text-muted-foreground">Scope</dt>
+                <dd className="min-w-0 flex-1 truncate text-right font-medium">
+                  {scoped ? describeScope(scope) : "Whole team"}
+                </dd>
+              </div>
+              <div className="flex items-center gap-3">
                 <dt className="shrink-0 text-muted-foreground">Permissions</dt>
                 <dd className="min-w-0 flex-1 truncate text-right font-medium tabular-nums">
                   {granted} of {ALL_CAPABILITIES.length - 1}
                 </dd>
               </div>
+              {outOfScope > 0 && (
+                <div className="flex items-center gap-3">
+                  <dt className="flex shrink-0 items-center gap-1 text-muted-foreground">
+                    Out of scope
+                    <InfoTip content="These are ticked but do nothing while the role is limited. Widen the scope or untick them." />
+                  </dt>
+                  <dd className="min-w-0 flex-1 truncate text-right font-medium tabular-nums">
+                    {outOfScope}
+                  </dd>
+                </div>
+              )}
               {sensitive > 0 && (
                 <div className="flex items-center gap-3">
                   <dt className="flex shrink-0 items-center gap-1 text-muted-foreground">
@@ -399,4 +490,43 @@ export function RoleEditor({
       )}
     </form>
   );
+}
+
+/* ------------------------------------------------------------------ */
+/* Pure helpers                                                        */
+/* ------------------------------------------------------------------ */
+
+/** The DTO's scope as the picker's selection. Null (unrestricted) is empty. */
+function toSelection(
+  scope: { projectIds: string[]; folderIds: string[]; appIds: string[] } | null,
+): ScopeSelection {
+  return {
+    teamIds: [],
+    projectIds: scope?.projectIds ?? [],
+    folderIds: scope?.folderIds ?? [],
+    appIds: scope?.appIds ?? [],
+  };
+}
+
+/** Order-blind: the picker emits its sets in whatever order it walked them. */
+function sameScope(a: ScopeSelection, b: ScopeSelection): boolean {
+  const same = (x: string[], y: string[]) =>
+    x.length === y.length && [...x].sort().join() === [...y].sort().join();
+  return (
+    same(a.projectIds, b.projectIds) &&
+    same(a.folderIds, b.folderIds) &&
+    same(a.appIds, b.appIds)
+  );
+}
+
+/** "2 projects and 1 app" — the one-line shape of a scope. */
+function describeScope(scope: ScopeSelection): string {
+  const plural = (n: number, one: string) => `${n} ${n === 1 ? one : `${one}s`}`;
+  const parts = [
+    scope.projectIds.length > 0 ? plural(scope.projectIds.length, "project") : null,
+    scope.folderIds.length > 0 ? plural(scope.folderIds.length, "folder") : null,
+    scope.appIds.length > 0 ? plural(scope.appIds.length, "app") : null,
+  ].filter((p): p is string => p != null);
+  if (parts.length <= 1) return parts[0] ?? "nothing";
+  return `${parts.slice(0, -1).join(", ")} and ${parts[parts.length - 1]}`;
 }

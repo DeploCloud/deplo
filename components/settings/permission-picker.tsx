@@ -1,7 +1,7 @@
 "use client";
 
 import * as React from "react";
-import { Search, Lock, ShieldAlert, X } from "lucide-react";
+import { Ban, Search, Lock, ShieldAlert, X } from "lucide-react";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
@@ -33,6 +33,7 @@ export function PermissionPicker({
   onChange,
   disabled = false,
   hint = "Every action deplo can gate, one permission each. Tick exactly what this role should be able to do — search by what you want it to reach.",
+  muted,
 }: {
   capabilities: Capability[];
   onChange: (caps: Capability[]) => void;
@@ -40,9 +41,25 @@ export function PermissionPicker({
   disabled?: boolean;
   /** Tooltip beside the heading — name the thing being granted. */
   hint?: string;
+  /**
+   * Capabilities the current SCOPE makes meaningless. They stay ticked, stay
+   * tickable and keep their value — only the rendering says they do nothing
+   * right now, because widening the scope brings them back with no edit to undo.
+   *
+   * Marked rather than disabled on purpose: a disabled checkbox leaves the tab
+   * order, and this can be half the list. The accessible carrier of the state is
+   * the icon's label, not the strike, which is decoration.
+   */
+  muted?: { caps: Capability[]; reason: string };
 }) {
   const [query, setQuery] = React.useState("");
   const enabled = React.useMemo(() => new Set(capabilities), [capabilities]);
+  // Keyed on the CONTENTS: the caller rebuilds the array every render.
+  const mutedKey = muted?.caps.join(",") ?? "";
+  const silenced = React.useMemo(
+    () => new Set(mutedKey ? (mutedKey.split(",") as Capability[]) : []),
+    [mutedKey],
+  );
 
   const terms = query.trim().toLowerCase().split(/\s+/).filter(Boolean);
   const matches = React.useCallback(
@@ -109,6 +126,13 @@ export function PermissionPicker({
           )}
         </div>
       </div>
+
+      {muted && muted.caps.length > 0 && (
+        <p className="text-xs text-muted-foreground">
+          Struck-through permissions only work team-wide. They stay ticked, and
+          come back if you widen the scope.
+        </p>
+      )}
 
       <div className="relative">
         <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
@@ -188,9 +212,25 @@ export function PermissionPicker({
                         />
                         <span className="min-w-0">
                           <span className="flex flex-wrap items-center gap-1.5">
-                            <span className="text-sm font-medium leading-tight">
+                            <span
+                              className={cn(
+                                "text-sm font-medium leading-tight",
+                                silenced.has(cap) &&
+                                  "text-muted-foreground line-through decoration-muted-foreground/60",
+                              )}
+                            >
                               {meta.label}
                             </span>
+                            {silenced.has(cap) && muted && (
+                              <SimpleTooltip content={muted.reason}>
+                                <span className="leading-none text-muted-foreground">
+                                  <Ban
+                                    className="size-3.5"
+                                    aria-label="Out of scope"
+                                  />
+                                </span>
+                              </SimpleTooltip>
+                            )}
                             {meta.sensitive && (
                               <SimpleTooltip content="Sensitive: this one can destroy data or hand over access. Give it deliberately.">
                                 <span className="leading-none text-amber-500">

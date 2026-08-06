@@ -289,6 +289,19 @@ export async function listScopeTree(): Promise<ScopeTreeTeam[]> {
 }
 
 /**
+ * The same tree, narrowed to the ACTIVE team — what a ROLE editor draws, since a
+ * role belongs to exactly one team and cannot reach past it.
+ *
+ * Not gated on `manage_roles`: a member without it opens the roles page
+ * read-only, exactly as they open the token page, and the tree holds nothing
+ * they cannot already see (`asCaller` filters it to their own reach).
+ */
+export async function listTeamScopeTree(): Promise<ScopeTreeTeam[]> {
+  const teamId = await requireActiveTeamId();
+  return (await listScopeTree()).filter((t) => t.id === teamId);
+}
+
+/**
  * The tree for an explicit set of teams. Split out of {@link listScopeTree} so
  * the instance-admin user editor can build the same picker rooted at SOMEONE
  * ELSE's memberships — it carries no gate of its own, so every caller supplies
