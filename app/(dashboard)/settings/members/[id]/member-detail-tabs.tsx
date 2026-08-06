@@ -12,6 +12,7 @@ import {
   Loader2,
   PenLine,
   ShieldCheck,
+  UserMinus,
 } from "lucide-react";
 
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
@@ -28,6 +29,8 @@ import {
 } from "@/components/ui/tabs";
 import { RoleSelect } from "@/components/members/role-select";
 import { PermissionPicker } from "@/components/settings/permission-picker";
+import { UserAccountSettings } from "@/components/settings/user-account-settings";
+import { ConfirmAction } from "@/components/shared/confirm-action";
 import {
   ScopePicker,
   type ScopeSelection,
@@ -42,12 +45,16 @@ import type { ScopeTreeTeam } from "@/lib/data/tokens";
 import type { UserTeamAccessDTO } from "@/lib/data/user-access";
 
 /**
- * One member's access, as three tabs over one form.
+ * Everything about one member, in one place: the team tabs (role, per-node
+ * access), the instance-wide Account tab an admin gets, and removal from the
+ * team. The roster tiles link straight here — there is no menu and no modal in
+ * between, so this page is the only surface that acts on a member.
  *
- * ONE form and one Save, deliberately: the role lives on Permissions and decides
- * what Access inherits, so two independent saves would let an admin stage a role
- * change on one tab while the other still shows an inheritance that is already
- * stale.
+ * ONE form and one Save across Permissions and Access, deliberately: the role
+ * lives on Permissions and decides what Access inherits, so two independent
+ * saves would let an admin stage a role change on one tab while the other still
+ * shows an inheritance that is already stale. Account is instance-wide, has
+ * nothing to do with either, and therefore saves on its own.
  *
  * Which forces one implementation rule: Radix unmounts an inactive panel, so
  * EVERY piece of editable state lives here and the panels are presentational.
@@ -59,7 +66,7 @@ import type { UserTeamAccessDTO } from "@/lib/data/user-access";
  * when they have the same shape.
  */
 
-const TABS = ["permissions", "access", "activity"] as const;
+const TABS = ["permissions", "access", "account", "activity"] as const;
 type TabId = (typeof TABS)[number];
 
 export function MemberDetailTabs({
@@ -68,20 +75,32 @@ export function MemberDetailTabs({
   roles,
   tree,
   canAssignOwner,
+  isSelf,
+  canManageAccount,
 }: {
   member: MemberDTO;
   access: UserTeamAccessDTO;
   roles: TeamRoleDTO[];
   tree: ScopeTreeTeam[];
   canAssignOwner: boolean;
+  /** The viewer is looking at their own membership. */
+  isSelf: boolean;
+  /** Instance admin — the Account tab is theirs alone. */
+  canManageAccount: boolean;
 }) {
   const router = useRouter();
   const params = useSearchParams();
   const [pending, startTransition] = React.useTransition();
+  const [confirmRemove, setConfirmRemove] = React.useState(false);
 
-  const active: TabId = TABS.includes(params.get("tab") as TabId)
-    ? (params.get("tab") as TabId)
-    : "permissions";
+  const tab = params.get("tab") as TabId;
+  const active: TabId =
+    TABS.includes(tab) && (tab !== "account" || canManageAccount)
+      ? tab
+      : "permissions";
+  // The team-scoped form is the two tabs that edit it — its Save has nothing to
+  // do with Account (which saves itself) or Activity.
+  const onTeamTab = active === "permissions" || active === "access";
 
   function selectTab(next: string) {
     const q = new URLSearchParams(params.toString());
@@ -138,13 +157,20 @@ export function MemberDetailTabs({
       (!sameSelection(selection, initial.selection) ||
         !sameCapabilities(caps, initial.groups[0]?.capabilities ?? ["view"])));
 
-  // The founder's crown is immutable to everyone, and nobody edits their own
-  // access. Both are refused server-side; saying so here spares a toast that
-  // arrives after the click.
+  // Who this viewer may not act on. All three are refused server-side; saying so
+  // here spares a toast that arrives after the click, and is why the roster can
+  // link every tile without pre-judging what you will find.
   const lockReason = access.isFounder
     ? "The team's primary owner. Their access can't be changed by anyone, and ownership moves by transferring the team."
-    : null;
+    : isSelf
+      ? "Your own membership. Another admin has to change it for you."
+      : member.role === "owner" && !canAssignOwner
+        ? "An owner's access can only be changed by another owner."
+        : null;
   const readOnly = lockReason != null;
+  // Removal follows the same rule as editing: the locks above are exactly the
+  // people `removeMember` refuses.
+  const canRemove = !readOnly;
   const emptyTicked = granular && ticked > 0 && caps.filter((c) => c !== "view").length === 0;
   const blocked = readOnly || !roleId || emptyTicked;
 
@@ -178,13 +204,7 @@ export function MemberDetailTabs({
   }
 
   return (
-    <form
-      className="space-y-6"
-      onSubmit={(e) => {
-        e.preventDefault();
-        save();
-      }}
-    >
+    <div className="space-y-6">
       <header className="space-y-3">
         <div className="flex flex-wrap items-center gap-3">
           <Avatar className="size-10">
@@ -234,9 +254,20 @@ export function MemberDetailTabs({
             Permissions
           </UnderlineTabsTrigger>
           <UnderlineTabsTrigger value="access">Access</UnderlineTabsTrigger>
+          {canManageAccount && (
+            <UnderlineTabsTrigger value="account">Account</UnderlineTabsTrigger>
+          )}
           <UnderlineTabsTrigger value="activity">Activity</UnderlineTabsTrigger>
         </UnderlineTabsList>
 
+        {/* The two team-scoped tabs, one form, one Save. */}
+        <form
+          className="space-y-6"
+          onSubmit={(e) => {
+            e.preventDefault();
+            save();
+          }}
+        >
         <TabsContent value="permissions" className="space-y-4 pt-4">
           <Card>
             <CardContent className="pt-6">
@@ -258,6 +289,30 @@ export function MemberDetailTabs({
               )}
             </CardContent>
           </Card>
+
+          {canRemove && (
+            <Card className="border-destructive/40">
+              <CardContent className="flex flex-wrap items-center justify-between gap-3 pt-6">
+                <div className="min-w-0">
+                  <p className="text-sm font-medium">Remove from team</p>
+                  <p className="mt-1 text-xs text-muted-foreground">
+                    They lose access to this team. Their account and other teams
+                    are untouched.
+                  </p>
+                </div>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  className="border-destructive/40 text-destructive hover:bg-destructive/10 hover:text-destructive"
+                  onClick={() => setConfirmRemove(true)}
+                >
+                  <UserMinus className="size-4" />
+                  Remove
+                </Button>
+              </CardContent>
+            </Card>
+          )}
         </TabsContent>
 
         <TabsContent value="access" className="space-y-4 pt-4">
@@ -360,6 +415,41 @@ export function MemberDetailTabs({
           )}
         </TabsContent>
 
+          {!readOnly && onTeamTab && (
+            <div className="flex justify-end">
+              <Button type="submit" disabled={!dirty || pending || blocked}>
+                {pending ? (
+                  <Loader2 className="size-4 animate-spin" />
+                ) : (
+                  <Check className="size-4" />
+                )}
+                {dirty ? "Save changes" : "Saved"}
+              </Button>
+            </div>
+          )}
+        </form>
+
+        {/* Instance-wide, and outside the team form above: it saves itself, and
+            the confirms inside it must not bubble a submit into that form. */}
+        {canManageAccount && (
+          <TabsContent value="account" className="space-y-4 pt-4">
+            <UserAccountSettings
+              user={{
+                userId: member.userId,
+                username: member.username,
+                name: member.name,
+                avatarColor: member.avatarColor,
+              }}
+              isSelf={isSelf}
+              showHeader={false}
+              onDeleted={() => {
+                router.push("/settings/members");
+                router.refresh();
+              }}
+            />
+          </TabsContent>
+        )}
+
         <TabsContent value="activity" className="space-y-4 pt-4">
           <Card>
             <CardContent className="pt-6">
@@ -378,19 +468,26 @@ export function MemberDetailTabs({
         </TabsContent>
       </Tabs>
 
-      {!readOnly && (
-        <div className="flex justify-end">
-          <Button type="submit" disabled={!dirty || pending || blocked}>
-            {pending ? (
-              <Loader2 className="size-4 animate-spin" />
-            ) : (
-              <Check className="size-4" />
-            )}
-            {dirty ? "Save changes" : "Saved"}
-          </Button>
-        </div>
-      )}
-    </form>
+      <ConfirmAction
+        open={confirmRemove}
+        onOpenChange={setConfirmRemove}
+        title={`Remove @${member.username} from the team?`}
+        description="They lose access to this team's apps and resources right away. Their account, and every other team they are in, is untouched — add them back at any time."
+        confirmLabel="Remove member"
+        successMessage="Member removed"
+        onConfirm={async () => {
+          const res = await gqlAction(
+            `mutation($userId: String!) { removeMember(userId: $userId) }`,
+            { userId: member.userId },
+          );
+          if (res.ok) {
+            router.push("/settings/members");
+            router.refresh();
+          }
+          return res;
+        }}
+      />
+    </div>
   );
 }
 

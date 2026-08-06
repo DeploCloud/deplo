@@ -36,7 +36,7 @@ import { Label } from "@/components/ui/label";
 import { SimpleTooltip } from "@/components/ui/tooltip";
 import { InfoTip } from "@/components/ui/info-tip";
 import { RegisterUserWizard } from "@/components/settings/users/register-user-wizard";
-import { EditUserDialog } from "@/components/settings/edit-user-dialog";
+import { EditUserDialog } from "@/components/settings/user-account-settings";
 import { DeleteUserDialog } from "@/components/settings/delete-user-dialog";
 import { RegistrationLinkRow } from "@/components/settings/registration-link-row";
 import { ConfirmAction } from "@/components/shared/confirm-action";

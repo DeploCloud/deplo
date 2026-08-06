@@ -19,7 +19,6 @@ import {
   Dialog,
   DialogContent,
   DialogDescription,
-  DialogFooter,
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
@@ -87,12 +86,12 @@ const UPDATE_USER = /* GraphQL */ `
 `;
 
 /**
- * The instance-admin editor for ONE user's global account. The same dialog opened
- * from Settings → Users (seeded from the list row) and from the team Members page
- * (no seed; it fetches the user first). Every field here is instance-wide, NOT
- * team-scoped — that distinction is why this is separate from the member
- * permissions editor. Backed by `userDetail`/`updateUserAdmin`/`deleteUser`, all
- * instance-admin only.
+ * The instance-admin editor for ONE user's global account. Rendered as the
+ * Account tab of a member's page (team Members → a member) and, seeded from the
+ * list row, inside {@link EditUserDialog} on Settings → Users. Every field here
+ * is instance-wide, NOT team-scoped — that distinction is why this is separate
+ * from the member permissions editor beside it. Backed by
+ * `userDetail`/`updateUserAdmin`/`deleteUser`, all instance-admin only.
  *
  * The layout is three NAMED sections rather than a flat stack of switches, because
  * a bare toggle never says what it is: an admin flipping "Publish ports" has to be
@@ -100,7 +99,7 @@ const UPDATE_USER = /* GraphQL */ `
  * every server at that.
  *
  *  - **Permissions** — the three grants. STAGED: they apply on "Save changes", so
- *    a mis-click is undone by closing the dialog.
+ *    a mis-click is undone by leaving the page.
  *  - **Password** — an admin reset, staged with the same button.
  *  - **Danger zone** — suspend and delete. These apply IMMEDIATELY (each behind its
  *    own confirm), which is why they are quarantined from the staged fields above
@@ -111,19 +110,29 @@ const UPDATE_USER = /* GraphQL */ `
  * form currently shows — suspending someone must not silently commit a permission
  * toggle the admin flipped but has not saved.
  */
-export function EditUserDialog({
+export function UserAccountSettings({
   user,
   seed,
   isSelf,
-  open,
-  onOpenChange,
+  showHeader = true,
+  onCancel,
+  onSaved,
+  onDeleted,
 }: {
   user: EditUserSeedUser;
   /** Present ⇒ render immediately; absent ⇒ fetch then render. */
   seed?: EditUserSeedFlags;
   isSelf: boolean;
-  open: boolean;
-  onOpenChange: (o: boolean) => void;
+  /**
+   * Draw the avatar + name + state badges. A page that already has a header for
+   * this person passes false; the dialog, which has none of its own, keeps it.
+   */
+  showHeader?: boolean;
+  /** Present ⇒ a Cancel button sits beside Save (the dialog's escape hatch). */
+  onCancel?: () => void;
+  onSaved?: () => void;
+  /** The account is gone — the caller decides where the operator lands. */
+  onDeleted?: () => void;
 }) {
   const router = useRouter();
   // Email and the team list are never in a list row, so they are always fetched.
@@ -294,7 +303,7 @@ export function EditUserDialog({
         setSavedGrants(grants);
         setPassword("");
         toast.success("User updated");
-        onOpenChange(false);
+        onSaved?.();
         router.refresh();
       } else {
         toast.error(res.error);
@@ -335,356 +344,396 @@ export function EditUserDialog({
   }
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-h-[85vh] overflow-y-auto sm:max-w-xl">
-        <DialogHeader>
-          <div className="flex items-center gap-3">
-            <Avatar className="size-10 shrink-0">
-              <AvatarFallback
-                style={{ backgroundColor: user.avatarColor, color: "#000" }}
-              >
-                {user.username.slice(0, 2).toUpperCase()}
-              </AvatarFallback>
-            </Avatar>
-            <div className="min-w-0">
-              <DialogTitle className="flex flex-wrap items-center gap-2">
-                @{user.username}
-                {/* The badges read the SAVED state, never the form: the header
-                    says who this account is, the form below says what you are
-                    about to change it into. */}
-                {isOwner ? (
+    <>
+      {showHeader && (
+        <div className="flex items-center gap-3">
+          <Avatar className="size-10 shrink-0">
+            <AvatarFallback
+              style={{ backgroundColor: user.avatarColor, color: "#000" }}
+            >
+              {user.username.slice(0, 2).toUpperCase()}
+            </AvatarFallback>
+          </Avatar>
+          <div className="min-w-0">
+            <h2 className="flex flex-wrap items-center gap-2 text-lg font-semibold leading-none tracking-tight">
+              @{user.username}
+              {/* The badges read the SAVED state, never the form: the header
+                  says who this account is, the form below says what you are
+                  about to change it into. */}
+              {isOwner ? (
+                <Badge variant="secondary" className="gap-1 px-1.5 py-0">
+                  <Crown className="size-3" />
+                  Owner
+                </Badge>
+              ) : (
+                savedGrants.isInstanceAdmin && (
                   <Badge variant="secondary" className="gap-1 px-1.5 py-0">
-                    <Crown className="size-3" />
-                    Owner
+                    <ShieldCheck className="size-3" />
+                    Admin
                   </Badge>
-                ) : (
-                  savedGrants.isInstanceAdmin && (
-                    <Badge variant="secondary" className="gap-1 px-1.5 py-0">
-                      <ShieldCheck className="size-3" />
-                      Admin
-                    </Badge>
-                  )
-                )}
-                {suspended && (
-                  <Badge variant="destructive" className="gap-1 px-1.5 py-0">
-                    <Ban className="size-3" />
-                    Suspended
-                  </Badge>
-                )}
-              </DialogTitle>
-              <DialogDescription className="truncate">
-                {user.name && user.name !== user.username
-                  ? `${user.name} · `
-                  : ""}
-                {detail?.email ?? "Instance-wide account & permissions."}
-              </DialogDescription>
-            </div>
+                )
+              )}
+              {suspended && (
+                <Badge variant="destructive" className="gap-1 px-1.5 py-0">
+                  <Ban className="size-3" />
+                  Suspended
+                </Badge>
+              )}
+            </h2>
+            <p className="mt-1 truncate text-sm text-muted-foreground">
+              {user.name && user.name !== user.username
+                ? `${user.name} · `
+                : ""}
+              {detail?.email ?? "Instance-wide account & permissions."}
+            </p>
           </div>
-        </DialogHeader>
+        </div>
+      )}
 
-        <form className="grid gap-4" onSubmit={onSubmit}>
-          {!ready ? (
-            // `isSelf` is a prop, so the one section whose presence we can't know
-            // before the fetch is the danger zone on the instance OWNER — one
-            // account out of all of them. Everything else lines up box for box.
-            <EditorSkeleton withDanger={!isSelf} />
-          ) : (
-            <>
-              {ownerLocked && (
-                <p className="rounded-lg border border-border bg-muted/50 p-3 text-xs text-muted-foreground">
-                  This account owns the instance. Only its owner can change it —
-                  no other admin can demote, suspend, reset or delete them.
-                  Ownership moves only when the owner transfers it.
+      <form className="grid gap-4" onSubmit={onSubmit}>
+        {!ready ? (
+          // `isSelf` is a prop, so the one section whose presence we can't know
+          // before the fetch is the danger zone on the instance OWNER — one
+          // account out of all of them. Everything else lines up box for box.
+          <EditorSkeleton withDanger={!isSelf} />
+        ) : (
+          <>
+            {ownerLocked && (
+              <p className="rounded-lg border border-border bg-muted/50 p-3 text-xs text-muted-foreground">
+                This account owns the instance. Only its owner can change it —
+                no other admin can demote, suspend, reset or delete them.
+                Ownership moves only when the owner transfers it.
+              </p>
+            )}
+
+            {/* Who this is — read-only, so it never competes with the
+                editable sections below. */}
+            <div className="grid grid-cols-3 gap-2 rounded-lg border border-border p-3">
+              <Meta
+                label="Joined"
+                value={createdAt ? timeAgo(createdAt) : "—"}
+              />
+              <Meta label="Teams" value={String(teamCount)} />
+              <Meta
+                label="Sign-in"
+                value={suspended ? "Blocked" : "Allowed"}
+              />
+            </div>
+            {/* The chips need the fetch, but the seed already carries the
+                COUNT — so the row that is coming is held open (and the row
+                that isn't never appears) instead of pushing the sections down
+                a second later. */}
+            {teams == null && teamCount > 0 && (
+              <div className="flex flex-wrap gap-1.5">
+                <Skeleton className="h-[22px] w-32 rounded-full" />
+              </div>
+            )}
+            {teams && teams.length > 0 && (
+              <div className="flex flex-wrap gap-1.5">
+                {teams.map((t) => (
+                  <span
+                    key={t.teamId}
+                    className="inline-flex items-center gap-1.5 rounded-full border border-border px-2 py-0.5 text-xs"
+                  >
+                    <span className="font-medium">{t.teamName}</span>
+                    <span className="capitalize text-muted-foreground">
+                      {t.role}
+                    </span>
+                  </span>
+                ))}
+              </div>
+            )}
+
+            <Section
+              icon={ShieldCheck}
+              title="Permissions"
+              info={
+                <>
+                  Instance-wide: they apply in every team and on every server.
+                  What this person may do inside a single team is a separate
+                  thing, set on that team&apos;s Members page.
+                </>
+              }
+            >
+              <ToggleRow
+                title="Instance admin"
+                info="Manage every user, mint registration links, and administer every team and server. Instance admins also hold both advanced grants implicitly."
+                checked={admin}
+                disabled={isSelf || ownerFlagsLocked}
+                onChange={setAdmin}
+              />
+              {/* WHY the switch above is dead. A state, not field help, so it
+                  stays on screen rather than hiding behind an icon. */}
+              {(ownerFlagsLocked || isSelf) && (
+                <p className="text-xs text-muted-foreground">
+                  {ownerFlagsLocked
+                    ? "The instance owner is always an instance admin — transfer ownership first."
+                    : "You can't change your own admin status — another instance admin has to."}
                 </p>
               )}
 
-              {/* Who this is — read-only, so it never competes with the
-                  editable sections below. */}
-              <div className="grid grid-cols-3 gap-2 rounded-lg border border-border p-3">
-                <Meta
-                  label="Joined"
-                  value={createdAt ? timeAgo(createdAt) : "—"}
-                />
-                <Meta label="Teams" value={String(teamCount)} />
-                <Meta
-                  label="Sign-in"
-                  value={suspended ? "Blocked" : "Allowed"}
+              <Accordion
+                type="single"
+                collapsible
+                value={advancedOpen ? "advanced" : ""}
+                onValueChange={(v) => setAdvancedOpen(v === "advanced")}
+              >
+                <AccordionItem value="advanced" className="border-none">
+                  <AccordionTrigger className="py-1 text-xs text-muted-foreground hover:no-underline">
+                    Advanced grants
+                  </AccordionTrigger>
+                  <AccordionContent className="space-y-2 pb-1 pt-1">
+                    <ToggleRow
+                      title="Publish ports"
+                      info="Declare published ports in a compose stack — a service's ports: (bound to the host) or expose:. Public domains and routes don't need this."
+                      checked={admin || exposePorts}
+                      disabled={admin || ownerLocked}
+                      onChange={setExposePorts}
+                    />
+                    <ToggleRow
+                      title="Bind server folders"
+                      info="Let this account point an app at a folder that already exists on the server (the Bind kind in an app's Storage settings)."
+                      checked={admin || mountHostVolumes}
+                      disabled={admin || ownerLocked}
+                      onChange={setMountHostVolumes}
+                    />
+                    {admin && (
+                      <p className="text-xs text-muted-foreground">
+                        On because this account is an instance admin — these
+                        two only matter once that switch is off.
+                      </p>
+                    )}
+                  </AccordionContent>
+                </AccordionItem>
+              </Accordion>
+            </Section>
+
+            <Section icon={KeyRound} title="Password">
+              <div className="space-y-2">
+                <FieldLabel
+                  htmlFor="reset-pw"
+                  info={
+                    <>
+                      Leave blank to keep the current password. A new one must
+                      be at least 8 characters and replaces theirs the moment
+                      you save — nobody is emailed about it, so hand it over
+                      yourself.
+                    </>
+                  }
+                >
+                  New password (optional)
+                </FieldLabel>
+                <Input
+                  id="reset-pw"
+                  type="password"
+                  value={password}
+                  disabled={ownerLocked}
+                  onChange={(e) => setPassword(e.target.value)}
+                  placeholder={
+                    ownerLocked
+                      ? "Only the instance owner can reset their own password"
+                      : "Leave blank to keep the current password"
+                  }
                 />
               </div>
-              {/* The chips need the fetch, but the seed already carries the
-                  COUNT — so the row that is coming is held open (and the row
-                  that isn't never appears) instead of pushing the sections down
-                  a second later. */}
-              {teams == null && teamCount > 0 && (
-                <div className="flex flex-wrap gap-1.5">
-                  <Skeleton className="h-[22px] w-32 rounded-full" />
-                </div>
-              )}
-              {teams && teams.length > 0 && (
-                <div className="flex flex-wrap gap-1.5">
-                  {teams.map((t) => (
-                    <span
-                      key={t.teamId}
-                      className="inline-flex items-center gap-1.5 rounded-full border border-border px-2 py-0.5 text-xs"
+            </Section>
+
+            {twoFactorEnabled && !isSelf && !ownerLocked && (
+              <Section icon={ShieldOff} title="Two-factor authentication">
+                <ActionRow
+                  title="Reset two-factor"
+                  info="For someone who lost their phone and their recovery codes. Their account goes back to password only, and they can set it up again. Nothing else changes: not their password, not their sessions."
+                  action={
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      disabled={pending}
+                      onClick={() => setConfirmResetTwoFactor(true)}
                     >
-                      <span className="font-medium">{t.teamName}</span>
-                      <span className="capitalize text-muted-foreground">
-                        {t.role}
-                      </span>
-                    </span>
-                  ))}
-                </div>
-              )}
-
-              <Section
-                icon={ShieldCheck}
-                title="Permissions"
-                info={
-                  <>
-                    Instance-wide: they apply in every team and on every server.
-                    What this person may do inside a single team is a separate
-                    thing, set on that team&apos;s Members page.
-                  </>
-                }
-              >
-                <ToggleRow
-                  title="Instance admin"
-                  info="Manage every user, mint registration links, and administer every team and server. Instance admins also hold both advanced grants implicitly."
-                  checked={admin}
-                  disabled={isSelf || ownerFlagsLocked}
-                  onChange={setAdmin}
+                      <ShieldOff className="size-4" />
+                      Reset
+                    </Button>
+                  }
                 />
-                {/* WHY the switch above is dead. A state, not field help, so it
-                    stays on screen rather than hiding behind an icon. */}
-                {(ownerFlagsLocked || isSelf) && (
-                  <p className="text-xs text-muted-foreground">
-                    {ownerFlagsLocked
-                      ? "The instance owner is always an instance admin — transfer ownership first."
-                      : "You can't change your own admin status — another instance admin has to."}
-                  </p>
-                )}
-
-                <Accordion
-                  type="single"
-                  collapsible
-                  value={advancedOpen ? "advanced" : ""}
-                  onValueChange={(v) => setAdvancedOpen(v === "advanced")}
-                >
-                  <AccordionItem value="advanced" className="border-none">
-                    <AccordionTrigger className="py-1 text-xs text-muted-foreground hover:no-underline">
-                      Advanced grants
-                    </AccordionTrigger>
-                    <AccordionContent className="space-y-2 pb-1 pt-1">
-                      <ToggleRow
-                        title="Publish ports"
-                        info="Declare published ports in a compose stack — a service's ports: (bound to the host) or expose:. Public domains and routes don't need this."
-                        checked={admin || exposePorts}
-                        disabled={admin || ownerLocked}
-                        onChange={setExposePorts}
-                      />
-                      <ToggleRow
-                        title="Bind server folders"
-                        info="Let this account point an app at a folder that already exists on the server (the Bind kind in an app's Storage settings)."
-                        checked={admin || mountHostVolumes}
-                        disabled={admin || ownerLocked}
-                        onChange={setMountHostVolumes}
-                      />
-                      {admin && (
-                        <p className="text-xs text-muted-foreground">
-                          On because this account is an instance admin — these
-                          two only matter once that switch is off.
-                        </p>
-                      )}
-                    </AccordionContent>
-                  </AccordionItem>
-                </Accordion>
               </Section>
+            )}
 
-              <Section icon={KeyRound} title="Password">
-                <div className="space-y-2">
-                  <FieldLabel
-                    htmlFor="reset-pw"
-                    info={
-                      <>
-                        Leave blank to keep the current password. A new one must
-                        be at least 8 characters and replaces theirs the moment
-                        you save — nobody is emailed about it, so hand it over
-                        yourself.
-                      </>
-                    }
-                  >
-                    New password (optional)
-                  </FieldLabel>
-                  <Input
-                    id="reset-pw"
-                    type="password"
-                    value={password}
-                    disabled={ownerLocked}
-                    onChange={(e) => setPassword(e.target.value)}
-                    placeholder={
-                      ownerLocked
-                        ? "Only the instance owner can reset their own password"
-                        : "Leave blank to keep the current password"
-                    }
-                  />
-                </div>
-              </Section>
-
-              {twoFactorEnabled && !isSelf && !ownerLocked && (
-                <Section icon={ShieldOff} title="Two-factor authentication">
-                  <ActionRow
-                    title="Reset two-factor"
-                    info="For someone who lost their phone and their recovery codes. Their account goes back to password only, and they can set it up again. Nothing else changes: not their password, not their sessions."
-                    action={
+            {showDanger && (
+              <Section
+                icon={AlertTriangle}
+                title="Danger zone"
+                tone="destructive"
+                info="Unlike everything above, these apply the moment you confirm them — they don't wait for Save changes."
+              >
+                <ActionRow
+                  title={suspended ? "Reactivate account" : "Suspend account"}
+                  info={
+                    suspended
+                      ? "Let this person sign in again. Everything they had is still there."
+                      : "Signs them out and blocks sign-in. Teams, apps and data are all kept, and you can undo it here at any time."
+                  }
+                  action={
+                    suspended ? (
                       <Button
                         variant="outline"
                         size="sm"
                         disabled={pending}
-                        onClick={() => setConfirmResetTwoFactor(true)}
+                        onClick={reactivate}
                       >
-                        <ShieldOff className="size-4" />
-                        Reset
+                        <UserCheck className="size-4" />
+                        Reactivate
                       </Button>
-                    }
-                  />
-                </Section>
-              )}
-
-              {showDanger && (
-                <Section
-                  icon={AlertTriangle}
-                  title="Danger zone"
-                  tone="destructive"
-                  info="Unlike everything above, these apply the moment you confirm them — they don't wait for Save changes."
-                >
-                  <ActionRow
-                    title={suspended ? "Reactivate account" : "Suspend account"}
-                    info={
-                      suspended
-                        ? "Let this person sign in again. Everything they had is still there."
-                        : "Signs them out and blocks sign-in. Teams, apps and data are all kept, and you can undo it here at any time."
-                    }
-                    action={
-                      suspended ? (
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          disabled={pending}
-                          onClick={reactivate}
-                        >
-                          <UserCheck className="size-4" />
-                          Reactivate
-                        </Button>
-                      ) : (
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          className="border-destructive/40 text-destructive hover:bg-destructive/10 hover:text-destructive"
-                          disabled={pending}
-                          onClick={() => setConfirmSuspend(true)}
-                        >
-                          <Ban className="size-4" />
-                          Suspend
-                        </Button>
-                      )
-                    }
-                  />
-                  <ActionRow
-                    title="Delete account"
-                    info="Permanently removes this person and — if you say so — what they own. There is no undo; suspending is the reversible answer."
-                    action={
+                    ) : (
                       <Button
-                        variant="destructive"
+                        variant="outline"
                         size="sm"
+                        className="border-destructive/40 text-destructive hover:bg-destructive/10 hover:text-destructive"
                         disabled={pending}
-                        onClick={() => setConfirmDelete(true)}
+                        onClick={() => setConfirmSuspend(true)}
                       >
-                        <Trash2 className="size-4" />
-                        Delete
+                        <Ban className="size-4" />
+                        Suspend
                       </Button>
-                    }
-                  />
-                </Section>
-              )}
-            </>
-          )}
+                    )
+                  }
+                />
+                <ActionRow
+                  title="Delete account"
+                  info="Permanently removes this person and — if you say so — what they own. There is no undo; suspending is the reversible answer."
+                  action={
+                    <Button
+                      variant="destructive"
+                      size="sm"
+                      disabled={pending}
+                      onClick={() => setConfirmDelete(true)}
+                    >
+                      <Trash2 className="size-4" />
+                      Delete
+                    </Button>
+                  }
+                />
+              </Section>
+            )}
+          </>
+        )}
 
-          <DialogFooter>
-            <Button
-              variant="outline"
-              onClick={() => onOpenChange(false)}
-              disabled={pending}
-            >
+        <div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
+          {onCancel && (
+            <Button variant="outline" onClick={onCancel} disabled={pending}>
               Cancel
             </Button>
-            <Button
-              type="submit"
-              disabled={
-                !ready ||
-                pending ||
-                ownerLocked ||
-                !dirty ||
-                (password.length > 0 && password.length < 8)
-              }
-              aria-busy={pending}
-            >
-              {/* While the save runs a spinner stands in for the label, which
-                  stays mounted (just hidden) so the button keeps its width and
-                  the footer doesn't jump — the ConfirmAction idiom. */}
-              <span className="grid place-items-center">
-                <span
-                  className={cn("col-start-1 row-start-1", pending && "invisible")}
-                >
-                  Save changes
-                </span>
-                {pending && (
-                  <Loader2 className="col-start-1 row-start-1 size-4 animate-spin" />
-                )}
-              </span>
-            </Button>
-          </DialogFooter>
-        </form>
-
-        {/* Both danger-zone confirms live OUTSIDE the form above: each renders its
-            own form, and a submit from a portalled subtree still propagates up the
-            React tree. */}
-        <ConfirmAction
-          open={confirmSuspend}
-          onOpenChange={setConfirmSuspend}
-          title={`Suspend @${user.username}?`}
-          description="They are signed out immediately and can't sign back in until you reactivate them. Team memberships, apps and everything they own are kept — nothing is deleted."
-          confirmLabel="Suspend account"
-          successMessage="Account suspended"
-          onConfirm={async () => {
-            const res = await commit({ suspended: true });
-            if (res.ok) {
-              setSuspended(true);
-              router.refresh();
+          )}
+          <Button
+            type="submit"
+            disabled={
+              !ready ||
+              pending ||
+              ownerLocked ||
+              !dirty ||
+              (password.length > 0 && password.length < 8)
             }
-            return res;
-          }}
+            aria-busy={pending}
+          >
+            {/* While the save runs a spinner stands in for the label, which
+                stays mounted (just hidden) so the button keeps its width and
+                the footer doesn't jump — the ConfirmAction idiom. */}
+            <span className="grid place-items-center">
+              <span
+                className={cn("col-start-1 row-start-1", pending && "invisible")}
+              >
+                Save changes
+              </span>
+              {pending && (
+                <Loader2 className="col-start-1 row-start-1 size-4 animate-spin" />
+              )}
+            </span>
+          </Button>
+        </div>
+      </form>
+
+      {/* Both danger-zone confirms live OUTSIDE the form above: each renders its
+          own form, and a submit from a portalled subtree still propagates up the
+          React tree. */}
+      <ConfirmAction
+        open={confirmSuspend}
+        onOpenChange={setConfirmSuspend}
+        title={`Suspend @${user.username}?`}
+        description="They are signed out immediately and can't sign back in until you reactivate them. Team memberships, apps and everything they own are kept — nothing is deleted."
+        confirmLabel="Suspend account"
+        successMessage="Account suspended"
+        onConfirm={async () => {
+          const res = await commit({ suspended: true });
+          if (res.ok) {
+            setSuspended(true);
+            router.refresh();
+          }
+          return res;
+        }}
+      />
+      <ConfirmAction
+        open={confirmResetTwoFactor}
+        onOpenChange={setConfirmResetTwoFactor}
+        title={`Reset two-factor for @${user.username}?`}
+        description="Their next sign-in asks for the password only, and their old authenticator entry and recovery codes stop working. Do this when they have lost the phone AND the codes — check it is really them asking."
+        confirmLabel="Reset two-factor"
+        variant="default"
+        successMessage="Two-factor reset"
+        onConfirm={resetTwoFactor}
+      />
+      {confirmDelete && (
+        <DeleteUserDialog
+          userId={user.userId}
+          username={user.username}
+          open={confirmDelete}
+          onOpenChange={setConfirmDelete}
+          // The account this editor points at no longer exists — the caller
+          // takes it from here (close the dialog, leave the page).
+          onDeleted={() => onDeleted?.()}
         />
-        <ConfirmAction
-          open={confirmResetTwoFactor}
-          onOpenChange={setConfirmResetTwoFactor}
-          title={`Reset two-factor for @${user.username}?`}
-          description="Their next sign-in asks for the password only, and their old authenticator entry and recovery codes stop working. Do this when they have lost the phone AND the codes — check it is really them asking."
-          confirmLabel="Reset two-factor"
-          variant="default"
-          successMessage="Two-factor reset"
-          onConfirm={resetTwoFactor}
+      )}
+    </>
+  );
+}
+
+/**
+ * The same editor in a modal, for Settings → Users: that page lists every account
+ * on the instance, most of which are in no team of yours, so there is no member
+ * page to send the admin to. The team Members page has one, and uses the panel
+ * above directly.
+ *
+ * The visible header lives in the panel (it reads state the panel owns), so the
+ * dialog's own title is for screen readers only.
+ */
+export function EditUserDialog({
+  user,
+  seed,
+  isSelf,
+  open,
+  onOpenChange,
+}: {
+  user: EditUserSeedUser;
+  seed?: EditUserSeedFlags;
+  isSelf: boolean;
+  open: boolean;
+  onOpenChange: (o: boolean) => void;
+}) {
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="max-h-[85vh] overflow-y-auto sm:max-w-xl">
+        <DialogHeader className="sr-only">
+          <DialogTitle>@{user.username}</DialogTitle>
+          <DialogDescription>
+            Instance-wide account and permissions.
+          </DialogDescription>
+        </DialogHeader>
+        <UserAccountSettings
+          user={user}
+          seed={seed}
+          isSelf={isSelf}
+          onCancel={() => onOpenChange(false)}
+          onSaved={() => onOpenChange(false)}
+          onDeleted={() => onOpenChange(false)}
         />
-        {confirmDelete && (
-          <DeleteUserDialog
-            userId={user.userId}
-            username={user.username}
-            open={confirmDelete}
-            onOpenChange={setConfirmDelete}
-            // The account this dialog edits no longer exists — close it too,
-            // rather than leave a form pointed at a deleted user.
-            onDeleted={() => onOpenChange(false)}
-          />
-        )}
       </DialogContent>
     </Dialog>
   );

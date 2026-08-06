@@ -2,14 +2,10 @@
 
 import * as React from "react";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
-import { toast } from "sonner";
 import {
   UserPlus,
-  Trash2,
-  Pencil,
-  MoreHorizontal,
   UserCog,
+  ChevronRight,
   Crown,
   FolderTree,
   ShieldCheck,
@@ -20,22 +16,13 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuSeparator,
-  DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { AddMemberDialog } from "@/components/members/add-member-dialog";
 import { RegisterUserWizard } from "@/components/settings/users/register-user-wizard";
-import { EditUserDialog } from "@/components/settings/edit-user-dialog";
 import { SimpleTooltip } from "@/components/ui/tooltip";
 import { InfoTip } from "@/components/ui/info-tip";
-import { gqlAction } from "@/lib/graphql-client";
 import type { MemberDTO } from "@/lib/data/members";
 
 export function MembersManager({
@@ -118,8 +105,6 @@ export function MembersManager({
               member={m}
               isSelf={m.userId === currentUserId}
               canManage={canManage}
-              isAdmin={isAdmin}
-              viewerIsOwner={viewerIsOwner}
             />
           ))}
         </div>
@@ -128,60 +113,27 @@ export function MembersManager({
   );
 }
 
+/**
+ * One member, as a tile that opens their page. Every action a member has — role,
+ * per-node access, the instance-wide account, removal — lives on that page, so
+ * the card carries no menu of its own: a two-item dropdown that only ever led
+ * somewhere else was a stop on the way, not a shortcut.
+ */
 function MemberCard({
   member,
   isSelf,
   canManage,
-  isAdmin,
-  viewerIsOwner,
 }: {
   member: MemberDTO;
   isSelf: boolean;
+  /** `manage_members` — the same gate the member page itself keeps. */
   canManage: boolean;
-  /** Viewer is an instance admin — may edit any user's global account. */
-  isAdmin: boolean;
-  /** Viewer holds the owner role in this team (founder or assigned owner). */
-  viewerIsOwner: boolean;
 }) {
-  const router = useRouter();
-  const [pending, startTransition] = React.useTransition();
-  const [userEditOpen, setUserEditOpen] = React.useState(false);
-  // The ABSOLUTE owner (founder / "crown") is immutable — never editable or
-  // removable by anyone (the data layer enforces this too). An *assigned* owner
-  // (owner role, but not the founder) can be edited/removed, but only BY another
-  // owner — a plain manager can't act on any owner.
   const isFounder = member.isPrimaryOwner;
-  const isOwner = member.role === "owner";
   const granted = member.capabilities.filter((c) => c !== "view").length;
 
-  // What this viewer may do to THIS member. Editing team permissions and
-  // removing need `manage_members`, a non-founder target, and — when the target
-  // is an (assigned) owner — that the viewer is themselves an owner. Editing the
-  // global account is an instance-admin power, independent of team role.
-  const canEditPerms = canManage && !isFounder && (!isOwner || viewerIsOwner);
-  const canEditGlobal = isAdmin;
-  const canRemove = canManage && !isFounder && (!isOwner || viewerIsOwner);
-  // The ⋯ menu only appears on OTHER members with at least one available
-  // action — never on your own card.
-  const actionable = !isSelf && (canEditPerms || canEditGlobal);
-
-  function remove() {
-    startTransition(async () => {
-      const res = await gqlAction(
-        `mutation($userId: String!) { removeMember(userId: $userId) }`,
-        { userId: member.userId },
-      );
-      if (res.ok) {
-        toast.success("Member removed");
-        router.refresh();
-      } else {
-        toast.error(res.error);
-      }
-    });
-  }
-
   const inner = (
-    <div className="flex h-full flex-col gap-3 rounded-lg border border-border p-4">
+    <div className="flex h-full flex-col gap-3 rounded-lg border border-border p-4 transition-colors group-hover:border-foreground/20">
       <div className="flex w-full items-center gap-3">
         <Avatar>
           <AvatarFallback
@@ -221,66 +173,8 @@ function MemberCard({
             </p>
           )}
         </div>
-        {actionable && (
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <Button
-                variant="ghost"
-                size="icon-sm"
-                className="-mr-1 shrink-0"
-                aria-label={`@${member.username} menu`}
-              >
-                <MoreHorizontal className="size-4" />
-              </Button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="end" className="w-52">
-              {canEditPerms && (
-                <SimpleTooltip
-                  content="Open this member's permissions and access"
-                  side="left"
-                >
-                  <DropdownMenuItem asChild>
-                    <Link href={`/settings/members/${member.userId}`}>
-                      <Pencil className="size-4" />
-                      Edit access
-                    </Link>
-                  </DropdownMenuItem>
-                </SimpleTooltip>
-              )}
-              {canEditGlobal && (
-                <SimpleTooltip
-                  content="View and edit this user's instance-wide account and permissions"
-                  side="left"
-                >
-                  <DropdownMenuItem onSelect={() => setUserEditOpen(true)}>
-                    <UserCog className="size-4" />
-                    Manage user account
-                  </DropdownMenuItem>
-                </SimpleTooltip>
-              )}
-              {canRemove && (
-                <>
-                  <DropdownMenuSeparator />
-                  <SimpleTooltip
-                    content="Remove this member from the team"
-                    side="left"
-                  >
-                    <DropdownMenuItem
-                      variant="destructive"
-                      disabled={pending}
-                      onSelect={(e: Event) => {
-                        e.preventDefault();
-                        remove();
-                      }}
-                    >
-                      <Trash2 className="size-4" />
-                      Remove from team
-                    </DropdownMenuItem>
-                  </SimpleTooltip>
-                </>
-              )}
-            </DropdownMenuContent>
-          </DropdownMenu>
+        {canManage && (
+          <ChevronRight className="size-4 shrink-0 text-muted-foreground" />
         )}
       </div>
       <div className="flex flex-wrap items-center gap-1.5">
@@ -318,33 +212,19 @@ function MemberCard({
     </div>
   );
 
-  const dialogs = (
-    <>
-      {userEditOpen && (
-        <EditUserDialog
-          user={{
-            userId: member.userId,
-            username: member.username,
-            name: member.name,
-            avatarColor: member.avatarColor,
-          }}
-          isSelf={isSelf}
-          open={userEditOpen}
-          onOpenChange={setUserEditOpen}
-        />
-      )}
-    </>
-  );
-
-  // Inert cards (your own, the owner with nothing to manage, or a viewer who
-  // can't act) get no ⋯ menu. No triggers ⇒ no dialogs to mount.
-  if (!actionable) return inner;
+  // Without `manage_members` there is no page to open — the roster stays
+  // readable, the tiles just aren't links. Your own tile IS one: the page shows
+  // you what you hold and says who can change it.
+  if (!canManage) return inner;
 
   return (
-    <>
+    <Link
+      href={`/settings/members/${member.userId}`}
+      className="group block h-full rounded-lg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+      aria-label={`Manage @${member.username}`}
+    >
       {inner}
-      {dialogs}
-    </>
+    </Link>
   );
 }
 

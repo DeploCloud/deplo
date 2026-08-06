@@ -3,7 +3,7 @@ import { notFound } from "next/navigation";
 import { ArrowLeft } from "lucide-react";
 
 import { getCurrentUser } from "@/lib/auth";
-import { hasCapability } from "@/lib/membership";
+import { hasCapability, isInstanceAdmin } from "@/lib/membership";
 import { listMembers } from "@/lib/data/members";
 import { getMemberAccess } from "@/lib/data/user-access";
 import { listRoles } from "@/lib/data/roles";
@@ -39,12 +39,13 @@ export default async function MemberPage(
   // The FULL role rows, not a stripped summary: the picker shows each role's
   // permission count and hides Owner from anyone who can't hand out the rank,
   // and both read fields a summary doesn't carry.
-  const [viewer, members, access, roles, tree] = await Promise.all([
+  const [viewer, members, access, roles, tree, isAdmin] = await Promise.all([
     getCurrentUser(),
     listMembers(),
     getMemberAccess(id),
     listRoles(),
     listTeamScopeTree(),
+    isInstanceAdmin(),
   ]);
   const member = members.find((m) => m.userId === id);
   // Not a member of the team you are acting in: there is no id to guess your
@@ -73,6 +74,8 @@ export default async function MemberPage(
         roles={roles}
         tree={tree}
         canAssignOwner={viewerIsOwner}
+        isSelf={viewer?.id === member.userId}
+        canManageAccount={isAdmin}
       />
     </div>
   );
