@@ -57,7 +57,7 @@ const ACCOUNT = {
   username: "newowner",
   name: "New Owner",
   email: "new@owner.io",
-  password: "password1",
+  password: "Passw0rd!1",
   teamName: "New Team",
 };
 
@@ -76,8 +76,8 @@ test("createAccountWithTeam writes user + team + owner membership with caps", as
     await db.select().from(accountTable).where(eq(accountTable.userId, user.id))
   )[0]!;
   assert.equal(arow.providerId, "credential");
-  assert.notEqual(arow.password, "password1");
-  assert.ok(verifyPassword("password1", arow.password!));
+  assert.notEqual(arow.password, "Passw0rd!1");
+  assert.ok(verifyPassword("Passw0rd!1", arow.password!));
 
   const mrows = await db
     .select()
@@ -126,7 +126,7 @@ test("createAccountWithTeam rejects a duplicate username / email / team name", a
 test("createAccountWithTeams joins existing teams with per-team roles + caps, owning none", async () => {
   await seedIdentity(db); // TEAM_A (alpha) + TEAM_B (beta) exist
   const { user, activeTeamId } = await createAccountWithTeams(
-    { username: "joiner", name: "Joiner", email: "joiner@x.io", password: "password1" },
+    { username: "joiner", name: "Joiner", email: "joiner@x.io", password: "Passw0rd!1" },
     [
       { teamId: TEAM_A, role: "member", capabilities: capabilitiesForRole("member") },
       { teamId: TEAM_B, role: "viewer", capabilities: ["view"] },
@@ -161,7 +161,7 @@ test("createAccountWithTeams skips teams deleted before use, and fails if none r
   await seedIdentity(db);
   // One real team + one already-gone team → user joins only the survivor.
   const { user } = await createAccountWithTeams(
-    { username: "partial", name: "Partial", email: "p@x.io", password: "password1" },
+    { username: "partial", name: "Partial", email: "p@x.io", password: "Passw0rd!1" },
     [
       { teamId: TEAM_A, role: "member", capabilities: capabilitiesForRole("member") },
       { teamId: "team_gone", role: "member", capabilities: [] },
@@ -178,7 +178,7 @@ test("createAccountWithTeams skips teams deleted before use, and fails if none r
   await assert.rejects(
     () =>
       createAccountWithTeams(
-        { username: "ghost", name: "Ghost", email: "g@x.io", password: "password1" },
+        { username: "ghost", name: "Ghost", email: "g@x.io", password: "Passw0rd!1" },
         [{ teamId: "team_gone", role: "member", capabilities: [] }],
       ),
     /no longer exist/,
@@ -195,7 +195,7 @@ test("createAccountWithTeams consumes the registration link (single-use); a spen
   const rawToken = await seedRegistrationLink(db);
   const join = (username: string) =>
     createAccountWithTeams(
-      { username, name: username, email: `${username}@reg.io`, password: "password1" },
+      { username, name: username, email: `${username}@reg.io`, password: "Passw0rd!1" },
       [{ teamId: TEAM_A, role: "member", capabilities: capabilitiesForRole("member") }],
       { guard: (tx) => consumeRegistrationLink(tx, rawToken, username) },
     );
@@ -216,7 +216,7 @@ test("registration link is single-use: two concurrent registrations, exactly one
         username,
         name: username,
         email: `${username}@reg.io`,
-        password: "password1",
+        password: "Passw0rd!1",
         teamName: `${username}-team`,
       },
       { guard: (tx) => consumeRegistrationLink(tx, rawToken, username) },
@@ -260,7 +260,7 @@ test("registration link consume rejects an expired link", async () => {
           username: "late",
           name: "late",
           email: "late@reg.io",
-          password: "password1",
+          password: "Passw0rd!1",
           teamName: "late-team",
         },
         { guard: (tx) => consumeRegistrationLink(tx, rawToken, "late") },
@@ -273,36 +273,36 @@ test("registration link consume rejects an expired link", async () => {
 
 test("login reads the RELATIONAL password — a relational password change is seen immediately (stale-password regression)", async () => {
   await seedIdentity(db, {
-    users: [{ id: USER_1, teamId: TEAM_A, role: "owner", password: "oldpass1" }],
+    users: [{ id: USER_1, teamId: TEAM_A, role: "owner", password: "Oldpass!1" }],
   });
   const email = `${USER_1}@example.io`;
 
   // The OLD password authenticates before any change.
   assert.equal((await login(email, "wrongpass")).ok, false, "wrong password rejected");
-  await assertLoginAccepts(email, "oldpass1");
+  await assertLoginAccepts(email, "Oldpass!1");
 
   // Change the password through the relational data layer.
   await runWithIdentity({ userId: USER_1, teamId: TEAM_A }, async () => {
-    await changePassword({ currentPassword: "oldpass1", newPassword: "newpass2" });
+    await changePassword({ currentPassword: "Oldpass!1", newPassword: "Newpass!2" });
   });
 
   // The OLD password must now FAIL and the NEW one succeed — proving login reads
   // the relational row, not a stale JSONB cache (the cut-set boundary hazard).
   assert.equal(
-    (await login(email, "oldpass1")).ok,
+    (await login(email, "Oldpass!1")).ok,
     false,
     "old password no longer works after a relational change",
   );
-  await assertLoginAccepts(email, "newpass2");
+  await assertLoginAccepts(email, "Newpass!2");
 });
 
 test("login refuses a suspended account", async () => {
   await seedIdentity(db, {
     users: [
-      { id: USER_1, teamId: TEAM_A, role: "owner", password: "password1", suspended: true },
+      { id: USER_1, teamId: TEAM_A, role: "owner", password: "Passw0rd!1", suspended: true },
     ],
   });
-  const res = await login(`${USER_1}@example.io`, "password1");
+  const res = await login(`${USER_1}@example.io`, "Passw0rd!1");
   assert.equal(res.ok, false);
   assert.match(res.error ?? "", /suspended/);
 });

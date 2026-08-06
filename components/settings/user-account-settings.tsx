@@ -31,8 +31,9 @@ import {
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { FieldLabel, InfoTip } from "@/components/ui/info-tip";
+import { InfoTip } from "@/components/ui/info-tip";
+import { PasswordField } from "@/components/ui/password-field";
+import { passwordMeetsPolicy } from "@/lib/password-policy";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Switch } from "@/components/ui/switch";
 import { ConfirmAction } from "@/components/shared/confirm-action";
@@ -515,33 +516,19 @@ export function UserAccountSettings({
             </Section>
 
             <Section icon={KeyRound} title="Password">
-              <div className="space-y-2">
-                <FieldLabel
-                  htmlFor="reset-pw"
-                  info={
-                    <>
-                      Leave blank to keep the current password. A new one must
-                      be at least 8 characters and replaces theirs the moment
-                      you save — nobody is emailed about it, so hand it over
-                      yourself.
-                    </>
-                  }
-                >
-                  New password (optional)
-                </FieldLabel>
-                <Input
-                  id="reset-pw"
-                  type="password"
-                  value={password}
-                  disabled={ownerLocked}
-                  onChange={(e) => setPassword(e.target.value)}
-                  placeholder={
-                    ownerLocked
-                      ? "Only the instance owner can reset their own password"
-                      : "Leave blank to keep the current password"
-                  }
-                />
-              </div>
+              <PasswordField
+                id="reset-pw"
+                label="New password (optional)"
+                info="Leave blank to keep the current password. A new one replaces theirs the moment you save, and nobody is emailed about it, so hand it over yourself."
+                value={password}
+                onChange={setPassword}
+                disabled={ownerLocked}
+                placeholder={
+                  ownerLocked
+                    ? "Only the instance owner can reset their own password"
+                    : "Leave blank to keep the current password"
+                }
+              />
             </Section>
 
             {twoFactorEnabled && !isSelf && !ownerLocked && (
@@ -636,7 +623,7 @@ export function UserAccountSettings({
               pending ||
               ownerLocked ||
               !dirty ||
-              (password.length > 0 && password.length < 8)
+              (password.length > 0 && !passwordMeetsPolicy(password))
             }
             aria-busy={pending}
           >

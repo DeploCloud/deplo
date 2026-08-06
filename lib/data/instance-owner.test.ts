@@ -136,7 +136,7 @@ test("another admin cannot RESET the instance owner's password", async () => {
   const before = (await userRow(OWNER)).passwordHash;
   await asUser(ADMIN, async () => {
     await assert.rejects(
-      () => updateUserAdmin(edit(OWNER, { newPassword: "hijacked-me" })),
+      () => updateUserAdmin(edit(OWNER, { newPassword: "Hijacked!1" })),
       /Only the instance owner can edit/,
     );
   });
@@ -166,10 +166,10 @@ test("the owner cannot uncrown themselves by dropping their own admin flag", asy
 test("the owner can still edit their own account (password included)", async () => {
   await seedOwnedInstance();
   await asUser(OWNER, () =>
-    updateUserAdmin(edit(OWNER, { newPassword: "a-new-password" })),
+    updateUserAdmin(edit(OWNER, { newPassword: "A-new-passw0rd!" })),
   );
   const row = await userRow(OWNER);
-  assert.ok(verifyPassword("a-new-password", row.passwordHash!));
+  assert.ok(verifyPassword("A-new-passw0rd!", row.passwordHash!));
   assert.equal(row.isInstanceAdmin, true);
 });
 

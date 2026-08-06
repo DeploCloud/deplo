@@ -39,6 +39,7 @@ import {
 } from "../crypto";
 import { twoFactor as twoFactorTable } from "../db/schema/auth";
 import { getCurrentUser, revokeAllSessions, setUserPassword } from "../auth";
+import { assertPasswordPolicy } from "../password-policy";
 import { recordActivity } from "./activity";
 import { instanceOwnerUserId } from "./instance-owner";
 import {
@@ -1006,8 +1007,7 @@ export async function updateUserAdmin(input: {
 }): Promise<void> {
   const { userId: actingUserId } = await requireInstanceAdmin();
   const newPassword = input.newPassword?.trim() ? input.newPassword : null;
-  if (newPassword && newPassword.length < 8)
-    throw new Error("Choose a password of at least 8 characters");
+  if (newPassword) assertPasswordPolicy(newPassword);
 
   await getDb().transaction(async (tx) => {
     const target = (

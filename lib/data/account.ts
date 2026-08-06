@@ -11,6 +11,7 @@ import {
   verifyUserPassword,
 } from "../auth";
 import { requirePersonalSession } from "../auth/request-context";
+import { assertPasswordPolicy } from "../password-policy";
 
 /**
  * The current user's own account.
@@ -71,8 +72,7 @@ export async function changePassword(input: {
 }): Promise<void> {
   requirePersonalSession("your account settings");
   const user = await assertUser();
-  if (input.newPassword.length < 8)
-    throw new Error("Choose a password of at least 8 characters");
+  assertPasswordPolicy(input.newPassword);
   if (!(await verifyUserPassword(user.id, input.currentPassword)))
     throw new Error("Current password is incorrect");
   await setUserPassword(user.id, input.newPassword);

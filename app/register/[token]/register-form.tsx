@@ -15,6 +15,8 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
+import { PasswordField } from "@/components/ui/password-field";
+import { passwordMeetsPolicy } from "@/lib/password-policy";
 import { gqlAction } from "@/lib/graphql-client";
 
 const REGISTER = /* GraphQL */ `
@@ -92,7 +94,7 @@ export function RegisterForm({
     (!ownTeam || form.teamName.trim().length > 0) &&
     form.name.trim().length > 0 &&
     form.email.includes("@") &&
-    form.password.length >= 8;
+    passwordMeetsPolicy(form.password);
 
   return (
     <Card>
@@ -174,17 +176,11 @@ export function RegisterForm({
               placeholder="you@example.com"
             />
           </div>
-          <div className="space-y-2">
-            <Label htmlFor="reg-password">Password</Label>
-            <Input
-              id="reg-password"
-              type="password"
-              value={form.password}
-              onChange={set("password")}
-              placeholder="At least 8 characters"
-              minLength={8}
-            />
-          </div>
+          <PasswordField
+            id="reg-password"
+            value={form.password}
+            onChange={(password) => setForm((f) => ({ ...f, password }))}
+          />
           <Button
             className="w-full"
             onClick={submit}

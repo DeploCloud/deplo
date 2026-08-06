@@ -14,6 +14,8 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { InfoTip } from "@/components/ui/info-tip";
+import { PasswordField } from "@/components/ui/password-field";
+import { passwordMeetsPolicy } from "@/lib/password-policy";
 import { gqlAction } from "@/lib/graphql-client";
 
 const CHANGE_PASSWORD = /* GraphQL */ `
@@ -97,19 +99,14 @@ export function PasswordCard({ twoFactorEnabled }: { twoFactorEnabled: boolean }
               onChange={(e) => setCurrent(e.target.value)}
             />
           </div>
-          <div className="grid gap-4 sm:grid-cols-2">
-            <div className="space-y-2">
-              <Label htmlFor="acct-new">New password</Label>
-              <Input
-                id="acct-new"
-                name="newPassword"
-                type="password"
-                autoComplete="new-password"
-                value={next}
-                onChange={(e) => setNext(e.target.value)}
-                placeholder="At least 8 characters"
-              />
-            </div>
+          <div className="grid items-start gap-4 sm:grid-cols-2">
+            <PasswordField
+              id="acct-new"
+              name="newPassword"
+              label="New password"
+              value={next}
+              onChange={setNext}
+            />
             <div className="space-y-2">
               <Label htmlFor="acct-confirm">Confirm new password</Label>
               <Input
@@ -126,7 +123,7 @@ export function PasswordCard({ twoFactorEnabled }: { twoFactorEnabled: boolean }
             <Button
               type="submit"
               size="sm"
-              disabled={pending || !current || next.length < 8}
+              disabled={pending || !current || !passwordMeetsPolicy(next)}
             >
               {pending && <Loader2 className="size-4 animate-spin" />}
               Change password

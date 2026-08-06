@@ -8,6 +8,8 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { FieldLabel } from "@/components/ui/info-tip";
+import { PasswordField } from "@/components/ui/password-field";
+import { passwordMeetsPolicy } from "@/lib/password-policy";
 import {
   Card,
   CardContent,
@@ -39,6 +41,7 @@ const COMPLETE_SETUP = /* GraphQL */ `
 export function SetupForm() {
   const router = useRouter();
   const [error, setError] = useState<string | null>(null);
+  const [password, setPassword] = useState("");
   const [pending, startTransition] = useTransition();
 
   function onSubmit(e: React.FormEvent<HTMLFormElement>) {
@@ -135,19 +138,18 @@ export function SetupForm() {
               required
             />
           </div>
-          <div className="space-y-2">
-            <Label htmlFor="password">Password</Label>
-            <Input
-              id="password"
-              name="password"
-              type="password"
-              autoComplete="new-password"
-              placeholder="At least 8 characters"
-              required
-              minLength={8}
-            />
-          </div>
-          <Button type="submit" className="w-full" disabled={pending}>
+          <PasswordField
+            id="password"
+            name="password"
+            value={password}
+            onChange={setPassword}
+            required
+          />
+          <Button
+            type="submit"
+            className="w-full"
+            disabled={pending || !passwordMeetsPolicy(password)}
+          >
             <Rocket className="size-4" />
             {pending ? "Creating workspace…" : "Create workspace"}
           </Button>

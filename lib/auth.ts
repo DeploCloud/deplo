@@ -22,6 +22,7 @@ import { randomBytes } from "node:crypto";
 import { currentIdentity } from "./auth/request-context";
 import { authRequestHeaders } from "./auth/request-headers";
 import { getAuth, requireAuth, sessionCookieNames } from "./auth/better-auth";
+import { assertPasswordPolicy } from "./password-policy";
 
 // Kept in sync with lib/membership.ts (ACTIVE_TEAM_COOKIE). Set here on
 // signup/setup so the new account lands with an active team immediately,
@@ -215,8 +216,7 @@ export async function createAccountWithTeam(
       .replace(/[^a-z0-9]+/g, "-")
       .replace(/^-+|-+$/g, "") || "team";
 
-  if (input.password.length < 8)
-    throw new Error("Choose a password of at least 8 characters");
+  assertPasswordPolicy(input.password);
 
   const now = new Date().toISOString();
 
@@ -324,8 +324,7 @@ export async function createAccountWithTeams(
   if (!name) throw new Error("Name is required");
   const email = input.email.toLowerCase().trim();
   if (!email.includes("@")) throw new Error("Enter a valid email address");
-  if (input.password.length < 8)
-    throw new Error("Choose a password of at least 8 characters");
+  assertPasswordPolicy(input.password);
   if (assignments.length === 0)
     throw new Error("This registration link has no teams to join");
 
