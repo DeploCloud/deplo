@@ -26,7 +26,6 @@ import {
   requireMembership,
 } from "../membership";
 import { recordActivity } from "./activity";
-import { narrowedScope } from "../auth/request-context";
 import { appCapabilitiesForTeam, requireAppCapability } from "./node-access";
 import {
   loadAppGraph,
@@ -258,9 +257,11 @@ export async function createBackup(input: {
     throw new Error("Select a destination");
   if (targetKind === "database") {
     if (!databaseId) throw new Error("Select a database to back up");
-    // A project-scoped token can't see any database, so it can't schedule a dump
-    // of one either — same answer its own reads give (`loadDatabase`).
-    if (narrowedScope() || !(await databaseNameFor(databaseId, teamId)))
+    // A principal who reaches only part of the team can't see any database, so
+    // they can't schedule a dump of one either — same answer their own reads
+    // give (`loadDatabase`), and the same one for a narrowed token and a member
+    // on a limited role.
+    if (!(await reachesWholeTeam()) || !(await databaseNameFor(databaseId, teamId)))
       throw new Error("Database not found");
   } else {
     if (!appId) throw new Error("Select a project to back up");
