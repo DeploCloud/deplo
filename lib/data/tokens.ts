@@ -11,6 +11,7 @@ import {
   apiTokenFolders,
   apiTokenApps,
   apps as appsTable,
+  environments as environmentsTable,
   folders as foldersTable,
   memberships as membershipsTable,
   projects as projectsTable,
@@ -242,10 +243,23 @@ export interface ScopeTreeFolder {
   folders: ScopeTreeFolder[];
   apps: ScopeTreeApp[];
 }
+/**
+ * An environment of a project — where an app lives inside it (ADR-0009). A
+ * sibling of the project's folders, not a parent of them: a folder never lives
+ * in an environment, and filing an app into one clears its environment.
+ */
+export interface ScopeTreeEnvironment {
+  id: string;
+  name: string;
+  isDefault: boolean;
+  apps: ScopeTreeApp[];
+}
+
 export interface ScopeTreeProject {
   id: string;
   name: string;
   color: string | null;
+  environments: ScopeTreeEnvironment[];
   folders: ScopeTreeFolder[];
   apps: ScopeTreeApp[];
 }
@@ -315,7 +329,7 @@ export async function buildScopeTree(
   const teamIds = mine.map((t) => t.id);
 
   const db = getDb();
-  const [projectRows, folderRows, appRows] = await Promise.all([
+  const [projectRows, folderRows, appRows, envRows] = await Promise.all([
     db
       .select({
         id: projectsTable.id,
@@ -342,12 +356,24 @@ export async function buildScopeTree(
         teamId: appsTable.teamId,
         projectId: appsTable.projectId,
         folderId: appsTable.folderId,
+        environmentId: appsTable.environmentId,
         name: appsTable.name,
         slug: appsTable.slug,
         logo: appsTable.logo,
       })
       .from(appsTable)
       .where(inArray(appsTable.teamId, teamIds)),
+    db
+      .select({
+        id: environmentsTable.id,
+        projectId: environmentsTable.projectId,
+        name: environmentsTable.name,
+        isDefault: environmentsTable.isDefault,
+        position: environmentsTable.position,
+      })
+      .from(environmentsTable)
+      .innerJoin(projectsTable, eq(projectsTable.id, environmentsTable.projectId))
+      .where(inArray(projectsTable.teamId, teamIds)),
   ]);
 
   // Per-node visibility, when the tree is the CALLER's own picker: a folder they
@@ -363,11 +389,15 @@ export async function buildScopeTree(
   const byName = (a: { name: string }, b: { name: string }) =>
     a.name.localeCompare(b.name);
 
-  /** Apps keyed by the ONE container they live in (folder, else project, else team). */
+  /**
+   * Apps keyed by the ONE container they live in: a folder, else the ENVIRONMENT
+   * of their project, else the project itself (legacy rows written before the
+   * environment column), else the team top level.
+   */
   const appsIn = new Map<string, ScopeTreeApp[]>();
   for (const a of appRows) {
     if (!appVisible(a.id)) continue;
-    const key = a.folderId ?? a.projectId ?? a.teamId;
+    const key = a.folderId ?? a.environmentId ?? a.projectId ?? a.teamId;
     appsIn.set(key, [
       ...(appsIn.get(key) ?? []),
       { id: a.id, name: a.name, slug: a.slug, logo: a.logo ?? null },
@@ -413,7 +443,21 @@ export async function buildScopeTree(
         id: p.id,
         name: p.name,
         color: p.color ?? null,
+        // Environments first, in the order the project shows them: ADR-0009
+        // makes the environment the primary axis of a project, and folders are
+        // their siblings rather than their children.
+        environments: envRows
+          .filter((e) => e.projectId === p.id)
+          .sort((a, b) => a.position - b.position)
+          .map((e) => ({
+            id: e.id,
+            name: e.name,
+            isDefault: e.isDefault,
+            apps: (appsIn.get(e.id) ?? []).sort(byName),
+          })),
         folders: rootFolders((f) => f.projectId === p.id),
+        // Legacy rows only: an app filed in a project before the environment
+        // column existed. Everything newer sits under an environment above.
         apps: (appsIn.get(p.id) ?? []).sort(byName),
       })),
     folders: rootFolders((f) => f.teamId === t.id && !f.projectId),

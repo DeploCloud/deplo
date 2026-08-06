@@ -38,13 +38,29 @@ export function filterScopeTree(
       const projects = team.projects
         .map((p) => {
           if (hit(p.name, terms)) return p;
+          // An environment survives on its own name (keeping all its apps, the
+          // same rule a folder follows) or on one of its apps.
+          const environments = p.environments
+            .map((e) =>
+              hit(e.name, terms)
+                ? e
+                : {
+                    ...e,
+                    apps: e.apps.filter(
+                      (a) => hit(a.name, terms) || hit(a.slug, terms),
+                    ),
+                  },
+            )
+            .filter((e) => e.apps.length > 0 || hit(e.name, terms));
           const folders = p.folders
             .map((f) => filterFolder(f, terms))
             .filter((f): f is ScopeTreeFolder => f !== null);
           const apps = p.apps.filter(
             (a) => hit(a.name, terms) || hit(a.slug, terms),
           );
-          return folders.length || apps.length ? { ...p, folders, apps } : null;
+          return environments.length || folders.length || apps.length
+            ? { ...p, environments, folders, apps }
+            : null;
         })
         .filter((p): p is ScopeTreeTeam["projects"][number] => p !== null);
       const folders = team.folders

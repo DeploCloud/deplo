@@ -15,14 +15,18 @@ import {
 
 /** What a scoped role reaches. Absent on a role that reaches the whole team. */
 const RoleScopeRef = builder
-  .objectRef<{ projectIds: string[]; folderIds: string[]; appIds: string[] }>(
-    "RoleScope",
-  )
+  .objectRef<{
+    projectIds: string[];
+    environmentIds: string[];
+    folderIds: string[];
+    appIds: string[];
+  }>("RoleScope")
   .implement({
     description:
       "The projects, folders and apps a role reaches. A folder brings its whole subtree. All three empty means it reaches nothing, which is what a scope whose nodes were all deleted becomes.",
     fields: (t) => ({
       projectIds: t.exposeStringList("projectIds"),
+      environmentIds: t.exposeStringList("environmentIds"),
       folderIds: t.exposeStringList("folderIds"),
       appIds: t.exposeStringList("appIds"),
     }),
@@ -80,9 +84,11 @@ export const TeamRoleRef = builder
 
 const RoleScopeInputType = builder.inputType("RoleScopeInput", {
   description:
-    "The nodes a role reaches. Ticking a project or a folder covers everything inside it, now and later; omit the field entirely for the whole team.",
+    "The nodes a role reaches. Ticking a project, one of its environments or a folder covers everything inside it, now and later; omit the field entirely for the whole team.",
   fields: (t) => ({
     projectIds: t.stringList({ required: false }),
+    /** One environment of a project - the finest cut inside one. */
+    environmentIds: t.stringList({ required: false }),
     folderIds: t.stringList({ required: false }),
     appIds: t.stringList({ required: false }),
   }),
@@ -147,6 +153,7 @@ builder.mutationFields((t) => ({
         scope: input.scope
           ? {
               projectIds: input.scope.projectIds ?? undefined,
+              environmentIds: input.scope.environmentIds ?? undefined,
               folderIds: input.scope.folderIds ?? undefined,
               appIds: input.scope.appIds ?? undefined,
             }
@@ -175,6 +182,7 @@ builder.mutationFields((t) => ({
           : input.scope
             ? {
                 projectIds: input.scope.projectIds ?? undefined,
+                environmentIds: input.scope.environmentIds ?? undefined,
                 folderIds: input.scope.folderIds ?? undefined,
                 appIds: input.scope.appIds ?? undefined,
               }

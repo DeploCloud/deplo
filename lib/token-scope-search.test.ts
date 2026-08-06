@@ -27,6 +27,7 @@ const TREE: ScopeTreeTeam[] = [
         id: "prc_mkt",
         name: "Marketing",
         color: null,
+        environments: [],
         folders: [
           {
             id: "fld_web",

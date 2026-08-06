@@ -86,7 +86,11 @@ export function RoleEditor({
   const granted = caps.filter((c) => c !== "view").length;
   const sensitive = caps.filter((c) => CAPABILITY_META[c].sensitive).length;
   const scoped =
-    scope.projectIds.length + scope.folderIds.length + scope.appIds.length > 0;
+    scope.projectIds.length +
+      (scope.environmentIds?.length ?? 0) +
+      scope.folderIds.length +
+      scope.appIds.length >
+    0;
   // What the scope silences: everything a node cannot carry. The set is the
   // server's own (`NODE_GRANTABLE_CAPABILITIES`), so the picker and the save
   // cannot disagree about which ticks still mean something.
@@ -244,7 +248,7 @@ export function RoleEditor({
               disabled={readOnly}
               teamPickable={false}
               title="Scope"
-              info="What this role reaches. Tick a project, a folder or an app, or tick nothing to reach the whole team."
+              info="What this role reaches. Tick a project, one of its environments, a folder or an app, or tick nothing to reach the whole team."
               emptyNote="This team has nothing to limit a role to yet."
               footer={
                 <p className="text-xs text-muted-foreground">
@@ -498,11 +502,17 @@ export function RoleEditor({
 
 /** The DTO's scope as the picker's selection. Null (unrestricted) is empty. */
 function toSelection(
-  scope: { projectIds: string[]; folderIds: string[]; appIds: string[] } | null,
+  scope: {
+    projectIds: string[];
+    environmentIds: string[];
+    folderIds: string[];
+    appIds: string[];
+  } | null,
 ): ScopeSelection {
   return {
     teamIds: [],
     projectIds: scope?.projectIds ?? [],
+    environmentIds: scope?.environmentIds ?? [],
     folderIds: scope?.folderIds ?? [],
     appIds: scope?.appIds ?? [],
   };
@@ -514,6 +524,7 @@ function sameScope(a: ScopeSelection, b: ScopeSelection): boolean {
     x.length === y.length && [...x].sort().join() === [...y].sort().join();
   return (
     same(a.projectIds, b.projectIds) &&
+    same(a.environmentIds ?? [], b.environmentIds ?? []) &&
     same(a.folderIds, b.folderIds) &&
     same(a.appIds, b.appIds)
   );
@@ -522,8 +533,10 @@ function sameScope(a: ScopeSelection, b: ScopeSelection): boolean {
 /** "2 projects and 1 app" — the one-line shape of a scope. */
 function describeScope(scope: ScopeSelection): string {
   const plural = (n: number, one: string) => `${n} ${n === 1 ? one : `${one}s`}`;
+  const envs = scope.environmentIds ?? [];
   const parts = [
     scope.projectIds.length > 0 ? plural(scope.projectIds.length, "project") : null,
+    envs.length > 0 ? plural(envs.length, "environment") : null,
     scope.folderIds.length > 0 ? plural(scope.folderIds.length, "folder") : null,
     scope.appIds.length > 0 ? plural(scope.appIds.length, "app") : null,
   ].filter((p): p is string => p != null);

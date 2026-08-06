@@ -1,7 +1,7 @@
 "use client";
 
 import * as React from "react";
-import { ChevronRight, FolderTree, Folder, Box, Search, X } from "lucide-react";
+import { Boxes, ChevronRight, FolderTree, Folder, Box, Search, X } from "lucide-react";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Checkbox } from "@/components/ui/checkbox";
 import { LogoImage } from "@/components/shared/project-logo";
@@ -27,6 +27,8 @@ export interface ScopeNode {
 export interface ScopeSelection {
   teamIds: string[];
   projectIds: string[];
+  /** Environments of a project. Absent on a token, which cannot name one. */
+  environmentIds?: string[];
   folderIds: string[];
   appIds: string[];
 }
@@ -86,6 +88,7 @@ export function ScopePicker({
 }) {
   const teams = new Set(selection.teamIds);
   const projects = new Set(selection.projectIds);
+  const environments = new Set(selection.environmentIds ?? []);
   const folders = new Set(selection.folderIds);
   const apps = new Set(selection.appIds);
 
@@ -116,12 +119,14 @@ export function ScopePicker({
   function emit(next: {
     teams: Set<string>;
     projects: Set<string>;
+    environments?: Set<string>;
     folders: Set<string>;
     apps: Set<string>;
   }) {
     onChange({
       teamIds: [...next.teams],
       projectIds: [...next.projects],
+      environmentIds: [...(next.environments ?? environments)],
       folderIds: [...next.folders],
       appIds: [...next.apps],
     });
@@ -129,15 +134,24 @@ export function ScopePicker({
 
   /** Everything under a node becomes redundant the moment the node is ticked. */
   function clearBelow(
-    node: { folders: ScopeTreeFolder[]; apps: ScopeTreeApp[] },
+    node: {
+      environments?: { id: string; apps: ScopeTreeApp[] }[];
+      folders: ScopeTreeFolder[];
+      apps: ScopeTreeApp[];
+    },
     p: Set<string>,
     f: Set<string>,
     a: Set<string>,
+    e?: Set<string>,
   ) {
     for (const app of node.apps) a.delete(app.id);
+    for (const env of node.environments ?? []) {
+      e?.delete(env.id);
+      for (const app of env.apps) a.delete(app.id);
+    }
     for (const folder of node.folders) {
       f.delete(folder.id);
-      clearBelow(folder, p, f, a);
+      clearBelow(folder, p, f, a, e);
     }
   }
 
@@ -145,18 +159,19 @@ export function ScopePicker({
     if (disabled || !teamPickable) return;
     const t = new Set(teams);
     const p = new Set(projects);
+    const e = new Set(environments);
     const f = new Set(folders);
     const a = new Set(apps);
     if (on) {
       t.add(team.id);
       for (const proj of team.projects) {
         p.delete(proj.id);
-        clearBelow(proj, p, f, a);
+        clearBelow(proj, p, f, a, e);
       }
-      clearBelow({ folders: team.folders, apps: team.looseApps }, p, f, a);
+      clearBelow({ folders: team.folders, apps: team.looseApps }, p, f, a, e);
       setOpen((prev) => new Set(prev).add(team.id));
     } else t.delete(team.id);
-    emit({ teams: t, projects: p, folders: f, apps: a });
+    emit({ teams: t, projects: p, environments: e, folders: f, apps: a });
   }
 
   function toggleProject(
@@ -166,13 +181,14 @@ export function ScopePicker({
   ) {
     if (disabled || covered) return;
     const p = new Set(projects);
+    const e = new Set(environments);
     const f = new Set(folders);
     const a = new Set(apps);
     if (on) {
       p.add(project.id);
-      clearBelow(project, p, f, a);
+      clearBelow(project, p, f, a, e);
     } else p.delete(project.id);
-    emit({ teams, projects: p, folders: f, apps: a });
+    emit({ teams, projects: p, environments: e, folders: f, apps: a });
   }
 
   function toggleFolder(folder: ScopeTreeFolder, on: boolean, covered: boolean) {
@@ -185,6 +201,21 @@ export function ScopePicker({
       clearBelow(folder, p, f, a);
     } else f.delete(folder.id);
     emit({ teams, projects: p, folders: f, apps: a });
+  }
+
+  function toggleEnvironment(
+    env: { id: string; apps: ScopeTreeApp[] },
+    on: boolean,
+    covered: boolean,
+  ) {
+    if (disabled || covered) return;
+    const e = new Set(environments);
+    const a = new Set(apps);
+    if (on) {
+      e.add(env.id);
+      for (const app of env.apps) a.delete(app.id);
+    } else e.delete(env.id);
+    emit({ teams, projects, environments: e, folders, apps: a });
   }
 
   function toggleApp(appId: string, on: boolean, covered: boolean) {
@@ -365,6 +396,52 @@ export function ScopePicker({
                               />
                               {projExpanded && (
                                 <>
+                                  {/* Environments first: ADR-0009 makes the
+                                      environment the primary axis of a project,
+                                      and folders are their siblings, never
+                                      their children. */}
+                                  {project.environments.map((env) => {
+                                    const envOn =
+                                      projOn || environments.has(env.id);
+                                    const envExpanded = isOpen(env.id);
+                                    return (
+                                      <div key={env.id}>
+                                        <Row
+                                          depth={2}
+                                          mark={
+                                            <Boxes className="size-3.5 text-muted-foreground" />
+                                          }
+                                          label={env.name}
+                                          meta={envMeta(env)}
+                                          checked={envOn}
+                                          disabled={disabled || projOn}
+                                          onCheckedChange={(v) =>
+                                            toggleEnvironment(env, v, projOn)
+                                          }
+                                          expandable={env.apps.length > 0}
+                                          expanded={envExpanded}
+                                          onToggleExpand={() => toggleOpen(env.id)}
+                                          id={`scope-env-${env.id}`}
+                                        />
+                                        {envExpanded &&
+                                          env.apps.map((app) => (
+                                            <Row
+                                              key={app.id}
+                                              depth={3}
+                                              mark={<AppMark logo={app.logo} />}
+                                              label={app.name}
+                                              meta={app.slug}
+                                              checked={envOn || apps.has(app.id)}
+                                              disabled={disabled || envOn}
+                                              onCheckedChange={(v) =>
+                                                toggleApp(app.id, v, envOn)
+                                              }
+                                              id={`scope-app-${app.id}`}
+                                            />
+                                          ))}
+                                      </div>
+                                    );
+                                  })}
                                   {project.folders.map((f) =>
                                     renderFolder(f, 2, projOn),
                                   )}
@@ -543,8 +620,22 @@ function TintedMark({
 
 const plural = (n: number, one: string) => `${n} ${n === 1 ? one : `${one}s`}`;
 
-function countApps(node: { folders: ScopeTreeFolder[]; apps: ScopeTreeApp[] }): number {
-  return node.apps.length + node.folders.reduce((n, f) => n + countApps(f), 0);
+/** "Default · 4 apps", or just the count. An empty environment still shows. */
+const envMeta = (e: { isDefault: boolean; apps: unknown[] }) =>
+  `${e.isDefault ? "Default · " : ""}${
+    e.apps.length === 0 ? "No apps" : plural(e.apps.length, "app")
+  }`;
+
+function countApps(node: {
+  environments?: { apps: ScopeTreeApp[] }[];
+  folders: ScopeTreeFolder[];
+  apps: ScopeTreeApp[];
+}): number {
+  return (
+    node.apps.length +
+    (node.environments ?? []).reduce((n, e) => n + e.apps.length, 0) +
+    node.folders.reduce((n, f) => n + countApps(f), 0)
+  );
 }
 const folderMeta = (f: ScopeTreeFolder) => plural(countApps(f), "app");
 const projectMeta = (p: ScopeTreeTeam["projects"][number]) =>
