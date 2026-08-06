@@ -99,7 +99,13 @@ export function MemberDetailTabs({
     if (next === TABS[0]) q.delete("tab");
     else q.set("tab", next);
     const s = q.toString();
-    router.replace(s ? `?${s}` : "?", { scroll: false });
+    // The native History API, NOT `router.replace`: both panels are already on
+    // the client, and a router navigation re-runs this whole page on the server
+    // (the member, the roles, the team's scope tree) to change one query
+    // parameter. Clicking between tabs faster than those renders finish left a
+    // request per click queued behind the last, and the page got slower the more
+    // you clicked. `useSearchParams` still sees this, so `active` follows.
+    window.history.replaceState(null, "", s ? `?${s}` : window.location.pathname);
   }
 
   const initial = React.useMemo(

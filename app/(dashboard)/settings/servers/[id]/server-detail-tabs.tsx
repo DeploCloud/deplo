@@ -111,7 +111,6 @@ export function ServerDetailTabs({
   accessTeamIds: string[];
   cleanup: { policy: CleanupPolicy; runs: CleanupRunDTO[] };
 }) {
-  const router = useRouter();
   const params = useSearchParams();
   const requested = params.get("tab");
   const active: TabId = (TABS as readonly string[]).includes(requested ?? "")
@@ -122,9 +121,13 @@ export function ServerDetailTabs({
     const next = new URLSearchParams(params.toString());
     if (tab === "overview") next.delete("tab");
     else next.set("tab", tab);
+    const s = next.toString();
     // replace, not push: flipping between tabs is not navigation the back button
-    // should have to walk through one step at a time.
-    router.replace(`?${next.toString()}`, { scroll: false });
+    // should have to walk through one step at a time. And the NATIVE History API
+    // rather than `router.replace`, which would re-render this page on the server
+    // — every read it does, DNS resolution included — for a query parameter the
+    // client already has the panels for. `useSearchParams` still sees it.
+    window.history.replaceState(null, "", s ? `?${s}` : window.location.pathname);
   }
 
   return (
