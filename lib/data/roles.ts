@@ -17,6 +17,8 @@ import { requireActiveTeamId, requireCapability, requireUnscoped } from "../memb
 import {
   BUILTIN_ROLE_KEYS,
   CAPABILITY_META,
+  PROJECT_SCOPED_CAPABILITIES,
+  boundedBy,
   expandLegacyCapabilities,
   CAPABILITY_PRESETS,
   ROLE_DEFAULTS,
@@ -343,9 +345,43 @@ export async function roleAssignment(
     // A custom role ranks as `member`: only the Owner default outranks, and only
     // rank 'owner' unlocks acting on other owners.
     rank: ((role.builtinKey as Role | null) ?? "member") as Role,
-    capabilities: withView(caps.map((c) => c.capability as Capability)),
+    capabilities: effectiveRoleCapabilities(
+      caps.map((c) => c.capability as Capability),
+      role.scoped,
+    ),
     name: role.name,
   };
+}
+
+/**
+ * What a role's capabilities MEAN once its reach is taken into account — the set
+ * that lands in `membership_capabilities`, which is what every authorization
+ * check reads.
+ *
+ * A scoped role is clamped to {@link PROJECT_SCOPED_CAPABILITIES}, exactly as a
+ * narrowed API token is (`clampToToken`), and that single line is what makes the
+ * rest of the model hold:
+ *
+ *  - `requireCapability("manage_members")` is a plain read of the member's
+ *    stored set, so without the clamp a scoped role would still administer the
+ *    whole team through every team-wide gate;
+ *  - `assertTeamAdminCoverage` counts holders of the critical capabilities off
+ *    the same junction, so the clamp is also what stops a team from scoping its
+ *    way into having no administrator while the counter reports green;
+ *  - `holdsManageTeam` reads that junction unclamped, so this is what keeps a
+ *    scoped member from resolving as a folder super-user.
+ *
+ * The AUTHORED set stays in `team_role_capabilities` untouched: it is what the
+ * role editor shows (struck through, for the ones a scope silences), and it is
+ * what comes back if the scope is ever widened.
+ */
+export function effectiveRoleCapabilities(
+  authored: Capability[],
+  scoped: boolean,
+): Capability[] {
+  return withView(
+    scoped ? boundedBy(authored, PROJECT_SCOPED_CAPABILITIES) : authored,
+  );
 }
 
 /**
@@ -443,13 +479,22 @@ async function assertTeamAdminCoverage(
   }
 }
 
-/** Re-write the effective capabilities of every member holding this role. */
+/**
+ * Re-write the effective capabilities of every member holding this role.
+ *
+ * Takes the AUTHORED set plus the role's reach and clamps here, rather than
+ * trusting each caller to have done it: `membership_capabilities` is what every
+ * authorization check reads, so a call site that forgot would hand a limited
+ * role the whole team.
+ */
 async function syncMembersOfRole(
   tx: DbTx,
   teamId: string,
   roleId: string,
-  caps: Capability[],
+  authored: Capability[],
+  scoped: boolean,
 ): Promise<number> {
+  const caps = effectiveRoleCapabilities(authored, scoped);
   const members = await tx
     .select({ id: membershipsTable.id })
     .from(membershipsTable)
@@ -484,6 +529,7 @@ async function roleInTeam(
   builtinKey: string | null;
   name: string;
   description: string | null;
+  scoped: boolean;
 }> {
   const rows = await db
     .select({
@@ -491,6 +537,7 @@ async function roleInTeam(
       builtinKey: teamRolesTable.builtinKey,
       name: teamRolesTable.name,
       description: teamRolesTable.description,
+      scoped: teamRolesTable.scoped,
     })
     .from(teamRolesTable)
     .where(and(eq(teamRolesTable.id, roleId), eq(teamRolesTable.teamId, teamId)))
@@ -730,7 +777,7 @@ export async function updateRole(input: {
     await tx
       .insert(teamRoleCapabilitiesTable)
       .values(capabilities.map((c) => ({ roleId: role.id, capability: c })));
-    await syncMembersOfRole(tx, teamId, role.id, capabilities);
+    await syncMembersOfRole(tx, teamId, role.id, capabilities, role.scoped);
     await assertTeamAdminCoverage(tx, teamId);
   });
   await recordActivity(
@@ -779,7 +826,7 @@ export async function resetRole(id: string): Promise<void> {
     await tx
       .insert(teamRoleCapabilitiesTable)
       .values(capabilities.map((c) => ({ roleId: role.id, capability: c })));
-    await syncMembersOfRole(tx, teamId, role.id, capabilities);
+    await syncMembersOfRole(tx, teamId, role.id, capabilities, role.scoped);
     await assertTeamAdminCoverage(tx, teamId);
   });
   await recordActivity(

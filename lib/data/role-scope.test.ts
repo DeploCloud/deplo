@@ -267,6 +267,43 @@ test("a folder share extends the scope instead of being clamped by it", async ()
   assert.equal(await reaches({ kind: "app", id: APP_OUT_PRC }), false);
 });
 
+test("a scoped role cannot hold a team-wide capability, however it was authored", async () => {
+  // Authored with the lot, including the three that lock a team out if nobody
+  // holds them. The AUTHORED set is what the role editor shows.
+  await db.delete(teamRoleCapabilitiesTable).where(eq(teamRoleCapabilitiesTable.roleId, ROLE));
+  const authored: Capability[] = [
+    "view",
+    "deploy_apps",
+    "manage_env",
+    "manage_members",
+    "manage_roles",
+    "manage_team",
+    "create_databases",
+    "manage_tokens",
+  ];
+  await db
+    .insert(teamRoleCapabilitiesTable)
+    .values(authored.map((capability) => ({ roleId: ROLE, capability })));
+  await scopeTo({ projects: [PRC_IN] });
+
+  // Re-assigning the role is what writes the membership set, and it is where
+  // the clamp lands: everything that only means something team-wide is gone.
+  const { roleAssignment } = await import("./roles");
+  const assignment = await roleAssignment(db, TEAM_A, ROLE);
+  assert.deepEqual(
+    assignment.capabilities,
+    ["view", "deploy_apps", "manage_env"],
+    "a scoped role keeps only what still means something inside a project",
+  );
+
+  // The authored set is untouched: it is what comes back if the scope widens.
+  const stored = await db
+    .select({ capability: teamRoleCapabilitiesTable.capability })
+    .from(teamRoleCapabilitiesTable)
+    .where(eq(teamRoleCapabilitiesTable.roleId, ROLE));
+  assert.equal(stored.length, authored.length);
+});
+
 test("manage_team does not lift a scope, only instance admin does", async () => {
   await scopeTo({ projects: [PRC_IN] });
   await pg.exec(
