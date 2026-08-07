@@ -1,8 +1,10 @@
 import "server-only";
 
-import { eq } from "drizzle-orm";
+import { and, eq, isNull } from "drizzle-orm";
 import { getDb } from "../db/client";
 import {
+  apps as appsTable,
+  appPreviews as appPreviewsTable,
   databases as databasesTable,
   installedPlugins as installedPluginsTable,
   teams as teamsTable,
@@ -103,6 +105,10 @@ export async function canDeleteTeam(): Promise<{
 export interface TeardownPlan {
   /** Structural: an assembled App (lib/types.ts) satisfies it, and so does a bare row. */
   services: { id: string; slug: string; serverId: string }[];
+  /** Live pull request preview stacks, snapshotted the same way: each is its own
+   *  container + volume set under `deplo-<slug>__pr-<n>`, invisible to the app's
+   *  own teardown. Absent ⇒ nothing to sweep (a team with no previews). */
+  previewStacks?: { deployKey: string; serverId: string }[];
   databases: { id: string; host: string; serverId: string }[];
   /** Frozen slugs of the team's installed plugins (containers on the Deplo host). */
   appSlugs: string[];
@@ -123,6 +129,22 @@ export interface TeardownPlan {
  */
 export function teardownTeamResources(plan: TeardownPlan, tag = "team-delete"): void {
   void (async () => {
+    // Preview stacks first: they own volumes, and their rows are already gone.
+    await mapLimit(plan.previewStacks ?? [], 4, async (preview) => {
+      try {
+        const conn = await connectAgent(preview.serverId);
+        try {
+          await conn.destroyStack(preview.deployKey, true);
+        } finally {
+          conn.close();
+        }
+      } catch (e) {
+        console.warn(
+          `[deplo-${tag}] could not destroy preview stack ${preview.deployKey}: ` +
+            (e instanceof Error ? e.message : String(e)),
+        );
+      }
+    });
     await mapLimit(plan.services, 4, async (service) => {
       try {
         const conn = await connectAgent(service.serverId);
@@ -231,6 +253,24 @@ export async function deleteTeam(teamId: string): Promise<void> {
       // caught (rows born after this point are lost to the cascade, but the
       // window is now milliseconds, not the length of the agent fan-out).
       const services = await loadAppsByTeam(ctx.teamId);
+      // Live pull request preview stacks: each is its own container + volume set
+      // under `deplo-<slug>__pr-<n>`, and the cascade below drops the only rows
+      // that name them.
+      const previewStacks = (
+        await db
+          .select({
+            deployKey: appPreviewsTable.deployKey,
+            serverId: appsTable.serverId,
+          })
+          .from(appPreviewsTable)
+          .innerJoin(appsTable, eq(appsTable.id, appPreviewsTable.appId))
+          .where(
+            and(
+              eq(appsTable.teamId, ctx.teamId),
+              isNull(appPreviewsTable.tornDownAt),
+            ),
+          )
+      ).map((r) => ({ deployKey: r.deployKey, serverId: r.serverId }));
       const databases = await db
         .select({
           id: databasesTable.id,
@@ -259,6 +299,7 @@ export async function deleteTeam(teamId: string): Promise<void> {
 
       return {
         services,
+        previewStacks,
         databases,
         // Prefer the slug frozen at install; legacy rows derive it (the team
         // row was just read, before the delete).

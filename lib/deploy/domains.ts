@@ -6,6 +6,7 @@ import {
   adjectives,
   animals,
 } from "unique-names-generator";
+import { hash6 } from "./routing";
 import type { CertProvider, DomainEntrypoint } from "../types";
 
 /**
@@ -472,15 +473,60 @@ export function productionDomain(slug: string, ip = instanceHost()): string {
 }
 
 /**
- * Unique preview domain for a deployment: `<slug>-<token>-<adj>-<animal>-<hexip>
- * .nip.io`. The per-deploy `token` keeps two previews of the same project
- * distinct even though the words are freshly random each deploy (a preview host
- * is ephemeral and never persisted, so regenerating is fine).
+ * The hostname a pull request preview answers on, and the certificate provider
+ * its router must be rendered with.
+ *
+ * DETERMINISTIC by construction — same (app, pull request) ⇒ same host, every
+ * time. That is the whole point: the URL is commented on the pull request, so a
+ * host regenerated on each rebuild would strand a link somebody is testing. The
+ * value is still stored on the `app_previews` row (minted once, never
+ * recomputed); determinism is what makes that storage a cache rather than a
+ * coin flip.
+ *
+ * Two shapes:
+ *  - **no base domain** (the default, zero DNS configuration):
+ *    `<slug>-pr-<n>-<hash6>-<hexip>.nip.io`, served over PLAIN HTTP. nip.io can
+ *    never hold a Let's Encrypt certificate — it is one registered domain whose
+ *    issuance budget is shared with the entire internet — which is exactly why
+ *    Deplo's own auto domains are born `certProvider: "none"` too. The `hash6`
+ *    stands in for the random `adjective-animal` a production auto domain gets:
+ *    it keeps two apps' previews apart without being random.
+ *  - **a base domain** (advanced, one wildcard DNS record):
+ *    `<slug>-pr-<n>.<base>`, with a per-preview HTTP-01 certificate from the
+ *    existing `letsencrypt` resolver. No wildcard certificate and therefore no
+ *    DNS-01 provider, so nothing in Traefik's static configuration changes. The
+ *    slug is part of the host, so two apps sharing one base never collide.
  */
-export function previewDomain(
-  slug: string,
-  token: string,
-  ip = instanceHost(),
-): string {
-  return nipDomain(`${slug}-${token}`, randomWords(), ip);
+export function previewHost(opts: {
+  appId: string;
+  slug: string;
+  prNumber: number;
+  /** e.g. `preview.example.com`. Empty/absent ⇒ the nip.io default. */
+  baseDomain?: string | null;
+  ip?: string;
+}): { host: string; certProvider: CertProvider } {
+  const label = `${opts.slug}-pr-${opts.prNumber}`;
+  const base = (opts.baseDomain ?? "").trim().replace(/^\.+|\.+$/g, "");
+  if (base) {
+    return { host: `${label}.${base}`.toLowerCase(), certProvider: "letsencrypt" };
+  }
+  return {
+    host: nipDomain(label, hash6(`${opts.appId}:${opts.prNumber}`), opts.ip),
+    certProvider: "none",
+  };
+}
+
+/**
+ * Whether a string is usable as the base of a preview hostname. Deliberately
+ * strict: it is concatenated into a Traefik `Host()` rule, so anything that is
+ * not a plain dotted hostname is refused rather than escaped.
+ */
+export function isValidPreviewBaseDomain(base: string): boolean {
+  const clean = base.trim().replace(/^\.+|\.+$/g, "").toLowerCase();
+  if (!clean || clean.length > 200) return false;
+  // At least one dot (a bare TLD is never what anyone means), and each label is
+  // alphanumeric with inner dashes.
+  return /^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)+$/.test(
+    clean,
+  );
 }

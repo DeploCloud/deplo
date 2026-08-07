@@ -32,8 +32,12 @@ const GIT_FEEDBACK: Record<string, { ok: boolean; msg: string }> = {
 export function GithubPanel({
   apps,
   gitStatus,
+  previewReadiness,
 }: {
   apps: GithubAppDTO[];
+  /** Per-App: can it drive pull request previews, and where to fix it. A missing
+   *  entry means GitHub could not be asked — no badge, no accusation. */
+  previewReadiness?: Record<string, { ready: boolean; settingsUrl: string }>;
   gitStatus?: string;
 }) {
   const router = useRouter();
@@ -106,6 +110,30 @@ export function GithubPanel({
                     <Trash2 className="size-4" />
                   </Button>
                 </div>
+
+                {previewReadiness?.[app.id] &&
+                  !previewReadiness[app.id].ready && (
+                    <div className="mt-3 rounded-md border border-[var(--warning)]/30 bg-[var(--warning)]/5 p-3">
+                      <p className="text-xs font-medium">
+                        This App cannot see pull requests yet
+                      </p>
+                      <p className="mt-1 text-xs text-muted-foreground">
+                        Pull request previews need the pull request event and
+                        permission to comment. GitHub only lets you change that
+                        on its own settings page.
+                      </p>
+                      <Button asChild size="sm" className="mt-2">
+                        <a
+                          href={previewReadiness[app.id].settingsUrl}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                        >
+                          Update on GitHub
+                          <ExternalLink className="size-3.5" />
+                        </a>
+                      </Button>
+                    </div>
+                  )}
 
                 {app.installations.length > 0 && (
                   <div className="mt-3 flex flex-wrap gap-2">

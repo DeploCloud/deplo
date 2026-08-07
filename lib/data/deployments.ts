@@ -15,7 +15,7 @@ import {
   requireCapability,
   requireMembership,
 } from "../membership";
-import { githubCommitUrl } from "../utils";
+import { githubCommitUrl, githubPullRequestUrl } from "../utils";
 import { publishAppChanged } from "../graphql/pubsub";
 import { recordActivity } from "./activity";
 import { startDeployment, destroyStack, rerouteApp } from "../deploy/build";
@@ -50,6 +50,10 @@ export async function listDeployments(filter?: {
      * source — lets a list decorate the SHA with a link without loading the
      * project graph. */
     commitUrl: string | null;
+    /** GitHub URL of the pull request this preview build came from, or null for
+     *  a production build. Derived from the denormalized `prNumber`, so it keeps
+     *  working after the preview row itself is reaped. */
+    pullRequestUrl: string | null;
     /** Owning server of the deployment — the host it ran on (`deployments.server_id`,
      *  denormalized) falling back to the app's current server. null only when
      *  neither is set (a legacy row on an app with no resolvable server). */
@@ -150,6 +154,10 @@ export async function listDeployments(filter?: {
         commitUrl: githubCommitUrl(
           { provider: p?.repoProvider, repo: p?.repoRepo, url: p?.repoUrl },
           dep.commitSha,
+        ),
+        pullRequestUrl: githubPullRequestUrl(
+          { provider: p?.repoProvider, repo: p?.repoRepo, url: p?.repoUrl },
+          dep.prNumber,
         ),
       };
     });
@@ -643,41 +651,6 @@ export async function cancelAllDeployments(
   return cancelDeploymentRows(permitted, membership.teamId, user.name);
 }
 
-export async function promoteToProduction(id: string): Promise<void> {
-  const { membership } = await requireMembership();
-  const user = (await getCurrentUser())!;
-  const existing = await loadDeployment(id);
-  if (!existing) throw new Error("Deployment not found");
-  await requireAppCapability(existing.appId, "deploy_apps");
-  // One tx: flip the deployment to production AND point the project at it.
-  await getDb().transaction(async (tx) => {
-    const dep = await tx
-      .select()
-      .from(deploymentsTable)
-      .where(eq(deploymentsTable.id, id))
-      .limit(1);
-    if (dep.length === 0) throw new Error("Deployment not found");
-    await tx
-      .update(deploymentsTable)
-      .set({ environment: "production" })
-      .where(eq(deploymentsTable.id, id));
-    await tx
-      .update(appsTable)
-      .set({
-        latestDeploymentId: id,
-        productionUrl: dep[0]!.url,
-        updatedAt: nowIso(),
-      })
-      .where(eq(appsTable.id, dep[0]!.appId));
-  });
-  await recordActivity(
-    "deployment",
-    `Promoted deployment to production`,
-    user.name,
-    null,
-    membership.teamId,
-  );
-}
 
 /**
  * A project's deployments, newest-first. Thin wrapper over the loader's SQL
@@ -698,9 +671,12 @@ export async function listAppDeployments(
  * anyway (P6 spirit) and the caller warns that leftover containers on the remote
  * must be cleaned by hand. Never throws, so a dead remote never blocks a delete.
  */
-export async function teardownApp(slug: string): Promise<boolean> {
+export async function teardownApp(
+  deployKey: string,
+  opts: { removeVolumes?: boolean } = {},
+): Promise<boolean> {
   try {
-    await destroyStack(slug);
+    await destroyStack(deployKey, opts);
     return true;
   } catch {
     return false;

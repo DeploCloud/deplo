@@ -71,9 +71,10 @@ its members), user group, team role level.
 
 **Capability**:
 ONE action a member may be allowed to take — `create_apps`, `deploy_apps`, `delete_apps`,
-`open_app_console`, `create_databases`, `restore_backups`, `manage_tokens`,
-`organize_folders`, … (forty of them; the catalog with labels, descriptions, search
-keywords and browse categories is `lib/capabilities.ts`). Never a bundle: if a name covers
+`open_app_console`, `manage_previews`, `create_databases`, `restore_backups`,
+`manage_tokens`, `organize_folders`, … (forty-one of them; the catalog with labels,
+descriptions, search keywords and browse categories is `lib/capabilities.ts`). Never a
+bundle: if a name covers
 two actions an admin might want to separate, it is two capabilities. `view` is the
 always-on floor. Capabilities are the enforcement primitive; a **Role** is the named set a
 member is assigned. Enforced server-side on every mutating action via `requireCapability`.
@@ -399,7 +400,8 @@ _Avoid_: deployment (that is the build event, not the runtime), production conta
 
 **Deployment**:
 A single build-and-release event that produces or updates the production stack (or a
-preview). Always image-based; recorded as a `Deployment` row.
+**pull request preview**). Always image-based; recorded as a `Deployment` row, which
+carries the **deploy key** naming the stack it actually touched.
 _Avoid_: build (the build is one phase of a deployment), release.
 
 **Deploy hook**:
@@ -423,6 +425,39 @@ it off (`build_cache`, every build then runs `--no-cache`) or **clear** it
 Nothing is pruned from a per-app control: reclaiming disk is **Docker cleanup**'s job, server-wide.
 _Avoid_: "delete the build cache" for the per-app action (nothing is deleted), layer cache
 (that is only part of it — the builders' `type=cache` mounts are the other).
+**Deploy key** (ADR-0008, consumed by ADR-0017):
+The one string every host-side artifact of a deploy is named after: the container
+`deplo-<key>`, the stack file `<key>.yml`, the files dir `files/<key>`, the named volumes
+`deplo-<key>-<name>`, the Traefik router `baseKey`, and every slug-shaped agent RPC. A
+production deploy's key **is** the app slug, which is why the concept could be introduced
+without touching a single running stack; a pull request preview's is `<slug>__pr-<n>`.
+Because a slug is `[a-z0-9-]` and can never contain `__`, everything before the first `__`
+is provably the app slug — the key resolves back to its app with no column, index or join.
+Stored on `deployments.deploy_key` (denormalized, like `server_id`).
+_Avoid_: slug (a key is not always one), stack id, container name (that is `deplo-<key>`).
+
+**Pull request preview**:
+An **ephemeral** deploy of one App for one open **pull request**, running as its own stack
+`deplo-<slug>__pr-<n>` with its own host, volumes and files dir, and torn down — volumes
+included — when the pull request closes. Recorded as an `app_previews` row plus one
+`Deployment` per build (`environment: "preview"`). It is **neither an App nor an
+Environment**: it has no team placement, no domains of its own, and no Console, Files,
+Backups or Monitoring surface. Only a `source: "github"` App can have one, off by default,
+and a pull request from a **fork** waits for a member with `manage_previews` to approve it — even then
+it never receives a `secret`-typed variable. See
+[ADR-0017](./docs/adr/0017-pull-request-previews-are-per-pull-request-stacks.md).
+_Avoid_: "Preview" alone as a nav label or page title (that is an **Environment** `kind`),
+"preview environment", "PR environment", branch deploy, ephemeral environment.
+
+**Evicted** (a pull request preview's status):
+Stopped by the App's own live limit, not by its pull request. At the limit a new preview tears
+down the open one with the oldest `last_activity_at`; that row survives (`state` still `open`)
+and keeps its **deploy key** and host, so **Redeploy** brings the same URL back. A push never
+revives it — only a person does, which is what stops two pull requests at the limit from
+destroying each other on every commit. An evicted preview holds no slot, and neither does a
+`blocked` one: neither has a stack.
+_Avoid_: expired (that is the idle timeout), deleted, closed (that is the pull request's own
+lifecycle), "over quota".
 
 **Database**:
 A managed datastore container (`postgres`/`mysql`/`mariadb`/`mongodb`/`redis`/`clickhouse`)
@@ -478,7 +513,21 @@ The axis (`production` | `preview`) that decides which runtime an env var reache
 applies to per-app vars, instance globals, and **Shared variables** (the orthogonal
 runtime axis, alongside their sharing modes). The third value, `development`, died with
 dev mode (migration 0041): its only consumer was the dev container's env resolution.
+Since the target picker was removed, every var is written with BOTH targets — so a **pull
+request preview** inherits an app's variables in full, which is exactly what makes previews
+work with no configuration.
 _Avoid_: environment (that is the per-Project entity); scope.
+
+**Preview override**:
+A per-app, **preview-only** replacement for one variable (`app_preview_env_vars`). It folds
+LAST in `resolveEnvEntries` — above the app's own value AND above a linked **Shared
+variable** — and only for the `preview` target. The precedence is deliberate and is the one
+place ADR-0012's "the link keeps the top slot" is outranked: a shared variable is a team
+default, an override is the most specific statement a user can make ("in previews, use
+this"), and without that the feature could not do the one thing it exists for — pointing a
+pull request's preview at a scratch database. Advanced, collapsed, and empty for almost
+every app.
+_Avoid_: preview variable (it overrides an existing one), env override (name the runtime).
 
 **Shared variable** (ADR-0010, opt-in per ADR-0012):
 ONE variable owned by a team, the unified replacement for shared-env groups,

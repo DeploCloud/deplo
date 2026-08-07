@@ -1,7 +1,7 @@
 -- ADR-0008 Phase 3b: per-(Service, Environment) runtime-state join. Additive and
 -- inert until the deploy pipeline is environment-parameterized (a later step) —
 -- a row is created when a service is first deployed to an environment. The stack
--- deploy KEY is derived (env-deploy-key.ts), not stored.
+-- deploy KEY is derived (deploy/deploy-key.ts), not stored.
 
 CREATE TABLE "service_environments" (
 	"service_id" text NOT NULL,

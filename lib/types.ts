@@ -31,6 +31,7 @@ export type Capability =
   | "delete_apps"
   | "move_apps"
   | "open_app_console"
+  | "manage_previews"
   // App configuration
   | "manage_domains"
   | "manage_basic_auth"
@@ -86,6 +87,7 @@ export const ALL_CAPABILITIES: Capability[] = [
   "delete_apps",
   "move_apps",
   "open_app_console",
+  "manage_previews",
   "manage_domains",
   "manage_basic_auth",
   "manage_env",
@@ -1036,6 +1038,27 @@ export interface Deployment {
   appId: ID;
   status: DeploymentStatus;
   environment: DeploymentEnvironment;
+  /**
+   * The host-side KEY this deploy owns: the container `deplo-<key>`, the stack
+   * file `<key>.yml`, the files dir `files/<key>`, the named volumes
+   * `deplo-<key>-<name>` and every agent RPC. For production it IS the app slug;
+   * for a pull request preview it is `<slug>__pr-<n>`. See
+   * {@link ../deploy/deploy-key}.
+   */
+  deployKey: string;
+  /** The pull request preview this deploy belongs to, or null for production. */
+  previewId: ID | null;
+  /** Denormalized pull request number, so the deployments list can still say
+   *  "PR #42" after the preview row is reaped. Null for production. */
+  prNumber: number | null;
+  /**
+   * The server this deploy runs on. Denormalized so the queue can drain
+   * per-server without an apps join — and load-bearing beyond that, because a
+   * pull request preview may be pinned to a different machine than production.
+   * The row, never the app, is the authority on where a deploy went. Nullable
+   * only for rows that predate the column; every write since sets it.
+   */
+  serverId: ID | null;
   commitSha: string;
   commitMessage: string;
   commitAuthor: string;

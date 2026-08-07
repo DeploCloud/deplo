@@ -248,11 +248,11 @@ Single endpoint `app/api/graphql/route.ts` (thin) → `lib/graphql/yoga.ts`. One
 - Auth helpers: `getCurrentUser()` (nullable), `assertUser()` (**throws** — resolvers/data),
   `requireUser()` (**redirects** — RSC/pages). `recordActivity(...)` runs **outside** any open
   transaction (own connection; deadlocks pglite otherwise) and is fire-and-forget.
-- **Capabilities are FINE-GRAINED (40)** — one action each, catalogued with labels,
+- **Capabilities are FINE-GRAINED (41)** — one action each, catalogued with labels,
   descriptions, search keywords and browse categories in **`lib/capabilities.ts`**
   (`create_apps`, `deploy_apps`, `delete_apps`, `open_app_console`, `read_app_files` vs
   `write_app_files`, `create_databases`, `restore_backups`, `manage_tokens`,
-  `organize_folders`, `view_logs`, `manage_roles`, `delete_team`, …). `view` is the always-on
+  `organize_folders`, `manage_previews`, `view_logs`, `manage_roles`, `delete_team`, …). `view` is the always-on
   floor; plus instance-wide `instanceAdmin` and the orthogonal grants `canExposePorts` /
   `canMountHostVolumes`. **Never add a capability that covers two actions** — if an admin
   might want them apart, they are two. Picking the right one at a call site is the whole

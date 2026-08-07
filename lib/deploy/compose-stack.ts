@@ -81,10 +81,32 @@ export interface ComposeDomainRoute {
 
 export interface ComposeStackInput {
   compose: string;
-  /** Router/service name + label namespace, e.g. `deplo-<slug>`. */
+  /** Router/service name + label namespace, e.g. `deplo-<deployKey>`. */
   name: string;
-  slug: string;
+  /**
+   * The stack's DEPLOY KEY — what the named volumes and the `deplo.slug` label
+   * are named after. The app slug for a production deploy (so the render stays
+   * byte-identical), `<slug>__pr-<n>` for a pull request preview. See
+   * [deploy-key](./deploy-key.ts).
+   */
+  deployKey: string;
+  /**
+   * Drop every service's published host `ports:`. Set for a pull request
+   * preview and never for production: a host port cannot be shared, so an
+   * inherited `ports:` would make the second preview of an app (or the first
+   * one alongside production) fail to start.
+   */
+  stripPublishedPorts?: boolean;
   appId: string;
+  /**
+   * What the `deplo.project` label carries — the value the telemetry stream
+   * buckets container stats by. Defaults to `appId`. A pull request preview
+   * passes its OWN id, which is what keeps its containers out of the App's live
+   * status, monitoring charts and console instance list; the owning app stays
+   * discoverable on the host through the extra `deplo.app` label emitted only in
+   * that case.
+   */
+  trackingId?: string;
   /**
    * The routed domains — one Traefik router each, to the route's named compose
    * service. The SOLE routing source (from the `domains` table). Empty ⇒ the
@@ -524,7 +546,7 @@ function appNetworks(svc: App): string[] {
  * the previous service — data loss that looks like a successful deploy.
  *
  * SOURCE, per kind:
- *  - "named": the top-level alias, pinned to `hostVolumeName(slug, name)` —
+ *  - "named": the top-level alias, pinned to `hostVolumeName(deployKey, name)` —
  *    byte-for-byte the host name the single-container renderer uses, so an app
  *    that changes source keeps its data and `composeStackVolumeHostNames` (backup
  *    / server-move) enumerates it like any other stack volume.
@@ -602,7 +624,7 @@ function injectAppVolumes(
       let key = v.name;
       for (let n = 2; takenKeys.has(key); n++) key = `${v.name}-${n}`;
       takenKeys.add(key);
-      topLevel[key] = { name: hostVolumeName(input.slug, v.name) };
+      topLevel[key] = { name: hostVolumeName(input.deployKey, v.name) };
       source = key;
     }
     const list = byService.get(svcName) ?? [];
@@ -623,7 +645,8 @@ function injectAppVolumes(
 }
 
 export function buildComposeStack(input: ComposeStackInput): string {
-  const { compose, name, slug, appId, domainRoutes } = input;
+  const { compose, name, deployKey, appId, domainRoutes } = input;
+  const trackingId = input.trackingId ?? appId;
   // App settings env-var NAMES injected into every service as bare `- KEY`
   // pass-throughs below (values stay in the env-file). Empty/absent ⇒ no env
   // change at all (byte-identical to a stack without injected env).
@@ -657,10 +680,25 @@ export function buildComposeStack(input: ComposeStackInput): string {
   // EVERY service so the whole stack (not just the routed ones) is discoverable
   // by label — otherwise sidecars/databases are invisible to the container
   // count, console, health wait and teardown.
-  const tracking = deploLabels(appId, slug);
+  // `deplo.project` carries the TRACKING id (the app, or a preview's own id);
+  // `deplo.app` is emitted only when the two differ, so a production stack's
+  // labels are byte-identical to what they have always been.
+  const tracking = [
+    ...deploLabels(trackingId, deployKey),
+    ...(trackingId === appId ? [] : [`deplo.app=${appId}`]),
+  ];
   for (const [serviceName, svc] of Object.entries(services)) {
     if (svc && typeof svc === "object") {
       delete (svc as App).container_name;
+      // A pull request preview publishes NOTHING on the host. Production's
+      // `ports:` are left intact (see wireApp below) because a published port is
+      // a deliberate choice — but a preview did not make that choice, it
+      // inherited it, and a host port is a singleton: the second preview of the
+      // same app, or the first alongside its own production stack, would fail to
+      // start with "port is already allocated". Services still reach each other
+      // over the `deplo` network and the outside world reaches them through
+      // Traefik, which is how a preview is meant to be visited anyway.
+      if (input.stripPublishedPorts) delete (svc as App).ports;
       if (input.filesDir) rewriteAppVolumes(svc as App, input.filesDir);
       mergeLabels(svc as App, tracking);
       // Built images get the same tracking as IMAGE labels (+ the service name)
@@ -752,5 +790,5 @@ export function buildComposeStack(input: ComposeStackInput): string {
   injectAppVolumes(doc, services, input);
 
   const body = yaml.dump(doc, { lineWidth: -1, noRefs: true });
-  return `# Generated by Deplo  ${slug}\n${body}`;
+  return `# Generated by Deplo  ${deployKey}\n${body}`;
 }

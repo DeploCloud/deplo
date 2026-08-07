@@ -5,7 +5,9 @@ import { listEnv } from "@/lib/data/env";
 import { hasAppCapability } from "@/lib/data/node-access";
 import { listSharedVars, listSharedVarsForApp } from "@/lib/data/shared-vars";
 import { hasCapability, reachesWholeTeam } from "@/lib/membership";
+import { listPreviewEnvVars } from "@/lib/data/previews";
 import { EnvManager } from "@/components/env/env-manager";
+import { PreviewOverrides } from "@/components/env/preview-overrides";
 import { EmptyState } from "@/components/shared/empty-state";
 
 export const metadata = { title: "Environment Variables" };
@@ -35,7 +37,7 @@ export default async function AppEnvPage(
     );
   }
 
-  const [vars, sharedVars, allSharedVars] = await Promise.all([
+  const [vars, sharedVars, allSharedVars, previewOverrides] = await Promise.all([
     listEnv(project.id),
     listSharedVarsForApp(project.id),
     // The full records back the value edit + "Shared with" chips a shared row now
@@ -43,6 +45,7 @@ export default async function AppEnvPage(
     // it stays behind the TEAM capability: someone whose `manage_env` comes from
     // this app alone sees the app's own variables, not the team's library.
     teamWideEnv ? listSharedVars() : Promise.resolve([]),
+    listPreviewEnvVars(project.id),
   ]);
   const linkedIds = new Set(
     sharedVars.filter((v) => v.linked).map((v) => v.id),
@@ -50,11 +53,14 @@ export default async function AppEnvPage(
   const sharedVarDetails = allSharedVars.filter((v) => linkedIds.has(v.id));
 
   return (
-    <EnvManager
-      appId={project.id}
-      vars={vars}
-      sharedVars={sharedVars}
-      sharedVarDetails={sharedVarDetails}
-    />
+    <div className="space-y-6">
+      <EnvManager
+        appId={project.id}
+        vars={vars}
+        sharedVars={sharedVars}
+        sharedVarDetails={sharedVarDetails}
+      />
+      <PreviewOverrides appId={project.id} overrides={previewOverrides} />
+    </div>
   );
 }

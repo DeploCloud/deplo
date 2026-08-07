@@ -1313,23 +1313,32 @@ export interface RoutableDomain {
 
 /**
  * A {@link RoutableDomain} for a bare hostname carrying no per-domain config:
- * the long-standing HTTPS/letsencrypt TLS triplet, no path, no strip. Used for
- * synthetic routes that aren't backed by a `valid` stored row — a preview's
- * ephemeral host, the primary fallback when a brand-new project has no `valid`
- * domain yet, or a never-deployed compose preview — so every route handed to the
- * router grammar has the full shape. `service`/`port` default to null (the
- * single-image fallback uses neither); the compose preview passes the stored
- * row's service + port so the right compose service is routed.
+ * no path, no strip, and by default the long-standing HTTPS/letsencrypt TLS
+ * triplet. Used for synthetic routes that aren't backed by a `valid` stored row
+ * — the primary fallback when a brand-new project has no `valid` domain yet, a
+ * never-deployed compose preview, or a pull request preview's own host — so
+ * every route handed to the router grammar has the full shape. `service`/`port`
+ * default to null (the single-image fallback uses neither); the compose preview
+ * passes the stored row's service + port so the right compose service is routed.
+ *
+ * `tls` is the ONE thing a caller may override, and it exists because the
+ * default is wrong for exactly one caller: a pull request preview on a nip.io
+ * host. nip.io is a single registered domain whose Let's Encrypt issuance budget
+ * is shared with the whole internet, which is why Deplo's own auto domains are
+ * born `certProvider: "none"` — a preview asking for a certificate there gets
+ * none, and Traefik serves its self-signed default instead. Omitted ⇒
+ * byte-identical to the historical behaviour.
  */
 export function defaultRoute(
   name: string,
   service: string | null = null,
   port: number | null = null,
+  tls: { entrypoint?: DomainEntrypoint; certProvider?: CertProvider } = {},
 ): RoutableDomain {
   return {
     name,
     port,
-    ...domainTlsConfig({}),
+    ...domainTlsConfig(tls),
     middlewares: [],
     pathPrefix: "",
     stripPrefix: false,

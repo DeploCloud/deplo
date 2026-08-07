@@ -77,6 +77,12 @@ export const CAPABILITY_META: Record<Capability, CapabilityMeta> = {
     keywords: "terminal shell exec attach ssh",
     sensitive: true,
   },
+  manage_previews: {
+    label: "Manage pull request previews",
+    description:
+      "Turn pull request previews on, change their settings, and deploy, redeploy or destroy one.",
+    keywords: "preview pull request pr branch ephemeral fork approve",
+  },
 
   /* ---- App configuration ---- */
   manage_domains: {
@@ -300,6 +306,7 @@ export const CAPABILITY_CATEGORIES: {
       "delete_apps",
       "move_apps",
       "open_app_console",
+      "manage_previews",
     ],
   },
   {
@@ -394,6 +401,7 @@ export const LEGACY_CAPABILITY_EXPANSION: Record<string, Capability[]> = {
     "delete_apps",
     "move_apps",
     "open_app_console",
+    "manage_previews",
     "create_folders",
     "organize_folders",
     "delete_folders",

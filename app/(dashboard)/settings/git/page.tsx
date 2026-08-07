@@ -1,5 +1,5 @@
 import { reachesWholeTeam } from "@/lib/membership";
-import { listGithubApps } from "@/lib/data/github";
+import { githubAppsPreviewReadiness, listGithubApps } from "@/lib/data/github";
 import { PageHeader } from "@/components/shared/page-header";
 import { OutsideYourAccess } from "@/components/shared/outside-your-access";
 import { GithubPanel } from "@/components/settings/github-panel";
@@ -21,6 +21,9 @@ export default async function SettingsGitPage(props: {
       />
     );
   const githubApps = await listGithubApps();
+  // Whether each App can drive pull request previews. Read live; an App that
+  // cannot be checked simply gets no entry and no warning.
+  const previewReadiness = await githubAppsPreviewReadiness();
 
   return (
     <div className="space-y-6">
@@ -28,7 +31,11 @@ export default async function SettingsGitPage(props: {
         title="Git"
         description="Connect GitHub apps for repository access and auto-deploys."
       />
-      <GithubPanel apps={githubApps} gitStatus={gitStatus} />
+      <GithubPanel
+        apps={githubApps}
+        gitStatus={gitStatus}
+        previewReadiness={previewReadiness}
+      />
     </div>
   );
 }

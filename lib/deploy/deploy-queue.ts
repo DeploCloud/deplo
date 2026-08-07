@@ -1,6 +1,6 @@
 import "server-only";
 
-import { and, asc, eq, isNull } from "drizzle-orm";
+import { and, asc, eq, isNull, sql } from "drizzle-orm";
 
 import { getDb } from "../db/client";
 import {
@@ -91,10 +91,16 @@ async function concurrencyFor(serverId: string): Promise<number> {
 }
 
 /**
- * The next deploy to run on a server: the OLDEST queued row whose app isn't
- * already busy (in-memory exclusion). Scans the small queued backlog for the
- * server (index-backed, partial `deployments_queued_server_idx`) oldest-first —
- * FIFO by `(createdAt, seq)`, the same total order the deployments list uses.
+ * The next deploy to run on a server: the oldest eligible queued row whose app
+ * isn't already busy (in-memory exclusion). Scans the small queued backlog for
+ * the server (index-backed, partial `deployments_queued_server_idx`).
+ *
+ * PRODUCTION FIRST, then FIFO by `(createdAt, seq)` — the same total order the
+ * deployments list uses, applied within each class. Without the first key, a
+ * repository with several open pull requests could queue a wall of preview
+ * builds ahead of the production deploy somebody is waiting on; a preview is
+ * never urgent in the way a release is. The ordering is over the queued backlog
+ * only, so it needs no new index.
  */
 async function pickNext(
   serverId: string,
@@ -109,7 +115,11 @@ async function pickNext(
         eq(deploymentsTable.status, "queued"),
       ),
     )
-    .orderBy(asc(deploymentsTable.createdAt), asc(deploymentsTable.seq));
+    .orderBy(
+      asc(sql`case when ${deploymentsTable.environment} = 'production' then 0 else 1 end`),
+      asc(deploymentsTable.createdAt),
+      asc(deploymentsTable.seq),
+    );
   for (const r of rows) {
     if (!busyApps.has(r.appId)) return r;
   }
@@ -178,7 +188,11 @@ async function pump(serverId: string, lane: ServerLane): Promise<void> {
     // re-drain after a short backoff (the startOne .catch().finally()
     // contract, applied to the pump itself).
     console.error("[deplo] deploy queue pump failed:", e);
-    setTimeout(() => scheduleServer(serverId), 5_000);
+    // `unref()`: the re-arm must not, by itself, hold the process open. The real
+    // server has plenty of other handles; a test harness (or a CLI task) has
+    // none, and an un-unref'd retry there keeps a finished process alive forever
+    // re-trying against a database that has already been torn down.
+    setTimeout(() => scheduleServer(serverId), 5_000).unref?.();
   } finally {
     lane.pumping = false;
     if (lane.dirty) {

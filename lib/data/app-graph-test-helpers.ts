@@ -1,8 +1,11 @@
+import { eq } from "drizzle-orm";
+
 import {
   deployments as deploymentsTable,
   apps as appsTable,
   appBuild as appBuildTable,
   appBuildMethodSettings as appBuildMethodSettingsTable,
+  appPreviews as appPreviewsTable,
   servers as serversTable,
 } from "../db/schema/control-plane";
 import { buildConfigFor } from "../frameworks";
@@ -39,10 +42,20 @@ export const TRUNCATE_PROJECT_GRAPH = `truncate table
   shared_env_var_targets, shared_env_vars,
   deployment_logs, deployments, env_var_targets, env_vars,
   domain_middlewares, domains,
-  app_mounts, app_volumes,
+  app_mounts, app_volumes, app_preview_env_vars, app_previews,
   app_build_method_settings, app_build, apps,
   folders, servers
   restart identity cascade;`;
+
+/** The app's slug, for defaulting a seeded deployment's deploy key. */
+async function appSlug(db: TestDb, appId: string): Promise<string> {
+  const rows = await db
+    .select({ slug: appsTable.slug })
+    .from(appsTable)
+    .where(eq(appsTable.id, appId))
+    .limit(1);
+  return rows[0]?.slug ?? appId;
+}
 
 /** Seed the instance-wide server row a project's `server_id` FK references. */
 export async function seedServer(db: TestDb, id: string = SERVER_1): Promise<void> {
@@ -151,14 +164,27 @@ export async function seedDeployment(
      *  that never started building). */
     startedAt?: string;
     serverId?: string;
+    /** Defaults to production. A preview row also needs `deployKey`/`previewId`. */
+    environment?: Deployment["environment"];
+    /** The stack this deploy owns. Defaults to the app slug (what production
+     *  deploys always used); a preview passes `<slug>__pr-<n>`. */
+    deployKey?: string;
+    previewId?: string | null;
+    prNumber?: number | null;
   },
 ): Promise<void> {
   const dep: Deployment = {
     id: opts.id,
     appId: opts.appId,
     status: opts.status ?? "ready",
-    environment: "production",
     forceRecreate: false,
+    serverId: opts.serverId ?? SERVER_1,
+    environment: opts.environment ?? "production",
+    // Defaults to the app's slug, which is what every production deploy uses.
+    // Seeders that don't care never have to think about the key.
+    deployKey: opts.deployKey ?? (await appSlug(db, opts.appId)),
+    previewId: opts.previewId ?? null,
+    prNumber: opts.prNumber ?? null,
     commitSha: "",
     commitMessage: "deploy",
     commitAuthor: "Owner",
@@ -173,6 +199,55 @@ export async function seedDeployment(
   await db
     .insert(deploymentsTable)
     .values({ ...deploymentToRow(dep), serverId: opts.serverId ?? null });
+}
+
+/** Seed a pull request preview row for an app. Defaults to an open, same-repo
+ *  preview whose deploy key and host follow the real minting rules. */
+export async function seedPreview(
+  db: TestDb,
+  opts: {
+    id: string;
+    appId: string;
+    prNumber: number;
+    deployKey?: string;
+    host?: string;
+    status?: string;
+    state?: "open" | "closed";
+    isFork?: boolean;
+    headRepo?: string;
+    approvedAt?: string | null;
+    lastActivityAt?: string;
+    closedAt?: string | null;
+    tornDownAt?: string | null;
+  },
+): Promise<void> {
+  const slug = await appSlug(db, opts.appId);
+  await db.insert(appPreviewsTable).values({
+    id: opts.id,
+    appId: opts.appId,
+    prNumber: opts.prNumber,
+    prTitle: `Pull request ${opts.prNumber}`,
+    prAuthor: "octocat",
+    prUrl: `https://github.com/acme/repo/pull/${opts.prNumber}`,
+    headBranch: `feat/pr-${opts.prNumber}`,
+    headSha: "",
+    headRepo: opts.headRepo ?? "",
+    headCloneUrl: "",
+    baseBranch: "main",
+    isFork: opts.isFork ?? false,
+    approvedAt: opts.approvedAt ?? null,
+    deployKey: opts.deployKey ?? `${slug}__pr-${opts.prNumber}`,
+    host: opts.host ?? `${slug}-pr-${opts.prNumber}.example.test`,
+    certProvider: "none",
+    status: opts.status ?? "active",
+    url: "",
+    state: opts.state ?? "open",
+    closedAt: opts.closedAt ?? null,
+    tornDownAt: opts.tornDownAt ?? null,
+    lastActivityAt: opts.lastActivityAt ?? T0,
+    createdAt: T0,
+    updatedAt: T0,
+  });
 }
 
 export { TEAM_A, USER_1 };

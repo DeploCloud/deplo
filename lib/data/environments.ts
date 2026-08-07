@@ -8,6 +8,7 @@ import {
   projects as projectsTable,
   apps as appsTable,
 } from "../db/schema/control-plane";
+import { PREVIEW_SUFFIX_RE } from "../deploy/deploy-key";
 import { newId, nowIso } from "../ids";
 import {
   currentMemberScope,
@@ -185,7 +186,11 @@ async function uniqueEnvSlug(projectId: string, name: string): Promise<string> {
         .where(eq(environmentsTable.projectId, projectId))
     ).map((r) => r.slug),
   );
-  if (!taken.has(base)) return base;
+  // `pr-<n>` is reserved: an environment slugged that way would produce the
+  // EXACT deploy key a pull request preview of the same app owns
+  // (`<slug>__pr-42`), i.e. two different things fighting over one container.
+  // Treat the whole shape as taken so the loop below suffixes past it.
+  if (!taken.has(base) && !PREVIEW_SUFFIX_RE.test(base)) return base;
   for (let i = 2; ; i++) {
     const candidate = `${base}-${i}`;
     if (!taken.has(candidate)) return candidate;

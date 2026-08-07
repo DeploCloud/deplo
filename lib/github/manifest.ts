@@ -35,11 +35,20 @@ export function manifestCreateUrl(org?: string | null): string {
 
 /**
  * Build the manifest. Permissions are the minimum needed to list and clone the
- * user's repos and receive push events for auto-deploy:
- *   contents: read   clone repositories
- *   metadata: read   list repositories / read repo metadata (mandatory)
- *   pull_requests: read  preview deployments from PRs
- * and the `push` event for automatic redeploys.
+ * user's repos, auto-deploy on push, and build a preview per pull request:
+ *   contents: read        clone repositories
+ *   metadata: read        list repositories / read repo metadata (mandatory)
+ *   pull_requests: write  read pull requests AND post the one preview comment
+ *                         (a pull request's conversation comment is an issue
+ *                         comment, and GitHub accepts `pull_requests: write`
+ *                         for it — so this covers both, with no `issues` grant)
+ * plus the `push` and `pull_request` events.
+ *
+ * A manifest is only ever read when an App is CREATED, and GitHub has no API to
+ * change an existing App's permissions or events. An instance that connected
+ * GitHub before previews existed therefore keeps the old set until its owner
+ * updates it on github.com — which is why `readAppCapabilities` exists and why
+ * the Pull requests page says so out loud instead of showing an empty list.
  */
 export function buildManifest(publicUrl: string): AppManifest {
   const base = publicUrl.replace(/\/+$/, "");
@@ -58,9 +67,9 @@ export function buildManifest(publicUrl: string): AppManifest {
     default_permissions: {
       contents: "read",
       metadata: "read",
-      pull_requests: "read",
+      pull_requests: "write",
     },
-    default_events: ["push"],
+    default_events: ["push", "pull_request"],
   };
 }
 

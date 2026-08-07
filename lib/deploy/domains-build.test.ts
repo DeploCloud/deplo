@@ -5,7 +5,8 @@ import {
   nipDomain,
   randomWords,
   productionDomain,
-  previewDomain,
+  previewHost,
+  isValidPreviewBaseDomain,
   nipEmbeddedIp,
 } from "./domains";
 
@@ -69,11 +70,73 @@ test("productionDomain bakes fresh random words for the slug", () => {
   assert.equal(nipEmbeddedIp(host), IP);
 });
 
-test("previewDomain folds a per-deploy token in so two previews never collide", () => {
-  const a = previewDomain("blog", "a1b2c3", IP);
-  const b = previewDomain("blog", "d4e5f6", IP);
-  assert.ok(a.startsWith("blog-a1b2c3-"));
-  assert.ok(b.startsWith("blog-d4e5f6-"));
-  assert.notEqual(a, b);
-  assert.equal(nipEmbeddedIp(a), IP);
+test("a preview host is DETERMINISTIC per (app, pull request)", () => {
+  // The URL gets commented on the pull request, so a host regenerated on each
+  // rebuild would strand a link somebody is testing.
+  const first = previewHost({ appId: "prj_1", slug: "blog", prNumber: 42, ip: IP });
+  const again = previewHost({ appId: "prj_1", slug: "blog", prNumber: 42, ip: IP });
+  assert.deepEqual(first, again);
+  assert.ok(
+    new RegExp(`^blog-pr-42-[a-z0-9]+-${HEX}\\.nip\\.io$`).test(first.host),
+    `unexpected preview host shape: ${first.host}`,
+  );
+  assert.equal(nipEmbeddedIp(first.host), IP);
+});
+
+test("different apps and different pull requests get different preview hosts", () => {
+  const a = previewHost({ appId: "prj_1", slug: "blog", prNumber: 42, ip: IP });
+  const b = previewHost({ appId: "prj_1", slug: "blog", prNumber: 43, ip: IP });
+  const c = previewHost({ appId: "prj_2", slug: "blog", prNumber: 42, ip: IP });
+  assert.notEqual(a.host, b.host);
+  assert.notEqual(a.host, c.host, "two apps must not share one preview host");
+});
+
+test("a nip.io preview host asks for NO certificate", () => {
+  // nip.io is one registered domain whose Let's Encrypt issuance budget is
+  // shared with the entire internet: asking for a cert there gets none, and
+  // Traefik serves its self-signed default instead (the browser interstitial).
+  assert.equal(
+    previewHost({ appId: "prj_1", slug: "blog", prNumber: 42, ip: IP }).certProvider,
+    "none",
+  );
+});
+
+test("a custom base domain gives each preview its own HTTP-01 certificate", () => {
+  const r = previewHost({
+    appId: "prj_1",
+    slug: "blog",
+    prNumber: 42,
+    baseDomain: "preview.example.com",
+    ip: IP,
+  });
+  assert.equal(r.host, "blog-pr-42.preview.example.com");
+  assert.equal(r.certProvider, "letsencrypt");
+  // The slug is part of the host, so two apps sharing one base never collide.
+  const other = previewHost({
+    appId: "prj_2",
+    slug: "shop",
+    prNumber: 42,
+    baseDomain: "preview.example.com",
+    ip: IP,
+  });
+  assert.notEqual(r.host, other.host);
+});
+
+test("leading and trailing dots on a base domain are tolerated", () => {
+  assert.equal(
+    previewHost({ appId: "a", slug: "blog", prNumber: 1, baseDomain: ".preview.example.com." }).host,
+    "blog-pr-1.preview.example.com",
+  );
+});
+
+test("a preview base domain must be a plain dotted hostname", () => {
+  assert.equal(isValidPreviewBaseDomain("preview.example.com"), true);
+  assert.equal(isValidPreviewBaseDomain("Preview.Example.COM"), true);
+  assert.equal(isValidPreviewBaseDomain("example.com"), true);
+  assert.equal(isValidPreviewBaseDomain("localhost"), false, "a bare label is never meant");
+  assert.equal(isValidPreviewBaseDomain(""), false);
+  assert.equal(isValidPreviewBaseDomain("has space.com"), false);
+  assert.equal(isValidPreviewBaseDomain("*.example.com"), false);
+  assert.equal(isValidPreviewBaseDomain("bad_underscore.com"), false);
+  assert.equal(isValidPreviewBaseDomain("-lead.example.com"), false);
 });

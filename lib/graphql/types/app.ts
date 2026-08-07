@@ -63,7 +63,6 @@ import {
   cancelAllDeployments,
   deleteDeployments,
   deleteAllDeployments,
-  promoteToProduction,
 } from "@/lib/data/deployments";
 import { renderAppStack } from "@/lib/deploy/build";
 import { MOUNT_PROPAGATIONS } from "@/lib/types";
@@ -98,6 +97,22 @@ export const DeploymentRef = builder
       environment: t.field({
         type: DeploymentEnvironmentEnum,
         resolve: (d) => d.environment,
+      }),
+      previewId: t.exposeID("previewId", {
+        nullable: true,
+        description:
+          "The pull request preview this build belongs to, or null for production.",
+      }),
+      prNumber: t.exposeInt("prNumber", {
+        nullable: true,
+        description:
+          "The pull request number, denormalized so it survives the preview " +
+          "itself being reaped. Null for a production build.",
+      }),
+      deployKey: t.exposeString("deployKey", {
+        description:
+          "The stack this build owns: the app slug for production, " +
+          "`<slug>__pr-<n>` for a pull request preview.",
       }),
       commitSha: t.exposeString("commitSha"),
       commitMessage: t.exposeString("commitMessage"),
@@ -1021,16 +1036,6 @@ builder.mutationFields((t) => ({
         environment != null ? String(environment) : null,
         status != null ? String(status) : null,
       ),
-  }),
-  promoteDeployment: t.field({
-    type: "Boolean",
-    authScopes: { capability: "deploy_apps" },
-    description: "Promote a preview deployment to production.",
-    args: { id: t.arg.string({ required: true }) },
-    resolve: async (_r, { id }) => {
-      await promoteToProduction(id);
-      return true;
-    },
   }),
   deleteDeployments: t.field({
     type: "Int",

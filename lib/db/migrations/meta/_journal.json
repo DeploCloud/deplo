@@ -533,6 +533,13 @@
       "when": 1784676200000,
       "tag": "0075_notification_channel_instances",
       "breakpoints": true
+    },
+    {
+      "idx": 76,
+      "version": "7",
+      "when": 1784676400000,
+      "tag": "0076_add_app_previews",
+      "breakpoints": true
     }
   ]
 }
