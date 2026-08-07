@@ -52,7 +52,8 @@ export function AlertPicker({
     ...cat,
     shown: cat.alerts.filter(matches),
   })).filter((cat) => cat.shown.length > 0);
-  const shownCount = sections.reduce((n, c) => n + c.shown.length, 0);
+  const shown = sections.flatMap((c) => c.shown);
+  const shownCount = shown.length;
 
   /** Always emit in catalog order, never insertion order. */
   function write(next: Set<AlertKey>) {
@@ -101,13 +102,18 @@ export function AlertPicker({
               Reset to defaults
             </button>
           )}
-          {!disabled && alerts.length > 0 && (
+          {/* Acts on the FILTERED subset and is spelled the same as the control
+              in every category header — it is the same gesture, and the same
+              gesture cannot be called two things three lines apart. It used to
+              say "Clear all" and untick all thirty-two, including the ones the
+              search had hidden. */}
+          {!disabled && shown.some((a) => enabled.has(a)) && (
             <button
               type="button"
-              onClick={() => setMany([...ALL_ALERTS], false)}
+              onClick={() => setMany(shown, false)}
               className="rounded font-medium transition-colors hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
             >
-              Clear all
+              Unselect all
             </button>
           )}
         </div>

@@ -622,7 +622,7 @@ async function assertRoomForOneMoreDevice(
     );
   if (Number(row?.n ?? 0) >= MAX_DEVICES_PER_USER)
     throw new Error(
-      `You can register ${MAX_DEVICES_PER_USER} browsers for push. Turn one off first.`,
+      `You can register ${MAX_DEVICES_PER_USER} browsers for push notifications.`,
     );
 }
 

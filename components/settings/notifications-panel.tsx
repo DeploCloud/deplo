@@ -545,11 +545,17 @@ function ChannelRow({
   // A stored channel's secrets are already set, so the row asks for nothing extra.
   const ready = isChannelReady(instance, {});
   const target = channelTarget(instance);
+  // A channel with nothing ticked is configured, on, and silent — the one state
+  // that looks healthy and delivers nothing. It reads as a warning, like an
+  // unfinished setup, because it has the same consequence.
+  const noAlerts = instance.alerts.length === 0;
   const status = !instance.enabled
     ? "Off"
     : !ready
       ? "Needs setup"
-      : `${instance.alerts.length} of ${ALL_ALERTS.length} alerts`;
+      : noAlerts
+        ? "No alerts picked"
+        : `${instance.alerts.length} of ${ALL_ALERTS.length} alerts`;
   return (
     <div className="flex items-center gap-3 rounded-lg border border-border p-3 transition-colors hover:border-ring hover:bg-accent">
       <button
@@ -581,7 +587,9 @@ function ChannelRow({
             )}
             <span
               className={
-                instance.enabled && !ready ? "text-[var(--warning)]" : undefined
+                instance.enabled && (!ready || noAlerts)
+                  ? "text-[var(--warning)]"
+                  : undefined
               }
             >
               {status}
@@ -592,9 +600,10 @@ function ChannelRow({
           aria-hidden
           className="size-2 shrink-0 rounded-full"
           style={{
-            backgroundColor: instance.enabled && ready ? brand.bg : "transparent",
+            backgroundColor:
+              instance.enabled && ready && !noAlerts ? brand.bg : "transparent",
             boxShadow:
-              instance.enabled && ready
+              instance.enabled && ready && !noAlerts
                 ? undefined
                 : "inset 0 0 0 1.5px var(--border)",
           }}
