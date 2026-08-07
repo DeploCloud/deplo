@@ -3,7 +3,7 @@
 import * as React from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
-import { Bell, Copy, Send } from "lucide-react";
+import { Bell, Send } from "lucide-react";
 
 import { AlertPicker } from "@/components/settings/alert-picker";
 import {
@@ -33,7 +33,6 @@ import { gqlAction } from "@/lib/graphql-client";
 import { ALL_ALERTS, ALL_CHANNELS } from "@/lib/types";
 import type {
   AlertKey,
-  ChannelAlerts,
   NotificationChannel,
   NotificationSettings,
 } from "@/lib/types";
@@ -110,16 +109,6 @@ export function NotificationsPanel({
 
   function setChannelAlerts(channel: NotificationChannel, next: AlertKey[]) {
     setSettings((s) => ({ ...s, alerts: { ...s.alerts, [channel]: next } }));
-  }
-
-  function copyToEveryChannel(from: NotificationChannel) {
-    setSettings((s) => ({
-      ...s,
-      alerts: Object.fromEntries(
-        ALL_CHANNELS.map((c) => [c, [...s.alerts[from]]]),
-      ) as ChannelAlerts,
-    }));
-    toast.success("Copied to every channel");
   }
 
   /**
@@ -362,17 +351,6 @@ export function NotificationsPanel({
                     <Send className="size-3.5" />
                     {testing === open ? "Sending" : "Send a test"}
                   </Button>
-                  <Button
-                    type="button"
-                    variant="outline"
-                    size="sm"
-                    disabled={!canManage}
-                    onClick={() => copyToEveryChannel(open)}
-                  >
-                    <Copy className="size-3.5" />
-                    Copy alerts to every channel
-                  </Button>
-                  <InfoTip content="Replaces every other channel's list with this one. Nothing changes until you save." />
                   {dirty && (
                     <span className="text-xs text-muted-foreground">
                       Save to test
