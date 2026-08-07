@@ -310,8 +310,6 @@ const SKIP = new Set([
   "checkForUpdates",
   "checkAgentUpdates",
   "checkAllServerHealth",
-  "sendTestNotification",
-  "updateNotificationSettings",
   "updateDockerCleanupPolicy",
   "runDockerCleanupNow",
   "upsertInstanceEnv",

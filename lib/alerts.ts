@@ -1,5 +1,5 @@
-import type { ChannelAlerts, AlertKey, NotificationSettings } from "./types";
-import { ALL_ALERTS, ALL_CHANNELS } from "./types";
+import type { AlertKey } from "./types";
+import { ALL_ALERTS } from "./types";
 
 /**
  * The alert catalog — one entry per thing Deplo will tell a team about, plus the
@@ -359,51 +359,4 @@ export function searchAlerts(query: string): AlertKey[] {
     const text = alertSearchText(a);
     return terms.every((t) => text.includes(t));
   });
-}
-
-/**
- * Every channel on the catalog defaults — what a channel is subscribed to before
- * anybody opens its sheet. It is never written on enabling a channel: a channel
- * with no stored rows already resolves to exactly this.
- */
-export function defaultChannelAlerts(): ChannelAlerts {
-  return Object.fromEntries(
-    ALL_CHANNELS.map((c) => [c, [...DEFAULT_ALERTS]]),
-  ) as ChannelAlerts;
-}
-
-/** Default notification settings for a team that has none persisted yet. */
-export function defaultNotificationSettings(): NotificationSettings {
-  return {
-    channels: {
-      push: { enabled: false },
-      email: {
-        enabled: false,
-        address: "",
-        from: "",
-        // Resend is the default transport: it is an API key and a From address,
-        // against a host that is already reachable. An SMTP server is four
-        // fields and a relay the user has to have.
-        provider: "resend",
-        smtp: { host: "", port: 587, user: "", passwordSet: false },
-        resend: { apiKeySet: false },
-      },
-      discord: { enabled: false, webhookUrl: "" },
-      slack: { enabled: false, webhookUrl: "" },
-      telegram: { enabled: false, chatId: "", botTokenSet: false },
-      webhook: { enabled: false, url: "" },
-      lark: { enabled: false, webhookUrl: "" },
-      msteams: { enabled: false, webhookUrl: "" },
-      gotify: { enabled: false, url: "", tokenSet: false },
-      ntfy: {
-        enabled: false,
-        baseUrl: "https://ntfy.sh",
-        topic: "",
-        tokenSet: false,
-      },
-      mattermost: { enabled: false, webhookUrl: "" },
-      pushover: { enabled: false, tokenSet: false, userKeySet: false },
-    },
-    alerts: defaultChannelAlerts(),
-  };
 }

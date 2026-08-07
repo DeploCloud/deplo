@@ -15,9 +15,8 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import type {
-  NotificationChannel,
-  NotificationSettings,
-  NotificationSettingsInput,
+  NotificationChannelInput,
+  NotificationChannelInstance,
 } from "@/lib/types";
 
 /**
@@ -32,17 +31,14 @@ import type {
  * keeps what is stored.
  */
 
-export type Channels = NotificationSettings["channels"];
-export type Secrets = NonNullable<NotificationSettingsInput["secrets"]>;
+export type Secrets = NonNullable<NotificationChannelInput["secrets"]>;
+/** The instance being edited, before it has an id (creating) or after (editing). */
+export type Draft = Omit<NotificationChannelInstance, "id">;
 
 export interface ChannelConfigProps {
-  channel: NotificationChannel;
-  channels: Channels;
+  draft: Draft;
   secrets: Secrets;
-  onPatch: <K extends keyof Channels>(
-    key: K,
-    value: Partial<Channels[K]>,
-  ) => void;
+  onPatch: (value: Partial<Draft>) => void;
   onSecret: (key: keyof Secrets, value: string) => void;
   readOnly: boolean;
 }
@@ -52,50 +48,94 @@ export interface ChannelConfigProps {
  * the tile's "Needs setup" line and the sheet's Test button, so the two can
  * never disagree.
  */
-export function isChannelReady(
-  channel: NotificationChannel,
-  c: Channels,
-  s: Secrets,
-): boolean {
+export function isChannelReady(i: Draft, s: Secrets): boolean {
   const has = (stored: boolean, typed?: string) => stored || !!typed;
-  switch (channel) {
+  switch (i.kind) {
     case "push":
       return true;
     case "email":
       return (
-        !!c.email.address &&
-        (c.email.provider === "smtp"
-          ? !!c.email.smtp.host
-          : has(c.email.resend.apiKeySet, s.resendApiKey))
+        !!i.target &&
+        (i.emailProvider === "smtp"
+          ? !!i.smtpHost
+          : has(i.secret2Set, s.secret2))
       );
     case "discord":
-      return !!c.discord.webhookUrl;
     case "slack":
-      return !!c.slack.webhookUrl;
-    case "telegram":
-      return !!c.telegram.chatId && has(c.telegram.botTokenSet, s.telegramBotToken);
     case "webhook":
-      return !!c.webhook.url;
     case "lark":
-      return !!c.lark.webhookUrl;
     case "msteams":
-      return !!c.msteams.webhookUrl;
     case "mattermost":
-      return !!c.mattermost.webhookUrl;
+      return !!i.url;
+    case "telegram":
+      return !!i.target && has(i.secretSet, s.secret);
     case "gotify":
-      return !!c.gotify.url && has(c.gotify.tokenSet, s.gotifyToken);
+      return !!i.url && has(i.secretSet, s.secret);
     case "ntfy":
-      return !!c.ntfy.baseUrl && !!c.ntfy.topic;
+      return !!i.url && !!i.target;
     case "pushover":
-      return (
-        has(c.pushover.tokenSet, s.pushoverToken) &&
-        has(c.pushover.userKeySet, s.pushoverUserKey)
-      );
+      return has(i.secretSet, s.secret) && has(i.secret2Set, s.secret2);
+  }
+}
+
+/**
+ * The one line under a row's name: WHERE this channel sends.
+ *
+ * It is what tells two unnamed Discords apart, so it carries the part of the
+ * address that differs — and none of the part that is a credential. Every URL
+ * here loses its LAST path segment, always: on Discord, Slack, Mattermost and
+ * Lark that segment IS the token, and a token on a list row is a token in a
+ * screenshot.
+ *
+ * Two channels can still read the same (two Mattermost hooks on one server) and
+ * that is exactly what the name field is for. Pushover and browser push have no
+ * address at all that is not a secret, so they show nothing and the row leans on
+ * its status line instead.
+ */
+export function channelTarget(i: Draft): string {
+  switch (i.kind) {
+    case "push":
+    case "pushover":
+      return "";
+    case "email":
+    case "telegram":
+      return i.target;
+    case "gotify":
+      return host(i.url);
+    case "ntfy":
+      return i.target ? `${host(i.url)}/${i.target}` : host(i.url);
+    case "discord":
+    case "slack":
+    case "lark":
+    case "mattermost":
+    case "msteams":
+    case "webhook":
+      return trimSecret(i.url);
+  }
+}
+
+/** Host only, and nothing at all for something that is not a URL yet. */
+function host(url: string): string {
+  try {
+    return new URL(url).host;
+  } catch {
+    return "";
+  }
+}
+
+/** Host and path minus the last segment — the token, on every brand here. */
+function trimSecret(url: string): string {
+  try {
+    const u = new URL(url);
+    const parts = u.pathname.split("/").filter(Boolean);
+    return u.host + (parts.length > 1 ? `/${parts.slice(0, -1).join("/")}` : "");
+  } catch {
+    return "";
   }
 }
 
 export function ChannelConfig(props: ChannelConfigProps) {
-  const { channel, channels: c, secrets: s, onPatch, onSecret, readOnly } = props;
+  const { draft: i, secrets: s, onPatch, onSecret, readOnly } = props;
   const text = (
     label: string,
     value: string,
@@ -130,12 +170,15 @@ export function ChannelConfig(props: ChannelConfigProps) {
       />
     </Field>
   );
+  /** Every webhook-shaped kind is one URL field; only the placeholder differs. */
+  const webhook = (label: string, placeholder: string) =>
+    text(label, i.url, (v) => onPatch({ url: v }), placeholder);
 
-  switch (channel) {
+  switch (i.kind) {
     case "push": {
-      // The one channel with no fields at all. A bare line of muted text in an
-      // otherwise empty modal reads as something failing to load, so it wears
-      // the channel's own colour and looks deliberate.
+      // The one kind with no fields at all. A bare line of muted text in an
+      // otherwise empty modal reads as something that failed to load, so it
+      // wears the channel's own colour and looks deliberate.
       const brand = CHANNEL_BRAND.push;
       return (
         <div
@@ -155,21 +198,21 @@ export function ChannelConfig(props: ChannelConfigProps) {
     }
 
     case "email": {
-      const smtp = c.email.provider === "smtp";
+      const smtp = i.emailProvider === "smtp";
       return (
         <div className="grid gap-3 sm:grid-cols-2">
           {text(
             "Send alerts to",
-            c.email.address,
-            (v) => onPatch("email", { address: v }),
+            i.target,
+            (v) => onPatch({ target: v }),
             "alerts@example.com",
           )}
           <Field label="Transport">
             <Select
               disabled={readOnly}
-              value={c.email.provider}
+              value={i.emailProvider}
               onValueChange={(v) =>
-                onPatch("email", { provider: v as "smtp" | "resend" })
+                onPatch({ emailProvider: v as "smtp" | "resend" })
               }
             >
               <SelectTrigger>
@@ -196,66 +239,37 @@ export function ChannelConfig(props: ChannelConfigProps) {
           </Field>
           {text(
             "From address",
-            c.email.from,
-            (v) => onPatch("email", { from: v }),
+            i.emailFrom,
+            (v) => onPatch({ emailFrom: v }),
             "deplo@example.com",
           )}
           {smtp ? (
             <>
-              <Field label="SMTP host">
-                <Input
-                  value={c.email.smtp.host}
-                  disabled={readOnly}
-                  onChange={(e) =>
-                    onPatch("email", {
-                      smtp: { ...c.email.smtp, host: e.target.value },
-                    })
-                  }
-                  placeholder="smtp.example.com"
-                  className="font-mono text-sm"
-                />
-              </Field>
+              {text(
+                "SMTP host",
+                i.smtpHost,
+                (v) => onPatch({ smtpHost: v }),
+                "smtp.example.com",
+              )}
               <Field label="Port">
                 <Input
                   type="number"
-                  value={c.email.smtp.port}
+                  value={i.smtpPort}
                   disabled={readOnly}
                   onChange={(e) =>
-                    onPatch("email", {
-                      smtp: {
-                        ...c.email.smtp,
-                        port: Number(e.target.value) || 587,
-                      },
-                    })
+                    onPatch({ smtpPort: Number(e.target.value) || 587 })
                   }
                   className="font-mono text-sm"
                 />
               </Field>
-              <Field label="Username">
-                <Input
-                  value={c.email.smtp.user}
-                  disabled={readOnly}
-                  onChange={(e) =>
-                    onPatch("email", {
-                      smtp: { ...c.email.smtp, user: e.target.value },
-                    })
-                  }
-                  autoComplete="off"
-                  className="font-mono text-sm"
-                />
-              </Field>
-              {secret(
-                "Password",
-                "smtpPassword",
-                c.email.smtp.passwordSet,
-                "Your SMTP password",
-              )}
+              {text("Username", i.smtpUser, (v) => onPatch({ smtpUser: v }), "")}
+              {secret("Password", "secret", i.secretSet, "Your SMTP password")}
             </>
           ) : (
             secret(
               "Resend API key",
-              "resendApiKey",
-              c.email.resend.apiKeySet,
+              "secret2",
+              i.secret2Set,
               "Your Resend API key",
             )
           )}
@@ -264,66 +278,32 @@ export function ChannelConfig(props: ChannelConfigProps) {
     }
 
     case "discord":
-      return text(
-        "Webhook URL",
-        c.discord.webhookUrl,
-        (v) => onPatch("discord", { webhookUrl: v }),
-        "https://discord.com/api/webhooks/",
-      );
-
+      return webhook("Webhook URL", "https://discord.com/api/webhooks/");
     case "slack":
-      return text(
-        "Webhook URL",
-        c.slack.webhookUrl,
-        (v) => onPatch("slack", { webhookUrl: v }),
-        "https://hooks.slack.com/services/",
-      );
-
+      return webhook("Webhook URL", "https://hooks.slack.com/services/");
     case "webhook":
-      return text(
-        "URL",
-        c.webhook.url,
-        (v) => onPatch("webhook", { url: v }),
-        "https://example.com/hooks/deplo",
-      );
-
+      return webhook("URL", "https://example.com/hooks/deplo");
     case "lark":
-      return text(
+      return webhook(
         "Webhook URL",
-        c.lark.webhookUrl,
-        (v) => onPatch("lark", { webhookUrl: v }),
         "https://open.larksuite.com/open-apis/bot/v2/hook/",
       );
-
     case "msteams":
-      return text(
+      return webhook(
         "Workflow URL",
-        c.msteams.webhookUrl,
-        (v) => onPatch("msteams", { webhookUrl: v }),
         "https://prod-00.westeurope.logic.azure.com/workflows/",
       );
-
     case "mattermost":
-      return text(
-        "Webhook URL",
-        c.mattermost.webhookUrl,
-        (v) => onPatch("mattermost", { webhookUrl: v }),
-        "https://mattermost.example.com/hooks/",
-      );
+      return webhook("Webhook URL", "https://mattermost.example.com/hooks/");
 
     case "telegram":
       return (
         <div className="grid gap-3 sm:grid-cols-2">
-          {secret(
-            "Bot token",
-            "telegramBotToken",
-            c.telegram.botTokenSet,
-            "123456:ABC-DEF",
-          )}
+          {secret("Bot token", "secret", i.secretSet, "123456:ABC-DEF")}
           {text(
             "Chat id",
-            c.telegram.chatId,
-            (v) => onPatch("telegram", { chatId: v }),
+            i.target,
+            (v) => onPatch({ target: v }),
             "-1001234567890",
           )}
         </div>
@@ -334,14 +314,14 @@ export function ChannelConfig(props: ChannelConfigProps) {
         <div className="grid gap-3 sm:grid-cols-2">
           {text(
             "Server URL",
-            c.gotify.url,
-            (v) => onPatch("gotify", { url: v }),
+            i.url,
+            (v) => onPatch({ url: v }),
             "https://gotify.example.com",
           )}
           {secret(
             "Application token",
-            "gotifyToken",
-            c.gotify.tokenSet,
+            "secret",
+            i.secretSet,
             "Your Gotify application token",
           )}
         </div>
@@ -350,22 +330,12 @@ export function ChannelConfig(props: ChannelConfigProps) {
     case "ntfy":
       return (
         <div className="grid gap-3 sm:grid-cols-2">
-          {text(
-            "Server URL",
-            c.ntfy.baseUrl,
-            (v) => onPatch("ntfy", { baseUrl: v }),
-            "https://ntfy.sh",
-          )}
-          {text(
-            "Topic",
-            c.ntfy.topic,
-            (v) => onPatch("ntfy", { topic: v }),
-            "deplo-alerts",
-          )}
+          {text("Server URL", i.url, (v) => onPatch({ url: v }), "https://ntfy.sh")}
+          {text("Topic", i.target, (v) => onPatch({ target: v }), "deplo-alerts")}
           {secret(
             "Access token",
-            "ntfyToken",
-            c.ntfy.tokenSet,
+            "secret",
+            i.secretSet,
             "Only for a protected topic",
           )}
         </div>
@@ -376,14 +346,14 @@ export function ChannelConfig(props: ChannelConfigProps) {
         <div className="grid gap-3 sm:grid-cols-2">
           {secret(
             "Application token",
-            "pushoverToken",
-            c.pushover.tokenSet,
+            "secret",
+            i.secretSet,
             "Your Pushover application token",
           )}
           {secret(
             "User or group key",
-            "pushoverUserKey",
-            c.pushover.userKeySet,
+            "secret2",
+            i.secret2Set,
             "Your user or group key",
           )}
         </div>

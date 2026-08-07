@@ -23,7 +23,7 @@ import type {
  * `lib/github/app.ts`) goes through here, so reads and writes can't drift on how a
  * row folds into a domain object — the same anti-drift seam `backup-rows.ts` is
  * for the backups tables, `app-graph-rows.ts` for the project graph, and
- * `notification-row.ts` for `notification_settings`.
+ * `backup-rows.ts` for the backup tables.
  *
  * Pure — no `server-only`, no store, no db handle — so a `server-only` module can
  * import it freely. Load-bearing details:

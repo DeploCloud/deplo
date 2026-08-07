@@ -1,69 +1,35 @@
 import { builder } from "../builder";
 import {
-  getNotificationSettings,
+  deleteNotificationChannel,
   getWebPushPublicKey,
+  listNotificationChannels,
+  saveNotificationChannel,
   sendTestNotification,
   subscribeWebPush,
   unsubscribeWebPush,
-  updateNotificationSettings,
 } from "@/lib/data/notifications";
-import { ALL_CHANNELS } from "@/lib/types";
-import type { NotificationChannel, NotificationSettings } from "@/lib/types";
-
-/* ------------------------------------------------------------------ */
-/* Object types                                                        */
-/* ------------------------------------------------------------------ */
-
-/**
- * Per-team notification configuration. The `channels` config map and the
- * `alerts` subscription list are both team-shaped and change with the catalog,
- * so they are exposed as opaque JSON scalars rather than re-modelled as a tower
- * of object types — the client reads/writes them as the same JSON the settings
- * UI does. No credential is ever in there: a stored secret surfaces as a
- * `…Set: boolean` and has no read path.
- */
-const NotificationSettingsRef = builder
-  .objectRef<NotificationSettings>("NotificationSettings")
-  .implement({
-    description:
-      "Per-team notification channels, each with its own subscribed alerts.",
-    fields: (t) => ({
-      channels: t.field({
-        type: "JSON",
-        description:
-          "Channel config map: enable flags + endpoints for all twelve channels.",
-        resolve: (s) => s.channels,
-      }),
-      alerts: t.field({
-        type: "JSON",
-        description:
-          "Per channel, the subscribed alert keys (deployment_failed, server_offline, …).",
-        resolve: (s) => s.alerts,
-      }),
-    }),
-  });
-
-/* ------------------------------------------------------------------ */
-/* Enums (local — not shared)                                          */
-/* ------------------------------------------------------------------ */
-
-// Every channel can be tested, browser push included: it goes to the caller's
-// own devices, which is the only way to prove the subscription works. Read from
-// `ALL_CHANNELS` so the enum cannot drift from the union.
-const TestChannelEnum = builder.enumType("TestNotificationChannel", {
-  values: ALL_CHANNELS,
-});
 
 /* ------------------------------------------------------------------ */
 /* Queries                                                             */
 /* ------------------------------------------------------------------ */
 
+/**
+ * Channels are exposed as opaque `JSON`, deliberately and for the same reason
+ * the settings object was: the instance shape follows the channel catalog, no
+ * credential is ever in it (a stored one surfaces as a `…Set` bit with no read
+ * path), and the settings UI reads and writes exactly this JSON.
+ *
+ * Every field is `loggedIn` with the real gate inside `lib/data/notifications.ts`
+ * — the two-gate model, where the field contract is introspectable and the
+ * boundary is the data layer.
+ */
 builder.queryFields((t) => ({
-  notificationSettings: t.field({
-    type: NotificationSettingsRef,
+  notificationChannels: t.field({
+    type: "JSON",
     authScopes: { loggedIn: true },
-    description: "The active team's notification settings (defaults if unset).",
-    resolve: () => getNotificationSettings(),
+    description:
+      "The active team's configured channels, each with its own subscribed alerts.",
+    resolve: () => listNotificationChannels(),
   }),
   webPushPublicKey: t.field({
     type: "String",
@@ -75,27 +41,42 @@ builder.queryFields((t) => ({
 }));
 
 /* ------------------------------------------------------------------ */
-/* Mutations (every notifications server action)                        */
+/* Mutations                                                           */
 /* ------------------------------------------------------------------ */
 
 builder.mutationFields((t) => ({
-  saveNotificationSettings: t.field({
-    type: NotificationSettingsRef,
+  saveNotificationChannel: t.field({
+    type: "JSON",
     authScopes: { loggedIn: true },
-    description: "Replace the active team's notification settings.",
-    args: { input: t.arg({ type: "JSON", required: true }) },
+    description:
+      "Create a channel (omit id) or replace one. Returns the saved channel.",
+    args: {
+      id: t.arg.id({ required: false }),
+      input: t.arg({ type: "JSON", required: true }),
+    },
     // Opaque JSON on the wire, so ANYTHING can arrive: the data layer coerces it
-    // field by field (`parseSettingsInput`) rather than trusting the shape.
-    resolve: (_r, { input }) => updateNotificationSettings(input),
+    // field by field (`parseChannelInput`) rather than trusting the shape.
+    resolve: (_r, { id, input }) =>
+      saveNotificationChannel(id ? String(id) : null, input),
   }),
-  testNotification: t.field({
+  deleteNotificationChannel: t.field({
+    type: "Boolean",
+    authScopes: { loggedIn: true },
+    description: "Remove a channel. Its subscribed alerts go with it.",
+    args: { id: t.arg.id({ required: true }) },
+    resolve: async (_r, { id }) => {
+      await deleteNotificationChannel(String(id));
+      return true;
+    },
+  }),
+  testNotificationChannel: t.field({
     type: "Boolean",
     authScopes: { loggedIn: true },
     description:
-      "Send a one-off test alert through a single channel. Returns true.",
-    args: { channel: t.arg({ type: TestChannelEnum, required: true }) },
-    resolve: async (_r, { channel }) => {
-      await sendTestNotification(channel as NotificationChannel);
+      "Send a one-off test alert through one channel, using its saved config.",
+    args: { id: t.arg.id({ required: true }) },
+    resolve: async (_r, { id }) => {
+      await sendTestNotification(String(id));
       return true;
     },
   }),

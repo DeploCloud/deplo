@@ -22,7 +22,7 @@ import { listRegistries } from "./registries";
 import { listS3 } from "./s3";
 import { listDatabases, getDatabase, getConnectionString } from "./databases";
 import { listGithubApps } from "./github";
-import { getNotificationSettings } from "./notifications";
+import { listNotificationChannels } from "./notifications";
 import { getTeam } from "./teams";
 import { listSharedVars } from "./shared-vars";
 import { getServer, listServers, getPrimaryServer } from "./servers";
@@ -101,7 +101,7 @@ test("every team-wide collection is refused, and says why", async () => {
     await assert.rejects(() => listS3(), LIMITED);
     await assert.rejects(() => listDatabases(), LIMITED);
     await assert.rejects(() => listGithubApps(), LIMITED);
-    await assert.rejects(() => getNotificationSettings(), LIMITED);
+    await assert.rejects(() => listNotificationChannels(), LIMITED);
     await assert.rejects(() => getTeam(), LIMITED);
     await assert.rejects(() => listSharedVars(), LIMITED);
     // A host has no per-Project meaning either: its name, address and live

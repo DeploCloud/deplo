@@ -4,6 +4,8 @@ import { notFound } from "next/navigation";
 import { PageHeader } from "@/components/shared/page-header";
 import { DeploSettingsPanel } from "@/components/settings/deplo-settings-panel";
 import { getInstanceSettings } from "@/lib/data/instance-settings";
+import { viewerIsInstanceOwner } from "@/lib/data/instance-owner";
+import { listAllUsers } from "@/lib/data/members";
 import { isInstanceAdmin } from "@/lib/membership";
 
 export const metadata = { title: "Settings · Deplo" };
@@ -22,13 +24,27 @@ export const metadata = { title: "Settings · Deplo" };
  */
 export default async function DeploSettingsPage() {
   if (!(await isInstanceAdmin())) notFound();
-  const settings = await getInstanceSettings();
+  const [settings, viewerIsOwner, users] = await Promise.all([
+    getInstanceSettings(),
+    viewerIsInstanceOwner(),
+    listAllUsers(),
+  ]);
+
+  // Who the crown could go to, narrowed to exactly what the server would accept:
+  // an active instance admin who isn't already the owner. Only the handful of
+  // fields the picker shows crosses to the client - the full user list belongs to
+  // Settings, Users, not to a dropdown here.
+  const ownerCandidates = users
+    .filter((u) => u.isInstanceAdmin && !u.isInstanceOwner && !u.suspended)
+    .map((u) => ({ userId: u.userId, username: u.username }));
 
   return (
     <div className="space-y-6">
       {/* Version and host are read-only facts about this instance, so they ride
           the header instead of taking a card of their own: a settings page should
-          open on what can be changed. */}
+          open on what can be changed. The owner is NOT among them - it has an
+          action attached now, so it gets a card like every other thing here that
+          can be changed. */}
       <PageHeader
         title="Deplo"
         description={
@@ -51,7 +67,11 @@ export default async function DeploSettingsPage() {
           </>
         }
       />
-      <DeploSettingsPanel settings={settings} />
+      <DeploSettingsPanel
+        settings={settings}
+        viewerIsOwner={viewerIsOwner}
+        ownerCandidates={ownerCandidates}
+      />
     </div>
   );
 }

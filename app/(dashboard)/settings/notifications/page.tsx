@@ -1,7 +1,7 @@
 import { hasCapability, reachesWholeTeam } from "@/lib/membership";
 import {
-  getNotificationSettings,
   getWebPushPublicKey,
+  listNotificationChannels,
 } from "@/lib/data/notifications";
 import { PageHeader } from "@/components/shared/page-header";
 import { OutsideYourAccess } from "@/components/shared/outside-your-access";
@@ -18,8 +18,8 @@ export default async function SettingsNotificationsPage() {
         what="The team's notification channels"
       />
     );
-  const [notifications, vapidPublicKey, canManage] = await Promise.all([
-    getNotificationSettings(),
+  const [channels, vapidPublicKey, canManage] = await Promise.all([
+    listNotificationChannels(),
     // Minted here, on first render of this page, so an instance that never uses
     // browser push never holds a VAPID keypair.
     getWebPushPublicKey(),
@@ -34,7 +34,7 @@ export default async function SettingsNotificationsPage() {
         description="Pick a channel, then pick what it should tell you about."
       />
       <NotificationsPanel
-        initial={notifications}
+        initial={channels}
         vapidPublicKey={vapidPublicKey}
         canManage={canManage}
       />

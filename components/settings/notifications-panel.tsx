@@ -3,7 +3,7 @@
 import * as React from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
-import { Bell, Send } from "lucide-react";
+import { Bell, Plus, Send, Trash2 } from "lucide-react";
 
 import { AlertPicker } from "@/components/settings/alert-picker";
 import {
@@ -12,15 +12,17 @@ import {
 } from "@/components/settings/channel-brand";
 import {
   ChannelConfig,
+  channelTarget,
   isChannelReady,
-  type Channels,
+  type Draft,
   type Secrets,
 } from "@/components/settings/channel-config";
 import { NotificationIllustration } from "@/components/settings/notification-illustration";
+import { ConfirmAction } from "@/components/shared/confirm-action";
+import { EmptyState } from "@/components/shared/empty-state";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { InfoTip } from "@/components/ui/info-tip";
 import {
   Dialog,
   DialogContent,
@@ -28,122 +30,128 @@ import {
   DialogFooter,
   DialogTitle,
 } from "@/components/ui/dialog";
+import { InfoTip } from "@/components/ui/info-tip";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { gqlAction } from "@/lib/graphql-client";
+import { DEFAULT_ALERTS } from "@/lib/alerts";
 import { ALL_ALERTS, ALL_CHANNELS } from "@/lib/types";
 import type {
-  AlertKey,
   NotificationChannel,
-  NotificationSettings,
+  NotificationChannelInstance,
 } from "@/lib/types";
 
 /**
  * The notification settings.
  *
- * The page is a GRID OF TWELVE TILES and nothing else. Every field, every
- * switch, every Test button and the 32-row alert picker live in one modal,
- * opened by the channel you clicked — because twelve channels, each with their
- * own credentials and their own alert list, laid out vertically, is several
- * screens of form on a page most people open to change one thing.
+ * The page is a LIST OF CONFIGURED CHANNELS and nothing else — not the twelve
+ * types, the ones this team actually set up, and a type may appear as many
+ * times as it likes. Two Discord rooms with different alert lists is the normal
+ * case, so a row is one destination rather than one kind.
  *
- * A tile answers the only question the overview has to answer: is this on, and
- * how much is it told. Everything else is one click away.
+ * Everything editable lives in one modal, which serves both add and edit: a
+ * type picker when there is nothing yet, then the name, that kind's fields, and
+ * its own alert list. Opening snapshots the draft and dismissing throws it away,
+ * so Save means exactly what it says.
  */
 export function NotificationsPanel({
   initial,
   vapidPublicKey,
   canManage,
 }: {
-  initial: NotificationSettings;
+  initial: NotificationChannelInstance[];
   vapidPublicKey: string;
   /** Cosmetic: the real gate is `manage_notifications` in the data layer. */
   canManage: boolean;
 }) {
   const router = useRouter();
-  const [settings, setSettings] = React.useState<NotificationSettings>(initial);
+  const [open, setOpen] = React.useState(false);
+  /** The channel being edited, or null while creating a new one. */
+  const [editingId, setEditingId] = React.useState<string | null>(null);
+  /** The working copy. Null while creating and no type has been picked yet. */
+  const [draft, setDraft] = React.useState<Draft | null>(null);
   const [secrets, setSecrets] = React.useState<Secrets>({});
+  /** What the draft looked like when the modal opened, so Cancel is a cancel. */
+  const [snapshot, setSnapshot] = React.useState<string>("");
   const [saving, startSave] = React.useTransition();
-  const [testing, setTesting] = React.useState<NotificationChannel | null>(null);
-  /** Which channel's modal is open. One modal, one alert picker, ever. */
-  const [openFor, setOpenFor] = React.useState<NotificationChannel | null>(null);
-  /**
-   * What the settings looked like when the modal opened.
-   *
-   * It is what makes the modal's Save mean something: dismissing reverts to
-   * this, so the only pending change when you press Save is the one you just
-   * made. Without it, closing would leave edits floating with nowhere to go —
-   * which is exactly what a page-level Save button did.
-   */
-  const [snapshot, setSnapshot] = React.useState<{
-    settings: NotificationSettings;
-    secrets: Secrets;
-  } | null>(null);
+  const [testing, setTesting] = React.useState(false);
+  const [deleting, setDeleting] =
+    React.useState<NotificationChannelInstance | null>(null);
 
-  function openChannel(channel: NotificationChannel) {
-    setSnapshot({ settings, secrets });
-    setOpenFor(channel);
+  const onCount = initial.filter((c) => c.enabled).length;
+  const dirty = JSON.stringify({ draft, secrets }) !== snapshot;
+
+  function openChannel(instance: NotificationChannelInstance) {
+    const { id, ...rest } = instance;
+    setEditingId(id);
+    setDraft(rest);
+    setSecrets({});
+    setSnapshot(JSON.stringify({ draft: rest, secrets: {} }));
+    setOpen(true);
   }
 
-  /** Dismissing is a cancel: put back what was there when the modal opened. */
-  function closeChannel(revert: boolean) {
-    if (revert && snapshot) {
-      setSettings(snapshot.settings);
-      setSecrets(snapshot.secrets);
-    }
-    setSnapshot(null);
-    setOpenFor(null);
+  function openAdd() {
+    setEditingId(null);
+    setDraft(null);
+    setSecrets({});
+    setSnapshot(JSON.stringify({ draft: null, secrets: {} }));
+    setOpen(true);
   }
 
-  const channels = settings.channels;
-  const onCount = ALL_CHANNELS.filter((c) => channels[c].enabled).length;
-
-  function patchChannel<K extends keyof Channels>(
-    key: K,
-    value: Partial<Channels[K]>,
-  ) {
-    setSettings((s) => ({
-      ...s,
-      channels: { ...s.channels, [key]: { ...s.channels[key], ...value } },
-    }));
+  /** A channel of this kind that nobody has configured yet. */
+  function pickKind(kind: NotificationChannel) {
+    setDraft({
+      kind,
+      name: "",
+      enabled: true,
+      // ntfy is the one kind with a meaningful default address.
+      url: kind === "ntfy" ? "https://ntfy.sh" : "",
+      target: "",
+      emailFrom: "",
+      emailProvider: "resend",
+      smtpHost: "",
+      smtpPort: 587,
+      smtpUser: "",
+      secretSet: false,
+      secret2Set: false,
+      // Nothing is written for these until Save: a channel with no stored rows
+      // already resolves to exactly this.
+      alerts: [...DEFAULT_ALERTS],
+    });
   }
 
-  function setChannelAlerts(channel: NotificationChannel, next: AlertKey[]) {
-    setSettings((s) => ({ ...s, alerts: { ...s.alerts, [channel]: next } }));
+  function patchDraft(value: Partial<Draft>) {
+    setDraft((d) => (d ? { ...d, ...value } : d));
   }
 
-  /**
-   * Persist and close. The mutation replaces the whole settings document — that
-   * is the API — but the snapshot above means the only thing that differs from
-   * what the server already holds is what this modal changed, so "save" and
-   * "save this channel" are the same act.
-   */
-  function saveChannel(channel: NotificationChannel) {
+  function save() {
+    if (!draft) return;
     startSave(async () => {
       const res = await gqlAction(
-        `mutation($input: JSON!) { saveNotificationSettings(input: $input) { __typename } }`,
-        { input: { ...settings, secrets } },
+        `mutation($id: ID, $input: JSON!) { saveNotificationChannel(id: $id, input: $input) }`,
+        { id: editingId, input: { ...draft, secrets } },
       );
       if (res.ok) {
-        toast.success(`${CHANNEL_BRAND[channel].label} saved`);
-        setSecrets({});
-        setSnapshot(null);
-        setOpenFor(null);
+        toast.success(editingId ? "Channel saved" : "Channel added");
+        setOpen(false);
         router.refresh();
       } else toast.error(res.error);
     });
   }
 
-  async function testChannel(channel: NotificationChannel) {
-    setTesting(channel);
+  async function test() {
+    if (!editingId) return;
+    setTesting(true);
     try {
       const res = await gqlAction(
-        `mutation($channel: TestNotificationChannel!) { testNotification(channel: $channel) }`,
-        { channel },
+        `mutation($id: ID!) { testNotificationChannel(id: $id) }`,
+        { id: editingId },
       );
       if (res.ok) toast.success("Test alert sent");
       else toast.error(res.error);
     } finally {
-      setTesting(null);
+      setTesting(false);
     }
   }
 
@@ -152,14 +160,10 @@ export function NotificationsPanel({
    * flag: it has to ask this device for permission and register a worker, and
    * that has to succeed before the switch is allowed to look on.
    */
-  async function toggleChannel(channel: NotificationChannel, on: boolean) {
-    if (channel !== "push") {
-      patchChannel(channel, { enabled: on } as Partial<Channels["discord"]>);
-      return;
-    }
-    if (!on) {
-      await unsubscribeThisBrowser();
-      patchChannel("push", { enabled: false });
+  async function toggle(on: boolean) {
+    if (!draft) return;
+    if (draft.kind !== "push" || !on) {
+      patchDraft({ enabled: on });
       return;
     }
     // A service worker needs a secure context. Say so, instead of failing with
@@ -198,67 +202,59 @@ export function NotificationsPanel({
         toast.error(res.error);
         return;
       }
-      patchChannel("push", { enabled: true });
+      patchDraft({ enabled: true });
     } catch (e) {
       toast.error(e instanceof Error ? e.message : String(e));
     }
   }
 
-  async function unsubscribeThisBrowser() {
-    try {
-      const reg = await navigator.serviceWorker?.getRegistration("/sw.js");
-      const sub = await reg?.pushManager.getSubscription();
-      if (!sub) return;
-      await sub.unsubscribe();
-      await gqlAction(
-        `mutation($endpoint: String!) { unsubscribeWebPush(endpoint: $endpoint) }`,
-        { endpoint: sub.endpoint },
-      );
-    } catch {
-      // Nothing registered on this device, which is the state we wanted anyway.
-    }
-  }
-
-  const open = openFor;
-  const ready = open ? isChannelReady(open, channels, secrets) : false;
-  // A test dials whatever the SERVER has stored, so testing an unsaved endpoint
-  // would quietly exercise the old one. Save first, then test.
-  const dirty =
-    snapshot !== null &&
-    (JSON.stringify(snapshot.settings) !== JSON.stringify(settings) ||
-      JSON.stringify(snapshot.secrets) !== JSON.stringify(secrets));
+  const brand = draft ? CHANNEL_BRAND[draft.kind] : null;
+  const ready = draft ? isChannelReady(draft, secrets) : false;
 
   return (
     <>
       <div className="grid items-start gap-6 xl:grid-cols-[minmax(0,1fr)_260px]">
         <div className="min-w-0 space-y-4">
           <Card>
-            <CardHeader>
-              <CardTitle className="flex flex-wrap items-center gap-1.5">
+            <CardHeader className="flex-row items-center justify-between gap-3 space-y-0">
+              <CardTitle className="flex w-fit flex-wrap items-center gap-1.5">
                 <Bell className="size-4" />
                 Alert channels
                 <InfoTip content="Where alerts go. Each channel carries its own list of what it is told about." />
                 <Badge
                   variant={onCount === 0 ? "muted" : "secondary"}
-                  className="ml-auto tabular-nums"
+                  className="tabular-nums"
                 >
                   {onCount} on
                 </Badge>
               </CardTitle>
+              {canManage && (
+                <Button size="sm" onClick={openAdd}>
+                  <Plus className="size-4" />
+                  Add channel
+                </Button>
+              )}
             </CardHeader>
             <CardContent>
-              <div className="grid gap-2 sm:grid-cols-2">
-                {ALL_CHANNELS.map((channel) => (
-                  <ChannelTile
-                    key={channel}
-                    channel={channel}
-                    enabled={channels[channel].enabled}
-                    ready={isChannelReady(channel, channels, secrets)}
-                    alertCount={settings.alerts[channel].length}
-                    onOpen={() => openChannel(channel)}
-                  />
-                ))}
-              </div>
+              {initial.length === 0 ? (
+                <EmptyState
+                  icon={Bell}
+                  title="No channels yet"
+                  description="Add a channel, then pick what it should tell you about."
+                />
+              ) : (
+                <div className="space-y-2">
+                  {initial.map((instance) => (
+                    <ChannelRow
+                      key={instance.id}
+                      instance={instance}
+                      canManage={canManage}
+                      onOpen={() => openChannel(instance)}
+                      onDelete={() => setDeleting(instance)}
+                    />
+                  ))}
+                </div>
+              )}
             </CardContent>
           </Card>
         </div>
@@ -271,177 +267,294 @@ export function NotificationsPanel({
 
       {/* ONE modal for whichever channel is open, so only one alert picker is
           ever mounted - which is also what keeps its per-row DOM ids unique.
-          Its height is FIXED, not content-driven: the twelve channels range from
-          no fields at all to six, and a modal that resized to each of them would
+          Its height is FIXED, not content-driven: the twelve kinds range from no
+          fields at all to six, and a modal that resized to each of them would
           jump every time you opened a different one. Only the middle row
           scrolls, so the channel stays named and its buttons stay reachable
           however far down the alert list you are. `max-h` is a floor for short
-          viewports, not a second opinion - without it a 600px laptop would push
-          the footer off screen. */}
-      <Dialog
-        open={open !== null}
-        onOpenChange={(next) => !next && closeChannel(true)}
-      >
-        <DialogContent className="h-[42rem] max-h-[85vh] max-w-2xl gap-0 p-0 grid-rows-[minmax(0,1fr)]">
-          {open && (
-            // A real form, so Enter in a webhook field saves instead of doing
-            // nothing. THIS is where a channel is saved: a page-level Save made
-            // no sense when everything you can change lives in here.
-            <form
-              className="grid min-h-0 grid-rows-[auto_minmax(0,1fr)_auto]"
-              onSubmit={(e) => {
-                e.preventDefault();
-                if (dirty && canManage) saveChannel(open);
-                else closeChannel(false);
-              }}
-            >
-              {/* pr-12 keeps the switch clear of the modal's own close button. */}
-              <div className="flex items-start gap-3 border-b border-border p-4 pr-12">
-                <ChannelMark channel={open} />
+          viewports - without it a 600px laptop would push the footer off screen. */}
+      <Dialog open={open} onOpenChange={(next) => !next && setOpen(false)}>
+        <DialogContent className="h-[46rem] max-h-[85vh] max-w-2xl gap-0 p-0 grid-rows-[minmax(0,1fr)]">
+          {/* A real form, so Enter in a webhook field saves instead of doing
+              nothing. THIS is where a channel is saved: a page-level Save made
+              no sense when everything you can change lives in here. */}
+          <form
+            className="grid min-h-0 grid-rows-[auto_minmax(0,1fr)_auto]"
+            onSubmit={(e) => {
+              e.preventDefault();
+              if (draft && canManage && (dirty || !editingId)) save();
+              else setOpen(false);
+            }}
+          >
+            {/* pr-12 keeps the switch clear of the modal's own close button. */}
+            <div className="flex items-start gap-3 border-b border-border p-4 pr-12">
+              {draft && brand ? (
+                <>
+                  <ChannelMark channel={draft.kind} />
+                  <div className="min-w-0 flex-1">
+                    <DialogTitle className="flex items-center gap-1.5">
+                      {draft.name || brand.label}
+                      {brand.beta && (
+                        <Badge
+                          variant="info"
+                          className="px-1.5 py-0 text-[10px]"
+                        >
+                          Beta
+                        </Badge>
+                      )}
+                    </DialogTitle>
+                    <DialogDescription className="mt-1">
+                      {brand.description}
+                    </DialogDescription>
+                  </div>
+                  <Switch
+                    checked={draft.enabled}
+                    disabled={!canManage}
+                    aria-label={`Turn ${brand.label} on`}
+                    onCheckedChange={(on) => void toggle(on)}
+                  />
+                </>
+              ) : (
                 <div className="min-w-0 flex-1">
-                  <DialogTitle className="flex items-center gap-1.5">
-                    {CHANNEL_BRAND[open].label}
-                    {CHANNEL_BRAND[open].beta && (
-                      <Badge variant="info" className="px-1.5 py-0 text-[10px]">
-                        Beta
-                      </Badge>
-                    )}
-                  </DialogTitle>
+                  <DialogTitle>Add a channel</DialogTitle>
                   <DialogDescription className="mt-1">
-                    {CHANNEL_BRAND[open].description}
+                    Pick where these alerts should go. You can add the same one
+                    more than once.
                   </DialogDescription>
                 </div>
-                <Switch
-                  checked={channels[open].enabled}
-                  disabled={!canManage}
-                  aria-label={`Turn ${CHANNEL_BRAND[open].label} on`}
-                  onCheckedChange={(on) => void toggleChannel(open, on)}
-                />
-              </div>
+              )}
+            </div>
 
-              <div className="min-h-0 space-y-5 overflow-y-auto p-4">
-                <ChannelConfig
-                  channel={open}
-                  channels={channels}
-                  secrets={secrets}
-                  onPatch={patchChannel}
-                  onSecret={(key, value) =>
-                    setSecrets((s) => ({ ...s, [key]: value }))
-                  }
-                  readOnly={!canManage}
-                />
-                <AlertPicker
-                  alerts={settings.alerts[open]}
-                  disabled={!canManage}
-                  onChange={(next) => setChannelAlerts(open, next)}
-                />
-              </div>
-
-              <DialogFooter className="items-center gap-1.5 border-t border-border p-4 sm:justify-between">
-                <div className="flex flex-wrap items-center gap-1.5">
-                  <Button
-                    type="button"
-                    variant="outline"
-                    size="sm"
-                    disabled={
-                      !canManage || !channels[open].enabled || !ready || dirty
+            <div className="min-h-0 space-y-5 overflow-y-auto p-4">
+              {!draft ? (
+                <div className="grid gap-2 sm:grid-cols-2">
+                  {ALL_CHANNELS.map((kind) => (
+                    <button
+                      key={kind}
+                      type="button"
+                      onClick={() => pickKind(kind)}
+                      className="flex items-center gap-3 rounded-lg border border-border p-3 text-left transition-colors hover:border-ring hover:bg-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                    >
+                      <ChannelMark channel={kind} />
+                      <span className="min-w-0 flex-1">
+                        <span className="flex items-center gap-1.5">
+                          <span className="truncate text-sm font-medium">
+                            {CHANNEL_BRAND[kind].label}
+                          </span>
+                          {CHANNEL_BRAND[kind].beta && (
+                            <Badge
+                              variant="info"
+                              className="px-1.5 py-0 text-[10px]"
+                            >
+                              Beta
+                            </Badge>
+                          )}
+                        </span>
+                        <span className="mt-1 block text-xs text-muted-foreground">
+                          {CHANNEL_BRAND[kind].description}
+                        </span>
+                      </span>
+                    </button>
+                  ))}
+                </div>
+              ) : (
+                <>
+                  <div className="space-y-1">
+                    <Label
+                      htmlFor="channel-name"
+                      className="text-xs text-muted-foreground"
+                    >
+                      Name
+                    </Label>
+                    <Input
+                      id="channel-name"
+                      value={draft.name}
+                      disabled={!canManage}
+                      onChange={(e) => patchDraft({ name: e.target.value })}
+                      // Optional on purpose: it earns its place when a team has
+                      // two of a kind, and asks for nothing when it does not.
+                      placeholder={brand?.label}
+                    />
+                  </div>
+                  <ChannelConfig
+                    draft={draft}
+                    secrets={secrets}
+                    onPatch={patchDraft}
+                    onSecret={(key, value) =>
+                      setSecrets((s) => ({ ...s, [key]: value }))
                     }
-                    onClick={() => void testChannel(open)}
-                  >
-                    <Send className="size-3.5" />
-                    {testing === open ? "Sending" : "Send a test"}
-                  </Button>
-                  {dirty && (
-                    <span className="text-xs text-muted-foreground">
-                      Save to test
-                    </span>
-                  )}
-                </div>
-                <div className="flex items-center gap-1.5">
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    size="sm"
-                    onClick={() => closeChannel(true)}
-                  >
-                    {dirty ? "Cancel" : "Close"}
-                  </Button>
-                  <Button
-                    type="submit"
-                    size="sm"
-                    disabled={saving || !canManage || !dirty}
-                  >
-                    {saving ? "Saving" : "Save"}
-                  </Button>
-                </div>
-              </DialogFooter>
-            </form>
-          )}
+                    readOnly={!canManage}
+                  />
+                  <AlertPicker
+                    alerts={draft.alerts}
+                    disabled={!canManage}
+                    onChange={(alerts) => patchDraft({ alerts })}
+                  />
+                </>
+              )}
+            </div>
+
+            <DialogFooter className="items-center gap-1.5 border-t border-border p-4 sm:justify-between">
+              <div className="flex flex-wrap items-center gap-1.5">
+                {/* A test dials whatever the SERVER has stored, so it is only
+                    offered once there IS something stored and nothing is
+                    pending on top of it. */}
+                {editingId && (
+                  <>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      disabled={
+                        !canManage ||
+                        !draft?.enabled ||
+                        !ready ||
+                        dirty ||
+                        testing
+                      }
+                      onClick={() => void test()}
+                    >
+                      <Send className="size-3.5" />
+                      {testing ? "Sending" : "Send a test"}
+                    </Button>
+                    {dirty && (
+                      <span className="text-xs text-muted-foreground">
+                        Save to test
+                      </span>
+                    )}
+                  </>
+                )}
+              </div>
+              <div className="flex items-center gap-1.5">
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => setOpen(false)}
+                >
+                  {dirty ? "Cancel" : "Close"}
+                </Button>
+                <Button
+                  type="submit"
+                  size="sm"
+                  disabled={
+                    saving || !canManage || !draft || (!!editingId && !dirty)
+                  }
+                >
+                  {saving ? "Saving" : editingId ? "Save" : "Add channel"}
+                </Button>
+              </div>
+            </DialogFooter>
+          </form>
         </DialogContent>
       </Dialog>
+
+      <ConfirmAction
+        open={deleting !== null}
+        onOpenChange={(v) => !v && setDeleting(null)}
+        title={`Remove ${deleting ? deleting.name || CHANNEL_BRAND[deleting.kind].label : "this channel"}?`}
+        description="It stops receiving alerts, and what it was subscribed to is forgotten."
+        confirmLabel="Remove"
+        successMessage="Channel removed"
+        onConfirm={async () => {
+          const res = await gqlAction(
+            `mutation($id: ID!) { deleteNotificationChannel(id: $id) }`,
+            { id: deleting!.id },
+          );
+          if (res.ok) router.refresh();
+          return res;
+        }}
+      />
     </>
   );
 }
 
 /**
- * One channel at a glance: its mark on its own colour, its name, and the one
- * line that says whether it is doing anything. The whole tile is the button.
+ * One configured channel: what it is called, where it sends, whether it is on
+ * and how much it is told. The left side is the button; the trash sits outside
+ * it, the shape a registry row already uses.
  */
-function ChannelTile({
-  channel,
-  enabled,
-  ready,
-  alertCount,
+function ChannelRow({
+  instance,
+  canManage,
   onOpen,
+  onDelete,
 }: {
-  channel: NotificationChannel;
-  enabled: boolean;
-  ready: boolean;
-  alertCount: number;
+  instance: NotificationChannelInstance;
+  canManage: boolean;
   onOpen: () => void;
+  onDelete: () => void;
 }) {
-  const brand = CHANNEL_BRAND[channel];
-  const status = !enabled
+  const brand = CHANNEL_BRAND[instance.kind];
+  // A stored channel's secrets are already set, so the row asks for nothing extra.
+  const ready = isChannelReady(instance, {});
+  const target = channelTarget(instance);
+  const status = !instance.enabled
     ? "Off"
     : !ready
       ? "Needs setup"
-      : `${alertCount} of ${ALL_ALERTS.length} alerts`;
+      : `${instance.alerts.length} of ${ALL_ALERTS.length} alerts`;
   return (
-    <button
-      type="button"
-      onClick={onOpen}
-      className="flex items-center gap-3 rounded-lg border border-border p-3 text-left transition-colors hover:border-ring hover:bg-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-    >
-      <ChannelMark channel={channel} />
-      <span className="min-w-0 flex-1">
-        <span className="flex items-center gap-1.5">
-          <span className="truncate text-sm font-medium">{brand.label}</span>
-          {brand.beta && (
-            <Badge variant="info" className="px-1.5 py-0 text-[10px]">
-              Beta
-            </Badge>
-          )}
+    <div className="flex items-center gap-3 rounded-lg border border-border p-3 transition-colors hover:border-ring hover:bg-accent">
+      <button
+        type="button"
+        onClick={onOpen}
+        className="flex min-w-0 flex-1 items-center gap-3 rounded-md text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+      >
+        <ChannelMark channel={instance.kind} />
+        <span className="min-w-0 flex-1">
+          <span className="flex items-center gap-1.5">
+            <span className="truncate text-sm font-medium">
+              {instance.name || brand.label}
+            </span>
+            {/* The type, only once a name has taken its place. On an unnamed row
+                the title already says Discord and a badge would say it twice. */}
+            {instance.name && <Badge variant="secondary">{brand.label}</Badge>}
+            {brand.beta && (
+              <Badge variant="info" className="px-1.5 py-0 text-[10px]">
+                Beta
+              </Badge>
+            )}
+          </span>
+          <span className="mt-1 flex min-w-0 items-center gap-1.5 text-xs text-muted-foreground">
+            {target && (
+              <>
+                <span className="truncate font-mono">{target}</span>
+                <span aria-hidden>·</span>
+              </>
+            )}
+            <span
+              className={
+                instance.enabled && !ready ? "text-[var(--warning)]" : undefined
+              }
+            >
+              {status}
+            </span>
+          </span>
         </span>
         <span
-          className={
-            enabled && !ready
-              ? "mt-1 block text-xs text-[var(--warning)]"
-              : "mt-1 block text-xs text-muted-foreground"
-          }
+          aria-hidden
+          className="size-2 shrink-0 rounded-full"
+          style={{
+            backgroundColor: instance.enabled && ready ? brand.bg : "transparent",
+            boxShadow:
+              instance.enabled && ready
+                ? undefined
+                : "inset 0 0 0 1.5px var(--border)",
+          }}
+        />
+      </button>
+      {canManage && (
+        <Button
+          variant="ghost"
+          size="icon-sm"
+          className="text-muted-foreground hover:text-destructive"
+          onClick={onDelete}
+          aria-label={`Remove ${instance.name || brand.label}`}
         >
-          {status}
-        </span>
-      </span>
-      {/* The dot is the scannable "is this live" signal; the word backs it up. */}
-      <span
-        aria-hidden
-        className="size-2 shrink-0 rounded-full"
-        style={{
-          backgroundColor: enabled && ready ? brand.bg : "transparent",
-          boxShadow:
-            enabled && ready ? undefined : "inset 0 0 0 1.5px var(--border)",
-        }}
-      />
-    </button>
+          <Trash2 className="size-4" />
+        </Button>
+      )}
+    </div>
   );
 }

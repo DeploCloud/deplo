@@ -1528,6 +1528,9 @@ type Mutation {
   """Delete an instance-wide variable. Returns true."""
   deleteInstanceEnv(id: String!): Boolean
 
+  """Remove a channel. Its subscribed alerts go with it."""
+  deleteNotificationChannel(id: ID!): Boolean
+
   """
   Delete a Project container; its folders and apps fall back to the team top level (not deleted).
   """
@@ -1838,8 +1841,8 @@ type Mutation {
   """
   runDockerCleanupNow(serverId: String!): DockerCleanupRun
 
-  """Replace the active team's notification settings."""
-  saveNotificationSettings(input: JSON!): NotificationSettings
+  """Create a channel (omit id) or replace one. Returns the saved channel."""
+  saveNotificationChannel(id: ID, input: JSON!): JSON
 
   """Create or update a shared variable; returns the saved entity."""
   saveSharedVar(input: SaveSharedVarInput!): SharedVar
@@ -1983,8 +1986,8 @@ type Mutation {
   """Switch the active team (sets a cookie server-side). Returns true."""
   switchTeam(teamId: String!): Boolean
 
-  """Send a one-off test alert through a single channel. Returns true."""
-  testNotification(channel: TestNotificationChannel!): Boolean
+  """Send a one-off test alert through one channel, using its saved config."""
+  testNotificationChannel(id: ID!): Boolean
 
   """
   Probe the bucket through a backup-capable agent (head, write, remove) and return BOTH the repainted destination and the verdict. A failed probe resolves normally with `report.ok = false` — check it rather than assuming success, and show `report.error` verbatim.
@@ -2128,17 +2131,6 @@ input NodeGrantInput {
   capabilities: [Capability!]!
   folderIds: [String!]
   projectIds: [String!]
-}
-
-"""Per-team notification channels, each with its own subscribed alerts."""
-type NotificationSettings {
-  """
-  Per channel, the subscribed alert keys (deployment_failed, server_offline, …).
-  """
-  alerts: JSON
-
-  """Channel config map: enable flags + endpoints for all twelve channels."""
-  channels: JSON
 }
 
 """
@@ -2420,8 +2412,10 @@ type Query {
   """Every team the viewer belongs to, for the team switcher."""
   myTeams: [TeamMembership!]
 
-  """The active team's notification settings (defaults if unset)."""
-  notificationSettings: NotificationSettings
+  """
+  The active team's configured channels, each with its own subscribed alerts.
+  """
+  notificationChannels: JSON
 
   """
   The first server available, or null when none has been added/provisioned yet.
@@ -3261,21 +3255,6 @@ type TeamRole {
   Where in the team this role reaches. Null means the whole of it, which is every role until one is limited. A scoped role also loses every capability that only means something team-wide.
   """
   scope: RoleScope
-}
-
-enum TestNotificationChannel {
-  discord
-  email
-  gotify
-  lark
-  mattermost
-  msteams
-  ntfy
-  push
-  pushover
-  slack
-  telegram
-  webhook
 }
 
 """

@@ -1651,9 +1651,10 @@ export interface InstalledPlugin {
 /**
  * Where a team's alerts are delivered.
  *
- * EACH channel carries its own alert selection (`NotificationSettings.alerts`):
- * a team room that wants every deploy outcome and an on-call phone that wants
- * only the failures are the normal case, not the exotic one.
+ * A team configures N of them and any kind may repeat: EACH instance carries its
+ * own alert selection, because a team room that wants every deploy outcome and
+ * an on-call phone that wants only the failures are the normal case, not the
+ * exotic one. See `NotificationChannelInstance`.
  *
  * The union is derived from the array so there is ONE declaration — the GraphQL
  * enum reads the same array, and the two cannot drift.
@@ -1770,64 +1771,48 @@ export const ALL_ALERTS: AlertKey[] = [
 ];
 
 /**
- * What each channel is subscribed to, every list in `ALL_ALERTS` order.
+ * ONE configured destination. A team has N of them, and any kind may repeat —
+ * two Discord rooms with different alert sets is the normal case, not the
+ * exotic one.
  *
- * Stored one row per decided `(team, channel, alert)`; a channel with no rows at
- * all resolves to the catalog defaults, which is the whole implementation of
- * "a newly enabled channel starts on the defaults".
+ * Flat, mirroring its row: `url`/`target`/`secret*` are the shared concepts
+ * (see `notification_channels`), and only the fields this `kind` uses carry
+ * meaning — the UI decides which to show. Credentials surface as BITS and have
+ * no read path, by design.
  */
-export type ChannelAlerts = Record<NotificationChannel, AlertKey[]>;
-
-export interface NotificationSettings {
-  channels: {
-    /** Browser push (beta). Endpoints live per user in `push_subscriptions`. */
-    push: { enabled: boolean };
-    email: {
-      enabled: boolean;
-      /** Where alerts are delivered. */
-      address: string;
-      /** The From: address the provider sends as. */
-      from: string;
-      provider: EmailProvider;
-      /** `passwordSet` is a bit, never the password — there is no reveal path. */
-      smtp: { host: string; port: number; user: string; passwordSet: boolean };
-      resend: { apiKeySet: boolean };
-    };
-    discord: { enabled: boolean; webhookUrl: string };
-    slack: { enabled: boolean; webhookUrl: string };
-    telegram: { enabled: boolean; chatId: string; botTokenSet: boolean };
-    webhook: { enabled: boolean; url: string };
-    /* ---- beta ---- */
-    lark: { enabled: boolean; webhookUrl: string };
-    /** The Power Automate Workflows URL, not the retired Office 365 connector. */
-    msteams: { enabled: boolean; webhookUrl: string };
-    gotify: { enabled: boolean; url: string; tokenSet: boolean };
-    /** Base URL and topic are separate: the JSON publish API puts the topic in the body. */
-    ntfy: { enabled: boolean; baseUrl: string; topic: string; tokenSet: boolean };
-    mattermost: { enabled: boolean; webhookUrl: string };
-    pushover: { enabled: boolean; tokenSet: boolean; userKeySet: boolean };
-  };
-  /** Per channel, what it is subscribed to. */
-  alerts: ChannelAlerts;
+export interface NotificationChannelInstance {
+  id: ID;
+  kind: NotificationChannel;
+  /** The team's own label, or "" — the UI falls back to the kind's own name. */
+  name: string;
+  enabled: boolean;
+  /** The outbound endpoint: a webhook URL, a Gotify server, an ntfy server. */
+  url: string;
+  /** The addressee inside it: telegram chat id, ntfy topic, the email To:. */
+  target: string;
+  emailFrom: string;
+  emailProvider: EmailProvider;
+  smtpHost: string;
+  smtpPort: number;
+  smtpUser: string;
+  /** telegram bot token · gotify token · ntfy token · pushover token · SMTP password */
+  secretSet: boolean;
+  /** pushover user key · Resend API key */
+  secret2Set: boolean;
+  /** What THIS instance is subscribed to, in `ALL_ALERTS` order. */
+  alerts: AlertKey[];
 }
 
 /**
- * What the settings form sends: the DTO, plus the plaintext credentials for any
+ * What the channel modal sends for ONE instance, plus the plaintext credentials
  * the user actually retyped. They ride in their own bag so a masked `…Set` bit
  * can never be mistaken for a value. **An absent or empty secret means "keep the
  * stored one"** — an edit that only moves the SMTP host must not require
  * retyping the password, and there is no reveal path to fill it back in.
  */
-export interface NotificationSettingsInput extends NotificationSettings {
-  secrets?: {
-    smtpPassword?: string;
-    resendApiKey?: string;
-    telegramBotToken?: string;
-    gotifyToken?: string;
-    ntfyToken?: string;
-    pushoverToken?: string;
-    pushoverUserKey?: string;
-  };
+export interface NotificationChannelInput
+  extends Omit<NotificationChannelInstance, "id" | "secretSet" | "secret2Set"> {
+  secrets?: { secret?: string; secret2?: string };
 }
 
 /**
@@ -1874,5 +1859,5 @@ export interface GithubInstallation {
   createdAt: string;
 }
 
-/* `defaultNotificationSettings()` lives in `lib/alerts.ts` — it needs the alert
- * catalog's defaults, and the catalog imports these types. */
+/* A channel with no stored rows resolves to `DEFAULT_ALERTS` (`lib/alerts.ts`),
+ * which is why there is no "default settings" factory here any more. */

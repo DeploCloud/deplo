@@ -6,7 +6,10 @@ import { graphql } from "graphql";
 
 import { makeTestDb, type TestDb } from "../db/test-harness";
 import { __setTestDb, __resetTestDb } from "../db/client";
-import { folders as foldersTable } from "../db/schema/control-plane";
+import {
+  folders as foldersTable,
+  notificationChannels as notificationChannelsTable,
+} from "../db/schema/control-plane";
 import { schema } from "./schema";
 import type { GraphQLContext } from "./context";
 import { runWithIdentity, type RequestIdentity } from "../auth/request-context";
@@ -47,6 +50,7 @@ let pg: PGlite;
 
 const USER_M = "user_below";
 const FOLDER = "fld_owned";
+const CHANNEL = "chan_seeded";
 const MY_FOLDER = "fld_mine";
 const APP_ROOT = "prj_root";
 const APP_FILED = "prj_filed";
@@ -66,7 +70,7 @@ beforeEach(async () => {
   await pg.exec(TRUNCATE_PROJECT_GRAPH);
   await pg.exec(TRUNCATE_IDENTITY);
   await pg.exec(
-    `truncate table projects, activities, notification_settings restart identity cascade;`,
+    `truncate table projects, activities, notification_channels restart identity cascade;`,
   );
   await seedIdentity(db, {
     users: [
@@ -75,6 +79,25 @@ beforeEach(async () => {
     ],
   });
   await seedServer(db);
+  // A REAL channel: `REFUSED` matches /not found/i, so an invented id would look
+  // like a refusal to the first test and fail the second.
+  await db.insert(notificationChannelsTable).values({
+    id: CHANNEL,
+    teamId: TEAM_A,
+    kind: "discord",
+    name: "",
+    enabled: false,
+    url: "",
+    target: "",
+    secretEnc: "",
+    secret2Enc: "",
+    emailFrom: "",
+    emailProvider: "resend",
+    smtpHost: "",
+    smtpPort: 587,
+    smtpUser: "",
+    createdAt: new Date().toISOString(),
+  });
   // Owned by the OTHER member: a folder gate that answered "yes" because the
   // caller happens to own the folder would prove nothing about capabilities.
   await db.insert(foldersTable).values([
@@ -195,13 +218,20 @@ const CASES: { name: string; doc: string; cap: Capability | null }[] = [
     cap: "manage_team",
   },
   {
-    name: "saveNotificationSettings",
-    doc: `mutation { saveNotificationSettings(input: {}) { __typename } }`,
+    name: "saveNotificationChannel",
+    doc: `mutation { saveNotificationChannel(input: {kind: "discord", url: "https://discord/hook"}) }`,
     cap: "manage_notifications",
   },
   {
-    name: "testNotification",
-    doc: `mutation { testNotification(channel: email) }`,
+    name: "deleteNotificationChannel",
+    doc: `mutation { deleteNotificationChannel(id: "${CHANNEL}") }`,
+    cap: "manage_notifications",
+  },
+  {
+    // A cap-holder gets "Add a Discord webhook URL first", which is not a
+    // refusal — the same trick the old testNotification case relied on.
+    name: "testNotificationChannel",
+    doc: `mutation { testNotificationChannel(id: "${CHANNEL}") }`,
     cap: "manage_notifications",
   },
   {

@@ -26,8 +26,8 @@ import type {
  * `s3_destination`, `backups`, `backup_runs`. Every reader and writer in the data
  * layer (`lib/data/{databases,s3,backups}.ts`) goes through here, so reads and
  * writes can't drift on how a row folds into a domain object — the same anti-drift
- * seam `app-graph-rows.ts` is for the project graph and `notification-row.ts`
- * is for `notification_settings`.
+ * seam `app-graph-rows.ts` is for the project graph and `infra-rows.ts` is for
+ * the infrastructure tables.
  *
  * Pure — no `server-only`, no store, no db handle — so a `server-only` module can
  * import it freely. These four collections are FLAT (no nested

@@ -1869,106 +1869,94 @@ export const activities = pgTable(
 );
 
 /**
- * [NotificationSettings](../../types.ts) — the `Record<teamId, …>` map → one row
- * per team: `team_id` IS the PK. The CHANNELS live here, flattened to columns
- * (no JSONB map), because a channel is a fixed set of named heterogeneous
- * fields, not a list. The subscribed ALERTS are a list, so they live one level
- * down in `notification_alerts` (PLAN §1: "list → ordered/junction table").
- * Missing row = `defaultNotificationSettings()`. A LEAF collection (cut-set (a))
- * (PLAN §2 `notification_settings`).
+ * ONE configured destination. N per team, and any kind may repeat — two Discord
+ * rooms, two on-call phones, and (deliberately: the owner was told it
+ * double-notifies the same device) two browser-push instances.
  *
- * Every credential is `*_enc` and is NEVER projected into a DTO — the settings
- * DTO carries a `…Set: boolean` instead, and there is no reveal path.
+ * Flat columns, not a child table per kind and never JSONB: a channel is a
+ * fixed set of named heterogeneous fields, not a list, which is the same reason
+ * the settings row this replaces was flat. Twelve child tables would pay a
+ * whole table for `{webhook_url}` five times over, and turn the dispatcher's
+ * one hot SELECT into twelve joins.
+ *
+ * Three columns are SHARED because the concept repeats, not to save space:
+ *
+ *   url          the outbound endpoint — the five chat webhooks, the generic
+ *                webhook, the Gotify server, the ntfy server. One column, so
+ *                one `assertSafeOutboundUrl` covers every one of them.
+ *   target       the addressee inside it — telegram chat id, ntfy topic, the
+ *                email To:.
+ *   secret_enc   the credential — telegram bot token, gotify app token, ntfy
+ *                token, pushover application token, SMTP password.
+ *   secret2_enc  the second one — pushover user key, Resend API key. Email uses
+ *                BOTH slots, so switching transport never strands a credential.
+ *
+ * `name` is the team's own label; `''` means unnamed and the UI falls back to
+ * the kind's own name. Every credential is `*_enc` and is NEVER projected into
+ * a DTO — the instance DTO carries a `…Set: boolean` instead, no reveal path.
  */
-export const notificationSettings = pgTable("notification_settings", {
-  teamId: text("team_id")
-    .primaryKey()
-    .references(() => teams.id, { onDelete: "cascade" }),
-  // Browser push (beta) — the endpoints themselves are per user, see below.
-  pushEnabled: boolean("push_enabled").notNull(),
-  // Email. `email_provider` picks the transport; the other group is inert.
-  emailEnabled: boolean("email_enabled").notNull(),
-  /** Where alerts are delivered. */
-  emailAddress: text("email_address").notNull(),
-  /** The From: address the provider sends as. */
-  emailFrom: text("email_from").notNull().default(""),
-  /** `smtp` | `resend` — see `EmailProvider`. Resend is the default transport. */
-  emailProvider: text("email_provider").notNull().default("resend"),
-  smtpHost: text("smtp_host").notNull().default(""),
-  smtpPort: integer("smtp_port").notNull().default(587),
-  smtpUser: text("smtp_user").notNull().default(""),
-  smtpPasswordEnc: text("smtp_password_enc").notNull().default(""),
-  resendApiKeyEnc: text("resend_api_key_enc").notNull().default(""),
-  // Chat webhooks. Discord and Slack are both "paste one incoming-webhook URL".
-  discordEnabled: boolean("discord_enabled").notNull(),
-  discordWebhookUrl: text("discord_webhook_url").notNull(),
-  slackEnabled: boolean("slack_enabled").notNull().default(false),
-  slackWebhookUrl: text("slack_webhook_url").notNull().default(""),
-  telegramEnabled: boolean("telegram_enabled").notNull().default(false),
-  telegramBotTokenEnc: text("telegram_bot_token_enc").notNull().default(""),
-  telegramChatId: text("telegram_chat_id").notNull().default(""),
-  // The generic outbound webhook.
-  webhookEnabled: boolean("webhook_enabled").notNull(),
-  webhookUrl: text("webhook_url").notNull(),
-  /* ---- beta channels ---- */
-  // Lark, Microsoft Teams and Mattermost are one incoming-webhook URL each, the
-  // same shape as Discord and Slack. The Teams one is the Power Automate
-  // Workflows URL — the Office 365 connector retired on 31 Mar 2026.
-  larkEnabled: boolean("lark_enabled").notNull().default(false),
-  larkWebhookUrl: text("lark_webhook_url").notNull().default(""),
-  msteamsEnabled: boolean("msteams_enabled").notNull().default(false),
-  msteamsWebhookUrl: text("msteams_webhook_url").notNull().default(""),
-  mattermostEnabled: boolean("mattermost_enabled").notNull().default(false),
-  mattermostWebhookUrl: text("mattermost_webhook_url").notNull().default(""),
-  // Gotify and ntfy carry a server address of their own, which goes through the
-  // same outbound guard as every other URL: public https only.
-  gotifyEnabled: boolean("gotify_enabled").notNull().default(false),
-  gotifyUrl: text("gotify_url").notNull().default(""),
-  gotifyTokenEnc: text("gotify_token_enc").notNull().default(""),
-  // Server and topic are separate: ntfy's JSON publish API puts the topic in the
-  // BODY, not the path.
-  ntfyEnabled: boolean("ntfy_enabled").notNull().default(false),
-  ntfyBaseUrl: text("ntfy_base_url").notNull().default("https://ntfy.sh"),
-  ntfyTopic: text("ntfy_topic").notNull().default(""),
-  ntfyTokenEnc: text("ntfy_token_enc").notNull().default(""),
-  // The one channel with two credentials: the application token and the user key.
-  pushoverEnabled: boolean("pushover_enabled").notNull().default(false),
-  pushoverTokenEnc: text("pushover_token_enc").notNull().default(""),
-  pushoverUserKeyEnc: text("pushover_user_key_enc").notNull().default(""),
-});
+export const notificationChannels = pgTable(
+  "notification_channels",
+  {
+    id: text("id").primaryKey(),
+    teamId: text("team_id")
+      .notNull()
+      .references(() => teams.id, { onDelete: "cascade" }),
+    /** A `NotificationChannel`. Text, not an enum: the catalog changes, migrations shouldn't. */
+    kind: text("kind").notNull(),
+    name: text("name").notNull().default(""),
+    enabled: boolean("enabled").notNull().default(true),
+    url: text("url").notNull().default(""),
+    target: text("target").notNull().default(""),
+    secretEnc: text("secret_enc").notNull().default(""),
+    secret2Enc: text("secret2_enc").notNull().default(""),
+    /* ---- email only ---- */
+    emailFrom: text("email_from").notNull().default(""),
+    /** `smtp` | `resend` — see `EmailProvider`. Resend is the default transport. */
+    emailProvider: text("email_provider").notNull().default("resend"),
+    smtpHost: text("smtp_host").notNull().default(""),
+    smtpPort: integer("smtp_port").notNull().default(587),
+    smtpUser: text("smtp_user").notNull().default(""),
+    createdAt: isoTimestamptz("created_at").notNull(),
+  },
+  (t) => [
+    index("notification_channels_team_created_idx").on(t.teamId, t.createdAt),
+  ],
+);
 
 /**
- * One row per alert the team has DECIDED about FOR ONE CHANNEL — the `alerts`
- * map of [NotificationSettings](../../types.ts) (PLAN §1: a list is a junction
- * table, never a column per item).
+ * One row per alert ONE CHANNEL INSTANCE has been decided about — the `alerts`
+ * list of a [NotificationChannelInstance](../../types.ts) (PLAN §1: a list is a
+ * junction table, never a column per item).
  *
  * `enabled` is a real column rather than "a row means subscribed" because three
  * states are real: on, off, and never said. A team that unticks a default-on
- * alert must stay distinguishable from a team that has never opened the page —
- * and an alert key added in a later release has to land on its catalog default
- * (`ALERT_META[key].defaultOn`) for every existing team, with no backfill.
+ * alert must stay distinguishable from one that has never opened the page — and
+ * an alert key added in a later release has to land on its catalog default
+ * (`ALERT_META[key].defaultOn`) for every existing channel, with no backfill.
  * Absent row = the catalog default.
  *
- * The channel is part of the key because each one carries its own selection: a
- * team room that wants every deploy outcome and an on-call phone that wants only
- * the failures is the normal case. The rule above then does double duty — a
- * channel with NO rows at all resolves to exactly the catalog defaults, which is
- * the whole implementation of "a newly enabled channel starts on the defaults",
- * with nothing to seed and no write on the toggle.
+ * The key is the INSTANCE, not the kind: two Discord rooms with different
+ * selections is the normal case. That also makes the rule above do double duty —
+ * a channel with NO rows at all resolves to exactly the catalog defaults, which
+ * is the whole implementation of "a new channel starts on the defaults", with
+ * nothing to seed and no write on create.
+ *
+ * There is deliberately no `team_id`: the cascade comes back through the
+ * channel, and that is what makes deleting an instance take its selection with
+ * it without a line of application code.
  */
 export const notificationAlerts = pgTable(
   "notification_alerts",
   {
-    teamId: text("team_id")
+    channelId: text("channel_id")
       .notNull()
-      .references(() => teams.id, { onDelete: "cascade" }),
-    /** A `NotificationChannel`. Text, not an enum, for the same reason as below. */
-    channel: text("channel").notNull(),
+      .references(() => notificationChannels.id, { onDelete: "cascade" }),
     /** An `AlertKey`. Text, not an enum: the catalog changes, migrations shouldn't. */
     alertKey: text("alert_key").notNull(),
     enabled: boolean("enabled").notNull(),
   },
-  (t) => [primaryKey({ columns: [t.teamId, t.channel, t.alertKey] })],
+  (t) => [primaryKey({ columns: [t.channelId, t.alertKey] })],
 );
 
 /**
@@ -2245,7 +2233,7 @@ export const githubInstallation = pgTable(
  * literal so `INSERT … ON CONFLICT (id) DO UPDATE` is the whole write path and two
  * concurrent saves can never mint two policies. A MISSING row is legal and means
  * "cleanup has never been configured" — the data layer answers with defaults
- * (disabled), the way a missing `notification_settings` row does.
+ * (disabled), the way a missing `notification_alerts` row does.
  *
  * There is deliberately NO denormalized `last_run_at` / `last_status` here (the
  * `backups` table carries them because its schedule is 1:1 with its runs). One policy

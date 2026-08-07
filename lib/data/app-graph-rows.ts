@@ -37,7 +37,7 @@ import type {
  * normalization"). Every reader (the read path) and writer (insert / update) in
  * the data layer goes through here, so reads and writes can never drift on how a
  * project's 5–6 child tables fold into one object — the same anti-drift rationale
- * as `notification-row.ts` for `notification_settings`.
+ * as `infra-rows.ts` for the infrastructure tables.
  *
  * `assemble*` turns a parent row + its (already-loaded) child rows into a domain
  * object; `*ToRows` turns a domain object into the flat row + ordered child rows

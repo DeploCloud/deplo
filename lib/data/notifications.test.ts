@@ -2,40 +2,39 @@ import { test, before, after, beforeEach } from "node:test";
 import assert from "node:assert/strict";
 
 import type { PGlite } from "@electric-sql/pglite";
-import { and, eq } from "drizzle-orm";
+import { eq } from "drizzle-orm";
 
 import { makeTestDb, type TestDb } from "../db/test-harness";
 import { __setTestDb, __resetTestDb } from "../db/client";
 import {
   notificationAlerts,
-  notificationSettings,
+  notificationChannels,
 } from "../db/schema/control-plane";
 import { runWithIdentity } from "../auth/request-context";
-import { defaultNotificationSettings, DEFAULT_ALERTS } from "../alerts";
-import {
-  ALL_ALERTS,
-  ALL_CHANNELS,
-  type NotificationSettingsInput,
-} from "../types";
-import { seedIdentity, TEAM_A, USER_1 } from "./leaf-test-helpers";
+import { DEFAULT_ALERTS } from "../alerts";
+import { ALL_ALERTS } from "../types";
+import type { NotificationChannelInput } from "../types";
+import { seedIdentity, TEAM_A, TEAM_B, USER_1 } from "./leaf-test-helpers";
+
+/** The seeder ships one user; TEAM_B needs its own owner for the scoping test. */
+const USER_2 = "user_2";
 import {
   channelsForAlert,
-  getNotificationSettings,
-  parseSettingsInput,
-  updateNotificationSettings,
+  deleteNotificationChannel,
+  listNotificationChannels,
+  parseChannelInput,
+  saveNotificationChannel,
 } from "./notifications";
 
 /**
- * Data-layer tests for the notification settings against pglite.
+ * Data-layer tests for notification channels against pglite.
  *
- * Two halves with different storage rules and both are pinned here: the CHANNELS
- * are flat columns on one row per team (`team_id` PK, upsert), and the subscribed
- * ALERTS are rows in `notification_alerts` keyed by (team, CHANNEL, alert), where
- * an ABSENT row means "never decided" and falls back to the catalog default.
- *
- * That one fallback carries two contracts, so both have their own test: a new
- * alert key ships without a backfill, and a channel nobody has ever opened lands
- * on the catalog defaults with nothing seeded.
+ * A team has N configured destinations and any kind may repeat, so the thing
+ * under test is the INSTANCE: its config, its credentials, and its own alert
+ * selection. Two rules carry the feature and both are pinned here — an ABSENT
+ * alert row means "never decided" and falls back to the catalog default (so a
+ * new key ships with no backfill AND a new channel starts on the defaults with
+ * nothing written), and a credential is stored `*_enc` with no read path.
  */
 
 let db: TestDb;
@@ -53,267 +52,273 @@ after(async () => {
 
 beforeEach(async () => {
   await pg.exec(
-    `truncate table notification_alerts, notification_settings, users, teams restart identity cascade;`,
+    `truncate table notification_alerts, notification_channels, users, teams restart identity cascade;`,
   );
-  await seedIdentity(db);
+  // USER_2 owns TEAM_B, so the cross-team test below is refused by the row's
+  // scoping rather than by a missing capability.
+  await seedIdentity(db, {
+    users: [
+      { id: USER_1, teamId: TEAM_A, role: "owner" },
+      { id: USER_2, teamId: TEAM_B, role: "owner" },
+    ],
+  });
 });
 
 const asUser1 = <T>(fn: () => Promise<T>): Promise<T> =>
   runWithIdentity({ userId: USER_1, teamId: TEAM_A }, fn);
 
 /**
- * Built from the defaults and overridden, not spelled out: twelve channels is
- * already too many to list, and channel thirteen then needs no edit here.
- * Bare hostnames never resolve, so the SSRF guard leaves them alone.
+ * A channel of `kind`, overridden as the test needs. Bare hostnames never
+ * resolve, so the outbound guard passes them through untouched.
  */
-function customSettings(): NotificationSettingsInput {
-  const s = defaultNotificationSettings();
+function draft(
+  over: Partial<NotificationChannelInput> = {},
+): NotificationChannelInput {
   return {
-    channels: {
-      ...s.channels,
-      push: { enabled: true },
-      email: {
-        ...s.channels.email,
-        enabled: true,
-        address: "alerts@alpha.io",
-        from: "deplo@alpha.io",
-        // Pinned, not inherited: these tests are about the SMTP branch, and the
-        // default transport is Resend.
-        provider: "smtp",
-        smtp: { host: "smtp.alpha.io", port: 587, user: "bot", passwordSet: false },
-      },
-      discord: { enabled: true, webhookUrl: "https://discord/hook" },
-      slack: { enabled: true, webhookUrl: "https://slack/hook" },
-      telegram: { enabled: true, chatId: "-100123", botTokenSet: false },
-      ntfy: {
-        enabled: true,
-        baseUrl: "https://ntfy",
-        topic: "deplo-alerts",
-        tokenSet: false,
-      },
-      pushover: { enabled: true, tokenSet: false, userKeySet: false },
-    },
-    alerts: {
-      ...s.alerts,
-      discord: ["deployment_failed", "deployment_succeeded", "backup_failed"],
-      slack: ["backup_failed"],
-    },
-    secrets: {
-      smtpPassword: "hunter2",
-      telegramBotToken: "123:ABC",
-      pushoverToken: "pk_live",
-      pushoverUserKey: "uk_live",
-    },
-  };
+    kind: "discord",
+    name: "",
+    enabled: true,
+    url: "https://discord/hook",
+    target: "",
+    emailFrom: "",
+    emailProvider: "resend",
+    smtpHost: "",
+    smtpPort: 587,
+    smtpUser: "",
+    alerts: ["deployment_failed", "backup_failed"],
+    ...over,
+  } as NotificationChannelInput;
 }
 
-test("getNotificationSettings returns the catalog defaults when the team has no row", async () => {
+test("a team with nothing configured has no channels", async () => {
   await asUser1(async () => {
-    assert.deepEqual(await getNotificationSettings(), defaultNotificationSettings());
-  });
-  assert.equal((await db.select().from(notificationSettings)).length, 0);
-});
-
-test("update then get round-trips every channel and the alert set", async () => {
-  const next = customSettings();
-  await asUser1(async () => {
-    await updateNotificationSettings(next);
-    const got = await getNotificationSettings();
-    assert.deepEqual(got.alerts, next.alerts);
-    assert.equal(got.channels.slack.webhookUrl, "https://slack/hook");
-    assert.equal(got.channels.telegram.chatId, "-100123");
-    assert.equal(got.channels.email.from, "deplo@alpha.io");
-    // The secrets round-trip as BITS, never as values.
-    assert.equal(got.channels.email.smtp.passwordSet, true);
-    assert.equal(got.channels.telegram.botTokenSet, true);
+    assert.deepEqual(await listNotificationChannels(), []);
   });
 });
 
-test("a saved alert set writes one row per channel per catalog key", async () => {
-  await asUser1(() => updateNotificationSettings(customSettings()));
-  const rows = await db.select().from(notificationAlerts);
-  assert.equal(rows.length, ALL_ALERTS.length * ALL_CHANNELS.length);
-  const on = rows
-    .filter((r) => r.enabled && r.channel === "discord")
-    .map((r) => r.alertKey)
-    .sort();
-  assert.deepEqual(on, ["backup_failed", "deployment_failed", "deployment_succeeded"]);
-});
-
-test("each channel keeps its own selection", async () => {
+test("a saved channel round-trips, with its credentials reduced to bits", async () => {
   await asUser1(async () => {
-    await updateNotificationSettings(customSettings());
-    const got = await getNotificationSettings();
-    assert.ok(got.alerts.discord.includes("deployment_succeeded"));
-    assert.equal(got.alerts.slack.includes("deployment_succeeded"), false);
-  });
-  // And the dispatcher agrees: only the channel that asked for it is dialed.
-  const kinds = (await channelsForAlert(TEAM_A, "deployment_succeeded")).map(
-    (c) => c.kind,
-  );
-  assert.ok(kinds.includes("discord"));
-  assert.equal(kinds.includes("slack"), false);
-});
-
-test("an alert with NO row falls back to its catalog default", async () => {
-  await asUser1(() => updateNotificationSettings(customSettings()));
-  // Simulate a key that shipped in a later release: the team has never decided
-  // about it, so its row simply does not exist.
-  await db
-    .delete(notificationAlerts)
-    .where(
-      and(
-        eq(notificationAlerts.teamId, TEAM_A),
-        eq(notificationAlerts.channel, "discord"),
-        eq(notificationAlerts.alertKey, "server_offline"),
-      ),
+    await saveNotificationChannel(
+      null,
+      draft({
+        kind: "telegram",
+        name: "On-call",
+        url: "",
+        target: "-100123",
+        secrets: { secret: "123:ABC" },
+      }),
     );
+    const [got] = await listNotificationChannels();
+    assert.equal(got.kind, "telegram");
+    assert.equal(got.name, "On-call");
+    assert.equal(got.target, "-100123");
+    assert.equal(got.secretSet, true, "a stored credential is one bit");
+    assert.deepEqual(got.alerts, ["deployment_failed", "backup_failed"]);
+    assert.ok(got.id.startsWith("chan_"));
+  });
+});
+
+test("the same kind can be added twice, each with its own alerts", async () => {
   await asUser1(async () => {
-    const got = await getNotificationSettings();
-    assert.equal(
-      got.alerts.discord.includes("server_offline"),
-      DEFAULT_ALERTS.includes("server_offline"),
-      "an undecided key follows the catalog, with no backfill",
+    await saveNotificationChannel(
+      null,
+      draft({ name: "Everything", alerts: [...ALL_ALERTS] }),
     );
-    // The key is per CHANNEL, so slack's own decision is untouched.
-    assert.equal(got.alerts.slack.includes("server_offline"), false);
-  });
-});
-
-test("a channel with no rows at all lands on the catalog defaults", async () => {
-  await asUser1(() => updateNotificationSettings(customSettings()));
-  // A channel nobody has ever opened: this is what "a newly enabled channel
-  // starts on the defaults" actually rests on, and nothing is seeded for it.
-  await db
-    .delete(notificationAlerts)
-    .where(
-      and(
-        eq(notificationAlerts.teamId, TEAM_A),
-        eq(notificationAlerts.channel, "lark"),
-      ),
+    await saveNotificationChannel(
+      null,
+      draft({
+        name: "Failures only",
+        url: "https://discord/other",
+        alerts: ["deployment_failed"],
+      }),
     );
-  await asUser1(async () => {
-    const got = await getNotificationSettings();
-    assert.deepEqual(got.alerts.lark, DEFAULT_ALERTS);
+    const got = await listNotificationChannels();
+    assert.equal(got.length, 2);
+    assert.deepEqual(
+      got.map((c) => c.kind),
+      ["discord", "discord"],
+    );
+    assert.notEqual(got[0].id, got[1].id);
   });
-});
-
-test("unknown alert keys from a client are dropped, not stored", async () => {
-  const next = customSettings();
-  (next.alerts.discord as string[]).push("not_a_real_alert");
-  await asUser1(() => updateNotificationSettings(next));
-  const rows = await db.select().from(notificationAlerts);
-  assert.equal(rows.some((r) => r.alertKey === "not_a_real_alert"), false);
-});
-
-test("an unknown channel from a client is dropped, not stored", async () => {
-  const next = customSettings();
-  (next.alerts as Record<string, unknown>).myspace = ["deployment_failed"];
-  await asUser1(() => updateNotificationSettings(next));
-  const rows = await db.select().from(notificationAlerts);
-  assert.equal(rows.some((r) => r.channel === "myspace"), false);
-});
-
-test("a second update overwrites the same row (upsert, no duplicate)", async () => {
-  await asUser1(async () => {
-    await updateNotificationSettings(customSettings());
-    const changed = customSettings();
-    changed.channels.email.address = "changed@alpha.io";
-    await updateNotificationSettings(changed);
-    const got = await getNotificationSettings();
-    assert.equal(got.channels.email.address, "changed@alpha.io");
-  });
-  assert.equal((await db.select().from(notificationSettings)).length, 1);
+  // And the dispatcher agrees: only the room that asked for it is dialed. THIS
+  // is the regression net for the lookup that used to key on `kind`, which is
+  // the same answer for both of them.
+  assert.equal((await channelsForAlert(TEAM_A, "deployment_failed")).length, 2);
   assert.equal(
-    (await db.select().from(notificationAlerts)).length,
-    ALL_ALERTS.length * ALL_CHANNELS.length,
+    (await channelsForAlert(TEAM_A, "deployment_succeeded")).length,
+    1,
+    "only the channel that subscribed to it",
   );
+});
+
+test("a channel with NO alert rows lands on the catalog defaults", async () => {
+  let id = "";
+  await asUser1(async () => {
+    id = (await saveNotificationChannel(null, draft())).id;
+  });
+  // A channel nobody has decided about — which is exactly the state a brand-new
+  // one is in, since nothing is seeded on create.
+  await db
+    .delete(notificationAlerts)
+    .where(eq(notificationAlerts.channelId, id));
+  await asUser1(async () => {
+    const [got] = await listNotificationChannels();
+    assert.deepEqual(got.alerts, DEFAULT_ALERTS);
+  });
+});
+
+test("one save writes one row per catalog key, for that channel only", async () => {
+  await asUser1(async () => {
+    await saveNotificationChannel(null, draft());
+    await saveNotificationChannel(null, draft({ url: "https://discord/two" }));
+  });
+  const rows = await db.select().from(notificationAlerts);
+  assert.equal(rows.length, ALL_ALERTS.length * 2);
+});
+
+test("deleting a channel takes its alert rows with it", async () => {
+  let keep = "";
+  await asUser1(async () => {
+    const a = await saveNotificationChannel(null, draft());
+    keep = (await saveNotificationChannel(null, draft({ url: "https://d/2" })))
+      .id;
+    await deleteNotificationChannel(a.id);
+  });
+  const rows = await db.select().from(notificationAlerts);
+  assert.equal(rows.length, ALL_ALERTS.length);
+  assert.ok(
+    rows.every((r) => r.channelId === keep),
+    "the FK cascade did it, not application code",
+  );
+});
+
+test("the kind is frozen once the channel exists", async () => {
+  await asUser1(async () => {
+    const saved = await saveNotificationChannel(null, draft());
+    // An instance that changed kind would carry an alert selection made about
+    // something else entirely.
+    await saveNotificationChannel(saved.id, draft({ kind: "slack" }));
+    const [got] = await listNotificationChannels();
+    assert.equal(got.kind, "discord");
+  });
 });
 
 test("an empty secret keeps the stored ciphertext; a new one replaces it", async () => {
-  await asUser1(() => updateNotificationSettings(customSettings()));
-  const before = (await db.select().from(notificationSettings))[0]!;
+  let id = "";
+  await asUser1(async () => {
+    id = (
+      await saveNotificationChannel(
+        null,
+        draft({
+          kind: "gotify",
+          url: "https://gotify",
+          secrets: { secret: "tok" },
+        }),
+      )
+    ).id;
+  });
+  const before = (await db.select().from(notificationChannels))[0]!;
 
-  // An edit that only moves the host, with the password field left blank.
-  const untouched = customSettings();
-  untouched.secrets = {};
-  untouched.channels.email.smtp.host = "smtp2.alpha.io";
-  await asUser1(() => updateNotificationSettings(untouched));
-  const kept = (await db.select().from(notificationSettings))[0]!;
-  assert.equal(kept.smtpHost, "smtp2.alpha.io");
-  assert.equal(kept.smtpPasswordEnc, before.smtpPasswordEnc);
-  assert.notEqual(kept.smtpPasswordEnc, "");
+  await asUser1(() =>
+    saveNotificationChannel(
+      id,
+      draft({ kind: "gotify", url: "https://gotify2", secrets: {} }),
+    ),
+  );
+  const kept = (await db.select().from(notificationChannels))[0]!;
+  assert.equal(kept.url, "https://gotify2");
+  assert.equal(kept.secretEnc, before.secretEnc);
+  assert.notEqual(kept.secretEnc, "");
 
-  const retyped = customSettings();
-  retyped.secrets = { smtpPassword: "a-different-one" };
-  await asUser1(() => updateNotificationSettings(retyped));
-  const changed = (await db.select().from(notificationSettings))[0]!;
-  assert.notEqual(changed.smtpPasswordEnc, before.smtpPasswordEnc);
+  await asUser1(() =>
+    saveNotificationChannel(
+      id,
+      draft({
+        kind: "gotify",
+        url: "https://gotify2",
+        secrets: { secret: "other" },
+      }),
+    ),
+  );
+  const changed = (await db.select().from(notificationChannels))[0]!;
+  assert.notEqual(changed.secretEnc, before.secretEnc);
 });
 
 test("the DTO carries no credential in any shape", async () => {
   await asUser1(async () => {
-    await updateNotificationSettings(customSettings());
-    const json = JSON.stringify(await getNotificationSettings());
-    assert.equal(json.includes("hunter2"), false);
-    assert.equal(json.includes("123:ABC"), false);
-    assert.equal(json.includes("pk_live"), false);
-    assert.equal(json.includes("uk_live"), false);
-    assert.equal(
-      /Enc"|password"|apiKey"|botToken"|userKey"|"token"/.test(json),
-      false,
+    await saveNotificationChannel(
+      null,
+      draft({
+        kind: "pushover",
+        url: "",
+        secrets: { secret: "po-token", secret2: "po-user" },
+      }),
     );
+    const json = JSON.stringify(await listNotificationChannels());
+    assert.equal(json.includes("po-token"), false);
+    assert.equal(json.includes("po-user"), false);
+    assert.equal(/Enc"|"secret"|"secret2"|password/.test(json), false);
   });
 });
 
-test("a webhook URL aimed inside the network is refused before it is stored", async () => {
-  const evil = customSettings();
-  // The self-hosted case the owner explicitly chose to keep refused.
-  evil.channels.gotify = {
-    enabled: true,
-    url: "https://127.0.0.1:8080",
-    tokenSet: false,
-  };
+test("a URL aimed inside the network is refused before it is stored", async () => {
   await asUser1(async () => {
     await assert.rejects(
-      () => updateNotificationSettings(evil),
+      () =>
+        // The self-hosted case the owner explicitly chose to keep refused.
+        saveNotificationChannel(
+          null,
+          draft({ kind: "gotify", url: "https://127.0.0.1:8080" }),
+        ),
       /private or internal/,
     );
   });
-  assert.equal((await db.select().from(notificationSettings)).length, 0);
+  assert.equal((await db.select().from(notificationChannels)).length, 0);
 });
 
-test("parseSettingsInput survives junk from the JSON scalar", async () => {
-  const parsed = parseSettingsInput({ channels: "nope", alerts: 7 });
-  // Every channel is present with an empty list: the map is built by iterating
-  // the catalog, never by reading the input's own keys.
-  assert.deepEqual(Object.keys(parsed.alerts), [...ALL_CHANNELS]);
-  assert.deepEqual(parsed.alerts.discord, []);
-  assert.equal(parsed.channels.email.provider, "resend");
-  assert.equal(parsed.channels.email.smtp.port, 587);
-  assert.equal(parsed.channels.ntfy.baseUrl, "https://ntfy.sh");
-  assert.equal(parsed.channels.discord.enabled, false);
+test("another team's channel is out of reach, and its row survives", async () => {
+  let id = "";
+  await asUser1(async () => {
+    id = (await saveNotificationChannel(null, draft())).id;
+  });
+  // USER_2 owns TEAM_B and holds every capability THERE, so the refusal has to
+  // come from the row being scoped to another team, not from a missing grant.
+  await runWithIdentity({ userId: USER_2, teamId: TEAM_B }, async () => {
+    await assert.rejects(() => deleteNotificationChannel(id), /not found/i);
+    assert.deepEqual(await listNotificationChannels(), []);
+  });
+  assert.equal((await db.select().from(notificationChannels)).length, 1);
+});
+
+test("parseChannelInput survives junk, and refuses an unknown kind", () => {
+  const parsed = parseChannelInput({ kind: "ntfy", alerts: 7, smtpPort: "nope" });
+  assert.deepEqual(parsed.alerts, [], "unknown or absent keys drop out");
+  assert.equal(parsed.url, "https://ntfy.sh", "ntfy's one meaningful default");
+  assert.equal(parsed.smtpPort, 587);
+  assert.equal(parsed.enabled, false);
+  // A save is for ONE channel, so coercing an unknown kind would create a
+  // channel nobody asked for.
+  assert.throws(() => parseChannelInput({ kind: "myspace" }), /Unknown channel/);
 });
 
 test("channelsForAlert resolves without any request identity", async () => {
-  await asUser1(() => updateNotificationSettings(customSettings()));
+  await asUser1(() =>
+    saveNotificationChannel(null, draft({ alerts: ["deployment_failed"] })),
+  );
   // Deliberately OUTSIDE runWithIdentity: this is the dispatcher's read, and a
   // scheduler tick has no active team.
-  const kinds = (await channelsForAlert(TEAM_A, "deployment_failed"))
-    .map((c) => c.kind)
-    .sort();
-  // ntfy and pushover are configured and subscribed through the defaults;
-  // slack asked for backup_failed only, so it is absent.
-  assert.deepEqual(kinds, [
-    "discord",
-    "email",
-    "ntfy",
-    "push",
-    "pushover",
-    "telegram",
-  ]);
+  const kinds = (await channelsForAlert(TEAM_A, "deployment_failed")).map(
+    (c) => c.kind,
+  );
+  assert.deepEqual(kinds, ["discord"]);
 });
 
-test("a team with no settings row has nothing to deliver to", async () => {
+test("a channel that is switched off is never dialed", async () => {
+  await asUser1(() => saveNotificationChannel(null, draft({ enabled: false })));
+  assert.deepEqual(await channelsForAlert(TEAM_A, "deployment_failed"), []);
+});
+
+test("a channel that is on but unconfigured is not dialed either", async () => {
+  await asUser1(() => saveNotificationChannel(null, draft({ url: "" })));
   assert.deepEqual(await channelsForAlert(TEAM_A, "deployment_failed"), []);
 });

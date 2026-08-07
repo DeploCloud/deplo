@@ -133,9 +133,10 @@ const CONTROL_PLANE = [
   "api_token_folders",
   "api_token_apps",
   "activities",
-  "notification_settings",
-  // The subscribed alerts (a list, so a child table) and the browsers that
-  // opted into push, per user and team.
+  // One row per CONFIGURED destination — a team may have two Discord rooms.
+  "notification_channels",
+  // What each of them is subscribed to (a list, so a child table), and the
+  // browsers that opted into push, per user and team.
   "notification_alerts",
   "push_subscriptions",
   "registries",

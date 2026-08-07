@@ -5,7 +5,6 @@ import {
   membersWithoutTwoFactor,
 } from "@/lib/data/teams";
 import { canDeleteTeam } from "@/lib/data/team-delete";
-import { DEPLO_VERSION } from "@/lib/version";
 import { PageHeader } from "@/components/shared/page-header";
 import {
   Card,
@@ -17,7 +16,6 @@ import { InfoTip } from "@/components/ui/info-tip";
 import { ThemeToggle } from "@/components/layout/theme-toggle";
 import { TeamForm } from "@/components/settings/team-form";
 import { TeamSecurityCard } from "@/components/settings/team-security-card";
-import { UpdateCard } from "@/components/settings/update-card";
 import { DeleteTeamCard } from "@/components/settings/delete-team-card";
 import { EmptyState } from "@/components/shared/empty-state";
 import { Lock } from "lucide-react";
@@ -26,9 +24,8 @@ export const metadata = { title: "Settings · General" };
 
 export default async function SettingsGeneralPage() {
   // The team's own settings are a team-wide read, so a member limited to part of
-  // the team is refused them. The page still renders: Appearance is theirs and
-  // the version is the instance's, and a section they can't have says so instead
-  // of taking the page down with it.
+  // the team is refused them. The page still renders: Appearance is theirs, and a
+  // section they can't have says so instead of taking the page down with it.
   const wholeTeam = await reachesWholeTeam();
   const [team, canManageTeam] = await Promise.all([
     getTeamIdentity(),
@@ -104,8 +101,6 @@ export default async function SettingsGeneralPage() {
             </div>
           </CardContent>
         </Card>
-
-        <UpdateCard current={DEPLO_VERSION} />
 
         {deletion.allowed && (
           <DeleteTeamCard

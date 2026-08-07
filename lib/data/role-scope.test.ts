@@ -754,7 +754,7 @@ test("every team-wide read refuses a scoped member, in their own words", async (
   const { getTeam } = await import("./teams");
   const { listGithubApps } = await import("./github");
   const { listS3 } = await import("./s3");
-  const { getNotificationSettings } = await import("./notifications");
+  const { listNotificationChannels } = await import("./notifications");
 
   const reads: [string, () => Promise<unknown>][] = [
     ["members", listMembers],
@@ -766,7 +766,7 @@ test("every team-wide read refuses a scoped member, in their own words", async (
     ["team settings", getTeam],
     ["git connections", listGithubApps],
     ["S3 destinations", listS3],
-    ["notifications", getNotificationSettings],
+    ["notifications", listNotificationChannels],
   ];
 
   // The control: unscoped, none of them refuses FOR THIS REASON. Some still

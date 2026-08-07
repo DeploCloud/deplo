@@ -22,10 +22,13 @@ import type { AlertKey } from "../types";
  */
 
 /**
- * A configured destination. Secrets are already decrypted by the caller.
+ * A configured destination, ready to dial. Secrets are already decrypted by the
+ * caller.
  *
- * Every `kind` is spelled EXACTLY like its `NotificationChannel` member — that
- * is what lets the dispatcher write `alerts[c.kind]` with no mapping table.
+ * This describes the DIAL, not the stored instance, and carries no instance id
+ * on purpose: nothing downstream of the dial needs one. The alert filter runs
+ * upstream, on the row, precisely BECAUSE `kind` is the same answer for two
+ * Discord rooms with different selections.
  */
 export type AlertChannel =
   | { kind: "discord"; webhookUrl: string }

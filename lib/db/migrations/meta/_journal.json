@@ -526,6 +526,13 @@
       "when": 1784676000000,
       "tag": "0074_email_defaults_to_resend",
       "breakpoints": true
+    },
+    {
+      "idx": 75,
+      "version": "7",
+      "when": 1784676200000,
+      "tag": "0075_notification_channel_instances",
+      "breakpoints": true
     }
   ]
 }

@@ -31,7 +31,7 @@ const SETTINGS_ID = "default";
  */
 const DEFAULTS: MonitoringSettings = { saveMetrics: true, updatedAt: null };
 
-/** Missing row = never configured = the defaults, like `notification_settings`. */
+/** Missing row = never configured = the defaults, like `notification_alerts`. */
 async function loadSettings(): Promise<MonitoringSettings> {
   const rows = await getDb().select().from(monitoringSettings).limit(1);
   const row = rows[0];
