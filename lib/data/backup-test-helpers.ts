@@ -83,6 +83,7 @@ export async function seedDatabase(
     resources: null,
     customImage: null,
     customCommand: null,
+    cronEnabled: false,
     sizeMb: 0,
     createdAt: T0,
   };

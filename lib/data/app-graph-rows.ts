@@ -203,6 +203,7 @@ export function assembleApp(
     status: row.status as App["status"],
     autoDeploy: row.autoDeploy,
     previewEnabled: row.previewEnabled,
+    cronEnabled: row.cronEnabled,
     // The hook's on/off state travels with the app; its TOKEN never does — that
     // column is read only by lib/data/deploy-hook.ts, which decrypts it behind
     // its own gate (App is the shape every DTO is built from).

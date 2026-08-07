@@ -8,6 +8,7 @@ import {
   Users,
   Archive,
   HardDrive,
+  Timer,
   Brush,
   Gauge,
   Activity as ActivityIcon,
@@ -32,6 +33,7 @@ const ICON_BY_TYPE: Record<ActivityType, LucideIcon> = {
   member: Users,
   backup: Archive,
   s3: HardDrive,
+  cron: Timer,
   cleanup: Brush,
   monitoring: Gauge,
 };

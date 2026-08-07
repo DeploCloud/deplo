@@ -597,6 +597,8 @@ export async function createDatabase(input: {
     resources: null,
     customImage: null,
     customCommand: null,
+    // Off, like an app's: a cron job runs arbitrary commands in the container.
+    cronEnabled: false,
     sizeMb: 0,
     createdAt: nowIso(),
   };

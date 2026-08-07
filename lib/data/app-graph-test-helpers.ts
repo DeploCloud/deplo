@@ -134,6 +134,7 @@ export async function seedApp(
     productionUrl: null,
     status: opts.status ?? "active",
     previewEnabled: false,
+    cronEnabled: false,
     autoDeploy: true,
     deployHookEnabled: true,
     composeUpArgs: null,

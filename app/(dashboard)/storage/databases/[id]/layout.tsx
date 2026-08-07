@@ -11,6 +11,7 @@ import {
 import { DatabaseStatusBadge } from "@/components/storage/database-status-badge";
 import { DatabaseControls } from "@/components/storage/database-controls";
 import { DatabaseRedeployButton } from "@/components/storage/database-redeploy-button";
+import { DbNavSync } from "@/components/storage/db-nav-store";
 
 const DB_TITLE_MAX = 24;
 
@@ -44,6 +45,9 @@ export default async function DatabaseLayout(
 
   return (
     <DatabaseLiveStatusProvider key={db.id} initial={initialLive}>
+      {/* Publishes this database's nav facts to the sidebar, which lives outside
+          this layout and so cannot read a context. Renders nothing. */}
+      <DbNavSync id={db.id} cronsEnabled={db.cronEnabled} />
       {/* Same readable width as the App pages (see apps/[slug]/layout). */}
       <div className="mx-auto w-full max-w-6xl space-y-6">
         <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">

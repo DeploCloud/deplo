@@ -76,6 +76,7 @@ export function databaseToRow(d: Database): DatabaseInsert {
     ...resourceLimitsToRow(d.resources),
     customImage: d.customImage,
     customCommand: d.customCommand,
+    cronEnabled: d.cronEnabled,
     sizeMb: d.sizeMb,
     createdAt: d.createdAt,
   } satisfies Record<
@@ -106,6 +107,7 @@ export function assembleDatabase(row: DatabaseRow): Database {
     resources: assembleResources(row),
     customImage: row.customImage,
     customCommand: row.customCommand,
+    cronEnabled: row.cronEnabled,
     sizeMb: row.sizeMb,
     createdAt: row.createdAt,
   };

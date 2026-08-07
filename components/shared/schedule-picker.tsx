@@ -23,11 +23,11 @@ import {
   cronFromParts,
   describeCron,
   isValidSchedule,
-  nextCronRun,
   partsFromCron,
   type ScheduleMode,
   type ScheduleParts,
 } from "@/lib/schedule";
+import { nextCronRunInZone } from "@/lib/crons/cron-tz";
 
 const pad = (n: number) => String(n).padStart(2, "0");
 
@@ -75,6 +75,7 @@ export function SchedulePicker({
   id = "schedule",
   label = "Schedule",
   info = DEFAULT_INFO,
+  timezone = "UTC",
 }: {
   value: string;
   onChange: (cron: string) => void;
@@ -90,6 +91,13 @@ export function SchedulePicker({
   /** The frequency field's own label — the picker renders it, to stay aligned with `trailing`. */
   label?: React.ReactNode;
   info?: React.ReactNode;
+  /**
+   * The zone the expression is read in. UTC for backups and docker cleanup,
+   * which have no zone of their own; a cron job passes its own, and then every
+   * label, the description and the next-run resolution must agree — a time field
+   * labelled UTC on a schedule that fires at 03:00 in Rome is a plain lie.
+   */
+  timezone?: string;
 }) {
   const [parts, setParts] = React.useState<ScheduleParts>(
     () => partsFromCron(value) ?? DEFAULT_PARTS,
@@ -99,7 +107,7 @@ export function SchedulePicker({
 
   const mode: ScheduleMode = custom ? "custom" : parts.mode;
   const valid = isValidSchedule(value);
-  const description = describeCron(value);
+  const description = describeCron(value, { timeZone: timezone });
 
   // The next run is resolved after hydration only: it is formatted in the
   // READER's timezone off the READER's clock, neither of which the server has,
@@ -107,7 +115,7 @@ export function SchedulePicker({
   // `useSyncExternalStore` gives the flag with no effect and no cascading render
   // — the value flips exactly once, server → client.
   const hydrated = React.useSyncExternalStore(NEVER_CHANGES, onClient, onServer);
-  const nextRun = hydrated ? nextCronRun(value, new Date()) : null;
+  const nextRun = hydrated ? nextCronRunInZone(value, new Date(), timezone) : null;
 
   function apply(next: ScheduleParts) {
     setParts(next);
@@ -250,9 +258,9 @@ export function SchedulePicker({
               <div className="space-y-2">
                 <FieldLabel
                   htmlFor={`${id}-time`}
-                  info="The time of day it runs, in UTC. The line below shows when that lands in your own timezone."
+                  info={`The time of day it runs, in ${timezone}. The line below shows when that lands in your own timezone.`}
                 >
-                  Time (UTC)
+                  Time ({timezone})
                 </FieldLabel>
                 <Input
                   id={`${id}-time`}
@@ -295,8 +303,15 @@ export function SchedulePicker({
  * itself kept in the tooltip for whoever wants it. An expression the vocabulary
  * doesn't cover has nothing to say in words, so it shows as the cron it is.
  */
-export function ScheduleLabel({ cron }: { cron: string }) {
-  const compact = describeCron(cron, { compact: true });
+export function ScheduleLabel({
+  cron,
+  timezone = "UTC",
+}: {
+  cron: string;
+  /** The zone the expression is read in — see {@link SchedulePicker}. */
+  timezone?: string;
+}) {
+  const compact = describeCron(cron, { compact: true, timeZone: timezone });
   if (!compact) return <code className="font-mono text-xs">{cron}</code>;
   return (
     <SimpleTooltip content={<code className="font-mono">{cron}</code>}>

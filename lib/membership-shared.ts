@@ -125,6 +125,12 @@ export const PROJECT_SCOPED_CAPABILITIES: Capability[] = [
   "configure_apps",
   "delete_apps",
   "open_app_console",
+  // A cron job hangs off ONE app, so it is meaningful inside a Project — and it
+  // sits next to `open_app_console` for the same reason it does everywhere else:
+  // both are "run a command in this container", one at a keystroke and one on a
+  // timer. Including it is also what makes the per-app grant (ADR-0016) the
+  // 0080 backfill writes reachable from the UI.
+  "manage_crons",
   "manage_domains",
   "manage_basic_auth",
   "manage_env",

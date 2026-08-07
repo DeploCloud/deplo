@@ -79,8 +79,10 @@ export const TOKEN_PRESETS: TokenPreset[] = [
     //     read_app_files (.env, certificates, service-account JSON).
     //  2. Is arbitrary code execution under another name — open_app_console and
     //     open_database_console (a shell is every capability at once, and no
-    //     list can bound what a model does once inside one), write_app_files and
-    //     configure_apps (both become execution on the next deploy).
+    //     list can bound what a model does once inside one), manage_crons (the
+    //     same shell, on a timer, still running long after the conversation
+    //     ended), write_app_files and configure_apps (both become execution on
+    //     the next deploy).
     //  3. Destroys with no undo on a hallucinated id — every delete_*, and
     //     restore_backups, which overwrites live data and is meant to need a
     //     typed human confirmation, not one emitted JSON field.

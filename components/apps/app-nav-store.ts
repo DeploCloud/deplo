@@ -24,6 +24,8 @@ export type AppNavState = {
   isGithubApp: boolean;
   /** Pull request previews are switched on. */
   previewsEnabled: boolean;
+  /** Cron jobs are switched on. */
+  cronsEnabled: boolean;
 };
 
 // Client-only module state: each browser tab owns its own instance. It is never

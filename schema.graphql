@@ -31,6 +31,7 @@ enum ActivityType {
   app
   backup
   cleanup
+  cron
   database
   deployment
   domain
@@ -527,10 +528,11 @@ enum Capability {
   delete_folders
   delete_projects
   delete_team
-  deploy @deprecated(reason: "Split into finer permissions. Still accepted on input, where it means: create_apps, deploy_apps, control_apps, configure_apps, delete_apps, move_apps, open_app_console, manage_previews, create_folders, organize_folders, delete_folders, create_projects, organize_projects, delete_projects, manage_environments.")
+  deploy @deprecated(reason: "Split into finer permissions. Still accepted on input, where it means: create_apps, deploy_apps, control_apps, configure_apps, delete_apps, move_apps, open_app_console, manage_previews, manage_crons, create_folders, organize_folders, delete_folders, create_projects, organize_projects, delete_projects, manage_environments.")
   deploy_apps
   manage_backups
   manage_basic_auth
+  manage_crons
   manage_domains
   manage_env
   manage_environments
@@ -749,6 +751,163 @@ type CreateTokenPayload {
   """The full token secret. Shown once and never again."""
   raw: String
   token: ApiToken
+}
+
+"""
+A command run inside one container of an App or a Database, on a cron schedule, in the job's own timezone. Running it produces a CronRun.
+"""
+type CronJob {
+  appId: ID
+  command: String
+  createdAt: String
+  databaseId: ID
+  description: String
+  enabled: Boolean
+
+  """
+  The NAMES of the job's extra variables. The values are write-only and have no read path.
+  """
+  envKeys: [String!]
+  id: ID
+  keepRuns: Int
+  lastRunAt: String
+  lastStatus: String
+
+  """
+  The last time it actually worked. Separate from lastRunAt so a job quietly skipped for a week (its container is stopped) is visible.
+  """
+  lastSuccessAt: String
+
+  """Launches per scheduled fire. 1 means no retry."""
+  maxAttempts: Int
+  name: String
+
+  """Computed, never stored. Null while the job is disabled."""
+  nextRunAt: String
+
+  """skip | allow — what happens when the previous run is still going."""
+  overlap: String
+
+  """5-field cron."""
+  schedule: String
+
+  """
+  Compose service to run in. Null means the target's own container — the only possibility for a database. Never a container name: a redeploy mints new ones, so it is resolved live before every attempt.
+  """
+  service: String
+
+  """sh | bash."""
+  shell: String
+
+  """app | database."""
+  targetKind: String
+
+  """
+  Per ATTEMPT — it is the agent's exec deadline. timeout x attempts is capped at 24 hours.
+  """
+  timeoutSeconds: Int
+
+  """IANA zone the schedule is read in. NOT UTC unless you say so."""
+  timezone: String
+  updatedAt: String
+  user: String
+  workdir: String
+}
+
+"""
+One extra variable for a job. The value is encrypted at rest and reaches the host inside the mTLS RPC — it is never readable back.
+"""
+input CronJobEnvInput {
+  key: String!
+  value: String!
+}
+
+"""
+Every field is optional so one input serves create and edit; create requires name, schedule and command.
+"""
+input CronJobInput {
+  command: String
+  description: String
+  enabled: Boolean
+
+  """Replaces the job's variables wholesale when present."""
+  env: [CronJobEnvInput!]
+
+  """10 to 500."""
+  keepRuns: Int
+
+  """1 to 4. 1 means no retry."""
+  maxAttempts: Int
+  name: String
+
+  """skip | allow."""
+  overlap: String
+
+  """5-field cron."""
+  schedule: String
+
+  """Empty ⇒ the target's own container."""
+  service: String
+
+  """sh | bash."""
+  shell: String
+
+  """Per attempt, 1s to 24h."""
+  timeoutSeconds: Int
+
+  """IANA zone, e.g. Europe/Rome."""
+  timezone: String
+  user: String
+  workdir: String
+}
+
+"""Everything a Cron jobs page renders in one read."""
+type CronJobsView {
+  """
+  The per-target master switch. While false the scheduler skips every job here, and the jobs themselves are untouched.
+  """
+  enabled: Boolean
+  jobs: [CronJob!]
+
+  """Compose services a job can target. Empty for a database."""
+  services: [String!]
+  targetId: ID
+  targetKind: String
+}
+
+"""One scheduled fire of a cron job, retries included."""
+type CronRun {
+  actor: String
+
+  """0-based. The output below is this attempt's, not the first's."""
+  attempt: Int
+  command: String
+  container: String
+
+  """Why it failed or was skipped. Not command output."""
+  error: String
+  exitCode: Int
+  finishedAt: String
+  id: ID
+  jobId: ID
+  maxAttempts: Int
+
+  """Running, but waiting out a retry backoff rather than executing."""
+  retrying: Boolean
+  scheduledFor: String
+  startedAt: String
+
+  """
+  running | succeeded | failed | timedout | skipped | lost. `skipped` never started (the container was stopped, or the previous run was still going) and `lost` means the outcome is unknown — the agent restarted mid-run. Neither is a failure.
+  """
+  status: String
+  stderr: String
+
+  """Last 16 KiB — the tail."""
+  stdout: String
+
+  """schedule | manual."""
+  trigger: String
 }
 
 """
@@ -1517,6 +1676,9 @@ type Mutation {
   Cancel every in-progress deployment (queued/building) for one app (appId given) or across the whole active team (appId omitted), optionally narrowed to the deployments view filters: one owning server (serverId), one environment, and/or one status. Terminal deployments are left. Returns how many builds were stopped.
   """
   cancelAllDeployments(appId: ID, environment: String, serverId: ID, status: String): Int
+
+  """Stop a run that is in flight."""
+  cancelCronRun(id: ID!): Boolean
   cancelDeployment(id: String!): Boolean
 
   """
@@ -1585,6 +1747,13 @@ type Mutation {
 
   """Create a backup schedule. Returns true."""
   createBackup(input: CreateBackupInput!): Boolean
+  createCronJob(
+    input: CronJobInput!
+    targetId: ID!
+
+    """app | database."""
+    targetKind: String!
+  ): CronJob
   createDatabase(input: CreateDatabaseInput!): Database
 
   """Add a custom environment to a Project container."""
@@ -1635,6 +1804,9 @@ type Mutation {
   Delete ALL of a target's S3 backup artifacts (across every destination it ran to) plus their run records. The 'also delete backups' branch of deleting a database or project. Returns the number of objects removed. Throws if any destination's sweep failed (so the caller can abort the target deletion rather than orphan bucket objects).
   """
   deleteBackupArtifacts(targetId: String!, targetKind: BackupTargetKind!): Int
+
+  """Delete a job and its run history."""
+  deleteCronJob(id: ID!): Boolean
 
   """
   Stop and destroy the database's container + data volume on its server, then delete it (dependent backup schedules cascade). The teardown must verifiably succeed: if the server can't be reached — or something of the stack survives it — nothing is deleted and the mutation errors, so a live database is never silently forgotten. `force` deletes the record anyway (for a host that is never coming back), leaving that container and its data on the host. Returns true.
@@ -1982,6 +2154,11 @@ type Mutation {
   runBackup(id: String!): Boolean
 
   """
+  Run a job now, outside its schedule. Ignores the overlap setting — somebody just asked for it explicitly.
+  """
+  runCronJobNow(id: ID!): CronRun
+
+  """
   START a sweep of this server now, with the policy's scopes — whether or not the schedule is enabled, and ignoring the exclusion list (which only governs the scheduled sweep). Returns IMMEDIATELY with the `running` run: the host keeps working in the background, so the caller never waits on a `docker rmi` sweep and closing the page cannot cancel it. Follow it on the `dockerCleanupRuns` subscription (or re-read the query); whatever the host fails at — unreachable, unprovisioned, an agent too old — lands on that run as `failed` with the reason. Only pre-flight problems error here: unknown server, nothing selected to reclaim, or a sweep already running on this host. Allow-listed: it never prunes containers, volumes or networks, so a stopped app, its data and its network survive.
   """
   runDockerCleanupNow(serverId: String!): DockerCleanupRun
@@ -2035,6 +2212,17 @@ type Mutation {
   Point every manageable server's certificates at this account email, where Let's Encrypt sends expiry and revocation notices. Each host's proxy is recreated to pick it up, one host at a time, so routing there is interrupted for a few seconds; certificates already issued keep working. Servers Deplo cannot manage are skipped and reported as skipped, never counted as done.
   """
   setCertificateEmail(email: String!): [CertificateAccount!]
+
+  """
+  Turn cron jobs on or off for one target. Off stops the schedule and keeps the jobs; runs already in flight are left to finish.
+  """
+  setCronEnabled(
+    enabled: Boolean!
+    targetId: ID!
+
+    """app | database."""
+    targetKind: String!
+  ): Boolean
   setDatabaseRunning(id: String!, running: Boolean!): Database
 
   """Make an environment the project's default (unsets the previous one)."""
@@ -2190,6 +2378,7 @@ type Mutation {
   Change a basic-auth user's password. The new password is live on every domain of the app within seconds (the old one stops working).
   """
   updateBasicAuthUserPassword(id: String!, password: String!): BasicAuthUser
+  updateCronJob(id: ID!, input: CronJobInput!): CronJob
 
   """
   Edit a database's public exposure (publish/unpublish + host port) and, optionally, the server it runs on. An in-place edit re-renders the compose and reroutes the container on its current host (data volume preserved). A server change recreates the container on the new host, COPIES its data volume there host-to-host (relayed through the control plane, not via S3) so the data follows the move, then tears down the old host's stack. The copy runs with both stacks stopped and rolls back on failure (the DB stays put). The connection string is re-derived. Everything else is create-only. The publish-ports grant is enforced in the data layer when exposure is on.
@@ -2365,6 +2554,9 @@ type Query {
   apiTokens: [ApiToken!]
   app(slug: String!): App
 
+  """An app's cron jobs, its master switch and its pickable services."""
+  appCronJobs(appId: ID!): CronJobsView
+
   """Read a single project file's text body."""
   appFile(appId: String!, path: String!): FileContent
 
@@ -2425,10 +2617,18 @@ type Query {
 
   """Attachable instances + default target for an app's console."""
   consoleInfo(appId: String!): ConsoleInfo
+
+  """
+  One job's run history, newest first. Gated on manage_crons and not on view: stdout can carry whatever the command printed.
+  """
+  cronRuns(jobId: ID!, limit: Int): [CronRun!]
   database(id: String!): Database
 
   """Attachable container + default target for a database's console."""
   databaseConsoleInfo(databaseId: String!): ConsoleInfo
+
+  """A database's cron jobs and its master switch."""
+  databaseCronJobs(databaseId: ID!): CronJobsView
 
   """Container list for a database's logs viewer."""
   databaseLogsInfo(databaseId: String!): LogsInfo

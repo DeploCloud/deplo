@@ -129,6 +129,10 @@ const CONTROL_PLANE = [
   "s3_destination",
   "backups",
   "backup_runs",
+  // cron jobs (ADR-0018)
+  "cron_jobs",
+  "cron_job_env",
+  "cron_runs",
   // per-team leaf
   "api_tokens",
   "api_token_capabilities",
@@ -207,6 +211,9 @@ test("schema: the load-bearing constraints from PLAN §2 are present", async () 
     "domains_name_pathprefix_uq", // expression UNIQUE name + coalesce(path_prefix)
     "servers_cert_fingerprint_uq", // partial UNIQUE excluding ''/NULL
     "backup_runs_running_idx", // partial index WHERE status='running'
+    "cron_runs_running_idx", // the cron reaper's working set, same shape
+    "cron_runs_dedupe_uq", // UNIQUE(job_id, dedupe_key) — the double-fire guard
+    "cron_jobs_enabled_idx", // partial index WHERE enabled
   ]) {
     assert.ok(indexes.has(name), `index ${name} should exist`);
   }
@@ -217,10 +224,11 @@ test("schema: the load-bearing constraints from PLAN §2 are present", async () 
   );
   const checks = new Set(chk.rows.map((x) => x.conname));
   assert.ok(checks.has("backups_target_kind_xor"), "backups XOR check");
+  assert.ok(checks.has("cron_jobs_target_kind_xor"), "cron jobs XOR check");
 });
 
 test("schema: the append-only tables carry a bigint identity seq", async () => {
-  for (const table of ["activities", "deployments", "backup_runs"]) {
+  for (const table of ["activities", "deployments", "backup_runs", "cron_runs"]) {
     const r = await pg.query<{ is_identity: string; data_type: string }>(
       `select is_identity, data_type from information_schema.columns
         where table_schema='public' and table_name=$1 and column_name='seq'`,

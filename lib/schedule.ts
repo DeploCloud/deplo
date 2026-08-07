@@ -232,11 +232,19 @@ const FIXED_LABELS = new Map(SCHEDULE_OPTIONS.map((o) => [o.mode, o.label]));
  *
  * `compact` trades the sentence for a table cell's worth of room ("Weekly, Wed
  * 03:00 UTC") — same facts, no filler words.
+ *
+ * `timeZone` names the zone the expression is read in. It defaults to UTC, which
+ * is what backups and docker cleanup are evaluated in; a cron job carries its own
+ * zone, and saying "03:00 UTC" for a schedule that fires at 03:00 in Rome would
+ * be a plain lie.
  */
-export function describeCron(cron: string, opts?: { compact?: boolean }): string | null {
+export function describeCron(
+  cron: string,
+  opts?: { compact?: boolean; timeZone?: string },
+): string | null {
   const parts = partsFromCron(cron);
   if (!parts) return null;
-  const at = `${pad(parts.hour)}:${pad(parts.minute)} UTC`;
+  const at = `${pad(parts.hour)}:${pad(parts.minute)} ${opts?.timeZone ?? "UTC"}`;
   const compact = opts?.compact === true;
   switch (parts.mode) {
     case "daily":

@@ -149,6 +149,17 @@ export async function register(): Promise<void> {
     console.error("[deplo] preview reaper startup failed:", e);
   }
   try {
+    // No reconcile to await either, and for a better reason than the reaper's: a
+    // cron job runs inside the AGENT's process, so restarting Deplo does not kill
+    // it. The scheduler's boot tick REAPS before it fires, and reaping asks the
+    // agent what actually happened — which is a reconcile that returns the real
+    // exit code instead of guessing "interrupted".
+    const { startCronScheduler } = await import("./lib/crons/scheduler");
+    startCronScheduler();
+  } catch (e) {
+    console.error("[deplo] cron scheduler startup failed:", e);
+  }
+  try {
     // Finally the metrics stream supervisor — holds ONE long-lived telemetry
     // stream per server, which is what keeps every Monitoring chart warm whether
     // or not anybody has the page open (no reconcile to wait on: its state is
@@ -213,6 +224,9 @@ export async function register(): Promise<void> {
         .catch(() => {});
       void import("./lib/previews/reaper")
         .then(({ releasePreviewReaperLease }) => releasePreviewReaperLease())
+        .catch(() => {});
+      void import("./lib/crons/scheduler")
+        .then(({ releaseCronSchedulerLease }) => releaseCronSchedulerLease())
         .catch(() => {});
     });
   }

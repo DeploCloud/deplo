@@ -1,7 +1,13 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 
-import { appNav, appSettingsNav, type AppNavFlags } from "./nav-config";
+import {
+  appNav,
+  appSettingsNav,
+  databaseNav,
+  databaseSettingsNav,
+  type AppNavFlags,
+} from "./nav-config";
 
 /**
  * Who gets offered what in an app's sub-menu.
@@ -20,6 +26,7 @@ const FLAGS: AppNavFlags = {
   showFiles: true,
   isGithubApp: true,
   previewsEnabled: true,
+  cronsEnabled: true,
   consoleAcknowledged: true,
 };
 
@@ -75,4 +82,63 @@ test("the SETTINGS entry is always there, disabled when the app cannot use it", 
   const other = settingsItem(false);
   assert.ok(other, "a non-GitHub app must still SEE that the feature exists");
   assert.match(other!.disabledReason ?? "", /GitHub/);
+});
+
+/* ---- Cron jobs ---------------------------------------------------- */
+
+const cronItem = () =>
+  appSettingsNav("blog")
+    .flatMap((s) => s.items)
+    .find((i) => i.label === "Cron jobs");
+
+test("the app menu offers Cron jobs only when they are switched on", () => {
+  assert.ok(labels(flags()).includes("Cron jobs"));
+  assert.ok(!labels(flags({ cronsEnabled: false })).includes("Cron jobs"));
+});
+
+test("Cron jobs does not need a GitHub app, unlike Pull requests", () => {
+  // Every app can run a command in its own container, so there is no structural
+  // impossibility here — this is what separates the two entries' rules.
+  const f = flags({ isGithubApp: false });
+  assert.ok(labels(f).includes("Cron jobs"));
+  assert.ok(!labels(f).includes("Pull requests"));
+});
+
+test("the Cron jobs entry survives while you are standing on it", () => {
+  // Turning the switch off from the page itself must not pull the entry out from
+  // under the reader.
+  const f = flags({ cronsEnabled: false, pathname: "/apps/blog/cron-jobs" });
+  assert.ok(labels(f).includes("Cron jobs"));
+});
+
+test("the Cron jobs entries are gated on manage_crons", () => {
+  const operational = appNav("blog", flags())
+    .flatMap((s) => s.items)
+    .find((i) => i.label === "Cron jobs");
+  assert.equal(operational?.requires, "manage_crons");
+  assert.equal(cronItem()?.requires, "manage_crons");
+});
+
+test("the Cron jobs settings entry is always live", () => {
+  // No `disabledReason` twin: unlike previews, nothing makes an app incapable.
+  assert.ok(cronItem());
+  assert.equal(cronItem()?.disabledReason, undefined);
+});
+
+test("a database gets Cron jobs on the same rule", () => {
+  const dbLabels = (cronsEnabled: boolean, pathname = "/storage/databases/db_1") =>
+    databaseNav("db_1", { pathname, consoleAcknowledged: false, cronsEnabled })
+      .flatMap((s) => s.items)
+      .map((i) => i.label);
+
+  assert.ok(dbLabels(true).includes("Cron jobs"));
+  assert.ok(!dbLabels(false).includes("Cron jobs"));
+  // And it survives while open, like the app's.
+  assert.ok(dbLabels(false, "/storage/databases/db_1/cron-jobs").includes("Cron jobs"));
+  // The settings entry is unconditional there too.
+  assert.ok(
+    databaseSettingsNav("db_1")
+      .flatMap((s) => s.items)
+      .some((i) => i.label === "Cron jobs"),
+  );
 });

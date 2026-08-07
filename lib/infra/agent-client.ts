@@ -78,6 +78,17 @@ const HELLO_TIMEOUT_MS = 8_000;
 export const HEALTH_HELLO_TIMEOUT_MS = 3_000;
 const DEPLOY_DEADLINE_MS = 30 * 60_000; // a build can be long
 const CONSOLE_TIMEOUT_MS = 30_000; // exec runs in-container; match docker.ts exec
+/**
+ * Cron RPC deadlines. Both are SHORT on purpose, and neither bounds the job.
+ *
+ * That is the whole point of the Start/Poll/Kill shape (ADR-0018): the command
+ * runs inside the agent on its own context, so a 24-hour job is 24 hours of
+ * `PollJob` calls that each take milliseconds — never one 24-hour connection.
+ * `StartJob` gets the more generous budget because it is the one that has to
+ * cross a possibly-slow link with the command and its environment attached.
+ */
+const CRON_START_TIMEOUT_MS = 15_000;
+const CRON_POLL_TIMEOUT_MS = 10_000;
 // The Metrics / ContainerStats POLL deadline — deliberately a fraction of the
 // console class. A normal measurement is ~1.2s (a 1s net-delta window + a 200ms
 // CPU sample + a docker list + statfs), so anything past ~8s means the host is
@@ -221,6 +232,37 @@ export interface AgentExecResult {
   stderr: string;
   code: number;
   rawMode: boolean;
+}
+
+/** What {@link AgentConnection.startJob} needs to spawn one cron attempt. */
+export interface AgentStartJobRequest {
+  /** `deplo.project` label the agent re-validates the container against. */
+  projectId: string;
+  /** Resolved LIVE before every attempt — a redeploy mints new container names. */
+  container: string;
+  image: string;
+  /** "sh" | "bash"; empty lets the agent probe, as the console does. */
+  shell: string;
+  command: string;
+  timeoutSeconds: number;
+  workdir: string;
+  user: string;
+  /** The NAME rides argv, the VALUE rides the docker client's own env — so a
+   *  secret is never readable from `ps` on the host. */
+  env: { name: string; value: string }[];
+}
+
+/** What {@link AgentConnection.pollJob} answers. */
+export interface AgentJobStatus {
+  /** false ⇒ this agent has no record of the job (it restarted). Not an error. */
+  found: boolean;
+  running: boolean;
+  /** Meaningful once `running` is false. -1 ⇒ the command never spawned. */
+  exitCode: number;
+  /** Empty while running; the last 16 KiB otherwise (tail, not head). */
+  stdout: string;
+  stderr: string;
+  timedOut: boolean;
 }
 
 /** A live, mTLS-secured connection to one agent, with a typed wrapper. */
@@ -454,6 +496,31 @@ export interface AgentConnection {
   ): Promise<AgentExecResult>;
   /** The container's shell label for the console banner. */
   shellLabel(appId: string, container: string, image: string): Promise<string>;
+
+  // ---- Cron jobs (ADR-0018) ----
+  /**
+   * Spawn a scheduled command in a container and get its handle back. Returns in
+   * well under a second: the agent does the container check and the shell probe
+   * inside its own goroutine, so a pre-spawn failure arrives through
+   * {@link AgentConnection.pollJob} as `exitCode: -1` rather than as a throw.
+   *
+   * Deliberately NOT {@link AgentConnection.exec}, which is capped at 30s and
+   * unary because a console REPL types one command and waits. The process here
+   * lives in the AGENT, on a job-scoped context, so restarting the control plane
+   * does not kill a running cron job.
+   */
+  startJob(req: AgentStartJobRequest): Promise<string>;
+  /**
+   * A job's current state. `found: false` means this agent has no record of it —
+   * it restarted, or the job was evicted after its retention window. That is a
+   * normal answer, and the caller records the run as `lost` (outcome unknown),
+   * never as a failure.
+   *
+   * Output is populated only once `running` is false.
+   */
+  pollJob(jobId: string): Promise<AgentJobStatus>;
+  /** Stop a running job. Idempotent: unknown or finished answers `false`. */
+  killJob(jobId: string): Promise<boolean>;
 
   // ---- Part C: project config files ----
   listFiles(slug: string, path: string): Promise<AgentFileEntry[]>;
@@ -1592,6 +1659,46 @@ function dial(target: DialTarget): AgentConnection {
         );
       });
     },
+    startJob(req: AgentStartJobRequest) {
+      return new Promise<string>((resolve, reject) => {
+        client.startJob(
+          req,
+          new Metadata(),
+          { deadline: new Date(Date.now() + CRON_START_TIMEOUT_MS) },
+          (err, resp) => (err ? reject(toAgentError(err)) : resolve(resp.jobId)),
+        );
+      });
+    },
+    pollJob(jobId: string) {
+      return new Promise<AgentJobStatus>((resolve, reject) => {
+        client.pollJob(
+          { jobId },
+          new Metadata(),
+          { deadline: new Date(Date.now() + CRON_POLL_TIMEOUT_MS) },
+          (err, resp) =>
+            err
+              ? reject(toAgentError(err))
+              : resolve({
+                  found: resp.found,
+                  running: resp.running,
+                  exitCode: resp.exitCode,
+                  stdout: resp.stdout,
+                  stderr: resp.stderr,
+                  timedOut: resp.timedOut,
+                }),
+        );
+      });
+    },
+    killJob(jobId: string) {
+      return new Promise<boolean>((resolve, reject) => {
+        client.killJob(
+          { jobId },
+          new Metadata(),
+          { deadline: new Date(Date.now() + CRON_POLL_TIMEOUT_MS) },
+          (err, resp) => (err ? reject(toAgentError(err)) : resolve(resp.found)),
+        );
+      });
+    },
     shellLabel(appId: string, container: string, image: string) {
       return new Promise<string>((resolve, reject) => {
         client.shellLabel(
@@ -1686,6 +1793,68 @@ export async function connectAgent(serverId: string): Promise<AgentConnection> {
 /** The capability an agent advertises in Hello once it can dump/restore to S3
  *  (mirrors the "backup" entry in the agent's server.Capabilities). */
 const BACKUP_CAPABILITY = "backup";
+
+/** The capability an agent advertises once it can run cron jobs
+ *  (StartJob/PollJob/KillJob — ADR-0018). */
+export const CRON_CAPABILITY = "cron";
+
+/**
+ * The reachable agent does not (yet) implement the cron RPCs — it predates the
+ * `"cron"` capability, or answers them with gRPC UNIMPLEMENTED.
+ *
+ * There is deliberately NO fallback path. Emulating a long job over the 30s
+ * `Exec` would mean backgrounding the command with `nohup` and polling a marker
+ * file, which needs a shell, a writable `/tmp` and PID bookkeeping inside every
+ * user's container — more code than the RPCs, and fragile in ways the user would
+ * discover at 03:00. An old agent gets an honest "update this server's agent"
+ * instead. Mirrors {@link AgentBackupUnsupportedError}.
+ */
+export class AgentCronUnsupportedError extends Error {}
+
+const CRON_UNSUPPORTED_MESSAGE =
+  "This server's agent is too old to run cron jobs. Update the agent on this server, then try again.";
+
+/**
+ * Open a connection to an agent that can run cron jobs, or throw.
+ *
+ * Preflights the capability rather than relying on UNIMPLEMENTED alone, because
+ * the scheduler decides what to do about a whole server before it starts firing
+ * its jobs — one Hello beats one failed StartJob per job.
+ *
+ * Throws {@link AgentUnreachableError} when the host is unreachable and
+ * {@link AgentCronUnsupportedError} when it is up but too old. The scheduler
+ * treats those very differently: unreachable means "leave the run alone and ask
+ * again next minute", too-old means "this attempt failed, say why".
+ */
+export async function connectCronAgent(
+  serverId: string,
+): Promise<AgentConnection> {
+  const conn = await connectAgent(serverId);
+  try {
+    const hello = await conn.hello();
+    if (!hello.capabilities?.includes(CRON_CAPABILITY)) {
+      throw new AgentCronUnsupportedError(CRON_UNSUPPORTED_MESSAGE);
+    }
+  } catch (e) {
+    conn.close();
+    throw mapCronUnsupported(e);
+  }
+  return conn;
+}
+
+/**
+ * Map a cron RPC error to {@link AgentCronUnsupportedError} when it is a gRPC
+ * UNIMPLEMENTED, passing everything else through unchanged. The belt-and-braces
+ * behind {@link connectCronAgent}'s preflight, for an agent that advertises the
+ * capability but cannot actually serve the call. Idempotent.
+ */
+export function mapCronUnsupported(e: unknown): Error {
+  if (e instanceof AgentCronUnsupportedError) return e;
+  if ((e as Partial<ServiceError> | null)?.code === GrpcStatus.UNIMPLEMENTED) {
+    return new AgentCronUnsupportedError(CRON_UNSUPPORTED_MESSAGE);
+  }
+  return e instanceof Error ? e : new Error(String(e));
+}
 
 /** The capability an agent advertises once it can serve per-container
  *  `docker stats` (ContainerStats) — the per-app/per-database Monitoring tab.
@@ -2112,6 +2281,36 @@ export function setHostTimezone(
  * back as `ok:false` with a reason, not as a thrown error: it is an answer about
  * the host, not a failure to reach it.
  */
+/**
+ * Serialise stack rewrites for ONE host.
+ *
+ * Every writer here reads the host's whole stack file, edits it, and writes the
+ * whole thing back: the certificates tab, the ACME account email and the Traefik
+ * dashboard toggle all do. Two of them interleaving means the second read misses
+ * the first write and puts it back the way it was — a certificate that reports
+ * itself installed and is not on the host. There is no compare-and-swap to lean
+ * on (the agent takes the file it is given), so the read and the write are held
+ * together instead.
+ *
+ * In-process, which is the whole of it today: one control plane owns the fleet.
+ * A second instance writing the same host would need a lock the database holds.
+ */
+const stackWrites = new Map<string, Promise<unknown>>();
+
+export function withTraefikStackLock<T>(
+  serverId: string,
+  fn: () => Promise<T>,
+): Promise<T> {
+  const queued = (stackWrites.get(serverId) ?? Promise.resolve()).then(fn, fn);
+  // Swallowed on the CHAIN only: the next writer must run whether or not this one
+  // failed, while the caller still sees its own rejection.
+  stackWrites.set(
+    serverId,
+    queued.catch(() => {}),
+  );
+  return queued;
+}
+
 export function applyTraefikConfig(
   serverId: string,
   req: { composeYaml?: string; restartOnly?: boolean },

@@ -1476,6 +1476,88 @@ export interface ShellLabelResponse {
   label: string;
 }
 
+export interface CronEnvVar {
+  name: string;
+  value: string;
+}
+
+export interface StartJobRequest {
+  /**
+   * Re-validated agent-side against the container's `deplo.project` label, so a
+   * control plane bug can never exec into another tenant's container.
+   */
+  projectId: string;
+  /**
+   * Resolved LIVE by the control plane right before every attempt (a redeploy
+   * mints a new container), never read back from a stored run row.
+   */
+  container: string;
+  /** shell-plan cache key, as in ExecRequest */
+  image: string;
+  /**
+   * "sh" | "bash" | "" (probe, as Exec does). A named shell that the image does
+   * not have FAILS the job — it never silently falls back to the other one,
+   * because `set -o pipefail` and `[[` change meaning between them.
+   */
+  shell: string;
+  /** run as `<shell> -lc <command>` */
+  command: string;
+  /** agent-side hard deadline; 0 => 3600 */
+  timeoutSeconds: number;
+  /** docker exec -w */
+  workdir: string;
+  /** docker exec -u */
+  user: string;
+  /**
+   * Injected with `docker exec -e KEY` + the value in the docker CLIENT's own
+   * environment, so a secret never rides argv where every user on the host can
+   * read it out of `ps`. Same discipline as the REDISCLI_AUTH path in backup.go.
+   */
+  env: CronEnvVar[];
+}
+
+export interface StartJobResponse {
+  /** Opaque handle, valid for the lifetime of THIS agent process only. */
+  jobId: string;
+}
+
+export interface PollJobRequest {
+  jobId: string;
+}
+
+export interface PollJobResponse {
+  /**
+   * false => this agent has no record of the job: it restarted, or the job
+   * finished long enough ago to be evicted. The control plane records the run
+   * as `lost` (outcome unknown), never as a failure.
+   */
+  found: boolean;
+  running: boolean;
+  /**
+   * Meaningful only when found && !running. -1 means the command never spawned
+   * (no such container, no shell, the named shell is missing) — stderr says why.
+   */
+  exitCode: number;
+  /** EMPTY while running; else the last 16 KiB */
+  stdout: string;
+  /** EMPTY while running; else the last 16 KiB */
+  stderr: string;
+  /** killed at timeout_seconds rather than exiting */
+  timedOut: boolean;
+  startedAtUnix: number;
+  /** 0 while running */
+  finishedAtUnix: number;
+}
+
+export interface KillJobRequest {
+  jobId: string;
+}
+
+export interface KillJobResponse {
+  /** false = nothing to kill; not an error */
+  found: boolean;
+}
+
 /** Mirrors lib/data/project-files.ts FileEntry. */
 export interface FileEntry {
   /** relative to the files root, POSIX, no leading / */
@@ -9099,6 +9181,735 @@ export const ShellLabelResponse: MessageFns<ShellLabelResponse> = {
   },
 };
 
+function createBaseCronEnvVar(): CronEnvVar {
+  return { name: "", value: "" };
+}
+
+export const CronEnvVar: MessageFns<CronEnvVar> = {
+  encode(message: CronEnvVar, writer: BinaryWriter = new BinaryWriter()): BinaryWriter {
+    if (message.name !== "") {
+      writer.uint32(10).string(message.name);
+    }
+    if (message.value !== "") {
+      writer.uint32(18).string(message.value);
+    }
+    return writer;
+  },
+
+  decode(input: BinaryReader | Uint8Array, length?: number): CronEnvVar {
+    const reader = input instanceof BinaryReader ? input : new BinaryReader(input);
+    const end = length === undefined ? reader.len : reader.pos + length;
+    const message = createBaseCronEnvVar();
+    while (reader.pos < end) {
+      const tag = reader.uint32();
+      switch (tag >>> 3) {
+        case 1: {
+          if (tag !== 10) {
+            break;
+          }
+
+          message.name = reader.string();
+          continue;
+        }
+        case 2: {
+          if (tag !== 18) {
+            break;
+          }
+
+          message.value = reader.string();
+          continue;
+        }
+      }
+      if ((tag & 7) === 4 || tag === 0) {
+        break;
+      }
+      reader.skip(tag & 7);
+    }
+    return message;
+  },
+
+  fromJSON(object: any): CronEnvVar {
+    return {
+      name: isSet(object.name) ? globalThis.String(object.name) : "",
+      value: isSet(object.value) ? globalThis.String(object.value) : "",
+    };
+  },
+
+  toJSON(message: CronEnvVar): unknown {
+    const obj: any = {};
+    if (message.name !== "") {
+      obj.name = message.name;
+    }
+    if (message.value !== "") {
+      obj.value = message.value;
+    }
+    return obj;
+  },
+
+  create<I extends Exact<DeepPartial<CronEnvVar>, I>>(base?: I): CronEnvVar {
+    return CronEnvVar.fromPartial(base ?? ({} as any));
+  },
+  fromPartial<I extends Exact<DeepPartial<CronEnvVar>, I>>(object: I): CronEnvVar {
+    const message = createBaseCronEnvVar();
+    message.name = object.name ?? "";
+    message.value = object.value ?? "";
+    return message;
+  },
+};
+
+function createBaseStartJobRequest(): StartJobRequest {
+  return {
+    projectId: "",
+    container: "",
+    image: "",
+    shell: "",
+    command: "",
+    timeoutSeconds: 0,
+    workdir: "",
+    user: "",
+    env: [],
+  };
+}
+
+export const StartJobRequest: MessageFns<StartJobRequest> = {
+  encode(message: StartJobRequest, writer: BinaryWriter = new BinaryWriter()): BinaryWriter {
+    if (message.projectId !== "") {
+      writer.uint32(10).string(message.projectId);
+    }
+    if (message.container !== "") {
+      writer.uint32(18).string(message.container);
+    }
+    if (message.image !== "") {
+      writer.uint32(26).string(message.image);
+    }
+    if (message.shell !== "") {
+      writer.uint32(34).string(message.shell);
+    }
+    if (message.command !== "") {
+      writer.uint32(42).string(message.command);
+    }
+    if (message.timeoutSeconds !== 0) {
+      writer.uint32(48).int32(message.timeoutSeconds);
+    }
+    if (message.workdir !== "") {
+      writer.uint32(58).string(message.workdir);
+    }
+    if (message.user !== "") {
+      writer.uint32(66).string(message.user);
+    }
+    for (const v of message.env) {
+      CronEnvVar.encode(v!, writer.uint32(74).fork()).join();
+    }
+    return writer;
+  },
+
+  decode(input: BinaryReader | Uint8Array, length?: number): StartJobRequest {
+    const reader = input instanceof BinaryReader ? input : new BinaryReader(input);
+    const end = length === undefined ? reader.len : reader.pos + length;
+    const message = createBaseStartJobRequest();
+    while (reader.pos < end) {
+      const tag = reader.uint32();
+      switch (tag >>> 3) {
+        case 1: {
+          if (tag !== 10) {
+            break;
+          }
+
+          message.projectId = reader.string();
+          continue;
+        }
+        case 2: {
+          if (tag !== 18) {
+            break;
+          }
+
+          message.container = reader.string();
+          continue;
+        }
+        case 3: {
+          if (tag !== 26) {
+            break;
+          }
+
+          message.image = reader.string();
+          continue;
+        }
+        case 4: {
+          if (tag !== 34) {
+            break;
+          }
+
+          message.shell = reader.string();
+          continue;
+        }
+        case 5: {
+          if (tag !== 42) {
+            break;
+          }
+
+          message.command = reader.string();
+          continue;
+        }
+        case 6: {
+          if (tag !== 48) {
+            break;
+          }
+
+          message.timeoutSeconds = reader.int32();
+          continue;
+        }
+        case 7: {
+          if (tag !== 58) {
+            break;
+          }
+
+          message.workdir = reader.string();
+          continue;
+        }
+        case 8: {
+          if (tag !== 66) {
+            break;
+          }
+
+          message.user = reader.string();
+          continue;
+        }
+        case 9: {
+          if (tag !== 74) {
+            break;
+          }
+
+          message.env.push(CronEnvVar.decode(reader, reader.uint32()));
+          continue;
+        }
+      }
+      if ((tag & 7) === 4 || tag === 0) {
+        break;
+      }
+      reader.skip(tag & 7);
+    }
+    return message;
+  },
+
+  fromJSON(object: any): StartJobRequest {
+    return {
+      projectId: isSet(object.projectId)
+        ? globalThis.String(object.projectId)
+        : isSet(object.project_id)
+        ? globalThis.String(object.project_id)
+        : "",
+      container: isSet(object.container) ? globalThis.String(object.container) : "",
+      image: isSet(object.image) ? globalThis.String(object.image) : "",
+      shell: isSet(object.shell) ? globalThis.String(object.shell) : "",
+      command: isSet(object.command) ? globalThis.String(object.command) : "",
+      timeoutSeconds: isSet(object.timeoutSeconds)
+        ? globalThis.Number(object.timeoutSeconds)
+        : isSet(object.timeout_seconds)
+        ? globalThis.Number(object.timeout_seconds)
+        : 0,
+      workdir: isSet(object.workdir) ? globalThis.String(object.workdir) : "",
+      user: isSet(object.user) ? globalThis.String(object.user) : "",
+      env: globalThis.Array.isArray(object?.env) ? object.env.map((e: any) => CronEnvVar.fromJSON(e)) : [],
+    };
+  },
+
+  toJSON(message: StartJobRequest): unknown {
+    const obj: any = {};
+    if (message.projectId !== "") {
+      obj.projectId = message.projectId;
+    }
+    if (message.container !== "") {
+      obj.container = message.container;
+    }
+    if (message.image !== "") {
+      obj.image = message.image;
+    }
+    if (message.shell !== "") {
+      obj.shell = message.shell;
+    }
+    if (message.command !== "") {
+      obj.command = message.command;
+    }
+    if (message.timeoutSeconds !== 0) {
+      obj.timeoutSeconds = Math.round(message.timeoutSeconds);
+    }
+    if (message.workdir !== "") {
+      obj.workdir = message.workdir;
+    }
+    if (message.user !== "") {
+      obj.user = message.user;
+    }
+    if (message.env?.length) {
+      obj.env = message.env.map((e) => CronEnvVar.toJSON(e));
+    }
+    return obj;
+  },
+
+  create<I extends Exact<DeepPartial<StartJobRequest>, I>>(base?: I): StartJobRequest {
+    return StartJobRequest.fromPartial(base ?? ({} as any));
+  },
+  fromPartial<I extends Exact<DeepPartial<StartJobRequest>, I>>(object: I): StartJobRequest {
+    const message = createBaseStartJobRequest();
+    message.projectId = object.projectId ?? "";
+    message.container = object.container ?? "";
+    message.image = object.image ?? "";
+    message.shell = object.shell ?? "";
+    message.command = object.command ?? "";
+    message.timeoutSeconds = object.timeoutSeconds ?? 0;
+    message.workdir = object.workdir ?? "";
+    message.user = object.user ?? "";
+    message.env = object.env?.map((e) => CronEnvVar.fromPartial(e)) || [];
+    return message;
+  },
+};
+
+function createBaseStartJobResponse(): StartJobResponse {
+  return { jobId: "" };
+}
+
+export const StartJobResponse: MessageFns<StartJobResponse> = {
+  encode(message: StartJobResponse, writer: BinaryWriter = new BinaryWriter()): BinaryWriter {
+    if (message.jobId !== "") {
+      writer.uint32(10).string(message.jobId);
+    }
+    return writer;
+  },
+
+  decode(input: BinaryReader | Uint8Array, length?: number): StartJobResponse {
+    const reader = input instanceof BinaryReader ? input : new BinaryReader(input);
+    const end = length === undefined ? reader.len : reader.pos + length;
+    const message = createBaseStartJobResponse();
+    while (reader.pos < end) {
+      const tag = reader.uint32();
+      switch (tag >>> 3) {
+        case 1: {
+          if (tag !== 10) {
+            break;
+          }
+
+          message.jobId = reader.string();
+          continue;
+        }
+      }
+      if ((tag & 7) === 4 || tag === 0) {
+        break;
+      }
+      reader.skip(tag & 7);
+    }
+    return message;
+  },
+
+  fromJSON(object: any): StartJobResponse {
+    return {
+      jobId: isSet(object.jobId)
+        ? globalThis.String(object.jobId)
+        : isSet(object.job_id)
+        ? globalThis.String(object.job_id)
+        : "",
+    };
+  },
+
+  toJSON(message: StartJobResponse): unknown {
+    const obj: any = {};
+    if (message.jobId !== "") {
+      obj.jobId = message.jobId;
+    }
+    return obj;
+  },
+
+  create<I extends Exact<DeepPartial<StartJobResponse>, I>>(base?: I): StartJobResponse {
+    return StartJobResponse.fromPartial(base ?? ({} as any));
+  },
+  fromPartial<I extends Exact<DeepPartial<StartJobResponse>, I>>(object: I): StartJobResponse {
+    const message = createBaseStartJobResponse();
+    message.jobId = object.jobId ?? "";
+    return message;
+  },
+};
+
+function createBasePollJobRequest(): PollJobRequest {
+  return { jobId: "" };
+}
+
+export const PollJobRequest: MessageFns<PollJobRequest> = {
+  encode(message: PollJobRequest, writer: BinaryWriter = new BinaryWriter()): BinaryWriter {
+    if (message.jobId !== "") {
+      writer.uint32(10).string(message.jobId);
+    }
+    return writer;
+  },
+
+  decode(input: BinaryReader | Uint8Array, length?: number): PollJobRequest {
+    const reader = input instanceof BinaryReader ? input : new BinaryReader(input);
+    const end = length === undefined ? reader.len : reader.pos + length;
+    const message = createBasePollJobRequest();
+    while (reader.pos < end) {
+      const tag = reader.uint32();
+      switch (tag >>> 3) {
+        case 1: {
+          if (tag !== 10) {
+            break;
+          }
+
+          message.jobId = reader.string();
+          continue;
+        }
+      }
+      if ((tag & 7) === 4 || tag === 0) {
+        break;
+      }
+      reader.skip(tag & 7);
+    }
+    return message;
+  },
+
+  fromJSON(object: any): PollJobRequest {
+    return {
+      jobId: isSet(object.jobId)
+        ? globalThis.String(object.jobId)
+        : isSet(object.job_id)
+        ? globalThis.String(object.job_id)
+        : "",
+    };
+  },
+
+  toJSON(message: PollJobRequest): unknown {
+    const obj: any = {};
+    if (message.jobId !== "") {
+      obj.jobId = message.jobId;
+    }
+    return obj;
+  },
+
+  create<I extends Exact<DeepPartial<PollJobRequest>, I>>(base?: I): PollJobRequest {
+    return PollJobRequest.fromPartial(base ?? ({} as any));
+  },
+  fromPartial<I extends Exact<DeepPartial<PollJobRequest>, I>>(object: I): PollJobRequest {
+    const message = createBasePollJobRequest();
+    message.jobId = object.jobId ?? "";
+    return message;
+  },
+};
+
+function createBasePollJobResponse(): PollJobResponse {
+  return {
+    found: false,
+    running: false,
+    exitCode: 0,
+    stdout: "",
+    stderr: "",
+    timedOut: false,
+    startedAtUnix: 0,
+    finishedAtUnix: 0,
+  };
+}
+
+export const PollJobResponse: MessageFns<PollJobResponse> = {
+  encode(message: PollJobResponse, writer: BinaryWriter = new BinaryWriter()): BinaryWriter {
+    if (message.found !== false) {
+      writer.uint32(8).bool(message.found);
+    }
+    if (message.running !== false) {
+      writer.uint32(16).bool(message.running);
+    }
+    if (message.exitCode !== 0) {
+      writer.uint32(24).int32(message.exitCode);
+    }
+    if (message.stdout !== "") {
+      writer.uint32(34).string(message.stdout);
+    }
+    if (message.stderr !== "") {
+      writer.uint32(42).string(message.stderr);
+    }
+    if (message.timedOut !== false) {
+      writer.uint32(48).bool(message.timedOut);
+    }
+    if (message.startedAtUnix !== 0) {
+      writer.uint32(56).int64(message.startedAtUnix);
+    }
+    if (message.finishedAtUnix !== 0) {
+      writer.uint32(64).int64(message.finishedAtUnix);
+    }
+    return writer;
+  },
+
+  decode(input: BinaryReader | Uint8Array, length?: number): PollJobResponse {
+    const reader = input instanceof BinaryReader ? input : new BinaryReader(input);
+    const end = length === undefined ? reader.len : reader.pos + length;
+    const message = createBasePollJobResponse();
+    while (reader.pos < end) {
+      const tag = reader.uint32();
+      switch (tag >>> 3) {
+        case 1: {
+          if (tag !== 8) {
+            break;
+          }
+
+          message.found = reader.bool();
+          continue;
+        }
+        case 2: {
+          if (tag !== 16) {
+            break;
+          }
+
+          message.running = reader.bool();
+          continue;
+        }
+        case 3: {
+          if (tag !== 24) {
+            break;
+          }
+
+          message.exitCode = reader.int32();
+          continue;
+        }
+        case 4: {
+          if (tag !== 34) {
+            break;
+          }
+
+          message.stdout = reader.string();
+          continue;
+        }
+        case 5: {
+          if (tag !== 42) {
+            break;
+          }
+
+          message.stderr = reader.string();
+          continue;
+        }
+        case 6: {
+          if (tag !== 48) {
+            break;
+          }
+
+          message.timedOut = reader.bool();
+          continue;
+        }
+        case 7: {
+          if (tag !== 56) {
+            break;
+          }
+
+          message.startedAtUnix = longToNumber(reader.int64());
+          continue;
+        }
+        case 8: {
+          if (tag !== 64) {
+            break;
+          }
+
+          message.finishedAtUnix = longToNumber(reader.int64());
+          continue;
+        }
+      }
+      if ((tag & 7) === 4 || tag === 0) {
+        break;
+      }
+      reader.skip(tag & 7);
+    }
+    return message;
+  },
+
+  fromJSON(object: any): PollJobResponse {
+    return {
+      found: isSet(object.found) ? globalThis.Boolean(object.found) : false,
+      running: isSet(object.running) ? globalThis.Boolean(object.running) : false,
+      exitCode: isSet(object.exitCode)
+        ? globalThis.Number(object.exitCode)
+        : isSet(object.exit_code)
+        ? globalThis.Number(object.exit_code)
+        : 0,
+      stdout: isSet(object.stdout) ? globalThis.String(object.stdout) : "",
+      stderr: isSet(object.stderr) ? globalThis.String(object.stderr) : "",
+      timedOut: isSet(object.timedOut)
+        ? globalThis.Boolean(object.timedOut)
+        : isSet(object.timed_out)
+        ? globalThis.Boolean(object.timed_out)
+        : false,
+      startedAtUnix: isSet(object.startedAtUnix)
+        ? globalThis.Number(object.startedAtUnix)
+        : isSet(object.started_at_unix)
+        ? globalThis.Number(object.started_at_unix)
+        : 0,
+      finishedAtUnix: isSet(object.finishedAtUnix)
+        ? globalThis.Number(object.finishedAtUnix)
+        : isSet(object.finished_at_unix)
+        ? globalThis.Number(object.finished_at_unix)
+        : 0,
+    };
+  },
+
+  toJSON(message: PollJobResponse): unknown {
+    const obj: any = {};
+    if (message.found !== false) {
+      obj.found = message.found;
+    }
+    if (message.running !== false) {
+      obj.running = message.running;
+    }
+    if (message.exitCode !== 0) {
+      obj.exitCode = Math.round(message.exitCode);
+    }
+    if (message.stdout !== "") {
+      obj.stdout = message.stdout;
+    }
+    if (message.stderr !== "") {
+      obj.stderr = message.stderr;
+    }
+    if (message.timedOut !== false) {
+      obj.timedOut = message.timedOut;
+    }
+    if (message.startedAtUnix !== 0) {
+      obj.startedAtUnix = Math.round(message.startedAtUnix);
+    }
+    if (message.finishedAtUnix !== 0) {
+      obj.finishedAtUnix = Math.round(message.finishedAtUnix);
+    }
+    return obj;
+  },
+
+  create<I extends Exact<DeepPartial<PollJobResponse>, I>>(base?: I): PollJobResponse {
+    return PollJobResponse.fromPartial(base ?? ({} as any));
+  },
+  fromPartial<I extends Exact<DeepPartial<PollJobResponse>, I>>(object: I): PollJobResponse {
+    const message = createBasePollJobResponse();
+    message.found = object.found ?? false;
+    message.running = object.running ?? false;
+    message.exitCode = object.exitCode ?? 0;
+    message.stdout = object.stdout ?? "";
+    message.stderr = object.stderr ?? "";
+    message.timedOut = object.timedOut ?? false;
+    message.startedAtUnix = object.startedAtUnix ?? 0;
+    message.finishedAtUnix = object.finishedAtUnix ?? 0;
+    return message;
+  },
+};
+
+function createBaseKillJobRequest(): KillJobRequest {
+  return { jobId: "" };
+}
+
+export const KillJobRequest: MessageFns<KillJobRequest> = {
+  encode(message: KillJobRequest, writer: BinaryWriter = new BinaryWriter()): BinaryWriter {
+    if (message.jobId !== "") {
+      writer.uint32(10).string(message.jobId);
+    }
+    return writer;
+  },
+
+  decode(input: BinaryReader | Uint8Array, length?: number): KillJobRequest {
+    const reader = input instanceof BinaryReader ? input : new BinaryReader(input);
+    const end = length === undefined ? reader.len : reader.pos + length;
+    const message = createBaseKillJobRequest();
+    while (reader.pos < end) {
+      const tag = reader.uint32();
+      switch (tag >>> 3) {
+        case 1: {
+          if (tag !== 10) {
+            break;
+          }
+
+          message.jobId = reader.string();
+          continue;
+        }
+      }
+      if ((tag & 7) === 4 || tag === 0) {
+        break;
+      }
+      reader.skip(tag & 7);
+    }
+    return message;
+  },
+
+  fromJSON(object: any): KillJobRequest {
+    return {
+      jobId: isSet(object.jobId)
+        ? globalThis.String(object.jobId)
+        : isSet(object.job_id)
+        ? globalThis.String(object.job_id)
+        : "",
+    };
+  },
+
+  toJSON(message: KillJobRequest): unknown {
+    const obj: any = {};
+    if (message.jobId !== "") {
+      obj.jobId = message.jobId;
+    }
+    return obj;
+  },
+
+  create<I extends Exact<DeepPartial<KillJobRequest>, I>>(base?: I): KillJobRequest {
+    return KillJobRequest.fromPartial(base ?? ({} as any));
+  },
+  fromPartial<I extends Exact<DeepPartial<KillJobRequest>, I>>(object: I): KillJobRequest {
+    const message = createBaseKillJobRequest();
+    message.jobId = object.jobId ?? "";
+    return message;
+  },
+};
+
+function createBaseKillJobResponse(): KillJobResponse {
+  return { found: false };
+}
+
+export const KillJobResponse: MessageFns<KillJobResponse> = {
+  encode(message: KillJobResponse, writer: BinaryWriter = new BinaryWriter()): BinaryWriter {
+    if (message.found !== false) {
+      writer.uint32(8).bool(message.found);
+    }
+    return writer;
+  },
+
+  decode(input: BinaryReader | Uint8Array, length?: number): KillJobResponse {
+    const reader = input instanceof BinaryReader ? input : new BinaryReader(input);
+    const end = length === undefined ? reader.len : reader.pos + length;
+    const message = createBaseKillJobResponse();
+    while (reader.pos < end) {
+      const tag = reader.uint32();
+      switch (tag >>> 3) {
+        case 1: {
+          if (tag !== 8) {
+            break;
+          }
+
+          message.found = reader.bool();
+          continue;
+        }
+      }
+      if ((tag & 7) === 4 || tag === 0) {
+        break;
+      }
+      reader.skip(tag & 7);
+    }
+    return message;
+  },
+
+  fromJSON(object: any): KillJobResponse {
+    return { found: isSet(object.found) ? globalThis.Boolean(object.found) : false };
+  },
+
+  toJSON(message: KillJobResponse): unknown {
+    const obj: any = {};
+    if (message.found !== false) {
+      obj.found = message.found;
+    }
+    return obj;
+  },
+
+  create<I extends Exact<DeepPartial<KillJobResponse>, I>>(base?: I): KillJobResponse {
+    return KillJobResponse.fromPartial(base ?? ({} as any));
+  },
+  fromPartial<I extends Exact<DeepPartial<KillJobResponse>, I>>(object: I): KillJobResponse {
+    const message = createBaseKillJobResponse();
+    message.found = object.found ?? false;
+    return message;
+  },
+};
+
 function createBaseFileEntry(): FileEntry {
   return { path: "", name: "", kind: "", size: 0, modifiedAt: "" };
 }
@@ -13730,6 +14541,50 @@ export const AgentService = {
     responseSerialize: (value: ShellLabelResponse): Buffer => Buffer.from(ShellLabelResponse.encode(value).finish()),
     responseDeserialize: (value: Buffer): ShellLabelResponse => ShellLabelResponse.decode(value),
   },
+  /**
+   * Spawn a command in a container and return immediately with its handle. The
+   * container check and the shell probe happen INSIDE the job goroutine (they
+   * cost up to ~25s on a cold shell-plan cache), so this RPC is a map insert:
+   * a pre-spawn failure surfaces through PollJob as
+   * {running: false, exit_code: -1, stderr: "..."} rather than as an RPC error.
+   */
+  startJob: {
+    path: "/deplo.agent.v1.Agent/StartJob" as const,
+    requestStream: false as const,
+    responseStream: false as const,
+    requestSerialize: (value: StartJobRequest): Buffer => Buffer.from(StartJobRequest.encode(value).finish()),
+    requestDeserialize: (value: Buffer): StartJobRequest => StartJobRequest.decode(value),
+    responseSerialize: (value: StartJobResponse): Buffer => Buffer.from(StartJobResponse.encode(value).finish()),
+    responseDeserialize: (value: Buffer): StartJobResponse => StartJobResponse.decode(value),
+  },
+  /**
+   * The job's current state. Output is returned ONLY on the terminal poll —
+   * streaming it every minute for every in-flight job would be megabytes of
+   * wire for data nobody stores, and the container's own logs are right there.
+   */
+  pollJob: {
+    path: "/deplo.agent.v1.Agent/PollJob" as const,
+    requestStream: false as const,
+    responseStream: false as const,
+    requestSerialize: (value: PollJobRequest): Buffer => Buffer.from(PollJobRequest.encode(value).finish()),
+    requestDeserialize: (value: Buffer): PollJobRequest => PollJobRequest.decode(value),
+    responseSerialize: (value: PollJobResponse): Buffer => Buffer.from(PollJobResponse.encode(value).finish()),
+    responseDeserialize: (value: Buffer): PollJobResponse => PollJobResponse.decode(value),
+  },
+  /**
+   * Kill a running job (the user pressed Stop, or the control plane's own
+   * deadline passed while this agent still reported it running). Idempotent:
+   * an unknown or already-finished job answers {found: false}, not an error.
+   */
+  killJob: {
+    path: "/deplo.agent.v1.Agent/KillJob" as const,
+    requestStream: false as const,
+    responseStream: false as const,
+    requestSerialize: (value: KillJobRequest): Buffer => Buffer.from(KillJobRequest.encode(value).finish()),
+    requestDeserialize: (value: Buffer): KillJobRequest => KillJobRequest.decode(value),
+    responseSerialize: (value: KillJobResponse): Buffer => Buffer.from(KillJobResponse.encode(value).finish()),
+    responseDeserialize: (value: Buffer): KillJobResponse => KillJobResponse.decode(value),
+  },
   listFiles: {
     path: "/deplo.agent.v1.Agent/ListFiles" as const,
     requestStream: false as const,
@@ -14338,6 +15193,26 @@ export interface AgentServer extends UntypedServiceImplementation {
    * "raw exec (no shell)") for the console banner — replaces shellLabel.
    */
   shellLabel: handleUnaryCall<ShellLabelRequest, ShellLabelResponse>;
+  /**
+   * Spawn a command in a container and return immediately with its handle. The
+   * container check and the shell probe happen INSIDE the job goroutine (they
+   * cost up to ~25s on a cold shell-plan cache), so this RPC is a map insert:
+   * a pre-spawn failure surfaces through PollJob as
+   * {running: false, exit_code: -1, stderr: "..."} rather than as an RPC error.
+   */
+  startJob: handleUnaryCall<StartJobRequest, StartJobResponse>;
+  /**
+   * The job's current state. Output is returned ONLY on the terminal poll —
+   * streaming it every minute for every in-flight job would be megabytes of
+   * wire for data nobody stores, and the container's own logs are right there.
+   */
+  pollJob: handleUnaryCall<PollJobRequest, PollJobResponse>;
+  /**
+   * Kill a running job (the user pressed Stop, or the control plane's own
+   * deadline passed while this agent still reported it running). Idempotent:
+   * an unknown or already-finished job answers {found: false}, not an error.
+   */
+  killJob: handleUnaryCall<KillJobRequest, KillJobResponse>;
   listFiles: handleUnaryCall<ListFilesRequest, ListFilesResponse>;
   readFile: handleUnaryCall<ReadFileRequest, ReadFileResponse>;
   writeFile: handleUnaryCall<WriteFileRequest, FileEntryResult>;
@@ -15060,6 +15935,68 @@ export interface AgentClient extends Client {
     metadata: Metadata,
     options: Partial<CallOptions>,
     callback: (error: ServiceError | null, response: ShellLabelResponse) => void,
+  ): ClientUnaryCall;
+  /**
+   * Spawn a command in a container and return immediately with its handle. The
+   * container check and the shell probe happen INSIDE the job goroutine (they
+   * cost up to ~25s on a cold shell-plan cache), so this RPC is a map insert:
+   * a pre-spawn failure surfaces through PollJob as
+   * {running: false, exit_code: -1, stderr: "..."} rather than as an RPC error.
+   */
+  startJob(
+    request: StartJobRequest,
+    callback: (error: ServiceError | null, response: StartJobResponse) => void,
+  ): ClientUnaryCall;
+  startJob(
+    request: StartJobRequest,
+    metadata: Metadata,
+    callback: (error: ServiceError | null, response: StartJobResponse) => void,
+  ): ClientUnaryCall;
+  startJob(
+    request: StartJobRequest,
+    metadata: Metadata,
+    options: Partial<CallOptions>,
+    callback: (error: ServiceError | null, response: StartJobResponse) => void,
+  ): ClientUnaryCall;
+  /**
+   * The job's current state. Output is returned ONLY on the terminal poll —
+   * streaming it every minute for every in-flight job would be megabytes of
+   * wire for data nobody stores, and the container's own logs are right there.
+   */
+  pollJob(
+    request: PollJobRequest,
+    callback: (error: ServiceError | null, response: PollJobResponse) => void,
+  ): ClientUnaryCall;
+  pollJob(
+    request: PollJobRequest,
+    metadata: Metadata,
+    callback: (error: ServiceError | null, response: PollJobResponse) => void,
+  ): ClientUnaryCall;
+  pollJob(
+    request: PollJobRequest,
+    metadata: Metadata,
+    options: Partial<CallOptions>,
+    callback: (error: ServiceError | null, response: PollJobResponse) => void,
+  ): ClientUnaryCall;
+  /**
+   * Kill a running job (the user pressed Stop, or the control plane's own
+   * deadline passed while this agent still reported it running). Idempotent:
+   * an unknown or already-finished job answers {found: false}, not an error.
+   */
+  killJob(
+    request: KillJobRequest,
+    callback: (error: ServiceError | null, response: KillJobResponse) => void,
+  ): ClientUnaryCall;
+  killJob(
+    request: KillJobRequest,
+    metadata: Metadata,
+    callback: (error: ServiceError | null, response: KillJobResponse) => void,
+  ): ClientUnaryCall;
+  killJob(
+    request: KillJobRequest,
+    metadata: Metadata,
+    options: Partial<CallOptions>,
+    callback: (error: ServiceError | null, response: KillJobResponse) => void,
   ): ClientUnaryCall;
   listFiles(
     request: ListFilesRequest,

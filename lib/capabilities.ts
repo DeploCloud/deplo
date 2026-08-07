@@ -83,6 +83,16 @@ export const CAPABILITY_META: Record<Capability, CapabilityMeta> = {
       "Turn pull request previews on, change their settings, and deploy, redeploy or destroy one.",
     keywords: "preview pull request pr branch ephemeral fork approve",
   },
+  manage_crons: {
+    label: "Manage cron jobs",
+    description:
+      "Create, edit and run scheduled commands inside an app or database container.",
+    keywords: "cron schedule scheduled task job timer recurring command",
+    // Same class as the console: a cron job is an arbitrary command inside the
+    // container, as the container's user, with no sandbox. That it runs on a
+    // timer rather than at a keystroke makes it more dangerous, not less.
+    sensitive: true,
+  },
 
   /* ---- App configuration ---- */
   manage_domains: {
@@ -307,6 +317,7 @@ export const CAPABILITY_CATEGORIES: {
       "move_apps",
       "open_app_console",
       "manage_previews",
+      "manage_crons",
     ],
   },
   {
@@ -402,6 +413,11 @@ export const LEGACY_CAPABILITY_EXPANSION: Record<string, Capability[]> = {
     "move_apps",
     "open_app_console",
     "manage_previews",
+    // Under `deploy` and not `manage_infra` because that is where
+    // `open_app_console` already sits, and a cron job is the same power on a
+    // timer. An API client still sending the retired coarse name gets exactly
+    // what it always implied.
+    "manage_crons",
     "create_folders",
     "organize_folders",
     "delete_folders",

@@ -1027,6 +1027,16 @@ export const apps = pgTable(
     // request qualifies. Same storage shape as `repo_watch_paths` above — a
     // newline list of match strings on the app's git config, split at the edge.
     previewRequiredLabels: text("preview_required_labels"),
+    // Cron jobs (scheduled commands run inside this app's container).
+    //
+    // OFF by default, and the switch is the whole opt-in: a cron job runs
+    // arbitrary commands as the container's user with no sandbox, so it is an
+    // advanced feature that has to be asked for, not one an existing app wakes
+    // up with. Turning it off stops the schedule and keeps the jobs, so it is
+    // also the per-app pause button. Unlike the preview settings above there is
+    // no second column here — everything else is per-job (`cron_jobs`), because
+    // two jobs on one app legitimately want different shells, fuses and timeouts.
+    cronEnabled: boolean("cron_enabled").notNull().default(false),
     // Pointer to the service's latest Deployment. `SET NULL` so deleting a
     // deployment can't leave a dangling pointer (the orphan-prevention-as-DB-
     // invariant goal). The value is set in a second backfill pass after
@@ -1760,6 +1770,10 @@ export const databases = pgTable(
     // for redis that default carries `--requirepass`, so the UI warns about it.
     customImage: text("custom_image"),
     customCommand: text("custom_command"),
+    // Cron jobs on this database's container — same opt-in switch, same default
+    // and same reasoning as `apps.cron_enabled`. A database is a single-container
+    // stack, so a job here needs no service selector.
+    cronEnabled: boolean("cron_enabled").notNull().default(false),
     sizeMb: bigint("size_mb", { mode: "number" }).notNull(),
     createdAt: isoTimestamptz("created_at").notNull(),
   },
@@ -1915,6 +1929,187 @@ export const backupRuns = pgTable(
     index("backup_runs_app_idx").on(t.appId),
     index("backup_runs_database_idx").on(t.databaseId),
     index("backup_runs_destination_idx").on(t.destinationId),
+  ],
+);
+
+/**
+ * [CronJob](../../types.ts) — a command run inside one container of an App or a
+ * Database on a cron schedule.
+ *
+ * Shaped like `backups` above (team-scoped, XOR target, `schedule` + `enabled`),
+ * with three deliberate differences:
+ *
+ *  - **`timezone` is per job.** `backups.schedule` and the docker-cleanup policy
+ *    are UTC-only and get away with it because "some time overnight" is the whole
+ *    requirement. A cron job is somebody's business rule — the nightly invoice
+ *    run happens at 02:00 *in the company's timezone*, and after a DST shift it
+ *    still does. Evaluated by lib/crons/cron-tz.ts, never by getUTC*.
+ *  - **`service`, not a container name.** A compose stack's container names are
+ *    generated (`deplo-<slug>-<service>-N`) and a redeploy can mint new ones, so
+ *    the stable thing to store is the compose service; the container is resolved
+ *    live before every attempt. NULL ⇒ the target's primary container, which is
+ *    the only possibility for a database.
+ *  - **No destination FK.** A backup produces an artifact that outlives its
+ *    schedule, which is why `backup_runs.backup_id` is `SET NULL`. A cron run
+ *    produces only its own record, so `cron_runs.job_id` CASCADEs: deleting a
+ *    job deletes its history, because there is nothing left for the history to
+ *    describe.
+ */
+export const cronJobs = pgTable(
+  "cron_jobs",
+  {
+    id: text("id").primaryKey(),
+    teamId: text("team_id")
+      .notNull()
+      .references(() => teams.id, { onDelete: "cascade" }),
+    targetKind: text("target_kind").notNull(),
+    appId: text("app_id").references(() => apps.id, { onDelete: "cascade" }),
+    databaseId: text("database_id").references(() => databases.id, {
+      onDelete: "cascade",
+    }),
+    name: text("name").notNull(),
+    description: text("description").notNull().default(""),
+    /** Compose service to exec into. NULL ⇒ the target's primary container. */
+    service: text("service"),
+    /** 5-field cron, evaluated in `timezone` (NOT in UTC). */
+    schedule: text("schedule").notNull(),
+    /** IANA zone, validated on write — `Intl` throws on an unknown one, and an
+     *  unvalidated value would take down the whole scheduler tick. */
+    timezone: text("timezone").notNull().default("UTC"),
+    /** "sh" | "bash". A named shell the image lacks fails the run rather than
+     *  silently substituting the other: `set -o pipefail` and `[[` change
+     *  meaning between them. */
+    shell: text("shell").notNull().default("sh"),
+    command: text("command").notNull(),
+    enabled: boolean("enabled").notNull().default(true),
+    /** Per ATTEMPT, not per run: it is the agent's `docker exec` deadline, and
+     *  the agent knows nothing about the retry ladder. The data layer clamps
+     *  `timeout x (maxAttempts) <= 24h` so a retrying run cannot hold the
+     *  `running` slot for days and starve every later fire under overlap=skip. */
+    timeoutSeconds: integer("timeout_seconds").notNull().default(3600),
+    /** Total launches per scheduled fire: 1 = no retry, up to 4. */
+    maxAttempts: integer("max_attempts").notNull().default(1),
+    /** "skip" | "allow" — what to do when the previous run is still going. */
+    overlap: text("overlap").notNull().default("skip"),
+    /** Runs kept in the history for this job; older ones are pruned on settle. */
+    keepRuns: integer("keep_runs").notNull().default(50),
+    workdir: text("workdir"),
+    user: text("user"),
+    lastRunAt: isoTimestamptz("last_run_at"),
+    lastStatus: text("last_status"),
+    /** Surfaced on the job row so a job that has been silently `skipped` for a
+     *  week (its container is stopped) is visible without adding an alert key. */
+    lastSuccessAt: isoTimestamptz("last_success_at"),
+    createdByUserId: text("created_by_user_id").references(() => users.id, {
+      onDelete: "set null",
+    }),
+    createdAt: isoTimestamptz("created_at").notNull(),
+    updatedAt: isoTimestamptz("updated_at").notNull(),
+  },
+  (t) => [
+    check(
+      "cron_jobs_target_kind_xor",
+      sql`(${t.targetKind} = 'app' and ${t.appId} is not null and ${t.databaseId} is null)
+          or (${t.targetKind} = 'database' and ${t.databaseId} is not null and ${t.appId} is null)`,
+    ),
+    uniqueIndex("cron_jobs_app_name_uq").on(t.appId, t.name),
+    uniqueIndex("cron_jobs_database_name_uq").on(t.databaseId, t.name),
+    // The scheduler's scan: every tick reads the enabled jobs and nothing else.
+    index("cron_jobs_enabled_idx").on(t.enabled).where(sql`${t.enabled}`),
+    index("cron_jobs_team_idx").on(t.teamId),
+  ],
+);
+
+/**
+ * Extra environment for one cron job, on top of whatever the container already
+ * has. A child table and not a column because `value_enc` is a real secret: it
+ * is AES-GCM ciphertext, it never enters a DTO, and it reaches the host inside
+ * the mTLS RPC with the NAME on argv and the VALUE in the docker client's own
+ * environment — so it is never readable from `ps` on the box.
+ */
+export const cronJobEnv = pgTable(
+  "cron_job_env",
+  {
+    id: text("id").primaryKey(),
+    jobId: text("job_id")
+      .notNull()
+      .references(() => cronJobs.id, { onDelete: "cascade" }),
+    key: text("key").notNull(),
+    valueEnc: text("value_enc").notNull(),
+    createdAt: isoTimestamptz("created_at").notNull(),
+  },
+  (t) => [uniqueIndex("cron_job_env_job_key_uq").on(t.jobId, t.key)],
+);
+
+/**
+ * [CronRun](../../types.ts) — one scheduled fire of a cron job, retries included.
+ *
+ * Six statuses: `running | succeeded | failed | timedout | skipped | lost`.
+ * `lost` is the one a backup run cannot have and this one must: the command runs
+ * inside the AGENT's process, so restarting the control plane does not kill it —
+ * we come back and poll for the real exit code. Only an agent restart genuinely
+ * loses a run, and calling that `failed` would fire a failure alert for something
+ * that most likely succeeded.
+ *
+ * `UNIQUE(job_id, dedupe_key)` is the whole double-fire story, and it replaces
+ * the in-RAM `lastFired` map the backup scheduler keeps: it survives a restart,
+ * two control-plane instances racing for the lease, and a backwards clock step.
+ * The INSERT is also the serialization point, which is why overlap is decided
+ * AFTER it — two instances can never both conclude "nothing else is running".
+ *
+ * A retry never writes a terminal status: it leaves the row `running` with
+ * `agent_job_id` NULL and `next_attempt_at` set. Invariant: a `running` row has
+ * exactly one of those two non-null.
+ *
+ * `command` / `container` / `timeout_seconds` / `max_attempts` are FROZEN at
+ * insert. Editing a job mid-flight must not change the deadline the reaper
+ * enforces, and history must say what actually ran, not what the job says today.
+ */
+export const cronRuns = pgTable(
+  "cron_runs",
+  {
+    id: text("id").primaryKey(),
+    seq: bigint("seq", { mode: "number" }).generatedAlwaysAsIdentity(),
+    teamId: text("team_id")
+      .notNull()
+      .references(() => teams.id, { onDelete: "cascade" }),
+    jobId: text("job_id")
+      .notNull()
+      .references(() => cronJobs.id, { onDelete: "cascade" }),
+    status: text("status").notNull(),
+    /** "schedule" | "manual" — a hand-pressed Run now is not a missed schedule. */
+    trigger: text("trigger").notNull().default("schedule"),
+    actor: text("actor").notNull().default("Scheduler"),
+    /** The cron minute this run answers, as a UTC instant. */
+    scheduledFor: isoTimestamptz("scheduled_for").notNull(),
+    /** Wall-clock key for an hour-pinned schedule, instant key otherwise — see
+     *  lib/crons/cron-tz.ts. The two halves of the DST problem need opposite
+     *  keys, and picking one for both breaks the other. */
+    dedupeKey: text("dedupe_key").notNull(),
+    startedAt: isoTimestamptz("started_at").notNull(),
+    finishedAt: isoTimestamptz("finished_at"),
+    /** 0-based launch count for THIS fire. Output is always the last attempt's. */
+    attempt: integer("attempt").notNull().default(0),
+    nextAttemptAt: isoTimestamptz("next_attempt_at"),
+    /** The agent's handle. Valid for that agent PROCESS only; a poll answering
+     *  "not found" is how we learn the agent restarted under us. */
+    agentJobId: text("agent_job_id"),
+    exitCode: integer("exit_code"),
+    stdout: text("stdout"),
+    stderr: text("stderr"),
+    /** Why it failed, or why it was skipped. Not command output. */
+    error: text("error"),
+    command: text("command").notNull(),
+    container: text("container").notNull().default(""),
+    timeoutSeconds: integer("timeout_seconds").notNull(),
+    maxAttempts: integer("max_attempts").notNull(),
+  },
+  (t) => [
+    uniqueIndex("cron_runs_dedupe_uq").on(t.jobId, t.dedupeKey),
+    index("cron_runs_running_idx")
+      .on(t.status)
+      .where(sql`${t.status} = 'running'`),
+    index("cron_runs_job_seq_idx").on(t.jobId, t.seq.desc()),
   ],
 );
 

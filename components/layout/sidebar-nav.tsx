@@ -15,6 +15,7 @@ import {
 } from "./nav-config";
 import { backOutOf } from "./navigation-history";
 import { useAppNav } from "@/components/apps/app-nav-store";
+import { useDbNav } from "@/components/storage/db-nav-store";
 import { useConsoleAck } from "@/components/apps/console-ack";
 import { cn } from "@/lib/utils";
 import {
@@ -43,6 +44,7 @@ export function SidebarNav({
   const pathname = usePathname();
   const caps = new Set(capabilities);
   const service = useAppNav();
+  const dbNav = useDbNav();
   // The console chip is unlocked only once the user confirms its warning; `null`
   // (undecided, pre-hydration) reads as "not yet" so nothing flashes.
   const consoleAcknowledged = useConsoleAck() === true;
@@ -117,7 +119,13 @@ export function SidebarNav({
   if (dbId && inDbSettings) {
     sections = databaseSettingsNav(dbId);
   } else if (dbId) {
-    sections = databaseNav(dbId, { pathname, consoleAcknowledged });
+    sections = databaseNav(dbId, {
+      pathname,
+      consoleAcknowledged,
+      // Only trusted while the store matches the id in the URL, so a stale flag
+      // from the database you just left cannot leak into the next one.
+      cronsEnabled: dbNav?.id === dbId ? dbNav.cronsEnabled : false,
+    });
   } else if (appSlug && inAppSettings) {
     // Until the store matches the slug in the URL (SSR, first paint) assume the
     // app IS a GitHub one: that renders the entry live rather than disabled, and
@@ -138,6 +146,7 @@ export function SidebarNav({
       showFiles: matches ? service!.showFiles : false,
       isGithubApp: matches ? service!.isGithubApp : false,
       previewsEnabled: matches ? service!.previewsEnabled : false,
+      cronsEnabled: matches ? service!.cronsEnabled : false,
       consoleAcknowledged,
     });
   } else if (inSettings) {

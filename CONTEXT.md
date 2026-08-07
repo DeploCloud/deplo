@@ -508,6 +508,30 @@ destructive** — DB drop-and-recreate per engine, app wipe-and-untar (stop → 
 _Avoid_: backup (that is the schedule), artifact (use for the S3 object specifically),
 restore point.
 
+**Cron job**:
+A command run **inside a container** of one **App** or one **Database**, on a cron schedule,
+in that job's **own IANA timezone** (unlike a **Backup**, whose schedule is UTC). Stored
+metadata only; running it produces a **cron run**. The name is the one every platform
+already uses — Railway, Vercel and the open-source competitors all say "Cron jobs" — so it
+is the only spelling.
+Opt-in per target (`cron_enabled`, off by default): the switch is both the opt-in and the
+per-target pause button, and while it is off the tab does not appear. Gated by
+**`manage_crons`**, which is seeded from console access and not from deploy access, because
+a cron job is arbitrary code execution as the container's user with no sandbox.
+_Avoid_: scheduled task, scheduled job, cronjob (one word), task, timer.
+
+**Cron run**:
+One **executed** cron job, retries included — a `cron_runs` row. Six statuses:
+`running` · `succeeded` · `failed` · `timedout` (hit the job's own timeout, which points at
+a setting rather than at the command) · `skipped` (never started: the container was stopped,
+or the previous run was still going) · `lost` (Deplo could not find out how it ended — the
+agent restarted under it). `lost` is deliberately **not** `failed`: the command runs inside
+the *agent's* process, so a control-plane restart does not kill it, and a run we lost track
+of most likely succeeded.
+Retries live in the SAME row (`attempt`), so one scheduled fire is always one row and the
+stored output is the last attempt's.
+_Avoid_: execution, invocation, cron job (that is the schedule), interrupted (use `lost`).
+
 ### Configuration
 
 **Env target**:

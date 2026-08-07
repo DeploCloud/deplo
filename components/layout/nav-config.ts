@@ -1,5 +1,6 @@
 import {
   GitPullRequest,
+  Timer,
   LayoutGrid,
   LayoutDashboard,
   Rocket,
@@ -310,6 +311,8 @@ export interface AppNavFlags {
   isGithubApp: boolean;
   /** Pull request previews are switched on for this app. */
   previewsEnabled: boolean;
+  /** Cron jobs are switched on for this app. */
+  cronsEnabled: boolean;
   /** The console is an advanced surface: its chip appears only once the user has
    *  confirmed the one-time "I understand" warning (persisted in localStorage). */
   consoleAcknowledged: boolean;
@@ -366,6 +369,27 @@ export function appNav(slug: string, f: AppNavFlags): NavSection[] {
             // The page's own read is `manage_previews`-gated and would throw for
             // anyone else, so an ungated entry would be a link to an error.
             requires: "manage_previews",
+          } as NavItem,
+        ]
+      : []),
+    // Cron jobs — the OPERATIONAL page, offered only once the feature is on,
+    // exactly like Pull requests above and for the same reason: with the switch
+    // off there is nothing to list, and the setting that turns it back on lives
+    // under Settings where you would look for it.
+    //
+    // Unlike previews there is no structural impossibility here — every app can
+    // run a command in its own container — so there is no equivalent of the
+    // `isGithubApp` clause.
+    ...(f.cronsEnabled || on("/cron-jobs")
+      ? [
+          {
+            label: "Cron jobs",
+            href: `${base}/cron-jobs`,
+            icon: Timer,
+            tooltip: "Scheduled commands and their run history",
+            // The page's own read is `manage_crons`-gated and would throw for
+            // anyone else, so an ungated entry would be a link to an error.
+            requires: "manage_crons",
           } as NavItem,
         ]
       : []),
@@ -532,6 +556,16 @@ export function appSettingsNav(
               }),
         },
         {
+          label: "Cron jobs",
+          href: `${base}/cron-jobs`,
+          icon: Timer,
+          tooltip: "Scheduled commands, and everything that shapes them",
+          requires: "manage_crons",
+          // No `disabledReason` twin: every app can run a command in its own
+          // container, so there is nothing here that is structurally impossible
+          // the way pull requests are for a non-GitHub app.
+        },
+        {
           label: "Storage",
           href: `${base}/storage`,
           icon: HardDrive,
@@ -577,12 +611,12 @@ export function appSettingsNav(
  */
 export function databaseNav(
   id: string,
-  f: { pathname: string; consoleAcknowledged: boolean },
+  f: { pathname: string; consoleAcknowledged: boolean; cronsEnabled: boolean },
 ): NavSection[] {
   const base = `/storage/databases/${id}`;
-  const onConsole =
-    f.pathname === `${base}/console` ||
-    f.pathname.startsWith(`${base}/console/`);
+  const on = (seg: string) =>
+    f.pathname === base + seg || f.pathname.startsWith(base + seg + "/");
+  const onConsole = on("/console");
   return [
     {
       items: [
@@ -629,6 +663,20 @@ export function databaseNav(
                 icon: SquareTerminal,
                 tooltip: "Container console",
                 requires: "open_database_console",
+              } as NavItem,
+            ]
+          : []),
+        // Cron jobs, offered only once the switch is on — the app twin, and the
+        // one flag this deliberately flag-less nav does take besides the console
+        // acknowledgement.
+        ...(f.cronsEnabled || on("/cron-jobs")
+          ? [
+              {
+                label: "Cron jobs",
+                href: `${base}/cron-jobs`,
+                icon: Timer,
+                tooltip: "Scheduled commands and their run history",
+                requires: "manage_crons",
               } as NavItem,
             ]
           : []),
@@ -691,6 +739,13 @@ export function databaseSettingsNav(id: string): NavSection[] {
           href: `${base}/resources`,
           icon: Cpu,
           tooltip: "RAM, CPU & other limits",
+        },
+        {
+          label: "Cron jobs",
+          href: `${base}/cron-jobs`,
+          icon: Timer,
+          tooltip: "Scheduled commands, and everything that shapes them",
+          requires: "manage_crons",
         },
         {
           label: "Advanced",

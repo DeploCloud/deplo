@@ -85,6 +85,26 @@ export const ALERT_META: Record<AlertKey, AlertMeta> = {
     defaultOn: true,
   },
 
+  /* ---- Cron jobs ---- */
+  cron_job_failed: {
+    label: "Cron job failed",
+    description: "A scheduled command exited with an error, or its outcome is unknown.",
+    keywords: "cron schedule scheduled task command error exit",
+    // On by default: a job that fails at 03:00 and tells nobody is the exact
+    // failure a cron manager exists to prevent. It also carries the `lost` case
+    // (Deplo could not find out how the run ended), which is not a failure but
+    // is equally something you want to hear about.
+    defaultOn: true,
+  },
+  cron_job_succeeded: {
+    label: "Cron job finished",
+    description: "A scheduled command completed successfully.",
+    keywords: "cron schedule scheduled task command ok",
+    // Off by default: a nightly job that works is not news, and a team with ten
+    // jobs would get ten mails a night. The run history is where success lives.
+    defaultOn: false,
+  },
+
   /* ---- Backups & restore ---- */
   backup_succeeded: {
     label: "Backup finished",
@@ -265,6 +285,12 @@ export const ALERT_CATEGORIES: {
     label: "Apps",
     description: "How your running apps behave.",
     alerts: ["app_crash_loop"],
+  },
+  {
+    key: "crons",
+    label: "Cron jobs",
+    description: "Scheduled commands running inside your containers.",
+    alerts: ["cron_job_failed", "cron_job_succeeded"],
   },
   {
     key: "databases",

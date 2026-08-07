@@ -314,14 +314,27 @@ async function call(p: Principal, e: Endpoint): Promise<string[]> {
 const refused = (messages: string[]): boolean => messages.some((m) => REFUSED.test(m));
 
 /**
- * Endpoints that legitimately need MORE than their capability, because the
- * second gate is not a capability at all: `canExposePorts` and
- * `canMountHostVolumes` are instance-wide grants (they cross the team boundary,
- * so no team role can hand them out). Holding `create_databases` really is not
- * enough to pick a host port - that is the grant's whole job.
+ * Endpoints that legitimately need MORE than their declared capability, listed
+ * one by one so "this one takes two gates" is a decision somebody wrote down
+ * rather than a hole the matrix stopped noticing.
+ *
+ * Two kinds live here:
+ *
+ *  - The second gate is not a capability at all. `canExposePorts` and
+ *    `canMountHostVolumes` are instance-wide grants (they cross the team
+ *    boundary, so no team role can hand them out), and holding `create_databases`
+ *    really is not enough to pick a host port — that is the grant's whole job.
+ *  - The second gate is a DIFFERENT capability. One `manage_crons` governs cron
+ *    jobs on both apps and databases, and migration 0080 seeds it from EITHER
+ *    console capability — so the database-side fields additionally require
+ *    `open_database_console`, or app-console access alone would reach inside
+ *    every database on the instance (ADR-0018 §5).
  */
 const NEEDS_INSTANCE_GRANT = new Map<string, RegExp>([
   ["M.generateAvailableDbPort", /permission to publish ports/i],
+  ["Q.databaseCronJobs", /database.*console/i],
+  ["M.createCronJob", /database.*console/i],
+  ["M.setCronEnabled", /database.*console/i],
 ]);
 
 /** True if the refusal is the documented non-capability one for this endpoint. */

@@ -32,6 +32,7 @@ export type Capability =
   | "move_apps"
   | "open_app_console"
   | "manage_previews"
+  | "manage_crons"
   // App configuration
   | "manage_domains"
   | "manage_basic_auth"
@@ -88,6 +89,7 @@ export const ALL_CAPABILITIES: Capability[] = [
   "move_apps",
   "open_app_console",
   "manage_previews",
+  "manage_crons",
   "manage_domains",
   "manage_basic_auth",
   "manage_env",
@@ -1005,6 +1007,13 @@ export interface App {
    */
   previewEnabled: boolean;
   /**
+   * Cron jobs are ON for this app — same reason `previewEnabled` rides the App:
+   * the sidebar decides whether to offer the Cron jobs page from it, and the
+   * layout already has the row in hand. Everything else about cron jobs lives in
+   * `lib/data/crons.ts`.
+   */
+  cronEnabled: boolean;
+  /**
    * Whether this app's deploy hook — the URL that triggers a production deploy
    * from outside the dashboard — answers at all. On by default; the endpoint is
    * bearer-gated regardless (see `lib/data/deploy-hook.ts`), so this is the kill
@@ -1454,6 +1463,10 @@ export interface Database {
    * command drops auth, so the UI warns. Null = image/engine default.
    */
   customCommand: string | null;
+  /** Cron jobs are ON for this database — the same opt-in switch, and the same
+   *  reason it rides the DTO, as `apps.cronEnabled`: the sidebar decides whether
+   *  to offer the Cron jobs page from it. */
+  cronEnabled: boolean;
   sizeMb: number;
   createdAt: string;
 }
@@ -1550,6 +1563,114 @@ export interface BackupRun {
   finishedAt: string | null;
 }
 
+/** What a cron job runs inside. Same two kinds a Backup targets. */
+export type CronTargetKind = "app" | "database";
+
+/** Which shell interprets the command. A named shell the image lacks fails the
+ *  run rather than falling back — see ADR-0018. */
+export type CronShell = "sh" | "bash";
+
+/** What to do when the previous run of a job is still going. */
+export type CronOverlap = "skip" | "allow";
+
+/**
+ * How a cron run ended. Six values, and the distinctions all earn their keep:
+ *
+ *  - `timedout` is apart from `failed` because it points at a SETTING (the job's
+ *    timeout) rather than at the command.
+ *  - `skipped` never started at all — the container was stopped, or a previous
+ *    run was still going. It is not a failure and raises no alert.
+ *  - `lost` means Deplo could not find out how it ended, because the agent
+ *    restarted while the command was in flight. It is deliberately not `failed`:
+ *    the command runs inside the AGENT's process, so a control-plane restart does
+ *    not kill it, and a run we lost track of most likely succeeded.
+ */
+export type CronRunStatus =
+  | "running"
+  | "succeeded"
+  | "failed"
+  | "timedout"
+  | "skipped"
+  | "lost";
+
+/**
+ * A scheduled command inside one container of an App or a Database.
+ *
+ * Stored metadata only; running it produces a {@link CronRun}. The `timezone` is
+ * per job and NOT UTC — unlike a {@link Backup}, whose "some time overnight" gets
+ * away with a single zone (see ADR-0018).
+ */
+export interface CronJob {
+  id: ID;
+  teamId: ID;
+  targetKind: CronTargetKind;
+  /** Set when `targetKind === "app"`; otherwise null. */
+  appId: ID | null;
+  /** Set when `targetKind === "database"`; otherwise null. */
+  databaseId: ID | null;
+  name: string;
+  description: string;
+  /** Compose service to exec into. Null ⇒ the target's primary container, which
+   *  is the only possibility for a database. Never a container NAME: a redeploy
+   *  mints new ones, so the container is resolved live before every attempt. */
+  service: string | null;
+  /** 5-field cron, evaluated in `timezone`. */
+  schedule: string;
+  /** IANA zone, validated on write. */
+  timezone: string;
+  shell: CronShell;
+  command: string;
+  enabled: boolean;
+  /** Per ATTEMPT — it is the agent's `docker exec` deadline. */
+  timeoutSeconds: number;
+  /** Total launches per scheduled fire: 1 means no retry. */
+  maxAttempts: number;
+  overlap: CronOverlap;
+  /** Runs kept in this job's history; older ones are pruned as runs settle. */
+  keepRuns: number;
+  workdir: string | null;
+  user: string | null;
+  lastRunAt: string | null;
+  lastStatus: CronRunStatus | null;
+  /** Surfaced on the job row so a job silently `skipped` for a week is visible. */
+  lastSuccessAt: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+/**
+ * One scheduled fire of a {@link CronJob}, retries included.
+ *
+ * `attempt` counts launches for THIS fire, so one scheduled minute is always one
+ * row and the stored output is the LAST attempt's. `command` and the limits are
+ * frozen at insert: editing a job mid-flight must not change the deadline the
+ * reaper enforces, and the history must say what actually ran.
+ */
+export interface CronRun {
+  id: ID;
+  teamId: ID;
+  jobId: ID;
+  status: CronRunStatus;
+  /** "schedule" | "manual" — a hand-pressed Run now is not a missed schedule. */
+  trigger: "schedule" | "manual";
+  actor: string;
+  /** The cron minute this run answers. */
+  scheduledFor: string;
+  startedAt: string;
+  finishedAt: string | null;
+  attempt: number;
+  exitCode: number | null;
+  /** Last 16 KiB of the final attempt — the tail, never the head. */
+  stdout: string;
+  stderr: string;
+  /** Why it failed, or why it was skipped. Not command output. */
+  error: string | null;
+  command: string;
+  container: string;
+  timeoutSeconds: number;
+  maxAttempts: number;
+}
+
 export interface ApiToken {
   id: ID;
   /** Owning team. Legacy rows are backfilled to the first team on hydrate. */
@@ -1578,6 +1699,8 @@ export type ActivityType =
   | "member"
   | "backup"
   | "s3"
+  /** Cron jobs: a job created, edited, run or deleted. */
+  | "cron"
   /** Docker cleanup: a policy change, or a sweep that reclaimed disk on a server. */
   | "cleanup"
   /** Monitoring: a settings change (e.g. the "save metrics on server" switch). */
@@ -1726,6 +1849,9 @@ export type AlertKey =
   | "deployment_interrupted"
   // Apps
   | "app_crash_loop"
+  // Cron jobs
+  | "cron_job_failed"
+  | "cron_job_succeeded"
   // Databases
   | "database_ready"
   | "database_failed"
@@ -1771,6 +1897,8 @@ export const ALL_ALERTS: AlertKey[] = [
   "deployment_succeeded",
   "deployment_interrupted",
   "app_crash_loop",
+  "cron_job_failed",
+  "cron_job_succeeded",
   "database_ready",
   "database_failed",
   "database_rebuilt",

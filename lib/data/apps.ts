@@ -739,6 +739,9 @@ export async function createApp(
     productionUrl: null,
     status: isUpload ? "idle" : "queued",
     previewEnabled: false,
+    // Off, like previews: a cron job runs arbitrary commands in the container,
+    // so it is asked for rather than inherited.
+    cronEnabled: false,
     autoDeploy: input.autoDeploy ?? true,
     // The deploy hook answers as soon as someone opens it (it mints its URL on
     // first read and is bearer-gated either way) — nothing to configure at create.
