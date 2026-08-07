@@ -308,6 +308,8 @@ export interface AppNavFlags {
    * told to connect it.
    */
   isGithubApp: boolean;
+  /** Pull request previews are switched on for this app. */
+  previewsEnabled: boolean;
   /** The console is an advanced surface: its chip appears only once the user has
    *  confirmed the one-time "I understand" warning (persisted in localStorage). */
   consoleAcknowledged: boolean;
@@ -343,14 +345,18 @@ export function appNav(slug: string, f: AppNavFlags): NavSection[] {
       icon: Rocket,
       tooltip: "Deployment history",
     },
-    // Pull request previews. Present for every GitHub app whatever its state —
-    // previews off, none open, GitHub App not yet subscribed: the page is a
-    // switch on ONE server-resolved reason and says which. An entry that came
-    // and went with the pull request count would be an entry nobody learns is
-    // there. Absent entirely for anything else, because a docker image, an
-    // upload, a compose paste or a raw git URL never receives a `pull_request`
-    // delivery and the page could only ever be a dead end.
-    ...(f.isGithubApp || on("/pull-requests")
+    // Pull request previews — the OPERATIONAL page, offered only once the
+    // feature is actually on. Off, there is nothing for it to list: turning the
+    // switch off destroys every live preview (see setAppPreviewSettings), so it
+    // cannot even be the place you go to find leftovers. The setting itself is
+    // always reachable under Settings, which is where you go to turn it back on.
+    //
+    // Never for a non-GitHub app at all: a docker image, an upload, a compose
+    // paste or a raw git URL never receives a `pull_request` delivery.
+    //
+    // `on(...)` keeps it while you are standing on it, so the entry cannot
+    // vanish from under the page you are reading.
+    ...((f.isGithubApp && f.previewsEnabled) || on("/pull-requests")
       ? [
           {
             label: "Pull requests",

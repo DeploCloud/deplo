@@ -7,7 +7,6 @@ import { listAppPreviews } from "@/lib/data/previews";
 import { hasCapability } from "@/lib/membership";
 import { GitHubIcon } from "@/components/shared/brand-icons";
 import { EmptyState } from "@/components/shared/empty-state";
-import { PageHeader } from "@/components/shared/page-header";
 import { Button } from "@/components/ui/button";
 import { DeployPullRequestDialog } from "@/components/apps/previews/deploy-pull-request-dialog";
 import { PreviewsTable } from "@/components/apps/previews/previews-table";
@@ -40,12 +39,21 @@ export default async function AppPullRequestsPage(
     ) : null;
 
   return (
-    <div className="space-y-6">
-      <PageHeader
-        title="Pull request previews"
-        description={`Every open pull request against ${view.branch} gets its own deploy and its own URL.`}
-        actions={deployButton}
-      />
+    <div className="space-y-4">
+      {/* The same heading shape as Domains and Environment next door: a section
+          title inside the app, not a page title. These are all one app's tabs —
+          the app's own name is already in the header above them, so a second
+          2xl line here would compete with it. */}
+      <div className="flex items-center justify-between gap-3">
+        <div>
+          <h3 className="text-sm font-medium">Pull request previews</h3>
+          <p className="mt-1 text-sm text-muted-foreground">
+            Every open pull request against {view.branch} gets its own deploy and
+            its own URL.
+          </p>
+        </div>
+        {deployButton}
+      </div>
 
       {view.unavailable === "not-github" && (
         <EmptyState

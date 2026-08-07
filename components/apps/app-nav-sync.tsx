@@ -17,6 +17,7 @@ export function AppNavSync({
   running: serverRunning,
   showFiles,
   isGithubApp,
+  previewsEnabled,
   capabilities,
 }: {
   slug: string;
@@ -24,6 +25,7 @@ export function AppNavSync({
   running: boolean;
   showFiles: boolean;
   isGithubApp: boolean;
+  previewsEnabled: boolean;
   /** The viewer's capabilities on this app - gates the sub-menu's entries. */
   capabilities: string[];
 }) {
@@ -39,8 +41,9 @@ export function AppNavSync({
       showFiles,
       capabilities: caps ? caps.split(",") : [],
       isGithubApp,
+      previewsEnabled,
         });
-  }, [slug, running, showFiles, caps, isGithubApp]);
+  }, [slug, running, showFiles, caps, isGithubApp, previewsEnabled]);
 
   // Clear only on unmount (leaving the app). Keeping this separate from the
   // publish effect above means a live `running` change re-publishes in place

@@ -738,6 +738,7 @@ export async function createApp(
     build: buildConfigFor(input.build),
     productionUrl: null,
     status: isUpload ? "idle" : "queued",
+    previewEnabled: false,
     autoDeploy: input.autoDeploy ?? true,
     // The deploy hook answers as soon as someone opens it (it mints its URL on
     // first read and is bearer-gated either way) — nothing to configure at create.

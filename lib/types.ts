@@ -997,6 +997,14 @@ export interface App {
   status: AppStatus;
   autoDeploy: boolean;
   /**
+   * Pull request previews are ON for this app. The one preview setting that
+   * belongs on the App itself rather than behind `previewSettings()`: the
+   * sidebar decides whether to offer the Pull requests page from it, and the
+   * layout already has the row in hand. Everything else about previews stays in
+   * that one read seam.
+   */
+  previewEnabled: boolean;
+  /**
    * Whether this app's deploy hook — the URL that triggers a production deploy
    * from outside the dashboard — answers at all. On by default; the endpoint is
    * bearer-gated regardless (see `lib/data/deploy-hook.ts`), so this is the kill

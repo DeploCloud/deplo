@@ -139,7 +139,7 @@ export function PreviewOverrides({
                 {overrides.length}
               </Badge>
             )}
-            <InfoTip content="A pull request preview inherits every variable above. An override replaces one of them in previews only — the usual reason is pointing previews at a scratch database instead of the production one. It outranks the app's own value and any shared variable." />
+            <InfoTip content="A pull request preview inherits every variable above. An override replaces one of them in previews only - the usual reason is pointing previews at a scratch database instead of the production one. It outranks the app's own value and any shared variable." />
           </h3>
           <p className="mt-1 text-sm text-muted-foreground">
             Values used only by pull request previews. Production is untouched.
@@ -240,7 +240,7 @@ export function PreviewOverrides({
           <form className="grid gap-4" onSubmit={submit}>
             <div className="space-y-4">
               <div className="space-y-2">
-                <FieldLabel info="The variable's name. It must match one of the app's variables to replace it — a name that matches nothing is simply added in previews.">
+                <FieldLabel info="The variable's name. It must match one of the app's variables to replace it - a name that matches nothing is simply added in previews.">
                   Key
                 </FieldLabel>
                 <Input

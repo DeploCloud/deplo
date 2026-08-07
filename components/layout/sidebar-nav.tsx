@@ -137,6 +137,7 @@ export function SidebarNav({
       running: matches ? service!.running : false,
       showFiles: matches ? service!.showFiles : false,
       isGithubApp: matches ? service!.isGithubApp : false,
+      previewsEnabled: matches ? service!.previewsEnabled : false,
       consoleAcknowledged,
     });
   } else if (inSettings) {

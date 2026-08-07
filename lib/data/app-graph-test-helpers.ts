@@ -133,6 +133,7 @@ export async function seedApp(
     build,
     productionUrl: null,
     status: opts.status ?? "active",
+    previewEnabled: false,
     autoDeploy: true,
     deployHookEnabled: true,
     composeUpArgs: null,

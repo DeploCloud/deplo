@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import { Loader2, Save } from "lucide-react";
 
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
   Accordion,
@@ -205,11 +206,20 @@ export function PreviewSettingsForm(props: PreviewSettingsFormProps) {
         <CardContent className="pt-6">
           <div className="flex items-center justify-between gap-4">
             <div>
-              <p className="text-sm font-medium">Deploy pull requests</p>
+              <p className="flex items-center gap-2 text-sm font-medium">
+                Deploy pull requests
+                {/* Said once, where the decision is made, rather than repeated
+                    on every field below it. `info` and not `warning`: this is a
+                    maturity note, not something wrong. */}
+                <Badge variant="info" className="text-[10px] font-normal">
+                  Beta
+                </Badge>
+              </p>
               <p className="mt-1 text-sm text-muted-foreground">
                 Every pull request opened against{" "}
                 <span className="font-mono">{props.branch}</span> gets its own
-                deploy and its own URL.
+                deploy and its own URL. Still new - expect the odd rough edge,
+                and tell us about it.
               </p>
             </div>
             <Switch
@@ -272,7 +282,7 @@ export function PreviewSettingsForm(props: PreviewSettingsFormProps) {
               <SettingRow
                 label="Rebuild on every commit"
                 htmlFor="pv-auto"
-                info="Off, a preview is built once and only Redeploy refreshes it — what a team on a heavy image or a metered builder wants. Opening the pull request still builds it either way."
+                info="Off, a preview is built once and only Redeploy refreshes it - what a team on a heavy image or a metered builder wants. Opening the pull request still builds it either way."
               >
                 <Switch
                   id="pv-auto"
@@ -331,7 +341,7 @@ export function PreviewSettingsForm(props: PreviewSettingsFormProps) {
                   <div className="grid gap-1.5">
                     <FieldLabel
                       htmlFor="pv-labels"
-                      info="One label per line. With any label here, only pull requests carrying one of them get a preview — and removing the last one destroys the preview it had. Leave empty and every pull request qualifies."
+                      info="One label per line. With any label here, only pull requests carrying one of them get a preview - and removing the last one destroys the preview it had. Leave empty and every pull request qualifies."
                     >
                       Only pull requests labelled
                     </FieldLabel>
@@ -349,7 +359,7 @@ export function PreviewSettingsForm(props: PreviewSettingsFormProps) {
                   <SettingRow
                     label="Build drafts"
                     htmlFor="pv-drafts"
-                    info="Off, a draft pull request waits until it is marked ready for review — a work in progress rarely earns a container. Deploy a pull request by hand covers the exception."
+                    info="Off, a draft pull request waits until it is marked ready for review - a work in progress rarely earns a container. Deploy a pull request by hand covers the exception."
                   >
                     <Switch
                       id="pv-drafts"
@@ -361,7 +371,7 @@ export function PreviewSettingsForm(props: PreviewSettingsFormProps) {
                   <SettingRow
                     label="Comment on the pull request"
                     htmlFor="pv-comment"
-                    info="Post the preview URL as one comment, kept up to date. Needs the Pull requests: write permission on your GitHub App — turn this off if you would rather not grant it."
+                    info="Post the preview URL as one comment, kept up to date. Needs the Pull requests: write permission on your GitHub App - turn this off if you would rather not grant it."
                   >
                     <Switch
                       id="pv-comment"
@@ -412,7 +422,7 @@ export function PreviewSettingsForm(props: PreviewSettingsFormProps) {
                   <div className="grid gap-1.5">
                     <FieldLabel
                       htmlFor="pv-server"
-                      info="Which server runs the previews. The app's own is the honest default — a preview is only worth trusting if it runs where production runs. Point them at a spare machine to keep pull request builds off the box serving your users."
+                      info="Which server runs the previews. The app's own is the honest default - a preview is only worth trusting if it runs where production runs. Point them at a spare machine to keep pull request builds off the box serving your users."
                     >
                       Server
                     </FieldLabel>

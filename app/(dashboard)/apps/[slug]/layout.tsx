@@ -137,6 +137,7 @@ export default async function AppLayout(props: LayoutProps<"/apps/[slug]">) {
         showFiles={showFiles}
         capabilities={capabilities}
         isGithubApp={project.source === "github"}
+        previewsEnabled={project.previewEnabled}
       />
 
       {props.children}

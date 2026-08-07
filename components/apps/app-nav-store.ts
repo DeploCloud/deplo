@@ -22,6 +22,8 @@ export type AppNavState = {
   capabilities: string[];
   /** The app deploys from GitHub — the only source that gets pull requests. */
   isGithubApp: boolean;
+  /** Pull request previews are switched on. */
+  previewsEnabled: boolean;
 };
 
 // Client-only module state: each browser tab owns its own instance. It is never
