@@ -22,11 +22,12 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { InfoTip } from "@/components/ui/info-tip";
 import {
-  Sheet,
-  SheetContent,
-  SheetDescription,
-  SheetTitle,
-} from "@/components/ui/sheet";
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { Switch } from "@/components/ui/switch";
 import { gqlAction } from "@/lib/graphql-client";
 import { ALL_ALERTS, ALL_CHANNELS } from "@/lib/types";
@@ -41,7 +42,7 @@ import type {
  * The notification settings.
  *
  * The page is a GRID OF TWELVE TILES and nothing else. Every field, every
- * switch, every Test button and the 32-row alert picker live in one sheet,
+ * switch, every Test button and the 32-row alert picker live in one modal,
  * opened by the channel you clicked — because twelve channels, each with their
  * own credentials and their own alert list, laid out vertically, is several
  * screens of form on a page most people open to change one thing.
@@ -64,7 +65,7 @@ export function NotificationsPanel({
   const [secrets, setSecrets] = React.useState<Secrets>({});
   const [saving, startSave] = React.useTransition();
   const [testing, setTesting] = React.useState<NotificationChannel | null>(null);
-  /** Which channel's sheet is open. One sheet, one alert picker, ever. */
+  /** Which channel's modal is open. One modal, one alert picker, ever. */
   const [openFor, setOpenFor] = React.useState<NotificationChannel | null>(null);
 
   const channels = settings.channels;
@@ -244,32 +245,42 @@ export function NotificationsPanel({
         </aside>
       </div>
 
-      {/* ONE sheet for whichever channel is open, so only one alert picker is
-          ever mounted - which is also what keeps its per-row DOM ids unique. */}
-      <Sheet
+      {/* ONE modal for whichever channel is open, so only one alert picker is
+          ever mounted - which is also what keeps its per-row DOM ids unique.
+          The alert list is far taller than any viewport, so the modal is capped
+          and only its middle row scrolls: the channel stays named and its
+          buttons stay reachable however far down the list you are. */}
+      <Dialog
         open={open !== null}
         onOpenChange={(next) => !next && setOpenFor(null)}
       >
-        <SheetContent
-          side="right"
-          className="flex h-full w-full flex-col sm:max-w-xl"
-        >
+        <DialogContent className="max-h-[85vh] max-w-2xl gap-0 p-0 grid-rows-[minmax(0,1fr)]">
           {open && (
-            <>
-              <div className="flex items-start gap-3 border-b border-border p-4">
+            // A real form, so Enter in any field does the obvious thing instead
+            // of nothing. There is no save here on purpose - the page's single
+            // Save posts every channel at once - so the primary action is Done.
+            <form
+              className="grid min-h-0 grid-rows-[auto_minmax(0,1fr)_auto]"
+              onSubmit={(e) => {
+                e.preventDefault();
+                setOpenFor(null);
+              }}
+            >
+              {/* pr-12 keeps the switch clear of the modal's own close button. */}
+              <div className="flex items-start gap-3 border-b border-border p-4 pr-12">
                 <ChannelMark channel={open} />
                 <div className="min-w-0 flex-1">
-                  <SheetTitle className="flex items-center gap-1.5">
+                  <DialogTitle className="flex items-center gap-1.5">
                     {CHANNEL_BRAND[open].label}
                     {CHANNEL_BRAND[open].beta && (
                       <Badge variant="info" className="px-1.5 py-0 text-[10px]">
                         Beta
                       </Badge>
                     )}
-                  </SheetTitle>
-                  <SheetDescription className="mt-1">
+                  </DialogTitle>
+                  <DialogDescription className="mt-1">
                     {CHANNEL_BRAND[open].description}
-                  </SheetDescription>
+                  </DialogDescription>
                 </div>
                 <Switch
                   checked={channels[open].enabled}
@@ -279,7 +290,7 @@ export function NotificationsPanel({
                 />
               </div>
 
-              <div className="min-h-0 flex-1 space-y-5 overflow-y-auto p-4">
+              <div className="min-h-0 space-y-5 overflow-y-auto p-4">
                 <ChannelConfig
                   channel={open}
                   channels={channels}
@@ -297,33 +308,38 @@ export function NotificationsPanel({
                 />
               </div>
 
-              <div className="flex flex-wrap items-center gap-1.5 border-t border-border p-4">
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="sm"
-                  disabled={!canManage || !channels[open].enabled || !ready}
-                  onClick={() => void testChannel(open)}
-                >
-                  <Send className="size-3.5" />
-                  {testing === open ? "Sending" : "Send a test"}
+              <DialogFooter className="items-center gap-1.5 border-t border-border p-4 sm:justify-between">
+                <div className="flex flex-wrap items-center gap-1.5">
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    disabled={!canManage || !channels[open].enabled || !ready}
+                    onClick={() => void testChannel(open)}
+                  >
+                    <Send className="size-3.5" />
+                    {testing === open ? "Sending" : "Send a test"}
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    disabled={!canManage}
+                    onClick={() => copyToEveryChannel(open)}
+                  >
+                    <Copy className="size-3.5" />
+                    Copy alerts to every channel
+                  </Button>
+                  <InfoTip content="Replaces every other channel's list with this one. Nothing changes until you save." />
+                </div>
+                <Button type="submit" size="sm">
+                  Done
                 </Button>
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="sm"
-                  disabled={!canManage}
-                  onClick={() => copyToEveryChannel(open)}
-                >
-                  <Copy className="size-3.5" />
-                  Copy alerts to every channel
-                </Button>
-                <InfoTip content="Replaces every other channel's list with this one. Nothing changes until you save." />
-              </div>
-            </>
+              </DialogFooter>
+            </form>
           )}
-        </SheetContent>
-      </Sheet>
+        </DialogContent>
+      </Dialog>
     </>
   );
 }
