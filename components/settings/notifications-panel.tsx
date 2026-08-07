@@ -67,6 +67,33 @@ export function NotificationsPanel({
   const [testing, setTesting] = React.useState<NotificationChannel | null>(null);
   /** Which channel's modal is open. One modal, one alert picker, ever. */
   const [openFor, setOpenFor] = React.useState<NotificationChannel | null>(null);
+  /**
+   * What the settings looked like when the modal opened.
+   *
+   * It is what makes the modal's Save mean something: dismissing reverts to
+   * this, so the only pending change when you press Save is the one you just
+   * made. Without it, closing would leave edits floating with nowhere to go —
+   * which is exactly what a page-level Save button did.
+   */
+  const [snapshot, setSnapshot] = React.useState<{
+    settings: NotificationSettings;
+    secrets: Secrets;
+  } | null>(null);
+
+  function openChannel(channel: NotificationChannel) {
+    setSnapshot({ settings, secrets });
+    setOpenFor(channel);
+  }
+
+  /** Dismissing is a cancel: put back what was there when the modal opened. */
+  function closeChannel(revert: boolean) {
+    if (revert && snapshot) {
+      setSettings(snapshot.settings);
+      setSecrets(snapshot.secrets);
+    }
+    setSnapshot(null);
+    setOpenFor(null);
+  }
 
   const channels = settings.channels;
   const onCount = ALL_CHANNELS.filter((c) => channels[c].enabled).length;
@@ -95,15 +122,23 @@ export function NotificationsPanel({
     toast.success("Copied to every channel");
   }
 
-  function save() {
+  /**
+   * Persist and close. The mutation replaces the whole settings document — that
+   * is the API — but the snapshot above means the only thing that differs from
+   * what the server already holds is what this modal changed, so "save" and
+   * "save this channel" are the same act.
+   */
+  function saveChannel(channel: NotificationChannel) {
     startSave(async () => {
       const res = await gqlAction(
         `mutation($input: JSON!) { saveNotificationSettings(input: $input) { __typename } }`,
         { input: { ...settings, secrets } },
       );
       if (res.ok) {
-        toast.success("Notification settings saved");
+        toast.success(`${CHANNEL_BRAND[channel].label} saved`);
         setSecrets({});
+        setSnapshot(null);
+        setOpenFor(null);
         router.refresh();
       } else toast.error(res.error);
     });
@@ -197,6 +232,12 @@ export function NotificationsPanel({
 
   const open = openFor;
   const ready = open ? isChannelReady(open, channels, secrets) : false;
+  // A test dials whatever the SERVER has stored, so testing an unsaved endpoint
+  // would quietly exercise the old one. Save first, then test.
+  const dirty =
+    snapshot !== null &&
+    (JSON.stringify(snapshot.settings) !== JSON.stringify(settings) ||
+      JSON.stringify(snapshot.secrets) !== JSON.stringify(secrets));
 
   return (
     <>
@@ -225,18 +266,12 @@ export function NotificationsPanel({
                     enabled={channels[channel].enabled}
                     ready={isChannelReady(channel, channels, secrets)}
                     alertCount={settings.alerts[channel].length}
-                    onOpen={() => setOpenFor(channel)}
+                    onOpen={() => openChannel(channel)}
                   />
                 ))}
               </div>
             </CardContent>
           </Card>
-
-          <div className="flex justify-end">
-            <Button onClick={save} disabled={saving || !canManage}>
-              {saving ? "Saving" : "Save preferences"}
-            </Button>
-          </div>
         </div>
 
         {/* Decoration, and the only thing on this page that says what it is FOR. */}
@@ -252,18 +287,19 @@ export function NotificationsPanel({
           buttons stay reachable however far down the list you are. */}
       <Dialog
         open={open !== null}
-        onOpenChange={(next) => !next && setOpenFor(null)}
+        onOpenChange={(next) => !next && closeChannel(true)}
       >
         <DialogContent className="max-h-[85vh] max-w-2xl gap-0 p-0 grid-rows-[minmax(0,1fr)]">
           {open && (
-            // A real form, so Enter in any field does the obvious thing instead
-            // of nothing. There is no save here on purpose - the page's single
-            // Save posts every channel at once - so the primary action is Done.
+            // A real form, so Enter in a webhook field saves instead of doing
+            // nothing. THIS is where a channel is saved: a page-level Save made
+            // no sense when everything you can change lives in here.
             <form
               className="grid min-h-0 grid-rows-[auto_minmax(0,1fr)_auto]"
               onSubmit={(e) => {
                 e.preventDefault();
-                setOpenFor(null);
+                if (dirty && canManage) saveChannel(open);
+                else closeChannel(false);
               }}
             >
               {/* pr-12 keeps the switch clear of the modal's own close button. */}
@@ -314,7 +350,9 @@ export function NotificationsPanel({
                     type="button"
                     variant="outline"
                     size="sm"
-                    disabled={!canManage || !channels[open].enabled || !ready}
+                    disabled={
+                      !canManage || !channels[open].enabled || !ready || dirty
+                    }
                     onClick={() => void testChannel(open)}
                   >
                     <Send className="size-3.5" />
@@ -331,10 +369,29 @@ export function NotificationsPanel({
                     Copy alerts to every channel
                   </Button>
                   <InfoTip content="Replaces every other channel's list with this one. Nothing changes until you save." />
+                  {dirty && (
+                    <span className="text-xs text-muted-foreground">
+                      Save to test
+                    </span>
+                  )}
                 </div>
-                <Button type="submit" size="sm">
-                  Done
-                </Button>
+                <div className="flex items-center gap-1.5">
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => closeChannel(true)}
+                  >
+                    {dirty ? "Cancel" : "Close"}
+                  </Button>
+                  <Button
+                    type="submit"
+                    size="sm"
+                    disabled={saving || !canManage || !dirty}
+                  >
+                    {saving ? "Saving" : "Save"}
+                  </Button>
+                </div>
               </DialogFooter>
             </form>
           )}
