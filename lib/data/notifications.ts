@@ -117,7 +117,7 @@ export function parseSettingsInput(raw: unknown): NotificationSettingsInput {
         enabled: bool(email.enabled),
         address: str(email.address),
         from: str(email.from),
-        provider: email.provider === "resend" ? "resend" : "smtp",
+        provider: email.provider === "smtp" ? "smtp" : "resend",
         smtp: {
           host: str(smtp.host),
           port: port(smtp.port),

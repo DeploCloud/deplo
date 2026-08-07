@@ -42,7 +42,7 @@ export function rowToChannels(
       enabled: row.emailEnabled,
       address: row.emailAddress,
       from: row.emailFrom,
-      provider: (row.emailProvider === "resend" ? "resend" : "smtp") as EmailProvider,
+      provider: (row.emailProvider === "smtp" ? "smtp" : "resend") as EmailProvider,
       smtp: {
         host: row.smtpHost,
         port: row.smtpPort,

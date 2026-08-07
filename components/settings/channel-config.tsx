@@ -1,9 +1,10 @@
 "use client";
 
 import * as React from "react";
-import { Bell } from "lucide-react";
+import { Bell, Server } from "lucide-react";
 
 import { CHANNEL_BRAND } from "@/components/settings/channel-brand";
+import { ResendIcon } from "@/components/shared/brand-icons";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import {
@@ -174,9 +175,22 @@ export function ChannelConfig(props: ChannelConfigProps) {
               <SelectTrigger>
                 <SelectValue />
               </SelectTrigger>
+              {/* Resend first: it is the default, and a list should open on it.
+                  `SelectItem` wraps its children in Radix's `ItemText`, so the
+                  mark rides along into the closed trigger for free. */}
               <SelectContent>
-                <SelectItem value="smtp">SMTP server</SelectItem>
-                <SelectItem value="resend">Resend</SelectItem>
+                <SelectItem value="resend">
+                  <span className="flex items-center gap-2">
+                    <ResendIcon className="size-3.5" />
+                    Resend
+                  </span>
+                </SelectItem>
+                <SelectItem value="smtp">
+                  <span className="flex items-center gap-2">
+                    <Server className="size-3.5 text-muted-foreground" />
+                    SMTP server
+                  </span>
+                </SelectItem>
               </SelectContent>
             </Select>
           </Field>

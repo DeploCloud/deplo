@@ -1892,8 +1892,8 @@ export const notificationSettings = pgTable("notification_settings", {
   emailAddress: text("email_address").notNull(),
   /** The From: address the provider sends as. */
   emailFrom: text("email_from").notNull().default(""),
-  /** `smtp` | `resend` — see `EmailProvider`. */
-  emailProvider: text("email_provider").notNull().default("smtp"),
+  /** `smtp` | `resend` — see `EmailProvider`. Resend is the default transport. */
+  emailProvider: text("email_provider").notNull().default("resend"),
   smtpHost: text("smtp_host").notNull().default(""),
   smtpPort: integer("smtp_port").notNull().default(587),
   smtpUser: text("smtp_user").notNull().default(""),

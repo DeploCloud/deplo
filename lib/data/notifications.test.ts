@@ -77,6 +77,9 @@ function customSettings(): NotificationSettingsInput {
         enabled: true,
         address: "alerts@alpha.io",
         from: "deplo@alpha.io",
+        // Pinned, not inherited: these tests are about the SMTP branch, and the
+        // default transport is Resend.
+        provider: "smtp",
         smtp: { host: "smtp.alpha.io", port: 587, user: "bot", passwordSet: false },
       },
       discord: { enabled: true, webhookUrl: "https://discord/hook" },
@@ -286,7 +289,7 @@ test("parseSettingsInput survives junk from the JSON scalar", async () => {
   // the catalog, never by reading the input's own keys.
   assert.deepEqual(Object.keys(parsed.alerts), [...ALL_CHANNELS]);
   assert.deepEqual(parsed.alerts.discord, []);
-  assert.equal(parsed.channels.email.provider, "smtp");
+  assert.equal(parsed.channels.email.provider, "resend");
   assert.equal(parsed.channels.email.smtp.port, 587);
   assert.equal(parsed.channels.ntfy.baseUrl, "https://ntfy.sh");
   assert.equal(parsed.channels.discord.enabled, false);

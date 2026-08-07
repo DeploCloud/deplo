@@ -381,7 +381,10 @@ export function defaultNotificationSettings(): NotificationSettings {
         enabled: false,
         address: "",
         from: "",
-        provider: "smtp",
+        // Resend is the default transport: it is an API key and a From address,
+        // against a host that is already reachable. An SMTP server is four
+        // fields and a relay the user has to have.
+        provider: "resend",
         smtp: { host: "", port: 587, user: "", passwordSet: false },
         resend: { apiKeySet: false },
       },

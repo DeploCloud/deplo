@@ -1,0 +1,14 @@
+-- Resend becomes the default email transport.
+--
+-- An API key and a From address, against a host that is already reachable, is a
+-- shorter path to a working alert than a hostname, a port, a username, a
+-- password and a relay the user has to already own. So it is what a team that
+-- has never opened the page starts on.
+--
+-- Existing rows are untouched, deliberately: they carry an explicit
+-- 'smtp' or 'resend' that somebody chose. This only changes what a row inserted
+-- WITHOUT the column would get - which, since `channelsToRow` always writes
+-- every column, is nothing today. It is here so the column and
+-- `defaultNotificationSettings()` cannot say different things to whoever reads
+-- them next.
+ALTER TABLE "notification_settings" ALTER COLUMN "email_provider" SET DEFAULT 'resend';
