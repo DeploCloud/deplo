@@ -1,4 +1,4 @@
-# ADR-0018 — Cron jobs are agent-tracked container execs, polled by the control plane
+# ADR-0018 - Cron jobs are agent-tracked container execs, polled by the control plane
 
 **Status:** Accepted (2026-08-07).
 
@@ -11,14 +11,14 @@ three additive RPCs. Reuses the capability model of
 ## Context
 
 deplo could not run anything on a recurring basis. The two ways a user had were to open the
-Console and type the command by hand, or to bake a crontab into the image — that is, exactly
+Console and type the command by hand, or to bake a crontab into the image - that is, exactly
 the "drop to a shell" the core mission exists to remove. Every platform deplo measures itself
 against ships a cron manager in the dashboard, and so does every open-source competitor.
 
 The obvious implementation was already in the tree and is wrong. `Exec` (the console's RPC)
 runs `docker exec` synchronously with a **hard 30-second ceiling**
 (`internal/server/exec.go`, `dockercli.Run(ctx, 30*time.Second, …)`). That ceiling is correct
-for what it serves — a REPL where a human typed a command and is waiting — and useless for a
+for what it serves - a REPL where a human typed a command and is waiting - and useless for a
 cron job, where a Laravel `schedule:run`, a database cleanup or a sitemap rebuild routinely
 runs for minutes. Raising it would give the console an unbounded deadline, which is the exact
 thing the ceiling is there to prevent.
@@ -30,14 +30,14 @@ Three shapes were considered for the replacement.
 ### 1. A cron job is a new agent RPC triple, not a longer `Exec`
 
 `StartJob` / `PollJob` / `KillJob`, behind the `cron` Hello capability. The agent spawns the
-`docker exec` on a **job-scoped context** — never the RPC's — keeps it in an in-process map
+`docker exec` on a **job-scoped context** - never the RPC's - keeps it in an in-process map
 next to `deploys`, and answers questions about it later. The control plane holds **no
 connection** between the start and the terminal poll.
 
 Rejected: a **long-deadline unary `RunJob`** (one changed line in Go, but it holds a gRPC
 connection open for the job's entire duration and loses the result outright if the control
 plane restarts mid-job), and a **server-streaming `RunJob`** modelled on `Backup` (nice for
-live output, but the most fragile option for long jobs — a broken stream loses the exit code,
+live output, but the most fragile option for long jobs - a broken stream loses the exit code,
 and it would need the reconnection machinery that today exists only for the metrics stream).
 
 The consequence that sold it: **restarting Deplo does not kill a running cron job.** The
@@ -51,7 +51,7 @@ The `job_id` lives as long as the **agent process**. It survives a control-plane
 does not survive an agent restart, and `PollJob` says which by answering `found: false`.
 
 A run in that state is recorded `lost`, meaning "Deplo could not find out how this ended". It
-is not `failed`, because the command most likely completed — the agent restarting under it
+is not `failed`, because the command most likely completed - the agent restarting under it
 says nothing about the command. Calling it `failed` would fire a failure alert for a
 successful nightly job every time the fleet is updated. It still notifies (under
 `cron_job_failed`), because a run that never resolves and tells nobody is the failure a cron
@@ -88,7 +88,7 @@ Spring forward is left alone: a wall-clock minute that does not exist never matc
 pinned inside the skipped hour does not run that day. Vixie cron fires it right after the
 jump; we do not, and the schedule picker warns instead. That is one day a year for jobs
 pinned to a one-hour window, and catching up costs a "was this minute skipped?" probe plus a
-synthetic fire — recorded as an upgrade path in `lib/crons/cron-tz.ts`, not built.
+synthetic fire - recorded as an upgrade path in `lib/crons/cron-tz.ts`, not built.
 
 ### 5. `manage_crons` is seeded from console access, not from deploy access
 
@@ -99,7 +99,7 @@ A cron job is an arbitrary command inside a container as the container's user wi
 sandbox. The capability that already means exactly that is the console one; `deploy_apps` is
 a strictly larger set of people, and widening it would be an escalation nobody asked for. The
 capability is marked `sensitive`, and because one `manage_crons` governs both target kinds,
-database jobs carry a **second** gate (`open_database_console`) in the data layer — otherwise
+database jobs carry a **second** gate (`open_database_console`) in the data layer - otherwise
 app-console access alone would reach inside every database.
 
 As in 0077, `api_token_capabilities` is untouched. Silently widening an already-issued secret
@@ -107,7 +107,7 @@ to "can run any command on your servers, on a timer" is not a backfill.
 
 ### 6. Retries live in the same run row
 
-`attempt` on `cron_runs`, and a retry never writes a terminal status — it leaves the row
+`attempt` on `cron_runs`, and a retry never writes a terminal status - it leaves the row
 `running` with `agent_job_id` NULL and `next_attempt_at` set. One scheduled fire is therefore
 always one row in the history, and the alert fires only when the last attempt fails, which is
 structural rather than a flag: `settle()` is the only place that dispatches.
@@ -127,7 +127,7 @@ the job is gone there is nothing left for its history to be about.
 
 - The agent gains three RPCs and one capability string; the contract stays `V1` (additive).
   An older agent answers UNIMPLEMENTED and the control plane says "update this server's
-  agent" — there is no fallback path, on purpose: a background-and-poll emulation over `Exec`
+  agent" - there is no fallback path, on purpose: a background-and-poll emulation over `Exec`
   would need a shell, a writable `/tmp` and PID bookkeeping inside every user's container.
 - A killed job's in-container process may outlive the exec client (docker has no "kill the
   exec'd process" API). Recorded as a ceiling in `internal/server/job.go`.

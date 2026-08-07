@@ -43,7 +43,7 @@ export const DOCKER_CLEANUP_LEASE = "docker-cleanup-scheduler";
 export const PREVIEW_REAPER_LEASE = "preview-reaper";
 
 /**
- * The cron scheduler's lease name — a fourth row, same reasoning again. It
+ * The cron scheduler's lease name - a fourth row, same reasoning again. It
  * matters most here: a cron job can legitimately run for hours, and sharing a
  * lease with the backup scheduler would mean one long job silently stopping every
  * nightly dump on the instance.

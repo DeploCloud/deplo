@@ -14,8 +14,8 @@ export const metadata = { title: "Cron jobs" };
  * Settings → Cron jobs: the opt-in switch, and nothing else.
  *
  * There is no second card here on purpose. Everything a cron job can be
- * configured with belongs to ONE job — two jobs on the same app legitimately
- * want different schedules, shells, timeouts and zones — so a target-level
+ * configured with belongs to ONE job - two jobs on the same app legitimately
+ * want different schedules, shells, timeouts and zones - so a target-level
  * default would be a knob whose only purpose is to be overridden. What this page
  * owns is the decision to have the feature at all, which is exactly what the
  * Pull requests page owns for previews.

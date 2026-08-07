@@ -323,10 +323,10 @@ const refused = (messages: string[]): boolean => messages.some((m) => REFUSED.te
  *  - The second gate is not a capability at all. `canExposePorts` and
  *    `canMountHostVolumes` are instance-wide grants (they cross the team
  *    boundary, so no team role can hand them out), and holding `create_databases`
- *    really is not enough to pick a host port — that is the grant's whole job.
+ *    really is not enough to pick a host port - that is the grant's whole job.
  *  - The second gate is a DIFFERENT capability. One `manage_crons` governs cron
  *    jobs on both apps and databases, and migration 0080 seeds it from EITHER
- *    console capability — so the database-side fields additionally require
+ *    console capability - so the database-side fields additionally require
  *    `open_database_console`, or app-console access alone would reach inside
  *    every database on the instance (ADR-0018 §5).
  */

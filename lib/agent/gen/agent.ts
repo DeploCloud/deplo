@@ -1496,7 +1496,7 @@ export interface StartJobRequest {
   image: string;
   /**
    * "sh" | "bash" | "" (probe, as Exec does). A named shell that the image does
-   * not have FAILS the job — it never silently falls back to the other one,
+   * not have FAILS the job - it never silently falls back to the other one,
    * because `set -o pipefail` and `[[` change meaning between them.
    */
   shell: string;
@@ -1535,7 +1535,7 @@ export interface PollJobResponse {
   running: boolean;
   /**
    * Meaningful only when found && !running. -1 means the command never spawned
-   * (no such container, no shell, the named shell is missing) — stderr says why.
+   * (no such container, no shell, the named shell is missing) - stderr says why.
    */
   exitCode: number;
   /** EMPTY while running; else the last 16 KiB */
@@ -14558,7 +14558,7 @@ export const AgentService = {
     responseDeserialize: (value: Buffer): StartJobResponse => StartJobResponse.decode(value),
   },
   /**
-   * The job's current state. Output is returned ONLY on the terminal poll —
+   * The job's current state. Output is returned ONLY on the terminal poll -
    * streaming it every minute for every in-flight job would be megabytes of
    * wire for data nobody stores, and the container's own logs are right there.
    */
@@ -15202,7 +15202,7 @@ export interface AgentServer extends UntypedServiceImplementation {
    */
   startJob: handleUnaryCall<StartJobRequest, StartJobResponse>;
   /**
-   * The job's current state. Output is returned ONLY on the terminal poll —
+   * The job's current state. Output is returned ONLY on the terminal poll -
    * streaming it every minute for every in-flight job would be megabytes of
    * wire for data nobody stores, and the container's own logs are right there.
    */
@@ -15959,7 +15959,7 @@ export interface AgentClient extends Client {
     callback: (error: ServiceError | null, response: StartJobResponse) => void,
   ): ClientUnaryCall;
   /**
-   * The job's current state. Output is returned ONLY on the terminal poll —
+   * The job's current state. Output is returned ONLY on the terminal poll -
    * streaming it every minute for every in-flight job would be megabytes of
    * wire for data nobody stores, and the container's own logs are right there.
    */

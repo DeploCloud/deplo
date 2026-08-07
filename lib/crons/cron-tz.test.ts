@@ -39,7 +39,7 @@ test("reads the wall clock of the zone, not of the host", () => {
 
 test("midnight is hour 0, not hour 24", () => {
   // The `hourCycle: "h23"` guard. Without it en-US formats midnight as "24" and
-  // `0 0 * * *` never fires — silently, once a day, in every zone.
+  // `0 0 * * *` never fires - silently, once a day, in every zone.
   assert.equal(zoneParts(new Date("2026-03-10T00:00:00Z"), "UTC").H, 0);
   assert.equal(
     firesAt("0 0 * * *", "Europe/Rome", "2026-03-09T22:00:00Z", "2026-03-10T02:00:00Z").length,

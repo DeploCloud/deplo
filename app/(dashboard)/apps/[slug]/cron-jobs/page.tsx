@@ -13,7 +13,7 @@ export const metadata = { title: "Cron jobs" };
  * The operational page: what is scheduled on this app, and what each one did.
  *
  * Reachable only once the switch in Settings is on (the sidebar entry appears
- * with it), so the "off" branch below is for the person who kept the URL — it
+ * with it), so the "off" branch below is for the person who kept the URL - it
  * points at the switch rather than pretending the page is broken.
  */
 export default async function AppCronJobsPage(

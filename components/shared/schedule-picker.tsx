@@ -94,7 +94,7 @@ export function SchedulePicker({
   /**
    * The zone the expression is read in. UTC for backups and docker cleanup,
    * which have no zone of their own; a cron job passes its own, and then every
-   * label, the description and the next-run resolution must agree — a time field
+   * label, the description and the next-run resolution must agree - a time field
    * labelled UTC on a schedule that fires at 03:00 in Rome is a plain lie.
    */
   timezone?: string;
@@ -308,7 +308,7 @@ export function ScheduleLabel({
   timezone = "UTC",
 }: {
   cron: string;
-  /** The zone the expression is read in — see {@link SchedulePicker}. */
+  /** The zone the expression is read in - see {@link SchedulePicker}. */
   timezone?: string;
 }) {
   const compact = describeCron(cron, { compact: true, timeZone: timezone });

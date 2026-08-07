@@ -16,7 +16,7 @@ import {
 import type { CronTargetKind } from "@/lib/types";
 
 /* ------------------------------------------------------------------ */
-/* Object types — cron jobs (ADR-0018)                                 */
+/* Object types - cron jobs (ADR-0018)                                 */
 /* ------------------------------------------------------------------ */
 
 export const CronJobRef = builder.objectRef<CronJobDTO>("CronJob").implement({
@@ -33,7 +33,7 @@ export const CronJobRef = builder.objectRef<CronJobDTO>("CronJob").implement({
     service: t.exposeString("service", {
       nullable: true,
       description:
-        "Compose service to run in. Null means the target's own container — the " +
+        "Compose service to run in. Null means the target's own container - the " +
         "only possibility for a database. Never a container name: a redeploy " +
         "mints new ones, so it is resolved live before every attempt.",
     }),
@@ -46,7 +46,7 @@ export const CronJobRef = builder.objectRef<CronJobDTO>("CronJob").implement({
     enabled: t.exposeBoolean("enabled"),
     timeoutSeconds: t.exposeInt("timeoutSeconds", {
       description:
-        "Per ATTEMPT — it is the agent's exec deadline. timeout x attempts is " +
+        "Per ATTEMPT - it is the agent's exec deadline. timeout x attempts is " +
         "capped at 24 hours.",
     }),
     maxAttempts: t.exposeInt("maxAttempts", {
@@ -54,7 +54,7 @@ export const CronJobRef = builder.objectRef<CronJobDTO>("CronJob").implement({
     }),
     overlap: t.exposeString("overlap", {
       description:
-        "skip | allow — what happens when the previous run is still going.",
+        "skip | allow - what happens when the previous run is still going.",
     }),
     keepRuns: t.exposeInt("keepRuns"),
     workdir: t.exposeString("workdir", { nullable: true }),
@@ -90,7 +90,7 @@ export const CronRunRef = builder.objectRef<CronRunDTO>("CronRun").implement({
       description:
         "running | succeeded | failed | timedout | skipped | lost. `skipped` " +
         "never started (the container was stopped, or the previous run was " +
-        "still going) and `lost` means the outcome is unknown — the agent " +
+        "still going) and `lost` means the outcome is unknown - the agent " +
         "restarted mid-run. Neither is a failure.",
     }),
     trigger: t.exposeString("trigger", { description: "schedule | manual." }),
@@ -106,7 +106,7 @@ export const CronRunRef = builder.objectRef<CronRunDTO>("CronRun").implement({
       description: "Running, but waiting out a retry backoff rather than executing.",
     }),
     exitCode: t.exposeInt("exitCode", { nullable: true }),
-    stdout: t.exposeString("stdout", { description: "Last 16 KiB — the tail." }),
+    stdout: t.exposeString("stdout", { description: "Last 16 KiB - the tail." }),
     stderr: t.exposeString("stderr"),
     error: t.exposeString("error", {
       nullable: true,
@@ -143,7 +143,7 @@ export const CronJobsViewRef = builder
 const CronEnvInput = builder.inputType("CronJobEnvInput", {
   description:
     "One extra variable for a job. The value is encrypted at rest and reaches " +
-    "the host inside the mTLS RPC — it is never readable back.",
+    "the host inside the mTLS RPC - it is never readable back.",
   fields: (t) => ({
     key: t.string({ required: true }),
     value: t.string({ required: true }),
@@ -301,7 +301,7 @@ builder.mutationFields((t) => ({
     type: CronRunRef,
     authScopes: cronScope,
     description:
-      "Run a job now, outside its schedule. Ignores the overlap setting — " +
+      "Run a job now, outside its schedule. Ignores the overlap setting - " +
       "somebody just asked for it explicitly.",
     args: { id: t.arg.id({ required: true }) },
     resolve: (_r, { id }) => runCronJobNow(String(id)),

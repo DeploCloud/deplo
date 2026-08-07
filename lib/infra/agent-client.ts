@@ -83,7 +83,7 @@ const CONSOLE_TIMEOUT_MS = 30_000; // exec runs in-container; match docker.ts ex
  *
  * That is the whole point of the Start/Poll/Kill shape (ADR-0018): the command
  * runs inside the agent on its own context, so a 24-hour job is 24 hours of
- * `PollJob` calls that each take milliseconds — never one 24-hour connection.
+ * `PollJob` calls that each take milliseconds - never one 24-hour connection.
  * `StartJob` gets the more generous budget because it is the one that has to
  * cross a possibly-slow link with the command and its environment attached.
  */
@@ -238,7 +238,7 @@ export interface AgentExecResult {
 export interface AgentStartJobRequest {
   /** `deplo.project` label the agent re-validates the container against. */
   projectId: string;
-  /** Resolved LIVE before every attempt — a redeploy mints new container names. */
+  /** Resolved LIVE before every attempt - a redeploy mints new container names. */
   container: string;
   image: string;
   /** "sh" | "bash"; empty lets the agent probe, as the console does. */
@@ -247,7 +247,7 @@ export interface AgentStartJobRequest {
   timeoutSeconds: number;
   workdir: string;
   user: string;
-  /** The NAME rides argv, the VALUE rides the docker client's own env — so a
+  /** The NAME rides argv, the VALUE rides the docker client's own env - so a
    *  secret is never readable from `ps` on the host. */
   env: { name: string; value: string }[];
 }
@@ -511,7 +511,7 @@ export interface AgentConnection {
    */
   startJob(req: AgentStartJobRequest): Promise<string>;
   /**
-   * A job's current state. `found: false` means this agent has no record of it —
+   * A job's current state. `found: false` means this agent has no record of it -
    * it restarted, or the job was evicted after its retention window. That is a
    * normal answer, and the caller records the run as `lost` (outcome unknown),
    * never as a failure.
@@ -1795,17 +1795,17 @@ export async function connectAgent(serverId: string): Promise<AgentConnection> {
 const BACKUP_CAPABILITY = "backup";
 
 /** The capability an agent advertises once it can run cron jobs
- *  (StartJob/PollJob/KillJob — ADR-0018). */
+ *  (StartJob/PollJob/KillJob - ADR-0018). */
 export const CRON_CAPABILITY = "cron";
 
 /**
- * The reachable agent does not (yet) implement the cron RPCs — it predates the
+ * The reachable agent does not (yet) implement the cron RPCs - it predates the
  * `"cron"` capability, or answers them with gRPC UNIMPLEMENTED.
  *
  * There is deliberately NO fallback path. Emulating a long job over the 30s
  * `Exec` would mean backgrounding the command with `nohup` and polling a marker
  * file, which needs a shell, a writable `/tmp` and PID bookkeeping inside every
- * user's container — more code than the RPCs, and fragile in ways the user would
+ * user's container - more code than the RPCs, and fragile in ways the user would
  * discover at 03:00. An old agent gets an honest "update this server's agent"
  * instead. Mirrors {@link AgentBackupUnsupportedError}.
  */
@@ -1819,7 +1819,7 @@ const CRON_UNSUPPORTED_MESSAGE =
  *
  * Preflights the capability rather than relying on UNIMPLEMENTED alone, because
  * the scheduler decides what to do about a whole server before it starts firing
- * its jobs — one Hello beats one failed StartJob per job.
+ * its jobs - one Hello beats one failed StartJob per job.
  *
  * Throws {@link AgentUnreachableError} when the host is unreachable and
  * {@link AgentCronUnsupportedError} when it is up but too old. The scheduler
@@ -2287,7 +2287,7 @@ export function setHostTimezone(
  * Every writer here reads the host's whole stack file, edits it, and writes the
  * whole thing back: the certificates tab, the ACME account email and the Traefik
  * dashboard toggle all do. Two of them interleaving means the second read misses
- * the first write and puts it back the way it was — a certificate that reports
+ * the first write and puts it back the way it was - a certificate that reports
  * itself installed and is not on the host. There is no compare-and-swap to lean
  * on (the agent takes the file it is given), so the read and the write are held
  * together instead.

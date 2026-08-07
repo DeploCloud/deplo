@@ -1034,7 +1034,7 @@ export const apps = pgTable(
     // advanced feature that has to be asked for, not one an existing app wakes
     // up with. Turning it off stops the schedule and keeps the jobs, so it is
     // also the per-app pause button. Unlike the preview settings above there is
-    // no second column here — everything else is per-job (`cron_jobs`), because
+    // no second column here - everything else is per-job (`cron_jobs`), because
     // two jobs on one app legitimately want different shells, fuses and timeouts.
     cronEnabled: boolean("cron_enabled").notNull().default(false),
     // Pointer to the service's latest Deployment. `SET NULL` so deleting a
@@ -1770,7 +1770,7 @@ export const databases = pgTable(
     // for redis that default carries `--requirepass`, so the UI warns about it.
     customImage: text("custom_image"),
     customCommand: text("custom_command"),
-    // Cron jobs on this database's container — same opt-in switch, same default
+    // Cron jobs on this database's container - same opt-in switch, same default
     // and same reasoning as `apps.cron_enabled`. A database is a single-container
     // stack, so a job here needs no service selector.
     cronEnabled: boolean("cron_enabled").notNull().default(false),
@@ -1933,7 +1933,7 @@ export const backupRuns = pgTable(
 );
 
 /**
- * [CronJob](../../types.ts) — a command run inside one container of an App or a
+ * [CronJob](../../types.ts) - a command run inside one container of an App or a
  * Database on a cron schedule.
  *
  * Shaped like `backups` above (team-scoped, XOR target, `schedule` + `enabled`),
@@ -1941,7 +1941,7 @@ export const backupRuns = pgTable(
  *
  *  - **`timezone` is per job.** `backups.schedule` and the docker-cleanup policy
  *    are UTC-only and get away with it because "some time overnight" is the whole
- *    requirement. A cron job is somebody's business rule — the nightly invoice
+ *    requirement. A cron job is somebody's business rule - the nightly invoice
  *    run happens at 02:00 *in the company's timezone*, and after a DST shift it
  *    still does. Evaluated by lib/crons/cron-tz.ts, never by getUTC*.
  *  - **`service`, not a container name.** A compose stack's container names are
@@ -1973,7 +1973,7 @@ export const cronJobs = pgTable(
     service: text("service"),
     /** 5-field cron, evaluated in `timezone` (NOT in UTC). */
     schedule: text("schedule").notNull(),
-    /** IANA zone, validated on write — `Intl` throws on an unknown one, and an
+    /** IANA zone, validated on write - `Intl` throws on an unknown one, and an
      *  unvalidated value would take down the whole scheduler tick. */
     timezone: text("timezone").notNull().default("UTC"),
     /** "sh" | "bash". A named shell the image lacks fails the run rather than
@@ -1989,7 +1989,7 @@ export const cronJobs = pgTable(
     timeoutSeconds: integer("timeout_seconds").notNull().default(3600),
     /** Total launches per scheduled fire: 1 = no retry, up to 4. */
     maxAttempts: integer("max_attempts").notNull().default(1),
-    /** "skip" | "allow" — what to do when the previous run is still going. */
+    /** "skip" | "allow" - what to do when the previous run is still going. */
     overlap: text("overlap").notNull().default("skip"),
     /** Runs kept in the history for this job; older ones are pruned on settle. */
     keepRuns: integer("keep_runs").notNull().default(50),
@@ -2025,7 +2025,7 @@ export const cronJobs = pgTable(
  * has. A child table and not a column because `value_enc` is a real secret: it
  * is AES-GCM ciphertext, it never enters a DTO, and it reaches the host inside
  * the mTLS RPC with the NAME on argv and the VALUE in the docker client's own
- * environment — so it is never readable from `ps` on the box.
+ * environment - so it is never readable from `ps` on the box.
  */
 export const cronJobEnv = pgTable(
   "cron_job_env",
@@ -2042,11 +2042,11 @@ export const cronJobEnv = pgTable(
 );
 
 /**
- * [CronRun](../../types.ts) — one scheduled fire of a cron job, retries included.
+ * [CronRun](../../types.ts) - one scheduled fire of a cron job, retries included.
  *
  * Six statuses: `running | succeeded | failed | timedout | skipped | lost`.
  * `lost` is the one a backup run cannot have and this one must: the command runs
- * inside the AGENT's process, so restarting the control plane does not kill it —
+ * inside the AGENT's process, so restarting the control plane does not kill it -
  * we come back and poll for the real exit code. Only an agent restart genuinely
  * loses a run, and calling that `failed` would fire a failure alert for something
  * that most likely succeeded.
@@ -2055,7 +2055,7 @@ export const cronJobEnv = pgTable(
  * the in-RAM `lastFired` map the backup scheduler keeps: it survives a restart,
  * two control-plane instances racing for the lease, and a backwards clock step.
  * The INSERT is also the serialization point, which is why overlap is decided
- * AFTER it — two instances can never both conclude "nothing else is running".
+ * AFTER it - two instances can never both conclude "nothing else is running".
  *
  * A retry never writes a terminal status: it leaves the row `running` with
  * `agent_job_id` NULL and `next_attempt_at` set. Invariant: a `running` row has
@@ -2077,12 +2077,12 @@ export const cronRuns = pgTable(
       .notNull()
       .references(() => cronJobs.id, { onDelete: "cascade" }),
     status: text("status").notNull(),
-    /** "schedule" | "manual" — a hand-pressed Run now is not a missed schedule. */
+    /** "schedule" | "manual" - a hand-pressed Run now is not a missed schedule. */
     trigger: text("trigger").notNull().default("schedule"),
     actor: text("actor").notNull().default("Scheduler"),
     /** The cron minute this run answers, as a UTC instant. */
     scheduledFor: isoTimestamptz("scheduled_for").notNull(),
-    /** Wall-clock key for an hour-pinned schedule, instant key otherwise — see
+    /** Wall-clock key for an hour-pinned schedule, instant key otherwise - see
      *  lib/crons/cron-tz.ts. The two halves of the DST problem need opposite
      *  keys, and picking one for both breaks the other. */
     dedupeKey: text("dedupe_key").notNull(),

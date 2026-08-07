@@ -12,7 +12,7 @@ import {
 import { fireDueJobs, reapInFlightRuns } from "./runner";
 
 /**
- * The cron scheduler — the fourth lease-based tick loop, alongside backups,
+ * The cron scheduler - the fourth lease-based tick loop, alongside backups,
  * docker cleanup and the preview reaper. Started once per boot from
  * `instrumentation-node.ts`. Every minute it:
  *
@@ -23,7 +23,7 @@ import { fireDueJobs, reapInFlightRuns } from "./runner";
  *
  * The order of 2 and 3 is load-bearing. The overlap rule reads the `running`
  * rows, so a fire phase that went first would treat a run the agent finished ten
- * seconds ago as still in flight and skip a legitimate execution — once a minute,
+ * seconds ago as still in flight and skip a legitimate execution - once a minute,
  * for every job whose runtime is close to its interval.
  *
  * Two things the backup scheduler needs and this one does not:
@@ -35,7 +35,7 @@ import { fireDueJobs, reapInFlightRuns } from "./runner";
  *  - **A boot reconcile.** `reconcileInFlightBackupRuns` exists because a backup
  *    dies with the control plane, so an orphaned `running` row can only be
  *    guessed at. A cron job runs inside the AGENT, so the reap phase can simply
- *    ASK — and the immediate first tick below reaps before it fires, which IS the
+ *    ASK - and the immediate first tick below reaps before it fires, which IS the
  *    reconcile.
  *
  * Singleton on `globalThis` via `Symbol.for(...)`: Next compiles separate module
@@ -93,7 +93,7 @@ function replayWindow(now: Date): Date[] {
 }
 
 /**
- * One tick. Exported for tests and for the immediate first run. Never throws —
+ * One tick. Exported for tests and for the immediate first run. Never throws -
  * both phases contain per-job and per-run failures so one bad row cannot stop the
  * instance's other jobs.
  */

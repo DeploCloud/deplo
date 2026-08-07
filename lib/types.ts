@@ -1007,7 +1007,7 @@ export interface App {
    */
   previewEnabled: boolean;
   /**
-   * Cron jobs are ON for this app — same reason `previewEnabled` rides the App:
+   * Cron jobs are ON for this app - same reason `previewEnabled` rides the App:
    * the sidebar decides whether to offer the Cron jobs page from it, and the
    * layout already has the row in hand. Everything else about cron jobs lives in
    * `lib/data/crons.ts`.
@@ -1463,7 +1463,7 @@ export interface Database {
    * command drops auth, so the UI warns. Null = image/engine default.
    */
   customCommand: string | null;
-  /** Cron jobs are ON for this database — the same opt-in switch, and the same
+  /** Cron jobs are ON for this database - the same opt-in switch, and the same
    *  reason it rides the DTO, as `apps.cronEnabled`: the sidebar decides whether
    *  to offer the Cron jobs page from it. */
   cronEnabled: boolean;
@@ -1567,7 +1567,7 @@ export interface BackupRun {
 export type CronTargetKind = "app" | "database";
 
 /** Which shell interprets the command. A named shell the image lacks fails the
- *  run rather than falling back — see ADR-0018. */
+ *  run rather than falling back - see ADR-0018. */
 export type CronShell = "sh" | "bash";
 
 /** What to do when the previous run of a job is still going. */
@@ -1578,7 +1578,7 @@ export type CronOverlap = "skip" | "allow";
  *
  *  - `timedout` is apart from `failed` because it points at a SETTING (the job's
  *    timeout) rather than at the command.
- *  - `skipped` never started at all — the container was stopped, or a previous
+ *  - `skipped` never started at all - the container was stopped, or a previous
  *    run was still going. It is not a failure and raises no alert.
  *  - `lost` means Deplo could not find out how it ended, because the agent
  *    restarted while the command was in flight. It is deliberately not `failed`:
@@ -1597,7 +1597,7 @@ export type CronRunStatus =
  * A scheduled command inside one container of an App or a Database.
  *
  * Stored metadata only; running it produces a {@link CronRun}. The `timezone` is
- * per job and NOT UTC — unlike a {@link Backup}, whose "some time overnight" gets
+ * per job and NOT UTC - unlike a {@link Backup}, whose "some time overnight" gets
  * away with a single zone (see ADR-0018).
  */
 export interface CronJob {
@@ -1621,7 +1621,7 @@ export interface CronJob {
   shell: CronShell;
   command: string;
   enabled: boolean;
-  /** Per ATTEMPT — it is the agent's `docker exec` deadline. */
+  /** Per ATTEMPT - it is the agent's `docker exec` deadline. */
   timeoutSeconds: number;
   /** Total launches per scheduled fire: 1 means no retry. */
   maxAttempts: number;
@@ -1651,7 +1651,7 @@ export interface CronRun {
   teamId: ID;
   jobId: ID;
   status: CronRunStatus;
-  /** "schedule" | "manual" — a hand-pressed Run now is not a missed schedule. */
+  /** "schedule" | "manual" - a hand-pressed Run now is not a missed schedule. */
   trigger: "schedule" | "manual";
   actor: string;
   /** The cron minute this run answers. */
@@ -1660,7 +1660,7 @@ export interface CronRun {
   finishedAt: string | null;
   attempt: number;
   exitCode: number | null;
-  /** Last 16 KiB of the final attempt — the tail, never the head. */
+  /** Last 16 KiB of the final attempt - the tail, never the head. */
   stdout: string;
   stderr: string;
   /** Why it failed, or why it was skipped. Not command output. */

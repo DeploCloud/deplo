@@ -271,7 +271,7 @@ test("an agent that lost the job records `lost`, never `failed`", async () => {
   await seedCronJob(db, { id: "cron_1", maxAttempts: 3 });
   await fireDueJobs([MINUTE]);
   // The agent restarted: it has no record of the handle. The command very likely
-  // completed, so this must not read as a failure and must NOT be retried —
+  // completed, so this must not read as a failure and must NOT be retried -
   // re-running it could double-charge a card.
   agent.jobs.clear();
   await reapInFlightRuns(new Date(MINUTE.getTime() + 60_000));

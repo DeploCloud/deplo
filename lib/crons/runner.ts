@@ -23,7 +23,7 @@ import type { CronRunStatus } from "../types";
 import { cronMatchesInZone, dedupeKeyFor } from "./cron-tz";
 
 /**
- * The mechanics of running a cron job — deliberately SESSION-FREE, exactly like
+ * The mechanics of running a cron job - deliberately SESSION-FREE, exactly like
  * `lib/deploy/preview-lifecycle.ts` is for previews.
  *
  * The scheduler has no request identity: nobody is logged in at 03:00. So every
@@ -34,8 +34,8 @@ import { cronMatchesInZone, dedupeKeyFor } from "./cron-tz";
  *
  * Two entry points, and the ORDER between them is load-bearing:
  *
- *   1. {@link reapInFlightRuns} — poll what is already going, settle what ended.
- *   2. {@link fireDueJobs} — start what this minute calls for.
+ *   1. {@link reapInFlightRuns} - poll what is already going, settle what ended.
+ *   2. {@link fireDueJobs} - start what this minute calls for.
  *
  * Reap must precede fire, because the overlap rule reads the `running` rows. A
  * fire phase that ran first would see a run the agent finished ten seconds ago as
@@ -64,8 +64,8 @@ export const REAP_GRACE_MS = 120_000;
 
 /**
  * How the runner reaches an agent. Overridable because every interesting path
- * here — a poll that says `found: false`, a retry ladder, a run outliving its
- * deadline — is a conversation with an agent, and there is no way to have that
+ * here - a poll that says `found: false`, a retry ladder, a run outliving its
+ * deadline - is a conversation with an agent, and there is no way to have that
  * conversation in a test against pglite otherwise.
  *
  * Same shape as the agent's own `traefikApply` override: production never touches
@@ -85,8 +85,8 @@ export function __resetCronConnector(): void {
   connectFn = connectCronAgent;
 }
 
-/** Keep the END of the output: a job's value is its last lines — the error, the
- *  summary — while its head is startup boilerplate. */
+/** Keep the END of the output: a job's value is its last lines - the error, the
+ *  summary - while its head is startup boilerplate. */
 export function tailOutput(s: string): string {
   if (s.length <= CRON_OUTPUT_TAIL_BYTES) return s;
   return `[deplo] earlier output trimmed\n${s.slice(-CRON_OUTPUT_TAIL_BYTES)}`;
@@ -102,7 +102,7 @@ export interface CronTarget {
   projectId: string;
   /** The stack slug the agent lists instances for (a database's is its host). */
   slug: string;
-  /** For an app, its own compose service — the default container to pick. */
+  /** For an app, its own compose service - the default container to pick. */
   primaryService: string;
   /** Where the UI shows this job, for the alert link. */
   path: string;
@@ -165,7 +165,7 @@ function assembleTarget(r: {
 
 /**
  * Every job the scheduler may fire: enabled, on a target whose own cron switch is
- * on. The second half is what makes the master switch a real pause button — the
+ * on. The second half is what makes the master switch a real pause button - the
  * jobs survive, the schedule stops.
  */
 export async function listSchedulableJobs(): Promise<SchedulableJob[]> {
@@ -195,7 +195,7 @@ export interface InFlightRun {
   target: CronTarget;
 }
 
-/** Every `running` run — the reaper's whole working set (partial index). */
+/** Every `running` run - the reaper's whole working set (partial index). */
 export async function listInFlightRuns(): Promise<InFlightRun[]> {
   const rows = await getDb()
     .select({ run: cronRunsTable, ...targetColumns })
@@ -274,7 +274,7 @@ export async function settle(
 
 /**
  * The alert half of settling. Off in its own function because `settle` is the
- * ONLY caller — which is what makes "a retry alerts only on the last attempt"
+ * ONLY caller - which is what makes "a retry alerts only on the last attempt"
  * structural rather than a flag somebody can forget to pass.
  */
 function raiseAlert(
@@ -317,7 +317,7 @@ function raiseAlert(
 }
 
 /**
- * Settle, unless there is another attempt left — in which case the row stays
+ * Settle, unless there is another attempt left - in which case the row stays
  * `running` with its agent handle cleared and a time to relaunch, and the next
  * reap picks it up.
  *
@@ -331,7 +331,7 @@ export async function settleOrRetry(
   fields: SettleFields,
   at: Date = new Date(),
 ): Promise<void> {
-  // `lost` never retries: we do not know that the command failed — we know we
+  // `lost` never retries: we do not know that the command failed - we know we
   // stopped watching. Running it again could double-charge a card.
   const retryable = status === "failed" || status === "timedout";
   if (retryable && r.run.attempt + 1 < r.run.maxAttempts) {
@@ -387,7 +387,7 @@ async function jobEnv(jobId: string): Promise<{ name: string; value: string }[]>
  * the run row: a redeploy between two attempts mints new container names, and a
  * retry must land in the new one.
  *
- * Null means there is nothing to exec into — the stack is down, or the named
+ * Null means there is nothing to exec into - the stack is down, or the named
  * service is not up. The caller records a `skipped` run, not a failure.
  */
 async function resolveContainer(
@@ -540,7 +540,7 @@ async function reapOne(conn: AgentConnection, r: InFlightRun, now: Date): Promis
 
   const poll = await conn.pollJob(r.run.agentJobId);
   if (!poll.found) {
-    // The agent restarted under us. NOT a failure — the command very likely
+    // The agent restarted under us. NOT a failure - the command very likely
     // completed; we simply stopped being able to find out. See ADR-0018 §2.
     await settle(
       r,
@@ -624,7 +624,7 @@ async function hasOtherRunningRun(jobId: string, exceptId: string): Promise<bool
 export interface ClaimOptions {
   trigger: "schedule" | "manual";
   actor: string;
-  /** Overrides the derived key — a manual run is not a scheduled minute. */
+  /** Overrides the derived key - a manual run is not a scheduled minute. */
   dedupeKey?: string;
 }
 
@@ -673,7 +673,7 @@ export async function claimRun(
  * Start every job due in this window.
  *
  * `minutes` is the replay window: the tick's own minute plus any the previous
- * drain stepped over. A job matching several of them fires ONCE, on the last —
+ * drain stepped over. A job matching several of them fires ONCE, on the last -
  * late rather than not at all, and never N times for one overrun.
  *
  * There is deliberately no catch-up for a Deplo that was DOWN. A job that missed
@@ -685,7 +685,7 @@ export async function fireDueJobs(
   heartbeat: () => Promise<boolean> = async () => true,
 ): Promise<void> {
   // The replay window always ENDS with the tick's own minute, so its last entry
-  // is `now` — no extra parameter, and the deadlines a run is later judged
+  // is `now` - no extra parameter, and the deadlines a run is later judged
   // against are stamped from the same clock the tick reasons with.
   const now = minutes[minutes.length - 1] ?? new Date();
   const jobs = await listSchedulableJobs();

@@ -372,13 +372,13 @@ export function appNav(slug: string, f: AppNavFlags): NavSection[] {
           } as NavItem,
         ]
       : []),
-    // Cron jobs — the OPERATIONAL page, offered only once the feature is on,
+    // Cron jobs - the OPERATIONAL page, offered only once the feature is on,
     // exactly like Pull requests above and for the same reason: with the switch
     // off there is nothing to list, and the setting that turns it back on lives
     // under Settings where you would look for it.
     //
-    // Unlike previews there is no structural impossibility here — every app can
-    // run a command in its own container — so there is no equivalent of the
+    // Unlike previews there is no structural impossibility here - every app can
+    // run a command in its own container - so there is no equivalent of the
     // `isGithubApp` clause.
     ...(f.cronsEnabled || on("/cron-jobs")
       ? [
@@ -666,7 +666,7 @@ export function databaseNav(
               } as NavItem,
             ]
           : []),
-        // Cron jobs, offered only once the switch is on — the app twin, and the
+        // Cron jobs, offered only once the switch is on - the app twin, and the
         // one flag this deliberately flag-less nav does take besides the console
         // acknowledgement.
         ...(f.cronsEnabled || on("/cron-jobs")

@@ -7,8 +7,8 @@ import * as React from "react";
  *
  * `databaseNav` was deliberately flag-less until cron jobs: Logs works while the
  * database is stopped and Backups guards itself, so nothing there depended on
- * live state. Cron jobs does — its tab appears only once the feature is switched
- * on for that database, exactly as an app's does — and the sidebar lives OUTSIDE
+ * live state. Cron jobs does - its tab appears only once the feature is switched
+ * on for that database, exactly as an app's does - and the sidebar lives OUTSIDE
  * the database layout, so a React context cannot reach it. Hence the same
  * module-state + `useSyncExternalStore` bridge the app nav uses.
  *

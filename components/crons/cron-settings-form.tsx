@@ -10,7 +10,7 @@ import { Switch } from "@/components/ui/switch";
 import { gqlAction } from "@/lib/graphql-client";
 
 /**
- * The master switch for one target's cron jobs — the whole of Settings → Cron
+ * The master switch for one target's cron jobs - the whole of Settings → Cron
  * jobs.
  *
  * Deliberately ONE control. The per-job settings (schedule, timezone, shell,
@@ -19,7 +19,7 @@ import { gqlAction } from "@/lib/graphql-client";
  * for them would be a knob whose only job is to be overridden. So this page says
  * what the feature is, warns what it costs, and turns it on.
  *
- * Saves the instant it is flipped — the house rule for a switch — and turning it
+ * Saves the instant it is flipped - the house rule for a switch - and turning it
  * OFF keeps every job. That makes it the pause button as well as the opt-in,
  * which is the behaviour somebody reaches for when a job is misbehaving at 03:00.
  */

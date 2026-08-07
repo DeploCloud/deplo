@@ -4,9 +4,9 @@
  *
  * Backups and the docker-cleanup policy are UTC-only and get away with it: "some
  * time overnight" is the whole requirement, and an hour's drift twice a year
- * costs nobody anything. A cron job is somebody's business rule — the nightly
+ * costs nobody anything. A cron job is somebody's business rule - the nightly
  * invoice run happens at 02:00 *in the company's timezone*, and it still does
- * after the clocks change — so it needs the zone, and needs it per job, because
+ * after the clocks change - so it needs the zone, and needs it per job, because
  * one instance serves teams in different countries.
  *
  * Pure, dependency-free, and NOT `server-only`: the scheduler evaluates these
@@ -42,7 +42,7 @@ function formatterFor(tz: string): Intl.DateTimeFormat {
     f = new Intl.DateTimeFormat("en-US", {
       timeZone: tz,
       // LOAD-BEARING. The default hour cycle for en-US formats midnight as hour
-      // "24" of the previous day, so `0 0 * * *` would never match — silently,
+      // "24" of the previous day, so `0 0 * * *` would never match - silently,
       // once a day, in every zone. `h23` is the only correct setting here.
       hourCycle: "h23",
       year: "numeric",
@@ -74,7 +74,7 @@ export function zoneParts(at: Date, tz: string): ZoneParts {
 
 /**
  * `at`'s wall clock in `tz`, packed into a Date whose UTC fields ARE that wall
- * clock. A "fake UTC" instant — never a real one — which is what lets the UTC
+ * clock. A "fake UTC" instant - never a real one - which is what lets the UTC
  * evaluator answer a zoned question unchanged, day-of-week included (it falls
  * out of `Date.UTC` arithmetically, so no locale weekday string is ever parsed).
  */
@@ -106,7 +106,7 @@ function zonedToUtc(wall: Date, tz: string): Date {
 
 /**
  * Does `expr` fire at this instant, read in `tz`? Minute precision, like the UTC
- * original — and like it, an unparseable expression never matches rather than
+ * original - and like it, an unparseable expression never matches rather than
  * throwing, so one malformed schedule cannot kill a scheduler tick.
  *
  * An unknown zone DOES throw (`Intl`'s `RangeError`). That is deliberate: the
@@ -138,7 +138,7 @@ function walkWallClock(
     if (!wall) return null;
     const instant = zonedToUtc(wall, tz);
     // Round-trip: if reading the instant back does not give the wall clock we
-    // asked for, that wall clock does not exist in this zone on that day — the
+    // asked for, that wall clock does not exist in this zone on that day - the
     // hour spring forward removes. Skip past it and keep looking.
     if (fakeUtcOf(instant, tz).getTime() === wall.getTime() && instant > from) {
       return instant;
@@ -199,7 +199,7 @@ export function nextCronRunInZone(
  *
  * ponytail: a STEPPED hour ("every 6 hours") counts as an interval here, so if a
  *   zone's repeated hour happens to land on one of its steps the job fires twice,
- *   once a year. That is the safe direction — this branch can never SUPPRESS a
+ *   once a year. That is the safe direction - this branch can never SUPPRESS a
  *   legitimate fire, only allow an extra one. Upgrade: treat a step of n hours
  *   where `24 % n !== 0` as pinned.
  */
@@ -255,7 +255,7 @@ export function canonicalTimeZone(tz: string): string | null {
 
 /**
  * Does this zone change its clocks? Two probes six months apart, which is enough
- * for every zone in the database — including the southern hemisphere, where the
+ * for every zone in the database - including the southern hemisphere, where the
  * shift runs the other way.
  *
  * Used for one thing: deciding whether the job form should mention DST at all.
@@ -275,7 +275,7 @@ export function zoneHasDst(tz: string, year = new Date().getUTCFullYear()): bool
  *
  * A wall-clock hour that spring forward removes simply never matches, so a job
  * pinned inside it does not run that day (Vixie cron fires it right after the
- * jump; we don't — see ADR-0018 §4). This tells the user before they find out in
+ * jump; we don't - see ADR-0018 §4). This tells the user before they find out in
  * March.
  *
  * ponytail: flags the 00:00-04:59 window rather than computing the zone's actual

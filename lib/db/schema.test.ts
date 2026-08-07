@@ -212,7 +212,7 @@ test("schema: the load-bearing constraints from PLAN §2 are present", async () 
     "servers_cert_fingerprint_uq", // partial UNIQUE excluding ''/NULL
     "backup_runs_running_idx", // partial index WHERE status='running'
     "cron_runs_running_idx", // the cron reaper's working set, same shape
-    "cron_runs_dedupe_uq", // UNIQUE(job_id, dedupe_key) — the double-fire guard
+    "cron_runs_dedupe_uq", // UNIQUE(job_id, dedupe_key) - the double-fire guard
     "cron_jobs_enabled_idx", // partial index WHERE enabled
   ]) {
     assert.ok(indexes.has(name), `index ${name} should exist`);

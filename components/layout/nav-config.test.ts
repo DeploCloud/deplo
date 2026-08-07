@@ -98,7 +98,7 @@ test("the app menu offers Cron jobs only when they are switched on", () => {
 
 test("Cron jobs does not need a GitHub app, unlike Pull requests", () => {
   // Every app can run a command in its own container, so there is no structural
-  // impossibility here — this is what separates the two entries' rules.
+  // impossibility here - this is what separates the two entries' rules.
   const f = flags({ isGithubApp: false });
   assert.ok(labels(f).includes("Cron jobs"));
   assert.ok(!labels(f).includes("Pull requests"));

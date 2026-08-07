@@ -41,8 +41,8 @@ import type { CronJobDTO } from "@/lib/data/crons";
  * Create or edit one cron job.
  *
  * The split is the same one the rest of Settings uses: the four things you
- * cannot run without — what it is called, where it runs, when, and what it runs
- * — are the form, and everything that has a defensible default lives under
+ * cannot run without - what it is called, where it runs, when, and what it runs
+ * - are the form, and everything that has a defensible default lives under
  * Advanced. Somebody adding "clear the cache every night" should never scroll
  * past a working directory to reach Save.
  *
@@ -108,7 +108,7 @@ export function CronJobDialog({
   const [pickerNow] = React.useState(() => Date.now());
 
   // Seeded at MOUNT, not in an effect: the caller mounts this component only
-  // while the dialog is open, so mounting IS opening — and a lazy initializer
+  // while the dialog is open, so mounting IS opening - and a lazy initializer
   // cannot be fought by a prop mid-typing the way a sync effect can.
   const [name, setName] = React.useState(job?.name ?? "");
   const [description, setDescription] = React.useState(job?.description ?? "");
@@ -205,7 +205,7 @@ export function CronJobDialog({
               <div className="space-y-2">
                 <FieldLabel
                   htmlFor="cron-service"
-                  info="Which container of the stack the command runs in. The service, not the container name — a redeploy renames those."
+                  info="Which container of the stack the command runs in. The service, not the container name - a redeploy renames those."
                 >
                   Container
                 </FieldLabel>
@@ -258,7 +258,7 @@ export function CronJobDialog({
           <div className="space-y-2">
             <FieldLabel
               htmlFor="cron-command"
-              info="Run exactly as typed by the chosen shell, so pipes and && work. It cannot see your terminal — anything interactive will hang until the timeout."
+              info="Run exactly as typed by the chosen shell, so pipes and && work. It cannot see your terminal - anything interactive will hang until the timeout."
             >
               Command
             </FieldLabel>
@@ -302,7 +302,7 @@ export function CronJobDialog({
                   <div className="space-y-2">
                     <FieldLabel
                       htmlFor="cron-shell"
-                      info="A container without the shell you pick fails the run rather than quietly using the other one — they disagree about pipefail and [[."
+                      info="A container without the shell you pick fails the run rather than quietly using the other one - they disagree about pipefail and [[."
                     >
                       Shell
                     </FieldLabel>
@@ -404,7 +404,7 @@ export function CronJobDialog({
                   </div>
                 </div>
 
-                {/* The two multiply, and the server refuses the product — better
+                {/* The two multiply, and the server refuses the product - better
                     to say so while it can still be changed. */}
                 {attempts > 1 && (
                   <p
@@ -421,7 +421,7 @@ export function CronJobDialog({
 
                 <div className="space-y-2">
                   <FieldLabel
-                    info="Set only for this job, on top of the container's own. Values are write-only — they can be replaced, never read back."
+                    info="Set only for this job, on top of the container's own. Values are write-only - they can be replaced, never read back."
                   >
                     Variables
                   </FieldLabel>

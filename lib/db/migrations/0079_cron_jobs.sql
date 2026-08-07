@@ -22,7 +22,7 @@ ALTER TABLE "databases" ADD COLUMN "cron_enabled" boolean DEFAULT false NOT NULL
 --   `service` holds a COMPOSE SERVICE, never a container name. A stack's
 --   container names are generated (deplo-<slug>-<service>-N) and a redeploy can
 --   mint new ones, so the container is resolved live before every attempt.
---   NULL means the target's primary container — the only possibility for a
+--   NULL means the target's primary container - the only possibility for a
 --   database, which is a single-container stack.
 --
 --   `timeout_seconds` is per ATTEMPT: it is the agent's `docker exec` deadline,
@@ -76,7 +76,7 @@ CREATE TABLE "cron_job_env" (
 --
 -- Six statuses: running | succeeded | failed | timedout | skipped | lost.
 -- `lost` is the one a backup run cannot have and this one must: the command runs
--- inside the AGENT's process, so restarting the control plane does not kill it —
+-- inside the AGENT's process, so restarting the control plane does not kill it -
 -- we come back and poll for the real exit code. Only an agent restart genuinely
 -- loses a run, and calling that `failed` would fire a failure alert for something
 -- that most likely succeeded.

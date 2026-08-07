@@ -15,7 +15,7 @@ import { enableCrons, seedCronJob, TRUNCATE_CRONS } from "./cron-test-helpers";
 import * as crons from "./crons";
 
 /**
- * The GATES and the VALIDATION — the half of the feature that is a security
+ * The GATES and the VALIDATION - the half of the feature that is a security
  * boundary rather than a scheduler. The mechanics are covered in
  * lib/crons/scheduler.test.ts against a fake agent; nothing here reaches a host.
  */
@@ -69,7 +69,7 @@ const validJob = {
 test("another team cannot read or write this team's cron jobs", async () => {
   const id = await asOwner(async () => (await crons.createCronJob("app", "prj_1", validJob)).id);
 
-  // An app id from another team must read as "not found", never as "denied" —
+  // An app id from another team must read as "not found", never as "denied" -
   // the gate is not an oracle for which ids exist.
   await assert.rejects(
     () => asOtherTeam(() => crons.listAppCronJobs("prj_1")),
@@ -267,7 +267,7 @@ test("nextRunAt is computed in the job's zone, and only while enabled", async ()
     }),
   );
   assert.ok(job.nextRunAt, "an enabled job says when it runs next");
-  // 03:00 Rome is never 03:00Z — that is the whole point of storing the zone.
+  // 03:00 Rome is never 03:00Z - that is the whole point of storing the zone.
   assert.equal(new Date(job.nextRunAt!).getUTCHours() === 3, false);
 
   const off = await asOwner(() => crons.updateCronJob(job.id, { enabled: false }));

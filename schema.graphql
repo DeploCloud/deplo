@@ -785,14 +785,14 @@ type CronJob {
   """Computed, never stored. Null while the job is disabled."""
   nextRunAt: String
 
-  """skip | allow — what happens when the previous run is still going."""
+  """skip | allow - what happens when the previous run is still going."""
   overlap: String
 
   """5-field cron."""
   schedule: String
 
   """
-  Compose service to run in. Null means the target's own container — the only possibility for a database. Never a container name: a redeploy mints new ones, so it is resolved live before every attempt.
+  Compose service to run in. Null means the target's own container - the only possibility for a database. Never a container name: a redeploy mints new ones, so it is resolved live before every attempt.
   """
   service: String
 
@@ -803,7 +803,7 @@ type CronJob {
   targetKind: String
 
   """
-  Per ATTEMPT — it is the agent's exec deadline. timeout x attempts is capped at 24 hours.
+  Per ATTEMPT - it is the agent's exec deadline. timeout x attempts is capped at 24 hours.
   """
   timeoutSeconds: Int
 
@@ -815,7 +815,7 @@ type CronJob {
 }
 
 """
-One extra variable for a job. The value is encrypted at rest and reaches the host inside the mTLS RPC — it is never readable back.
+One extra variable for a job. The value is encrypted at rest and reaches the host inside the mTLS RPC - it is never readable back.
 """
 input CronJobEnvInput {
   key: String!
@@ -898,12 +898,12 @@ type CronRun {
   startedAt: String
 
   """
-  running | succeeded | failed | timedout | skipped | lost. `skipped` never started (the container was stopped, or the previous run was still going) and `lost` means the outcome is unknown — the agent restarted mid-run. Neither is a failure.
+  running | succeeded | failed | timedout | skipped | lost. `skipped` never started (the container was stopped, or the previous run was still going) and `lost` means the outcome is unknown - the agent restarted mid-run. Neither is a failure.
   """
   status: String
   stderr: String
 
-  """Last 16 KiB — the tail."""
+  """Last 16 KiB - the tail."""
   stdout: String
 
   """schedule | manual."""
@@ -2154,7 +2154,7 @@ type Mutation {
   runBackup(id: String!): Boolean
 
   """
-  Run a job now, outside its schedule. Ignores the overlap setting — somebody just asked for it explicitly.
+  Run a job now, outside its schedule. Ignores the overlap setting - somebody just asked for it explicitly.
   """
   runCronJobNow(id: ID!): CronRun
 

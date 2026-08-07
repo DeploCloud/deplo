@@ -38,7 +38,7 @@ import type { CronJobDTO } from "@/lib/data/crons";
  * The operational Cron jobs page: what is scheduled, when each one runs next,
  * how the last one went, and the buttons that act on it.
  *
- * One row per job, expanding into its run history — the same shape the
+ * One row per job, expanding into its run history - the same shape the
  * Deployments list uses, because "what is scheduled" and "what happened" are the
  * same question asked at two zoom levels, and a separate page for the second one
  * would mean navigating away from the thing you are debugging.
@@ -111,8 +111,8 @@ function CronJobRow({
         toast.error(res.error);
         return;
       }
-      // The run can already be over by the time this returns — a stopped
-      // container settles as `skipped` before the mutation answers — so report
+      // The run can already be over by the time this returns - a stopped
+      // container settles as `skipped` before the mutation answers - so report
       // what actually happened rather than "started".
       const status = res.data?.runCronJobNow.status;
       toast.success(

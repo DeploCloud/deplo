@@ -36,7 +36,7 @@ import { requireFolderCapabilityForApp } from "./folder-access";
 import { requireAppCapability } from "./node-access";
 
 /**
- * The gated surface for **cron jobs** — the security boundary the UI and GraphQL
+ * The gated surface for **cron jobs** - the security boundary the UI and GraphQL
  * go through.
  *
  * The mechanics live one layer down in [runner](../crons/runner.ts), which is
@@ -46,7 +46,7 @@ import { requireAppCapability } from "./node-access";
  *
  * TWO GATES ON A DATABASE JOB, and the second is not belt-and-braces. One
  * `manage_crons` governs both target kinds (a person who schedules commands
- * schedules commands), and it is seeded from EITHER console capability — so
+ * schedules commands), and it is seeded from EITHER console capability - so
  * without the extra `open_database_console` check here, holding app-console
  * access alone would reach inside every database on the instance. See ADR-0018.
  */
@@ -218,7 +218,7 @@ async function gateDatabase(databaseId: string) {
 
 /**
  * The gate for an existing job, resolved through whichever target it hangs off.
- * Also reports the TARGET's master switch, which several callers need — running
+ * Also reports the TARGET's master switch, which several callers need - running
  * a job by hand on a target where cron jobs are switched off would drive a hole
  * straight through the opt-in.
  */
@@ -313,7 +313,7 @@ function buildPatch(
     const command = input.command.trim();
     if (!command) throw new Error("Give the cron job a command to run");
     if (command.length > 8000) {
-      throw new Error("Keep the command under 8000 characters — put a long script in the image");
+      throw new Error("Keep the command under 8000 characters - put a long script in the image");
     }
     patch.command = command;
   }
@@ -372,7 +372,7 @@ function validateEnv(env: { key: string; value: string }[]): {
     const key = e.key.trim();
     if (!key) continue;
     if (!/^[A-Za-z_][A-Za-z0-9_]*$/.test(key)) {
-      throw new Error(`"${key}" is not a valid variable name — use letters, digits and underscores`);
+      throw new Error(`"${key}" is not a valid variable name - use letters, digits and underscores`);
     }
     if (seen.has(key)) throw new Error(`"${key}" is listed twice`);
     seen.add(key);
@@ -398,7 +398,7 @@ async function writeEnv(jobId: string, env: { key: string; value: string }[]): P
     );
 }
 
-/** The NAMES of each job's extra variables. Never `value_enc` — a secret has no
+/** The NAMES of each job's extra variables. Never `value_enc` - a secret has no
  *  reveal path, and these DTOs are handed straight to the client. */
 async function envKeysFor(jobIds: string[]): Promise<Map<string, string[]>> {
   const out = new Map<string, string[]>();
@@ -471,7 +471,7 @@ export const listDatabaseCronJobs = cache(
  * One job's run history, newest first.
  *
  * Gated on `manage_crons` and NOT on `view`, because stdout can contain anything
- * the command printed — including whatever was in the job's environment.
+ * the command printed - including whatever was in the job's environment.
  */
 export async function listCronRuns(jobId: string, limit = 50): Promise<CronRunDTO[]> {
   await gateJob(jobId);
@@ -497,7 +497,7 @@ export function cronDstWarning(schedule: string, timezone: string): string | nul
  * Turn cron jobs on or off for one target. The switch is the opt-in AND the pause
  * button: turning it off stops the schedule and keeps every job.
  *
- * Runs already in flight are deliberately left alone — the command is executing
+ * Runs already in flight are deliberately left alone - the command is executing
  * on the host, and killing it halfway is a worse surprise than letting it finish.
  */
 export async function setCronEnabled(
@@ -550,7 +550,7 @@ export async function createCronJob(
       ? (await gateApp(targetId)).teamId
       : (await gateDatabase(targetId)).teamId;
 
-  // Required on create, optional on edit — so the patch builder is shared and the
+  // Required on create, optional on edit - so the patch builder is shared and the
   // requiredness lives in exactly one place.
   if (input.name === undefined) throw new Error("Give the cron job a name");
   if (input.command === undefined) throw new Error("Give the cron job a command to run");
@@ -609,7 +609,7 @@ export async function createCronJob(
   return (await oneJob(id))!;
 }
 
-/** An error plus its `cause` chain as one string — where drivers hide details. */
+/** An error plus its `cause` chain as one string - where drivers hide details. */
 function errorChainText(e: unknown): string {
   const parts: string[] = [];
   let cur: unknown = e;
@@ -676,7 +676,7 @@ export async function deleteCronJob(jobId: string): Promise<void> {
  *
  * Honours the target's master switch and nothing else: overlap is deliberately
  * ignored (somebody just pressed a button), but the switch means "no cron job
- * runs here", and the UI hides this page when it is off — so an API caller must
+ * runs here", and the UI hides this page when it is off - so an API caller must
  * not be the one exception.
  */
 export async function runCronJobNow(jobId: string): Promise<CronRunDTO> {

@@ -83,7 +83,7 @@ export async function enableCrons(
   }
 }
 
-/** Every run of a job, oldest first — the history as the page shows it reversed. */
+/** Every run of a job, oldest first - the history as the page shows it reversed. */
 export async function runsOf(db: TestDb, jobId: string) {
   return db
     .select()
@@ -106,7 +106,7 @@ export interface FakeJobState {
  * A stand-in for a real agent connection.
  *
  * Only the four methods the cron runner uses are implemented; everything else on
- * `AgentConnection` throws if touched, which is the point — a test that reaches
+ * `AgentConnection` throws if touched, which is the point - a test that reaches
  * for another RPC has found a coupling the runner should not have.
  */
 export class FakeAgent {
@@ -120,7 +120,7 @@ export class FakeAgent {
   started: { container: string; command: string; shell: string; env: string[] }[] = [];
   killed: string[] = [];
   closed = 0;
-  /** When set, connecting throws it — an unreachable or too-old agent. */
+  /** When set, connecting throws it - an unreachable or too-old agent. */
   connectError: Error | null = null;
   /** When set, StartJob throws it. */
   startError: Error | null = null;

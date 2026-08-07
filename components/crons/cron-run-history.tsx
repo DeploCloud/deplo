@@ -21,8 +21,8 @@ import type { CronRunDTO } from "@/lib/data/crons";
  * done for nothing.
  *
  * Six statuses, and the copy is where the distinctions pay off. `skipped` and
- * `lost` are not failures — one never started, the other has an unknown outcome
- * — so neither is painted red, and each says which in a sentence rather than
+ * `lost` are not failures - one never started, the other has an unknown outcome
+ * - so neither is painted red, and each says which in a sentence rather than
  * leaving the reader to infer it from a colour.
  */
 
