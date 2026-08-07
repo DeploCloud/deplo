@@ -2413,7 +2413,7 @@ type Query {
   myTeams: [TeamMembership!]
 
   """
-  The active team's configured channels, each with its own subscribed alerts.
+  The active team's configured channels, each with its own subscribed alerts. Needs `manage_notifications`: a channel carries the webhook URL, which is the credential for the room it posts in.
   """
   notificationChannels: JSON
 

@@ -28,7 +28,7 @@ builder.queryFields((t) => ({
     type: "JSON",
     authScopes: { loggedIn: true },
     description:
-      "The active team's configured channels, each with its own subscribed alerts.",
+      "The active team's configured channels, each with its own subscribed alerts. Needs `manage_notifications`: a channel carries the webhook URL, which is the credential for the room it posts in.",
     resolve: () => listNotificationChannels(),
   }),
   webPushPublicKey: t.field({
