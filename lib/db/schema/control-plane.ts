@@ -995,6 +995,38 @@ export const apps = pgTable(
     previewServerId: text("preview_server_id").references(() => servers.id, {
       onDelete: "set null",
     }),
+    // HTTPS on preview hosts. Only meaningful with `preview_base_domain` set:
+    // a nip.io host can never hold a certificate (one registered domain, one
+    // Let's Encrypt budget, shared with the whole internet), so the UI keeps the
+    // switch off and disabled until a base domain exists. On ⇒ each preview host
+    // gets its own HTTP-01 certificate from the existing resolver; off ⇒ plain
+    // HTTP, which is also a legitimate choice on a domain you own.
+    previewHttps: boolean("preview_https").notNull().default(false),
+    // Rebuild a preview when its pull request receives a new commit. Off ⇒ the
+    // preview is built once and only a person refreshes it, which is what a team
+    // paying per build minute or running a heavy image will want. Deliberately
+    // NOT `apps.auto_deploy`: turning off deploy-on-push for PRODUCTION is about
+    // release control and says nothing about pull requests.
+    previewAutoDeploy: boolean("preview_auto_deploy").notNull().default(true),
+    // Container port a preview routes to. NULL ⇒ `app_build.port`, which is what
+    // makes a preview faithful to production. Set only when the pull request's
+    // branch genuinely listens somewhere else. Minted onto `app_previews.port`
+    // at creation, because the renderer reads the preview ROW, not this table.
+    previewPort: integer("preview_port"),
+    // Build a pull request while it is still a draft. Off by default: a draft is
+    // work in progress, and a container for it burns a slot nobody asked for.
+    // The manual "Deploy a pull request" action is the per-case escape hatch.
+    previewBuildDrafts: boolean("preview_build_drafts").notNull().default(false),
+    // Post (and keep updating) the one sticky comment carrying the preview URL.
+    // On by default — the comment is where a reviewer actually looks — but it
+    // needs `pull_requests: write` on the GitHub App, so an instance that will
+    // not grant it can turn the attempt off instead of collecting 403s.
+    previewComment: boolean("preview_comment").notNull().default(true),
+    // Newline-separated pull request LABELS that gate a preview: a pull request
+    // must carry at least one to get one. NULL/empty ⇒ no filter, every pull
+    // request qualifies. Same storage shape as `repo_watch_paths` above — a
+    // newline list of match strings on the app's git config, split at the edge.
+    previewRequiredLabels: text("preview_required_labels"),
     // Pointer to the service's latest Deployment. `SET NULL` so deleting a
     // deployment can't leave a dangling pointer (the orphan-prevention-as-DB-
     // invariant goal). The value is set in a second backfill pass after
@@ -1319,6 +1351,16 @@ export const appPreviews = pgTable(
     host: text("host").notNull(),
     /** What the host's router was rendered with, so the URL scheme stays stable. */
     certProvider: text("cert_provider").notNull().default("none"),
+    /**
+     * The container port this preview's router forwards to, minted from the
+     * app's `preview_port` (or its build port) when the preview is created.
+     *
+     * Denormalized for the same reason `cert_provider` is: `runDeployment`
+     * re-reads the PREVIEW ROW, never the app's settings, so anything the
+     * renderer needs has to live here — and a setting changed mid-flight must
+     * not silently repoint a preview somebody is already testing.
+     */
+    port: integer("port"),
     status: text("status").notNull().default("queued"),
     latestDeploymentId: text("latest_deployment_id").references(
       (): AnyPgColumn => deployments.id,

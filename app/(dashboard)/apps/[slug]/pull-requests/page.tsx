@@ -54,7 +54,7 @@ export default async function AppPullRequestsPage(
           description="This app does not deploy from a connected GitHub repository, so Deplo never receives its pull requests."
           action={
             <Button asChild variant="outline" size="sm">
-              <Link href={`/apps/${slug}/settings/deployments`}>
+              <Link href={`/apps/${slug}/settings/pull-requests`}>
                 Deploy source settings
               </Link>
             </Button>
@@ -113,7 +113,7 @@ export default async function AppPullRequestsPage(
           description="Turn them on and every open pull request gets its own deploy with its own URL."
           action={
             <Button asChild variant="outline" size="sm">
-              <Link href={`/apps/${slug}/settings/deployments`}>
+              <Link href={`/apps/${slug}/settings/pull-requests`}>
                 Deployment settings
               </Link>
             </Button>

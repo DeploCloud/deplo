@@ -94,6 +94,7 @@ export interface BreadcrumbCaps {
   manageEnv: boolean;
   manageBackups: boolean;
   manageBasicAuth: boolean;
+  managePreviews: boolean;
 }
 
 /**
@@ -131,6 +132,10 @@ const SETTINGS_SUBS: { seg: string; label: string; requires?: keyof BreadcrumbCa
   [
     { seg: "", label: "General" },
     { seg: "deployments", label: "Deployments" },
+    // Listed for every app, GitHub or not — the page itself explains why it is
+    // closed to the ones that cannot use it, which is the whole point of the
+    // settings entry existing (the operational page is hidden instead).
+    { seg: "pull-requests", label: "Pull requests", requires: "managePreviews" },
     { seg: "storage", label: "Storage" },
     { seg: "resources", label: "Resources" },
     { seg: "access", label: "Access", requires: "manageBasicAuth" },

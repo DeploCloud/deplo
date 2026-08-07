@@ -8,6 +8,7 @@ import {
   domains as domainsTable,
   domainMiddlewares as domainMiddlewaresTable,
   apps as appsTable,
+  appPreviews as appPreviewsTable,
 } from "../db/schema/control-plane";
 import { getCurrentUser } from "../auth";
 import { newId, nowIso } from "../ids";
@@ -538,23 +539,45 @@ export async function addDomain(
  * team's existing letsencrypt domains (across all its apps) and refuses past the
  * cap. A no-op for every other provider — including for a `www` companion that
  * inherits `none`/`cloudflare`, which registers no certificate at all.
+ *
+ * PULL REQUEST PREVIEWS COUNT TOO. A preview host is deliberately never a
+ * `domains` row (ADR-0017 §5 — one there would be baked into the PRODUCTION
+ * router's rule), which meant every preview on a base domain was an ACME order
+ * this quota could not see. An app with previews on, a wildcard domain and
+ * HTTPS mints one certificate per open pull request, forever, against the
+ * shared account: exactly the exhaustion the cap exists to prevent, through the
+ * one door it wasn't watching. Only OPEN previews are counted — a closed one's
+ * certificate is not renewed.
  */
 async function assertTeamLetsencryptQuota(
   teamId: string,
   provider: CertProvider,
 ): Promise<void> {
   if (provider !== "letsencrypt") return;
-  const [{ n }] = await getDb()
-    .select({ n: count() })
-    .from(domainsTable)
-    .innerJoin(appsTable, eq(domainsTable.appId, appsTable.id))
-    .where(
-      and(
-        eq(appsTable.teamId, teamId),
-        eq(domainsTable.certProvider, "letsencrypt"),
+  const [domains, previews] = await Promise.all([
+    getDb()
+      .select({ n: count() })
+      .from(domainsTable)
+      .innerJoin(appsTable, eq(domainsTable.appId, appsTable.id))
+      .where(
+        and(
+          eq(appsTable.teamId, teamId),
+          eq(domainsTable.certProvider, "letsencrypt"),
+        ),
       ),
-    );
-  assertLetsencryptQuota(n, provider);
+    getDb()
+      .select({ n: count() })
+      .from(appPreviewsTable)
+      .innerJoin(appsTable, eq(appPreviewsTable.appId, appsTable.id))
+      .where(
+        and(
+          eq(appsTable.teamId, teamId),
+          eq(appPreviewsTable.certProvider, "letsencrypt"),
+          eq(appPreviewsTable.state, "open"),
+        ),
+      ),
+  ]);
+  assertLetsencryptQuota((domains[0]?.n ?? 0) + (previews[0]?.n ?? 0), provider);
 }
 
 /** Normalise a router path prefix to its canonical stored form: trim, strip a

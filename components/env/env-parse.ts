@@ -1,4 +1,12 @@
 /**
+ * The rule a variable name must satisfy, mirroring the server's
+ * (`lib/data/env.ts`) so a bad key fails loudly in the form instead of at the
+ * mutation. Shared, because every dialog that names a variable — the app's own,
+ * and a preview override — has to agree on it or one of them drifts.
+ */
+export const KEY_RE = /^[A-Z_][A-Z0-9_]*$/i;
+
+/**
  * Parse `.env` text into KEY=VALUE pairs (skips blanks/comments; strips one layer
  * of surrounding quotes). Key validation is done server-side. Feeds the
  * Add-variable modal's paste-a-`.env` flow.

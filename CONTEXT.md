@@ -449,15 +449,17 @@ it never receives a `secret`-typed variable. See
 _Avoid_: "Preview" alone as a nav label or page title (that is an **Environment** `kind`),
 "preview environment", "PR environment", branch deploy, ephemeral environment.
 
-**Evicted** (a pull request preview's status):
+**Over the limit** (a pull request preview's status, `evicted` in the store):
 Stopped by the App's own live limit, not by its pull request. At the limit a new preview tears
 down the open one with the oldest `last_activity_at`; that row survives (`state` still `open`)
 and keeps its **deploy key** and host, so **Redeploy** brings the same URL back. A push never
 revives it — only a person does, which is what stops two pull requests at the limit from
 destroying each other on every commit. An evicted preview holds no slot, and neither does a
 `blocked` one: neither has a stack.
+Shown grey, never red: nothing failed, the platform did exactly what the app's **Live previews**
+setting says. Calling it an error sends the reader to look for build logs that do not exist.
 _Avoid_: expired (that is the idle timeout), deleted, closed (that is the pull request's own
-lifecycle), "over quota".
+lifecycle), "out of space" / "space error" (nothing to do with disk), "over quota".
 
 **Database**:
 A managed datastore container (`postgres`/`mysql`/`mariadb`/`mongodb`/`redis`/`clickhouse`)

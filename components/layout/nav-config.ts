@@ -54,6 +54,16 @@ export interface NavItem {
   requires?: string;
   /** Visible only to instance admins (orthogonal to team capabilities). */
   requiresAdmin?: boolean;
+  /**
+   * Render the entry but do NOT link it, with this sentence as its tooltip.
+   *
+   * For a setting the app is structurally incapable of using — pull request
+   * previews on an app that deploys from a docker image — where hiding the row
+   * would leave the reader wondering whether the feature exists at all. Distinct
+   * from `requires`, which is about the VIEWER's permission and hides: a
+   * permission can be granted, this cannot.
+   */
+  disabledReason?: string;
 }
 
 export interface NavSection {
@@ -290,6 +300,14 @@ export interface AppNavFlags {
   canBackup: boolean;
   running: boolean;
   showFiles: boolean;
+  /**
+   * The app deploys from GitHub. Only such an app can ever receive a
+   * `pull_request` delivery, so only such an app gets the operational Pull
+   * requests page — deliberately NOT gated on the installation as well, since an
+   * app that is github-sourced but not yet connected must reach the page to be
+   * told to connect it.
+   */
+  isGithubApp: boolean;
   /** The console is an advanced surface: its chip appears only once the user has
    *  confirmed the one-time "I understand" warning (persisted in localStorage). */
   consoleAcknowledged: boolean;
@@ -325,22 +343,26 @@ export function appNav(slug: string, f: AppNavFlags): NavSection[] {
       icon: Rocket,
       tooltip: "Deployment history",
     },
-    // Pull request previews. ALWAYS present — not gated on the previews switch,
-    // on the app having a GitHub repository, and least of all on there being a
-    // pull request open right now. A tab that appears and disappears is a tab
-    // nobody learns: the page is a switch on ONE server-resolved reason, so
-    // whichever of those is missing, it says so and links to the fix. An empty
-    // list is a state worth showing, not a reason to hide the door to it.
-    {
-      label: "Pull requests",
-      href: `${base}/pull-requests`,
-      icon: GitPullRequest,
-      tooltip: "Preview deploys for open pull requests",
-      // The page's own read is `manage_previews`-gated and would throw for
-      // anyone else, so an ungated entry would be a link to an error. This is a
-      // permission, not a state — it does not flicker.
-      requires: "manage_previews",
-    } as NavItem,
+    // Pull request previews. Present for every GitHub app whatever its state —
+    // previews off, none open, GitHub App not yet subscribed: the page is a
+    // switch on ONE server-resolved reason and says which. An entry that came
+    // and went with the pull request count would be an entry nobody learns is
+    // there. Absent entirely for anything else, because a docker image, an
+    // upload, a compose paste or a raw git URL never receives a `pull_request`
+    // delivery and the page could only ever be a dead end.
+    ...(f.isGithubApp || on("/pull-requests")
+      ? [
+          {
+            label: "Pull requests",
+            href: `${base}/pull-requests`,
+            icon: GitPullRequest,
+            tooltip: "Preview deploys for open pull requests",
+            // The page's own read is `manage_previews`-gated and would throw for
+            // anyone else, so an ungated entry would be a link to an error.
+            requires: "manage_previews",
+          } as NavItem,
+        ]
+      : []),
     // Environment holds sensitive values — only for manage_env holders.
     ...(f.canManageEnv
       ? [
@@ -447,7 +469,11 @@ export function appNav(slug: string, f: AppNavFlags): NavSection[] {
  * apps", which leaves the app entirely — so it is a plain link (not a
  * history `back`, which would exit the whole `/apps/<slug>` section).
  */
-export function appSettingsNav(slug: string): NavSection[] {
+export function appSettingsNav(
+  slug: string,
+  /** The app deploys from GitHub — see the Pull requests entry below. */
+  isGithubApp = true,
+): NavSection[] {
   const base = `/apps/${slug}/settings`;
   return [
     {
@@ -479,6 +505,25 @@ export function appSettingsNav(slug: string): NavSection[] {
           href: `${base}/deployments`,
           icon: Rocket,
           tooltip: "Deploy source, build & auto-deploy",
+        },
+        {
+          label: "Pull requests",
+          href: `${base}/pull-requests`,
+          icon: GitPullRequest,
+          tooltip: "Preview deploys, and everything that shapes them",
+          requires: "manage_previews",
+          // SHOWN, not hidden, when the app cannot use it. Only a GitHub app
+          // ever receives a `pull_request` delivery, but an operator looking for
+          // the feature deserves to find out that it exists and what it needs —
+          // a missing row would leave them hunting. The operational page under
+          // the app menu is hidden instead: there, a page that can never list
+          // anything is a dead end rather than a lesson.
+          ...(isGithubApp
+            ? {}
+            : {
+                disabledReason:
+                  "Pull request previews need an app that deploys from GitHub. Change the deploy source under Deployments.",
+              }),
         },
         {
           label: "Storage",

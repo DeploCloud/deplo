@@ -18,6 +18,7 @@ import {
   destroyPreviewsForApp,
   forkPolicyOf,
   openOrSyncPreview,
+  parseRequiredLabels,
   previewSettings,
   refusalMessage,
   type PreviewForkPolicy,
@@ -107,6 +108,18 @@ export interface AppPreviewsView {
   forkPolicy: PreviewForkPolicy;
   /** Where previews run. null ⇒ the app's own server. */
   serverId: string | null;
+  /** HTTPS on preview hosts. Always false without a base domain. */
+  https: boolean;
+  /** Rebuild when the pull request receives a new commit. */
+  autoDeploy: boolean;
+  /** Container port. null ⇒ the app's build port. */
+  port: number | null;
+  /** Build a pull request that is still a draft. */
+  buildDrafts: boolean;
+  /** Post and keep updating the sticky comment on the pull request. */
+  comment: boolean;
+  /** A pull request must carry ONE of these. Empty ⇒ no filter. */
+  requiredLabels: string[];
   previews: AppPreviewDTO[];
 }
 
@@ -191,6 +204,12 @@ export const listAppPreviews = cache(
       ttlDays: settings.ttlDays,
       forkPolicy: settings.forkPolicy,
       serverId: settings.serverId,
+      https: settings.https,
+      autoDeploy: settings.autoDeploy,
+      port: settings.port,
+      buildDrafts: settings.buildDrafts,
+      comment: settings.comment,
+      requiredLabels: settings.requiredLabels,
       previews: rows.map(toDTO),
     };
   },
@@ -361,6 +380,14 @@ export interface AppPreviewSettingsInput {
   forkPolicy?: string | null;
   /** Empty/null ⇒ back to the app's own server. */
   serverId?: string | null;
+  https?: boolean;
+  autoDeploy?: boolean;
+  /** Null/0 ⇒ back to the app's build port. */
+  port?: number | null;
+  buildDrafts?: boolean;
+  comment?: boolean;
+  /** Newline-separated. Empty ⇒ no filter. */
+  requiredLabels?: string | null;
 }
 
 export async function setAppPreviewSettings(
@@ -412,6 +439,32 @@ export async function setAppPreviewSettings(
     // The app's own server IS the default, so storing it explicitly would only
     // pin what is already true and survive a later app move.
     patch.previewServerId = wanted && wanted !== app.serverId ? wanted : null;
+  }
+  if (input.https !== undefined) patch.previewHttps = Boolean(input.https);
+  if (input.autoDeploy !== undefined) {
+    patch.previewAutoDeploy = Boolean(input.autoDeploy);
+  }
+  if (input.buildDrafts !== undefined) {
+    patch.previewBuildDrafts = Boolean(input.buildDrafts);
+  }
+  if (input.comment !== undefined) patch.previewComment = Boolean(input.comment);
+  if (input.port !== undefined) {
+    if (input.port != null && input.port !== 0 && (input.port < 1 || input.port > 65535)) {
+      throw new Error("Enter a port between 1 and 65535");
+    }
+    // 0 and null both mean "back to the app's build port" — a cleared number
+    // input sends one or the other depending on the browser.
+    patch.previewPort = input.port ? input.port : null;
+  }
+  if (input.requiredLabels !== undefined) {
+    // Stored as the user typed it, minus the noise: the textarea is theirs, and
+    // `parseRequiredLabels` is what normalises for matching. Re-joining the
+    // parsed set here is what stops the field growing blank lines every save.
+    const labels = parseRequiredLabels(input.requiredLabels);
+    if (labels.length > 20) {
+      throw new Error("Keep the label filter to 20 labels or fewer");
+    }
+    patch.previewRequiredLabels = labels.length ? labels.join("\n") : null;
   }
 
   const rows = await getDb()

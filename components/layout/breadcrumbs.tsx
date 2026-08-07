@@ -81,6 +81,7 @@ export function Breadcrumbs({
       manageEnv: set.has("manage_env"),
       manageBackups: set.has("manage_backups"),
       manageBasicAuth: set.has("manage_basic_auth"),
+      managePreviews: set.has("manage_previews"),
     };
   }, [capKey]);
 

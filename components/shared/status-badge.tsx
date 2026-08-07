@@ -168,7 +168,12 @@ const LABELS: Record<string, string> = {
   // A fork's preview waiting on a maintainer — not a failure, and not something
   // Deplo is doing. "Blocked" would read like an error; this names the action.
   blocked: "Needs approval",
-  evicted: "Stopped for space",
+  // Not an error and not a failure: the app hit its own `Live previews` limit
+  // and this was the one nobody had touched in the longest, so it was stopped to
+  // seat a newer pull request. Named after the SETTING that caused it, so the
+  // reader can go turn the number up. Deliberately not red — nothing went wrong,
+  // and red here would send people hunting for build logs that do not exist.
+  evicted: "Over the limit",
   active: "Running",
   // "Not running", never "Stopped": the app is supposed to be up. The wording
   // has to make an unasked-for outage impossible to mistake for a deliberate one.

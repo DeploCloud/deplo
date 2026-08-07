@@ -547,6 +547,13 @@
       "when": 1784676600000,
       "tag": "0077_backfill_manage_previews",
       "breakpoints": true
+    },
+    {
+      "idx": 78,
+      "version": "7",
+      "when": 1784676800000,
+      "tag": "0078_preview_settings",
+      "breakpoints": true
     }
   ]
 }

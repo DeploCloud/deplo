@@ -5,13 +5,13 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import {
+  Loader2,
   Plus,
   Trash2,
   Share2,
   ArrowUpRight,
   ClipboardPaste,
   Info,
-  KeyRound,
   TriangleAlert,
   Search,
   Check,
@@ -29,18 +29,15 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
-import { Switch } from "@/components/ui/switch";
 import { Badge } from "@/components/ui/badge";
 import { EmptyState } from "@/components/shared/empty-state";
 import { FieldLabel } from "@/components/ui/info-tip";
 import { gql, gqlAction } from "@/lib/graphql-client";
 import { cn } from "@/lib/utils";
-import { parseEnv } from "@/components/env/env-parse";
+import { KEY_RE, parseEnv } from "@/components/env/env-parse";
+import { SecretRow } from "@/components/env/secret-row";
 import type { EnvVarDTO } from "@/lib/types";
 import type { AppSharedVarDTO } from "@/lib/data/shared-vars";
-
-/** Mirrors the server's key rule (lib/data/env.ts) so a bad key fails loudly here. */
-const KEY_RE = /^[A-Z_][A-Z0-9_]*$/i;
 
 /**
  * A shared var as the LINK rows read it: everything but the value. This dialog
@@ -216,7 +213,8 @@ function EditForm({
               Cancel
             </Button>
             <Button type="submit" disabled={pending || !keyValid}>
-              {pending ? "Saving…" : "Save"}
+              {pending && <Loader2 className="size-4 animate-spin" />}
+              Save
             </Button>
           </DialogFooter>
         </form>
@@ -614,7 +612,8 @@ function StandaloneTab({ appId, onDone }: { appId: string; onDone: () => void })
           type="submit"
           disabled={pending || filled.length === 0 || invalid.length > 0}
         >
-          {pending ? "Saving…" : filled.length > 1 ? `Add ${filled.length}` : "Add"}
+          {pending && <Loader2 className="size-4 animate-spin" />}
+          {filled.length > 1 ? `Add ${filled.length}` : "Add"}
         </Button>
       </DialogFooter>
     </form>
@@ -814,25 +813,3 @@ function SharedVarLinkRow({
 /* Shared bits                                                         */
 /* ------------------------------------------------------------------ */
 
-function SecretRow({
-  secret,
-  onChange,
-}: {
-  secret: boolean;
-  onChange: (v: boolean) => void;
-}) {
-  return (
-    <div className="flex items-center justify-between gap-3 rounded-lg border border-border px-3 py-2.5">
-      <div className="flex items-start gap-2.5">
-        <KeyRound className="mt-0.5 size-4 shrink-0 text-muted-foreground" />
-        <div>
-          <p className="text-sm font-medium leading-none">Secret</p>
-          <p className="mt-1.5 text-xs text-muted-foreground">
-            Hide the value in the UI after saving. It can never be read back.
-          </p>
-        </div>
-      </div>
-      <Switch checked={secret} onCheckedChange={onChange} aria-label="Secret" />
-    </div>
-  );
-}

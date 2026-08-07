@@ -4,6 +4,7 @@ import * as React from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import {
+  Loader2,
   AppWindow,
   Boxes,
   ChevronLeft,
@@ -456,7 +457,8 @@ export function SharedVarDialog({
               </Button>
               {last ? (
                 <Button type="submit" disabled={pending || !canSave}>
-                  {pending ? "Saving…" : "Save"}
+                  {pending && <Loader2 className="size-4 animate-spin" />}
+                  Save
                 </Button>
               ) : (
                 <Button type="submit" disabled={!canGoOn}>

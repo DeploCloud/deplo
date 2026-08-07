@@ -157,3 +157,99 @@ test("a compose stack isolates its volumes and labels the same way", () => {
   assert.match(preview, /deplo\.project=prv_1/);
   assert.match(preview, /deplo\.app=prj_1/);
 });
+
+/* ------------------------------------------------------------------ */
+/* A compose preview must actually be reachable                        */
+/* ------------------------------------------------------------------ */
+
+const COMPOSE = `
+services:
+  web:
+    image: nginx
+    ports: ["8080:80"]
+  worker:
+    image: busybox
+`;
+
+/**
+ * `buildComposeStack` skips every route that names no service — so a preview
+ * route built with `service: null` produced a stack with NO Traefik router at
+ * all. The containers came up, and the URL posted on the pull request answered
+ * 404. This pins that a compose preview routes to a real service.
+ */
+test("a compose preview emits a router that names a service", () => {
+  const key = previewDeployKey("blog", 42);
+  const yaml = buildComposeStack({
+    compose: COMPOSE,
+    name: `deplo-${key}`,
+    deployKey: key,
+    stripPublishedPorts: true,
+    appId: "prj_1",
+    trackingId: "prv_1",
+    domainRoutes: [
+      {
+        name: "blog-pr-42-abc-0a000001.nip.io",
+        // What previewRouteTarget resolves from the app's primary domain.
+        service: "web",
+        port: 80,
+        pathPrefix: "",
+        stripPrefix: false,
+      },
+    ],
+  });
+
+  assert.ok(
+    yaml.includes("traefik.enable=true") || yaml.includes("traefik.http.routers."),
+    "the preview must carry Traefik router labels, or nobody can reach it",
+  );
+  assert.ok(
+    yaml.includes("blog-pr-42-abc-0a000001.nip.io"),
+    "the router must answer on the preview's own host",
+  );
+});
+
+test("a serviceless route is exactly what used to make it unreachable", () => {
+  // The regression, spelled out: same stack, route with no service ⇒ no router.
+  // Kept so nobody "simplifies" previewRouteTarget back to passing null.
+  const key = previewDeployKey("blog", 43);
+  const yaml = buildComposeStack({
+    compose: COMPOSE,
+    name: `deplo-${key}`,
+    deployKey: key,
+    stripPublishedPorts: true,
+    appId: "prj_1",
+    trackingId: "prv_2",
+    domainRoutes: [
+      {
+        name: "blog-pr-43-abc-0a000001.nip.io",
+        service: null,
+        port: null,
+        pathPrefix: "",
+        stripPrefix: false,
+      },
+    ],
+  });
+  assert.ok(
+    !yaml.includes("blog-pr-43-abc-0a000001.nip.io"),
+    "a serviceless route wires nothing — this is the bug previewRouteTarget exists to prevent",
+  );
+});
+
+test("a preview publishes no host ports, so two of them can coexist", () => {
+  const key = previewDeployKey("blog", 44);
+  const yaml = buildComposeStack({
+    compose: COMPOSE,
+    name: `deplo-${key}`,
+    deployKey: key,
+    stripPublishedPorts: true,
+    appId: "prj_1",
+    trackingId: "prv_3",
+    domainRoutes: [
+      { name: "h.nip.io", service: "web", port: 80, pathPrefix: "", stripPrefix: false },
+    ],
+  });
+  assert.ok(
+    !yaml.includes("8080:80"),
+    "an inherited host port would make the second preview fail to start",
+  );
+});

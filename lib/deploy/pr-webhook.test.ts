@@ -4,6 +4,7 @@ import assert from "node:assert/strict";
 import {
   parsePullRequestEvent,
   previewIntent,
+  type PreviewTriggerConfig,
   type RawPullRequestPayload,
 } from "./pr-webhook";
 
@@ -37,7 +38,20 @@ function payload(over: Partial<RawPullRequestPayload["pull_request"]> = {}, acti
   };
 }
 
-const CFG = { branch: "main", previewsEnabled: true };
+/** The defaults an app gets before anybody opens the settings page. */
+const CFG: PreviewTriggerConfig = {
+  branch: "main",
+  previewsEnabled: true,
+  autoDeploy: true,
+  buildDrafts: false,
+  requiredLabels: [],
+};
+
+/** CFG with one thing changed — the shape most of these tests want. */
+const cfg = (over: Partial<PreviewTriggerConfig> = {}): PreviewTriggerConfig => ({
+  ...CFG,
+  ...over,
+});
 
 test("a same-repo pull request parses into the facts a preview needs", () => {
   const ev = parsePullRequestEvent(payload())!;
@@ -96,11 +110,11 @@ test("closed tears down BEFORE any gate is consulted", () => {
   const ev = parsePullRequestEvent(payload({}, "closed"))!;
   assert.deepEqual(previewIntent(CFG, ev), { kind: "destroy" });
   assert.deepEqual(
-    previewIntent({ branch: "main", previewsEnabled: false }, ev),
+    previewIntent(cfg({ previewsEnabled: false }), ev),
     { kind: "destroy" },
   );
   assert.deepEqual(
-    previewIntent({ branch: "release/v2", previewsEnabled: true }, ev),
+    previewIntent(cfg({ branch: "release/v2" }), ev),
     { kind: "destroy" },
   );
 });
@@ -113,7 +127,7 @@ test("a merged pull request is just a closed one", () => {
 
 test("previews off means nothing builds", () => {
   const ev = parsePullRequestEvent(payload())!;
-  assert.deepEqual(previewIntent({ branch: "main", previewsEnabled: false }, ev), {
+  assert.deepEqual(previewIntent(cfg({ previewsEnabled: false }), ev), {
     kind: "ignore",
     reason: "previews-off",
   });
@@ -128,7 +142,7 @@ test("a pull request must TARGET the branch the app tracks", () => {
     reason: "base-branch",
   });
   assert.deepEqual(
-    previewIntent({ branch: "release/v2", previewsEnabled: true }, ev),
+    previewIntent(cfg({ branch: "release/v2" }), ev),
     { kind: "deploy" },
   );
 });
@@ -164,4 +178,93 @@ test("the chatty actions are ignored, not acted on", () => {
       action,
     );
   }
+});
+
+/* ------------------------------------------------------------------ */
+/* The settings that gate a build                                      */
+/* ------------------------------------------------------------------ */
+
+test("the label filter: a pull request must carry one of the app's labels", () => {
+  const c = cfg({ requiredLabels: ["preview", "deploy-me"] });
+
+  const none = parsePullRequestEvent(payload({ labels: [{ name: "bug" }] }))!;
+  assert.deepEqual(previewIntent(c, none), { kind: "ignore", reason: "label" });
+
+  // One is enough — the labels are alternatives, not a checklist.
+  const one = parsePullRequestEvent(
+    payload({ labels: [{ name: "bug" }, { name: "deploy-me" }] }),
+  )!;
+  assert.deepEqual(previewIntent(c, one), { kind: "deploy" });
+
+  // GitHub labels are case-insensitive and so is the filter.
+  const shouty = parsePullRequestEvent(payload({ labels: [{ name: "PREVIEW" }] }))!;
+  assert.deepEqual(previewIntent(c, shouty), { kind: "deploy" });
+
+  // No filter ⇒ every pull request qualifies, labels or not.
+  const unlabelled = parsePullRequestEvent(payload({ labels: [] }))!;
+  assert.deepEqual(previewIntent(CFG, unlabelled), { kind: "deploy" });
+});
+
+test("applying the label is what builds; removing the last one tears down", () => {
+  const c = cfg({ requiredLabels: ["preview"] });
+
+  // Without this, a label applied AFTER the pull request opened would never
+  // build: `labeled` used to fall through to the chatty-action ignore.
+  const applied = parsePullRequestEvent(
+    payload({ labels: [{ name: "preview" }] }, "labeled"),
+  )!;
+  assert.deepEqual(previewIntent(c, applied), { kind: "deploy" });
+
+  // Removing the label is the explicit "that's enough, free the slot" gesture —
+  // the only teardown besides `closed`.
+  const removed = parsePullRequestEvent(payload({ labels: [] }, "unlabeled"))!;
+  assert.deepEqual(previewIntent(c, removed), { kind: "destroy" });
+
+  // Removing ONE of several leaves the preview alone AND does not rebuild it:
+  // the pull request still qualifies, so nothing that matters changed.
+  const stillQualifies = parsePullRequestEvent(
+    payload({ labels: [{ name: "preview" }] }, "unlabeled"),
+  )!;
+  assert.deepEqual(previewIntent(c, stillQualifies), {
+    kind: "ignore",
+    reason: "action",
+  });
+
+  // With NO filter a label is chatter, not a trigger — an app that doesn't
+  // filter must not burn a build every time somebody triages a pull request.
+  const chatter = parsePullRequestEvent(
+    payload({ labels: [{ name: "bug" }] }, "labeled"),
+  )!;
+  assert.deepEqual(previewIntent(CFG, chatter), { kind: "ignore", reason: "action" });
+});
+
+test("build drafts is opt-in, and only changes the draft answer", () => {
+  const draft = parsePullRequestEvent(payload({ draft: true }))!;
+  assert.deepEqual(previewIntent(CFG, draft), { kind: "ignore", reason: "draft" });
+  assert.deepEqual(previewIntent(cfg({ buildDrafts: true }), draft), {
+    kind: "deploy",
+  });
+});
+
+test("auto-deploy off stops a new commit, but not opening the pull request", () => {
+  const c = cfg({ autoDeploy: false });
+  const push = parsePullRequestEvent(payload({}, "synchronize"))!;
+  assert.deepEqual(previewIntent(c, push), {
+    kind: "ignore",
+    reason: "manual-only",
+  });
+  // The FIRST build still happens: "manual only" is about refreshing, not about
+  // never getting a preview at all.
+  for (const action of ["opened", "reopened", "ready_for_review"]) {
+    const ev = parsePullRequestEvent(payload({}, action))!;
+    assert.deepEqual(previewIntent(c, ev), { kind: "deploy" }, action);
+  }
+});
+
+test("closed still tears down whatever the new gates say", () => {
+  // Same reasoning as the original: a preview that exists must be destroyable,
+  // or turning a gate on strands containers nobody can see.
+  const ev = parsePullRequestEvent(payload({ labels: [] }, "closed"))!;
+  const c = cfg({ requiredLabels: ["preview"], autoDeploy: false });
+  assert.deepEqual(previewIntent(c, ev), { kind: "destroy" });
 });

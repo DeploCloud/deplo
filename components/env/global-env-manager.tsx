@@ -2,7 +2,7 @@
 
 import * as React from "react";
 import { useRouter } from "next/navigation";
-import { Plus, Trash2, Pencil, SearchX } from "lucide-react";
+import { Loader2, Plus, Trash2, Pencil, SearchX } from "lucide-react";
 import {
   Dialog,
   DialogContent,
@@ -364,7 +364,8 @@ function GlobalEnvDialog({
               Cancel
             </Button>
             <Button type="submit" disabled={pending || !key.trim() || !value}>
-              {pending ? "Saving…" : "Save"}
+              {pending && <Loader2 className="size-4 animate-spin" />}
+              Save
             </Button>
           </DialogFooter>
         </form>

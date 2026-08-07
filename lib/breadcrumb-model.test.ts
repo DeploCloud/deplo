@@ -14,6 +14,7 @@ const ALL_CAPS: BreadcrumbCaps = {
   manageEnv: true,
   manageBackups: true,
   manageBasicAuth: true,
+  managePreviews: true,
 };
 const NO_FLAGS: BreadcrumbFlags = {
   running: false,
@@ -207,7 +208,12 @@ test("bare /settings shows a General subsection crumb with the subsection menu",
 });
 
 test("capability gates hide Environment/Backups/Access", () => {
-  const caps: BreadcrumbCaps = { manageEnv: false, manageBackups: false, manageBasicAuth: false };
+  const caps: BreadcrumbCaps = {
+    manageEnv: false,
+    manageBackups: false,
+    manageBasicAuth: false,
+    managePreviews: false,
+  };
   const main = svc("/apps/web/deployments", graph(), caps)!;
   const labels = last(main).items.map((i) => i.label);
   assert.ok(!labels.includes("Environment") && !labels.includes("Backups"));

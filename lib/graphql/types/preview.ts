@@ -83,6 +83,12 @@ export const AppPreviewsViewRef = builder
       ttlDays: t.exposeInt("ttlDays"),
       forkPolicy: t.exposeString("forkPolicy"),
       serverId: t.exposeString("serverId", { nullable: true }),
+      https: t.exposeBoolean("https"),
+      autoDeploy: t.exposeBoolean("autoDeploy"),
+      port: t.exposeInt("port", { nullable: true }),
+      buildDrafts: t.exposeBoolean("buildDrafts"),
+      comment: t.exposeBoolean("comment"),
+      requiredLabels: t.exposeStringList("requiredLabels"),
       previews: t.field({
         type: [AppPreviewRef],
         resolve: (v) => v.previews,
@@ -173,6 +179,31 @@ const PreviewSettingsInput = builder.inputType("AppPreviewSettingsInput", {
       required: false,
       description: "Where previews run. Empty ⇒ the app's own server.",
     }),
+    https: t.boolean({
+      required: false,
+      description: "Serve previews over HTTPS. Needs a preview domain.",
+    }),
+    autoDeploy: t.boolean({
+      required: false,
+      description: "Rebuild a preview when its pull request gets a new commit.",
+    }),
+    port: t.int({
+      required: false,
+      description: "Container port. Empty ⇒ the app's build port.",
+    }),
+    buildDrafts: t.boolean({
+      required: false,
+      description: "Build a pull request that is still a draft.",
+    }),
+    comment: t.boolean({
+      required: false,
+      description: "Post the preview URL as a comment on the pull request.",
+    }),
+    requiredLabels: t.string({
+      required: false,
+      description:
+        "Newline-separated labels a pull request must carry. Empty ⇒ no filter.",
+    }),
   }),
 });
 
@@ -193,6 +224,12 @@ builder.mutationFields((t) => ({
         ttlDays: input.ttlDays ?? undefined,
         forkPolicy: input.forkPolicy ?? undefined,
         serverId: input.serverId ?? undefined,
+        https: input.https ?? undefined,
+        autoDeploy: input.autoDeploy ?? undefined,
+        port: input.port ?? undefined,
+        buildDrafts: input.buildDrafts ?? undefined,
+        comment: input.comment ?? undefined,
+        requiredLabels: input.requiredLabels ?? undefined,
       });
       return true;
     },

@@ -119,7 +119,14 @@ export function SidebarNav({
   } else if (dbId) {
     sections = databaseNav(dbId, { pathname, consoleAcknowledged });
   } else if (appSlug && inAppSettings) {
-    sections = appSettingsNav(appSlug);
+    // Until the store matches the slug in the URL (SSR, first paint) assume the
+    // app IS a GitHub one: that renders the entry live rather than disabled, and
+    // a link that becomes disabled a moment later is a smaller lie than a
+    // "cannot be enabled" that turns out to be wrong.
+    sections = appSettingsNav(
+      appSlug,
+      service?.slug === appSlug ? service.isGithubApp : true,
+    );
   } else if (appSlug) {
     // The live/per-app flags come from the same store as the capabilities above.
     const matches = service?.slug === appSlug;
@@ -129,6 +136,7 @@ export function SidebarNav({
       canBackup: appCaps.has("manage_backups"),
       running: matches ? service!.running : false,
       showFiles: matches ? service!.showFiles : false,
+      isGithubApp: matches ? service!.isGithubApp : false,
       consoleAcknowledged,
     });
   } else if (inSettings) {
@@ -234,6 +242,35 @@ export function SidebarNav({
             // A text-only section (app/database settings) drops the icons — but
             // never while collapsed, where the icon is the only thing rendered.
             const showIcon = !section.iconless || collapsed;
+            // A settings entry the app CANNOT use — pull request previews on an
+            // app that deploys from anything but GitHub. Shown rather than
+            // hidden, because "the feature exists and here is why it is closed
+            // to you" teaches something and a missing row teaches nothing; the
+            // tooltip carries the reason in place of the usual hint. Only in
+            // SETTINGS: the operational page is hidden outright, since a page
+            // that can never list anything is a dead end, not a lesson.
+            if (item.disabledReason) {
+              return (
+                <Tooltip key={item.href} delayDuration={collapsed ? 0 : 400}>
+                  <TooltipTrigger asChild>
+                    <span
+                      aria-disabled="true"
+                      aria-label={item.label}
+                      className={cn(
+                        "group relative z-10 flex cursor-default items-center gap-2.5 rounded-md text-sm text-muted-foreground/50",
+                        collapsed ? "h-9 w-9 justify-center" : "px-3 py-1.5",
+                      )}
+                    >
+                      {showIcon && <Icon className="size-4 shrink-0" />}
+                      {!collapsed && item.label}
+                    </span>
+                  </TooltipTrigger>
+                  <TooltipContent side="right">
+                    {item.disabledReason}
+                  </TooltipContent>
+                </Tooltip>
+              );
+            }
             return (
               <Tooltip key={item.href} delayDuration={collapsed ? 0 : 400}>
                 <TooltipTrigger asChild>

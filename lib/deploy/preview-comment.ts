@@ -2,6 +2,7 @@ import "server-only";
 
 import { eq, isNull, and } from "drizzle-orm";
 
+import { previewSettings } from "./preview-lifecycle";
 import { loadAppGraph } from "../data/app-graph-load";
 import { getDb } from "../db/client";
 import { appPreviews as appPreviewsTable } from "../db/schema/control-plane";
@@ -96,6 +97,12 @@ export async function syncPreviewComment(
       .limit(1);
     const p = rows[0];
     if (!p) return;
+    // The app can turn the comment off. It needs `pull_requests: write` on the
+    // GitHub App, so an instance that will not grant that permission would
+    // otherwise collect a 403 on every deploy — silent by contract, but still a
+    // request that was never going to land. One guard here covers every caller:
+    // the deploy outcome, the open, the sync and the teardown.
+    if (!(await previewSettings(p.appId))?.comment) return;
     const app = await loadAppGraph(p.appId);
     const installationId = app?.repo?.installationId;
     const fullName = app?.repo ? githubFullName(app.repo) : null;

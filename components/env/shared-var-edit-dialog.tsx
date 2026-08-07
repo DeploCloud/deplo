@@ -3,7 +3,7 @@
 import * as React from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
-import { Share2, AlertTriangle } from "lucide-react";
+import { Loader2, Share2, AlertTriangle } from "lucide-react";
 import {
   Dialog,
   DialogContent,
@@ -209,7 +209,8 @@ export function SharedVarEditDialog({
               Cancel
             </Button>
             <Button type="submit" disabled={pending || !keyValid}>
-              {pending ? "Saving…" : "Save"}
+              {pending && <Loader2 className="size-4 animate-spin" />}
+              Save
             </Button>
           </DialogFooter>
         </form>

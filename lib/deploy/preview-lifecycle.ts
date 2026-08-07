@@ -201,6 +201,7 @@ export async function openOrSyncPreview(
         slug: app.slug,
         prNumber: pr.number,
         baseDomain: settings.baseDomain,
+        https: settings.https,
         ip: resolveServerIp(server),
       });
       previewId = newId("prv");
@@ -222,6 +223,10 @@ export async function openOrSyncPreview(
         deployKey: previewDeployKey(app.slug, pr.number),
         host,
         certProvider,
+        // Frozen here, like the host and the deploy key: the renderer reads the
+        // preview ROW, and changing the app's setting must not silently repoint
+        // a preview somebody is already testing.
+        port: settings.port,
         status: approved ? "queued" : "blocked",
         state: "open",
         lastActivityAt: now,
@@ -412,6 +417,18 @@ export async function previewSettings(appId: string): Promise<{
   forkPolicy: PreviewForkPolicy;
   /** Where previews run. NULL ⇒ the app's own server. */
   serverId: string | null;
+  /** HTTPS on preview hosts. Forced OFF without a base domain — see below. */
+  https: boolean;
+  /** Rebuild when the pull request receives a new commit. */
+  autoDeploy: boolean;
+  /** Container port. NULL ⇒ the app's build port. */
+  port: number | null;
+  /** Build a pull request while it is still a draft. */
+  buildDrafts: boolean;
+  /** Post and keep updating the sticky comment on the pull request. */
+  comment: boolean;
+  /** A pull request must carry ONE of these to get a preview. Empty ⇒ no filter. */
+  requiredLabels: string[];
 } | null> {
   const rows = await getDb()
     .select({
@@ -421,6 +438,12 @@ export async function previewSettings(appId: string): Promise<{
       ttlDays: appsTable.previewTtlDays,
       forkPolicy: appsTable.previewForkPolicy,
       serverId: appsTable.previewServerId,
+      https: appsTable.previewHttps,
+      autoDeploy: appsTable.previewAutoDeploy,
+      port: appsTable.previewPort,
+      buildDrafts: appsTable.previewBuildDrafts,
+      comment: appsTable.previewComment,
+      requiredLabels: appsTable.previewRequiredLabels,
     })
     .from(appsTable)
     .where(eq(appsTable.id, appId))
@@ -435,7 +458,38 @@ export async function previewSettings(appId: string): Promise<{
     ttlDays: r.ttlDays && r.ttlDays > 0 ? r.ttlDays : PREVIEW_TTL_DAYS_DEFAULT,
     forkPolicy: forkPolicyOf(r.forkPolicy),
     serverId: r.serverId,
+    // Coerced, not merely read: a nip.io host cannot hold a certificate, so
+    // without a base domain the answer is no whatever the column says. Enforcing
+    // it HERE rather than in the form means an app that had HTTPS on and then
+    // cleared its domain degrades to plain HTTP instead of minting previews that
+    // greet every reviewer with a browser warning.
+    https: Boolean(r.https) && Boolean(r.baseDomain?.trim()),
+    autoDeploy: r.autoDeploy,
+    port: r.port && r.port > 0 ? r.port : null,
+    buildDrafts: r.buildDrafts,
+    comment: r.comment,
+    requiredLabels: parseRequiredLabels(r.requiredLabels),
   };
+}
+
+/**
+ * Split the stored newline list into the labels a pull request may match.
+ *
+ * Tolerant on purpose — the field is a textarea a human types into, so blank
+ * lines and stray whitespace are theirs to leave, not errors to report. Matching
+ * is case-insensitive because GitHub labels are, and lower-casing here means the
+ * comparison site never has to remember.
+ */
+export function parseRequiredLabels(raw: string | null | undefined): string[] {
+  if (!raw) return [];
+  return [
+    ...new Set(
+      raw
+        .split("\n")
+        .map((l) => l.trim().toLowerCase())
+        .filter(Boolean),
+    ),
+  ];
 }
 
 /**

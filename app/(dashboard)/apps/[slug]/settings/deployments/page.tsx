@@ -4,12 +4,9 @@ import { getAppBySlug } from "@/lib/data/apps";
 import { deployHookUrlMasked } from "@/lib/data/deploy-hook";
 import { listServerChoices } from "@/lib/data/servers";
 import { listGithubInstallations } from "@/lib/data/github";
-import { hasAppCapability } from "@/lib/data/node-access";
-import { listAppPreviews } from "@/lib/data/previews";
 import { SettingsSection } from "@/components/apps/settings/settings-shared";
 import { DeploymentSettingsForm } from "@/components/apps/settings/deployment-settings-form";
 import { CapabilityFieldset } from "@/components/apps/app-capabilities";
-import { PreviewSettingsCard } from "@/components/apps/settings/preview-settings-card";
 
 export const metadata = { title: "Deployment" };
 
@@ -22,15 +19,6 @@ export default async function AppDeploymentSettingsPage(
 
   const servers = await listServerChoices();
   const installations = await listGithubInstallations();
-  // The preview card only makes sense for a GitHub-backed app: nothing else ever
-  // receives a `pull_request` delivery. The capability is checked BEFORE the
-  // read, not after — `listAppPreviews` is gated and would throw, taking the
-  // whole page down for someone who may still configure the app perfectly well.
-  const previews =
-    project.source === "github" &&
-    (await hasAppCapability(project.id, "manage_previews"))
-      ? await listAppPreviews(project.id)
-      : null;
 
   return (
     <section className="space-y-4">
@@ -73,27 +61,6 @@ export default async function AppDeploymentSettingsPage(
           }
         />
       </CapabilityFieldset>
-      {previews && (
-        <CapabilityFieldset cap="manage_previews">
-          <PreviewSettingsCard
-            appId={project.id}
-            branch={previews.branch}
-            enabled={previews.enabled}
-            baseDomain={previews.baseDomain}
-            maxActive={previews.maxActive}
-            ttlDays={previews.ttlDays}
-            forkPolicy={previews.forkPolicy}
-            serverId={previews.serverId}
-            appServerId={project.serverId}
-            servers={servers}
-            activeCount={
-              previews.previews.filter(
-                (p) => !p.closed && p.status !== "evicted" && p.status !== "blocked",
-              ).length
-            }
-          />
-        </CapabilityFieldset>
-      )}
     </section>
   );
 }

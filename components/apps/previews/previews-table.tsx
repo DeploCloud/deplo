@@ -94,7 +94,12 @@ export function PreviewsTable({
     });
   }
 
-  const openCount = previews.filter((p) => !p.closed).length;
+  // What the cap actually counts: previews with a stack up. A closed pull
+  // request has none, and neither has an `evicted` or `blocked` one — counting
+  // those would show "at its limit" while slots were free.
+  const liveCount = previews.filter(
+    (p) => !p.closed && p.status !== "evicted" && p.status !== "blocked",
+  ).length;
 
   return (
     <div className="space-y-3">
@@ -149,6 +154,18 @@ export function PreviewsTable({
                         <ShieldAlert className="size-3.5 text-[var(--warning)]" />
                         Needs approval
                       </Badge>
+                    ) : p.status === "evicted" ? (
+                      // The one status whose CAUSE is a setting rather than
+                      // anything that happened to the build, so the badge alone
+                      // cannot finish the sentence: say which limit, and that
+                      // getting it back costs one click and keeps the address.
+                      <SimpleTooltip
+                        content={`This app runs ${maxActive} previews at once, and this was the one nobody had touched in the longest. Redeploy brings it back on the same address, or raise the limit in Settings.`}
+                      >
+                        <span className="inline-flex">
+                          <StatusBadge status={p.status} />
+                        </span>
+                      </SimpleTooltip>
                     ) : (
                       <StatusBadge status={p.status} />
                     )}
@@ -292,11 +309,12 @@ export function PreviewsTable({
         </Table>
       </Card>
 
-      {openCount >= maxActive && (
+      {liveCount >= maxActive && (
         <p className="text-xs text-muted-foreground">
-          This app is at its limit of {maxActive} live previews. A new pull
-          request will not get one until you destroy one here, or one goes idle
-          long enough for Deplo to clean it up.
+          This app is at its limit of {maxActive} live previews. The next pull
+          request still gets one — the preview nobody has touched in the longest
+          is stopped to make room, and Redeploy brings it back on the same
+          address. Raise the limit in Settings to keep more running at once.
         </p>
       )}
     </div>

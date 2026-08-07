@@ -235,15 +235,33 @@ type AppPreview {
 }
 
 input AppPreviewSettingsInput {
+  """Rebuild a preview when its pull request gets a new commit."""
+  autoDeploy: Boolean
+
   """
   e.g. `preview.example.com`, with a wildcard DNS record pointing here. Empty clears it back to the zero-configuration nip.io default.
   """
   baseDomain: String
+
+  """Build a pull request that is still a draft."""
+  buildDrafts: Boolean
+
+  """Post the preview URL as a comment on the pull request."""
+  comment: Boolean
   enabled: Boolean
 
   """deny | approve | allow."""
   forkPolicy: String
+
+  """Serve previews over HTTPS. Needs a preview domain."""
+  https: Boolean
   maxActive: Int
+
+  """Container port. Empty ⇒ the app's build port."""
+  port: Int
+
+  """Newline-separated labels a pull request must carry. Empty ⇒ no filter."""
+  requiredLabels: String
 
   """Where previews run. Empty ⇒ the app's own server."""
   serverId: String
@@ -255,15 +273,21 @@ Everything the Pull requests page renders in one read: whether previews can work
 """
 type AppPreviewsView {
   appId: ID
+  autoDeploy: Boolean
   baseDomain: String
 
   """Pull requests must target this branch to get a preview."""
   branch: String
+  buildDrafts: Boolean
+  comment: Boolean
   enabled: Boolean
   forkPolicy: String
   githubSettingsUrl: String
+  https: Boolean
   maxActive: Int
+  port: Int
   previews: [AppPreview!]
+  requiredLabels: [String!]
   serverId: String
   ttlDays: Int
 

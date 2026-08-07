@@ -35,6 +35,8 @@ import {
   USER_1,
 } from "./identity-test-helpers";
 import { approvePreview, destroyPreview, redeployPreview } from "./previews";
+import { addDomain } from "./domains";
+import { LETSENCRYPT_DOMAINS_PER_TEAM_CAP } from "../deploy/domains";
 
 /**
  * Pull request previews, at the data layer.
@@ -507,4 +509,53 @@ test("two apps in different teams get different keys and hosts for the same PR n
   const kb = rows.find((r) => r.id === b.previewId)!;
   assert.notEqual(ka.deployKey, kb.deployKey);
   assert.notEqual(ka.host, kb.host);
+});
+
+test("a preview's certificate counts against the team's Let's Encrypt quota", async () => {
+  // A preview host is deliberately never a `domains` row (ADR-0017 §5), which is
+  // exactly why the quota could not see it: an app with previews on, a wildcard
+  // domain and HTTPS mints one certificate per open pull request, forever,
+  // against the ACME account the whole fleet shares. The cap has to count them
+  // or it is watching the wrong door.
+  await seedPreviewApp("prj_1", { slug: "blog" });
+  const now = new Date().toISOString();
+
+  // Fill the team's allowance entirely with OPEN previews.
+  for (let i = 1; i <= LETSENCRYPT_DOMAINS_PER_TEAM_CAP; i++) {
+    await db.insert(appPreviewsTable).values({
+      id: `prv_${i}`,
+      appId: "prj_1",
+      prNumber: i,
+      headBranch: `pr-${i}`,
+      deployKey: `blog__pr-${i}`,
+      host: `blog-pr-${i}.example.com`,
+      certProvider: "letsencrypt",
+      state: "open",
+      lastActivityAt: now,
+      createdAt: now,
+      updatedAt: now,
+    } as never);
+  }
+
+  await assert.rejects(
+    () =>
+      runWithIdentity({ userId: USER_1, teamId: TEAM_A }, () =>
+        addDomain("prj_1", "one-more.example.com", {
+          certProvider: "letsencrypt",
+        }),
+      ),
+    /limit of \d+ Let's Encrypt domains/,
+    "the previews alone should have exhausted the allowance",
+  );
+
+  // A closed preview's certificate is not renewed, so it must not hold a slot.
+  await db
+    .update(appPreviewsTable)
+    .set({ state: "closed" })
+    .where(eq(appPreviewsTable.id, "prv_1"));
+  await runWithIdentity({ userId: USER_1, teamId: TEAM_A }, () =>
+    addDomain("prj_1", "one-more.example.com", {
+      certProvider: "letsencrypt",
+    }),
+  );
 });

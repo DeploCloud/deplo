@@ -56,6 +56,7 @@ import { syncPreviewComment } from "./preview-comment";
 import { planDeploySource, resolveBuildDir } from "./source";
 import { normalizeBuildConfig } from "../frameworks";
 import { usesComposeStack, hostVolumeName, formatBytes } from "../utils";
+import { detectDefaultApp } from "./compose-stack";
 import { certResolver, domainScheme } from "./domains";
 import { completePendingAppMigration } from "../data/app-migration";
 import { sweepSupersededAppImages } from "../data/docker-cleanup";
@@ -83,6 +84,7 @@ import {
 import { connectAgent, agentPreflight } from "../infra/agent-client";
 import { enqueueDeployment } from "./deploy-queue";
 import type {
+  App,
   BuildMethod,
   CertProvider,
   Deployment,
@@ -203,6 +205,8 @@ async function loadPreviewForDeploy(previewId: string): Promise<{
   prNumber: number;
   isFork: boolean;
   headCloneUrl: string;
+  /** Frozen at creation from the app's `preview_port`. NULL ⇒ the build port. */
+  port: number | null;
 } | null> {
   const rows = await getDb()
     .select({
@@ -212,6 +216,7 @@ async function loadPreviewForDeploy(previewId: string): Promise<{
       prNumber: appPreviewsTable.prNumber,
       isFork: appPreviewsTable.isFork,
       headCloneUrl: appPreviewsTable.headCloneUrl,
+      port: appPreviewsTable.port,
     })
     .from(appPreviewsTable)
     .where(eq(appPreviewsTable.id, previewId))
@@ -1350,6 +1355,7 @@ async function runDeployment(depId: string): Promise<void> {
     dep.environment,
     domain,
     preview?.certProvider,
+    preview ? await previewRouteTarget(project, preview.port) : undefined,
   );
 
   // Claim the deploy: queued -> building, but ONLY while it is still queued. A
@@ -2048,6 +2054,43 @@ async function deployComposeStackViaAgent(
  * routes, so the deploy proceeds unrouted (`traefik.enable=false`) instead of
  * baking an empty rule.
  */
+
+/**
+ * Which compose service a PREVIEW's router forwards to, and on which port.
+ *
+ * A preview host is never a `domains` row, so it carries no service of its own —
+ * and `buildComposeStack` skips every route that names none. Without this a
+ * compose app's preview built, started, and answered nobody: containers up, no
+ * Traefik router, 404 at the URL posted on the pull request.
+ *
+ * Resolution, in the order that keeps a preview honest:
+ *  1. the app's PRIMARY domain's service — a preview should front whatever
+ *     production fronts, and the domains table is authoritative once it exists;
+ *  2. `detectDefaultApp`, the same heuristic that seeded that domain in the
+ *     first place, for an app whose domains were all deleted;
+ *  3. null — a single-image stack, where there is one container and the
+ *     renderer needs no name for it.
+ *
+ * The port prefers the preview's own (frozen at creation from `preview_port`),
+ * then the primary domain's override, then the compose heuristic. Null lets the
+ * renderer fall back to the app's build port, which is the common case.
+ */
+async function previewRouteTarget(
+  project: App,
+  previewPort: number | null,
+): Promise<{ service: string | null; port: number | null }> {
+  if (!usesComposeStack(project)) return { service: null, port: previewPort };
+  const primaryRow = await primaryDomainRow(project.id);
+  if (primaryRow?.service) {
+    return { service: primaryRow.service, port: previewPort ?? primaryRow.port ?? null };
+  }
+  const detected = detectDefaultApp(project.compose ?? null);
+  return {
+    service: detected?.service ?? null,
+    port: previewPort ?? detected?.port ?? null,
+  };
+}
+
 async function routableForDeploy(
   appId: string,
   environment: DeploymentEnvironment,
@@ -2060,11 +2103,22 @@ async function routableForDeploy(
    * Traefik falls back to its self-signed default.
    */
   previewCertProvider?: CertProvider,
+  /**
+   * The compose SERVICE a preview's router forwards to, and the port to use.
+   *
+   * A single-image stack has one container and needs neither: the renderer wires
+   * the only thing there is. A compose stack has many, and `buildComposeStack`
+   * SKIPS any route that does not name one — so a preview built without this
+   * emitted no Traefik router at all, and the containers came up perfectly and
+   * answered nobody. Resolved from the app's own primary domain so a preview
+   * fronts whatever production fronts.
+   */
+  previewTarget?: { service: string | null; port: number | null },
 ): Promise<RoutableDomain[]> {
-  // A preview routes only to its own host, on the app's default port.
+  // A preview routes only to its own host.
   if (environment !== "production") {
     return [
-      defaultRoute(primary, null, null, {
+      defaultRoute(primary, previewTarget?.service ?? null, previewTarget?.port ?? null, {
         certProvider: previewCertProvider ?? "none",
       }),
     ];

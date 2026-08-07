@@ -26,6 +26,8 @@ export interface RawPullRequestPayload {
       repo?: { full_name?: string; clone_url?: string } | null;
     };
     base?: { ref?: string };
+    /** GitHub sends the pull request's CURRENT labels on every delivery. */
+    labels?: { name?: string }[];
   };
 }
 
@@ -49,6 +51,8 @@ export interface PullRequestEvent {
   isFork: boolean;
   draft: boolean;
   merged: boolean;
+  /** The pull request's labels, lower-cased — GitHub matches them that way. */
+  labels: string[];
 }
 
 /** The app-side facts the decision needs. */
@@ -56,6 +60,12 @@ export interface PreviewTriggerConfig {
   /** The branch the app tracks — pull requests must TARGET it. */
   branch: string;
   previewsEnabled: boolean;
+  /** Rebuild when the pull request receives a new commit. */
+  autoDeploy: boolean;
+  /** Build a pull request that is still a draft. */
+  buildDrafts: boolean;
+  /** A pull request must carry ONE of these. Empty ⇒ no filter. */
+  requiredLabels: string[];
 }
 
 /** Why a delivery produced nothing. Logged, never silent. */
@@ -64,7 +74,11 @@ export type PreviewSkipReason =
   | "base-branch"
   | "draft"
   | "no-head-repo"
-  | "action";
+  | "action"
+  /** The app filters on labels and this pull request carries none of them. */
+  | "label"
+  /** A new commit landed, but this app only builds previews on request. */
+  | "manual-only";
 
 export type PreviewIntent =
   | { kind: "deploy" }
@@ -103,6 +117,12 @@ export function parsePullRequestEvent(
     isFork: !headRepo || headRepo !== baseRepo,
     draft: Boolean(pr.draft),
     merged: Boolean(pr.merged),
+    // Lower-cased at the door so every comparison downstream is a plain
+    // `includes` and nobody has to remember that GitHub labels are
+    // case-insensitive.
+    labels: (pr.labels ?? [])
+      .map((l) => (l?.name ?? "").trim().toLowerCase())
+      .filter(Boolean),
   };
 }
 
@@ -121,12 +141,21 @@ export function parsePullRequestEvent(
  *     `main` must not build pull requests aimed at `release/v2`. It is also the
  *     one place a user can be silently surprised, which is why the empty state
  *     names the branch out loud.
- *  4. drafts are skipped until `ready_for_review`. A work-in-progress branch is
- *     not worth a container, and the manual "Deploy a pull request" action
- *     covers the exception — an action instead of a setting.
- *  5. everything else (`edited`, `labeled`, `assigned`, `converted_to_draft`, …)
- *     is ignored. In particular `converted_to_draft` does NOT tear down: pulling
- *     a URL out from under someone because the author ticked a box is a surprise
+ *  4. the LABEL filter, when the app has one. A pull request that carries none
+ *     of the required labels gets nothing — and losing its last one DESTROYS
+ *     what it had, because removing the label is the explicit gesture for
+ *     "that's enough, free the slot". This is the only teardown besides
+ *     `closed`, and it is deliberately unlike `converted_to_draft` below: a
+ *     label is a switch someone flips at the preview, a draft is a statement
+ *     about the work.
+ *  5. drafts are skipped until `ready_for_review`, unless the app opts in. A
+ *     work-in-progress branch is usually not worth a container, and the manual
+ *     "Deploy a pull request" action covers the one-off exception.
+ *  6. a new commit (`synchronize`) rebuilds only when the app auto-deploys
+ *     previews. Off ⇒ the preview is built once and a person refreshes it.
+ *  7. everything else (`edited`, `assigned`, `converted_to_draft`, …) is
+ *     ignored. In particular `converted_to_draft` does NOT tear down: pulling a
+ *     URL out from under someone because the author ticked a box is a surprise
  *     with no upside.
  */
 export function previewIntent(
@@ -138,14 +167,36 @@ export function previewIntent(
   if (ev.baseBranch !== cfg.branch) {
     return { kind: "ignore", reason: "base-branch" };
   }
+
+  // The label gate spans every action, which is why it sits above the action
+  // switch: a pull request that loses its last required label must be torn down
+  // whichever delivery carried the news.
+  const labelled =
+    cfg.requiredLabels.length === 0 ||
+    ev.labels.some((l) => cfg.requiredLabels.includes(l));
+  if (!labelled) {
+    return ev.action === "unlabeled"
+      ? { kind: "destroy" }
+      : { kind: "ignore", reason: "label" };
+  }
+
   if (
     ev.action === "opened" ||
     ev.action === "reopened" ||
     ev.action === "synchronize" ||
-    ev.action === "ready_for_review"
+    ev.action === "ready_for_review" ||
+    // `labeled` builds ONLY for an app that filters on labels: there, the label
+    // applied after the pull request opened is the moment it qualifies, and
+    // without this it would never build at all. For an app with no filter a
+    // label is just chatter, and rebuilding on it would burn a build every time
+    // somebody triaged a pull request.
+    (ev.action === "labeled" && cfg.requiredLabels.length > 0)
   ) {
     if (!ev.headRepo) return { kind: "ignore", reason: "no-head-repo" };
-    if (ev.draft) return { kind: "ignore", reason: "draft" };
+    if (ev.draft && !cfg.buildDrafts) return { kind: "ignore", reason: "draft" };
+    if (ev.action === "synchronize" && !cfg.autoDeploy) {
+      return { kind: "ignore", reason: "manual-only" };
+    }
     return { kind: "deploy" };
   }
   return { kind: "ignore", reason: "action" };

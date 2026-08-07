@@ -16,12 +16,14 @@ export function AppNavSync({
   slug,
   running: serverRunning,
   showFiles,
+  isGithubApp,
   capabilities,
 }: {
   slug: string;
   /** Server-rendered running state; the live subscription takes over after mount. */
   running: boolean;
   showFiles: boolean;
+  isGithubApp: boolean;
   /** The viewer's capabilities on this app - gates the sub-menu's entries. */
   capabilities: string[];
 }) {
@@ -36,8 +38,9 @@ export function AppNavSync({
       running,
       showFiles,
       capabilities: caps ? caps.split(",") : [],
+      isGithubApp,
         });
-  }, [slug, running, showFiles, caps]);
+  }, [slug, running, showFiles, caps, isGithubApp]);
 
   // Clear only on unmount (leaving the app). Keeping this separate from the
   // publish effect above means a live `running` change re-publishes in place

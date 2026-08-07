@@ -19,6 +19,7 @@ import {
   refusalMessage,
 } from "../deploy/preview-lifecycle";
 import { syncPreviewComment } from "../deploy/preview-comment";
+import { parseRequiredLabels } from "../deploy/preview-lifecycle";
 
 /**
  * The `pull_request` arm of the GitHub webhook — the twin of the `push` arm in
@@ -95,6 +96,9 @@ export async function handlePullRequestDelivery(raw: string): Promise<Response> 
         {
           branch: app.repoBranch || "main",
           previewsEnabled: app.previewEnabled,
+          autoDeploy: app.previewAutoDeploy,
+          buildDrafts: app.previewBuildDrafts,
+          requiredLabels: parseRequiredLabels(app.previewRequiredLabels),
         },
         ev,
       );
