@@ -27,6 +27,13 @@ import type { AlertMessage } from "./channels";
 
 const SETTINGS_ID = "default";
 
+/**
+ * How long one push service gets. Mirrors `CHANNEL_TIMEOUT_MS` by hand rather
+ * than importing it: `dispatch` → `channels` → here, so reading it from the
+ * dispatcher would close a require cycle.
+ */
+const PUSH_TIMEOUT_MS = 5_000;
+
 /** What a browser hands back from `pushManager.subscribe()`. */
 export interface PushSubscriptionInput {
   endpoint: string;
@@ -145,7 +152,14 @@ export async function sendWebPushTo(
           )
         : eq(pushSubscriptions.teamId, teamId),
     );
-  if (subs.length === 0) return;
+  // A test goes to ONE person's devices and has to say when there are none;
+  // the team-wide fan-out stays silent, because a team with no subscriber is
+  // not a failure.
+  if (subs.length === 0) {
+    if (userId)
+      throw new Error("This browser is not registered for push notifications yet");
+    return;
+  }
 
   const creds = await db
     .select({
@@ -178,6 +192,10 @@ export async function sendWebPushTo(
       webpush.sendNotification(
         { endpoint: s.endpoint, keys: { p256dh: s.p256dh, auth: s.auth } },
         payload,
+        // web-push has no AbortSignal and no default deadline, so one endpoint
+        // that accepts the connection and never answers would hold the whole
+        // dispatch open. Its own socket timeout is what bounds this.
+        { timeout: PUSH_TIMEOUT_MS },
       ),
     ),
   );
@@ -197,12 +215,20 @@ export async function sendWebPushTo(
         ),
       );
 
-  // A test send with a single subscription should say why it failed.
+  // A test send with a single subscription should say that it failed — but only
+  // that. The push endpoint is a URL the SUBSCRIBER chose, so returning the
+  // remote's body or its `connect ECONNREFUSED 10.0.0.5:8443` would hand the
+  // caller a read primitive against whatever they pointed it at. The status code
+  // is enough to tell a dead browser from a rejected key; the rest is logged.
   const firstError = results.find((r) => r.status === "rejected");
-  if (subs.length === 1 && firstError && firstError.status === "rejected")
+  if (subs.length === 1 && firstError && firstError.status === "rejected") {
+    console.error("[deplo] web push failed:", firstError.reason);
+    const status = (firstError.reason as { statusCode?: number } | undefined)
+      ?.statusCode;
     throw new Error(
-      (firstError.reason as { body?: string; message?: string })?.body ??
-        (firstError.reason as Error)?.message ??
-        "The browser rejected the notification",
+      status
+        ? `The push service rejected it (${status})`
+        : "The push service could not be reached",
     );
+  }
 }

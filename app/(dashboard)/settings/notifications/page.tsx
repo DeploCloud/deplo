@@ -10,7 +10,11 @@ import { NotificationsPanel } from "@/components/settings/notifications-panel";
 export const metadata = { title: "Settings · Notifications" };
 
 export default async function SettingsNotificationsPage() {
-  if (!(await reachesWholeTeam()))
+  // A channel row carries the webhook URL, which IS the credential for a chat
+  // room, so the PAGE takes the same gate as the read behind it: reaching the
+  // whole team is not enough, it takes `manage_notifications`.
+  const canManage = await hasCapability("manage_notifications");
+  if (!(await reachesWholeTeam()) || !canManage)
     return (
       <OutsideYourAccess
         title="Notifications"
@@ -18,13 +22,11 @@ export default async function SettingsNotificationsPage() {
         what="The team's notification channels"
       />
     );
-  const [channels, vapidPublicKey, canManage] = await Promise.all([
+  const [channels, vapidPublicKey] = await Promise.all([
     listNotificationChannels(),
     // Minted here, on first render of this page, so an instance that never uses
     // browser push never holds a VAPID keypair.
     getWebPushPublicKey(),
-    // Cosmetic only: every switch and every Test is gated server-side too.
-    hasCapability("manage_notifications"),
   ]);
 
   return (

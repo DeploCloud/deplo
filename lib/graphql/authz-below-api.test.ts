@@ -218,6 +218,14 @@ const CASES: { name: string; doc: string; cap: Capability | null }[] = [
     cap: "manage_team",
   },
   {
+    // A READ, and it belongs here for the same reason the writes do: a channel
+    // row carries the webhook URL, and a webhook URL is the credential for a
+    // chat room. The `view` floor must not reach it.
+    name: "notificationChannels",
+    doc: `query { notificationChannels }`,
+    cap: "manage_notifications",
+  },
+  {
     name: "saveNotificationChannel",
     doc: `mutation { saveNotificationChannel(input: {kind: "discord", url: "https://discord/hook"}) }`,
     cap: "manage_notifications",

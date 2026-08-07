@@ -219,14 +219,20 @@ test("an empty secret keeps the stored ciphertext; a new one replaces it", async
   });
   const before = (await db.select().from(notificationChannels))[0]!;
 
+  // Same address, so an edit that only renames the channel keeps the token.
   await asUser1(() =>
     saveNotificationChannel(
       id,
-      draft({ kind: "gotify", url: "https://gotify2", secrets: {} }),
+      draft({
+        kind: "gotify",
+        url: "https://gotify",
+        name: "Ops room",
+        secrets: {},
+      }),
     ),
   );
   const kept = (await db.select().from(notificationChannels))[0]!;
-  assert.equal(kept.url, "https://gotify2");
+  assert.equal(kept.name, "Ops room");
   assert.equal(kept.secretEnc, before.secretEnc);
   assert.notEqual(kept.secretEnc, "");
 
@@ -235,13 +241,62 @@ test("an empty secret keeps the stored ciphertext; a new one replaces it", async
       id,
       draft({
         kind: "gotify",
-        url: "https://gotify2",
+        url: "https://gotify",
         secrets: { secret: "other" },
       }),
     ),
   );
   const changed = (await db.select().from(notificationChannels))[0]!;
   assert.notEqual(changed.secretEnc, before.secretEnc);
+});
+
+test("a stored token is never forwarded to an address that just changed", async () => {
+  let id = "";
+  await asUser1(async () => {
+    id = (
+      await saveNotificationChannel(
+        null,
+        draft({
+          kind: "gotify",
+          url: "https://gotify",
+          secrets: { secret: "tok" },
+        }),
+      )
+    ).id;
+  });
+  const before = (await db.select().from(notificationChannels))[0]!;
+
+  // Repointing the channel while leaving the secret blank would have the stored
+  // token delivered to whoever owns the new address — in a header, on the first
+  // alert. The save is refused instead, and nothing is written.
+  await assert.rejects(
+    () =>
+      asUser1(() =>
+        saveNotificationChannel(
+          id,
+          draft({ kind: "gotify", url: "https://gotify2", secrets: {} }),
+        ),
+      ),
+    /enter this channel's token or password again/,
+  );
+  const untouched = (await db.select().from(notificationChannels))[0]!;
+  assert.equal(untouched.url, "https://gotify");
+  assert.equal(untouched.secretEnc, before.secretEnc);
+
+  // Re-typing it is what makes the move legitimate.
+  await asUser1(() =>
+    saveNotificationChannel(
+      id,
+      draft({
+        kind: "gotify",
+        url: "https://gotify2",
+        secrets: { secret: "tok2" },
+      }),
+    ),
+  );
+  const moved = (await db.select().from(notificationChannels))[0]!;
+  assert.equal(moved.url, "https://gotify2");
+  assert.notEqual(moved.secretEnc, before.secretEnc);
 });
 
 test("the DTO carries no credential in any shape", async () => {

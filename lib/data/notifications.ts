@@ -1,6 +1,6 @@
 import "server-only";
 
-import { and, asc, eq, inArray } from "drizzle-orm";
+import { and, asc, count, eq, inArray, ne } from "drizzle-orm";
 import type { InferSelectModel } from "drizzle-orm";
 
 import { ALERT_META, DEFAULT_ALERTS } from "../alerts";
@@ -10,6 +10,7 @@ import { getDb } from "../db/client";
 import {
   notificationAlerts,
   notificationChannels,
+  pushSubscriptions,
 } from "../db/schema/control-plane";
 import { newId, nowIso } from "../ids";
 import {
@@ -17,14 +18,19 @@ import {
   requireCapability,
   requireTeamWide,
 } from "../membership";
-import { sendToChannel, type AlertChannel } from "../notify/channels";
+import {
+  CHANNEL_TIMEOUT_MS,
+  sendToChannel,
+  type AlertChannel,
+} from "../notify/channels";
 import {
   deletePushSubscription,
   ensureVapidKeys,
   savePushSubscription,
   type PushSubscriptionInput,
 } from "../notify/web-push";
-import { assertSafeOutboundUrl } from "../outbound-url";
+import { assertSafeOutboundHost, assertSafeOutboundUrl } from "../outbound-url";
+import { rateLimit } from "../security";
 import { ALL_ALERTS, ALL_CHANNELS } from "../types";
 import type {
   AlertKey,
@@ -128,12 +134,20 @@ function rowToInstance(
   };
 }
 
-/** Every configured destination of the active team, oldest first. */
+/**
+ * Every configured destination of the active team, oldest first.
+ *
+ * Gated on `manage_notifications` and not on the `view` floor, because a channel
+ * row IS a credential: a Discord/Slack/Teams/Mattermost/Lark webhook URL is a
+ * bearer token in URL form, and anybody holding one can post into the team's
+ * room as Deplo. There is no masked variant to fall back to — the edit modal
+ * needs the real address — so the read carries the same gate as the write.
+ */
 export async function listNotificationChannels(): Promise<
   NotificationChannelInstance[]
 > {
   await requireTeamWide("notification channels");
-  const teamId = await requireActiveTeamId();
+  const { teamId } = await requireCapability("manage_notifications");
   const rows = await getDb()
     .select()
     .from(notificationChannels)
@@ -150,7 +164,14 @@ export async function listNotificationChannels(): Promise<
 /* ------------------------------------------------------------------ */
 
 const bool = (v: unknown): boolean => v === true;
-const str = (v: unknown): string => (typeof v === "string" ? v.trim() : "");
+/**
+ * A stored field is text a human typed, so it is capped: nothing here is a
+ * document, and an uncapped `JSON` scalar is a free row-size multiplier for
+ * anybody who can save a channel.
+ */
+const MAX_FIELD = 512;
+const str = (v: unknown): string =>
+  typeof v === "string" ? v.trim().slice(0, MAX_FIELD) : "";
 const port = (v: unknown): number => {
   const n = typeof v === "number" ? v : Number.parseInt(String(v ?? ""), 10);
   return Number.isInteger(n) && n > 0 && n <= 65535 ? n : 587;
@@ -229,13 +250,35 @@ export async function saveNotificationChannel(
   // is the other way out of a checked URL.
   const label = URL_LABEL[next.kind];
   if (label && next.url) await assertSafeOutboundUrl(next.url, label);
+  // SMTP is a bare host rather than a URL, so it takes the HOST form of the same
+  // guard. Without it, `email` would be the one channel kind that can dial the
+  // control plane's own network.
+  if (next.kind === "email" && next.emailProvider === "smtp" && next.smtpHost)
+    await assertSafeOutboundHost(next.smtpHost, "SMTP host");
 
   // Read the stored ciphertext BEFORE the transaction (a query on its own
   // connection inside one deadlocks the test harness) — an empty secret means
-  // "keep the stored one", so an edit that only moves the SMTP host must not
-  // require retyping the password.
+  // "keep the stored one", so an edit that only moves the channel's NAME must
+  // not require retyping the password.
   const prev = id ? await channelRow(teamId, id) : null;
   if (id && !prev) throw new Error("Channel not found");
+  if (!prev) await assertRoomForOneMore(teamId);
+
+  // A stored credential is kept only while the destination it was typed for is
+  // the same one. Editing just the URL or the SMTP host, leaving the secret
+  // blank, would otherwise FORWARD the stored token to whoever owns the new
+  // address — a `manage_notifications` holder who cannot read the secret can
+  // still have it delivered to a host they control (Gotify's `X-Gotify-Key`,
+  // ntfy's bearer, the SMTP AUTH password). So the save is refused instead.
+  if (
+    prev &&
+    prev.secretEnc &&
+    !next.secrets?.secret &&
+    (next.url !== prev.url || next.smtpHost !== prev.smtpHost)
+  )
+    throw new Error(
+      "The address changed, so enter this channel's token or password again",
+    );
   const keep = (fresh: string | undefined, stored: string | undefined) =>
     fresh ? encryptSecret(fresh) : (stored ?? "");
 
@@ -279,6 +322,27 @@ export async function saveNotificationChannel(
   });
 
   return rowToInstance(row, [...next.alerts]);
+}
+
+/**
+ * How many destinations one team may configure.
+ *
+ * Every alert fans out to all of them, so an unbounded list is an unbounded
+ * outbound multiplier on one team's say-so. Well past what a real team wires up
+ * (two rooms, an inbox and a webhook is a busy team) and low enough that the
+ * fan-out stays a handful of POSTs.
+ */
+const MAX_CHANNELS_PER_TEAM = 25;
+
+async function assertRoomForOneMore(teamId: string): Promise<void> {
+  const [row] = await getDb()
+    .select({ n: count() })
+    .from(notificationChannels)
+    .where(eq(notificationChannels.teamId, teamId));
+  if (Number(row?.n ?? 0) >= MAX_CHANNELS_PER_TEAM)
+    throw new Error(
+      `A team can have ${MAX_CHANNELS_PER_TEAM} channels. Remove one to add another.`,
+    );
 }
 
 /** Forget one channel. Its alert rows go with it, by FK cascade. */
@@ -478,17 +542,28 @@ export async function sendTestNotification(channelId: string): Promise<void> {
   // same way as editing, so a view-only member can't drive traffic to the team's
   // configured endpoints.
   const { teamId, userId } = await requireCapability("manage_notifications");
+  // One button press is one outbound request to an address the presser chose, so
+  // it is counted like every other sensitive action. Without this the settings
+  // page is a request generator anybody with the capability can hold down.
+  if (!rateLimit(`notify-test:${userId}`, { limit: 10, windowMs: 60_000 }).ok)
+    throw new Error("Too many test alerts. Wait a minute and try again.");
   const row = await channelRow(teamId, channelId);
   if (!row) throw new Error("Channel not found");
   const target = channelFor(row, userId);
   if (typeof target === "string") throw new Error(target);
-  await sendToChannel(target, {
-    key: "deployment_failed",
-    title: "Deplo test alert",
-    body: "This channel is wired up correctly.",
-    url: null,
-    ts: new Date().toISOString(),
-  });
+  // The same deadline the dispatcher gives a channel: a settings-page mutation
+  // must not hang on a destination that accepts the connection and goes quiet.
+  await sendToChannel(
+    target,
+    {
+      key: "deployment_failed",
+      title: "Deplo test alert",
+      body: "This channel is wired up correctly.",
+      url: null,
+      ts: new Date().toISOString(),
+    },
+    AbortSignal.timeout(CHANNEL_TIMEOUT_MS),
+  );
 }
 
 /** The instance's VAPID public key, minted on first use. Public by design. */
@@ -501,6 +576,12 @@ export async function getWebPushPublicKey(): Promise<string> {
  * Opt this browser in. Gated on being a member of the active team, NOT on
  * `manage_notifications`: subscribing your own device is your own business, the
  * same way revoking your own session is.
+ *
+ * The endpoint is a URL the CALLER supplies and the control plane later dials
+ * from a background loop with nobody behind it — the same shape as a webhook,
+ * and so it takes the same guard. Skipping it made this the one place where the
+ * lowest privilege in the product could aim a control-plane request at the
+ * inside of its own network.
  */
 export async function subscribeWebPush(
   sub: PushSubscriptionInput,
@@ -509,7 +590,40 @@ export async function subscribeWebPush(
   const teamId = await requireActiveTeamId();
   if (!sub.endpoint || !sub.p256dh || !sub.auth)
     throw new Error("The browser did not return a usable subscription");
+  await assertSafeOutboundUrl(sub.endpoint, "Push endpoint");
+  await assertRoomForOneMoreDevice(teamId, user.id, sub.endpoint);
   await savePushSubscription(teamId, user.id, sub);
+}
+
+/**
+ * How many browsers one person may register per team. Every team alert POSTs to
+ * each of them, so this is the per-member half of the same fan-out bound
+ * {@link MAX_CHANNELS_PER_TEAM} puts on the team. Nobody carries ten devices; a
+ * list that grows past this is a list being used for something else.
+ */
+const MAX_DEVICES_PER_USER = 10;
+
+async function assertRoomForOneMoreDevice(
+  teamId: string,
+  userId: string,
+  endpoint: string,
+): Promise<void> {
+  // Counts the OTHER devices: the save is an upsert, so a browser rotating its
+  // keys on an endpoint it already holds must not be refused at the cap.
+  const [row] = await getDb()
+    .select({ n: count() })
+    .from(pushSubscriptions)
+    .where(
+      and(
+        eq(pushSubscriptions.teamId, teamId),
+        eq(pushSubscriptions.userId, userId),
+        ne(pushSubscriptions.endpoint, endpoint),
+      ),
+    );
+  if (Number(row?.n ?? 0) >= MAX_DEVICES_PER_USER)
+    throw new Error(
+      `You can register ${MAX_DEVICES_PER_USER} browsers for push. Turn one off first.`,
+    );
 }
 
 /** Opt this browser back out. Scoped to the caller's own row. */

@@ -46,6 +46,16 @@ export type AlertChannel =
   | { kind: "ntfy"; baseUrl: string; topic: string; token: string }
   | { kind: "pushover"; token: string; userKey: string };
 
+/**
+ * How long one channel gets before the others stop waiting for it.
+ *
+ * It lives HERE, next to the dials it bounds, rather than in the dispatcher:
+ * `sendTestNotification` needs the same deadline, and `lib/data/notifications.ts`
+ * importing the dispatcher would close a cycle (dispatch → channelsForAlert →
+ * dispatch). Re-exported from `dispatch.ts`, which is where it reads best.
+ */
+export const CHANNEL_TIMEOUT_MS = 5_000;
+
 export interface AlertMessage {
   key: AlertKey;
   /** One line, plain text. */
@@ -118,13 +128,19 @@ export async function sendToChannel(
       return;
 
     case "email":
-      await sendEmail(channel.config, {
-        to: channel.to,
-        subject: msg.title,
-        text: `${msg.body}${linkLine(msg)}`,
-      });
+      await sendEmail(
+        channel.config,
+        {
+          to: channel.to,
+          subject: msg.title,
+          text: `${msg.body}${linkLine(msg)}`,
+        },
+        signal,
+      );
       return;
 
+    // No signal: `web-push` takes none. It bounds itself with its own socket
+    // timeout instead — see `PUSH_TIMEOUT_MS`.
     case "push":
       await sendWebPushTo(channel.teamId, channel.userId ?? null, msg);
       return;

@@ -65,7 +65,20 @@ export async function assertSafeOutboundUrl(
   }
   if (url.protocol !== "https:" && !(opts?.allowHttp && url.protocol === "http:"))
     throw new Error(`${label} must be an ${opts?.allowHttp ? "http(s)" : "https"} URL`);
-  const host = url.hostname.replace(/^\[|\]$/g, "").toLowerCase();
+  await assertSafeOutboundHost(url.hostname.replace(/^\[|\]$/g, ""), label);
+}
+
+/**
+ * The same guard for a destination that is a bare HOST rather than a URL — an
+ * SMTP server, which nodemailer dials by `host` + `port` and which therefore
+ * never goes near {@link assertSafeOutboundUrl}. Same rules, same message, so
+ * the one notification channel that is not a URL is not the one exception.
+ */
+export async function assertSafeOutboundHost(
+  raw: string,
+  label: string,
+): Promise<void> {
+  const host = raw.trim().toLowerCase();
   const refuse = () => {
     throw new Error(`${label} must not point at a private or internal address`);
   };

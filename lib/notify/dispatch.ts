@@ -2,7 +2,7 @@ import "server-only";
 
 import { channelsForAlert } from "../data/notifications";
 import { publicBaseUrl } from "../public-url";
-import { sendToChannel } from "./channels";
+import { CHANNEL_TIMEOUT_MS, sendToChannel } from "./channels";
 import { shouldFire } from "./cooldown";
 import { teamsForServerAlerts } from "./server-teams";
 import type { AlertKey } from "../types";
@@ -40,7 +40,7 @@ export interface Alert {
 }
 
 /** How long one channel gets before the others stop waiting for it. */
-export const CHANNEL_TIMEOUT_MS = 5_000;
+export { CHANNEL_TIMEOUT_MS };
 
 /** Raise an alert. Never throws, never blocks the caller. THE default. */
 export function dispatchAlert(alert: Alert): void {

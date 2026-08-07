@@ -1,5 +1,7 @@
 import "server-only";
 
+import { assertSafeOutboundHost } from "../outbound-url";
+
 /**
  * The two ways a team's alerts can leave as email: its own SMTP server, or a
  * Resend API key. One function, one discriminated union, no transport state
@@ -8,8 +10,19 @@ import "server-only";
  *
  * Both branches throw the provider's own words on failure, because that is what
  * the settings page shows the user verbatim ("The domain is not verified" beats
- * "email failed").
+ * "email failed"). A nodemailer failure carries an `ECONNREFUSED`-style `.code`,
+ * which `mask-error.ts` treats as infrastructure and swallows, so it is rewrapped
+ * in a plain `Error` on the way out — otherwise the one channel a self-hoster is
+ * most likely to misconfigure is the one that refuses to say why.
+ *
+ * SMTP is the only destination in this file that the user picks, and it is a bare
+ * `host` + `port` rather than a URL, so it takes the outbound guard's HOST form.
+ * Skipping it would have made SMTP the one channel that can dial the control
+ * plane's own network — see `assertSafeOutboundHost`.
  */
+
+/** What one SMTP dial gets before it is considered dead. */
+const SMTP_TIMEOUT_MS = 10_000;
 
 export type EmailConfig =
   | {
@@ -41,6 +54,7 @@ export function smtpSecure(port: number): boolean {
 export async function sendEmail(
   cfg: EmailConfig,
   msg: EmailMessage,
+  signal?: AbortSignal,
 ): Promise<void> {
   if (cfg.provider === "resend") {
     const res = await fetch("https://api.resend.com/emails", {
@@ -55,27 +69,40 @@ export async function sendEmail(
         subject: msg.subject,
         text: msg.text,
       }),
+      signal,
     });
     if (!res.ok) throw new Error(await resendError(res));
     return;
   }
 
+  await assertSafeOutboundHost(cfg.host, "SMTP host");
   // Dynamic import: nodemailer pulls in net/tls and has no business on the boot
   // path of an instance that never sends an email.
   const { createTransport } = await import("nodemailer");
-  await createTransport({
-    host: cfg.host,
-    port: cfg.port,
-    secure: smtpSecure(cfg.port),
-    // An open relay on the same box needs no credentials; asking for them would
-    // make the common self-hosted case impossible to configure.
-    auth: cfg.user ? { user: cfg.user, pass: cfg.password } : undefined,
-  }).sendMail({
-    from: cfg.from,
-    to: msg.to,
-    subject: msg.subject,
-    text: msg.text,
-  });
+  try {
+    await createTransport({
+      host: cfg.host,
+      port: cfg.port,
+      secure: smtpSecure(cfg.port),
+      // An open relay on the same box needs no credentials; asking for them would
+      // make the common self-hosted case impossible to configure.
+      auth: cfg.user ? { user: cfg.user, pass: cfg.password } : undefined,
+      // nodemailer's own bounds, because it has no AbortSignal: without them a
+      // black-holed host holds the send for two minutes and the dispatcher's 5s
+      // promise means nothing on this branch.
+      connectionTimeout: SMTP_TIMEOUT_MS,
+      greetingTimeout: SMTP_TIMEOUT_MS,
+      socketTimeout: SMTP_TIMEOUT_MS,
+    }).sendMail({
+      from: cfg.from,
+      to: msg.to,
+      subject: msg.subject,
+      text: msg.text,
+    });
+  } catch (e) {
+    // Rewrapped so the reason survives `mask-error.ts` (see the module docblock).
+    throw new Error(e instanceof Error ? e.message : "The SMTP server refused it");
+  }
 }
 
 /** Resend's own reason, or the bare status when the body isn't its usual shape. */
