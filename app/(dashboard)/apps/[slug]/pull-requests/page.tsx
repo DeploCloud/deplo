@@ -11,6 +11,7 @@ import { PageHeader } from "@/components/shared/page-header";
 import { Button } from "@/components/ui/button";
 import { DeployPullRequestDialog } from "@/components/apps/previews/deploy-pull-request-dialog";
 import { PreviewsTable } from "@/components/apps/previews/previews-table";
+import { PullRequestGraphic } from "@/components/apps/previews/pull-request-graphic";
 
 export const metadata = { title: "Pull requests" };
 
@@ -107,7 +108,7 @@ export default async function AppPullRequestsPage(
 
       {view.unavailable === "disabled" && (
         <EmptyState
-          icon={GitPullRequest}
+          graphic={<PullRequestGraphic variant="off" />}
           title="Pull request previews are off for this app"
           description="Turn them on and every open pull request gets its own deploy with its own URL."
           action={
@@ -123,7 +124,7 @@ export default async function AppPullRequestsPage(
       {(view.unavailable === null || view.unavailable === "app-needs-update") &&
         (view.previews.length === 0 ? (
           <EmptyState
-            icon={GitPullRequest}
+            graphic={<PullRequestGraphic />}
             title="No pull request previews yet"
             description={`Open a pull request against ${view.branch} and Deplo builds it a preview with its own URL, then posts the link on the pull request.`}
             action={deployButton}

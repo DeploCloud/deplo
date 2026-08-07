@@ -406,6 +406,126 @@
   }
 }
 
+/* The Pull requests empty state draws a pull request: the branch leaves the
+   trunk, two commits land on it, the merge point lights up, then it fades and
+   goes again. One 5s timeline shared by four elements, each entering on its own
+   delay — the order IS the explanation, so the delays are the design.
+
+   Everything animates transform/opacity or stroke-dashoffset, so it stays on the
+   compositor and costs nothing while the page sits idle. */
+@keyframes deplo-pr-draw {
+  0% {
+    stroke-dashoffset: 128;
+    opacity: 1;
+  }
+  36%,
+  84% {
+    stroke-dashoffset: 0;
+    opacity: 1;
+  }
+  100% {
+    stroke-dashoffset: 0;
+    opacity: 0;
+  }
+}
+
+/* Commits and the merge dot pop in slightly over-sized and settle — the beat a
+   real commit landing has, without a bounce that would read as cartoonish. */
+@keyframes deplo-pr-pop {
+  0%,
+  46% {
+    transform: scale(0);
+    opacity: 0;
+  }
+  56% {
+    transform: scale(1.25);
+    opacity: 1;
+  }
+  62%,
+  84% {
+    transform: scale(1);
+    opacity: 1;
+  }
+  100% {
+    transform: scale(1);
+    opacity: 0;
+  }
+}
+
+/* The "previews are off" mood: the branch reaches out, stalls short of the
+   merge, and retreats. Nothing lands, which is the whole message. Dashed so it
+   reads as intent rather than fact even in a still frame. */
+@keyframes deplo-pr-stall {
+  0% {
+    stroke-dashoffset: 128;
+  }
+  40%,
+  58% {
+    stroke-dashoffset: 52;
+  }
+  95%,
+  100% {
+    stroke-dashoffset: 128;
+  }
+}
+
+.deplo-pr-branch {
+  stroke-dasharray: 128;
+  animation: deplo-pr-draw 5s ease-in-out infinite;
+}
+
+.deplo-pr-branch-off {
+  /* Two dasharrays cannot coexist, so the dashes ARE the draw-on: a 6/4 pattern
+     repeated to the full path length, offset to hide it. */
+  stroke-dasharray: 6 4;
+  stroke-dashoffset: 128;
+  animation: deplo-pr-stall 4.5s ease-in-out infinite;
+}
+
+.deplo-pr-commit-1,
+.deplo-pr-commit-2,
+.deplo-pr-merge {
+  /* Scale from the dot's own centre, not the viewBox origin. */
+  transform-box: fill-box;
+  transform-origin: center;
+  animation: deplo-pr-pop 5s ease-out infinite;
+  opacity: 0;
+}
+
+.deplo-pr-commit-1 {
+  animation-delay: -0.6s;
+}
+.deplo-pr-commit-2 {
+  animation-delay: -0.3s;
+}
+/* Last: the work only lands once the branch has finished drawing back in. */
+.deplo-pr-merge {
+  animation-delay: 0.15s;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  /* Not `animation: none` — that would leave the branch undrawn and the dots at
+     scale(0), i.e. an empty box. Hold the FINISHED frame instead: the same
+     picture, just already told. */
+  .deplo-pr-branch {
+    animation: none;
+    stroke-dashoffset: 0;
+  }
+  /* The "off" branch holds its furthest reach — still visibly incomplete, which
+     is the state it exists to show. */
+  .deplo-pr-branch-off {
+    animation: none;
+    stroke-dashoffset: 52;
+  }
+  .deplo-pr-commit-1,
+  .deplo-pr-commit-2,
+  .deplo-pr-merge {
+    animation: none;
+    opacity: 1;
+    transform: none;
+  }
+}
+
 @media (prefers-reduced-motion: reduce) {
   .animate-fade-in,
   .animate-slide-in-right,

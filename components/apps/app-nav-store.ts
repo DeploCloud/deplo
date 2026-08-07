@@ -20,7 +20,6 @@ export type AppNavState = {
   showFiles: boolean;
   /** The viewer's effective capabilities on this app. */
   capabilities: string[];
-  githubConnected: boolean;
 };
 
 // Client-only module state: each browser tab owns its own instance. It is never

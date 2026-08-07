@@ -17,7 +17,6 @@ export function AppNavSync({
   running: serverRunning,
   showFiles,
   capabilities,
-  githubConnected,
 }: {
   slug: string;
   /** Server-rendered running state; the live subscription takes over after mount. */
@@ -25,7 +24,6 @@ export function AppNavSync({
   showFiles: boolean;
   /** The viewer's capabilities on this app - gates the sub-menu's entries. */
   capabilities: string[];
-  githubConnected: boolean;
 }) {
   const running = useLiveRunning(serverRunning);
   // The array identity changes on every RSC payload; its contents don't, so key
@@ -38,9 +36,8 @@ export function AppNavSync({
       running,
       showFiles,
       capabilities: caps ? caps.split(",") : [],
-      githubConnected,
-    });
-  }, [slug, running, showFiles, caps, githubConnected]);
+        });
+  }, [slug, running, showFiles, caps]);
 
   // Clear only on unmount (leaving the app). Keeping this separate from the
   // publish effect above means a live `running` change re-publishes in place

@@ -129,7 +129,6 @@ export function SidebarNav({
       canBackup: appCaps.has("manage_backups"),
       running: matches ? service!.running : false,
       showFiles: matches ? service!.showFiles : false,
-      githubConnected: matches ? service!.githubConnected : false,
       consoleAcknowledged,
     });
   } else if (inSettings) {

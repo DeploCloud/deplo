@@ -290,11 +290,6 @@ export interface AppNavFlags {
   canBackup: boolean;
   running: boolean;
   showFiles: boolean;
-  /** The app deploys from a connected GitHub App installation, so its pull
-   *  requests can get their own preview deploy. Nothing else — a raw git URL, a
-   *  docker image, an upload, a compose stack — ever receives a `pull_request`
-   *  delivery, so the entry would be a dead end. */
-  githubConnected: boolean;
   /** The console is an advanced surface: its chip appears only once the user has
    *  confirmed the one-time "I understand" warning (persisted in localStorage). */
   consoleAcknowledged: boolean;
@@ -330,22 +325,22 @@ export function appNav(slug: string, f: AppNavFlags): NavSection[] {
       icon: Rocket,
       tooltip: "Deployment history",
     },
-    // Pull request previews. NOT gated on the previews switch: someone who
-    // turned them off still needs the page to find leftovers and to read why
-    // nothing is building.
-    ...(f.githubConnected || on("/pull-requests")
-      ? [
-          {
-            label: "Pull requests",
-            href: `${base}/pull-requests`,
-            icon: GitPullRequest,
-            tooltip: "Preview deploys for open pull requests",
-            // The page's own read is `manage_previews`-gated and would throw for
-            // anyone else, so an ungated entry would be a link to an error.
-            requires: "manage_previews",
-          } as NavItem,
-        ]
-      : []),
+    // Pull request previews. ALWAYS present — not gated on the previews switch,
+    // on the app having a GitHub repository, and least of all on there being a
+    // pull request open right now. A tab that appears and disappears is a tab
+    // nobody learns: the page is a switch on ONE server-resolved reason, so
+    // whichever of those is missing, it says so and links to the fix. An empty
+    // list is a state worth showing, not a reason to hide the door to it.
+    {
+      label: "Pull requests",
+      href: `${base}/pull-requests`,
+      icon: GitPullRequest,
+      tooltip: "Preview deploys for open pull requests",
+      // The page's own read is `manage_previews`-gated and would throw for
+      // anyone else, so an ungated entry would be a link to an error. This is a
+      // permission, not a state — it does not flicker.
+      requires: "manage_previews",
+    } as NavItem,
     // Environment holds sensitive values — only for manage_env holders.
     ...(f.canManageEnv
       ? [
