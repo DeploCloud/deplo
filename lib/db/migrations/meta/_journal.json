@@ -540,6 +540,13 @@
       "when": 1784676400000,
       "tag": "0076_add_app_previews",
       "breakpoints": true
+    },
+    {
+      "idx": 77,
+      "version": "7",
+      "when": 1784676600000,
+      "tag": "0077_backfill_manage_previews",
+      "breakpoints": true
     }
   ]
 }

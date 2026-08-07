@@ -7,6 +7,7 @@ import { eq } from "drizzle-orm";
 import { makeTestDb, type TestDb } from "../db/test-harness";
 import { __setTestDb, __resetTestDb } from "../db/client";
 import {
+  membershipCapabilities as membershipCapabilitiesTable,
   memberships as membershipsTable,
   teamRoles as teamRolesTable,
 } from "../db/schema/control-plane";
@@ -19,6 +20,7 @@ import {
   USER_1,
 } from "./identity-test-helpers";
 import { CAPABILITY_PRESETS } from "../membership-shared";
+import { ALL_CAPABILITIES } from "../types";
 import { listMembers, updateMember } from "./members";
 import {
   createRole,
@@ -548,4 +550,39 @@ test("limiting a built-in marks it edited, so the way back stays offered", async
     true,
     "a built-in limited away from its default still reads as pristine",
   );
+});
+
+test("every capability that exists is reachable: the Owner role holds all of them", async () => {
+  // A NEW capability is easy to ship half-dead: the enum, the gate and the UI
+  // all land, while every capability row already in the database predates it —
+  // so nobody, not even the founder, can use the feature. "The Owner built-in
+  // always grants everything" is a contract implemented by seeding rows, not by
+  // deriving at check time, which is exactly why it can silently rot.
+  //
+  // This asserts it against the REPLAYED migrations, so a capability added
+  // without its backfill fails here instead of in production. When it does: add
+  // one more migration granting the new name wherever its nearest existing
+  // sibling is already held (see 0077).
+  await seedIdentity(db);
+  const owner = byName(await asOwner(() => listRoles()), "Owner");
+  for (const cap of ALL_CAPABILITIES) {
+    assert.ok(
+      owner.capabilities.includes(cap),
+      `the Owner role is missing "${cap}" — a capability nobody can hold is a feature nobody can reach`,
+    );
+  }
+
+  // And the flat set the checks actually read must agree with the role.
+  const rows = await db
+    .select()
+    .from(membershipCapabilitiesTable)
+    .innerJoin(
+      membershipsTable,
+      eq(membershipCapabilitiesTable.membershipId, membershipsTable.id),
+    )
+    .where(eq(membershipsTable.userId, USER_1));
+  const held = new Set(rows.map((r) => r.membership_capabilities.capability));
+  for (const cap of ALL_CAPABILITIES) {
+    assert.ok(held.has(cap), `the owner's membership is missing "${cap}"`);
+  }
 });
