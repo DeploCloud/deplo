@@ -43,6 +43,14 @@ import type {
 } from "@/lib/types";
 
 /**
+ * The three the picker leads with. They are the three that are not beta, which
+ * is the same thing as the three we are confident about — but SPELLED OUT
+ * rather than derived from `beta`, so a channel leaving beta does not silently
+ * become a fourth tile in a three-column grid.
+ */
+const FEATURED: NotificationChannel[] = ["discord", "email", "webhook"];
+
+/**
  * The notification settings.
  *
  * The page is a LIST OF CONFIGURED CHANNELS and nothing else — not the twelve
@@ -327,35 +335,24 @@ export function NotificationsPanel({
 
             <div className="min-h-0 space-y-5 overflow-y-auto p-4">
               {!draft ? (
-                <div className="grid gap-2 sm:grid-cols-2">
-                  {ALL_CHANNELS.map((kind) => (
-                    <button
-                      key={kind}
-                      type="button"
-                      onClick={() => pickKind(kind)}
-                      className="flex items-center gap-3 rounded-lg border border-border p-3 text-left transition-colors hover:border-ring hover:bg-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-                    >
-                      <ChannelMark channel={kind} />
-                      <span className="min-w-0 flex-1">
-                        <span className="flex items-center gap-1.5">
-                          <span className="truncate text-sm font-medium">
-                            {CHANNEL_BRAND[kind].label}
-                          </span>
-                          {CHANNEL_BRAND[kind].beta && (
-                            <Badge
-                              variant="info"
-                              className="px-1.5 py-0 text-[10px]"
-                            >
-                              Beta
-                            </Badge>
-                          )}
-                        </span>
-                        <span className="mt-1 block text-xs text-muted-foreground">
-                          {CHANNEL_BRAND[kind].description}
-                        </span>
-                      </span>
-                    </button>
-                  ))}
+                <div className="space-y-4">
+                  <div className="grid gap-2 sm:grid-cols-3">
+                    {FEATURED.map((kind) => (
+                      <KindTile key={kind} kind={kind} featured onPick={pickKind} />
+                    ))}
+                  </div>
+                  <div className="space-y-2">
+                    <p className="text-xs font-medium text-muted-foreground">
+                      More channels
+                    </p>
+                    <div className="grid gap-2 sm:grid-cols-2">
+                      {ALL_CHANNELS.filter((k) => !FEATURED.includes(k)).map(
+                        (kind) => (
+                          <KindTile key={kind} kind={kind} onPick={pickKind} />
+                        ),
+                      )}
+                    </div>
+                  </div>
                 </div>
               ) : (
                 <>
@@ -466,6 +463,61 @@ export function NotificationsPanel({
         }}
       />
     </>
+  );
+}
+
+/**
+ * One choice in the Add picker. The featured three stand up (mark above the
+ * name, centred, taller) so the eye lands on them first; the rest keep the
+ * compact row shape, which is what makes "the rest" read as a list.
+ */
+function KindTile({
+  kind,
+  featured,
+  onPick,
+}: {
+  kind: NotificationChannel;
+  featured?: boolean;
+  onPick: (kind: NotificationChannel) => void;
+}) {
+  const brand = CHANNEL_BRAND[kind];
+  const base =
+    "rounded-lg border p-3 text-left transition-colors hover:border-ring hover:bg-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring";
+  if (featured)
+    return (
+      <button
+        type="button"
+        onClick={() => onPick(kind)}
+        className={`flex flex-col items-center gap-2 border-border ${base} py-4 text-center`}
+      >
+        <ChannelMark channel={kind} className="size-10" />
+        <span className="text-sm font-medium">{brand.label}</span>
+        <span className="text-xs leading-snug text-muted-foreground">
+          {brand.description}
+        </span>
+      </button>
+    );
+  return (
+    <button
+      type="button"
+      onClick={() => onPick(kind)}
+      className={`flex items-center gap-3 border-border ${base}`}
+    >
+      <ChannelMark channel={kind} />
+      <span className="min-w-0 flex-1">
+        <span className="flex items-center gap-1.5">
+          <span className="truncate text-sm font-medium">{brand.label}</span>
+          {brand.beta && (
+            <Badge variant="info" className="px-1.5 py-0 text-[10px]">
+              Beta
+            </Badge>
+          )}
+        </span>
+        <span className="mt-1 block text-xs text-muted-foreground">
+          {brand.description}
+        </span>
+      </span>
+    </button>
   );
 }
 
