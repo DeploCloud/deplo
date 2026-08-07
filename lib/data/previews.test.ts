@@ -34,7 +34,7 @@ import {
   TRUNCATE_IDENTITY,
   USER_1,
 } from "./identity-test-helpers";
-import { destroyPreview, redeployPreview } from "./previews";
+import { approvePreview, destroyPreview, redeployPreview } from "./previews";
 
 /**
  * Pull request previews, at the data layer.
@@ -233,6 +233,66 @@ test("a push does NOT revive an evicted preview, but Redeploy does", async () =>
   assert.notEqual((await previewOf(1)).status, "evicted");
   assert.equal((await previewOf(1)).deployKey, evictedKey, "same stack, same URL");
   assert.equal((await previewOf(2)).status, "evicted", "the cap of 1 still holds");
+});
+
+test("a blocked fork evicts NOTHING — a stranger cannot knock a preview over", async () => {
+  await seedPreviewApp("prj_1", { slug: "blog", maxActive: 1 });
+  await openOrSyncPreview("prj_1", { ...PR, number: 1 }, { actor: "o" });
+  assert.equal((await previewOf(1)).status, "queued");
+
+  // An unapproved fork is RECORDED so a maintainer can see and approve it, but
+  // it clones nothing and runs nothing. If recording it evicted the team's own
+  // live preview, anyone could take the app's previews down by opening pull
+  // requests — and put nothing in their place.
+  const fork = await openOrSyncPreview(
+    "prj_1",
+    { ...PR, number: 2, isFork: true, headRepo: "stranger/blog" },
+    { actor: "stranger" },
+  );
+  assert.deepEqual(fork.refusal, { kind: "awaiting-approval" });
+  assert.equal((await previewOf(2)).status, "blocked");
+  assert.notEqual(
+    (await previewOf(1)).status,
+    "evicted",
+    "the team's own preview must still be running",
+  );
+
+  // Approving it is what claims a slot — and then the cap does apply.
+  await openOrSyncPreview(
+    "prj_1",
+    { ...PR, number: 2, isFork: true, headRepo: "stranger/blog" },
+    { actor: "maintainer", approve: true, manual: true },
+  );
+  assert.notEqual((await previewOf(2)).status, "blocked");
+  assert.equal(
+    (await previewOf(1)).status,
+    "evicted",
+    "approving the fork claims a slot like any other build",
+  );
+});
+
+test("approving a fork through the gated API still respects the cap", async () => {
+  await seedPreviewApp("prj_1", { slug: "blog", maxActive: 2 });
+  await openOrSyncPreview("prj_1", { ...PR, number: 1 }, { actor: "o" });
+  await openOrSyncPreview("prj_1", { ...PR, number: 2 }, { actor: "o" });
+  await openOrSyncPreview(
+    "prj_1",
+    { ...PR, number: 3, isFork: true, headRepo: "stranger/blog" },
+    { actor: "stranger" },
+  );
+
+  // approvePreview is a different door into the same build. It must not seat the
+  // fork by simply flipping the status: the row has to travel through the one
+  // path that claims a slot, or the app ends up over the limit it set.
+  await runWithIdentity({ userId: USER_1, teamId: TEAM_A }, async () => {
+    await approvePreview((await previewOf(3)).id);
+  });
+
+  const live = (await db.select().from(appPreviewsTable))
+    .filter((p) => p.state === "open" && !["blocked", "evicted"].includes(p.status));
+  assert.equal(live.length, 2, `cap of 2 exceeded: ${live.map((p) => p.prNumber)}`);
+  assert.equal((await previewOf(1)).status, "evicted", "the stalest made room");
+  assert.notEqual((await previewOf(3)).status, "blocked", "the fork is building");
 });
 
 test("a blocked fork holds no slot: it has no stack to evict", async () => {

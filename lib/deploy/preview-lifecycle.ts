@@ -184,7 +184,14 @@ export async function openOrSyncPreview(
       // At the cap, the NEW preview wins and the least recently active one is
       // torn down. An existing preview's own next push never evicts anything —
       // it already holds its slot.
-      if ((await countOpenPreviews(appId)) >= settings.maxActive) {
+      //
+      // ONLY when this preview is actually going to build. An unapproved fork
+      // is recorded so a maintainer can see and approve it, but it clones
+      // nothing and runs nothing — evicting a live preview to seat it would let
+      // any stranger opening a pull request knock the team's own previews over,
+      // and put nothing in their place. It takes a slot when it is approved,
+      // through the same path every other build takes.
+      if (approved && (await countOpenPreviews(appId)) >= settings.maxActive) {
         await evictToFit(appId, settings.maxActive);
       }
       const server =
@@ -262,11 +269,13 @@ export async function deployPreviewRow(
     .limit(1);
   const p = row[0];
   if (!p) return null;
-  // Reviving an evicted preview reclaims a slot exactly like a new one, or the
-  // app would end up over the limit it set. This lives HERE rather than in the
-  // webhook path because every way back — Redeploy, approving a fork, the manual
-  // pull request picker — comes through this function.
-  if (p.status === "evicted") {
+  // A preview that holds no slot is about to start holding one, so it claims
+  // its place exactly like a new preview would — otherwise reviving an evicted
+  // one, or approving a fork that has been sitting blocked, would silently put
+  // the app over the limit it set. This lives HERE rather than in the webhook
+  // path because every way in — Redeploy, approving a fork, the manual pull
+  // request picker — comes through this function.
+  if ((SLOTLESS as readonly string[]).includes(p.status)) {
     const settings = await previewSettings(p.appId);
     const max = settings?.maxActive ?? PREVIEW_MAX_ACTIVE_DEFAULT;
     if ((await countOpenPreviews(p.appId)) >= max) await evictToFit(p.appId, max);
@@ -429,6 +438,14 @@ export async function previewSettings(appId: string): Promise<{
   };
 }
 
+/**
+ * The statuses that hold NO slot against the cap, because neither has a stack:
+ * `blocked` was never cloned or built, `evicted` had its stack removed. One
+ * constant so the counter, the eviction and the revive can never disagree about
+ * what "live" means.
+ */
+const SLOTLESS = ["blocked", "evicted"] as const;
+
 /** How many previews of this app are currently open (the cap's subject). */
 async function countOpenPreviews(appId: string): Promise<number> {
   const rows = await getDb()
@@ -438,10 +455,8 @@ async function countOpenPreviews(appId: string): Promise<number> {
       and(
         eq(appPreviewsTable.appId, appId),
         eq(appPreviewsTable.state, "open"),
-        // The cap counts STACKS, not rows. A `blocked` fork has never been
-        // cloned or built, and an `evicted` one had its stack removed — neither
-        // is consuming the host, so neither may hold a slot hostage.
-        notInArray(appPreviewsTable.status, ["blocked", "evicted"]),
+        // The cap counts STACKS, not rows.
+        notInArray(appPreviewsTable.status, [...SLOTLESS]),
       ),
     );
   return rows[0]?.n ?? 0;
@@ -475,7 +490,7 @@ async function evictToFit(appId: string, keep: number): Promise<number> {
       and(
         eq(appPreviewsTable.appId, appId),
         eq(appPreviewsTable.state, "open"),
-        notInArray(appPreviewsTable.status, ["blocked", "evicted"]),
+        notInArray(appPreviewsTable.status, [...SLOTLESS]),
       ),
     )
     .orderBy(asc(appPreviewsTable.lastActivityAt))

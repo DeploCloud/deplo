@@ -321,7 +321,10 @@ export async function approvePreview(previewId: string): Promise<AppPreviewDTO> 
       approvedByUserId: userId,
       approvedAt: now,
       approvedSha: p.headSha,
-      status: "queued",
+      // Deliberately NOT `status: "queued"`. Leaving the row `blocked` is what
+      // lets `deployPreviewRow` see that it holds no slot and claim one — moving
+      // it here would seat the fork without evicting anything and put the app
+      // over its own limit. Approval records consent; the deploy owns the state.
       updatedAt: now,
     })
     .where(
