@@ -282,14 +282,18 @@ export function NotificationsPanel({
 
       {/* ONE modal for whichever channel is open, so only one alert picker is
           ever mounted - which is also what keeps its per-row DOM ids unique.
-          The alert list is far taller than any viewport, so the modal is capped
-          and only its middle row scrolls: the channel stays named and its
-          buttons stay reachable however far down the list you are. */}
+          Its height is FIXED, not content-driven: the twelve channels range from
+          no fields at all to six, and a modal that resized to each of them would
+          jump every time you opened a different one. Only the middle row
+          scrolls, so the channel stays named and its buttons stay reachable
+          however far down the alert list you are. `max-h` is a floor for short
+          viewports, not a second opinion - without it a 600px laptop would push
+          the footer off screen. */}
       <Dialog
         open={open !== null}
         onOpenChange={(next) => !next && closeChannel(true)}
       >
-        <DialogContent className="max-h-[85vh] max-w-2xl gap-0 p-0 grid-rows-[minmax(0,1fr)]">
+        <DialogContent className="h-[42rem] max-h-[85vh] max-w-2xl gap-0 p-0 grid-rows-[minmax(0,1fr)]">
           {open && (
             // A real form, so Enter in a webhook field saves instead of doing
             // nothing. THIS is where a channel is saved: a page-level Save made

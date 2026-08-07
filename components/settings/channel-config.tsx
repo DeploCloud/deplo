@@ -1,7 +1,9 @@
 "use client";
 
 import * as React from "react";
+import { Bell } from "lucide-react";
 
+import { CHANNEL_BRAND } from "@/components/settings/channel-brand";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import {
@@ -129,13 +131,27 @@ export function ChannelConfig(props: ChannelConfigProps) {
   );
 
   switch (channel) {
-    case "push":
+    case "push": {
+      // The one channel with no fields at all. A bare line of muted text in an
+      // otherwise empty modal reads as something failing to load, so it wears
+      // the channel's own colour and looks deliberate.
+      const brand = CHANNEL_BRAND.push;
       return (
-        <p className="text-sm text-muted-foreground">
-          Nothing to configure. Turning this on asks this browser for permission,
-          once per device.
-        </p>
+        <div
+          className="flex items-start gap-3 rounded-lg border p-3"
+          style={{
+            backgroundColor: `color-mix(in oklab, ${brand.bg} 10%, transparent)`,
+            borderColor: `color-mix(in oklab, ${brand.bg} 35%, transparent)`,
+          }}
+        >
+          <Bell className="mt-0.5 size-4 shrink-0" style={{ color: brand.bg }} />
+          <p className="text-sm leading-snug">
+            Nothing to configure. Turning this on asks this browser for
+            permission, once per device.
+          </p>
+        </div>
       );
+    }
 
     case "email": {
       const smtp = c.email.provider === "smtp";
