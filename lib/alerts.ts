@@ -1,5 +1,5 @@
-import type { AlertKey, NotificationSettings } from "./types";
-import { ALL_ALERTS } from "./types";
+import type { ChannelAlerts, AlertKey, NotificationSettings } from "./types";
+import { ALL_ALERTS, ALL_CHANNELS } from "./types";
 
 /**
  * The alert catalog — one entry per thing Deplo will tell a team about, plus the
@@ -361,6 +361,17 @@ export function searchAlerts(query: string): AlertKey[] {
   });
 }
 
+/**
+ * Every channel on the catalog defaults — what a channel is subscribed to before
+ * anybody opens its sheet. It is never written on enabling a channel: a channel
+ * with no stored rows already resolves to exactly this.
+ */
+export function defaultChannelAlerts(): ChannelAlerts {
+  return Object.fromEntries(
+    ALL_CHANNELS.map((c) => [c, [...DEFAULT_ALERTS]]),
+  ) as ChannelAlerts;
+}
+
 /** Default notification settings for a team that has none persisted yet. */
 export function defaultNotificationSettings(): NotificationSettings {
   return {
@@ -378,7 +389,18 @@ export function defaultNotificationSettings(): NotificationSettings {
       slack: { enabled: false, webhookUrl: "" },
       telegram: { enabled: false, chatId: "", botTokenSet: false },
       webhook: { enabled: false, url: "" },
+      lark: { enabled: false, webhookUrl: "" },
+      msteams: { enabled: false, webhookUrl: "" },
+      gotify: { enabled: false, url: "", tokenSet: false },
+      ntfy: {
+        enabled: false,
+        baseUrl: "https://ntfy.sh",
+        topic: "",
+        tokenSet: false,
+      },
+      mattermost: { enabled: false, webhookUrl: "" },
+      pushover: { enabled: false, tokenSet: false, userKeySet: false },
     },
-    alerts: [...DEFAULT_ALERTS],
+    alerts: defaultChannelAlerts(),
   };
 }

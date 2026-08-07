@@ -26,6 +26,10 @@ export interface ChannelSecretsEnc {
   smtpPasswordEnc: string;
   resendApiKeyEnc: string;
   telegramBotTokenEnc: string;
+  gotifyTokenEnc: string;
+  ntfyTokenEnc: string;
+  pushoverTokenEnc: string;
+  pushoverUserKeyEnc: string;
 }
 
 /** Reassemble a flat `notification_settings` row into the DTO's channel map. */
@@ -55,6 +59,28 @@ export function rowToChannels(
       botTokenSet: row.telegramBotTokenEnc !== "",
     },
     webhook: { enabled: row.webhookEnabled, url: row.webhookUrl },
+    lark: { enabled: row.larkEnabled, webhookUrl: row.larkWebhookUrl },
+    msteams: { enabled: row.msteamsEnabled, webhookUrl: row.msteamsWebhookUrl },
+    gotify: {
+      enabled: row.gotifyEnabled,
+      url: row.gotifyUrl,
+      tokenSet: row.gotifyTokenEnc !== "",
+    },
+    ntfy: {
+      enabled: row.ntfyEnabled,
+      baseUrl: row.ntfyBaseUrl,
+      topic: row.ntfyTopic,
+      tokenSet: row.ntfyTokenEnc !== "",
+    },
+    mattermost: {
+      enabled: row.mattermostEnabled,
+      webhookUrl: row.mattermostWebhookUrl,
+    },
+    pushover: {
+      enabled: row.pushoverEnabled,
+      tokenSet: row.pushoverTokenEnc !== "",
+      userKeySet: row.pushoverUserKeyEnc !== "",
+    },
   };
 }
 
@@ -89,5 +115,21 @@ export function channelsToRow(
     telegramChatId: c.telegram.chatId,
     webhookEnabled: c.webhook.enabled,
     webhookUrl: c.webhook.url,
+    larkEnabled: c.lark.enabled,
+    larkWebhookUrl: c.lark.webhookUrl,
+    msteamsEnabled: c.msteams.enabled,
+    msteamsWebhookUrl: c.msteams.webhookUrl,
+    mattermostEnabled: c.mattermost.enabled,
+    mattermostWebhookUrl: c.mattermost.webhookUrl,
+    gotifyEnabled: c.gotify.enabled,
+    gotifyUrl: c.gotify.url,
+    gotifyTokenEnc: enc.gotifyTokenEnc,
+    ntfyEnabled: c.ntfy.enabled,
+    ntfyBaseUrl: c.ntfy.baseUrl,
+    ntfyTopic: c.ntfy.topic,
+    ntfyTokenEnc: enc.ntfyTokenEnc,
+    pushoverEnabled: c.pushover.enabled,
+    pushoverTokenEnc: enc.pushoverTokenEnc,
+    pushoverUserKeyEnc: enc.pushoverUserKeyEnc,
   };
 }

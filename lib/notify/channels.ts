@@ -21,7 +21,12 @@ import type { AlertKey } from "../types";
  * channel so one dead webhook never costs the others.
  */
 
-/** A configured destination. Secrets are already decrypted by the caller. */
+/**
+ * A configured destination. Secrets are already decrypted by the caller.
+ *
+ * Every `kind` is spelled EXACTLY like its `NotificationChannel` member — that
+ * is what lets the dispatcher write `alerts[c.kind]` with no mapping table.
+ */
 export type AlertChannel =
   | { kind: "discord"; webhookUrl: string }
   | { kind: "slack"; webhookUrl: string }
@@ -29,7 +34,14 @@ export type AlertChannel =
   | { kind: "webhook"; url: string }
   | { kind: "email"; to: string; config: EmailConfig }
   /** Endpoints are per user and resolved at send time from `push_subscriptions`. */
-  | { kind: "push"; teamId: string; userId?: string };
+  | { kind: "push"; teamId: string; userId?: string }
+  /* ---- beta ---- */
+  | { kind: "lark"; webhookUrl: string }
+  | { kind: "msteams"; webhookUrl: string }
+  | { kind: "mattermost"; webhookUrl: string }
+  | { kind: "gotify"; url: string; token: string }
+  | { kind: "ntfy"; baseUrl: string; topic: string; token: string }
+  | { kind: "pushover"; token: string; userKey: string };
 
 export interface AlertMessage {
   key: AlertKey;
@@ -113,6 +125,102 @@ export async function sendToChannel(
     case "push":
       await sendWebPushTo(channel.teamId, channel.userId ?? null, msg);
       return;
+
+    case "lark":
+      await postJson(
+        channel.webhookUrl,
+        "Lark webhook URL",
+        {
+          msg_type: "text",
+          content: { text: `${msg.title}\n${msg.body}${linkLine(msg)}` },
+        },
+        signal,
+      );
+      return;
+
+    // The Power Automate Workflows template Microsoft tells people to create
+    // posts `text`. An Adaptive Card envelope only renders if the workflow was
+    // built to post a card, which that template is not.
+    case "msteams":
+      await postJson(
+        channel.webhookUrl,
+        "Microsoft Teams webhook URL",
+        { text: `**${msg.title}**\n\n${msg.body}${linkLine(msg)}` },
+        signal,
+      );
+      return;
+
+    case "mattermost":
+      await postJson(
+        channel.webhookUrl,
+        "Mattermost webhook URL",
+        { text: `**${msg.title}**\n${msg.body}${linkLine(msg)}` },
+        signal,
+      );
+      return;
+
+    // The token goes in a header, not `?token=`: a query string lands in every
+    // access log on the way.
+    case "gotify":
+      await postJson(
+        `${channel.url.replace(/\/+$/, "")}/message`,
+        "Gotify server URL",
+        {
+          title: msg.title,
+          message: `${msg.body}${linkLine(msg)}`,
+          priority: 5,
+        },
+        signal,
+        { "X-Gotify-Key": channel.token },
+      );
+      return;
+
+    // The topic rides in the BODY, so the dial is the bare server address.
+    case "ntfy":
+      await postJson(
+        channel.baseUrl,
+        "ntfy server URL",
+        {
+          topic: channel.topic,
+          title: msg.title,
+          message: msg.body,
+          priority: 4,
+          ...(msg.url ? { click: msg.url } : {}),
+        },
+        signal,
+        channel.token ? { Authorization: `Bearer ${channel.token}` } : undefined,
+      );
+      return;
+
+    // A fixed host with the credentials in the BODY: nothing user-supplied in
+    // the URL, so there is nothing for the guard to check and nothing to
+    // redirect to. Same reasoning as Telegram above.
+    case "pushover": {
+      const res = await fetch("https://api.pushover.net/1/messages.json", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          token: channel.token,
+          user: channel.userKey,
+          title: msg.title,
+          message: msg.body,
+          ...(msg.url ? { url: msg.url } : {}),
+        }),
+        redirect: "manual",
+        signal,
+      });
+      if (!res.ok) throw new Error(`Pushover returned ${res.status}`);
+      return;
+    }
+
+    default: {
+      // This switch is `async`, so falling off the end is legal TypeScript and a
+      // channel with no case would be a silent no-op — a switch that promises an
+      // alert and delivers silence, which is the exact bug this feature exists
+      // to close. The `never` makes it a compile error instead.
+      const unreachable: never = channel;
+      throw new Error(`No sender for channel ${JSON.stringify(unreachable)}`);
+    }
   }
 }
 
@@ -126,11 +234,12 @@ async function postJson(
   label: string,
   body: unknown,
   signal?: AbortSignal,
+  headers?: Record<string, string>,
 ): Promise<void> {
   await assertSafeOutboundUrl(url, label);
   const res = await fetch(url, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: { "Content-Type": "application/json", ...headers },
     body: JSON.stringify(body),
     redirect: "manual",
     signal,

@@ -1910,12 +1910,37 @@ export const notificationSettings = pgTable("notification_settings", {
   // The generic outbound webhook.
   webhookEnabled: boolean("webhook_enabled").notNull(),
   webhookUrl: text("webhook_url").notNull(),
+  /* ---- beta channels ---- */
+  // Lark, Microsoft Teams and Mattermost are one incoming-webhook URL each, the
+  // same shape as Discord and Slack. The Teams one is the Power Automate
+  // Workflows URL — the Office 365 connector retired on 31 Mar 2026.
+  larkEnabled: boolean("lark_enabled").notNull().default(false),
+  larkWebhookUrl: text("lark_webhook_url").notNull().default(""),
+  msteamsEnabled: boolean("msteams_enabled").notNull().default(false),
+  msteamsWebhookUrl: text("msteams_webhook_url").notNull().default(""),
+  mattermostEnabled: boolean("mattermost_enabled").notNull().default(false),
+  mattermostWebhookUrl: text("mattermost_webhook_url").notNull().default(""),
+  // Gotify and ntfy carry a server address of their own, which goes through the
+  // same outbound guard as every other URL: public https only.
+  gotifyEnabled: boolean("gotify_enabled").notNull().default(false),
+  gotifyUrl: text("gotify_url").notNull().default(""),
+  gotifyTokenEnc: text("gotify_token_enc").notNull().default(""),
+  // Server and topic are separate: ntfy's JSON publish API puts the topic in the
+  // BODY, not the path.
+  ntfyEnabled: boolean("ntfy_enabled").notNull().default(false),
+  ntfyBaseUrl: text("ntfy_base_url").notNull().default("https://ntfy.sh"),
+  ntfyTopic: text("ntfy_topic").notNull().default(""),
+  ntfyTokenEnc: text("ntfy_token_enc").notNull().default(""),
+  // The one channel with two credentials: the application token and the user key.
+  pushoverEnabled: boolean("pushover_enabled").notNull().default(false),
+  pushoverTokenEnc: text("pushover_token_enc").notNull().default(""),
+  pushoverUserKeyEnc: text("pushover_user_key_enc").notNull().default(""),
 });
 
 /**
- * One row per alert the team has DECIDED about — the `alerts` list of
- * [NotificationSettings](../../types.ts) (PLAN §1: a list is a junction table,
- * never a column per item).
+ * One row per alert the team has DECIDED about FOR ONE CHANNEL — the `alerts`
+ * map of [NotificationSettings](../../types.ts) (PLAN §1: a list is a junction
+ * table, never a column per item).
  *
  * `enabled` is a real column rather than "a row means subscribed" because three
  * states are real: on, off, and never said. A team that unticks a default-on
@@ -1923,6 +1948,13 @@ export const notificationSettings = pgTable("notification_settings", {
  * and an alert key added in a later release has to land on its catalog default
  * (`ALERT_META[key].defaultOn`) for every existing team, with no backfill.
  * Absent row = the catalog default.
+ *
+ * The channel is part of the key because each one carries its own selection: a
+ * team room that wants every deploy outcome and an on-call phone that wants only
+ * the failures is the normal case. The rule above then does double duty — a
+ * channel with NO rows at all resolves to exactly the catalog defaults, which is
+ * the whole implementation of "a newly enabled channel starts on the defaults",
+ * with nothing to seed and no write on the toggle.
  */
 export const notificationAlerts = pgTable(
   "notification_alerts",
@@ -1930,11 +1962,13 @@ export const notificationAlerts = pgTable(
     teamId: text("team_id")
       .notNull()
       .references(() => teams.id, { onDelete: "cascade" }),
+    /** A `NotificationChannel`. Text, not an enum, for the same reason as below. */
+    channel: text("channel").notNull(),
     /** An `AlertKey`. Text, not an enum: the catalog changes, migrations shouldn't. */
     alertKey: text("alert_key").notNull(),
     enabled: boolean("enabled").notNull(),
   },
-  (t) => [primaryKey({ columns: [t.teamId, t.alertKey] })],
+  (t) => [primaryKey({ columns: [t.teamId, t.channel, t.alertKey] })],
 );
 
 /**

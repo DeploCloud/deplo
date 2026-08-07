@@ -194,6 +194,15 @@ export const SETTINGS_NAV: NavSection[] = [
         tooltip: "What a member can do in this team",
       },
       {
+        label: "Notifications",
+        href: "/settings/notifications",
+        icon: Bell,
+        tooltip: "Alerts & delivery channels",
+        // Without it the page is a dead end: every switch, every Test button and
+        // Save are refused server-side (same reasoning as Registries below).
+        requires: "manage_notifications",
+      },
+      {
         label: "Registries",
         href: "/settings/registries",
         icon: Package,
@@ -223,12 +232,6 @@ export const SETTINGS_NAV: NavSection[] = [
         href: "/settings/security",
         icon: Fingerprint,
         tooltip: "Two-factor authentication",
-      },
-      {
-        label: "Notifications",
-        href: "/settings/notifications",
-        icon: Bell,
-        tooltip: "Alerts & delivery channels",
       },
       {
         label: "API tokens",
@@ -642,7 +645,6 @@ export const NON_TEAM_SETTINGS_PREFIXES = [
   // Two-factor enrolment belongs to the ACCOUNT, not to a team — and it must stay
   // reachable when a team's 2FA policy has locked the member out of that team.
   "/settings/security",
-  "/settings/notifications",
   "/settings/tokens",
   "/settings/users",
   "/settings/servers",

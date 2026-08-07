@@ -1649,21 +1649,32 @@ export interface InstalledPlugin {
 }
 
 /**
- * Notification / alert configuration. Deplo delivers alerts through a Discord
- * webhook, a generic outbound webhook, email, Slack, Telegram and browser push;
- * the `alerts` set decides which conditions actually fire one.
+ * Where a team's alerts are delivered.
  *
- * ONE set of channels, not a routing matrix: every subscribed alert goes to
- * every enabled channel. A per-alert channel picker is a table the size of the
- * catalog on the first-run path, for a choice almost nobody makes.
+ * EACH channel carries its own alert selection (`NotificationSettings.alerts`):
+ * a team room that wants every deploy outcome and an on-call phone that wants
+ * only the failures are the normal case, not the exotic one.
+ *
+ * The union is derived from the array so there is ONE declaration — the GraphQL
+ * enum reads the same array, and the two cannot drift.
+ * Everything after `telegram` is beta.
  */
-export type NotificationChannel =
-  | "push"
-  | "email"
-  | "discord"
-  | "webhook"
-  | "slack"
-  | "telegram";
+export const ALL_CHANNELS = [
+  "push",
+  "email",
+  "discord",
+  "webhook",
+  "slack",
+  "telegram",
+  "lark",
+  "msteams",
+  "gotify",
+  "ntfy",
+  "mattermost",
+  "pushover",
+] as const;
+
+export type NotificationChannel = (typeof ALL_CHANNELS)[number];
 
 /** Which transport delivers the team's email. */
 export type EmailProvider = "smtp" | "resend";
@@ -1758,6 +1769,15 @@ export const ALL_ALERTS: AlertKey[] = [
   "domain_dns_drift",
 ];
 
+/**
+ * What each channel is subscribed to, every list in `ALL_ALERTS` order.
+ *
+ * Stored one row per decided `(team, channel, alert)`; a channel with no rows at
+ * all resolves to the catalog defaults, which is the whole implementation of
+ * "a newly enabled channel starts on the defaults".
+ */
+export type ChannelAlerts = Record<NotificationChannel, AlertKey[]>;
+
 export interface NotificationSettings {
   channels: {
     /** Browser push (beta). Endpoints live per user in `push_subscriptions`. */
@@ -1777,9 +1797,18 @@ export interface NotificationSettings {
     slack: { enabled: boolean; webhookUrl: string };
     telegram: { enabled: boolean; chatId: string; botTokenSet: boolean };
     webhook: { enabled: boolean; url: string };
+    /* ---- beta ---- */
+    lark: { enabled: boolean; webhookUrl: string };
+    /** The Power Automate Workflows URL, not the retired Office 365 connector. */
+    msteams: { enabled: boolean; webhookUrl: string };
+    gotify: { enabled: boolean; url: string; tokenSet: boolean };
+    /** Base URL and topic are separate: the JSON publish API puts the topic in the body. */
+    ntfy: { enabled: boolean; baseUrl: string; topic: string; tokenSet: boolean };
+    mattermost: { enabled: boolean; webhookUrl: string };
+    pushover: { enabled: boolean; tokenSet: boolean; userKeySet: boolean };
   };
-  /** The subscribed alerts, in `ALL_ALERTS` order. */
-  alerts: AlertKey[];
+  /** Per channel, what it is subscribed to. */
+  alerts: ChannelAlerts;
 }
 
 /**
@@ -1794,6 +1823,10 @@ export interface NotificationSettingsInput extends NotificationSettings {
     smtpPassword?: string;
     resendApiKey?: string;
     telegramBotToken?: string;
+    gotifyToken?: string;
+    ntfyToken?: string;
+    pushoverToken?: string;
+    pushoverUserKey?: string;
   };
 }
 

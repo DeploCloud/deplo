@@ -13,6 +13,22 @@ export function GitHubIcon({ className }: { className?: string }) {
   );
 }
 
+/* Lark, Microsoft Teams, Gotify, ntfy and Pushover ride lucide glyphs in the
+ * settings panel instead of brand marks: a logo drawn from memory is a wrong
+ * logo, and a generic icon that reads correctly beats a mark that does not. */
+export function MattermostIcon({ className }: { className?: string }) {
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      fill="currentColor"
+      className={className}
+      aria-hidden="true"
+    >
+      <path d="M12.03 1.2 12 1.2c-.4 0-.79.02-1.18.06l1.1 2.53c.03 0 .06 0 .09-.01 3.5 0 6.35 3.42 6.35 7.63 0 4.2-2.5 6.44-6 6.44-3.48 0-6.9-2.8-6.9-7.35 0-2.1.75-3.94 1.75-5.2l.14-3.6C4.4 3.3 2.1 6.86 2.1 11.15c0 5.62 4.44 10.18 9.92 10.18 5.47 0 9.9-3.53 9.9-9.9 0-5.55-4.02-10.13-9.89-10.23Zm-2.2 1.03a.24.24 0 0 0-.28.22l-.2 5.9c-.02.7.5 1.32 1.2 1.42a1.3 1.3 0 0 0 1.47-1.05l1.6-5.68a.24.24 0 0 0-.17-.3 6.9 6.9 0 0 0-3.62-.51Z" />
+    </svg>
+  );
+}
+
 export function SlackIcon({ className }: { className?: string }) {
   return (
     <svg

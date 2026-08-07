@@ -7,6 +7,7 @@ import {
   unsubscribeWebPush,
   updateNotificationSettings,
 } from "@/lib/data/notifications";
+import { ALL_CHANNELS } from "@/lib/types";
 import type { NotificationChannel, NotificationSettings } from "@/lib/types";
 
 /* ------------------------------------------------------------------ */
@@ -24,18 +25,19 @@ import type { NotificationChannel, NotificationSettings } from "@/lib/types";
 const NotificationSettingsRef = builder
   .objectRef<NotificationSettings>("NotificationSettings")
   .implement({
-    description: "Per-team notification channels + subscribed alerts.",
+    description:
+      "Per-team notification channels, each with its own subscribed alerts.",
     fields: (t) => ({
       channels: t.field({
         type: "JSON",
         description:
-          "Channel config map: push/email/discord/slack/telegram/webhook enable flags + endpoints.",
+          "Channel config map: enable flags + endpoints for all twelve channels.",
         resolve: (s) => s.channels,
       }),
       alerts: t.field({
         type: "JSON",
         description:
-          "The subscribed alert keys (deployment_failed, server_offline, …).",
+          "Per channel, the subscribed alert keys (deployment_failed, server_offline, …).",
         resolve: (s) => s.alerts,
       }),
     }),
@@ -46,9 +48,10 @@ const NotificationSettingsRef = builder
 /* ------------------------------------------------------------------ */
 
 // Every channel can be tested, browser push included: it goes to the caller's
-// own devices, which is the only way to prove the subscription works.
+// own devices, which is the only way to prove the subscription works. Read from
+// `ALL_CHANNELS` so the enum cannot drift from the union.
 const TestChannelEnum = builder.enumType("TestNotificationChannel", {
-  values: ["email", "discord", "slack", "telegram", "webhook", "push"] as const,
+  values: ALL_CHANNELS,
 });
 
 /* ------------------------------------------------------------------ */

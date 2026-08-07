@@ -2130,14 +2130,14 @@ input NodeGrantInput {
   projectIds: [String!]
 }
 
-"""Per-team notification channels + subscribed alerts."""
+"""Per-team notification channels, each with its own subscribed alerts."""
 type NotificationSettings {
-  """The subscribed alert keys (deployment_failed, server_offline, …)."""
+  """
+  Per channel, the subscribed alert keys (deployment_failed, server_offline, …).
+  """
   alerts: JSON
 
-  """
-  Channel config map: push/email/discord/slack/telegram/webhook enable flags + endpoints.
-  """
+  """Channel config map: enable flags + endpoints for all twelve channels."""
   channels: JSON
 }
 
@@ -3266,7 +3266,13 @@ type TeamRole {
 enum TestNotificationChannel {
   discord
   email
+  gotify
+  lark
+  mattermost
+  msteams
+  ntfy
   push
+  pushover
   slack
   telegram
   webhook

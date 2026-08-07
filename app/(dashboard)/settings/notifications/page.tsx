@@ -1,4 +1,4 @@
-import { reachesWholeTeam } from "@/lib/membership";
+import { hasCapability, reachesWholeTeam } from "@/lib/membership";
 import {
   getNotificationSettings,
   getWebPushPublicKey,
@@ -18,10 +18,14 @@ export default async function SettingsNotificationsPage() {
         what="The team's notification channels"
       />
     );
-  const notifications = await getNotificationSettings();
-  // Minted here, on first render of this page, so an instance that never uses
-  // browser push never holds a VAPID keypair.
-  const vapidPublicKey = await getWebPushPublicKey();
+  const [notifications, vapidPublicKey, canManage] = await Promise.all([
+    getNotificationSettings(),
+    // Minted here, on first render of this page, so an instance that never uses
+    // browser push never holds a VAPID keypair.
+    getWebPushPublicKey(),
+    // Cosmetic only: every switch and every Test is gated server-side too.
+    hasCapability("manage_notifications"),
+  ]);
 
   return (
     <div className="space-y-6">
@@ -32,6 +36,7 @@ export default async function SettingsNotificationsPage() {
       <NotificationsPanel
         initial={notifications}
         vapidPublicKey={vapidPublicKey}
+        canManage={canManage}
       />
     </div>
   );

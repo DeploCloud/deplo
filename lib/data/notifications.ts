@@ -22,11 +22,12 @@ import {
   savePushSubscription,
   type PushSubscriptionInput,
 } from "../notify/web-push";
-import { ALL_ALERTS } from "../types";
+import { ALL_ALERTS, ALL_CHANNELS } from "../types";
 import { channelsToRow, rowToChannels } from "./notification-row";
 import { assertSafeOutboundUrl } from "../outbound-url";
 import type {
   AlertKey,
+  ChannelAlerts,
   NotificationChannel,
   NotificationSettings,
   NotificationSettingsInput,
@@ -43,20 +44,35 @@ async function settingsRowFor(teamId: string) {
 }
 
 /**
- * The team's subscribed alerts. A key with no row has never been decided about,
- * so it falls back to the catalog default — which is what lets a NEW alert key
- * ship in a later release and reach every existing team with no backfill.
+ * What each channel is subscribed to.
+ *
+ * A `(channel, key)` with no row has never been decided about, so it falls back
+ * to the catalog default. That one rule does double duty: it lets a NEW alert
+ * key ship in a later release and reach every existing team with no backfill,
+ * AND it makes a channel nobody has ever opened resolve to exactly
+ * `DEFAULT_ALERTS` — which is the whole implementation of "a newly enabled
+ * channel starts on the defaults", with nothing to seed.
  */
-async function alertsFor(teamId: string): Promise<AlertKey[]> {
+async function alertsFor(teamId: string): Promise<ChannelAlerts> {
   const rows = await getDb()
     .select({
+      channel: notificationAlerts.channel,
       alertKey: notificationAlerts.alertKey,
       enabled: notificationAlerts.enabled,
     })
     .from(notificationAlerts)
     .where(eq(notificationAlerts.teamId, teamId));
-  const decided = new Map(rows.map((r) => [r.alertKey, r.enabled]));
-  return ALL_ALERTS.filter((a) => decided.get(a) ?? ALERT_META[a].defaultOn);
+  const decided = new Map(
+    rows.map((r) => [`${r.channel}:${r.alertKey}`, r.enabled]),
+  );
+  return Object.fromEntries(
+    ALL_CHANNELS.map((c) => [
+      c,
+      ALL_ALERTS.filter(
+        (a) => decided.get(`${c}:${a}`) ?? ALERT_META[a].defaultOn,
+      ),
+    ]),
+  ) as ChannelAlerts;
 }
 
 export async function getNotificationSettings(): Promise<NotificationSettings> {
@@ -75,8 +91,13 @@ export async function getNotificationSettings(): Promise<NotificationSettings> {
  *
  * The mutation's argument is an opaque scalar, so anything at all can be sent —
  * this is a trust boundary, and every field is defaulted rather than trusted.
- * Unknown alert keys are dropped by construction: the result is filtered through
- * `ALL_ALERTS`, never through the input.
+ *
+ * Unknown channels AND unknown alert keys are both dropped BY CONSTRUCTION, not
+ * by a validation step somebody could skip: the map is built by iterating
+ * `ALL_CHANNELS` and each list by filtering `ALL_ALERTS`, never by reading the
+ * input's own keys. A channel missing from the input coerces to `[]` rather than
+ * to the defaults, which is safe because `getNotificationSettings` always hands
+ * the client a full twelve-key map to round-trip.
  */
 export function parseSettingsInput(raw: unknown): NotificationSettingsInput {
   const inp = (raw ?? {}) as Partial<NotificationSettingsInput>;
@@ -85,7 +106,7 @@ export function parseSettingsInput(raw: unknown): NotificationSettingsInput {
   const smtp = (email.smtp ?? {}) as Partial<
     NotificationSettings["channels"]["email"]["smtp"]
   >;
-  const wanted = new Set(Array.isArray(inp.alerts) ? inp.alerts : []);
+  const rawAlerts = (inp.alerts ?? {}) as Record<string, unknown>;
   const secrets = (inp.secrets ?? {}) as NonNullable<
     NotificationSettingsInput["secrets"]
   >;
@@ -120,12 +141,50 @@ export function parseSettingsInput(raw: unknown): NotificationSettingsInput {
         botTokenSet: false,
       },
       webhook: { enabled: bool(c.webhook?.enabled), url: str(c.webhook?.url) },
+      lark: {
+        enabled: bool(c.lark?.enabled),
+        webhookUrl: str(c.lark?.webhookUrl),
+      },
+      msteams: {
+        enabled: bool(c.msteams?.enabled),
+        webhookUrl: str(c.msteams?.webhookUrl),
+      },
+      mattermost: {
+        enabled: bool(c.mattermost?.enabled),
+        webhookUrl: str(c.mattermost?.webhookUrl),
+      },
+      gotify: {
+        enabled: bool(c.gotify?.enabled),
+        url: str(c.gotify?.url),
+        tokenSet: false,
+      },
+      ntfy: {
+        enabled: bool(c.ntfy?.enabled),
+        baseUrl: str(c.ntfy?.baseUrl) || "https://ntfy.sh",
+        topic: str(c.ntfy?.topic),
+        tokenSet: false,
+      },
+      pushover: {
+        enabled: bool(c.pushover?.enabled),
+        tokenSet: false,
+        userKeySet: false,
+      },
     },
-    alerts: ALL_ALERTS.filter((a) => wanted.has(a)),
+    alerts: Object.fromEntries(
+      ALL_CHANNELS.map((channel) => {
+        const raw = rawAlerts[channel];
+        const wanted = new Set(Array.isArray(raw) ? (raw as unknown[]) : []);
+        return [channel, ALL_ALERTS.filter((a) => wanted.has(a))];
+      }),
+    ) as ChannelAlerts,
     secrets: {
       smtpPassword: str(secrets.smtpPassword),
       resendApiKey: str(secrets.resendApiKey),
       telegramBotToken: str(secrets.telegramBotToken),
+      gotifyToken: str(secrets.gotifyToken),
+      ntfyToken: str(secrets.ntfyToken),
+      pushoverToken: str(secrets.pushoverToken),
+      pushoverUserKey: str(secrets.pushoverUserKey),
     },
   };
 }
@@ -145,14 +204,21 @@ export async function updateNotificationSettings(
   const next = parseSettingsInput(raw);
   const c = next.channels;
 
-  // Webhook URLs are dialed FROM the control plane (test send + alert
-  // dispatch) — reject private/internal targets before they are ever
-  // persisted, so no dispatcher can be fed one (SSRF).
-  if (c.discord.webhookUrl)
-    await assertSafeOutboundUrl(c.discord.webhookUrl, "Discord webhook URL");
-  if (c.slack.webhookUrl)
-    await assertSafeOutboundUrl(c.slack.webhookUrl, "Slack webhook URL");
-  if (c.webhook.url) await assertSafeOutboundUrl(c.webhook.url, "Webhook URL");
+  // Every URL here is dialed FROM the control plane (test send + alert dispatch)
+  // — reject private/internal targets before they are ever persisted, so no
+  // dispatcher can be fed one (SSRF). That includes the Gotify and ntfy server
+  // addresses, which is why a self-hosted one on the LAN is refused.
+  for (const [url, label] of [
+    [c.discord.webhookUrl, "Discord webhook URL"],
+    [c.slack.webhookUrl, "Slack webhook URL"],
+    [c.webhook.url, "Webhook URL"],
+    [c.lark.webhookUrl, "Lark webhook URL"],
+    [c.msteams.webhookUrl, "Microsoft Teams webhook URL"],
+    [c.mattermost.webhookUrl, "Mattermost webhook URL"],
+    [c.gotify.url, "Gotify server URL"],
+    [c.ntfy.baseUrl, "ntfy server URL"],
+  ] as const)
+    if (url) await assertSafeOutboundUrl(url, label);
 
   // Read the stored ciphertext BEFORE the transaction (a query on its own
   // connection inside one deadlocks the test harness) — an empty secret means
@@ -168,9 +234,15 @@ export async function updateNotificationSettings(
       next.secrets?.telegramBotToken,
       prev?.telegramBotTokenEnc,
     ),
+    gotifyTokenEnc: keep(next.secrets?.gotifyToken, prev?.gotifyTokenEnc),
+    ntfyTokenEnc: keep(next.secrets?.ntfyToken, prev?.ntfyTokenEnc),
+    pushoverTokenEnc: keep(next.secrets?.pushoverToken, prev?.pushoverTokenEnc),
+    pushoverUserKeyEnc: keep(
+      next.secrets?.pushoverUserKey,
+      prev?.pushoverUserKeyEnc,
+    ),
   });
 
-  const enabled = new Set(next.alerts);
   await getDb().transaction(async (tx) => {
     // One row per team (team_id PK): upsert so the first save inserts and later
     // saves overwrite — never a duplicate row.
@@ -184,30 +256,27 @@ export async function updateNotificationSettings(
       .delete(notificationAlerts)
       .where(eq(notificationAlerts.teamId, teamId));
     await tx.insert(notificationAlerts).values(
-      ALL_ALERTS.map((a) => ({
-        teamId,
-        alertKey: a,
-        enabled: enabled.has(a),
-      })),
+      ALL_CHANNELS.flatMap((channel) => {
+        const on = new Set(next.alerts[channel]);
+        return ALL_ALERTS.map((a) => ({
+          teamId,
+          channel,
+          alertKey: a,
+          enabled: on.has(a),
+        }));
+      }),
     );
   });
 
-  return { channels: rowToChannels(row), alerts: [...next.alerts] };
+  return { channels: rowToChannels(row), alerts: next.alerts };
 }
 
 /* ------------------------------------------------------------------ */
 /* The dispatcher's read (UNGATED, background-safe)                    */
 /* ------------------------------------------------------------------ */
 
-export interface TeamAlertConfig {
-  /** Only channels that are BOTH switched on and actually configured. */
-  channels: AlertChannel[];
-  /** Whether this team wants to hear about `key`. */
-  wants(key: AlertKey): boolean;
-}
-
 /**
- * What a team's alerts should be delivered to, resolved WITHOUT a request.
+ * The configured channels that want `key`, resolved WITHOUT a request.
  *
  * Deliberately ungated and `teamId`-by-parameter, like `recordServerHealth` and
  * `executeBackup`: most alerts are raised by a deploy runner, a scheduler tick
@@ -216,20 +285,22 @@ export interface TeamAlertConfig {
  * `getNotificationSettings()` stays the only request-facing read, with both
  * gates on it. Nothing here reads or writes anything a user could target.
  *
+ * A channel with no stored row for `key` falls back to the catalog default,
+ * which is what makes a newly enabled channel start on the defaults.
+ *
  * Returns plaintext credentials, so it must never reach a DTO.
  */
-export async function alertConfigForTeam(
+export async function channelsForAlert(
   teamId: string,
-): Promise<TeamAlertConfig> {
+  key: AlertKey,
+): Promise<AlertChannel[]> {
   const [row, alerts] = await Promise.all([
     settingsRowFor(teamId),
     alertsFor(teamId),
   ]);
-  const on = new Set(alerts);
-  return {
-    channels: row ? configuredChannels(row) : [],
-    wants: (key) => on.has(key),
-  };
+  if (!row) return [];
+  // `AlertChannel["kind"]` IS `NotificationChannel` — same spellings, on purpose.
+  return configuredChannels(row).filter((c) => alerts[c.kind].includes(key));
 }
 
 type SettingsRow = NonNullable<Awaited<ReturnType<typeof settingsRowFor>>>;
@@ -252,6 +323,32 @@ function configuredChannels(row: SettingsRow): AlertChannel[] {
   const email = emailChannel(row);
   if (email) out.push(email);
   if (row.pushEnabled) out.push({ kind: "push", teamId: row.teamId });
+  if (row.larkEnabled && row.larkWebhookUrl)
+    out.push({ kind: "lark", webhookUrl: row.larkWebhookUrl });
+  if (row.msteamsEnabled && row.msteamsWebhookUrl)
+    out.push({ kind: "msteams", webhookUrl: row.msteamsWebhookUrl });
+  if (row.mattermostEnabled && row.mattermostWebhookUrl)
+    out.push({ kind: "mattermost", webhookUrl: row.mattermostWebhookUrl });
+  if (row.gotifyEnabled && row.gotifyUrl && row.gotifyTokenEnc)
+    out.push({
+      kind: "gotify",
+      url: row.gotifyUrl,
+      token: decryptSecret(row.gotifyTokenEnc),
+    });
+  if (row.ntfyEnabled && row.ntfyBaseUrl && row.ntfyTopic)
+    out.push({
+      kind: "ntfy",
+      baseUrl: row.ntfyBaseUrl,
+      topic: row.ntfyTopic,
+      // A public topic needs no token, so an empty one is a valid config.
+      token: row.ntfyTokenEnc ? decryptSecret(row.ntfyTokenEnc) : "",
+    });
+  if (row.pushoverEnabled && row.pushoverTokenEnc && row.pushoverUserKeyEnc)
+    out.push({
+      kind: "pushover",
+      token: decryptSecret(row.pushoverTokenEnc),
+      userKey: decryptSecret(row.pushoverUserKeyEnc),
+    });
   return out;
 }
 
@@ -353,6 +450,42 @@ function testChannel(
     }
     case "push":
       return { kind: "push", teamId: row.teamId, userId };
+    case "lark":
+      if (!row.larkWebhookUrl) throw new Error("Add a Lark webhook URL first");
+      return { kind: "lark", webhookUrl: row.larkWebhookUrl };
+    case "msteams":
+      if (!row.msteamsWebhookUrl)
+        throw new Error("Add a Microsoft Teams webhook URL first");
+      return { kind: "msteams", webhookUrl: row.msteamsWebhookUrl };
+    case "mattermost":
+      if (!row.mattermostWebhookUrl)
+        throw new Error("Add a Mattermost webhook URL first");
+      return { kind: "mattermost", webhookUrl: row.mattermostWebhookUrl };
+    case "gotify":
+      if (!row.gotifyUrl || !row.gotifyTokenEnc)
+        throw new Error("Add a Gotify server URL and app token first");
+      return {
+        kind: "gotify",
+        url: row.gotifyUrl,
+        token: decryptSecret(row.gotifyTokenEnc),
+      };
+    case "ntfy":
+      if (!row.ntfyBaseUrl || !row.ntfyTopic)
+        throw new Error("Add an ntfy server URL and topic first");
+      return {
+        kind: "ntfy",
+        baseUrl: row.ntfyBaseUrl,
+        topic: row.ntfyTopic,
+        token: row.ntfyTokenEnc ? decryptSecret(row.ntfyTokenEnc) : "",
+      };
+    case "pushover":
+      if (!row.pushoverTokenEnc || !row.pushoverUserKeyEnc)
+        throw new Error("Add a Pushover application token and user key first");
+      return {
+        kind: "pushover",
+        token: decryptSecret(row.pushoverTokenEnc),
+        userKey: decryptSecret(row.pushoverUserKeyEnc),
+      };
   }
 }
 

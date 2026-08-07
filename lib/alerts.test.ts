@@ -6,9 +6,10 @@ import {
   ALERT_META,
   DEFAULT_ALERTS,
   alertSearchText,
+  defaultChannelAlerts,
   searchAlerts,
 } from "./alerts";
-import { ALL_ALERTS, type AlertKey } from "./types";
+import { ALL_ALERTS, ALL_CHANNELS, type AlertKey } from "./types";
 
 /**
  * The alert catalog's own invariants. Cheap, and they catch the two mistakes
@@ -77,4 +78,12 @@ test("search text is underscore-free so a typed key still matches", () => {
   const key: AlertKey = "server_disk_low";
   assert.ok(!alertSearchText(key).includes("_"));
   assert.ok(searchAlerts("server disk").includes(key));
+});
+
+test("every channel starts on the catalog defaults", () => {
+  // Catches a channel added to the union and forgotten in the settings default.
+  const per = defaultChannelAlerts();
+  assert.deepEqual(Object.keys(per).sort(), [...ALL_CHANNELS].sort());
+  for (const channel of ALL_CHANNELS)
+    assert.deepEqual(per[channel], DEFAULT_ALERTS);
 });

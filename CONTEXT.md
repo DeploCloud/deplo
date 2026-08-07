@@ -523,7 +523,8 @@ _Avoid_: SSL cert upload, bring-your-own-cert (feature-brochure names), certific
 One notifiable EVENT a team subscribes to, dispatched to every channel that team has
 switched on. The catalogue lives in `lib/alerts.ts` (label, one-line description, search
 keywords, default) and is browsed with the same picker as a role's **Capabilities**:
-search box, categories, a description per row. Distinct from **Activity**, which is the
+search box, categories, a description per row — one picker per **Channel**, opened from
+that channel's row. Distinct from **Activity**, which is the
 audit ROW written for what somebody did — an Alert interrupts, an Activity is looked up
 later, and many things write one without the other. Storage splits the two halves the way
 the schema rules demand: the CHANNELS are flat columns on the team's single
@@ -536,14 +537,20 @@ notification settings only for the page); event (that is the audit type); subscr
 (reserve it for GraphQL SSE).
 
 **Channel**:
-Where a team's Alerts are delivered: a Discord or Slack incoming webhook, a Telegram bot,
-a generic outbound webhook, email (through the team's own SMTP server or a Resend key), or
-browser push. ONE set per team — every subscribed Alert goes to every enabled channel,
-there is no per-alert routing matrix. Slack, Telegram and browser push are **beta**.
+Where a team's Alerts are delivered. Twelve of them: incoming webhooks (Discord, Slack,
+Lark, Microsoft Teams, Mattermost, and a generic one), a Telegram bot, email (through the
+team's own SMTP server or a Resend key), a Gotify or ntfy server, Pushover, and browser
+push. Everything after Telegram is **beta**, browser push included.
+**Each channel carries its OWN selected Alerts** — a team room that wants every deploy
+outcome and an on-call phone that wants only the failures is the normal case — so the
+subscription key is `(team, channel, alert)` and the picker opens per channel from its row.
+A channel nobody has opened has no rows and therefore sits on the catalogue defaults.
 Credentials are `*_enc` with no reveal path; a stored one surfaces to the UI as a
-`…Set: boolean`, and leaving its field blank on save keeps what is stored.
+`…Set: boolean`, and leaving its field blank on save keeps what is stored. Every
+user-supplied URL goes through the same outbound guard (public https only), which is why a
+Gotify or ntfy on the LAN is refused.
 _Avoid_: integration, provider (that is the email TRANSPORT: `smtp` | `resend`),
-notifier.
+notifier, routing matrix (each channel has a list, not a grid).
 
 **Redirect domain**:
 A Domain that serves nothing and answers a permanent 301 to another hostname of the same

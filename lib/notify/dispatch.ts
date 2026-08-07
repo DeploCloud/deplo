@@ -1,6 +1,6 @@
 import "server-only";
 
-import { alertConfigForTeam } from "../data/notifications";
+import { channelsForAlert } from "../data/notifications";
 import { publicBaseUrl } from "../public-url";
 import { sendToChannel } from "./channels";
 import { shouldFire } from "./cooldown";
@@ -55,8 +55,10 @@ export async function dispatchAlertNow(alert: Alert): Promise<void> {
     // Dedupe FIRST: a suppressed alert must cost zero queries.
     if (alert.dedupe && !shouldFire(alert.key, alert.dedupe.id, alert.dedupe.state))
       return;
-    const cfg = await alertConfigForTeam(alert.teamId);
-    if (!cfg.wants(alert.key) || cfg.channels.length === 0) return;
+    // Per channel, not per team: each one carries its own selection, so a room
+    // subscribed to this key hears about it while a phone that is not stays quiet.
+    const channels = await channelsForAlert(alert.teamId, alert.key);
+    if (channels.length === 0) return;
 
     const base = publicBaseUrl();
     const msg = {
@@ -68,7 +70,7 @@ export async function dispatchAlertNow(alert: Alert): Promise<void> {
     };
     // allSettled: a dead Discord webhook must not cost the email.
     const results = await Promise.allSettled(
-      cfg.channels.map((c) =>
+      channels.map((c) =>
         sendToChannel(c, msg, AbortSignal.timeout(CHANNEL_TIMEOUT_MS)),
       ),
     );
