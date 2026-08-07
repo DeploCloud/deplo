@@ -21,6 +21,10 @@ import { normalizeUsername, validateUsername } from "@/lib/username";
 import { rateLimit } from "@/lib/security";
 import { noteFailedLogin } from "@/lib/notify/security";
 import { sha256Hex } from "@/lib/crypto";
+import { eq } from "drizzle-orm";
+import { getDb } from "@/lib/db/client";
+import { verification } from "@/lib/db/schema/auth";
+import { users } from "@/lib/db/schema/control-plane";
 
 /**
  * Authentication mutations. These are PUBLIC (no auth scope) and run in the
@@ -68,6 +72,35 @@ async function pendingLoginKey(): Promise<
         },
       ]
     : [];
+}
+
+/**
+ * The address behind the two-factor challenge in flight, or null.
+ *
+ * The 2FA half of a login carries no address of its own, and counting the burst
+ * against the CLIENT KEY instead made the alert unreachable twice over: the
+ * resolver's own limiter trips one attempt below the burst threshold, and a key
+ * that names nobody resolves to no team, so nothing would be told anyway. The
+ * `two_factor` cookie names a `verification` row whose value is the user id
+ * Better Auth is waiting on, which is the account actually under attack.
+ */
+async function pendingLoginEmail(): Promise<string | null> {
+  const store = await cookies();
+  const pending = store
+    .getAll()
+    .find((c) => c.name.endsWith("two_factor") && c.value);
+  if (!pending) return null;
+  // A Better Auth signed cookie is `<identifier>.<signature>`, and the
+  // identifier it mints (`2fa-<random>`) never contains a dot.
+  const identifier = pending.value.split(".")[0];
+  if (!identifier) return null;
+  const rows = await getDb()
+    .select({ email: users.email })
+    .from(verification)
+    .innerJoin(users, eq(users.id, verification.value))
+    .where(eq(verification.identifier, identifier))
+    .limit(1);
+  return rows[0]?.email ?? null;
 }
 
 /** Returns an error message when any limiter trips, else null. */
@@ -202,9 +235,12 @@ builder.mutationFields((t) => ({
         args.recoveryCode ? "backup" : "totp",
       );
       if (!res.ok) {
-        // No address in scope on this half of the flow, so the client key is the
-        // subject: it is what the limiter above already counts by.
-        noteFailedLogin(await clientKey("2fa"));
+        // Counted against the ACCOUNT the challenge belongs to, so a burst of
+        // wrong codes lands in the same bucket as a burst of wrong passwords and
+        // reaches that account's teams. A challenge whose cookie no longer
+        // resolves has nobody to warn.
+        const who = await pendingLoginEmail();
+        if (who) noteFailedLogin(who);
         throw new Error(res.error ?? "That code is not valid");
       }
       return { viewer: await getCurrentUser() };

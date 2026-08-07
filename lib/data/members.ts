@@ -818,6 +818,33 @@ export async function updateMember(input: {
       .insert(membershipCapabilitiesTable)
       .values(caps.map((c) => ({ membershipId: m.id, capability: c })));
   });
+  // Outside the transaction, per the recordActivity rule (own connection). The
+  // ONE write that changes what a person may do had no trail and raised no
+  // alert at all: editing a ROLE was logged (`roles.ts`) and so was granting
+  // access from Settings → Users, but assigning a member their role from the
+  // team's own Members tab went through silently.
+  await recordActivity(
+    "member",
+    `Set @${await usernameOf(input.userId)}'s access to ${
+      assignment.roleName
+        ? `the ${assignment.roleName} role`
+        : "their own set of permissions"
+    }`,
+    await actorUsername(),
+    null,
+    teamId,
+    "member_access_changed",
+  );
+}
+
+/** The name to put in the trail for a user id, or a neutral stand-in. */
+async function usernameOf(userId: string): Promise<string> {
+  const rows = await getDb()
+    .select({ username: usersTable.username })
+    .from(usersTable)
+    .where(eq(usersTable.id, userId))
+    .limit(1);
+  return rows[0]?.username ?? "a member";
 }
 
 /** Remove a member from the active team (does not delete their account). */
@@ -1104,15 +1131,40 @@ export async function updateUserAdmin(input: {
       .where(eq(usersTable.id, input.userId))
       .limit(1)
   )[0]!;
-  await recordActivity(
-    "member",
-    `Updated user @${target.username}` +
-      (newPassword ? " (password reset)" : ""),
-    await actorUsername(),
-    null,
-    null,
-    "member_access_changed",
+  await recordForEveryTeamOf(
+    input.userId,
+    `Updated user @${target.username}` + (newPassword ? " (password reset)" : ""),
   );
+}
+
+/**
+ * The trail for an INSTANCE-wide action on one account.
+ *
+ * An instance admin editing an account is not acting inside a team, so there is
+ * no active team to attribute it to — and letting `recordActivity` fall back to
+ * the oldest team put one tenant's member changes in a stranger's Activity feed
+ * (and in their alert channels). It belongs to every team that account is a
+ * member of, once each; an account in no team writes nothing, because there is
+ * no trail it belongs in.
+ */
+async function recordForEveryTeamOf(
+  userId: string,
+  message: string,
+): Promise<void> {
+  const rows = await getDb()
+    .selectDistinct({ teamId: membershipsTable.teamId })
+    .from(membershipsTable)
+    .where(eq(membershipsTable.userId, userId));
+  const actor = await actorUsername();
+  for (const { teamId } of rows)
+    await recordActivity(
+      "member",
+      message,
+      actor,
+      null,
+      teamId,
+      "member_access_changed",
+    );
 }
 
 /**
@@ -1170,13 +1222,9 @@ export async function resetUserTwoFactor(userId: string): Promise<void> {
     await tx.delete(twoFactorTable).where(eq(twoFactorTable.userId, userId));
   });
 
-  await recordActivity(
-    "member",
+  await recordForEveryTeamOf(
+    userId,
     `Reset two-factor authentication for @${target.username}`,
-    await actorUsername(),
-    null,
-    null,
-    "member_access_changed",
   );
 }
 

@@ -9,7 +9,6 @@ import {
 } from "../db/schema/control-plane";
 import { rateLimit } from "../security";
 import { dispatchToTeams } from "./dispatch";
-import { allTeamIds } from "./server-teams";
 
 /**
  * "Somebody is guessing a password."
@@ -30,11 +29,16 @@ const BURST_WINDOW_MS = 10 * 60_000;
 /**
  * Count one failed sign-in and alert if it is now a burst.
  *
- * `subject` is the attempted address (or a client key when the second factor
- * failed and there is no address in scope). There is no session and no active
- * team at this point, so the teams are the ones the ACCOUNT belongs to — and an
- * address matching no account falls back to the first team, the same last resort
- * the activity log takes. The body never says whether the account exists.
+ * `subject` is the attempted address — the password half has it, and the second
+ * factor resolves it from the pending challenge. There is no session and no
+ * active team at this point, so the teams are the ones the ACCOUNT belongs to.
+ *
+ * An address matching NO account tells nobody, and that is the whole point. It
+ * used to fall back to the first team, which handed an unauthenticated stranger
+ * two things at once: a way to put text of their choosing in an unrelated
+ * tenant's Discord, and an outbound POST per configured channel for every six
+ * requests they sent. Attributable or silent; there is no third option that is
+ * safe here.
  */
 export function noteFailedLogin(subject: string): void {
   // `rateLimit` returns ok while under the limit; the first refusal IS the burst.
@@ -58,13 +62,10 @@ export function noteFailedLogin(subject: string): void {
 }
 
 async function teamsForSubject(subject: string): Promise<string[]> {
-  const db = getDb();
-  const rows = await db
+  const rows = await getDb()
     .select({ teamId: membershipsTable.teamId })
     .from(membershipsTable)
     .innerJoin(usersTable, eq(usersTable.id, membershipsTable.userId))
     .where(eq(usersTable.email, subject.toLowerCase()));
-  if (rows.length > 0) return [...new Set(rows.map((r) => r.teamId))];
-  const all = await allTeamIds();
-  return all.slice(0, 1);
+  return [...new Set(rows.map((r) => r.teamId))];
 }

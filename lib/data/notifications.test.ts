@@ -9,6 +9,7 @@ import { __setTestDb, __resetTestDb } from "../db/client";
 import {
   notificationAlerts,
   notificationChannels,
+  pushSubscriptions,
 } from "../db/schema/control-plane";
 import { runWithIdentity } from "../auth/request-context";
 import { DEFAULT_ALERTS } from "../alerts";
@@ -24,6 +25,7 @@ import {
   listNotificationChannels,
   parseChannelInput,
   saveNotificationChannel,
+  subscribeWebPush,
 } from "./notifications";
 
 /**
@@ -52,7 +54,7 @@ after(async () => {
 
 beforeEach(async () => {
   await pg.exec(
-    `truncate table notification_alerts, notification_channels, users, teams restart identity cascade;`,
+    `truncate table notification_alerts, notification_channels, push_subscriptions, users, teams restart identity cascade;`,
   );
   // USER_2 owns TEAM_B, so the cross-team test below is refused by the row's
   // scoping rather than by a missing capability.
@@ -376,4 +378,46 @@ test("a channel that is switched off is never dialed", async () => {
 test("a channel that is on but unconfigured is not dialed either", async () => {
   await asUser1(() => saveNotificationChannel(null, draft({ url: "" })));
   assert.deepEqual(await channelsForAlert(TEAM_A, "deployment_failed"), []);
+});
+
+test("a push endpoint takes the same outbound guard as a webhook", async () => {
+  // The endpoint is a URL the SUBSCRIBER supplies and the fan-out dials, so a
+  // member with nothing but `view` must not be able to aim it inside.
+  await assert.rejects(
+    () =>
+      asUser1(() =>
+        subscribeWebPush({
+          endpoint: "https://169.254.169.254/latest/meta-data",
+          p256dh: "key",
+          auth: "auth",
+        }),
+      ),
+    /private or internal address/,
+  );
+  assert.equal((await db.select().from(pushSubscriptions)).length, 0);
+
+  // A real push service is unaffected.
+  await asUser1(() =>
+    subscribeWebPush({
+      endpoint: "https://fcm.googleapis.example/send/abc",
+      p256dh: "key",
+      auth: "auth",
+    }),
+  );
+  assert.equal((await db.select().from(pushSubscriptions)).length, 1);
+});
+
+test("a team cannot grow an unbounded fan-out", async () => {
+  await asUser1(async () => {
+    for (let i = 0; i < 25; i++)
+      await saveNotificationChannel(
+        null,
+        draft({ kind: "discord", url: `https://discord/hook${i}` }),
+      );
+    await assert.rejects(
+      () => saveNotificationChannel(null, draft({ kind: "discord" })),
+      /Remove one to add another/,
+    );
+  });
+  assert.equal((await db.select().from(notificationChannels)).length, 25);
 });

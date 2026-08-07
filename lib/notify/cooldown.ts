@@ -73,6 +73,32 @@ export function shouldFire(
   return true;
 }
 
+/**
+ * Drop entries nothing can still be suppressing.
+ *
+ * A slot is only ever read inside its own cooldown, so past the longest one it
+ * is dead weight — and the ids are per app, server, domain and certificate, so
+ * without this the map keeps a row for every resource the instance has ever had.
+ * Same shape as `lib/security.ts`'s own sweeper, unref'd for the same reason:
+ * it must never be what keeps the process alive.
+ */
+const MAX_COOLDOWN_MS = Math.max(
+  DEFAULT_COOLDOWN_MS,
+  ...Object.values(COOLDOWN_MS).filter((v): v is number => v !== undefined),
+);
+
+if (typeof setInterval === "function" && process.env.NEXT_RUNTIME !== "edge") {
+  const t = setInterval(
+    () => {
+      const now = Date.now();
+      for (const [slot, seen] of store)
+        if (now - seen.at > MAX_COOLDOWN_MS) store.delete(slot);
+    },
+    60 * 60_000,
+  );
+  (t as unknown as { unref?: () => void }).unref?.();
+}
+
 /** Test hook — the map outlives a single test file otherwise. */
 export function __resetCooldowns(): void {
   store.clear();

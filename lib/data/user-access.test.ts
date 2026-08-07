@@ -16,6 +16,7 @@ import { runWithIdentity } from "../auth/request-context";
 import { seedIdentity, TEAM_A, TEAM_B } from "./identity-test-helpers";
 import { seedApp, seedServer } from "./app-graph-test-helpers";
 import { listRoles } from "./roles";
+import { updateMember } from "./members";
 import {
   addUserToTeam,
   listUserAccess,
@@ -365,6 +366,27 @@ test("the change lands in the affected team's Activity", async () => {
   const feed = await as(ADMIN, () => listUserActivity(ADMIN, 10));
   assert.equal(feed.length, 1);
   assert.equal(feed[0].teamName, "team-a");
+});
+
+test("the team's OWN door logs it too, in the team it happened in", async () => {
+  // Settings → Users is one door into a membership; the team's Members tab is
+  // the other, and it used to write nothing at all — no Activity row, no alert.
+  // "Who changed what this person can do" has to be answerable whichever door
+  // it came through.
+  const roles = await rolesOfTeamA();
+  const viewer = roles.find((r) => r.builtinKey === "viewer")!;
+  await as(
+    FOUNDER,
+    () => updateMember({ userId: DEV, roleId: viewer.id }),
+    TEAM_A,
+  );
+  const rows = await db
+    .select()
+    .from(activitiesTable)
+    .where(eq(activitiesTable.teamId, TEAM_A));
+  assert.equal(rows.length, 1);
+  assert.match(rows[0].message, /u_dev/);
+  assert.match(rows[0].message, /Viewer role/);
 });
 
 /* ------------------------------------------------------------------ */

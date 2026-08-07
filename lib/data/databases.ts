@@ -607,7 +607,13 @@ export async function createDatabase(input: {
     await assertServerAccessibleTx(tx, server.id, teamId);
     await tx.insert(databasesTable).values(databaseToRow(db));
   });
-  await recordActivity("database", `Created database ${name} (${input.type})`, user.name, null);
+  await recordActivity(
+    "database",
+    `Created database ${name} (${input.type})`,
+    user.name,
+    null,
+    teamId,
+  );
 
   // Provision the real container on the owning server's agent in the background;
   // flips to running/error.
@@ -1194,7 +1200,7 @@ export async function deleteDatabase(
         : `Deleted database ${db.name}`,
       user.name,
       null,
-      null,
+      db.teamId,
       "database_deleted",
     );
   });
@@ -1327,7 +1333,13 @@ export async function updateDatabaseResources(
     .returning({ id: databasesTable.id });
   if (updated.length === 0) throw new Error("Not found");
   publishDatabaseChanged(id);
-  await recordActivity("database", "Updated database resource limits", user.name, null);
+  await recordActivity(
+    "database",
+    "Updated database resource limits",
+    user.name,
+    null,
+    membership.teamId,
+  );
 }
 
 /** A docker image reference the compose can carry as a plain scalar: repo /
@@ -1394,7 +1406,13 @@ export async function updateDatabaseImage(
     .returning({ id: databasesTable.id });
   if (updated.length === 0) throw new Error("Not found");
   publishDatabaseChanged(id);
-  await recordActivity("database", "Updated database image settings", user.name, null);
+  await recordActivity(
+    "database",
+    "Updated database image settings",
+    user.name,
+    null,
+    membership.teamId,
+  );
 }
 
 /**
@@ -1429,7 +1447,13 @@ export async function restartDatabase(id: string): Promise<void> {
       .where(eq(databasesTable.id, id));
     publishDatabaseChanged(id);
   });
-  await recordActivity("database", "Restarted database", user.name, null);
+  await recordActivity(
+    "database",
+    "Restarted database",
+    user.name,
+    null,
+    teamId,
+  );
 }
 
 /**
@@ -1472,7 +1496,13 @@ export async function redeployDatabase(id: string): Promise<void> {
       .where(eq(databasesTable.id, id));
     publishDatabaseChanged(id);
   });
-  await recordActivity("database", "Redeployed database", user.name, null);
+  await recordActivity(
+    "database",
+    "Redeployed database",
+    user.name,
+    null,
+    teamId,
+  );
 }
 
 /**
@@ -1536,7 +1566,7 @@ export async function rebuildDatabase(id: string): Promise<void> {
     "Rebuilt database from scratch (data volume wiped)",
     user.name,
     null,
-    null,
+    teamId,
     "database_rebuilt",
   );
 }
@@ -1699,6 +1729,12 @@ export async function rotateDatabasePassword(
     }
     publishDatabaseChanged(id);
   });
-  await recordActivity("database", "Rotated database password", user.name, null);
+  await recordActivity(
+    "database",
+    "Rotated database password",
+    user.name,
+    null,
+    teamId,
+  );
   return newConn;
 }

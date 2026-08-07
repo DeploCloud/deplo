@@ -236,7 +236,13 @@ export async function createS3(input: {
     lastTestMs: null,
   };
   await getDb().insert(s3Table).values(s3ToRow(s));
-  await recordActivity("s3", `Connected S3 destination ${s.name}`, user.name, null);
+  await recordActivity(
+    "s3",
+    `Connected S3 destination ${s.name}`,
+    user.name,
+    null,
+    s.teamId,
+  );
   return toDTO(s);
 }
 
@@ -509,5 +515,11 @@ export async function deleteS3(id: string): Promise<void> {
       .delete(s3Table)
       .where(and(eq(s3Table.id, id), eq(s3Table.teamId, teamId)));
   });
-  await recordActivity("s3", `Removed S3 destination ${s.name}`, user.name, null);
+  await recordActivity(
+    "s3",
+    `Removed S3 destination ${s.name}`,
+    user.name,
+    null,
+    teamId,
+  );
 }

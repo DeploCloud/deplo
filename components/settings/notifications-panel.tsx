@@ -112,7 +112,11 @@ export function NotificationsPanel({
     setDraft({
       kind,
       name: "",
-      enabled: true,
+      // Every kind starts on, EXCEPT browser push: turning that switch on is
+      // what asks this device for permission and registers it (`toggle`), so a
+      // push channel born already-on would be saved enabled with no device
+      // behind it and would deliver nothing, silently, for ever.
+      enabled: kind !== "push",
       // ntfy is the one kind with a meaningful default address.
       url: kind === "ntfy" ? "https://ntfy.sh" : "",
       target: "",

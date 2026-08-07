@@ -39,7 +39,7 @@ import { instanceOwnerUserId } from "./instance-owner";
 import { ensureTeamRoles, roleAssignment } from "./roles";
 import { buildScopeTree, type ScopeTreeTeam } from "./tokens";
 import { nodeCapabilitiesFor, withView } from "./node-access";
-import type { Activity, Capability, Membership } from "../types";
+import type { Activity, AlertKey, Capability, Membership } from "../types";
 
 /**
  * Instance-admin administration of ONE person's access across the whole
@@ -778,6 +778,13 @@ async function writeNodeGrants(
  * Log the change in the AFFECTED team's Activity, so "who can do what, and who
  * changed it" is answerable from the UI — including by people who can't see
  * Settings → Users. Runs OUTSIDE the transaction (own connection).
+ *
+ * It RAISES the matching alert too. This is the second door into a team's
+ * membership — Settings → Users, the instance-wide one — and it used to write
+ * the trail and stay silent, so `member_joined` / `member_removed` /
+ * `member_access_changed` fired for the team's own Members tab and for nothing
+ * that came through here. A switch that promises an alert has to deliver it
+ * through every door, or it is a switch that promises silence.
  */
 async function recordUserAccess(
   userId: string,
@@ -800,5 +807,13 @@ async function recordUserAccess(
     actor,
     null,
     teamId,
+    ACCESS_ALERT[verb] ?? "member_access_changed",
   );
 }
+
+/** Which alert each verb of {@link recordUserAccess} is. */
+const ACCESS_ALERT: Record<string, AlertKey> = {
+  Added: "member_joined",
+  Removed: "member_removed",
+  Set: "member_access_changed",
+};

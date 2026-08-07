@@ -1922,9 +1922,16 @@ export async function deleteApp(id: string): Promise<void> {
         `leftover containers on that host must be removed manually.`,
       user.name,
       null,
+      project.teamId,
     );
   }
-  await recordActivity("app", `Deleted project ${project.name}`, user.name, null);
+  await recordActivity(
+    "app",
+    `Deleted project ${project.name}`,
+    user.name,
+    null,
+    project.teamId,
+  );
 }
 
 /**
