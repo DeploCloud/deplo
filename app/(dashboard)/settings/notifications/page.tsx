@@ -14,7 +14,7 @@ export default async function SettingsNotificationsPage() {
     return (
       <OutsideYourAccess
         title="Notifications"
-        description="Alerts and where they’re delivered."
+        description="Pick a channel, then pick what it should tell you about."
         what="The team's notification channels"
       />
     );
@@ -31,7 +31,7 @@ export default async function SettingsNotificationsPage() {
     <div className="space-y-6">
       <PageHeader
         title="Notifications"
-        description="Alerts and where they’re delivered."
+        description="Pick a channel, then pick what it should tell you about."
       />
       <NotificationsPanel
         initial={notifications}

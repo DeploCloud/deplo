@@ -339,6 +339,60 @@
   animation-delay: var(--shimmer-delay, 0s);
 }
 
+/* The notification settings' illustration: alerts landing on a phone. Three
+ * cards share one loop, staggered by --notif-delay, so the stream never stops
+ * and nothing has to be scripted in JS. Decoration only — the whole figure is
+ * aria-hidden, and reduced motion freezes it into a static phone. */
+@keyframes deplo-notif-card {
+  0% {
+    opacity: 0;
+    transform: translateY(-14px) scale(0.96);
+  }
+  6% {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+  30% {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+  38% {
+    opacity: 0.5;
+    transform: translateY(7px) scale(0.985);
+  }
+  92% {
+    opacity: 0.5;
+    transform: translateY(7px) scale(0.985);
+  }
+  100% {
+    opacity: 0;
+    transform: translateY(-14px) scale(0.96);
+  }
+}
+
+.animate-notif-card {
+  opacity: 0;
+  animation: deplo-notif-card 7.8s ease-in-out infinite;
+  animation-delay: var(--notif-delay, 0s);
+}
+
+/* The halo behind the phone, breathing on the same slow clock. */
+@keyframes deplo-notif-halo {
+  0%,
+  100% {
+    opacity: 0.35;
+    transform: scale(1);
+  }
+  50% {
+    opacity: 0.6;
+    transform: scale(1.06);
+  }
+}
+
+.animate-notif-halo {
+  animation: deplo-notif-halo 7.8s ease-in-out infinite;
+}
+
 /* Left-to-right fill for the connection-guard's auto-reconnect button: the bar
    IS the countdown to the next probe. Driven inline with the cycle's duration;
    the element it animates carries `motion-reduce:hidden`, so no reduced-motion
@@ -357,8 +411,15 @@
   .animate-slide-in-right,
   .animate-slide-in-left,
   .animate-jiggle,
+  .animate-notif-card,
+  .animate-notif-halo,
   .animate-shimmer::after {
     animation: none;
+  }
+  /* The cards start invisible so the stream can begin off-screen; with the
+     animation gone they have to be shown, or the phone renders empty. */
+  .animate-notif-card {
+    opacity: 1;
   }
   *,
   *::before,
