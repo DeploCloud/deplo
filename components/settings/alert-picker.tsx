@@ -81,13 +81,17 @@ export function AlertPicker({
     <div className="space-y-3">
       <div className="flex flex-wrap items-center justify-between gap-2">
         <div className="flex items-center gap-1.5">
-          <h3 className="text-sm font-medium">Alerts</h3>
+          {/* The count belongs to the heading, not beside the actions: it says
+              what this list currently IS, it is not something you can press. */}
+          <h3 className="text-sm font-medium">
+            Alerts{" "}
+            <span className="font-normal tabular-nums text-muted-foreground">
+              ({alerts.length}/{ALL_ALERTS.length})
+            </span>
+          </h3>
           <InfoTip content={hint} />
         </div>
         <div className="flex items-center gap-2 text-xs text-muted-foreground">
-          <span className="tabular-nums">
-            {alerts.length} of {ALL_ALERTS.length} on
-          </span>
           {!disabled && (
             <button
               type="button"
