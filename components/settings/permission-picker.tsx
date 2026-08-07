@@ -179,7 +179,7 @@ export function PermissionPicker({
                       onClick={() => setMany(cat.shown, !allShownOn)}
                       className="ml-auto shrink-0 rounded text-xs font-medium text-muted-foreground transition-colors hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                     >
-                      {allShownOn ? "Clear these" : "Select these"}
+                      {allShownOn ? "Unselect all" : "Select all"}
                     </button>
                   )}
                 </header>

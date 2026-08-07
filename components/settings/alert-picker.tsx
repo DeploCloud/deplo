@@ -142,7 +142,7 @@ export function AlertPicker({
         <div className="space-y-3">
           {sections.map((cat) => {
             const on = cat.alerts.filter((a) => enabled.has(a)).length;
-            // Acts on the FILTERED subset, so "select these" while searching
+            // Acts on the FILTERED subset, so "Select all" while searching
             // never quietly ticks a row the user cannot see.
             const allShownOn = cat.shown.every((a) => enabled.has(a));
             return (
@@ -167,7 +167,7 @@ export function AlertPicker({
                       onClick={() => setMany(cat.shown, !allShownOn)}
                       className="ml-auto shrink-0 rounded text-xs font-medium text-muted-foreground transition-colors hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                     >
-                      {allShownOn ? "Clear these" : "Select these"}
+                      {allShownOn ? "Unselect all" : "Select all"}
                     </button>
                   )}
                 </header>

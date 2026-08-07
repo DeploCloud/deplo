@@ -314,6 +314,17 @@ Single endpoint `app/api/graphql/route.ts` (thin) → `lib/graphql/yoga.ts`. One
   what the thing does or what to do next; don't restate the control's own label, don't narrate
   implementation, don't explain Docker. If it needs a paragraph to make sense, the UI is wrong, not
   the copy. Errors and server messages are the exception: surface those verbatim.
+- **Never invent a name for a thing the world already names.** If a control, pattern or concept
+  already has a label every user has seen a hundred times, use THAT label — exactly, not a
+  synonym you find tidier. It is **"Select all" / "Unselect all"**, never "Select these" /
+  "Clear these"; **Save**, **Cancel**, **Delete**, **Search**, **Copy**, **Rename**, **Duplicate**,
+  **Import** / **Export**, **Sign in** / **Sign out**. A familiar word costs the reader nothing;
+  a fresh one costs them a pause on every encounter, and a screenful of them makes a product feel
+  like it was written by someone who had never used software.
+  **Before writing any button, menu item or column header, check whether the repo already spells
+  it** (`grep` the string across `components/`) and match the existing spelling — the same control
+  must not be called two things in two places. Only invent a word when the thing itself is genuinely
+  new, and then put it in `CONTEXT.md` so it stays the only spelling.
 - **Field help lives in the tooltip:** `FieldLabel info={…}` / `InfoTip` (`components/ui/info-tip.tsx`)
   — don't duplicate it as helper text below the input.
 - **A description under a title always gets a gap.** Any muted description stacked under its own
