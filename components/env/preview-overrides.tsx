@@ -3,7 +3,14 @@
 import * as React from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
-import { ChevronDown, GitPullRequest, Loader2, Plus, Trash2 } from "lucide-react";
+import {
+  ChevronDown,
+  GitPullRequest,
+  Info,
+  Loader2,
+  Plus,
+  Trash2,
+} from "lucide-react";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -15,9 +22,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { FieldLabel, InfoTip } from "@/components/ui/info-tip";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
+import { InfoTip } from "@/components/ui/info-tip";
 import { SimpleTooltip } from "@/components/ui/tooltip";
 import {
   Table,
@@ -27,9 +32,13 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { Textarea } from "@/components/ui/textarea";
 import { EnvValueCell } from "@/components/env/env-value-cell";
-import { KEY_RE } from "@/components/env/env-parse";
+import {
+  EnvRowsEditor,
+  filledRows,
+  invalidRows,
+  type EnvRow,
+} from "@/components/env/env-rows-editor";
 import { SecretRow } from "@/components/env/secret-row";
 import { gqlAction } from "@/lib/graphql-client";
 import { cn, timeAgo } from "@/lib/utils";
@@ -66,30 +75,52 @@ export function PreviewOverrides({
   const [open, setOpen] = React.useState(overrides.length > 0);
   const [pending, startTransition] = React.useTransition();
   const [addOpen, setAddOpen] = React.useState(false);
-  const [key, setKey] = React.useState("");
-  const [value, setValue] = React.useState("");
+  const [rows, setRows] = React.useState<EnvRow[]>([{ key: "", value: "" }]);
   const [secret, setSecret] = React.useState(false);
 
-  const trimmedKey = key.trim();
-  const keyValid = KEY_RE.test(trimmedKey);
+  const filled = filledRows(rows);
+  const invalid = invalidRows(rows);
 
   function submit(e: React.FormEvent) {
     e.preventDefault();
     startTransition(async () => {
-      const res = await gqlAction(
-        `mutation ($appId: ID!, $key: String!, $value: String!, $secret: Boolean) {
-          setPreviewEnvVar(appId: $appId, key: $key, value: $value, secret: $secret)
-        }`,
-        { appId, key: trimmedKey, value, secret },
+      // No bulk mutation for overrides, and none is worth adding: setPreviewEnvVar
+      // is an upsert, so firing them together costs one round trip and a retry
+      // after a partial failure simply rewrites what already landed.
+      const results = await Promise.all(
+        filled.map((r) =>
+          gqlAction(
+            `mutation ($appId: ID!, $key: String!, $value: String!, $secret: Boolean) {
+              setPreviewEnvVar(appId: $appId, key: $key, value: $value, secret: $secret)
+            }`,
+            {
+              appId,
+              key: r.key.trim(),
+              value: r.value,
+              // Same rule as Add variable: the toggle only speaks for a single
+              // row, and a batch lands plain to be flipped from the table.
+              secret: filled.length === 1 ? secret : false,
+            },
+          ),
+        ),
       );
-      if (res.ok) {
-        toast.success("Preview override saved");
-        setAddOpen(false);
-        setKey("");
-        setValue("");
-        setSecret(false);
+      const failed = results.filter((r) => !r.ok);
+      const saved = results.length - failed.length;
+      if (saved > 0) {
+        toast.success(
+          saved === 1 ? "Preview override saved" : `Saved ${saved} overrides`,
+        );
         router.refresh();
-      } else toast.error(res.error);
+      }
+      if (failed.length > 0) {
+        // Keep the dialog open on the rows as typed: the ones that landed are
+        // idempotent, so fixing the bad key and submitting again is safe.
+        toast.error(failed[0].ok ? "Could not save" : failed[0].error);
+        return;
+      }
+      setAddOpen(false);
+      setRows([{ key: "", value: "" }]);
+      setSecret(false);
     });
   }
 
@@ -224,56 +255,35 @@ export function PreviewOverrides({
           </div>
         ))}
 
-      {/* Deliberately the same form as Edit variable, field for field: same
-          labels, same monospace key with the same rule and the same inline
-          error, same 3-row value textarea, same SecretRow, same footer. Adding a
-          variable and overriding one are the same act in the user's head. */}
+      {/* Deliberately the same dialog as Add variable, down to the row editor
+          itself: overriding one value and adding one are the same act in the
+          user's head, and doing five of them a modal at a time is the kind of
+          thing nobody does twice. Same `.env` paste, same "Add another", same
+          rule about the secret toggle only speaking for a single row. */}
       <Dialog open={addOpen} onOpenChange={setAddOpen}>
-        <DialogContent>
+        <DialogContent className="sm:max-w-xl">
           <DialogHeader>
             <DialogTitle>Add preview override</DialogTitle>
             <DialogDescription>
-              This value replaces the app&apos;s own in pull request previews.
+              These values replace the app&apos;s own in pull request previews.
               Production is untouched.
             </DialogDescription>
           </DialogHeader>
           <form className="grid gap-4" onSubmit={submit}>
             <div className="space-y-4">
-              <div className="space-y-2">
-                <FieldLabel info="The variable's name. It must match one of the app's variables to replace it - a name that matches nothing is simply added in previews.">
-                  Key
-                </FieldLabel>
-                <Input
-                  value={key}
-                  onChange={(e) => setKey(e.target.value)}
-                  spellCheck={false}
-                  placeholder="DATABASE_URL"
-                  aria-invalid={trimmedKey !== "" && !keyValid}
-                  className={cn(
-                    "font-mono text-sm",
-                    trimmedKey !== "" &&
-                      !keyValid &&
-                      "border-destructive text-destructive focus-visible:ring-destructive",
-                  )}
-                />
-                {trimmedKey !== "" && !keyValid && (
-                  <p className="text-xs text-destructive">
-                    Names must start with a letter or underscore and contain only
-                    letters, digits and underscores.
-                  </p>
-                )}
-              </div>
-              <div className="space-y-2">
-                <Label>Value</Label>
-                <Textarea
-                  value={value}
-                  onChange={(e) => setValue(e.target.value)}
-                  placeholder="Enter a value"
-                  rows={3}
-                  autoFocus
-                />
-              </div>
-              <SecretRow secret={secret} onChange={setSecret} />
+              <EnvRowsEditor rows={rows} onChange={setRows} />
+
+              {filled.length > 1 ? (
+                <p className="flex items-start gap-2 rounded-lg border border-border bg-secondary/30 px-3 py-2.5 text-xs text-muted-foreground">
+                  <Info className="mt-px size-3.5 shrink-0" />
+                  <span>
+                    Pasted overrides are added as plain - flip individual ones to
+                    secret from the table.
+                  </span>
+                </p>
+              ) : (
+                <SecretRow secret={secret} onChange={setSecret} />
+              )}
             </div>
             <DialogFooter>
               <Button
@@ -284,9 +294,14 @@ export function PreviewOverrides({
               >
                 Cancel
               </Button>
-              <Button type="submit" disabled={pending || !keyValid}>
+              <Button
+                type="submit"
+                disabled={
+                  pending || filled.length === 0 || invalid.length > 0
+                }
+              >
                 {pending && <Loader2 className="size-4 animate-spin" />}
-                Save
+                {filled.length > 1 ? `Save ${filled.length}` : "Save"}
               </Button>
             </DialogFooter>
           </form>
