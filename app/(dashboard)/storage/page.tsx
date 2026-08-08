@@ -22,6 +22,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { CreateDatabase } from "@/components/storage/create-database";
+import { DatabaseGraphic } from "@/components/storage/database-graphic";
 import { DatabasesGrid } from "@/components/storage/databases-grid";
 import { CreateS3 } from "@/components/storage/create-s3";
 import { S3Card } from "@/components/storage/s3-card";
@@ -160,23 +161,15 @@ export default async function StoragePage(props: PageProps<"/storage">) {
               empty={databases.length === 0}
               emptyState={
                 <EmptyState
-                  icon={Database}
+                  graphic={<DatabaseGraphic />}
                   title="No databases yet"
-                  // Nothing here and no way to add one: say which permission is
-                  // missing rather than offering a button that gets refused.
+                  // No button: the heading row above carries Create database
+                  // already. When the actor cannot create one, say which
+                  // permission is missing rather than leaving them guessing.
                   description={
                     canCreateDatabase
                       ? "Create a managed database to connect to your apps."
                       : "You don't have permission to create databases. Ask a team admin for the “Create databases” permission."
-                  }
-                  action={
-                    canCreateDatabase ? (
-                      <CreateDatabase
-                        servers={dbServers}
-                        canCreate
-                        canExposePorts={mayExposePorts}
-                      />
-                    ) : undefined
                   }
                 />
               }

@@ -859,6 +859,44 @@
   }
 }
 
+/* The Databases empty state rolls a tumbleweed through: in from the left, across
+   the drum that is not there, out to the right, and then nothing for two full
+   seconds before it comes round again. The PAUSE is the joke - a frame that
+   never stops moving reads as loading, not as empty.
+
+   917deg is not a round number on purpose: the weed travels 144 units on a
+   radius of 9, and 144 / (2 * pi * 9) is 2.548 turns. Anything else and it
+   visibly skids along the ground instead of rolling on it. */
+@keyframes deplo-db-tumble {
+  0%,
+  8% {
+    transform: translateX(0) rotate(0deg);
+  }
+  55%,
+  100% {
+    transform: translateX(144px) rotate(917deg);
+  }
+}
+
+.deplo-db-tumble {
+  /* view-box, not fill-box: the twigs make the group's bounding box lopsided, so
+     its centre is not the ball's centre and the weed would bob off the ground
+     once per turn. Pin the origin to the circle instead. */
+  transform-box: view-box;
+  transform-origin: -12px 61px;
+  animation: deplo-db-tumble 6s linear infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  /* Park it beside the drum, on the ground, mid-roll. NOT its end frame: that
+     one is off-screen, and an illustration of nothing at all reads as broken
+     rather than empty. 255deg is the same distance-to-rotation ratio. */
+  .deplo-db-tumble {
+    animation: none;
+    transform: translateX(40px) rotate(255deg);
+  }
+}
+
 @media (prefers-reduced-motion: reduce) {
   .animate-fade-in,
   .animate-slide-in-right,
