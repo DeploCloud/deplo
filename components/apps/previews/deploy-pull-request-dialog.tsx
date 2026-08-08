@@ -111,7 +111,7 @@ export function DeployPullRequestDialog({
       <DialogTrigger asChild>
         <Button variant="outline" size="sm">
           <Plus className="size-4" />
-          Deploy a pull request
+          New preview
         </Button>
       </DialogTrigger>
       <DialogContent className="sm:max-w-lg">
