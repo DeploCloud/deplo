@@ -3,7 +3,6 @@ import {
   getWebPushPublicKey,
   listNotificationChannels,
 } from "@/lib/data/notifications";
-import { PageHeader } from "@/components/shared/page-header";
 import { OutsideYourAccess } from "@/components/shared/outside-your-access";
 import { NotificationsPanel } from "@/components/settings/notifications-panel";
 
@@ -29,17 +28,13 @@ export default async function SettingsNotificationsPage() {
     getWebPushPublicKey(),
   ]);
 
+  // The page header lives inside the panel: "Add channel" belongs in it, and
+  // only the panel can open the dialog it opens.
   return (
-    <div className="space-y-6">
-      <PageHeader
-        title="Notifications"
-        description="Pick a channel, then pick what it should tell you about."
-      />
-      <NotificationsPanel
-        initial={channels}
-        vapidPublicKey={vapidPublicKey}
-        canManage={canManage}
-      />
-    </div>
+    <NotificationsPanel
+      initial={channels}
+      vapidPublicKey={vapidPublicKey}
+      canManage={canManage}
+    />
   );
 }

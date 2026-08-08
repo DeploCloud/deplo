@@ -18,6 +18,7 @@ import {
   type Secrets,
 } from "@/components/settings/channel-config";
 import { NotificationIllustration } from "@/components/settings/notification-illustration";
+import { PageHeader } from "@/components/shared/page-header";
 import { ConfirmAction } from "@/components/shared/confirm-action";
 import { EmptyState } from "@/components/shared/empty-state";
 import { Badge } from "@/components/ui/badge";
@@ -35,7 +36,6 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { gqlAction } from "@/lib/graphql-client";
-import { cn } from "@/lib/utils";
 import { DEFAULT_ALERTS } from "@/lib/alerts";
 import { ALL_ALERTS, ALL_CHANNELS } from "@/lib/types";
 import type {
@@ -225,49 +225,51 @@ export function NotificationsPanel({
   const ready = draft ? isChannelReady(draft, secrets) : false;
 
   return (
-    <>
-      <div
-        className={cn(
-          "grid items-start gap-6",
-          // The rail's column only exists when the rail does, or an empty page
-          // would hold 260px of nothing open beside a card that could use it.
-          initial.length > 0 && "xl:grid-cols-[minmax(0,1fr)_260px]",
-        )}
-      >
-        <div className="min-w-0 space-y-4">
-          <Card>
-            <CardHeader className="flex-row items-center justify-between gap-3 space-y-0">
-              <CardTitle className="flex w-fit flex-wrap items-center gap-1.5">
-                <Bell className="size-4" />
-                Alert channels
-                <InfoTip content="Where alerts go. Each channel carries its own list of what it is told about." />
-                <Badge
-                  variant={onCount === 0 ? "muted" : "secondary"}
-                  className="tabular-nums"
-                >
-                  {onCount} on
-                </Badge>
-              </CardTitle>
-              {canManage && (
-                <Button size="sm" onClick={openAdd}>
-                  <Plus className="size-4" />
-                  Add channel
-                </Button>
-              )}
-            </CardHeader>
-            <CardContent>
-              {initial.length === 0 ? (
-                // Illustration-led, the way every other empty state worth
-                // explaining is: the phone catching alerts says what this page
-                // is for faster than any sentence. Less vertical padding than
-                // the default because the figure brings its own height.
-                <EmptyState
-                  className="py-10"
-                  graphic={<NotificationIllustration caption={false} />}
-                  title="No channels yet"
-                  description="Add a channel, then pick what it should tell you about."
-                />
-              ) : (
+    <div className="space-y-6">
+      {/* The page header lives HERE, not in the server page, because "Add
+          channel" belongs in it and only this component can open the modal.
+          Putting the action at page level is what lets the empty state drop the
+          card entirely and still leave exactly one button on screen. */}
+      <PageHeader
+        title="Notifications"
+        description="Pick a channel, then pick what it should tell you about."
+        actions={
+          canManage && (
+            <Button size="sm" onClick={openAdd}>
+              <Plus className="size-4" />
+              Add channel
+            </Button>
+          )
+        }
+      />
+
+      {initial.length === 0 ? (
+        // No card: an empty page is one surface, not a dashed box sitting on a
+        // card sitting on the page. The phone catching alerts says what this is
+        // for faster than the line under it does.
+        <EmptyState
+          graphic={<NotificationIllustration caption={false} />}
+          title="No channels yet"
+          description="Deplo tells you what happened, on the channels you pick, wherever you are."
+        />
+      ) : (
+        <div className="grid items-start gap-6 xl:grid-cols-[minmax(0,1fr)_260px]">
+          <div className="min-w-0 space-y-4">
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex w-fit flex-wrap items-center gap-1.5">
+                  <Bell className="size-4" />
+                  Alert channels
+                  <InfoTip content="Where alerts go. Each channel carries its own list of what it is told about." />
+                  <Badge
+                    variant={onCount === 0 ? "muted" : "secondary"}
+                    className="tabular-nums"
+                  >
+                    {onCount} on
+                  </Badge>
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
                 <div className="space-y-2">
                   {initial.map((instance) => (
                     <ChannelRow
@@ -279,20 +281,17 @@ export function NotificationsPanel({
                     />
                   ))}
                 </div>
-              )}
-            </CardContent>
-          </Card>
-        </div>
+              </CardContent>
+            </Card>
+          </div>
 
-        {/* Decoration, and the only thing on this page that says what it is FOR.
-            Gone while the list is empty: the empty state is showing the same
-            phone, and one page has no business animating it twice. */}
-        {initial.length > 0 && (
+          {/* Decoration, and the only thing on this page that says what it is
+              FOR once the empty state is gone. */}
           <aside className="hidden xl:sticky xl:top-20 xl:block">
             <NotificationIllustration />
           </aside>
-        )}
-      </div>
+        </div>
+      )}
 
       {/* ONE modal for whichever channel is open, so only one alert picker is
           ever mounted - which is also what keeps its per-row DOM ids unique.
@@ -483,7 +482,7 @@ export function NotificationsPanel({
           return res;
         }}
       />
-    </>
+    </div>
   );
 }
 
