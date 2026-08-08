@@ -32,6 +32,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { EmptyState } from "@/components/shared/empty-state";
+import { RegistryGraphic } from "@/components/settings/registry-graphic";
 import { ConfirmAction } from "@/components/shared/confirm-action";
 import { gqlAction } from "@/lib/graphql-client";
 import type { RegistryDTO } from "@/lib/data/registries";
@@ -75,7 +76,7 @@ export function RegistriesPanel({ registries }: { registries: RegistryDTO[] }) {
       <CardContent>
         {registries.length === 0 ? (
           <EmptyState
-            icon={Boxes}
+            graphic={<RegistryGraphic />}
             title="No registries connected"
             description="Add a registry to use private images in your deployments."
           />

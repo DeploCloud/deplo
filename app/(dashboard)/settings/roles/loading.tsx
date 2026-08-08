@@ -1,53 +1,52 @@
 import { Skeleton } from "@/components/ui/skeleton";
 
 /**
- * Roles is the one settings section with a layout of its own: a rail of the
- * team's roles on the left and whichever one is open on the right. Its skeleton
- * has to be that shape, not the index's - drawing a stack of form cards here
- * would move the whole page sideways the moment the real thing arrives.
+ * The fallback for the role OPEN ON THE RIGHT — and nothing else.
+ *
+ * `loading.tsx` is nested INSIDE its segment's layout and wraps only the page
+ * below it (Next.js streaming guide: "loading.js is nested inside layout.js and
+ * wraps page.js in a Suspense boundary"). Roles has a layout of its own, so what
+ * this replaces is `{children}` — the detail column — while the real page header
+ * and the real rail of roles are already painted around it.
+ *
+ * That is why this used to look broken: it drew a whole page (header, rail,
+ * detail) and Next rendered all of it inside the detail column, beside a rail
+ * that was already showing the actual roles. The rail staying put is the point
+ * of a master-detail section, not a bug — the skeleton just has to be the shape
+ * of the ONE thing that is still loading.
+ *
+ * Worth keeping rather than deleting: opening a role awaits three reads, and one
+ * of them (`listTeamScopeTree`) walks the team's whole project/environment/
+ * folder/app graph. `new` renders the same editor, and the index page under it
+ * only checks a capability — it resolves before a frame, so its fallback is
+ * never actually seen.
  */
 export default function Loading() {
   return (
     <div
-      className="space-y-6"
+      // The editor's own grid, so the real thing lands exactly where its
+      // skeleton was instead of stepping sideways as it arrives.
+      className="grid items-start gap-6 xl:grid-cols-[1fr_320px]"
       role="status"
       aria-busy
-      aria-label="Loading roles"
+      aria-label="Loading role"
     >
-      {/* PageHeader */}
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-        <div className="space-y-1">
-          <Skeleton className="h-8 w-16" />
-          <Skeleton className="h-4 w-96" />
-        </div>
+      <div className="space-y-4">
+        {/* Details: name, description, colour. */}
+        <Skeleton shimmer className="h-44 w-full rounded-xl" />
+        {/* The permission picker, which is most of the page. */}
+        <Skeleton
+          shimmer
+          style={{ ["--shimmer-delay" as string]: "-0.09s" }}
+          className="h-96 w-full rounded-xl"
+        />
       </div>
-
-      <div className="grid items-start gap-6 lg:grid-cols-[minmax(220px,260px)_1fr]">
-        {/* The rail: its own small heading, the New role button, then the roles.
-            Four rows because every team has at least the three built-ins. */}
-        <div className="space-y-2">
-          <div className="flex items-center justify-between gap-2 px-1">
-            <Skeleton className="h-4 w-16" />
-            <Skeleton className="h-8 w-24 rounded-md" />
-          </div>
-          <div className="space-y-1">
-            {Array.from({ length: 4 }).map((_, i) => (
-              <Skeleton
-                key={i}
-                shimmer
-                style={{ ["--shimmer-delay" as string]: `-${(i * 0.09).toFixed(2)}s` }}
-                className="h-14 w-full rounded-lg"
-              />
-            ))}
-          </div>
-        </div>
-
-        {/* The open role: its header, then the permission picker's own card. */}
-        <div className="min-w-0 space-y-4">
-          <Skeleton className="h-24 w-full rounded-xl" />
-          <Skeleton className="h-96 w-full rounded-xl" />
-        </div>
-      </div>
+      {/* The summary rail: what the role adds up to. */}
+      <Skeleton
+        shimmer
+        style={{ ["--shimmer-delay" as string]: "-0.18s" }}
+        className="h-72 w-full rounded-xl"
+      />
     </div>
   );
 }

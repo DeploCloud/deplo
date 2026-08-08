@@ -1672,3 +1672,69 @@
     transition-duration: 0.01ms !important;
   }
 }
+
+/* The Registries empty state floats: the whale rides at rest and breathes, and
+   nothing else happens, because nothing else is happening - no registry is
+   connected, so nothing is being pulled.
+
+   4 units of rise is the whole bob. It has to be small: a big one reads as a
+   thing being thrown, and every drawing in this set that moves an object that
+   far is moving it somewhere. ease-in-out on both edges is what makes it
+   buoyancy rather than a hop. */
+@keyframes deplo-registry-bob {
+  0%,
+  100% {
+    transform: translateY(0);
+  }
+  50% {
+    transform: translateY(-4px);
+  }
+}
+
+/* The puff leaves the blowhole, spreads and thins - a plume, not a bubble, so
+   it grows as it fades instead of shrinking away. It clears well before the
+   cycle ends, which is what leaves a beat of quiet between breaths. */
+@keyframes deplo-registry-puff {
+  0% {
+    transform: translateY(0) scale(0.5);
+    opacity: 0;
+  }
+  12% {
+    opacity: 0.75;
+  }
+  55%,
+  100% {
+    transform: translateY(-24px) scale(1.7);
+    opacity: 0;
+  }
+}
+
+.deplo-registry-whale {
+  animation: deplo-registry-bob 4s ease-in-out infinite;
+}
+
+.deplo-registry-puff {
+  /* `fill-box` so the plume spreads from its own centre; the translate stays in
+     user units either way, which is what makes 24 mean 24 view-box units. */
+  transform-box: fill-box;
+  transform-origin: center;
+  animation: deplo-registry-puff 4s ease-out infinite;
+}
+
+/* The second one trails the first by rather more than half the cycle, so the
+   two never read as a pair going up together. */
+.deplo-registry-puff:nth-child(2) {
+  animation-delay: 1.3s;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  /* Hold the resting frame: whale level, no plume. */
+  .deplo-registry-whale {
+    animation: none;
+    transform: none;
+  }
+  .deplo-registry-puff {
+    animation: none;
+    opacity: 0;
+  }
+}
