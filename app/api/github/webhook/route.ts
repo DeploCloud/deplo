@@ -1,16 +1,14 @@
 import { createHmac, timingSafeEqual } from "node:crypto";
-import { and, eq, inArray } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 import { getDb } from "@/lib/db/client";
 import {
   githubInstallation as githubInstallationTable,
   apps as appsTable,
-  appBuild as appBuildTable,
 } from "@/lib/db/schema/control-plane";
 import { decryptSecret } from "@/lib/crypto";
 import { findAppByAppId } from "@/lib/github/app";
-import { startDeployment } from "@/lib/deploy/build";
-import { parseWatchPaths } from "@/lib/data/app-graph-rows";
-import { parsePushEvent, shouldAutoDeploy } from "@/lib/deploy/git-webhook";
+import { parsePushEvent } from "@/lib/deploy/git-webhook";
+import { dispatchPushEvent } from "@/lib/deploy/git-webhook-dispatch";
 import { handlePullRequestDelivery } from "@/lib/github/webhook-pull-request";
 
 /**
@@ -18,6 +16,10 @@ import { handlePullRequestDelivery } from "@/lib/github/webhook-pull-request";
  * App's webhook secret, then triggers an auto-redeploy of any project wired to
  * the pushed repo + branch. Best-effort: unmatched or unverifiable deliveries
  * are acknowledged without action.
+ *
+ * Everything after "which apps does this repository belong to" is shared with
+ * the other providers' route (`lib/deploy/git-webhook-dispatch.ts`), so the
+ * trigger rules cannot drift between GitHub and the rest.
  */
 export async function POST(request: Request) {
   const raw = await request.text();
@@ -88,86 +90,19 @@ export async function POST(request: Request) {
   }
 
   // Apps are relational (cut-set c): the github-source candidates for this
-  // installation, filtered in SQL on the flattened repo_* columns.
-  const githubApps = await getDb()
-    .select()
-    .from(appsTable)
-    .where(
-      and(
-        eq(appsTable.source, "github"),
-        eq(appsTable.repoInstallationId, install.id),
-      ),
-    );
-  // First cut on the row-local facts (auto-deploy + repo match). The root-dir
-  // "skip unchanged" filter needs each candidate's build row (root_directory +
-  // skip_unchanged_deployments live on app_build, not the flattened apps
-  // row), so load those in one query keyed by app id before the final filter.
-  const candidates = githubApps.filter(
-    (p) => p.autoDeploy && p.repoRepo === fullName,
-  );
-  const buildRows = candidates.length
-    ? await getDb()
-        .select()
-        .from(appBuildTable)
-        .where(
-          inArray(
-            appBuildTable.appId,
-            candidates.map((p) => p.id),
-          ),
-        )
-    : [];
-  const buildById = new Map(buildRows.map((b) => [b.appId, b]));
-  const targets = candidates.filter((p) =>
-    shouldAutoDeploy(
-      {
-        branch: p.repoBranch || "main",
-        triggerType: p.repoTriggerType === "tag" ? "tag" : "push",
-        watchPaths: parseWatchPaths(p.repoWatchPaths),
-        rootDirectory: buildById.get(p.id)?.rootDirectory ?? null,
-        skipUnchanged: buildById.get(p.id)?.skipUnchangedDeployments ?? false,
-      },
-      pushEvent,
-    ),
-  );
-
-  if (targets.length === 0) {
-    // The silent-failure heart of this endpoint: a delivered, verified push
-    // that matches no project returns 200 with no deploy. Dump every github
-    // app's match-relevant fields so the exact mismatched clause (source /
-    // autoDeploy / repo / installationId / branch / trigger / watch paths) is
-    // obvious from one log line.
-    console.warn(
-      `[github-webhook] no auto-deploy target: repo=${fullName} ref=${pushEvent.refName} ` +
-        `isTag=${pushEvent.isTag} install=${install.id}; candidates=` +
-        JSON.stringify(
-          githubApps.map((p) => ({
-            id: p.id,
-            autoDeploy: p.autoDeploy,
-            repo: p.repoRepo,
-            branch: p.repoBranch,
-            triggerType: p.repoTriggerType,
-            watchPaths: p.repoWatchPaths,
-            installationId: p.repoInstallationId,
-          })),
-        ),
-    );
-  }
-
-  for (const p of targets) {
-    try {
-      await startDeployment(p.id, {
-        environment: "production",
-        creator: payload.pusher?.name || "github",
-        commitMessage:
-          payload.head_commit?.message || (pushEvent.isTag ? "Tag" : "Push"),
-        // For a tag trigger the deploy checks out the tag itself; for a push it's
-        // the tracked branch (pushEvent.refName === repoBranch here).
-        branch: pushEvent.refName,
-      });
-    } catch {
-      /* keep processing the rest */
-    }
-  }
+  // installation, matched in SQL on the flattened repo_* columns.
+  await dispatchPushEvent({
+    match: and(
+      eq(appsTable.source, "github"),
+      eq(appsTable.repoInstallationId, install.id),
+    )!,
+    repoFullName: fullName,
+    event: pushEvent,
+    creator: payload.pusher?.name || "github",
+    commitMessage:
+      payload.head_commit?.message || (pushEvent.isTag ? "Tag" : "Push"),
+    logTag: "github-webhook",
+  });
 
   return new Response("ok", { status: 200 });
 }

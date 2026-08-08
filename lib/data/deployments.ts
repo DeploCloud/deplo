@@ -15,7 +15,7 @@ import {
   requireCapability,
   requireMembership,
 } from "../membership";
-import { githubCommitUrl, githubPullRequestUrl } from "../utils";
+import { repoCommitUrl, githubPullRequestUrl } from "../utils";
 import { publishAppChanged } from "../graphql/pubsub";
 import { recordActivity } from "./activity";
 import { startDeployment, destroyStack, rerouteApp } from "../deploy/build";
@@ -151,7 +151,7 @@ export async function listDeployments(filter?: {
         appSlug: p?.slug ?? "",
         serverId,
         serverName: serverId ? (serverNameById.get(serverId) ?? null) : null,
-        commitUrl: githubCommitUrl(
+        commitUrl: repoCommitUrl(
           { provider: p?.repoProvider, repo: p?.repoRepo, url: p?.repoUrl },
           dep.commitSha,
         ),

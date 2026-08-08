@@ -642,7 +642,7 @@ export interface UploadArchive {
 export type GitTriggerType = "push" | "tag";
 
 export interface GitRepo {
-  provider: "github" | "gitlab" | "bitbucket" | "git";
+  provider: "github" | GitProviderId;
   url: string;
   repo: string; // owner/name
   branch: string;
@@ -652,6 +652,13 @@ export interface GitRepo {
    * for public repos or plain Git URLs.
    */
   installationId?: string | null;
+  /**
+   * For every OTHER host: the {@link GitConnection} whose stored token
+   * authenticates the clone and registers the push webhook. Absent for a public
+   * repo cloned anonymously — which is what a bare "Repository URL" is.
+   * Mutually exclusive with {@link installationId} in practice.
+   */
+  connectionId?: string | null;
   /**
    * Which git event auto-deploys this app (see {@link GitTriggerType}).
    * Absent ⇒ "push". Consumed by the GitHub webhook to gate a delivery.
@@ -1847,6 +1854,7 @@ export type AlertKey =
   | "deployment_failed"
   | "deployment_succeeded"
   | "deployment_interrupted"
+  | "git_connection_failing"
   // Apps
   | "app_crash_loop"
   // Cron jobs
@@ -1896,6 +1904,7 @@ export const ALL_ALERTS: AlertKey[] = [
   "deployment_failed",
   "deployment_succeeded",
   "deployment_interrupted",
+  "git_connection_failing",
   "app_crash_loop",
   "cron_job_failed",
   "cron_job_succeeded",
@@ -2015,6 +2024,49 @@ export interface GithubInstallation {
   accountLogin: string;
   accountType: "User" | "Organization";
   avatarUrl: string;
+  createdAt: string;
+}
+
+/**
+ * Which non-GitHub git host a {@link GitConnection} talks to. GitHub is absent on
+ * purpose: it authenticates through a GitHub App, not a stored token, and keeps
+ * its own tables and its own UI.
+ *
+ * `git` is the escape hatch — any git server with no API worth calling. It
+ * carries credentials and nothing else: no repository listing, no branch listing,
+ * no webhook registration.
+ */
+export type GitProviderId = "gitlab" | "bitbucket" | "gitea" | "git";
+
+/**
+ * A team's credentials for one git host, created once in Settings → Git and
+ * reused by every App deploying from that host — the counterpart of a
+ * {@link GithubInstallation}.
+ *
+ * The token itself is NEVER in this DTO (no `tokenEnc` field, no reveal path): it
+ * is decrypted only at the clone edge and when calling the provider's API.
+ * `health` is re-derived by the maintenance sweep and by "Test connection", so a
+ * revoked token surfaces before the next deploy fails on it.
+ */
+export interface GitConnection {
+  id: ID;
+  teamId: ID;
+  provider: GitProviderId;
+  /** User-chosen name, e.g. "Company GitLab". */
+  label: string;
+  /** Origin with no trailing slash, e.g. https://gitlab.com. */
+  baseUrl: string;
+  /** Basic-auth username for the clone URL ("oauth2", "x-token-auth", …). */
+  username: string;
+  /** Account the token belongs to, resolved from the provider. */
+  accountLogin: string;
+  avatarUrl: string;
+  health: "ok" | "failing";
+  /** The provider's own error when `health` is "failing"; "" otherwise. */
+  healthError: string;
+  /** Only when the provider reports it (GitLab does, Gitea does not). */
+  tokenExpiresAt: string | null;
+  lastCheckedAt: string | null;
   createdAt: string;
 }
 

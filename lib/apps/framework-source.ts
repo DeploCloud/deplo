@@ -5,6 +5,8 @@ import { join } from "node:path";
 
 import { listRepoTree, fetchRepoBlob } from "../github/app";
 import { githubFullName } from "../github/repo-id";
+import { readGitCredential } from "../data/git-connections";
+import { providerFor, readProviderText } from "../git/providers";
 import { normalizeRootRel, resolveBuildDir } from "../deploy/source";
 import { isGithubRepo } from "./favicon-shared";
 import { supportsFrameworkDetection, type FrameworkId } from "./framework-catalog";
@@ -53,6 +55,13 @@ export async function detectRepoFramework(
   repo: GitRepo,
   rootDirectory?: string | null,
 ): Promise<FrameworkId | null> {
+  // A repo reached through a git connection is read with that connection's own
+  // API, which is the same two calls in a different dialect (list the tree, read
+  // one manifest). Tried first: a connection is explicit, while `isGithubRepo`
+  // is a guess from the URL.
+  if (repo.connectionId) {
+    return detectViaConnection(repo, rootDirectory);
+  }
   if (!isGithubRepo(repo)) return null;
   const fullName = githubFullName(repo);
   if (!fullName) return null;
@@ -85,6 +94,43 @@ export async function detectRepoFramework(
       repo.installationId ?? null,
     );
     if (bytes) manifest = parsePackageManifest(bytes.toString("utf8"));
+  }
+  return detectFramework(files, manifest);
+}
+
+/**
+ * The same recognition through a git connection's API. Best-effort and
+ * non-throwing like every other arm: a provider that refuses the read leaves the
+ * app with no framework rather than failing anything.
+ */
+async function detectViaConnection(
+  repo: GitRepo,
+  rootDirectory?: string | null,
+): Promise<FrameworkId | null> {
+  const cred = await readGitCredential(repo.connectionId!);
+  const api = cred ? providerFor(cred.provider).api : null;
+  if (!cred || !api || !repo.repo) return null;
+  const ref = repo.branch?.trim() || "HEAD";
+
+  const paths = await api.listTree(cred, repo.repo, ref).catch(() => []);
+  if (paths.length === 0) return null;
+
+  const rootRel = normalizeRootRel(rootDirectory);
+  const files = rootFileNames(paths, rootRel);
+  if (files.length === 0) return null;
+
+  let manifest: PackageManifest | null = null;
+  if (files.includes("package.json")) {
+    const manifestPath =
+      rootRel && rootRel !== "." ? `${rootRel}/package.json` : "package.json";
+    const text = await readProviderText(
+      api,
+      cred,
+      repo.repo,
+      ref,
+      manifestPath,
+    ).catch(() => null);
+    if (text) manifest = parsePackageManifest(text);
   }
   return detectFramework(files, manifest);
 }

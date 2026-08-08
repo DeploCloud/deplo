@@ -52,6 +52,11 @@ import { deploySourceEnumName } from "@/lib/types";
 import { gqlAction } from "@/lib/graphql-client";
 import { cn, serverLabel } from "@/lib/utils";
 import { GithubRepoPicker, type GithubSelection } from "@/components/apps/github-repo-picker";
+import {
+  GitSourcePicker,
+  type GitSourceValue,
+} from "@/components/apps/git-source-picker";
+import type { GitConnectionDTO } from "@/lib/data/git-connections";
 import { GithubConnectButton } from "@/components/apps/github-connect-button";
 import { UploadInput } from "@/components/apps/upload-input";
 import {
@@ -145,6 +150,7 @@ export function NewAppWizard({
   presetRepo,
   presetName,
   installations,
+  connections,
   placement,
 }: {
   servers: WizardServer[];
@@ -152,6 +158,8 @@ export function NewAppWizard({
   presetRepo?: string;
   presetName?: string;
   installations: GithubInstallationDTO[];
+  /** The team's git connections (GitLab, Bitbucket, Gitea, plain git). */
+  connections: GitConnectionDTO[];
   /** Drill-in context: the folder / project environment the app is created in. */
   placement?: WizardPlacement | null;
 }) {
@@ -172,15 +180,20 @@ export function NewAppWizard({
   const [source, setSource] = React.useState<DeploySource>(
     isTemplate ? "docker-image" : "github",
   );
-  const [repoUrl, setRepoUrl] = React.useState(
-    presetRepo ? `https://github.com/${presetRepo}` : "",
-  );
+  // The Git source's whole value (credential + repo + branch), owned by
+  // GitSourcePicker.
+  const [gitValue, setGitValue] = React.useState<GitSourceValue>({
+    provider: presetRepo ? "github" : "git",
+    url: presetRepo ? `https://github.com/${presetRepo}` : "",
+    repo: presetRepo ?? "",
+    branch: "main",
+    connectionId: null,
+  });
   const [dockerImage, setDockerImage] = React.useState("");
   // "Upload" source: a code archive picked here and held until deploy, then
   // streamed to the freshly-created app (there's no app to POST to yet).
   const [uploadFile, setUploadFile] = React.useState<File | null>(null);
   const [name, setName] = React.useState(presetName ?? template?.name ?? "");
-  const [branch, setBranch] = React.useState("main");
   const [autoDeploy, setAutoDeploy] = React.useState(true);
   const [gitOptions, setGitOptions] = React.useState<GitDeployOptionsValue>(
     DEFAULT_GIT_DEPLOY_OPTIONS,
@@ -207,7 +220,7 @@ export function NewAppWizard({
   // Which repository (if any) Deplo can read to name the framework. GitHub only:
   // a GitLab / Bitbucket / self-hosted URL has no tree-read path from the control
   // plane, so asking would always come back empty.
-  const gitRepoParsed = source === "git" ? parseRepo(repoUrl) : null;
+  const gitRepoParsed = source === "git" ? parseRepo(gitValue.url) : null;
   const detectRepo =
     source === "github" && ghSelection
       ? {
@@ -217,7 +230,12 @@ export function NewAppWizard({
           installationId: ghSelection.installationId,
         }
       : gitRepoParsed && gitRepoParsed.provider === "github"
-        ? { repo: gitRepoParsed.repo, url: repoUrl.trim(), branch, installationId: null }
+        ? {
+            repo: gitRepoParsed.repo,
+            url: gitValue.url.trim(),
+            branch: gitValue.branch,
+            installationId: null,
+          }
         : null;
 
   const { framework, detecting: detectingFramework } = useRepoFramework({
@@ -253,10 +271,11 @@ export function NewAppWizard({
     setDraftBuild(next);
   }
 
-  function onRepoChange(value: string) {
-    setRepoUrl(value);
-    const parsed = parseRepo(value);
-    if (parsed && !name) setName(parsed.repo.split("/")[1] ?? "");
+  // Name the app after the repository the first time one is picked, so the most
+  // common case needs no typing at all.
+  function onGitChange(value: GitSourceValue) {
+    setGitValue(value);
+    if (!name && value.repo) setName(value.repo.split("/").pop() ?? "");
   }
 
   function onSourceChange(next: DeploySource) {
@@ -292,11 +311,12 @@ export function NewAppWizard({
     }
 
     let repo = null as null | {
-      provider: "github" | "gitlab" | "bitbucket" | "git";
+      provider: string;
       url: string;
       repo: string;
       branch: string;
       installationId?: string | null;
+      connectionId?: string | null;
       triggerType?: "push" | "tag";
       watchPaths?: string[];
       submodules?: boolean;
@@ -316,18 +336,21 @@ export function NewAppWizard({
         installationId: ghSelection.installationId,
       };
     } else if (source === "git") {
-      const parsed = parseRepo(repoUrl);
+      // A bare owner/repo still means GitHub, the way it always has; anything
+      // else comes back from the picker already resolved.
+      const parsed = parseRepo(gitValue.url);
       if (!parsed) {
         toast.error("Enter a valid Git repository URL");
         return;
       }
       repo = {
-        provider: parsed.provider,
-        url: repoUrl.startsWith("http")
-          ? repoUrl
+        provider: gitValue.connectionId ? gitValue.provider : parsed.provider,
+        url: gitValue.url.startsWith("http")
+          ? gitValue.url
           : `https://github.com/${parsed.repo}`,
-        repo: parsed.repo,
-        branch: branch || "main",
+        repo: gitValue.connectionId ? gitValue.repo : parsed.repo,
+        branch: gitValue.branch || "main",
+        connectionId: gitValue.connectionId,
       };
     } else if (source === "docker-image") {
       if (!isTemplate && !dockerImage.trim()) {
@@ -532,31 +555,6 @@ export function NewAppWizard({
                   placeholder="my-app"
                 />
               </div>
-              {usesGit && source !== "github" && (
-                <div className="space-y-2">
-                  <FieldLabel
-                    htmlFor="branch"
-                    info={
-                      <>
-                        The Git branch Deplo deploys from and watches for
-                        pushes. Defaults to{" "}
-                        <code className="font-mono">main</code>.
-                      </>
-                    }
-                  >
-                    Production Branch
-                  </FieldLabel>
-                  <div className="relative">
-                    <GitBranch className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
-                    <Input
-                      id="branch"
-                      value={branch}
-                      onChange={(e) => setBranch(e.target.value)}
-                      className="pl-9"
-                    />
-                  </div>
-                </div>
-              )}
             </div>
 
             {/* What Deplo recognised in the repository, as soon as one is
@@ -611,8 +609,9 @@ export function NewAppWizard({
                     <p className="text-sm font-medium">Automatic deployments</p>
                     <p className="mt-1 text-xs text-muted-foreground">
                       Deploy on every push to{" "}
-                      {(source === "github" ? ghSelection?.branch : branch) ||
-                        "main"}
+                      {(source === "github"
+                        ? ghSelection?.branch
+                        : gitValue.branch) || "main"}
                       .
                     </p>
                   </div>
@@ -749,31 +748,15 @@ export function NewAppWizard({
                 ))}
 
               {source === "git" && (
-                <div className="space-y-2">
-                  <FieldLabel
-                    htmlFor="repo"
-                    info={
-                      <>
-                        HTTPS URL of a public repo — GitHub, GitLab or
-                        Bitbucket. A bare{" "}
-                        <code className="font-mono">owner/repo</code> is treated
-                        as GitHub
-                      </>
-                    }
-                  >
-                    Repository URL
-                  </FieldLabel>
-                  <div className="relative">
-                    <GitHubIcon className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
-                    <Input
-                      id="repo"
-                      value={repoUrl}
-                      onChange={(e) => onRepoChange(e.target.value)}
-                      placeholder="https://github.com/acme/my-app"
-                      className="pl-9 font-mono text-sm"
-                    />
-                  </div>
-                </div>
+                <GitSourcePicker
+                  connections={connections}
+                  initial={{
+                    url: gitValue.url,
+                    repo: gitValue.repo,
+                    branch: gitValue.branch,
+                  }}
+                  onChange={onGitChange}
+                />
               )}
 
               {source === "docker-image" && (

@@ -280,6 +280,9 @@ function assembleRepo(row: AppRow): App["repo"] {
     ...(row.repoInstallationId != null
       ? { installationId: row.repoInstallationId }
       : {}),
+    ...(row.repoConnectionId != null
+      ? { connectionId: row.repoConnectionId }
+      : {}),
     ...(row.repoTriggerType === "tag" ? { triggerType: "tag" as const } : {}),
     ...(watchPaths.length ? { watchPaths } : {}),
     ...(row.repoSubmodules ? { submodules: true } : {}),
@@ -413,6 +416,7 @@ export function appToRow(p: App): AppInsert {
     repoRepo: p.repo?.repo ?? null,
     repoBranch: p.repo?.branch ?? null,
     repoInstallationId: p.repo?.installationId ?? null,
+    repoConnectionId: p.repo?.connectionId ?? null,
     repoTriggerType: p.repo?.triggerType ?? null,
     repoWatchPaths: p.repo?.watchPaths?.length ? p.repo.watchPaths.join("\n") : null,
     repoSubmodules: p.repo?.submodules ?? false,

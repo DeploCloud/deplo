@@ -1,17 +1,23 @@
 import "server-only";
 
-import { isNotNull } from "drizzle-orm";
+import { eq, isNotNull } from "drizzle-orm";
 
 import { getDb } from "../db/client";
-import { servers as serversTable } from "../db/schema/control-plane";
+import {
+  gitConnections as gitConnectionsTable,
+  servers as serversTable,
+} from "../db/schema/control-plane";
+import { decryptSecret } from "../crypto";
+import { probeCredential } from "../data/git-connections";
 import { sweepDomainDns } from "../data/domains";
 import { describeStackCertificates } from "../data/server-certificates";
 import { getUpdateInfo } from "../data/updates";
 import { connectAgent } from "../infra/agent-client";
 import { resolveExpectedAgentVersion } from "../version";
 import { isAgentOutdated } from "../version";
-import { dispatchServerAlert, dispatchToTeams } from "./dispatch";
+import { dispatchAlert, dispatchServerAlert, dispatchToTeams } from "./dispatch";
 import { allTeamIds } from "./server-teams";
+import type { GitProviderId } from "../types";
 
 /**
  * The things nobody polls.
@@ -38,6 +44,7 @@ export async function runMaintenanceSweep(): Promise<void> {
   await settle("agent versions", checkAgentVersions);
   await settle("certificates", checkCustomCertificates);
   await settle("domain dns", sweepDomainDns);
+  await settle("git tokens", checkGitConnections);
 }
 
 /** One failing check must never stop the other three. */
@@ -133,6 +140,62 @@ async function checkCustomCertificates(): Promise<void> {
     }
   }
 }
+
+/**
+ * Git connection tokens. A revoked or expired token is the one failure mode a
+ * user cannot see coming: nothing changes in Deplo, and the first symptom is a
+ * deploy failing on `git clone` at the worst possible moment. Asking the
+ * provider twice a day turns that into a notice with the provider's own reason.
+ *
+ * GitHub is deliberately absent: its App mints a fresh token per deploy, so
+ * there is no stored credential to go stale.
+ */
+async function checkGitConnections(): Promise<void> {
+  const rows = await getDb().select().from(gitConnectionsTable);
+  for (const row of rows) {
+    const cred = {
+      provider: row.provider as GitProviderId,
+      baseUrl: row.baseUrl,
+      username: row.username,
+      token: decryptSecret(row.tokenEnc),
+    };
+    const patch = await probeCredential(cred);
+    await getDb()
+      .update(gitConnectionsTable)
+      .set(patch)
+      .where(eq(gitConnectionsTable.id, row.id));
+
+    const expiringSoon =
+      patch.health === "ok" &&
+      patch.tokenExpiresAt != null &&
+      Date.parse(patch.tokenExpiresAt) - Date.now() <
+        TOKEN_WARN_DAYS * 24 * 60 * 60 * 1000;
+    if (patch.health !== "failing" && !expiringSoon) continue;
+
+    dispatchAlert({
+      teamId: row.teamId,
+      key: "git_connection_failing",
+      // The state is what changed, so a token that goes from expiring to
+      // revoked re-fires instead of being swallowed as a repeat.
+      dedupe: {
+        id: `gitconn:${row.id}`,
+        state: patch.health === "failing" ? "failing" : "expiring",
+      },
+      title:
+        patch.health === "failing"
+          ? `The ${row.label} git connection stopped working`
+          : `The ${row.label} git connection expires soon`,
+      body:
+        patch.health === "failing"
+          ? `${patch.healthError || "The provider rejected the stored token."} Deploys from it will fail until the token is replaced.`
+          : `Its token expires on ${(patch.tokenExpiresAt ?? "").slice(0, 10)}. Replace it in Settings → Git.`,
+      path: "/settings/git",
+    });
+  }
+}
+
+/** Warn this far ahead of a git token expiring. */
+const TOKEN_WARN_DAYS = 7;
 
 /** Exported so a future Advanced panel reads this instead of forking it. */
 export { CERT_WARN_DAYS };

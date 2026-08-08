@@ -100,6 +100,11 @@ import {
   type FrameworkId,
 } from "../apps/framework-catalog";
 import { listGithubInstallations } from "./github";
+import {
+  dropAppWebhook,
+  gitConnectionInTeam,
+  syncAppWebhook,
+} from "./git-connections";
 import { AgentUnreachableError } from "../infra/agent-client";
 import { publishAppChanged } from "../graphql/pubsub";
 import {
@@ -731,7 +736,9 @@ export async function createApp(
     // Nothing to correct before anything has been detected.
     frameworkOverride: null,
     source: input.source,
-    repo: input.repo,
+    // Same guard as updateAppSource: a credential id from another team is
+    // dropped rather than used to clone with.
+    repo: await scopeRepoCredentials(input.repo, membership.teamId),
     dockerImage: input.dockerImage ?? null,
     upload: null,
     compose: input.compose ?? null,
@@ -821,6 +828,10 @@ export async function createApp(
     }
   }
   await recordActivity("app", `Created project ${project.name}`, user.name, project.id);
+  // Register the push webhook on the provider so the very first push after an
+  // import already deploys - the same thing importing from GitHub gives you.
+  // Best-effort: never let a third party's HTTP failure undo a created app.
+  await syncAppWebhook(project.repo).catch(() => {});
 
   // POST-COMMIT (PLAN cut-set (c) "post-commit deploy"): register the generated
   // nip.io domain so it shows up in the Domains section immediately and the
@@ -1000,6 +1011,34 @@ export interface UpdateSourceInput {
   compose?: string | null;
 }
 
+/**
+ * Drop any repo credential that does not belong to this team.
+ *
+ * A GitHub installation and a git connection are both team-scoped tokens, and
+ * both arrive as a plain id in a client request - so without this, a crafted
+ * payload could point an app at ANOTHER team's credential and have Deplo clone
+ * their private repository with it. Dropping the id (rather than failing) leaves
+ * an anonymous clone, which is exactly right for a public repo and gives a clear
+ * "authentication failed" for a private one.
+ *
+ * Called before the transaction, never inside one: it runs its own queries.
+ */
+async function scopeRepoCredentials(
+  repo: GitRepo | null,
+  teamId: string,
+): Promise<GitRepo | null> {
+  if (!repo) return null;
+  const out: GitRepo = { ...repo };
+  if (out.installationId) {
+    const mine = await listGithubInstallations();
+    if (!mine.some((i) => i.id === out.installationId)) out.installationId = null;
+  }
+  if (out.connectionId && !(await gitConnectionInTeam(out.connectionId, teamId))) {
+    out.connectionId = null;
+  }
+  return out;
+}
+
 export async function updateAppSource(
   id: string,
   input: UpdateSourceInput
@@ -1020,6 +1059,7 @@ export async function updateAppSource(
     await requireMountHostVolumes();
   }
   const user = (await getCurrentUser())!;
+  const repo = await scopeRepoCredentials(input.repo, membership.teamId);
   // Team-scoped picklist: a move can only target a server this team may use.
   // The project's current server is always in here (revoking a team's access is
   // blocked while it has workloads on the server), so the old-IP lookup is safe.
@@ -1028,9 +1068,14 @@ export async function updateAppSource(
   );
   // Set inside the tx, consumed after commit to trigger the move's deploy.
   let migrateFromServerId: string | null = null;
+  // The repo this app deployed from BEFORE this save, so its push webhook can be
+  // withdrawn after the commit when the app stops pointing at it. Held in an
+  // object because a bare `let` assigned inside the callback narrows to `null`.
+  const before: { repo: GitRepo | null } = { repo: null };
   await getDb().transaction(async (tx) => {
     const p = await loadAppGraph(id, tx);
     if (!p || p.teamId !== membership.teamId) throw new Error("App not found");
+    before.repo = p.repo;
     // Capture the OLD server IP before serverId is reassigned, so a move can
     // re-host the project's auto nip.io domains onto the new server's IP below.
     const oldIp = resolveServerIp(serversById.get(p.serverId));
@@ -1078,16 +1123,17 @@ export async function updateAppSource(
         // non-move edit). The post-commit deploy consumes it.
         migrateFromServerId,
         source: input.source,
-        repoProvider: input.repo?.provider ?? null,
-        repoUrl: input.repo?.url ?? null,
-        repoRepo: input.repo?.repo ?? null,
-        repoBranch: input.repo?.branch ?? null,
-        repoInstallationId: input.repo?.installationId ?? null,
-        repoTriggerType: input.repo?.triggerType ?? null,
-        repoWatchPaths: input.repo?.watchPaths?.length
-          ? input.repo.watchPaths.join("\n")
+        repoProvider: repo?.provider ?? null,
+        repoUrl: repo?.url ?? null,
+        repoRepo: repo?.repo ?? null,
+        repoBranch: repo?.branch ?? null,
+        repoInstallationId: repo?.installationId ?? null,
+        repoConnectionId: repo?.connectionId ?? null,
+        repoTriggerType: repo?.triggerType ?? null,
+        repoWatchPaths: repo?.watchPaths?.length
+          ? repo.watchPaths.join("\n")
           : null,
-        repoSubmodules: input.repo?.submodules ?? false,
+        repoSubmodules: repo?.submodules ?? false,
         dockerImage: input.dockerImage,
         // Persist compose edits when provided; never clear a stored stack on
         // switch so the user can flip back to Compose and recover it.
@@ -1097,6 +1143,17 @@ export async function updateAppSource(
       .where(eq(appsTable.id, id));
   });
   await recordActivity("app", `Updated deploy source`, user.name, id);
+  // Push webhooks, AFTER the commit: both calls talk to a third party over HTTP,
+  // and holding the app's row lock across someone else's network is how a save
+  // starts taking thirty seconds. Neither can fail the save - a token without the
+  // webhook scope still stores a working repository, and the Deploy Source card
+  // shows the address to paste instead.
+  const movedOff =
+    before.repo?.connectionId &&
+    (before.repo.connectionId !== repo?.connectionId ||
+      before.repo.repo !== repo?.repo);
+  if (movedOff) await dropAppWebhook(before.repo).catch(() => {});
+  await syncAppWebhook(repo).catch(() => {});
   // A MOVE takes effect on a deploy (the container physically relocates to the new
   // host on the next build). Trigger it here so the move actually happens — and so
   // the data migration runs when that deploy succeeds (it consumes the marker set
@@ -1522,7 +1579,7 @@ export async function setAppUpload(
     uploadSize: upload.size,
     uploadUploadedAt: upload.uploadedAt,
     // Forget any repo / docker image so the deploy takes the upload branch.
-    // Clear ALL eight flattened repo_* columns as one unit (matching appToRow
+    // Clear ALL nine flattened repo_* columns as one unit (matching appToRow
     // and updateAppSource) so no stale git deploy option is left orphaned on a
     // now-repoless app.
     repoProvider: null,
@@ -1530,6 +1587,7 @@ export async function setAppUpload(
     repoRepo: null,
     repoBranch: null,
     repoInstallationId: null,
+    repoConnectionId: null,
     repoTriggerType: null,
     repoWatchPaths: null,
     repoSubmodules: false,

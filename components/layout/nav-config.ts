@@ -225,7 +225,7 @@ export const SETTINGS_NAV: NavSection[] = [
         label: "Git",
         href: "/settings/git",
         icon: GitBranch,
-        tooltip: "Connected GitHub apps",
+        tooltip: "Connected git providers",
       },
     ],
   },

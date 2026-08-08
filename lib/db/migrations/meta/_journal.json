@@ -568,6 +568,13 @@
       "when": 1784677200000,
       "tag": "0080_backfill_manage_crons",
       "breakpoints": true
+    },
+    {
+      "idx": 81,
+      "version": "7",
+      "when": 1784677400000,
+      "tag": "0081_git_connections",
+      "breakpoints": true
     }
   ]
 }

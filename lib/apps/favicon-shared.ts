@@ -84,15 +84,29 @@ export function isGithubRepo(
  * (an app switched to compose may still carry the repo it used to build from,
  * which the deploy ignores — so detection must ignore it too).
  */
-export type FaviconSourceKind = "github" | "upload" | "app-files" | "none";
+export type FaviconSourceKind =
+  | "github"
+  /** A repo behind a git connection (GitLab, Bitbucket, Gitea): same idea as
+   *  "github", read through that provider's API instead. */
+  | "connection"
+  | "upload"
+  | "app-files"
+  | "none";
 
 export function faviconSourceKind(app: {
   source: string;
   compose: string | null;
-  repo?: { provider?: string | null; url?: string | null } | null;
+  repo?: {
+    provider?: string | null;
+    url?: string | null;
+    connectionId?: string | null;
+  } | null;
   dockerImage: string | null;
 }): FaviconSourceKind {
   if (usesComposeStack({ ...app, repo: app.repo ?? null })) return "app-files";
+  // A connection is explicit about which API can read the files, so it is
+  // checked before the URL-sniffing github test.
+  if (app.repo?.connectionId) return "connection";
   if (isGithubRepo(app.repo)) return "github";
   if (app.source === "upload") return "upload";
   return "none";

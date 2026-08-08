@@ -11,6 +11,7 @@ import {
   backups as backupsTable,
   environments as environmentsTable,
   folders as foldersTable,
+  gitConnections as gitConnectionsTable,
   githubApps as githubAppsTable,
   githubInstallation as githubInstallationTable,
   memberships as membershipsTable,
@@ -91,6 +92,13 @@ export interface AppTransferInfo {
   /** Backup schedules targeting this app — they point at the source team's destination. */
   backupCount: number;
   githubConnected: boolean;
+  /**
+   * The label of the git connection authenticating this app's clone, or null.
+   * Unlike a GitHub installation it can never follow the app: a token for the
+   * same host says nothing about whether it can read this repository. So this is
+   * a plain "will be dropped" notice rather than a per-target one.
+   */
+  gitConnectionLabel: string | null;
   /** Every OTHER team the viewer belongs to WITH `deploy`, alphabetical. */
   targets: AppTransferTarget[];
 }
@@ -115,6 +123,7 @@ const appColumns = {
   repoRepo: appsTable.repoRepo,
   repoUrl: appsTable.repoUrl,
   repoInstallationId: appsTable.repoInstallationId,
+  repoConnectionId: appsTable.repoConnectionId,
   autoDeploy: appsTable.autoDeploy,
 };
 
@@ -202,6 +211,16 @@ export const appTransferInfo = cache(
       for (const r of rows) followTeams.add(r.teamId);
     }
 
+    const connectionLabel = app.repoConnectionId
+      ? ((
+          await db
+            .select({ label: gitConnectionsTable.label })
+            .from(gitConnectionsTable)
+            .where(eq(gitConnectionsTable.id, app.repoConnectionId))
+            .limit(1)
+        )[0]?.label ?? null)
+      : null;
+
     const [sharedVars, backups] = await Promise.all([
       db
         .select({ n: count() })
@@ -220,6 +239,7 @@ export const appTransferInfo = cache(
       sharedVarCount: Number(sharedVars[0]?.n ?? 0),
       backupCount: Number(backups[0]?.n ?? 0),
       githubConnected,
+      gitConnectionLabel: connectionLabel,
       targets: candidates.map((c) => ({
         id: c.id,
         name: c.name,
@@ -381,6 +401,11 @@ export async function transferAppToTeam(
       : undefined;
     installationId = match?.id ?? null;
   }
+  // A git connection is a token owned by the SOURCE team, so unlike the GitHub
+  // installation it has no "same account" test that could let it follow: holding
+  // a token for the same host says nothing about whether it can read this repo.
+  // It is always dropped, and the destination team re-picks its own connection.
+  const connectionDropped = Boolean(app.repoConnectionId);
   const githubDropped = Boolean(app.repoInstallationId) && installationId === null;
 
   // The app's lifecycle lock — the same one a deploy and a delete take — so the
@@ -398,7 +423,8 @@ export async function transferAppToTeam(
           projectId: null,
           environmentId: null,
           repoInstallationId: installationId,
-          ...(githubDropped ? { autoDeploy: false } : {}),
+          repoConnectionId: null,
+          ...(githubDropped || connectionDropped ? { autoDeploy: false } : {}),
           updatedAt: nowIso(),
         })
         .where(and(eq(appsTable.id, appId), eq(appsTable.teamId, teamId)));

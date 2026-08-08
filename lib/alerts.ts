@@ -252,6 +252,12 @@ export const ALERT_META: Record<AlertKey, AlertMeta> = {
     keywords: "tls ssl https expiry renew",
     defaultOn: true,
   },
+  git_connection_failing: {
+    label: "Git connection stopped working",
+    description: "A stored access token was revoked or expired.",
+    keywords: "gitlab bitbucket gitea token expired revoked repository",
+    defaultOn: true,
+  },
   domain_dns_drift: {
     label: "Domain points elsewhere",
     description: "A domain no longer points at the server that serves it.",
@@ -278,6 +284,7 @@ export const ALERT_CATEGORIES: {
       "deployment_failed",
       "deployment_succeeded",
       "deployment_interrupted",
+      "git_connection_failing",
     ],
   },
   {

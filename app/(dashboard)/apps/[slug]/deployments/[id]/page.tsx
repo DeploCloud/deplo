@@ -15,7 +15,7 @@ import { Badge } from "@/components/ui/badge";
 import { StatusBadge } from "@/components/shared/status-badge";
 import { CommitLink } from "@/components/apps/commit-link";
 import { CommitMessage } from "@/components/apps/commit-message";
-import { githubCommitUrl, timeAgo } from "@/lib/utils";
+import { repoCommitUrl, timeAgo } from "@/lib/utils";
 import { BuildLogStream } from "@/components/apps/build-log-stream";
 import { BuildDuration } from "@/components/apps/build-duration";
 
@@ -76,7 +76,7 @@ export default async function DeploymentDetailPage(
               {deployment.branch}
               <CommitLink
                 sha={deployment.commitSha}
-                url={githubCommitUrl(project.repo, deployment.commitSha)}
+                url={repoCommitUrl(project.repo, deployment.commitSha)}
                 className="font-mono text-xs text-muted-foreground"
               />
             </span>

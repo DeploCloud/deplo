@@ -897,6 +897,13 @@ export const apps = pgTable(
     repoRepo: text("repo_repo"),
     repoBranch: text("repo_branch"),
     repoInstallationId: text("repo_installation_id"),
+    // The `git_connections` row that authenticates this clone, for any host that
+    // is NOT GitHub. Mutually exclusive with `repo_installation_id` in practice
+    // (one credential per repo), and NULL for a public repo cloned anonymously —
+    // which is what every pre-existing `source='git'` app is. No FK, mirroring
+    // `repo_installation_id`: deleting a connection clears this column
+    // explicitly, so the unlink is a visible write and not a cascade nobody read.
+    repoConnectionId: text("repo_connection_id"),
     // Git deploy options (also flattened GitRepo fields; defaults when no repo).
     // `repo_trigger_type` — which git event auto-deploys: "push" (to repo_branch)
     // or "tag" (any new tag). NULL ⇒ "push" (the historical behaviour). Read by
@@ -2649,6 +2656,69 @@ export const githubInstallation = pgTable(
   },
   (t) => [
     uniqueIndex("github_installation_installation_id_uq").on(t.installationId),
+  ],
+);
+
+/**
+ * [GitConnection](../../types.ts) — a team's credentials for one git host that is
+ * NOT GitHub (GitLab, Bitbucket, Gitea/Forgejo, or a plain git server). The
+ * counterpart of {@link githubInstallation}: created once in Settings → Git,
+ * reused by every App that deploys from that host.
+ *
+ * GitHub keeps its own pair of tables because a GitHub App is a different animal
+ * (a registered application with a private key, minting 1h installation tokens).
+ * Every other provider authenticates the same way — a long-lived token used as
+ * HTTP basic auth — so they share ONE table with a `provider` discriminator
+ * rather than three near-identical ones.
+ *
+ * `token_enc` / `webhook_secret_enc` are AES-GCM and NEVER projected into a DTO;
+ * there is no reveal path (the token is only decrypted at the clone edge and when
+ * calling the provider's API). `webhook_token` is the opaque URL segment of
+ * `/api/git/webhook/<token>` — it identifies the connection so the route knows
+ * which provider sent the delivery and which secret verifies it, without sniffing
+ * headers. UNIQUE because it is a routing key.
+ *
+ * `health` is DERIVED by the twice-daily maintenance sweep (and by "Test
+ * connection"): a revoked or expired token is the one failure mode the user
+ * cannot see coming, and finding out at the next deploy is finding out too late.
+ */
+export const gitConnections = pgTable(
+  "git_connections",
+  {
+    id: text("id").primaryKey(),
+    teamId: text("team_id")
+      .notNull()
+      .references(() => teams.id, { onDelete: "cascade" }),
+    // gitlab | bitbucket | gitea | git. Plain text, no CHECK: a value written by
+    // a newer binary must round-trip through an older one rather than break the
+    // row (same reasoning as apps.framework).
+    provider: text("provider").notNull(),
+    label: text("label").notNull(),
+    // Origin of the host, no trailing slash: https://gitlab.com,
+    // https://git.acme.com. Self-hosted GitLab/Gitea is the main reason this
+    // column exists at all.
+    baseUrl: text("base_url").notNull(),
+    // The userinfo half of the clone URL. Provider-dependent and NOT cosmetic:
+    // GitLab wants "oauth2", Bitbucket "x-token-auth", Gitea the real username.
+    username: text("username").notNull(),
+    tokenEnc: text("token_enc").notNull(),
+    webhookSecretEnc: text("webhook_secret_enc").notNull(),
+    webhookToken: text("webhook_token").notNull(),
+    accountLogin: text("account_login").notNull().default(""),
+    avatarUrl: text("avatar_url").notNull().default(""),
+    // "ok" | "failing". Never NULL: a connection is proven at creation time, so
+    // there is no "unknown" state to represent.
+    health: text("health").notNull().default("ok"),
+    healthError: text("health_error").notNull().default(""),
+    // Only when the provider tells us (GitLab does, Gitea does not).
+    tokenExpiresAt: isoTimestamptz("token_expires_at"),
+    lastCheckedAt: isoTimestamptz("last_checked_at"),
+    createdAt: isoTimestamptz("created_at").notNull(),
+    createdBy: text("created_by").notNull(),
+  },
+  (t) => [
+    uniqueIndex("git_connections_webhook_token_uq").on(t.webhookToken),
+    index("git_connections_team_idx").on(t.teamId),
   ],
 );
 

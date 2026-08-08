@@ -13,7 +13,6 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
 import { FieldLabel, InfoTip } from "@/components/ui/info-tip";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
@@ -31,6 +30,10 @@ import {
   GithubRepoPicker,
   type GithubSelection,
 } from "@/components/apps/github-repo-picker";
+import {
+  GitSourcePicker,
+  type GitSourceValue,
+} from "@/components/apps/git-source-picker";
 import { UploadInput, type CurrentUpload } from "@/components/apps/upload-input";
 import { UnsavedChangesGuard } from "@/components/apps/unsaved-changes-guard";
 import { BuildOutputCard } from "@/components/apps/settings/build-output-card";
@@ -47,8 +50,13 @@ import {
   DirtyHint,
   type SettingsServer,
 } from "@/components/apps/settings/settings-shared";
+import { CopyButton } from "@/components/shared/copy-button";
 import { hasBlockingErrors, type LintDiagnostic } from "@/lib/deploy/compose-lint";
 import type { GithubInstallationDTO } from "@/lib/data/github";
+import type {
+  GitConnectionDTO,
+  GitWebhookStatus,
+} from "@/lib/data/git-connections";
 import type { BuildConfig, DeploySource, GitRepo } from "@/lib/types";
 import { deploySourceEnumName } from "@/lib/types";
 import { cn, serverLabel, usesComposeStack } from "@/lib/utils";
@@ -69,8 +77,7 @@ const SOURCE_TABS: {
 type SourceKeyInput = {
   source: DeploySource;
   serverId: string;
-  repoUrl: string;
-  branch: string;
+  gitValue: GitSourceValue;
   dockerImage: string;
   ghSelection: GithubSelection | null;
   compose: string;
@@ -99,7 +106,14 @@ function computeSourceKey(s: SourceKeyInput): string {
   return JSON.stringify({
     source: s.source,
     serverId: s.serverId,
-    git: s.source === "git" ? { url: s.repoUrl.trim(), branch: s.branch || "main" } : null,
+    git:
+      s.source === "git"
+        ? {
+            url: s.gitValue.url.trim(),
+            branch: s.gitValue.branch || "main",
+            connectionId: s.gitValue.connectionId,
+          }
+        : null,
     image: s.source === "docker-image" ? s.dockerImage.trim() : null,
     gh:
       s.source === "github" && s.ghSelection
@@ -136,6 +150,8 @@ export function DeploymentSettingsForm({
   serverId: initialServerId,
   servers,
   installations,
+  connections,
+  webhook,
   framework,
   frameworkOverride: initialFrameworkOverride,
   deployHookEnabled,
@@ -163,6 +179,11 @@ export function DeploymentSettingsForm({
   serverId: string;
   servers: SettingsServer[];
   installations: GithubInstallationDTO[];
+  /** The team's git connections (GitLab, Bitbucket, Gitea, plain git). */
+  connections: GitConnectionDTO[];
+  /** Live push-webhook state for a connection-backed repo, or null when the
+   *  question doesn't apply (GitHub, a bare URL, auto-deploy off). */
+  webhook: GitWebhookStatus | null;
   /** Whether the app's deploy hook answers at all (Advanced settings). */
   deployHookEnabled: boolean;
   /** The hook URL with its secret segment dotted out — resolved server-side so
@@ -211,8 +232,16 @@ export function DeploymentSettingsForm({
       : initialSource,
   );
   const [serverId, setServerId] = React.useState(initialServerId);
-  const [repoUrl, setRepoUrl] = React.useState(initialRepo?.url ?? "");
-  const [branch, setBranch] = React.useState(initialRepo?.branch ?? "main");
+  // The Git source's whole value (credential + repo + branch), owned by
+  // GitSourcePicker: one state instead of a URL field and a branch field,
+  // because a connection-backed repo has neither typed by hand.
+  const [gitValue, setGitValue] = React.useState<GitSourceValue>({
+    provider: initialRepo?.provider ?? "git",
+    url: initialRepo?.url ?? "",
+    repo: initialRepo?.repo ?? "",
+    branch: initialRepo?.branch ?? "main",
+    connectionId: initialRepo?.connectionId ?? null,
+  });
   const [dockerImage, setDockerImage] = React.useState(initialDockerImage ?? "");
 
   // Git deploy options (trigger type, watch paths, submodules) — persisted with
@@ -247,7 +276,11 @@ export function DeploymentSettingsForm({
   const isComposeStack = usesComposeStack({
     source,
     compose,
-    repo: usesGithubApp ? ghSelection : usesGitUrl && repoUrl.trim() ? { url: repoUrl } : null,
+    repo: usesGithubApp
+      ? ghSelection
+      : usesGitUrl && gitValue.url.trim()
+        ? { url: gitValue.url }
+        : null,
     dockerImage: dockerImage.trim() || null,
   });
   const buildCardVisible = !isComposeStack && source !== "docker-image";
@@ -265,14 +298,17 @@ export function DeploymentSettingsForm({
   // repo sources where all three controls fully apply.)
   const rootCardVisible = buildCardVisible && repoConfigVisible;
 
-  // Deploy-on-push is only real for the GitHub App source: it is the one
-  // provider that delivers pushes to Deplo (see app/api/github/webhook), so the
-  // stored flag does nothing for any other source. The stage is therefore shown
-  // exactly where it works; everything else triggers deploys with the deploy
-  // hook in Advanced settings.
-  const autoDeployPossible = usesGithubApp && installations.length > 0;
+  // Deploy-on-push is real wherever a provider delivers pushes to Deplo: the
+  // GitHub App, or a git connection whose provider has an API to register a
+  // webhook with. A bare Repository URL has no sender, so it keeps triggering
+  // deploys with the deploy hook in Advanced settings.
+  const gitConnection =
+    connections.find((c) => c.id === gitValue.connectionId) ?? null;
+  const autoDeployPossible =
+    (usesGithubApp && installations.length > 0) ||
+    (usesGitUrl && Boolean(gitConnection?.hasApi));
   const autoDeployBranch =
-    (usesGithubApp ? ghSelection?.branch : branch) ||
+    (usesGithubApp ? ghSelection?.branch : gitValue.branch) ||
     initialRepo?.branch ||
     "main";
 
@@ -287,14 +323,13 @@ export function DeploymentSettingsForm({
       computeSourceKey({
         source,
         serverId,
-        repoUrl,
-        branch,
+        gitValue,
         dockerImage,
         ghSelection,
         compose,
         gitOptions,
       }),
-    [source, serverId, repoUrl, branch, dockerImage, ghSelection, compose, gitOptions],
+    [source, serverId, gitValue, dockerImage, ghSelection, compose, gitOptions],
   );
   const [savedSourceKey, setSavedSourceKey] = React.useState(currentSourceKey);
   // The GitHub repo picker reconciles the seeded selection to actually-available
@@ -410,22 +445,21 @@ export function DeploymentSettingsForm({
         installationId: ghSelection.installationId,
       };
     } else if (usesGitUrl) {
-      if (!repoUrl.trim()) {
-        toast.error("Enter a repository URL");
+      if (!gitValue.url.trim()) {
+        toast.error(
+          gitConnection?.hasApi
+            ? "Select a repository to deploy"
+            : "Enter a repository URL",
+        );
         return;
       }
-      const provider: GitRepo["provider"] = /gitlab/i.test(repoUrl)
-        ? "gitlab"
-        : /bitbucket/i.test(repoUrl)
-        ? "bitbucket"
-        : /github/i.test(repoUrl)
-        ? "github"
-        : "git";
-      const repoName =
-        repoUrl
-          .replace(/\.git$/, "")
-          .match(/[/:]([\w.-]+\/[\w.-]+)$/)?.[1] ?? repoUrl;
-      repo = { provider, url: repoUrl.trim(), repo: repoName, branch: branch || "main" };
+      repo = {
+        provider: gitValue.provider as GitRepo["provider"],
+        url: gitValue.url,
+        repo: gitValue.repo,
+        branch: gitValue.branch || "main",
+        connectionId: gitValue.connectionId,
+      };
     }
     // Attach the git deploy options (trigger type / watch paths / submodules) to
     // whichever repo the active source produced — they persist with the repo.
@@ -672,41 +706,46 @@ export function DeploymentSettingsForm({
             )}
 
             {usesGitUrl && (
-              <div className="grid gap-4 sm:grid-cols-2">
-                <div className="space-y-2">
-                  <FieldLabel info="The Git repository URL to clone and deploy. The provider (GitHub, GitLab, Bitbucket) is detected from the host in the URL.">
-                    Repository URL
-                  </FieldLabel>
-                  <div className="relative">
-                    <GitHubIcon className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
-                    <Input
-                      value={repoUrl}
-                      onChange={(e) => setRepoUrl(e.target.value)}
-                      placeholder="https://github.com/acme/my-app"
-                      className="pl-9 font-mono text-sm"
+              <GitSourcePicker
+                connections={connections}
+                initial={
+                  initialSource === "git" && initialRepo
+                    ? {
+                        connectionId: initialRepo.connectionId,
+                        url: initialRepo.url,
+                        repo: initialRepo.repo,
+                        branch: initialRepo.branch,
+                      }
+                    : undefined
+                }
+                onChange={setGitValue}
+              />
+            )}
+
+            {/* The one case auto-registration cannot cover: a token without the
+                webhook scope. Rather than leaving auto-deploy quietly dead, show
+                the address to paste and the provider's own reason. */}
+            {usesGitUrl && webhook?.applicable && !webhook.installed && (
+              <div className="rounded-md border border-[var(--warning)]/30 bg-[var(--warning)]/5 p-3">
+                <p className="text-xs font-medium">
+                  Deplo could not add the push webhook
+                </p>
+                <p className="mt-1 text-xs text-muted-foreground">
+                  {webhook.error ||
+                    "Add it in your repository's webhook settings so a push deploys."}
+                </p>
+                {webhook.url && (
+                  <div className="mt-2 flex items-start gap-2 rounded-lg border border-border bg-muted/40 px-3 py-2">
+                    <code className="min-w-0 flex-1 break-all font-mono text-xs leading-relaxed">
+                      {webhook.url}
+                    </code>
+                    <CopyButton
+                      value={webhook.url}
+                      className="shrink-0"
+                      label="Copy webhook URL"
                     />
                   </div>
-                </div>
-                <div className="space-y-2">
-                  <FieldLabel
-                    info={
-                      <>
-                        The branch Deplo deploys from and watches for pushes.
-                        Defaults to <code className="font-mono">main</code>.
-                      </>
-                    }
-                  >
-                    Production Branch
-                  </FieldLabel>
-                  <div className="relative">
-                    <GitBranch className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
-                    <Input
-                      value={branch}
-                      onChange={(e) => setBranch(e.target.value)}
-                      className="pl-9"
-                    />
-                  </div>
-                </div>
+                )}
               </div>
             )}
 

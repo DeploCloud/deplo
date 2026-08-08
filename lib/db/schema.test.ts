@@ -158,6 +158,10 @@ const CONTROL_PLANE = [
   // integrations
   "github_apps",
   "github_installation",
+  // …and one row per team credential for every OTHER git host (GitLab,
+  // Bitbucket, Gitea/Forgejo, plain git): they all authenticate the same way, so
+  // they share a table with a `provider` discriminator.
+  "git_connections",
 ] as const;
 
 async function publicTables(): Promise<Set<string>> {
@@ -214,6 +218,7 @@ test("schema: the load-bearing constraints from PLAN §2 are present", async () 
     "cron_runs_running_idx", // the cron reaper's working set, same shape
     "cron_runs_dedupe_uq", // UNIQUE(job_id, dedupe_key) - the double-fire guard
     "cron_jobs_enabled_idx", // partial index WHERE enabled
+    "git_connections_webhook_token_uq", // UNIQUE - the webhook's routing key
   ]) {
     assert.ok(indexes.has(name), `index ${name} should exist`);
   }

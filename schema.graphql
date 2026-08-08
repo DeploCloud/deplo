@@ -376,6 +376,11 @@ type AppTransferInfo {
   Backup schedules targeting this app — removed on transfer, because they point at the current team's S3 destination.
   """
   backupCount: Int
+
+  """
+  The git connection authenticating this app's clone, or null. It is always dropped on transfer — a token is owned by the current team and cannot be assumed to reach the repository from another one.
+  """
+  gitConnectionLabel: String
   githubConnected: Boolean
 
   """
@@ -605,6 +610,23 @@ type CertificateAccount {
   serverId: String
   serverName: String
   unavailable: String
+}
+
+input ConnectGitProviderInput {
+  """
+  Origin of the git host. A bare domain becomes https://; a path or embedded credentials are refused.
+  """
+  baseUrl: String!
+  label: String!
+
+  """gitlab | bitbucket | gitea | git."""
+  provider: String!
+
+  """Access token. Write-only."""
+  token: String!
+
+  """Basic-auth username for the clone. Defaults per provider."""
+  username: String
 }
 
 """
@@ -1462,9 +1484,71 @@ type FolderShareCandidate {
   username: String
 }
 
+"""
+A team's stored credentials for one git host that is not GitHub. The token is never exposed.
+"""
+type GitConnection {
+  accountLogin: String
+
+  """Apps whose clone this connection authenticates."""
+  appCount: Int
+  avatarUrl: String
+  baseUrl: String
+  createdAt: String
+
+  """
+  False for a plain git server: it can carry credentials but cannot list repositories or register a webhook.
+  """
+  hasApi: Boolean
+
+  """
+  ok | failing. Re-derived by the maintenance sweep and by testGitConnection, so a revoked token surfaces before a deploy fails on it.
+  """
+  health: String
+
+  """The provider's own refusal when health is failing."""
+  healthError: String
+  id: ID
+  label: String
+  lastCheckedAt: String
+
+  """gitlab | bitbucket | gitea | git."""
+  provider: String
+  tokenExpiresAt: String
+  username: String
+}
+
+"""A git host Deplo can connect to, other than GitHub (beta)."""
+type GitProvider {
+  defaultBaseUrl: String
+  defaultUsername: String
+  hasApi: Boolean
+  id: String
+  label: String
+
+  """
+  Where to create the token. Pass the connection's own baseUrl for a self-hosted host.
+  """
+  tokenHelpUrl(baseUrl: String): String
+
+  """The scopes to tick when creating the token, as one line."""
+  tokenScopes: String
+}
+
 input GitRepoInput {
   branch: String!
+
+  """
+  A git connection (any other host) that authenticates the clone and carries the push webhook.
+  """
+  connectionId: String
+
+  """A GitHub App installation that authenticates the clone."""
   installationId: String
+
+  """
+  github | gitlab | bitbucket | gitea | git. Anything else is stored as git.
+  """
   provider: String!
   repo: String!
   submodules: Boolean
@@ -1473,6 +1557,16 @@ input GitRepoInput {
   triggerType: String
   url: String!
   watchPaths: [String!]
+}
+
+"""A repository a connection can list and clone."""
+type GitRepoSummary {
+  defaultBranch: String
+  fullName: String
+  name: String
+  private: Boolean
+  updatedAt: String
+  url: String
 }
 
 """A GitHub App connected to a team (no secrets exposed)."""
@@ -1768,6 +1862,11 @@ type Mutation {
   Finish enrolment with the first code from the authenticator app. Turns two-factor on.
   """
   confirmTwoFactorEnrolment(code: String!): Boolean
+
+  """
+  Store credentials for a git host, after proving the token works against it.
+  """
+  connectGitProvider(input: ConnectGitProviderInput!): GitConnection
   createApp(input: CreateAppInput!): App
 
   """Create a new (empty) folder in the app files tree."""
@@ -2025,6 +2124,11 @@ type Mutation {
   Revoke a user's access to a folder. Owner/admin only. Returns the fresh grant list.
   """
   removeFolderGrant(folderId: ID!, userId: ID!): [FolderGrant!]
+
+  """
+  Disconnect a git provider. Returns how many apps were unlinked (their auto-deploy is turned off).
+  """
+  removeGitConnection(id: String!): Int
 
   """Disconnect a GitHub App and its installations. Returns true."""
   removeGithubApp(id: String!): Boolean
@@ -2355,6 +2459,11 @@ type Mutation {
   """Switch the active team (sets a cookie server-side). Returns true."""
   switchTeam(teamId: String!): Boolean
 
+  """
+  Ask the provider who the stored token belongs to and record the answer.
+  """
+  testGitConnection(id: String!): GitConnection
+
   """Send a one-off test alert through one channel, using its saved config."""
   testNotificationChannel(id: ID!): Boolean
 
@@ -2442,6 +2551,9 @@ type Mutation {
   Change the current user's email after re-checking their password. Returns true.
   """
   updateEmail(currentPassword: String!, email: String!): Boolean
+
+  """Rename a git connection or rotate its token."""
+  updateGitConnection(id: String!, input: UpdateGitConnectionInput!): GitConnection
 
   """Change a member's role and/or capabilities."""
   updateMember(input: UpdateMemberInput!): Member
@@ -2755,6 +2867,20 @@ type Query {
 
   """All folders in the active team, in display order."""
   folders: [Folder!]
+
+  """Branch names of a repository a git connection can reach."""
+  gitBranches(connectionId: String!, fullName: String!): [String!]
+
+  """The active team's git connections, newest first."""
+  gitConnections: [GitConnection!]
+
+  """
+  Git hosts other than GitHub that Deplo can connect to. Static catalogue.
+  """
+  gitProviders: [GitProvider!]
+
+  """Repositories a git connection can reach. Empty for plain git."""
+  gitRepos(connectionId: String!): [GitRepoSummary!]
 
   """Connected GitHub Apps in the active team."""
   githubApps: [GithubApp!]
@@ -3714,6 +3840,14 @@ input UpdateDockerCleanupPolicyInput {
   minAgeHours: Int!
   schedule: String!
   scopes: [DockerCleanupScope!]!
+}
+
+input UpdateGitConnectionInput {
+  label: String
+
+  """A replacement token. Omit to keep the stored one."""
+  token: String
+  username: String
 }
 
 """

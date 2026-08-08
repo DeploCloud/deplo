@@ -28,6 +28,7 @@ type TransferInfo = {
   sharedVarCount: number;
   backupCount: number;
   githubConnected: boolean;
+  gitConnectionLabel: string | null;
   targets: TransferTarget[];
 };
 
@@ -40,6 +41,7 @@ const INFO_QUERY = /* GraphQL */ `
       sharedVarCount
       backupCount
       githubConnected
+      gitConnectionLabel
       targets {
         id
         name
@@ -226,6 +228,14 @@ export function TransferTeamDialog({
                         Reconnect the repository from {target.name}.
                       </li>
                     ))}
+                  {info.gitConnectionLabel && (
+                    <li>
+                      The repository is disconnected — the{" "}
+                      {info.gitConnectionLabel} connection belongs to this team.
+                      Auto-deploy turns off. Reconnect the repository from{" "}
+                      {target.name}.
+                    </li>
+                  )}
                   <li>
                     The app keeps running on {info.serverName} — nothing is
                     rebuilt or restarted.

@@ -404,16 +404,32 @@ A single build-and-release event that produces or updates the production stack (
 carries the **deploy key** naming the stack it actually touched.
 _Avoid_: build (the build is one phase of a deployment), release.
 
+**Git connection**:
+A team's stored credentials for ONE git host that is not GitHub — GitLab, Bitbucket,
+Gitea/Forgejo, or a plain git server (`git_connections`, id `gitc_`). The counterpart of a
+**GitHub installation**: created once in Settings → Git, then reused by every **App** that
+deploys from that host (`apps.repo_connection_id`). It carries a provider, a base URL (so a
+self-hosted GitLab or Gitea works), a basic-auth username and a write-only token, plus the
+secret and the URL segment its inbound push webhook is verified with. The token is never
+readable back and never reaches a DTO; it is decrypted only at the clone edge and when calling
+the provider's own API. `health` is re-derived (the maintenance sweep, and "Test connection"),
+never asserted by a human. These providers are **beta** and stay one level below GitHub in the
+UI: the Deploy Source chips do not grow, the choice lives in a dropdown inside the Git chip.
+_Avoid_: integration, provider account, credential (too broad — a **registry** has credentials
+too), "GitLab app" (there is no registered application; it is a token).
+
 **Deploy hook**:
-The per-app URL that starts a **Deployment** from outside Deplo — a GitLab/Bitbucket webhook,
-a CI job, a script — `POST /api/apps/<id>/deploy-hook/<token>`. It carries **two** independent
-secrets, and neither is sufficient alone: the URL's last segment (per app, rotatable, stored
-encrypted so the operator can read their own link back) says *which* app, and an **API token**
-sent as `Authorization: Bearer deplo_…` says *who* — the deploy then runs through the same
-gates the dashboard button does. Per-app `deploy_hook_enabled` is the kill switch. Distinct
-from **automatic deployments** (deploy-on-push), which only the GitHub App source can drive
-because it is the only provider that delivers pushes to Deplo.
-_Avoid_: webhook on its own (ambiguous with the inbound GitHub App webhook and with a plugin
+The per-app URL that starts a **Deployment** from outside Deplo — a CI job, a script, any
+sender that cannot speak GraphQL — `POST /api/apps/<id>/deploy-hook/<token>`. It carries
+**two** independent secrets, and neither is sufficient alone: the URL's last segment (per app,
+rotatable, stored encrypted so the operator can read their own link back) says *which* app, and
+an **API token** sent as `Authorization: Bearer deplo_…` says *who* — the deploy then runs
+through the same gates the dashboard button does. Per-app `deploy_hook_enabled` is the kill
+switch. Distinct from **automatic deployments** (deploy-on-push), which a GitHub App or a
+**Git connection** drives by registering its own push webhook; an app with neither (a bare
+Repository URL, a plain git server) has the deploy hook as its ONLY automatic trigger, which is
+why the UI hides the hook exactly when a provider already triggers the app and not before.
+_Avoid_: webhook on its own (ambiguous with the inbound provider webhook and with a plugin
 **Event**'s delivery), deploy key (that is an SSH credential), trigger URL.
 
 **Build cache**:

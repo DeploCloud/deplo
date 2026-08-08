@@ -9,6 +9,7 @@ import { getTemplate } from "@/lib/templates";
 import { getTemplateBlueprint } from "@/lib/templates-blueprint";
 import { listServerChoices } from "@/lib/data/servers";
 import { listGithubInstallations } from "@/lib/data/github";
+import { listGitConnections } from "@/lib/data/git-connections";
 import { resolveOverviewPlacement } from "@/lib/data/placement";
 import { instanceHost, productionDomain } from "@/lib/deploy/domains";
 import {
@@ -67,6 +68,7 @@ export default async function NewAppPage(props: PageProps<"/new">) {
     : null;
   const servers = await listServerChoices();
   const installations = await listGithubInstallations();
+  const connections = await listGitConnections();
 
   return (
     <div className="space-y-6">
@@ -108,6 +110,7 @@ export default async function NewAppPage(props: PageProps<"/new">) {
       <NewAppWizard
         servers={servers}
         installations={installations}
+        connections={connections}
         template={
           template
             ? {

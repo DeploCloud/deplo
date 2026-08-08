@@ -73,7 +73,7 @@ import {
   type RoutableDomain,
 } from "../data/domains";
 import { basicAuthUsersValue } from "../data/basic-auth";
-import { installationCloneUrl } from "../github/app";
+import { resolveCloneUrl } from "../git/clone-url";
 import { publishAppChanged } from "../graphql/pubsub";
 import {
   agentCapabilityForMethod,
@@ -1648,10 +1648,7 @@ async function runDeployment(depId: string): Promise<void> {
         // field on the GitSource proto the agent decodes. Until the agent carries
         // it, the stored preference is a no-op here (the clone descriptor below has
         // no submodules flag to forward).
-        const cloneUrl = await installationCloneUrl(
-          repo.url,
-          repo.installationId ?? null,
-        );
+        const cloneUrl = await resolveCloneUrl(repo);
         // The agent tags the image by the sha IT resolves; until then use the
         // deploy id as a placeholder tag (the rendered compose references this
         // same imageRef).

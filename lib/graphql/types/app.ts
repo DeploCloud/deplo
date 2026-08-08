@@ -279,11 +279,23 @@ export const AppRef = builder
 
 const GitRepoInput = builder.inputType("GitRepoInput", {
   fields: (t) => ({
-    provider: t.string({ required: true }),
+    provider: t.string({
+      required: true,
+      description:
+        "github | gitlab | bitbucket | gitea | git. Anything else is stored as git.",
+    }),
     url: t.string({ required: true }),
     repo: t.string({ required: true }),
     branch: t.string({ required: true }),
-    installationId: t.string({ required: false }),
+    installationId: t.string({
+      required: false,
+      description: "A GitHub App installation that authenticates the clone.",
+    }),
+    connectionId: t.string({
+      required: false,
+      description:
+        "A git connection (any other host) that authenticates the clone and carries the push webhook.",
+    }),
     // Deploy options (see GitRepo). Absent ⇒ historical defaults (push / no
     // watch-path filter / no submodules).
     triggerType: t.string({ required: false, description: '"push" or "tag".' }),
@@ -292,23 +304,36 @@ const GitRepoInput = builder.inputType("GitRepoInput", {
   }),
 });
 
-/** Coerce an untrusted GraphQL `triggerType` string to the GitTriggerType union. */
+/** The provider values that mean something to the deploy path; everything else
+ *  is a plain git remote and is stored as one rather than trusted verbatim. */
+const KNOWN_PROVIDERS = new Set<GitRepo["provider"]>([
+  "github",
+  "gitlab",
+  "bitbucket",
+  "gitea",
+  "git",
+]);
+
+/** Coerce the untrusted GraphQL `provider` / `triggerType` strings to their unions. */
 function repoInputToGitRepo(repo: {
   provider: string;
   url: string;
   repo: string;
   branch: string;
   installationId?: string | null;
+  connectionId?: string | null;
   triggerType?: string | null;
   watchPaths?: (string | null)[] | null;
   submodules?: boolean | null;
 }): GitRepo {
+  const provider = repo.provider as GitRepo["provider"];
   return {
-    provider: repo.provider as GitRepo["provider"],
+    provider: KNOWN_PROVIDERS.has(provider) ? provider : "git",
     url: repo.url,
     repo: repo.repo,
     branch: repo.branch,
     installationId: repo.installationId ?? undefined,
+    connectionId: repo.connectionId ?? undefined,
     triggerType: repo.triggerType === "tag" ? "tag" : "push",
     watchPaths: (repo.watchPaths ?? [])
       .filter((p): p is string => !!p)
@@ -506,6 +531,13 @@ const AppTransferInfoRef = builder
           "they point at the current team's S3 destination.",
       }),
       githubConnected: t.exposeBoolean("githubConnected"),
+      gitConnectionLabel: t.exposeString("gitConnectionLabel", {
+        nullable: true,
+        description:
+          "The git connection authenticating this app's clone, or null. It is " +
+          "always dropped on transfer — a token is owned by the current team " +
+          "and cannot be assumed to reach the repository from another one.",
+      }),
       targets: t.field({
         type: [AppTransferTargetRef],
         resolve: (x) => x.targets,

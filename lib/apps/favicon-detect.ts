@@ -6,6 +6,8 @@ import { join } from "node:path";
 
 import { listRepoTree, fetchRepoBlob } from "../github/app";
 import { githubFullName } from "../github/repo-id";
+import { readGitCredential } from "../data/git-connections";
+import { providerFor } from "../git/providers";
 import { extractArchive } from "../deploy/upload";
 import { normalizeRootRel } from "../deploy/source";
 import {
@@ -98,6 +100,37 @@ export async function detectGithubFavicon(
     entry.sha,
     repo.installationId ?? null,
   );
+  if (!bytes) return null;
+  return toLogoDataUri(bytes, best.path);
+}
+
+/**
+ * The same, for a repo behind a git connection. The provider's tree listing has
+ * no per-entry size, so every candidate goes in with size 0 - `pickBestFavicon`
+ * keeps an unknown size and the cap is enforced on the bytes instead.
+ */
+export async function detectConnectionFavicon(
+  repo: GitRepo,
+  rootDirectory: string | null | undefined,
+): Promise<string | null> {
+  if (!repo.connectionId || !repo.repo) return null;
+  const cred = await readGitCredential(repo.connectionId);
+  const api = cred ? providerFor(cred.provider).api : null;
+  if (!cred || !api) return null;
+  const ref = repo.branch?.trim() || "HEAD";
+
+  const paths = await api.listTree(cred, repo.repo, ref).catch(() => []);
+  if (paths.length === 0) return null;
+
+  const best = pickBestFavicon(
+    paths.map((path) => ({ path, size: 0 })),
+    { rootRel: normalizeRootRel(rootDirectory) },
+  );
+  if (!best) return null;
+
+  const bytes = await api
+    .readFileBytes(cred, repo.repo, ref, best.path)
+    .catch(() => null);
   if (!bytes) return null;
   return toLogoDataUri(bytes, best.path);
 }
@@ -326,6 +359,13 @@ export async function detectAppFavicon(
     case "github":
       return project.repo
         ? detectGithubFavicon(project.repo, project.build.rootDirectory ?? null)
+        : null;
+    case "connection":
+      return project.repo
+        ? detectConnectionFavicon(
+            project.repo,
+            project.build.rootDirectory ?? null,
+          )
         : null;
     case "upload":
       return project.upload

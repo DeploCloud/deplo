@@ -260,6 +260,7 @@ A few endpoints stay REST because GraphQL is the wrong transport for them
 | `GET /api/apps/[id]/attach`   | interactive console session      |
 | `GET /api/github/callback`        | GitHub App OAuth callback        |
 | `POST /api/github/webhook`        | GitHub webhook receiver          |
+| `POST /api/git/webhook/[token]`   | push receiver for every other provider — the token in the URL identifies the git connection, which says how to verify the delivery |
 | `POST /api/apps/[id]/deploy-hook/[token]` | deploy hook — a webhook sender posts a URL, it can't compose a query |
 
 ### Deploy hook

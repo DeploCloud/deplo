@@ -81,13 +81,28 @@ export function deploySourceLabel(source: string): string {
 }
 
 /**
- * The GitHub URL for a specific commit of a project's source, or `null` when the
- * project is NOT deployed from a GitHub repo (only GitHub is linkable here —
- * GitLab/Bitbucket use different commit paths). `repo.repo` is the `owner/name`
- * slug, so the result is `https://github.com/owner/name/commit/<sha>`. Structural
- * param so both `GitRepo` and a `{provider, repo}` projection satisfy it.
+ * Where each provider puts a commit under the repository's own URL. Kept here
+ * rather than read off the provider adapters because this module is imported by
+ * client components and the adapters pull in `node:crypto`.
  */
-export function githubCommitUrl(
+const COMMIT_PATH: Record<string, string> = {
+  github: "/commit/",
+  gitea: "/commit/",
+  gitlab: "/-/commit/",
+  bitbucket: "/commits/",
+};
+
+/**
+ * The URL for a specific commit of an app's source, or `null` when there is
+ * nothing linkable (no sha, or a host whose commit path we don't know - a plain
+ * git server has no web UI to guess at).
+ *
+ * GitHub is resolved from the `owner/name` slug, so a plain-git source that
+ * happens to point at github.com still links. Every other provider appends its
+ * own path to the stored repository URL, which IS the browsable base.
+ * Structural param so both `GitRepo` and a `{provider, repo}` projection fit.
+ */
+export function repoCommitUrl(
   repo:
     | { provider?: string | null; repo?: string | null; url?: string | null }
     | null
@@ -97,13 +112,17 @@ export function githubCommitUrl(
   const commit = sha?.trim();
   if (!repo || !commit) return null;
   const slug = githubRepoSlug(repo);
-  return slug ? `https://github.com/${slug}/commit/${commit}` : null;
+  if (slug) return `https://github.com/${slug}/commit/${commit}`;
+  const path = COMMIT_PATH[repo.provider ?? ""];
+  const base = repo.url?.trim().replace(/\.git$/i, "").replace(/\/+$/, "");
+  if (!path || !base || !/^https?:\/\//i.test(base)) return null;
+  return `${base}${path}${commit}`;
 }
 
 /**
  * The GitHub URL of a pull request a deployment was built from, or null for a
  * production build (no pull request) or a non-GitHub source. Derived, never
- * stored — same shape and rationale as {@link githubCommitUrl}.
+ * stored — same shape and rationale as {@link repoCommitUrl}.
  */
 export function githubPullRequestUrl(
   repo:

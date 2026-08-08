@@ -22,7 +22,7 @@ import {
   supportsFrameworkDetection,
 } from "@/lib/apps/framework-catalog";
 import { CommitLink } from "@/components/apps/commit-link";
-import { formatBuildDuration, githubCommitUrl, timeAgo } from "@/lib/utils";
+import { formatBuildDuration, repoCommitUrl, timeAgo } from "@/lib/utils";
 
 export default async function AppOverview(
   props: PageProps<"/apps/[slug]">,
@@ -88,7 +88,7 @@ export default async function AppOverview(
                         {prod.branch}
                         <CommitLink
                           sha={prod.commitSha}
-                          url={githubCommitUrl(project.repo, prod.commitSha)}
+                          url={repoCommitUrl(project.repo, prod.commitSha)}
                           className="ml-1 font-mono text-xs text-muted-foreground"
                         />
                       </p>
