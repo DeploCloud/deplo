@@ -35,6 +35,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { gqlAction } from "@/lib/graphql-client";
+import { cn } from "@/lib/utils";
 import { DEFAULT_ALERTS } from "@/lib/alerts";
 import { ALL_ALERTS, ALL_CHANNELS } from "@/lib/types";
 import type {
@@ -225,7 +226,14 @@ export function NotificationsPanel({
 
   return (
     <>
-      <div className="grid items-start gap-6 xl:grid-cols-[minmax(0,1fr)_260px]">
+      <div
+        className={cn(
+          "grid items-start gap-6",
+          // The rail's column only exists when the rail does, or an empty page
+          // would hold 260px of nothing open beside a card that could use it.
+          initial.length > 0 && "xl:grid-cols-[minmax(0,1fr)_260px]",
+        )}
+      >
         <div className="min-w-0 space-y-4">
           <Card>
             <CardHeader className="flex-row items-center justify-between gap-3 space-y-0">
@@ -249,8 +257,13 @@ export function NotificationsPanel({
             </CardHeader>
             <CardContent>
               {initial.length === 0 ? (
+                // Illustration-led, the way every other empty state worth
+                // explaining is: the phone catching alerts says what this page
+                // is for faster than any sentence. Less vertical padding than
+                // the default because the figure brings its own height.
                 <EmptyState
-                  icon={Bell}
+                  className="py-10"
+                  graphic={<NotificationIllustration caption={false} />}
                   title="No channels yet"
                   description="Add a channel, then pick what it should tell you about."
                 />
@@ -271,10 +284,14 @@ export function NotificationsPanel({
           </Card>
         </div>
 
-        {/* Decoration, and the only thing on this page that says what it is FOR. */}
-        <aside className="hidden xl:sticky xl:top-20 xl:block">
-          <NotificationIllustration />
-        </aside>
+        {/* Decoration, and the only thing on this page that says what it is FOR.
+            Gone while the list is empty: the empty state is showing the same
+            phone, and one page has no business animating it twice. */}
+        {initial.length > 0 && (
+          <aside className="hidden xl:sticky xl:top-20 xl:block">
+            <NotificationIllustration />
+          </aside>
+        )}
       </div>
 
       {/* ONE modal for whichever channel is open, so only one alert picker is
