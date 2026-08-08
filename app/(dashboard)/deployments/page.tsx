@@ -1,7 +1,7 @@
-import { Rocket } from "lucide-react";
 import { listDeployments } from "@/lib/data/deployments";
 import { hasCapability, isInstanceAdmin } from "@/lib/membership";
 import { EmptyState } from "@/components/shared/empty-state";
+import { DeploymentGraphic } from "@/components/apps/deployment-graphic";
 import { DeploymentsTable } from "@/components/apps/deployments-table";
 
 export const metadata = { title: "Deployments" };
@@ -31,7 +31,7 @@ export default async function DeploymentsPage() {
         <>
           {header}
           <EmptyState
-            icon={Rocket}
+            graphic={<DeploymentGraphic />}
             title="No deployments yet"
             description="Once you deploy an app, every build will show up here."
           />

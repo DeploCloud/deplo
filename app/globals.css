@@ -708,6 +708,108 @@
   }
 }
 
+/* The Deployments empty state sends a build down the pipeline: it rides left to
+   right, the track fills in behind it, and it lands with a ring. Then it clears
+   and goes again.
+
+   The package and the fill MUST share one linear timeline over the same
+   percentages - anything else and the leading edge of the track drifts out from
+   under the package, which is the one thing that would make it read as two
+   unrelated animations instead of one moving object. */
+@keyframes deplo-deploy-ride {
+  0% {
+    transform: translateX(0);
+    opacity: 0;
+  }
+  8% {
+    transform: translateX(0);
+    opacity: 1;
+  }
+  58%,
+  86% {
+    transform: translateX(78px);
+    opacity: 1;
+  }
+  100% {
+    transform: translateX(78px);
+    opacity: 0;
+  }
+}
+
+@keyframes deplo-deploy-fill {
+  0%,
+  8% {
+    stroke-dashoffset: 78;
+    opacity: 1;
+  }
+  58%,
+  86% {
+    stroke-dashoffset: 0;
+    opacity: 1;
+  }
+  100% {
+    stroke-dashoffset: 0;
+    opacity: 0;
+  }
+}
+
+/* The landing. It starts as the package arrives, not before, so the ring reads
+   as caused by it. */
+@keyframes deplo-deploy-land {
+  0%,
+  56% {
+    transform: scale(0.5);
+    opacity: 0;
+  }
+  62% {
+    opacity: 0.55;
+  }
+  86%,
+  100% {
+    transform: scale(1.9);
+    opacity: 0;
+  }
+}
+
+.deplo-deploy-package {
+  /* Translate in view-box units, so 78px is 78 units of track at any size. */
+  transform-box: view-box;
+  animation: deplo-deploy-ride 5s linear infinite;
+  opacity: 0;
+}
+
+.deplo-deploy-fill {
+  /* The track is 78 long, so one dash of 78 covers it exactly. */
+  stroke-dasharray: 78;
+  stroke-dashoffset: 78;
+  animation: deplo-deploy-fill 5s linear infinite;
+}
+
+.deplo-deploy-land {
+  transform-box: fill-box;
+  transform-origin: center;
+  animation: deplo-deploy-land 5s ease-out infinite;
+  opacity: 0;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  /* Hold the landed frame: build at the end of a full track. The ring goes, for
+     the same reason the cron one does - a frozen ripple is a stray circle. */
+  .deplo-deploy-package {
+    animation: none;
+    opacity: 1;
+    transform: translateX(78px);
+  }
+  .deplo-deploy-fill {
+    animation: none;
+    stroke-dashoffset: 0;
+  }
+  .deplo-deploy-land {
+    animation: none;
+    opacity: 0;
+  }
+}
+
 @media (prefers-reduced-motion: reduce) {
   .animate-fade-in,
   .animate-slide-in-right,

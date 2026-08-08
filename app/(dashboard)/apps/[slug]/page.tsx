@@ -5,7 +5,6 @@ import {
   Clock,
   ScrollText,
   ExternalLink,
-  Rocket,
   ArrowRight,
 } from "lucide-react";
 import { getAppBySlug } from "@/lib/data/apps";
@@ -15,6 +14,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { StatusBadge, StatusDot } from "@/components/shared/status-badge";
 import { EmptyState } from "@/components/shared/empty-state";
+import { DeploymentGraphic } from "@/components/apps/deployment-graphic";
 import { describeAppSource } from "@/components/apps/app-source";
 import { FrameworkBadge } from "@/components/apps/framework-badge";
 import {
@@ -186,7 +186,11 @@ export default async function AppOverview(
           )}
         </div>
         {deployments.length === 0 ? (
-          <EmptyState icon={Rocket} title="No deployments yet" />
+          <EmptyState
+            graphic={<DeploymentGraphic />}
+            title="No deployments yet"
+            description="Deploy this app and every build lands here, with its logs."
+          />
         ) : (
           <div className="overflow-hidden rounded-xl border border-border">
             {deployments.slice(0, 4).map((d) => (

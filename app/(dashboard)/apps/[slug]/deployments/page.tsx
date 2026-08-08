@@ -1,10 +1,11 @@
 import { notFound } from "next/navigation";
-import { Loader2, Rocket } from "lucide-react";
+import { Loader2 } from "lucide-react";
 import { getAppBySlug } from "@/lib/data/apps";
 import { listDeployments } from "@/lib/data/deployments";
 import { isInstanceAdmin } from "@/lib/membership";
 import { hasAppCapability } from "@/lib/data/node-access";
 import { EmptyState } from "@/components/shared/empty-state";
+import { DeploymentGraphic } from "@/components/apps/deployment-graphic";
 import { DeploymentsTable } from "@/components/apps/deployments-table";
 
 export const metadata = { title: "Deployments" };
@@ -51,7 +52,11 @@ export default async function AppDeploymentsPage(
       {deployments.length === 0 ? (
         <>
           {header}
-          <EmptyState icon={Rocket} title="No deployments yet" />
+          <EmptyState
+            graphic={<DeploymentGraphic />}
+            title="No deployments yet"
+            description="Deploy this app and every build lands here, with its logs."
+          />
         </>
       ) : (
         <DeploymentsTable
