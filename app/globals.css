@@ -526,6 +526,104 @@
   }
 }
 
+/* The Cron jobs empty state draws a schedule: the hand sweeps the dial once, and
+   as it crosses the top mark the job fires - the mark lights up and throws off a
+   ring. Then it goes round again, which is the whole idea of a cron job: not the
+   one run, the next one.
+
+   One 6s timeline shared by all three elements, so the fire can never drift away
+   from the hand that causes it. Transform and opacity only, so it stays on the
+   compositor and costs nothing while the page sits idle. */
+@keyframes deplo-cron-sweep {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+/* The run, on the same pop the pull request commits use: slightly over-sized,
+   then settled. It starts at 0%, the instant the hand is on the mark, and is
+   gone well before the hand comes back round - so the next pass reads as a new
+   run rather than the same one still lit. */
+@keyframes deplo-cron-fire {
+  0% {
+    transform: scale(0);
+    opacity: 0;
+  }
+  6% {
+    transform: scale(1.25);
+    opacity: 1;
+  }
+  12%,
+  62% {
+    transform: scale(1);
+    opacity: 1;
+  }
+  80%,
+  100% {
+    transform: scale(1);
+    opacity: 0;
+  }
+}
+
+/* The ring the run throws off. It has to outlive the pop by a beat, or the two
+   read as one blob instead of cause and effect. */
+@keyframes deplo-cron-pulse {
+  0% {
+    transform: scale(0.6);
+    opacity: 0;
+  }
+  10% {
+    opacity: 0.5;
+  }
+  45%,
+  100% {
+    transform: scale(2.6);
+    opacity: 0;
+  }
+}
+
+.deplo-cron-hand {
+  /* Rotate about the DIAL's centre, which is not the hand's own bounding box -
+     hence view-box here, where the dots below can use fill-box. */
+  transform-box: view-box;
+  transform-origin: 50% 50%;
+  animation: deplo-cron-sweep 6s linear infinite;
+}
+
+.deplo-cron-fire,
+.deplo-cron-pulse {
+  transform-box: fill-box;
+  transform-origin: center;
+  opacity: 0;
+}
+
+.deplo-cron-fire {
+  animation: deplo-cron-fire 6s ease-out infinite;
+}
+
+.deplo-cron-pulse {
+  animation: deplo-cron-pulse 6s ease-out infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  /* Hold the fired frame: hand on the mark, mark lit. The ring is the one part
+     with no still form - a frozen halo is just a stray circle - so it goes. */
+  .deplo-cron-hand {
+    animation: none;
+  }
+  .deplo-cron-fire {
+    animation: none;
+    opacity: 1;
+    transform: none;
+  }
+  .deplo-cron-pulse {
+    animation: none;
+  }
+}
+
 @media (prefers-reduced-motion: reduce) {
   .animate-fade-in,
   .animate-slide-in-right,

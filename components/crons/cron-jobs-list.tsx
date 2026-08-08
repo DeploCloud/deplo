@@ -28,6 +28,7 @@ import {
 import { SimpleTooltip } from "@/components/ui/tooltip";
 import { EmptyState } from "@/components/shared/empty-state";
 import { ScheduleLabel } from "@/components/shared/schedule-picker";
+import { CronGraphic } from "@/components/crons/cron-graphic";
 import { CronJobDialog } from "@/components/crons/cron-job-dialog";
 import { CronRunHistory } from "@/components/crons/cron-run-history";
 import { gqlAction } from "@/lib/graphql-client";
@@ -303,7 +304,7 @@ export function CronJobsList({
 
       {jobs.length === 0 ? (
         <EmptyState
-          icon={Timer}
+          graphic={<CronGraphic />}
           title="No cron jobs yet"
           description="Schedule a command to run inside this container - a nightly cleanup, a queue worker, a report."
           action={
