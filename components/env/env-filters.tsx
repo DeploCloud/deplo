@@ -508,7 +508,7 @@ export function EnvFilters<T extends FilterableVar>({
         <Input
           value={state.q}
           onChange={(e) => onChange({ ...state, q: e.target.value })}
-          placeholder={`Search ${noun}…`}
+          placeholder={`Search ${noun}`}
           aria-label={`Search ${noun}`}
           className="h-9 pl-9"
         />
@@ -533,10 +533,12 @@ export function EnvFilters<T extends FilterableVar>({
           on the first keystroke, and inserting it into the row would shove the
           controls around it while the cursor is still in the search box.
           `invisible` also takes it out of the tab order and the a11y tree, so an
-          idle toolbar exposes nothing to clear. */}
+          idle toolbar exposes nothing to clear.
+
+          Default size, not `sm`: every other control on this row is h-9, and an
+          h-8 button among them sits visibly short. */}
       <Button
         variant="ghost"
-        size="sm"
         disabled={!hasFilter}
         className={cn("shrink-0", !hasFilter && "invisible")}
         onClick={onClear}

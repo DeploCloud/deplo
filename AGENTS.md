@@ -332,6 +332,20 @@ Single endpoint `app/api/graphql/route.ts` (thin) → `lib/graphql/yoga.ts`. One
   carries `space-y-1`, never both. Two stacked lines with no spacing read as one cramped block; the
   4px is what separates them. The rule is global, not per-screen: a card that skips it misaligns
   with every sibling in the same grid.
+- **Controls that sit on the same row are the same height.** A `Button` next to an `Input`,
+  `SelectTrigger`, or any other form control must match its height, and the mismatch is real:
+  `Button size="sm"` is **h-8** while `Input` / `SelectTrigger` / the facet triggers are **h-9**, so
+  the house default (`size="sm"`) is the WRONG one on a toolbar and lands the button 4px short.
+  Use the default size there and keep `sm` for rows that hold no input (a section heading, a card
+  header, a table cell). **Fix any height discrepancy you find between an input and a button** -
+  it is never "close enough", it reads as a broken row, and one short control makes the whole
+  toolbar look misaligned. Same button in two homes: take the size as an argument
+  (`const addButton = (size: "sm" | "default") => …`) instead of writing it twice.
+- **An empty state does not repeat an action the screen already shows.** If the section heading or
+  the toolbar above it already carries the button, the empty state gets a graphic, a title and a
+  description - and nothing else. Give it an `action` only when it is the ONLY way to act: a target
+  whose toolbar is hidden while the list is empty puts the button in the heading row instead, so
+  there is exactly one at any moment. Reference: `components/env/env-manager.tsx`.
 - **Every dialog with fields is a real `<form>` — Enter submits.** Wrap the body + `DialogFooter`
   in `<form className="grid gap-4" onSubmit={…}>` (matching `DialogContent`'s own grid, so the
   layout is unchanged), `preventDefault()`, and give the primary button `type="submit"` instead of

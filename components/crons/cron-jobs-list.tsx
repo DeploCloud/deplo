@@ -320,7 +320,6 @@ export function CronJobsList({
           graphic={<CronGraphic />}
           title="No cron jobs yet"
           description="Schedule a command to run inside this container - a nightly cleanup, a queue worker, a report."
-          action={newJobButton}
         />
       ) : (
         <Card>

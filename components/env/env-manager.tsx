@@ -139,12 +139,15 @@ export function EnvManager({
   const hasVars = rows.length > 0;
   const hasMatches = shownRows.length > 0;
 
-  // The page's one action. It rides the toolbar (the end of the search/sort row)
-  // when there is a table to act on, and the empty state otherwise — the first
-  // variable has to be reachable from a page that has no toolbar yet.
-  const addButton = (
+  // The page's one action, and it only ever has one home at a time: the toolbar
+  // when there is a table to act on, the heading row when there is not - the
+  // first variable has to be reachable from a page that has no toolbar yet.
+  // The size follows the home: `default` is h-9, the height of every control on
+  // the toolbar row, while a heading row has no input to line up with and takes
+  // the `sm` every other section heading uses.
+  const addButton = (size: "sm" | "default") => (
     <Button
-      size="sm"
+      size={size}
       onClick={() => {
         setEditing(null);
         setAddOpen(true);
@@ -157,11 +160,14 @@ export function EnvManager({
 
   return (
     <div className="space-y-4">
-      <div>
-        <h3 className="text-sm font-medium">Environment Variables</h3>
-        <p className="mt-1 text-sm text-muted-foreground">
-          Secret values are encrypted at rest and never shown again.
-        </p>
+      <div className="flex items-center justify-between gap-3">
+        <div>
+          <h3 className="text-sm font-medium">Environment Variables</h3>
+          <p className="mt-1 text-sm text-muted-foreground">
+            Secret values are encrypted at rest and never shown again.
+          </p>
+        </div>
+        {!hasVars && addButton("sm")}
       </div>
 
       {hasVars && (
@@ -171,7 +177,7 @@ export function EnvManager({
           onClear={clear}
           facets={facets}
           counts={counts}
-          actions={addButton}
+          actions={addButton("default")}
         />
       )}
 
@@ -180,18 +186,12 @@ export function EnvManager({
           graphic={<EnvGraphic />}
           title="No environment variables"
           description="Add variables to configure your app - available during builds and at runtime."
-          action={addButton}
         />
       ) : !hasMatches ? (
         <EmptyState
           icon={SearchX}
           title="No matching variables"
           description="No variable matches the current search and filters."
-          action={
-            <Button variant="outline" size="sm" onClick={clear}>
-              Clear filters
-            </Button>
-          }
         />
       ) : (
         <div className="rounded-xl border border-border">

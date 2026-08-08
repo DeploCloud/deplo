@@ -113,12 +113,14 @@ export function BasicAuthManager({
   const hasUsers = rows.length > 0;
   const hasMatches = shown.length > 0;
 
-  // The page's one action. It rides the toolbar (the end of the search/sort row)
-  // when there is something to act on, and the empty state otherwise — the first
-  // credential has to be reachable from a page that has no toolbar yet.
-  const addButton = (
+  // The page's one action, with one home at a time: the toolbar when there are
+  // credentials to act on, the heading row when there are none. The size follows
+  // the home - `default` is h-9, the height of every control on the toolbar row,
+  // while a heading row has no input to line up with and takes the `sm` every
+  // other section heading uses.
+  const addButton = (size: "sm" | "default") => (
     <Button
-      size="sm"
+      size={size}
       onClick={() => {
         setEditing(null);
         setDialogOpen(true);
@@ -131,16 +133,19 @@ export function BasicAuthManager({
 
   return (
     <div className="space-y-4">
-      <div>
-        <h3 className="flex w-fit items-center gap-2 text-sm font-medium">
-          HTTP Basic Auth
-          <InfoTip content="A browser login in front of every domain of this app — the quickest way to keep a staging or internal app private. Changes take effect within seconds, with no redeploy." />
-        </h3>
-        <p className="mt-1 text-sm text-muted-foreground">
-          Anyone who reaches this app has to sign in with one of these
-          credentials first. Passwords are encrypted at rest and revealed one at
-          a time.
-        </p>
+      <div className="flex items-start justify-between gap-3">
+        <div>
+          <h3 className="flex w-fit items-center gap-2 text-sm font-medium">
+            HTTP Basic Auth
+            <InfoTip content="A browser login in front of every domain of this app - the quickest way to keep a staging or internal app private. Changes take effect within seconds, with no redeploy." />
+          </h3>
+          <p className="mt-1 text-sm text-muted-foreground">
+            Anyone who reaches this app has to sign in with one of these
+            credentials first. Passwords are encrypted at rest and revealed one
+            at a time.
+          </p>
+        </div>
+        {!hasUsers && pending.length === 0 && addButton("sm")}
       </div>
 
       {hasUsers && (
@@ -150,7 +155,7 @@ export function BasicAuthManager({
           onClear={clear}
           facets={facets}
           counts={counts}
-          actions={addButton}
+          actions={addButton("default")}
           noun="credentials"
           keySortLabel="Username (A–Z)"
         />
@@ -161,18 +166,12 @@ export function BasicAuthManager({
           icon={ShieldOff}
           title="No login required"
           description="Add a credential to put a username and password in front of every domain of this app."
-          action={addButton}
         />
       ) : !hasMatches && pending.length === 0 ? (
         <EmptyState
           icon={SearchX}
           title="No matching credentials"
           description="No credential matches the current search and filters."
-          action={
-            <Button variant="outline" size="sm" onClick={clear}>
-              Clear filters
-            </Button>
-          }
         />
       ) : (
         <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">

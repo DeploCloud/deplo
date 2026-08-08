@@ -240,11 +240,6 @@ export function SharedVarsManager({
           icon={SearchX}
           title="No matching variables"
           description="No shared variable matches the current search and filters."
-          action={
-            <Button variant="outline" size="sm" onClick={clear}>
-              Clear filters
-            </Button>
-          }
         />
       ) : (
         <div className="rounded-xl border border-border">
