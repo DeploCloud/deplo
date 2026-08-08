@@ -129,8 +129,18 @@ test("one alert reaches every enabled channel, in each one's own shape", async (
   const link = "https://deplo.acme.com/apps/api";
   const body = "The build log has the error that stopped it.";
 
-  assert.deepEqual(by("discord").body, {
-    content: `**api failed to deploy**\n${body}\n${link}`,
+  // Discord is the one structured payload: an embed, not a line of text.
+  const { timestamp, ...embed } = (
+    by("discord").body as { embeds: Record<string, unknown>[] }
+  ).embeds[0];
+  assert.equal(typeof timestamp, "string");
+  assert.deepEqual(embed, {
+    author: { name: "Deplo · Deployments" },
+    title: "api failed to deploy",
+    url: link,
+    description: body,
+    color: 0xff5c5c,
+    fields: [{ name: "Event", value: "Deployment failed", inline: true }],
   });
   assert.deepEqual(by("slack").body, {
     text: `*api failed to deploy*\n${body}\n${link}`,
@@ -292,8 +302,10 @@ test("with no panel address, a path never leaks as a bare string", async () => {
       .body as Record<string, unknown>;
     assert.equal(generic.url, null);
     const discord = capture.calls.find((c) => c.url.includes("discord"))!
-      .body as { content: string };
-    assert.equal(discord.content.includes("/apps/api"), false);
+      .body as { embeds: { url?: string }[] };
+    // No panel address ⇒ no title link at all, never a bare path.
+    assert.equal(JSON.stringify(discord).includes("/apps/api"), false);
+    assert.equal(discord.embeds[0].url, undefined);
   } finally {
     if (before !== undefined) process.env.DEPLO_PUBLIC_URL = before;
   }

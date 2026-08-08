@@ -242,7 +242,13 @@ function AddRegistryDialog({ onDone }: { onDone: () => void }) {
                 <SelectContent>
                   {(Object.keys(TYPE_META) as RegistryType[]).map((t) => (
                     <SelectItem key={t} value={t}>
-                      {TYPE_META[t].label}
+                      {/* The mark rides into the trigger too: Radix clones the
+                          selected item's children into SelectValue, so the
+                          chosen registry keeps its logo once the menu closes. */}
+                      <span className="flex items-center gap-2">
+                        <RegistryMark type={t} className="size-5" />
+                        {TYPE_META[t].label}
+                      </span>
                     </SelectItem>
                   ))}
                 </SelectContent>

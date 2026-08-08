@@ -1,5 +1,6 @@
 import "server-only";
 
+import { ALERT_CATEGORIES, ALERT_META } from "../alerts";
 import { assertSafeOutboundUrl } from "../outbound-url";
 import { sendEmail, type EmailConfig } from "./email";
 import { sendWebPushTo } from "./web-push";
@@ -77,7 +78,7 @@ export async function sendToChannel(
       await postJson(
         channel.webhookUrl,
         "Discord webhook URL",
-        { content: `**${msg.title}**\n${msg.body}${linkLine(msg)}` },
+        discordPayload(msg),
         signal,
       );
       return;
@@ -246,6 +247,74 @@ export async function sendToChannel(
 /** The dashboard link, on its own line, only when there is one. */
 function linkLine(msg: AlertMessage): string {
   return msg.url ? `\n${msg.url}` : "";
+}
+
+/* ---------------------------------------------------------------- Discord -- */
+
+/**
+ * Discord gets a real embed, not a line of bold text: a colour stripe that says
+ * at a glance whether this is bad news, the catalog's own name for the event,
+ * and the dashboard link on the title. Every string in it is one Deplo already
+ * shows on the notification settings page — the channel is a view of the same
+ * catalog, not a second vocabulary.
+ *
+ * No images: the embed renders on Discord's side, so a logo would have to be
+ * fetched from the panel's address, which on a private instance is unreachable
+ * and draws a broken thumbnail.
+ */
+function discordPayload(msg: AlertMessage) {
+  return {
+    embeds: [
+      {
+        author: { name: `Deplo · ${categoryLabel(msg.key)}` },
+        title: msg.title,
+        // Omitted when the panel address is unknown: a title link to a bare
+        // path is a dead link.
+        ...(msg.url ? { url: msg.url } : {}),
+        description: msg.body,
+        color: embedColor(msg.key),
+        fields: [
+          { name: "Event", value: ALERT_META[msg.key].label, inline: true },
+        ],
+        // Rendered by Discord in the reader's own timezone.
+        timestamp: msg.ts,
+      },
+    ],
+  };
+}
+
+/** Which section of the notification settings this alert is browsed under. */
+function categoryLabel(key: AlertKey): string {
+  return (
+    ALERT_CATEGORIES.find((c) => c.alerts.includes(key))?.label ?? "Alerts"
+  );
+}
+
+/** The `--destructive` / `--success` / `--warning` / `--info` dark tokens. */
+const DANGER = new Set<AlertKey>([
+  "app_crash_loop",
+  "server_offline",
+  "server_unmanageable",
+  "server_trust_changed",
+  "git_connection_failing",
+  "failed_logins",
+]);
+const GOOD = new Set<AlertKey>(["server_online", "database_ready"]);
+const WARN = new Set<AlertKey>([
+  "deployment_interrupted",
+  "database_rebuilt",
+  "database_deleted",
+  "server_resources_high",
+  "server_disk_low",
+  "certificate_expiring",
+  "domain_dns_drift",
+]);
+
+function embedColor(key: AlertKey): number {
+  if (key.endsWith("_failed") || DANGER.has(key)) return 0xff5c5c;
+  if (key.endsWith("_succeeded") || GOOD.has(key)) return 0x50e3c2;
+  if (WARN.has(key)) return 0xf5a623;
+  return 0x5b9dff;
 }
 
 async function postJson(

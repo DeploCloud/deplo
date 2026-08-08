@@ -556,7 +556,9 @@ export async function sendTestNotification(channelId: string): Promise<void> {
   await sendToChannel(
     target,
     {
-      key: "deployment_failed",
+      // A success key on purpose: the Discord embed colours itself from the
+      // key, and a red stripe on "wired up correctly" reads as a failure.
+      key: "deployment_succeeded",
       title: "Deplo test alert",
       body: "This channel is wired up correctly.",
       url: null,

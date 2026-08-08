@@ -1,5 +1,7 @@
 /** Brand glyphs not shipped by lucide-react (brand icons were removed). */
 
+import { Boxes } from "lucide-react";
+
 import { cn } from "@/lib/utils";
 
 export function GitHubIcon({ className }: { className?: string }) {
@@ -274,7 +276,13 @@ export function RegistryMark({
 }) {
   const brand = REGISTRY_BRAND[type];
   const Icon =
-    type === "ghcr" ? GitHubIcon : type === "gitlab" ? GitLabIcon : DockerIcon;
+    type === "ghcr"
+      ? GitHubIcon
+      : type === "gitlab"
+        ? GitLabIcon
+        : type === "dockerhub"
+          ? DockerIcon
+          : Boxes;
   return (
     <span
       className={cn(
