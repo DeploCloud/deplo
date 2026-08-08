@@ -10,11 +10,12 @@ import { cn } from "@/lib/utils";
  * what actually happens, and an empty list that keeps showing it reads as
  * waiting rather than broken.
  *
- * Third accent in the set, on purpose. Pull requests and Cron jobs spend
- * `--primary` and `--success`, Environment variables spends `--info`; this one
- * is `--chart-3`. Amber was the obvious alternative and is wrong: it is one
- * shade off `--warning`, and a deployment drawn in the warning colour reads as a
- * failed one.
+ * The only one in the set with no accent colour at all: the whole drawing is
+ * grey, the moving parts at full `--muted-foreground` against a track at 40%.
+ * One hue and two weights of it still separate the subject from the structure,
+ * and a deployment is the one thing here that already carries its own colour
+ * elsewhere in the product (the status badges), so the empty state stays out of
+ * that conversation.
  *
  * Pure SVG + CSS keyframes (see globals.css), no JS and no library. The package
  * and the track fill share one linear 5s timeline, which is what keeps the
@@ -48,8 +49,7 @@ export function DeploymentGraphic({ className }: { className?: string }) {
         cx="96"
         cy="53"
         r="9"
-        className="deplo-deploy-land"
-        stroke="var(--chart-3)"
+        className="deplo-deploy-land stroke-muted-foreground"
         strokeWidth="2"
         vectorEffect="non-scaling-stroke"
       />
@@ -60,8 +60,7 @@ export function DeploymentGraphic({ className }: { className?: string }) {
         y1="60"
         x2="96"
         y2="60"
-        className="deplo-deploy-fill"
-        stroke="var(--chart-3)"
+        className="deplo-deploy-fill stroke-muted-foreground"
         strokeWidth="2.5"
         strokeLinecap="round"
       />
@@ -75,8 +74,7 @@ export function DeploymentGraphic({ className }: { className?: string }) {
         width="14"
         height="14"
         rx="3.5"
-        className="deplo-deploy-package"
-        fill="var(--chart-3)"
+        className="deplo-deploy-package fill-muted-foreground"
       />
     </svg>
   );
