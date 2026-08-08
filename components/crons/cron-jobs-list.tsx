@@ -301,9 +301,17 @@ export function CronJobsList({
   ) : null;
 
   return (
-    <div className="space-y-3">
-      <div className="flex items-center justify-between">
-        <h2 className="text-sm font-medium">Cron jobs</h2>
+    <div className="space-y-4">
+      {/* The same heading shape as Pull requests and Environment next door: a
+          section title inside the app, not a page title. */}
+      <div className="flex items-center justify-between gap-3">
+        <div>
+          <h3 className="text-sm font-medium">Cron jobs</h3>
+          <p className="mt-1 text-sm text-muted-foreground">
+            Every job runs a command inside this container, on its own schedule
+            and in its own timezone.
+          </p>
+        </div>
         {newJobButton}
       </div>
 
