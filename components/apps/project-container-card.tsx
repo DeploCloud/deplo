@@ -11,6 +11,9 @@ import {
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuSeparator,
+  DropdownMenuSub,
+  DropdownMenuSubContent,
+  DropdownMenuSubTrigger,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import {
@@ -25,6 +28,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { ConfirmAction } from "@/components/shared/confirm-action";
 import { FolderColorPicker } from "@/components/apps/folder-color-picker";
+import { useBulkAppActions } from "@/components/apps/bulk-app-actions";
 import { cn, readableTextColor } from "@/lib/utils";
 import { gqlAction } from "@/lib/graphql-client";
 // Shared with the Overview SERVER component — must stay in a plain module (an
@@ -38,12 +42,18 @@ export interface ProjectCardData {
   color?: string | null;
   appCount: number;
   environmentCount: number;
+  /** The CURRENT caller's effective capabilities on this project (grants
+   *  included): gates the "All apps" actions. Absent means none. */
+  capabilities?: string[];
 }
 
 /** Menu items for the ⋯ dropdown. */
 type MenuKit = {
   Item: React.ElementType;
   Separator: React.ElementType;
+  Sub: React.ElementType;
+  SubTrigger: React.ElementType;
+  SubContent: React.ElementType;
 };
 
 /**
@@ -84,6 +94,18 @@ export function ProjectContainerCard({
   const href = projectHref(project.id, view);
   const e = project.environmentCount;
   const s = project.appCount;
+
+  // Start / stop / restart / redeploy every app in this project, across all of
+  // its environments. Its own capabilities decide, not `canManage`: running the
+  // apps and renaming the project are different permissions.
+  const caps = project.capabilities ?? [];
+  const bulk = useBulkAppActions({
+    scope: { projectId: project.id },
+    name: project.name,
+    appCount: s,
+    canControl: caps.includes("control_apps"),
+    canDeploy: caps.includes("deploy_apps"),
+  });
   const countLabel =
     `${s} ${s === 1 ? "app" : "apps"} · ${e} ${e === 1 ? "environment" : "environments"}`;
 
@@ -146,6 +168,7 @@ export function ProjectContainerCard({
           Open
         </Link>
       </K.Item>
+      {bulk.items(K)}
       {canManage && (
         <>
           <K.Item
@@ -199,7 +222,13 @@ export function ProjectContainerCard({
           </DropdownMenuTrigger>
         </div>
         <DropdownMenuContent align="end" className="w-44">
-          {menu({ Item: DropdownMenuItem, Separator: DropdownMenuSeparator })}
+          {menu({
+            Item: DropdownMenuItem,
+            Separator: DropdownMenuSeparator,
+            Sub: DropdownMenuSub,
+            SubTrigger: DropdownMenuSubTrigger,
+            SubContent: DropdownMenuSubContent,
+          })}
         </DropdownMenuContent>
       </DropdownMenu>
     </div>
@@ -356,5 +385,10 @@ export function ProjectContainerCard({
       </Card>
     );
 
-  return card;
+  return (
+    <>
+      {card}
+      {bulk.dialog}
+    </>
+  );
 }

@@ -859,41 +859,268 @@
   }
 }
 
-/* The Databases empty state rolls a tumbleweed through: in from the left, across
-   the drum that is not there, out to the right, and then nothing for two full
-   seconds before it comes round again. The PAUSE is the joke - a frame that
-   never stops moving reads as loading, not as empty.
+/* The Databases empty state blows a tumbleweed through: in from the left, four
+   skips across the drum that is not there, out to the right, and then nothing
+   for two and a half seconds before it comes round again. The PAUSE is the joke
+   - a frame that never stops moving reads as loading, not as empty.
 
-   917deg is not a round number on purpose: the weed travels 144 units on a
-   radius of 9, and 144 / (2 * pi * 9) is 2.548 turns. Anything else and it
-   visibly skids along the ground instead of rolling on it. */
-@keyframes deplo-db-tumble {
+   Three animations on three nested groups, because they need different easings
+   and one `transform` property cannot hold them apart. Travel and spin are both
+   LINEAR and cover the same 8%-55% window: share the timing function or the weed
+   skids. The hop is free to have its own, since vertical motion does not change
+   how far it has rolled. */
+@keyframes deplo-db-roll {
   0%,
   8% {
-    transform: translateX(0) rotate(0deg);
+    transform: translateX(0);
   }
   55%,
   100% {
-    transform: translateX(144px) rotate(917deg);
+    transform: translateX(168px);
   }
 }
 
-.deplo-db-tumble {
-  /* view-box, not fill-box: the twigs make the group's bounding box lopsided, so
-     its centre is not the ball's centre and the weed would bob off the ground
-     once per turn. Pin the origin to the circle instead. */
-  transform-box: view-box;
-  transform-origin: -12px 61px;
-  animation: deplo-db-tumble 6s linear infinite;
+/* 1013deg is not a round number on purpose: 168 units of travel on an effective
+   radius of 9.5 is 2.815 turns. Anything else and it visibly skids. */
+@keyframes deplo-db-spin {
+  0%,
+  8% {
+    transform: rotate(0deg);
+  }
+  55%,
+  100% {
+    transform: rotate(1013deg);
+  }
+}
+
+/* Four skips of falling height - 8, 6, 7, 4 - because a tumbleweed is pushed by
+   gusts, not by a metronome. The per-keyframe timing functions are what make it
+   a bounce and not a sine wave: ease-out off the ground (it leaves fast and
+   hangs), ease-in from the apex (gravity takes it back). */
+@keyframes deplo-db-hop {
+  0%,
+  8% {
+    transform: translateY(0);
+    animation-timing-function: ease-out;
+  }
+  14% {
+    transform: translateY(-8px);
+    animation-timing-function: ease-in;
+  }
+  20% {
+    transform: translateY(0);
+    animation-timing-function: ease-out;
+  }
+  26% {
+    transform: translateY(-6px);
+    animation-timing-function: ease-in;
+  }
+  32% {
+    transform: translateY(0);
+    animation-timing-function: ease-out;
+  }
+  38% {
+    transform: translateY(-7px);
+    animation-timing-function: ease-in;
+  }
+  44% {
+    transform: translateY(0);
+    animation-timing-function: ease-out;
+  }
+  49% {
+    transform: translateY(-4px);
+    animation-timing-function: ease-in;
+  }
+  55%,
+  100% {
+    transform: translateY(0);
+  }
+}
+
+.deplo-db-roll {
+  animation: deplo-db-roll 6s linear infinite;
+}
+
+.deplo-db-hop {
+  animation: deplo-db-hop 6s infinite;
+}
+
+.deplo-db-spin {
+  /* fill-box is safe here only because the weed's bounding box is deliberately
+     square and centred on (0,0) - see the path in database-graphic.tsx. */
+  transform-box: fill-box;
+  transform-origin: center;
+  animation: deplo-db-spin 6s linear infinite;
 }
 
 @media (prefers-reduced-motion: reduce) {
   /* Park it beside the drum, on the ground, mid-roll. NOT its end frame: that
      one is off-screen, and an illustration of nothing at all reads as broken
-     rather than empty. 255deg is the same distance-to-rotation ratio. */
-  .deplo-db-tumble {
+     rather than empty. 386deg is the same distance-to-rotation ratio. */
+  .deplo-db-roll {
     animation: none;
-    transform: translateX(40px) rotate(255deg);
+    transform: translateX(64px);
+  }
+  .deplo-db-hop {
+    animation: none;
+    transform: none;
+  }
+  .deplo-db-spin {
+    animation: none;
+    transform: rotate(386deg);
+  }
+}
+
+/* The S3 destinations empty state throws a copy into the bucket: off the ground
+   on the left, up and over, down at the rim, gone. Same three-group split as the
+   tumbleweed - X linear, Y with its own easing, tumble linear. */
+@keyframes deplo-s3-throw {
+  0% {
+    transform: translateX(0);
+    opacity: 0;
+  }
+  8% {
+    transform: translateX(0);
+    opacity: 1;
+  }
+  58% {
+    opacity: 1;
+  }
+  62%,
+  100% {
+    transform: translateX(62px);
+    opacity: 0;
+  }
+}
+
+/* Up fast and hanging (ease-out), down under gravity (ease-in). The apex sits at
+   35%, just before halfway, which is where a real throw peaks. */
+@keyframes deplo-s3-arc {
+  0%,
+  8% {
+    transform: translateY(0);
+    animation-timing-function: ease-out;
+  }
+  35% {
+    transform: translateY(-36px);
+    animation-timing-function: ease-in;
+  }
+  62%,
+  100% {
+    transform: translateY(-24px);
+  }
+}
+
+@keyframes deplo-s3-tumble {
+  0%,
+  8% {
+    transform: rotate(0deg);
+  }
+  62%,
+  100% {
+    transform: rotate(190deg);
+  }
+}
+
+.deplo-s3-throw {
+  animation: deplo-s3-throw 5s linear infinite;
+  opacity: 0;
+}
+
+.deplo-s3-arc {
+  animation: deplo-s3-arc 5s infinite;
+}
+
+.deplo-s3-tumble {
+  /* The copy is authored around (0,0) and is square, so its box centre IS its
+     centre and fill-box is safe. */
+  transform-box: fill-box;
+  transform-origin: center;
+  animation: deplo-s3-tumble 5s linear infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  /* Hold it mid-flight, at the apex: the end frame is a faded-out copy, i.e. an
+     empty sky, and the start frame is a box on the ground saying nothing. */
+  .deplo-s3-throw {
+    animation: none;
+    transform: translateX(31px);
+    opacity: 1;
+  }
+  .deplo-s3-arc {
+    animation: none;
+    transform: translateY(-36px);
+  }
+  .deplo-s3-tumble {
+    animation: none;
+    transform: rotate(95deg);
+  }
+}
+
+/* The scheduled backups empty state closes a loop around the archive, then does
+   it again. 157.1 is the arc's real length (2 * pi * 30 * 300/360), so one dash
+   of it covers the path exactly and the draw-on has no seam. */
+@keyframes deplo-bk-loop {
+  0% {
+    stroke-dashoffset: 157.1;
+    opacity: 1;
+  }
+  55%,
+  84% {
+    stroke-dashoffset: 0;
+    opacity: 1;
+  }
+  100% {
+    stroke-dashoffset: 0;
+    opacity: 0;
+  }
+}
+
+/* The head arrives with the arc, not before: same pop the pull request commits
+   use, so a reader who has seen one has already read this. */
+@keyframes deplo-bk-arrow {
+  0%,
+  50% {
+    transform: scale(0);
+    opacity: 0;
+  }
+  58% {
+    transform: scale(1.2);
+    opacity: 1;
+  }
+  64%,
+  84% {
+    transform: scale(1);
+    opacity: 1;
+  }
+  100% {
+    transform: scale(1);
+    opacity: 0;
+  }
+}
+
+.deplo-bk-loop {
+  stroke-dasharray: 157.1;
+  animation: deplo-bk-loop 5s ease-in-out infinite;
+}
+
+.deplo-bk-arrow {
+  transform-box: fill-box;
+  transform-origin: center;
+  animation: deplo-bk-arrow 5s ease-out infinite;
+  opacity: 0;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  /* Hold the closed lap: full circle, head in place. */
+  .deplo-bk-loop {
+    animation: none;
+    stroke-dashoffset: 0;
+  }
+  .deplo-bk-arrow {
+    animation: none;
+    opacity: 1;
+    transform: none;
   }
 }
 

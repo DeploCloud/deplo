@@ -1,4 +1,4 @@
-import { Database, Cloud, Archive } from "lucide-react";
+import { Database } from "lucide-react";
 import { listDatabases } from "@/lib/data/databases";
 import { listS3, toDestinationOption } from "@/lib/data/s3";
 import { listBackups } from "@/lib/data/backups";
@@ -23,6 +23,8 @@ import {
 } from "@/components/ui/table";
 import { CreateDatabase } from "@/components/storage/create-database";
 import { DatabaseGraphic } from "@/components/storage/database-graphic";
+import { S3Graphic } from "@/components/storage/s3-graphic";
+import { BackupScheduleGraphic } from "@/components/storage/backup-schedule-graphic";
 import { DatabasesGrid } from "@/components/storage/databases-grid";
 import { CreateS3 } from "@/components/storage/create-s3";
 import { S3Card } from "@/components/storage/s3-card";
@@ -207,14 +209,15 @@ export default async function StoragePage(props: PageProps<"/storage">) {
               empty={destinations.length === 0}
               emptyState={
                 <EmptyState
-                  icon={Cloud}
+                  graphic={<S3Graphic />}
                   title="No S3 destinations"
+                  // No button: the heading row above carries Add destination
+                  // already.
                   description={
                     canManageS3
-                      ? "Add a bucket (R2, S3, B2, MinIO…) to store backups and assets."
+                      ? "Add a bucket (R2, S3, B2, MinIO) to store backups and assets."
                       : "You don't have permission to connect S3 destinations. Ask a team admin for the “Manage S3 destinations” permission."
                   }
-                  action={canManageS3 ? <CreateS3 canCreate /> : undefined}
                 />
               }
             >
@@ -244,7 +247,7 @@ export default async function StoragePage(props: PageProps<"/storage">) {
           </div>
           {backups.length === 0 ? (
             <EmptyState
-              icon={Archive}
+              graphic={<BackupScheduleGraphic />}
               title="No backups scheduled"
               description={
                 canManageBackups

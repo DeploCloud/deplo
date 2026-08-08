@@ -24,6 +24,7 @@ import {
   rebuildApp,
   deleteApp,
   deleteApps,
+  bulkAppAction,
   reorderApps,
   setAppVolumes,
   updateAppResources,
@@ -653,6 +654,31 @@ function redactComposeEnvValues(yaml: string): string {
     .join("\n");
 }
 
+/** What a folder's or a project's ⋯ menu can run over all of its apps at once.
+ *  Redeploy is its own mutation: it is a different permission (`deploy_apps`). */
+const BulkAppActionEnum = builder.enumType("BulkAppAction", {
+  description:
+    "A lifecycle action run over every app in a folder or project: start, " +
+    "stop, or restart (stop then start).",
+  values: ["start", "stop", "restart"] as const,
+});
+
+const BulkAppActionResultRef = builder
+  .objectRef<{ ok: number; failed: number; error: string | null }>(
+    "BulkAppActionResult",
+  )
+  .implement({
+    description:
+      "The outcome of a bulk action: how many apps it ran on, how many " +
+      "refused or failed, and the first failure's message. Apps the caller " +
+      "can't reach are not counted at all.",
+    fields: (t) => ({
+      ok: t.exposeInt("ok"),
+      failed: t.exposeInt("failed"),
+      error: t.exposeString("error", { nullable: true }),
+    }),
+  });
+
 /* ------------------------------------------------------------------ */
 /* Mutations (every app/deployment server action)                  */
 /* ------------------------------------------------------------------ */
@@ -988,6 +1014,42 @@ builder.mutationFields((t) => ({
       "Bulk-delete several apps (bounded-concurrency teardown + one write). Returns how many were deleted.",
     args: { ids: t.arg.idList({ required: true }) },
     resolve: (_r, { ids }) => deleteApps(ids.map(String)),
+  }),
+  bulkAppAction: t.field({
+    type: BulkAppActionResultRef,
+    authScopes: { capability: "control_apps" },
+    description:
+      "Start, stop or restart EVERY app in one folder (its whole subtree) or " +
+      "one project (every environment). Gated again per app, so it only " +
+      "touches the ones the caller may control; one failure never stops the " +
+      "rest. Give exactly one of folderId / projectId.",
+    args: {
+      action: t.arg({ type: BulkAppActionEnum, required: true }),
+      folderId: t.arg.id({ required: false }),
+      projectId: t.arg.id({ required: false }),
+    },
+    resolve: (_r, { action, folderId, projectId }) =>
+      bulkAppAction(action, {
+        folderId: folderId ? String(folderId) : null,
+        projectId: projectId ? String(projectId) : null,
+      }),
+  }),
+  bulkRedeployApps: t.field({
+    type: BulkAppActionResultRef,
+    authScopes: { capability: "deploy_apps" },
+    description:
+      "Redeploy EVERY app in one folder (its whole subtree) or one project " +
+      "(every environment): the bulk twin of `redeploy`. Give exactly one " +
+      "of folderId / projectId.",
+    args: {
+      folderId: t.arg.id({ required: false }),
+      projectId: t.arg.id({ required: false }),
+    },
+    resolve: (_r, { folderId, projectId }) =>
+      bulkAppAction("redeploy", {
+        folderId: folderId ? String(folderId) : null,
+        projectId: projectId ? String(projectId) : null,
+      }),
   }),
   renderComposeStack: t.field({
     type: "String",

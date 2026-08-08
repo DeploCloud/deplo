@@ -514,6 +514,24 @@ input BuildConfigInput {
   startCommand: String
 }
 
+"""
+A lifecycle action run over every app in a folder or project: start, stop, or restart (stop then start).
+"""
+enum BulkAppAction {
+  restart
+  start
+  stop
+}
+
+"""
+The outcome of a bulk action: how many apps it ran on, how many refused or failed, and the first failure's message. Apps the caller can't reach are not counted at all.
+"""
+type BulkAppActionResult {
+  error: String
+  failed: Int
+  ok: Int
+}
+
 enum Capability {
   configure_apps
   configure_databases
@@ -1671,6 +1689,16 @@ type Mutation {
   Unblock a fork's pull request and build it. Approval is per pull request, so later commits on it build automatically.
   """
   approvePreview(id: ID!): AppPreview
+
+  """
+  Start, stop or restart EVERY app in one folder (its whole subtree) or one project (every environment). Gated again per app, so it only touches the ones the caller may control; one failure never stops the rest. Give exactly one of folderId / projectId.
+  """
+  bulkAppAction(action: BulkAppAction!, folderId: ID, projectId: ID): BulkAppActionResult
+
+  """
+  Redeploy EVERY app in one folder (its whole subtree) or one project (every environment): the bulk twin of `redeploy`. Give exactly one of folderId / projectId.
+  """
+  bulkRedeployApps(folderId: ID, projectId: ID): BulkAppActionResult
 
   """
   Cancel every in-progress deployment (queued/building) for one app (appId given) or across the whole active team (appId omitted), optionally narrowed to the deployments view filters: one owning server (serverId), one environment, and/or one status. Terminal deployments are left. Returns how many builds were stopped.

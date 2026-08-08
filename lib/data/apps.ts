@@ -1,7 +1,7 @@
 import "server-only";
 
 import { cache } from "react";
-import { and, eq, inArray, sql } from "drizzle-orm";
+import { and, eq, inArray, or, sql } from "drizzle-orm";
 
 import {
   listAllServers,
@@ -84,7 +84,8 @@ import {
   nipEmbeddedIp,
   blueprintWantsTls,
 } from "../deploy/domains";
-import { teardownApp } from "./deployments";
+import { teardownApp, redeploy } from "./deployments";
+import { descendantFolderIds } from "./folders";
 import { destroyPreviewsForApp } from "../deploy/preview-lifecycle";
 import { withKeyedLock } from "./keyed-mutex";
 import { removeUploads } from "../deploy/upload";
@@ -2007,4 +2008,107 @@ export async function deleteApps(ids: string[]): Promise<number> {
     );
   }
   return apps.length;
+}
+
+/** The lifecycle actions a folder or a project runs over all of its apps at once. */
+export type BulkAppAction = "start" | "stop" | "restart" | "redeploy";
+
+/**
+ * Run ONE lifecycle action on every app in a folder (its whole subtree, the
+ * same apps its tile counts) or in a project (every environment).
+ *
+ * It only fans out: each app goes through the SAME per-app function the
+ * single-app menu calls, so the capability gate, the status writes and the
+ * activity trail are identical, and a member who holds the capability on one
+ * corner of the fleet acts on exactly that corner. Apps the caller can't reach
+ * are skipped: they don't exist for them, and a count is no place to learn
+ * otherwise. One app refusing, or its host being unreachable, is counted and
+ * never aborts the rest. Bounded to 4 at a time like {@link deleteApps}, so one
+ * click can't flood a host's agent.
+ *
+ * Returns the counts plus the FIRST failure message, so the UI can say
+ * "Stopped 3 of 5 apps" in the server's own words.
+ */
+export async function bulkAppAction(
+  action: BulkAppAction,
+  scope: { folderId?: string | null; projectId?: string | null },
+): Promise<{ ok: number; failed: number; error: string | null }> {
+  const { membership } = await requireMembership();
+  const teamId = membership.teamId;
+
+  if (!scope.folderId && !scope.projectId)
+    throw new Error("Pick a folder or a project to act on");
+  // Both branches count their WHOLE subtree on the tile, so the action has to
+  // reach the same apps: nothing nested may sit out a "Stop all".
+  const tree = await getDb()
+    .select({
+      id: foldersTable.id,
+      parentId: foldersTable.parentId,
+      projectId: foldersTable.projectId,
+    })
+    .from(foldersTable)
+    .where(eq(foldersTable.teamId, teamId));
+  const folderIds = scope.folderId
+    ? [...descendantFolderIds(scope.folderId, tree)]
+    : // A project's apps are its own (ADR-0009's per-environment membership),
+      // plus anything inside a LEGACY folder filed under it - the same two
+      // sources its tile counts.
+      tree
+        .filter((f) => f.projectId === scope.projectId)
+        .flatMap((f) => [...descendantFolderIds(f.id, tree)]);
+  const where = and(
+    eq(appsTable.teamId, teamId),
+    scope.folderId
+      ? inArray(appsTable.folderId, folderIds)
+      : folderIds.length > 0
+        ? or(
+            eq(appsTable.projectId, scope.projectId!),
+            inArray(appsTable.folderId, folderIds),
+          )
+        : eq(appsTable.projectId, scope.projectId!),
+  );
+
+  const rows = await getDb()
+    .select({
+      id: appsTable.id,
+      folderId: appsTable.folderId,
+      projectId: appsTable.projectId,
+      environmentId: appsTable.environmentId,
+    })
+    .from(appsTable)
+    .where(where);
+  // Token scope first, then per-app reach: the same two filters `listApps`
+  // applies, so a bulk action can never touch an app its own list wouldn't show.
+  const scoped = rows.filter((p) => inAppScope(p));
+  const reach = await appCapabilitiesForTeam(
+    teamId,
+    scoped.map((p) => ({
+      id: p.id,
+      folderId: p.folderId ?? null,
+      projectId: p.projectId ?? null,
+      environmentId: p.environmentId ?? null,
+    })),
+  );
+  const targets = scoped
+    .filter((p) => (reach.get(p.id)?.length ?? 0) > 0)
+    .map((p) => p.id);
+
+  let ok = 0;
+  let failed = 0;
+  let error: string | null = null;
+  await mapLimit(targets, 4, async (id) => {
+    try {
+      if (action === "redeploy") await redeploy(id);
+      else {
+        // start / stop / restart in one pair of steps: a restart is both.
+        if (action !== "start") await stopApp(id);
+        if (action !== "stop") await startApp(id);
+      }
+      ok++;
+    } catch (e) {
+      failed++;
+      error ??= errMsg(e);
+    }
+  });
+  return { ok, failed, error };
 }

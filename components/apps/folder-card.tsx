@@ -39,6 +39,7 @@ import { SimpleTooltip, MenuSubTooltip } from "@/components/ui/tooltip";
 import { ConfirmAction } from "@/components/shared/confirm-action";
 import { FolderColorPicker } from "@/components/apps/folder-color-picker";
 import { ShareFolderDialog } from "@/components/apps/share-folder-dialog";
+import { useBulkAppActions } from "@/components/apps/bulk-app-actions";
 import { cn, readableTextColor } from "@/lib/utils";
 import { gqlAction } from "@/lib/graphql-client";
 import { folderHref } from "@/lib/overview-links";
@@ -150,6 +151,18 @@ export function FolderCard({
     `${count} ${count === 1 ? "app" : "apps"}` +
     (subCount > 0 ? ` · ${subCount} ${subCount === 1 ? "folder" : "folders"}` : "");
 
+  // Start / stop / restart / redeploy every app in this folder, its subtree
+  // included (the same apps `count` covers). Gated on the caller's caps HERE,
+  // not on `canManageThisFolder`: running the apps and organising the folder are
+  // different permissions, and a grantee may hold one without the other.
+  const bulk = useBulkAppActions({
+    scope: { folderId: folder.id },
+    name: folder.name,
+    appCount: count,
+    canControl: caps.includes("control_apps"),
+    canDeploy: caps.includes("deploy_apps"),
+  });
+
   // The folder's icon tile: its chosen colour with an auto-contrast icon, or the
   // default neutral tile when no colour is set. One definition drives both
   // layouts so the list and grid cards always match.
@@ -242,6 +255,7 @@ export function FolderCard({
           </Link>
         </K.Item>
       </SimpleTooltip>
+      {bulk.items(K)}
       {canManageThisFolder && (
         <>
           <SimpleTooltip content="Rename this folder" side="left">
@@ -344,9 +358,10 @@ export function FolderCard({
     </>
   );
 
-  // ⋯ menu: shown when the viewer may manage OR share this folder (open is always
-  // available, but a bare card with no actions would be an empty menu).
-  const actions = canManageThisFolder || canShare ? (
+  // ⋯ menu: shown when the viewer may manage, share, or run the apps inside
+  // (open is always available, but a bare card with no actions would be an
+  // empty menu).
+  const actions = canManageThisFolder || canShare || bulk.available ? (
     <div className="pointer-events-auto relative z-10 flex items-center gap-1">
       {dragHandle}
       <div
@@ -546,6 +561,7 @@ export function FolderCard({
     <>
       {cardInner}
       {dialogs}
+      {bulk.dialog}
     </>
   );
 }

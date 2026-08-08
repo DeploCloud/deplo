@@ -22,6 +22,7 @@ import {
   folderCapabilities,
   folderIsOwnerOrAdmin,
 } from "@/lib/data/folder-access";
+import { nodeCapabilities } from "@/lib/data/node-access";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { EmptyState } from "@/components/shared/empty-state";
@@ -167,6 +168,15 @@ export default async function OverviewPage(props: PageProps<"/">) {
       ...f,
       capabilities: await folderCapabilities(f.id),
       isOwner: await folderIsOwnerOrAdmin(f.id),
+    })),
+  );
+
+  // Same for the project tiles: their "All apps" actions ask what the caller may
+  // do to the apps INSIDE, which a project grant can hand out on its own.
+  const enrichedProjects = await Promise.all(
+    visibleProjects.map(async (p) => ({
+      ...p,
+      capabilities: await nodeCapabilities({ kind: "project", id: p.id }),
     })),
   );
 
@@ -446,7 +456,7 @@ export default async function OverviewPage(props: PageProps<"/">) {
             services={visibleApps}
             allAppIds={allAppIds}
             folders={enrichedFolders}
-            projects={visibleProjects}
+            projects={enrichedProjects}
             allFolders={allFolders}
             openFolder={
               openFolder
