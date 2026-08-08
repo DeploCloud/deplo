@@ -708,103 +708,157 @@
   }
 }
 
-/* The Deployments empty state sends a build down the pipeline: it rides left to
-   right, the track fills in behind it, and it lands with a ring. Then it clears
-   and goes again.
+/* The Deployments empty state delivers a build: the crate rides the belt into
+   the server, the bays come up bottom to top, the power light goes green, and
+   then the whole frame clears and rests for a beat before it goes again.
 
-   The package and the fill MUST share one linear timeline over the same
-   percentages - anything else and the leading edge of the track drifts out from
-   under the package, which is the one thing that would make it read as two
-   unrelated animations instead of one moving object. */
+   The crate and the tread MUST cover the same 50 units over the same 4%-45%
+   window with the same linear timing - anything else and the crate skids on the
+   belt, which is the one thing that would make it read as two unrelated
+   animations instead of one object being carried. -50 is also exactly five dash
+   periods, so the tread's reset at the end of the loop is invisible. */
 @keyframes deplo-deploy-ride {
   0% {
     transform: translateX(0);
     opacity: 0;
   }
-  8% {
+  4% {
     transform: translateX(0);
     opacity: 1;
   }
-  58%,
-  86% {
-    transform: translateX(78px);
+  45%,
+  52% {
+    transform: translateX(50px);
     opacity: 1;
   }
+  58%,
   100% {
-    transform: translateX(78px);
+    transform: translateX(50px);
     opacity: 0;
   }
 }
 
-@keyframes deplo-deploy-fill {
+@keyframes deplo-deploy-belt {
   0%,
-  8% {
-    stroke-dashoffset: 78;
-    opacity: 1;
-  }
-  58%,
-  86% {
+  4% {
     stroke-dashoffset: 0;
-    opacity: 1;
   }
+  45%,
   100% {
-    stroke-dashoffset: 0;
+    stroke-dashoffset: -50;
+  }
+}
+
+/* The bays. They start as the crate is handed over, not before, so the server
+   reads as coming up BECAUSE of what arrived.
+
+   Off by 80%, not later: the 0.3s stagger below shifts each bay's whole cycle,
+   so the top one clears 10% after this one. Hold them any longer and the last
+   bay is still lit when the loop restarts, which eats the rest beat. */
+@keyframes deplo-deploy-bay {
+  0%,
+  46% {
+    opacity: 0;
+  }
+  52%,
+  76% {
+    opacity: 1;
+  }
+  80%,
+  100% {
     opacity: 0;
   }
 }
 
-/* The landing. It starts as the package arrives, not before, so the ring reads
-   as caused by it. */
-@keyframes deplo-deploy-land {
+/* Live, once every bay is up - the last one lights at 62% of the timeline. */
+@keyframes deplo-deploy-live {
   0%,
-  56% {
-    transform: scale(0.5);
+  64% {
     opacity: 0;
   }
-  62% {
+  70%,
+  82% {
+    opacity: 1;
+  }
+  86%,
+  100% {
+    opacity: 0;
+  }
+}
+
+@keyframes deplo-deploy-signal {
+  0%,
+  68% {
+    transform: scale(0.6);
+    opacity: 0;
+  }
+  72% {
     opacity: 0.55;
   }
   86%,
   100% {
-    transform: scale(1.9);
+    transform: scale(2.4);
     opacity: 0;
   }
 }
 
-.deplo-deploy-package {
-  /* Translate in view-box units, so 78px is 78 units of track at any size. */
+.deplo-deploy-crate {
+  /* Translate in view-box units, so 50px is 50 units of belt at any size. */
   transform-box: view-box;
-  animation: deplo-deploy-ride 5s linear infinite;
+  animation: deplo-deploy-ride 6s linear infinite;
   opacity: 0;
 }
 
-.deplo-deploy-fill {
-  /* The track is 78 long, so one dash of 78 covers it exactly. */
-  stroke-dasharray: 78;
-  stroke-dashoffset: 78;
-  animation: deplo-deploy-fill 5s linear infinite;
+.deplo-deploy-belt {
+  /* Period 10, so five of them fit the 50 units the crate travels. */
+  stroke-dasharray: 4 6;
+  animation: deplo-deploy-belt 6s linear infinite;
 }
 
-.deplo-deploy-land {
+.deplo-deploy-bay {
+  animation: deplo-deploy-bay 6s ease-out infinite;
+  opacity: 0;
+}
+
+/* Bottom bay first: a rack fills from the floor up. */
+.deplo-deploy-bay:nth-child(2) {
+  animation-delay: 0.3s;
+}
+.deplo-deploy-bay:nth-child(3) {
+  animation-delay: 0.6s;
+}
+
+.deplo-deploy-live {
+  animation: deplo-deploy-live 6s ease-out infinite;
+  opacity: 0;
+}
+
+.deplo-deploy-signal {
   transform-box: fill-box;
   transform-origin: center;
-  animation: deplo-deploy-land 5s ease-out infinite;
+  animation: deplo-deploy-signal 6s ease-out infinite;
   opacity: 0;
 }
 
 @media (prefers-reduced-motion: reduce) {
-  /* Hold the landed frame: build at the end of a full track. The ring goes, for
-     the same reason the cron one does - a frozen ripple is a stray circle. */
-  .deplo-deploy-package {
+  /* Hold the finished frame: crate at the loading end, rack lit and live. The
+     ripple goes, for the same reason the cron one does - a frozen ripple is a
+     stray circle. */
+  .deplo-deploy-crate {
     animation: none;
     opacity: 1;
-    transform: translateX(78px);
+    transform: none;
   }
-  .deplo-deploy-fill {
+  .deplo-deploy-belt {
     animation: none;
     stroke-dashoffset: 0;
   }
-  .deplo-deploy-land {
+  .deplo-deploy-bay,
+  .deplo-deploy-live {
+    animation: none;
+    opacity: 1;
+  }
+  .deplo-deploy-signal {
     animation: none;
     opacity: 0;
   }
