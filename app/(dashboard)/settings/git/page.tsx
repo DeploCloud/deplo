@@ -3,10 +3,8 @@ import { githubAppsPreviewReadiness, listGithubApps } from "@/lib/data/github";
 import { listGitConnections } from "@/lib/data/git-connections";
 import { PROVIDERS, tokenHelpUrl } from "@/lib/git/providers";
 import type { GitProviderId } from "@/lib/types";
-import { PageHeader } from "@/components/shared/page-header";
 import { OutsideYourAccess } from "@/components/shared/outside-your-access";
-import { GithubPanel } from "@/components/settings/github-panel";
-import { GitConnectionsPanel } from "@/components/settings/git-connections-panel";
+import { GitPanel } from "@/components/settings/git-panel";
 
 export const metadata = { title: "Settings · Git" };
 
@@ -41,18 +39,15 @@ export default async function SettingsGitPage(props: {
     tokenHelpUrl: tokenHelpUrl(id, PROVIDERS[id].defaultBaseUrl ?? ""),
   }));
 
+  // The page header lives inside the panel: its Connect menu and the connect
+  // dialog are one interaction, so they have to share state.
   return (
-    <div className="space-y-6">
-      <PageHeader
-        title="Git"
-        description="Connect the hosts your code lives on, for imports and auto-deploys."
-      />
-      <GithubPanel
-        apps={githubApps}
-        gitStatus={gitStatus}
-        previewReadiness={previewReadiness}
-      />
-      <GitConnectionsPanel connections={connections} providers={providers} />
-    </div>
+    <GitPanel
+      githubApps={githubApps}
+      connections={connections}
+      providers={providers}
+      previewReadiness={previewReadiness}
+      gitStatus={gitStatus}
+    />
   );
 }

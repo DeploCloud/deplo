@@ -1,9 +1,8 @@
 import { Skeleton } from "@/components/ui/skeleton";
-import { Card, CardContent, CardHeader } from "@/components/ui/card";
 
 /**
- * Mirrors `GithubPanel`: one card. Most instances have zero or one
- * connected app, so one row stands in - drawing an empty state instead
+ * Mirrors `GitPanel`: the header, then the card grid. Two cards stand in — most
+ * instances have one or two connected hosts, and drawing an empty state instead
  * would say "nothing is coming", which is a lie half the time.
  */
 export default function Loading() {
@@ -20,27 +19,19 @@ export default function Loading() {
           <Skeleton className="h-8 w-12" />
           <Skeleton className="h-4 w-96" />
         </div>
+        <Skeleton className="h-8 w-28 rounded-md" />
       </div>
 
-      <Card>
-        <CardHeader>
-          <div className="flex items-center gap-2">
-            <Skeleton className="size-4 rounded" />
-            <Skeleton className="h-5 w-32" />
-            <Skeleton className="size-3.5 rounded-full" />
-          </div>
-        </CardHeader>
-        <CardContent className="space-y-3">
-            {Array.from({ length: 1 }).map((_, i) => (
-              <Skeleton
-                key={i}
-                shimmer
-                style={{ ["--shimmer-delay" as string]: `-${(i * 0.09).toFixed(2)}s` }}
-                className="h-[4.25rem] w-full rounded-lg"
-              />
-            ))}
-        </CardContent>
-      </Card>
+      <div className="grid gap-4 sm:grid-cols-2 3xl:grid-cols-3">
+        {Array.from({ length: 2 }).map((_, i) => (
+          <Skeleton
+            key={i}
+            shimmer
+            style={{ ["--shimmer-delay" as string]: `-${(i * 0.09).toFixed(2)}s` }}
+            className="h-[7.5rem] w-full rounded-xl"
+          />
+        ))}
+      </div>
     </div>
   );
 }

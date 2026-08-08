@@ -1546,6 +1546,99 @@
   }
 }
 
+/* The Git empty state clones a repository across: a copy detaches from the host,
+   glides over, and dissolves into the list filling on the other side.
+
+   68 units of travel is exactly the gap between the two panels' centres, so the
+   copy lands centred in the destination rather than near it. The scale is the
+   detach: 0.9 to 1 is small enough to read as one object coming free, and big
+   enough that it is not a flicker. */
+@keyframes deplo-git-clone {
+  0%,
+  8% {
+    transform: translateX(0) scale(0.9);
+    opacity: 0;
+  }
+  13% {
+    transform: translateX(0) scale(1);
+    opacity: 1;
+  }
+  40% {
+    transform: translateX(68px) scale(1);
+    opacity: 1;
+  }
+  46%,
+  100% {
+    transform: translateX(68px) scale(1);
+    opacity: 0;
+  }
+}
+
+/* The rows start at 38%, while the copy is still fading at 40-46%: the overlap
+   is the point, so the copy reads as dissolving INTO the list rather than
+   parking on top of it and vanishing afterwards. 18 is the bar's exact length,
+   so the dash pattern is one gap the full width of a name and the row draws
+   instead of fades.
+
+   The 0.25s stagger shifts each row's whole cycle, so the last one clears at
+   ~94% - still inside the loop, which is what keeps the reset invisible. */
+@keyframes deplo-git-row {
+  0%,
+  38% {
+    stroke-dashoffset: 15;
+    opacity: 0;
+  }
+  42% {
+    opacity: 1;
+  }
+  50%,
+  78% {
+    stroke-dashoffset: 0;
+    opacity: 1;
+  }
+  86%,
+  100% {
+    stroke-dashoffset: 0;
+    opacity: 0;
+  }
+}
+
+.deplo-git-copy {
+  /* `fill-box` so the scale pivots on the copy's own centre; the translate stays
+     in user units either way, which is what makes 70 mean 70 view-box units. */
+  transform-box: fill-box;
+  transform-origin: center;
+  animation: deplo-git-clone 6s linear infinite;
+  opacity: 0;
+}
+
+.deplo-git-row {
+  stroke-dasharray: 18;
+  animation: deplo-git-row 6s ease-out infinite;
+  opacity: 0;
+}
+
+/* Top of the list first - a list fills the way it is read. */
+.deplo-git-row:nth-child(2) {
+  animation-delay: 0.25s;
+}
+.deplo-git-row:nth-child(3) {
+  animation-delay: 0.5s;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  /* Hold the landed frame: the copy has arrived and gone, both panels full. */
+  .deplo-git-copy {
+    animation: none;
+    opacity: 0;
+  }
+  .deplo-git-row {
+    animation: none;
+    opacity: 1;
+    stroke-dashoffset: 0;
+  }
+}
+
 @media (prefers-reduced-motion: reduce) {
   .animate-fade-in,
   .animate-slide-in-right,
