@@ -6,7 +6,7 @@ import { FALLBACK_AGENT_VERSION } from "./agent/release";
  * updates. This is the WEBSITE's version and is independent of the agent version
  * below — they release on their own cadences.
  */
-export const DEPLO_VERSION = "1.0.0";
+export const DEPLO_VERSION = "1.1.0";
 export const DEPLO_REPO = "IdraDev/deplo";
 
 /**
