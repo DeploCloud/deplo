@@ -3,7 +3,7 @@
   "configVersion": 1,
   "workspaces": {
     "": {
-      "name": "deplo-cloud",
+      "name": "deplo",
       "dependencies": {
         "@codemirror/commands": "^6.10.4",
         "@codemirror/lang-yaml": "^6.1.3",
