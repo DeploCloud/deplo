@@ -25,6 +25,7 @@ import {
 import { EmptyState } from "@/components/shared/empty-state";
 import { ConfirmAction } from "@/components/shared/confirm-action";
 import { useOptimisticRemove } from "@/components/shared/use-optimistic-remove";
+import { EnvGraphic } from "@/components/env/env-graphic";
 import { EnvValueCell } from "@/components/env/env-value-cell";
 import { EnvVarDialog } from "@/components/env/env-var-dialog";
 import { EnvAuthorCell } from "@/components/env/env-author-cell";
@@ -176,9 +177,9 @@ export function EnvManager({
 
       {!hasVars ? (
         <EmptyState
-          icon={Plus}
+          graphic={<EnvGraphic />}
           title="No environment variables"
-          description="Add variables to configure your app — available during builds and at runtime."
+          description="Add variables to configure your app - available during builds and at runtime."
           action={addButton}
         />
       ) : !hasMatches ? (

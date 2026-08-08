@@ -624,6 +624,90 @@
   }
 }
 
+/* The environment variables empty state writes one variable into the empty
+   list: the name types itself in, then the value lands already masked, one
+   character at a time. Then it clears and goes again.
+
+   Same 5s timeline and the same two gestures as the Pull requests drawing (draw
+   on, then pop with a delay each), because they are the same two ideas - a thing
+   being written, and the pieces arriving in order. */
+@keyframes deplo-env-write {
+  0% {
+    stroke-dashoffset: 22;
+    opacity: 1;
+  }
+  22%,
+  82% {
+    stroke-dashoffset: 0;
+    opacity: 1;
+  }
+  100% {
+    stroke-dashoffset: 0;
+    opacity: 0;
+  }
+}
+
+/* Each masked character, over-sized for a beat then settled - the same pop the
+   pull request commits use, so a reader who has seen one has already read this. */
+@keyframes deplo-env-mask {
+  0%,
+  30% {
+    transform: scale(0);
+    opacity: 0;
+  }
+  38% {
+    transform: scale(1.3);
+    opacity: 1;
+  }
+  46%,
+  82% {
+    transform: scale(1);
+    opacity: 1;
+  }
+  100% {
+    transform: scale(1);
+    opacity: 0;
+  }
+}
+
+.deplo-env-key {
+  /* The line is 22 units long, so one dash of 22 covers it exactly. */
+  stroke-dasharray: 22;
+  animation: deplo-env-write 5s ease-in-out infinite;
+}
+
+.deplo-env-dot {
+  transform-box: fill-box;
+  transform-origin: center;
+  animation: deplo-env-mask 5s ease-out infinite;
+  opacity: 0;
+}
+
+/* Left to right, the order a value is typed. Positive delays, so each dot also
+   clears in the order it arrived. */
+.deplo-env-dot:nth-child(2) {
+  animation-delay: 0.22s;
+}
+.deplo-env-dot:nth-child(3) {
+  animation-delay: 0.44s;
+}
+.deplo-env-dot:nth-child(4) {
+  animation-delay: 0.66s;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  /* Hold the written frame: name in place, value masked. */
+  .deplo-env-key {
+    animation: none;
+    stroke-dashoffset: 0;
+  }
+  .deplo-env-dot {
+    animation: none;
+    opacity: 1;
+    transform: none;
+  }
+}
+
 @media (prefers-reduced-motion: reduce) {
   .animate-fade-in,
   .animate-slide-in-right,
