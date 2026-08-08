@@ -810,6 +810,55 @@
   }
 }
 
+/* The Backup artifacts empty state builds a stack: three copies drop onto the
+   shelf bottom to top, hold, then clear and go again. Staggered by 0.3s, which
+   is what turns three drops into one pile being built rather than three
+   unrelated things falling. */
+@keyframes deplo-backup-drop {
+  0%,
+  10% {
+    transform: translateY(-24px);
+    opacity: 0;
+  }
+  16% {
+    opacity: 1;
+  }
+  26%,
+  82% {
+    transform: translateY(0);
+    opacity: 1;
+  }
+  100% {
+    transform: translateY(0);
+    opacity: 0;
+  }
+}
+
+.deplo-backup-slab {
+  /* Translate in view-box units: -24 is two slab heights of clearance. */
+  transform-box: view-box;
+  animation: deplo-backup-drop 5s ease-in infinite;
+  opacity: 0;
+}
+
+/* Bottom of the pile first - each copy has to have something to land on. */
+.deplo-backup-slab:nth-child(2) {
+  animation-delay: 0.3s;
+}
+.deplo-backup-slab:nth-child(3) {
+  animation-delay: 0.6s;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  /* Hold the built stack. `opacity` only - the per-slab `fill-opacity` is an
+     attribute and multiplies under it, so the depth cue survives. */
+  .deplo-backup-slab {
+    animation: none;
+    opacity: 1;
+    transform: none;
+  }
+}
+
 @media (prefers-reduced-motion: reduce) {
   .animate-fade-in,
   .animate-slide-in-right,

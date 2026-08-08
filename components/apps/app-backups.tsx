@@ -10,7 +10,6 @@ import {
   Pencil,
   RotateCcw,
   Trash2,
-  Archive,
   Loader2,
   AlertTriangle,
   ArrowUpRight,
@@ -46,6 +45,7 @@ import {
 import { StatusDot } from "@/components/shared/status-badge";
 import { ConfirmAction } from "@/components/shared/confirm-action";
 import { EmptyState } from "@/components/shared/empty-state";
+import { BackupGraphic } from "@/components/apps/backup-graphic";
 import { formatBytes, timeAgo } from "@/lib/utils";
 import {
   PendingList,
@@ -164,9 +164,9 @@ export function AppBackups({
           empty={runs.length === 0}
           emptyState={
             <EmptyState
-              icon={Archive}
+              graphic={<BackupGraphic />}
               title="No backups yet"
-              description="Run a backup or set up a schedule — completed runs and their restore points appear here."
+              description="Run a backup or set up a schedule - completed runs and their restore points appear here."
             />
           }
         >
