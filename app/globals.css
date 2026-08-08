@@ -197,6 +197,18 @@
     outline: 2px solid var(--ring);
     outline-offset: 2px;
   }
+  /* …but never around a surface that focused ITSELF.
+     Every overlay — dialog, sheet, popover, menu, select — is a `tabindex="-1"`
+     container that Radix focuses programmatically: on open, and again when its
+     focus trap pulls focus back after a click that landed outside it. That last
+     case is why clicking a modal's backdrop drew a ring around the whole modal
+     for the length of its exit animation. A focus ring answers "you tabbed
+     here", and an element with `tabindex="-1"` is one nobody can tab to — so on
+     a container it is never that answer, only noise. The real controls inside
+     keep their rings, which is where the question is ever asked. */
+  :focus-visible[tabindex="-1"] {
+    outline: none;
+  }
   /* Interactive affordance: every real button (and role=button) shows the hand
      cursor so anything clickable reads as clickable. Lives in @layer base, so a
      cursor-* utility on the element (drag handles' cursor-grab, the few

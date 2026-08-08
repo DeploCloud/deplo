@@ -228,8 +228,11 @@ export function GitProviderMark({
       style={{ backgroundColor: brand.bg, color: brand.fg }}
     >
       {/* Half the tile, whatever the tile is: the mark stays proportional at
-          every size this is used at, with nothing to pass at the call site. */}
-      <GitProviderIcon provider={provider} className="h-1/2 w-1/2" />
+          every size this is used at, with nothing to pass at the call site.
+          Important because a menu item sizes "any icon inside me" with a
+          descendant selector (`[&_svg]:size-4`) — right for a bare glyph, wrong
+          for this, which is a tile with a glyph in it. */}
+      <GitProviderIcon provider={provider} className="h-1/2! w-1/2!" />
     </span>
   );
 }

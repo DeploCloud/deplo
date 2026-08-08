@@ -38,11 +38,7 @@ import { FieldLabel } from "@/components/ui/info-tip";
 import { PageHeader } from "@/components/shared/page-header";
 import { EmptyState } from "@/components/shared/empty-state";
 import { ConfirmAction } from "@/components/shared/confirm-action";
-import {
-  GitHubIcon,
-  GitProviderIcon,
-  GitProviderMark,
-} from "@/components/shared/brand-icons";
+import { GitProviderMark } from "@/components/shared/brand-icons";
 import { useGithubConnect } from "@/components/apps/github-connect-button";
 import { GitGraphic } from "@/components/settings/git-graphic";
 import { gqlAction } from "@/lib/graphql-client";
@@ -269,14 +265,17 @@ function ConnectMenu({
         </Button>
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end" className="w-52">
+        {/* Every host in the menu wears the same coloured mark it wears on its
+            card below, so picking one is recognising a logo rather than reading
+            a list. */}
         <DropdownMenuItem onSelect={() => connect()}>
-          <GitHubIcon className="size-4" />
+          <GitProviderMark provider="github" className="size-5" />
           GitHub
         </DropdownMenuItem>
         <DropdownMenuSeparator />
         {providers.map((p) => (
           <DropdownMenuItem key={p.id} onSelect={() => onPick(p.id)}>
-            <GitProviderIcon provider={p.id} className="size-4" />
+            <GitProviderMark provider={p.id} className="size-5" />
             {p.label}
             <Badge
               variant="info"
