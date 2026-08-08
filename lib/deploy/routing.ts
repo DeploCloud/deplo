@@ -361,7 +361,11 @@ function sigSuffix(sig: RouterSig, defaultResolver: string): string {
   if (!sig.tls) parts.push("http");
   else {
     if (sig.entrypoint !== "websecure") parts.push(safe(sig.entrypoint));
-    if (sig.certResolver !== defaultResolver) parts.push(safe(sig.certResolver));
+    // An EMPTY resolver is TLS from the proxy's own certificate store (the
+    // `custom` provider), not "the default one" - it needs a segment of its own,
+    // and `safe("")` would contribute nothing and let the two share a key.
+    if (sig.certResolver === "") parts.push("owncert");
+    else if (sig.certResolver !== defaultResolver) parts.push(safe(sig.certResolver));
   }
   // A path prefix must distinguish the key. `safe(pathPrefix)` alone is NOT
   // injective (`/a/b` and `/a-b` both collapse to `a-b`, and the strip flag is
@@ -447,7 +451,13 @@ function routerBlock(
     ...(sig.tls
       ? [
           `traefik.http.routers.${key}.tls=true`,
-          `traefik.http.routers.${key}.tls.certresolver=${sig.certResolver}`,
+          // No resolver ⇒ no `certresolver` label: TLS comes from a certificate
+          // already in the proxy's store (the `custom` provider). Emitting an
+          // empty one would point the router at a resolver that does not exist,
+          // and Traefik answers those with its self-signed default.
+          ...(sig.certResolver
+            ? [`traefik.http.routers.${key}.tls.certresolver=${sig.certResolver}`]
+            : []),
         ]
       : []),
     // A path router MUST outrank the path-less router serving the same host, or

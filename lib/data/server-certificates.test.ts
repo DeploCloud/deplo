@@ -13,6 +13,8 @@ import {
   listServerCertificates,
   addServerCertificate,
   removeServerCertificate,
+  supersedes,
+  type ServerCertificate,
 } from "./server-certificates";
 
 /**
@@ -173,4 +175,82 @@ test("a valid pair passes validation and only then dials the host", async () => 
     () => asAdmin(() => addServerCertificate(SERVER, { certPem: GOOD_CERT, keyPem: GOOD_KEY })),
     (e: Error) => !/certificate|private key/i.test(e.message),
   );
+});
+
+const FUTURE_CERT = `-----BEGIN CERTIFICATE-----
+MIIBmTCCAT6gAwIBAgIUIRZbAioso09iPv7EXn20HiCadwowCgYIKoZIzj0EAwIw
+GDEWMBQGA1UEAwwNZGVwbG8tdGVzdC1jYTAeFw0yNzAxMDEwMDAwMDBaFw0yODAx
+MDEwMDAwMDBaMB0xGzAZBgNVBAMMEmZ1dHVyZS5leGFtcGxlLmNvbTBZMBMGByqG
+SM49AgEGCCqGSM49AwEHA0IABLzPwJRrbcXLhqlIR9v6o+IH4aAnSzNLZl0jz0KP
+r/OYdsotpopmhNxAOKXi6kZWqv7CaFupSrkpWW4y7GxEAnCjYTBfMB0GA1UdEQQW
+MBSCEmZ1dHVyZS5leGFtcGxlLmNvbTAdBgNVHQ4EFgQUTobxJt/M7SIHV7JRSC+A
+ZbbnNwswHwYDVR0jBBgwFoAU4EukX9taWXq3t2IT1ZmVxleVSiQwCgYIKoZIzj0E
+AwIDSQAwRgIhANbKBXLJKR+45vYzxaL0N6MQJ7Vj15zWEYoDGP1UtGMjAiEA9v9i
+JEcNxl+xD9BuOr5JRwNKhKcih1/Ng5OQNWrDfmo=
+-----END CERTIFICATE-----
+`;
+
+const FUTURE_KEY = `-----BEGIN PRIVATE KEY-----
+MIGHAgEAMBMGByqGSM49AgEGCCqGSM49AwEHBG0wawIBAQQgXz6IQfzS+WcP9jDr
+a/v4Jg6ha70B5JvVYY8XOWpiPMWhRANCAAS8z8CUa23Fy4apSEfb+qPiB+GgJ0sz
+S2ZdI89Cj6/zmHbKLaaKZoTcQDil4upGVqr+wmhbqUq5KVluMuxsRAJw
+-----END PRIVATE KEY-----
+`;
+
+test("a certificate dated in the future is refused, like an expired one", () => {
+  // Traefik would serve it and every browser would reject it, with nothing on
+  // this side saying why.
+  return assert.rejects(
+    () =>
+      asAdmin(() =>
+        addServerCertificate(SERVER, { certPem: FUTURE_CERT, keyPem: FUTURE_KEY }),
+      ),
+    /not valid until 2027-01-01/i,
+  );
+});
+
+test("a chain pasted upside down says so, instead of blaming the key", () => {
+  // Traefik serves the FIRST certificate in the file. With the intermediate on
+  // top, the key genuinely does not match it - and "wrong key" would send someone
+  // hunting through key files for the key they already pasted.
+  return assert.rejects(
+    () =>
+      asAdmin(() =>
+        addServerCertificate(SERVER, {
+          certPem: `${EXPIRED_CERT}${GOOD_CERT}`,
+          keyPem: GOOD_KEY,
+        }),
+      ),
+    /upside down/i,
+  );
+});
+
+/**
+ * Which installed certificate a new one replaces. Exact-domain equality was not
+ * enough: renewing a certificate after adding a hostname to it left BOTH on the
+ * host, and Traefik answers a request for a shared name with either of them.
+ */
+test("supersedes: a certificate replaces one whose every domain it covers", () => {
+  const installed = (domains: string[]): ServerCertificate => ({
+    id: "x",
+    subject: domains[0] ?? "",
+    domains,
+    issuer: "y",
+    notBefore: "",
+    notAfter: "",
+    expired: false,
+    expiresInDays: 30,
+  });
+
+  // The same domains: a renewal.
+  assert.equal(supersedes(new Set(["a.com"]), installed(["a.com"])), true);
+  // A name added to an existing certificate: the old one is strictly redundant.
+  assert.equal(supersedes(new Set(["a.com", "b.com"]), installed(["a.com"])), true);
+  // A partial overlap keeps BOTH: evicting the old one would take away b.com,
+  // which the new certificate does not cover.
+  assert.equal(supersedes(new Set(["a.com"]), installed(["a.com", "b.com"])), false);
+  // Unrelated certificates never touch each other.
+  assert.equal(supersedes(new Set(["a.com"]), installed(["z.com"])), false);
+  // A certificate naming nothing is never claimed to be covered.
+  assert.equal(supersedes(new Set(["a.com"]), installed([])), false);
 });

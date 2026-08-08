@@ -1,7 +1,12 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 
-import { blueprintWantsTls, domainScheme } from "./domains";
+import {
+  blueprintWantsTls,
+  certResolver,
+  domainScheme,
+  domainTlsConfig,
+} from "./domains";
 
 /**
  * No certificate is ever registered by default â€” a new domain's provider is
@@ -69,4 +74,42 @@ test("domainScheme: http only for the `none` provider, https otherwise (absent â
   assert.equal(domainScheme({ certProvider: "cloudflare" }), "https");
   // A pre-field row (absent provider) keeps its long-standing https reading.
   assert.equal(domainScheme({}), "https");
+});
+
+test("domainScheme: the `custom` provider is https - it is a certificate, just not ours", () => {
+  assert.equal(domainScheme({ certProvider: "custom" }), "https");
+});
+
+/**
+ * The `custom` provider is the domain-side half of "bring your own certificate":
+ * the operator installed one on the SERVER (Settings, Servers, Certificates) and
+ * this is how a hostname asks to be served with it. It is TLS with NO resolver -
+ * naming one would have Traefik try to issue a certificate for a domain whose
+ * whole point is that it already has one, typically a name no HTTP challenge can
+ * reach. Without this provider the only way to get a domain onto :443 was to
+ * claim Let's Encrypt issues it, which is both untrue and capped per team.
+ */
+test("domainTlsConfig: `custom` is HTTPS on websecure with no cert resolver", () => {
+  assert.deepEqual(domainTlsConfig({ certProvider: "custom" }), {
+    entrypoint: "websecure",
+    tls: true,
+    certResolver: "",
+  });
+  // The manual entrypoint override still applies, exactly as it does for the
+  // providers that issue.
+  assert.deepEqual(domainTlsConfig({ certProvider: "custom", entrypoint: "web" }), {
+    entrypoint: "web",
+    tls: true,
+    certResolver: "",
+  });
+});
+
+test("domainTlsConfig: every other provider still names a resolver", () => {
+  assert.equal(domainTlsConfig({ certProvider: "letsencrypt" }).certResolver, certResolver());
+  assert.notEqual(domainTlsConfig({ certProvider: "cloudflare" }).certResolver, "");
+  assert.deepEqual(domainTlsConfig({ certProvider: "none" }), {
+    entrypoint: "web",
+    tls: false,
+    certResolver: "",
+  });
 });

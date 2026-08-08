@@ -8,6 +8,7 @@ import {
 } from "unique-names-generator";
 import { hash6 } from "./routing";
 import type { CertProvider, DomainEntrypoint } from "../types";
+import { publicBaseUrl } from "../public-url";
 
 /**
  * Default domains via nip.io — a public wildcard DNS where a hostname whose
@@ -147,12 +148,17 @@ export function deploHostSelfAddresses(): Set<string> {
     if (s) addrs.add(s);
   };
   add(process.env.DEPLO_SERVER_IP);
-  const pub = process.env.DEPLO_PUBLIC_URL?.trim();
-  if (pub) {
+  // Both the address this instance was INSTALLED with and the one it answers on
+  // now: an operator who moved the panel and registered its host under the new
+  // name would otherwise stop being recognised as their own host, and the
+  // settings that read this host's proxy would report it as not added at all.
+  // Purely additive to a set, so it can only ever match more, never less.
+  for (const pub of [process.env.DEPLO_PUBLIC_URL?.trim(), publicBaseUrl()]) {
+    if (!pub) continue;
     try {
       add(new URL(pub).hostname);
     } catch {
-      /* not a URL — ignore */
+      /* not a URL - ignore */
     }
   }
   for (const nic of allNicIpv4()) add(nic);
@@ -264,6 +270,12 @@ export function cloudflareCertResolver(): string {
  * `web` regardless. Absent fields default to the long-standing HTTPS behaviour
  * (letsencrypt over websecure), so domains created before these fields existed
  * route exactly as they always did.
+ *
+ * `custom` is TLS with an EMPTY resolver: the certificate is already in the
+ * proxy's store (the operator installed it on the server), so the router must
+ * terminate TLS without naming an ACME resolver - naming one would have Traefik
+ * try to issue a certificate for a domain whose whole point is that it already
+ * has one, typically for a name no challenge can reach.
  */
 export function domainTlsConfig(domain: {
   entrypoint?: DomainEntrypoint;
@@ -272,6 +284,9 @@ export function domainTlsConfig(domain: {
   const provider = domain.certProvider ?? "letsencrypt";
   if (provider === "none") {
     return { entrypoint: "web", tls: false, certResolver: "" };
+  }
+  if (provider === "custom") {
+    return { entrypoint: domain.entrypoint ?? "websecure", tls: true, certResolver: "" };
   }
   const resolver =
     provider === "cloudflare" ? cloudflareCertResolver() : certResolver();
@@ -503,12 +518,24 @@ export function previewHost(opts: {
   prNumber: number;
   /** e.g. `preview.example.com`. Empty/absent ⇒ the nip.io default. */
   baseDomain?: string | null;
+  /**
+   * Serve previews over HTTPS. Only consulted when a base domain is set - a
+   * nip.io host can never hold a certificate, so there the answer is no
+   * whatever the app asked for, and Traefik's self-signed default (a browser
+   * warning on every preview) is not something a switch should be able to buy.
+   */
+  https?: boolean;
   ip?: string;
 }): { host: string; certProvider: CertProvider } {
   const label = `${opts.slug}-pr-${opts.prNumber}`;
   const base = (opts.baseDomain ?? "").trim().replace(/^\.+|\.+$/g, "");
   if (base) {
-    return { host: `${label}.${base}`.toLowerCase(), certProvider: "letsencrypt" };
+    return {
+      host: `${label}.${base}`.toLowerCase(),
+      // Plain HTTP on a domain you own is a legitimate choice; on nip.io it is
+      // the only one.
+      certProvider: opts.https === false ? "none" : "letsencrypt",
+    };
   }
   return {
     host: nipDomain(label, hash6(`${opts.appId}:${opts.prNumber}`), opts.ip),

@@ -1011,3 +1011,56 @@ test("redirectTo: absent ⇒ byte-identical to the pre-redirect output", () => {
   assert.deepEqual(empty, base);
   assert.ok(!base.some((l) => l.includes("redirect")));
 });
+
+/**
+ * A domain served by a certificate the operator installed on the host himself
+ * (`certProvider: "custom"` → `certResolver: ""`). TLS is on, but no
+ * `certresolver` label is emitted: pointing a router at a resolver that does not
+ * exist makes Traefik answer with its self-signed default, and naming the real
+ * one would have it request a certificate for a domain that already has one.
+ */
+test("an empty cert resolver emits tls=true and NO certresolver label", () => {
+  const labels = traefikRouterLabels({
+    baseKey: "deplo-app",
+    routes: [{ name: "app.example.com", port: null, certResolver: "" }],
+    defaultPort: 3000,
+    certResolver: CR,
+  });
+  // Not the bare key: only the default signature (the call's own resolver) keeps
+  // that, exactly as a per-route resolver override already behaves.
+  const key = "deplo-app__3000-owncert";
+  assert.ok(labels.includes(`traefik.http.routers.${key}.tls=true`));
+  assert.ok(labels.includes(`traefik.http.routers.${key}.entrypoints=websecure`));
+  assert.ok(
+    !labels.some((l) => l.includes("certresolver")),
+    "a router with no resolver must not name one",
+  );
+});
+
+test("a no-resolver route gets its own router key, never the default one", () => {
+  // Two hosts on one app, one on Let's Encrypt and one on the host's own
+  // certificate: same port, same entrypoint, DIFFERENT TLS. They must not land
+  // on the same router - one config would silently win.
+  const labels = traefikRouterLabels({
+    baseKey: "deplo-app",
+    routes: [
+      { name: "issued.example.com", port: null },
+      { name: "own.example.com", port: null, certResolver: "" },
+    ],
+    defaultPort: 3000,
+    certResolver: CR,
+  });
+  const keys = new Set(
+    labels
+      .map((l) => l.match(/^traefik\.http\.routers\.([^.]+)\./)?.[1])
+      .filter(Boolean),
+  );
+  assert.equal(keys.size, 2, `expected two routers, got ${[...keys].join(", ")}`);
+  assert.ok(
+    labels.includes("traefik.http.routers.deplo-app__3000-owncert.rule=Host(`own.example.com`)"),
+    labels.join("\n"),
+  );
+  assert.ok(
+    !labels.some((l) => l.startsWith("traefik.http.routers.deplo-app__3000-owncert.tls.certresolver")),
+  );
+});

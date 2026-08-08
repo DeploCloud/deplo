@@ -22,7 +22,7 @@ import type { Domain } from "@/lib/types";
 // and exported to nothing. Plain alphanumeric values ⇒ the wire names match the
 // runtime strings 1:1, no object-form mapping needed.
 const CertProviderEnum = builder.enumType("CertProvider", {
-  values: ["letsencrypt", "cloudflare", "none"] as const,
+  values: ["letsencrypt", "cloudflare", "none", "custom"] as const,
 });
 
 const DomainEntrypointEnum = builder.enumType("DomainEntrypoint", {
@@ -86,8 +86,10 @@ export const DomainRef = builder.objectRef<DomainRow>("Domain").implement({
       description:
         "How this domain's TLS certificate is issued. Set to `cloudflare` " +
         "automatically when a DNS check finds the host proxied and it still had " +
-        "no certificate — Cloudflare already serves it over HTTPS. Null on rows " +
-        "written before the field existed (they route as `letsencrypt`).",
+        "no certificate - Cloudflare already serves it over HTTPS. `custom` " +
+        "serves it over HTTPS from a certificate installed on the owning server " +
+        "(see `addServerCertificate`) and asks no ACME provider for one. Null on " +
+        "rows written before the field existed (they route as `letsencrypt`).",
       resolve: (d) => d.certProvider ?? null,
     }),
     middlewares: t.exposeStringList("middlewares", { nullable: true }),
