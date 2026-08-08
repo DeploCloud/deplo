@@ -1,10 +1,11 @@
 "use client";
 
 import * as React from "react";
-import { TerminalSquare } from "lucide-react";
+import { Loader2 } from "lucide-react";
 import { gql } from "@/lib/graphql-client";
 import { EmptyState } from "@/components/shared/empty-state";
 import { ContainerConsole } from "@/components/apps/container-console";
+import { NotRunningGraphic } from "@/components/apps/not-running-graphic";
 import { useLiveRunning } from "@/components/apps/app-live-status";
 import type { ConsoleInstance } from "@/lib/data/console";
 
@@ -101,17 +102,22 @@ export function LiveConsole({
     );
   }
 
+  if (loading) {
+    return (
+      <EmptyState
+        icon={Loader2}
+        iconClassName="animate-spin"
+        title="Connecting to the console"
+        description="The app just started, attaching now."
+      />
+    );
+  }
+
   return (
     <EmptyState
-      icon={TerminalSquare}
-      title={
-        loading ? "Connecting to container…" : "Container is not running"
-      }
-      description={
-        loading
-          ? "The project just started — attaching to the console."
-          : "The console is available once the app has a running deployment. Deploy or redeploy this app, then attach."
-      }
+      graphic={<NotRunningGraphic />}
+      title="App is not running"
+      description="Deploy this app, then come back to open a console in it."
     />
   );
 }

@@ -863,6 +863,71 @@
   }
 }
 
+/* The "app is not running" empty state hangs a plug out of its socket: a slow
+   pendulum swing, and once per turn it dips towards the socket, holds a beat just
+   short of it, and comes back up.
+
+   The swing starts and ends the loop on the SAME angle, so there is no snap at
+   the boundary - which is also why it is a full left-right-left period rather
+   than a damped swing coming to rest. A damped swing has to be kicked to start
+   again, and an unexplained kick reads as something bumping the frame.
+
+   The dip is the "previews are off" gesture: reach, stall, retreat. It stops 1.75
+   units above the socket, which at 128px is the couple of pixels that keep it
+   from ever looking plugged in. */
+@keyframes deplo-plug-sway {
+  0%,
+  100% {
+    transform: rotate(-3.5deg);
+  }
+  50% {
+    transform: rotate(3.5deg);
+  }
+}
+
+@keyframes deplo-plug-dip {
+  0%,
+  18% {
+    transform: translateY(0);
+    animation-timing-function: ease-out;
+  }
+  34%,
+  46% {
+    transform: translateY(4.5px);
+    animation-timing-function: ease-in;
+  }
+  64%,
+  100% {
+    transform: translateY(0);
+  }
+}
+
+.deplo-plug-sway {
+  /* Turns about the point the cord leaves the frame - its fixed end - not about
+     the plug: an origin anywhere lower swings it like a bar on a pivot. */
+  transform-box: view-box;
+  transform-origin: 40px 5px;
+  animation: deplo-plug-sway 6s ease-in-out infinite;
+}
+
+.deplo-plug-dip {
+  /* Translate in view-box units, and INSIDE the swing, so the dip runs down the
+     direction the cord is currently hanging rather than straight down the
+     frame. */
+  transform-box: view-box;
+  animation: deplo-plug-dip 6s infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  /* Hang still, straight over the socket. The unplugged tableau IS the message,
+     so the still frame loses nothing. */
+  .deplo-plug-sway,
+  .deplo-plug-dip {
+    animation: none;
+    transform: none;
+  }
+}
+
 /* The Domains empty state puts an address on the map: the globe turns with
    nothing pointed at it, a pin drops and plants, two rings go out, and the world
    holds still for as long as the pin is there before it clears and turns again.
