@@ -1,5 +1,7 @@
 /** Brand glyphs not shipped by lucide-react (brand icons were removed). */
 
+import { cn } from "@/lib/utils";
+
 export function GitHubIcon({ className }: { className?: string }) {
   return (
     <svg
@@ -189,4 +191,45 @@ export function GitProviderIcon({
             ? GiteaIcon
             : GitIcon;
   return <Icon className={className} />;
+}
+
+/**
+ * Brand colours for the git hosts, straight from simple-icons. A literal, not a
+ * token: a brand colour is not themeable.
+ */
+const GIT_BRAND: Record<string, { bg: string; fg: string }> = {
+  github: { bg: "#181717", fg: "#FFFFFF" },
+  gitlab: { bg: "#FC6D26", fg: "#FFFFFF" },
+  bitbucket: { bg: "#0052CC", fg: "#FFFFFF" },
+  gitea: { bg: "#609926", fg: "#FFFFFF" },
+  git: { bg: "#F05032", fg: "#FFFFFF" },
+};
+
+/**
+ * A git host's mark on its own brand colour — the same shape the notification
+ * channels use, and for the same reason: four identical grey glyphs are four
+ * things you have to read, while the colour makes the one you want findable
+ * before you have parsed a word.
+ */
+export function GitProviderMark({
+  provider,
+  className,
+}: {
+  provider: string;
+  className?: string;
+}) {
+  const brand = GIT_BRAND[provider] ?? GIT_BRAND.git;
+  return (
+    <span
+      className={cn(
+        "flex size-9 shrink-0 items-center justify-center rounded-lg",
+        className,
+      )}
+      style={{ backgroundColor: brand.bg, color: brand.fg }}
+    >
+      {/* Half the tile, whatever the tile is: the mark stays proportional at
+          every size this is used at, with nothing to pass at the call site. */}
+      <GitProviderIcon provider={provider} className="h-1/2 w-1/2" />
+    </span>
+  );
 }

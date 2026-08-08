@@ -23,13 +23,6 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
-import {
   Dialog,
   DialogContent,
   DialogDescription,
@@ -40,9 +33,9 @@ import {
 import { FieldLabel, InfoTip } from "@/components/ui/info-tip";
 import { EmptyState } from "@/components/shared/empty-state";
 import { ConfirmAction } from "@/components/shared/confirm-action";
-import { GitProviderIcon } from "@/components/shared/brand-icons";
+import { GitProviderMark } from "@/components/shared/brand-icons";
 import { gqlAction } from "@/lib/graphql-client";
-import { timeAgo } from "@/lib/utils";
+import { cn, timeAgo } from "@/lib/utils";
 import type { GitConnectionDTO } from "@/lib/data/git-connections";
 
 export interface GitProviderChoice {
@@ -114,10 +107,7 @@ export function GitConnectionsPanel({
             {connections.map((conn) => (
               <div key={conn.id} className="rounded-lg border border-border p-3">
                 <div className="flex items-center gap-3">
-                  <GitProviderIcon
-                    provider={conn.provider}
-                    className="size-5 shrink-0 text-muted-foreground"
-                  />
+                  <GitProviderMark provider={conn.provider} />
                   <div className="min-w-0 flex-1">
                     <p className="flex items-center gap-2 text-sm font-medium">
                       {conn.label}
@@ -326,22 +316,32 @@ function ConnectDialog({
         <form className="grid gap-4" onSubmit={onSubmit}>
           <div className="space-y-4">
             <div className="space-y-2">
-              <FieldLabel htmlFor="git-provider">Provider</FieldLabel>
-              <Select value={providerId} onValueChange={pickProvider}>
-                <SelectTrigger id="git-provider">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  {providers.map((p) => (
-                    <SelectItem key={p.id} value={p.id}>
-                      <span className="flex items-center gap-2">
-                        <GitProviderIcon provider={p.id} className="size-4" />
-                        {p.id === "git" ? "Any other git server" : p.label}
+              <FieldLabel>Provider</FieldLabel>
+              {/* Four hosts, four tiles: the whole choice is visible at once, so
+                  it takes one glance instead of opening a menu to read a list of
+                  four. Their marks carry it - the labels are the confirmation. */}
+              <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+                {providers.map((p) => {
+                  const selected = p.id === providerId;
+                  return (
+                    <button
+                      key={p.id}
+                      type="button"
+                      onClick={() => pickProvider(p.id)}
+                      aria-pressed={selected}
+                      className={cn(
+                        "flex min-h-24 cursor-pointer flex-col items-center justify-center gap-2 rounded-lg border p-3 text-center transition-colors hover:border-ring hover:bg-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+                        selected ? "border-ring bg-accent" : "border-border",
+                      )}
+                    >
+                      <GitProviderMark provider={p.id} className="size-10" />
+                      <span className="text-xs font-medium leading-tight">
+                        {p.label}
                       </span>
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+                    </button>
+                  );
+                })}
+              </div>
             </div>
 
             <div className="space-y-2">

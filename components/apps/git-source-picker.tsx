@@ -23,7 +23,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { FieldLabel } from "@/components/ui/info-tip";
 import { RepoBrowser, type RepoSelection } from "@/components/apps/repo-browser";
-import { GitIcon, GitProviderIcon } from "@/components/shared/brand-icons";
+import { GitProviderMark } from "@/components/shared/brand-icons";
 import type { GitConnectionDTO } from "@/lib/data/git-connections";
 
 /** What the Git source resolves to, ready to become a `GitRepoInput`. */
@@ -179,10 +179,7 @@ export function GitSourcePicker({
             >
               {active ? (
                 <>
-                  <GitProviderIcon
-                    provider={active.provider}
-                    className="size-4 shrink-0"
-                  />
+                  <GitProviderMark provider={active.provider} className="size-5" />
                   <span className="min-w-0 flex-1 truncate">
                     <span className="font-medium">{active.label}</span>
                     {active.accountLogin && (
@@ -198,7 +195,7 @@ export function GitSourcePicker({
                 </>
               ) : (
                 <>
-                  <GitIcon className="size-4 shrink-0 text-muted-foreground" />
+                  <GitProviderMark provider="git" className="size-5" />
                   <span className="min-w-0 flex-1 truncate">Repository URL</span>
                 </>
               )}
@@ -207,7 +204,7 @@ export function GitSourcePicker({
           </DropdownMenuTrigger>
           <DropdownMenuContent align="start" className="min-w-72">
             <DropdownMenuItem onSelect={() => pick(null)} className="gap-2">
-              <GitIcon className="size-4 text-muted-foreground" />
+              <GitProviderMark provider="git" className="size-5" />
               <span className="min-w-0 flex-1 truncate">Repository URL</span>
               {connectionId === null && (
                 <Check className="size-4 shrink-0 text-[var(--success)]" />
@@ -225,7 +222,7 @@ export function GitSourcePicker({
                     onSelect={() => pick(c.id)}
                     className="gap-2"
                   >
-                    <GitProviderIcon provider={c.provider} className="size-4" />
+                    <GitProviderMark provider={c.provider} className="size-5" />
                     <span className="min-w-0 flex-1 truncate">
                       <span className="font-medium">{c.label}</span>
                       <span className="text-muted-foreground">
