@@ -32,7 +32,7 @@ test("reads the wall clock of the zone, not of the host", () => {
   // 12:00 UTC is 14:00 in Rome in summer (CEST, +02:00).
   const p = zoneParts(new Date("2026-07-15T12:00:00Z"), "Europe/Rome");
   assert.deepEqual(p, { y: 2026, m: 7, d: 15, H: 14, M: 0 });
-  // …and 13:00 in winter (CET, +01:00). Same instant-to-wall function, both ways.
+  // And 13:00 in winter (CET, +01:00). Same instant-to-wall function, both ways.
   const w = zoneParts(new Date("2026-01-15T12:00:00Z"), "Europe/Rome");
   assert.deepEqual(w, { y: 2026, m: 1, d: 15, H: 13, M: 0 });
 });

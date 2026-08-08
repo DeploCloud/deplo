@@ -17,7 +17,7 @@ against ships a cron manager in the dashboard, and so does every open-source com
 
 The obvious implementation was already in the tree and is wrong. `Exec` (the console's RPC)
 runs `docker exec` synchronously with a **hard 30-second ceiling**
-(`internal/server/exec.go`, `dockercli.Run(ctx, 30*time.Second, …)`). That ceiling is correct
+(`internal/server/exec.go`, the `30*time.Second` passed to `dockercli.Run`). That ceiling is correct
 for what it serves - a REPL where a human typed a command and is waiting - and useless for a
 cron job, where a Laravel `schedule:run`, a database cleanup or a sitemap rebuild routinely
 runs for minutes. Raising it would give the console an unbounded deadline, which is the exact
@@ -62,7 +62,7 @@ a **setting** (the job's timeout) instead of at their command.
 
 ### 3. The double-fire guard is a unique index, not an in-RAM map
 
-`UNIQUE(cron_runs.job_id, dedupe_key)`, with the `INSERT … ON CONFLICT DO NOTHING` as the
+`UNIQUE(cron_runs.job_id, dedupe_key)`, with the insert's `ON CONFLICT DO NOTHING` as the
 serialization point. The backup scheduler keeps a `lastFired` map in process memory; this one
 does not, and the index is strictly less code that also survives a control-plane restart, two
 instances racing for the lease, and a backwards clock step.
