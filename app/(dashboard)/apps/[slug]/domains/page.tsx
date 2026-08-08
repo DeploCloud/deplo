@@ -1,5 +1,4 @@
 import { notFound } from "next/navigation";
-import { Globe } from "lucide-react";
 import { getAppBySlug } from "@/lib/data/apps";
 import { serverIpForApp } from "@/lib/data/servers";
 import { listDomains } from "@/lib/data/domains";
@@ -16,6 +15,7 @@ import {
 } from "@/components/ui/table";
 import { AddDomain } from "@/components/domains/add-domain";
 import { DomainDnsAutoCheck } from "@/components/domains/domain-dns-auto-check";
+import { DomainGraphic } from "@/components/domains/domain-graphic";
 import { DomainRow } from "@/components/domains/domain-row";
 import {
   PendingCreateProvider,
@@ -125,7 +125,7 @@ export default async function AppDomainsPage(
           empty={domains.length === 0}
           emptyState={
             <EmptyState
-              icon={Globe}
+              graphic={<DomainGraphic />}
               title="No domains"
               description="Add a custom domain to this app."
             />
