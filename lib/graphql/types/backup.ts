@@ -44,7 +44,7 @@ const BackupRunStatusEnum = builder.enumType("BackupRunStatus", {
 
 export const BackupRef = builder.objectRef<BackupDTO>("Backup").implement({
   description:
-    "A scheduled backup of a database or project to an S3 destination.",
+    "A scheduled backup of a database or project to a backup destination.",
   fields: (t) => ({
     id: t.exposeID("id"),
     teamId: t.exposeID("teamId"),

@@ -212,6 +212,8 @@ export const READINESS_DETAILS = {
     version
       ? `The Docker daemon answered on the host — engine ${version}.`
       : "The Docker daemon answered on the host.",
+  dockerSkippedStorageOnly:
+    "This server only stores backups, so Docker is not installed. Nothing is deployed here.",
   // The ONLY signal is `traefikRunning`: a substring match over running containers' image and
   // name, which the agent's own comment says "covers the deplo-traefik instance and a
   // bring-your-own proxy alike". It does not prove the container is the one Deplo installed,
@@ -476,7 +478,10 @@ export function classifyServerReadiness(probe: ReadinessProbe): ReadinessReport 
   checks.push(versionCheck(hello.agentVersion, probe.expectedAgentVersion));
   checks.push(featuresCheck(hello.capabilities ?? []));
 
-  // docker
+  // docker. A STORAGE-ONLY server has none by design — it holds backups and runs
+  // nothing — so the absence is a `skip`, not a `fail`. Reporting it as a failure
+  // would leave the user's storage box permanently red for working correctly, and
+  // `readinessVerdict` would call it not_ready.
   checks.push(
     hello.dockerAvailable
       ? {
@@ -486,14 +491,22 @@ export function classifyServerReadiness(probe: ReadinessProbe): ReadinessReport 
           severity: "pass",
           detail: READINESS_DETAILS.dockerOk(hello.dockerVersion),
         }
-      : {
-          id: "docker.available",
-          group: "docker",
-          label: "Docker engine",
-          severity: "fail",
-          detail: READINESS_MESSAGES.dockerDown,
-          hint: READINESS_HINTS.startDocker,
-        },
+      : probe.server.storageOnly
+        ? {
+            id: "docker.available",
+            group: "docker",
+            label: "Docker engine",
+            severity: "skip",
+            detail: READINESS_DETAILS.dockerSkippedStorageOnly,
+          }
+        : {
+            id: "docker.available",
+            group: "docker",
+            label: "Docker engine",
+            severity: "fail",
+            detail: READINESS_MESSAGES.dockerDown,
+            hint: READINESS_HINTS.startDocker,
+          },
   );
 
   // routing. `traefikRunning` is FORCED false by the agent when Docker is unreachable, so with

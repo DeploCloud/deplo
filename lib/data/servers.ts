@@ -176,11 +176,16 @@ export async function listServerChoices(): Promise<
   { id: string; name: string; type: Server["type"] }[]
 > {
   const teamId = await requireActiveTeamId();
-  return (await listServersForTeam(teamId)).map((s) => ({
-    id: s.id,
-    name: s.name,
-    type: s.type,
-  }));
+  return (await listServersForTeam(teamId))
+    // A storage-only server holds backups and runs nothing — offering it as a
+    // deploy target would let someone pick a host with no Docker on it and only
+    // find out when the deploy failed.
+    .filter((s) => !s.storageOnly)
+    .map((s) => ({
+      id: s.id,
+      name: s.name,
+      type: s.type,
+    }));
 }
 
 /**
@@ -263,6 +268,8 @@ export interface AddServerInput {
    * `false` → restrict to `teamIds` (the install dialog's "Specific teams").
    */
   allTeams?: boolean;
+  /** A server that only HOLDS backups: agent installed, no Docker, no deploys. */
+  storageOnly?: boolean;
   teamIds?: string[];
 }
 
@@ -320,6 +327,7 @@ export async function addServer(input: AddServerInput): Promise<AddServerResult>
     memoryUsage: 0,
     diskUsage: 0,
     allTeams,
+    storageOnly: input.storageOnly ?? false,
     // Born strict: one deploy at a time on this host until an admin raises it.
     deployConcurrency: 1,
     createdAt: nowIso(),
@@ -336,7 +344,12 @@ export async function addServer(input: AddServerInput): Promise<AddServerResult>
 
   return {
     server,
-    installCommand: installCommand({ baseUrl, rawToken, fingerprint }),
+    installCommand: installCommand({
+      baseUrl,
+      rawToken,
+      fingerprint,
+      storageOnly: server.storageOnly,
+    }),
   };
 }
 
@@ -380,7 +393,15 @@ export async function reissueBootstrap(id: string): Promise<AddServerResult> {
   // addServer/removeServer, leave an audit trail so a re-issue against a live box
   // is never invisible (the operator-gated act is logged, not hidden).
   await recordActivity("member", `Reissued install command for server ${server.name}`, user.name, null, teamId);
-  return { server: fresh, installCommand: installCommand({ baseUrl, rawToken, fingerprint }) };
+  return {
+    server: fresh,
+    installCommand: installCommand({
+      baseUrl,
+      rawToken,
+      fingerprint,
+      storageOnly: fresh.storageOnly,
+    }),
+  };
 }
 
 /** What {@link removeServer} hands back to the operator. */

@@ -160,7 +160,11 @@ async function measureRemote(server: Server, expected: string): Promise<ServerMe
       // written by a probe that lost a race — still says offline. The 1s poll also
       // keeps `status_checked_at` fresh, which makes the Servers page's throttle
       // correctly decide there is nothing to re-dial.
-      await recordServerHealth(server.id, classifyServerHealth(hello, null), observedAt);
+      await recordServerHealth(
+        server.id,
+        classifyServerHealth(hello, null, { storageOnly: server.storageOnly }),
+        observedAt,
+      );
     } catch {
       /* metrics succeeded; the Hello refresh is best-effort */
     }

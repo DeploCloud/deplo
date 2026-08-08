@@ -1,4 +1,9 @@
-import type { BackupRun, BackupTargetKind, DatabaseType } from "../types";
+import type {
+  BackupRun,
+  BackupTargetKind,
+  DatabaseType,
+  DestinationKind,
+} from "../types";
 
 /**
  * A {@link BackupRun} plus its DB-generated `seq` (the `bigint identity` on
@@ -30,7 +35,19 @@ export type RunForRetention = BackupRun & { seq?: number };
 export function artifactExt(
   kind: BackupTargetKind,
   dbType?: DatabaseType | null,
+  /**
+   * The destination kind. A `server` artifact is age-encrypted, so it gets a
+   * trailing `.age` — the suffix that tells a human who found the file on disk
+   * that `age -d -i recovery-key.txt` is the next step. Omitted (or `s3`) leaves
+   * the historical extensions untouched, so existing keys keep resolving.
+   */
+  destinationKind?: DestinationKind | null,
 ): string {
+  const suffix = destinationKind === "server" ? ".age" : "";
+  return baseArtifactExt(kind, dbType) + suffix;
+}
+
+function baseArtifactExt(kind: BackupTargetKind, dbType?: DatabaseType | null): string {
   if (kind === "app") return "tar.gz";
   switch (dbType) {
     case "postgres":

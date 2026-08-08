@@ -3,7 +3,11 @@ import { Lock } from "lucide-react";
 import { getDatabase } from "@/lib/data/databases";
 import { hasCapability } from "@/lib/membership";
 import { listBackups } from "@/lib/data/backups";
-import { listS3, toDestinationOption } from "@/lib/data/s3";
+import {
+  ensureDefaultDestination,
+  listDestinations,
+  toDestinationOption,
+} from "@/lib/data/destinations";
 import { PageHeader } from "@/components/shared/page-header";
 import { EmptyState } from "@/components/shared/empty-state";
 import { DatabaseBackups } from "@/components/storage/database-backups";
@@ -29,7 +33,13 @@ export default async function DatabaseBackupsPage(
     );
   }
 
-  const [allBackups, destinations] = await Promise.all([listBackups(), listS3()]);
+  // Same lazy default as the Storage page: a database's Backups tab should not
+  // be the place someone discovers they have nowhere to put a backup.
+  await ensureDefaultDestination();
+  const [allBackups, destinations] = await Promise.all([
+    listBackups(),
+    listDestinations(),
+  ]);
   // Only this database's schedules — listBackups returns the whole team's.
   const schedules = allBackups.filter(
     (b) => b.targetKind === "database" && b.databaseId === db.id,
@@ -39,7 +49,7 @@ export default async function DatabaseBackupsPage(
     <div className="space-y-5">
       <PageHeader
         title="Backups"
-        description="Scheduled dumps of this database to an S3 destination, and restore."
+        description="Scheduled dumps of this database to a backup destination, and restore."
       />
       <DatabaseBackups
         database={{ id: db.id, name: db.name }}

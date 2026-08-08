@@ -124,6 +124,13 @@ function isCertValidityError(err: AgentUnreachableError): boolean {
 export function classifyServerHealth(
   hello: HelloResponse | null,
   err: unknown,
+  /**
+   * A storage-only server holds backups and runs nothing, so it has no Docker on
+   * purpose. Without this it would sit at `warning` forever for doing exactly
+   * what it was bought to do — and a warning that fires on a correct
+   * configuration is a warning operators learn to ignore.
+   */
+  opts: { storageOnly?: boolean } = {},
 ): ServerHealth {
   if (err instanceof AgentUnreachableError) {
     if (err.trust) return { status: "error", message: HEALTH_MESSAGES.untrusted };
@@ -144,7 +151,7 @@ export function classifyServerHealth(
   if (!hello) return { status: "error", message: HEALTH_MESSAGES.agentError };
   if (hello.contractVersion !== ContractVersion.CONTRACT_VERSION_V1)
     return { status: "error", message: HEALTH_MESSAGES.contract };
-  if (!hello.dockerAvailable)
+  if (!hello.dockerAvailable && !opts.storageOnly)
     return { status: "warning", message: HEALTH_MESSAGES.dockerDown };
   return { status: "online", message: null };
 }

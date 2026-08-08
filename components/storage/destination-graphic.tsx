@@ -1,7 +1,7 @@
 import { cn } from "@/lib/utils";
 
 /**
- * The S3 destinations empty-state illustration: a copy tossed off the box and
+ * The backup destinations empty-state illustration: a copy tossed off the box and
  * into a bucket.
  *
  * "Bucket" is the word every S3 provider uses, so the bucket IS the noun the
@@ -17,7 +17,7 @@ import { cn } from "@/lib/utils";
  * again - one `transform` property cannot hold three easings. Under
  * `prefers-reduced-motion` it holds the copy mid-flight.
  */
-export function S3Graphic({ className }: { className?: string }) {
+export function DestinationGraphic({ className }: { className?: string }) {
   return (
     <svg
       viewBox="0 0 120 90"

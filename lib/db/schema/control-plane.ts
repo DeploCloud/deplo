@@ -765,6 +765,16 @@ export const servers = pgTable(
     // historical instance-wide behaviour. `false` restricts the server to the
     // teams enumerated in `server_teams`. See [Server.allTeams](../../types.ts).
     allTeams: boolean("all_teams").notNull().default(true),
+    // A VPS bought purely to HOLD BACKUPS: the agent is installed, Docker is
+    // not, and nothing is ever deployed here. Set by the storage-only installer.
+    //
+    // It exists because readiness and health are otherwise right to be alarmed:
+    // `docker.available` is a `fail`-severity check and `classifyServerHealth`
+    // returns `warning` without Docker, so a storage box would sit permanently
+    // red for doing exactly what it was bought for. With this flag those two
+    // checks skip, and the server drops out of every deploy-target picker while
+    // staying eligible as a backup destination.
+    storageOnly: boolean("storage_only").notNull().default(false),
     // How many deployments this server's agent runs at once.
     // Default 1 = strict per-server serialization:
     // deploys on THIS server run one at a time; deploys on OTHER servers run in
@@ -1809,23 +1819,54 @@ export const teamDatabaseOrder = pgTable(
 );
 
 /**
- * [S3Destination](../../types.ts). `access_key_enc`/`secret_key_enc` secrets (the
- * secret key is never even masked-returned). `(team_id, created_at DESC)` index.
+ * [BackupDestination](../../types.ts) — where backup artifacts are kept. TWO
+ * kinds behind one `kind` discriminator, because `backups.destination_id` and
+ * `backup_runs.destination_id` must keep pointing at one table:
+ *
+ *  - `s3` — a bucket. `provider`/`endpoint`/`region`/`bucket` +
+ *    `access_key_enc`/`secret_key_enc` (the secret key is never even
+ *    masked-returned).
+ *  - `server` — a directory on a server in the fleet. `server_id` + `path`
+ *    (NULL = the agent's own managed store) + an age keypair.
+ *
+ * The kind's shape is a DB-level CHECK (`backup_destination_kind_shape`,
+ * migration 0082), not just a convention: dropping the six S3 NOT NULLs would
+ * otherwise leave nothing stopping a half-filled row, and a server row that
+ * silently carried no encryption key would be a plaintext backup.
+ *
+ * `age_recipient` is the PUBLIC key and is the only half the agent gets when
+ * writing — a storage host can produce artifacts it cannot read.
+ * `age_identity_enc` is the private half, and leaves the control plane only for
+ * a restore or a download. `recovery_key_saved_at` drives the "save your
+ * recovery key" nudge: a key that exists only inside the thing that might be
+ * lost is not a recovery key.
+ *
+ * `server_id` is RESTRICT, matching `backups.destination_id`: removing a server
+ * that still holds a team's backups is a decision, not a cascade.
+ * `(team_id, created_at DESC)` index.
  */
-export const s3Destination = pgTable(
-  "s3_destination",
+export const backupDestination = pgTable(
+  "backup_destination",
   {
     id: text("id").primaryKey(),
     teamId: text("team_id")
       .notNull()
       .references(() => teams.id, { onDelete: "cascade" }),
     name: text("name").notNull(),
-    provider: text("provider").notNull(),
-    endpoint: text("endpoint").notNull(),
-    region: text("region").notNull(),
-    bucket: text("bucket").notNull(),
-    accessKeyEnc: text("access_key_enc").notNull(),
-    secretKeyEnc: text("secret_key_enc").notNull(),
+    kind: text("kind").notNull(),
+    provider: text("provider"),
+    endpoint: text("endpoint"),
+    region: text("region"),
+    bucket: text("bucket"),
+    accessKeyEnc: text("access_key_enc"),
+    secretKeyEnc: text("secret_key_enc"),
+    serverId: text("server_id").references(() => servers.id, {
+      onDelete: "restrict",
+    }),
+    path: text("path"),
+    ageRecipient: text("age_recipient"),
+    ageIdentityEnc: text("age_identity_enc"),
+    recoveryKeySavedAt: isoTimestamptz("recovery_key_saved_at"),
     status: text("status").notNull(),
     createdAt: isoTimestamptz("created_at").notNull(),
     // Last "Test connection" verdict, kept so the card can say WHY a destination
@@ -1834,14 +1875,38 @@ export const s3Destination = pgTable(
     // test. `lastTestError` NULL/"" with a non-null `lastTestAt` ⇒ it passed.
     lastTestAt: isoTimestamptz("last_test_at"),
     lastTestError: text("last_test_error"),
-    // The server whose agent served the probe (any backup-capable one can).
+    // The server whose agent served the probe (for `s3`, any backup-capable one
+    // can; for `server`, it is always that destination's own host).
     // SET NULL: removing a server must not delete a destination's history.
     lastTestServerId: text("last_test_server_id").references(() => servers.id, {
       onDelete: "set null",
     }),
     lastTestMs: integer("last_test_ms"),
+    // Store destinations only: the filesystem headroom the last check saw, so
+    // the card can show it without a second RPC. Deliberately NOT a pre-flight
+    // gate — a dump's size is unknown until it exists, so this is information
+    // for the operator and ENOSPC on the write is the real guard.
+    lastFreeBytes: bigint("last_free_bytes", { mode: "number" }),
+    lastTotalBytes: bigint("last_total_bytes", { mode: "number" }),
+    // The root the agent actually resolved (the managed one when `path` is
+    // NULL), so the UI shows a real path rather than a blank.
+    resolvedPath: text("resolved_path"),
   },
-  (t) => [index("s3_destination_team_created_idx").on(t.teamId, t.createdAt.desc())],
+  (t) => [
+    index("backup_destination_team_created_idx").on(t.teamId, t.createdAt.desc()),
+    index("backup_destination_last_test_server_idx").on(t.lastTestServerId),
+    index("backup_destination_server_idx").on(t.serverId),
+    check(
+      "backup_destination_kind_shape",
+      sql`(${t.kind} = 's3' and ${t.provider} is not null and ${t.endpoint} is not null
+             and ${t.region} is not null and ${t.bucket} is not null
+             and ${t.accessKeyEnc} is not null and ${t.secretKeyEnc} is not null
+             and ${t.serverId} is null and ${t.ageRecipient} is null and ${t.ageIdentityEnc} is null)
+          or (${t.kind} = 'server' and ${t.serverId} is not null and ${t.ageRecipient} is not null
+             and ${t.ageIdentityEnc} is not null and ${t.bucket} is null
+             and ${t.accessKeyEnc} is null and ${t.secretKeyEnc} is null)`,
+    ),
+  ],
 );
 
 /**
@@ -1867,7 +1932,7 @@ export const backups = pgTable(
     }),
     destinationId: text("destination_id")
       .notNull()
-      .references(() => s3Destination.id, { onDelete: "restrict" }),
+      .references(() => backupDestination.id, { onDelete: "restrict" }),
     schedule: text("schedule").notNull(),
     retentionDays: integer("retention_days").notNull(),
     lastRunAt: isoTimestamptz("last_run_at"),
@@ -1914,7 +1979,7 @@ export const backupRuns = pgTable(
     }),
     destinationId: text("destination_id")
       .notNull()
-      .references(() => s3Destination.id, { onDelete: "restrict" }),
+      .references(() => backupDestination.id, { onDelete: "restrict" }),
     objectKey: text("object_key").notNull(),
     sizeBytes: bigint("size_bytes", { mode: "number" }).notNull(),
     status: text("status").notNull(),

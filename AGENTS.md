@@ -133,12 +133,19 @@ deprecation notices. When instinct disagrees with the installed docs, the docs w
 
 **THE RULE (ADR-0006): the control plane NEVER touches a Docker socket or the host directly for
 a per-app / host-coupled action.** Deploy, build, logs, console, metrics, files, stack
-lifecycle, backups, S3, volume copy and DB provisioning all
+lifecycle, backups, backup destinations, volume copy and DB provisioning all
 route `UI → GraphQL → lib/data/* → connectAgent(serverId) → agent`.
 
 - `lib/infra/agent-client.ts` `connectAgent(serverId)` is the sole entry (mTLS, cert-fingerprint
   pinned at bootstrap). The Deplo host is itself "agent 0" — **no in-process localhost shortcut**;
   local and remote take the identical path.
+- **A backup destination is a bucket OR a server's disk** (ADR-0019). Which agent handles one
+  is the single seam `destinationServerId` in `lib/data/destinations.ts`: the DESTINATION's
+  server for `kind: "server"`, the workload's for `s3`. Getting it wrong is silent — retention
+  would dial the app's host for an artifact living elsewhere. Bytes for a cross-host store
+  relay THROUGH the control plane (agents are a star, they cannot dial each other), as
+  **ciphertext** — the age wrap happens in the SOURCE agent's pipeline next to gzip, so nothing
+  here ever holds plaintext. `lib/data/backup-transport.ts` owns all three shapes.
 - Compose is rendered control-plane-side as **opaque YAML** and shipped to the agent:
   `renderCompose` (single-image) / `buildComposeStack` (multi) / `traefikRouterLabels` (the only
   Traefik label grammar) / `portFor` (ADR-0001, the only port reader). **Never port routing /

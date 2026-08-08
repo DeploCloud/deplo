@@ -1,7 +1,7 @@
 import type { LogLevel, S3Provider } from "../types";
 
 /**
- * The "Test connection" report for an S3 destination: what deplo probed, in
+ * The "Test connection" report for a backup destination: what deplo probed, in
  * order, and what came back — the debug output behind the badge.
  *
  * WHY THIS EXISTS. Testing a destination used to be a black box that always

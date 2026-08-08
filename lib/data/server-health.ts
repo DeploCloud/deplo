@@ -302,7 +302,9 @@ async function probeServer(server: Server, force: boolean): Promise<Server | nul
     }
   }
 
-  const health = classifyServerHealth(hello, error);
+  const health = classifyServerHealth(hello, error, {
+    storageOnly: server.storageOnly,
+  });
   if (error) {
     // The curated message goes in the column; the raw one — which carries the pinned
     // fingerprint, the dial address and the gRPC detail — goes here and nowhere else.

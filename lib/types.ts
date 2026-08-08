@@ -57,7 +57,7 @@ export type Capability =
   // Backups & storage
   | "manage_backups"
   | "restore_backups"
-  | "manage_s3"
+  | "manage_backup_destinations"
   // Integrations & API
   | "manage_registries"
   | "manage_git"
@@ -110,7 +110,7 @@ export const ALL_CAPABILITIES: Capability[] = [
   "open_database_console",
   "manage_backups",
   "restore_backups",
-  "manage_s3",
+  "manage_backup_destinations",
   "manage_registries",
   "manage_git",
   "manage_tokens",
@@ -513,6 +513,16 @@ export interface Server {
    * Editable post-install from Settings → Servers; gated by `manage_infra`.
    */
   allTeams: boolean;
+  /**
+   * A server bought purely to HOLD BACKUPS: the agent is installed, Docker is
+   * not, and nothing is ever deployed here. Set by the storage-only installer.
+   *
+   * It changes two things and only two: the Docker readiness/health checks are
+   * skipped (a storage box without Docker is healthy, not broken), and the
+   * server is absent from every deploy-target picker while staying available as
+   * a backup destination.
+   */
+  storageOnly: boolean;
   /**
    * How many deployments this server runs concurrently — the per-server slot count
    * the deploy queue enforces. 1 (the
@@ -1487,28 +1497,60 @@ export type S3Provider =
   | "wasabi"
   | "other";
 
-export type S3Status = "connected" | "error" | "unverified";
+export type DestinationStatus = "connected" | "error" | "unverified";
 
-export interface S3Destination {
+/**
+ * Where backup artifacts are kept. Two kinds, because demanding an S3 bucket
+ * before anyone can take a first backup asks the user to stand up infrastructure
+ * they may not have as a precondition for the most basic safety feature.
+ *
+ *  - `s3`     — an S3-compatible bucket.
+ *  - `server` — a directory on a server in the fleet: the same VPS the workload
+ *               runs on, or another one (including a storage-only box).
+ */
+export type DestinationKind = "s3" | "server";
+
+export interface BackupDestination {
   id: ID;
   /** Owning team. Legacy rows are backfilled to the first team on hydrate. */
   teamId: ID;
   name: string;
-  provider: S3Provider;
-  endpoint: string;
-  region: string;
-  bucket: string;
+  kind: DestinationKind;
+  /* ---- kind: "s3" ---- */
+  provider: S3Provider | null;
+  endpoint: string | null;
+  region: string | null;
+  bucket: string | null;
   /** encrypted at rest */
-  accessKeyEnc: string;
-  secretKeyEnc: string;
-  status: S3Status;
+  accessKeyEnc: string | null;
+  secretKeyEnc: string | null;
+  /* ---- kind: "server" ---- */
+  /** The server holding the artifacts. */
+  serverId: ID | null;
+  /** Directory on that server. NULL ⇒ the agent's own managed store. */
+  path: string | null;
+  /**
+   * The age keypair the artifacts are encrypted to. The RECIPIENT is public and
+   * is all the agent gets when writing, so a storage host produces artifacts it
+   * cannot itself read. The IDENTITY is the private half and leaves the control
+   * plane only for a restore or a download.
+   */
+  ageRecipient: string | null;
+  ageIdentityEnc: string | null;
+  /**
+   * When the operator confirmed they had saved the recovery key. Null ⇒ the
+   * destination still nudges: an encrypted backup whose only key lives inside
+   * the thing that might be lost is not a backup.
+   */
+  recoveryKeySavedAt: string | null;
+  status: DestinationStatus;
   createdAt: string;
   /**
    * The last "Test connection" verdict. `lastTestAt` null ⇒ never tested (the
    * `unverified` badge); a non-null `lastTestAt` with an empty `lastTestError`
    * ⇒ the probe passed. The error is the agent's VERBATIM message, kept so the
    * card can say why a destination is red and the connection log can be read
-   * after the fact without re-dialing the bucket.
+   * after the fact without re-dialing the destination.
    */
   lastTestAt: string | null;
   lastTestError: string | null;
@@ -1516,6 +1558,14 @@ export interface S3Destination {
   lastTestServerId: ID | null;
   /** Probe duration in ms (null ⇒ never tested). */
   lastTestMs: number | null;
+  /**
+   * Server destinations only: the headroom and the resolved root the last check
+   * saw. Information for the operator, never a pre-flight gate — a dump's size
+   * is unknown until it exists, so ENOSPC on the write is the real guard.
+   */
+  lastFreeBytes: number | null;
+  lastTotalBytes: number | null;
+  resolvedPath: string | null;
 }
 
 /** What a backup schedule / run targets. */

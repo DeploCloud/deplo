@@ -43,7 +43,7 @@ import { withKeyedLock } from "./keyed-mutex";
  * domains, deployments, basic-auth users) is app-scoped and simply
  * follows the row, while a handful of records are attachments to the SOURCE
  * TEAM and cannot travel — its folders and projects, the shared variables it
- * links, its backup schedules (which point at that team's S3 destination), and
+ * links, its backup schedules (which point at that team's backup destination), and
  * its GitHub App installation. Those are severed here, deliberately and
  * visibly, instead of being left as cross-team pointers.
  *
@@ -449,7 +449,7 @@ export async function transferAppToTeam(
       await tx
         .delete(sharedEnvVarAppsTable)
         .where(eq(sharedEnvVarAppsTable.appId, appId));
-      // Backup schedules point at the SOURCE team's S3 destination, which the
+      // Backup schedules point at the SOURCE team's backup destination, which the
       // destination team cannot see, read or rotate. The runs already taken stay
       // as that team's history (its bucket, its audit trail).
       await tx

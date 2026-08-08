@@ -67,7 +67,7 @@ const as = <T>(userId: string, fn: () => Promise<T>): Promise<T> =>
 
 beforeEach(async () => {
   await pg.exec(`truncate table
-    folder_grants, backup_runs, backups, s3_destination,
+    folder_grants, backup_runs, backups, backup_destination,
     app_build_method_settings, app_build, apps, folders, servers,
     membership_capabilities, memberships, users, teams restart identity cascade;`);
   await seedIdentity(db, {

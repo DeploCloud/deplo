@@ -33,7 +33,7 @@ import { SchedulePicker } from "@/components/shared/schedule-picker";
 import { DestinationCombobox } from "@/components/storage/destination-combobox";
 import { gqlAction } from "@/lib/graphql-client";
 import { DEFAULT_SCHEDULE, isValidSchedule } from "@/lib/schedule";
-import type { DestinationOption } from "@/lib/data/s3";
+import type { DestinationOption } from "@/lib/data/destinations";
 
 type TargetKind = "database" | "app";
 
@@ -87,11 +87,11 @@ export function CreateBackup({
 
   const noDeps = destinations.length === 0;
   // Why the button can't be clicked, if it can't. The missing permission wins:
-  // adding an S3 destination would not unblock it.
+  // adding a destination would not unblock it.
   const blocked = !canCreate
     ? "You don't have permission to schedule backups"
     : noDeps
-      ? "Add an S3 destination first"
+      ? "Add a backup destination first"
       : null;
   // The chosen target must have a concrete id selected — otherwise the schedule
   // would point at nothing.
@@ -158,7 +158,7 @@ export function CreateBackup({
         <DialogHeader>
           <DialogTitle>Schedule a backup</DialogTitle>
           <DialogDescription>
-            Periodically back up a database or an app to an S3 destination.
+            Periodically back up a database or an app to a backup destination.
           </DialogDescription>
         </DialogHeader>
         <form className="grid gap-4" onSubmit={onSubmit}>
@@ -244,7 +244,7 @@ export function CreateBackup({
               <div className="space-y-2">
                 <FieldLabel
                   htmlFor="new-backup-destination"
-                  info="The S3 destination where backup archives are uploaded and stored. Opening the list re-checks every bucket, so the status you see is live."
+                  info="Where backup archives are written and kept. Opening the list re-checks every destination, so the status you see is live."
                 >
                   Destination
                 </FieldLabel>

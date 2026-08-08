@@ -33,6 +33,11 @@ import {
   type FileEntry as PbFileEntry,
   type VolumeChunk,
   type FilesChunk,
+  type StoreTarget,
+  type StoreChunk,
+  type StoreResult,
+  type RestoreChunk,
+  type RestoreChunk_Header,
   type StackResult,
   type DockerCleanupRequest,
   type DockerCleanupResponse,
@@ -50,6 +55,7 @@ export type {
   RestartControlPlaneResponse,
 } from "../agent/gen/agent";
 import type { AttachHandle } from "./docker";
+import { streamEvents, pumpClientStream } from "./stream-events";
 import { getServerById, markServerSeen, observedTraefik } from "../data/servers";
 import type { Server } from "../types";
 
@@ -137,6 +143,14 @@ const STACK_DEADLINE_MS = 3 * 60_000;
 // wire; the agent caps each side at ~30min. Match the backup-class deadline plus
 // dial slack — same reasoning as BACKUP_DEADLINE_MS (a volume-heavy move is long).
 const VOLUME_COPY_DEADLINE_MS = 60 * 60_000;
+// How many BYTE-carrying frames a relay may hold before it pauses the source
+// stream. The agent frames at 1 MiB (deplo-agent volumecopy.go `chunkBytes`), so
+// this is ~8 MiB in flight per transfer: enough that the socket never starves
+// between event-loop turns, small enough that a dozen concurrent relays cannot
+// move the control plane's heap. Applies to exportVolume/exportFiles and to a
+// relayed backup — the three streams where a dropped frame corrupts the payload
+// and an unbounded queue is the whole artifact in memory.
+const STREAM_BYTES_PAUSE_ABOVE = 8;
 // A port-availability probe is a single bind()+close() on the host — near-instant.
 // Keep the deadline short so an unreachable agent fails fast (this gates an
 // interactive "generate available port" click + the pre-provision guard).
@@ -453,7 +467,8 @@ export interface AgentConnection {
    *  RestoreEvents until the terminal result. DB = drop-and-recreate; project =
    *  stop → wipe + untar volumes/files → re-Reroute the snapshot. */
   restore(req: RestoreRequest): AsyncGenerator<RestoreEvent, void, unknown>;
-  /** Verify S3 connectivity + that the bucket is writable (makes testS3 real). */
+  /** Verify S3 connectivity + that the bucket is writable (makes the S3 half of
+   *  testDestination real). */
   s3Check(s3: S3Target): Promise<{ ok: boolean; error: string }>;
   /** Delete a single object (or, with `prefix`, a whole target folder) from S3 —
    *  backs retention pruning + delete-with-artifacts. Idempotent; returns the
@@ -462,6 +477,48 @@ export interface AgentConnection {
     s3: S3Target,
     prefix?: boolean,
   ): Promise<{ ok: boolean; error: string; deleted: number }>;
+
+  // ---- Backup STORES: artifacts on a server's disk (capability "backup-store") ----
+  /** Verify a store root on THIS host: resolve it (creating the managed one, or
+   *  marking an empty custom one), probe writability, sweep stale `.partial`
+   *  artifacts, and report the filesystem headroom. Unlike an S3 bucket, this
+   *  question is about one machine's disk, so it must run on that machine. */
+  storeCheck(store: StoreTarget): Promise<{
+    ok: boolean;
+    error: string;
+    freeBytes: number;
+    totalBytes: number;
+    root: string;
+  }>;
+  /** Delete an artifact (or, with `prefix`, a target's whole folder) from a store.
+   *  Idempotent; a prefix that resolves to the root itself is refused agent-side. */
+  storeDelete(
+    store: StoreTarget,
+    prefix?: boolean,
+  ): Promise<{ ok: boolean; error: string; deleted: number }>;
+  /** Stream an artifact out of a store. Verbatim (still encrypted) by default —
+   *  which is what a relay needs; pass `ageIdentity` to have the agent DECRYPT on
+   *  the way out, which is what a download needs. Never gunzipped: the file the
+   *  user wants IS the .tar.gz / .dump.gz. */
+  readStoreFile(
+    store: StoreTarget,
+    ageIdentity?: string,
+  ): AsyncGenerator<Buffer, void, unknown>;
+  /** Stream an artifact INTO a store — the destination half of a cross-host
+   *  backup. Returns what actually landed (bytes + sha256), which is the number
+   *  the run records: on a filesystem there is no ETag. */
+  writeStoreFile(
+    store: StoreTarget,
+    overwrite: boolean,
+    chunks: AsyncIterable<Buffer>,
+  ): Promise<{ ok: boolean; error: string; bytesWritten: number; sha256: string }>;
+  /** Restore from an artifact this host cannot reach: the header carries the kind,
+   *  the descriptor and the age identity, then the artifact's bytes stream in.
+   *  Yields RestoreEvents exactly like `restore`. */
+  restoreFrom(
+    header: RestoreChunk_Header,
+    chunks: AsyncIterable<Buffer>,
+  ): AsyncGenerator<RestoreEvent, void, unknown>;
 
   // ---- Part C: console observability ----
   /** The RAW docker state of an app's single-image container (`deplo-<slug>`):
@@ -605,6 +662,15 @@ export class AgentUpdateUnsupportedError extends Error {}
  * or emitting a confusing UNIMPLEMENTED. Mirrors {@link AgentUpdateUnsupportedError}.
  */
 export class AgentBackupUnsupportedError extends Error {}
+
+/**
+ * The reachable agent can back up to S3 but cannot hold artifacts on its own
+ * disk — it predates the `"backup-store"` capability. Distinct from
+ * {@link AgentBackupUnsupportedError} on purpose: during a fleet rollout the two
+ * are genuinely different states, and "backups are unsupported here" would send
+ * an operator whose S3 backups are working fine looking in the wrong place.
+ */
+export class AgentBackupStoreUnsupportedError extends Error {}
 
 /**
  * The reachable agent does not (yet) implement the {@link AgentConnection.containerStats}
@@ -765,6 +831,8 @@ function toAgentError(err: unknown): Error {
   return err instanceof Error ? err : new Error(String(err));
 }
 
+
+
 /** Why a log stream died, in the only vocabulary the browser is allowed to see. */
 export type LogsFailure = "unreachable" | "not-found" | "denied" | "failed";
 
@@ -913,59 +981,7 @@ function dial(target: DialTarget): AgentConnection {
     "grpc.keepalive_permit_without_calls": 0,
   });
 
-  /** Bridge a grpc server-stream into a backpressured async generator. Generic
-   *  over the event type so the deploy/reattach streams AND the
-   *  backup/restore streams (same one-request-many-events shape) reuse it. A
-   *  transport-down error is normalised so consumers catch AgentUnreachableError.
-   *
-   *  `maxQueued` bounds the buffer for a stream that runs for HOURS. The default
-   *  (0, unbounded) is right for the finite deploy/backup streams, where every
-   *  event is a log line the operator must eventually see and dropping one loses
-   *  information permanently. It is wrong for telemetry: if a consumer stalls,
-   *  an unbounded queue grows without limit, and the samples it accumulates are
-   *  worthless by the time they drain — a metrics point that arrives a minute
-   *  late is not late data, it is wrong data. So a bounded queue DROPS THE
-   *  OLDEST rather than pausing the producer or growing. */
-  async function* streamEvents<E>(
-    stream: ClientReadableStream<E>,
-    maxQueued = 0,
-  ): AsyncGenerator<E, void, unknown> {
-    const queue: E[] = [];
-    let done = false;
-    let failure: Error | null = null;
-    let wake: (() => void) | null = null;
-    const signal = () => {
-      wake?.();
-      wake = null;
-    };
-    stream.on("data", (ev: E) => {
-      if (maxQueued > 0 && queue.length >= maxQueued) queue.shift();
-      queue.push(ev);
-      signal();
-    });
-    stream.on("error", (err: Error) => {
-      failure = toAgentError(err);
-      done = true;
-      signal();
-    });
-    stream.on("end", () => {
-      done = true;
-      signal();
-    });
-    try {
-      while (true) {
-        if (queue.length) {
-          yield queue.shift()!;
-          continue;
-        }
-        if (failure) throw failure;
-        if (done) return;
-        await new Promise<void>((r) => (wake = r));
-      }
-    } finally {
-      stream.cancel();
-    }
-  }
+
 
   /**
    * Adapt a gRPC server-stream of LogChunks into the output-only AttachHandle the
@@ -1195,12 +1211,13 @@ function dial(target: DialTarget): AgentConnection {
         // cadence — enough to ride out a GC pause or a slow buffer write, far
         // short of anything worth replaying. If the consumer is further behind
         // than that, the right sample to keep is the newest one.
-        METRICS_STREAM_MAX_QUEUED,
+        { maxQueued: METRICS_STREAM_MAX_QUEUED, normalise: toAgentError },
       );
     },
     deploy(req: DeployRequest) {
       return streamEvents(
         client.deploy(req, { deadline: new Date(Date.now() + DEPLOY_DEADLINE_MS) }),
+        { normalise: toAgentError },
       );
     },
     reattach(req: ReattachRequest) {
@@ -1208,6 +1225,7 @@ function dial(target: DialTarget): AgentConnection {
         client.reattachDeploy(req, {
           deadline: new Date(Date.now() + DEPLOY_DEADLINE_MS),
         }),
+        { normalise: toAgentError },
       );
     },
     stopStack(slug: string) {
@@ -1303,7 +1321,10 @@ function dial(target: DialTarget): AgentConnection {
           { volumeName },
           { deadline: new Date(Date.now() + VOLUME_COPY_DEADLINE_MS) },
         );
-        for await (const chunk of streamEvents<VolumeChunk>(stream)) {
+        for await (const chunk of streamEvents<VolumeChunk>(stream, {
+          pauseAbove: STREAM_BYTES_PAUSE_ABOVE,
+          normalise: toAgentError,
+        })) {
           // Export only ever emits `data` frames; ignore anything else defensively.
           if (chunk.data && chunk.data.length) yield Buffer.from(chunk.data);
         }
@@ -1314,10 +1335,9 @@ function dial(target: DialTarget): AgentConnection {
       wipeFirst: boolean,
       chunks: AsyncIterable<Buffer>,
     ) {
-      // Client-streaming: write the header first, then each data frame, then end().
-      // The terminal StackResult arrives via the callback. A write-side backpressure
-      // signal (`write` returning false) is honoured so a slow untar on the agent
-      // doesn't let the relay buffer the whole volume in memory.
+      // Client-streaming: header frame first (the only message carrying `header`),
+      // then data frames, then end(). ts-proto models the oneof as flat optional
+      // fields. The terminal StackResult arrives via the callback.
       return new Promise<{ ok: boolean; error: string }>((resolve, reject) => {
         const call: ClientWritableStream<VolumeChunk> = client.importVolume(
           new Metadata(),
@@ -1327,51 +1347,13 @@ function dial(target: DialTarget): AgentConnection {
               ? reject(toAgentError(err))
               : resolve({ ok: resp.ok, error: resp.error }),
         );
-        // A transport error surfaces on the writable stream too (not only the
-        // callback) — reject once, then stop pumping.
-        let settled = false;
-        const fail = (e: unknown) => {
-          if (settled) return;
-          settled = true;
-          reject(toAgentError(e));
-        };
-        call.on("error", fail);
-
-        const writeChunk = (v: VolumeChunk) =>
-          new Promise<void>((res, rej) => {
-            // grpc-js write() returns false under backpressure; wait for drain.
-            // Remove BOTH listeners on settle — a bare once() per chunk leaves
-            // the loser registered, leaking one listener+closure per
-            // backpressured frame for the life of the call.
-            if (call.write(v)) return res();
-            const onDrain = () => {
-              call.off("error", onError);
-              res();
-            };
-            const onError = (e: Error) => {
-              call.off("drain", onDrain);
-              rej(e);
-            };
-            call.once("drain", onDrain);
-            call.once("error", onError);
-          });
-
-        void (async () => {
-          try {
-            // Header frame first (the only message carrying `header`), then data
-            // frames. ts-proto models the oneof as flat optional fields.
-            await writeChunk({ header: { volumeName, wipeFirst } });
-            for await (const buf of chunks) {
-              if (settled) return; // a transport error already ended us
-              await writeChunk({ data: buf });
-            }
-            call.end();
-          } catch (e) {
-            // Cancel the RPC so the agent's untar sees the stream break, then reject.
-            call.cancel();
-            fail(e);
-          }
-        })();
+        pumpClientStream<VolumeChunk>(
+          call,
+          { header: { volumeName, wipeFirst } },
+          chunks,
+          (data) => ({ data }),
+          (e) => reject(toAgentError(e)),
+        );
       });
     },
     exportFiles(slug: string) {
@@ -1382,7 +1364,10 @@ function dial(target: DialTarget): AgentConnection {
           { slug },
           { deadline: new Date(Date.now() + VOLUME_COPY_DEADLINE_MS) },
         );
-        for await (const chunk of streamEvents<FilesChunk>(stream)) {
+        for await (const chunk of streamEvents<FilesChunk>(stream, {
+          pauseAbove: STREAM_BYTES_PAUSE_ABOVE,
+          normalise: toAgentError,
+        })) {
           if (chunk.data && chunk.data.length) yield Buffer.from(chunk.data);
         }
       })();
@@ -1398,43 +1383,13 @@ function dial(target: DialTarget): AgentConnection {
               ? reject(toAgentError(err))
               : resolve({ ok: resp.ok, error: resp.error }),
         );
-        let settled = false;
-        const fail = (e: unknown) => {
-          if (settled) return;
-          settled = true;
-          reject(toAgentError(e));
-        };
-        call.on("error", fail);
-
-        const writeChunk = (v: FilesChunk) =>
-          new Promise<void>((res, rej) => {
-            // Paired listeners, both removed on settle (see importVolume).
-            if (call.write(v)) return res();
-            const onDrain = () => {
-              call.off("error", onError);
-              res();
-            };
-            const onError = (e: Error) => {
-              call.off("drain", onDrain);
-              rej(e);
-            };
-            call.once("drain", onDrain);
-            call.once("error", onError);
-          });
-
-        void (async () => {
-          try {
-            await writeChunk({ header: { slug, wipeFirst } });
-            for await (const buf of chunks) {
-              if (settled) return;
-              await writeChunk({ data: buf });
-            }
-            call.end();
-          } catch (e) {
-            call.cancel();
-            fail(e);
-          }
-        })();
+        pumpClientStream<FilesChunk>(
+          call,
+          { header: { slug, wipeFirst } },
+          chunks,
+          (data) => ({ data }),
+          (e) => reject(toAgentError(e)),
+        );
       });
     },
     readStack(slug: string) {
@@ -1554,11 +1509,13 @@ function dial(target: DialTarget): AgentConnection {
     backup(req: BackupRequest) {
       return streamEvents(
         client.backup(req, { deadline: new Date(Date.now() + BACKUP_DEADLINE_MS) }),
+        { normalise: toAgentError },
       );
     },
     restore(req: RestoreRequest) {
       return streamEvents(
         client.restore(req, { deadline: new Date(Date.now() + BACKUP_DEADLINE_MS) }),
+        { normalise: toAgentError },
       );
     },
     s3Check(s3: S3Target) {
@@ -1586,6 +1543,120 @@ function dial(target: DialTarget): AgentConnection {
           );
         },
       );
+    },
+
+    // ---- Backup stores: artifacts on a server's disk ----
+    storeCheck(store: StoreTarget) {
+      return new Promise<{
+        ok: boolean;
+        error: string;
+        freeBytes: number;
+        totalBytes: number;
+        root: string;
+      }>((resolve, reject) => {
+        client.s3Check(
+          { store },
+          new Metadata(),
+          { deadline: new Date(Date.now() + S3_OP_DEADLINE_MS) },
+          (err, resp) =>
+            err
+              ? reject(toAgentError(err))
+              : resolve({
+                  ok: resp.ok,
+                  error: resp.error,
+                  freeBytes: resp.freeBytes,
+                  totalBytes: resp.totalBytes,
+                  root: resp.root,
+                }),
+        );
+      });
+    },
+    storeDelete(store: StoreTarget, prefix = false) {
+      return new Promise<{ ok: boolean; error: string; deleted: number }>(
+        (resolve, reject) => {
+          client.s3Delete(
+            { store, prefix },
+            new Metadata(),
+            { deadline: new Date(Date.now() + S3_OP_DEADLINE_MS) },
+            (err, resp) =>
+              err
+                ? reject(toAgentError(err))
+                : resolve({ ok: resp.ok, error: resp.error, deleted: resp.deleted }),
+          );
+        },
+      );
+    },
+    readStoreFile(store: StoreTarget, ageIdentity = "") {
+      // Server-streaming bytes: same shape as exportVolume, same backpressure —
+      // an artifact is exactly the kind of stream an unbounded queue turns into
+      // an OOM.
+      return (async function* () {
+        const stream = client.readStoreFile(
+          { store, ageIdentity },
+          { deadline: new Date(Date.now() + BACKUP_DEADLINE_MS) },
+        );
+        for await (const chunk of streamEvents<StoreChunk>(stream, {
+          pauseAbove: STREAM_BYTES_PAUSE_ABOVE,
+          normalise: toAgentError,
+        })) {
+          if (chunk.data && chunk.data.length) yield Buffer.from(chunk.data);
+        }
+      })();
+    },
+    writeStoreFile(
+      store: StoreTarget,
+      overwrite: boolean,
+      chunks: AsyncIterable<Buffer>,
+    ) {
+      // Client-streaming, modelled on importVolume: header frame first, then data
+      // frames, honouring write backpressure so a slow destination disk cannot
+      // make the relay buffer the whole artifact here.
+      return new Promise<{
+        ok: boolean;
+        error: string;
+        bytesWritten: number;
+        sha256: string;
+      }>((resolve, reject) => {
+        const call: ClientWritableStream<StoreChunk> = client.writeStoreFile(
+          new Metadata(),
+          { deadline: new Date(Date.now() + BACKUP_DEADLINE_MS) },
+          (err: ServiceError | null, resp: StoreResult) =>
+            err
+              ? reject(toAgentError(err))
+              : resolve({
+                  ok: resp.ok,
+                  error: resp.error,
+                  bytesWritten: resp.bytesWritten,
+                  sha256: resp.sha256,
+                }),
+        );
+        pumpClientStream<StoreChunk>(
+          call,
+          { header: { store, overwrite } },
+          chunks,
+          (data) => ({ data }),
+          // Normalised like every other rejection here, so a transport drop
+          // mid-relay surfaces as AgentUnreachableError rather than a raw
+          // ServiceError the data layer would not recognise.
+          (e) => reject(toAgentError(e)),
+        );
+      });
+    },
+    restoreFrom(header: RestoreChunk_Header, chunks: AsyncIterable<Buffer>) {
+      // The only BIDI call in the client: bytes go up while progress comes down.
+      const call = client.restoreFrom({
+        deadline: new Date(Date.now() + BACKUP_DEADLINE_MS),
+      });
+      pumpClientStream<RestoreChunk>(
+        call,
+        { header },
+        chunks,
+        (data) => ({ data }),
+        // A write-side failure surfaces on the read side too (the agent sees the
+        // stream break and ends), so it needs no separate rejection path here.
+        () => {},
+      );
+      return streamEvents<RestoreEvent>(call, { normalise: toAgentError });
     },
 
     // ---- Part C: console observability ----
@@ -1793,6 +1864,14 @@ export async function connectAgent(serverId: string): Promise<AgentConnection> {
 /** The capability an agent advertises in Hello once it can dump/restore to S3
  *  (mirrors the "backup" entry in the agent's server.Capabilities). */
 const BACKUP_CAPABILITY = "backup";
+/**
+ * Holding artifacts on THIS host's disk (the StoreTarget arms plus
+ * ReadStoreFile / WriteStoreFile / RestoreFrom). Split from `"backup"` because
+ * the two shipped in different agent releases: a fleet mid-rollout has agents
+ * that can dump to S3 but not store, and telling that operator "backups are
+ * unsupported" would send them looking in the wrong place.
+ */
+const BACKUP_STORE_CAPABILITY = "backup-store";
 
 /** The capability an agent advertises once it can run cron jobs
  *  (StartJob/PollJob/KillJob - ADR-0018). */
@@ -1947,13 +2026,23 @@ export function mapContainerStatsUnsupported(e: unknown): Error {
  */
 export async function connectBackupAgent(
   serverId: string,
+  /** Also require `"backup-store"` — set when the artifact lives on THIS host's
+   *  disk. Split from the base check so an agent that can dump to S3 but cannot
+   *  hold artifacts fails the SECOND thing with a message that names it. */
+  opts: { store?: boolean } = {},
 ): Promise<AgentConnection> {
   const conn = await connectAgent(serverId);
   try {
     const hello = await conn.hello();
     if (!hello.capabilities?.includes(BACKUP_CAPABILITY)) {
       throw new AgentBackupUnsupportedError(
-        `The agent on this server is too old to back up to S3. ` +
+        `The agent on this server is too old to run backups. ` +
+          `Update the agent on this server, then try again.`,
+      );
+    }
+    if (opts.store && !hello.capabilities?.includes(BACKUP_STORE_CAPABILITY)) {
+      throw new AgentBackupStoreUnsupportedError(
+        `The agent on this server is too old to store backups on its disk. ` +
           `Update the agent on this server, then try again.`,
       );
     }
@@ -1975,9 +2064,10 @@ export async function connectBackupAgent(
  */
 export function mapBackupUnsupported(e: unknown): Error {
   if (e instanceof AgentBackupUnsupportedError) return e;
+  if (e instanceof AgentBackupStoreUnsupportedError) return e;
   if ((e as Partial<ServiceError> | null)?.code === GrpcStatus.UNIMPLEMENTED) {
     return new AgentBackupUnsupportedError(
-      `The agent on this server is too old to back up to S3. ` +
+      `The agent on this server is too old to run backups. ` +
         `Update the agent on this server, then try again.`,
     );
   }

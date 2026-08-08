@@ -150,7 +150,7 @@ export const PROJECT_SCOPED_CAPABILITIES: Capability[] = [
  * inside that node and may exceed it, so this list is what stops one from ever
  * becoming a route back to team administration: `manage_members`, `manage_roles`,
  * `manage_team`, `delete_team`, `manage_tokens`, `manage_registries`,
- * `manage_git`, `manage_s3`, `manage_notifications`, `manage_environments`, the
+ * `manage_git`, `manage_backup_destinations`, `manage_notifications`, `manage_environments`, the
  * folder/project CRUD verbs and every database capability are all absent, so a
  * grant can never satisfy the last-admin check, mint a credential, or re-share.
  *

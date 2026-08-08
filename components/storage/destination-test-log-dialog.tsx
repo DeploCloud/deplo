@@ -54,13 +54,13 @@ export const S3_TEST_REPORT_FIELDS = `
  * probe sequence with the step it stopped at, the agent's verbatim message, and
  * the commands that reproduce the same three S3 calls by hand.
  *
- * Opens on the STORED result of the last test (`s3TestReport` — reading it never
+ * Opens on the STORED result of the last test (`destinationTestReport` — reading it never
  * re-dials the bucket), so a failure can be read at leisure, and re-runs on
  * demand from here. Before this existed, a failing destination showed a red badge
  * and nothing else: the reason was thrown away, and the card even reported
  * success over it.
  */
-export function S3TestLogDialog({
+export function DestinationTestLogDialog({
   open,
   onOpenChange,
   destinationId,
@@ -87,12 +87,12 @@ export function S3TestLogDialog({
   React.useEffect(() => {
     if (!open) return;
     const controller = new AbortController();
-    gql<{ s3TestReport: S3TestReportView }>(
-      `query ($id: String!) { s3TestReport(id: $id) { ${S3_TEST_REPORT_FIELDS} } }`,
+    gql<{ destinationTestReport: S3TestReportView }>(
+      `query ($id: String!) { destinationTestReport(id: $id) { ${S3_TEST_REPORT_FIELDS} } }`,
       { id: destinationId },
       controller.signal,
     )
-      .then((d) => setReport(d.s3TestReport))
+      .then((d) => setReport(d.destinationTestReport))
       .catch((e: unknown) => {
         if (controller.signal.aborted) return;
         setLoadError(e instanceof Error ? e.message : "Failed to load the log");
@@ -112,13 +112,13 @@ export function S3TestLogDialog({
   function runAgain() {
     setRunning(true);
     setRunError(null);
-    gql<{ testS3: { report: S3TestReportView } }>(
-      `mutation ($id: String!) { testS3(id: $id) { report { ${S3_TEST_REPORT_FIELDS} } } }`,
+    gql<{ testDestination: { report: S3TestReportView } }>(
+      `mutation ($id: String!) { testDestination(id: $id) { report { ${S3_TEST_REPORT_FIELDS} } } }`,
       { id: destinationId },
     )
       .then((d) => {
-        setReport(d.testS3.report);
-        onTested?.(d.testS3.report);
+        setReport(d.testDestination.report);
+        onTested?.(d.testDestination.report);
       })
       .catch((e: unknown) =>
         setRunError(e instanceof Error ? e.message : "The test could not run"),

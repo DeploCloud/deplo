@@ -212,10 +212,10 @@ export const CAPABILITY_META: Record<Capability, CapabilityMeta> = {
     keywords: "recover rollback import overwrite",
     sensitive: true,
   },
-  manage_s3: {
-    label: "Manage S3 destinations",
-    description: "Connect, test and remove the S3 buckets backups are sent to.",
-    keywords: "bucket storage remote credentials minio garage",
+  manage_backup_destinations: {
+    label: "Manage backup destinations",
+    description: "Connect, test and remove the places backups are stored.",
+    keywords: "bucket s3 server disk storage remote credentials minio garage path",
   },
 
   /* ---- Integrations ---- */
@@ -363,7 +363,7 @@ export const CAPABILITY_CATEGORIES: {
     key: "backups",
     label: "Backups & storage",
     description: "Backup schedules and where they are stored.",
-    caps: ["manage_backups", "restore_backups", "manage_s3"],
+    caps: ["manage_backups", "restore_backups", "manage_backup_destinations"],
   },
   {
     key: "integrations",
@@ -437,7 +437,7 @@ export const LEGACY_CAPABILITY_EXPANSION: Record<string, Capability[]> = {
     "open_database_console",
     "manage_backups",
     "restore_backups",
-    "manage_s3",
+    "manage_backup_destinations",
     "manage_registries",
     "manage_git",
     "manage_tokens",
@@ -446,12 +446,20 @@ export const LEGACY_CAPABILITY_EXPANSION: Record<string, Capability[]> = {
   ],
   manage_members: ["manage_members", "manage_roles"],
   manage_team: ["manage_team", "delete_team"],
+  // `manage_s3` was renamed to `manage_backup_destinations` when a destination
+  // stopped necessarily being S3 (migration 0083). Same single power, so this is
+  // a 1:1 alias rather than an expansion — it keeps an API token minted before
+  // the rename working, exactly like the coarse names above.
+  manage_s3: ["manage_backup_destinations"],
 };
 
-/** The eight names the split started from. */
+/** Every retired spelling that still expands as input: the eight the split
+ *  started from, plus `manage_s3` (renamed, not split). */
 export const LEGACY_CAPABILITY_NAMES = Object.keys(LEGACY_CAPABILITY_EXPANSION);
 
-/** The three of them that no longer exist as capabilities in their own right. */
+/** The ones that no longer exist as capabilities in their own right: the three
+ *  the split retired, plus `manage_s3`, which was renamed rather than split when
+ *  a destination stopped necessarily being a bucket. */
 export const RETIRED_CAPABILITY_NAMES = LEGACY_CAPABILITY_NAMES.filter(
   (n) => !(ALL_CAPABILITIES as string[]).includes(n),
 );

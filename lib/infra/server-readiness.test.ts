@@ -97,6 +97,7 @@ function srv(over: Partial<Server> = {}): Server {
     memoryUsage: 0,
     diskUsage: 0,
     allTeams: true,
+    storageOnly: false,
     deployConcurrency: 1,
     createdAt: "2026-07-01T00:00:00.000Z",
     agent: { port: 9443, certFingerprint: "fp_1", certPem: "pem", version: "1.1.0" },

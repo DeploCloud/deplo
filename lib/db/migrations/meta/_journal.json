@@ -575,6 +575,20 @@
       "when": 1784677400000,
       "tag": "0081_git_connections",
       "breakpoints": true
+    },
+    {
+      "idx": 82,
+      "version": "7",
+      "when": 1784677600000,
+      "tag": "0082_backup_destinations",
+      "breakpoints": true
+    },
+    {
+      "idx": 83,
+      "version": "7",
+      "when": 1784677800000,
+      "tag": "0083_rename_manage_s3",
+      "breakpoints": true
     }
   ]
 }

@@ -31,7 +31,7 @@ export default function Loading() {
 
       {/* Tabs */}
       <div>
-        {/* UnderlineTabsList: Databases / S3 Destinations / Backups (each with a count badge) */}
+        {/* UnderlineTabsList: Databases / Destinations / Backups (each with a count badge) */}
         <div className="flex h-12 items-center gap-1 border-b border-border">
           <div className="flex h-12 items-center gap-2 px-3">
             <Skeleton className="h-4 w-16" />

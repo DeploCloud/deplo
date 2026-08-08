@@ -47,7 +47,7 @@ import { timeAgo } from "@/lib/utils";
 import { gqlAction } from "@/lib/graphql-client";
 import { isValidSchedule } from "@/lib/schedule";
 import type { BackupDTO } from "@/lib/data/backups";
-import type { DestinationOption } from "@/lib/data/s3";
+import type { DestinationOption } from "@/lib/data/destinations";
 
 type Destination = DestinationOption;
 

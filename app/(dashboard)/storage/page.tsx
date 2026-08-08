@@ -1,10 +1,20 @@
 import { Database } from "lucide-react";
 import { listDatabases } from "@/lib/data/databases";
-import { listS3, toDestinationOption } from "@/lib/data/s3";
+import {
+  destinationWhere,
+  ensureDefaultDestination,
+  listDestinations,
+  toDestinationOption,
+} from "@/lib/data/destinations";
 import { listBackups } from "@/lib/data/backups";
 import { listServersForCurrentTeam } from "@/lib/data/servers";
 import { listApps } from "@/lib/data/apps";
-import { canExposePorts, hasCapability, reachesWholeTeam } from "@/lib/membership";
+import {
+  canExposePorts,
+  hasCapability,
+  isInstanceAdmin,
+  reachesWholeTeam,
+} from "@/lib/membership";
 import { PageHeader } from "@/components/shared/page-header";
 import { EmptyState } from "@/components/shared/empty-state";
 import {
@@ -23,11 +33,11 @@ import {
 } from "@/components/ui/table";
 import { CreateDatabase } from "@/components/storage/create-database";
 import { DatabaseGraphic } from "@/components/storage/database-graphic";
-import { S3Graphic } from "@/components/storage/s3-graphic";
+import { DestinationGraphic } from "@/components/storage/destination-graphic";
 import { BackupScheduleGraphic } from "@/components/storage/backup-schedule-graphic";
 import { DatabasesGrid } from "@/components/storage/databases-grid";
-import { CreateS3 } from "@/components/storage/create-s3";
-import { S3Card } from "@/components/storage/s3-card";
+import { CreateDestination } from "@/components/storage/create-destination";
+import { DestinationCard } from "@/components/storage/destination-card";
 import { CreateBackup } from "@/components/storage/create-backup";
 import { BackupRow } from "@/components/storage/backup-row";
 import {
@@ -40,26 +50,30 @@ export const metadata = { title: "Storage" };
 
 export default async function StoragePage(props: PageProps<"/storage">) {
   // "New ▸ …" actions (the global context menu / Overview) link here with
-  // ?new=database|s3|backup so the matching create dialog opens straight away on
-  // the right tab.
+  // ?new=database|destination|backup so the matching create dialog opens straight
+  // away on the right tab. `?new=s3` is kept as an alias: it is linked from
+  // elsewhere in the app and from anything a user bookmarked.
   const { new: newParam } = await props.searchParams;
   const newKind = Array.isArray(newParam) ? newParam[0] : newParam;
+  const wantsDestination = newKind === "destination" || newKind === "s3";
   const autoOpenDatabase = newKind === "database";
-  const autoOpenS3 = newKind === "s3";
   const autoOpenBackup = newKind === "backup";
-  const initialTab =
-    newKind === "s3" ? "s3" : newKind === "backup" ? "backups" : "databases";
+  const initialTab = wantsDestination
+    ? "destinations"
+    : newKind === "backup"
+      ? "backups"
+      : "databases";
 
   // Every section of this page is team-level: a database belongs to the team and
-  // to no project, and so do the S3 destinations and the fleet. A member limited
-  // to part of the team therefore has none of it, and is told so rather than
-  // handed the error boundary.
+  // to no project, and so do the backup destinations and the fleet. A member
+  // limited to part of the team therefore has none of it, and is told so rather
+  // than handed the error boundary.
   if (!(await reachesWholeTeam()))
     return (
       <div className="space-y-6">
         <PageHeader
           title="Storage"
-          description="Databases, S3 destinations and backups."
+          description="Databases, backup destinations and backups."
         />
         <EmptyState
           icon={Database}
@@ -68,6 +82,12 @@ export default async function StoragePage(props: PageProps<"/storage">) {
         />
       </div>
     );
+
+  // A team with no destination at all gets one pointing at a server it can
+  // reach. Backups are the one feature where "first go sign up for a bucket"
+  // turns a five-second decision into a project, and the fleet already has a
+  // disk. Lazy, like ensureTeamRoles, and silent when no server can hold one.
+  await ensureDefaultDestination();
 
   const [
     databases,
@@ -78,11 +98,12 @@ export default async function StoragePage(props: PageProps<"/storage">) {
     mayExposePorts,
     canManageDatabases,
     canCreateDatabase,
-    canManageS3,
+    canManageDestinations,
     canManageBackups,
+    mayUseCustomPath,
   ] = await Promise.all([
     listDatabases(),
-    listS3(),
+    listDestinations(),
     listBackups(),
     listServersForCurrentTeam(),
     listApps(),
@@ -98,24 +119,34 @@ export default async function StoragePage(props: PageProps<"/storage">) {
     // (tooltip says why) and the empty state says what to ask for, instead of
     // opening a form the server refuses on submit.
     hasCapability("create_databases"),
-    hasCapability("manage_s3"),
+    hasCapability("manage_backup_destinations"),
     hasCapability("manage_backups"),
+    // A custom backup folder is an arbitrary absolute path on a shared host, so
+    // it is an instance-level decision. Everyone else gets the managed folder,
+    // which is what almost everyone wants anyway.
+    isInstanceAdmin(),
   ]);
 
   // Only provisioned servers can host a database (provisioning routes through a
   // live agent). A server is provisioned once its agent has called home and
   // pinned a cert fingerprint.
+  // A storage-only host runs nothing, so it can never provision a database.
   const dbServers = servers
-    .filter((s) => Boolean(s.agent?.certFingerprint))
+    .filter((s) => Boolean(s.agent?.certFingerprint) && !s.storageOnly)
     .map((s) => ({ id: s.id, name: s.name }));
   // serverId → name, so a card can show which host each database runs on.
   const serverNames = Object.fromEntries(servers.map((s) => [s.id, s.name]));
+  // A backup destination can live on ANY server the team reaches, including a
+  // storage-only box that hosts nothing — which is exactly the point of one.
+  const destinationServers = servers
+    .filter((s) => Boolean(s.agent?.certFingerprint))
+    .map((s) => ({ id: s.id, name: s.name, storageOnly: s.storageOnly }));
 
   return (
     <div className="space-y-6">
       <PageHeader
         title="Storage"
-        description="Managed databases, S3 destinations and scheduled backups."
+        description="Managed databases, backup destinations and scheduled backups."
       />
 
       <Tabs defaultValue={initialTab}>
@@ -126,8 +157,8 @@ export default async function StoragePage(props: PageProps<"/storage">) {
               {databases.length}
             </Badge>
           </UnderlineTabsTrigger>
-          <UnderlineTabsTrigger value="s3">
-            S3 Destinations
+          <UnderlineTabsTrigger value="destinations">
+            Destinations
             <Badge variant="muted" className="ml-2">
               {destinations.length}
             </Badge>
@@ -192,38 +223,52 @@ export default async function StoragePage(props: PageProps<"/storage">) {
           </PendingCreateProvider>
         </TabsContent>
 
-        {/* S3 destinations */}
-        <TabsContent value="s3" className="space-y-4">
-          {/* Connecting a bucket closes the dialog at once and shows the
-              destination pulsing in the grid while the credentials are verified
-              against it. Its own provider, so a pending database never leaks
-              into this grid. */}
+        {/* Destinations */}
+        <TabsContent value="destinations" className="space-y-4">
+          {/* Adding a destination closes the dialog at once and shows it pulsing
+              in the grid while it is verified. Its own provider, so a pending
+              database never leaks into this grid. */}
           <PendingCreateProvider count={destinations.length}>
             <div className="flex items-center justify-between">
               <p className="text-sm text-muted-foreground">
-                Connect any S3-compatible storage for backups and assets.
+                Keep backups on one of your servers, or in any S3-compatible
+                bucket.
               </p>
-              <CreateS3 canCreate={canManageS3} autoOpen={autoOpenS3} />
+              <CreateDestination
+                canCreate={canManageDestinations}
+                servers={destinationServers}
+                isInstanceAdmin={mayUseCustomPath}
+                autoOpen={wantsDestination}
+              />
             </div>
             <PendingList
               empty={destinations.length === 0}
               emptyState={
                 <EmptyState
-                  graphic={<S3Graphic />}
-                  title="No S3 destinations"
+                  graphic={<DestinationGraphic />}
+                  title="No backup destinations"
                   // No button: the heading row above carries Add destination
                   // already.
                   description={
-                    canManageS3
-                      ? "Add a bucket (R2, S3, B2, MinIO) to store backups and assets."
-                      : "You don't have permission to connect S3 destinations. Ask a team admin for the “Manage S3 destinations” permission."
+                    canManageDestinations
+                      ? "Pick a server to keep backups on, or connect an S3 bucket."
+                      : "You don't have permission to add backup destinations. Ask a team admin for the “Manage backup destinations” permission."
                   }
                 />
               }
             >
               <div className="grid gap-4 md:grid-cols-2">
                 {destinations.map((dest) => (
-                  <S3Card key={dest.id} dest={dest} />
+                  <DestinationCard
+                    key={dest.id}
+                    dest={{
+                      ...dest,
+                      where: destinationWhere(dest),
+                      freeBytes: dest.lastFreeBytes,
+                      totalBytes: dest.lastTotalBytes,
+                    }}
+                    canManage={canManageDestinations}
+                  />
                 ))}
                 <PendingCards />
               </div>
@@ -235,7 +280,7 @@ export default async function StoragePage(props: PageProps<"/storage">) {
         <TabsContent value="backups" className="space-y-4">
           <div className="flex items-center justify-between">
             <p className="text-sm text-muted-foreground">
-              Scheduled database backups pushed to your S3 destinations.
+              Scheduled backups of your databases and apps.
             </p>
             <CreateBackup
               databases={databases.map((d) => ({ id: d.id, name: d.name }))}
@@ -251,7 +296,7 @@ export default async function StoragePage(props: PageProps<"/storage">) {
               title="No backups scheduled"
               description={
                 canManageBackups
-                  ? "Schedule automatic backups of your databases to S3."
+                  ? "Schedule automatic backups of your databases and apps."
                   : "You don't have permission to schedule backups. Ask a team admin for the “Manage backups” permission."
               }
             />

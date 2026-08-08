@@ -43,6 +43,14 @@ AGENT_DATA="/var/lib/deplo-agent"
 UNIT="/etc/systemd/system/deplo-agent.service"
 AGENT_PORT="${DEPLO_AGENT_PORT:-9443}"
 
+# A STORAGE-ONLY host: the agent is installed to hold backups and nothing else.
+# No Docker, no address pools, no Traefik, and no `docker` group on the unit —
+# systemd refuses to start a service whose SupplementaryGroups does not exist
+# (status=216/GROUP), which under `set -e` aborts this script at the last line.
+# Set from the dashboard's Add server dialog, which prefixes the copy-paste
+# command with DEPLO_STORAGE_ONLY=1 when the box is ticked.
+STORAGE_ONLY="${DEPLO_STORAGE_ONLY:-0}"
+
 err()  { printf "\033[31m[!!]\033[0m %s\n" "$1" >&2; }
 step() { printf "\033[36m[..]\033[0m %s\n" "$1"; }
 ok()   { printf "\033[32m[ok]\033[0m %s\n" "$1"; }
@@ -78,7 +86,9 @@ for bin in curl sha256sum systemctl; do
 done
 
 # 1. Docker -----------------------------------------------------------------
-if ! command -v docker >/dev/null 2>&1; then
+if [ "$STORAGE_ONLY" = "1" ]; then
+  ok "Storage-only server: skipping Docker"
+elif ! command -v docker >/dev/null 2>&1; then
   step "Installing Docker..."
   curl -fsSL https://get.docker.com | sh
   systemctl enable --now docker
@@ -228,7 +238,11 @@ sys.stdout.write(json.dumps(d, indent=2) + "\n")' "$CFG" "$BASE" "$SIZE" > "$TMP
   fi
 }
 
-configure_docker_address_pools
+if [ "$STORAGE_ONLY" = "1" ]; then
+  ok "Storage-only server: skipping Docker address pools"
+else
+  configure_docker_address_pools
+fi
 
 # 2. Agent binary (checksum-verified before it ever runs, P2) ----------------
 # Pick the release asset for this host's architecture. The release publishes
@@ -289,7 +303,9 @@ fi
 # own proxy), and only claim :80/:443 if they are free — otherwise warn and let
 # the operator wire their existing proxy to the `deplo` network.
 TRAEFIK_DIR="$AGENT_DATA/traefik"
-if docker ps --filter status=running --format '{{.Image}} {{.Names}}' 2>/dev/null \
+if [ "$STORAGE_ONLY" = "1" ]; then
+  ok "Storage-only server: skipping Traefik (nothing is routed here)"
+elif docker ps --filter status=running --format '{{.Image}} {{.Names}}' 2>/dev/null \
      | grep -qi traefik; then
   ok "Traefik already running — leaving it untouched"
 else
@@ -370,10 +386,23 @@ fi
 # only needed for the FIRST run, so they are passed as flags here and the agent
 # clears them from its record once provisioned.
 step "Writing the systemd unit..."
+# On a STORAGE-ONLY host neither Docker line may appear. `SupplementaryGroups`
+# names a group that does not exist there, and systemd refuses to spawn the
+# process at all (status=216/GROUP) rather than warning — which, under `set -e`,
+# aborts this script on its very last command and leaves the host with an agent
+# that never runs.
+if [ "$STORAGE_ONLY" = "1" ]; then
+  UNIT_AFTER="network-online.target"
+  DOCKER_UNIT_LINES=""
+else
+  UNIT_AFTER="network-online.target docker.service"
+  DOCKER_UNIT_LINES="# The agent needs the Docker socket to build + run stacks.
+SupplementaryGroups=docker"
+fi
 cat > "$UNIT" <<EOF
 [Unit]
 Description=Deplo server agent
-After=network-online.target docker.service
+After=$UNIT_AFTER
 Wants=network-online.target
 
 [Service]
@@ -387,13 +416,18 @@ ExecStart=$AGENT_BIN \\
   --bootstrap-fingerprint "$FINGERPRINT"
 Restart=on-failure
 RestartSec=5
-# The agent needs the Docker socket to build + run stacks.
-SupplementaryGroups=docker
+$DOCKER_UNIT_LINES
 
 [Install]
 WantedBy=multi-user.target
 EOF
 chmod 600 "$UNIT"
+
+# The backup store the agent owns. Created here rather than lazily so a
+# storage-only box shows the right permissions from the first minute, and so a
+# full disk is visible before the first backup rather than during it.
+mkdir -p /data/backups
+chmod 700 /data/backups
 
 step "Starting the agent..."
 systemctl daemon-reload

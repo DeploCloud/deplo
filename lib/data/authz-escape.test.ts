@@ -20,6 +20,7 @@ import {
 import {
   seedApp,
   seedServer,
+  SERVER_1,
   TRUNCATE_PROJECT_GRAPH,
 } from "./app-graph-test-helpers";
 import {
@@ -27,6 +28,7 @@ import {
   seedDatabase,
   seedRun,
   seedS3,
+  seedDestination,
   TRUNCATE_BACKUPS,
 } from "./backup-test-helpers";
 import { ALL_CAPABILITIES, type Capability } from "../types";
@@ -45,9 +47,11 @@ import {
   deleteBackup,
   restoreBackup,
   runBackup,
+  downloadBackupArtifact,
   toggleBackup,
   updateBackup,
 } from "./backups";
+import { revealRecoveryKey } from "./destinations";
 import { listApps } from "./apps";
 import { createFolder, listFolders, moveAppToFolder } from "./folders";
 import { moveAppToProject } from "./projects";
@@ -412,6 +416,33 @@ test("a project-scoped token can't restore a database it can't even see", async 
   await refused(
     () => scoped(() => restoreBackup(runId)),
     "a narrowed token restored a database backup",
+  );
+});
+
+test("nor download its artifact — a dump is every byte the database holds", async () => {
+  const { runId } = await dbBackup();
+  // Downloading is the quiet sibling of restoring: it does not touch the live
+  // database, so it looks harmless, and it hands over the entire contents. It is
+  // gated on `restore_backups` for exactly that reason, and a token that cannot
+  // see the database must not reach it either.
+  await refused(
+    () => scoped(() => downloadBackupArtifact(runId)),
+    "a narrowed token downloaded a database backup",
+  );
+});
+
+test("nor take the recovery key that decrypts every artifact at a destination", async () => {
+  const dest = await seedDestination(db, {
+    id: "dst_srv_escape",
+    kind: "server",
+    serverId: SERVER_1,
+  });
+  // The key is worth more than any single artifact: with it, every backup ever
+  // written to that destination is readable, forever, off a disk. A destination
+  // belongs to the team and to no Project, so a narrowed token has no path to it.
+  await refused(
+    () => scoped(() => revealRecoveryKey(dest)),
+    "a narrowed token took a destination's recovery key",
   );
 });
 

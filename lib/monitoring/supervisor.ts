@@ -342,6 +342,9 @@ function sleep(ms: number, signal: AbortSignal): Promise<void> {
 async function runStreamLoop(
   serverId: string,
   serverName: string,
+  /** A storage-only host has no Docker on purpose, so its heartbeat must not
+   *  keep re-asserting `warning` for a correct configuration. */
+  storageOnly: boolean,
   signal: AbortSignal,
 ): Promise<void> {
   let attempt = 0;
@@ -375,7 +378,7 @@ async function runStreamLoop(
       // reused by every heartbeat below. A host streaming with Docker down
       // classifies as `warning`, and the heartbeat must keep saying so — a
       // hardcoded online literal would clobber it 8s after every connect.
-      const connHealth = classifyServerHealth(hello, null);
+      const connHealth = classifyServerHealth(hello, null, { storageOnly });
 
       // On OPEN: persist what the Hello told us, and record health. This Hello is
       // a health observation as good as the prober's own, and — unlike the old
@@ -556,7 +559,7 @@ export async function reconcileMetricsStreams(): Promise<void> {
     state.servers.set(s.id, entry);
     entry.loop = (mode === "poll"
       ? runPollLoop(s.id, abort.signal)
-      : runStreamLoop(s.id, s.name, abort.signal)
+      : runStreamLoop(s.id, s.name, s.storageOnly, abort.signal)
     ).catch((e) => {
       console.warn(
         `[monitoring] stream loop for ${s.name} exited: ${e instanceof Error ? e.message : String(e)}`,

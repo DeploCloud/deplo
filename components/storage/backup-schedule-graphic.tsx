@@ -14,7 +14,7 @@ import { cn } from "@/lib/utils";
  * schedules is right; drawing them the same way would not be.
  *
  * `--chart-1`. The three tabs of this page have to differ at a glance:
- * Databases is `--chart-4`, S3 destinations is `--chart-5`, this one is blue.
+ * Databases is `--chart-4`, destinations is `--chart-5`, this one is blue.
  *
  * Pure SVG + CSS keyframes (see globals.css), no JS and no library. The arc is
  * one `stroke-dashoffset` and the head is one pop on a delay - the same two

@@ -9,7 +9,7 @@ and docs use; it is not a spec.
 ### Tenancy
 
 **Team**:
-An isolated workspace owning apps, domains, env vars, databases, S3 destinations,
+An isolated workspace owning apps, domains, env vars, databases, backup destinations,
 registries, GitHub apps, API tokens, activity, members and notification settings. The
 unit of multi-tenancy. A user may belong to **many** teams and switches the **active
 team** from the topbar; everything in the dashboard is scoped to it. **Servers are the
@@ -489,23 +489,54 @@ touches the host Docker socket for a DB. See
 _Avoid_: DB instance, datastore (use "database"), local database (none are local now — every
 DB lives on an agent, the Deplo host included).
 
-**S3 destination**:
-A team-owned S3-compatible bucket + credentials that **backup runs** write to (creds
-encrypted at rest, never returned to a client). Its `status` is `unverified` until someone
-runs the **connection test**, which is not a guess: a backup-capable **server agent** probes
-the bucket for real — head it, write a 0-byte `.deplo-s3check`, remove it — so a read-only
-key reads as *failed*, not *connected*. The verdict is persisted with its reason
-(`last_test_*`), which is what lets the card say WHY it is red and the **connection log**
-(the destination's three-dot menu) show the whole probe sequence, the agent's verbatim
-message, and the equivalent commands to reproduce it by hand. A failed probe is a normal
-result of `testS3`, NOT a mutation error — read `report.ok`; the mutation used to return only
-the destination, which is how the UI came to report success over a failing bucket.
-_Avoid_: bucket (a destination is bucket + endpoint + region + creds + verdict); "connection
+**Backup destination**:
+Where a team's **backup runs** write their artifacts. Exactly two **kinds**, and the word
+covers both:
+
+- **S3 bucket** — an S3-compatible bucket + credentials (creds encrypted at rest, never
+  returned to a client).
+- **Server** — a folder on a server in the fleet: the same VPS the workload runs on, or
+  another one (including a **storage-only server**). Artifacts here are ALWAYS encrypted,
+  to one age keypair per destination.
+
+Its `status` is `unverified` until someone runs the **connection test**, which is not a
+guess: a **server agent** probes for real — a bucket gets a head, a 0-byte `.deplo-s3check`
+write and a remove, so a read-only key reads as *failed*, not *connected*; a folder gets
+resolved, marked, probe-written and measured for free space. The verdict is persisted with
+its reason (`last_test_*`), which is what lets the card say WHY it is red and the
+**connection log** (the destination's three-dot menu) show the whole probe sequence, the
+agent's verbatim message, and the equivalent commands to reproduce it by hand. A failed
+probe is a normal result of `testDestination`, NOT a mutation error — read `report.ok`; the
+mutation used to return only the destination, which is how the UI came to report success
+over a failing bucket. See
+[ADR-0019](../docs/adr/0019-a-backup-destination-is-a-bucket-or-a-server.md).
+_Avoid_: "S3 destination" for the concept (it is one kind of destination now); bucket (an S3
+destination is bucket + endpoint + region + creds + verdict); "folder" for the app-grouping
+sense in the same sentence (a destination's folder is a path on a disk); "connection
 verified" for anything but a passed probe; calling the reproduce block "the command deplo
 ran" (the agent does it in-process with minio-go, no shell).
 
+**Recovery key**:
+The private half of a **server** destination's age keypair, downloadable by anyone holding
+`manage_backup_destinations` — one of exactly TWO sanctioned exceptions to "never add a
+show-secret affordance" (the other is the basic-auth password). It exists because encryption
+without it is a trap: a rotated `DEPLO_SECRET`, or the loss of the control plane in the very
+disaster the backups are for, would make those artifacts unreadable forever. With it,
+`age -d -i key.txt` reads them on any machine with no Deplo involved. Fetching it is recorded
+in **Activity**, and the destination card nudges until someone has.
+_Avoid_: password, encryption key (it is the key you keep OUTSIDE Deplo); "shown once" (it
+stays downloadable on purpose).
+
+**Storage-only server**:
+A **server** whose agent is installed to HOLD BACKUPS and nothing else: no Docker, no
+Traefik, never a deploy target. Chosen at registration; the install command then skips all of
+it. Its Docker readiness and health checks are skipped rather than failed, because a storage
+box without Docker is correct, not broken.
+_Avoid_: backup server (it holds backups, it does not run them — the workload's own agent
+does the dump).
+
 **Backup**:
-A **schedule**: a cron expression + S3 destination + retention, targeting **one** thing via
+A **schedule**: a cron expression + **backup destination** + retention, targeting **one** thing via
 `targetKind` — a `Database` or an `App` (never an app's linked databases; those are
 backed up as databases). Stored metadata only; running it produces a **backup run**. A
 backup never holds artifacts itself.
@@ -514,14 +545,19 @@ a run), dump (that is the DB-specific artifact contents).
 
 **Backup run**:
 One **executed** backup — the artifact record you restore *from*. A `BackupRun` row
-(`running`→`success`/`failed`) carries the S3 `objectKey`, size, and timestamps; the dump or
-archive itself lives **only** in S3 (the agent streams it there via multipart PUT, never
-through the control plane). The run history is the source of truth for the UI's artifact
-list (`ListBackupArtifacts` on the agent is deferred). Restore is **in-place and
-destructive** — DB drop-and-recreate per engine, app wipe-and-untar (stop → wipe → untar
-→ `Reroute` snapshot, a full data+config restore) — and so requires a typed confirmation. See
-[ADR-0007](../docs/adr/0007-backups-route-through-the-owning-agent-databases-become-agent-provisioned.md).
-_Avoid_: backup (that is the schedule), artifact (use for the S3 object specifically),
+(`running`→`success`/`failed`) carries the `objectKey`, size, and timestamps; the dump or
+archive itself lives **only** at the destination (a bucket, via multipart PUT, or a server's
+disk), never in the control plane. A run whose destination is another server relays its bytes
+THROUGH the control plane — agents cannot dial each other — but as ciphertext, and nothing is
+buffered. The run history is the source of truth for the UI's artifact list
+(`ListBackupArtifacts` on the agent is deferred). Restore is **in-place and destructive** — DB
+drop-and-recreate per engine, app wipe-and-untar (stop → wipe → untar → `Reroute` snapshot, a
+full data+config restore) — and so requires a typed confirmation. An artifact on a **server**
+destination can also be DOWNLOADED (decrypted on the way out, gated on `restore_backups`);
+one in a bucket cannot, because you already have your own credentials for it. See
+[ADR-0007](../docs/adr/0007-backups-route-through-the-owning-agent-databases-become-agent-provisioned.md)
+and [ADR-0019](../docs/adr/0019-a-backup-destination-is-a-bucket-or-a-server.md).
+_Avoid_: backup (that is the schedule), artifact (use for the stored object specifically),
 restore point.
 
 **Cron job**:

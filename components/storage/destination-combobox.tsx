@@ -1,19 +1,19 @@
 "use client";
 
 import * as React from "react";
-import { ChevronsUpDown, Loader2 } from "lucide-react";
+import { ChevronsUpDown, Cloud, Loader2, Server } from "lucide-react";
 
 import { Input } from "@/components/ui/input";
 import { isOverlayAutoFocusing } from "@/components/ui/overlay-autofocus";
 import { StatusBadge } from "@/components/shared/status-badge";
 import { gqlAction } from "@/lib/graphql-client";
 import { cn } from "@/lib/utils";
-import type { S3Status } from "@/lib/types";
-import type { DestinationOption } from "@/lib/data/s3";
+import type { DestinationStatus } from "@/lib/types";
+import type { DestinationOption } from "@/lib/data/destinations";
 
 /** The stored badge is only a starting point; this is what the live probe returns. */
 interface LiveStatus {
-  status: S3Status;
+  status: DestinationStatus;
   error: string | null;
 }
 
@@ -25,24 +25,25 @@ interface LiveStatus {
 const PROBE_MIN_INTERVAL_MS = 5_000;
 
 /**
- * Pick an S3 destination by typing, with the list proving itself as it opens.
+ * Pick a backup destination by typing, with the list proving itself as it opens.
  *
- * Choosing where a backup goes is exactly the moment "is this bucket actually
+ * Choosing where a backup goes is exactly the moment "is this actually
  * reachable?" has to be TRUE rather than remembered, so opening the menu fires a
- * live probe of every destination (`testS3Destinations` — a HEAD plus a write
- * probe through a backup-capable agent) and repaints each badge from the answer.
- * Until it lands, each row shows the stored verdict, so the list is never empty
- * or frozen while the network works.
+ * live probe of every destination (`testDestinations` — a bucket HEAD+write, or
+ * a folder resolve+write, through the right agent) and repaints each badge from
+ * the answer. Until it lands, each row shows the stored verdict, so the list is
+ * never empty or frozen while the network works.
  *
- * Each row carries the three things that tell one bucket from another: the name,
- * the live connection status, and the endpoint it writes to. The endpoint is the
- * description precisely because names drift ("backups", "backups-2") while the
- * host never lies about which provider and account the data lands in.
+ * Each row carries the three things that tell one destination from another: the
+ * name, the live connection status, and WHERE it writes — the bucket endpoint,
+ * or the server and folder. That is the description precisely because names
+ * drift ("backups", "backups-2") while the place never lies about where the data
+ * lands.
  *
- * Typing filters over BOTH the name and the endpoint — searching "r2" or the
- * account id finds the bucket when nobody remembers what it was called. Unlike
- * the version fields, free text is not a value here: the field resolves to a
- * destination id or to nothing.
+ * Typing filters over BOTH the name and that location — searching "r2", an
+ * account id or a server name finds the destination when nobody remembers what
+ * it was called. Unlike the version fields, free text is not a value here: the
+ * field resolves to a destination id or to nothing.
  */
 export function DestinationCombobox({
   destinations,
@@ -78,12 +79,12 @@ export function DestinationCombobox({
     probingRef.current = true;
     setProbing(true);
     void gqlAction<
-      { testS3Destinations: { id: string; status: S3Status; lastTestError: string | null }[] },
-      { id: string; status: S3Status; lastTestError: string | null }[]
+      { testDestinations: { id: string; status: DestinationStatus; lastTestError: string | null }[] },
+      { id: string; status: DestinationStatus; lastTestError: string | null }[]
     >(
-      `mutation { testS3Destinations { id status lastTestError } }`,
+      `mutation { testDestinations { id status lastTestError } }`,
       {},
-      (d) => d.testS3Destinations,
+      (d) => d.testDestinations,
     )
       .then((res) => {
         // A failed call leaves the stored badges in place — opening a dropdown
@@ -135,7 +136,7 @@ export function DestinationCombobox({
         (d) =>
           !q ||
           d.name.toLowerCase().includes(q) ||
-          d.endpoint.toLowerCase().includes(q),
+          d.where.toLowerCase().includes(q),
       ),
     [destinations, q],
   );
@@ -224,7 +225,7 @@ export function DestinationCombobox({
           {filtered.length === 0 ? (
             <p className="px-3 py-2 text-xs text-muted-foreground">
               {destinations.length === 0
-                ? "No S3 destinations yet"
+                ? "No backup destinations yet"
                 : "No destination matches that"}
             </p>
           ) : (
@@ -251,7 +252,14 @@ export function DestinationCombobox({
                       )}
                     >
                       <span className="flex items-center justify-between gap-2">
-                        <span className="truncate text-sm">{d.name}</span>
+                        <span className="flex min-w-0 items-center gap-1.5">
+                          {d.kind === "server" ? (
+                            <Server className="size-3.5 shrink-0 text-muted-foreground" />
+                          ) : (
+                            <Cloud className="size-3.5 shrink-0 text-muted-foreground" />
+                          )}
+                          <span className="truncate text-sm">{d.name}</span>
+                        </span>
                         {probing ? (
                           <Loader2 className="size-3.5 shrink-0 animate-spin text-muted-foreground" />
                         ) : (
@@ -263,9 +271,9 @@ export function DestinationCombobox({
                         )}
                       </span>
                       <span className="block truncate font-mono text-xs text-muted-foreground">
-                        {d.endpoint}
+                        {d.where}
                       </span>
-                      {/* Why it is red, without making anyone open the S3 page. */}
+                      {/* Why it is red, without making anyone open Storage. */}
                       {status === "error" && error && !probing && (
                         <span className="block truncate text-xs text-destructive">
                           {error}

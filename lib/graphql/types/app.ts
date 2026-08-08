@@ -528,7 +528,7 @@ const AppTransferInfoRef = builder
       backupCount: t.exposeInt("backupCount", {
         description:
           "Backup schedules targeting this app — removed on transfer, because " +
-          "they point at the current team's S3 destination.",
+          "they point at the current team's backup destination.",
       }),
       githubConnected: t.exposeBoolean("githubConnected"),
       gitConnectionLabel: t.exposeString("gitConnectionLabel", {

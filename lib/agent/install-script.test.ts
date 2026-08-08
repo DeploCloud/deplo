@@ -172,9 +172,23 @@ function guardMatches(url: string): boolean {
  */
 
 /** The address-pool block, comments and indentation stripped, for comparison. */
+/**
+ * Where the installer INVOKES the pool step. Matched by regex rather than by the
+ * literal "\nconfigure_docker_address_pools\n": install-agent.sh wraps the call in
+ * a storage-only guard, so it is indented there and bare in install.sh. What
+ * these tests protect is that the call exists and runs early enough — not how it
+ * is formatted.
+ */
+function poolCallIndex(script: string): number {
+  return script.search(/^[ \t]*configure_docker_address_pools$/m);
+}
+
 function poolBlock(script: string): string {
   const start = script.indexOf("pool_candidate_is_free() {");
-  const end = script.indexOf("\nconfigure_docker_address_pools\n", start);
+  // Up to the END of the second function, not to the call: parity is about the
+  // two DEFINITIONS being identical. install-agent.sh wraps its call in a
+  // storage-only guard, which is a legitimate difference at the call site.
+  const end = script.lastIndexOf("\n}\n", poolCallIndex(script)) + 3;
   assert.ok(start >= 0 && end > start, "address-pool block not found in installer");
   return script
     .slice(start, end)
@@ -190,7 +204,7 @@ test("the address-pool step runs BEFORE anything creates a docker network", asyn
   try {
     const agent = await renderInstallScript();
     assert.ok(agent);
-    const configured = agent!.indexOf("\nconfigure_docker_address_pools\n");
+    const configured = poolCallIndex(agent!);
     const firstNetwork = agent!.indexOf("docker network create deplo");
     assert.ok(configured > 0, "install-agent.sh never calls configure_docker_address_pools");
     assert.ok(firstNetwork > 0, "install-agent.sh no longer creates the deplo network?");
@@ -200,7 +214,7 @@ test("the address-pool step runs BEFORE anything creates a docker network", asyn
     );
 
     const host = await readFile(join(process.cwd(), "install.sh"), "utf8");
-    const hostConfigured = host.indexOf("\nconfigure_docker_address_pools\n");
+    const hostConfigured = poolCallIndex(host);
     const hostNetwork = host.indexOf("docker network inspect deplo");
     assert.ok(hostConfigured > 0, "install.sh never calls configure_docker_address_pools");
     assert.ok(hostNetwork > 0, "install.sh no longer creates the deplo network?");

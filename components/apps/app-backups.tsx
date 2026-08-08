@@ -12,6 +12,7 @@ import {
   Trash2,
   Loader2,
   AlertTriangle,
+  Download,
   ArrowUpRight,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -60,7 +61,7 @@ import { DestinationCombobox } from "@/components/storage/destination-combobox";
 import { gqlAction } from "@/lib/graphql-client";
 import { DEFAULT_SCHEDULE, isValidSchedule } from "@/lib/schedule";
 import type { BackupDTO } from "@/lib/data/backups";
-import type { DestinationOption } from "@/lib/data/s3";
+import type { DestinationOption } from "@/lib/data/destinations";
 import type { BackupRun } from "@/lib/types";
 
 type Destination = DestinationOption;
@@ -68,12 +69,17 @@ type Destination = DestinationOption;
 export function AppBackups({
   appId,
   serviceName,
+  serverId,
   schedules,
   runs,
   destinations,
 }: {
   appId: string;
   serviceName: string;
+  /** The server this app runs on, so a backup landing on that same disk can say
+   *  so. It is still worth having — it protects against a mistake — but it is a
+   *  copy, not a second place, and the UI should not pretend otherwise. */
+  serverId: string | null;
   schedules: BackupDTO[];
   runs: BackupRun[];
   destinations: Destination[];
@@ -82,6 +88,18 @@ export function AppBackups({
   const destName = React.useMemo(
     () => new Map(destinations.map((d) => [d.id, d.name] as const)),
     [destinations],
+  );
+  const destKind = React.useMemo(
+    () => new Map(destinations.map((d) => [d.id, d.kind] as const)),
+    [destinations],
+  );
+  // Any destination pointing at this app's own server.
+  const sameDisk = React.useMemo(
+    () =>
+      serverId
+        ? destinations.filter((d) => d.kind === "server" && d.serverId === serverId)
+        : [],
+    [destinations, serverId],
   );
 
   return (
@@ -93,7 +111,7 @@ export function AppBackups({
             <h2 className="text-sm font-medium">Back up this app</h2>
             <p className="mt-1 text-xs text-muted-foreground">
               Captures the app&apos;s persistent volumes, files and its
-              compose/env snapshot to an S3 destination. Linked databases are
+              compose/env snapshot to a backup destination. Linked databases are
               backed up separately, as databases.
             </p>
           </div>
@@ -135,22 +153,34 @@ export function AppBackups({
         </section>
       )}
 
-      {/* No S3 destination yet — backups have nowhere to go without one. This
+      {/* Same-disk honesty. A backup kept on the machine it came from survives a
+          bad migration or a dropped table; it does not survive the disk. One
+          line, no dialog, no block — the operator chose this and it is a real
+          improvement over no backup at all. */}
+      {!noDeps && sameDisk.length > 0 && (
+        <p className="text-xs text-muted-foreground">
+          {sameDisk.map((d) => d.name).join(", ")}{" "}
+          {sameDisk.length === 1 ? "is" : "are"} on the same disk as this app:
+          protects against a mistake, not against a disk failure.
+        </p>
+      )}
+
+      {/* No destination yet — backups have nowhere to go without one. This
           sits right above the artifacts so the empty state is explained, with a
-          link straight to Storage → S3 Destinations (dialog pre-opened). */}
+          link straight to Storage → Destinations (dialog pre-opened). */}
       {noDeps && (
         <div className="flex flex-col gap-3 rounded-lg border border-[var(--warning)]/30 bg-[var(--warning)]/5 p-4 sm:flex-row sm:items-center">
           <AlertTriangle className="size-5 shrink-0 text-[var(--warning)]" />
           <div className="min-w-0 flex-1">
-            <p className="text-sm font-medium">No S3 destination configured</p>
+            <p className="text-sm font-medium">No backup destination configured</p>
             <p className="mt-1 text-sm text-muted-foreground">
-              App backups are uploaded to an S3 bucket. Add a destination to
-              run or schedule backups — completed artifacts then appear here.
+              Pick a server to keep backups on, or connect an S3 bucket, and
+              backups can run — completed artifacts then appear here.
             </p>
           </div>
           <Button asChild size="sm" className="shrink-0 sm:ml-auto">
-            <Link href="/storage?new=s3">
-              Add S3 destination
+            <Link href="/storage?new=destination">
+              Add destination
               <ArrowUpRight className="size-4" />
             </Link>
           </Button>
@@ -190,6 +220,7 @@ export function AppBackups({
                     destinationName={
                       destName.get(run.destinationId) ?? "Unknown destination"
                     }
+                    downloadable={destKind.get(run.destinationId) === "server"}
                   />
                 ))}
                 <PendingRows columns={5} />
@@ -268,7 +299,7 @@ function BackUpNow({
           )}
         </TooltipTrigger>
         <TooltipContent>
-          {noDeps ? "Add an S3 destination first" : "Run a one-off backup now"}
+          {noDeps ? "Add a backup destination first" : "Run a one-off backup now"}
         </TooltipContent>
       </Tooltip>
       <DialogContent>
@@ -283,7 +314,7 @@ function BackUpNow({
           <div className="space-y-2">
             <FieldLabel
               htmlFor="backup-now-destination"
-              info="The S3 destination this backup is uploaded to. Opening the list re-checks every bucket, so the status you see is live."
+              info="Where this backup is written. Opening the list re-checks every destination, so the status you see is live."
             >
               Destination
             </FieldLabel>
@@ -382,14 +413,14 @@ function ScheduleBackup({
           )}
         </TooltipTrigger>
         <TooltipContent>
-          {noDeps ? "Add an S3 destination first" : "Schedule recurring backups"}
+          {noDeps ? "Add a backup destination first" : "Schedule recurring backups"}
         </TooltipContent>
       </Tooltip>
       <DialogContent>
         <DialogHeader>
           <DialogTitle>Schedule a backup</DialogTitle>
           <DialogDescription>
-            Periodically back up this app to an S3 destination.
+            Periodically back up this app to a backup destination.
           </DialogDescription>
         </DialogHeader>
         <form className="grid gap-4" onSubmit={onSubmit}>
@@ -455,7 +486,7 @@ function ScheduleFormFields({
       <div className="space-y-2">
         <FieldLabel
           htmlFor="app-backup-destination"
-          info="The S3 destination scheduled backups are uploaded to. Opening the list re-checks every bucket, so the status you see is live."
+          info="Where scheduled backups are written. Opening the list re-checks every destination, so the status you see is live."
         >
           Destination
         </FieldLabel>
@@ -726,10 +757,16 @@ function RunRow({
   run,
   serviceName,
   destinationName,
+  downloadable,
 }: {
   run: BackupRun;
   serviceName: string;
   destinationName: string;
+  /** Whether this run's artifact is on a server we can stream it from. An S3
+   *  artifact is not offered here: pulling it out of the bucket and back through
+   *  Deplo would double the transfer to hand over a file the operator can
+   *  already fetch with their own credentials. */
+  downloadable: boolean;
 }) {
   const router = useRouter();
   const [restoreOpen, setRestoreOpen] = React.useState(false);
@@ -764,6 +801,37 @@ function RunRow({
         )}
       </TableCell>
       <TableCell className="text-right">
+        {/* The file itself, decrypted. The reason a folder on your own server is
+            worth having: the backup is a thing you can hold, not only a thing
+            Deplo can put back. */}
+        {downloadable && (
+          <SimpleTooltip
+            content={
+              run.status === "success"
+                ? "Download this backup file"
+                : "Only a successful backup can be downloaded"
+            }
+          >
+            <Button
+              variant="ghost"
+              size="sm"
+              asChild={run.status === "success"}
+              disabled={run.status !== "success"}
+            >
+              {run.status === "success" ? (
+                <a href={`/api/backups/${run.id}/download`} download>
+                  <Download className="size-4" />
+                  Download
+                </a>
+              ) : (
+                <span>
+                  <Download className="size-4" />
+                  Download
+                </span>
+              )}
+            </Button>
+          </SimpleTooltip>
+        )}
         {/* Restore is only meaningful for a completed artifact. */}
         <SimpleTooltip
           content={

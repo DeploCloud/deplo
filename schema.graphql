@@ -444,6 +444,33 @@ type Backup {
 }
 
 """
+Where a team's backup artifacts are kept: an S3-compatible bucket, or a directory on a server in the fleet. Secrets are masked and the recovery key is never a field — it has its own mutation, which records who took it.
+"""
+type BackupDestination {
+  accessKeyMasked: String
+  bucket: String
+  createdAt: String
+  endpoint: String
+  freeBytes: Float
+  id: ID
+  kind: DestinationKind
+  lastTestAt: String
+  lastTestError: String
+  name: String
+  path: String
+  provider: S3Provider
+  recoveryKeySavedAt: String
+  region: String
+  resolvedPath: String
+  serverId: ID
+  serverName: String
+  status: DestinationStatus
+  teamId: ID
+  totalBytes: Float
+  where: String
+}
+
+"""
 One executed backup — a single dump+upload artifact, and the source for an in-place restore.
 """
 type BackupRun {
@@ -553,6 +580,7 @@ enum Capability {
   delete_team
   deploy @deprecated(reason: "Split into finer permissions. Still accepted on input, where it means: create_apps, deploy_apps, control_apps, configure_apps, delete_apps, move_apps, open_app_console, manage_previews, manage_crons, create_folders, organize_folders, delete_folders, create_projects, organize_projects, delete_projects, manage_environments.")
   deploy_apps
+  manage_backup_destinations
   manage_backups
   manage_basic_auth
   manage_crons
@@ -561,14 +589,14 @@ enum Capability {
   manage_environments
   manage_files @deprecated(reason: "Split into finer permissions. Still accepted on input, where it means: read_app_files, write_app_files.")
   manage_git
-  manage_infra @deprecated(reason: "Split into finer permissions. Still accepted on input, where it means: create_databases, configure_databases, control_databases, delete_databases, open_database_console, manage_backups, restore_backups, manage_s3, manage_registries, manage_git, manage_tokens, manage_notifications, manage_monitoring.")
+  manage_infra @deprecated(reason: "Split into finer permissions. Still accepted on input, where it means: create_databases, configure_databases, control_databases, delete_databases, open_database_console, manage_backups, restore_backups, manage_backup_destinations, manage_registries, manage_git, manage_tokens, manage_notifications, manage_monitoring.")
   manage_members
   manage_monitoring
   manage_notifications
   manage_previews
   manage_registries
   manage_roles
-  manage_s3
+  manage_s3 @deprecated(reason: "Split into finer permissions. Still accepted on input, where it means: manage_backup_destinations.")
   manage_team
   manage_tokens
   move_apps
@@ -756,22 +784,25 @@ input CreateDatabaseInput {
   version: String!
 }
 
+input CreateDestinationInput {
+  accessKey: String
+  bucket: String
+  endpoint: String
+  kind: DestinationKind!
+  name: String!
+  path: String
+  provider: S3Provider
+  region: String
+  secretKey: String
+  serverId: String
+}
+
 input CreateRoleInput {
   capabilities: [Capability!]
   description: String
   name: String!
   requireTwoFactor: Boolean
   scope: RoleScopeInput
-}
-
-input CreateS3Input {
-  accessKey: String!
-  bucket: String!
-  endpoint: String!
-  name: String!
-  provider: S3Provider!
-  region: String
-  secretKey: String!
 }
 
 input CreateTokenInput {
@@ -1144,6 +1175,25 @@ enum DeploymentStatus {
   error
   queued
   ready
+}
+
+enum DestinationKind {
+  s3
+  server
+}
+
+enum DestinationStatus {
+  connected
+  error
+  unverified
+}
+
+"""
+A completed connection test: the destination with its badge repainted, plus the verdict. Callers MUST read `report.ok` — a failed probe is a normal result, not a mutation error.
+"""
+type DestinationTestResult {
+  destination: BackupDestination
+  report: S3TestReport
 }
 
 enum DeviceKind {
@@ -1882,6 +1932,7 @@ type Mutation {
     targetKind: String!
   ): CronJob
   createDatabase(input: CreateDatabaseInput!): Database
+  createDestination(input: CreateDestinationInput!): BackupDestination
 
   """Add a custom environment to a Project container."""
   createEnvironment(name: String!, projectId: ID!): Environment
@@ -1898,7 +1949,6 @@ type Mutation {
 
   """Create a custom role for the active team."""
   createRole(input: CreateRoleInput!): TeamRole
-  createS3(input: CreateS3Input!): S3Destination
 
   """Create a new team; the viewer becomes its owner and it is made active."""
   createTeam(name: String!): Team
@@ -1945,6 +1995,11 @@ type Mutation {
   """
   deleteDeployments(ids: [ID!]!): Int
 
+  """
+  Delete the destination and the schedules and run records that point at it. The artifacts themselves are not touched. Returns true.
+  """
+  deleteDestination(id: String!): Boolean
+
   """Delete an env var. Returns true."""
   deleteEnv(id: String!): Boolean
 
@@ -1978,9 +2033,6 @@ type Mutation {
   """
   deleteRole(id: String!): Boolean
 
-  """Delete the S3 destination and its backups. Returns true."""
-  deleteS3(id: String!): Boolean
-
   """Delete a shared variable. Returns true."""
   deleteSharedVar(id: String!): Boolean
 
@@ -1998,6 +2050,11 @@ type Mutation {
   Build a preview for a specific open pull request. Also approves it when it comes from a fork — clicking this IS the approval.
   """
   deployPullRequest(appId: ID!, prNumber: Int!): AppPreview
+
+  """
+  Fetch a server destination's recovery key, and mark it saved. This hands over the ability to read every artifact at that destination, so it is recorded in Activity. A mutation rather than a field precisely so that reading the destination never carries the key.
+  """
+  destinationRecoveryKey(id: String!): RecoveryKey
 
   """
   Stop a preview and remove its containers and volumes. The next commit on the pull request builds it again.
@@ -2460,22 +2517,22 @@ type Mutation {
   switchTeam(teamId: String!): Boolean
 
   """
+  Probe the destination through its agent — for a bucket, head/write/remove; for a server, resolve the folder, check it is writable and report its free space — and return BOTH the repainted destination and the verdict. A failed probe resolves normally with `report.ok = false`: check it rather than assuming success, and show `report.error` verbatim.
+  """
+  testDestination(id: String!): DestinationTestResult
+
+  """
+  Re-probe EVERY destination in the active team and return them with their badges repainted, newest first. For pickers that must show live connectivity the moment they open, rather than a status that was true hours ago. A destination whose probe fails comes back as `error` with `lastTestError` set — the call itself still resolves.
+  """
+  testDestinations: [BackupDestination!]
+
+  """
   Ask the provider who the stored token belongs to and record the answer.
   """
   testGitConnection(id: String!): GitConnection
 
   """Send a one-off test alert through one channel, using its saved config."""
   testNotificationChannel(id: ID!): Boolean
-
-  """
-  Probe the bucket through a backup-capable agent (head, write, remove) and return BOTH the repainted destination and the verdict. A failed probe resolves normally with `report.ok = false` — check it rather than assuming success, and show `report.error` verbatim.
-  """
-  testS3(id: String!): S3TestResult
-
-  """
-  Re-probe EVERY destination in the active team and return them with their badges repainted, newest first. For pickers that must show live connectivity the moment they open, rather than a status that was true hours ago. A destination whose probe fails comes back as `error` with `lastTestError` set — the call itself still resolves.
-  """
-  testS3Destinations: [S3Destination!]
 
   """Enable or disable a backup schedule. Returns true."""
   toggleBackup(enabled: Boolean!, id: String!): Boolean
@@ -2742,6 +2799,9 @@ type Query {
   """
   backupArtifactCount(targetId: String!, targetKind: BackupTargetKind!): Int
 
+  """All backup destinations in the active team, newest first."""
+  backupDestinations: [BackupDestination!]
+
   """
   Recorded backup runs for one target (an app OR a database), newest first. Pass exactly one of appId / databaseId.
   """
@@ -2800,6 +2860,11 @@ type Query {
   deleteUserImpact(userId: String!): DeleteUserImpact
   deployment(id: String!): Deployment
   deployments(appId: String, environment: DeploymentEnvironment, status: DeploymentStatus): [Deployment!]
+
+  """
+  The STORED result of this destination's last connection test — reading it never re-dials. `never` is true until the first test.
+  """
+  destinationTestReport(id: String!): S3TestReport
 
   """
   Recognise the JavaScript framework in a GitHub repository before an app exists for it — what the new-app wizard shows while you pick a repo. Null when there is nothing to recognise: a build method other than Nixpacks / Railpack (the only ones this applies to), a repository Deplo can't read, or a repository with no framework in it. Reads only; the app's first deploy re-derives and stores the answer.
@@ -2961,14 +3026,6 @@ type Query {
   """All registry credentials in the active team, newest first."""
   registries: [Registry!]
 
-  """All S3 destinations in the active team, newest first."""
-  s3Destinations: [S3Destination!]
-
-  """
-  The STORED result of this destination's last connection test — reading it never re-dials the bucket. `never` is true until the first test.
-  """
-  s3TestReport(id: String!): S3TestReport
-
   """Search registered users (by username/display name) to add to the team."""
   searchUsers(query: String!): [UserSearchResult!]
   server(id: String!): Server
@@ -3034,6 +3091,15 @@ type RecognizedFramework {
 
   """Display name, e.g. "Next.js"."""
   name: String
+}
+
+"""
+The private key that decrypts a server destination's artifacts. Save it somewhere outside Deplo: it is the only way to read those backups if this instance is lost. Fetching it is recorded in Activity.
+"""
+type RecoveryKey {
+  identity: String
+  name: String
+  recipient: String
 }
 
 """A single-use link to register a new account."""
@@ -3186,22 +3252,6 @@ type RuntimeContainer {
   state: String
 }
 
-"""An S3-compatible storage destination owned by a team (secrets masked)."""
-type S3Destination {
-  accessKeyMasked: String
-  bucket: String
-  createdAt: String
-  endpoint: String
-  id: ID
-  lastTestAt: String
-  lastTestError: String
-  name: String
-  provider: S3Provider
-  region: String
-  status: S3Status
-  teamId: ID
-}
-
 enum S3Provider {
   AWS
   BACKBLAZE_B2
@@ -3210,12 +3260,6 @@ enum S3Provider {
   MINIO
   OTHER
   WASABI
-}
-
-enum S3Status {
-  connected
-  error
-  unverified
 }
 
 """A line of the connection-test log, with the level to render it at."""
@@ -3237,14 +3281,6 @@ type S3TestReport {
   serverName: String
   startedAt: String
   steps: [S3TestStep!]
-}
-
-"""
-A completed connection test: the destination with its badge repainted, plus the verdict. Callers MUST read `report.ok` — a failed probe is a normal result, not a mutation error.
-"""
-type S3TestResult {
-  destination: S3Destination
-  report: S3TestReport
 }
 
 """

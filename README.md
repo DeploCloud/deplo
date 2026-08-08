@@ -33,7 +33,7 @@ Deplo is that: a self-hostable control plane. Push a repository or pick a templa
 | 📊 | **Live monitoring** | Real-time CPU, memory, disk and network per server (master + remotes) with rolling charts. |
 | 🔔 | **Alerts** | Anomaly notifications via browser push, email, Discord webhook and a generic webhook. |
 | 🔑 | **Variables** | Per-project env vars plus **shared groups** reused across projects from one source of truth. |
-| 🗄️ | **Storage** | Managed databases (Postgres, MySQL, MariaDB, MongoDB, Redis, ClickHouse), S3 destinations and scheduled backups. |
+| 🗄️ | **Storage** | Managed databases (Postgres, MySQL, MariaDB, MongoDB, Redis, ClickHouse), backup destinations (a server's disk or any S3 bucket) and scheduled backups. |
 | 🌐 | **Domains** | Custom domains with automatic TLS via Let's Encrypt. |
 | 📦 | **Registries** | Connect GHCR / Docker Hub / GitLab / generic registries for private images. |
 | 🔄 | **Self-update aware** | Checks this repo for newer releases and notifies you in-app. |

@@ -403,6 +403,9 @@ const AddServerInputType = builder.inputType("AddServerInput", {
     // restrict to those teams (editable later via setServerTeams).
     allTeams: t.boolean({ required: false }),
     teamIds: t.stringList({ required: false }),
+    // A server that only holds backups: the install command skips Docker and
+    // Traefik, and the readiness/health checks stop expecting them.
+    storageOnly: t.boolean({ required: false }),
   }),
 });
 
@@ -527,6 +530,7 @@ builder.mutationFields((t) => ({
         host: input.host,
         allTeams: input.allTeams ?? undefined,
         teamIds: input.teamIds ?? undefined,
+        storageOnly: input.storageOnly ?? undefined,
       }),
   }),
   setServerTeams: t.field({

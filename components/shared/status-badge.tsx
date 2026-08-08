@@ -5,7 +5,7 @@ import type {
   DatabaseStatus,
   DomainStatus,
   ServerStatus,
-  S3Status,
+  DestinationStatus,
 } from "@/lib/types";
 
 type AnyStatus =
@@ -13,7 +13,7 @@ type AnyStatus =
   | DatabaseStatus
   | DomainStatus
   | ServerStatus
-  | S3Status
+  | DestinationStatus
   | "active"
   | "idle"
   | "stopping"

@@ -126,7 +126,7 @@ const CONTROL_PLANE = [
   // data
   "databases",
   "team_database_order",
-  "s3_destination",
+  "backup_destination",
   "backups",
   "backup_runs",
   // cron jobs (ADR-0018)

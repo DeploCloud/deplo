@@ -4,7 +4,11 @@ import { getAppBySlug } from "@/lib/data/apps";
 import { hasAppCapability } from "@/lib/data/node-access";
 import { reachesWholeTeam } from "@/lib/membership";
 import { listBackups, listBackupRuns } from "@/lib/data/backups";
-import { listS3, toDestinationOption } from "@/lib/data/s3";
+import {
+  ensureDefaultDestination,
+  listDestinations,
+  toDestinationOption,
+} from "@/lib/data/destinations";
 import { AppBackups } from "@/components/apps/app-backups";
 import { PendingCreateProvider } from "@/components/shared/pending-create";
 import { EmptyState } from "@/components/shared/empty-state";
@@ -31,14 +35,18 @@ export default async function AppBackupsPage(
     );
   }
 
-  // The team's S3 destinations are a team-wide read: a member limited to part of
+  // The team's backup destinations are a team-wide read: a member limited to part of
   // the team keeps their app's backups and loses the list of places to send them
   // to, which the empty state below says rather than throwing.
   const wholeTeam = await reachesWholeTeam();
+  // Same lazy default as the Storage page, because THIS is where someone most
+  // often first wants a backup: arriving at an app's Backups tab and finding a
+  // destination already there is the difference between one click and a detour.
+  if (wholeTeam) await ensureDefaultDestination();
   const [allBackups, runs, destinations] = await Promise.all([
     listBackups(),
     listBackupRuns({ appId: project.id }),
-    wholeTeam ? listS3() : Promise.resolve([]),
+    wholeTeam ? listDestinations() : Promise.resolve([]),
   ]);
 
   // Only this app's schedules — listBackups returns the whole team's.
@@ -54,6 +62,7 @@ export default async function AppBackupsPage(
       <AppBackups
         appId={project.id}
         serviceName={project.name}
+        serverId={project.serverId ?? null}
         schedules={schedules}
         runs={runs}
         destinations={destinations.map(toDestinationOption)}

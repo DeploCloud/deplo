@@ -190,8 +190,8 @@ test("on a legacy team with no founder, any owner may delete", async () => {
   assert.equal(await teamExists(TEAM_A), false);
 });
 
-test("a team with a database, an S3 destination, schedules and run history deletes cleanly", async () => {
-  // The riskiest cascade topology: backups/backup_runs point at s3_destination
+test("a team with a database, a backup destination, schedules and run history deletes cleanly", async () => {
+  // The riskiest cascade topology: backups/backup_runs point at backup_destination
   // with ON DELETE RESTRICT while the team delete cascades BOTH sides in one
   // statement. Postgres' RI checks run on the end-of-statement snapshot, so the
   // single DELETE must survive — this guards the invariant against future
@@ -206,8 +206,8 @@ test("a team with a database, an S3 destination, schedules and run history delet
       on conflict do nothing;
     insert into databases (id, team_id, name, type, version, username, db_name, status, server_id, host, port, connection_string_enc, exposed_publicly, size_mb, created_at)
       values ('db_x', '${TEAM_A}', 'd', 'postgres', '16', 'app', 'app', 'running', 'srv_1', 'db-d', 5432, 'enc', false, 0, '${T0}');
-    insert into s3_destination (id, team_id, name, provider, endpoint, region, bucket, access_key_enc, secret_key_enc, status, created_at)
-      values ('s3_1', '${TEAM_A}', 'dest', 'aws', 'e', 'r', 'b', 'a', 's', 'connected', '${T0}');
+    insert into backup_destination (id, team_id, name, kind, provider, endpoint, region, bucket, access_key_enc, secret_key_enc, status, created_at)
+      values ('s3_1', '${TEAM_A}', 'dest', 's3', 'aws', 'e', 'r', 'b', 'a', 's', 'connected', '${T0}');
     insert into backups (id, team_id, name, target_kind, database_id, app_id, destination_id, schedule, retention_days, last_status, enabled, created_at)
       values ('bak_1', '${TEAM_A}', 'nightly', 'database', 'db_x', null, 's3_1', '0 3 * * *', 7, 'never', true, '${T0}');
     insert into backup_runs (id, team_id, backup_id, target_kind, database_id, app_id, destination_id, object_key, size_bytes, status, started_at)
@@ -219,7 +219,7 @@ test("a team with a database, an S3 destination, schedules and run history delet
   assert.equal(await teamExists(TEAM_A), false);
   for (const [table, id] of [
     ["databases", "db_x"],
-    ["s3_destination", "s3_1"],
+    ["backup_destination", "s3_1"],
     ["backups", "bak_1"],
     ["backup_runs", "run_1"],
   ]) {

@@ -126,7 +126,7 @@ const appRow = async () =>
 
 beforeEach(async () => {
   await pg.exec(`${TRUNCATE_PROJECT_GRAPH}
-    truncate table activities, backup_runs, backups, s3_destination restart identity cascade;
+    truncate table activities, backup_runs, backups, backup_destination restart identity cascade;
     truncate table github_installation, github_apps restart identity cascade;
     truncate table registration_links, membership_capabilities, memberships, users, teams restart identity cascade;`);
   await seedIdentity(db, {

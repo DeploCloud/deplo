@@ -12,7 +12,7 @@ import { EmptyState } from "@/components/shared/empty-state";
 import { CreateBackup } from "@/components/storage/create-backup";
 import { BackupRow } from "@/components/storage/backup-row";
 import type { BackupDTO } from "@/lib/data/backups";
-import type { DestinationOption } from "@/lib/data/s3";
+import type { DestinationOption } from "@/lib/data/destinations";
 
 type Destination = DestinationOption;
 
@@ -38,7 +38,7 @@ export function DatabaseBackups({
         <div>
           <h2 className="text-sm font-medium">Back up this database</h2>
           <p className="mt-1 text-xs text-muted-foreground">
-            Schedule a periodic dump of {database.name} to an S3 destination, then
+            Schedule a periodic dump of {database.name} to a backup destination, then
             restore it from any run.
           </p>
         </div>
@@ -57,7 +57,7 @@ export function DatabaseBackups({
           title="No backup schedules"
           description={
             destinations.length === 0
-              ? "Add an S3 destination in Storage → S3 destinations first, then schedule a backup here."
+              ? "Add a backup destination in Storage → Destinations first, then schedule a backup here."
               : "Schedule a backup to capture this database on a recurring basis."
           }
         />

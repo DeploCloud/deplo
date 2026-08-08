@@ -17,6 +17,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { FieldLabel } from "@/components/ui/info-tip";
+import { Checkbox } from "@/components/ui/checkbox";
 import { CommandLine } from "@/components/shared/code-block";
 import { gqlAction } from "@/lib/graphql-client";
 import {
@@ -50,6 +51,9 @@ export function AddServer({
     teamIds: [],
   });
   const [command, setCommand] = React.useState<string | null>(null);
+  // A box bought purely to hold backups. The install command then skips Docker
+  // and Traefik entirely, and the server never appears as a deploy target.
+  const [storageOnly, setStorageOnly] = React.useState(false);
 
   // Opened via the global "New ▸ Add server" menu (?new=1) → drop the param so a
   // refresh/Back doesn't reopen it.
@@ -62,6 +66,7 @@ export function AddServer({
     setName("");
     setHost("");
     setAccess({ allTeams: true, teamIds: [] });
+    setStorageOnly(false);
     setCommand(null);
   }
 
@@ -90,6 +95,7 @@ export function AddServer({
             host,
             allTeams: access.allTeams,
             teamIds: access.allTeams ? [] : access.teamIds,
+            storageOnly,
           },
         },
       );
@@ -126,7 +132,9 @@ export function AddServer({
           </DialogTitle>
           <DialogDescription>
             {command
-              ? "Run this once on the server. It installs Docker (if needed) and the Deplo agent, which then calls home to finish provisioning."
+              ? storageOnly
+                ? "Run this once on the server. It installs the Deplo agent only — no Docker, no proxy — and the agent then calls home to finish provisioning."
+                : "Run this once on the server. It installs Docker (if needed) and the Deplo agent, which then calls home to finish provisioning."
               : "Register the host, then run the install command it gives you on the box. Deplo never SSHes in — the agent connects out to this control plane."}
           </DialogDescription>
         </DialogHeader>
@@ -174,6 +182,26 @@ export function AddServer({
                 onChange={setAccess}
                 disabled={pending}
               />
+              {/* Advanced, and deliberately a checkbox rather than a mode: the
+                  difference is what the installer does on the box, and it cannot
+                  be changed afterwards without re-running it. */}
+              <label className="flex cursor-pointer items-start gap-3 rounded-lg border border-border p-3">
+                <Checkbox
+                  checked={storageOnly}
+                  onCheckedChange={(v) => setStorageOnly(v === true)}
+                  disabled={pending}
+                  className="mt-0.5"
+                />
+                <span>
+                  <span className="block text-sm font-medium">
+                    Only store backups on this server
+                  </span>
+                  <span className="mt-1 block text-xs text-muted-foreground">
+                    Skips Docker and the proxy. Nothing is deployed here, and it
+                    stays out of the deploy target list.
+                  </span>
+                </span>
+              </label>
             </div>
           )}
 

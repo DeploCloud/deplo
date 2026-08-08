@@ -8,7 +8,7 @@ import {
   backupRuns as backupRunsTable,
   databases as databasesTable,
   apps as appsTable,
-  s3Destination as s3DestinationTable,
+  backupDestination as destinationTable,
 } from "../db/schema/control-plane";
 import {
   assembleBackup,
@@ -40,11 +40,15 @@ import {
   isValidSchedule,
 } from "../schedule";
 import { parseConnectionPassword } from "../deploy/database-compose";
+import { mapBackupUnsupported } from "../infra/agent-client";
+import { getDestinationWithSecretsForTeam } from "./destinations";
 import {
-  connectBackupAgent,
-  mapBackupUnsupported,
-} from "../infra/agent-client";
-import { getS3WithSecretsForTeam, s3TargetFor } from "./s3";
+  backupToDestination,
+  deleteFromDestination,
+  deleteManyFromDestination,
+  openArtifactDownload,
+  restoreFromDestination,
+} from "./backup-transport";
 import {
   buildProjectDescriptor,
   type ProjectBackupDescriptor,
@@ -56,13 +60,7 @@ import {
   selectDoomedRuns,
   type RunForRetention,
 } from "./backup-objectkey";
-import { BackupKind } from "../agent/gen/agent";
-import type {
-  BackupRequest,
-  RestoreRequest,
-  DatabaseDescriptor,
-  ProjectDescriptor,
-} from "../agent/gen/agent";
+import type { DatabaseDescriptor, ProjectDescriptor } from "../agent/gen/agent";
 import type {
   Backup,
   BackupRun,
@@ -108,22 +106,22 @@ async function databaseServerId(
   return rows[0]?.serverId ?? null;
 }
 
-/** Whether a team owns the S3 destination `id`. */
+/** Whether a team owns the backup destination `id`. */
 async function destinationExists(id: string, teamId: string): Promise<boolean> {
   const rows = await getDb()
-    .select({ id: s3DestinationTable.id })
-    .from(s3DestinationTable)
-    .where(and(eq(s3DestinationTable.id, id), eq(s3DestinationTable.teamId, teamId)))
+    .select({ id: destinationTable.id })
+    .from(destinationTable)
+    .where(and(eq(destinationTable.id, id), eq(destinationTable.teamId, teamId)))
     .limit(1);
   return rows.length > 0;
 }
 
-/** Resolve the display name of an S3 destination by id (team-scoped), or "". */
+/** Resolve the display name of a backup destination by id (team-scoped), or "". */
 async function destinationNameFor(id: string, teamId: string): Promise<string> {
   const rows = await getDb()
-    .select({ name: s3DestinationTable.name })
-    .from(s3DestinationTable)
-    .where(and(eq(s3DestinationTable.id, id), eq(s3DestinationTable.teamId, teamId)))
+    .select({ name: destinationTable.name })
+    .from(destinationTable)
+    .where(and(eq(destinationTable.id, id), eq(destinationTable.teamId, teamId)))
     .limit(1);
   return rows[0]?.name ?? "";
 }
@@ -504,7 +502,7 @@ async function executeBackup(
   let failure: string | null = null;
   let objectKey = "";
   try {
-    const creds = await getS3WithSecretsForTeam(teamId, opts.destinationId);
+    const creds = await getDestinationWithSecretsForTeam(teamId, opts.destinationId);
     const target = await resolveTarget(teamId, opts.kind, opts.databaseId, opts.appId);
     label = target.label;
     activityAppId = target.appId;
@@ -513,7 +511,9 @@ async function executeBackup(
       kind: opts.kind,
       targetId: target.targetId,
       runId,
-      ext: artifactExt(opts.kind, target.dbType),
+      // A store artifact is age-encrypted, so its name says so — the `.age` a
+      // user would need to know to decrypt it by hand with the recovery key.
+      ext: artifactExt(opts.kind, target.dbType, creds.destination.kind),
       at: new Date(startedAt),
     });
     // Record the resolved key on the running record now, so a crash mid-dump
@@ -524,29 +524,19 @@ async function executeBackup(
       .set({ objectKey })
       .where(eq(backupRunsTable.id, runId));
 
-    const req: BackupRequest = {
-      kind: opts.kind === "database" ? BackupKind.BACKUP_KIND_DATABASE : BackupKind.BACKUP_KIND_PROJECT,
-      s3: s3TargetFor(creds, objectKey),
-      database: target.database,
-      project: target.project,
-    };
-    const conn = await connectBackupAgent(target.serverId);
-    try {
-      for await (const ev of conn.backup(req)) {
-        if (ev.result) {
-          result = {
-            ok: ev.result.ok,
-            error: ev.result.error,
-            objectKey: ev.result.objectKey || objectKey,
-            sizeBytes: Number(ev.result.sizeBytes ?? 0),
-          };
-        }
-      }
-    } finally {
-      conn.close();
-    }
-    if (!result) failure = "the agent ended the backup without a result";
-    else if (!result.ok) failure = result.error || "the agent reported a failed backup";
+    // WHERE the bytes go — an S3 bucket, this host's disk, or another server's
+    // via the control-plane relay — is entirely backup-transport's problem.
+    result = await backupToDestination(
+      creds,
+      {
+        serverId: target.serverId,
+        kind: opts.kind,
+        database: target.database,
+        project: target.project,
+      },
+      objectKey,
+    );
+    if (!result.ok) failure = result.error || "the agent reported a failed backup";
 
     // Retention runs on success only (a failed run wrote no object). Best-effort:
     // a prune failure must never fail the backup the operator asked for.
@@ -672,28 +662,37 @@ async function pruneRetention(
   );
   const toDelete = doomed.filter((r) => r.status === "success" && r.objectKey);
   if (toDelete.length) {
-    const creds = await getS3WithSecretsForTeam(teamId, destinationId);
-    const conn = await connectBackupAgent(target.serverId);
+    const creds = await getDestinationWithSecretsForTeam(teamId, destinationId);
     try {
-      for (const r of toDelete) {
-        try {
-          const res = await conn.s3Delete(s3TargetFor(creds, r.objectKey));
-          // The agent resolves `ok:false` (not a throw) on an S3-side failure, so
-          // gate on `ok` — only a confirmed delete (incl. idempotent already-gone)
-          // retires the record. A transient failure keeps it for the next prune.
-          if (res.ok) removable.add(r.id);
-          else
-            console.warn(
-              `[backups] could not delete artifact ${r.objectKey}: ${res.error || "agent reported failure"} (will retry next prune)`,
-            );
-        } catch (e) {
+      // Routed by DESTINATION, not by target: an artifact on another server's
+      // disk is only reachable through THAT server's agent, and dialing the
+      // workload's host instead would answer "no such file" forever — leaking
+      // the artifact while the record quietly disappeared. One connection for
+      // the whole sweep: a prune retires up to MAX_RUNS_PER_TARGET artifacts,
+      // and every dial mints a fresh client certificate.
+      const results = await deleteManyFromDestination(
+        creds,
+        target.serverId,
+        toDelete.map((r) => ({ key: r.objectKey })),
+      );
+      results.forEach((res, i) => {
+        const r = toDelete[i]!;
+        // The agent resolves `ok:false` (not a throw) on a destination-side
+        // failure, so gate on `ok` — only a confirmed delete (incl. idempotent
+        // already-gone) retires the record. A transient failure keeps it for the
+        // next prune.
+        if (res.ok) removable.add(r.id);
+        else
           console.warn(
-            `[backups] could not delete artifact ${r.objectKey}: ${e instanceof Error ? e.message : String(e)} (will retry next prune)`,
+            `[backups] could not delete artifact ${r.objectKey}: ${res.error || "agent reported failure"} (will retry next prune)`,
           );
-        }
-      }
-    } finally {
-      conn.close();
+      });
+    } catch (e) {
+      // The whole sweep failed (unreachable agent, too old to serve the verb).
+      // Every record stays, and the next prune tries again.
+      console.warn(
+        `[backups] could not delete artifacts for ${target.label}: ${e instanceof Error ? e.message : String(e)} (will retry next prune)`,
+      );
     }
   }
 
@@ -842,11 +841,85 @@ export async function runAppBackup(
 }
 
 /**
+ * Stream one backup artifact out, decrypted, for the download route.
+ *
+ * Gated on `restore_backups`, not on `manage_backups`: downloading a dump hands
+ * over every byte the target holds, which is the same power a restore gives and
+ * strictly more than scheduling one. `restore_backups` is already the sensitive
+ * capability the token presets withhold, so this needs no new one.
+ *
+ * Server destinations only. Pulling an S3 artifact back through the control
+ * plane would double the transfer to hand over a file the operator can already
+ * fetch from their own bucket with their own credentials.
+ *
+ * Returns the chunks plus the filename to offer. The caller MUST call `close()`
+ * once the response is finished — the agent connection stays open behind it.
+ */
+export async function downloadBackupArtifact(runId: string): Promise<{
+  filename: string;
+  chunks: AsyncGenerator<Buffer, void, unknown>;
+  close: () => void;
+}> {
+  const { membership } = await requireMembership();
+  const teamId = membership.teamId;
+  const user = (await getCurrentUser())!;
+
+  const runRows = await getDb()
+    .select()
+    .from(backupRunsTable)
+    .where(and(eq(backupRunsTable.id, runId), eq(backupRunsTable.teamId, teamId)))
+    .limit(1);
+  if (!runRows[0]) throw new Error("Backup run not found");
+  const run = assembleBackupRun(runRows[0]);
+  if (run.status !== "success")
+    throw new Error("This backup did not complete successfully and cannot be downloaded");
+  await requireBackupCapability(run, "restore_backups");
+
+  const creds = await getDestinationWithSecretsForTeam(teamId, run.destinationId);
+  if (creds.destination.kind !== "server")
+    throw new Error(
+      "This backup is in an S3 bucket. Download it from your bucket instead.",
+    );
+
+  const label =
+    run.targetKind === "database"
+      ? ((await databaseNameFor(run.databaseId, teamId)) ?? "database")
+      : ((run.appId ? (await loadAppGraph(run.appId))?.name : null) ?? "app");
+  const opened = await openArtifactDownload(creds, run.objectKey);
+
+  await recordActivity(
+    "backup",
+    `Downloaded a backup of ${label}`,
+    user.name,
+    run.appId,
+    teamId,
+  );
+  return { filename: downloadFilename(label, run), ...opened };
+}
+
+/**
+ * The name the browser saves the artifact under. The object key is stable and
+ * unguessable on purpose (`…/<stamp>-<runId>.tar.gz.age`), which makes it a poor
+ * filename — so the download offers `<target>-<stamp>.<ext>`, with the `.age`
+ * dropped because what arrives has already been decrypted.
+ */
+function downloadFilename(label: string, run: BackupRun): string {
+  const slug =
+    label
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, "-")
+      .replace(/^-|-$/g, "") || "backup";
+  const stamp = run.startedAt.replace(/[:.]/g, "-").replace(/-\d{3}Z$/, "Z");
+  const ext = run.objectKey.replace(/^.*?\.(?=[a-z])/, "").replace(/\.age$/, "");
+  return `${slug}-${stamp}.${ext || "gz"}`;
+}
+
+/**
  * Restore a backup IN PLACE from one of its recorded runs. Loads the
  * `BackupRun`, decrypts the destination creds, resolves the owning server, and
  * streams the agent's `Restore` to completion (DB = drop-and-recreate; project =
- * stop → wipe + untar → re-Reroute the snapshot). Guarded by `manage_infra`; the
- * UI adds a typed confirmation (Step 5). Throws on a failed restore.
+ * stop → wipe + untar → re-Reroute the snapshot). Guarded by `restore_backups`;
+ * the UI adds a typed confirmation. Throws on a failed restore.
  */
 export async function restoreBackup(runId: string): Promise<void> {
   const { membership } = await requireMembership();
@@ -866,34 +939,27 @@ export async function restoreBackup(runId: string): Promise<void> {
   // backup it replays — on the run's own target.
   await requireBackupCapability(run, "restore_backups");
 
-  const creds = await getS3WithSecretsForTeam(teamId, run.destinationId);
+  const creds = await getDestinationWithSecretsForTeam(teamId, run.destinationId);
   const target = await resolveTarget(
     teamId,
     run.targetKind,
     run.databaseId,
     run.appId,
   );
-  const s3 = s3TargetFor(creds, run.objectKey);
-  const req: RestoreRequest = {
-    kind: run.targetKind === "database" ? BackupKind.BACKUP_KIND_DATABASE : BackupKind.BACKUP_KIND_PROJECT,
-    s3,
-    database: target.database,
-    project: target.project,
-  };
 
-  let result: { ok: boolean; error: string } | null = null;
   let failure: string | null = null;
   try {
-    const conn = await connectBackupAgent(target.serverId);
-    try {
-      for await (const ev of conn.restore(req)) {
-        if (ev.result) result = { ok: ev.result.ok, error: ev.result.error };
-      }
-    } finally {
-      conn.close();
-    }
-    if (!result) failure = "the agent ended the restore without a result";
-    else if (!result.ok) failure = result.error || "the agent reported a failed restore";
+    const result = await restoreFromDestination(
+      creds,
+      {
+        serverId: target.serverId,
+        kind: run.targetKind,
+        database: target.database,
+        project: target.project,
+      },
+      run.objectKey,
+    );
+    if (!result.ok) failure = result.error || "the agent reported a failed restore";
   } catch (e) {
     failure = (mapBackupUnsupported(e) as Error).message;
   }
@@ -1052,24 +1118,21 @@ export async function deleteBackupArtifacts(input: {
   // be here: a caller-supplied targetId must be one this request can reach.
   if (!(await backupTargetInScope(input.kind, input.targetId)))
     throw new Error("Not found");
-  const creds = await getS3WithSecretsForTeam(teamId, input.destinationId);
+  const creds = await getDestinationWithSecretsForTeam(teamId, input.destinationId);
   const prefix = targetPrefix(teamId, input.kind, input.targetId);
 
   // The prefix-delete (RPC) runs BEFORE the record delete — outside any tx.
-  let deleted = 0;
-  const conn = await connectBackupAgent(input.serverId);
-  try {
-    const res = await conn.s3Delete(s3TargetFor(creds, prefix), true);
-    // The agent resolves `ok:false` (not a throw) on an S3-side failure — gate
-    // the record delete on it, like pruneRetention: dropping the rows while
-    // their objects survive would orphan the bucket AND erase the history that
-    // lets a retry find them.
-    if (!res.ok)
-      throw new Error(res.error || "the agent could not delete the backup artifacts");
-    deleted = res.deleted;
-  } finally {
-    conn.close();
-  }
+  // `input.serverId` is the TARGET's host and is only a fallback here: for a
+  // server destination the artifacts live on the destination's own disk, so
+  // deleteFromDestination dials that one instead.
+  const res = await deleteFromDestination(creds, input.serverId, prefix, true);
+  // The agent resolves `ok:false` (not a throw) on a destination-side failure —
+  // gate the record delete on it, like pruneRetention: dropping the rows while
+  // their objects survive would orphan the artifacts AND erase the history that
+  // lets a retry find them.
+  if (!res.ok)
+    throw new Error(res.error || "the agent could not delete the backup artifacts");
+  const deleted = res.deleted;
 
   // Drop the run records for THIS target in THIS destination (the bucket we just
   // swept) — records in other destinations (whose objects survive) stay.

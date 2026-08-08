@@ -73,13 +73,25 @@ export function installCommand(opts: {
   rawToken: string;
   /** sha256 cert fingerprint of the control plane's TLS cert, or "" for HTTP. */
   fingerprint: string;
+  /**
+   * A server that only HOLDS BACKUPS: no Docker, no Traefik, no address pools,
+   * and a systemd unit with no `docker` group (which would otherwise refuse to
+   * start on a host that has none). Rides as an env prefix rather than a fourth
+   * positional argument, so the script's existing `<token> <url> [fingerprint]`
+   * contract — and every command an operator already copied — is untouched.
+   */
+  storageOnly?: boolean;
 }): string {
-  const { baseUrl, rawToken, fingerprint } = opts;
+  const { baseUrl, rawToken, fingerprint, storageOnly } = opts;
   // Order: <token> <control-plane-url> [fingerprint]. The script forwards them
   // to the agent's --bootstrap-* flags. Single-quoted so the shell treats them
   // as literals (the token is base64url, the url/fingerprint are constrained).
   const fp = fingerprint ? ` '${fingerprint}'` : "";
-  return `curl -fsSL '${baseUrl}/install-agent.sh' | sudo bash -s -- '${rawToken}' '${baseUrl}'${fp}`;
+  // `sudo` does not forward the caller's environment, so the variable is set
+  // INSIDE the elevated shell — `DEPLO_STORAGE_ONLY=1 sudo bash` would silently
+  // install a normal agent.
+  const env = storageOnly ? "DEPLO_STORAGE_ONLY=1 " : "";
+  return `curl -fsSL '${baseUrl}/install-agent.sh' | sudo ${env}bash -s -- '${rawToken}' '${baseUrl}'${fp}`;
 }
 
 /**

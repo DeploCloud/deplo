@@ -12,7 +12,7 @@ import type { ActionResult } from "@/lib/result";
  * Optimistic creation: the thing appears the instant you ask for it.
  *
  * The dialogs that create something real on a host — a domain, a database, an
- * S3 destination, a basic-auth credential — used to hold the user hostage
+ * backup destination, a basic-auth credential — used to hold the user hostage
  * inside the modal with a spinning "Adding…" button while the control plane
  * talked to the server agent. That is the slowest-feeling shape a UI can have:
  * a frozen form, no context, nothing to look at.

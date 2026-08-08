@@ -111,7 +111,7 @@ export const NAV: NavSection[] = [
         label: "Storage",
         href: "/storage",
         icon: Database,
-        tooltip: "Databases, S3 destinations & backups",
+        tooltip: "Databases, backup destinations & backups",
       },
       {
         label: "Variables",

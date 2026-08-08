@@ -57,7 +57,7 @@ test("member ships apps and their config, but touches no infrastructure or admin
     "create_databases",
     "delete_databases",
     "manage_backups",
-    "manage_s3",
+    "manage_backup_destinations",
     "manage_tokens",
   ] as const) {
     assert.ok(!m.includes(cap), `member should not hold ${cap}`);
@@ -120,11 +120,16 @@ test("the legacy split preserves access: the old eight expand, nothing is orphan
     [],
     "a capability no old name expands to — the migration would under-grant it",
   );
-  // The three retired names are the only ones that still expand as input.
+  // The retired names are the only ones that still expand as input: the three
+  // the split dropped, plus `manage_s3`, which was RENAMED to
+  // `manage_backup_destinations` when a destination stopped necessarily being a
+  // bucket. Renames and splits both land here — an old name a client still sends
+  // has to keep meaning what it meant.
   assert.deepEqual(RETIRED_CAPABILITY_NAMES.sort(), [
     "deploy",
     "manage_files",
     "manage_infra",
+    "manage_s3",
   ]);
 });
 
@@ -141,7 +146,7 @@ test("expandLegacyCapabilities expands only the RETIRED names", () => {
   assert.deepEqual(expandLegacyCapabilities(["manage_members"]), ["manage_members"]);
   // …while the three that no longer exist do expand.
   assert.ok(expandLegacyCapabilities(["manage_files"]).includes("write_app_files"));
-  assert.ok(expandLegacyCapabilities(["manage_infra"]).includes("manage_s3"));
+  assert.ok(expandLegacyCapabilities(["manage_infra"]).includes("manage_backup_destinations"));
 });
 
 test("cleanCapabilities accepts an old-world list from an API client", () => {
@@ -157,7 +162,7 @@ test("search finds a permission by what it does, not only by its name", () => {
   assert.ok(searchCapabilities("ssh").includes("open_app_console"));
   assert.ok(searchCapabilities("api").includes("manage_tokens"));
   assert.ok(searchCapabilities("delete database").includes("delete_databases"));
-  assert.ok(searchCapabilities("bucket").includes("manage_s3"));
+  assert.ok(searchCapabilities("bucket").includes("manage_backup_destinations"));
   // Multi-term search is AND, and an empty query is everything.
   assert.deepEqual(searchCapabilities(""), ALL_CAPABILITIES);
   assert.deepEqual(searchCapabilities("zzzznope"), []);

@@ -19,7 +19,7 @@ import { listTokens, createToken } from "./tokens";
 import { listMembers } from "./members";
 import { listRoles } from "./roles";
 import { listRegistries } from "./registries";
-import { listS3 } from "./s3";
+import { listDestinations } from "./destinations";
 import { listDatabases, getDatabase, getConnectionString } from "./databases";
 import { listGithubApps } from "./github";
 import { listNotificationChannels } from "./notifications";
@@ -98,7 +98,7 @@ test("every team-wide collection is refused, and says why", async () => {
     await assert.rejects(() => listMembers(), LIMITED);
     await assert.rejects(() => listRoles(), LIMITED);
     await assert.rejects(() => listRegistries(), LIMITED);
-    await assert.rejects(() => listS3(), LIMITED);
+    await assert.rejects(() => listDestinations(), LIMITED);
     await assert.rejects(() => listDatabases(), LIMITED);
     await assert.rejects(() => listGithubApps(), LIMITED);
     await assert.rejects(() => listNotificationChannels(), LIMITED);

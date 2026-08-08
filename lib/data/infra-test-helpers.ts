@@ -57,6 +57,7 @@ export function makeServer(opts: Partial<Server> & { id: string }): Server {
     memoryUsage: opts.memoryUsage ?? 1,
     diskUsage: opts.diskUsage ?? 1,
     allTeams: opts.allTeams ?? true,
+    storageOnly: false,
     deployConcurrency: opts.deployConcurrency ?? 1,
     createdAt: opts.createdAt ?? T0,
     agent: opts.agent,

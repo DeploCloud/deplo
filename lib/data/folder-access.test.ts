@@ -80,7 +80,7 @@ test("a node grant can never name a team-wide capability", async () => {
     "manage_tokens",
     "manage_registries",
     "manage_git",
-    "manage_s3",
+    "manage_backup_destinations",
     "manage_notifications",
     "manage_environments",
     "create_databases",

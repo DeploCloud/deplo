@@ -473,6 +473,11 @@ export interface HelloResponse {
    * The "backup" capability gates the Backup/Restore/S3Check/S3Delete RPCs: the
    * control plane preflights it (AgentBackupUnsupportedError when absent) so an
    * older agent gives a clear "update the agent" message, never a fake success.
+   * "backup-store" is its younger sibling and gates the destination arms that
+   * write to this host's disk (StoreTarget) plus ReadStoreFile/WriteStoreFile/
+   * RestoreFrom. Split from "backup" on purpose: an agent old enough to dump to
+   * S3 but not to hold artifacts must fail the SECOND thing clearly instead of
+   * failing both or, worse, accepting a store request it will ignore.
    */
   capabilities: string[];
   /**
@@ -1153,6 +1158,35 @@ export interface S3Target {
 }
 
 /**
+ * A directory on THIS host's filesystem that holds backup artifacts — the second
+ * destination shape, for a user who would rather keep backups on a VPS they
+ * already pay for than sign up for a bucket.
+ *
+ * `root` is the one field in this whole contract that is a host path arriving off
+ * the wire, and it is treated accordingly. The agent NEVER writes or deletes
+ * under a root just because it was asked to:
+ *
+ *   - Empty root => the agent's OWN managed store (<data-base>/backups, i.e. the
+ *     sibling of --stack-dir), which it creates 0700 on first use. This is the
+ *     default and the only shape a non-admin can produce.
+ *   - Non-empty root => accepted ONLY if it is absolute AND contains the sentinel
+ *     file `.deplo-backups` that the agent itself wrote during an S3Check on an
+ *     empty (or already-marked) directory. A typo'd `/var/lib/docker` therefore
+ *     fails closed instead of becoming a remote `rm -rf` on the next retention
+ *     sweep — which is exactly what an unguarded root plus S3Delete(prefix) is.
+ *
+ * `object_key` is the control plane's usual key
+ * (deplo/<teamId>/<kind>/<targetId>/<stamp>-<runId>.<ext>.age), resolved under the
+ * root with the same containment guard the file RPCs use: relative, no "..", and
+ * realpath-confirmed inside. The team segment is what keeps two teams sharing one
+ * storage host out of each other's artifacts.
+ */
+export interface StoreTarget {
+  root: string;
+  objectKey: string;
+}
+
+/**
  * The database descriptor for a DATABASE backup/restore. The control plane
  * resolves the container name + engine details from its store; the agent stays
  * dumb about Deplo's DB model and just runs the right tool inside the container.
@@ -1236,12 +1270,36 @@ export interface ProjectDescriptor_EnvSnapshotEntry {
 
 export interface BackupRequest {
   kind: BackupKind;
+  /**
+   * The destination: exactly one of `s3` / `store`, unless `stream_out` is set
+   * (in which case neither is needed — the caller IS the sink).
+   */
   s3?:
     | S3Target
     | undefined;
   /** Exactly one of these is set, per `kind`. */
   database?: DatabaseDescriptor | undefined;
   project?: ProjectDescriptor | undefined;
+  store?:
+    | StoreTarget
+    | undefined;
+  /**
+   * The age recipient ("age1…", an X25519 public key) the artifact is encrypted
+   * to. REQUIRED whenever the artifact is not going to S3 — a store write or a
+   * stream_out relay with an empty recipient is an ERROR, never a silent
+   * plaintext write. The matching identity stays in the control plane and only
+   * ever travels on a RestoreRequest, so this host can write backups it cannot
+   * itself read, and a compromised storage box yields nothing.
+   */
+  ageRecipient: string;
+  /**
+   * Emit the artifact as BackupEvent.data frames instead of writing it anywhere.
+   * Set by the control plane when the destination is a store on ANOTHER server:
+   * it relays these frames into WriteStoreFile there. `s3`/`store` are ignored.
+   * The BackupResult still reports the size this host produced — the durable
+   * number is the destination's StoreResult.bytes_written.
+   */
+  streamOut: boolean;
 }
 
 /**
@@ -1251,20 +1309,36 @@ export interface BackupRequest {
  */
 export interface BackupEvent {
   log?: LogLine | undefined;
-  result?: BackupResult | undefined;
+  result?:
+    | BackupResult
+    | undefined;
+  /**
+   * A slice of the finished artifact, emitted only under
+   * BackupRequest.stream_out. Interleaves freely with `log` frames — the arms
+   * are a oneof, so a consumer that predates this field decodes an unknown
+   * field and drops it rather than mis-reading a log line.
+   */
+  data?: Uint8Array | undefined;
 }
 
 export interface BackupResult {
-  /** True => the dump+upload completed and the object is in the bucket. */
+  /** True => the dump completed and the artifact reached its destination. */
   ok: boolean;
   /** A human-readable reason on failure (empty on success). */
   error: string;
   /**
-   * The object key written (echoes S3Target.object_key on success) and its size
-   * in bytes — recorded on the control plane's BackupRun.
+   * The object key written (echoes the destination's object_key on success) and
+   * its size in bytes — recorded on the control plane's BackupRun.
    */
   objectKey: string;
   sizeBytes: number;
+  /**
+   * Hex sha256 of the artifact as written. Empty for an S3 upload (the bucket
+   * has its own ETag); set for a store write and for a stream_out relay, where
+   * it is the source's half of the integrity check against the destination's
+   * StoreResult.sha256.
+   */
+  sha256: string;
 }
 
 export interface RestoreRequest {
@@ -1272,7 +1346,20 @@ export interface RestoreRequest {
   /** object_key points at the artifact to restore FROM */
   s3?: S3Target | undefined;
   database?: DatabaseDescriptor | undefined;
-  project?: ProjectDescriptor | undefined;
+  project?:
+    | ProjectDescriptor
+    | undefined;
+  /** object_key points at the artifact to restore FROM */
+  store?:
+    | StoreTarget
+    | undefined;
+  /**
+   * The age identity ("AGE-SECRET-KEY-1…") the artifact was encrypted to.
+   * REQUIRED for a store restore. Kept on THIS message and never on
+   * BackupRequest so a private key cannot ride a routine nightly backup out to a
+   * storage host.
+   */
+  ageIdentity: string;
 }
 
 export interface RestoreEvent {
@@ -1287,17 +1374,39 @@ export interface RestoreResult {
 
 export interface S3CheckRequest {
   /** Bucket coordinates + creds; object_key is ignored (this is a bucket probe). */
-  s3?: S3Target | undefined;
+  s3?:
+    | S3Target
+    | undefined;
+  /**
+   * Set instead of `s3` to probe a STORE root on this host: resolve it, honour
+   * the sentinel rule, create the managed root if that is what was asked for,
+   * round-trip a probe file, sweep stale `.partial` artifacts, and report
+   * headroom. object_key is ignored.
+   */
+  store?: StoreTarget | undefined;
 }
 
 export interface S3CheckResponse {
-  /** True when the bucket is reachable AND writable with these creds. */
+  /** True when the destination is reachable AND writable. */
   ok: boolean;
   /**
    * "" on success; a human-readable reason otherwise (bad creds, no bucket,
-   * network) — surfaced as the destination's status detail.
+   * unmarked root, read-only mount) — surfaced as the destination's status detail.
    */
   error: string;
+  /**
+   * Store probes only (0 for S3): the resolved root's filesystem headroom, so the
+   * UI can show how much room a destination has left without a second RPC. The
+   * dump's size is not knowable before it exists, so this is information for the
+   * operator, never a pre-flight gate.
+   */
+  freeBytes: number;
+  totalBytes: number;
+  /**
+   * The root the agent actually resolved (the managed one when the request left
+   * `root` empty), so the UI can show the real path rather than a blank.
+   */
+  root: string;
 }
 
 export interface S3DeleteRequest {
@@ -1306,11 +1415,17 @@ export interface S3DeleteRequest {
     | S3Target
     | undefined;
   /**
-   * When true, delete EVERY object under s3.object_key as a prefix (retention /
-   * delete-with-artifacts of a whole target's folder). When false, delete the
-   * single exact key. Defaults to a single-key delete.
+   * When true, delete EVERY object under the destination's object_key as a
+   * prefix (retention / delete-with-artifacts of a whole target's folder). When
+   * false, delete the single exact key. Defaults to a single-key delete.
    */
   prefix: boolean;
+  /**
+   * Set instead of `s3` to delete from a STORE on this host. A prefix delete
+   * here is a recursive directory removal, which is why StoreTarget's root rules
+   * are not optional: a prefix that resolves to the root itself is REFUSED.
+   */
+  store?: StoreTarget | undefined;
 }
 
 export interface S3DeleteResponse {
@@ -1318,6 +1433,85 @@ export interface S3DeleteResponse {
   error: string;
   /** How many objects were deleted (0 when already absent — still ok, idempotent). */
   deleted: number;
+}
+
+export interface ReadStoreFileRequest {
+  /** The artifact to stream out. Same root rules as every other StoreTarget. */
+  store?:
+    | StoreTarget
+    | undefined;
+  /**
+   * When set, DECRYPT on the way out (but do not decompress): the caller gets
+   * the .tar.gz / .dump.gz the user actually wants to download. Empty means ship
+   * the bytes verbatim, which is what a cross-host relay wants — there the
+   * control plane must never see plaintext.
+   *
+   * Decryption lives here rather than in the control plane because age is a
+   * STREAM: the agent decrypts chunk by chunk at constant memory, while a
+   * control plane doing it would have to hold a multi-GB artifact to do the same
+   * job.
+   */
+  ageIdentity: string;
+}
+
+/**
+ * A framed chunk of an artifact transfer. ReadStoreFile emits a sequence of
+ * `data` chunks (no header). WriteStoreFile expects the FIRST message to be a
+ * `header` and all following messages to be `data`.
+ */
+export interface StoreChunk {
+  header?:
+    | StoreChunk_Header
+    | undefined;
+  /**
+   * A raw slice of the (already age-encrypted) artifact. Chunked well under
+   * the gRPC max message size; reassembled in order on the destination.
+   */
+  data?: Uint8Array | undefined;
+}
+
+export interface StoreChunk_Header {
+  /** Where to land the artifact on the DESTINATION host. */
+  store?:
+    | StoreTarget
+    | undefined;
+  /**
+   * Overwrite an artifact already at this key. False by default: object keys
+   * carry a run id and are unique, so a collision means something is wrong and
+   * silently clobbering it would destroy a good backup.
+   */
+  overwrite: boolean;
+}
+
+export interface StoreResult {
+  ok: boolean;
+  error: string;
+  /**
+   * What actually landed. A filesystem has no ETag, so these two are the only
+   * durable proof of the transfer, and they are what the control plane records
+   * on the BackupRun — not the source's own count.
+   */
+  bytesWritten: number;
+  sha256: string;
+}
+
+/** A framed chunk of a cross-host restore (RestoreFrom), mirroring StoreChunk. */
+export interface RestoreChunk {
+  header?: RestoreChunk_Header | undefined;
+  data?: Uint8Array | undefined;
+}
+
+export interface RestoreChunk_Header {
+  kind: BackupKind;
+  database?: DatabaseDescriptor | undefined;
+  project?:
+    | ProjectDescriptor
+    | undefined;
+  /**
+   * The age identity the artifact was encrypted to. Always required: this RPC
+   * exists only for store artifacts, and those are always encrypted.
+   */
+  ageIdentity: string;
 }
 
 export interface FollowLogsRequest {
@@ -6521,6 +6715,86 @@ export const S3Target: MessageFns<S3Target> = {
   },
 };
 
+function createBaseStoreTarget(): StoreTarget {
+  return { root: "", objectKey: "" };
+}
+
+export const StoreTarget: MessageFns<StoreTarget> = {
+  encode(message: StoreTarget, writer: BinaryWriter = new BinaryWriter()): BinaryWriter {
+    if (message.root !== "") {
+      writer.uint32(10).string(message.root);
+    }
+    if (message.objectKey !== "") {
+      writer.uint32(18).string(message.objectKey);
+    }
+    return writer;
+  },
+
+  decode(input: BinaryReader | Uint8Array, length?: number): StoreTarget {
+    const reader = input instanceof BinaryReader ? input : new BinaryReader(input);
+    const end = length === undefined ? reader.len : reader.pos + length;
+    const message = createBaseStoreTarget();
+    while (reader.pos < end) {
+      const tag = reader.uint32();
+      switch (tag >>> 3) {
+        case 1: {
+          if (tag !== 10) {
+            break;
+          }
+
+          message.root = reader.string();
+          continue;
+        }
+        case 2: {
+          if (tag !== 18) {
+            break;
+          }
+
+          message.objectKey = reader.string();
+          continue;
+        }
+      }
+      if ((tag & 7) === 4 || tag === 0) {
+        break;
+      }
+      reader.skip(tag & 7);
+    }
+    return message;
+  },
+
+  fromJSON(object: any): StoreTarget {
+    return {
+      root: isSet(object.root) ? globalThis.String(object.root) : "",
+      objectKey: isSet(object.objectKey)
+        ? globalThis.String(object.objectKey)
+        : isSet(object.object_key)
+        ? globalThis.String(object.object_key)
+        : "",
+    };
+  },
+
+  toJSON(message: StoreTarget): unknown {
+    const obj: any = {};
+    if (message.root !== "") {
+      obj.root = message.root;
+    }
+    if (message.objectKey !== "") {
+      obj.objectKey = message.objectKey;
+    }
+    return obj;
+  },
+
+  create<I extends Exact<DeepPartial<StoreTarget>, I>>(base?: I): StoreTarget {
+    return StoreTarget.fromPartial(base ?? ({} as any));
+  },
+  fromPartial<I extends Exact<DeepPartial<StoreTarget>, I>>(object: I): StoreTarget {
+    const message = createBaseStoreTarget();
+    message.root = object.root ?? "";
+    message.objectKey = object.objectKey ?? "";
+    return message;
+  },
+};
+
 function createBaseDatabaseDescriptor(): DatabaseDescriptor {
   return { container: "", dbType: "", dbName: "", user: "", password: "" };
 }
@@ -6921,7 +7195,15 @@ export const ProjectDescriptor_EnvSnapshotEntry: MessageFns<ProjectDescriptor_En
 };
 
 function createBaseBackupRequest(): BackupRequest {
-  return { kind: 0, s3: undefined, database: undefined, project: undefined };
+  return {
+    kind: 0,
+    s3: undefined,
+    database: undefined,
+    project: undefined,
+    store: undefined,
+    ageRecipient: "",
+    streamOut: false,
+  };
 }
 
 export const BackupRequest: MessageFns<BackupRequest> = {
@@ -6937,6 +7219,15 @@ export const BackupRequest: MessageFns<BackupRequest> = {
     }
     if (message.project !== undefined) {
       ProjectDescriptor.encode(message.project, writer.uint32(34).fork()).join();
+    }
+    if (message.store !== undefined) {
+      StoreTarget.encode(message.store, writer.uint32(42).fork()).join();
+    }
+    if (message.ageRecipient !== "") {
+      writer.uint32(50).string(message.ageRecipient);
+    }
+    if (message.streamOut !== false) {
+      writer.uint32(56).bool(message.streamOut);
     }
     return writer;
   },
@@ -6980,6 +7271,30 @@ export const BackupRequest: MessageFns<BackupRequest> = {
           message.project = ProjectDescriptor.decode(reader, reader.uint32());
           continue;
         }
+        case 5: {
+          if (tag !== 42) {
+            break;
+          }
+
+          message.store = StoreTarget.decode(reader, reader.uint32());
+          continue;
+        }
+        case 6: {
+          if (tag !== 50) {
+            break;
+          }
+
+          message.ageRecipient = reader.string();
+          continue;
+        }
+        case 7: {
+          if (tag !== 56) {
+            break;
+          }
+
+          message.streamOut = reader.bool();
+          continue;
+        }
       }
       if ((tag & 7) === 4 || tag === 0) {
         break;
@@ -6995,6 +7310,17 @@ export const BackupRequest: MessageFns<BackupRequest> = {
       s3: isSet(object.s3) ? S3Target.fromJSON(object.s3) : undefined,
       database: isSet(object.database) ? DatabaseDescriptor.fromJSON(object.database) : undefined,
       project: isSet(object.project) ? ProjectDescriptor.fromJSON(object.project) : undefined,
+      store: isSet(object.store) ? StoreTarget.fromJSON(object.store) : undefined,
+      ageRecipient: isSet(object.ageRecipient)
+        ? globalThis.String(object.ageRecipient)
+        : isSet(object.age_recipient)
+        ? globalThis.String(object.age_recipient)
+        : "",
+      streamOut: isSet(object.streamOut)
+        ? globalThis.Boolean(object.streamOut)
+        : isSet(object.stream_out)
+        ? globalThis.Boolean(object.stream_out)
+        : false,
     };
   },
 
@@ -7012,6 +7338,15 @@ export const BackupRequest: MessageFns<BackupRequest> = {
     if (message.project !== undefined) {
       obj.project = ProjectDescriptor.toJSON(message.project);
     }
+    if (message.store !== undefined) {
+      obj.store = StoreTarget.toJSON(message.store);
+    }
+    if (message.ageRecipient !== "") {
+      obj.ageRecipient = message.ageRecipient;
+    }
+    if (message.streamOut !== false) {
+      obj.streamOut = message.streamOut;
+    }
     return obj;
   },
 
@@ -7028,12 +7363,17 @@ export const BackupRequest: MessageFns<BackupRequest> = {
     message.project = (object.project !== undefined && object.project !== null)
       ? ProjectDescriptor.fromPartial(object.project)
       : undefined;
+    message.store = (object.store !== undefined && object.store !== null)
+      ? StoreTarget.fromPartial(object.store)
+      : undefined;
+    message.ageRecipient = object.ageRecipient ?? "";
+    message.streamOut = object.streamOut ?? false;
     return message;
   },
 };
 
 function createBaseBackupEvent(): BackupEvent {
-  return { log: undefined, result: undefined };
+  return { log: undefined, result: undefined, data: undefined };
 }
 
 export const BackupEvent: MessageFns<BackupEvent> = {
@@ -7043,6 +7383,9 @@ export const BackupEvent: MessageFns<BackupEvent> = {
     }
     if (message.result !== undefined) {
       BackupResult.encode(message.result, writer.uint32(18).fork()).join();
+    }
+    if (message.data !== undefined) {
+      writer.uint32(26).bytes(message.data);
     }
     return writer;
   },
@@ -7070,6 +7413,14 @@ export const BackupEvent: MessageFns<BackupEvent> = {
           message.result = BackupResult.decode(reader, reader.uint32());
           continue;
         }
+        case 3: {
+          if (tag !== 26) {
+            break;
+          }
+
+          message.data = reader.bytes();
+          continue;
+        }
       }
       if ((tag & 7) === 4 || tag === 0) {
         break;
@@ -7083,6 +7434,7 @@ export const BackupEvent: MessageFns<BackupEvent> = {
     return {
       log: isSet(object.log) ? LogLine.fromJSON(object.log) : undefined,
       result: isSet(object.result) ? BackupResult.fromJSON(object.result) : undefined,
+      data: isSet(object.data) ? bytesFromBase64(object.data) : undefined,
     };
   },
 
@@ -7093,6 +7445,9 @@ export const BackupEvent: MessageFns<BackupEvent> = {
     }
     if (message.result !== undefined) {
       obj.result = BackupResult.toJSON(message.result);
+    }
+    if (message.data !== undefined) {
+      obj.data = base64FromBytes(message.data);
     }
     return obj;
   },
@@ -7106,12 +7461,13 @@ export const BackupEvent: MessageFns<BackupEvent> = {
     message.result = (object.result !== undefined && object.result !== null)
       ? BackupResult.fromPartial(object.result)
       : undefined;
+    message.data = object.data ?? undefined;
     return message;
   },
 };
 
 function createBaseBackupResult(): BackupResult {
-  return { ok: false, error: "", objectKey: "", sizeBytes: 0 };
+  return { ok: false, error: "", objectKey: "", sizeBytes: 0, sha256: "" };
 }
 
 export const BackupResult: MessageFns<BackupResult> = {
@@ -7127,6 +7483,9 @@ export const BackupResult: MessageFns<BackupResult> = {
     }
     if (message.sizeBytes !== 0) {
       writer.uint32(32).int64(message.sizeBytes);
+    }
+    if (message.sha256 !== "") {
+      writer.uint32(42).string(message.sha256);
     }
     return writer;
   },
@@ -7170,6 +7529,14 @@ export const BackupResult: MessageFns<BackupResult> = {
           message.sizeBytes = longToNumber(reader.int64());
           continue;
         }
+        case 5: {
+          if (tag !== 42) {
+            break;
+          }
+
+          message.sha256 = reader.string();
+          continue;
+        }
       }
       if ((tag & 7) === 4 || tag === 0) {
         break;
@@ -7193,6 +7560,7 @@ export const BackupResult: MessageFns<BackupResult> = {
         : isSet(object.size_bytes)
         ? globalThis.Number(object.size_bytes)
         : 0,
+      sha256: isSet(object.sha256) ? globalThis.String(object.sha256) : "",
     };
   },
 
@@ -7210,6 +7578,9 @@ export const BackupResult: MessageFns<BackupResult> = {
     if (message.sizeBytes !== 0) {
       obj.sizeBytes = Math.round(message.sizeBytes);
     }
+    if (message.sha256 !== "") {
+      obj.sha256 = message.sha256;
+    }
     return obj;
   },
 
@@ -7222,12 +7593,13 @@ export const BackupResult: MessageFns<BackupResult> = {
     message.error = object.error ?? "";
     message.objectKey = object.objectKey ?? "";
     message.sizeBytes = object.sizeBytes ?? 0;
+    message.sha256 = object.sha256 ?? "";
     return message;
   },
 };
 
 function createBaseRestoreRequest(): RestoreRequest {
-  return { kind: 0, s3: undefined, database: undefined, project: undefined };
+  return { kind: 0, s3: undefined, database: undefined, project: undefined, store: undefined, ageIdentity: "" };
 }
 
 export const RestoreRequest: MessageFns<RestoreRequest> = {
@@ -7243,6 +7615,12 @@ export const RestoreRequest: MessageFns<RestoreRequest> = {
     }
     if (message.project !== undefined) {
       ProjectDescriptor.encode(message.project, writer.uint32(34).fork()).join();
+    }
+    if (message.store !== undefined) {
+      StoreTarget.encode(message.store, writer.uint32(42).fork()).join();
+    }
+    if (message.ageIdentity !== "") {
+      writer.uint32(50).string(message.ageIdentity);
     }
     return writer;
   },
@@ -7286,6 +7664,22 @@ export const RestoreRequest: MessageFns<RestoreRequest> = {
           message.project = ProjectDescriptor.decode(reader, reader.uint32());
           continue;
         }
+        case 5: {
+          if (tag !== 42) {
+            break;
+          }
+
+          message.store = StoreTarget.decode(reader, reader.uint32());
+          continue;
+        }
+        case 6: {
+          if (tag !== 50) {
+            break;
+          }
+
+          message.ageIdentity = reader.string();
+          continue;
+        }
       }
       if ((tag & 7) === 4 || tag === 0) {
         break;
@@ -7301,6 +7695,12 @@ export const RestoreRequest: MessageFns<RestoreRequest> = {
       s3: isSet(object.s3) ? S3Target.fromJSON(object.s3) : undefined,
       database: isSet(object.database) ? DatabaseDescriptor.fromJSON(object.database) : undefined,
       project: isSet(object.project) ? ProjectDescriptor.fromJSON(object.project) : undefined,
+      store: isSet(object.store) ? StoreTarget.fromJSON(object.store) : undefined,
+      ageIdentity: isSet(object.ageIdentity)
+        ? globalThis.String(object.ageIdentity)
+        : isSet(object.age_identity)
+        ? globalThis.String(object.age_identity)
+        : "",
     };
   },
 
@@ -7318,6 +7718,12 @@ export const RestoreRequest: MessageFns<RestoreRequest> = {
     if (message.project !== undefined) {
       obj.project = ProjectDescriptor.toJSON(message.project);
     }
+    if (message.store !== undefined) {
+      obj.store = StoreTarget.toJSON(message.store);
+    }
+    if (message.ageIdentity !== "") {
+      obj.ageIdentity = message.ageIdentity;
+    }
     return obj;
   },
 
@@ -7334,6 +7740,10 @@ export const RestoreRequest: MessageFns<RestoreRequest> = {
     message.project = (object.project !== undefined && object.project !== null)
       ? ProjectDescriptor.fromPartial(object.project)
       : undefined;
+    message.store = (object.store !== undefined && object.store !== null)
+      ? StoreTarget.fromPartial(object.store)
+      : undefined;
+    message.ageIdentity = object.ageIdentity ?? "";
     return message;
   },
 };
@@ -7493,13 +7903,16 @@ export const RestoreResult: MessageFns<RestoreResult> = {
 };
 
 function createBaseS3CheckRequest(): S3CheckRequest {
-  return { s3: undefined };
+  return { s3: undefined, store: undefined };
 }
 
 export const S3CheckRequest: MessageFns<S3CheckRequest> = {
   encode(message: S3CheckRequest, writer: BinaryWriter = new BinaryWriter()): BinaryWriter {
     if (message.s3 !== undefined) {
       S3Target.encode(message.s3, writer.uint32(10).fork()).join();
+    }
+    if (message.store !== undefined) {
+      StoreTarget.encode(message.store, writer.uint32(18).fork()).join();
     }
     return writer;
   },
@@ -7519,6 +7932,14 @@ export const S3CheckRequest: MessageFns<S3CheckRequest> = {
           message.s3 = S3Target.decode(reader, reader.uint32());
           continue;
         }
+        case 2: {
+          if (tag !== 18) {
+            break;
+          }
+
+          message.store = StoreTarget.decode(reader, reader.uint32());
+          continue;
+        }
       }
       if ((tag & 7) === 4 || tag === 0) {
         break;
@@ -7529,13 +7950,19 @@ export const S3CheckRequest: MessageFns<S3CheckRequest> = {
   },
 
   fromJSON(object: any): S3CheckRequest {
-    return { s3: isSet(object.s3) ? S3Target.fromJSON(object.s3) : undefined };
+    return {
+      s3: isSet(object.s3) ? S3Target.fromJSON(object.s3) : undefined,
+      store: isSet(object.store) ? StoreTarget.fromJSON(object.store) : undefined,
+    };
   },
 
   toJSON(message: S3CheckRequest): unknown {
     const obj: any = {};
     if (message.s3 !== undefined) {
       obj.s3 = S3Target.toJSON(message.s3);
+    }
+    if (message.store !== undefined) {
+      obj.store = StoreTarget.toJSON(message.store);
     }
     return obj;
   },
@@ -7546,12 +7973,15 @@ export const S3CheckRequest: MessageFns<S3CheckRequest> = {
   fromPartial<I extends Exact<DeepPartial<S3CheckRequest>, I>>(object: I): S3CheckRequest {
     const message = createBaseS3CheckRequest();
     message.s3 = (object.s3 !== undefined && object.s3 !== null) ? S3Target.fromPartial(object.s3) : undefined;
+    message.store = (object.store !== undefined && object.store !== null)
+      ? StoreTarget.fromPartial(object.store)
+      : undefined;
     return message;
   },
 };
 
 function createBaseS3CheckResponse(): S3CheckResponse {
-  return { ok: false, error: "" };
+  return { ok: false, error: "", freeBytes: 0, totalBytes: 0, root: "" };
 }
 
 export const S3CheckResponse: MessageFns<S3CheckResponse> = {
@@ -7561,6 +7991,15 @@ export const S3CheckResponse: MessageFns<S3CheckResponse> = {
     }
     if (message.error !== "") {
       writer.uint32(18).string(message.error);
+    }
+    if (message.freeBytes !== 0) {
+      writer.uint32(24).int64(message.freeBytes);
+    }
+    if (message.totalBytes !== 0) {
+      writer.uint32(32).int64(message.totalBytes);
+    }
+    if (message.root !== "") {
+      writer.uint32(42).string(message.root);
     }
     return writer;
   },
@@ -7588,6 +8027,30 @@ export const S3CheckResponse: MessageFns<S3CheckResponse> = {
           message.error = reader.string();
           continue;
         }
+        case 3: {
+          if (tag !== 24) {
+            break;
+          }
+
+          message.freeBytes = longToNumber(reader.int64());
+          continue;
+        }
+        case 4: {
+          if (tag !== 32) {
+            break;
+          }
+
+          message.totalBytes = longToNumber(reader.int64());
+          continue;
+        }
+        case 5: {
+          if (tag !== 42) {
+            break;
+          }
+
+          message.root = reader.string();
+          continue;
+        }
       }
       if ((tag & 7) === 4 || tag === 0) {
         break;
@@ -7601,6 +8064,17 @@ export const S3CheckResponse: MessageFns<S3CheckResponse> = {
     return {
       ok: isSet(object.ok) ? globalThis.Boolean(object.ok) : false,
       error: isSet(object.error) ? globalThis.String(object.error) : "",
+      freeBytes: isSet(object.freeBytes)
+        ? globalThis.Number(object.freeBytes)
+        : isSet(object.free_bytes)
+        ? globalThis.Number(object.free_bytes)
+        : 0,
+      totalBytes: isSet(object.totalBytes)
+        ? globalThis.Number(object.totalBytes)
+        : isSet(object.total_bytes)
+        ? globalThis.Number(object.total_bytes)
+        : 0,
+      root: isSet(object.root) ? globalThis.String(object.root) : "",
     };
   },
 
@@ -7612,6 +8086,15 @@ export const S3CheckResponse: MessageFns<S3CheckResponse> = {
     if (message.error !== "") {
       obj.error = message.error;
     }
+    if (message.freeBytes !== 0) {
+      obj.freeBytes = Math.round(message.freeBytes);
+    }
+    if (message.totalBytes !== 0) {
+      obj.totalBytes = Math.round(message.totalBytes);
+    }
+    if (message.root !== "") {
+      obj.root = message.root;
+    }
     return obj;
   },
 
@@ -7622,12 +8105,15 @@ export const S3CheckResponse: MessageFns<S3CheckResponse> = {
     const message = createBaseS3CheckResponse();
     message.ok = object.ok ?? false;
     message.error = object.error ?? "";
+    message.freeBytes = object.freeBytes ?? 0;
+    message.totalBytes = object.totalBytes ?? 0;
+    message.root = object.root ?? "";
     return message;
   },
 };
 
 function createBaseS3DeleteRequest(): S3DeleteRequest {
-  return { s3: undefined, prefix: false };
+  return { s3: undefined, prefix: false, store: undefined };
 }
 
 export const S3DeleteRequest: MessageFns<S3DeleteRequest> = {
@@ -7637,6 +8123,9 @@ export const S3DeleteRequest: MessageFns<S3DeleteRequest> = {
     }
     if (message.prefix !== false) {
       writer.uint32(16).bool(message.prefix);
+    }
+    if (message.store !== undefined) {
+      StoreTarget.encode(message.store, writer.uint32(26).fork()).join();
     }
     return writer;
   },
@@ -7664,6 +8153,14 @@ export const S3DeleteRequest: MessageFns<S3DeleteRequest> = {
           message.prefix = reader.bool();
           continue;
         }
+        case 3: {
+          if (tag !== 26) {
+            break;
+          }
+
+          message.store = StoreTarget.decode(reader, reader.uint32());
+          continue;
+        }
       }
       if ((tag & 7) === 4 || tag === 0) {
         break;
@@ -7677,6 +8174,7 @@ export const S3DeleteRequest: MessageFns<S3DeleteRequest> = {
     return {
       s3: isSet(object.s3) ? S3Target.fromJSON(object.s3) : undefined,
       prefix: isSet(object.prefix) ? globalThis.Boolean(object.prefix) : false,
+      store: isSet(object.store) ? StoreTarget.fromJSON(object.store) : undefined,
     };
   },
 
@@ -7688,6 +8186,9 @@ export const S3DeleteRequest: MessageFns<S3DeleteRequest> = {
     if (message.prefix !== false) {
       obj.prefix = message.prefix;
     }
+    if (message.store !== undefined) {
+      obj.store = StoreTarget.toJSON(message.store);
+    }
     return obj;
   },
 
@@ -7698,6 +8199,9 @@ export const S3DeleteRequest: MessageFns<S3DeleteRequest> = {
     const message = createBaseS3DeleteRequest();
     message.s3 = (object.s3 !== undefined && object.s3 !== null) ? S3Target.fromPartial(object.s3) : undefined;
     message.prefix = object.prefix ?? false;
+    message.store = (object.store !== undefined && object.store !== null)
+      ? StoreTarget.fromPartial(object.store)
+      : undefined;
     return message;
   },
 };
@@ -7790,6 +8294,550 @@ export const S3DeleteResponse: MessageFns<S3DeleteResponse> = {
     message.ok = object.ok ?? false;
     message.error = object.error ?? "";
     message.deleted = object.deleted ?? 0;
+    return message;
+  },
+};
+
+function createBaseReadStoreFileRequest(): ReadStoreFileRequest {
+  return { store: undefined, ageIdentity: "" };
+}
+
+export const ReadStoreFileRequest: MessageFns<ReadStoreFileRequest> = {
+  encode(message: ReadStoreFileRequest, writer: BinaryWriter = new BinaryWriter()): BinaryWriter {
+    if (message.store !== undefined) {
+      StoreTarget.encode(message.store, writer.uint32(10).fork()).join();
+    }
+    if (message.ageIdentity !== "") {
+      writer.uint32(18).string(message.ageIdentity);
+    }
+    return writer;
+  },
+
+  decode(input: BinaryReader | Uint8Array, length?: number): ReadStoreFileRequest {
+    const reader = input instanceof BinaryReader ? input : new BinaryReader(input);
+    const end = length === undefined ? reader.len : reader.pos + length;
+    const message = createBaseReadStoreFileRequest();
+    while (reader.pos < end) {
+      const tag = reader.uint32();
+      switch (tag >>> 3) {
+        case 1: {
+          if (tag !== 10) {
+            break;
+          }
+
+          message.store = StoreTarget.decode(reader, reader.uint32());
+          continue;
+        }
+        case 2: {
+          if (tag !== 18) {
+            break;
+          }
+
+          message.ageIdentity = reader.string();
+          continue;
+        }
+      }
+      if ((tag & 7) === 4 || tag === 0) {
+        break;
+      }
+      reader.skip(tag & 7);
+    }
+    return message;
+  },
+
+  fromJSON(object: any): ReadStoreFileRequest {
+    return {
+      store: isSet(object.store) ? StoreTarget.fromJSON(object.store) : undefined,
+      ageIdentity: isSet(object.ageIdentity)
+        ? globalThis.String(object.ageIdentity)
+        : isSet(object.age_identity)
+        ? globalThis.String(object.age_identity)
+        : "",
+    };
+  },
+
+  toJSON(message: ReadStoreFileRequest): unknown {
+    const obj: any = {};
+    if (message.store !== undefined) {
+      obj.store = StoreTarget.toJSON(message.store);
+    }
+    if (message.ageIdentity !== "") {
+      obj.ageIdentity = message.ageIdentity;
+    }
+    return obj;
+  },
+
+  create<I extends Exact<DeepPartial<ReadStoreFileRequest>, I>>(base?: I): ReadStoreFileRequest {
+    return ReadStoreFileRequest.fromPartial(base ?? ({} as any));
+  },
+  fromPartial<I extends Exact<DeepPartial<ReadStoreFileRequest>, I>>(object: I): ReadStoreFileRequest {
+    const message = createBaseReadStoreFileRequest();
+    message.store = (object.store !== undefined && object.store !== null)
+      ? StoreTarget.fromPartial(object.store)
+      : undefined;
+    message.ageIdentity = object.ageIdentity ?? "";
+    return message;
+  },
+};
+
+function createBaseStoreChunk(): StoreChunk {
+  return { header: undefined, data: undefined };
+}
+
+export const StoreChunk: MessageFns<StoreChunk> = {
+  encode(message: StoreChunk, writer: BinaryWriter = new BinaryWriter()): BinaryWriter {
+    if (message.header !== undefined) {
+      StoreChunk_Header.encode(message.header, writer.uint32(10).fork()).join();
+    }
+    if (message.data !== undefined) {
+      writer.uint32(18).bytes(message.data);
+    }
+    return writer;
+  },
+
+  decode(input: BinaryReader | Uint8Array, length?: number): StoreChunk {
+    const reader = input instanceof BinaryReader ? input : new BinaryReader(input);
+    const end = length === undefined ? reader.len : reader.pos + length;
+    const message = createBaseStoreChunk();
+    while (reader.pos < end) {
+      const tag = reader.uint32();
+      switch (tag >>> 3) {
+        case 1: {
+          if (tag !== 10) {
+            break;
+          }
+
+          message.header = StoreChunk_Header.decode(reader, reader.uint32());
+          continue;
+        }
+        case 2: {
+          if (tag !== 18) {
+            break;
+          }
+
+          message.data = reader.bytes();
+          continue;
+        }
+      }
+      if ((tag & 7) === 4 || tag === 0) {
+        break;
+      }
+      reader.skip(tag & 7);
+    }
+    return message;
+  },
+
+  fromJSON(object: any): StoreChunk {
+    return {
+      header: isSet(object.header) ? StoreChunk_Header.fromJSON(object.header) : undefined,
+      data: isSet(object.data) ? bytesFromBase64(object.data) : undefined,
+    };
+  },
+
+  toJSON(message: StoreChunk): unknown {
+    const obj: any = {};
+    if (message.header !== undefined) {
+      obj.header = StoreChunk_Header.toJSON(message.header);
+    }
+    if (message.data !== undefined) {
+      obj.data = base64FromBytes(message.data);
+    }
+    return obj;
+  },
+
+  create<I extends Exact<DeepPartial<StoreChunk>, I>>(base?: I): StoreChunk {
+    return StoreChunk.fromPartial(base ?? ({} as any));
+  },
+  fromPartial<I extends Exact<DeepPartial<StoreChunk>, I>>(object: I): StoreChunk {
+    const message = createBaseStoreChunk();
+    message.header = (object.header !== undefined && object.header !== null)
+      ? StoreChunk_Header.fromPartial(object.header)
+      : undefined;
+    message.data = object.data ?? undefined;
+    return message;
+  },
+};
+
+function createBaseStoreChunk_Header(): StoreChunk_Header {
+  return { store: undefined, overwrite: false };
+}
+
+export const StoreChunk_Header: MessageFns<StoreChunk_Header> = {
+  encode(message: StoreChunk_Header, writer: BinaryWriter = new BinaryWriter()): BinaryWriter {
+    if (message.store !== undefined) {
+      StoreTarget.encode(message.store, writer.uint32(10).fork()).join();
+    }
+    if (message.overwrite !== false) {
+      writer.uint32(16).bool(message.overwrite);
+    }
+    return writer;
+  },
+
+  decode(input: BinaryReader | Uint8Array, length?: number): StoreChunk_Header {
+    const reader = input instanceof BinaryReader ? input : new BinaryReader(input);
+    const end = length === undefined ? reader.len : reader.pos + length;
+    const message = createBaseStoreChunk_Header();
+    while (reader.pos < end) {
+      const tag = reader.uint32();
+      switch (tag >>> 3) {
+        case 1: {
+          if (tag !== 10) {
+            break;
+          }
+
+          message.store = StoreTarget.decode(reader, reader.uint32());
+          continue;
+        }
+        case 2: {
+          if (tag !== 16) {
+            break;
+          }
+
+          message.overwrite = reader.bool();
+          continue;
+        }
+      }
+      if ((tag & 7) === 4 || tag === 0) {
+        break;
+      }
+      reader.skip(tag & 7);
+    }
+    return message;
+  },
+
+  fromJSON(object: any): StoreChunk_Header {
+    return {
+      store: isSet(object.store) ? StoreTarget.fromJSON(object.store) : undefined,
+      overwrite: isSet(object.overwrite) ? globalThis.Boolean(object.overwrite) : false,
+    };
+  },
+
+  toJSON(message: StoreChunk_Header): unknown {
+    const obj: any = {};
+    if (message.store !== undefined) {
+      obj.store = StoreTarget.toJSON(message.store);
+    }
+    if (message.overwrite !== false) {
+      obj.overwrite = message.overwrite;
+    }
+    return obj;
+  },
+
+  create<I extends Exact<DeepPartial<StoreChunk_Header>, I>>(base?: I): StoreChunk_Header {
+    return StoreChunk_Header.fromPartial(base ?? ({} as any));
+  },
+  fromPartial<I extends Exact<DeepPartial<StoreChunk_Header>, I>>(object: I): StoreChunk_Header {
+    const message = createBaseStoreChunk_Header();
+    message.store = (object.store !== undefined && object.store !== null)
+      ? StoreTarget.fromPartial(object.store)
+      : undefined;
+    message.overwrite = object.overwrite ?? false;
+    return message;
+  },
+};
+
+function createBaseStoreResult(): StoreResult {
+  return { ok: false, error: "", bytesWritten: 0, sha256: "" };
+}
+
+export const StoreResult: MessageFns<StoreResult> = {
+  encode(message: StoreResult, writer: BinaryWriter = new BinaryWriter()): BinaryWriter {
+    if (message.ok !== false) {
+      writer.uint32(8).bool(message.ok);
+    }
+    if (message.error !== "") {
+      writer.uint32(18).string(message.error);
+    }
+    if (message.bytesWritten !== 0) {
+      writer.uint32(24).int64(message.bytesWritten);
+    }
+    if (message.sha256 !== "") {
+      writer.uint32(34).string(message.sha256);
+    }
+    return writer;
+  },
+
+  decode(input: BinaryReader | Uint8Array, length?: number): StoreResult {
+    const reader = input instanceof BinaryReader ? input : new BinaryReader(input);
+    const end = length === undefined ? reader.len : reader.pos + length;
+    const message = createBaseStoreResult();
+    while (reader.pos < end) {
+      const tag = reader.uint32();
+      switch (tag >>> 3) {
+        case 1: {
+          if (tag !== 8) {
+            break;
+          }
+
+          message.ok = reader.bool();
+          continue;
+        }
+        case 2: {
+          if (tag !== 18) {
+            break;
+          }
+
+          message.error = reader.string();
+          continue;
+        }
+        case 3: {
+          if (tag !== 24) {
+            break;
+          }
+
+          message.bytesWritten = longToNumber(reader.int64());
+          continue;
+        }
+        case 4: {
+          if (tag !== 34) {
+            break;
+          }
+
+          message.sha256 = reader.string();
+          continue;
+        }
+      }
+      if ((tag & 7) === 4 || tag === 0) {
+        break;
+      }
+      reader.skip(tag & 7);
+    }
+    return message;
+  },
+
+  fromJSON(object: any): StoreResult {
+    return {
+      ok: isSet(object.ok) ? globalThis.Boolean(object.ok) : false,
+      error: isSet(object.error) ? globalThis.String(object.error) : "",
+      bytesWritten: isSet(object.bytesWritten)
+        ? globalThis.Number(object.bytesWritten)
+        : isSet(object.bytes_written)
+        ? globalThis.Number(object.bytes_written)
+        : 0,
+      sha256: isSet(object.sha256) ? globalThis.String(object.sha256) : "",
+    };
+  },
+
+  toJSON(message: StoreResult): unknown {
+    const obj: any = {};
+    if (message.ok !== false) {
+      obj.ok = message.ok;
+    }
+    if (message.error !== "") {
+      obj.error = message.error;
+    }
+    if (message.bytesWritten !== 0) {
+      obj.bytesWritten = Math.round(message.bytesWritten);
+    }
+    if (message.sha256 !== "") {
+      obj.sha256 = message.sha256;
+    }
+    return obj;
+  },
+
+  create<I extends Exact<DeepPartial<StoreResult>, I>>(base?: I): StoreResult {
+    return StoreResult.fromPartial(base ?? ({} as any));
+  },
+  fromPartial<I extends Exact<DeepPartial<StoreResult>, I>>(object: I): StoreResult {
+    const message = createBaseStoreResult();
+    message.ok = object.ok ?? false;
+    message.error = object.error ?? "";
+    message.bytesWritten = object.bytesWritten ?? 0;
+    message.sha256 = object.sha256 ?? "";
+    return message;
+  },
+};
+
+function createBaseRestoreChunk(): RestoreChunk {
+  return { header: undefined, data: undefined };
+}
+
+export const RestoreChunk: MessageFns<RestoreChunk> = {
+  encode(message: RestoreChunk, writer: BinaryWriter = new BinaryWriter()): BinaryWriter {
+    if (message.header !== undefined) {
+      RestoreChunk_Header.encode(message.header, writer.uint32(10).fork()).join();
+    }
+    if (message.data !== undefined) {
+      writer.uint32(18).bytes(message.data);
+    }
+    return writer;
+  },
+
+  decode(input: BinaryReader | Uint8Array, length?: number): RestoreChunk {
+    const reader = input instanceof BinaryReader ? input : new BinaryReader(input);
+    const end = length === undefined ? reader.len : reader.pos + length;
+    const message = createBaseRestoreChunk();
+    while (reader.pos < end) {
+      const tag = reader.uint32();
+      switch (tag >>> 3) {
+        case 1: {
+          if (tag !== 10) {
+            break;
+          }
+
+          message.header = RestoreChunk_Header.decode(reader, reader.uint32());
+          continue;
+        }
+        case 2: {
+          if (tag !== 18) {
+            break;
+          }
+
+          message.data = reader.bytes();
+          continue;
+        }
+      }
+      if ((tag & 7) === 4 || tag === 0) {
+        break;
+      }
+      reader.skip(tag & 7);
+    }
+    return message;
+  },
+
+  fromJSON(object: any): RestoreChunk {
+    return {
+      header: isSet(object.header) ? RestoreChunk_Header.fromJSON(object.header) : undefined,
+      data: isSet(object.data) ? bytesFromBase64(object.data) : undefined,
+    };
+  },
+
+  toJSON(message: RestoreChunk): unknown {
+    const obj: any = {};
+    if (message.header !== undefined) {
+      obj.header = RestoreChunk_Header.toJSON(message.header);
+    }
+    if (message.data !== undefined) {
+      obj.data = base64FromBytes(message.data);
+    }
+    return obj;
+  },
+
+  create<I extends Exact<DeepPartial<RestoreChunk>, I>>(base?: I): RestoreChunk {
+    return RestoreChunk.fromPartial(base ?? ({} as any));
+  },
+  fromPartial<I extends Exact<DeepPartial<RestoreChunk>, I>>(object: I): RestoreChunk {
+    const message = createBaseRestoreChunk();
+    message.header = (object.header !== undefined && object.header !== null)
+      ? RestoreChunk_Header.fromPartial(object.header)
+      : undefined;
+    message.data = object.data ?? undefined;
+    return message;
+  },
+};
+
+function createBaseRestoreChunk_Header(): RestoreChunk_Header {
+  return { kind: 0, database: undefined, project: undefined, ageIdentity: "" };
+}
+
+export const RestoreChunk_Header: MessageFns<RestoreChunk_Header> = {
+  encode(message: RestoreChunk_Header, writer: BinaryWriter = new BinaryWriter()): BinaryWriter {
+    if (message.kind !== 0) {
+      writer.uint32(8).int32(message.kind);
+    }
+    if (message.database !== undefined) {
+      DatabaseDescriptor.encode(message.database, writer.uint32(18).fork()).join();
+    }
+    if (message.project !== undefined) {
+      ProjectDescriptor.encode(message.project, writer.uint32(26).fork()).join();
+    }
+    if (message.ageIdentity !== "") {
+      writer.uint32(34).string(message.ageIdentity);
+    }
+    return writer;
+  },
+
+  decode(input: BinaryReader | Uint8Array, length?: number): RestoreChunk_Header {
+    const reader = input instanceof BinaryReader ? input : new BinaryReader(input);
+    const end = length === undefined ? reader.len : reader.pos + length;
+    const message = createBaseRestoreChunk_Header();
+    while (reader.pos < end) {
+      const tag = reader.uint32();
+      switch (tag >>> 3) {
+        case 1: {
+          if (tag !== 8) {
+            break;
+          }
+
+          message.kind = reader.int32() as any;
+          continue;
+        }
+        case 2: {
+          if (tag !== 18) {
+            break;
+          }
+
+          message.database = DatabaseDescriptor.decode(reader, reader.uint32());
+          continue;
+        }
+        case 3: {
+          if (tag !== 26) {
+            break;
+          }
+
+          message.project = ProjectDescriptor.decode(reader, reader.uint32());
+          continue;
+        }
+        case 4: {
+          if (tag !== 34) {
+            break;
+          }
+
+          message.ageIdentity = reader.string();
+          continue;
+        }
+      }
+      if ((tag & 7) === 4 || tag === 0) {
+        break;
+      }
+      reader.skip(tag & 7);
+    }
+    return message;
+  },
+
+  fromJSON(object: any): RestoreChunk_Header {
+    return {
+      kind: isSet(object.kind) ? backupKindFromJSON(object.kind) : 0,
+      database: isSet(object.database) ? DatabaseDescriptor.fromJSON(object.database) : undefined,
+      project: isSet(object.project) ? ProjectDescriptor.fromJSON(object.project) : undefined,
+      ageIdentity: isSet(object.ageIdentity)
+        ? globalThis.String(object.ageIdentity)
+        : isSet(object.age_identity)
+        ? globalThis.String(object.age_identity)
+        : "",
+    };
+  },
+
+  toJSON(message: RestoreChunk_Header): unknown {
+    const obj: any = {};
+    if (message.kind !== 0) {
+      obj.kind = backupKindToJSON(message.kind);
+    }
+    if (message.database !== undefined) {
+      obj.database = DatabaseDescriptor.toJSON(message.database);
+    }
+    if (message.project !== undefined) {
+      obj.project = ProjectDescriptor.toJSON(message.project);
+    }
+    if (message.ageIdentity !== "") {
+      obj.ageIdentity = message.ageIdentity;
+    }
+    return obj;
+  },
+
+  create<I extends Exact<DeepPartial<RestoreChunk_Header>, I>>(base?: I): RestoreChunk_Header {
+    return RestoreChunk_Header.fromPartial(base ?? ({} as any));
+  },
+  fromPartial<I extends Exact<DeepPartial<RestoreChunk_Header>, I>>(object: I): RestoreChunk_Header {
+    const message = createBaseRestoreChunk_Header();
+    message.kind = object.kind ?? 0;
+    message.database = (object.database !== undefined && object.database !== null)
+      ? DatabaseDescriptor.fromPartial(object.database)
+      : undefined;
+    message.project = (object.project !== undefined && object.project !== null)
+      ? ProjectDescriptor.fromPartial(object.project)
+      : undefined;
+    message.ageIdentity = object.ageIdentity ?? "";
     return message;
   },
 };
@@ -14389,16 +15437,24 @@ export const AgentService = {
     responseDeserialize: (value: Buffer): SelfUpdateResponse => SelfUpdateResponse.decode(value),
   },
   /**
-   * Back up a database or a project to S3, streaming progress. DATABASE → the
-   * agent `docker exec`s the engine's dump tool (per the format table in
-   * docs/research/dbs-backups/PLAN.md), gzip-compresses the stream, and uploads
-   * it to S3 via a multipart PUT (minio-go), so no temp file and no
-   * control-plane round-trip. PROJECT → the agent tars the project's named +
-   * compose-stack volumes (via a throwaway helper container that mounts them),
-   * the project files dir, and the rendered compose/env snapshot, gzip-compresses,
-   * and uploads. Host bind mounts are EXCLUDED (shared cross-tenant paths,
-   * outside Deplo). The terminal BackupResult carries the final object key +
-   * byte size the control plane records on the BackupRun.
+   * Back up a database or a project to a destination, streaming progress.
+   * DATABASE → the agent `docker exec`s the engine's dump tool (per the format
+   * table in docs/research/dbs-backups/PLAN.md), gzip-compresses the stream, and
+   * writes it out, so no temp file and no control-plane round-trip. PROJECT →
+   * the agent tars the project's named + compose-stack volumes (via a throwaway
+   * helper container that mounts them), the project files dir, and the rendered
+   * compose/env snapshot, gzip-compresses, and writes it out. Host bind mounts
+   * are EXCLUDED (shared cross-tenant paths, outside Deplo). The terminal
+   * BackupResult carries the final object key + byte size the control plane
+   * records on the BackupRun.
+   *
+   * The SINK is one of three, in the order the request selects them: `s3` (a
+   * multipart PUT via minio-go), `store` (an age-encrypted file under a
+   * validated root on this host), or — when `stream_out` is set — this RPC's own
+   * BackupEvent.data frames, so the control plane can relay the artifact to
+   * another host's WriteStoreFile. All three consume the SAME producer: the
+   * compression and the age wrap happen once, in the source pipeline, so a
+   * relayed artifact is ciphertext before it ever leaves this host.
    */
   backup: {
     path: "/deplo.agent.v1.Agent/Backup" as const,
@@ -14410,15 +15466,19 @@ export const AgentService = {
     responseDeserialize: (value: Buffer): BackupEvent => BackupEvent.decode(value),
   },
   /**
-   * Restore a database or project from a previously-uploaded S3 object, IN
-   * PLACE, streaming progress. DATABASE → download the object, decompress, and
-   * restore per the format table — drop-and-recreate, guaranteed by the dump
-   * format (pg `--clean --if-exists`, mysql `--add-drop-table`, mongo `--drop`)
-   * so a restore overwrites rather than appends. PROJECT → stop the stack, wipe
-   * + untar the volumes + files, re-`Reroute` the snapshot compose/env (which
-   * restarts the stack) = full data + config in place. A restart failure (e.g.
-   * a snapshot image that no longer exists) is reported clearly on the stream
-   * rather than silently leaving the stack down.
+   * Restore a database or project from a previously-written artifact, IN PLACE,
+   * streaming progress. DATABASE → read the artifact, decrypt (store only),
+   * decompress, and restore per the format table — drop-and-recreate, guaranteed
+   * by the dump format (pg `--clean --if-exists`, mysql `--add-drop-table`,
+   * mongo `--drop`) so a restore overwrites rather than appends. PROJECT → stop
+   * the stack, wipe + untar the volumes + files, re-`Reroute` the snapshot
+   * compose/env (which restarts the stack) = full data + config in place. A
+   * restart failure (e.g. a snapshot image that no longer exists) is reported
+   * clearly on the stream rather than silently leaving the stack down.
+   *
+   * This RPC reads the artifact from a destination THIS host can reach (`s3` or
+   * a local `store`). When the artifact lives on another server's disk, the
+   * control plane uses RestoreFrom instead and streams the bytes in.
    */
   restore: {
     path: "/deplo.agent.v1.Agent/Restore" as const,
@@ -14430,12 +15490,14 @@ export const AgentService = {
     responseDeserialize: (value: Buffer): RestoreEvent => RestoreEvent.decode(value),
   },
   /**
-   * Verify S3 connectivity + the destination bucket for the "Test connection"
-   * button (makes lib/data/s3.ts testS3 real). The agent HEADs/stats the bucket
-   * with the supplied creds and reports reachable + writable, with a human
-   * message on failure. Any agent advertising "backup" can serve it — it needs
-   * no Docker, only the S3 client — so the control plane can run it on any
-   * reachable backup-capable server.
+   * Verify a destination for the "Test connection" button. S3 → HEAD/stat the
+   * bucket with the supplied creds and report reachable + writable. STORE →
+   * resolve the root, create it if it is the agent's own managed one, verify the
+   * sentinel for a custom one, probe writability, sweep stale `.partial` files,
+   * and report free/total bytes so the UI can show headroom. An S3 check needs
+   * no Docker and no host state, so any agent advertising "backup" can serve it;
+   * a STORE check is about THIS host's disk, so it must run on the destination's
+   * own server.
    */
   s3Check: {
     path: "/deplo.agent.v1.Agent/S3Check" as const,
@@ -14447,7 +15509,7 @@ export const AgentService = {
     responseDeserialize: (value: Buffer): S3CheckResponse => S3CheckResponse.decode(value),
   },
   /**
-   * Delete S3 objects by exact key or by prefix. Backs retention pruning (the
+   * Delete artifacts by exact key or by prefix. Backs retention pruning (the
    * control plane deletes objects older than retentionDays for a backup) and
    * the "delete artifacts too" branch of target deletion. Idempotent: a missing
    * object is not an error. Returns how many objects were removed.
@@ -14460,6 +15522,61 @@ export const AgentService = {
     requestDeserialize: (value: Buffer): S3DeleteRequest => S3DeleteRequest.decode(value),
     responseSerialize: (value: S3DeleteResponse): Buffer => Buffer.from(S3DeleteResponse.encode(value).finish()),
     responseDeserialize: (value: Buffer): S3DeleteResponse => S3DeleteResponse.decode(value),
+  },
+  /**
+   * Stream an artifact OUT of this host's store, for a restore or a download
+   * whose reader lives elsewhere. Emits `data` frames only (no header). By
+   * default the bytes are exactly what was written — still age-encrypted — so a
+   * control plane relaying them to another host never holds plaintext. Pass
+   * `age_identity` to decrypt on the way out instead, which is what a user
+   * downloading their own backup needs.
+   */
+  readStoreFile: {
+    path: "/deplo.agent.v1.Agent/ReadStoreFile" as const,
+    requestStream: false as const,
+    responseStream: true as const,
+    requestSerialize: (value: ReadStoreFileRequest): Buffer => Buffer.from(ReadStoreFileRequest.encode(value).finish()),
+    requestDeserialize: (value: Buffer): ReadStoreFileRequest => ReadStoreFileRequest.decode(value),
+    responseSerialize: (value: StoreChunk): Buffer => Buffer.from(StoreChunk.encode(value).finish()),
+    responseDeserialize: (value: Buffer): StoreChunk => StoreChunk.decode(value),
+  },
+  /**
+   * Receive an artifact INTO this host's store. The FIRST client message MUST
+   * carry `header` (the destination root + object key); every following message
+   * carries `data`. The agent writes to `<key>.partial`, fsyncs, and renames on
+   * a clean end — so a broken relay leaves a sweepable temp file rather than a
+   * truncated artifact at the real key that retention would later hand to a
+   * restore. The terminal StoreResult carries the bytes written and their
+   * sha256: on a filesystem there is no ETag, so this is the only durable proof
+   * of what landed, and it is what the control plane records on the run.
+   */
+  writeStoreFile: {
+    path: "/deplo.agent.v1.Agent/WriteStoreFile" as const,
+    requestStream: true as const,
+    responseStream: false as const,
+    requestSerialize: (value: StoreChunk): Buffer => Buffer.from(StoreChunk.encode(value).finish()),
+    requestDeserialize: (value: Buffer): StoreChunk => StoreChunk.decode(value),
+    responseSerialize: (value: StoreResult): Buffer => Buffer.from(StoreResult.encode(value).finish()),
+    responseDeserialize: (value: Buffer): StoreResult => StoreResult.decode(value),
+  },
+  /**
+   * Restore from an artifact this host CANNOT reach — the cross-host half of
+   * Restore. Bidirectional because a restore must both receive bytes and report
+   * progress: the first client message carries the header (kind + descriptor +
+   * the age identity), every following message carries a slice of the artifact,
+   * and the agent pipes them straight into the same restore chain Restore uses.
+   * Deliberately NOT "stage the artifact to a temp file then call Restore": that
+   * would need a full artifact's worth of free space on the very host being
+   * restored, plus cleanup that has to survive an agent restart.
+   */
+  restoreFrom: {
+    path: "/deplo.agent.v1.Agent/RestoreFrom" as const,
+    requestStream: true as const,
+    responseStream: true as const,
+    requestSerialize: (value: RestoreChunk): Buffer => Buffer.from(RestoreChunk.encode(value).finish()),
+    requestDeserialize: (value: Buffer): RestoreChunk => RestoreChunk.decode(value),
+    responseSerialize: (value: RestoreEvent): Buffer => Buffer.from(RestoreEvent.encode(value).finish()),
+    responseDeserialize: (value: Buffer): RestoreEvent => RestoreEvent.decode(value),
   },
   /**
    * Stream a container's live runtime logs (`docker logs -f --tail N`) as raw
@@ -15114,46 +16231,91 @@ export interface AgentServer extends UntypedServiceImplementation {
    */
   selfUpdate: handleUnaryCall<SelfUpdateRequest, SelfUpdateResponse>;
   /**
-   * Back up a database or a project to S3, streaming progress. DATABASE → the
-   * agent `docker exec`s the engine's dump tool (per the format table in
-   * docs/research/dbs-backups/PLAN.md), gzip-compresses the stream, and uploads
-   * it to S3 via a multipart PUT (minio-go), so no temp file and no
-   * control-plane round-trip. PROJECT → the agent tars the project's named +
-   * compose-stack volumes (via a throwaway helper container that mounts them),
-   * the project files dir, and the rendered compose/env snapshot, gzip-compresses,
-   * and uploads. Host bind mounts are EXCLUDED (shared cross-tenant paths,
-   * outside Deplo). The terminal BackupResult carries the final object key +
-   * byte size the control plane records on the BackupRun.
+   * Back up a database or a project to a destination, streaming progress.
+   * DATABASE → the agent `docker exec`s the engine's dump tool (per the format
+   * table in docs/research/dbs-backups/PLAN.md), gzip-compresses the stream, and
+   * writes it out, so no temp file and no control-plane round-trip. PROJECT →
+   * the agent tars the project's named + compose-stack volumes (via a throwaway
+   * helper container that mounts them), the project files dir, and the rendered
+   * compose/env snapshot, gzip-compresses, and writes it out. Host bind mounts
+   * are EXCLUDED (shared cross-tenant paths, outside Deplo). The terminal
+   * BackupResult carries the final object key + byte size the control plane
+   * records on the BackupRun.
+   *
+   * The SINK is one of three, in the order the request selects them: `s3` (a
+   * multipart PUT via minio-go), `store` (an age-encrypted file under a
+   * validated root on this host), or — when `stream_out` is set — this RPC's own
+   * BackupEvent.data frames, so the control plane can relay the artifact to
+   * another host's WriteStoreFile. All three consume the SAME producer: the
+   * compression and the age wrap happen once, in the source pipeline, so a
+   * relayed artifact is ciphertext before it ever leaves this host.
    */
   backup: handleServerStreamingCall<BackupRequest, BackupEvent>;
   /**
-   * Restore a database or project from a previously-uploaded S3 object, IN
-   * PLACE, streaming progress. DATABASE → download the object, decompress, and
-   * restore per the format table — drop-and-recreate, guaranteed by the dump
-   * format (pg `--clean --if-exists`, mysql `--add-drop-table`, mongo `--drop`)
-   * so a restore overwrites rather than appends. PROJECT → stop the stack, wipe
-   * + untar the volumes + files, re-`Reroute` the snapshot compose/env (which
-   * restarts the stack) = full data + config in place. A restart failure (e.g.
-   * a snapshot image that no longer exists) is reported clearly on the stream
-   * rather than silently leaving the stack down.
+   * Restore a database or project from a previously-written artifact, IN PLACE,
+   * streaming progress. DATABASE → read the artifact, decrypt (store only),
+   * decompress, and restore per the format table — drop-and-recreate, guaranteed
+   * by the dump format (pg `--clean --if-exists`, mysql `--add-drop-table`,
+   * mongo `--drop`) so a restore overwrites rather than appends. PROJECT → stop
+   * the stack, wipe + untar the volumes + files, re-`Reroute` the snapshot
+   * compose/env (which restarts the stack) = full data + config in place. A
+   * restart failure (e.g. a snapshot image that no longer exists) is reported
+   * clearly on the stream rather than silently leaving the stack down.
+   *
+   * This RPC reads the artifact from a destination THIS host can reach (`s3` or
+   * a local `store`). When the artifact lives on another server's disk, the
+   * control plane uses RestoreFrom instead and streams the bytes in.
    */
   restore: handleServerStreamingCall<RestoreRequest, RestoreEvent>;
   /**
-   * Verify S3 connectivity + the destination bucket for the "Test connection"
-   * button (makes lib/data/s3.ts testS3 real). The agent HEADs/stats the bucket
-   * with the supplied creds and reports reachable + writable, with a human
-   * message on failure. Any agent advertising "backup" can serve it — it needs
-   * no Docker, only the S3 client — so the control plane can run it on any
-   * reachable backup-capable server.
+   * Verify a destination for the "Test connection" button. S3 → HEAD/stat the
+   * bucket with the supplied creds and report reachable + writable. STORE →
+   * resolve the root, create it if it is the agent's own managed one, verify the
+   * sentinel for a custom one, probe writability, sweep stale `.partial` files,
+   * and report free/total bytes so the UI can show headroom. An S3 check needs
+   * no Docker and no host state, so any agent advertising "backup" can serve it;
+   * a STORE check is about THIS host's disk, so it must run on the destination's
+   * own server.
    */
   s3Check: handleUnaryCall<S3CheckRequest, S3CheckResponse>;
   /**
-   * Delete S3 objects by exact key or by prefix. Backs retention pruning (the
+   * Delete artifacts by exact key or by prefix. Backs retention pruning (the
    * control plane deletes objects older than retentionDays for a backup) and
    * the "delete artifacts too" branch of target deletion. Idempotent: a missing
    * object is not an error. Returns how many objects were removed.
    */
   s3Delete: handleUnaryCall<S3DeleteRequest, S3DeleteResponse>;
+  /**
+   * Stream an artifact OUT of this host's store, for a restore or a download
+   * whose reader lives elsewhere. Emits `data` frames only (no header). By
+   * default the bytes are exactly what was written — still age-encrypted — so a
+   * control plane relaying them to another host never holds plaintext. Pass
+   * `age_identity` to decrypt on the way out instead, which is what a user
+   * downloading their own backup needs.
+   */
+  readStoreFile: handleServerStreamingCall<ReadStoreFileRequest, StoreChunk>;
+  /**
+   * Receive an artifact INTO this host's store. The FIRST client message MUST
+   * carry `header` (the destination root + object key); every following message
+   * carries `data`. The agent writes to `<key>.partial`, fsyncs, and renames on
+   * a clean end — so a broken relay leaves a sweepable temp file rather than a
+   * truncated artifact at the real key that retention would later hand to a
+   * restore. The terminal StoreResult carries the bytes written and their
+   * sha256: on a filesystem there is no ETag, so this is the only durable proof
+   * of what landed, and it is what the control plane records on the run.
+   */
+  writeStoreFile: handleClientStreamingCall<StoreChunk, StoreResult>;
+  /**
+   * Restore from an artifact this host CANNOT reach — the cross-host half of
+   * Restore. Bidirectional because a restore must both receive bytes and report
+   * progress: the first client message carries the header (kind + descriptor +
+   * the age identity), every following message carries a slice of the artifact,
+   * and the agent pipes them straight into the same restore chain Restore uses.
+   * Deliberately NOT "stage the artifact to a temp file then call Restore": that
+   * would need a full artifact's worth of free space on the very host being
+   * restored, plus cleanup that has to survive an agent restart.
+   */
+  restoreFrom: handleBidiStreamingCall<RestoreChunk, RestoreEvent>;
   /**
    * Stream a container's live runtime logs (`docker logs -f --tail N`) as raw
    * byte chunks. Output-only — there is no stdin. The control plane proxies these
@@ -15773,16 +16935,24 @@ export interface AgentClient extends Client {
     callback: (error: ServiceError | null, response: SelfUpdateResponse) => void,
   ): ClientUnaryCall;
   /**
-   * Back up a database or a project to S3, streaming progress. DATABASE → the
-   * agent `docker exec`s the engine's dump tool (per the format table in
-   * docs/research/dbs-backups/PLAN.md), gzip-compresses the stream, and uploads
-   * it to S3 via a multipart PUT (minio-go), so no temp file and no
-   * control-plane round-trip. PROJECT → the agent tars the project's named +
-   * compose-stack volumes (via a throwaway helper container that mounts them),
-   * the project files dir, and the rendered compose/env snapshot, gzip-compresses,
-   * and uploads. Host bind mounts are EXCLUDED (shared cross-tenant paths,
-   * outside Deplo). The terminal BackupResult carries the final object key +
-   * byte size the control plane records on the BackupRun.
+   * Back up a database or a project to a destination, streaming progress.
+   * DATABASE → the agent `docker exec`s the engine's dump tool (per the format
+   * table in docs/research/dbs-backups/PLAN.md), gzip-compresses the stream, and
+   * writes it out, so no temp file and no control-plane round-trip. PROJECT →
+   * the agent tars the project's named + compose-stack volumes (via a throwaway
+   * helper container that mounts them), the project files dir, and the rendered
+   * compose/env snapshot, gzip-compresses, and writes it out. Host bind mounts
+   * are EXCLUDED (shared cross-tenant paths, outside Deplo). The terminal
+   * BackupResult carries the final object key + byte size the control plane
+   * records on the BackupRun.
+   *
+   * The SINK is one of three, in the order the request selects them: `s3` (a
+   * multipart PUT via minio-go), `store` (an age-encrypted file under a
+   * validated root on this host), or — when `stream_out` is set — this RPC's own
+   * BackupEvent.data frames, so the control plane can relay the artifact to
+   * another host's WriteStoreFile. All three consume the SAME producer: the
+   * compression and the age wrap happen once, in the source pipeline, so a
+   * relayed artifact is ciphertext before it ever leaves this host.
    */
   backup(request: BackupRequest, options?: Partial<CallOptions>): ClientReadableStream<BackupEvent>;
   backup(
@@ -15791,15 +16961,19 @@ export interface AgentClient extends Client {
     options?: Partial<CallOptions>,
   ): ClientReadableStream<BackupEvent>;
   /**
-   * Restore a database or project from a previously-uploaded S3 object, IN
-   * PLACE, streaming progress. DATABASE → download the object, decompress, and
-   * restore per the format table — drop-and-recreate, guaranteed by the dump
-   * format (pg `--clean --if-exists`, mysql `--add-drop-table`, mongo `--drop`)
-   * so a restore overwrites rather than appends. PROJECT → stop the stack, wipe
-   * + untar the volumes + files, re-`Reroute` the snapshot compose/env (which
-   * restarts the stack) = full data + config in place. A restart failure (e.g.
-   * a snapshot image that no longer exists) is reported clearly on the stream
-   * rather than silently leaving the stack down.
+   * Restore a database or project from a previously-written artifact, IN PLACE,
+   * streaming progress. DATABASE → read the artifact, decrypt (store only),
+   * decompress, and restore per the format table — drop-and-recreate, guaranteed
+   * by the dump format (pg `--clean --if-exists`, mysql `--add-drop-table`,
+   * mongo `--drop`) so a restore overwrites rather than appends. PROJECT → stop
+   * the stack, wipe + untar the volumes + files, re-`Reroute` the snapshot
+   * compose/env (which restarts the stack) = full data + config in place. A
+   * restart failure (e.g. a snapshot image that no longer exists) is reported
+   * clearly on the stream rather than silently leaving the stack down.
+   *
+   * This RPC reads the artifact from a destination THIS host can reach (`s3` or
+   * a local `store`). When the artifact lives on another server's disk, the
+   * control plane uses RestoreFrom instead and streams the bytes in.
    */
   restore(request: RestoreRequest, options?: Partial<CallOptions>): ClientReadableStream<RestoreEvent>;
   restore(
@@ -15808,12 +16982,14 @@ export interface AgentClient extends Client {
     options?: Partial<CallOptions>,
   ): ClientReadableStream<RestoreEvent>;
   /**
-   * Verify S3 connectivity + the destination bucket for the "Test connection"
-   * button (makes lib/data/s3.ts testS3 real). The agent HEADs/stats the bucket
-   * with the supplied creds and reports reachable + writable, with a human
-   * message on failure. Any agent advertising "backup" can serve it — it needs
-   * no Docker, only the S3 client — so the control plane can run it on any
-   * reachable backup-capable server.
+   * Verify a destination for the "Test connection" button. S3 → HEAD/stat the
+   * bucket with the supplied creds and report reachable + writable. STORE →
+   * resolve the root, create it if it is the agent's own managed one, verify the
+   * sentinel for a custom one, probe writability, sweep stale `.partial` files,
+   * and report free/total bytes so the UI can show headroom. An S3 check needs
+   * no Docker and no host state, so any agent advertising "backup" can serve it;
+   * a STORE check is about THIS host's disk, so it must run on the destination's
+   * own server.
    */
   s3Check(
     request: S3CheckRequest,
@@ -15831,7 +17007,7 @@ export interface AgentClient extends Client {
     callback: (error: ServiceError | null, response: S3CheckResponse) => void,
   ): ClientUnaryCall;
   /**
-   * Delete S3 objects by exact key or by prefix. Backs retention pruning (the
+   * Delete artifacts by exact key or by prefix. Backs retention pruning (the
    * control plane deletes objects older than retentionDays for a backup) and
    * the "delete artifacts too" branch of target deletion. Idempotent: a missing
    * object is not an error. Returns how many objects were removed.
@@ -15851,6 +17027,59 @@ export interface AgentClient extends Client {
     options: Partial<CallOptions>,
     callback: (error: ServiceError | null, response: S3DeleteResponse) => void,
   ): ClientUnaryCall;
+  /**
+   * Stream an artifact OUT of this host's store, for a restore or a download
+   * whose reader lives elsewhere. Emits `data` frames only (no header). By
+   * default the bytes are exactly what was written — still age-encrypted — so a
+   * control plane relaying them to another host never holds plaintext. Pass
+   * `age_identity` to decrypt on the way out instead, which is what a user
+   * downloading their own backup needs.
+   */
+  readStoreFile(request: ReadStoreFileRequest, options?: Partial<CallOptions>): ClientReadableStream<StoreChunk>;
+  readStoreFile(
+    request: ReadStoreFileRequest,
+    metadata?: Metadata,
+    options?: Partial<CallOptions>,
+  ): ClientReadableStream<StoreChunk>;
+  /**
+   * Receive an artifact INTO this host's store. The FIRST client message MUST
+   * carry `header` (the destination root + object key); every following message
+   * carries `data`. The agent writes to `<key>.partial`, fsyncs, and renames on
+   * a clean end — so a broken relay leaves a sweepable temp file rather than a
+   * truncated artifact at the real key that retention would later hand to a
+   * restore. The terminal StoreResult carries the bytes written and their
+   * sha256: on a filesystem there is no ETag, so this is the only durable proof
+   * of what landed, and it is what the control plane records on the run.
+   */
+  writeStoreFile(
+    callback: (error: ServiceError | null, response: StoreResult) => void,
+  ): ClientWritableStream<StoreChunk>;
+  writeStoreFile(
+    metadata: Metadata,
+    callback: (error: ServiceError | null, response: StoreResult) => void,
+  ): ClientWritableStream<StoreChunk>;
+  writeStoreFile(
+    options: Partial<CallOptions>,
+    callback: (error: ServiceError | null, response: StoreResult) => void,
+  ): ClientWritableStream<StoreChunk>;
+  writeStoreFile(
+    metadata: Metadata,
+    options: Partial<CallOptions>,
+    callback: (error: ServiceError | null, response: StoreResult) => void,
+  ): ClientWritableStream<StoreChunk>;
+  /**
+   * Restore from an artifact this host CANNOT reach — the cross-host half of
+   * Restore. Bidirectional because a restore must both receive bytes and report
+   * progress: the first client message carries the header (kind + descriptor +
+   * the age identity), every following message carries a slice of the artifact,
+   * and the agent pipes them straight into the same restore chain Restore uses.
+   * Deliberately NOT "stage the artifact to a temp file then call Restore": that
+   * would need a full artifact's worth of free space on the very host being
+   * restored, plus cleanup that has to survive an agent restart.
+   */
+  restoreFrom(): ClientDuplexStream<RestoreChunk, RestoreEvent>;
+  restoreFrom(options: Partial<CallOptions>): ClientDuplexStream<RestoreChunk, RestoreEvent>;
+  restoreFrom(metadata: Metadata, options?: Partial<CallOptions>): ClientDuplexStream<RestoreChunk, RestoreEvent>;
   /**
    * Stream a container's live runtime logs (`docker logs -f --tail N`) as raw
    * byte chunks. Output-only — there is no stdin. The control plane proxies these

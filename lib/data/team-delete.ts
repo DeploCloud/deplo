@@ -210,11 +210,11 @@ export function teardownTeamResources(plan: TeardownPlan, tag = "team-delete"): 
  * Removes the team row in ONE delete — the FK CASCADEs drop everything
  * team-scoped: memberships, invites, folders, projects (+ environments),
  * apps (+ deployments, env vars, domains…), databases, backup schedules
- * AND run history, S3 destinations, installed plugins, tokens, activities. The
+ * AND run history, backup destinations, installed plugins, tokens, activities. The
  * stack teardown (apps, databases including data volumes, installed plugins)
  * continues in the background from a pre-delete
- * snapshot. Backup ARCHIVES already uploaded to S3 buckets are kept — only the
- * records go.
+ * snapshot. Backup ARTIFACTS already written — to a bucket or to a server's disk
+ * — are kept; only the records go.
  */
 export async function deleteTeam(teamId: string): Promise<void> {
   const ctx = await deleteTeamContext();

@@ -5,25 +5,26 @@ import {
   backups,
   backupRuns,
   databases,
-  s3Destination,
+  backupDestination,
 } from "../db/schema/control-plane";
 import type {
   Backup,
+  BackupDestination,
   BackupRun,
   BackupRunStatus,
   BackupTargetKind,
   Database,
   DatabaseStatus,
   DatabaseType,
-  S3Destination,
+  DestinationKind,
+  DestinationStatus,
   S3Provider,
-  S3Status,
 } from "../types";
 
 /**
  * The ONE relational-rows ↔ domain-objects mapping for the backups tables
  * (relational-store PLAN §3 cut-set (d) / §2 the data aggregate): `databases`,
- * `s3_destination`, `backups`, `backup_runs`. Every reader and writer in the data
+ * `backup_destination`, `backups`, `backup_runs`. Every reader and writer in the data
  * layer (`lib/data/{databases,s3,backups}.ts`) goes through here, so reads and
  * writes can't drift on how a row folds into a domain object — the same anti-drift
  * seam `app-graph-rows.ts` is for the project graph and `infra-rows.ts` is for
@@ -41,8 +42,8 @@ import type {
 
 export type DatabaseRow = InferSelectModel<typeof databases>;
 export type DatabaseInsert = InferInsertModel<typeof databases>;
-export type S3DestinationRow = InferSelectModel<typeof s3Destination>;
-export type S3DestinationInsert = InferInsertModel<typeof s3Destination>;
+export type BackupDestinationRow = InferSelectModel<typeof backupDestination>;
+export type BackupDestinationInsert = InferInsertModel<typeof backupDestination>;
 export type BackupRow = InferSelectModel<typeof backups>;
 export type BackupInsert = InferInsertModel<typeof backups>;
 export type BackupRunRow = InferSelectModel<typeof backupRuns>;
@@ -114,48 +115,73 @@ export function assembleDatabase(row: DatabaseRow): Database {
 }
 
 /* ------------------------------------------------------------------ */
-/* s3_destination                                                      */
+/* backup_destination                                                  */
 /* ------------------------------------------------------------------ */
 
-/** Explode an {@link S3Destination} into its `s3_destination` row. */
-export function s3ToRow(s: S3Destination): S3DestinationInsert {
+/**
+ * Explode a {@link BackupDestination} into its `backup_destination` row.
+ *
+ * The kind-specific halves stay NULL rather than empty-string: the DB CHECK
+ * (`backup_destination_kind_shape`) reads them, so an `s3` row carrying a stray
+ * `""` server id, or a `server` row with an empty bucket, would be rejected at
+ * write time — which is exactly what should happen.
+ */
+export function destinationToRow(d: BackupDestination): BackupDestinationInsert {
   return {
-    id: s.id,
-    teamId: s.teamId,
-    name: s.name,
-    provider: s.provider,
-    endpoint: s.endpoint,
-    region: s.region,
-    bucket: s.bucket,
-    accessKeyEnc: s.accessKeyEnc,
-    secretKeyEnc: s.secretKeyEnc,
-    status: s.status,
-    createdAt: s.createdAt,
-    lastTestAt: s.lastTestAt,
-    lastTestError: s.lastTestError,
-    lastTestServerId: s.lastTestServerId,
-    lastTestMs: s.lastTestMs,
-  } satisfies Record<keyof S3Destination, unknown> as S3DestinationInsert;
+    id: d.id,
+    teamId: d.teamId,
+    name: d.name,
+    kind: d.kind,
+    provider: d.provider,
+    endpoint: d.endpoint,
+    region: d.region,
+    bucket: d.bucket,
+    accessKeyEnc: d.accessKeyEnc,
+    secretKeyEnc: d.secretKeyEnc,
+    serverId: d.serverId,
+    path: d.path,
+    ageRecipient: d.ageRecipient,
+    ageIdentityEnc: d.ageIdentityEnc,
+    recoveryKeySavedAt: d.recoveryKeySavedAt,
+    status: d.status,
+    createdAt: d.createdAt,
+    lastTestAt: d.lastTestAt,
+    lastTestError: d.lastTestError,
+    lastTestServerId: d.lastTestServerId,
+    lastTestMs: d.lastTestMs,
+    lastFreeBytes: d.lastFreeBytes,
+    lastTotalBytes: d.lastTotalBytes,
+    resolvedPath: d.resolvedPath,
+  } satisfies Record<keyof BackupDestination, unknown> as BackupDestinationInsert;
 }
 
-/** Reassemble an `s3_destination` row into an {@link S3Destination}. */
-export function assembleS3(row: S3DestinationRow): S3Destination {
+/** Reassemble a `backup_destination` row into a {@link BackupDestination}. */
+export function assembleDestination(row: BackupDestinationRow): BackupDestination {
   return {
     id: row.id,
     teamId: row.teamId,
     name: row.name,
-    provider: row.provider as S3Provider,
-    endpoint: row.endpoint,
-    region: row.region,
-    bucket: row.bucket,
-    accessKeyEnc: row.accessKeyEnc,
-    secretKeyEnc: row.secretKeyEnc,
-    status: row.status as S3Status,
+    kind: row.kind as DestinationKind,
+    provider: (row.provider as S3Provider | null) ?? null,
+    endpoint: row.endpoint ?? null,
+    region: row.region ?? null,
+    bucket: row.bucket ?? null,
+    accessKeyEnc: row.accessKeyEnc ?? null,
+    secretKeyEnc: row.secretKeyEnc ?? null,
+    serverId: row.serverId ?? null,
+    path: row.path ?? null,
+    ageRecipient: row.ageRecipient ?? null,
+    ageIdentityEnc: row.ageIdentityEnc ?? null,
+    recoveryKeySavedAt: row.recoveryKeySavedAt ?? null,
+    status: row.status as DestinationStatus,
     createdAt: row.createdAt,
     lastTestAt: row.lastTestAt ?? null,
     lastTestError: row.lastTestError ?? null,
     lastTestServerId: row.lastTestServerId ?? null,
     lastTestMs: row.lastTestMs ?? null,
+    lastFreeBytes: row.lastFreeBytes ?? null,
+    lastTotalBytes: row.lastTotalBytes ?? null,
+    resolvedPath: row.resolvedPath ?? null,
   };
 }
 

@@ -2,13 +2,13 @@ import {
   backups as backupsTable,
   backupRuns as backupRunsTable,
   databases as databasesTable,
-  s3Destination as s3Table,
+  backupDestination as destTable,
 } from "../db/schema/control-plane";
 import {
   backupToRow,
   backupRunToRow,
   databaseToRow,
-  s3ToRow,
+  destinationToRow,
 } from "./backup-rows";
 import { encryptSecret } from "../crypto";
 import type { TestDb } from "../db/test-harness";
@@ -16,7 +16,7 @@ import type {
   Backup,
   BackupRun,
   Database,
-  S3Destination,
+  BackupDestination,
 } from "../types";
 import { TEAM_A } from "./identity-test-helpers";
 import { SERVER_1 } from "./app-graph-test-helpers";
@@ -24,7 +24,7 @@ import { SERVER_1 } from "./app-graph-test-helpers";
 /**
  * Shared seeding for the backups cut-set (d) data-layer + scheduler tests
  * (relational-store PLAN Step 5). The four collections are RELATIONAL: the data
- * layer + the scheduler read pglite. So this seeds `databases` / `s3_destination`
+ * layer + the scheduler read pglite. So this seeds `databases` / `backup_destination`
  * / `backups` / `backup_runs` directly, the same way `app-graph-test-helpers`
  * seeds the project graph.
  *
@@ -39,7 +39,7 @@ const T0 = "2026-01-01T00:00:00.000Z";
 
 /** Truncate every backups-cut-set table (call in `beforeEach` before seeding). */
 export const TRUNCATE_BACKUPS = `truncate table
-  backup_runs, backups, databases, s3_destination
+  backup_runs, backups, databases, backup_destination
   restart identity cascade;`;
 
 export interface SeedDatabaseOpts {
@@ -91,11 +91,16 @@ export async function seedDatabase(
   return row.id;
 }
 
-export interface SeedS3Opts {
+export interface SeedDestinationOpts {
   id: string;
   teamId?: string;
   name?: string;
-  status?: S3Destination["status"];
+  status?: BackupDestination["status"];
+  /** `s3` (the default) or a folder on `serverId`. */
+  kind?: BackupDestination["kind"];
+  /** Required for kind `server`. */
+  serverId?: string;
+  path?: string | null;
   /** Last-test verdict, for the connection-log report. Default: never tested. */
   lastTest?: {
     at: string;
@@ -105,28 +110,73 @@ export interface SeedS3Opts {
   };
 }
 
-/** Seed one S3 destination (real encrypted access/secret keys). */
-export async function seedS3(db: TestDb, opts: SeedS3Opts): Promise<string> {
-  const row: S3Destination = {
+/**
+ * Seed one backup destination. `s3` by default (with real encrypted access /
+ * secret keys); `kind: "server"` seeds a folder destination with a real-shaped
+ * age keypair, so the DB CHECK on the kind's columns is exercised rather than
+ * worked around.
+ */
+export async function seedDestination(
+  db: TestDb,
+  opts: SeedDestinationOpts,
+): Promise<string> {
+  const kind = opts.kind ?? "s3";
+  const common = {
     id: opts.id,
     teamId: opts.teamId ?? TEAM_A,
     name: opts.name ?? opts.id,
-    provider: "aws",
-    endpoint: "https://s3.us-east-1.amazonaws.com",
-    region: "us-east-1",
-    bucket: "deplo-backups",
-    accessKeyEnc: encryptSecret("AKIA_TEST"),
-    secretKeyEnc: encryptSecret("secret_test"),
-    status: opts.status ?? "connected",
+    status: opts.status ?? ("connected" as const),
     createdAt: T0,
+    recoveryKeySavedAt: null,
     lastTestAt: opts.lastTest?.at ?? null,
     lastTestError: opts.lastTest?.error ?? null,
     lastTestServerId: opts.lastTest?.serverId ?? null,
     lastTestMs: opts.lastTest?.ms ?? null,
+    lastFreeBytes: null,
+    lastTotalBytes: null,
+    resolvedPath: null,
   };
-  await db.insert(s3Table).values(s3ToRow(row));
+  const row: BackupDestination =
+    kind === "server"
+      ? {
+          ...common,
+          kind: "server",
+          provider: null,
+          endpoint: null,
+          region: null,
+          bucket: null,
+          accessKeyEnc: null,
+          secretKeyEnc: null,
+          serverId: opts.serverId ?? SERVER_1,
+          path: opts.path ?? null,
+          // A syntactically real age keypair. Not generated: these tests never
+          // encrypt anything, and a fixed pair keeps them deterministic.
+          ageRecipient:
+            "age1ajphv95pnsjagt46mqghtvszrkrv2xay73pjvvedum2xhj4624ts2ujm3l",
+          ageIdentityEnc: encryptSecret(
+            "AGE-SECRET-KEY-1QVJ9ZZZ8QKZ7EXAMPLEEXAMPLEEXAMPLEEXAMPLEEXAMPLEEXAMPLEEXA",
+          ),
+        }
+      : {
+          ...common,
+          kind: "s3",
+          provider: "aws",
+          endpoint: "https://s3.us-east-1.amazonaws.com",
+          region: "us-east-1",
+          bucket: "deplo-backups",
+          accessKeyEnc: encryptSecret("AKIA_TEST"),
+          secretKeyEnc: encryptSecret("secret_test"),
+          serverId: null,
+          path: null,
+          ageRecipient: null,
+          ageIdentityEnc: null,
+        };
+  await db.insert(destTable).values(destinationToRow(row));
   return row.id;
 }
+
+/** Back-compat alias: most tests only ever wanted "a destination that exists". */
+export const seedS3 = seedDestination;
 
 export interface SeedBackupOpts {
   id: string;

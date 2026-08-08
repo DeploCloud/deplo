@@ -102,7 +102,7 @@ the ones you will meet most:
 | `create_folders` · `organize_folders` · `delete_folders` | the overview's folders                          |
 | `create_projects` · `organize_projects` · `delete_projects` · `manage_environments` | projects & their environments |
 | `create_databases` · `configure_databases` · `control_databases` · `delete_databases` · `open_database_console` | managed databases |
-| `manage_backups` · `restore_backups` · `manage_s3`   | schedules & runs · restoring over live data · buckets |
+| `manage_backups` · `restore_backups` · `manage_backup_destinations` | schedules & runs · restoring over live data · where backups are kept |
 | `manage_registries` · `manage_git` · `manage_tokens` · `manage_notifications` | integrations & API access |
 | `view_logs` · `view_metrics` · `manage_monitoring` · `view_activity` | logs, monitoring, the audit trail    |
 | `manage_members` · `manage_roles`                    | who is in the team · what each role grants           |
@@ -184,13 +184,13 @@ connection string).
 
 **A verdict is a return value, not an error.** Where a mutation asks another
 system whether something works, the answer comes back in the payload and a
-failure resolves normally — `testS3(id)` returns `S3TestResult { destination,
-report }`, and `report.ok` is the verdict (`report.error` carries the storage
-provider's verbatim message, `report.steps` the probe sequence). A client that
-treats "the request succeeded" as "the bucket works" will report success over a
-bucket that just refused it — which is exactly the bug the old
-`testS3: S3Destination` shape caused in deplo's own UI. `s3TestReport(id)` reads
-the stored verdict without re-probing.
+failure resolves normally — `testDestination(id)` returns
+`DestinationTestResult { destination, report }`, and `report.ok` is the verdict
+(`report.error` carries the agent's verbatim message, `report.steps` the probe
+sequence). A client that treats "the request succeeded" as "the destination
+works" will report success over a bucket that just refused it — which is exactly
+the bug the old `testS3: S3Destination` shape caused in deplo's own UI.
+`destinationTestReport(id)` reads the stored verdict without re-probing.
 
 ## Errors
 

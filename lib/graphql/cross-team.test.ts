@@ -300,7 +300,7 @@ const SKIP = new Set([
   "createToken",
   "createApp",
   "createDatabase",
-  "createS3",
+  "createDestination",
   "createRole",
   "createFolder",
   "createProject",
@@ -313,7 +313,7 @@ const SKIP = new Set([
   "updateDockerCleanupPolicy",
   "runDockerCleanupNow",
   "upsertInstanceEnv",
-  "testAllS3",
+  "testDestinations",
   "setSaveMetrics",
 ]);
 
@@ -355,7 +355,7 @@ async function snapshotB(): Promise<string> {
     db.select().from(cp.folders).where(eq(cp.folders.teamId, TEAM_B)),
     db.select().from(cp.projects).where(eq(cp.projects.teamId, TEAM_B)),
     db.select().from(cp.databases).where(eq(cp.databases.teamId, TEAM_B)),
-    db.select().from(cp.s3Destination).where(eq(cp.s3Destination.teamId, TEAM_B)),
+    db.select().from(cp.backupDestination).where(eq(cp.backupDestination.teamId, TEAM_B)),
     db.select().from(cp.backups).where(eq(cp.backups.teamId, TEAM_B)),
     db.select().from(cp.registries).where(eq(cp.registries.teamId, TEAM_B)),
     db.select().from(cp.teamRoles).where(eq(cp.teamRoles.teamId, TEAM_B)),

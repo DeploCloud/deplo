@@ -27,6 +27,19 @@ test("artifactExt maps each engine to its dump format", () => {
   assert.equal(artifactExt("app"), "tar.gz");
 });
 
+test("a server destination's artifact is named .age; S3 is unchanged", () => {
+  // The suffix is what tells whoever finds the file on disk that
+  // `age -d -i recovery-key.txt` is the next step. Omitting the destination
+  // kind, or passing "s3", must produce EXACTLY the historical extension —
+  // existing keys are stored on backup_runs and still have to resolve.
+  assert.equal(artifactExt("app", null, "server"), "tar.gz.age");
+  assert.equal(artifactExt("database", "postgres", "server"), "dump.gz.age");
+  assert.equal(artifactExt("database", "redis", "server"), "rdb.gz.age");
+  assert.equal(artifactExt("app", null, "s3"), "tar.gz");
+  assert.equal(artifactExt("app", null, null), "tar.gz");
+  assert.equal(artifactExt("app"), "tar.gz");
+});
+
 test("artifactExt falls back to .gz for an unknown engine", () => {
   // @ts-expect-error — deliberately exercising the defensive default arm.
   assert.equal(artifactExt("database", "cassandra"), "gz");

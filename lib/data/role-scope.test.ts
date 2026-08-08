@@ -95,7 +95,7 @@ beforeEach(async () => {
   await pg.exec(`truncate table
     team_role_scope_apps, team_role_scope_folders, team_role_scope_projects,
     team_role_scope_environments, environment_grants, environments,
-    backup_runs, backups, s3_destination, databases, activities,
+    backup_runs, backups, backup_destination, databases, activities,
     shared_env_var_apps, shared_env_var_projects, shared_env_var_environments,
     shared_env_var_targets, shared_env_vars,
     app_grants, folder_grants, project_grants,
@@ -753,7 +753,7 @@ test("every team-wide read refuses a scoped member, in their own words", async (
   const { listSharedVars } = await import("./shared-vars");
   const { getTeam } = await import("./teams");
   const { listGithubApps } = await import("./github");
-  const { listS3 } = await import("./s3");
+  const { listDestinations } = await import("./destinations");
   const { listNotificationChannels } = await import("./notifications");
 
   const reads: [string, () => Promise<unknown>][] = [
@@ -765,7 +765,7 @@ test("every team-wide read refuses a scoped member, in their own words", async (
     ["shared variables", listSharedVars],
     ["team settings", getTeam],
     ["git connections", listGithubApps],
-    ["S3 destinations", listS3],
+    ["backup destinations", listDestinations],
     ["notifications", listNotificationChannels],
   ];
 
