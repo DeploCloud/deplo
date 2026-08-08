@@ -309,7 +309,7 @@ function HostCard({
 }: {
   provider: string;
   title: string;
-  /** The host's own page, opened from the title. */
+  /** The host's own page. Reached from the menu, as "Manage". */
   href: string;
   subtitle: string;
   menu: React.ReactNode;
@@ -320,18 +320,7 @@ function HostCard({
       <div className="flex items-start gap-3">
         <GitProviderMark provider={provider} className="size-10" />
         <div className="min-w-0 flex-1">
-          <p className="flex items-center gap-2 text-sm font-medium">
-            <span className="truncate">{title}</span>
-            <a
-              href={href}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="shrink-0 text-muted-foreground hover:text-foreground"
-              aria-label={`Open ${title}`}
-            >
-              <ExternalLink className="size-3.5" />
-            </a>
-          </p>
+          <p className="truncate text-sm font-medium">{title}</p>
           <p className="mt-1 truncate text-xs text-muted-foreground">
             {subtitle}
           </p>
@@ -348,6 +337,17 @@ function HostCard({
             </Button>
           </DropdownMenuTrigger>
           <DropdownMenuContent align="end" className="w-48">
+            {/* Rendered HERE rather than by each card, so no host can end up
+                without a way back to its own settings page - which is where
+                repository access, tokens and everything else Deplo does not own
+                is actually changed. */}
+            <DropdownMenuItem asChild>
+              <a href={href} target="_blank" rel="noopener noreferrer">
+                <ExternalLink className="size-4" />
+                Manage
+              </a>
+            </DropdownMenuItem>
+            <DropdownMenuSeparator />
             {menu}
           </DropdownMenuContent>
         </DropdownMenu>
@@ -372,8 +372,6 @@ function GithubAppCard({
       title={app.name}
       href={app.htmlUrl}
       subtitle={`${app.installations.length} installation${app.installations.length === 1 ? "" : "s"}`}
-      /* No "Open on GitHub" item: the link next to the title already does that
-         on every card, and the menu is for actions. */
       menu={
         <DropdownMenuItem variant="destructive" onSelect={onRemove}>
           <Trash2 className="size-4" />
