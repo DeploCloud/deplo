@@ -471,6 +471,14 @@ async function generateAgeKeypair(): Promise<{ identity: string; recipient: stri
  * upgrade. It is also deliberately silent about failure — a team that cannot
  * reach a backup-capable server yet simply has no destinations, and the empty
  * state explains the two ways to make one.
+ *
+ * NO capability check, on purpose, and that is not an oversight: this grants
+ * nobody anything. It creates a row the team could already have created, on a
+ * server the team can already reach (`listServersForCurrentTeam` is the gate),
+ * and it only ever fires when the team has none. Requiring
+ * `manage_backup_destinations` here would mean the seed depends on WHO happened
+ * to open the page first, which is exactly the arbitrary behaviour a default is
+ * meant to remove.
  */
 export async function ensureDefaultDestination(): Promise<void> {
   const teamId = await requireActiveTeamId();

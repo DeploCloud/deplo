@@ -64,6 +64,7 @@ input AddServerInput {
   allTeams: Boolean
   host: String!
   name: String!
+  storageOnly: Boolean
   teamIds: [String!]
 }
 
@@ -373,7 +374,7 @@ type AppTransferInfo {
   appName: String
 
   """
-  Backup schedules targeting this app — removed on transfer, because they point at the current team's S3 destination.
+  Backup schedules targeting this app — removed on transfer, because they point at the current team's backup destination.
   """
   backupCount: Int
 
@@ -421,7 +422,7 @@ type AuthPayload {
   viewer: Viewer
 }
 
-"""A scheduled backup of a database or project to an S3 destination."""
+"""A scheduled backup of a database or project to a backup destination."""
 type Backup {
   appId: ID
   createdAt: String

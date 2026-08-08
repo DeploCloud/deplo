@@ -306,8 +306,8 @@ function BackUpNow({
         <DialogHeader>
           <DialogTitle>Back up now</DialogTitle>
           <DialogDescription>
-            Dump this app&apos;s volumes, files and compose/env snapshot to S3
-            immediately — no schedule needed.
+            Dump this app&apos;s volumes, files and compose/env snapshot to a
+            destination now - no schedule needed.
           </DialogDescription>
         </DialogHeader>
         <form className="grid gap-4" onSubmit={onSubmit}>
@@ -732,7 +732,7 @@ function ScheduleRow({
           open={confirmOpen}
           onOpenChange={setConfirmOpen}
           title={`Delete ${schedule.name}?`}
-          description="This removes the schedule. Existing backup artifacts in your bucket are kept."
+          description="This removes the schedule. Backups it already made are kept."
           confirmLabel="Delete schedule"
           successMessage="Backup schedule deleted"
           onConfirm={async () => {

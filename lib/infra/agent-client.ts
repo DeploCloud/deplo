@@ -1509,7 +1509,13 @@ function dial(target: DialTarget): AgentConnection {
     backup(req: BackupRequest) {
       return streamEvents(
         client.backup(req, { deadline: new Date(Date.now() + BACKUP_DEADLINE_MS) }),
-        { normalise: toAgentError },
+        // BOUNDED, like every other stream that can carry bytes. Under
+        // `stream_out` this one IS the artifact: the frames are 1 MiB slices of
+        // a relayed backup, and an unbounded queue would hold the whole thing in
+        // this process while the destination disk catches up. Harmless for the
+        // ordinary log-line shape, where the consumer drains in a tight loop and
+        // the bound is never reached.
+        { normalise: toAgentError, pauseAbove: STREAM_BYTES_PAUSE_ABOVE },
       );
     },
     restore(req: RestoreRequest) {

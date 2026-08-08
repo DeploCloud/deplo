@@ -589,6 +589,13 @@
       "when": 1784677800000,
       "tag": "0083_rename_manage_s3",
       "breakpoints": true
+    },
+    {
+      "idx": 84,
+      "version": "7",
+      "when": 1784678000000,
+      "tag": "0084_rename_manage_s3_on_tokens",
+      "breakpoints": true
     }
   ]
 }

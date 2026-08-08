@@ -52,6 +52,18 @@ export interface BackupOutcome {
   sizeBytes: number;
 }
 
+/**
+ * Thrown out of the relay's byte generator to CANCEL the destination write
+ * rather than end it cleanly. Never surfaces to a caller — {@link relayBackup}
+ * catches it and reports the source's own failure instead.
+ */
+class RelayAborted extends Error {
+  constructor() {
+    super("the source ended the backup without a usable artifact");
+    this.name = "RelayAborted";
+  }
+}
+
 function wireKind(kind: BackupTargetKind): BackupKind {
   return kind === "database"
     ? BackupKind.BACKUP_KIND_DATABASE
@@ -134,7 +146,14 @@ async function relayBackup(
   base: BackupRequest,
 ): Promise<BackupOutcome> {
   const dest = creds.destination;
-  const src = await connectBackupAgent(target.serverId);
+  // `store: true` even though the SOURCE writes nothing: `stream_out` is part of
+  // the same `backup-store` capability, and an agent that predates it passes a
+  // `"backup"`-only preflight and then answers in-band ("backup request missing
+  // S3 target") rather than UNIMPLEMENTED — so mapBackupUnsupported never fires
+  // and the operator is told their bucket is misconfigured when what they
+  // actually need is an agent update. Exactly the mid-rollout state this ships
+  // into.
+  const src = await connectBackupAgent(target.serverId, { store: true });
   let sink: AgentConnection | null = null;
   try {
     sink = await connectBackupAgent(destServer, { store: true });
@@ -146,6 +165,16 @@ async function relayBackup(
     // The generator yields ONLY data frames; the terminal result is captured on
     // the side. writeStoreFile consumes it to completion, so by the time it
     // resolves the source stream has ended and `source.result` is set.
+    //
+    // It THROWS on a bad terminal result rather than ending cleanly, and that is
+    // the whole difference between a failed backup and a corrupt one. A mid-dump
+    // failure arrives as BackupResult{ok:false} on a stream that then closes
+    // NORMALLY; ending the generator there makes pumpClientStream call `end()`,
+    // the destination sees io.EOF, and it fsyncs and renames the partial bytes
+    // onto the real key. Nothing would ever remove that file: it is no longer a
+    // `.partial` for the sweep to find, and retention skips failed runs on the
+    // premise that they own no object. Throwing cancels the call instead, so the
+    // destination's write dies with its temp file.
     const bytes = (async function* () {
       for await (const ev of src.backup({ ...base, streamOut: true, s3: undefined })) {
         if (ev.result) {
@@ -155,17 +184,30 @@ async function relayBackup(
             objectKey,
             sizeBytes: Number(ev.result.sizeBytes ?? 0),
           };
+          if (!ev.result.ok) throw new RelayAborted();
           continue;
         }
         if (ev.data && ev.data.length) yield Buffer.from(ev.data);
       }
+      if (!source.result) throw new RelayAborted();
     })();
 
-    const landed = await sink.writeStoreFile(
-      storeTargetFor(dest, objectKey),
-      false,
-      bytes,
-    );
+    let landed: Awaited<ReturnType<AgentConnection["writeStoreFile"]>>;
+    try {
+      landed = await sink.writeStoreFile(storeTargetFor(dest, objectKey), false, bytes);
+    } catch (e) {
+      // Our own abort: report the SOURCE's reason, which is the one that
+      // explains anything. Any other error is a genuine transport failure.
+      if (!(e instanceof RelayAborted)) throw e;
+      return (
+        source.result ?? {
+          ok: false,
+          error: "the agent ended the backup without a result",
+          objectKey,
+          sizeBytes: 0,
+        }
+      );
+    }
 
     const produced = source.result;
     if (!produced) {
@@ -187,7 +229,20 @@ async function relayBackup(
     }
     // Both halves must agree. They can only differ if bytes were lost in the
     // relay, and a backup that is quietly short is worse than one that failed.
+    //
+    // Unlike every other failure above, THIS one has already committed a file:
+    // the destination wrote what it received and renamed it onto the real key.
+    // Remove it here, because nothing downstream will — retention only deletes
+    // artifacts of SUCCESSFUL runs, and the sweep only sees `.partial` files.
     if (landed.bytesWritten !== produced.sizeBytes) {
+      try {
+        await sink.storeDelete(storeTargetFor(dest, objectKey));
+      } catch (e) {
+        console.warn(
+          `[backups] short artifact ${objectKey} could not be removed: ` +
+            `${e instanceof Error ? e.message : String(e)}`,
+        );
+      }
       return {
         ok: false,
         error:

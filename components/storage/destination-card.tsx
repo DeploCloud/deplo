@@ -220,7 +220,13 @@ export function DestinationCard({
                     content="Read the full output of the last connection test, and the commands that reproduce it"
                     side="left"
                   >
-                    <DropdownMenuItem onSelect={() => setLogOpen(true)}>
+                    <DropdownMenuItem
+                      // destinationTestReport declares the same capability the
+                      // test does, so without this the item is a click that ends
+                      // in an authorization error for a plain Member.
+                      disabled={!canManage}
+                      onSelect={() => setLogOpen(true)}
+                    >
                       <ScrollText className="size-4" />
                       Connection log
                     </DropdownMenuItem>
@@ -327,7 +333,7 @@ export function DestinationCard({
 
           {/* Why the badge is red, right on the card. The status alone used to be
               the whole story, so a failing destination said "Error" and stopped. */}
-          {dest.lastTestError && (
+          {dest.lastTestError && canManage && (
             <button
               type="button"
               onClick={() => setLogOpen(true)}

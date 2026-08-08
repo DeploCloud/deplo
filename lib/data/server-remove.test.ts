@@ -10,7 +10,7 @@ import { eq } from "drizzle-orm";
 import { runWithIdentity } from "../auth/request-context";
 import { seedIdentity, TEAM_A, USER_1 } from "./identity-test-helpers";
 import { TRUNCATE_PROJECT_GRAPH, seedApp } from "./app-graph-test-helpers";
-import { seedDatabase } from "./backup-test-helpers";
+import { seedDatabase, seedDestination } from "./backup-test-helpers";
 import { seedServerRow } from "./infra-test-helpers";
 import { getServerById, removeServer } from "./servers";
 
@@ -63,7 +63,7 @@ after(async () => {
 
 beforeEach(async () => {
   await pg.exec(`${TRUNCATE_PROJECT_GRAPH}
-    truncate table databases, activities, users, teams restart identity cascade;`);
+    truncate table backup_destination, databases, activities, users, teams restart identity cascade;`);
   await seedIdentity(db, {
     users: [
       { id: USER_1, teamId: TEAM_A, role: "owner" },
@@ -110,6 +110,31 @@ test("blocks removal while an App still lives on the server, naming it", async (
       return true;
     },
   );
+});
+
+test("blocks removal while a backup destination keeps its artifacts here", async () => {
+  await seedDestination(db, {
+    id: "dst_here",
+    name: "Nightly backups",
+    kind: "server",
+    serverId: SERVER,
+  });
+
+  await assert.rejects(
+    () => asAdmin(() => removeServer(SERVER)),
+    (e: Error) => {
+      assert.match(e.message, /backup destinations/i);
+      assert.match(e.message, /Nightly backups/);
+      // The whole point: backup_destination.server_id is RESTRICT, so without
+      // this guard the preflight passes, trust is revoked, and only THEN does
+      // the DELETE blow up — leaving the operator a Postgres constraint string
+      // and a server that can never be removed.
+      assert.doesNotMatch(e.message, /foreign key|violates/i);
+      return true;
+    },
+  );
+  // Nothing was touched on the way to the refusal.
+  assert.notEqual(await pinnedCert(), "");
 });
 
 test("blocks removal while a database is hosted — a clean message, not a raw FK error", async () => {

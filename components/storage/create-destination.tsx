@@ -471,7 +471,7 @@ function ServerFields({
           {advancedOpen && (
             <div className="border-t border-border p-4">
               <div className="space-y-2">
-                <FieldLabel info="An absolute path on that server, for example a mounted storage volume. Leave empty to let Deplo manage the folder. The folder must be empty the first time it is used.">
+                <FieldLabel info="An absolute path that ALREADY EXISTS on that server, for example a mounted storage volume, and is empty the first time it is used. Leave blank to let Deplo create and manage the folder.">
                   Folder
                 </FieldLabel>
                 <Input

@@ -181,7 +181,7 @@ export function BackupRow({
           open={confirmOpen}
           onOpenChange={setConfirmOpen}
           title={`Delete ${backup.name}?`}
-          description="This removes the backup schedule. Existing backup files in your bucket are not deleted."
+          description="This removes the backup schedule. Backups it already made are not deleted."
           confirmLabel="Delete schedule"
           successMessage="Backup schedule deleted"
           onConfirm={async () => {
@@ -296,7 +296,7 @@ function EditBackupDialog({
             <div className="space-y-2">
               <FieldLabel
                 htmlFor="edit-backup-destination"
-                info="Where backup files are uploaded, chosen from your configured storage destinations. Opening the list re-checks every bucket, so the status you see is live."
+                info="Where the backups are kept. Opening the list re-checks every destination, so the status you see is live."
               >
                 Destination
               </FieldLabel>

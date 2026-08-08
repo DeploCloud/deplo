@@ -4,6 +4,7 @@ import { and, asc, eq, inArray, or, sql } from "drizzle-orm";
 import { getDb, type DrizzleClient, type DbTx } from "../db/client";
 import {
   databases as databasesTable,
+  backupDestination as destinationTable,
   apps as appsTable,
   serverTeams as serverTeamsTable,
   servers as serversTable,
@@ -441,7 +442,7 @@ function nameList(names: string[], max = 5): string {
  * blocked removal has no side effects at all.
  */
 async function assertServerRemovable(id: string): Promise<void> {
-  const [apps, dbs] = await Promise.all([
+  const [apps, dbs, destinations] = await Promise.all([
     getDb()
       .select({ slug: appsTable.slug })
       .from(appsTable)
@@ -450,6 +451,18 @@ async function assertServerRemovable(id: string): Promise<void> {
       .select({ name: databasesTable.name })
       .from(databasesTable)
       .where(eq(databasesTable.serverId, id)),
+    // Backup destinations keeping their artifacts on this host.
+    // `backup_destination.server_id` is ON DELETE RESTRICT, so without this the
+    // preflight passes, trust is revoked, the DELETE throws deep in Postgres and
+    // the operator gets a raw constraint string naming nothing they can act on —
+    // with the server left un-removable forever. A destination is also the one
+    // blocker an instance admin may not be able to clear themselves: the rows are
+    // team-scoped and removal is instance-wide, so the message has to name the
+    // team, or the honest answer becomes "look in the database".
+    getDb()
+      .select({ name: destinationTable.name, teamId: destinationTable.teamId })
+      .from(destinationTable)
+      .where(eq(destinationTable.serverId, id)),
   ]);
   if (apps.length > 0)
     throw new Error(
@@ -460,6 +473,12 @@ async function assertServerRemovable(id: string): Promise<void> {
     throw new Error(
       `Move or delete the databases on this server first — still hosted here: ` +
         `${nameList(dbs.map((d) => d.name))}`,
+    );
+  if (destinations.length > 0)
+    throw new Error(
+      `Remove the backup destinations kept on this server first — still pointing ` +
+        `here: ${nameList(destinations.map((d) => d.name))}. Each one belongs to a ` +
+        `team, whose members remove it from Storage → Destinations.`,
     );
 }
 
