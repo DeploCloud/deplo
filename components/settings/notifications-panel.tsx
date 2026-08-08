@@ -23,7 +23,7 @@ import { ConfirmAction } from "@/components/shared/confirm-action";
 import { EmptyState } from "@/components/shared/empty-state";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card } from "@/components/ui/card";
 import {
   Dialog,
   DialogContent,
@@ -255,34 +255,34 @@ export function NotificationsPanel({
               description="Add a channel, then pick what it should tell you about."
             />
           ) : (
-            <Card>
-              <CardHeader>
-                <CardTitle className="flex w-fit flex-wrap items-center gap-1.5">
-                  <Bell className="size-4" />
-                  Alert channels
-                  <InfoTip content="Where alerts go. Each channel carries its own list of what it is told about." />
-                  <Badge
-                    variant={onCount === 0 ? "muted" : "secondary"}
-                    className="tabular-nums"
-                  >
-                    {onCount} on
-                  </Badge>
-                </CardTitle>
-              </CardHeader>
-              <CardContent>
-                <div className="space-y-2">
-                  {initial.map((instance) => (
-                    <ChannelRow
-                      key={instance.id}
-                      instance={instance}
-                      canManage={canManage}
-                      onOpen={() => openChannel(instance)}
-                      onDelete={() => setDeleting(instance)}
-                    />
-                  ))}
-                </div>
-              </CardContent>
-            </Card>
+            // No wrapper card: the channels ARE the cards, and a card holding
+            // cards is two surfaces for one list. What the card header carried
+            // that is worth keeping - the count, and the line explaining what a
+            // channel is - becomes a plain heading row above the grid.
+            <div className="space-y-3">
+              <div className="flex w-fit flex-wrap items-center gap-1.5 px-1 text-sm font-medium">
+                <Bell className="size-4" />
+                Alert channels
+                <InfoTip content="Where alerts go. Each channel carries its own list of what it is told about." />
+                <Badge
+                  variant={onCount === 0 ? "muted" : "secondary"}
+                  className="tabular-nums"
+                >
+                  {onCount} on
+                </Badge>
+              </div>
+              <div className="grid items-start gap-3 sm:grid-cols-2">
+                {initial.map((instance) => (
+                  <ChannelRow
+                    key={instance.id}
+                    instance={instance}
+                    canManage={canManage}
+                    onOpen={() => openChannel(instance)}
+                    onDelete={() => setDeleting(instance)}
+                  />
+                ))}
+              </div>
+            </div>
           )}
         </div>
 
@@ -574,7 +574,7 @@ function ChannelRow({
         ? "No alerts picked"
         : `${instance.alerts.length} of ${ALL_ALERTS.length} alerts`;
   return (
-    <div className="flex items-center gap-3 rounded-lg border border-border p-3 transition-colors hover:border-ring hover:bg-accent">
+    <Card className="flex items-center gap-3 p-3 transition-colors hover:border-ring hover:bg-accent">
       <button
         type="button"
         onClick={onOpen}
@@ -637,6 +637,6 @@ function ChannelRow({
           <Trash2 className="size-4" />
         </Button>
       )}
-    </div>
+    </Card>
   );
 }
