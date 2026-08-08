@@ -42,21 +42,9 @@ const INBOX: {
   },
 ];
 
-export function NotificationIllustration({
-  caption = true,
-}: {
-  /**
-   * The line under the phone. On in the sticky rail, where the figure is the
-   * only thing saying what the page is for; off in the empty state, where the
-   * description below it already says it and two would say it twice.
-   */
-  caption?: boolean;
-}) {
+export function NotificationIllustration() {
   return (
-    // `w-full` so the figure is laid out the same whether its parent is a block
-    // (the sticky rail) or a flex row (the empty state's centred graphic slot),
-    // where a shrink-to-fit item would otherwise size itself from its text.
-    <div aria-hidden className="w-full pointer-events-none select-none">
+    <div aria-hidden className="pointer-events-none select-none">
       <div className="relative mx-auto w-full max-w-[260px]">
         {/* The halo, breathing on the same clock as the cards. */}
         <div className="absolute inset-x-4 top-10 -z-10 h-56 rounded-full bg-primary/25 blur-3xl animate-notif-halo" />
@@ -102,12 +90,9 @@ export function NotificationIllustration({
         </div>
       </div>
 
-      {caption && (
-        <p className="mt-4 text-center text-xs leading-snug text-muted-foreground">
-          Deplo tells you what happened, on the channels you pick, wherever you
-          are.
-        </p>
-      )}
+      <p className="mt-4 text-center text-xs leading-snug text-muted-foreground">
+        Deplo tells you what happened, on the channels you pick, wherever you are.
+      </p>
     </div>
   );
 }

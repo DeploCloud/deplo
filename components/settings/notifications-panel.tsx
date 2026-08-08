@@ -243,18 +243,18 @@ export function NotificationsPanel({
         }
       />
 
-      {initial.length === 0 ? (
-        // No card: an empty page is one surface, not a dashed box sitting on a
-        // card sitting on the page. The phone catching alerts says what this is
-        // for faster than the line under it does.
-        <EmptyState
-          graphic={<NotificationIllustration caption={false} />}
-          title="No channels yet"
-          description="Deplo tells you what happened, on the channels you pick, wherever you are."
-        />
-      ) : (
-        <div className="grid items-start gap-6 xl:grid-cols-[minmax(0,1fr)_260px]">
-          <div className="min-w-0 space-y-4">
+      <div className="grid items-start gap-6 xl:grid-cols-[minmax(0,1fr)_260px]">
+        <div className="min-w-0 space-y-4">
+          {initial.length === 0 ? (
+            // Deliberately NOT wrapped in the card: a dashed box inside a card
+            // inside the page is three surfaces for one message. The card is
+            // what holds the LIST, so it arrives with the list.
+            <EmptyState
+              icon={Bell}
+              title="No channels yet"
+              description="Add a channel, then pick what it should tell you about."
+            />
+          ) : (
             <Card>
               <CardHeader>
                 <CardTitle className="flex w-fit flex-wrap items-center gap-1.5">
@@ -283,15 +283,16 @@ export function NotificationsPanel({
                 </div>
               </CardContent>
             </Card>
-          </div>
-
-          {/* Decoration, and the only thing on this page that says what it is
-              FOR once the empty state is gone. */}
-          <aside className="hidden xl:sticky xl:top-20 xl:block">
-            <NotificationIllustration />
-          </aside>
+          )}
         </div>
-      )}
+
+        {/* Decoration, and the only thing on this page that says what it is FOR.
+            Outside the branch above: the phone is what the page is about, empty
+            or not, so it does not come and go with the list. */}
+        <aside className="hidden xl:sticky xl:top-20 xl:block">
+          <NotificationIllustration />
+        </aside>
+      </div>
 
       {/* ONE modal for whichever channel is open, so only one alert picker is
           ever mounted - which is also what keeps its per-row DOM ids unique.
