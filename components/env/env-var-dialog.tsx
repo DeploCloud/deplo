@@ -10,7 +10,6 @@ import {
   Trash2,
   Share2,
   ArrowUpRight,
-  ClipboardPaste,
   Info,
   TriangleAlert,
   Search,
@@ -493,15 +492,6 @@ function StandaloneTab({ appId, onDone }: { appId: string; onDone: () => void })
     <form onSubmit={onSubmit}>
       {/* The body — the only thing that scrolls. */}
       <div className={cn("space-y-4 overflow-y-auto px-6 py-4", PANEL_BODY_MAX)}>
-        <p className="flex items-start gap-2 text-xs text-muted-foreground">
-          <ClipboardPaste className="mt-px size-3.5 shrink-0" />
-          <span>
-            Enter one or more variables, or paste a full{" "}
-            <code className="font-mono">.env</code> into a key field to fill the
-            rows.
-          </span>
-        </p>
-
         {/* The rows are a small TABLE, not a stack of loose inputs: two labelled
             columns the eye can run down, and cells that carry no border of their
             own — the same shape the variables page shows them in afterwards. */}
