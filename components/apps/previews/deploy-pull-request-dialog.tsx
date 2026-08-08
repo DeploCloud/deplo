@@ -3,7 +3,7 @@
 import * as React from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
-import { GitBranch, GitFork, Loader2 } from "lucide-react";
+import { GitBranch, GitFork, Loader2, Plus } from "lucide-react";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -110,6 +110,7 @@ export function DeployPullRequestDialog({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogTrigger asChild>
         <Button variant="outline" size="sm">
+          <Plus className="size-4" />
           Deploy a pull request
         </Button>
       </DialogTrigger>

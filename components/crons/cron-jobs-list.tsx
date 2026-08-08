@@ -290,16 +290,21 @@ export function CronJobsList({
     );
   }
 
+  // One node, rendered in the header and again in the empty state - the same
+  // shape the Pull requests page uses for its own pair. Two copies of the same
+  // button are exactly how the two drifted apart in the first place.
+  const newJobButton = canManage ? (
+    <Button variant="outline" size="sm" onClick={() => setCreating(true)}>
+      <Plus className="size-4" />
+      New cron job
+    </Button>
+  ) : null;
+
   return (
     <div className="space-y-3">
       <div className="flex items-center justify-between">
         <h2 className="text-sm font-medium">Cron jobs</h2>
-        {canManage && (
-          <Button size="sm" onClick={() => setCreating(true)}>
-            <Plus className="size-4" />
-            New cron job
-          </Button>
-        )}
+        {newJobButton}
       </div>
 
       {jobs.length === 0 ? (
@@ -307,14 +312,7 @@ export function CronJobsList({
           graphic={<CronGraphic />}
           title="No cron jobs yet"
           description="Schedule a command to run inside this container - a nightly cleanup, a queue worker, a report."
-          action={
-            canManage ? (
-              <Button size="sm" onClick={() => setCreating(true)}>
-                <Plus className="size-4" />
-                New cron job
-              </Button>
-            ) : undefined
-          }
+          action={newJobButton}
         />
       ) : (
         <Card>
