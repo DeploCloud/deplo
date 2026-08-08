@@ -28,6 +28,11 @@ import {
 import { Input } from "@/components/ui/input";
 import { Switch } from "@/components/ui/switch";
 import { InfoTip } from "@/components/ui/info-tip";
+import { UpdateCard } from "@/components/settings/update-card";
+import {
+  InstanceOwnerCard,
+  type OwnerCandidate,
+} from "@/components/settings/instance-owner-card";
 import { gqlAction } from "@/lib/graphql-client";
 import type { InstanceSettings } from "@/lib/data/instance-settings";
 
@@ -68,20 +73,41 @@ type CertificateAccount = {
 type PanelHttps = {
   domain: string | null;
   enabled: boolean;
-  provider: string | null;
   unavailable: string | null;
 };
 
 const ACCOUNT_FIELDS =
   "serverId serverName email unavailable customCertificates expiresInDays";
 
-const PANEL_HTTPS_FIELDS = "domain enabled provider unavailable";
+const PANEL_HTTPS_FIELDS = "domain enabled unavailable";
 
-export function DeploSettingsPanel({ settings }: { settings: InstanceSettings }) {
+export function DeploSettingsPanel({
+  settings,
+  viewerIsOwner,
+  ownerCandidates,
+}: {
+  settings: InstanceSettings;
+  viewerIsOwner: boolean;
+  ownerCandidates: OwnerCandidate[];
+}) {
   return (
     <div className="space-y-4">
       <PanelAddressCard settings={settings} />
       <CertificatesCard />
+      {/* After the two settings: updating Deplo is a state to read and an action
+          to take, not a knob, and the page opens on what can be changed. It lives
+          here rather than on Settings, General because only an instance admin can
+          act on it; the dashboard banner is what tells everyone else a release
+          exists. */}
+      <UpdateCard />
+      {/* Last, because handing the instance over is the most consequential thing
+          on this page - the same reason a team's delete card sits at the bottom
+          of Settings, General. */}
+      <InstanceOwnerCard
+        ownerName={settings.ownerName}
+        viewerIsOwner={viewerIsOwner}
+        candidates={ownerCandidates}
+      />
     </div>
   );
 }

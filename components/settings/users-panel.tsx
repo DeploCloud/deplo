@@ -31,8 +31,6 @@ import {
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
 import { SimpleTooltip } from "@/components/ui/tooltip";
 import { InfoTip } from "@/components/ui/info-tip";
 import { RegisterUserWizard } from "@/components/settings/users/register-user-wizard";
@@ -48,13 +46,10 @@ export function UsersPanel({
   users,
   links,
   currentUserId,
-  viewerIsOwner,
 }: {
   users: GlobalUserDTO[];
   links: RegistrationLinkDTO[];
   currentUserId: string;
-  /** The viewer owns the instance — the only one who may hand the crown on. */
-  viewerIsOwner: boolean;
 }) {
   const [registerOpen, setRegisterOpen] = React.useState(false);
   const pendingLinks = links.filter((l) => l.status === "pending");
@@ -88,7 +83,6 @@ export function UsersPanel({
                 key={u.userId}
                 user={u}
                 isSelf={u.userId === currentUserId}
-                viewerIsOwner={viewerIsOwner}
                 defaultOpen={u.userId === focusUserId}
               />
             ))}
@@ -118,12 +112,10 @@ export function UsersPanel({
 function UserRow({
   user,
   isSelf,
-  viewerIsOwner,
   defaultOpen = false,
 }: {
   user: GlobalUserDTO;
   isSelf: boolean;
-  viewerIsOwner: boolean;
   /** Arrived here linked straight at this account — open its editor. */
   defaultOpen?: boolean;
 }) {
@@ -131,8 +123,6 @@ function UserRow({
   const [open, setOpen] = React.useState(defaultOpen);
   const [confirmSuspend, setConfirmSuspend] = React.useState(false);
   const [confirmDelete, setConfirmDelete] = React.useState(false);
-  const [confirmTransfer, setConfirmTransfer] = React.useState(false);
-  const [transferPassword, setTransferPassword] = React.useState("");
   const [pending, startTransition] = React.useTransition();
 
   // The owner's row is closed to everyone, THEMSELVES INCLUDED, for these two
@@ -141,15 +131,6 @@ function UserRow({
   // successor). Server-enforced in lib/data/members.ts; this only spares the
   // operator a click that would toast an error.
   const ownerLocked = user.isInstanceOwner;
-
-  // Offer the crown only where the server would accept it: owner → an active
-  // admin who isn't already the owner.
-  const canTransferTo =
-    viewerIsOwner &&
-    !isSelf &&
-    !user.isInstanceOwner &&
-    user.isInstanceAdmin &&
-    !user.suspended;
 
   // Quick ⋯-menu actions flip ONE global flag while preserving the rest
   // (updateUserAdmin replaces the whole set). The last-admin and can't-touch-self
@@ -276,7 +257,7 @@ function UserRow({
             <SimpleTooltip
               content={
                 ownerLocked
-                  ? "The instance owner is always an instance admin. Transfer ownership first."
+                  ? "The instance owner is always an instance admin. Transfer ownership on Settings, Deplo first."
                   : "Grant or revoke instance-admin"
               }
               side="left"
@@ -334,7 +315,7 @@ function UserRow({
                 isSelf
                   ? "You can't delete your own account."
                   : ownerLocked
-                    ? "The instance owner's account can't be deleted. Transfer ownership first."
+                    ? "The instance owner's account can't be deleted. Transfer ownership on Settings, Deplo first."
                     : "Permanently delete this account — and, optionally, what it owns"
               }
               side="left"
@@ -348,24 +329,6 @@ function UserRow({
                 Delete user
               </DropdownMenuItem>
             </SimpleTooltip>
-            {canTransferTo && (
-              <>
-                <DropdownMenuSeparator />
-                <SimpleTooltip
-                  content="Make this admin the instance owner. You stay an admin, but they take the crown."
-                  side="left"
-                >
-                  <DropdownMenuItem
-                    variant="destructive"
-                    disabled={pending}
-                    onSelect={() => setConfirmTransfer(true)}
-                  >
-                    <Crown className="size-4" />
-                    Transfer ownership
-                  </DropdownMenuItem>
-                </SimpleTooltip>
-              </>
-            )}
           </DropdownMenuContent>
         </DropdownMenu>
       </div>
@@ -425,42 +388,6 @@ function UserRow({
           username={user.username}
           open={confirmDelete}
           onOpenChange={setConfirmDelete}
-        />
-      )}
-      {confirmTransfer && (
-        <ConfirmAction
-          open={confirmTransfer}
-          onOpenChange={(v) => {
-            setConfirmTransfer(v);
-            if (!v) setTransferPassword("");
-          }}
-          title={`Make @${user.username} the instance owner?`}
-          description="They become the only person who can edit their own account, transfer ownership, or be locked out of nothing. You stay an instance admin — but they can demote you, and only they can give the crown back."
-          confirmLabel="Transfer ownership"
-          confirmText={user.username}
-          successMessage="Instance ownership transferred"
-          extra={
-            <div className="space-y-2">
-              <Label htmlFor="transfer-password">Your password</Label>
-              <Input
-                id="transfer-password"
-                type="password"
-                autoComplete="current-password"
-                value={transferPassword}
-                onChange={(e) => setTransferPassword(e.target.value)}
-              />
-            </div>
-          }
-          onConfirm={async () => {
-            const res = await gqlAction(
-              `mutation ($userId: String!, $password: String!) {
-                transferInstanceOwner(userId: $userId, password: $password)
-              }`,
-              { userId: user.userId, password: transferPassword },
-            );
-            if (res.ok) router.refresh();
-            return res;
-          }}
         />
       )}
     </>

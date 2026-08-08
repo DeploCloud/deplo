@@ -9,14 +9,20 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
 import { InfoTip } from "@/components/ui/info-tip";
 import { gqlAction } from "@/lib/graphql-client";
 import type { UpdateInfo } from "@/lib/data/updates";
 
 const UPDATE_INFO_FIELDS = "{ updateAvailable latest url error }";
 
-export function UpdateCard({ current }: { current: string }) {
+/**
+ * Whether a newer Deplo exists, and the button that re-asks.
+ *
+ * Deliberately does NOT restate the running version: it sits on Settings, Deplo,
+ * whose header already prints it, and a version printed twice on one screen is
+ * furniture.
+ */
+export function UpdateCard() {
   const [info, setInfo] = React.useState<UpdateInfo | null>(null);
   const [checking, setChecking] = React.useState(false);
 
@@ -70,17 +76,10 @@ export function UpdateCard({ current }: { current: string }) {
           disabled={checking}
         >
           <RefreshCw className={checking ? "size-4 animate-spin" : "size-4"} />
-          {checking ? "Checking…" : "Check now"}
+          {checking ? "Checking" : "Check now"}
         </Button>
       </CardHeader>
-      <CardContent className="space-y-3">
-        <div className="flex items-center gap-2 text-sm">
-          <span className="text-muted-foreground">Current version</span>
-          <Badge variant="secondary" className="font-mono">
-            v{current}
-          </Badge>
-        </div>
-
+      <CardContent>
         {info?.updateAvailable ? (
           <div className="flex items-center justify-between gap-3 rounded-lg border border-border bg-secondary/40 p-3">
             <div className="flex items-center gap-2 text-sm">
@@ -107,7 +106,14 @@ export function UpdateCard({ current }: { current: string }) {
             <CheckCircle2 className="size-4 text-[var(--success)]" />
             You&apos;re on the latest version.
           </p>
-        ) : null}
+        ) : (
+          // The version row used to fill this space while the check was in
+          // flight; without it an empty card body would read as broken, so the
+          // wait says it is a wait.
+          <p className="text-sm text-muted-foreground">
+            Checking the repository for a newer release
+          </p>
+        )}
       </CardContent>
     </Card>
   );
