@@ -246,38 +246,71 @@ DEPLO_DOMAIN="$(grep '^DEPLO_DOMAIN=' "$ENV_FILE" | cut -d= -f2-)"
 ACME_EMAIL="$(grep '^ACME_EMAIL=' "$ENV_FILE" | cut -d= -f2-)"
 SERVER_IP="$(detect_ip)"
 
+# The panel's own route is a Traefik FILE-provider config, not labels on this
+# container - and that difference is the whole point. A container's compose file
+# belongs to this installer and no agent RPC can rewrite it, so a panel published
+# by labels can never be changed from the panel: not its address, not whether it
+# orders a certificate. A dynamic-config file is something Deplo is already
+# allowed to write - it is how custom certificates are installed.
+#
+# KEEP IN SYNC with `withPanelRoute` in lib/deploy/traefik-stack.ts, which reads
+# and rewrites exactly this shape. `priority: 1` keeps this Host-only router a
+# true fallback so any more-specific PathPrefix router on the same host (an app's
+# path override, or the reserved /plugins/<slug> route) outranks it - Traefik
+# would otherwise default it to its rule-string length and shadow them.
 if is_real_domain "$DEPLO_DOMAIN"; then
   USE_DOMAIN=true
   PUBLIC_URL="https://$DEPLO_DOMAIN"
-  # priority=1 keeps this Host-only dashboard router a true fallback so any
-  # more-specific PathPrefix router on the same host (an app's path override, or
-  # the reserved /plugins/<slug> route) outranks it — Traefik would otherwise
-  # default this router's priority to its rule-string length and shadow it.
-  DEPLO_EXPOSE="$(printf '    labels:\n      - "traefik.enable=true"\n      - "traefik.http.routers.deplo.rule=Host(`%s`)"\n      - "traefik.http.routers.deplo.entrypoints=websecure"\n      - "traefik.http.routers.deplo.tls.certresolver=letsencrypt"\n      - "traefik.http.routers.deplo.priority=1"\n      - "traefik.http.services.deplo.loadbalancer.server.port=3000"' "$DEPLO_DOMAIN")"
+  # Nothing on the container itself: Traefik reaches it over the shared `deplo`
+  # network at the service's own name, and the route lives in the file below.
+  DEPLO_EXPOSE="$(printf '    # Published by Traefik as deplo-panel - see traefik/docker-compose.yml')"
+  TRAEFIK_CONFIG_MOUNT="$(printf '    configs:\n      - source: deplo-panel\n        target: /deplo-dynamic/deplo-panel.yml\n        mode: 256')"
+  # Unquoted scalars on purpose: this is byte-for-byte what `withPanelRoute`
+  # re-renders, so the first edit from the panel produces no spurious diff in the
+  # file an operator may be reading on the host.
+  TRAEFIK_PANEL_CONFIG="$(printf 'configs:\n  deplo-panel:\n    content: |\n      http:\n        routers:\n          deplo-panel:\n            rule: Host(`%s`)\n            entryPoints:\n              - websecure\n            service: deplo-panel\n            priority: 2\n            tls:\n              certResolver: letsencrypt\n        services:\n          deplo-panel:\n            loadBalancer:\n              servers:\n                - url: http://deplo:3000\n              passHostHeader: true' "$DEPLO_DOMAIN")"
+  TRAEFIK_FILE_PROVIDER="$(printf '      - --providers.file.directory=/deplo-dynamic\n      - --providers.file.watch=true')"
 else
   USE_DOMAIN=false
   PUBLIC_URL="http://$SERVER_IP:3000"
   DEPLO_EXPOSE="$(printf '    ports:\n      - "3000:3000"')"
+  TRAEFIK_CONFIG_MOUNT=""
+  TRAEFIK_PANEL_CONFIG=""
+  TRAEFIK_FILE_PROVIDER=""
 fi
 
-# 3. Traefik (always up; routes deployed apps, and the dashboard in domain mode)
+# 3. Traefik (always up; routes deployed apps, and the panel in domain mode)
 step "Configuring Traefik reverse proxy + Let's Encrypt..."
-cat > "$DEPLO_DIR/traefik/docker-compose.yml" <<'YAML'
+# traefik:v3.7 (NOT v3.3): Docker Engine 29 raised the min API to 1.40, which
+# Traefik <=3.3 cannot negotiate, breaking the docker provider on every poll.
+# container_name is what the agent identifies OUR proxy by - without it Deplo
+# refuses to manage this stack and the panel's own settings go read-only.
+cat > "$DEPLO_DIR/traefik/docker-compose.yml" <<YAML
 services:
   traefik:
-    image: traefik:v3.3
+    image: traefik:v3.7
+    container_name: deplo-traefik
     restart: unless-stopped
     command:
       - --providers.docker=true
       - --providers.docker.exposedbydefault=false
       - --providers.docker.network=deplo
+$TRAEFIK_FILE_PROVIDER
       - --entrypoints.web.address=:80
       - --entrypoints.web.http.redirections.entrypoint.to=websecure
       - --entrypoints.web.http.redirections.entrypoint.scheme=https
+      # Pinned BELOW the routes on :80. A Traefik entrypoint redirection is a
+      # router of its own at a priority nothing can outrank (measured: a route at
+      # MaxInt32 still gets the 301), so without this every plain-HTTP route on
+      # this host is answered with a redirect to an https it has no certificate
+      # for - the panel when its HTTPS is off, and EVERY app domain on the `none`
+      # certificate provider, which is the default a new domain is born with.
+      # A host with no route of its own still redirects, which is the job.
+      - --entrypoints.web.http.redirections.entrypoint.priority=1
       - --entrypoints.websecure.address=:443
       - --certificatesresolvers.letsencrypt.acme.httpchallenge=true
       - --certificatesresolvers.letsencrypt.acme.httpchallenge.entrypoint=web
-      - --certificatesresolvers.letsencrypt.acme.email=${ACME_EMAIL}
+      - --certificatesresolvers.letsencrypt.acme.email=\${ACME_EMAIL}
       - --certificatesresolvers.letsencrypt.acme.storage=/acme/acme.json
     ports:
       - "80:80"
@@ -287,12 +320,33 @@ services:
       - /opt/deplo/acme:/acme
     networks:
       - deplo
+$TRAEFIK_CONFIG_MOUNT
+$TRAEFIK_PANEL_CONFIG
 networks:
   deplo:
     external: true
 YAML
+# Blank lines from an empty block above are harmless YAML, but strip them so the
+# file an operator opens on the host reads like one somebody wrote.
+sed -i '/^$/d' "$DEPLO_DIR/traefik/docker-compose.yml"
 docker compose -f "$DEPLO_DIR/traefik/docker-compose.yml" --env-file "$ENV_FILE" up -d
 ok "Traefik running"
+
+# The server agent manages the proxy at $AGENT_DATA/traefik - that is the one
+# path TraefikConfig reads and writes. Point it at the stack we just wrote so
+# THIS host's proxy is manageable from the panel like every other host's, instead
+# of the agent installing a second Traefik that cannot have :80/:443.
+#
+# A symlink rather than a move: uninstall-agent.sh does `rm -rf $AGENT_DATA`,
+# which takes the link and leaves the control plane's Traefik (and its acme.json,
+# i.e. every certificate already issued) exactly where it is. Never overwrite a
+# real directory there - that would be an agent that installed its own proxy
+# first, and adopting it silently is not ours to do.
+if [ ! -e /var/lib/deplo-agent/traefik ]; then
+  mkdir -p /var/lib/deplo-agent
+  chmod 700 /var/lib/deplo-agent
+  ln -s "$DEPLO_DIR/traefik" /var/lib/deplo-agent/traefik
+fi
 
 # 4. Postgres + Deplo control plane -----------------------------------------
 # Compose-substituted vars are escaped (\${...}); shell-computed values inline.

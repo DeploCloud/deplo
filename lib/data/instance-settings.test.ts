@@ -5,12 +5,17 @@ import type { PGlite } from "@electric-sql/pglite";
 
 import { makeTestDb, type TestDb } from "../db/test-harness";
 import { __setTestDb, __resetTestDb } from "../db/client";
+import { instanceSettings } from "../db/schema/control-plane";
 import { runWithIdentity } from "../auth/request-context";
 import { seedIdentity, TRUNCATE_IDENTITY, TEAM_A } from "./identity-test-helpers";
 import {
   getInstanceSettings,
+  getPanelHttps,
   instancePublicBaseUrl,
+  moveWithRollback,
+  noRouteReason,
   normalizePanelUrl,
+  setPanelHttps,
   setPanelUrl,
 } from "./instance-settings";
 
@@ -81,6 +86,20 @@ test("anything that could escape a shell, or carry credentials, is refused", () 
   }
 });
 
+test("the settings name the instance owner, and null when nobody holds it", async () => {
+  // Unowned is an ordinary state (a pre-0038 instance that never backfilled), so
+  // the read answers null instead of inventing an owner for the header to print.
+  assert.equal((await asUser(ADMIN, () => getInstanceSettings())).ownerName, null);
+
+  await db.insert(instanceSettings).values({
+    id: "default",
+    ownerUserId: ADMIN,
+    updatedAt: new Date().toISOString(),
+  });
+  // `seedIdentity` writes the id into `name`, so this is the display name.
+  assert.equal((await asUser(ADMIN, () => getInstanceSettings())).ownerName, ADMIN);
+});
+
 test("only an instance admin can move the address", async () => {
   await assert.rejects(
     () => asUser(MEMBER, () => setPanelUrl("deplo.example.com")),
@@ -111,4 +130,90 @@ test("a stored address wins over the one the box was installed with", async (t) 
   assert.equal(cleared.storedPanelUrl, null);
   assert.equal(cleared.panelUrl, "https://installed.example.com");
   assert.equal(cleared.panelUrlSource, "environment");
+});
+
+/* ------------------------------------------------------------------ */
+/* The panel's own certificate                                         */
+/* ------------------------------------------------------------------ */
+
+test("how the panel is served is instance-admin only, both to read and to change", async () => {
+  await assert.rejects(() => asUser(MEMBER, () => getPanelHttps()), /admin/i);
+  await assert.rejects(() => asUser(MEMBER, () => setPanelHttps(false)), /admin/i);
+});
+
+test("a Deplo whose own host is not added as a server says so, rather than failing", async () => {
+  // The panel's box is a server like any other and an operator may simply not
+  // have added it yet. That is an answer with a fix in it, not an error.
+  const cert = await asUser(ADMIN, () => getPanelHttps());
+  assert.equal(cert.domain, null);
+  assert.equal(cert.enabled, false);
+  assert.match(cert.unavailable ?? "", /not added here yet/i);
+  await assert.rejects(() => asUser(ADMIN, () => setPanelHttps(true)), /not added here yet/i);
+});
+
+test("storing an address still works when there is no route of ours to move", async () => {
+  // The address field is also the tool an operator reaches for when their box has
+  // moved. Refusing to store it because no host answers would take away the
+  // recovery path along with the feature.
+  const saved = await asUser(ADMIN, () => setPanelUrl("still.example.com"));
+  assert.equal(saved.panelUrl, "https://still.example.com");
+});
+
+const ROUTE = {
+  domain: "old.example.com",
+  https: true,
+  certResolver: "letsencrypt",
+  target: "http://deplo:3000",
+};
+
+test("an address that does not answer puts the panel back where it was", async () => {
+  const applied: string[] = [];
+  await assert.rejects(
+    () =>
+      moveWithRollback({
+        from: ROUTE,
+        to: { ...ROUTE, domain: "new.example.com" },
+        apply: async (route) => {
+          applied.push(route.domain);
+        },
+        probe: async () => ({
+          url: "https://new.example.com",
+          ok: false,
+          error: "https://new.example.com did not answer (getaddrinfo ENOTFOUND)",
+        }),
+      }),
+    /did not answer[\s\S]*still on old\.example\.com/i,
+  );
+  // The rollback is the point: without the second apply the operator is locked
+  // out of both addresses and the only way back is a shell on the box.
+  assert.deepEqual(applied, ["new.example.com", "old.example.com"]);
+});
+
+test("an address that answers is kept, and nothing is put back", async () => {
+  const applied: string[] = [];
+  await moveWithRollback({
+    from: ROUTE,
+    to: { ...ROUTE, domain: "new.example.com" },
+    apply: async (route) => {
+      applied.push(route.domain);
+    },
+    probe: async () => ({ url: "https://new.example.com", ok: true, error: null }),
+  });
+  assert.deepEqual(applied, ["new.example.com"]);
+});
+
+test("no route of ours: only a panel with no domain at all is a refusal", () => {
+  // A Deplo served straight on a port has nothing to route and nothing to
+  // secure: it needs a domain first, and saying anything else sends the operator
+  // to the wrong place.
+  assert.match(noRouteReason("http://203.0.113.10:3000") ?? "", /domain address/i);
+  assert.match(noRouteReason("http://203.0.113.10") ?? "", /domain address/i);
+  assert.match(noRouteReason("http://localhost:3000") ?? "", /domain address/i);
+
+  // A routable domain is NOT a refusal: the panel is published by its own
+  // container's labels, and Deplo can take that over rather than sending anyone
+  // back to the installer.
+  assert.equal(noRouteReason("https://deplo.example.com"), null);
+  // A nip.io host is routable too - it is the address a fresh install hands out.
+  assert.equal(noRouteReason("https://deplo.203-0-113-10.nip.io"), null);
 });

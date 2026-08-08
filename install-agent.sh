@@ -329,6 +329,12 @@ services:
       - --entrypoints.web.address=:80
       - --entrypoints.web.http.redirections.entrypoint.to=websecure
       - --entrypoints.web.http.redirections.entrypoint.scheme=https
+      # Pinned BELOW the routes on :80 - see the identical block in install.sh.
+      # An entrypoint redirection outranks every router on its entrypoint, so
+      # without this every domain on the \`none\` certificate provider (the default
+      # for a new domain, served plain-HTTP on \`web\`) is redirected to an https
+      # it has no certificate for. A host with no route of its own still redirects.
+      - --entrypoints.web.http.redirections.entrypoint.priority=1
       - --entrypoints.websecure.address=:443
       - --certificatesresolvers.letsencrypt.acme.httpchallenge=true
       - --certificatesresolvers.letsencrypt.acme.httpchallenge.entrypoint=web

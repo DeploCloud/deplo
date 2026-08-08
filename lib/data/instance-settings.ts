@@ -5,16 +5,25 @@ import { eq } from "drizzle-orm";
 import { headers } from "next/headers";
 
 import { getDb } from "../db/client";
-import { instanceSettings } from "../db/schema/control-plane";
+import { instanceSettings, users } from "../db/schema/control-plane";
 import { getCurrentUser } from "../auth";
 import { nowIso } from "../ids";
 import { requireActiveTeamId, requireInstanceAdmin } from "../membership";
-import { resolvePublicBaseUrl } from "../public-url";
-import { acmeEmail, withAcmeEmail } from "../deploy/traefik-stack";
-import { deploHostSelfAddresses, isDeploHostServer } from "../deploy/domains";
+import { resolvePublicBaseUrl, setStoredPublicBaseUrl } from "../public-url";
+import {
+  acmeEmail,
+  DEFAULT_PANEL_TARGET,
+  panelRoute,
+  stackCertResolver,
+  withAcmeEmail,
+  withPanelRoute,
+  type PanelRoute,
+} from "../deploy/traefik-stack";
+import { deploHostSelfAddresses, isDeploHostServer, isIpv4 } from "../deploy/domains";
 import { DEPLO_VERSION } from "../version";
 import { serverLabel } from "../utils";
 import { recordActivity } from "./activity";
+import { instanceOwnerUserId } from "./instance-owner";
 
 /**
  * Instance-wide settings: the two facts about a Deplo that are neither a team's
@@ -31,6 +40,19 @@ import { recordActivity } from "./activity";
  *    URL, an invite link). Moving to a real domain therefore takes one field
  *    instead of an SSH session, and the check below proves the new address
  *    actually reaches this instance before anyone trusts a link built from it.
+ *    It also MOVES the panel's own route ({@link movePanelRoute}) on a Deplo
+ *    that publishes itself through its proxy, so the address and the routing
+ *    cannot drift apart.
+ *  - **Whether the panel is served over https at all** is a setting for the same
+ *    reason, and read live off that route rather than stored. A Deplo installed
+ *    on a domain that cannot get a certificate - not resolving publicly yet,
+ *    :80 closed, an internal network - greets its first visitor with a browser
+ *    warning on a page nobody has logged into, and the only fix used to be
+ *    editing the compose file the installer wrote. {@link setPanelHttps} moves
+ *    the route, the stored address and the session cookie together, because all
+ *    three have to agree for the panel to still work afterwards, and ADOPTS the
+ *    route on an instance that predates Deplo owning one ({@link adoptPanelRoute})
+ *    rather than sending the operator back to the installer.
  *  - The **certificate account** is NOT stored: it lives in each host's Traefik
  *    stack file, which is the only thing that decides where Let's Encrypt sends
  *    expiry warnings. It is read live and written live, per host, for the same
@@ -61,6 +83,28 @@ export type InstanceSettings = {
   /** The server running the panel, when it is one Deplo knows about. */
   deploHostId: string | null;
   deploHostName: string | null;
+  /** Who owns this instance, or null on one that is unowned. */
+  ownerName: string | null;
+};
+
+/**
+ * Whether the panel is served over https, as the host's proxy is actually
+ * configured.
+ *
+ * Read live, never stored, for the same reason the ACME email is: the router
+ * that publishes this panel is a file on that host, and a stored copy would
+ * disagree with it the first time anyone edited either one.
+ */
+export type PanelHttps = {
+  /** The host the panel's route answers on. Null when there is no route of ours. */
+  domain: string | null;
+  /** Whether the panel is served over https at all. */
+  enabled: boolean;
+  /** The resolver its certificate is ordered from, named as this host names it.
+   *  Null when https is off, or when the host orders from nobody. */
+  provider: string | null;
+  /** Why this is not Deplo's to change, verbatim for the operator. Null when it is. */
+  unavailable: string | null;
 };
 
 /** Whether an address actually reaches this instance, asked of the address itself. */
@@ -80,6 +124,19 @@ export type CertificateAccount = {
   email: string | null;
   /** Why this host is not manageable, verbatim for the operator. Null when it is. */
   unavailable: string | null;
+  /** How many certificates the operator installed on this host themselves. */
+  customCertificates: number;
+  /**
+   * Whole days until the FIRST of those expires, negative once one has, null when
+   * there are none.
+   *
+   * Read here because nothing renews a certificate someone pasted in by hand, and
+   * the tab that shows one expiring is a tab nobody opens on a normal day. This
+   * page is where an operator comes to think about certificates, so the warning
+   * belongs on it - and it costs nothing, since every host's stack file is
+   * already in hand for the account email.
+   */
+  expiresInDays: number | null;
 };
 
 /* ------------------------------------------------------------------ */
@@ -114,13 +171,47 @@ export async function instancePublicBaseUrl(): Promise<string> {
   }
 }
 
-export async function getInstanceSettings(): Promise<InstanceSettings> {
-  await requireInstanceAdmin();
-  const { panelUrl } = await loadSettings();
+/**
+ * The server this panel runs on, when it is one Deplo knows about.
+ *
+ * Null is ordinary: the panel's own box is a server like any other and an
+ * operator may simply not have added it yet. Everything that reaches for this
+ * host's proxy has to answer for that case rather than assume a fleet of one.
+ */
+async function deploHostServer() {
   const { listAllServers } = await import("./servers");
   const servers = await listAllServers();
   const selfAddresses = deploHostSelfAddresses();
-  const host = servers.find((s) => isDeploHostServer(s, selfAddresses)) ?? null;
+  return servers.find((s) => isDeploHostServer(s, selfAddresses)) ?? null;
+}
+
+/**
+ * The instance owner's display name, or null when nobody holds it.
+ *
+ * Read here rather than exposed as a capability check because this is the
+ * READ-ONLY answer to "whose Deplo is this" - the transfer itself stays on
+ * Settings, Users, where the password confirmation and the candidate list live.
+ * An unowned instance is an ordinary state (see `instanceOwnerUserId`), so this
+ * returns null instead of pretending one exists.
+ */
+async function instanceOwnerName(): Promise<string | null> {
+  const ownerId = await instanceOwnerUserId();
+  if (!ownerId) return null;
+  const rows = await getDb()
+    .select({ name: users.name })
+    .from(users)
+    .where(eq(users.id, ownerId))
+    .limit(1);
+  return rows[0]?.name ?? null;
+}
+
+export async function getInstanceSettings(): Promise<InstanceSettings> {
+  await requireInstanceAdmin();
+  const { panelUrl } = await loadSettings();
+  const [host, ownerName] = await Promise.all([
+    deploHostServer(),
+    instanceOwnerName(),
+  ]);
 
   return {
     panelUrl: panelUrl ?? (await instancePublicBaseUrl()),
@@ -133,12 +224,13 @@ export async function getInstanceSettings(): Promise<InstanceSettings> {
     version: DEPLO_VERSION,
     deploHostId: host?.id ?? null,
     deploHostName: host ? serverLabel(host) : null,
+    ownerName,
   };
 }
 
 /**
  * Store the address this instance answers on, or clear it (`null`) to fall back
- * to `DEPLO_PUBLIC_URL`.
+ * to `DEPLO_PUBLIC_URL`, and move the panel's own route onto it.
  *
  * The value is normalised and validated HARD, because it is interpolated into
  * copy-and-run strings: a server's install command is a `curl | bash`, and a
@@ -151,14 +243,12 @@ export async function setPanelUrl(input: string | null): Promise<InstanceSetting
   const user = (await getCurrentUser())!;
 
   const url = input === null || input.trim() === "" ? null : normalizePanelUrl(input);
-  const now = nowIso();
-  await getDb()
-    .insert(instanceSettings)
-    .values({ id: SETTINGS_ID, panelUrl: url, updatedAt: now })
-    .onConflictDoUpdate({
-      target: instanceSettings.id,
-      set: { panelUrl: url, updatedAt: now },
-    });
+  // The routing moves FIRST, and this throws if it could not: storing an address
+  // nothing routes to would break every install command copied from this page.
+  // Clearing the address deliberately moves nothing - the route is real, and
+  // tearing it down to fall back to an env var would unpublish the panel.
+  if (url) await movePanelRoute(url);
+  await rememberPanelUrl(url);
 
   await recordActivity(
     "member",
@@ -212,7 +302,11 @@ export function normalizePanelUrl(input: string): string {
  */
 export async function checkPanelUrl(input: string): Promise<PanelReachability> {
   await requireInstanceAdmin();
-  const url = normalizePanelUrl(input);
+  return probePanel(normalizePanelUrl(input));
+}
+
+/** The probe itself, ungated: the two callers gate before they reach it. */
+async function probePanel(url: string): Promise<PanelReachability> {
   try {
     const res = await fetch(`${url}/api/health`, {
       // Redirects are FOLLOWED: an http address in front of a proxy that sends
@@ -233,6 +327,345 @@ export async function checkPanelUrl(input: string): Promise<PanelReachability> {
     const reason = e instanceof Error ? e.message : String(e);
     return { url, ok: false, error: `${url} did not answer (${reason})` };
   }
+}
+
+/* ------------------------------------------------------------------ */
+/* The panel's own route                                               */
+/* ------------------------------------------------------------------ */
+
+/**
+ * Read the panel's route off the host that serves it.
+ *
+ * Every "no" is a different sentence on purpose: not added as a server, a proxy
+ * Deplo did not install, and a panel published by its own container are three
+ * different situations with three different fixes, and folding them into one
+ * "unavailable" would leave the operator guessing which one they are in.
+ */
+async function readPanelHttps(): Promise<PanelHttps> {
+  const none = { domain: null, enabled: false, provider: null };
+  const host = await deploHostServer();
+  if (!host)
+    return {
+      ...none,
+      unavailable:
+        "The server running Deplo is not added here yet, so Deplo does not manage the panel's own address.",
+    };
+  try {
+    const { fetchHostInfo } = await import("../infra/agent-client");
+    const info = await fetchHostInfo(host.id);
+    if (!info.traefikComposeYaml)
+      return {
+        ...none,
+        unavailable:
+          "Deplo did not install the proxy on this server, so it does not manage how the panel is served.",
+      };
+    const route = panelRoute(info.traefikComposeYaml);
+    if (!route) {
+      // No route of OURS. On a Deplo whose address is a routable domain that is
+      // a panel published the old way, by labels on its own container: Deplo can
+      // still take it over ({@link adoptPanelRoute}), so this is offered rather
+      // than refused, and what it reports is what the address itself says.
+      const url = await instancePublicBaseUrl();
+      const reason = noRouteReason(url);
+      if (reason !== null) return { ...none, unavailable: reason };
+      return {
+        domain: new URL(url).hostname,
+        enabled: url.startsWith("https://"),
+        provider: null,
+        unavailable: null,
+      };
+    }
+    return {
+      domain: route.domain,
+      enabled: route.https,
+      provider: route.https ? route.certResolver : null,
+      unavailable: null,
+    };
+  } catch (e) {
+    // An unreachable host is an answer about that host, not a failure of the
+    // page - same rule the certificate accounts follow.
+    return { ...none, unavailable: e instanceof Error ? e.message : String(e) };
+  }
+}
+
+/**
+ * Why there is no route of ours, in words that name the actual fix.
+ *
+ * Two very different situations look identical from the Traefik file: a Deplo
+ * still on `http://<ip>:3000`, which the installer publishes by mapping the port
+ * and never routes at all, and a Deplo on a domain from before the route was
+ * Deplo's to write. The first needs a domain, the second needs the installer
+ * re-run - and telling one to do the other is worse than saying nothing.
+ *
+ * The panel's own address is what tells them apart: a bare IP or a host:port is
+ * the port-mapped install; anything else is a domain that is routed by
+ * something Deplo does not own.
+ */
+export function noRouteReason(url: string): string | null {
+  let host = "";
+  try {
+    host = new URL(url).hostname;
+  } catch {
+    host = "";
+  }
+  const routable = host.includes(".") && !isIpv4(host);
+  return routable
+    ? null
+    : "This panel is served straight on port 3000, without a proxy in front of it. Give it a domain address above first.";
+}
+
+export async function getPanelHttps(): Promise<PanelHttps> {
+  await requireInstanceAdmin();
+  return readPanelHttps();
+}
+
+/**
+ * Serve the panel over https, or over plain http.
+ *
+ * Turning it OFF is the one that has to work: a Deplo installed on a domain is
+ * published on :443 with a certificate it may not be able to get - the name does
+ * not resolve publicly yet, :80 is closed, the box is on an internal network -
+ * and the operator meets a browser warning on a panel they have never logged
+ * into. There is no shell answer to that in a product whose whole premise is not
+ * needing one, so http is a setting.
+ *
+ * Three things move together, and all three are needed for the panel to still
+ * work afterwards:
+ *
+ *  1. The ROUTE moves to the `web` entrypoint, and the entrypoint's own
+ *     http-to-https redirect is pinned below it - without that the panel would
+ *     answer 301 to an https it has no certificate for.
+ *  2. The stored ADDRESS takes the new scheme, because every string Deplo hands
+ *     out is built from it: an install command pointing at https on a panel that
+ *     no longer speaks it is an agent that can never call home.
+ *  3. The SESSION COOKIE stops being `__Secure-` ({@link resetAuth}). A browser
+ *     will not send one of those over http, so skipping this would leave a panel
+ *     that loads and can never be logged into - the exact failure this setting
+ *     exists to end.
+ *
+ * The host's proxy is recreated to pick the change up, so every site on that
+ * host - this panel included - is unreachable for the few seconds it takes to
+ * come back. Same cost as installing a certificate there, and callers say so
+ * before asking.
+ */
+export async function setPanelHttps(enabled: boolean): Promise<PanelHttps> {
+  await requireInstanceAdmin();
+  const teamId = await requireActiveTeamId();
+  const user = (await getCurrentUser())!;
+
+  const host = await deploHostServer();
+  if (!host)
+    throw new Error(
+      "The server running Deplo is not added here yet, so Deplo does not manage the panel's own address.",
+    );
+
+  const { fetchHostInfo, applyTraefikConfig, withTraefikStackLock } = await import(
+    "../infra/agent-client"
+  );
+  // Held across the read and the write: this rewrites the host's WHOLE stack
+  // file, and so does installing a certificate on it. See withTraefikStackLock.
+  const moved = await withTraefikStackLock(host.id, async () => {
+    const info = await fetchHostInfo(host.id);
+    const current =
+      panelRoute(info.traefikComposeYaml) ?? (await adoptPanelRoute(info.traefikComposeYaml));
+    if (current.https === enabled) return null;
+
+    const next: PanelRoute = {
+      ...current,
+      https: enabled,
+      // Read off the host rather than assumed, and null is fine: a proxy that
+      // orders from nobody still terminates TLS with a certificate the operator
+      // installed. Naming a resolver it does not define is what would break it.
+      certResolver: enabled ? stackCertResolver(info.traefikComposeYaml) : null,
+    };
+    const res = await applyTraefikConfig(host.id, {
+      composeYaml: withPanelRoute(info.traefikComposeYaml, next),
+    });
+    if (!res.ok) throw new Error(res.error || "The proxy on this server refused the change");
+    return next;
+  });
+
+  if (moved) {
+    await rememberPanelUrl(`${enabled ? "https" : "http"}://${moved.domain}`);
+    await recordActivity(
+      "member",
+      enabled
+        ? `Moved the panel to https://${moved.domain}`
+        : `Moved the panel to http://${moved.domain}`,
+      user.name,
+      null,
+      teamId,
+    );
+  }
+  return readPanelHttps();
+}
+
+/**
+ * Build a panel route for a Deplo that does not have one yet.
+ *
+ * A Deplo installed before the route was Deplo's to write publishes itself with
+ * Traefik LABELS on its own container, in a compose file no agent RPC can touch.
+ * Rather than send the operator back to the installer, Deplo writes its own
+ * route beside those labels and outranks them: {@link PANEL_PRIORITY} clears the
+ * 1 the installer pinned the label router to, so from the first change onwards
+ * the route Deplo controls is the one Traefik answers with.
+ *
+ * The one thing that cannot be read off the host is WHERE the panel listens, and
+ * a wrong guess there is a panel that 502s. So the guess is PROVEN first, from
+ * inside: the control plane asks {@link DEFAULT_PANEL_TARGET} for its own health
+ * endpoint over the shared Docker network, and adopts only if this very instance
+ * answers. A Deplo running from source on the host, reached through the docker
+ * gateway instead, fails that check and is told to re-run the installer - which
+ * is the honest answer, because nothing here can discover where it lives.
+ */
+async function adoptPanelRoute(currentYaml: string): Promise<PanelRoute> {
+  const url = await instancePublicBaseUrl();
+  const reason = noRouteReason(url);
+  if (reason) throw new Error(reason);
+
+  const reached = await probePanel(DEFAULT_PANEL_TARGET);
+  if (!reached.ok)
+    throw new Error(
+      "This panel is published by its own container, from before Deplo could manage it, and Deplo cannot tell where it listens. Re-run the installer to hand it over.",
+    );
+
+  return {
+    domain: new URL(url).hostname,
+    // What it is being served as RIGHT NOW, so the caller's own
+    // `current.https === enabled` check still means what it says.
+    https: url.startsWith("https://"),
+    certResolver: url.startsWith("https://") ? stackCertResolver(currentYaml) : null,
+    target: DEFAULT_PANEL_TARGET,
+  };
+}
+
+/**
+ * Store the address AND publish it to the two consumers that cannot await a
+ * database read: the URL builder and Better Auth.
+ *
+ * Better Auth bakes `baseURL` and `useSecureCookies` into the instance it is
+ * built from, so the reset is not housekeeping - it is what makes a scheme
+ * change take effect in this process instead of at the next restart.
+ */
+async function rememberPanelUrl(url: string | null): Promise<void> {
+  const now = nowIso();
+  await getDb()
+    .insert(instanceSettings)
+    .values({ id: SETTINGS_ID, panelUrl: url, updatedAt: now })
+    .onConflictDoUpdate({
+      target: instanceSettings.id,
+      set: { panelUrl: url, updatedAt: now },
+    });
+  setStoredPublicBaseUrl(url);
+  const { resetAuth } = await import("../auth/better-auth");
+  resetAuth();
+}
+
+/**
+ * Load the stored address into the in-memory copy the synchronous consumers
+ * read. Called once at boot, before this instance serves a request.
+ */
+export async function hydratePublicBaseUrl(): Promise<void> {
+  const [row] = await getDb()
+    .select({ panelUrl: instanceSettings.panelUrl })
+    .from(instanceSettings)
+    .where(eq(instanceSettings.id, SETTINGS_ID));
+  setStoredPublicBaseUrl(row?.panelUrl ?? null);
+}
+
+/**
+ * Move the panel's route onto a new address, and put it back if the new one does
+ * not answer.
+ *
+ * The rollback is the point. Moving a router is the one setting on this page
+ * that can lock the operator out of the page itself: get the DNS wrong and both
+ * the old address and the new one stop working, leaving a shell as the only way
+ * back - the exact trip Deplo exists to remove. So the new address has to prove
+ * it answers, from the outside, before the old one is given up.
+ *
+ * Does nothing when Deplo does not own the route, and nothing when the host is
+ * unreachable: the address field is also the tool an operator reaches for when
+ * their box has moved, and refusing to store it while the fleet is down would
+ * take away the recovery path.
+ */
+async function movePanelRoute(url: string): Promise<void> {
+  const host = await deploHostServer();
+  if (!host) return;
+
+  const { fetchHostInfo, applyTraefikConfig, withTraefikStackLock } = await import(
+    "../infra/agent-client"
+  );
+  const parsed = new URL(url);
+  const domain = parsed.hostname;
+  // The scheme in the address is not decoration: typing an http:// address is
+  // the same request as turning HTTPS off, and leaving the route on :443 would
+  // store an address the panel does not answer on.
+  const https = parsed.protocol === "https:";
+
+  await withTraefikStackLock(host.id, async () => {
+    let currentYaml: string;
+    try {
+      currentYaml = (await fetchHostInfo(host.id)).traefikComposeYaml;
+    } catch {
+      return;
+    }
+    const current = currentYaml ? panelRoute(currentYaml) : null;
+    if (!current || (current.domain === domain && current.https === https)) return;
+
+    await moveWithRollback({
+      from: current,
+      to: {
+        ...current,
+        domain,
+        https,
+        certResolver: https ? stackCertResolver(currentYaml) : null,
+      },
+      apply: async (route) => {
+        const res = await applyTraefikConfig(host.id, {
+          composeYaml: withPanelRoute(currentYaml, route),
+        });
+        if (!res.ok)
+          throw new Error(res.error || "The proxy on this server refused the new panel address");
+      },
+      probe: () => probeUntilAnswers(url),
+    });
+  });
+}
+
+/**
+ * Point the route at `to`, and put it back on `from` if the new address does not
+ * answer.
+ *
+ * Its own function, with the two host operations passed in, because this order
+ * is the whole safety property and it deserves a test that does not need a
+ * server: apply, PROVE, and only then keep it. Get it wrong and the operator is
+ * locked out of the page they were on.
+ */
+export async function moveWithRollback(opts: {
+  from: PanelRoute;
+  to: PanelRoute;
+  apply: (route: PanelRoute) => Promise<void>;
+  probe: () => Promise<PanelReachability>;
+}): Promise<void> {
+  await opts.apply(opts.to);
+  const reached = await opts.probe();
+  if (reached.ok) return;
+  await opts.apply(opts.from);
+  throw new Error(`${reached.error}. The panel is still on ${opts.from.domain}.`);
+}
+
+/**
+ * Ask the new address whether it answers, allowing for the moment Traefik takes
+ * to pick the file up. One attempt would report a working move as a failure and
+ * roll it straight back.
+ */
+async function probeUntilAnswers(url: string): Promise<PanelReachability> {
+  let last = await probePanel(url);
+  for (let attempt = 0; attempt < 2 && !last.ok; attempt++) {
+    await new Promise((resolve) => setTimeout(resolve, 2_000));
+    last = await probePanel(url);
+  }
+  return last;
 }
 
 /* ------------------------------------------------------------------ */
@@ -258,7 +691,12 @@ async function readAccounts(): Promise<CertificateAccount[]> {
 
   return Promise.all(
     servers.map(async (server): Promise<CertificateAccount> => {
-      const base = { serverId: server.id, serverName: serverLabel(server) };
+      const base = {
+        serverId: server.id,
+        serverName: serverLabel(server),
+        customCertificates: 0,
+        expiresInDays: null,
+      };
       if (server.status === "provisioning")
         return { ...base, email: null, unavailable: "This server has not finished setting up yet" };
       try {
@@ -269,10 +707,23 @@ async function readAccounts(): Promise<CertificateAccount[]> {
             email: null,
             unavailable: "Deplo did not install the proxy on this server, so it does not manage its certificates",
           };
+        const { describeStackCertificates } = await import("./server-certificates");
+        const own = describeStackCertificates(info.traefikComposeYaml);
+        const installed = {
+          customCertificates: own.length,
+          expiresInDays: own.length
+            ? Math.min(...own.map((c) => c.expiresInDays))
+            : null,
+        };
         const email = acmeEmail(info.traefikComposeYaml);
         return email === null
-          ? { ...base, email: null, unavailable: "This server's proxy issues no certificates" }
-          : { ...base, email, unavailable: null };
+          ? {
+              ...base,
+              ...installed,
+              email: null,
+              unavailable: "This server's proxy issues no certificates",
+            }
+          : { ...base, ...installed, email, unavailable: null };
       } catch (e) {
         // An unreachable host is an answer about that host, not a failure of the
         // page: the other servers still report, and this one says why it did not.
@@ -304,7 +755,9 @@ export async function setCertificateEmail(email: string): Promise<CertificateAcc
   if (!address.includes("@") || /\s/.test(address))
     throw new Error("Enter a valid email address");
 
-  const { fetchHostInfo, applyTraefikConfig } = await import("../infra/agent-client");
+  const { fetchHostInfo, applyTraefikConfig, withTraefikStackLock } = await import(
+    "../infra/agent-client"
+  );
   const accounts = await readAccounts();
   let applied = 0;
 
@@ -312,9 +765,13 @@ export async function setCertificateEmail(email: string): Promise<CertificateAcc
     if (account.unavailable) continue;
     if (account.email === address) continue;
     try {
-      const info = await fetchHostInfo(account.serverId);
-      const yamlText = withAcmeEmail(info.traefikComposeYaml, address);
-      const res = await applyTraefikConfig(account.serverId, { composeYaml: yamlText });
+      // Held across the read and the write: this rewrites the host's WHOLE stack
+      // file, and so does installing a certificate on it. See withTraefikStackLock.
+      const res = await withTraefikStackLock(account.serverId, async () => {
+        const info = await fetchHostInfo(account.serverId);
+        const yamlText = withAcmeEmail(info.traefikComposeYaml, address);
+        return applyTraefikConfig(account.serverId, { composeYaml: yamlText });
+      });
       if (!res.ok) {
         account.unavailable = res.error || `Could not apply the change on ${account.serverName}`;
         continue;

@@ -53,6 +53,16 @@ token inside that team, and the team-wide permissions it holds (managing
 members, roles, registries, databases) stop applying there — naming several
 whole teams restricts nothing inside them.
 
+A token is a principal, not a stand-in for the person who minted it, so it never
+reaches their **account**: the signed-in device list (`mySessions`,
+`revokeSession`, `revokeOtherSessions`), the profile (`updateProfile`,
+`updateEmail`, `changePassword`) and the two-factor settings all answer
+`An API token can't access …` however many capabilities the token holds. Those
+are dashboard actions taken by a person at a keyboard.
+
+A POST must be `Content-Type: application/json`; anything else is refused with
+**415**. GET still serves GraphiQL and query-over-GET.
+
 A request acts in exactly ONE team. Send **`X-Deplo-Team: <team id or slug>`** to
 pick which; without it the first team in the token's scope is used, and a team
 the token doesn't hold is ignored rather than honoured. `myTeams` lists the ones
@@ -110,12 +120,25 @@ minting registration links, the per-user admin editor, Docker cleanup
 (`dockerCleanupPolicy`, `dockerCleanupRuns`, `updateDockerCleanupPolicy`,
 `setServerCleanupExcluded`, `runDockerCleanupNow`) — one instance-wide policy over
 hosts every team shares — and the instance's own settings (`instanceSettings`,
-`setPanelUrl`, `checkPanelUrl`, `serverCertificateAccounts`, `setCertificateEmail`):
+`setPanelUrl`, `checkPanelUrl`, `panelHttps`, `setPanelHttps`,
+`serverCertificateAccounts`, `setCertificateEmail`):
 the address this Deplo answers on, and the Let's Encrypt account every host's
-proxy issues certificates under. A host's own TLS certificates are the same kind
+proxy issues certificates under. The panel publishes ITSELF through its host's
+proxy, so both are settings rather than install-time facts: `setPanelUrl` moves
+the panel's route with the address and puts the old one back if the new address
+does not answer, and `setPanelHttps(enabled: false)` serves the panel over plain
+http - for an address that cannot get a certificate yet, where https means a
+browser warning on a page nobody has logged into. Turning it off moves the route,
+the stored address and the session cookie together; a `__Secure-` cookie is one a
+browser will not send over http. On a Deplo installed before it published its own
+route, the first change adopts that route instead of requiring a re-install.
+A host's own TLS certificates are the same kind
 of thing (`serverCertificates`, `addServerCertificate`, `removeServerCertificate`):
 they front whatever any team runs on that server, they live in that host's proxy
-rather than in Deplo, and the private key is write-only, with no read path.
+rather than in Deplo, and the private key is write-only, with no read path. A
+domain reaches one by setting its `certProvider` to `custom` - HTTPS with no ACME
+resolver named - which, unlike `letsencrypt`, draws on no shared account and is
+therefore not capped per team.
 
 ## Shape of the API
 

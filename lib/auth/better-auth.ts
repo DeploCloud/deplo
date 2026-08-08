@@ -10,6 +10,7 @@ import { isPostgresEnabled } from "@/lib/db/pg";
 import { schema } from "@/lib/db/schema";
 import { deriveKey, hashPassword, verifyPassword } from "@/lib/crypto";
 import { newId } from "@/lib/ids";
+import { cookiesAreSecure, publicBaseUrl } from "@/lib/public-url";
 
 /**
  * Better Auth configuration — the LIVE login path since ADR-0014.
@@ -46,9 +47,19 @@ const SESSION_TTL_SECONDS = 60 * 60 * 24 * 7; // 7 days
 /** The session cookie's base name. Better Auth prefixes `__Secure-` when secure. */
 export const SESSION_COOKIE_NAME = "deplo.session_token";
 
-/** Not named `use*`: it is a plain predicate, and the prefix reads as a React hook. */
+/**
+ * Whether the session cookie may carry the `__Secure-` prefix.
+ *
+ * Reads the EFFECTIVE address, not the env var: an operator who turned the
+ * panel's HTTPS off is served over http from that moment, and a `__Secure-`
+ * cookie is one a browser refuses to send there - a panel that loads and can
+ * never be logged into. {@link resetAuth} is what makes the change land without
+ * a restart.
+ *
+ * Not named `use*`: it is a plain predicate, and the prefix reads as a React hook.
+ */
 function secureCookies(): boolean {
-  return (process.env.DEPLO_PUBLIC_URL ?? "").startsWith("https://");
+  return cookiesAreSecure();
 }
 
 /** Both names the session cookie can have, in the order a reader should try them. */
@@ -90,7 +101,7 @@ function createAuth(db: DrizzleClient) {
   return betterAuth({
     appName: "Deplo",
     secret: deriveKey("better-auth").toString("hex"),
-    baseURL: process.env.DEPLO_PUBLIC_URL || undefined,
+    baseURL: publicBaseUrl() ?? undefined,
     database: drizzleAdapter(db, { provider: "pg", schema }),
     user: { modelName: "users" },
     emailAndPassword: {
@@ -165,6 +176,18 @@ export function getAuth(): ReturnType<typeof createAuth> | null {
     instance = createAuth(db);
   }
   return instance;
+}
+
+/**
+ * Drop the memoized instance so the next {@link getAuth} rebuilds it.
+ *
+ * Called when the panel's address or its scheme changes: both are baked into the
+ * instance at construction (`baseURL`, `useSecureCookies`), and without this the
+ * running process would keep issuing cookies for the scheme it booted with.
+ */
+export function resetAuth(): void {
+  instance = null;
+  instanceDb = null;
 }
 
 /** The auth instance, throwing rather than returning null. The login path needs it. */

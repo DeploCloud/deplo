@@ -22,6 +22,7 @@ import { randomBytes } from "node:crypto";
 import { currentIdentity } from "./auth/request-context";
 import { authRequestHeaders } from "./auth/request-headers";
 import { getAuth, requireAuth, sessionCookieNames } from "./auth/better-auth";
+import { cookiesAreSecure } from "./public-url";
 import { assertPasswordPolicy } from "./password-policy";
 
 // Kept in sync with lib/membership.ts (ACTIVE_TEAM_COOKIE). Set here on
@@ -32,10 +33,9 @@ const ACTIVE_TEAM_TTL_SECONDS = 60 * 60 * 24 * 365; // 1 year
 
 async function setActiveTeamCookie(teamId: string) {
   const store = await cookies();
-  const secure = (process.env.DEPLO_PUBLIC_URL ?? "").startsWith("https://");
   store.set(ACTIVE_TEAM_COOKIE, teamId, {
     httpOnly: true,
-    secure,
+    secure: cookiesAreSecure(),
     sameSite: "lax",
     path: "/",
     maxAge: ACTIVE_TEAM_TTL_SECONDS,
