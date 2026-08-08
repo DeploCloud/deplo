@@ -38,6 +38,12 @@
   --warning: #a35200;
   --info: #0068d6;
 
+  /* Not a state and not a chart slot: the one purely decorative accent, spent by
+     the empty-state illustrations that have no status to report. Kept out of the
+     chart series on purpose - those five are a categorical set with a fixed slot
+     order, and a sixth would offer itself to real data. */
+  --violet: #7c3aed;
+
   /* Chart series — categorical, assigned in fixed slot order (1→5), stepped
      per theme and CVD-validated against the card surface. Marks only; text
      next to them stays on the text tokens. */
@@ -92,6 +98,7 @@
   --success: #50e3c2;
   --warning: #f5a623;
   --info: #5b9dff;
+  --violet: #8b5cf6;
 
   --chart-1: #3987e5;
   --chart-2: #008300;

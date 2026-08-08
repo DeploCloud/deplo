@@ -18,10 +18,13 @@ import { cn } from "@/lib/utils";
  * of the value it started on, and a mirrored ellipse draws identically, so the
  * loop closes with no visible jump.
  *
- * `--chart-1`, the one accent no App tab has spent: Deployments is grey,
+ * `--violet`, which no other drawing in the set spends - Deployments is grey,
  * Variables is `--info`, Pull requests and Cron jobs are `--primary` plus
- * `--success`, Backups is `--chart-3`. It is also the blue every browser has used
- * for a link since forever, which is the right family for an address.
+ * `--success`, Backups `--chart-3`, Databases `--chart-4`, S3 `--chart-5`, backup
+ * schedules `--chart-1`. It is a token, not a hex: the palette had no purple, and
+ * a colour written into a component is a colour that is wrong in one of the two
+ * themes. Deliberately NOT a sixth chart slot - those five are a categorical set
+ * for real data, and this is decoration.
  *
  * No padlock, deliberately, even though these domains get automatic TLS: the
  * Environment variables drawing already spends the padlock on encryption, and the
@@ -79,7 +82,7 @@ export function DomainGraphic({ className }: { className?: string }) {
           ripples instead of thickening into blobs as they expand - and it goes on
           each circle, NOT on the group: it is not an inherited property, so a
           group-level one silently does nothing. */}
-      <g stroke="var(--chart-1)" strokeWidth="2">
+      <g stroke="var(--violet)" strokeWidth="2">
         <circle
           className="deplo-domain-ping"
           cx="48"
@@ -104,7 +107,7 @@ export function DomainGraphic({ className }: { className?: string }) {
         <g className="deplo-domain-pin">
           <path
             d="M0 0 C-5 -6.5 -7 -8.5 -7 -11.5 A7 7 0 1 1 7 -11.5 C7 -8.5 5 -6.5 0 0 Z"
-            fill="var(--chart-1)"
+            fill="var(--violet)"
           />
           {/* The hole. Card-coloured rather than transparent, so the meridian
               sliding past behind the pin never shows through it. */}
