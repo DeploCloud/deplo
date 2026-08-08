@@ -3,7 +3,7 @@
 import * as React from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
-import { Plus, Trash2, Boxes } from "lucide-react";
+import { Loader2, MoreHorizontal, Plus, Trash2 } from "lucide-react";
 import {
   Dialog,
   DialogContent,
@@ -11,18 +11,18 @@ import {
   DialogFooter,
   DialogHeader,
   DialogTitle,
-  DialogTrigger,
 } from "@/components/ui/dialog";
 import {
-  Card,
-  CardContent,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card";
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { FieldLabel, InfoTip } from "@/components/ui/info-tip";
+import { FieldLabel } from "@/components/ui/info-tip";
 import { Badge } from "@/components/ui/badge";
 import {
   Select,
@@ -31,7 +31,9 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { PageHeader } from "@/components/shared/page-header";
 import { EmptyState } from "@/components/shared/empty-state";
+import { RegistryMark } from "@/components/shared/brand-icons";
 import { RegistryGraphic } from "@/components/settings/registry-graphic";
 import { ConfirmAction } from "@/components/shared/confirm-action";
 import { gqlAction } from "@/lib/graphql-client";
@@ -48,74 +50,65 @@ const TYPE_META: Record<
   generic: { label: "Generic / self-hosted", host: "", userPlaceholder: "username" },
 };
 
+/**
+ * The whole Registries page: one header, one grid of connected registries, one
+ * empty state - the shape the Git settings page uses, for the same reason. A
+ * registry is a host this team connected to, exactly like a git host, and two
+ * pages that answer the same question have no business looking different.
+ *
+ * The page body is one client component because the header's Add button and the
+ * dialog it opens are the same interaction.
+ */
 export function RegistriesPanel({ registries }: { registries: RegistryDTO[] }) {
   const router = useRouter();
   const [addOpen, setAddOpen] = React.useState(false);
-  const [deleteId, setDeleteId] = React.useState<string | null>(null);
+  const [deleting, setDeleting] = React.useState<RegistryDTO | null>(null);
 
   return (
-    <Card>
-      <CardHeader className="flex-row items-center justify-between gap-3 space-y-0">
-        <div className="space-y-1.5">
-          <CardTitle className="flex w-fit items-center gap-2 text-base">
-            <Boxes className="size-4" />
-            Container registries
-            <InfoTip content="Connect registries to pull private images and push built images. Credentials are encrypted at rest." />
-          </CardTitle>
+    <div className="space-y-6">
+      <PageHeader
+        title={
+          <span className="flex items-center gap-2">
+            Registries
+            <Badge variant="info" className="font-normal">
+              Beta
+            </Badge>
+          </span>
+        }
+        description="Container image registries used to pull and push images."
+        actions={
+          <Button size="sm" onClick={() => setAddOpen(true)}>
+            <Plus className="size-4" />
+            Add registry
+          </Button>
+        }
+      />
+
+      {registries.length === 0 ? (
+        <EmptyState
+          graphic={<RegistryGraphic />}
+          title="No registry connected"
+          description="Connect one and its private images are yours to deploy, with the credentials kept here."
+        />
+      ) : (
+        <div className="grid items-start gap-4 sm:grid-cols-2 3xl:grid-cols-3">
+          {registries.map((r) => (
+            <RegistryCard
+              key={r.id}
+              registry={r}
+              onRemove={() => setDeleting(r)}
+            />
+          ))}
         </div>
-        <Dialog open={addOpen} onOpenChange={setAddOpen}>
-          <DialogTrigger asChild>
-            <Button size="sm">
-              <Plus className="size-4" />
-              Add registry
-            </Button>
-          </DialogTrigger>
-          <AddRegistryDialog onDone={() => setAddOpen(false)} />
-        </Dialog>
-      </CardHeader>
-      <CardContent>
-        {registries.length === 0 ? (
-          <EmptyState
-            graphic={<RegistryGraphic />}
-            title="No registries connected"
-            description="Add a registry to use private images in your deployments."
-          />
-        ) : (
-          <div className="space-y-2">
-            {registries.map((r) => (
-              <div
-                key={r.id}
-                className="flex items-center gap-3 rounded-lg border border-border p-3"
-              >
-                <div className="min-w-0 flex-1">
-                  <p className="flex items-center gap-2 text-sm font-medium">
-                    {r.name}
-                    <Badge variant="secondary" className="capitalize">
-                      {r.type}
-                    </Badge>
-                  </p>
-                  <p className="mt-1 truncate font-mono text-xs text-muted-foreground">
-                    {r.username}@{r.registryUrl}
-                  </p>
-                </div>
-                <Button
-                  variant="ghost"
-                  size="icon-sm"
-                  className="text-muted-foreground hover:text-destructive"
-                  onClick={() => setDeleteId(r.id)}
-                  aria-label="Remove registry"
-                >
-                  <Trash2 className="size-4" />
-                </Button>
-              </div>
-            ))}
-          </div>
-        )}
-      </CardContent>
+      )}
+
+      {/* Mounted only while open, so its fields seed from their initial state
+          instead of an effect that resets them. */}
+      {addOpen && <AddRegistryDialog onDone={() => setAddOpen(false)} />}
 
       <ConfirmAction
-        open={deleteId !== null}
-        onOpenChange={(v) => !v && setDeleteId(null)}
+        open={deleting !== null}
+        onOpenChange={(v) => !v && setDeleting(null)}
         title="Remove registry?"
         description="Deployments using private images from this registry will no longer authenticate."
         confirmLabel="Remove"
@@ -123,12 +116,57 @@ export function RegistriesPanel({ registries }: { registries: RegistryDTO[] }) {
         onConfirm={async () => {
           const res = await gqlAction(
             `mutation($id: String!) { deleteRegistry(id: $id) }`,
-            { id: deleteId! },
+            { id: deleting!.id },
           );
           if (res.ok) router.refresh();
           return res;
         }}
       />
+    </div>
+  );
+}
+
+/**
+ * One connected registry. Same card as a git host card: the mark says which
+ * provider it is, the title is what the team called it, the subtitle is where it
+ * actually authenticates, and everything you can do to it lives in the kebab.
+ */
+function RegistryCard({
+  registry,
+  onRemove,
+}: {
+  registry: RegistryDTO;
+  onRemove: () => void;
+}) {
+  return (
+    <Card className="p-4">
+      <div className="flex items-start gap-3">
+        <RegistryMark type={registry.type} className="size-10" />
+        <div className="min-w-0 flex-1">
+          <p className="truncate text-sm font-medium">{registry.name}</p>
+          <p className="mt-1 truncate font-mono text-xs text-muted-foreground">
+            {registry.username}@{registry.registryUrl}
+          </p>
+        </div>
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <Button
+              variant="ghost"
+              size="icon-sm"
+              className="-mr-1 shrink-0 text-muted-foreground hover:text-foreground"
+              aria-label={`Actions for ${registry.name}`}
+            >
+              <MoreHorizontal className="size-4" />
+            </Button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="end" className="w-48">
+            <DropdownMenuItem variant="destructive" onSelect={onRemove}>
+              <Trash2 className="size-4" />
+              Remove
+            </DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
+      </div>
     </Card>
   );
 }
@@ -174,7 +212,8 @@ function AddRegistryDialog({ onDone }: { onDone: () => void }) {
   }
 
   return (
-    <DialogContent>
+    <Dialog open onOpenChange={(o) => !o && onDone()}>
+      <DialogContent>
       <DialogHeader>
         <DialogTitle>Add registry</DialogTitle>
         <DialogDescription>
@@ -252,14 +291,19 @@ function AddRegistryDialog({ onDone }: { onDone: () => void }) {
           </div>
         </div>
         <DialogFooter>
+          <Button variant="outline" onClick={onDone} disabled={pending}>
+            Cancel
+          </Button>
           <Button
             type="submit"
             disabled={pending || !name.trim() || !username.trim() || !password}
           >
-            {pending ? "Adding…" : "Add registry"}
+            {pending && <Loader2 className="size-4 animate-spin" />}
+            Add registry
           </Button>
         </DialogFooter>
       </form>
-    </DialogContent>
+      </DialogContent>
+    </Dialog>
   );
 }
