@@ -241,7 +241,11 @@ const ServerHostInfoRef = builder
       }),
       timeUnixMs: t.exposeFloat("timeUnixMs", {
         description:
-          "The host's own clock at the moment of the read (epoch ms). Compare it with the client's to spot a drifting box.",
+          "The host's own clock at the moment of the read (epoch ms). Compare it with controlPlaneTimeUnixMs, never with the viewer's clock, to spot a drifting box.",
+      }),
+      controlPlaneTimeUnixMs: t.exposeFloat("controlPlaneTimeUnixMs", {
+        description:
+          "Deplo's own clock when this reading landed (epoch ms). The pair with timeUnixMs is the honest drift measurement: measuring against the browser measures the browser, and a viewer whose laptop is an hour out would see the whole fleet reported as drifting.",
       }),
       utcOffsetMinutes: t.exposeInt("utcOffsetMinutes", {
         description:
@@ -292,7 +296,7 @@ const ServerRestartReportRef = builder
       restarted: t.exposeInt("restarted"),
       skipped: t.exposeInt("skipped", {
         description:
-          "Workloads that were already stopped. They are left alone: starting them is a different action than restarting them.",
+          "Workloads left alone: the ones already stopped (starting them is a different action than restarting them) and the ones with a deploy in flight, which come back on their own.",
       }),
       failures: t.field({
         type: [RestartedWorkloadRef],
@@ -642,7 +646,7 @@ builder.mutationFields((t) => ({
     type: ServerHostInfoRef,
     authScopes: { instanceAdmin: true },
     description:
-      'Set the host clock\'s timezone to an IANA zone name (e.g. "Europe/Rome"). Returns a fresh reading of the host, so the moved clock is visible without a second call. Rejects a name this instance does not recognise, and the agent rejects one the host does not carry.',
+      'Set the host clock\'s timezone to an IANA zone name (e.g. "Europe/Rome"). Changes the wall-clock LABEL, not the instant: nothing restarts, and Deplo\'s own schedules (backups, cleanup) stay on UTC. Aliases are accepted and canonicalised ("US/Eastern" is stored as "America/New_York"); a bare UTC offset is not a zone and is refused. Returns a fresh reading of the host, so the moved clock is visible without a second call. The agent rejects a zone the host does not carry.',
     args: {
       id: t.arg.string({ required: true }),
       timezone: t.arg.string({ required: true }),
@@ -653,7 +657,7 @@ builder.mutationFields((t) => ({
     type: ServerRestartReportRef,
     authScopes: { instanceAdmin: true },
     description:
-      "Restart every App and database Deplo runs on this server, one at a time. Containers Deplo did not deploy are never touched, and workloads that are already stopped are skipped rather than started — restarting and starting are different actions. Reports per-workload failures instead of stopping at the first one.",
+      "Restart every App and database Deplo runs on this server, one at a time. Containers Deplo did not deploy are never touched. Workloads that are already stopped are skipped rather than started (restarting and starting are different actions), as are workloads with a deploy in flight, which come back on their own. An App whose last deploy FAILED is restarted, not skipped: a failed deploy usually leaves the previous stack serving. Reports per-workload failures instead of stopping at the first one, and says explicitly when a workload stopped but did not start again.",
     args: { id: t.arg.string({ required: true }) },
     resolve: (_r, { id }) => restartServerWorkloads(id),
   }),

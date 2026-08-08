@@ -3,6 +3,8 @@ import "server-only";
 import { eq } from "drizzle-orm";
 import { hostname } from "node:os";
 
+import type { AppStatus } from "../types";
+
 import { getDb } from "../db/client";
 import {
   apps as appsTable,
@@ -47,6 +49,13 @@ export type ServerHostInfo = {
   uptimeSec: number;
   timezone: string;
   timeUnixMs: number;
+  /**
+   * Deplo's own clock when this reading landed, so a caller can say how far the
+   * host has drifted WITHOUT involving the viewer's machine. Skew measured
+   * against a browser is a measurement of the browser: a laptop an hour out
+   * would paint every healthy server in the fleet red.
+   */
+  controlPlaneTimeUnixMs: number;
   utcOffsetMinutes: number;
   /**
    * Whether Deplo installed the Traefik on this host — i.e. whether there is a
@@ -66,14 +75,17 @@ export type ServerHostInfo = {
 export type RestartedWorkload = {
   kind: "app" | "database";
   name: string;
-  /** null = restarted; a string = why it did not, verbatim for the operator. */
+  /** Why it did not come back, verbatim for the operator. When the stop landed
+   *  but the start did not, it also says the workload is now DOWN rather than
+   *  merely un-restarted. Nullable only because the DTO is shared. */
   error: string | null;
 };
 
 export type ServerRestartReport = {
   restarted: number;
-  /** Workloads that were already stopped: restarting them would have STARTED
-   *  them, which is a different verb than the operator pressed. */
+  /** Workloads left alone: the ones already stopped (restarting them would have
+   *  STARTED them, a different verb than the operator pressed) and the ones with
+   *  a deploy in flight, which come back on their own. */
   skipped: number;
   failures: RestartedWorkload[];
 };
@@ -91,6 +103,11 @@ export type ServerRestartReport = {
  */
 export async function serverHostInfo(id: string): Promise<ServerHostInfo> {
   await requireInstanceAdmin();
+  // Not redundant with the gate above: the 2FA POLICY lives in
+  // requireActiveTeamId, and every mutation in this module already goes through
+  // it. Without this line a member the policy has locked out of everything else
+  // could still read every host's hardware, disk and clock.
+  await requireActiveTeamId();
   const server = await getServerById(id);
   if (!server) throw new Error("Server not found");
 
@@ -102,10 +119,14 @@ export async function serverHostInfo(id: string): Promise<ServerHostInfo> {
 /**
  * Move a host's clock to an IANA timezone.
  *
- * Validated against `Intl.supportedValuesOf("timeZone")` — the platform's own
- * IANA database, so there is no list to maintain and no dependency to add. The
- * agent re-validates against /usr/share/zoneinfo, because that is where the
- * write happens and a host may simply not carry every zone.
+ * Validated against the platform's own IANA database, so there is no list to
+ * maintain and no dependency to add. The agent re-validates against
+ * /usr/share/zoneinfo, because that is where the write happens and a host may
+ * simply not carry every zone.
+ *
+ * This changes the host's WALL CLOCK LABEL, not the instant: nothing restarts,
+ * no certificate and no TOTP is affected. Deplo's own schedules stay on UTC.
+ * See the copy on the Advanced tab, which must keep saying so.
  */
 export async function setServerTimezone(
   id: string,
@@ -117,10 +138,10 @@ export async function setServerTimezone(
   const server = await getServerById(id);
   if (!server) throw new Error("Server not found");
 
-  const tz = timezone.trim();
-  if (!isKnownTimezone(tz))
+  const tz = canonicalTimezone(timezone);
+  if (!tz)
     throw new Error(
-      `${tz || "That"} is not a timezone. Pick one from the list, like "Europe/Rome".`,
+      `${timezone.trim() || "That"} is not a timezone. Pick one from the list, like "Europe/Rome".`,
     );
 
   const { setHostTimezone } = await import("../infra/agent-client");
@@ -136,33 +157,42 @@ export async function setServerTimezone(
 }
 
 /**
- * Whether this is a timezone at all, asked of the platform's own IANA database.
+ * The CANONICAL IANA name for what the caller sent, or null if it is not a zone.
  *
- * `Intl.DateTimeFormat` throws RangeError for a name it does not know, and — the
- * reason it is used instead of `Intl.supportedValuesOf("timeZone")` — it ACCEPTS
- * the aliases. That list holds only CANONICAL names, so it rejects
- * `Asia/Kathmandu`, `Asia/Calcutta` and `US/Eastern`, all of which are real zones
- * a host carries and an API client may reasonably send. The picker still offers
- * the canonical list; this just refuses to call a valid name invalid.
+ * Asked of the platform's own IANA database rather than a pattern or a list.
+ * `Intl` is used instead of `Intl.supportedValuesOf("timeZone")` because it also
+ * knows the ALIASES: that list holds only canonical names, so it rejects
+ * `Asia/Calcutta` and `US/Eastern`, real zones a host carries and an API client
+ * may reasonably send.
+ *
+ * Canonicalising rather than merely accepting is what keeps the host's two write
+ * paths in agreement. `timedatectl` records the name it is handed; the
+ * /etc/localtime relink records the file that name RESOLVES to. Send
+ * "US/Eastern" and the host reports back "America/New_York" or "US/Eastern"
+ * depending on which path ran. Send the canonical name and both agree.
+ *
+ * Two things `Intl` accepts that a host cannot:
+ *  - a bare UTC offset ("+05:30"), which is not a zone and has no zone file;
+ *  - any casing, so "europe/rome" survives here and then meets a case-sensitive
+ *    filesystem, coming back as "not a known timezone on this host".
+ * Both are refused here, where the message can still say something useful.
  *
  * The agent re-validates against /usr/share/zoneinfo, which is the check that
  * actually matters: this one only keeps garbage from reaching the host.
+ *
+ * Exported for its unit test: with the agent unreachable there is no other way to
+ * observe WHICH name would have been sent.
  */
-function isKnownTimezone(tz: string): boolean {
-  if (!tz) return false;
+export function canonicalTimezone(input: string): string | null {
+  const tz = input.trim();
+  if (!tz) return null;
+  let resolved: string;
   try {
-    new Intl.DateTimeFormat("en-US", { timeZone: tz });
-    return true;
+    resolved = new Intl.DateTimeFormat("en-US", { timeZone: tz }).resolvedOptions().timeZone;
   } catch {
-    return false;
+    return null;
   }
-}
-
-/** The canonical IANA zone names, for the picker. Static, so computed once. */
-let zoneCache: string[] | null = null;
-export function listTimezones(): string[] {
-  zoneCache ??= Intl.supportedValuesOf("timeZone");
-  return zoneCache;
+  return /^[+-]/.test(resolved) ? null : resolved;
 }
 
 /* ------------------------------------------------------------------ */
@@ -178,8 +208,12 @@ export function listTimezones(): string[] {
  *
  * Already-stopped workloads are SKIPPED rather than started. "Restart" and
  * "start everything that was off" are different verbs, and only one of them was
- * pressed. Failures are collected per workload instead of aborting: on a host
- * where one stack is wedged, the other twenty should still come back.
+ * pressed. So are the ones with a deploy in flight: stopping a stack out from
+ * under its own `compose up` is how a "restart everything" leaves a half-built
+ * app behind, and that deploy brings it up by itself anyway.
+ *
+ * Failures are collected per workload instead of aborting: on a host where one
+ * stack is wedged, the other twenty should still come back.
  */
 export async function restartServerWorkloads(id: string): Promise<ServerRestartReport> {
   await requireInstanceAdmin();
@@ -190,8 +224,12 @@ export async function restartServerWorkloads(id: string): Promise<ServerRestartR
 
   const db = getDb();
   const [appRows, dbRows] = await Promise.all([
-    // status is the App's own lifecycle; the stopped states are the ones whose
-    // containers are down, so `compose start` would START them, not restart them.
+    // status is the App's own INTENT: the last thing the control plane was asked
+    // to do, not what the host has (lib/apps/display-status.ts). It is the right
+    // input all the same: what this button must never do is turn something the
+    // operator deliberately stopped back on, and intent is exactly the record of
+    // that. What the host is actually running is the agent's business, and it
+    // says so by failing the stop.
     db
       .select({ slug: appsTable.slug, name: appsTable.name, status: appsTable.status })
       .from(appsTable)
@@ -202,18 +240,25 @@ export async function restartServerWorkloads(id: string): Promise<ServerRestartR
       .where(eq(databasesTable.serverId, id)),
   ]);
 
-  const targets: Array<{ kind: "app" | "database"; slug: string; name: string; live: boolean }> = [
+  const targets: Array<{
+    kind: "app" | "database";
+    slug: string;
+    name: string;
+    restart: boolean;
+  }> = [
     ...appRows.map((a) => ({
       kind: "app" as const,
       slug: a.slug,
       name: a.name,
-      live: !STOPPED_APP_STATUSES.has(a.status),
+      restart: !LEAVE_ALONE_APP_STATUSES.has(a.status),
     })),
     ...dbRows.map((d) => ({
       kind: "database" as const,
+      // `host` IS the stack slug (`db-<name>`, frozen at create). The connection
+      // string's host is a different value that never lands in this column.
       slug: d.host,
       name: d.name,
-      live: d.status === "running",
+      restart: !LEAVE_ALONE_DB_STATUSES.has(d.status),
     })),
   ];
 
@@ -224,19 +269,27 @@ export async function restartServerWorkloads(id: string): Promise<ServerRestartR
   // compose invocations at a box the operator is already worried about is how a
   // "restart everything" turns into an outage.
   for (const target of targets) {
-    if (!target.live) {
+    if (!target.restart) {
       skipped++;
       continue;
     }
     try {
       await stopStackOn(id, target.slug);
+    } catch (e) {
+      failures.push({ kind: target.kind, name: target.name, error: reason(e) });
+      continue;
+    }
+    try {
       await startStackOn(id, target.slug);
       restarted++;
     } catch (e) {
+      // The one outcome the operator must not have to infer: it went down and did
+      // not come back. Reported as a failure like any other would read as "nothing
+      // happened", and something did.
       failures.push({
         kind: target.kind,
         name: target.name,
-        error: e instanceof Error ? e.message : String(e),
+        error: `stopped, but did not start again: ${reason(e)}`,
       });
     }
   }
@@ -251,8 +304,34 @@ export async function restartServerWorkloads(id: string): Promise<ServerRestartR
   return { restarted, skipped, failures };
 }
 
-/** App statuses whose container is NOT running — see restartServerWorkloads. */
-const STOPPED_APP_STATUSES = new Set(["idle", "stopped", "stopping", "failed", "error"]);
+/**
+ * App statuses a whole-server restart passes over. See restartServerWorkloads.
+ *
+ * `idle`/`stopping` are down (restarting would START them); `building`/`queued`
+ * have a deploy in flight and come back on their own. `error` is deliberately
+ * NOT here: it means the last DEPLOY failed, which routinely leaves the previous
+ * stack up and serving. Treating it as stopped skipped the very apps an operator
+ * reaches for this button to fix, and then told them those apps were "already
+ * stopped".
+ *
+ * Typed `Set<AppStatus>` inside and read as strings outside: that is what makes a
+ * status that does not exist a COMPILE error. The untyped version carried
+ * "stopped" and "failed" for months. Neither is an AppStatus, so neither ever
+ * matched anything.
+ */
+const LEAVE_ALONE_APP_STATUSES: ReadonlySet<string> = new Set<AppStatus>([
+  "idle",
+  "stopping",
+  "building",
+  "queued",
+]);
+
+/** The same call for databases: `stopped` is down, `provisioning` is mid-create
+ *  (there is no stack yet). `error` is restartable for the same reason as above. */
+const LEAVE_ALONE_DB_STATUSES: ReadonlySet<string> = new Set(["stopped", "provisioning"]);
+
+/** An error's own words, for a report the operator reads. */
+const reason = (e: unknown): string => (e instanceof Error ? e.message : String(e));
 
 /**
  * Restart the host's Traefik. Not a config change: the stack file is untouched,
@@ -375,43 +454,49 @@ export async function setServerTraefikDashboard(
     credentials = { domain, username, password };
   }
 
-  const { fetchHostInfo, applyTraefikConfig } = await import("../infra/agent-client");
-  const current = await fetchHostInfo(id);
-  if (!current.traefikComposeYaml)
-    throw new Error(
-      `Deplo did not install Traefik on ${server.name}, so it cannot publish a dashboard there.`,
-    );
+  const { fetchHostInfo, applyTraefikConfig, withTraefikStackLock } = await import(
+    "../infra/agent-client"
+  );
 
-  let stored: { domain: string; username: string; passwordEnc: string } | null = null;
-  let composeYaml: string;
-  if (credentials) {
-    composeYaml = withTraefikDashboard(current.traefikComposeYaml, {
-      domain: credentials.domain,
-      // Re-hashed on every write: the apr1 salt is random, so the stack file
-      // never carries a hash we could have reused from somewhere else.
-      htpasswdUsers: htpasswdLine(credentials.username, credentials.password),
-    });
-    stored = {
-      domain: credentials.domain,
-      username: credentials.username,
-      passwordEnc: encryptSecret(credentials.password),
-    };
-  } else {
-    composeYaml = withTraefikDashboard(current.traefikComposeYaml, null);
-  }
+  const stored = credentials
+    ? {
+        domain: credentials.domain,
+        username: credentials.username,
+        passwordEnc: encryptSecret(credentials.password),
+      }
+    : null;
 
-  // A rewrite that would change nothing is never applied. Applying recreates the
-  // proxy, and that takes every site on the host down for a few seconds — doing it
-  // to write the same bytes back is the worst kind of surprise. The case this
-  // exists for is "turn off the panel" on a host that never published one: it now
-  // costs one read of the host and nothing else. The transform is byte-stable, so
-  // this comparison is exact (see lib/deploy/traefik-stack.ts).
-  const changesTheHost = composeYaml !== current.traefikComposeYaml;
-  if (changesTheHost) {
+  // Read and write under one lock: the whole stack file is rewritten here, and
+  // installing a certificate on this host rewrites the same file. Interleaved,
+  // whichever read second puts the other's change back. See withTraefikStackLock.
+  const changesTheHost = await withTraefikStackLock(id, async () => {
+    const current = await fetchHostInfo(id);
+    if (!current.traefikComposeYaml)
+      throw new Error(
+        `Deplo did not install Traefik on ${server.name}, so it cannot publish a dashboard there.`,
+      );
+
+    const composeYaml = credentials
+      ? withTraefikDashboard(current.traefikComposeYaml, {
+          domain: credentials.domain,
+          // Re-hashed on every write: the apr1 salt is random, so the stack file
+          // never carries a hash we could have reused from somewhere else.
+          htpasswdUsers: htpasswdLine(credentials.username, credentials.password),
+        })
+      : withTraefikDashboard(current.traefikComposeYaml, null);
+
+    // A rewrite that would change nothing is never applied. Applying recreates the
+    // proxy, and that takes every site on the host down for a few seconds - doing it
+    // to write the same bytes back is the worst kind of surprise. The case this
+    // exists for is "turn off the panel" on a host that never published one: it now
+    // costs one read of the host and nothing else. The transform is byte-stable, so
+    // this comparison is exact (see lib/deploy/traefik-stack.ts).
+    if (composeYaml === current.traefikComposeYaml) return false;
     const res = await applyTraefikConfig(id, { composeYaml });
     if (!res.ok)
       throw new Error(res.error || `Could not apply the Traefik configuration on ${server.name}`);
-  }
+    return true;
+  });
 
   // Only now — the row describes what the host is serving, not what we asked for.
   await getDb()
@@ -488,6 +573,10 @@ function toHostInfo(info: {
     uptimeSec: Number(info.uptimeSec),
     timezone: info.timezone,
     timeUnixMs: Number(info.timeUnixMs),
+    // Stamped where the reading lands, so the pair is measured between two
+    // machines Deplo controls. The agent round trip is inside the difference,
+    // which is why a few seconds of it never counts as drift.
+    controlPlaneTimeUnixMs: Date.now(),
     utcOffsetMinutes: info.utcOffsetMinutes,
     traefikManaged: managed,
     // Read from the LIVE stack file, not from our stored column: a host whose

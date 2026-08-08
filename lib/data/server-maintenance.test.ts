@@ -6,13 +6,14 @@ import { eq } from "drizzle-orm";
 
 import { makeTestDb, type TestDb } from "../db/test-harness";
 import { __setTestDb, __resetTestDb } from "../db/client";
-import { servers as serversTable } from "../db/schema/control-plane";
+import { servers as serversTable, teams as teamsTable } from "../db/schema/control-plane";
 import { runWithIdentity } from "../auth/request-context";
 import { seedIdentity, TEAM_A, USER_1 } from "./identity-test-helpers";
 import { TRUNCATE_PROJECT_GRAPH, seedApp } from "./app-graph-test-helpers";
 import { seedDatabase } from "./backup-test-helpers";
 import { seedServerRow } from "./infra-test-helpers";
 import {
+  canonicalTimezone,
   serverHostInfo,
   setServerTimezone,
   restartServerWorkloads,
@@ -224,13 +225,31 @@ test("an existing password is reused when an edit only moves the domain", async 
 /* ------------------------------------------------------------------ */
 
 test("a bogus timezone is rejected before the host is dialed", async () => {
-  for (const bad of ["", "   ", "Mars/Olympus", "../../etc/passwd", "UTC+1"]) {
+  // "+05:30" is the subtle one: Intl ACCEPTS a bare UTC offset, but it is not a
+  // zone and no host has a file for it, so letting it through would turn a typo
+  // into an error from the box instead of from the field that produced it.
+  for (const bad of ["", "   ", "Mars/Olympus", "../../etc/passwd", "UTC+1", "+05:30", "-08:00"]) {
     await assert.rejects(
       () => asAdmin(() => setServerTimezone(REMOTE, bad)),
       /not a timezone/i,
       `${bad || "(empty)"} must be refused`,
     );
   }
+});
+
+test("an alias reaches the host as its canonical name", async () => {
+  // Both host write paths must end up recording the SAME string: timedatectl
+  // keeps the name it is handed, the /etc/localtime relink keeps the file that
+  // name resolves to. Canonicalising here is what makes those agree, and it is
+  // also what stops "europe/rome" from meeting a case-sensitive filesystem.
+  assert.equal(canonicalTimezone("europe/rome"), "Europe/Rome");
+  assert.equal(canonicalTimezone("US/Eastern"), "America/New_York");
+  assert.equal(canonicalTimezone("  Europe/Rome  "), "Europe/Rome");
+  assert.equal(canonicalTimezone("UTC"), "UTC");
+  // Not zones, whatever Intl thinks of them.
+  assert.equal(canonicalTimezone("+05:30"), null);
+  assert.equal(canonicalTimezone("Mars/Olympus"), null);
+  assert.equal(canonicalTimezone(""), null);
 });
 
 test("a real IANA zone passes validation and goes on to the host", async () => {
@@ -294,4 +313,37 @@ test("restarting workloads skips the stopped ones and never touches another serv
 test("a server with nothing on it reports an empty restart rather than failing", async () => {
   const report = await asAdmin(() => restartServerWorkloads(REMOTE));
   assert.deepEqual(report, { restarted: 0, skipped: 0, failures: [] });
+});
+
+test("a failed deploy is restarted; a deploy in flight is left to finish", async () => {
+  // `error` means the last DEPLOY failed, which routinely leaves the PREVIOUS
+  // stack up and serving. Treating it as stopped skipped exactly the apps an
+  // operator presses this button to fix, and called them "already stopped".
+  await seedApp(db, { id: "prj_err", slug: "err", serverId: REMOTE, status: "error" });
+  // Mid-deploy: stopping the stack out from under its own `compose up` is how a
+  // whole-server restart leaves a half-built app behind. It comes up on its own.
+  await seedApp(db, { id: "prj_build", slug: "build", serverId: REMOTE, status: "building" });
+  await seedApp(db, { id: "prj_queued", slug: "queued", serverId: REMOTE, status: "queued" });
+  await seedApp(db, { id: "prj_stopping", slug: "stopping", serverId: REMOTE, status: "stopping" });
+  // Databases get the same treatment: `error` is restartable, mid-create is not.
+  await seedDatabase(db, { id: "db_err", name: "pg-err", serverId: REMOTE, status: "error" });
+  await seedDatabase(db, { id: "db_new", name: "pg-new", serverId: REMOTE, status: "provisioning" });
+  await seedDatabase(db, { id: "db_off", name: "pg-off", serverId: REMOTE, status: "stopped" });
+
+  const report = await asAdmin(() => restartServerWorkloads(REMOTE));
+
+  assert.equal(report.skipped, 5, "building, queued, stopping, provisioning, stopped");
+  assert.deepEqual(
+    report.failures.map((f) => f.name).sort(),
+    ["pg-err", "prj_err"],
+    "the two red workloads are attempted, not written off as stopped",
+  );
+});
+
+test("host details obey the team's two-factor policy, like every action here", async () => {
+  // The policy gate lives in requireActiveTeamId, and every mutation on this page
+  // already goes through it. A read that skipped it would hand a locked-out member
+  // every host's hardware, disk and clock.
+  await db.update(teamsTable).set({ requireTwoFactor: true }).where(eq(teamsTable.id, TEAM_A));
+  await assert.rejects(() => asAdmin(() => serverHostInfo(REMOTE)), /two-factor/i);
 });
