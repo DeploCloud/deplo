@@ -252,7 +252,7 @@ function linkLine(msg: AlertMessage): string {
 /* ---------------------------------------------------------------- Discord -- */
 
 /**
- * Discord gets a real embed, not a line of bold text: a colour stripe that says
+ * Discord gets a real embed, not a line of bold text: a color stripe that says
  * at a glance whether this is bad news, the catalog's own name for the event,
  * and the dashboard link on the title. Every string in it is one Deplo already
  * shows on the notification settings page — the channel is a view of the same

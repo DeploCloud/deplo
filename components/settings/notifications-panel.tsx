@@ -37,7 +37,7 @@ import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { gqlAction } from "@/lib/graphql-client";
 import { DEFAULT_ALERTS } from "@/lib/alerts";
-import { ALL_ALERTS, ALL_CHANNELS } from "@/lib/types";
+import { ALL_CHANNELS } from "@/lib/types";
 import type {
   NotificationChannel,
   NotificationChannelInstance,
@@ -566,13 +566,16 @@ function ChannelRow({
   // that looks healthy and delivers nothing. It reads as a warning, like an
   // unfinished setup, because it has the same consequence.
   const noAlerts = instance.alerts.length === 0;
+  // Only the states that need doing something about. A healthy channel says
+  // nothing here: the dot on the right already reports it, and a count of how
+  // many alerts are ticked is a number nobody acts on from this row.
   const status = !instance.enabled
     ? "Off"
     : !ready
       ? "Needs setup"
       : noAlerts
         ? "No alerts picked"
-        : `${instance.alerts.length} of ${ALL_ALERTS.length} alerts`;
+        : "";
   return (
     <Card className="flex items-center gap-3 p-3 transition-colors hover:border-ring hover:bg-accent">
       <button
@@ -596,21 +599,19 @@ function ChannelRow({
             )}
           </span>
           <span className="mt-1 flex min-w-0 items-center gap-1.5 text-xs text-muted-foreground">
-            {target && (
-              <>
-                <span className="truncate font-mono">{target}</span>
-                <span aria-hidden>·</span>
-              </>
+            {target && <span className="truncate font-mono">{target}</span>}
+            {target && status && <span aria-hidden>·</span>}
+            {status && (
+              <span
+                className={
+                  instance.enabled && (!ready || noAlerts)
+                    ? "text-[var(--warning)]"
+                    : undefined
+                }
+              >
+                {status}
+              </span>
             )}
-            <span
-              className={
-                instance.enabled && (!ready || noAlerts)
-                  ? "text-[var(--warning)]"
-                  : undefined
-              }
-            >
-              {status}
-            </span>
           </span>
         </span>
         <span
