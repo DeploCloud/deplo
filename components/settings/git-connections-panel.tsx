@@ -40,6 +40,7 @@ import {
 import { FieldLabel, InfoTip } from "@/components/ui/info-tip";
 import { EmptyState } from "@/components/shared/empty-state";
 import { ConfirmAction } from "@/components/shared/confirm-action";
+import { GitProviderIcon } from "@/components/shared/brand-icons";
 import { gqlAction } from "@/lib/graphql-client";
 import { timeAgo } from "@/lib/utils";
 import type { GitConnectionDTO } from "@/lib/data/git-connections";
@@ -113,6 +114,10 @@ export function GitConnectionsPanel({
             {connections.map((conn) => (
               <div key={conn.id} className="rounded-lg border border-border p-3">
                 <div className="flex items-center gap-3">
+                  <GitProviderIcon
+                    provider={conn.provider}
+                    className="size-5 shrink-0 text-muted-foreground"
+                  />
                   <div className="min-w-0 flex-1">
                     <p className="flex items-center gap-2 text-sm font-medium">
                       {conn.label}
@@ -329,7 +334,10 @@ function ConnectDialog({
                 <SelectContent>
                   {providers.map((p) => (
                     <SelectItem key={p.id} value={p.id}>
-                      {p.id === "git" ? "Any other git server" : p.label}
+                      <span className="flex items-center gap-2">
+                        <GitProviderIcon provider={p.id} className="size-4" />
+                        {p.id === "git" ? "Any other git server" : p.label}
+                      </span>
                     </SelectItem>
                   ))}
                 </SelectContent>
