@@ -624,86 +624,234 @@
   }
 }
 
-/* The environment variables empty state writes one variable into the empty
-   list: the name types itself in, then the value lands already masked, one
-   character at a time. Then it clears and goes again.
+/* The environment variables empty state writes one variable into the empty list
+   and then encrypts it: the name types itself in, the value arrives as readable
+   characters, those churn, and what settles is four masked dots behind a padlock
+   that snaps shut. Then it clears, rests for a beat, and goes again.
 
-   Same 5s timeline and the same two gestures as the Pull requests drawing (draw
-   on, then pop with a delay each), because they are the same two ideas - a thing
-   being written, and the pieces arriving in order. */
+   6s, one beat longer than the 5s drawings, because this one has four beats to
+   land instead of two - at 5s the scramble was over before it registered. */
 @keyframes deplo-env-write {
   0% {
-    stroke-dashoffset: 22;
+    stroke-dashoffset: 20;
+    /* A round cap still paints a dot when the whole dash is offset away, so the
+       line is hidden outright until it starts drawing - and cut in on a step,
+       because a fade would read as a second, softer gesture. */
+    opacity: 0;
+    animation-timing-function: steps(1, end);
+  }
+  3% {
+    stroke-dashoffset: 20;
     opacity: 1;
   }
-  22%,
-  82% {
+  20%,
+  84% {
     stroke-dashoffset: 0;
     opacity: 1;
   }
+  90%,
   100% {
     stroke-dashoffset: 0;
     opacity: 0;
   }
 }
 
-/* Each masked character, over-sized for a beat then settled - the same pop the
-   pull request commits use, so a reader who has seen one has already read this. */
+/* The value on its way in, and then the churn. Every jitter step carries
+   `steps(1, end)`, so the height JUMPS to the next value and holds it: that hard
+   cut is the whole difference between a character changing and a bar breathing.
+   The arrival and the collapse keep their own easing - those two are movements,
+   not substitutions.
+
+   Each step moves the character up or down as well as resizing it, and dips its
+   opacity: height alone reads as one glyph breathing, while a glyph that also
+   sits at a different height reads as a DIFFERENT glyph, which is the whole
+   point. `transform-origin` is the row line, so the dots that replace them come
+   back to a clean baseline. */
+@keyframes deplo-env-scramble {
+  0%,
+  22% {
+    transform: scaleY(0.2);
+    opacity: 0;
+  }
+  28% {
+    transform: scaleY(1);
+    opacity: 1;
+    animation-timing-function: steps(1, end);
+  }
+  33% {
+    transform: translateY(1.5px) scaleY(0.5);
+    opacity: 0.65;
+    animation-timing-function: steps(1, end);
+  }
+  36% {
+    transform: translateY(-1px) scaleY(1.35);
+    opacity: 1;
+    animation-timing-function: steps(1, end);
+  }
+  39% {
+    transform: translateY(-1.5px) scaleY(0.8);
+    opacity: 0.8;
+    animation-timing-function: steps(1, end);
+  }
+  42% {
+    transform: translateY(1px) scaleY(1.15);
+    opacity: 1;
+    animation-timing-function: steps(1, end);
+  }
+  45% {
+    transform: translateY(-1.5px) scaleY(0.45);
+    opacity: 0.6;
+    animation-timing-function: steps(1, end);
+  }
+  48% {
+    transform: translateY(1.5px) scaleY(1.3);
+    opacity: 1;
+    animation-timing-function: steps(1, end);
+  }
+  51% {
+    transform: translateY(-1px) scaleY(0.7);
+    opacity: 0.85;
+    animation-timing-function: steps(1, end);
+  }
+  54% {
+    transform: scaleY(1.2);
+    opacity: 1;
+  }
+  60%,
+  100% {
+    transform: scaleY(0.1);
+    opacity: 0;
+  }
+}
+
+/* The mask. NOT staggered, unlike the characters it replaces: encryption is one
+   event, so all four dots and the lock land on the same frame. */
 @keyframes deplo-env-mask {
   0%,
-  30% {
+  56% {
     transform: scale(0);
     opacity: 0;
   }
-  38% {
+  62% {
     transform: scale(1.3);
     opacity: 1;
   }
-  46%,
-  82% {
+  68%,
+  84% {
     transform: scale(1);
     opacity: 1;
   }
+  90%,
   100% {
     transform: scale(1);
     opacity: 0;
+  }
+}
+
+/* The padlock arrives with the readable value - open, because at that moment the
+   value still is. */
+@keyframes deplo-env-lock-in {
+  0%,
+  22% {
+    transform: scale(0.4);
+    opacity: 0;
+  }
+  30%,
+  84% {
+    transform: scale(1);
+    opacity: 1;
+  }
+  90%,
+  100% {
+    transform: scale(1);
+    opacity: 0;
+  }
+}
+
+/* The click. It falls fast and overshoots by a few degrees, because that tiny
+   bounce is what a lock snapping shut looks like; easing it gently into place
+   would read as a lid being lowered by hand. */
+@keyframes deplo-env-shut {
+  0%,
+  56% {
+    transform: rotate(-42deg);
+    animation-timing-function: ease-in;
+  }
+  63% {
+    transform: rotate(7deg);
+  }
+  70%,
+  100% {
+    transform: rotate(0deg);
   }
 }
 
 .deplo-env-key {
-  /* The line is 22 units long, so one dash of 22 covers it exactly. */
-  stroke-dasharray: 22;
-  animation: deplo-env-write 5s ease-in-out infinite;
+  /* The line is 20 units long, so one dash of 20 covers it exactly. */
+  stroke-dasharray: 20;
+  animation: deplo-env-write 6s ease-in-out infinite;
+}
+
+.deplo-env-plain {
+  transform-box: fill-box;
+  transform-origin: center;
+  animation: deplo-env-scramble 6s ease-out infinite;
+  opacity: 0;
+}
+
+/* Left to right, the order a value is typed - and the same offsets desync the
+   churn, so the four characters change on their own clocks. */
+.deplo-env-plain:nth-child(2) {
+  animation-delay: 0.1s;
+}
+.deplo-env-plain:nth-child(3) {
+  animation-delay: 0.2s;
+}
+.deplo-env-plain:nth-child(4) {
+  animation-delay: 0.3s;
 }
 
 .deplo-env-dot {
   transform-box: fill-box;
   transform-origin: center;
-  animation: deplo-env-mask 5s ease-out infinite;
+  animation: deplo-env-mask 6s ease-out infinite;
   opacity: 0;
 }
 
-/* Left to right, the order a value is typed. Positive delays, so each dot also
-   clears in the order it arrived. */
-.deplo-env-dot:nth-child(2) {
-  animation-delay: 0.22s;
+.deplo-env-lock {
+  transform-box: fill-box;
+  transform-origin: center;
+  animation: deplo-env-lock-in 6s ease-out infinite;
+  opacity: 0;
 }
-.deplo-env-dot:nth-child(3) {
-  animation-delay: 0.44s;
-}
-.deplo-env-dot:nth-child(4) {
-  animation-delay: 0.66s;
+
+.deplo-env-shackle {
+  /* Origin at the hinge leg, not the centre: that is what makes it swing like a
+     shackle instead of tumbling like a bar. */
+  transform-box: fill-box;
+  transform-origin: left bottom;
+  animation: deplo-env-shut 6s infinite;
 }
 
 @media (prefers-reduced-motion: reduce) {
-  /* Hold the written frame: name in place, value masked. */
+  /* Hold the finished frame: name in place, value masked, lock shut. The
+     readable characters are exactly what must NOT be the still frame. */
   .deplo-env-key {
     animation: none;
     stroke-dashoffset: 0;
   }
-  .deplo-env-dot {
+  .deplo-env-plain {
+    animation: none;
+    opacity: 0;
+  }
+  .deplo-env-dot,
+  .deplo-env-lock {
     animation: none;
     opacity: 1;
+    transform: none;
+  }
+  .deplo-env-shackle {
+    animation: none;
     transform: none;
   }
 }
