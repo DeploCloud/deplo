@@ -11,11 +11,13 @@ import {
   backupRuns as backupRunsTable,
   backupDestination as destTable,
   servers as serversTable,
+  teams as teamsTable,
 } from "../db/schema/control-plane";
 import { runWithIdentity } from "../auth/request-context";
 import { decryptSecret } from "../crypto";
 import { seedIdentity, TEAM_A, TEAM_B, USER_1 } from "./identity-test-helpers";
 import { seedServer, SERVER_1 } from "./app-graph-test-helpers";
+import { seedServerRow } from "./infra-test-helpers";
 import {
   seedBackup,
   seedDatabase,
@@ -29,6 +31,7 @@ import {
   assertSafeOutboundUrl,
   createDestination,
   deleteDestination,
+  ensureDefaultDestination,
   getDestinationWithSecrets,
   listDestinations,
   destinationTestReport,
@@ -439,4 +442,100 @@ test("a name that doesn't resolve is left alone, not refused", async () => {
   } finally {
     __resetDnsLookupForTest();
   }
+});
+
+/* ------------------------------------------------------------------ */
+/* The default destination is seeded ONCE, and stays deleted           */
+/* ------------------------------------------------------------------ */
+
+/**
+ * `ensureDefaultDestination` runs on every render of the three pages that show a
+ * destination picker. Seeding on "this team has no destinations" therefore made
+ * the default UNDELETABLE — Remove deleted the row and the next render put it
+ * straight back — and let two concurrent renders each insert one. The claim on
+ * `teams.backupDefaultSeededAt` is what fixes both.
+ */
+
+/** A server the seed will accept: provisioned, with a pinned agent certificate. */
+async function seedBackupCapableServer(): Promise<void> {
+  await seedServerRow(db, {
+    id: "srv_store",
+    name: "store-1",
+    ip: "10.0.0.9",
+    host: "10.0.0.9",
+    agent: {
+      port: 9443,
+      certFingerprint: "sha256:pinned",
+      certPem: "-----BEGIN CERTIFICATE-----",
+      version: "1.20.0",
+    },
+  });
+}
+
+const seededFlag = async (): Promise<string | null> =>
+  (await db.select().from(teamsTable).where(eq(teamsTable.id, TEAM_A)))[0]
+    ?.backupDefaultSeededAt ?? null;
+
+test("the default destination is created once, on a server the team can reach", async () => {
+  await seedBackupCapableServer();
+  await asUser1(async () => {
+    await ensureDefaultDestination();
+    await ensureDefaultDestination();
+    const list = await listDestinations();
+    assert.equal(list.length, 1);
+    assert.equal(list[0]!.kind, "server");
+    assert.equal(list[0]!.serverId, "srv_store");
+    // Encrypted by construction: a recipient to write to, an identity kept here.
+    assert.ok(list[0]!.ageRecipient?.startsWith("age1"));
+  });
+  assert.ok(await seededFlag());
+});
+
+test("removing the default destination keeps it removed", async () => {
+  await seedBackupCapableServer();
+  await asUser1(async () => {
+    await ensureDefaultDestination();
+    const [seeded] = await listDestinations();
+    await deleteDestination(seeded!.id);
+    // What the next page render does.
+    await ensureDefaultDestination();
+    assert.deepEqual(await listDestinations(), []);
+  });
+});
+
+test("two renders at once seed one destination, not two", async () => {
+  await seedBackupCapableServer();
+  await asUser1(async () => {
+    await Promise.all([ensureDefaultDestination(), ensureDefaultDestination()]);
+    assert.equal((await listDestinations()).length, 1);
+  });
+});
+
+test("a team that already has a destination is never given another", async () => {
+  await seedBackupCapableServer();
+  await seedDestination(db, { id: "s3_mine", name: "mine" });
+  await asUser1(async () => {
+    await ensureDefaultDestination();
+    assert.deepEqual((await listDestinations()).map((d) => d.id), ["s3_mine"]);
+  });
+  // The claim is kept, so deleting that one later does not summon a default.
+  assert.ok(await seededFlag());
+});
+
+test("no backup-capable server yet: nothing is seeded, and the seed can still happen later", async () => {
+  // `beforeEach` truncates users/teams/backups, not servers — so clear the one
+  // the tests above provisioned. What is left is the seeded server, which has no
+  // agent certificate and can therefore hold nothing.
+  await db.delete(serversTable).where(eq(serversTable.id, "srv_store"));
+  await asUser1(async () => {
+    await ensureDefaultDestination();
+    assert.deepEqual(await listDestinations(), []);
+  });
+  assert.equal(await seededFlag(), null);
+
+  await seedBackupCapableServer();
+  await asUser1(async () => {
+    await ensureDefaultDestination();
+    assert.equal((await listDestinations()).length, 1);
+  });
 });

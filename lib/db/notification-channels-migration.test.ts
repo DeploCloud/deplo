@@ -53,8 +53,12 @@ before(async () => {
   const files = readdirSync(MIG_DIR)
     .filter((f) => /^\d{4}_.*\.sql$/.test(f))
     .sort();
-  for (const f of files.filter((f) => Number(f.slice(0, 4)) < 75))
-    await applyFile(f);
+  // 0085 rides along: it adds one column to `teams`, which the live-drizzle
+  // seed below names in its INSERT. Any later additive column on a seeded table
+  // needs the same treatment.
+  const preSeed = (f: string): boolean =>
+    Number(f.slice(0, 4)) < 75 || f.startsWith("0085_");
+  for (const f of files.filter(preSeed)) await applyFile(f);
 
   // Teams and users through the live schema: 0075 does not touch them.
   await seedIdentity(db);

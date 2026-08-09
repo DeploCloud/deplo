@@ -23,10 +23,23 @@ import {
 
 const target: S3TestTarget = {
   name: "Backups",
+  kind: "s3",
   provider: "minio",
   endpoint: "https://s3.example.com",
   region: "eu-central-1",
   bucket: "deplo-backups",
+  path: "",
+};
+
+/** The other destination shape: a folder on a server (ADR-0019). */
+const serverTarget: S3TestTarget = {
+  name: "This server",
+  kind: "server",
+  provider: "other",
+  endpoint: "eu-main-1 · /var/lib/deplo/backups",
+  region: "",
+  bucket: "",
+  path: "/var/lib/deplo/backups",
 };
 
 const report = (over: Partial<Parameters<typeof buildS3TestReport>[0]> = {}) =>
@@ -244,4 +257,104 @@ test("a non-AWS provider is told to use path-style addressing; AWS is not", () =
     }).steps[1].detail,
     /virtual-host addressing/,
   );
+});
+
+/* ---- a server destination is a FOLDER, not a bucket ----------------- */
+
+/**
+ * The report used to be S3-shaped for every destination, so testing a folder on
+ * a server printed "Check the bucket exists", "PutObject /.deplo-s3check" and an
+ * `aws s3api head-bucket --bucket ` with nothing after it. That is not a wording
+ * problem: it tells the reader deplo went looking for a bucket, which is not
+ * what happened, and the reproduce block is unrunnable.
+ */
+const serverReport = (over: Partial<Parameters<typeof buildS3TestReport>[0]> = {}) =>
+  buildS3TestReport({
+    target: serverTarget,
+    ok: true,
+    error: "",
+    startedAt: "2026-08-09T10:00:00.000Z",
+    durationMs: 12,
+    serverName: "eu-main-1",
+    ...over,
+  });
+
+test("a server destination reports the folder sequence, never S3", () => {
+  const r = serverReport();
+  assert.deepEqual(
+    r.steps.map((s) => s.key),
+    ["agent", "root", "write", "cleanup"],
+  );
+  const text = [...r.lines.map((l) => l.text), ...r.steps.map((s) => `${s.label} ${s.detail}`)]
+    .join("\n")
+    .toLowerCase();
+  for (const word of ["bucket", "endpoint", "s3", "putobject", "region"])
+    assert.ok(!text.includes(word), `report should not mention "${word}": ${text}`);
+  assert.match(text, /\/var\/lib\/deplo\/backups/);
+});
+
+test("a folder probe blames the step the agent's own message names", () => {
+  // deplo-agent internal/server/backup_store.go, verbatim prefixes.
+  assert.equal(
+    classifyFailedStep(
+      'backup store path "/mnt/nope" does not exist on this server',
+      "server",
+    ),
+    "root",
+  );
+  assert.equal(
+    classifyFailedStep(
+      'backup store path "/srv/keep" is not empty and holds no Deplo backups; point it at an empty directory',
+      "server",
+    ),
+    "root",
+  );
+  assert.equal(
+    classifyFailedStep("cannot write to /mnt/ro: read-only file system", "server"),
+    "write",
+  );
+  // Unrecognised ⇒ blame nothing, exactly as on the S3 side.
+  assert.equal(classifyFailedStep("something new from the agent", "server"), null);
+  // And an S3 message must not be read with the folder rules.
+  assert.equal(classifyFailedStep('write probe to bucket "b": Access Denied'), "write");
+});
+
+test("a read-only folder fails at the write step, with the root already passed", () => {
+  const r = serverReport({
+    ok: false,
+    error: "cannot write to /var/lib/deplo/backups: read-only file system",
+  });
+  assert.equal(statusOf(r, "agent"), "passed");
+  assert.equal(statusOf(r, "root"), "passed");
+  assert.equal(statusOf(r, "write"), "failed");
+  assert.equal(statusOf(r, "cleanup"), "skipped");
+  assert.ok(r.lines.some((l) => l.level === "error" && l.text.includes("read-only")));
+});
+
+test("an unreachable storage server blames reaching the server, not the folder", () => {
+  const r = serverReport({ ok: false, error: "agent unreachable", serverName: "" });
+  assert.equal(statusOf(r, "agent"), "failed");
+  assert.equal(statusOf(r, "root"), "skipped");
+  assert.match(r.steps[0].detail, /did not run the check/);
+});
+
+test("the folder reproduce block is shell on that host, with no aws and no secret", () => {
+  const cmd = reproduceCommand(serverTarget);
+  assert.ok(!cmd.includes("aws "), cmd);
+  assert.ok(!cmd.includes("AWS_"), cmd);
+  assert.match(cmd, /FOLDER='\/var\/lib\/deplo\/backups'/);
+  assert.match(cmd, /\.deplo-store-check/);
+  assert.match(cmd, /df -h/);
+});
+
+test("an untested managed folder admits it does not know the path yet", () => {
+  const bare = { ...serverTarget, path: "" };
+  // No invented path anywhere: the agent picks it, and deplo learns it from the
+  // first successful check.
+  assert.ok(!reproduceCommand(bare).includes("/var/lib/deplo"), reproduceCommand(bare));
+  assert.match(reproduceCommand(bare), /FOLDER=\s/);
+  const r = emptyS3TestReport(bare);
+  assert.equal(r.never, true);
+  assert.match(r.lines[0].text, /backup folder/);
+  assert.ok(!r.command.includes("head-bucket"));
 });

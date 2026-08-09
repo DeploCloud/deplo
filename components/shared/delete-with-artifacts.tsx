@@ -154,12 +154,12 @@ export function DeleteWithArtifacts({
                 />
                 <span>
                   <span className="font-medium">
-                    Also delete backup artifacts from S3
+                    Also delete the backup artifacts
                   </span>
                   <span className="mt-1 block text-xs text-muted-foreground">
                     Permanently removes every stored backup of this {targetKind}{" "}
-                    from your buckets. Off by default — backups are kept unless
-                    you opt in.
+                    from its destinations. Off by default — backups are kept
+                    unless you opt in.
                   </span>
                 </span>
               </label>

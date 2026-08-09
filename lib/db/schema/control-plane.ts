@@ -153,6 +153,11 @@ export const teams = pgTable(
     // (lib/membership.ts). Off by default; enabling it is refused unless the actor
     // has 2FA themselves, so it can never lock its own author out.
     requireTwoFactor: boolean("require_two_factor").notNull().default(false),
+    // When the team's default backup destination was seeded (lib/data/destinations.ts
+    // `ensureDefaultDestination`). A ONE-SHOT marker, not a timestamp anyone reads:
+    // seeding on "the team has no destinations" instead made the default
+    // undeletable — removing it simply re-created it on the next page load.
+    backupDefaultSeededAt: isoTimestamptz("backup_default_seeded_at"),
     createdAt: isoTimestamptz("created_at").notNull(),
   },
   (t) => [uniqueIndex("teams_slug_uq").on(t.slug)],

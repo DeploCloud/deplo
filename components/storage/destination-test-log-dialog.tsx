@@ -52,7 +52,8 @@ export const S3_TEST_REPORT_FIELDS = `
 /**
  * The full debug output of a destination's "Test connection": the verdict, the
  * probe sequence with the step it stopped at, the agent's verbatim message, and
- * the commands that reproduce the same three S3 calls by hand.
+ * the commands that reproduce the same calls by hand. Bucket or folder — the
+ * report arrives already worded for the destination's kind (lib/data/s3-test-report.ts).
  *
  * Opens on the STORED result of the last test (`destinationTestReport` — reading it never
  * re-dials the bucket), so a failure can be read at leisure, and re-runs on
@@ -133,7 +134,7 @@ export function DestinationTestLogDialog({
           <DialogTitle>Connection log</DialogTitle>
           <DialogDescription>
             Everything deplo checked on {destinationName}, in order, with the
-            storage provider&apos;s own answer.
+            answer it got back.
           </DialogDescription>
         </DialogHeader>
 

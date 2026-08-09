@@ -100,13 +100,15 @@ before(async () => {
   // `activities.actor_user_id`, which only exists from 0029.
   // custom_capabilities (0071) is 0064's case exactly: one additive ALTER with a
   // default on `memberships` (0003), invisible to 0027's backfill.
+  // backup_default_seeded_at (0085) is that case once more, on `teams` (0000).
   const preSeed = (f: string): boolean =>
     Number(f.slice(0, 4)) < 27 ||
     f.startsWith("0043_") ||
     f.startsWith("0054_") ||
     f.startsWith("0055_") ||
     f.startsWith("0064_") ||
-    f.startsWith("0071_");
+    f.startsWith("0071_") ||
+    f.startsWith("0085_");
   const pre27 = files.filter(preSeed);
   const from27 = files.filter((f) => !preSeed(f));
 

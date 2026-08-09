@@ -1,4 +1,4 @@
-import type { LogLevel, S3Provider } from "../types";
+import type { DestinationKind, LogLevel, S3Provider } from "../types";
 
 /**
  * The "Test connection" report for a backup destination: what deplo probed, in
@@ -10,15 +10,24 @@ import type { LogLevel, S3Provider } from "../types";
  * just failed, and a red badge could never say why. The verdict now travels with
  * the reason, and this module turns it into something readable.
  *
+ * TWO PROBES, ONE REPORT. A destination is a bucket or a folder on a server
+ * (ADR-0019), and the two are checked by completely different code on the agent
+ * — so every label, step and command here is chosen by `target.kind`. Printing
+ * the S3 sequence for a server destination is not a cosmetic slip: it tells the
+ * reader deplo went looking for a bucket that does not exist, and the reproduce
+ * block hands them `aws s3api head-bucket --bucket ` with nothing after it.
+ *
  * WHAT IS REAL AND WHAT IS DERIVED — the honesty rule for this file. The agent's
- * `S3Check` RPC returns exactly `{ ok, error }` (see deplo-agent
- * internal/s3client/s3client.go `Check`), so:
+ * `S3Check` RPC returns exactly `{ ok, error }` (plus, for a folder, the resolved
+ * root and the headroom), so:
  *  - `error` is the agent's VERBATIM message and is never rewritten here;
  *  - the step sequence is DERIVED. It mirrors, one-for-one, the fixed sequence
- *    `Check` performs — build client (with its SSRF guard) → BucketExists →
- *    PutObject probe → RemoveObject — and the step it stopped at is read off the
- *    message prefixes that same function produces. It is not a transcript the
- *    agent sent us, and the UI says so.
+ *    the agent performs — for a bucket build client (with its SSRF guard) →
+ *    BucketExists → PutObject probe → RemoveObject (internal/s3client/s3client.go
+ *    `Check`), for a folder resolve the root → write a probe file → remove it
+ *    (internal/server/backup_store.go `storeCheck`) — and the step it stopped at
+ *    is read off the message prefixes those same functions produce. It is not a
+ *    transcript the agent sent us, and the UI says so.
  * Keep {@link classifyFailedStep} in sync with the agent's messages: a prefix it
  * no longer recognises degrades to "the probe failed, here is the output",
  * never to a wrong step being blamed.
@@ -27,8 +36,18 @@ import type { LogLevel, S3Provider } from "../types";
  * presentation is unit-testable from a `{ ok, error }` pair.
  */
 
-/** One step of the fixed probe sequence the agent's `Check` performs. */
-export type S3TestStepKey = "agent" | "client" | "bucket" | "write" | "cleanup";
+/**
+ * One step of the fixed probe sequence the agent performs. `client` / `bucket`
+ * belong to the S3 probe, `root` to the folder probe; `agent`, `write` and
+ * `cleanup` are shared (with different wording — see LABEL/DETAIL below).
+ */
+export type S3TestStepKey =
+  | "agent"
+  | "client"
+  | "bucket"
+  | "root"
+  | "write"
+  | "cleanup";
 
 export type S3TestStepStatus = "passed" | "failed" | "skipped";
 
@@ -62,7 +81,7 @@ export interface S3TestReport {
   steps: S3TestStep[];
   /** The probe log, ready to render. */
   lines: S3TestLogLine[];
-  /** Shell commands that reproduce the same three S3 calls by hand. */
+  /** Shell commands that reproduce the same probe by hand. */
   command: string;
   /** True when there is no verdict yet (never tested). */
   never: boolean;
@@ -71,6 +90,9 @@ export interface S3TestReport {
 /** The reserved key the agent writes and removes to prove the bucket is writable. */
 export const PROBE_KEY = ".deplo-s3check";
 
+/** Its folder equivalent (deplo-agent internal/server/backup_store.go `storeCheck`). */
+export const STORE_PROBE_FILE = ".deplo-store-check";
+
 /**
  * The destination coordinates the report needs. Deliberately NOT the DTO: this
  * module must never see a decrypted credential, and taking the exact fields it
@@ -78,11 +100,18 @@ export const PROBE_KEY = ".deplo-s3check";
  */
 export interface S3TestTarget {
   name: string;
+  kind: DestinationKind;
   provider: S3Provider;
   /** As stored — may or may not carry a scheme. */
   endpoint: string;
   region: string;
   bucket: string;
+  /**
+   * `server` kind: the folder on that host, resolved by the last check or as
+   * configured. Empty until the first check on a managed root — the agent picks
+   * that path, so deplo genuinely does not know it yet and must not invent one.
+   */
+  path: string;
 }
 
 /**
@@ -123,9 +152,24 @@ function pathStyle(provider: S3Provider): boolean {
  * Anything unrecognised blames NO step (null): the log still shows the verbatim
  * output, which beats pointing at the wrong operation.
  */
-export function classifyFailedStep(error: string): S3TestStepKey | null {
+export function classifyFailedStep(
+  error: string,
+  kind: DestinationKind = "s3",
+): S3TestStepKey | null {
   const e = error.toLowerCase();
   if (!e.trim()) return null;
+  if (kind === "server") {
+    // deplo-agent internal/server/backup_store.go: `resolveStoreRoot` produces
+    // every "the folder is wrong" message; only `storeCheck`'s own probe write
+    // says "cannot write to".
+    if (e.startsWith("cannot write to ")) return "write";
+    // Every message `resolveStoreRoot` can produce names the store: "backup
+    // store path %q must be absolute / does not exist on this server / is not a
+    // directory / is not initialized for Deplo / is not empty", plus "create
+    // backup store %q: …" and "mark backup store %q: …".
+    if (e.includes("backup store")) return "root";
+    return null;
+  }
   if (
     e.includes("empty endpoint") ||
     e.includes("cannot resolve endpoint host") ||
@@ -159,30 +203,49 @@ export function buildS3TestReport(opts: {
   const { host, secure } = splitEndpoint(target.endpoint);
   const style = pathStyle(target.provider) ? "path" : "virtual-host";
   const servedBy = serverName || "";
+  const isServer = target.kind === "server";
+  // The folder, for prose; empty until a check resolves a managed root, and the
+  // probe-file details fall back to the bare filename rather than reading
+  // "the folder deplo manages/.deplo-store-check".
+  const folder = target.path || "deplo's own backup folder on that server";
+  const probeFile = target.path ? `${target.path}/${STORE_PROBE_FILE}` : STORE_PROBE_FILE;
 
-  // Which step to blame. No agent served the probe ⇒ it never reached S3 at all.
+  // Which step to blame. No agent served the probe ⇒ it never reached the
+  // destination at all.
   const failedStep: S3TestStepKey | null = ok
     ? null
     : servedBy
-      ? classifyFailedStep(error)
+      ? classifyFailedStep(error, target.kind)
       : "agent";
 
-  const ORDER: S3TestStepKey[] = ["agent", "client", "bucket", "write", "cleanup"];
+  const ORDER: S3TestStepKey[] = isServer
+    ? ["agent", "root", "write", "cleanup"]
+    : ["agent", "client", "bucket", "write", "cleanup"];
   const LABEL: Record<S3TestStepKey, string> = {
-    agent: "Pick a server to run the check from",
+    agent: isServer ? "Reach the server" : "Pick a server to run the check from",
     client: "Open a connection to the endpoint",
     bucket: "Check the bucket exists",
-    write: "Write a probe file to the bucket",
+    root: "Open the backup folder",
+    write: isServer ? "Write a probe file to the folder" : "Write a probe file to the bucket",
     cleanup: "Remove the probe file",
   };
   const DETAIL: Record<S3TestStepKey, string> = {
     agent: servedBy
       ? `served by ${servedBy}`
-      : "no server with a backup-capable agent answered",
+      : isServer
+        ? "the server's agent did not run the check (unreachable, or too old for it)"
+        : "no server with a backup-capable agent answered",
     client: `${secure ? "https" : "http"}://${host} · region ${target.region} · ${style} addressing`,
     bucket: `HeadBucket ${target.bucket}`,
-    write: `PutObject ${target.bucket}/${PROBE_KEY} (0 bytes)`,
-    cleanup: `RemoveObject ${target.bucket}/${PROBE_KEY} (best effort — a failure here is ignored)`,
+    root: target.path
+      ? `${target.path} (created and marked for deplo if missing)`
+      : "deplo's own backup folder on that server (created on the first test)",
+    write: isServer
+      ? `${probeFile} (2 bytes) — a read-only disk fails here`
+      : `PutObject ${target.bucket}/${PROBE_KEY} (0 bytes)`,
+    cleanup: isServer
+      ? `${probeFile}, then sweep any leftover .partial artifacts`
+      : `RemoveObject ${target.bucket}/${PROBE_KEY} (best effort — a failure here is ignored)`,
   };
   const step = (key: S3TestStepKey, status: S3TestStepStatus): S3TestStep => ({
     key,
@@ -208,7 +271,9 @@ export function buildS3TestReport(opts: {
   const lines: S3TestLogLine[] = [];
   lines.push({
     level: "info",
-    text: `Testing "${target.name}" — bucket ${target.bucket} at ${endpointUrl(target.endpoint)}`,
+    text: isServer
+      ? `Testing "${target.name}" — ${folder}${servedBy ? ` on ${servedBy}` : ""}`
+      : `Testing "${target.name}" — bucket ${target.bucket} at ${endpointUrl(target.endpoint)}`,
   });
   for (const a of attempts) lines.push({ level: "warn", text: `skipped ${a}` });
   for (const step of steps) {
@@ -229,7 +294,9 @@ export function buildS3TestReport(opts: {
   lines.push({
     level: ok ? "success" : "error",
     text: ok
-      ? `Bucket is reachable and writable (${durationMs} ms)`
+      ? isServer
+        ? `Folder is ready and writable (${durationMs} ms)`
+        : `Bucket is reachable and writable (${durationMs} ms)`
       : `Test failed after ${durationMs} ms`,
   });
 
@@ -258,7 +325,10 @@ export function emptyS3TestReport(target: S3TestTarget): S3TestReport {
     lines: [
       {
         level: "info",
-        text: `"${target.name}" has not been tested yet. Run the test to probe the bucket.`,
+        text:
+          target.kind === "server"
+            ? `"${target.name}" has not been tested yet. Run the test to set up the backup folder and check it is writable.`
+            : `"${target.name}" has not been tested yet. Run the test to probe the bucket.`,
       },
     ],
     command: reproduceCommand(target),
@@ -267,16 +337,18 @@ export function emptyS3TestReport(target: S3TestTarget): S3TestReport {
 }
 
 /**
- * The same three S3 calls, as commands an operator can paste into a shell to see
- * the provider's raw answer for themselves.
+ * The same calls, as commands an operator can paste into a shell to see the raw
+ * answer for themselves.
  *
- * deplo does NOT shell out — the agent performs them in-process with minio-go
- * (one Go binary, no aws CLI on the host) — so this is billed in the UI as
- * "reproduce it yourself", not as "the command we ran". Credentials are
- * placeholders on purpose: a stored secret is write-only in deplo and has no
- * reveal path, and this block must not become one.
+ * deplo does NOT shell out — the agent performs them in-process (one Go binary,
+ * no aws CLI and no shell on the host) — so this is billed in the UI as
+ * "reproduce it yourself", not as "the command we ran". It is an EXPERT escape
+ * hatch and nothing on the happy path needs it. Credentials are placeholders on
+ * purpose: a stored secret is write-only in deplo and has no reveal path, and
+ * this block must not become one.
  */
 export function reproduceCommand(target: S3TestTarget): string {
+  if (target.kind === "server") return reproduceStoreCommand(target);
   const url = endpointUrl(target.endpoint);
   const common = `--endpoint-url ${url} --region ${target.region || "auto"}`;
   const styleNote = pathStyle(target.provider)
@@ -299,4 +371,31 @@ export function reproduceCommand(target: S3TestTarget): string {
     `# 3. clean the probe file up again`,
     `aws ${common} s3api delete-object --bucket ${target.bucket} --key ${PROBE_KEY}`,
   ].join("\n");
+}
+
+/** The folder equivalent: what `storeCheck` does, as three shell lines. */
+function reproduceStoreCommand(target: S3TestTarget): string {
+  const known = target.path !== "";
+  return [
+    `# deplo runs this check inside the server's agent (Go) — nothing runs on a shell.`,
+    `# These are the same operations, to see the disk's answer for yourself.`,
+    ``,
+    known
+      ? `FOLDER=${shellQuote(target.path)}`
+      : `FOLDER=            # run the test once — deplo then shows the folder on the card`,
+    ``,
+    `# 1. the folder is there, and deplo has marked it as its own`,
+    `ls -la "$FOLDER" "$FOLDER/.deplo-backups"`,
+    ``,
+    `# 2. it is writable (a read-only mount or a full disk fails here)`,
+    `touch "$FOLDER/${STORE_PROBE_FILE}" && rm -f "$FOLDER/${STORE_PROBE_FILE}"`,
+    ``,
+    `# 3. the headroom deplo shows on the card`,
+    `df -h "$FOLDER"`,
+  ].join("\n");
+}
+
+/** Single-quote a path for a shell line, so a space or a quote cannot break it. */
+function shellQuote(value: string): string {
+  return `'${value.replaceAll("'", `'\\''`)}'`;
 }

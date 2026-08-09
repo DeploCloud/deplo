@@ -1,0 +1,16 @@
+-- The default backup destination is seeded ONCE per team, not whenever the team
+-- happens to have none.
+--
+-- `ensureDefaultDestination` created "This server" for any team with zero
+-- destinations, and it runs on every load of the three pages that show a
+-- destination picker. So removing the default deleted the row and the very next
+-- render put it back: a card with a Remove item that does nothing you can see,
+-- which is worse than having no default at all.
+--
+-- This column is the memory. NULL means never seeded; the seed claims it with an
+-- `UPDATE ... WHERE backup_default_seeded_at IS NULL RETURNING`, which is also
+-- what serializes two concurrent renders (the loser of the row lock sees zero
+-- rows and does nothing) — a team could otherwise end up with two identical
+-- defaults. Left NULL for existing teams on purpose: the first render claims it
+-- and then finds the destinations they already have, so nothing is created.
+ALTER TABLE "teams" ADD COLUMN "backup_default_seeded_at" timestamp with time zone;

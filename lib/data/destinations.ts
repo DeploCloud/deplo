@@ -1,6 +1,6 @@
 import "server-only";
 
-import { and, desc, eq } from "drizzle-orm";
+import { and, desc, eq, isNull } from "drizzle-orm";
 
 import { listAllServers, listServersForCurrentTeam } from "./servers";
 import { getDb } from "../db/client";
@@ -8,6 +8,7 @@ import {
   backups as backupsTable,
   backupRuns as backupRunsTable,
   backupDestination as destTable,
+  teams as teamsTable,
 } from "../db/schema/control-plane";
 import { assembleDestination, destinationToRow } from "./backup-rows";
 import { assertSafeOutboundUrl } from "../outbound-url";
@@ -18,6 +19,7 @@ import {
   type S3TestTarget,
 } from "./s3-test-report";
 import { getCurrentUser } from "../auth";
+import { deploHostSelfAddresses, isDeploHostServer } from "../deploy/domains";
 import { serverLabel } from "../utils";
 import { newId, nowIso } from "../ids";
 import {
@@ -472,6 +474,16 @@ async function generateAgeKeypair(): Promise<{ identity: string; recipient: stri
  * reach a backup-capable server yet simply has no destinations, and the empty
  * state explains the two ways to make one.
  *
+ * ONCE PER TEAM, and that is the whole point of `teams.backupDefaultSeededAt`.
+ * Seeding on "this team has no destinations" made the default UNDELETABLE: the
+ * three pages that show a destination picker all call this on render, so
+ * removing the card deleted the row and the next render put it straight back.
+ * The claiming UPDATE is also the lock — two concurrent renders can otherwise
+ * both see zero destinations and both insert, leaving the team with two
+ * identical defaults. The claim is RELEASED when nothing was created (no
+ * backup-capable server yet, or the insert failed), so the seed still happens
+ * once the fleet can serve it.
+ *
  * NO capability check, on purpose, and that is not an oversight: this grants
  * nobody anything. It creates a row the team could already have created, on a
  * server the team can already reach (`listServersForCurrentTeam` is the gate),
@@ -482,6 +494,21 @@ async function generateAgeKeypair(): Promise<{ identity: string; recipient: stri
  */
 export async function ensureDefaultDestination(): Promise<void> {
   const teamId = await requireActiveTeamId();
+  const claimed = await getDb()
+    .update(teamsTable)
+    .set({ backupDefaultSeededAt: nowIso() })
+    .where(and(eq(teamsTable.id, teamId), isNull(teamsTable.backupDefaultSeededAt)))
+    .returning({ id: teamsTable.id });
+  if (claimed.length === 0) return;
+  const release = () =>
+    getDb()
+      .update(teamsTable)
+      .set({ backupDefaultSeededAt: null })
+      .where(eq(teamsTable.id, teamId));
+
+  // An instance that already had destinations before this ran keeps the claim:
+  // it has what the seed exists to provide, and must not get another one the day
+  // it removes the last of them.
   const existing = await getDb()
     .select({ id: destTable.id })
     .from(destTable)
@@ -489,16 +516,28 @@ export async function ensureDefaultDestination(): Promise<void> {
     .limit(1);
   if (existing.length > 0) return;
 
-  const servers = await listServersForCurrentTeam();
-  const server = servers.find((s) => s.agent?.certFingerprint);
-  if (!server) return;
+  // The Deplo host first, then any other provisioned server: "This server" has to
+  // BE this server, and a default silently living on some other box in the fleet
+  // is a surprise the day that box goes away. When it lands elsewhere the
+  // destination is named after the server instead, because the name is the only
+  // thing a picker shows.
+  const provisioned = (await listServersForCurrentTeam()).filter(
+    (s) => s.agent?.certFingerprint,
+  );
+  const self = deploHostSelfAddresses();
+  const server = provisioned.find((s) => isDeploHostServer(s, self)) ?? provisioned[0];
+  if (!server) {
+    await release();
+    return;
+  }
+  const name = isDeploHostServer(server, self) ? "This server" : serverLabel(server);
 
   try {
     const { identity, recipient } = await generateAgeKeypair();
     const d: BackupDestination = {
       id: newId("dst"),
       teamId,
-      name: "This server",
+      name,
       kind: "server",
       provider: null,
       endpoint: null,
@@ -523,9 +562,11 @@ export async function ensureDefaultDestination(): Promise<void> {
     };
     await getDb().insert(destTable).values(destinationToRow(d));
   } catch {
-    // A racing request already created one (or the insert lost to the CHECK).
-    // Either way the team has a destination or will on the next read; this is a
-    // convenience, never a precondition.
+    // Nothing was created (a failed keygen, an insert that lost to the CHECK):
+    // hand the claim back so a later render can try again. This is a
+    // convenience, never a precondition — the empty state explains both ways to
+    // make a destination by hand.
+    await release();
   }
 }
 
@@ -691,10 +732,15 @@ async function probeAndRecord(
 function testTargetOf(d: DestinationDTO): S3TestTarget {
   return {
     name: d.name,
+    kind: d.kind,
     provider: d.provider ?? "other",
     endpoint: destinationWhere(d),
     region: d.region ?? "",
     bucket: d.bucket ?? "",
+    // The folder the agent actually resolved beats the one that was configured;
+    // both are empty for a managed root nobody has tested yet, and the report
+    // says so rather than guessing at a path.
+    path: d.resolvedPath ?? d.path ?? "",
   };
 }
 
@@ -755,7 +801,11 @@ async function checkStoreOnItsServer(d: BackupDestination): Promise<{
       root: "",
     };
   }
-  const conn = await connectBackupAgent(d.serverId);
+  // `store: true` is what makes an old agent say so. Without it the check went
+  // out anyway and the agent — which knows nothing about a StoreTarget and reads
+  // the request as an S3 probe with no bucket — answered "s3 check request
+  // missing target", which is both wrong and unactionable for a folder on a disk.
+  const conn = await connectBackupAgent(d.serverId, { store: true });
   try {
     const verdict = await conn.storeCheck(storeTargetFor(d, ""));
     return {
