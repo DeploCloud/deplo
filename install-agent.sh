@@ -338,8 +338,11 @@ services:
     image: traefik:v3.7
     container_name: deplo-traefik
     restart: unless-stopped
+    depends_on:
+      - deplo-socket-proxy
     command:
       - --providers.docker=true
+      - --providers.docker.endpoint=tcp://deplo-socket-proxy:2375
       - --providers.docker.exposedbydefault=false
       - --providers.docker.network=deplo
       - --entrypoints.web.address=:80
@@ -360,13 +363,37 @@ services:
       - "80:80"
       - "443:443"
     volumes:
-      - /var/run/docker.sock:/var/run/docker.sock:ro
       - $TRAEFIK_DIR/acme:/acme
     networks:
       - deplo
+      - deplo-socket
+  # Same shape as install.sh - Traefik reads container labels THROUGH this rather
+  # than holding /var/run/docker.sock. A \`:ro\` mount does not help: read-only is
+  # about the socket FILE, the API behind it stays complete, so code execution in
+  # the internet-facing proxy would be root on the host. GET-only (POST=0), and
+  # only the endpoints the docker provider reads.
+  deplo-socket-proxy:
+    image: tecnativa/docker-socket-proxy:v0.5.0
+    restart: unless-stopped
+    environment:
+      - CONTAINERS=1
+      - NETWORKS=1
+      - EVENTS=1
+      - VERSION=1
+      - POST=0
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    networks:
+      - deplo-socket
 networks:
   deplo:
     external: true
+  # Deliberately NOT the shared \`deplo\` network: every deployed app is on that
+  # one, and a socket proxy they could reach would let any app enumerate every
+  # other team's containers, environment variables included. Internal: no route
+  # off the host, and only Traefik on the other end.
+  deplo-socket:
+    internal: true
 YAML
     if docker compose -f "$TRAEFIK_DIR/docker-compose.yml" up -d 2>/dev/null \
        || docker-compose -f "$TRAEFIK_DIR/docker-compose.yml" up -d 2>/dev/null; then
