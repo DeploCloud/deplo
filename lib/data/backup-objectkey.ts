@@ -113,29 +113,35 @@ export function buildObjectKey(input: {
  * separated from the S3/store I/O so it unit-tests in isolation. `runs` are the
  * runs for ONE target (already filtered); the result is the subset to delete.
  *
+ * Retention is a QUANTITY, not a window: "keep the last N backups" is the
+ * question people actually ask, and it is the only one that answers itself on a
+ * schedule of any cadence — 7 days of an hourly schedule is 168 artifacts, which
+ * nobody asked for and no bucket bill expects.
+ *
  * The rules, in order:
  *  - a `running` run is never pruned (it's in flight);
- *  - the single most-recent SUCCESSFUL run is always kept, so a target is never
- *    left with zero restorable artifacts by a tight window (or a long run of
- *    failures after it);
- *  - every other run is doomed when it's older than `retentionDays` OR beyond the
- *    `maxPerTarget` cap (counting newest-first, across all statuses).
- *
- * Failed runs own no artifact, so the caller only issues a delete for the
- * doomed runs that succeeded — but it still drops the failed run records here, so
- * a long tail of failures can't grow the table unbounded.
+ *  - only SUCCESSFUL runs count toward `keepLast`, newest-first. A failed run
+ *    owns no artifact, so letting one occupy a slot would mean three bad nights
+ *    silently evicting three good backups — the opposite of what "keep the last
+ *    3" promises;
+ *  - the single most-recent successful run therefore always survives (`keepLast`
+ *    is clamped to >= 1 by the caller), so a target is never left with zero
+ *    restorable artifacts;
+ *  - a NON-successful run is a record and nothing else, doomed only once it falls
+ *    past `maxRecords` counting newest-first across all statuses — the bound that
+ *    stops a long tail of failures growing the table.
  *
  * "Newest first" is `(startedAt, seq)` DESC, NOT `startedAt` alone (PLAN §5): two
  * runs written in the same millisecond tie on the timestamp, and ordering them by
  * timestamp alone is non-deterministic — it could pick the wrong "newest
  * successful run to keep" and then delete the live artifact. The DB-generated
  * `seq` (`bigint identity`) breaks that tie by insertion order. The relational
- * `pruneRetention` selects `seq`; if a caller omits it (a unit test asserting the
- * legacy timestamp-only behaviour), the tie falls back to the input order.
+ * `pruneRetention` selects `seq`; if a caller omits it, the tie falls back to the
+ * input order.
  */
 export function selectDoomedRuns(
   runs: RunForRetention[],
-  opts: { retentionDays: number; maxPerTarget: number; now: Date },
+  opts: { keepLast: number; maxRecords: number },
 ): RunForRetention[] {
   const ordered = [...runs].sort((a, b) => {
     if (a.startedAt !== b.startedAt) return a.startedAt < b.startedAt ? 1 : -1;
@@ -144,13 +150,12 @@ export function selectDoomedRuns(
     if (a.seq !== undefined && b.seq !== undefined) return b.seq - a.seq;
     return 0;
   }); // newest first
-  const cutoff = opts.now.getTime() - opts.retentionDays * 24 * 60 * 60 * 1000;
-  const newestSuccessId = ordered.find((r) => r.status === "success")?.id ?? null;
+  let kept = 0;
   return ordered.filter((r, idx) => {
     if (r.status === "running") return false;
-    if (r.id === newestSuccessId) return false;
-    const tooOld = new Date(r.startedAt).getTime() < cutoff;
-    const overCap = idx >= opts.maxPerTarget;
-    return tooOld || overCap;
+    // An artifact: keep the newest `keepLast` of them, and only them.
+    if (r.status === "success") return ++kept > opts.keepLast;
+    // A record with no artifact behind it: bounded, not retained.
+    return idx >= opts.maxRecords;
   });
 }

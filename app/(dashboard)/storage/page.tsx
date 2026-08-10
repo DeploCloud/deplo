@@ -289,11 +289,18 @@ export default async function StoragePage(props: PageProps<"/storage">) {
               databases={databases.map((d) => ({
                 id: d.id,
                 name: d.name,
+                // The engine under the name, and the second thing the picker's
+                // search matches on.
+                detail: d.type,
+                type: d.type,
+                logo: d.logo,
                 serverId: d.serverId,
               }))}
               services={services.map((p) => ({
                 id: p.id,
                 name: p.name,
+                detail: p.slug,
+                logo: p.logo,
                 serverId: p.serverId,
               }))}
               destinations={destinations.map(toDestinationOption)}

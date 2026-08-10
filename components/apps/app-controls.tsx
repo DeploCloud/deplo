@@ -31,6 +31,10 @@ export function AppControls({
   const can = useAppCan("control_apps");
   const stopped = status === "idle";
   const stopping = status === "stopping";
+  // A backup is being put back in place: the stack is coming down and back up
+  // under Deplo's hand, so powering it on or off from here is not an option the
+  // app has right now.
+  const restoring = status === "restoring";
 
   function act(mutation: string, success: string) {
     startTransition(async () => {
@@ -93,7 +97,14 @@ export function AppControls({
 
   return (
     <>
-      {stopped ? (
+      {restoring ? (
+        // Persisted transient state, same contract as "Stopping": the button is
+        // disabled and self-clears when the restore settles the status.
+        <Button variant="outline" size="sm" disabled>
+          <Loader2 className="size-4 animate-spin" />
+          Restoring
+        </Button>
+      ) : stopped ? (
         <SimpleTooltip content="Start this app's stopped container">
           <Button
             variant="outline"
@@ -140,7 +151,7 @@ export function AppControls({
           variant="outline"
           size="sm"
           onClick={reload}
-          disabled={pending}
+          disabled={pending || restoring}
         >
           <RefreshCw className="size-4" />
           Reload

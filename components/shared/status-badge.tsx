@@ -17,6 +17,7 @@ type AnyStatus =
   | "active"
   | "idle"
   | "stopping"
+  | "restoring"
   | "success"
   | "failed"
   | "never"
@@ -46,6 +47,9 @@ const COLORS: Record<string, string> = {
   building: "bg-[var(--warning)]",
   queued: "bg-[var(--warning)]",
   stopping: "bg-[var(--warning)]",
+  // A backup is being put back in place: the stack is down on purpose, for as
+  // long as the untar takes.
+  restoring: "bg-[var(--warning)]",
   provisioning: "bg-[var(--warning)]",
   pending: "bg-[var(--warning)]",
   unverified: "bg-[var(--warning)]",
@@ -95,6 +99,7 @@ const PULSE = new Set([
   "queued",
   "provisioning",
   "stopping",
+  "restoring",
   "restarting",
 ]);
 
@@ -113,6 +118,7 @@ const VARIANTS: Record<string, "success" | "warning" | "destructive" | "muted"> 
   building: "warning",
   queued: "warning",
   stopping: "warning",
+  restoring: "warning",
   provisioning: "warning",
   pending: "warning",
   unverified: "warning",

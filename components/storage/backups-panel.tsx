@@ -17,7 +17,6 @@ import {
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
 import { FieldLabel } from "@/components/ui/info-tip";
 import {
   Dialog,
@@ -52,7 +51,9 @@ import { AutoRefresh } from "@/components/shared/auto-refresh";
 import { ScheduleLabel } from "@/components/shared/schedule-picker";
 import {
   BackupScheduleFields,
+  DEFAULT_RETENTION,
   browserTimezone,
+  suggestScheduleName,
 } from "@/components/storage/backup-schedule-fields";
 import { DestinationCombobox } from "@/components/storage/destination-combobox";
 import { gqlAction } from "@/lib/graphql-client";
@@ -63,24 +64,55 @@ import type { BackupRun } from "@/lib/types";
 
 type Destination = DestinationOption;
 
-export function AppBackups({
-  appId,
-  serviceName,
-  serverId,
+/** What this panel backs up: one app, or one database. */
+export interface BackupTarget {
+  kind: "app" | "database";
+  id: string;
+  name: string;
+  /** The server it runs on — every destination picker flags a destination that
+   *  sits on that same disk. Null when the target's server is unknown. */
+  serverId: string | null;
+}
+
+/** The noun for this target, for the sentences that have to name it. */
+const noun = (t: BackupTarget) => (t.kind === "app" ? "app" : "database");
+
+/** What a backup of this target actually captures, in one line. */
+function capturedBlurb(target: BackupTarget): string {
+  return target.kind === "app"
+    ? "Captures the app's persistent volumes, files and its compose/env snapshot to a backup destination. Linked databases are backed up separately, as databases."
+    : `Captures a full dump of ${target.name} to a backup destination, ready to restore from any run.`;
+}
+
+/**
+ * The Backups tab — schedules, one-off runs, and the artifacts they produced.
+ *
+ * ONE component for an app and for a database, because the two pages had drifted
+ * into two different products: the app tab could run a backup on demand and
+ * listed every artifact with a download and a restore, while a database's tab
+ * showed schedules and nothing else, with restore buried in a row menu. Which of
+ * the two you are looking at is not a reason to be offered different features -
+ * so the target is a prop, and the only things that read it are the heading, the
+ * blurb, and the word in the restore confirmation.
+ */
+export function BackupsPanel({
+  target,
   schedules,
   runs,
   destinations,
+  canManage,
+  canRestore,
   canTestDestinations,
 }: {
-  appId: string;
-  serviceName: string;
-  /** The server this app runs on. Passed to every destination picker so that
-   *  CHOOSING a destination on that same disk says so — a copy, not a second
-   *  place. Nothing is said while the choice isn't being made. */
-  serverId: string | null;
+  target: BackupTarget;
   schedules: BackupDTO[];
   runs: BackupRun[];
   destinations: Destination[];
+  /** `manage_backups` — schedule, run, edit, delete. */
+  canManage: boolean;
+  /** `restore_backups` — its own, because a restore overwrites live data (and
+   *  a download hands over every byte, which is the same power). */
+  canRestore: boolean;
   /** Whether this user may run the live connection probe the picker fires. */
   canTestDestinations: boolean;
 }) {
@@ -95,45 +127,76 @@ export function AppBackups({
   );
 
   // A dump runs on the host for minutes with nothing on this page changing by
-  // itself. Count what is in flight - the runs the server says are `running`,
-  // plus the ones started from THIS page that have not written their row yet -
-  // and let `AutoRefresh` re-read the page for exactly that long.
-  const [starting, setStarting] = React.useState(0);
-  const track = React.useCallback((p: Promise<unknown>) => {
-    setStarting((n) => n + 1);
-    void p.finally(() => setStarting((n) => n - 1));
-  }, []);
+  // itself, and the mutation that started it only resolves at the very END. So a
+  // run started HERE gets a placeholder row immediately (see `PendingRunRow`),
+  // and `AutoRefresh` re-reads the page until every runner has settled.
+  const [pending, setPending] = React.useState<
+    { id: number; destinationId: string; baseline: number }[]
+  >([]);
+  const runningNow = runs.filter((r) => r.status === "running").length;
+  // Retire a placeholder the moment a real `running` row shows up above the count
+  // that stood when it was created: the swap happens in one commit, so there is
+  // never a duplicate. Adjusting state DURING RENDER rather than in an effect,
+  // React's documented escape hatch and the same one `pending-create.tsx` uses -
+  // an effect runs after the commit, which is one painted frame of the
+  // placeholder and its real row side by side. It is dropped from STATE rather
+  // than filtered at render, or it would come back for a frame when the run
+  // settles and the count falls to where it started.
+  const [seenRunning, setSeenRunning] = React.useState(runningNow);
+  if (runningNow !== seenRunning) {
+    setSeenRunning(runningNow);
+    if (pending.some((x) => runningNow > x.baseline))
+      setPending((p) => p.filter((x) => runningNow <= x.baseline));
+  }
+
+  const nextPendingId = React.useRef(0);
+  const startRun = React.useCallback(
+    (destinationId: string, run: () => Promise<unknown>) => {
+      const id = nextPendingId.current++;
+      // `runningNow` as of this render is the baseline: "has MY row landed yet?"
+      // is answerable by the count alone, and the run's real id does not exist
+      // on this side until the dump finishes.
+      setPending((p) => [...p, { id, destinationId, baseline: runningNow }]);
+      void run().finally(() => setPending((p) => p.filter((x) => x.id !== id)));
+    },
+    [runningNow],
+  );
+
   const anythingRunning =
-    starting > 0 ||
-    runs.some((r) => r.status === "running") ||
+    pending.length > 0 ||
+    runningNow > 0 ||
     schedules.some((s) => s.lastStatus === "running");
 
   return (
     <div className="space-y-8">
-      <AutoRefresh active={anythingRunning} />
+      {/* Faster while a run started here has not surfaced yet: that gap is the
+          one the placeholder is covering, and the sooner the real row lands the
+          shorter it is. */}
+      <AutoRefresh
+        active={anythingRunning}
+        intervalMs={pending.length > 0 ? 2_000 : 5_000}
+      />
       {/* Actions: ad-hoc run + schedule editor */}
       <section className="space-y-4">
         <div className="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
           <div>
-            <h2 className="text-sm font-medium">Back up this app</h2>
+            <h2 className="text-sm font-medium">Back up this {noun(target)}</h2>
             <p className="mt-1 text-xs text-muted-foreground">
-              Captures the app&apos;s persistent volumes, files and its
-              compose/env snapshot to a backup destination. Linked databases are
-              backed up separately, as databases.
+              {capturedBlurb(target)}
             </p>
           </div>
           <div className="flex items-center gap-2">
             <BackUpNow
-              appId={appId}
+              target={target}
               destinations={destinations}
-              serverId={serverId}
+              canManage={canManage}
               canTestDestinations={canTestDestinations}
-              track={track}
+              onStart={startRun}
             />
             <ScheduleBackup
-              appId={appId}
+              target={target}
               destinations={destinations}
-              serverId={serverId}
+              canManage={canManage}
               canTestDestinations={canTestDestinations}
             />
           </div>
@@ -162,10 +225,11 @@ export function AppBackups({
                   <ScheduleRow
                     key={s.id}
                     schedule={s}
+                    target={target}
                     destinations={destinations}
-                    serverId={serverId}
+                    canManage={canManage}
                     canTestDestinations={canTestDestinations}
-                    track={track}
+                    onStart={startRun}
                   />
                 ))}
               </TableBody>
@@ -199,7 +263,7 @@ export function AppBackups({
       {/* Artifacts (runs) */}
       <section className="space-y-3">
         <h2 className="text-sm font-medium">Backup artifacts</h2>
-        {runs.length === 0 ? (
+        {runs.length === 0 && pending.length === 0 ? (
           <EmptyState
             graphic={<BackupGraphic />}
             title="No backups yet"
@@ -218,11 +282,20 @@ export function AppBackups({
                 </TableRow>
               </TableHeader>
               <TableBody>
+                {pending.map((p) => (
+                  <PendingRunRow
+                    key={p.id}
+                    destinationName={
+                      destName.get(p.destinationId) ?? "Unknown destination"
+                    }
+                  />
+                ))}
                 {runs.map((run) => (
                   <RunRow
                     key={run.id}
                     run={run}
-                    serviceName={serviceName}
+                    target={target}
+                    canRestore={canRestore}
                     destinationName={
                       destName.get(run.destinationId) ?? "Unknown destination"
                     }
@@ -243,25 +316,30 @@ export function AppBackups({
 /* ------------------------------------------------------------------ */
 
 function BackUpNow({
-  appId,
+  target,
   destinations,
-  serverId,
+  canManage,
   canTestDestinations,
-  track,
+  onStart,
 }: {
-  appId: string;
+  target: BackupTarget;
   destinations: Destination[];
-  serverId: string | null;
+  canManage: boolean;
   canTestDestinations: boolean;
-  /** Keeps the page auto-refreshing until this backup lands. */
-  track: (p: Promise<unknown>) => void;
+  /** Puts a placeholder row on the page and keeps it refreshing until this
+   *  backup lands. */
+  onStart: (destinationId: string, run: () => Promise<unknown>) => void;
 }) {
   const router = useRouter();
   const [open, setOpen] = React.useState(false);
   const [destinationId, setDestinationId] = React.useState(
     destinations[0]?.id ?? "",
   );
-  const noDeps = destinations.length === 0;
+  const blocked = !canManage
+    ? "You don't have permission to run backups"
+    : destinations.length === 0
+      ? "Add a backup destination first"
+      : null;
 
   function onSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -270,17 +348,20 @@ function BackUpNow({
 
   function submit() {
     // The mutation runs the WHOLE dump - it resolves only once the archive is
-    // written. So the dialog closes now and the artifact shows up in the table
-    // as a real `running` row (the executor records it before it starts), which
-    // the page's AutoRefresh brings in within seconds and updates in place.
+    // written. So the dialog closes now, a pulsing placeholder takes the run's
+    // seat in the artifacts table immediately, and the real `running` row (the
+    // executor records it before it starts) replaces it within a tick.
     setOpen(false);
-    track(
-      gqlAction(
-        `mutation($appId: String!, $destinationId: String!) {
-          runAppBackup(appId: $appId, destinationId: $destinationId)
-        }`,
-        { appId, destinationId },
-      ).then((res) => {
+    const mutation =
+      target.kind === "app"
+        ? `mutation($id: String!, $destinationId: String!) {
+             runAppBackup(appId: $id, destinationId: $destinationId)
+           }`
+        : `mutation($id: String!, $destinationId: String!) {
+             runDatabaseBackup(databaseId: $id, destinationId: $destinationId)
+           }`;
+    onStart(destinationId, () =>
+      gqlAction(mutation, { id: target.id, destinationId }).then((res) => {
         if (res.ok) toast.success("Backup finished");
         else {
           toast.error(res.error);
@@ -295,7 +376,9 @@ function BackUpNow({
     <Dialog open={open} onOpenChange={setOpen}>
       <Tooltip>
         <TooltipTrigger asChild>
-          {noDeps ? (
+          {blocked ? (
+            // Disabled buttons swallow pointer events, so wrap in a focusable
+            // span to keep the tooltip reachable.
             <span tabIndex={0}>
               <Button size="sm" variant="outline" disabled>
                 <Play className="size-4" />
@@ -312,15 +395,16 @@ function BackUpNow({
           )}
         </TooltipTrigger>
         <TooltipContent>
-          {noDeps ? "Add a backup destination first" : "Run a one-off backup now"}
+          {blocked ?? "Run a one-off backup now"}
         </TooltipContent>
       </Tooltip>
       <DialogContent>
         <DialogHeader>
           <DialogTitle>Back up now</DialogTitle>
           <DialogDescription>
-            Dump this app&apos;s volumes, files and compose/env snapshot to a
-            destination now - no schedule needed.
+            {target.kind === "app"
+              ? "Dump this app's volumes, files and compose/env snapshot to a destination now - no schedule needed."
+              : "Dump this database to a destination now - no schedule needed."}
           </DialogDescription>
         </DialogHeader>
         <form className="grid gap-4" onSubmit={onSubmit}>
@@ -336,7 +420,8 @@ function BackUpNow({
               destinations={destinations}
               value={destinationId}
               onChange={setDestinationId}
-              sameDiskServerId={serverId}
+              sameDiskServerId={target.serverId}
+              sameDiskNoun={noun(target)}
               canProbe={canTestDestinations}
             />
           </div>
@@ -355,31 +440,44 @@ function BackUpNow({
 }
 
 /* ------------------------------------------------------------------ */
-/* Schedule an app backup                                              */
+/* Schedule a backup                                                   */
 /* ------------------------------------------------------------------ */
 
+/** The editable settings of a schedule, shared by the create and edit forms. */
+type ScheduleFields = {
+  name: string;
+  destinationId: string;
+  schedule: string;
+  timezone: string;
+  retention: number;
+};
+
 function ScheduleBackup({
-  appId,
+  target,
   destinations,
-  serverId,
+  canManage,
   canTestDestinations,
 }: {
-  appId: string;
+  target: BackupTarget;
   destinations: Destination[];
-  serverId: string | null;
+  canManage: boolean;
   canTestDestinations: boolean;
 }) {
   const router = useRouter();
   const [open, setOpen] = React.useState(false);
   const [pending, startTransition] = React.useTransition();
   const [fields, setFields] = React.useState<ScheduleFields>(() => ({
-    name: "",
+    name: suggestScheduleName(DEFAULT_SCHEDULE),
     destinationId: destinations[0]?.id ?? "",
     schedule: DEFAULT_SCHEDULE,
     timezone: browserTimezone(),
-    retention: 14,
+    retention: DEFAULT_RETENTION,
   }));
-  const noDeps = destinations.length === 0;
+  const blocked = !canManage
+    ? "You don't have permission to schedule backups"
+    : destinations.length === 0
+      ? "Add a backup destination first"
+      : null;
 
   function onSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -393,19 +491,19 @@ function ScheduleBackup({
         {
           input: {
             name: fields.name,
-            targetKind: "app",
-            appId,
+            targetKind: target.kind,
+            appId: target.kind === "app" ? target.id : null,
+            databaseId: target.kind === "database" ? target.id : null,
             destinationId: fields.destinationId,
             schedule: fields.schedule,
             timezone: fields.timezone,
-            retentionDays: fields.retention,
+            retentionCount: fields.retention,
           },
         },
       );
       if (res.ok) {
         toast.success("Backup schedule created");
         setOpen(false);
-        setFields((f) => ({ ...f, name: "" }));
         router.refresh();
       } else {
         toast.error(res.error);
@@ -417,7 +515,7 @@ function ScheduleBackup({
     <Dialog open={open} onOpenChange={setOpen}>
       <Tooltip>
         <TooltipTrigger asChild>
-          {noDeps ? (
+          {blocked ? (
             <span tabIndex={0}>
               <Button size="sm" disabled>
                 <Plus className="size-4" />
@@ -434,22 +532,22 @@ function ScheduleBackup({
           )}
         </TooltipTrigger>
         <TooltipContent>
-          {noDeps ? "Add a backup destination first" : "Schedule recurring backups"}
+          {blocked ?? "Schedule recurring backups"}
         </TooltipContent>
       </Tooltip>
       <DialogContent>
         <DialogHeader>
           <DialogTitle>Schedule a backup</DialogTitle>
           <DialogDescription>
-            Periodically back up this app to a backup destination.
+            Periodically back up this {noun(target)} to a backup destination.
           </DialogDescription>
         </DialogHeader>
         <form className="grid gap-4" onSubmit={onSubmit}>
           <ScheduleFormFields
             fields={fields}
             onChange={setFields}
+            target={target}
             destinations={destinations}
-            serverId={serverId}
             canTestDestinations={canTestDestinations}
           />
           <DialogFooter>
@@ -474,68 +572,75 @@ function ScheduleBackup({
   );
 }
 
-/* ------------------------------------------------------------------ */
-/* Edit an app backup schedule                                         */
-/* ------------------------------------------------------------------ */
-
-/** The editable settings of a schedule, shared by the create and edit forms. */
-type ScheduleFields = {
-  name: string;
-  destinationId: string;
-  schedule: string;
-  timezone: string;
-  retention: number;
-};
-
 function ScheduleFormFields({
   fields,
   onChange,
+  target,
   destinations,
-  serverId,
   canTestDestinations,
+  /** Whether the name is the user's own — an edit starts true, a create starts
+   *  false and flips the first time they type in it. */
+  named = false,
 }: {
   fields: ScheduleFields;
   onChange: React.Dispatch<React.SetStateAction<ScheduleFields>>;
+  target: BackupTarget;
   destinations: Destination[];
-  /** This app's server, so the destination picker can flag a same-disk pick. */
-  serverId: string | null;
   canTestDestinations: boolean;
+  named?: boolean;
 }) {
+  const [nameTouched, setNameTouched] = React.useState(named);
+
   return (
     <div className="grid gap-4">
       <div className="space-y-2">
-        <Label htmlFor="app-backup-name">Name</Label>
+        <FieldLabel
+          htmlFor="backup-name"
+          info="What this schedule is called in the list. Follows the frequency until you change it."
+        >
+          Name
+        </FieldLabel>
         <Input
-          id="app-backup-name"
+          id="backup-name"
           value={fields.name}
-          onChange={(e) => onChange((f) => ({ ...f, name: e.target.value }))}
-          placeholder="Nightly project backup"
+          onChange={(e) => {
+            setNameTouched(true);
+            onChange((f) => ({ ...f, name: e.target.value }));
+          }}
+          autoFocus
         />
       </div>
       <div className="space-y-2">
         <FieldLabel
-          htmlFor="app-backup-destination"
+          htmlFor="backup-destination"
           info="Where scheduled backups are written. Each one shows whether Deplo could reach it."
         >
           Destination
         </FieldLabel>
         <DestinationCombobox
-          id="app-backup-destination"
+          id="backup-destination"
           destinations={destinations}
           value={fields.destinationId}
           onChange={(v) => onChange((f) => ({ ...f, destinationId: v }))}
-          sameDiskServerId={serverId}
+          sameDiskServerId={target.serverId}
+          sameDiskNoun={noun(target)}
           canProbe={canTestDestinations}
         />
       </div>
       <BackupScheduleFields
-        idPrefix="app-backup"
+        idPrefix="backup"
         schedule={fields.schedule}
-        onScheduleChange={(cron) => onChange((f) => ({ ...f, schedule: cron }))}
+        onScheduleChange={(cron) =>
+          onChange((f) => ({
+            ...f,
+            schedule: cron,
+            name: nameTouched ? f.name : suggestScheduleName(cron),
+          }))
+        }
         timezone={fields.timezone}
         onTimezoneChange={(tz) => onChange((f) => ({ ...f, timezone: tz }))}
         retention={fields.retention}
-        onRetentionChange={(days) => onChange((f) => ({ ...f, retention: days }))}
+        onRetentionChange={(count) => onChange((f) => ({ ...f, retention: count }))}
       />
     </div>
   );
@@ -543,15 +648,15 @@ function ScheduleFormFields({
 
 function EditScheduleDialog({
   schedule,
+  target,
   destinations,
-  serverId,
   canTestDestinations,
   open,
   onOpenChange,
 }: {
   schedule: BackupDTO;
+  target: BackupTarget;
   destinations: Destination[];
-  serverId: string | null;
   canTestDestinations: boolean;
   open: boolean;
   onOpenChange: (open: boolean) => void;
@@ -566,7 +671,7 @@ function EditScheduleDialog({
     destinationId: schedule.destinationId,
     schedule: schedule.schedule,
     timezone: schedule.timezone || "UTC",
-    retention: schedule.retentionDays,
+    retention: schedule.retentionCount,
   });
 
   function onSubmit(e: React.FormEvent) {
@@ -585,7 +690,7 @@ function EditScheduleDialog({
             destinationId: fields.destinationId,
             schedule: fields.schedule,
             timezone: fields.timezone,
-            retentionDays: fields.retention,
+            retentionCount: fields.retention,
           },
         },
       );
@@ -605,17 +710,18 @@ function EditScheduleDialog({
         <DialogHeader>
           <DialogTitle>Edit schedule</DialogTitle>
           <DialogDescription>
-            Change this schedule&apos;s name, destination, cron and retention. The
-            project it backs up can&apos;t be changed.
+            Change this schedule&apos;s name, destination, frequency and
+            retention. The {noun(target)} it backs up can&apos;t be changed.
           </DialogDescription>
         </DialogHeader>
         <form className="grid gap-4" onSubmit={onSubmit}>
           <ScheduleFormFields
             fields={fields}
             onChange={setFields}
+            target={target}
             destinations={destinations}
-            serverId={serverId}
             canTestDestinations={canTestDestinations}
+            named
           />
           <DialogFooter>
             <Button variant="outline" onClick={() => onOpenChange(false)} disabled={pending}>
@@ -645,31 +751,39 @@ function EditScheduleDialog({
 
 function ScheduleRow({
   schedule,
+  target,
   destinations,
-  serverId,
+  canManage,
   canTestDestinations,
-  track,
+  onStart,
 }: {
   schedule: BackupDTO;
+  target: BackupTarget;
   destinations: Destination[];
-  serverId: string | null;
+  canManage: boolean;
   canTestDestinations: boolean;
-  /** Keeps the page auto-refreshing until this run lands. */
-  track: (p: Promise<unknown>) => void;
+  onStart: (destinationId: string, run: () => Promise<unknown>) => void;
 }) {
   const router = useRouter();
   const [pending, startTransition] = React.useTransition();
   const [confirmOpen, setConfirmOpen] = React.useState(false);
   const [editOpen, setEditOpen] = React.useState(false);
+  // Locally in flight: the mutation resolves at the END of the dump, and the
+  // stored `lastStatus` only says `running` after the next refresh — so without
+  // this the button stays clickable for seconds after it was pressed.
+  const [running, setRunning] = React.useState(false);
+  const isRunning = running || schedule.lastStatus === "running";
 
   function run() {
-    // Resolves at the END of the dump, so the toast is the RESULT - the row goes
-    // `running` on its own within a tick of AutoRefresh, which is the feedback
-    // that the backup started.
-    track(
+    // Resolves at the END of the dump, so the toast is the RESULT. What says "it
+    // started" is the placeholder row `onStart` puts in the artifacts table, and
+    // this row going `running` a tick later.
+    setRunning(true);
+    onStart(schedule.destinationId, () =>
       gqlAction(`mutation($id: String!) { runBackup(id: $id) }`, {
         id: schedule.id,
       }).then((res) => {
+        setRunning(false);
         if (res.ok) toast.success("Backup finished");
         else toast.error(res.error);
         router.refresh();
@@ -698,10 +812,15 @@ function ScheduleRow({
         <ScheduleLabel cron={schedule.schedule} timezone={schedule.timezone} />
       </TableCell>
       <TableCell className="text-muted-foreground">
-        {schedule.retentionDays}d
+        {schedule.retentionCount} {schedule.retentionCount === 1 ? "backup" : "backups"}
       </TableCell>
       <TableCell>
-        {schedule.lastStatus === "never" ? (
+        {isRunning ? (
+          <span className="flex items-center gap-1.5 text-xs text-muted-foreground">
+            <Loader2 className="size-3.5 animate-spin" />
+            Running
+          </span>
+        ) : schedule.lastStatus === "never" ? (
           <span className="text-xs text-muted-foreground">Never run</span>
         ) : (
           <span className="flex items-center gap-1.5 text-xs">
@@ -714,59 +833,57 @@ function ScheduleRow({
         <Switch
           checked={schedule.enabled}
           onCheckedChange={toggle}
-          disabled={pending}
+          disabled={pending || !canManage}
         />
       </TableCell>
       <TableCell className="text-right">
         <div className="flex items-center justify-end gap-1">
-          <SimpleTooltip
-            content={
-              schedule.lastStatus === "running"
-                ? "This backup is already running"
-                : "Run this backup now"
+          <IconAction
+            label="Run backup now"
+            disabled={pending || isRunning || !canManage}
+            tooltip={
+              !canManage
+                ? "You don't have permission to run backups"
+                : isRunning
+                  ? "This backup is already running"
+                  : "Run this backup now"
             }
+            onClick={run}
           >
-            <Button
-              variant="ghost"
-              size="icon-sm"
-              onClick={run}
-              // A run in flight - started here, from Storage, or by the
-              // scheduler - is visible in the row, so the button says so
-              // instead of letting a second dump start on top of it.
-              disabled={pending || schedule.lastStatus === "running"}
-              aria-label="Run backup now"
-            >
-              <Play className="size-4" />
-            </Button>
-          </SimpleTooltip>
-          <SimpleTooltip content="Edit this schedule">
-            <Button
-              variant="ghost"
-              size="icon-sm"
-              onClick={() => setEditOpen(true)}
-              aria-label="Edit schedule"
-            >
-              <Pencil className="size-4" />
-            </Button>
-          </SimpleTooltip>
-          <SimpleTooltip content="Delete this schedule">
-            <Button
-              variant="ghost"
-              size="icon-sm"
-              onClick={() => setConfirmOpen(true)}
-              aria-label="Delete schedule"
-            >
-              <Trash2 className="size-4 text-destructive" />
-            </Button>
-          </SimpleTooltip>
+            <Play className="size-4" />
+          </IconAction>
+          <IconAction
+            label="Edit schedule"
+            disabled={!canManage}
+            tooltip={
+              canManage
+                ? "Edit this schedule"
+                : "You don't have permission to edit backup schedules"
+            }
+            onClick={() => setEditOpen(true)}
+          >
+            <Pencil className="size-4" />
+          </IconAction>
+          <IconAction
+            label="Delete schedule"
+            disabled={!canManage}
+            tooltip={
+              canManage
+                ? "Delete this schedule"
+                : "You don't have permission to delete backup schedules"
+            }
+            onClick={() => setConfirmOpen(true)}
+          >
+            <Trash2 className="size-4 text-destructive" />
+          </IconAction>
         </div>
         {/* key on `editOpen` so each open remounts the dialog with fresh state
             seeded from the current schedule — no reset effect needed. */}
         <EditScheduleDialog
           key={editOpen ? "edit-open" : "edit-closed"}
           schedule={schedule}
+          target={target}
           destinations={destinations}
-          serverId={serverId}
           canTestDestinations={canTestDestinations}
           open={editOpen}
           onOpenChange={setEditOpen}
@@ -792,27 +909,105 @@ function ScheduleRow({
   );
 }
 
+/**
+ * One icon button with a tooltip that survives being disabled.
+ *
+ * A disabled button swallows pointer events (`disabled:pointer-events-none`), so
+ * a tooltip attached straight to it never opens — and the disabled state is
+ * exactly when the reason matters most. The focusable wrapper is the same idiom
+ * the "Back up now" trigger uses.
+ */
+function IconAction({
+  label,
+  tooltip,
+  disabled,
+  onClick,
+  children,
+}: {
+  label: string;
+  tooltip: string;
+  disabled?: boolean;
+  onClick: () => void;
+  children: React.ReactNode;
+}) {
+  const button = (
+    <Button
+      variant="ghost"
+      size="icon-sm"
+      onClick={onClick}
+      disabled={disabled}
+      aria-label={label}
+    >
+      {children}
+    </Button>
+  );
+  return (
+    <SimpleTooltip content={tooltip}>
+      {disabled ? <span tabIndex={0}>{button}</span> : button}
+    </SimpleTooltip>
+  );
+}
+
 /* ------------------------------------------------------------------ */
-/* Run row (restore point)                                             */
+/* Run rows (restore points)                                           */
 /* ------------------------------------------------------------------ */
+
+/**
+ * A run that was started from this page and has not surfaced yet.
+ *
+ * The dump takes minutes and the mutation only answers at the end, so without
+ * this the table sits unchanged for a whole refresh interval after the click —
+ * on a first backup, still showing "No backups yet". It never pretends to be
+ * finished: it pulses, it carries no actions, and it says Running.
+ */
+function PendingRunRow({ destinationName }: { destinationName: string }) {
+  return (
+    <TableRow aria-busy className="animate-pulse select-none">
+      <TableCell className="text-sm">just now</TableCell>
+      <TableCell className="text-muted-foreground">{destinationName}</TableCell>
+      <TableCell className="text-muted-foreground">—</TableCell>
+      <TableCell>
+        <span className="flex items-center gap-1.5 text-xs text-muted-foreground">
+          <Loader2 className="size-3.5 animate-spin" />
+          Running
+        </span>
+      </TableCell>
+      <TableCell />
+    </TableRow>
+  );
+}
 
 function RunRow({
   run,
-  serviceName,
+  target,
   destinationName,
   downloadable,
+  canRestore,
 }: {
   run: BackupRun;
-  serviceName: string;
+  target: BackupTarget;
   destinationName: string;
   /** Whether this run's artifact is on a server we can stream it from. An S3
    *  artifact is not offered here: pulling it out of the bucket and back through
    *  Deplo would double the transfer to hand over a file the operator can
    *  already fetch with their own credentials. */
   downloadable: boolean;
+  canRestore: boolean;
 }) {
   const router = useRouter();
   const [restoreOpen, setRestoreOpen] = React.useState(false);
+  const ok = run.status === "success";
+  // Icon + label as DIRECT children of the button, never wrapped: one <span>
+  // around them makes the pair a single flex item, and the button's `gap-2` and
+  // `items-center` stop applying — the icon glues to the text and drops onto its
+  // baseline. That is only visible on a run that did NOT succeed, which is
+  // exactly the row that also carries an error line.
+  const downloadLabel = (
+    <>
+      <Download className="size-4" />
+      Download
+    </>
+  );
 
   return (
     <TableRow>
@@ -828,7 +1023,7 @@ function RunRow({
       </TableCell>
       <TableCell className="text-muted-foreground">{destinationName}</TableCell>
       <TableCell className="text-muted-foreground">
-        {run.status === "success" ? formatBytes(run.sizeBytes) : "—"}
+        {ok ? formatBytes(run.sizeBytes) : "—"}
       </TableCell>
       <TableCell>
         {run.status === "running" ? (
@@ -843,7 +1038,7 @@ function RunRow({
           </span>
         )}
         {/* See RestoreRunsDialog: only the runs from before checksums say so. */}
-        {run.status === "success" && !run.sha256 && (
+        {ok && !run.sha256 && (
           <SimpleTooltip content="Taken before Deplo recorded checksums, so it cannot prove this file is unchanged">
             <span className="mt-1 block text-[10px] text-muted-foreground">
               Not checksummed
@@ -852,70 +1047,74 @@ function RunRow({
         )}
       </TableCell>
       <TableCell className="text-right">
-        {/* The file itself, decrypted. The reason a folder on your own server is
-            worth having: the backup is a thing you can hold, not only a thing
-            Deplo can put back. */}
-        {downloadable && (
-          <SimpleTooltip
-            content={
-              run.status === "success"
-                ? "Download this backup file"
-                : "Only a successful backup can be downloaded"
+        <div className="flex items-center justify-end gap-1">
+          {/* The file itself, decrypted. The reason a folder on your own server
+              is worth having: the backup is a thing you can hold, not only a
+              thing Deplo can put back. */}
+          {downloadable && (
+            <TooltipWhenDisabled
+              disabled={!ok || !canRestore}
+              tooltip={
+                !canRestore
+                  ? "You don't have permission to download backups"
+                  : ok
+                    ? "Download this backup file"
+                    : "Only a successful backup can be downloaded"
+              }
+            >
+              <Button
+                variant="ghost"
+                size="sm"
+                asChild={ok && canRestore}
+                disabled={!ok || !canRestore}
+              >
+                {ok && canRestore ? (
+                  <a href={`/api/backups/${run.id}/download`} download>
+                    {downloadLabel}
+                  </a>
+                ) : (
+                  downloadLabel
+                )}
+              </Button>
+            </TooltipWhenDisabled>
+          )}
+          {/* Restore is only meaningful for a completed artifact. */}
+          <TooltipWhenDisabled
+            disabled={!ok || !canRestore}
+            tooltip={
+              !canRestore
+                ? "You don't have permission to restore backups"
+                : ok
+                  ? "Restore this backup in place"
+                  : "Only a successful backup can be restored"
             }
           >
             <Button
               variant="ghost"
               size="sm"
-              asChild={run.status === "success"}
-              disabled={run.status !== "success"}
+              disabled={!ok || !canRestore}
+              onClick={() => setRestoreOpen(true)}
             >
-              {run.status === "success" ? (
-                <a href={`/api/backups/${run.id}/download`} download>
-                  <Download className="size-4" />
-                  Download
-                </a>
-              ) : (
-                <span>
-                  <Download className="size-4" />
-                  Download
-                </span>
-              )}
+              <RotateCcw className="size-4" />
+              Restore
             </Button>
-          </SimpleTooltip>
-        )}
-        {/* Restore is only meaningful for a completed artifact. */}
-        <SimpleTooltip
-          content={
-            run.status === "success"
-              ? "Restore this backup in place"
-              : "Only a successful backup can be restored"
-          }
-        >
-          <Button
-            variant="ghost"
-            size="sm"
-            disabled={run.status !== "success"}
-            onClick={() => setRestoreOpen(true)}
-          >
-            <RotateCcw className="size-4" />
-            Restore
-          </Button>
-        </SimpleTooltip>
+          </TooltipWhenDisabled>
+        </div>
         <ConfirmAction
           open={restoreOpen}
           onOpenChange={setRestoreOpen}
           title="Restore this backup?"
           confirmLabel="Restore"
           successMessage="Restore started"
-          confirmText={serviceName}
+          confirmText={target.name}
           description={
             <span className="flex flex-col gap-2">
               <span className="flex items-start gap-2 text-destructive">
                 <AlertTriangle className="mt-0.5 size-4 shrink-0" />
                 <span>
-                  This overwrites <strong>{serviceName}</strong> in place with the
-                  backup from {timeAgo(run.startedAt)}. The project is stopped,
-                  its current volumes and files are wiped, and the snapshot is
+                  This overwrites <strong>{target.name}</strong> in place with the
+                  backup from {timeAgo(run.startedAt)}. The {noun(target)} is
+                  stopped, its current data is wiped, and the snapshot is
                   restored — there is downtime and the current state is{" "}
                   <strong>not recoverable</strong>.
                 </span>
@@ -933,5 +1132,23 @@ function RunRow({
         />
       </TableCell>
     </TableRow>
+  );
+}
+
+/** {@link IconAction}'s wrapper, for buttons that carry their own label. */
+function TooltipWhenDisabled({
+  disabled,
+  tooltip,
+  children,
+}: {
+  disabled: boolean;
+  tooltip: string;
+  /** Exactly one element — `TooltipTrigger asChild` clones it. */
+  children: React.ReactElement;
+}) {
+  return (
+    <SimpleTooltip content={tooltip}>
+      {disabled ? <span tabIndex={0}>{children}</span> : children}
+    </SimpleTooltip>
   );
 }

@@ -160,6 +160,8 @@ export function AppCard({
   // overview, so a refresh after each action keeps the menu in sync).
   const stopped = project.status === "idle";
   const stopping = project.status === "stopping";
+  // A backup is being put back in place — Deplo owns the stack until it lands.
+  const restoring = project.status === "restoring";
 
   // Clicking anywhere on the card opens the app overview. The latest commit
   // is shown on the card itself (compact) rather than deep-linking to it.
@@ -267,14 +269,24 @@ export function AppCard({
   // what it does (reliable inside menus, unlike a nested styled tooltip).
   const menu = (K: MenuKit) => (
     <>
-      {stopping ? (
+      {restoring ? (
+        <SimpleTooltip
+          content="A backup is being restored into this app"
+          side="left"
+        >
+          <K.Item disabled>
+            <Loader2 className="size-4 animate-spin" />
+            Restoring
+          </K.Item>
+        </SimpleTooltip>
+      ) : stopping ? (
         <SimpleTooltip
           content="The container is currently stopping"
           side="left"
         >
           <K.Item disabled>
             <Loader2 className="size-4 animate-spin" />
-            Stopping…
+            Stopping
           </K.Item>
         </SimpleTooltip>
       ) : stopped ? (

@@ -9,6 +9,7 @@ import {
   describeCron,
   isValidSchedule,
   partsFromCron,
+  retentionCoverage,
   type ScheduleParts,
 } from "./schedule";
 
@@ -155,4 +156,27 @@ test("isValidSchedule rejects what the scheduler would silently never run", () =
     assert.equal(isValidSchedule(bad), false, `${JSON.stringify(bad)} should be invalid`);
   }
   assert.ok(isValidSchedule("0 3 * * *"));
+});
+
+/* ------------------------------------------------------------------ */
+/* Retention coverage — a count read back as a span of time            */
+/* ------------------------------------------------------------------ */
+
+test("retentionCoverage converts a count into how far back it reaches", () => {
+  assert.equal(retentionCoverage("0 3 * * *", 7), "about a week");
+  assert.equal(retentionCoverage("0 3 * * *", 1), "about a day");
+  assert.equal(retentionCoverage("0 3 * * *", 3), "about 3 days");
+  assert.equal(retentionCoverage("0 3 * * *", 30), "about a month");
+  assert.equal(retentionCoverage("0 * * * *", 24), "about a day");
+  assert.equal(retentionCoverage("0 * * * *", 6), "about 6 hours");
+  assert.equal(retentionCoverage("* * * * *", 5), "about 5 minutes");
+  assert.equal(retentionCoverage("0 3 * * 1", 4), "about a month");
+});
+
+test("retentionCoverage has nothing to say about a schedule it cannot read", () => {
+  // No cron, no cadence, no honest span — and the caller renders nothing rather
+  // than a made-up one.
+  assert.equal(retentionCoverage("not a cron", 7), null);
+  assert.equal(retentionCoverage("0 3 * * *", 0), null);
+  assert.equal(retentionCoverage("0 3 * * *", Number.NaN), null);
 });

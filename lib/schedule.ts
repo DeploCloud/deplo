@@ -15,7 +15,7 @@
  * the server-side validation import it.
  */
 
-import { parseCron } from "./backups/cron";
+import { nextCronRun, parseCron } from "./backups/cron";
 
 export { nextCronRun, parseCron } from "./backups/cron";
 
@@ -273,6 +273,48 @@ export function describeCron(
  */
 export function isValidSchedule(cron: string): boolean {
   return parseCron(cron) !== null;
+}
+
+/**
+ * How far back "keep the last N backups" actually reaches, in words — "about a
+ * week", "about 3 days".
+ *
+ * Retention is a count because that is the question people ask, but the answer
+ * they want is still a span of time, and only the schedule knows the exchange
+ * rate: 7 backups is a week of a daily job and seven hours of an hourly one.
+ * Deriving it is the difference between a number someone has to reason about and
+ * a sentence they can read.
+ *
+ * Deliberately approximate: the cadence comes from the gap between the next two
+ * fires, so a schedule with an uneven rhythm ("0 3 1,15 * *") is described by its
+ * first gap. UTC is fine — an hour of DST does not move "about a week". Null when
+ * the cron is unparseable or fires only once inside the search horizon, because
+ * no honest span can be stated for either.
+ */
+export function retentionCoverage(cron: string, keep: number): string | null {
+  if (!Number.isFinite(keep) || keep < 1) return null;
+  const now = new Date();
+  const first = nextCronRun(cron, now);
+  const second = first ? nextCronRun(cron, first) : null;
+  if (!first || !second) return null;
+  return `about ${humanizeSpan((second.getTime() - first.getTime()) * keep)}`;
+}
+
+const HOUR_MS = 3_600_000;
+const DAY_MS = 24 * HOUR_MS;
+
+/** A duration as the coarsest unit that still says something true about it. */
+function humanizeSpan(ms: number): string {
+  const plural = (n: number, unit: string) =>
+    n === 1 ? `a ${unit}` : `${n} ${unit}s`;
+  if (ms < HOUR_MS)
+    return plural(Math.max(1, Math.round(ms / 60_000)), "minute");
+  if (ms < DAY_MS) return plural(Math.round(ms / HOUR_MS), "hour");
+  const days = Math.round(ms / DAY_MS);
+  if (days < 7) return plural(days, "day");
+  if (days < 28) return plural(Math.round(days / 7), "week");
+  if (days < 365) return plural(Math.round(days / 30), "month");
+  return plural(Math.round(days / 365), "year");
 }
 
 /** The message shown when {@link isValidSchedule} says no — shared by UI and API. */

@@ -105,7 +105,7 @@ import {
   gitConnectionInTeam,
   syncAppWebhook,
 } from "./git-connections";
-import { AgentUnreachableError } from "../infra/agent-client";
+import { AgentUnreachableError, BACKUP_RUN_MAX_MS } from "../infra/agent-client";
 import { publishAppChanged } from "../graphql/pubsub";
 import {
   inAppScope,
@@ -201,17 +201,32 @@ export { deriveVolumeName };
 const STOPPING_STALE_MS = 90_000;
 
 /**
+ * "restoring" is the same shape of promise over a much longer call: the restore
+ * runs inside one HTTP request, holds no lock, and has no crash recovery, so a
+ * control plane that dies mid-restore would pin the app in "restoring" forever.
+ * The window is the agent's own ceiling for a backup operation — anything longer
+ * than that is not a slow restore, it is a restore nobody is running any more —
+ * and it heals to "error", not "idle": a half-restored app is broken, not stopped
+ * on purpose, and the telemetry reconciler promotes it back to "active" on its own
+ * the moment the host says the containers are up.
+ */
+const RESTORING_STALE_MS = BACKUP_RUN_MAX_MS;
+
+/**
  * Map a project's persisted status to the status callers should see, self-
- * healing a wedged "stopping". Exported for unit tests; pure (no store/docker).
+ * healing a wedged transient state. Exported for unit tests; pure (no
+ * store/docker).
  */
 export function reconcileStatus(
   status: AppStatus,
   updatedAt: string,
   now: number = Date.now(),
 ): AppStatus {
-  if (status !== "stopping") return status;
   const age = now - new Date(updatedAt).getTime();
-  return age > STOPPING_STALE_MS ? "idle" : "stopping";
+  if (status === "stopping") return age > STOPPING_STALE_MS ? "idle" : "stopping";
+  if (status === "restoring")
+    return age > RESTORING_STALE_MS ? "error" : "restoring";
+  return status;
 }
 
 /**
@@ -1867,8 +1882,15 @@ export async function setAppComposeUpArgs(
   publishAppChanged(id);
 }
 
-/** Set a project's status and notify every live subscriber. */
-async function setAppStatus(id: string, status: AppStatus): Promise<void> {
+/**
+ * Set a project's status and notify every live subscriber.
+ *
+ * NOT gated and NOT team-scoped: every caller has already resolved this app
+ * through a capability check (stop/start here, restore in `lib/data/backups.ts`),
+ * and the write is unconditional on purpose — a read-then-decide would lose the
+ * race against a deploy landing in the gap.
+ */
+export async function setAppStatus(id: string, status: AppStatus): Promise<void> {
   await getDb()
     .update(appsTable)
     .set({ status, updatedAt: nowIso() })

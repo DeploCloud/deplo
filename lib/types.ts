@@ -596,7 +596,13 @@ export type AppStatus =
   // Transient: the user pressed Stop and the container is being brought down.
   // Persisted (so it survives reload and every client sees it) until the stop
   // completes and the project settles to "idle".
-  | "stopping";
+  | "stopping"
+  // Transient: a backup is being put back in place. The agent stops the stack,
+  // wipes it and untars the snapshot, so for the whole restore the host truthfully
+  // reports nothing running — which read as a red "Not running", then "Degraded"
+  // as services came back, for an operation the user had just asked for. Persisted
+  // like "stopping", and settled to "active"/"error" when the restore returns.
+  | "restoring";
 
 /**
  * Where a project's code/image comes from. Mirrors the choices offered by
@@ -1603,7 +1609,10 @@ export interface Backup {
   /** IANA zone the cron is read in. "UTC" for every schedule made before it
    *  was askable, which is what those always meant. */
   timezone: string;
-  retentionDays: number;
+  /** How many backups this schedule keeps at its destination. A COUNT, not a
+   *  window: older artifacts are removed after each successful run, and the
+   *  newest successful one is never removed. */
+  retentionCount: number;
   lastRunAt: string | null;
   lastStatus: "success" | "failed" | "running" | "never";
   enabled: boolean;

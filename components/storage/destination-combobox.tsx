@@ -1,13 +1,11 @@
 "use client";
 
 import * as React from "react";
-import { AlertTriangle, ChevronsUpDown, Cloud, Loader2, Server } from "lucide-react";
+import { AlertTriangle, Cloud, Loader2, Server } from "lucide-react";
 
-import { Input } from "@/components/ui/input";
-import { isOverlayAutoFocusing } from "@/components/ui/overlay-autofocus";
+import { Combobox } from "@/components/shared/combobox";
 import { StatusBadge } from "@/components/shared/status-badge";
 import { gqlAction } from "@/lib/graphql-client";
-import { cn } from "@/lib/utils";
 import type { DestinationStatus } from "@/lib/types";
 import type { DestinationOption } from "@/lib/data/destinations";
 
@@ -50,10 +48,8 @@ let probeInFlight = false;
  * drift ("backups", "backups-2") while the place never lies about where the data
  * lands.
  *
- * Typing filters over BOTH the name and that location — searching "r2", an
- * account id or a server name finds the destination when nobody remembers what
- * it was called. Unlike the version fields, free text is not a value here: the
- * field resolves to a destination id or to nothing.
+ * The typing, keyboard and menu behaviour is {@link Combobox}'s; what lives here
+ * is the probe, the rows, and the same-disk warning.
  */
 export function DestinationCombobox({
   destinations,
@@ -86,12 +82,8 @@ export function DestinationCombobox({
    */
   canProbe?: boolean;
 }) {
-  const [open, setOpen] = React.useState(false);
-  const [query, setQuery] = React.useState("");
-  const [highlight, setHighlight] = React.useState(0);
   const [live, setLive] = React.useState<Record<string, LiveStatus>>({});
   const [probing, setProbing] = React.useState(false);
-  const containerRef = React.useRef<HTMLDivElement | null>(null);
 
   const selected = destinations.find((d) => d.id === value) ?? null;
   const sameDisk =
@@ -131,202 +123,76 @@ export function DestinationCombobox({
       });
   }, [canProbe]);
 
-  function openMenu() {
-    if (disabled) return;
-    setOpen(true);
-    setQuery("");
-    setHighlight(0);
-    probe();
-  }
-
-  function close() {
-    setOpen(false);
-    setQuery("");
-  }
-
-  // Close on outside click — the menu lives inside a dialog, so it must not
-  // swallow the click that lands on another field.
-  React.useEffect(() => {
-    function onPointerDown(e: MouseEvent) {
-      if (containerRef.current && !containerRef.current.contains(e.target as Node)) {
-        setOpen(false);
-        setQuery("");
-      }
-    }
-    document.addEventListener("mousedown", onPointerDown);
-    return () => document.removeEventListener("mousedown", onPointerDown);
-  }, []);
-
-  const q = query.trim().toLowerCase();
-  const filtered = React.useMemo(
-    () =>
-      destinations.filter(
-        (d) =>
-          !q ||
-          d.name.toLowerCase().includes(q) ||
-          d.where.toLowerCase().includes(q),
-      ),
-    [destinations, q],
-  );
-  // Guard a stale index after the list shrinks, so Enter never picks past the end.
-  const activeIndex = highlight < filtered.length ? highlight : 0;
-
-  function choose(d: DestinationOption) {
-    onChange(d.id);
-    close();
-  }
-
-  function onKeyDown(e: React.KeyboardEvent) {
-    if (e.key === "ArrowDown" && !open) {
-      e.preventDefault();
-      openMenu();
-      return;
-    }
-    if (!open) return;
-    if (e.key === "ArrowDown") {
-      e.preventDefault();
-      if (filtered.length > 0) setHighlight((h) => (h + 1) % filtered.length);
-    } else if (e.key === "ArrowUp") {
-      e.preventDefault();
-      if (filtered.length > 0)
-        setHighlight((h) => (h - 1 + filtered.length) % filtered.length);
-    } else if (e.key === "Enter") {
-      // Swallowed even with nothing to pick: the dialog's submit must not fire
-      // from inside an open menu.
-      e.preventDefault();
-      if (filtered.length > 0) choose(filtered[activeIndex]!);
-    } else if (e.key === "Escape") {
-      e.preventDefault();
-      close();
-    } else if (e.key === "Tab") {
-      close();
-    }
-  }
-
   return (
-    <div ref={containerRef} className="relative">
-      <Input
-        id={id}
-        role="combobox"
-        aria-expanded={open}
-        aria-controls={id ? `${id}-listbox` : undefined}
-        aria-autocomplete="list"
-        autoComplete="off"
-        spellCheck={false}
-        disabled={disabled}
-        // Open shows what you are typing; closed shows what you picked.
-        value={open ? query : (selected?.name ?? "")}
-        placeholder={
-          open ? (selected?.name ?? "Search destinations") : "Select a destination"
-        }
-        onChange={(e) => {
-          setQuery(e.target.value);
-          setHighlight(0);
-          if (!open) openMenu();
-        }}
-        onFocus={() => {
-          // A dialog placing focus here as it opens is Radix, not the user —
-          // and it is not a reason to unfurl the menu or probe every bucket.
-          if (isOverlayAutoFocusing()) return;
-          openMenu();
-        }}
-        onMouseDown={() => {
-          if (!open) openMenu();
-        }}
-        onKeyDown={onKeyDown}
-        className="pr-9"
-      />
-      <span className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground">
-        {probing ? (
-          <Loader2 className="size-4 animate-spin" />
-        ) : (
-          <ChevronsUpDown className="size-4" />
-        )}
-      </span>
-
-      {open && (
-        <div
-          id={id ? `${id}-listbox` : undefined}
-          role="listbox"
-          className="absolute z-50 mt-1 w-full overflow-hidden rounded-md border border-border bg-popover shadow-md"
-        >
-          {filtered.length === 0 ? (
-            <p className="px-3 py-2 text-xs text-muted-foreground">
-              {destinations.length === 0
-                ? "No backup destinations yet"
-                : "No destination matches that"}
-            </p>
-          ) : (
-            <ul className="max-h-72 overflow-auto p-1">
-              {filtered.map((d, i) => {
-                const status = live[d.id]?.status ?? d.status;
-                const error = live[d.id]?.error ?? null;
-                return (
-                  <li key={d.id}>
-                    <button
-                      type="button"
-                      role="option"
-                      aria-selected={d.id === value}
-                      onMouseEnter={() => setHighlight(i)}
-                      // mousedown, not click: the input's blur would otherwise
-                      // close the menu before the click landed.
-                      onMouseDown={(e) => {
-                        e.preventDefault();
-                        choose(d);
-                      }}
-                      className={cn(
-                        "w-full space-y-0.5 rounded-sm px-2 py-1.5 text-left",
-                        i === activeIndex ? "bg-accent" : "hover:bg-accent/60",
-                      )}
-                    >
-                      <span className="flex items-center justify-between gap-2">
-                        <span className="flex min-w-0 items-center gap-1.5">
-                          {d.kind === "server" ? (
-                            <Server className="size-3.5 shrink-0 text-muted-foreground" />
-                          ) : (
-                            <Cloud className="size-3.5 shrink-0 text-muted-foreground" />
-                          )}
-                          <span className="truncate text-sm">{d.name}</span>
-                        </span>
-                        {probing ? (
-                          <Loader2 className="size-3.5 shrink-0 animate-spin text-muted-foreground" />
-                        ) : (
-                          <StatusBadge
-                            status={status}
-                            tinted
-                            labels={{ unverified: "Not tested" }}
-                          />
-                        )}
-                      </span>
-                      <span className="block truncate font-mono text-xs text-muted-foreground">
-                        {d.where}
-                      </span>
-                      {/* Why it is red, without making anyone open Storage. */}
-                      {status === "error" && error && !probing && (
-                        <span className="block truncate text-xs text-destructive">
-                          {error}
-                        </span>
-                      )}
-                    </button>
-                  </li>
-                );
-              })}
-            </ul>
-          )}
-        </div>
-      )}
-
-      {/* Same-disk honesty, only once it is actually the choice. Rendered after
-          the menu so the menu keeps its static position under the input. */}
-      {sameDisk && selected && (
-        <p className="mt-1.5 flex items-start gap-1.5 text-xs text-[var(--warning)]">
-          <AlertTriangle className="mt-px size-3.5 shrink-0" />
-          <span>
-            {selected.name} is on the same disk as this {sameDiskNoun}: protects
-            against a mistake, not against a disk failure.
-          </span>
-        </p>
-      )}
-    </div>
+    <Combobox<DestinationOption>
+      id={id}
+      items={destinations}
+      value={value}
+      onChange={onChange}
+      getKey={(d) => d.id}
+      // Typing filters over BOTH the name and the location: searching "r2", an
+      // account id or a server name finds the destination when nobody remembers
+      // what it was called.
+      matches={(d, q) =>
+        d.name.toLowerCase().includes(q) || d.where.toLowerCase().includes(q)
+      }
+      displayValue={(d) => d.name}
+      placeholder="Select a destination"
+      searchPlaceholder="Search destinations"
+      emptyLabel={(hasItems) =>
+        hasItems ? "No destination matches that" : "No backup destinations yet"
+      }
+      disabled={disabled}
+      busy={probing}
+      onOpen={probe}
+      renderOption={(d) => {
+        const status = live[d.id]?.status ?? d.status;
+        const error = live[d.id]?.error ?? null;
+        return (
+          <>
+            <span className="flex items-center justify-between gap-2">
+              <span className="flex min-w-0 items-center gap-1.5">
+                {d.kind === "server" ? (
+                  <Server className="size-3.5 shrink-0 text-muted-foreground" />
+                ) : (
+                  <Cloud className="size-3.5 shrink-0 text-muted-foreground" />
+                )}
+                <span className="truncate text-sm">{d.name}</span>
+              </span>
+              {probing ? (
+                <Loader2 className="size-3.5 shrink-0 animate-spin text-muted-foreground" />
+              ) : (
+                <StatusBadge
+                  status={status}
+                  tinted
+                  labels={{ unverified: "Not tested" }}
+                />
+              )}
+            </span>
+            <span className="block truncate font-mono text-xs text-muted-foreground">
+              {d.where}
+            </span>
+            {/* Why it is red, without making anyone open Storage. */}
+            {status === "error" && error && !probing && (
+              <span className="block truncate text-xs text-destructive">
+                {error}
+              </span>
+            )}
+          </>
+        );
+      }}
+      footer={
+        // Same-disk honesty, only once it is actually the choice.
+        sameDisk && selected ? (
+          <p className="mt-1.5 flex items-start gap-1.5 text-xs text-[var(--warning)]">
+            <AlertTriangle className="mt-px size-3.5 shrink-0" />
+            <span>
+              {selected.name} is on the same disk as this {sameDiskNoun}: protects
+              against a mistake, not against a disk failure.
+            </span>
+          </p>
+        ) : null
+      }
+    />
   );
 }

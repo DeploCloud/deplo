@@ -457,7 +457,7 @@ test("nor run, pause, edit or delete its schedule", async () => {
         name: "hijacked",
         destinationId: DEST,
         schedule: "0 4 * * *",
-        retentionDays: 1,
+        retentionCount: 1,
       }),
     ),
     "updateBackup",
@@ -476,7 +476,7 @@ test("nor schedule a new dump of one, nor wipe its artifacts", async () => {
         databaseId: DB,
         destinationId: DEST,
         schedule: "0 3 * * *",
-        retentionDays: 7,
+        retentionCount: 7,
       }),
     ),
     "a narrowed token scheduled a dump of an out-of-scope database",
@@ -500,7 +500,7 @@ test("and the refusal is scope, not permission — the session still does all of
       name: "nightly",
       destinationId: DEST,
       schedule: "0 4 * * *",
-      retentionDays: 3,
+      retentionCount: 3,
     }),
   );
   await asUser(() =>
@@ -510,7 +510,7 @@ test("and the refusal is scope, not permission — the session still does all of
       databaseId: DB,
       destinationId: DEST,
       schedule: "0 5 * * *",
-      retentionDays: 7,
+      retentionCount: 7,
     }),
   );
   await asUser(() => deleteBackup(backupId));
@@ -525,7 +525,7 @@ test("an APP backup inside the scope is still reachable — the guard is about d
       appId: APP_IN,
       destinationId: DEST,
       schedule: "0 3 * * *",
-      retentionDays: 7,
+      retentionCount: 7,
     }),
   );
   assert.equal(created.targetKind, "app");
@@ -540,7 +540,7 @@ test("an APP backup inside the scope is still reachable — the guard is about d
         appId: APP_OUT,
         destinationId: DEST,
         schedule: "0 3 * * *",
-        retentionDays: 7,
+        retentionCount: 7,
       }),
     ),
     "a narrowed token scheduled a backup of an out-of-scope app",

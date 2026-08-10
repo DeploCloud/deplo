@@ -6,20 +6,50 @@ import { FieldLabel } from "@/components/ui/info-tip";
 import { SchedulePicker } from "@/components/shared/schedule-picker";
 import { TimezonePicker } from "@/components/servers/timezone-picker";
 import { dstSkipWarning } from "@/lib/crons/cron-tz";
+import {
+  SCHEDULE_OPTIONS,
+  partsFromCron,
+  retentionCoverage,
+} from "@/lib/schedule";
+import { cn } from "@/lib/utils";
+
+/** What a schedule keeps when the field is left empty — the server's own default. */
+export const DEFAULT_RETENTION = 7;
 
 /**
- * When a backup runs, and how long its files are kept. One component because
- * three dialogs ask it - schedule a backup from Storage, from an app's Backups
- * tab, and edit either - and the three drifting apart is how a field ends up
- * existing in two of them.
+ * A name nobody has to invent — "Backup every day", from the frequency itself.
  *
- * The TIMEZONE is the part worth explaining. A backup schedule used to be read
- * in UTC and nothing said so above the field, which for anyone outside that zone
- * meant "nightly at 03:00" quietly became 04:00 for half the year and 05:00 for
- * the other half. The cron-jobs feature next door had already solved this per
+ * The field is required, so an empty one is the single thing standing between
+ * opening the dialog and a working schedule; and "Nightly Postgres backup" as a
+ * PLACEHOLDER only ever taught people what to retype. Custom cron has no phrase
+ * to borrow, so it gets the generic one.
+ */
+export function suggestScheduleName(cron: string): string {
+  const mode = partsFromCron(cron)?.mode;
+  const label = SCHEDULE_OPTIONS.find((o) => o.mode === mode)?.label;
+  return label ? `Backup ${label.toLowerCase()}` : "Scheduled backup";
+}
+
+/**
+ * When a backup runs, and how many of them are kept. One component because four
+ * dialogs ask it - schedule a backup from Storage, from an app's or a database's
+ * Backups tab, and edit either - and the four drifting apart is how a field ends
+ * up existing in two of them.
+ *
+ * RETENTION IS A COUNT, not a window in days. "Keep the last 3" is the question
+ * people actually ask, and it is the only phrasing that survives a change of
+ * cadence: 7 days of an hourly schedule is 168 artifacts, which nobody asked for.
+ * The line under the field converts it back into time, because how far back you
+ * are covered is still what the number is FOR, and only the schedule knows the
+ * exchange rate.
+ *
+ * The TIMEZONE is the other part worth explaining. A backup schedule used to be
+ * read in UTC and nothing said so above the field, which for anyone outside that
+ * zone meant "nightly at 03:00" quietly became 04:00 for half the year and 05:00
+ * for the other half. The cron-jobs feature next door had already solved this per
  * job, with the same picker and the same evaluator, so the fix is to ask - and
  * the default is the reader's own clock, because 03:00 means 03:00 where you
- * are.
+ * are. It sits beside the time it qualifies, exactly as the cron dialog has it.
  */
 export function BackupScheduleFields({
   idPrefix,
@@ -36,13 +66,15 @@ export function BackupScheduleFields({
   onScheduleChange: (cron: string) => void;
   timezone: string;
   onTimezoneChange: (tz: string) => void;
+  /** How many backups to keep. */
   retention: number;
-  onRetentionChange: (days: number) => void;
+  onRetentionChange: (count: number) => void;
 }) {
   // Read once, lazily: the zone list shows a live clock per zone, and a fresh
   // Date on every render would restart that ticking on each keystroke.
   const [pickerNow] = React.useState(() => Date.now());
   const dstWarning = dstSkipWarning(schedule, timezone);
+  const coverage = retentionCoverage(schedule, retention);
 
   return (
     <div className="space-y-4">
@@ -55,36 +87,56 @@ export function BackupScheduleFields({
         trailing={
           <div className="space-y-2">
             <FieldLabel
-              htmlFor={`${idPrefix}-retention`}
-              info="How long a finished backup is kept before older ones are removed."
+              htmlFor={`${idPrefix}-timezone`}
+              info="The clock this schedule is read on. Defaults to yours, so 03:00 means 03:00 where you are."
             >
-              Retention (days)
+              Timezone
             </FieldLabel>
-            <Input
-              id={`${idPrefix}-retention`}
-              type="number"
-              value={retention}
-              onChange={(e) => onRetentionChange(Number(e.target.value) || 7)}
-              min={1}
+            <TimezonePicker
+              id={`${idPrefix}-timezone`}
+              value={timezone}
+              onChange={onTimezoneChange}
+              now={pickerNow}
             />
           </div>
         }
       />
+      {dstWarning && <p className="text-xs text-warning">{dstWarning}</p>}
       <div className="space-y-2">
         <FieldLabel
-          htmlFor={`${idPrefix}-timezone`}
-          info="The clock this schedule is read on. Defaults to yours, so 03:00 means 03:00 where you are."
+          htmlFor={`${idPrefix}-retention`}
+          info="How many backups to keep here. After each successful run the older ones are removed, and the newest one is never removed."
         >
-          Timezone
+          Keep
         </FieldLabel>
-        <TimezonePicker
-          id={`${idPrefix}-timezone`}
-          value={timezone}
-          onChange={onTimezoneChange}
-          now={pickerNow}
-        />
+        {/* The unit lives INSIDE the field: "7" alone is the one number on this
+            form whose unit you cannot guess, and it used to be days. */}
+        <div className="relative">
+          <Input
+            id={`${idPrefix}-retention`}
+            type="number"
+            inputMode="numeric"
+            value={retention}
+            onChange={(e) =>
+              onRetentionChange(Number(e.target.value) || DEFAULT_RETENTION)
+            }
+            min={1}
+            max={365}
+            className={cn(
+              "pr-20",
+              "[appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none",
+            )}
+          />
+          <span className="pointer-events-none absolute inset-y-0 right-0 flex items-center pr-3 text-xs font-medium text-muted-foreground">
+            {retention === 1 ? "backup" : "backups"}
+          </span>
+        </div>
+        {coverage && (
+          <p className="text-xs text-muted-foreground">
+            Keeps {coverage} of history.
+          </p>
+        )}
       </div>
-      {dstWarning && <p className="text-xs text-warning">{dstWarning}</p>}
     </div>
   );
 }

@@ -4,6 +4,7 @@ import {
   createBackup,
   runBackup,
   runAppBackup,
+  runDatabaseBackup,
   restoreBackup,
   listBackupRuns,
   countBackupArtifacts,
@@ -63,7 +64,11 @@ export const BackupRef = builder.objectRef<BackupDTO>("Backup").implement({
     timezone: t.exposeString("timezone", {
       description: "IANA zone the cron is read in. UTC for older schedules.",
     }),
-    retentionDays: t.exposeInt("retentionDays"),
+    retentionCount: t.exposeInt("retentionCount", {
+      description:
+        "How many backups this schedule keeps at its destination. A count, " +
+        "not a window in days.",
+    }),
     lastRunAt: t.exposeString("lastRunAt", { nullable: true }),
     lastStatus: t.field({
       type: BackupStatusEnum,
@@ -133,7 +138,7 @@ const CreateBackupInputType = builder.inputType("CreateBackupInput", {
     schedule: t.string({ required: true }),
     // Omitted means UTC, which is what every schedule made before this meant.
     timezone: t.string({ required: false }),
-    retentionDays: t.int({ required: true }),
+    retentionCount: t.int({ required: true }),
   }),
 });
 
@@ -146,7 +151,7 @@ const UpdateBackupInputType = builder.inputType("UpdateBackupInput", {
     destinationId: t.string({ required: true }),
     schedule: t.string({ required: true }),
     timezone: t.string({ required: false }),
-    retentionDays: t.int({ required: true }),
+    retentionCount: t.int({ required: true }),
   }),
 });
 
@@ -211,7 +216,7 @@ builder.mutationFields((t) => ({
         destinationId: input.destinationId,
         schedule: input.schedule,
         timezone: input.timezone ?? null,
-        retentionDays: input.retentionDays,
+        retentionCount: input.retentionCount,
       });
       return true;
     },
@@ -238,6 +243,21 @@ builder.mutationFields((t) => ({
     },
     resolve: async (_r, { appId, destinationId }) => {
       await runAppBackup(appId, destinationId);
+      return true;
+    },
+  }),
+  runDatabaseBackup: t.field({
+    type: "Boolean",
+    authScopes: { capability: "manage_backups" },
+    description:
+      "Run an ad-hoc backup of a database now (no owning schedule). Returns " +
+      "true.",
+    args: {
+      databaseId: t.arg.string({ required: true }),
+      destinationId: t.arg.string({ required: true }),
+    },
+    resolve: async (_r, { databaseId, destinationId }) => {
+      await runDatabaseBackup(databaseId, destinationId);
       return true;
     },
   }),
@@ -283,7 +303,7 @@ builder.mutationFields((t) => ({
         destinationId: input.destinationId,
         schedule: input.schedule,
         timezone: input.timezone ?? null,
-        retentionDays: input.retentionDays,
+        retentionCount: input.retentionCount,
       });
       return true;
     },

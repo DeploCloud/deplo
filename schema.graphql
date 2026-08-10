@@ -355,6 +355,7 @@ enum AppStatus {
   error
   idle
   queued
+  restoring
   stopping
 }
 
@@ -435,7 +436,11 @@ type Backup {
   lastRunAt: String
   lastStatus: BackupStatus
   name: String
-  retentionDays: Int
+
+  """
+  How many backups this schedule keeps at its destination. A count, not a window in days.
+  """
+  retentionCount: Int
 
   """Cron expression."""
   schedule: String
@@ -803,7 +808,7 @@ input CreateBackupInput {
   databaseId: String
   destinationId: String!
   name: String!
-  retentionDays: Int!
+  retentionCount: Int!
   schedule: String!
   targetKind: BackupTargetKind
   timezone: String
@@ -2400,6 +2405,11 @@ type Mutation {
   runCronJobNow(id: ID!): CronRun
 
   """
+  Run an ad-hoc backup of a database now (no owning schedule). Returns true.
+  """
+  runDatabaseBackup(databaseId: String!, destinationId: String!): Boolean
+
+  """
   START a sweep of this server now, with the policy's scopes — whether or not the schedule is enabled, and ignoring the exclusion list (which only governs the scheduled sweep). Returns IMMEDIATELY with the `running` run: the host keeps working in the background, so the caller never waits on a `docker rmi` sweep and closing the page cannot cancel it. Follow it on the `dockerCleanupRuns` subscription (or re-read the query); whatever the host fails at — unreachable, unprovisioned, an agent too old — lands on that run as `failed` with the reason. Only pre-flight problems error here: unknown server, nothing selected to reclaim, or a sweep already running on this host. Allow-listed: it never prunes containers, volumes or networks, so a stopped app, its data and its network survive.
   """
   runDockerCleanupNow(serverId: String!): DockerCleanupRun
@@ -3907,7 +3917,7 @@ type TwoFactorEnrolment {
 input UpdateBackupInput {
   destinationId: String!
   name: String!
-  retentionDays: Int!
+  retentionCount: Int!
   schedule: String!
   timezone: String
 }

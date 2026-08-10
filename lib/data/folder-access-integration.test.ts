@@ -242,7 +242,7 @@ test("manage_infra: a member without folder access can't back up a project in th
           appId: PRJ_IN,
           destinationId: "s3_1",
           schedule: "0 3 * * *",
-          retentionDays: 7,
+          retentionCount: 7,
         }),
       /not found|permission/i,
       "team manage_infra alone must not let a non-folder-member schedule a project backup",
@@ -271,7 +271,7 @@ test("manage_infra: the folder owner CAN back up a project inside their folder",
       appId: PRJ_IN,
       destinationId: "s3_1",
       schedule: "0 3 * * *",
-      retentionDays: 7,
+      retentionCount: 7,
     }),
   );
   assert.equal(dto.targetKind, "app");

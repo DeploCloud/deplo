@@ -536,7 +536,8 @@ _Avoid_: backup server (it holds backups, it does not run them — the workload'
 does the dump).
 
 **Backup**:
-A **schedule**: a cron expression + **backup destination** + retention, targeting **one** thing via
+A **schedule**: a cron expression + **backup destination** + retention (**a count** — how many
+backups to keep, never a window in days), targeting **one** thing via
 `targetKind` — a `Database` or an `App` (never an app's linked databases; those are
 backed up as databases). Stored metadata only; running it produces a **backup run**. A
 backup never holds artifacts itself.

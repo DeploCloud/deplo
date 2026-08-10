@@ -130,7 +130,7 @@ export function BackupRow({
         <ScheduleLabel cron={backup.schedule} timezone={backup.timezone} />
       </TableCell>
       <TableCell className="text-muted-foreground">
-        {backup.retentionDays}d
+        {backup.retentionCount} {backup.retentionCount === 1 ? "backup" : "backups"}
       </TableCell>
       <TableCell>
         {backup.lastStatus === "never" ? (
@@ -313,7 +313,7 @@ function EditBackupDialog({
   const [destinationId, setDestinationId] = React.useState(backup.destinationId);
   const [schedule, setSchedule] = React.useState(backup.schedule);
   const [timezone, setTimezone] = React.useState(backup.timezone || "UTC");
-  const [retention, setRetention] = React.useState(backup.retentionDays);
+  const [retention, setRetention] = React.useState(backup.retentionCount);
 
   function onSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -326,7 +326,7 @@ function EditBackupDialog({
         `mutation($id: String!, $input: UpdateBackupInput!) { updateBackup(id: $id, input: $input) }`,
         {
           id: backup.id,
-          input: { name, destinationId, schedule, timezone, retentionDays: retention },
+          input: { name, destinationId, schedule, timezone, retentionCount: retention },
         }
       );
       if (res.ok) {

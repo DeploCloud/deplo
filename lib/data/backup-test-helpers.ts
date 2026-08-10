@@ -202,7 +202,7 @@ export interface SeedBackupOpts {
   schedule?: string;
   timezone?: string;
   enabled?: boolean;
-  retentionDays?: number;
+  retentionCount?: number;
 }
 
 /** Seed one backup SCHEDULE. */
@@ -221,7 +221,7 @@ export async function seedBackup(
     destinationId: opts.destinationId,
     schedule: opts.schedule ?? "0 3 * * *",
     timezone: opts.timezone ?? "UTC",
-    retentionDays: opts.retentionDays ?? 7,
+    retentionCount: opts.retentionCount ?? 7,
     lastRunAt: null,
     lastStatus: "never",
     enabled: opts.enabled ?? true,

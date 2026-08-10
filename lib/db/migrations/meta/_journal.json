@@ -631,6 +631,13 @@
       "when": 1784679000000,
       "tag": "0089_rate_limits",
       "breakpoints": true
+    },
+    {
+      "idx": 90,
+      "version": "7",
+      "when": 1784679200000,
+      "tag": "0090_backup_retention_count",
+      "breakpoints": true
     }
   ]
 }

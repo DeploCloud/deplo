@@ -34,6 +34,7 @@ import {
   listBackupRuns,
   reconcileInFlightBackupRuns,
   runBackup,
+  runDatabaseBackup,
   sweepOrphanedBackupArtifacts,
   toggleBackup,
   updateBackup,
@@ -88,7 +89,7 @@ test("createBackup (database) inserts a schedule and resolves names in the DTO",
       databaseId: "db_1",
       destinationId: "s3_1",
       schedule: "0 3 * * *",
-      retentionDays: 7,
+      retentionCount: 7,
     });
     assert.equal(dto.targetKind, "database");
     assert.equal(dto.databaseName, "main");
@@ -113,7 +114,7 @@ test("createBackup (project) sets only the project target", async () => {
       appId: "prj_1",
       destinationId: "s3_1",
       schedule: "0 4 * * *",
-      retentionDays: 14,
+      retentionCount: 14,
     });
     assert.equal(dto.serviceName, "prj_1");
     assert.equal(dto.databaseName, null);
@@ -130,7 +131,7 @@ test("createBackup rejects an unknown target / foreign destination", async () =>
       () =>
         createBackup({
           name: "x", targetKind: "database", databaseId: "db_missing",
-          destinationId: "s3_1", schedule: "0 3 * * *", retentionDays: 7,
+          destinationId: "s3_1", schedule: "0 3 * * *", retentionCount: 7,
         }),
       /Database not found/,
     );
@@ -138,7 +139,7 @@ test("createBackup rejects an unknown target / foreign destination", async () =>
       () =>
         createBackup({
           name: "x", targetKind: "database", databaseId: "db_1",
-          destinationId: "s3_missing", schedule: "0 3 * * *", retentionDays: 7,
+          destinationId: "s3_missing", schedule: "0 3 * * *", retentionCount: 7,
         }),
       /Select a destination/,
     );
@@ -154,14 +155,14 @@ test("an unparseable cron is rejected, not stored — on create and on edit", as
       () =>
         createBackup({
           name: "x", targetKind: "database", databaseId: "db_1",
-          destinationId: "s3_1", schedule: "every day at 3", retentionDays: 7,
+          destinationId: "s3_1", schedule: "every day at 3", retentionCount: 7,
         }),
       /not a valid cron expression/,
     );
     await assert.rejects(
       () =>
         updateBackup("bkp_1", {
-          name: "x", destinationId: "s3_1", schedule: "0 99 * * *", retentionDays: 7,
+          name: "x", destinationId: "s3_1", schedule: "0 99 * * *", retentionCount: 7,
         }),
       /not a valid cron expression/,
     );
@@ -169,7 +170,7 @@ test("an unparseable cron is rejected, not stored — on create and on edit", as
     // still falls back to the daily default.
     const dto = await createBackup({
       name: "defaulted", targetKind: "database", databaseId: "db_1",
-      destinationId: "s3_1", schedule: "", retentionDays: 7,
+      destinationId: "s3_1", schedule: "", retentionCount: 7,
     });
     assert.equal(dto.schedule, "0 3 * * *");
   });
@@ -183,11 +184,11 @@ test("toggleBackup / updateBackup / deleteBackup", async () => {
   await asUser1(async () => {
     await toggleBackup("bkp_1", false);
     const updated = await updateBackup("bkp_1", {
-      name: "renamed", destinationId: "s3_2", schedule: "0 5 * * *", retentionDays: 30,
+      name: "renamed", destinationId: "s3_2", schedule: "0 5 * * *", retentionCount: 30,
     });
     assert.equal(updated.name, "renamed");
     assert.equal(updated.destinationName, "second");
-    assert.equal(updated.retentionDays, 30);
+    assert.equal(updated.retentionCount, 30);
   });
   const row = (await db.select().from(backupsTable).where(eq(backupsTable.id, "bkp_1")))[0]!;
   assert.equal(row.enabled, false);
@@ -468,4 +469,37 @@ test("deleteAllBackupArtifacts (database) needs delete_databases, not manage_bac
     .from(backupRunsTable)
     .where(eq(backupRunsTable.id, "r_1"));
   assert.equal(rows.length, 1);
+});
+
+/* ------------------------------------------------------------------ */
+/* Ad-hoc "Back up now"                                                */
+/* ------------------------------------------------------------------ */
+
+test("runDatabaseBackup refuses a target or destination this team does not own", async () => {
+  // The gate runs before anything dials an agent, so both refusals are the data
+  // layer's own answer and not an agent error in disguise.
+  await asUser1(async () => {
+    await assert.rejects(
+      () => runDatabaseBackup("db_missing", "s3_1"),
+      /Database not found/,
+    );
+    await assert.rejects(
+      () => runDatabaseBackup("db_1", "s3_missing"),
+      /Select a destination/,
+    );
+  });
+});
+
+test("runDatabaseBackup records a failed run rather than throwing past the executor", async () => {
+  // No agent is reachable in-process, so the dump cannot start — the point is
+  // that the attempt is still HISTORY: an ad-hoc database backup that failed
+  // shows up in the same artifacts table a scheduled one does.
+  await asUser1(async () => {
+    await assert.rejects(() => runDatabaseBackup("db_1", "s3_1"));
+    const runs = await listBackupRuns({ databaseId: "db_1" });
+    assert.equal(runs.length, 1);
+    assert.equal(runs[0]!.status, "failed");
+    assert.equal(runs[0]!.backupId, null); // ad-hoc: no owning schedule
+    assert.equal(runs[0]!.databaseId, "db_1");
+  });
 });

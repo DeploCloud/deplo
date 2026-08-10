@@ -6,6 +6,7 @@ import { toast } from "sonner";
 import {
   Cloud,
   KeyRound,
+  Lock,
   MoreHorizontal,
   PlugZap,
   ScrollText,
@@ -267,6 +268,23 @@ export function DestinationCard({
                       Beta
                     </Badge>
                   )}
+                  {/* A property of the destination, so it sits with its name -
+                      not a row in the detail grid, where "Encryption: Always on"
+                      read as a setting somebody might have chosen. There is no
+                      chip for the unencrypted case: that one owns the warning
+                      block below, and saying it twice in two voices reads as two
+                      different facts. */}
+                  {encrypted && (
+                    <SimpleTooltip content="Backups here are encrypted before they leave the server. Only this destination's recovery key can open them.">
+                      <Badge
+                        variant="muted"
+                        className="px-1.5 py-0 text-[10px] font-normal"
+                      >
+                        <Lock className="size-3" />
+                        Encrypted
+                      </Badge>
+                    </SimpleTooltip>
+                  )}
                 </p>
                 <p className="mt-1 text-xs text-muted-foreground">
                   {isServer
@@ -356,10 +374,6 @@ export function DestinationCard({
                       : "Not tested yet"}
                   </dd>
                 </div>
-                <div>
-                  <dt className="text-muted-foreground">Encryption</dt>
-                  <dd>Always on</dd>
-                </div>
               </>
             ) : (
               <>
@@ -378,13 +392,6 @@ export function DestinationCard({
                 <div>
                   <dt className="text-muted-foreground">Access key</dt>
                   <dd className="font-mono">{dest.accessKeyMasked}</dd>
-                </div>
-                <div>
-                  <dt className="text-muted-foreground">Encryption</dt>
-                  {/* Terse on purpose: the warning above this grid is where the
-                      "off" case is explained, and saying it twice in two voices
-                      reads as two different facts. */}
-                  <dd>{encrypted ? "Always on" : "Off"}</dd>
                 </div>
               </>
             )}

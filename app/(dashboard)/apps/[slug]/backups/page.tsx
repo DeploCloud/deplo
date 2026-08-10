@@ -8,7 +8,8 @@ import {
   ensureDefaultDestination,
   listDestinationOptions,
 } from "@/lib/data/destinations";
-import { AppBackups } from "@/components/apps/app-backups";
+import { BackupsPanel } from "@/components/storage/backups-panel";
+import { PageHeader } from "@/components/shared/page-header";
 import { EmptyState } from "@/components/shared/empty-state";
 
 export const metadata = { title: "Backups" };
@@ -43,12 +44,15 @@ export default async function AppBackupsPage(
   // vanished, and the page claimed no destination was configured while
   // disabling the buttons that would have made one. They held `manage_backups`
   // on this app and had no way to use it.
-  const [allBackups, runs, destinations, canTestDestinations] = await Promise.all([
-    listBackups(),
-    listBackupRuns({ appId: project.id }),
-    listDestinationOptions(),
-    hasCapability("manage_backup_destinations"),
-  ]);
+  const [allBackups, runs, destinations, canRestore, canTestDestinations] =
+    await Promise.all([
+      listBackups(),
+      listBackupRuns({ appId: project.id }),
+      listDestinationOptions(),
+      // On THIS app (ADR-0016), the same way the page's own gate is asked.
+      hasAppCapability(project.id, "restore_backups"),
+      hasCapability("manage_backup_destinations"),
+    ]);
 
   // Only this app's schedules — listBackups returns the whole team's.
   const schedules = allBackups.filter(
@@ -56,18 +60,27 @@ export default async function AppBackupsPage(
   );
 
   return (
-    // "Back up now" used to hold the dialog open for the WHOLE backup — minutes,
-    // for a large volume. It now closes at once and the run appears here as the
-    // real `running` row the executor records before the dump starts, which the
-    // page re-reads on a timer until it settles.
-    <AppBackups
-      appId={project.id}
-      serviceName={project.name}
-      serverId={project.serverId ?? null}
-      schedules={schedules}
-      runs={runs}
-      destinations={destinations}
-      canTestDestinations={canTestDestinations}
-    />
+    // Same page as a database's Backups tab, down to the header: one panel
+    // serves both, so neither can quietly grow a feature the other lacks.
+    <div className="space-y-5">
+      <PageHeader
+        title="Backups"
+        description="Scheduled backups of this app to a backup destination, and restore."
+      />
+      <BackupsPanel
+        target={{
+          kind: "app",
+          id: project.id,
+          name: project.name,
+          serverId: project.serverId ?? null,
+        }}
+        schedules={schedules}
+        runs={runs}
+        destinations={destinations}
+        canManage
+        canRestore={canRestore}
+        canTestDestinations={canTestDestinations}
+      />
+    </div>
   );
 }

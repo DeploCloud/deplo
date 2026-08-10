@@ -34,6 +34,7 @@ import {
   requireAppCapability,
 } from "./node-access";
 import { loadAppGraph, loadTeamApp, appScopeWhere } from "./app-graph-load";
+import { setAppStatus } from "./apps";
 import { decryptSecret } from "../crypto";
 import {
   DEFAULT_SCHEDULE,
@@ -70,9 +71,23 @@ import type {
   DatabaseType,
 } from "../types";
 
-/** Newest run plus a cap on how many runs we keep per target (alongside the
- *  age-based `retentionDays`). Bounds the run history + what a destination holds. */
+/** How many run RECORDS a target keeps per destination, regardless of how many
+ *  artifacts its schedule asks for. A failed run owns no artifact, so this is the
+ *  only thing bounding a long tail of failures; a schedule keeping MORE than this
+ *  many artifacts raises it for itself (see {@link pruneRetention}). */
 const MAX_RUNS_PER_TARGET = 50;
+
+/** The ceiling on how many backups one schedule may keep. Not a limit anyone
+ *  reaches on purpose — it is there so a typo in a number field can't ask a
+ *  bucket to hold a decade of hourly dumps. */
+const MAX_RETENTION_COUNT = 365;
+
+/** How many backups a schedule keeps, as the store will have it: at least one
+ *  (a schedule that keeps nothing is a schedule that deletes its own work), and
+ *  a blank/zero field means the default rather than "none". */
+function clampRetention(count: number): number {
+  return Math.min(MAX_RETENTION_COUNT, Math.max(1, count || 7));
+}
 
 export interface BackupDTO extends Backup {
   databaseName: string | null;
@@ -269,7 +284,7 @@ export async function createBackup(input: {
   destinationId: string;
   schedule: string;
   timezone?: string | null;
-  retentionDays: number;
+  retentionCount: number;
 }): Promise<BackupDTO> {
   // The capability is asked ONCE, on the right thing: a database target has no
   // node dimension and stays team-gated, an app target answers to its own node.
@@ -316,7 +331,7 @@ export async function createBackup(input: {
     destinationId: input.destinationId,
     schedule,
     timezone,
-    retentionDays: Math.max(1, input.retentionDays || 7),
+    retentionCount: clampRetention(input.retentionCount),
     lastRunAt: null,
     lastStatus: "never",
     enabled: true,
@@ -481,7 +496,7 @@ async function executeBackup(
     databaseId: string | null;
     appId: string | null;
     destinationId: string;
-    retentionDays: number;
+    retentionCount: number;
   },
 ): Promise<BackupRun> {
   const startedAt = nowIso();
@@ -578,18 +593,17 @@ async function executeBackup(
 
     // Retention runs on success only (a failed run wrote no object). Best-effort:
     // a prune failure must never fail the backup the operator asked for.
-    // An AD-HOC run (no owning schedule) enforces NO age-based retention — its
-    // `retentionDays` is a fabricated default, and pruning by it would delete
-    // artifacts of schedules with longer retention on the same
-    // target+destination. Infinity disables the age cutoff; the
-    // MAX_RUNS_PER_TARGET cap still applies.
+    // An AD-HOC run (no owning schedule) has no retention policy of its own — its
+    // `retentionCount` is a fabricated default, and pruning by it would delete
+    // artifacts of schedules keeping more on the same target+destination. It
+    // prunes to the record cap and nothing tighter.
     if (!failure) {
       try {
         await pruneRetention(
           teamId,
           target,
           creds.destination.id,
-          opts.backupId ? opts.retentionDays : Number.POSITIVE_INFINITY,
+          opts.backupId ? opts.retentionCount : MAX_RUNS_PER_TARGET,
         );
       } catch (e) {
         console.warn(
@@ -661,10 +675,11 @@ async function executeBackup(
 }
 
 /**
- * Prune a target's run history + artifacts past the age limit AND the per-target
- * count cap. We delete the OLD artifacts individually, by exact key, rather than
- * by prefix — so a still-current artifact, or another destination sharing the
- * same folder on the same host, is never caught.
+ * Prune a target's artifacts down to the newest `keepLast` successful runs, and
+ * its leftover run RECORDS down to the cap. We delete the OLD artifacts
+ * individually, by exact key, rather than by prefix — so a still-current
+ * artifact, or another destination sharing the same folder on the same host, is
+ * never caught.
  * A `running` run is left alone (it's in flight). Only successful runs own an
  * object worth deleting.
  *
@@ -684,7 +699,7 @@ async function pruneRetention(
   teamId: string,
   target: ResolvedTarget,
   destinationId: string,
-  retentionDays: number,
+  keepLast: number,
 ): Promise<void> {
   // Candidates carry their `seq` (the bigint identity) so `selectDoomedRuns` ranks
   // newest-first by `(startedAt, seq)` — a same-millisecond tie ordered by
@@ -696,9 +711,11 @@ async function pruneRetention(
     target.kind === "database" ? target.databaseId : target.appId,
   );
   const doomed = selectDoomedRuns(candidates, {
-    retentionDays,
-    maxPerTarget: MAX_RUNS_PER_TARGET,
-    now: new Date(),
+    keepLast,
+    // A schedule keeping more artifacts than the record cap raises the cap for
+    // itself — otherwise the cap would delete the very artifacts it was asked to
+    // keep, and the record it needs to find them by.
+    maxRecords: Math.max(MAX_RUNS_PER_TARGET, keepLast),
   });
   if (doomed.length === 0) return;
 
@@ -813,7 +830,7 @@ export async function runBackup(id: string): Promise<void> {
     databaseId: b.databaseId,
     appId: b.appId,
     destinationId: b.destinationId,
-    retentionDays: b.retentionDays,
+    retentionCount: b.retentionCount,
   });
 }
 
@@ -847,7 +864,7 @@ export async function runScheduledBackup(backup: Backup): Promise<void> {
       databaseId: backup.databaseId,
       appId: backup.appId,
       destinationId: backup.destinationId,
-      retentionDays: backup.retentionDays,
+      retentionCount: backup.retentionCount,
     });
   } catch {
     // executeBackup already recorded the run `failed` + logged the activity; the
@@ -856,32 +873,66 @@ export async function runScheduledBackup(backup: Backup): Promise<void> {
 }
 
 /**
- * Ad-hoc "Back up now" for a project with no owning schedule — shares the
- * executor with `backupId: null`. Used by the project Backups tab (Step 5).
- * With no schedule to read a policy from, the executor skips the age-based
- * prune for ad-hoc runs (only the MAX_RUNS_PER_TARGET cap applies), so
- * `retentionDays` is carried for the opts shape but never enforced.
+ * Ad-hoc "Back up now" — one run with no owning schedule, sharing the executor
+ * with `backupId: null`. Used by the Backups tab of an app and of a database.
+ *
+ * With no schedule to read a policy from there is nothing to retain BY: the run
+ * prunes to the record cap and nothing tighter, so pressing "Back up now" can
+ * never delete the artifacts of a schedule that keeps more on the same
+ * target+destination.
+ *
+ * The gate splits exactly the way {@link requireBackupCapability} splits: an app
+ * target answers to its own node — `manage_backups` can be held on one app or
+ * folder alone (ADR-0016) — while a database target has no node dimension and
+ * stays team-wide.
  */
-export async function runAppBackup(
-  appId: string,
+async function runAdHocBackup(
+  kind: BackupTargetKind,
+  targetId: string,
   destinationId: string,
-  retentionDays = 7,
 ): Promise<BackupRun> {
-  const { membership } = await requireAppCapability(appId, "manage_backups");
+  const { membership } =
+    kind === "app"
+      ? await requireAppCapability(targetId, "manage_backups")
+      : await requireCapability("manage_backups");
   const teamId = membership.teamId;
   const user = (await getCurrentUser())!;
-  if (!(await loadTeamApp(appId, teamId)))
-    throw new Error("App not found");
+  if (kind === "app") {
+    if (!(await loadTeamApp(targetId, teamId))) throw new Error("App not found");
+  } else if (
+    // A principal who reaches only part of the team can't see any database, so
+    // they can't dump one either — the same answer their own reads give.
+    !(await reachesWholeTeam()) ||
+    !(await databaseNameFor(targetId, teamId))
+  ) {
+    throw new Error("Database not found");
+  }
   if (!(await destinationExists(destinationId, teamId)))
     throw new Error("Select a destination");
   return executeBackup(teamId, user.name, {
     backupId: null,
-    kind: "app",
-    databaseId: null,
-    appId,
+    kind,
+    databaseId: kind === "database" ? targetId : null,
+    appId: kind === "app" ? targetId : null,
     destinationId,
-    retentionDays,
+    retentionCount: MAX_RUNS_PER_TARGET,
   });
+}
+
+/** Ad-hoc "Back up now" for an app. See {@link runAdHocBackup}. */
+export function runAppBackup(
+  appId: string,
+  destinationId: string,
+): Promise<BackupRun> {
+  return runAdHocBackup("app", appId, destinationId);
+}
+
+/** Ad-hoc "Back up now" for a database. See {@link runAdHocBackup}. */
+export function runDatabaseBackup(
+  databaseId: string,
+  destinationId: string,
+): Promise<BackupRun> {
+  return runAdHocBackup("database", databaseId, destinationId);
 }
 
 /**
@@ -1001,6 +1052,14 @@ export async function restoreBackup(runId: string): Promise<void> {
 
   let failure: string | null = null;
   try {
+    // Say what is happening BEFORE it starts. The agent stops the stack, wipes it
+    // and untars the snapshot, so for the whole restore the host honestly reports
+    // nothing running — which the status derivation, correctly for every other
+    // case, painted as a red "Not running" and then "Degraded". Persisted rather
+    // than local so it survives a reload and every client sees it, exactly like
+    // `stopping`; `setAppStatus` publishes it to the live subscription.
+    if (run.targetKind === "app" && target.appId)
+      await setAppStatus(target.appId, "restoring");
     const result = await restoreFromDestination(
       creds,
       {
@@ -1018,6 +1077,13 @@ export async function restoreBackup(runId: string): Promise<void> {
     if (!result.ok) failure = result.error || "the agent reported a failed restore";
   } catch (e) {
     failure = (mapBackupUnsupported(e) as Error).message;
+  } finally {
+    // The agent's app restore ends in a Reroute, so a clean run leaves the stack
+    // up. A failed one leaves it in whatever state the failure found it: "error"
+    // is the honest answer, and the telemetry reconciler promotes it back to
+    // "active" on its own if the containers are in fact running.
+    if (run.targetKind === "app" && target.appId)
+      await setAppStatus(target.appId, failure ? "error" : "active");
   }
 
   await recordActivity(
@@ -1100,7 +1166,7 @@ export async function updateBackup(
     destinationId: string;
     schedule: string;
     timezone?: string | null;
-    retentionDays: number;
+    retentionCount: number;
   },
 ): Promise<BackupDTO> {
   const { membership } = await requireMembership();
@@ -1126,7 +1192,7 @@ export async function updateBackup(
       destinationId: input.destinationId,
       schedule,
       timezone,
-      retentionDays: Math.max(1, input.retentionDays || 7),
+      retentionCount: clampRetention(input.retentionCount),
     })
     .where(and(eq(backupsTable.id, id), eq(backupsTable.teamId, teamId)))
     .returning();

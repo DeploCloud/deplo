@@ -1962,7 +1962,7 @@ export const backups = pgTable(
     // European team's "nightly" dump ran at 04:00 or 05:00 depending on the
     // season, and the cron-jobs feature next door already carries a per-job zone.
     timezone: text("timezone").notNull().default("UTC"),
-    retentionDays: integer("retention_days").notNull(),
+    retentionCount: integer("retention_count").notNull(),
     lastRunAt: isoTimestamptz("last_run_at"),
     lastStatus: text("last_status").notNull(),
     enabled: boolean("enabled").notNull(),

@@ -124,48 +124,73 @@ const run = (id: string, daysAgo: number, over: Partial<BackupRun> = {}): Backup
   ...over,
 });
 
-test("retention: runs older than the window are doomed", () => {
-  const runs = [run("a", 0), run("b", 5), run("c", 10)];
-  const doomed = selectDoomedRuns(runs, { retentionDays: 7, maxPerTarget: 50, now: NOW });
-  assert.deepEqual(doomed.map((r) => r.id), ["c"]); // only the 10-day-old one
+/** The two bounds, as the pruner passes them: keep N artifacts, cap the records. */
+const opts = (keepLast: number, maxRecords = 50) => ({ keepLast, maxRecords });
+
+test("retention: keeps the newest N successful runs and dooms the rest", () => {
+  const runs = [run("a", 0), run("b", 1), run("c", 2), run("d", 3)];
+  const doomed = selectDoomedRuns(runs, opts(2));
+  assert.deepEqual(doomed.map((r) => r.id).sort(), ["c", "d"]);
 });
 
-test("retention: the newest successful run is ALWAYS kept, even past the window", () => {
-  // Every run is older than the window — but the newest success survives so the
-  // target is never left with zero restorable artifacts.
-  const runs = [run("a", 30), run("b", 40), run("c", 50)];
-  const doomed = selectDoomedRuns(runs, { retentionDays: 7, maxPerTarget: 50, now: NOW });
-  assert.deepEqual(doomed.map((r) => r.id).sort(), ["b", "c"]); // "a" (newest) kept
-});
-
-test("retention: a running run is never pruned", () => {
-  const runs = [run("a", 0), run("old-running", 99, { status: "running" })];
-  const doomed = selectDoomedRuns(runs, { retentionDays: 7, maxPerTarget: 50, now: NOW });
-  assert.deepEqual(doomed, []);
-});
-
-test("retention: failed runs past the window are pruned (they own no object)", () => {
-  const runs = [
-    run("ok", 0),
-    run("failA", 20, { status: "failed", objectKey: "", sizeBytes: 0 }),
-    run("failB", 25, { status: "failed", objectKey: "", sizeBytes: 0 }),
-  ];
-  const doomed = selectDoomedRuns(runs, { retentionDays: 7, maxPerTarget: 50, now: NOW });
-  assert.deepEqual(doomed.map((r) => r.id).sort(), ["failA", "failB"]);
-});
-
-test("retention: the per-target count cap prunes the oldest beyond the cap", () => {
-  // 5 fresh runs (all within the window), cap of 3 → the 2 oldest are doomed by
-  // the cap even though none is past the age window.
-  const runs = [run("r0", 0), run("r1", 1), run("r2", 2), run("r3", 3), run("r4", 4)];
-  const doomed = selectDoomedRuns(runs, { retentionDays: 365, maxPerTarget: 3, now: NOW });
-  assert.deepEqual(doomed.map((r) => r.id).sort(), ["r3", "r4"]);
-});
-
-test("retention: nothing to prune within window and under cap", () => {
+test("retention: nothing to prune while under the count", () => {
   const runs = [run("a", 0), run("b", 1), run("c", 2)];
-  const doomed = selectDoomedRuns(runs, { retentionDays: 7, maxPerTarget: 50, now: NOW });
-  assert.deepEqual(doomed, []);
+  assert.deepEqual(selectDoomedRuns(runs, opts(3)), []);
+});
+
+test("retention: age is irrelevant — old runs survive if they are within the count", () => {
+  // Every one of these is a year old. Retention is a QUANTITY now: nothing about
+  // being old dooms a run, only being the (N+1)th.
+  const runs = [run("a", 365), run("b", 400), run("c", 500)];
+  assert.deepEqual(selectDoomedRuns(runs, opts(3)), []);
+});
+
+test("retention: the newest successful run is ALWAYS kept", () => {
+  // keepLast is clamped to >= 1 by the data layer, so a target can never be left
+  // with zero restorable artifacts.
+  const runs = [run("a", 0), run("b", 1), run("c", 2)];
+  const doomed = selectDoomedRuns(runs, opts(1));
+  assert.deepEqual(doomed.map((r) => r.id).sort(), ["b", "c"]);
+});
+
+test("retention: a running run is never pruned, and does not use up a slot", () => {
+  const runs = [
+    run("in-flight", 0, { status: "running", objectKey: "", sizeBytes: 0 }),
+    run("a", 1),
+    run("b", 2),
+  ];
+  // keepLast 2: both successes survive — the run in flight is neither an
+  // artifact to keep nor a record to bound.
+  assert.deepEqual(selectDoomedRuns(runs, opts(2)), []);
+});
+
+test("retention: FAILED runs do not evict a kept success", () => {
+  // The regression this rule exists for: three bad nights in a row must not
+  // silently delete the three good backups "keep the last 3" promised.
+  const failed = (id: string, daysAgo: number) =>
+    run(id, daysAgo, { status: "failed" as const, objectKey: "", sizeBytes: 0 });
+  const runs = [
+    failed("f1", 0),
+    failed("f2", 1),
+    failed("f3", 2),
+    run("ok1", 3),
+    run("ok2", 4),
+    run("ok3", 5),
+  ];
+  // Every failure is newer than every success, and none of them is doomed while
+  // inside the record cap — but all three successes are still kept.
+  assert.deepEqual(selectDoomedRuns(runs, opts(3)), []);
+});
+
+test("retention: failed runs are bounded by the record cap, not by the count", () => {
+  const failed = (id: string, daysAgo: number) =>
+    run(id, daysAgo, { status: "failed" as const, objectKey: "", sizeBytes: 0 });
+  const runs = [failed("f1", 0), failed("f2", 1), failed("f3", 2), run("ok", 3)];
+  // maxRecords 2 → newest-first, everything from index 2 on is dropped. The
+  // success at index 3 is an ARTIFACT and answers to keepLast instead, so it
+  // survives; only the record-only rows past the cap go.
+  const doomed = selectDoomedRuns(runs, opts(3, 2));
+  assert.deepEqual(doomed.map((r) => r.id).sort(), ["f3"]);
 });
 
 /* ------------------------------------------------------------------ */
@@ -180,30 +205,27 @@ const sameMsRun = (
 ): RunForRetention => ({ ...run(id, 30), seq, ...over });
 
 test("retention: a same-ms tie keeps the higher-seq success (newest), prunes the rest", () => {
-  // Three successes ALL at the same (old) instant: timestamp alone can't order
-  // them, so without seq the "newest success to keep" is non-deterministic and
-  // could delete the live object. With seq, the highest-seq run is newest.
+  // Three successes ALL at the same instant: timestamp alone can't order them,
+  // so without seq the "newest success to keep" is non-deterministic and could
+  // delete the live object. With seq, the highest-seq run is newest.
   const runs = [sameMsRun("low", 1), sameMsRun("mid", 2), sameMsRun("high", 3)];
-  const doomed = selectDoomedRuns(runs, { retentionDays: 7, maxPerTarget: 50, now: NOW });
-  // "high" (seq 3) is the kept newest success; the two older same-ms runs are doomed.
+  const doomed = selectDoomedRuns(runs, opts(1));
   assert.deepEqual(doomed.map((r) => r.id).sort(), ["low", "mid"]);
 });
 
 test("retention: same-ms tiebreak is independent of input array order", () => {
   // Same three runs, shuffled — seq, not array position, decides "newest".
   const runs = [sameMsRun("mid", 2), sameMsRun("high", 3), sameMsRun("low", 1)];
-  const doomed = selectDoomedRuns(runs, { retentionDays: 7, maxPerTarget: 50, now: NOW });
+  const doomed = selectDoomedRuns(runs, opts(1));
   assert.deepEqual(doomed.map((r) => r.id).sort(), ["low", "mid"]);
 });
 
-test("retention: the cap counts newest-first by (startedAt, seq) under a tie", () => {
-  // Five same-instant runs, cap 2 → the 2 newest (highest seq) survive the cap,
-  // plus the kept-newest rule overlaps with the highest. Deterministic via seq.
+test("retention: the count walks newest-first by (startedAt, seq) under a tie", () => {
   const runs = [
     sameMsRun("s1", 1), sameMsRun("s2", 2), sameMsRun("s3", 3),
     sameMsRun("s4", 4), sameMsRun("s5", 5),
   ];
-  const doomed = selectDoomedRuns(runs, { retentionDays: 365, maxPerTarget: 2, now: NOW });
-  // newest-first = s5,s4,s3,s2,s1; idx>=2 (s3,s2,s1) are over the cap.
+  // newest-first = s5,s4,s3,s2,s1; keeping 2 dooms the other three.
+  const doomed = selectDoomedRuns(runs, opts(2));
   assert.deepEqual(doomed.map((r) => r.id).sort(), ["s1", "s2", "s3"]);
 });

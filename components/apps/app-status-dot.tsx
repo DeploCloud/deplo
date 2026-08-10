@@ -30,6 +30,15 @@ function useDisplayStatus(fallback: AppStatus): {
   const runtime = useAppRuntime(appId, {
     enabled: !!appId && status === "active",
   });
+  // A restore is the one transient state whose explanation does not come from the
+  // host: the containers really are gone, on purpose, and the runtime poll is
+  // switched off for exactly that reason. Say what is happening instead.
+  if (status === "restoring")
+    return {
+      status,
+      detail:
+        "Deplo is putting a backup back in place. The app is down while it is written, and comes back up on its own.",
+    };
   return { status: displayStatus(status, runtime), detail: detailFor(runtime) };
 }
 
