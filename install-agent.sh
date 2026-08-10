@@ -383,9 +383,31 @@ fi
 # The agent runs in bootstrap mode: it calls home with the token, gets its cert
 # signed, persists the materials under $AGENT_DATA, and then serves gRPC. On a
 # restart it finds its materials and skips bootstrap. The token + fingerprint are
-# only needed for the FIRST run, so they are passed as flags here and the agent
+# only needed for the FIRST run, so they are handed over here and the agent
 # clears them from its record once provisioned.
+#
+# The token travels in an EnvironmentFile, never on ExecStart. A process's argv
+# is world-readable on Linux (`/proc/<pid>/cmdline`, i.e. plain `ps aux`), so a
+# `--bootstrap-token` flag would leave the credential legible to every local
+# user for as long as the agent runs — and self-update `syscall.Exec`s with the
+# SAME argv, so it would outlive every upgrade. `Environment=` in the unit is no
+# better: `systemctl show` prints it to unprivileged callers. A 0600 file read by
+# systemd leaks through neither, and `/proc/<pid>/environ` is owner-only.
 step "Writing the systemd unit..."
+# mkdir here and not only in the Traefik block above: that one is skipped on a
+# storage-only host, and the agent itself does not create --agent-dir until it
+# runs. Restrict the file BEFORE the token is written into it, so there is no
+# window where it exists world-readable.
+BOOTSTRAP_ENV="$AGENT_DATA/bootstrap.env"
+mkdir -p "$AGENT_DATA"
+chmod 700 "$AGENT_DATA"
+: > "$BOOTSTRAP_ENV"
+chmod 600 "$BOOTSTRAP_ENV"
+cat > "$BOOTSTRAP_ENV" <<EOF
+DEPLO_BOOTSTRAP_URL=$URL
+DEPLO_BOOTSTRAP_TOKEN=$TOKEN
+DEPLO_BOOTSTRAP_FINGERPRINT=$FINGERPRINT
+EOF
 # On a STORAGE-ONLY host neither Docker line may appear. `SupplementaryGroups`
 # names a group that does not exist there, and systemd refuses to spawn the
 # process at all (status=216/GROUP) rather than warning — which, under `set -e`,
@@ -407,13 +429,14 @@ Wants=network-online.target
 
 [Service]
 Type=simple
+# `-` prefix: once host cleanup has cleared the data dir, a restart of a
+# not-yet-removed unit must still start rather than fail on the missing file
+# (a provisioned agent skips bootstrap and needs none of these anyway).
+EnvironmentFile=-$BOOTSTRAP_ENV
 ExecStart=$AGENT_BIN \\
   --addr 0.0.0.0:$AGENT_PORT \\
   --data-dir / \\
-  --agent-dir $AGENT_DATA \\
-  --bootstrap-url $URL \\
-  --bootstrap-token $TOKEN \\
-  --bootstrap-fingerprint "$FINGERPRINT"
+  --agent-dir $AGENT_DATA
 Restart=on-failure
 RestartSec=5
 $DOCKER_UNIT_LINES
