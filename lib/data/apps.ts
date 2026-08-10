@@ -1969,7 +1969,21 @@ export async function deleteApp(id: string): Promise<void> {
     // Pull request previews FIRST: the DELETE below cascades their rows away,
     // and with them the only record that those containers and volumes exist.
     await destroyPreviewsForApp(id).catch(() => {});
-    const ok = await teardownApp(project.slug);
+    // `removeVolumes` - deleting an app takes its data with it.
+    //
+    // It used to be left off, on the reading that a named volume holds data the
+    // operator might want back. But nothing ever gave it back: no screen listed
+    // an orphaned volume, nothing reclaimed one, and the docker cleanup refuses
+    // volume pruning by design. So "kept" meant an invisible, unreclaimable pile
+    // that grew by one app's worth every time somebody deleted an app - 45 of
+    // them on the instance where this was found.
+    //
+    // The safety net for a delete you regret is the BACKUP, which is a thing you
+    // can see, download and restore. A volume nobody can name is not one.
+    // Compose never removes an `external:` volume, so a pre-existing host volume
+    // the app merely referenced still survives, which is right: Deplo does not
+    // own those.
+    const ok = await teardownApp(project.slug, { removeVolumes: true });
     // Drop any uploaded archive backing an "upload" source.
     await removeUploads(id).catch(() => {});
     // One DELETE — the FK CASCADEs do the rest: deployments (+ logs), env_vars
@@ -2039,7 +2053,10 @@ export async function deleteApps(ids: string[]): Promise<number> {
     const tornDown = await withKeyedLock(`app-lifecycle:${project.id}`, async () => {
       // Preview stacks first — see deleteApp.
       await destroyPreviewsForApp(project.id).catch(() => {});
-      const ok = await teardownApp(project.slug).catch(() => false);
+      // Volumes go too - see deleteApp for why "keeping" them was not a kindness.
+      const ok = await teardownApp(project.slug, { removeVolumes: true }).catch(
+        () => false,
+      );
       await removeUploads(project.id).catch(() => {});
       await getDb().delete(appsTable).where(eq(appsTable.id, project.id));
       return ok;

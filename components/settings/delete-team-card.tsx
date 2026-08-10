@@ -52,7 +52,7 @@ export function DeleteTeamCard({
             </Button>
           }
           title={`Delete ${teamName}?`}
-          description="This tears down every app and database of this team (data volumes included) and permanently removes its folders, projects, domains, environment variables, backups and members. Stack cleanup continues in the background. Backup archives already uploaded to S3 are kept. This cannot be undone."
+          description="This tears down every app and database of this team (data volumes included) and permanently removes its folders, projects, domains, environment variables, members and every backup it has stored, wherever it stored it. Cleanup continues in the background. This cannot be undone."
           confirmLabel="Delete team"
           successMessage="Team deleted"
           confirmText={teamName}

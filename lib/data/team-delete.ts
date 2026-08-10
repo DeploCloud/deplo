@@ -8,6 +8,7 @@ import {
   databases as databasesTable,
   installedPlugins as installedPluginsTable,
   teams as teamsTable,
+  backupDestination as backupDestinationTable,
 } from "../db/schema/control-plane";
 import { currentIdentity } from "../auth/request-context";
 import {
@@ -21,6 +22,11 @@ import { pluginSlug, destroyPluginContainer } from "../plugins/runtime";
 import { mapLimit } from "../utils";
 import { withKeyedLock } from "./keyed-mutex";
 import { loadAppsByTeam } from "./app-graph-load";
+import {
+  getDestinationWithSecretsForTeam,
+  type DestinationWithSecrets,
+} from "./destinations";
+import { deleteFromDestination } from "./backup-transport";
 import { removeUploads } from "../deploy/upload";
 
 /**
@@ -112,6 +118,20 @@ export interface TeardownPlan {
   databases: { id: string; host: string; serverId: string }[];
   /** Frozen slugs of the team's installed plugins (containers on the Deplo host). */
   appSlugs: string[];
+  /**
+   * The team's backup destinations WITH their decrypted credentials, frozen
+   * before the cascade takes the rows away - the same reason `services` and
+   * `databases` are frozen. Without them the artifacts survive with nothing left
+   * anywhere that can name them: the destination row is gone, so is every run,
+   * and the orphan sweep looks for runs whose TARGET vanished, not for runs that
+   * vanished themselves. A bucket quietly keeping a deleted team's dumps, each
+   * carrying its apps' decrypted env, is the worst of the leftovers.
+   *
+   * A team-wide `deplo/<teamId>/` prefix is the one prefix delete that is safe:
+   * the team segment is in it, so it cannot reach another team's artifacts, and
+   * two destinations of THIS team sharing one folder are both going anyway.
+   */
+  backupSweeps?: { creds: DestinationWithSecrets; prefix: string; viaServerId: string }[];
 }
 
 /**
@@ -129,6 +149,27 @@ export interface TeardownPlan {
  */
 export function teardownTeamResources(plan: TeardownPlan, tag = "team-delete"): void {
   void (async () => {
+    // Backup artifacts first, while nothing else has had a chance to fail: they
+    // are the only leftovers that can outlive the host itself (an S3 bucket does
+    // not care that the server is gone).
+    await mapLimit(plan.backupSweeps ?? [], 2, async (sweep) => {
+      try {
+        const r = await deleteFromDestination(
+          sweep.creds,
+          sweep.viaServerId,
+          sweep.prefix,
+          true,
+        );
+        if (!r.ok) throw new Error(r.error || "the destination refused the delete");
+      } catch (e) {
+        console.warn(
+          `[${tag}] could not remove the backups at ${sweep.creds.destination.name}: ` +
+            (e instanceof Error ? e.message : String(e)) +
+            " - those artifacts must be removed from that destination by hand",
+        );
+      }
+    });
+
     // Preview stacks first: they own volumes, and their rows are already gone.
     await mapLimit(plan.previewStacks ?? [], 4, async (preview) => {
       try {
@@ -149,7 +190,10 @@ export function teardownTeamResources(plan: TeardownPlan, tag = "team-delete"): 
       try {
         const conn = await connectAgent(service.serverId);
         try {
-          const r = await conn.destroyStack(service.slug);
+          // Volumes included: deleting a team deletes the team. Leaving its
+          // apps' data behind meant an unreclaimable pile on every host the team
+          // ever deployed to, with not a single row left that could name it.
+          const r = await conn.destroyStack(service.slug, true);
           if (!r.ok) throw new Error(r.error || "agent failed to destroy the stack");
         } finally {
           conn.close();
@@ -297,10 +341,41 @@ export async function deleteTeam(teamId: string): Promise<void> {
       // One DELETE — the FK CASCADEs remove every team-scoped row.
       await db.delete(teamsTable).where(eq(teamsTable.id, ctx.teamId));
 
+      // Any host will do for a BUCKET (the agent just needs network + creds); a
+      // store destination routes to its own server regardless. With no server at
+      // all there is nothing to dial and the sweep is skipped.
+      const viaServerId =
+        services[0]?.serverId ?? databases[0]?.serverId ?? "";
+      const destinationIds = (
+        await db
+          .select({ id: backupDestinationTable.id })
+          .from(backupDestinationTable)
+          .where(eq(backupDestinationTable.teamId, ctx.teamId))
+      ).map((d) => d.id);
+      const backupSweeps = (
+        await Promise.all(
+          destinationIds.map(async (id) => {
+            try {
+              const creds = await getDestinationWithSecretsForTeam(ctx.teamId, id);
+              const via = creds.destination.serverId ?? viaServerId;
+              if (!via) return null;
+              return {
+                creds,
+                prefix: `deplo/${ctx.teamId}/`,
+                viaServerId: via,
+              };
+            } catch {
+              return null; // a destination we cannot open is one we cannot sweep
+            }
+          }),
+        )
+      ).filter((x): x is NonNullable<typeof x> => x !== null);
+
       return {
         services,
         previewStacks,
         databases,
+        backupSweeps,
         // Prefer the slug frozen at install; legacy rows derive it (the team
         // row was just read, before the delete).
         appSlugs: apps.map(
