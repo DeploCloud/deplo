@@ -22,11 +22,6 @@ jobs:
         id: version
         run: echo "VERSION=${GITHUB_REF#refs/tags/v}" >> "$GITHUB_OUTPUT"
 
-      - name: Create Release
-        uses: softprops/action-gh-release@v2
-        with:
-          generate_release_notes: true
-
       - name: Log in to GitHub Container Registry
         uses: docker/login-action@v3
         with:
@@ -51,3 +46,12 @@ jobs:
             ghcr.io/${{ steps.repo_owner.outputs.OWNER }}/${{ github.event.repository.name }}:${{ steps.version.outputs.VERSION }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
+
+      # LAST, not first. Publishing the release before the build meant a failed
+      # build still announced a version: v1.1.0 has a release page and no image
+      # behind it, so `install.sh` on that version pulls a tag that was never
+      # pushed. A release now means an image exists.
+      - name: Create Release
+        uses: softprops/action-gh-release@v2
+        with:
+          generate_release_notes: true
