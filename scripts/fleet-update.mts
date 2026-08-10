@@ -21,11 +21,11 @@
  * after each success — otherwise the "outdated" badge lags until the health
  * prober happens to re-check.
  */
-import { inArray } from "drizzle-orm";
+import { inArray, sql } from "drizzle-orm";
 
 import { listAllServers, markServerSeen } from "../lib/data/servers";
 import { getDb } from "../lib/db/client";
-import { deployments } from "../lib/db/schema/control-plane";
+import { apps, deployments } from "../lib/db/schema/control-plane";
 import {
   agentPreflight,
   selfUpdateServerAgent,
@@ -36,13 +36,23 @@ import {
 const dryRun = process.argv.includes("--dry-run");
 const localIp = process.env.DEPLO_SERVER_IP ?? "";
 
-/** Servers with a deploy the agent's re-exec would kill. */
+/**
+ * Servers with a deploy the agent's re-exec would kill.
+ *
+ * Read through `coalesce(deployments.server_id, apps.server_id)`, exactly like
+ * `onServer` in lib/data/deployments.ts, and never off `deployments.server_id`
+ * alone: that column is a nullable denormalized mirror of `apps.server_id`, so a
+ * bare read makes a null-`server_id` deploy invisible. This check would then
+ * come back all-clear and the self-update would `syscall.Exec` straight through
+ * the live Deploy stream it exists to protect - a safety check that fails open.
+ */
 async function busyServerIds(): Promise<Set<string>> {
   const rows = await getDb()
-    .select({ serverId: deployments.serverId })
+    .select({ serverId: sql<string>`coalesce(${deployments.serverId}, ${apps.serverId})` })
     .from(deployments)
+    .innerJoin(apps, sql`${apps.id} = ${deployments.appId}`)
     .where(inArray(deployments.status, ["queued", "building"]));
-  return new Set(rows.map((r) => r.serverId).filter((id): id is string => Boolean(id)));
+  return new Set(rows.map((r) => r.serverId).filter(Boolean));
 }
 
 const all = await listAllServers();

@@ -94,14 +94,22 @@ export function Combobox<T>({
   }
 
   /**
-   * Where the menu goes, in viewport coordinates.
+   * Where the menu goes, and into which element.
    *
-   * PORTALED to the body rather than positioned inside the field, because any
-   * ancestor that scrolls clips it — and every dialog has one now (see
-   * `DialogContent`). Positioned absolutely inside a scroll box, opening the menu
+   * PORTALED, because every dialog scrolls now (see `DialogContent`) and an
+   * absolutely-positioned menu inside a scroll box is clipped by it — which
    * turned a two-field step into a scrolling one and cut the options off at the
-   * fold. Radix's own Select and Popover portal for exactly this reason.
+   * fold. Radix's own Select and Popover portal for the same reason.
+   *
+   * Into the surrounding DIALOG, though, not the body. A modal Radix dialog sets
+   * `pointer-events: none` on `<body>` and treats a press anywhere outside its
+   * content as a dismiss, so a menu parked on the body was unclickable AND, had
+   * it been clickable, would have closed the dialog under the click. Inside the
+   * content it is a sibling of the scroll box: out of the clip, still in the
+   * dialog. The content is `fixed` and transformed, which makes it the
+   * containing block, so the offsets are measured against it.
    */
+  const [host, setHost] = React.useState<HTMLElement | null>(null);
   const [rect, setRect] = React.useState<{
     left: number;
     top: number;
@@ -114,18 +122,29 @@ export function Combobox<T>({
     // when `open`, and this effect re-measures before the next paint, so a stale
     // rect is never on screen.
     if (!open) return;
+    const target =
+      fieldRef.current?.closest<HTMLElement>(
+        "[role='dialog'], [role='alertdialog']",
+      ) ?? document.body;
+    setHost(target);
     const place = () => {
       const el = fieldRef.current;
       if (!el) return;
       const r = el.getBoundingClientRect();
+      // Offsets are relative to the portal host unless that host IS the body,
+      // where the viewport's own coordinates are already what `fixed` wants.
+      const o =
+        target === document.body ? null : target.getBoundingClientRect();
       // The menu's own cap (max-h-72) plus its gap, so the decision to flip is
       // made against the room it will actually ask for.
       const wanted = 288 + 8;
       const below = window.innerHeight - r.bottom;
       const flipped = below < wanted && r.top > below;
       setRect({
-        left: r.left,
-        top: flipped ? r.top - 4 : r.bottom + 4,
+        left: r.left - (o?.left ?? 0),
+        // Flipped, the menu is pulled up by its own height with a transform —
+        // cheaper and more honest than measuring it to compute a `bottom`.
+        top: (flipped ? r.top - 4 : r.bottom + 4) - (o?.top ?? 0),
         width: r.width,
         flipped,
       });
@@ -276,21 +295,20 @@ export function Combobox<T>({
 
         {open &&
           rect &&
+          host &&
           createPortal(
             <div
               ref={menuRef}
               id={id ? `${id}-listbox` : undefined}
               role="listbox"
-              // Above the dialog's own z-50, and `fixed` because the coordinates
-              // it is given are the viewport's.
-              className="fixed z-[60] overflow-hidden rounded-md border border-border bg-popover shadow-md"
-              style={{
-                left: rect.left,
-                width: rect.width,
-                ...(rect.flipped
-                  ? { bottom: window.innerHeight - rect.top }
-                  : { top: rect.top }),
-              }}
+              className={cn(
+                "z-[60] overflow-hidden rounded-md border border-border bg-popover shadow-md",
+                // Absolute against the dialog it was portaled into; `fixed` only
+                // in the bodyless case, where the viewport IS the reference.
+                host === document.body ? "fixed" : "absolute",
+                rect.flipped && "-translate-y-full",
+              )}
+              style={{ left: rect.left, top: rect.top, width: rect.width }}
             >
               {filtered.length === 0 ? (
                 <p className="px-3 py-2 text-xs text-muted-foreground">
@@ -323,7 +341,7 @@ export function Combobox<T>({
                 </ul>
               )}
             </div>,
-            document.body,
+            host,
           )}
 
       </div>

@@ -158,12 +158,16 @@ bun  v1.3.14  → ERR_TLS_CERT_ALTNAME_INVALID, certKeys:0, subjectaltname:null
 scripts from the repo root with:
 
 ```sh
-/root/.nvm/versions/node/v24.18.0/bin/node \
+/usr/bin/node \
   --env-file=.env \
   --require ./lib/test/server-only-shim.cjs \
   --import tsx <script>.ts
 ```
 
+- Spell the path out. nvm is **gone** from this host (`/root/.nvm` no longer exists — that path is
+  what older revisions of this doc and `scripts/rollout-agent-1.12.mts` still print); real Node is
+  `/usr/bin/node`. A bare `node` works today but resolves off `PATH`, which is exactly where a
+  bun shim would sit.
 - `--env-file=.env` supplies `DEPLO_DATABASE_URL` / `DEPLO_SECRET` (the app fail-fasts without them).
 - `--require ./lib/test/server-only-shim.cjs` no-ops the `server-only` guard that `lib/data/*` and
   `lib/agent/release.ts` import.

@@ -79,13 +79,19 @@ const DialogContent = React.forwardRef<
         // Centred with a translate and nothing bounding it, a dialog taller than
         // the window used to run off BOTH edges at once - and Radix scroll-locks
         // the page behind it, so neither end could be reached. Zooming in is all
-        // it takes. `dvh` rather than `vh` so a phone's collapsing browser chrome
-        // cannot hide the footer.
+        // it takes.
+        //
+        // 85dvh, matching what the dialogs that already capped themselves chose:
+        // a modal that reaches within a few pixels of the viewport stops reading
+        // as a layer over the page and starts reading as the page. `dvh` rather
+        // than `vh` so a phone's collapsing browser chrome cannot hide the
+        // footer.
+        //
         // `grid-rows-[minmax(0,1fr)]` as well as the cap: a grid row's automatic
         // minimum size is its content, so the wrapper below would grow straight
         // past the max-height and overflow the dialog instead of scrolling
         // inside it. `min-h-0` on the item alone does not relax the TRACK.
-        !selfManaged && "max-h-[calc(100dvh-2rem)] grid-rows-[minmax(0,1fr)]",
+        !selfManaged && "max-h-[85dvh] grid-rows-[minmax(0,1fr)]",
         className
       )}
       onInteractOutside={(event) => {
