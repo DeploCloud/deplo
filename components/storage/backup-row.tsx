@@ -36,6 +36,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { StatusDot } from "@/components/shared/status-badge";
+import { AutoRefresh } from "@/components/shared/auto-refresh";
 import { ConfirmAction } from "@/components/shared/confirm-action";
 import { RestoreRunsDialog } from "@/components/storage/restore-runs-dialog";
 import { DestinationCombobox } from "@/components/storage/destination-combobox";
@@ -75,16 +76,23 @@ export function BackupRow({
   const targetName = isApp ? backup.serviceName : backup.databaseName;
   const targetId = isApp ? backup.appId : backup.databaseId;
 
+  // The mutation resolves at the END of the dump (minutes), so the toast is the
+  // RESULT. What says "it started" is the row itself going `running`, which the
+  // refresh below brings in within seconds and keeps up to date.
+  const [running, setRunning] = React.useState(false);
+  /** In flight from here, or already running (this or another tab, or the
+   *  scheduler) according to the last read of the schedule. */
+  const isRunning = running || backup.lastStatus === "running";
+
   function run() {
-    startTransition(async () => {
-      const res = await gqlAction(
-        `mutation($id: String!) { runBackup(id: $id) }`,
-        { id: backup.id }
-      );
-      if (res.ok) {
-        toast.success("Backup started");
-        router.refresh();
-      } else toast.error(res.error);
+    setRunning(true);
+    void gqlAction(`mutation($id: String!) { runBackup(id: $id) }`, {
+      id: backup.id,
+    }).then((res) => {
+      setRunning(false);
+      if (res.ok) toast.success("Backup finished");
+      else toast.error(res.error);
+      router.refresh();
     });
   }
 
@@ -101,6 +109,9 @@ export function BackupRow({
 
   const row = (
     <TableRow>
+      {/* A dump takes minutes and nothing here changes by itself: re-read the
+          page while this one runs, wherever it was started from. */}
+      <AutoRefresh active={isRunning} />
       <TableCell className="font-medium">{backup.name}</TableCell>
       <TableCell className="text-muted-foreground">
         <span className="flex items-center gap-1.5">
@@ -162,13 +173,18 @@ export function BackupRow({
                 that says so up front. */}
             <SimpleTooltip
               content={
-                canManage
-                  ? "Run this backup now"
-                  : "You don't have permission to run backups"
+                !canManage
+                  ? "You don't have permission to run backups"
+                  : isRunning
+                    ? "This backup is already running"
+                    : "Run this backup now"
               }
               side="left"
             >
-              <DropdownMenuItem onSelect={run} disabled={pending || !canManage}>
+              <DropdownMenuItem
+                onSelect={run}
+                disabled={pending || isRunning || !canManage}
+              >
                 <Play className="size-4" />
                 Run now
               </DropdownMenuItem>

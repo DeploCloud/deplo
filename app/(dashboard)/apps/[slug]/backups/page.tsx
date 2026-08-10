@@ -9,7 +9,6 @@ import {
   listDestinationOptions,
 } from "@/lib/data/destinations";
 import { AppBackups } from "@/components/apps/app-backups";
-import { PendingCreateProvider } from "@/components/shared/pending-create";
 import { EmptyState } from "@/components/shared/empty-state";
 
 export const metadata = { title: "Backups" };
@@ -58,18 +57,17 @@ export default async function AppBackupsPage(
 
   return (
     // "Back up now" used to hold the dialog open for the WHOLE backup — minutes,
-    // for a large volume. It now closes at once and the artifact takes its place
-    // in the table as a pulsing row for as long as the dump really runs.
-    <PendingCreateProvider count={runs.length}>
-      <AppBackups
-        appId={project.id}
-        serviceName={project.name}
-        serverId={project.serverId ?? null}
-        schedules={schedules}
-        runs={runs}
-        destinations={destinations}
-        canTestDestinations={canTestDestinations}
-      />
-    </PendingCreateProvider>
+    // for a large volume. It now closes at once and the run appears here as the
+    // real `running` row the executor records before the dump starts, which the
+    // page re-reads on a timer until it settles.
+    <AppBackups
+      appId={project.id}
+      serviceName={project.name}
+      serverId={project.serverId ?? null}
+      schedules={schedules}
+      runs={runs}
+      destinations={destinations}
+      canTestDestinations={canTestDestinations}
+    />
   );
 }

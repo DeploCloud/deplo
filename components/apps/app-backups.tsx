@@ -48,11 +48,7 @@ import { ConfirmAction } from "@/components/shared/confirm-action";
 import { EmptyState } from "@/components/shared/empty-state";
 import { BackupGraphic } from "@/components/apps/backup-graphic";
 import { formatBytes, timeAgo } from "@/lib/utils";
-import {
-  PendingList,
-  PendingRows,
-  usePendingCreate,
-} from "@/components/shared/pending-create";
+import { AutoRefresh } from "@/components/shared/auto-refresh";
 import { ScheduleLabel } from "@/components/shared/schedule-picker";
 import {
   BackupScheduleFields,
@@ -98,8 +94,23 @@ export function AppBackups({
     [destinations],
   );
 
+  // A dump runs on the host for minutes with nothing on this page changing by
+  // itself. Count what is in flight - the runs the server says are `running`,
+  // plus the ones started from THIS page that have not written their row yet -
+  // and let `AutoRefresh` re-read the page for exactly that long.
+  const [starting, setStarting] = React.useState(0);
+  const track = React.useCallback((p: Promise<unknown>) => {
+    setStarting((n) => n + 1);
+    void p.finally(() => setStarting((n) => n - 1));
+  }, []);
+  const anythingRunning =
+    starting > 0 ||
+    runs.some((r) => r.status === "running") ||
+    schedules.some((s) => s.lastStatus === "running");
+
   return (
     <div className="space-y-8">
+      <AutoRefresh active={anythingRunning} />
       {/* Actions: ad-hoc run + schedule editor */}
       <section className="space-y-4">
         <div className="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
@@ -117,6 +128,7 @@ export function AppBackups({
               destinations={destinations}
               serverId={serverId}
               canTestDestinations={canTestDestinations}
+              track={track}
             />
             <ScheduleBackup
               appId={appId}
@@ -153,6 +165,7 @@ export function AppBackups({
                     destinations={destinations}
                     serverId={serverId}
                     canTestDestinations={canTestDestinations}
+                    track={track}
                   />
                 ))}
               </TableBody>
@@ -186,16 +199,13 @@ export function AppBackups({
       {/* Artifacts (runs) */}
       <section className="space-y-3">
         <h2 className="text-sm font-medium">Backup artifacts</h2>
-        <PendingList
-          empty={runs.length === 0}
-          emptyState={
-            <EmptyState
-              graphic={<BackupGraphic />}
-              title="No backups yet"
-              description="Run a backup or set up a schedule - completed runs and their restore points appear here."
-            />
-          }
-        >
+        {runs.length === 0 ? (
+          <EmptyState
+            graphic={<BackupGraphic />}
+            title="No backups yet"
+            description="Run a backup or set up a schedule - completed runs and their restore points appear here."
+          />
+        ) : (
           <div className="rounded-xl border border-border">
             <Table>
               <TableHeader>
@@ -219,11 +229,10 @@ export function AppBackups({
                     downloadable={destKind.get(run.destinationId) === "server"}
                   />
                 ))}
-                <PendingRows columns={5} />
               </TableBody>
             </Table>
           </div>
-        </PendingList>
+        )}
       </section>
     </div>
   );
@@ -238,14 +247,17 @@ function BackUpNow({
   destinations,
   serverId,
   canTestDestinations,
+  track,
 }: {
   appId: string;
   destinations: Destination[];
   serverId: string | null;
   canTestDestinations: boolean;
+  /** Keeps the page auto-refreshing until this backup lands. */
+  track: (p: Promise<unknown>) => void;
 }) {
+  const router = useRouter();
   const [open, setOpen] = React.useState(false);
-  const { create } = usePendingCreate();
   const [destinationId, setDestinationId] = React.useState(
     destinations[0]?.id ?? "",
   );
@@ -257,24 +269,25 @@ function BackUpNow({
   }
 
   function submit() {
-    // The mutation runs the WHOLE dump — it resolves only once the archive is on
-    // S3. So the dialog closes now and the artifact holds its place in the table
-    // as a pulsing row for exactly as long as the backup really takes.
-    const dest = destinations.find((d) => d.id === destinationId);
+    // The mutation runs the WHOLE dump - it resolves only once the archive is
+    // written. So the dialog closes now and the artifact shows up in the table
+    // as a real `running` row (the executor records it before it starts), which
+    // the page's AutoRefresh brings in within seconds and updates in place.
     setOpen(false);
-    create(
-      { label: dest?.name ?? "Backup", note: "Backing up" },
-      () =>
-        gqlAction(
-          `mutation($appId: String!, $destinationId: String!) {
+    track(
+      gqlAction(
+        `mutation($appId: String!, $destinationId: String!) {
           runAppBackup(appId: $appId, destinationId: $destinationId)
         }`,
-          { appId, destinationId },
-        ),
-      {
-        success: "Backup finished",
-        onError: () => setOpen(true),
-      },
+        { appId, destinationId },
+      ).then((res) => {
+        if (res.ok) toast.success("Backup finished");
+        else {
+          toast.error(res.error);
+          setOpen(true);
+        }
+        router.refresh();
+      }),
     );
   }
 
@@ -635,11 +648,14 @@ function ScheduleRow({
   destinations,
   serverId,
   canTestDestinations,
+  track,
 }: {
   schedule: BackupDTO;
   destinations: Destination[];
   serverId: string | null;
   canTestDestinations: boolean;
+  /** Keeps the page auto-refreshing until this run lands. */
+  track: (p: Promise<unknown>) => void;
 }) {
   const router = useRouter();
   const [pending, startTransition] = React.useTransition();
@@ -647,16 +663,18 @@ function ScheduleRow({
   const [editOpen, setEditOpen] = React.useState(false);
 
   function run() {
-    startTransition(async () => {
-      const res = await gqlAction(
-        `mutation($id: String!) { runBackup(id: $id) }`,
-        { id: schedule.id },
-      );
-      if (res.ok) {
-        toast.success("Backup started");
+    // Resolves at the END of the dump, so the toast is the RESULT - the row goes
+    // `running` on its own within a tick of AutoRefresh, which is the feedback
+    // that the backup started.
+    track(
+      gqlAction(`mutation($id: String!) { runBackup(id: $id) }`, {
+        id: schedule.id,
+      }).then((res) => {
+        if (res.ok) toast.success("Backup finished");
+        else toast.error(res.error);
         router.refresh();
-      } else toast.error(res.error);
-    });
+      }),
+    );
   }
 
   function toggle(enabled: boolean) {
@@ -701,12 +719,21 @@ function ScheduleRow({
       </TableCell>
       <TableCell className="text-right">
         <div className="flex items-center justify-end gap-1">
-          <SimpleTooltip content="Run this backup now">
+          <SimpleTooltip
+            content={
+              schedule.lastStatus === "running"
+                ? "This backup is already running"
+                : "Run this backup now"
+            }
+          >
             <Button
               variant="ghost"
               size="icon-sm"
               onClick={run}
-              disabled={pending}
+              // A run in flight - started here, from Storage, or by the
+              // scheduler - is visible in the row, so the button says so
+              // instead of letting a second dump start on top of it.
+              disabled={pending || schedule.lastStatus === "running"}
               aria-label="Run backup now"
             >
               <Play className="size-4" />
