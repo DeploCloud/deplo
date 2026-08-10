@@ -1,6 +1,6 @@
 import "server-only";
 
-import { mkdtemp, mkdir, rm } from "node:fs/promises";
+import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import yaml from "js-yaml";
@@ -35,7 +35,6 @@ import {
   finalizeDeploymentLogs,
 } from "../data/deployment-logs";
 import { deploymentToRow } from "../data/app-graph-rows";
-import { ensureNetwork } from "../infra/docker";
 import { extractArchive } from "./upload";
 import {
   detectTreeFavicon,
@@ -1388,8 +1387,19 @@ async function runDeployment(depId: string): Promise<void> {
   await setDeployState(target, { status: "building" });
 
   try {
-    await mkdir(STACK_DIR, { recursive: true });
-    await ensureNetwork("deplo");
+    // Nothing host-local happens here any more, and that is the point: this was
+    // the LAST live line in the control plane that reached a Docker socket
+    // (ADR-0006 says there should be none). It was also redundant — the agent
+    // opens every deploy with `dockercli.EnsureNetwork(ctx, "deplo")` on the host
+    // that actually runs the stack (deplo-agent internal/server/deploy.go), which
+    // is the only host where the network has to exist. The `mkdir(STACK_DIR)`
+    // beside it was vestigial too: STACK_DIR is only ever used here to COMPUTE
+    // paths (`<STACK_DIR>/files/<key>`) that are rendered into compose YAML and
+    // resolved on the agent's filesystem, never written to on this side.
+    //
+    // Keeping either one cost the control-plane container a read-write
+    // `/var/run/docker.sock` mount, which is root on the host for a process that
+    // also serves the public panel. Deleting them is what lets install.sh drop it.
 
     // The agent now runs EVERY build method (Dockerfile family + the heavy
     // builders static/nixpacks/buildpacks/railpack, ported to deplo-agent). The

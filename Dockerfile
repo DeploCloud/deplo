@@ -17,6 +17,17 @@ WORKDIR /app
 COPY --from=deps /app/node_modules ./node_modules
 COPY . .
 ENV NEXT_TELEMETRY_DISABLED=1
+# Placeholders, builder stage ONLY — they never reach the runtime image below.
+# `next build` collects page data by IMPORTING every route module, and lib/db/pg.ts
+# fail-fasts on a missing DEPLO_DATABASE_URL at module load (deliberately: a real
+# run with no database is a misconfiguration, not a silent fall-through). That
+# import is enough to abort the build with "Failed to collect page data for
+# /api/auth/[...all]", which is what has kept every image build since v1.0.0 red.
+# Nothing connects during a build — `pg.Pool` is lazy and `getPool()` is only
+# reached by a query — so a syntactically valid URL satisfies the check and the
+# real values arrive as environment variables at run time.
+ENV DEPLO_DATABASE_URL=postgres://build:build@127.0.0.1:5432/build
+ENV DEPLO_SECRET=build-time-placeholder-not-a-real-secret
 RUN bun run build
 
 # --- Runtime: minimal standalone server ---
@@ -28,10 +39,15 @@ ENV PORT=3000
 ENV HOSTNAME=0.0.0.0
 ENV DEPLO_DATA_DIR=/data
 
-# Real infrastructure tooling: the control plane shells out to these to clone
-# repos, build images and orchestrate containers over the mounted Docker socket.
-# tar/unzip extract uploaded code archives (the "upload" deploy source).
-RUN apk add --no-cache docker-cli docker-cli-compose git curl bash tar unzip
+# git/curl/bash clone repos and fetch releases; tar/unzip extract uploaded code
+# archives (the "upload" deploy source).
+#
+# NO docker-cli / docker-cli-compose any more. They were here to drive a mounted
+# /var/run/docker.sock, and that mount is gone (ADR-0006: everything host-coupled
+# goes to the server agent over mTLS gRPC, on this host as much as any other).
+# Shipping the client without the socket would leave a root-capable tool sitting
+# in an internet-facing container for no one to use but an attacker.
+RUN apk add --no-cache git curl bash tar unzip
 
 # node-pty is a native module with NO linux prebuild, so it must be compiled
 # from source against THIS runtime (Node 22 + musl). The app build runs under
@@ -67,8 +83,16 @@ RUN rm -rf ./node_modules/node-pty \
  && node -e "require('node-pty'); console.log('node-pty native loads OK')" \
  && rm -rf /pty-build
 
-# Runs as root: the control plane needs access to the mounted Docker socket to
-# build images and orchestrate containers on the host.
+# npm is a BUILD-time tool here (it compiled node-pty above); the server itself
+# is `node server.js` and never shells out to it. Left installed it contributes
+# its own bundled dependency tree to this image's vulnerability surface - as of
+# node:22-alpine that is tar (critical), sigstore, ip-address and picomatch, none
+# of which belong to Deplo and none of which anything here loads.
+RUN rm -rf /usr/local/lib/node_modules/npm /usr/local/bin/npm /usr/local/bin/npx
+
+# Still runs as root. It no longer holds a Docker socket, so the original reason
+# is gone; the `deplo` user above is created and ready, but switching to it needs
+# a migration for the /data files existing installs already own as root.
 EXPOSE 3000
 VOLUME ["/data"]
 CMD ["node", "server.js"]

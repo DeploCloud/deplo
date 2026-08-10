@@ -291,8 +291,11 @@ services:
     image: traefik:v3.7
     container_name: deplo-traefik
     restart: unless-stopped
+    depends_on:
+      - deplo-socket-proxy
     command:
       - --providers.docker=true
+      - --providers.docker.endpoint=tcp://deplo-socket-proxy:2375
       - --providers.docker.exposedbydefault=false
       - --providers.docker.network=deplo
 $TRAEFIK_FILE_PROVIDER
@@ -316,15 +319,40 @@ $TRAEFIK_FILE_PROVIDER
       - "80:80"
       - "443:443"
     volumes:
-      - /var/run/docker.sock:/var/run/docker.sock:ro
       - /opt/deplo/acme:/acme
     networks:
       - deplo
+      - deplo-socket
 $TRAEFIK_CONFIG_MOUNT
+  # Traefik reads the container labels it routes on THROUGH this, instead of
+  # holding /var/run/docker.sock itself. A \`:ro\` mount would not have helped:
+  # read-only is about the socket FILE, while the API behind it stays complete,
+  # so any code execution inside the internet-facing proxy is root on the host.
+  # This filter is the actual boundary - GET-only (POST=0), and only the four
+  # endpoints the docker provider reads.
+  deplo-socket-proxy:
+    image: tecnativa/docker-socket-proxy:v0.5.0
+    restart: unless-stopped
+    environment:
+      - CONTAINERS=1
+      - NETWORKS=1
+      - EVENTS=1
+      - VERSION=1
+      - POST=0
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    networks:
+      - deplo-socket
 $TRAEFIK_PANEL_CONFIG
 networks:
   deplo:
     external: true
+  # NOT the shared \`deplo\` network: every deployed app sits on that one, and a
+  # socket proxy reachable from them would let any app enumerate every other
+  # team's containers - environment variables included. Traefik straddles both;
+  # this leg is internal (no route off the host) and holds only these two.
+  deplo-socket:
+    internal: true
 YAML
 # Blank lines from an empty block above are harmless YAML, but strip them so the
 # file an operator opens on the host reads like one somebody wrote.
@@ -384,8 +412,13 @@ services:
       - DEPLO_SERVER_IP=$SERVER_IP
       - DEPLO_DATABASE_URL=postgres://deplo:\${DEPLO_DB_PASSWORD}@postgres:5432/deplo
       - DEPLO_ACME_EMAIL=\${ACME_EMAIL}
+    # NO docker.sock. The panel is the one container on this host reachable from
+    # the internet, and a socket mount is root on the box for whoever reaches it -
+    # so ADR-0006's "the control plane never touches a Docker socket" has to hold
+    # here in the compose file, not just in the code. Everything host-coupled goes
+    # over mTLS gRPC to the server agent, including on THIS host (agent 0), which
+    # runs as its own systemd unit outside this stack.
     volumes:
-      - /var/run/docker.sock:/var/run/docker.sock
       - /opt/deplo/data:/data
     networks:
       - deplo
