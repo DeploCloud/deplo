@@ -3,7 +3,7 @@
 import * as React from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
-import { Plus } from "lucide-react";
+import { Loader2, Plus } from "lucide-react";
 import {
   Dialog,
   DialogContent,
@@ -29,7 +29,10 @@ import {
   TooltipContent,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
-import { SchedulePicker } from "@/components/shared/schedule-picker";
+import {
+  BackupScheduleFields,
+  browserTimezone,
+} from "@/components/storage/backup-schedule-fields";
 import { DestinationCombobox } from "@/components/storage/destination-combobox";
 import { gqlAction } from "@/lib/graphql-client";
 import { DEFAULT_SCHEDULE, isValidSchedule } from "@/lib/schedule";
@@ -42,6 +45,7 @@ export function CreateBackup({
   services = [],
   destinations,
   canCreate = true,
+  canTestDestinations = false,
   autoOpen = false,
 }: {
   /** `serverId` is only used to flag a destination sitting on the target's own
@@ -54,6 +58,10 @@ export function CreateBackup({
    *  dialog. Defaults to true for the per-app and per-database backup tabs,
    *  whose pages already refuse the whole surface without the capability. */
   canCreate?: boolean;
+  /** Whether this user may run the destination picker's live probe
+   *  (`manage_backup_destinations`). Without it the picker shows the stored
+   *  badges instead of firing a mutation the server would refuse. */
+  canTestDestinations?: boolean;
   /** Open on mount — used by the global "New ▸ Schedule backup" menu
    *  (which links to /storage?new=backup). */
   autoOpen?: boolean;
@@ -85,6 +93,7 @@ export function CreateBackup({
     destinations[0]?.id ?? ""
   );
   const [schedule, setSchedule] = React.useState(DEFAULT_SCHEDULE);
+  const [timezone, setTimezone] = React.useState(browserTimezone);
   const [retention, setRetention] = React.useState(14);
 
   const noDeps = destinations.length === 0;
@@ -120,6 +129,7 @@ export function CreateBackup({
             appId: targetKind === "app" ? appId || null : null,
             destinationId,
             schedule,
+            timezone,
             retentionDays: retention,
           },
         }
@@ -250,7 +260,7 @@ export function CreateBackup({
               <div className="space-y-2">
                 <FieldLabel
                   htmlFor="new-backup-destination"
-                  info="Where backup archives are written and kept. Opening the list re-checks every destination, so the status you see is live."
+                  info="Where backup archives are written and kept. Each one shows whether Deplo could reach it."
                 >
                   Destination
                 </FieldLabel>
@@ -261,31 +271,18 @@ export function CreateBackup({
                   onChange={setDestinationId}
                   sameDiskServerId={targetServerId}
                   sameDiskNoun={targetKind === "database" ? "database" : "app"}
+                  canProbe={canTestDestinations}
                 />
               </div>
             </div>
-            <SchedulePicker
-              id="new-backup-schedule"
-              value={schedule}
-              onChange={setSchedule}
-              info="How often this backup runs. Pick a frequency — the details it needs appear next to it. Writing a cron expression by hand is the last option in the list."
-              trailing={
-                <div className="space-y-2">
-                  <FieldLabel
-                    htmlFor="new-backup-retention"
-                    info="Number of days to keep each backup before it is automatically deleted."
-                  >
-                    Retention (days)
-                  </FieldLabel>
-                  <Input
-                    id="new-backup-retention"
-                    type="number"
-                    value={retention}
-                    onChange={(e) => setRetention(Number(e.target.value) || 7)}
-                    min={1}
-                  />
-                </div>
-              }
+            <BackupScheduleFields
+              idPrefix="new-backup"
+              schedule={schedule}
+              onScheduleChange={setSchedule}
+              timezone={timezone}
+              onTimezoneChange={setTimezone}
+              retention={retention}
+              onRetentionChange={setRetention}
             />
           </div>
           <DialogFooter>
@@ -302,7 +299,7 @@ export function CreateBackup({
                 !isValidSchedule(schedule)
               }
             >
-              {pending ? "Creating…" : "Create schedule"}
+              {pending ? <Loader2 className="size-4 animate-spin" /> : "Create schedule"}
             </Button>
           </DialogFooter>
         </form>

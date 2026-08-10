@@ -144,3 +144,51 @@ test("a malformed cron in a schedule never fires and never throws", async () => 
 
   assert.equal((await runsFor("bkp_1")).length, 0);
 });
+
+/* ------------------------------------------------------------------ */
+/* A schedule fires on ITS clock, not on UTC                            */
+/* ------------------------------------------------------------------ */
+
+test("a schedule fires on its own timezone's clock", async () => {
+  // "Nightly at 03:00" used to mean 03:00 UTC whatever the team's clock said,
+  // which in Rome is 04:00 for half the year and 05:00 for the other half —
+  // with nothing above the field admitting it.
+  await seedDue("rome", { schedule: "0 3 * * *", timezone: "Europe/Rome" });
+
+  // 03:00 UTC is 05:00 in Rome in summer: not this schedule's hour.
+  await tick(new Date("2026-06-23T03:00:00Z"));
+  assert.equal((await runsFor("rome")).length, 0, "03:00 UTC is not 03:00 in Rome");
+
+  // 01:00 UTC is 03:00 in Rome, which is.
+  await tick(new Date("2026-06-23T01:00:00Z"));
+  assert.equal((await runsFor("rome")).length, 1, "fired on Rome's own clock");
+});
+
+test("a schedule with an unusable timezone is skipped, not fatal", async () => {
+  // A row that got past validation must not take the instance's other backups
+  // down with it — the same containment the cron runner has.
+  await seedDue("broken", { timezone: "Mars/Olympus" });
+  await seedDue("fine");
+
+  await tick(NOW);
+
+  assert.equal((await runsFor("broken")).length, 0, "the bad row is skipped");
+  assert.equal((await runsFor("fine")).length, 1, "the good one still fires");
+});
+
+test("a daily schedule fires ONCE across a repeated wall-clock hour", async () => {
+  // Fall back replays 02:00-03:00 local, so a daily 02:30 matches at two separate
+  // instants. Keyed on the instant it would fire twice; keyed on the wall clock
+  // it fires once, which is what "every day at 02:30" means. Europe/Rome moved
+  // its clocks back on 2026-10-25.
+  await seedDue("nightly", { schedule: "30 2 * * *", timezone: "Europe/Rome" });
+
+  await tick(new Date("2026-10-25T00:30:00Z")); // 02:30 CEST
+  await tick(new Date("2026-10-25T01:30:00Z")); // 02:30 CET — the same wall clock
+
+  assert.equal(
+    (await runsFor("nightly")).length,
+    1,
+    "one nightly backup, not two, across the repeated hour",
+  );
+});

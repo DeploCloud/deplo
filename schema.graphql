@@ -442,6 +442,9 @@ type Backup {
   serviceName: String
   targetKind: BackupTargetKind
   teamId: ID
+
+  """IANA zone the cron is read in. UTC for older schedules."""
+  timezone: String
 }
 
 """
@@ -449,8 +452,18 @@ Where a team's backup artifacts are kept: an S3-compatible bucket, or a director
 """
 type BackupDestination {
   accessKeyMasked: String
+
+  """
+  Whether this bucket is allowed to live on a private address. Instance-admin only to set.
+  """
+  allowPrivateEndpoint: Boolean
   bucket: String
   createdAt: String
+
+  """
+  Whether artifacts written here are encrypted. Always true for a server destination, and for any bucket connected since bucket artifacts started being encrypted.
+  """
+  encrypted: Boolean
   endpoint: String
   freeBytes: Float
   id: ID
@@ -472,6 +485,18 @@ type BackupDestination {
 }
 
 """
+A backup destination as a picker shows it. No credentials, no test history: readable by anyone who may schedule or run a backup, including a member scoped to one folder.
+"""
+type BackupDestinationOption {
+  id: ID
+  kind: DestinationKind
+  name: String
+  serverId: ID
+  status: DestinationStatus
+  where: String
+}
+
+"""
 One executed backup — a single dump+upload artifact, and the source for an in-place restore.
 """
 type BackupRun {
@@ -485,13 +510,18 @@ type BackupRun {
   finishedAt: String
   id: ID
 
-  """S3 object key of the uploaded artifact."""
+  """Object key of the stored artifact."""
   objectKey: String
   sizeBytes: Float
   startedAt: String
   status: BackupRunStatus
   targetKind: BackupTargetKind
   teamId: ID
+
+  """
+  Whether Deplo recorded a checksum when it wrote this artifact, and can therefore prove on restore that the file has not been replaced. False for runs taken before integrity checking shipped.
+  """
+  verified: Boolean
 }
 
 enum BackupRunStatus {
@@ -771,6 +801,7 @@ input CreateBackupInput {
   retentionDays: Int!
   schedule: String!
   targetKind: BackupTargetKind
+  timezone: String
 }
 
 input CreateDatabaseInput {
@@ -787,6 +818,7 @@ input CreateDatabaseInput {
 
 input CreateDestinationInput {
   accessKey: String
+  allowPrivateEndpoint: Boolean
   bucket: String
   endpoint: String
   kind: DestinationKind!
@@ -1181,6 +1213,15 @@ enum DeploymentStatus {
 enum DestinationKind {
   s3
   server
+}
+
+"""
+What deleting this destination takes with it: the schedules that point at it, the run history, and how many stored backup files it holds.
+"""
+type DestinationRemovalImpact {
+  artifacts: Int
+  runs: Int
+  schedules: Int
 }
 
 enum DestinationStatus {
@@ -1979,7 +2020,7 @@ type Mutation {
   deleteBackup(id: String!): Boolean
 
   """
-  Delete ALL of a target's S3 backup artifacts (across every destination it ran to) plus their run records. The 'also delete backups' branch of deleting a database or project. Returns the number of objects removed. Throws if any destination's sweep failed (so the caller can abort the target deletion rather than orphan bucket objects).
+  Delete ALL of a target's backup artifacts (across every destination it ran to) plus their run records. The 'also delete backups' branch of deleting a database or an app. Returns the number removed. Throws if any destination's sweep failed, so the caller can abort the target deletion rather than orphan the files.
   """
   deleteBackupArtifacts(targetId: String!, targetKind: BackupTargetKind!): Int
 
@@ -1997,9 +2038,9 @@ type Mutation {
   deleteDeployments(ids: [ID!]!): Int
 
   """
-  Delete the destination and the schedules and run records that point at it. The artifacts themselves are not touched. Returns true.
+  Delete the destination, and with it every schedule and run record that points at it. With `deleteArtifacts`, the stored backup files go too - otherwise they stay where they are, which for a server destination means on that disk with nothing left in Deplo that can name them. Returns true.
   """
-  deleteDestination(id: String!): Boolean
+  deleteDestination(deleteArtifacts: Boolean, id: String!): Boolean
 
   """Delete an env var. Returns true."""
   deleteEnv(id: String!): Boolean
@@ -2796,9 +2837,14 @@ type Query {
   apps: [App!]
 
   """
-  How many stored backup artifacts (successful runs) one target has in S3. 0 means there is nothing to sweep — the delete dialog hides its 'also delete backup artifacts' option in that case.
+  How many stored backup artifacts (successful runs) one target has. 0 means there is nothing to sweep — the delete dialog hides its 'also delete backup artifacts' option in that case.
   """
   backupArtifactCount(targetId: String!, targetKind: BackupTargetKind!): Int
+
+  """
+  The team's backup destinations as a picker needs them, newest first. Unlike `backupDestinations` this is readable by a member scoped to part of the team: they may hold `manage_backups` on an app and still need somewhere to send its backups.
+  """
+  backupDestinationOptions: [BackupDestinationOption!]
 
   """All backup destinations in the active team, newest first."""
   backupDestinations: [BackupDestination!]
@@ -2861,6 +2907,11 @@ type Query {
   deleteUserImpact(userId: String!): DeleteUserImpact
   deployment(id: String!): Deployment
   deployments(appId: String, environment: DeploymentEnvironment, status: DeploymentStatus): [Deployment!]
+
+  """
+  What deleting this destination would destroy. Read by the confirm dialog, so it can name the schedules and restore points instead of saying backups will 'stop running'.
+  """
+  destinationRemovalImpact(id: String!): DestinationRemovalImpact
 
   """
   The STORED result of this destination's last connection test — reading it never re-dials. `never` is true until the first test.
@@ -3853,6 +3904,7 @@ input UpdateBackupInput {
   name: String!
   retentionDays: Int!
   schedule: String!
+  timezone: String
 }
 
 input UpdateDatabaseImageInput {

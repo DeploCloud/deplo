@@ -50,6 +50,15 @@ export interface BackupOutcome {
   error: string;
   objectKey: string;
   sizeBytes: number;
+  /**
+   * Hex sha256 of the artifact as written. Recorded on the run and re-checked
+   * before a restore ever acts on those bytes, because an artifact is not
+   * trusted input: a bucket object can be replaced by anyone with write access,
+   * and a store artifact can be forged by a compromised storage host (age proves
+   * confidentiality, not authorship - the recipient is a public key that host is
+   * handed on every backup). Empty when an older agent reported none.
+   */
+  sha256: string;
 }
 
 /**
@@ -99,6 +108,11 @@ export async function backupToDestination(
   if (dest.kind === "s3" || destServer === target.serverId) {
     const conn = await connectBackupAgent(target.serverId, {
       store: dest.kind === "server",
+      // An encrypted BUCKET destination needs an agent that honours the
+      // recipient. One that does not would ignore it and write the archive - the
+      // app's whole decrypted env inside it - to the bucket in the clear, under a
+      // key ending `.age`. Refusing is the only safe answer to that.
+      encryptedS3: dest.kind === "s3" && !!dest.ageRecipient,
     });
     try {
       return await consumeBackup(conn, req, objectKey);
@@ -125,6 +139,7 @@ async function consumeBackup(
         error: ev.result.error,
         objectKey: ev.result.objectKey || objectKey,
         sizeBytes: Number(ev.result.sizeBytes ?? 0),
+        sha256: ev.result.sha256 ?? "",
       };
     }
   }
@@ -134,8 +149,34 @@ async function consumeBackup(
       error: "the agent ended the backup without a result",
       objectKey,
       sizeBytes: 0,
+      sha256: "",
     }
   );
+}
+
+/**
+ * Why the two halves of a relay disagree, or "" when they don't.
+ *
+ * The digest is the real check and the byte count is the fallback: an agent from
+ * before integrity checking reports no digest, and refusing its backups outright
+ * would break a fleet mid-rollout for no gain, so a size match is still accepted
+ * there. The message names which check ran, because "your backup is corrupt" and
+ * "your backup is short" send an operator to different places.
+ */
+function digestMismatch(
+  produced: BackupOutcome,
+  landed: { bytesWritten: number; sha256: string },
+): string {
+  if (produced.sha256 && landed.sha256) {
+    return produced.sha256.toLowerCase() === landed.sha256.toLowerCase()
+      ? ""
+      : `The backup arrived corrupted: what the source produced does not match ` +
+          `what the destination server stored. Nothing was kept.`;
+  }
+  return landed.bytesWritten === produced.sizeBytes
+    ? ""
+    : `The backup arrived incomplete: ${produced.sizeBytes} bytes were sent ` +
+        `but ${landed.bytesWritten} landed.`;
 }
 
 async function relayBackup(
@@ -183,6 +224,7 @@ async function relayBackup(
             error: ev.result.error,
             objectKey,
             sizeBytes: Number(ev.result.sizeBytes ?? 0),
+            sha256: ev.result.sha256 ?? "",
           };
           if (!ev.result.ok) throw new RelayAborted();
           continue;
@@ -205,6 +247,7 @@ async function relayBackup(
           error: "the agent ended the backup without a result",
           objectKey,
           sizeBytes: 0,
+          sha256: "",
         }
       );
     }
@@ -216,6 +259,7 @@ async function relayBackup(
         error: "the agent ended the backup without a result",
         objectKey,
         sizeBytes: 0,
+        sha256: "",
       };
     }
     if (!produced.ok) return produced;
@@ -225,34 +269,39 @@ async function relayBackup(
         error: landed.error || "the destination server rejected the backup",
         objectKey,
         sizeBytes: 0,
+        sha256: "",
       };
     }
-    // Both halves must agree. They can only differ if bytes were lost in the
-    // relay, and a backup that is quietly short is worse than one that failed.
-    //
-    // Unlike every other failure above, THIS one has already committed a file:
-    // the destination wrote what it received and renamed it onto the real key.
-    // Remove it here, because nothing downstream will — retention only deletes
-    // artifacts of SUCCESSFUL runs, and the sweep only sees `.partial` files.
-    if (landed.bytesWritten !== produced.sizeBytes) {
+    // Both halves must agree, and the CONTENT is what has to agree — not just how
+    // much of it there was. Both agents hash what they handled precisely so this
+    // comparison can be made; comparing byte counts alone was the check the
+    // protocol was designed for and the one that never got written, and a count
+    // survives every way an artifact can arrive wrong except the shortest one.
+    const mismatch = digestMismatch(produced, landed);
+    if (mismatch) {
+      // Unlike every other failure above, THIS one has already committed a file:
+      // the destination wrote what it received and renamed it onto the real key.
+      // Remove it here, because nothing downstream will — retention only deletes
+      // artifacts of SUCCESSFUL runs, and the sweep only sees `.partial` files.
       try {
         await sink.storeDelete(storeTargetFor(dest, objectKey));
       } catch (e) {
         console.warn(
-          `[backups] short artifact ${objectKey} could not be removed: ` +
+          `[backups] corrupt artifact ${objectKey} could not be removed: ` +
             `${e instanceof Error ? e.message : String(e)}`,
         );
       }
-      return {
-        ok: false,
-        error:
-          `The backup arrived incomplete: ${produced.sizeBytes} bytes were sent ` +
-          `but ${landed.bytesWritten} landed.`,
-        objectKey,
-        sizeBytes: 0,
-      };
+      return { ok: false, error: mismatch, objectKey, sizeBytes: 0, sha256: "" };
     }
-    return { ok: true, error: "", objectKey, sizeBytes: landed.bytesWritten };
+    return {
+      ok: true,
+      error: "",
+      objectKey,
+      sizeBytes: landed.bytesWritten,
+      // The DESTINATION's digest is the one recorded: it is what that disk
+      // actually fsynced, and it is what a later restore reads back.
+      sha256: landed.sha256 || produced.sha256,
+    };
   } finally {
     sink?.close();
     src.close();
@@ -271,6 +320,11 @@ export async function restoreFromDestination(
   creds: DestinationWithSecrets,
   target: TransportTarget,
   objectKey: string,
+  /** The digest recorded when this artifact was written. The agent refuses an
+   *  artifact that no longer hashes to it. Empty for a run taken before
+   *  integrity checking shipped, which skips the check rather than making every
+   *  existing restore point unusable. */
+  expectedSha256 = "",
 ): Promise<{ ok: boolean; error: string }> {
   const dest = creds.destination;
   const destServer = destinationServerId(dest, target.serverId);
@@ -282,10 +336,17 @@ export async function restoreFromDestination(
       project: target.project,
       s3: dest.kind === "s3" ? s3TargetFor(creds, objectKey) : undefined,
       store: dest.kind === "server" ? storeTargetFor(dest, objectKey) : undefined,
-      ageIdentity: dest.kind === "server" ? creds.ageIdentity : "",
+      // The identity travels on BOTH kinds now that a bucket artifact is
+      // encrypted too. Empty on a destination created before that, whose objects
+      // are plaintext — the agent then skips the age layer.
+      ageIdentity: creds.ageIdentity,
+      expectedSha256,
     };
     const conn = await connectBackupAgent(target.serverId, {
       store: dest.kind === "server",
+      // Same gate on the way back: an agent that ignores the identity would feed
+      // ciphertext to gunzip and report something about a corrupt archive.
+      encryptedS3: dest.kind === "s3" && !!dest.ageRecipient,
     });
     try {
       return await consumeRestore(conn.restore(req));
@@ -309,6 +370,7 @@ export async function restoreFromDestination(
           database: target.database,
           project: target.project,
           ageIdentity: creds.ageIdentity,
+          expectedSha256,
         },
         bytes,
       ),
@@ -405,13 +467,20 @@ export async function deleteManyFromDestination(
 export async function openArtifactDownload(
   creds: DestinationWithSecrets,
   objectKey: string,
+  /** The digest recorded for this artifact. The agent hashes the file before it
+   *  streams a byte, so a replaced file is refused rather than handed over. */
+  expectedSha256 = "",
 ): Promise<{ chunks: AsyncGenerator<Buffer, void, unknown>; close: () => void }> {
   const dest = creds.destination;
   if (dest.kind !== "server" || !dest.serverId)
     throw new Error("Only backups stored on a server can be downloaded");
   const conn = await connectBackupAgent(dest.serverId, { store: true });
   return {
-    chunks: conn.readStoreFile(storeTargetFor(dest, objectKey), creds.ageIdentity),
+    chunks: conn.readStoreFile(
+      storeTargetFor(dest, objectKey),
+      creds.ageIdentity,
+      expectedSha256,
+    ),
     close: () => conn.close(),
   };
 }

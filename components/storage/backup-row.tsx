@@ -39,10 +39,8 @@ import { StatusDot } from "@/components/shared/status-badge";
 import { ConfirmAction } from "@/components/shared/confirm-action";
 import { RestoreRunsDialog } from "@/components/storage/restore-runs-dialog";
 import { DestinationCombobox } from "@/components/storage/destination-combobox";
-import {
-  ScheduleLabel,
-  SchedulePicker,
-} from "@/components/shared/schedule-picker";
+import { ScheduleLabel } from "@/components/shared/schedule-picker";
+import { BackupScheduleFields } from "@/components/storage/backup-schedule-fields";
 import { timeAgo } from "@/lib/utils";
 import { gqlAction } from "@/lib/graphql-client";
 import { isValidSchedule } from "@/lib/schedule";
@@ -54,9 +52,18 @@ type Destination = DestinationOption;
 export function BackupRow({
   backup,
   destinations,
+  canManage,
+  canRestore,
+  canTestDestinations,
 }: {
   backup: BackupDTO;
   destinations: Destination[];
+  /** `manage_backups`. Gates run / edit / delete and the enable switch. */
+  canManage: boolean;
+  /** `restore_backups`. Restore is the destructive one and has its own. */
+  canRestore: boolean;
+  /** `manage_backup_destinations`, for the picker's live probe. */
+  canTestDestinations: boolean;
 }) {
   const router = useRouter();
   const [pending, startTransition] = React.useTransition();
@@ -109,7 +116,7 @@ export function BackupRow({
         {backup.destinationName}
       </TableCell>
       <TableCell>
-        <ScheduleLabel cron={backup.schedule} />
+        <ScheduleLabel cron={backup.schedule} timezone={backup.timezone} />
       </TableCell>
       <TableCell className="text-muted-foreground">
         {backup.retentionDays}d
@@ -133,7 +140,7 @@ export function BackupRow({
         <Switch
           checked={backup.enabled}
           onCheckedChange={toggle}
-          disabled={pending}
+          disabled={pending || !canManage}
         />
       </TableCell>
       <TableCell className="text-right">
@@ -147,28 +154,69 @@ export function BackupRow({
             {/* Each item carries a native `title` (via tooltip) so hovering it
                 explains what it does. "Run now" is disabled while a mutation is
                 in flight; delete confirms before removing. */}
-            <SimpleTooltip content="Run this backup now" side="left">
-              <DropdownMenuItem onSelect={run} disabled={pending}>
+            {/* Disabled rather than hidden, with the reason in the tooltip: a
+                member who cannot act should still see that the action exists and
+                learn which permission to ask for. The server refuses either
+                way - these are cosmetic, like every other capability check in
+                the UI - but an action that only fails on click is worse than one
+                that says so up front. */}
+            <SimpleTooltip
+              content={
+                canManage
+                  ? "Run this backup now"
+                  : "You don't have permission to run backups"
+              }
+              side="left"
+            >
+              <DropdownMenuItem onSelect={run} disabled={pending || !canManage}>
                 <Play className="size-4" />
                 Run now
               </DropdownMenuItem>
             </SimpleTooltip>
-            <SimpleTooltip content="Edit this backup schedule" side="left">
-              <DropdownMenuItem onSelect={() => setEditOpen(true)}>
+            <SimpleTooltip
+              content={
+                canManage
+                  ? "Edit this backup schedule"
+                  : "You don't have permission to edit backup schedules"
+              }
+              side="left"
+            >
+              <DropdownMenuItem
+                disabled={!canManage}
+                onSelect={() => setEditOpen(true)}
+              >
                 <Pencil className="size-4" />
-                Edit…
+                Edit
               </DropdownMenuItem>
             </SimpleTooltip>
-            <SimpleTooltip content="Restore from a recent backup" side="left">
-              <DropdownMenuItem onSelect={() => setRestoreOpen(true)}>
+            <SimpleTooltip
+              content={
+                canRestore
+                  ? "Restore from a recent backup"
+                  : "You don't have permission to restore backups"
+              }
+              side="left"
+            >
+              <DropdownMenuItem
+                disabled={!canRestore}
+                onSelect={() => setRestoreOpen(true)}
+              >
                 <RotateCcw className="size-4" />
-                Restore…
+                Restore
               </DropdownMenuItem>
             </SimpleTooltip>
             <DropdownMenuSeparator />
-            <SimpleTooltip content="Delete this backup schedule" side="left">
+            <SimpleTooltip
+              content={
+                canManage
+                  ? "Delete this backup schedule"
+                  : "You don't have permission to delete backup schedules"
+              }
+              side="left"
+            >
               <DropdownMenuItem
                 variant="destructive"
+                disabled={!canManage}
                 onSelect={() => setConfirmOpen(true)}
               >
                 <Trash2 className="size-4" />
@@ -209,6 +257,7 @@ export function BackupRow({
           key={editOpen ? "edit-open" : "edit-closed"}
           backup={backup}
           destinations={destinations}
+          canTestDestinations={canTestDestinations}
           open={editOpen}
           onOpenChange={setEditOpen}
         />
@@ -229,11 +278,13 @@ export function BackupRow({
 function EditBackupDialog({
   backup,
   destinations,
+  canTestDestinations,
   open,
   onOpenChange,
 }: {
   backup: BackupDTO;
   destinations: Destination[];
+  canTestDestinations: boolean;
   open: boolean;
   onOpenChange: (open: boolean) => void;
 }) {
@@ -245,6 +296,7 @@ function EditBackupDialog({
   const [name, setName] = React.useState(backup.name);
   const [destinationId, setDestinationId] = React.useState(backup.destinationId);
   const [schedule, setSchedule] = React.useState(backup.schedule);
+  const [timezone, setTimezone] = React.useState(backup.timezone || "UTC");
   const [retention, setRetention] = React.useState(backup.retentionDays);
 
   function onSubmit(e: React.FormEvent) {
@@ -258,7 +310,7 @@ function EditBackupDialog({
         `mutation($id: String!, $input: UpdateBackupInput!) { updateBackup(id: $id, input: $input) }`,
         {
           id: backup.id,
-          input: { name, destinationId, schedule, retentionDays: retention },
+          input: { name, destinationId, schedule, timezone, retentionDays: retention },
         }
       );
       if (res.ok) {
@@ -296,7 +348,7 @@ function EditBackupDialog({
             <div className="space-y-2">
               <FieldLabel
                 htmlFor="edit-backup-destination"
-                info="Where the backups are kept. Opening the list re-checks every destination, so the status you see is live."
+                info="Where the backups are kept. Each one shows whether Deplo could reach it."
               >
                 Destination
               </FieldLabel>
@@ -307,30 +359,17 @@ function EditBackupDialog({
                 onChange={setDestinationId}
                 sameDiskServerId={backup.targetServerId}
                 sameDiskNoun={backup.targetKind === "app" ? "app" : "database"}
+                canProbe={canTestDestinations}
               />
             </div>
-            <SchedulePicker
-              id="edit-backup-schedule"
-              value={schedule}
-              onChange={setSchedule}
-              info="How often this backup runs. Pick a frequency — the details it needs appear next to it. Writing a cron expression by hand is the last option in the list."
-              trailing={
-                <div className="space-y-2">
-                  <FieldLabel
-                    htmlFor="edit-backup-retention"
-                    info="How many days to keep each backup before it's pruned."
-                  >
-                    Retention (days)
-                  </FieldLabel>
-                  <Input
-                    id="edit-backup-retention"
-                    type="number"
-                    value={retention}
-                    onChange={(e) => setRetention(Number(e.target.value) || 7)}
-                    min={1}
-                  />
-                </div>
-              }
+            <BackupScheduleFields
+              idPrefix="edit-backup"
+              schedule={schedule}
+              onScheduleChange={setSchedule}
+              timezone={timezone}
+              onTimezoneChange={setTimezone}
+              retention={retention}
+              onRetentionChange={setRetention}
             />
           </div>
           <DialogFooter>
@@ -347,7 +386,7 @@ function EditBackupDialog({
                 pending || !name.trim() || !destinationId || !isValidSchedule(schedule)
               }
             >
-              {pending ? "Saving…" : "Save changes"}
+              {pending ? <Loader2 className="size-4 animate-spin" /> : "Save changes"}
             </Button>
           </DialogFooter>
         </form>

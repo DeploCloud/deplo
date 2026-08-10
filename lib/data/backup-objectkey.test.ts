@@ -27,16 +27,20 @@ test("artifactExt maps each engine to its dump format", () => {
   assert.equal(artifactExt("app"), "tar.gz");
 });
 
-test("a server destination's artifact is named .age; S3 is unchanged", () => {
+test("an encrypted artifact is named .age; a plaintext one is unchanged", () => {
   // The suffix is what tells whoever finds the file on disk that
-  // `age -d -i recovery-key.txt` is the next step. Omitting the destination
-  // kind, or passing "s3", must produce EXACTLY the historical extension —
-  // existing keys are stored on backup_runs and still have to resolve.
-  assert.equal(artifactExt("app", null, "server"), "tar.gz.age");
-  assert.equal(artifactExt("database", "postgres", "server"), "dump.gz.age");
-  assert.equal(artifactExt("database", "redis", "server"), "rdb.gz.age");
-  assert.equal(artifactExt("app", null, "s3"), "tar.gz");
-  assert.equal(artifactExt("app", null, null), "tar.gz");
+  // `age -d -i recovery-key.txt` is the next step. Saying "not encrypted", or
+  // saying nothing, must produce EXACTLY the historical extension — existing
+  // keys are stored on backup_runs and still have to resolve.
+  //
+  // It takes a BOOLEAN rather than the destination kind because the kind stopped
+  // being the answer: a bucket destination is encrypted too now, unless it
+  // predates that, and only its keypair knows which.
+  assert.equal(artifactExt("app", null, true), "tar.gz.age");
+  assert.equal(artifactExt("database", "postgres", true), "dump.gz.age");
+  assert.equal(artifactExt("database", "redis", true), "rdb.gz.age");
+  assert.equal(artifactExt("app", null, false), "tar.gz");
+  assert.equal(artifactExt("app", null), "tar.gz");
   assert.equal(artifactExt("app"), "tar.gz");
 });
 
@@ -108,8 +112,10 @@ const run = (id: string, daysAgo: number, over: Partial<BackupRun> = {}): Backup
   databaseId: "db_1",
   appId: null,
   destinationId: "s3_1",
+  targetId: "db_1",
   objectKey: `deplo/t/database/db_1/${id}.dump.gz`,
   sizeBytes: 100,
+  sha256: null,
   status: "success",
   error: null,
   startedAt: new Date(NOW.getTime() - daysAgo * DAY).toISOString(),

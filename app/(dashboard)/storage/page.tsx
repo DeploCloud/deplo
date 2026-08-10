@@ -100,6 +100,7 @@ export default async function StoragePage(props: PageProps<"/storage">) {
     canCreateDatabase,
     canManageDestinations,
     canManageBackups,
+    canRestoreBackups,
     mayUseCustomPath,
   ] = await Promise.all([
     listDatabases(),
@@ -121,6 +122,7 @@ export default async function StoragePage(props: PageProps<"/storage">) {
     hasCapability("create_databases"),
     hasCapability("manage_backup_destinations"),
     hasCapability("manage_backups"),
+    hasCapability("restore_backups"),
     // A custom backup folder is an arbitrary absolute path on a shared host, so
     // it is an instance-level decision. Everyone else gets the managed folder,
     // which is what almost everyone wants anyway.
@@ -295,6 +297,7 @@ export default async function StoragePage(props: PageProps<"/storage">) {
               }))}
               destinations={destinations.map(toDestinationOption)}
               canCreate={canManageBackups}
+              canTestDestinations={canManageDestinations}
               autoOpen={autoOpenBackup}
             />
           </div>
@@ -329,6 +332,9 @@ export default async function StoragePage(props: PageProps<"/storage">) {
                       key={b.id}
                       backup={b}
                       destinations={destinations.map(toDestinationOption)}
+                      canManage={canManageBackups}
+                      canRestore={canRestoreBackups}
+                      canTestDestinations={canManageDestinations}
                     />
                   ))}
                 </TableBody>

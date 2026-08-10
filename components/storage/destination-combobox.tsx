@@ -18,11 +18,21 @@ interface LiveStatus {
 }
 
 /**
- * Don't re-probe if one finished this recently. A human can't perceive the
- * difference, and it stops a double-click or a stray focus/blur from firing two
- * rounds of bucket writes.
+ * Don't re-probe if one finished this recently.
+ *
+ * MODULE-LEVEL, not per component, and that is the fix rather than the detail: a
+ * probe is a real WRITE against every destination the team has - a PutObject and
+ * a DeleteObject on each bucket, a file round-trip on each server - plus a status
+ * UPDATE on every row. A per-instance guard meant every picker on the page, and
+ * every reopened dialog, started its own round. Thirty seconds is still "live"
+ * to a human opening a menu, and it stops a screenful of pickers from becoming a
+ * screenful of bucket traffic.
  */
-const PROBE_MIN_INTERVAL_MS = 5_000;
+const PROBE_MIN_INTERVAL_MS = 30_000;
+
+/** Shared across every picker on the page — see above. */
+let lastProbeAt = 0;
+let probeInFlight = false;
 
 /**
  * Pick a backup destination by typing, with the list proving itself as it opens.
@@ -53,6 +63,7 @@ export function DestinationCombobox({
   disabled,
   sameDiskServerId,
   sameDiskNoun = "app",
+  canProbe = false,
 }: {
   destinations: DestinationOption[];
   /** The selected destination id, or "" for none. */
@@ -67,6 +78,13 @@ export function DestinationCombobox({
   sameDiskServerId?: string | null;
   /** What that warning calls the thing being backed up. */
   sameDiskNoun?: "app" | "database";
+  /**
+   * Whether this user holds `manage_backup_destinations`, the capability the
+   * live probe needs. False means the stored badges are shown as they stand -
+   * which is the honest answer, and better than firing a mutation the server
+   * refuses and spinning a loader over the refusal.
+   */
+  canProbe?: boolean;
 }) {
   const [open, setOpen] = React.useState(false);
   const [query, setQuery] = React.useState("");
@@ -74,10 +92,6 @@ export function DestinationCombobox({
   const [live, setLive] = React.useState<Record<string, LiveStatus>>({});
   const [probing, setProbing] = React.useState(false);
   const containerRef = React.useRef<HTMLDivElement | null>(null);
-  // Refs, not state: the guard has to be readable synchronously inside the same
-  // click that opens the menu, before any re-render.
-  const probingRef = React.useRef(false);
-  const lastProbeRef = React.useRef(0);
 
   const selected = destinations.find((d) => d.id === value) ?? null;
   const sameDisk =
@@ -87,9 +101,10 @@ export function DestinationCombobox({
 
   /** Re-probe every destination and repaint the badges from the verdicts. */
   const probe = React.useCallback(() => {
-    if (probingRef.current) return;
-    if (Date.now() - lastProbeRef.current < PROBE_MIN_INTERVAL_MS) return;
-    probingRef.current = true;
+    if (!canProbe) return;
+    if (probeInFlight) return;
+    if (Date.now() - lastProbeAt < PROBE_MIN_INTERVAL_MS) return;
+    probeInFlight = true;
     setProbing(true);
     void gqlAction<
       { testDestinations: { id: string; status: DestinationStatus; lastTestError: string | null }[] },
@@ -110,11 +125,11 @@ export function DestinationCombobox({
         );
       })
       .finally(() => {
-        probingRef.current = false;
-        lastProbeRef.current = Date.now();
+        probeInFlight = false;
+        lastProbeAt = Date.now();
         setProbing(false);
       });
-  }, []);
+  }, [canProbe]);
 
   function openMenu() {
     if (disabled) return;

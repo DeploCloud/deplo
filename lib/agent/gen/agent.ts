@@ -1155,6 +1155,19 @@ export interface S3Target {
    * The control plane decides from the destination's provider.
    */
   pathStyle: boolean;
+  /**
+   * Opt OUT of the SSRF guard that refuses an endpoint resolving to a loopback,
+   * link-local or private address. Default false, and it stays false for every
+   * destination anyone can create from the normal form: the endpoint arrives off
+   * the wire and the agent dials it as root, so 169.254.169.254 must not be
+   * reachable by accident.
+   *
+   * It exists because deplo is a SELF-HOSTING platform and "my MinIO is at
+   * 10.0.0.5" is the ordinary case, not the attack. The control plane gates the
+   * flag on instance admin - the same bar as a custom store path - so the person
+   * turning it on is the person who owns the network.
+   */
+  allowPrivateEndpoint: boolean;
 }
 
 /**
@@ -1360,6 +1373,20 @@ export interface RestoreRequest {
    * storage host.
    */
   ageIdentity: string;
+  /**
+   * The hex sha256 the control plane recorded when it WROTE this artifact, so
+   * the agent can prove the bytes it is about to act on are that artifact. Empty
+   * means "no recorded digest" - a run taken before integrity checking shipped -
+   * and the check is skipped rather than failing every old restore point.
+   *
+   * It matters because an artifact is not trusted input: a bucket object is
+   * replaceable by anyone with write access, and a store artifact is forgeable by
+   * a compromised storage host (age gives confidentiality, not authenticity - the
+   * recipient is a public key that host is handed on every backup). The digest is
+   * verified as the stream is consumed, so a mismatch aborts the restore before
+   * the stack configuration is ever re-applied.
+   */
+  expectedSha256: string;
 }
 
 export interface RestoreEvent {
@@ -1452,6 +1479,20 @@ export interface ReadStoreFileRequest {
    * job.
    */
   ageIdentity: string;
+  /**
+   * The hex sha256 the control plane recorded when it WROTE this artifact, so
+   * the agent can prove the bytes it is about to act on are that artifact. Empty
+   * means "no recorded digest" - a run taken before integrity checking shipped -
+   * and the check is skipped rather than failing every old restore point.
+   *
+   * It matters because an artifact is not trusted input: a bucket object is
+   * replaceable by anyone with write access, and a store artifact is forgeable by
+   * a compromised storage host (age gives confidentiality, not authenticity - the
+   * recipient is a public key that host is handed on every backup). The digest is
+   * verified as the stream is consumed, so a mismatch aborts the restore before
+   * the stack configuration is ever re-applied.
+   */
+  expectedSha256: string;
 }
 
 /**
@@ -1512,6 +1553,20 @@ export interface RestoreChunk_Header {
    * exists only for store artifacts, and those are always encrypted.
    */
   ageIdentity: string;
+  /**
+   * The hex sha256 the control plane recorded when it WROTE this artifact, so
+   * the agent can prove the bytes it is about to act on are that artifact. Empty
+   * means "no recorded digest" - a run taken before integrity checking shipped -
+   * and the check is skipped rather than failing every old restore point.
+   *
+   * It matters because an artifact is not trusted input: a bucket object is
+   * replaceable by anyone with write access, and a store artifact is forgeable by
+   * a compromised storage host (age gives confidentiality, not authenticity - the
+   * recipient is a public key that host is handed on every backup). The digest is
+   * verified as the stream is consumed, so a mismatch aborts the restore before
+   * the stack configuration is ever re-applied.
+   */
+  expectedSha256: string;
 }
 
 export interface FollowLogsRequest {
@@ -6544,7 +6599,16 @@ export const SelfUpdateResponse: MessageFns<SelfUpdateResponse> = {
 };
 
 function createBaseS3Target(): S3Target {
-  return { endpoint: "", region: "", bucket: "", accessKey: "", secretKey: "", objectKey: "", pathStyle: false };
+  return {
+    endpoint: "",
+    region: "",
+    bucket: "",
+    accessKey: "",
+    secretKey: "",
+    objectKey: "",
+    pathStyle: false,
+    allowPrivateEndpoint: false,
+  };
 }
 
 export const S3Target: MessageFns<S3Target> = {
@@ -6569,6 +6633,9 @@ export const S3Target: MessageFns<S3Target> = {
     }
     if (message.pathStyle !== false) {
       writer.uint32(56).bool(message.pathStyle);
+    }
+    if (message.allowPrivateEndpoint !== false) {
+      writer.uint32(64).bool(message.allowPrivateEndpoint);
     }
     return writer;
   },
@@ -6636,6 +6703,14 @@ export const S3Target: MessageFns<S3Target> = {
           message.pathStyle = reader.bool();
           continue;
         }
+        case 8: {
+          if (tag !== 64) {
+            break;
+          }
+
+          message.allowPrivateEndpoint = reader.bool();
+          continue;
+        }
       }
       if ((tag & 7) === 4 || tag === 0) {
         break;
@@ -6670,6 +6745,11 @@ export const S3Target: MessageFns<S3Target> = {
         : isSet(object.path_style)
         ? globalThis.Boolean(object.path_style)
         : false,
+      allowPrivateEndpoint: isSet(object.allowPrivateEndpoint)
+        ? globalThis.Boolean(object.allowPrivateEndpoint)
+        : isSet(object.allow_private_endpoint)
+        ? globalThis.Boolean(object.allow_private_endpoint)
+        : false,
     };
   },
 
@@ -6696,6 +6776,9 @@ export const S3Target: MessageFns<S3Target> = {
     if (message.pathStyle !== false) {
       obj.pathStyle = message.pathStyle;
     }
+    if (message.allowPrivateEndpoint !== false) {
+      obj.allowPrivateEndpoint = message.allowPrivateEndpoint;
+    }
     return obj;
   },
 
@@ -6711,6 +6794,7 @@ export const S3Target: MessageFns<S3Target> = {
     message.secretKey = object.secretKey ?? "";
     message.objectKey = object.objectKey ?? "";
     message.pathStyle = object.pathStyle ?? false;
+    message.allowPrivateEndpoint = object.allowPrivateEndpoint ?? false;
     return message;
   },
 };
@@ -7599,7 +7683,15 @@ export const BackupResult: MessageFns<BackupResult> = {
 };
 
 function createBaseRestoreRequest(): RestoreRequest {
-  return { kind: 0, s3: undefined, database: undefined, project: undefined, store: undefined, ageIdentity: "" };
+  return {
+    kind: 0,
+    s3: undefined,
+    database: undefined,
+    project: undefined,
+    store: undefined,
+    ageIdentity: "",
+    expectedSha256: "",
+  };
 }
 
 export const RestoreRequest: MessageFns<RestoreRequest> = {
@@ -7621,6 +7713,9 @@ export const RestoreRequest: MessageFns<RestoreRequest> = {
     }
     if (message.ageIdentity !== "") {
       writer.uint32(50).string(message.ageIdentity);
+    }
+    if (message.expectedSha256 !== "") {
+      writer.uint32(58).string(message.expectedSha256);
     }
     return writer;
   },
@@ -7680,6 +7775,14 @@ export const RestoreRequest: MessageFns<RestoreRequest> = {
           message.ageIdentity = reader.string();
           continue;
         }
+        case 7: {
+          if (tag !== 58) {
+            break;
+          }
+
+          message.expectedSha256 = reader.string();
+          continue;
+        }
       }
       if ((tag & 7) === 4 || tag === 0) {
         break;
@@ -7700,6 +7803,11 @@ export const RestoreRequest: MessageFns<RestoreRequest> = {
         ? globalThis.String(object.ageIdentity)
         : isSet(object.age_identity)
         ? globalThis.String(object.age_identity)
+        : "",
+      expectedSha256: isSet(object.expectedSha256)
+        ? globalThis.String(object.expectedSha256)
+        : isSet(object.expected_sha256)
+        ? globalThis.String(object.expected_sha256)
         : "",
     };
   },
@@ -7724,6 +7832,9 @@ export const RestoreRequest: MessageFns<RestoreRequest> = {
     if (message.ageIdentity !== "") {
       obj.ageIdentity = message.ageIdentity;
     }
+    if (message.expectedSha256 !== "") {
+      obj.expectedSha256 = message.expectedSha256;
+    }
     return obj;
   },
 
@@ -7744,6 +7855,7 @@ export const RestoreRequest: MessageFns<RestoreRequest> = {
       ? StoreTarget.fromPartial(object.store)
       : undefined;
     message.ageIdentity = object.ageIdentity ?? "";
+    message.expectedSha256 = object.expectedSha256 ?? "";
     return message;
   },
 };
@@ -8299,7 +8411,7 @@ export const S3DeleteResponse: MessageFns<S3DeleteResponse> = {
 };
 
 function createBaseReadStoreFileRequest(): ReadStoreFileRequest {
-  return { store: undefined, ageIdentity: "" };
+  return { store: undefined, ageIdentity: "", expectedSha256: "" };
 }
 
 export const ReadStoreFileRequest: MessageFns<ReadStoreFileRequest> = {
@@ -8309,6 +8421,9 @@ export const ReadStoreFileRequest: MessageFns<ReadStoreFileRequest> = {
     }
     if (message.ageIdentity !== "") {
       writer.uint32(18).string(message.ageIdentity);
+    }
+    if (message.expectedSha256 !== "") {
+      writer.uint32(26).string(message.expectedSha256);
     }
     return writer;
   },
@@ -8336,6 +8451,14 @@ export const ReadStoreFileRequest: MessageFns<ReadStoreFileRequest> = {
           message.ageIdentity = reader.string();
           continue;
         }
+        case 3: {
+          if (tag !== 26) {
+            break;
+          }
+
+          message.expectedSha256 = reader.string();
+          continue;
+        }
       }
       if ((tag & 7) === 4 || tag === 0) {
         break;
@@ -8353,6 +8476,11 @@ export const ReadStoreFileRequest: MessageFns<ReadStoreFileRequest> = {
         : isSet(object.age_identity)
         ? globalThis.String(object.age_identity)
         : "",
+      expectedSha256: isSet(object.expectedSha256)
+        ? globalThis.String(object.expectedSha256)
+        : isSet(object.expected_sha256)
+        ? globalThis.String(object.expected_sha256)
+        : "",
     };
   },
 
@@ -8363,6 +8491,9 @@ export const ReadStoreFileRequest: MessageFns<ReadStoreFileRequest> = {
     }
     if (message.ageIdentity !== "") {
       obj.ageIdentity = message.ageIdentity;
+    }
+    if (message.expectedSha256 !== "") {
+      obj.expectedSha256 = message.expectedSha256;
     }
     return obj;
   },
@@ -8376,6 +8507,7 @@ export const ReadStoreFileRequest: MessageFns<ReadStoreFileRequest> = {
       ? StoreTarget.fromPartial(object.store)
       : undefined;
     message.ageIdentity = object.ageIdentity ?? "";
+    message.expectedSha256 = object.expectedSha256 ?? "";
     return message;
   },
 };
@@ -8727,7 +8859,7 @@ export const RestoreChunk: MessageFns<RestoreChunk> = {
 };
 
 function createBaseRestoreChunk_Header(): RestoreChunk_Header {
-  return { kind: 0, database: undefined, project: undefined, ageIdentity: "" };
+  return { kind: 0, database: undefined, project: undefined, ageIdentity: "", expectedSha256: "" };
 }
 
 export const RestoreChunk_Header: MessageFns<RestoreChunk_Header> = {
@@ -8743,6 +8875,9 @@ export const RestoreChunk_Header: MessageFns<RestoreChunk_Header> = {
     }
     if (message.ageIdentity !== "") {
       writer.uint32(34).string(message.ageIdentity);
+    }
+    if (message.expectedSha256 !== "") {
+      writer.uint32(42).string(message.expectedSha256);
     }
     return writer;
   },
@@ -8786,6 +8921,14 @@ export const RestoreChunk_Header: MessageFns<RestoreChunk_Header> = {
           message.ageIdentity = reader.string();
           continue;
         }
+        case 5: {
+          if (tag !== 42) {
+            break;
+          }
+
+          message.expectedSha256 = reader.string();
+          continue;
+        }
       }
       if ((tag & 7) === 4 || tag === 0) {
         break;
@@ -8805,6 +8948,11 @@ export const RestoreChunk_Header: MessageFns<RestoreChunk_Header> = {
         : isSet(object.age_identity)
         ? globalThis.String(object.age_identity)
         : "",
+      expectedSha256: isSet(object.expectedSha256)
+        ? globalThis.String(object.expectedSha256)
+        : isSet(object.expected_sha256)
+        ? globalThis.String(object.expected_sha256)
+        : "",
     };
   },
 
@@ -8822,6 +8970,9 @@ export const RestoreChunk_Header: MessageFns<RestoreChunk_Header> = {
     if (message.ageIdentity !== "") {
       obj.ageIdentity = message.ageIdentity;
     }
+    if (message.expectedSha256 !== "") {
+      obj.expectedSha256 = message.expectedSha256;
+    }
     return obj;
   },
 
@@ -8838,6 +8989,7 @@ export const RestoreChunk_Header: MessageFns<RestoreChunk_Header> = {
       ? ProjectDescriptor.fromPartial(object.project)
       : undefined;
     message.ageIdentity = object.ageIdentity ?? "";
+    message.expectedSha256 = object.expectedSha256 ?? "";
     return message;
   },
 };

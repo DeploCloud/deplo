@@ -94,6 +94,8 @@ export async function seedDatabase(
 export interface SeedDestinationOpts {
   id: string;
   teamId?: string;
+  /** `s3` only: seed the pre-encryption shape (no keypair, plaintext objects). */
+  legacyPlaintext?: boolean;
   name?: string;
   status?: BackupDestination["status"];
   /** `s3` (the default) or a folder on `serverId`. */
@@ -135,6 +137,7 @@ export async function seedDestination(
     lastFreeBytes: null,
     lastTotalBytes: null,
     resolvedPath: null,
+    allowPrivateEndpoint: false,
   };
   const row: BackupDestination =
     kind === "server"
@@ -149,13 +152,8 @@ export async function seedDestination(
           secretKeyEnc: null,
           serverId: opts.serverId ?? SERVER_1,
           path: opts.path ?? null,
-          // A syntactically real age keypair. Not generated: these tests never
-          // encrypt anything, and a fixed pair keeps them deterministic.
-          ageRecipient:
-            "age1ajphv95pnsjagt46mqghtvszrkrv2xay73pjvvedum2xhj4624ts2ujm3l",
-          ageIdentityEnc: encryptSecret(
-            "AGE-SECRET-KEY-1QVJ9ZZZ8QKZ7EXAMPLEEXAMPLEEXAMPLEEXAMPLEEXAMPLEEXAMPLEEXA",
-          ),
+          ageRecipient: AGE_RECIPIENT,
+          ageIdentityEnc: encryptSecret(AGE_IDENTITY),
         }
       : {
           ...common,
@@ -168,8 +166,15 @@ export async function seedDestination(
           secretKeyEnc: encryptSecret("secret_test"),
           serverId: null,
           path: null,
-          ageRecipient: null,
-          ageIdentityEnc: null,
+          // A bucket destination is encrypted too now. `legacyPlaintext` seeds
+          // the shape an instance created before that: no keypair, artifacts in
+          // the clear, and everything still has to keep working for it.
+          ...(opts.legacyPlaintext
+            ? { ageRecipient: null, ageIdentityEnc: null }
+            : {
+                ageRecipient: AGE_RECIPIENT,
+                ageIdentityEnc: encryptSecret(AGE_IDENTITY),
+              }),
         };
   await db.insert(destTable).values(destinationToRow(row));
   return row.id;
@@ -177,6 +182,15 @@ export async function seedDestination(
 
 /** Back-compat alias: most tests only ever wanted "a destination that exists". */
 export const seedS3 = seedDestination;
+
+/**
+ * A syntactically real age keypair. Not generated: these tests never encrypt
+ * anything, and a fixed pair keeps them deterministic.
+ */
+const AGE_RECIPIENT =
+  "age1ajphv95pnsjagt46mqghtvszrkrv2xay73pjvvedum2xhj4624ts2ujm3l";
+const AGE_IDENTITY =
+  "AGE-SECRET-KEY-1QVJ9ZZZ8QKZ7EXAMPLEEXAMPLEEXAMPLEEXAMPLEEXAMPLEEXAMPLEEXA";
 
 export interface SeedBackupOpts {
   id: string;
@@ -186,6 +200,7 @@ export interface SeedBackupOpts {
   appId?: string | null;
   targetKind?: Backup["targetKind"];
   schedule?: string;
+  timezone?: string;
   enabled?: boolean;
   retentionDays?: number;
 }
@@ -205,6 +220,7 @@ export async function seedBackup(
     appId: targetKind === "app" ? (opts.appId ?? null) : null,
     destinationId: opts.destinationId,
     schedule: opts.schedule ?? "0 3 * * *",
+    timezone: opts.timezone ?? "UTC",
     retentionDays: opts.retentionDays ?? 7,
     lastRunAt: null,
     lastStatus: "never",
@@ -223,6 +239,8 @@ export interface SeedRunOpts {
   databaseId?: string | null;
   appId?: string | null;
   targetKind?: BackupRun["targetKind"];
+  targetId?: string;
+  sha256?: string | null;
   status?: BackupRun["status"];
   objectKey?: string;
   startedAt?: string;
@@ -240,8 +258,15 @@ export async function seedRun(db: TestDb, opts: SeedRunOpts): Promise<string> {
     databaseId: targetKind === "database" ? (opts.databaseId ?? null) : null,
     appId: targetKind === "app" ? (opts.appId ?? null) : null,
     destinationId: opts.destinationId,
+    // Survives the ON DELETE SET NULL on the two columns above, which is what
+    // lets retention and the orphan sweep still find a deleted target's files.
+    targetId:
+      (targetKind === "database" ? opts.databaseId : opts.appId) ??
+      opts.targetId ??
+      "t",
     objectKey: opts.objectKey ?? `deplo/team_a/${targetKind}/t/${opts.id}.gz`,
     sizeBytes: 1024,
+    sha256: opts.sha256 ?? null,
     status: opts.status ?? "success",
     error: null,
     startedAt: opts.startedAt ?? T0,

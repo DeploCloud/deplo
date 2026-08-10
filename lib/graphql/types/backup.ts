@@ -60,6 +60,9 @@ export const BackupRef = builder.objectRef<BackupDTO>("Backup").implement({
     destinationId: t.exposeID("destinationId"),
     destinationName: t.exposeString("destinationName"),
     schedule: t.exposeString("schedule", { description: "Cron expression." }),
+    timezone: t.exposeString("timezone", {
+      description: "IANA zone the cron is read in. UTC for older schedules.",
+    }),
     retentionDays: t.exposeInt("retentionDays"),
     lastRunAt: t.exposeString("lastRunAt", { nullable: true }),
     lastStatus: t.field({
@@ -92,7 +95,14 @@ export const BackupRunRef = builder
       appId: t.exposeID("appId", { nullable: true }),
       destinationId: t.exposeID("destinationId"),
       objectKey: t.exposeString("objectKey", {
-        description: "S3 object key of the uploaded artifact.",
+        description: "Object key of the stored artifact.",
+      }),
+      verified: t.boolean({
+        description:
+          "Whether Deplo recorded a checksum when it wrote this artifact, and " +
+          "can therefore prove on restore that the file has not been replaced. " +
+          "False for runs taken before integrity checking shipped.",
+        resolve: (r) => Boolean(r.sha256),
       }),
       // Float, not Int — a backup artifact can exceed 2^31 bytes (>2 GB).
       sizeBytes: t.exposeFloat("sizeBytes"),
@@ -121,6 +131,8 @@ const CreateBackupInputType = builder.inputType("CreateBackupInput", {
     appId: t.string({ required: false }),
     destinationId: t.string({ required: true }),
     schedule: t.string({ required: true }),
+    // Omitted means UTC, which is what every schedule made before this meant.
+    timezone: t.string({ required: false }),
     retentionDays: t.int({ required: true }),
   }),
 });
@@ -133,6 +145,7 @@ const UpdateBackupInputType = builder.inputType("UpdateBackupInput", {
     name: t.string({ required: true }),
     destinationId: t.string({ required: true }),
     schedule: t.string({ required: true }),
+    timezone: t.string({ required: false }),
     retentionDays: t.int({ required: true }),
   }),
 });
@@ -167,9 +180,9 @@ builder.queryFields((t) => ({
   backupArtifactCount: t.int({
     authScopes: { loggedIn: true },
     description:
-      "How many stored backup artifacts (successful runs) one target has in " +
-      "S3. 0 means there is nothing to sweep — the delete dialog hides its " +
-      "'also delete backup artifacts' option in that case.",
+      "How many stored backup artifacts (successful runs) one target has. 0 " +
+      "means there is nothing to sweep — the delete dialog hides its 'also " +
+      "delete backup artifacts' option in that case.",
     args: {
       targetKind: t.arg({ type: BackupTargetKindEnum, required: true }),
       targetId: t.arg.string({ required: true }),
@@ -197,6 +210,7 @@ builder.mutationFields((t) => ({
         appId: input.appId ?? null,
         destinationId: input.destinationId,
         schedule: input.schedule,
+        timezone: input.timezone ?? null,
         retentionDays: input.retentionDays,
       });
       return true;
@@ -268,6 +282,7 @@ builder.mutationFields((t) => ({
         name: input.name,
         destinationId: input.destinationId,
         schedule: input.schedule,
+        timezone: input.timezone ?? null,
         retentionDays: input.retentionDays,
       });
       return true;
@@ -285,20 +300,19 @@ builder.mutationFields((t) => ({
   }),
   deleteBackupArtifacts: t.field({
     type: "Int",
-    // The precise capability VARIES by target kind (project → deploy, database →
-    // manage_infra, mirroring each target's own delete gate), which a single
-    // static authScope can't express — so the outer gate is just loggedIn and
-    // `deleteAllBackupArtifacts` enforces the exact per-kind capability in the
-    // data layer (the builder's documented defense-in-depth model). This avoids
-    // the mismatch where a static manage_infra scope would hard-block a
-    // deploy-only member from deleting an app they're otherwise allowed to.
+    // The precise capability VARIES by target kind — `delete_apps` for a project,
+    // `delete_databases` for a database, each mirroring that target's OWN delete
+    // gate — which one static authScope cannot express. So the outer gate is the
+    // view floor and `deleteAllBackupArtifacts` enforces the exact per-kind
+    // capability in the data layer (the builder's documented defence in depth).
+    // Whoever may destroy the thing may destroy its backups; nobody else.
     authScopes: { loggedIn: true },
     description:
-      "Delete ALL of a target's S3 backup artifacts (across every destination " +
-      "it ran to) plus their run records. The 'also delete backups' branch of " +
-      "deleting a database or project. Returns the number of objects removed. " +
-      "Throws if any destination's sweep failed (so the caller can abort the " +
-      "target deletion rather than orphan bucket objects).",
+      "Delete ALL of a target's backup artifacts (across every destination it " +
+      "ran to) plus their run records. The 'also delete backups' branch of " +
+      "deleting a database or an app. Returns the number removed. Throws if any " +
+      "destination's sweep failed, so the caller can abort the target deletion " +
+      "rather than orphan the files.",
     args: {
       targetKind: t.arg({ type: BackupTargetKindEnum, required: true }),
       targetId: t.arg.string({ required: true }),

@@ -1524,6 +1524,13 @@ export interface BackupDestination {
   /** encrypted at rest */
   accessKeyEnc: string | null;
   secretKeyEnc: string | null;
+  /**
+   * Opt out of the SSRF guard on `endpoint`, so a bucket on the operator's own
+   * private network is reachable at all. Instance-admin only to set — the agent
+   * dials this address as root — and false for everything created from the
+   * ordinary form.
+   */
+  allowPrivateEndpoint: boolean;
   /* ---- kind: "server" ---- */
   /** The server holding the artifacts. */
   serverId: ID | null;
@@ -1534,6 +1541,11 @@ export interface BackupDestination {
    * is all the agent gets when writing, so a storage host produces artifacts it
    * cannot itself read. The IDENTITY is the private half and leaves the control
    * plane only for a restore or a download.
+   *
+   * Set for BOTH kinds. A bucket artifact is encrypted too: a project archive
+   * carries the app's whole decrypted env, so leaving that one destination shape
+   * in the clear undid deplo's own write-only-secrets model. Null only on an
+   * `s3` destination created before that, whose existing objects are plaintext.
    */
   ageRecipient: string | null;
   ageIdentityEnc: string | null;
@@ -1588,6 +1600,9 @@ export interface Backup {
   appId: ID | null;
   destinationId: ID;
   schedule: string; // cron
+  /** IANA zone the cron is read in. "UTC" for every schedule made before it
+   *  was askable, which is what those always meant. */
+  timezone: string;
   retentionDays: number;
   lastRunAt: string | null;
   lastStatus: "success" | "failed" | "running" | "never";
@@ -1611,9 +1626,23 @@ export interface BackupRun {
   databaseId: ID | null;
   appId: ID | null;
   destinationId: ID;
-  /** S3 object key: `deplo/<teamId>/<kind>/<targetId>/<ISO-timestamp>.<ext>`. */
+  /**
+   * The target's id as plain text, carried alongside `databaseId`/`appId`
+   * because those two are `ON DELETE SET NULL`: deleting the app or database
+   * blanked the only thing that named what an artifact belonged to, and its
+   * bytes then sat on the destination with nothing left that could find them.
+   */
+  targetId: ID;
+  /** Object key: `deplo/<teamId>/<kind>/<targetId>/<ISO-timestamp>.<ext>`. */
   objectKey: string;
   sizeBytes: number;
+  /**
+   * Hex sha256 of the artifact as written (ciphertext, before decryption) —
+   * what a restore checks before feeding those bytes to anything. Null for a run
+   * taken before integrity checking shipped, and a restore says so out loud
+   * rather than quietly skipping the check.
+   */
+  sha256: string | null;
   status: BackupRunStatus;
   error: string | null;
   startedAt: string;

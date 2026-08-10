@@ -286,8 +286,22 @@ export async function getDatabaseForTeam(
   id: string,
   teamId: string,
 ): Promise<DatabaseDTO | null> {
-  const db = await loadDatabase(id, teamId);
-  return db ? toDTO(db) : null;
+  // The SESSION-FREE twin, so it does NOT consult the ambient request identity —
+  // its only caller is the status stream, whose ticks run after the HTTP handler
+  // returned the streaming Response, with no cookies left to read. It therefore
+  // carries a contract: the caller has ALREADY proven the principal's reach
+  // (`databaseStatusStream` does it explicitly with `memberScopeFor`), and this
+  // function's own gate is the `teamId` filter below.
+  //
+  // Leaning on `reachesWholeTeam()` here instead would be reading an answer that
+  // does not exist outside a request. It used to answer "yes, the whole team" in
+  // that case, which is exactly the fail-open the stream had to route around.
+  const rows = await getDb()
+    .select()
+    .from(databasesTable)
+    .where(and(eq(databasesTable.id, id), eq(databasesTable.teamId, teamId)))
+    .limit(1);
+  return rows[0] ? toDTO(assembleDatabase(rows[0])) : null;
 }
 
 /**

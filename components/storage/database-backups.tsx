@@ -27,10 +27,19 @@ export function DatabaseBackups({
   database,
   schedules,
   destinations,
+  canManage,
+  canRestore,
+  canTestDestinations,
 }: {
   database: { id: string; name: string; serverId?: string | null };
   schedules: BackupDTO[];
   destinations: Destination[];
+  /** `manage_backups` — gates creating, running, editing and deleting. */
+  canManage: boolean;
+  /** `restore_backups` — its own, because a restore overwrites live data. */
+  canRestore: boolean;
+  /** `manage_backup_destinations` — the picker's live probe. */
+  canTestDestinations: boolean;
 }) {
   return (
     <div className="space-y-6">
@@ -48,6 +57,8 @@ export function DatabaseBackups({
           databases={[database]}
           services={[]}
           destinations={destinations}
+          canCreate={canManage}
+          canTestDestinations={canTestDestinations}
         />
       </div>
 
@@ -77,7 +88,14 @@ export function DatabaseBackups({
             </TableHeader>
             <TableBody>
               {schedules.map((s) => (
-                <BackupRow key={s.id} backup={s} destinations={destinations} />
+                <BackupRow
+                  key={s.id}
+                  backup={s}
+                  destinations={destinations}
+                  canManage={canManage}
+                  canRestore={canRestore}
+                  canTestDestinations={canTestDestinations}
+                />
               ))}
             </TableBody>
           </Table>

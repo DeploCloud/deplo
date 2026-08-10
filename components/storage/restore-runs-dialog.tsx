@@ -31,6 +31,9 @@ type BackupRunLite = {
   sizeBytes: number;
   startedAt: string;
   error: string | null;
+  /** Whether Deplo recorded a checksum for this artifact and can prove on
+   *  restore that the file has not been replaced since. */
+  verified: boolean;
 };
 
 /**
@@ -68,7 +71,7 @@ export function RestoreRunsDialog({
     gql<{ backupRuns: BackupRunLite[] }>(
       `query($id: String) {
         backupRuns(${arg}: $id) {
-          id status sizeBytes startedAt error
+          id status sizeBytes startedAt error verified
         }
       }`,
       { id: targetId },
@@ -109,7 +112,7 @@ export function RestoreRunsDialog({
         {runs === null && !error ? (
           <div className="flex items-center justify-center gap-2 py-8 text-sm text-muted-foreground">
             <Loader2 className="size-4 animate-spin" />
-            Loading backups…
+            Loading backups
           </div>
         ) : error ? (
           <p className="py-6 text-sm text-destructive">{error}</p>
@@ -174,6 +177,17 @@ function RestoreRunRow({
           <StatusDot status={run.status} />
           {run.status}
         </span>
+        {/* Only for the old runs: everything taken since carries a checksum, so
+            saying "verified" on the normal case would be noise. Saying nothing
+            on this one would be worse - the operator is about to overwrite live
+            data from a file Deplo cannot vouch for. */}
+        {!run.verified && (
+          <SimpleTooltip content="Taken before Deplo recorded checksums, so it cannot prove this file is unchanged">
+            <span className="mt-1 block text-[10px] text-muted-foreground">
+              Not checksummed
+            </span>
+          </SimpleTooltip>
+        )}
       </TableCell>
       <TableCell className="text-right">
         <SimpleTooltip content="Restore this backup in place">

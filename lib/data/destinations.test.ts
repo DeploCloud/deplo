@@ -34,6 +34,8 @@ import {
   ensureDefaultDestination,
   getDestinationWithSecrets,
   listDestinations,
+  listDestinationOptions,
+  destinationRemovalImpact,
   destinationTestReport,
   testDestinations,
   toDestinationOption,
@@ -537,5 +539,123 @@ test("no backup-capable server yet: nothing is seeded, and the seed can still ha
   await asUser1(async () => {
     await ensureDefaultDestination();
     assert.equal((await listDestinations()).length, 1);
+  });
+});
+
+/* ------------------------------------------------------------------ */
+/* A bucket artifact is encrypted too                                   */
+/* ------------------------------------------------------------------ */
+
+test("a new S3 destination gets its own keypair, and never leaks the private half", async () => {
+  // A project archive carries the app's ENTIRE decrypted env — the restore has
+  // to write the real .env back — so the destination shape that shipped first
+  // was the one putting every secret in somebody else's storage in the clear.
+  await asUser1(async () => {
+    const created = await createDestination({
+      name: "bucket",
+      kind: "s3",
+      provider: "aws",
+      endpoint: "https://s3.us-east-1.amazonaws.com",
+      region: "us-east-1",
+      bucket: "deplo-backups",
+      accessKey: "AKIA_TEST",
+      secretKey: "secret_test",
+    });
+    assert.ok(created.ageRecipient?.startsWith("age1"), "a bucket is encrypted now");
+    assert.equal("ageIdentityEnc" in created, false);
+    assert.equal(JSON.stringify(created).includes("AGE-SECRET-KEY"), false);
+  });
+});
+
+test("an S3 destination created before encryption keeps writing plaintext", async () => {
+  // Its existing objects already are plaintext, and rewriting history is not on
+  // offer — so a null recipient stays null and the run's own key extension is
+  // what says which of the two any artifact is.
+  await seedDestination(db, { id: "dst_old", kind: "s3", legacyPlaintext: true });
+  await asUser1(async () => {
+    const dto = (await listDestinations()).find((d) => d.id === "dst_old")!;
+    assert.equal(dto.ageRecipient, null);
+  });
+});
+
+test("a bucket name or region carrying shell syntax is refused at creation", async () => {
+  // The connection log prints both into a copy-pasteable `aws …` block, which an
+  // admin reaches for exactly when a destination is failing. The report quotes
+  // them too; either guard alone is one edit from being the only one.
+  await asUser1(async () => {
+    await assert.rejects(
+      () =>
+        createDestination({
+          name: "x", kind: "s3", provider: "aws",
+          endpoint: "https://s3.us-east-1.amazonaws.com", region: "us-east-1",
+          bucket: "b'; rm -rf /; echo '",
+          accessKey: "a", secretKey: "s",
+        }),
+      /bucket names/i,
+    );
+    await assert.rejects(
+      () =>
+        createDestination({
+          name: "x", kind: "s3", provider: "aws",
+          endpoint: "https://s3.us-east-1.amazonaws.com",
+          region: "eu-west-1; curl evil",
+          bucket: "fine", accessKey: "a", secretKey: "s",
+        }),
+      /region/i,
+    );
+  });
+});
+
+/* ------------------------------------------------------------------ */
+/* Reading destinations without reaching the whole team                 */
+/* ------------------------------------------------------------------ */
+
+test("listDestinationOptions carries no credential and no test history", async () => {
+  // It is readable by a member scoped to one folder — who may hold
+  // `manage_backups` on an app and still needs somewhere to send its backups —
+  // so what it carries has to be exactly what a picker shows.
+  await seedDestination(db, { id: "dst_s3", kind: "s3" });
+  await asUser1(async () => {
+    const opts = await listDestinationOptions();
+    const one = opts.find((d) => d.id === "dst_s3")!;
+    assert.deepEqual(Object.keys(one).sort(), [
+      "id", "kind", "name", "serverId", "status", "where",
+    ]);
+    const json = JSON.stringify(opts);
+    assert.equal(json.includes("AKIA"), false);
+    assert.equal(json.includes("AGE-SECRET-KEY"), false);
+    assert.equal(json.includes("lastTest"), false);
+  });
+});
+
+test("listDestinationOptions is team-scoped", async () => {
+  await seedDestination(db, { id: "dst_mine", kind: "s3" });
+  await seedDestination(db, { id: "dst_theirs", kind: "s3", teamId: TEAM_B });
+  await asUser1(async () => {
+    const ids = (await listDestinationOptions()).map((d) => d.id);
+    assert.ok(ids.includes("dst_mine"));
+    assert.equal(ids.includes("dst_theirs"), false);
+  });
+});
+
+/* ------------------------------------------------------------------ */
+/* Removing a destination                                               */
+/* ------------------------------------------------------------------ */
+
+test("destinationRemovalImpact counts what the confirm dialog has to name", async () => {
+  // The dialog used to say backups "will stop running". They do not stop: the
+  // schedules and the whole run history are DELETED, and saying so needs numbers.
+  await seedDestination(db, { id: "dst_1", kind: "s3" });
+  await seedDatabase(db, { id: "db_1", name: "main" });
+  await seedBackup(db, { id: "bkp_1", destinationId: "dst_1", databaseId: "db_1" });
+  await seedRun(db, { id: "r_ok", destinationId: "dst_1", databaseId: "db_1" });
+  await seedRun(db, {
+    id: "r_bad", destinationId: "dst_1", databaseId: "db_1", status: "failed",
+  });
+  await asUser1(async () => {
+    const impact = await destinationRemovalImpact("dst_1");
+    assert.equal(impact.schedules, 1);
+    assert.equal(impact.runs, 2, "history, whatever its outcome");
+    assert.equal(impact.artifacts, 1, "only a successful run wrote a file");
   });
 });

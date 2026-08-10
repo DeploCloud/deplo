@@ -1,6 +1,6 @@
 import "server-only";
 
-import { and, desc, eq, isNull } from "drizzle-orm";
+import { and, count, desc, eq, isNull } from "drizzle-orm";
 
 import { listAllServers, listServersForCurrentTeam } from "./servers";
 import { getDb } from "../db/client";
@@ -254,6 +254,9 @@ export function s3TargetFor(s: DestinationWithSecrets, objectKey: string): S3Tar
     secretKey: s.secretKey,
     objectKey,
     pathStyle: pathStyleFor(d.provider ?? "other"),
+    // Off for everything created from the ordinary form; on only where an
+    // instance admin said the bucket lives on their own network.
+    allowPrivateEndpoint: d.allowPrivateEndpoint,
   };
 }
 
@@ -285,6 +288,35 @@ export function destinationServerId(
   targetServerId: string,
 ): string {
   return d.kind === "server" && d.serverId ? d.serverId : targetServerId;
+}
+
+/**
+ * The destinations as a PICKER needs them, for ANY member of the team.
+ *
+ * Deliberately not `listDestinations`. That one is team-wide-only, which is
+ * right for the Storage page's cards (region, masked key, test history, free
+ * space) but wrong as the only way to learn a destination EXISTS: a member
+ * scoped to one folder, holding `manage_backups` on an app in it, got an empty
+ * list — so their app's Backups tab showed "Unknown destination" on every
+ * artifact, hid the download button, claimed no destination was configured, and
+ * disabled the two buttons that would have made one. They had the permission to
+ * take a backup and no way to take one.
+ *
+ * What comes back is {@link DestinationOption}: a name, where it points, and how
+ * it last answered. Nothing here is a credential, and every id in it is one the
+ * member can already use — `createBackup` and `runAppBackup` accept any
+ * destination in the team, and always did.
+ */
+export async function listDestinationOptions(): Promise<DestinationOption[]> {
+  const teamId = await requireActiveTeamId();
+  const rows = await getDb()
+    .select()
+    .from(destTable)
+    .where(eq(destTable.teamId, teamId))
+    .orderBy(desc(destTable.createdAt));
+  return (await withServerNames(rows.map(assembleDestination))).map(
+    toDestinationOption,
+  );
 }
 
 export async function listDestinations(): Promise<DestinationDTO[]> {
@@ -323,6 +355,8 @@ export interface CreateDestinationInput {
   bucket?: string | null;
   accessKey?: string | null;
   secretKey?: string | null;
+  /** Instance-admin only: dial an endpoint on a private address. */
+  allowPrivateEndpoint?: boolean | null;
   /* server */
   serverId?: string | null;
   path?: string | null;
@@ -373,28 +407,95 @@ export async function createDestination(
 
 /** The `s3` half of {@link createDestination}: validate, encrypt, shape. */
 async function s3DestinationFields(input: CreateDestinationInput) {
-  if (!input.bucket?.trim()) throw new Error("Bucket is required");
+  const bucket = (input.bucket ?? "").trim();
+  if (!bucket) throw new Error("Bucket is required");
+  assertUsableBucketName(bucket);
   if (!input.accessKey || !input.secretKey)
     throw new Error("Access key and secret are required");
+  const region = (input.region ?? "").trim() || "auto";
+  assertUsableRegion(region);
+  // A private endpoint is an instance-level decision, exactly like a custom
+  // store path: the agent dials this address as root, so 169.254.169.254 must
+  // never be reachable from a form anyone can fill in. Turning it ON is what
+  // makes a self-hosted bucket on the operator's own LAN usable at all, which is
+  // an ordinary thing to want on a self-hosting platform.
+  const allowPrivateEndpoint = Boolean(input.allowPrivateEndpoint);
+  if (allowPrivateEndpoint) await requireInstanceAdmin();
   // The endpoint is dialed from the agents (bucket probe, backups) — never let
-  // it aim inside the network. http stays allowed for a self-hosted MinIO
-  // fronted without TLS.
-  await assertSafeOutboundUrl((input.endpoint ?? "").trim(), "Endpoint", {
-    allowHttp: true,
-  });
+  // it aim inside the network unless that was the explicit, admin-only choice.
+  // http stays allowed for a self-hosted MinIO fronted without TLS.
+  if (!allowPrivateEndpoint)
+    await assertSafeOutboundUrl((input.endpoint ?? "").trim(), "Endpoint", {
+      allowHttp: true,
+    });
+  else assertHttpUrl((input.endpoint ?? "").trim(), "Endpoint");
+
+  // A BUCKET artifact is encrypted too, with its own keypair, for the same
+  // reason a server one is: a project archive carries the app's entire decrypted
+  // env, because the restore has to write the real `.env` back. Leaving the
+  // oldest destination shape as the one that wrote every secret to somebody
+  // else's storage in the clear undid deplo's own write-only-secrets model.
+  // Existing destinations keep `null` here and keep writing plaintext — their
+  // objects already are, and rewriting history is not on offer.
+  const { identity, recipient } = await generateAgeKeypair();
   return {
     kind: "s3" as const,
     provider: input.provider ?? "other",
     endpoint: (input.endpoint ?? "").trim(),
-    region: (input.region ?? "").trim() || "auto",
-    bucket: input.bucket.trim(),
+    region,
+    bucket,
     accessKeyEnc: encryptSecret(input.accessKey),
     secretKeyEnc: encryptSecret(input.secretKey),
+    allowPrivateEndpoint,
     serverId: null,
     path: null,
-    ageRecipient: null,
-    ageIdentityEnc: null,
+    ageRecipient: recipient,
+    ageIdentityEnc: encryptSecret(identity),
   };
+}
+
+/**
+ * A bucket name deplo is willing to store, print and hand to an operator.
+ *
+ * S3's own rules are stricter than this; the point here is narrower and it is
+ * about the CONNECTION LOG, which prints the bucket into a copy-pasteable
+ * `aws s3api …` block. That block is an expert escape hatch an admin reaches for
+ * precisely when a destination is failing, and a name carrying a quote or a
+ * semicolon would turn "why is this red" into a shell command somebody else
+ * wrote. The report quotes what it prints as well - both, because either alone
+ * is one edit away from being the only one.
+ */
+function assertUsableBucketName(bucket: string): void {
+  if (!/^[a-zA-Z0-9][a-zA-Z0-9._-]{1,62}$/.test(bucket))
+    throw new Error(
+      "Bucket names can use letters, digits, dots, dashes and underscores, " +
+        "and must start with a letter or digit",
+    );
+}
+
+/** Same, for the region — it rides the same command line. */
+function assertUsableRegion(region: string): void {
+  if (!/^[a-zA-Z0-9._-]{1,64}$/.test(region))
+    throw new Error(
+      "Region can use letters, digits, dots, dashes and underscores",
+    );
+}
+
+/**
+ * The shape check that survives when the SSRF guard is deliberately off: it must
+ * still be an http(s) URL with a host, or the agent gets a string it cannot dial
+ * and the operator gets a failure that names nothing.
+ */
+function assertHttpUrl(raw: string, label: string): void {
+  let url: URL;
+  try {
+    url = new URL(raw);
+  } catch {
+    throw new Error(`${label} must be a valid URL`);
+  }
+  if (url.protocol !== "https:" && url.protocol !== "http:")
+    throw new Error(`${label} must be an http(s) URL`);
+  if (!url.hostname) throw new Error(`${label} must include a host`);
 }
 
 /**
@@ -436,6 +537,7 @@ async function serverDestinationFields(input: CreateDestinationInput) {
     bucket: null,
     accessKeyEnc: null,
     secretKeyEnc: null,
+    allowPrivateEndpoint: false,
     serverId,
     path,
     ageRecipient: recipient,
@@ -521,18 +623,22 @@ export async function ensureDefaultDestination(): Promise<void> {
   // is a surprise the day that box goes away. When it lands elsewhere the
   // destination is named after the server instead, because the name is the only
   // thing a picker shows.
-  const provisioned = (await listServersForCurrentTeam()).filter(
-    (s) => s.agent?.certFingerprint,
-  );
-  const self = deploHostSelfAddresses();
-  const server = provisioned.find((s) => isDeploHostServer(s, self)) ?? provisioned[0];
-  if (!server) {
-    await release();
-    return;
-  }
-  const name = isDeploHostServer(server, self) ? "This server" : serverLabel(server);
-
+  // Inside the try with everything else: this claim is a one-shot marker, so a
+  // transient failure BEFORE the insert (a blip reading the fleet) used to keep
+  // the claim forever and the team never got its default at all.
   try {
+    const provisioned = (await listServersForCurrentTeam()).filter(
+      (s) => s.agent?.certFingerprint,
+    );
+    const self = deploHostSelfAddresses();
+    const server =
+      provisioned.find((s) => isDeploHostServer(s, self)) ?? provisioned[0];
+    if (!server) {
+      await release();
+      return;
+    }
+    const name = isDeploHostServer(server, self) ? "This server" : serverLabel(server);
+
     const { identity, recipient } = await generateAgeKeypair();
     const d: BackupDestination = {
       id: newId("dst"),
@@ -545,6 +651,7 @@ export async function ensureDefaultDestination(): Promise<void> {
       bucket: null,
       accessKeyEnc: null,
       secretKeyEnc: null,
+      allowPrivateEndpoint: false,
       serverId: server.id,
       path: null,
       ageRecipient: recipient,
@@ -908,6 +1015,16 @@ export async function revealRecoveryKey(
   if (d.kind !== "server" || !d.ageIdentityEnc)
     throw new Error("Only a server destination has a recovery key");
   const user = (await getCurrentUser())!;
+  // Decrypt FIRST. The stamp is what silences the "save your recovery key"
+  // nudge, and setting it before we know there is a key to hand over meant a
+  // failed decrypt left the destination looking safe while nobody held anything.
+  const identity = decryptSecret(d.ageIdentityEnc);
+  if (!identity)
+    throw new Error(
+      "This destination's recovery key could not be read. It was encrypted with " +
+        "a different DEPLO_SECRET, so the backups at this destination cannot be " +
+        "decrypted by this instance either.",
+    );
   await getDb()
     .update(destTable)
     .set({ recoveryKeySavedAt: nowIso() })
@@ -922,27 +1039,110 @@ export async function revealRecoveryKey(
     null,
     teamId,
   );
+  return { name: d.name, recipient: d.ageRecipient ?? "", identity };
+}
+
+/**
+ * What removing a destination is about to destroy, so the dialog can say it
+ * instead of guessing. Counted, not estimated: "N schedules and M restore
+ * points" is the sentence someone needs before they confirm.
+ */
+export async function destinationRemovalImpact(id: string): Promise<{
+  schedules: number;
+  runs: number;
+  artifacts: number;
+}> {
+  const teamId = await requireActiveTeamId();
+  await requireTeamWide("backup destinations");
+  const [sched] = await getDb()
+    .select({ n: count() })
+    .from(backupsTable)
+    .where(and(eq(backupsTable.destinationId, id), eq(backupsTable.teamId, teamId)));
+  const [runs] = await getDb()
+    .select({ n: count() })
+    .from(backupRunsTable)
+    .where(
+      and(eq(backupRunsTable.destinationId, id), eq(backupRunsTable.teamId, teamId)),
+    );
+  const [stored] = await getDb()
+    .select({ n: count() })
+    .from(backupRunsTable)
+    .where(
+      and(
+        eq(backupRunsTable.destinationId, id),
+        eq(backupRunsTable.teamId, teamId),
+        eq(backupRunsTable.status, "success"),
+      ),
+    );
   return {
-    name: d.name,
-    recipient: d.ageRecipient ?? "",
-    identity: decryptSecret(d.ageIdentityEnc),
+    schedules: Number(sched?.n ?? 0),
+    runs: Number(runs?.n ?? 0),
+    artifacts: Number(stored?.n ?? 0),
   };
 }
 
-export async function deleteDestination(id: string): Promise<void> {
+/**
+ * Remove a destination, and optionally the artifacts it holds.
+ *
+ * `deleteArtifacts` exists because "we keep your files" was, for a `server`
+ * destination, a promise deplo could not follow through on: nothing lists what
+ * is in a store, so the files stayed on that disk with no screen naming them and
+ * no way to reclaim them short of an SSH session — the one thing the platform
+ * exists to make unnecessary. Off by default, because keeping them is still the
+ * safe answer and an S3 bucket is the operator's own to sweep.
+ */
+export async function deleteDestination(
+  id: string,
+  opts: { deleteArtifacts?: boolean } = {},
+): Promise<void> {
   const { membership } = await requireCapability("manage_backup_destinations");
   const teamId = membership.teamId;
   const user = (await getCurrentUser())!;
   const d = await loadDestination(id, teamId);
   if (!d) throw new Error("Not found");
+
+  // BEFORE the rows go: the keys live on the runs, and the creds on the row we
+  // are about to delete. A failure here aborts the whole removal rather than
+  // leaving files nothing can name any more.
+  if (opts.deleteArtifacts) {
+    const runs = await getDb()
+      .select({ objectKey: backupRunsTable.objectKey })
+      .from(backupRunsTable)
+      .where(
+        and(
+          eq(backupRunsTable.destinationId, id),
+          eq(backupRunsTable.teamId, teamId),
+          eq(backupRunsTable.status, "success"),
+        ),
+      );
+    const keys = runs.filter((r) => r.objectKey).map((r) => ({ key: r.objectKey }));
+    if (keys.length > 0) {
+      // Imported HERE rather than at the top: backup-transport imports this
+      // module for `destinationServerId` / `s3TargetFor`, so a static import back
+      // would close a cycle — the same one `assertSafeOutboundUrl` was moved into
+      // its own leaf to avoid.
+      const { deleteManyFromDestination } = await import("./backup-transport");
+      const creds = await getDestinationWithSecretsForTeam(teamId, id);
+      const results = await deleteManyFromDestination(
+        creds,
+        creds.destination.serverId ?? "",
+        keys,
+      );
+      const failed = results.filter((r) => !r.ok);
+      if (failed.length > 0)
+        throw new Error(
+          failed[0]!.error ||
+            `Could not delete ${failed.length} backup file${failed.length === 1 ? "" : "s"}. ` +
+              `The destination was not removed.`,
+        );
+    }
+  }
   // `backup_destination` ← `backups.destination_id` / `backup_runs.destination_id`
   // are both RESTRICT (a destination must never be silently cascade-deleted out
   // from under live schedules / restore points), so the dependent rows are removed
-  // EXPLICITLY in one transaction. The JSONB version dropped dependent SCHEDULES
-  // but orphaned run history with a dangling destinationId; the RESTRICT FK
-  // forbids that, so the run records go too — this removes only control-plane
-  // records, not the artifacts themselves (the "delete artifacts too" flow
-  // handles those separately).
+  // EXPLICITLY in one transaction. The run records go too rather than being left
+  // with a dangling destinationId — the artifacts they name were either swept
+  // above or deliberately kept.
   await getDb().transaction(async (tx) => {
     await tx
       .delete(backupRunsTable)
@@ -958,7 +1158,9 @@ export async function deleteDestination(id: string): Promise<void> {
   });
   await recordActivity(
     "s3",
-    `Removed backup destination ${d.name}`,
+    opts.deleteArtifacts
+      ? `Removed backup destination ${d.name} and the backups kept there`
+      : `Removed backup destination ${d.name}`,
     user.name,
     null,
     teamId,

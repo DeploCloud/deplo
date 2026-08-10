@@ -1,9 +1,4 @@
-import type {
-  BackupRun,
-  BackupTargetKind,
-  DatabaseType,
-  DestinationKind,
-} from "../types";
+import type { BackupRun, BackupTargetKind, DatabaseType } from "../types";
 
 /**
  * A {@link BackupRun} plus its DB-generated `seq` (the `bigint identity` on
@@ -21,9 +16,13 @@ export type RunForRetention = BackupRun & { seq?: number };
  * `server-only`) so they unit-test in isolation and can be shared by the
  * executor, the retention pruner, and any future lister.
  *
- * KEY CONVENTION (PLAN): `deplo/<teamId>/<kind>/<targetId>/<timestamp>.<ext>`.
- * The per-target folder (`deplo/<team>/<kind>/<target>/`) is also the retention
- * PREFIX — `S3Delete(prefix:true)` on it removes every artifact for one target.
+ * KEY CONVENTION: `deplo/<teamId>/<kind>/<targetId>/<timestamp>-<runId>.<ext>`.
+ *
+ * The per-target folder is NOT a delete prefix, and {@link targetPrefix} is only
+ * ever a display/grouping aid. It carries no destination segment, and two server
+ * destinations on one host with no custom path resolve to the same folder — so a
+ * prefix delete crosses destinations. Every delete enumerates exact keys from
+ * `backup_runs` instead.
  */
 
 /**
@@ -36,15 +35,20 @@ export function artifactExt(
   kind: BackupTargetKind,
   dbType?: DatabaseType | null,
   /**
-   * The destination kind. A `server` artifact is age-encrypted, so it gets a
-   * trailing `.age` — the suffix that tells a human who found the file on disk
-   * that `age -d -i recovery-key.txt` is the next step. Omitted (or `s3`) leaves
-   * the historical extensions untouched, so existing keys keep resolving.
+   * Whether this artifact is age-encrypted — which is now every `server`
+   * destination and every `s3` one created since bucket artifacts started being
+   * encrypted. Encrypted ones get a trailing `.age`, the suffix that tells a
+   * human who found the file that `age -d -i recovery-key.txt` is the next step.
+   *
+   * A BOOLEAN rather than the destination kind, because the kind stopped being
+   * the answer: an older `s3` destination has no keypair and still writes
+   * plaintext, and calling its artifacts `.age` would be a lie a restore then
+   * has to live with. The caller asks the destination whether it has a
+   * recipient, which is the same question the agent answers.
    */
-  destinationKind?: DestinationKind | null,
+  encrypted?: boolean,
 ): string {
-  const suffix = destinationKind === "server" ? ".age" : "";
-  return baseArtifactExt(kind, dbType) + suffix;
+  return baseArtifactExt(kind, dbType) + (encrypted ? ".age" : "");
 }
 
 function baseArtifactExt(kind: BackupTargetKind, dbType?: DatabaseType | null): string {
@@ -78,7 +82,7 @@ export function objectStamp(date: Date): string {
   return date.toISOString().replace(/[-:]/g, "").replace(/\.\d+Z$/, "Z");
 }
 
-/** The per-target folder prefix — also the retention delete prefix. */
+/** The per-target folder. NOT a delete prefix — see the module doc. */
 export function targetPrefix(
   teamId: string,
   kind: BackupTargetKind,
@@ -88,7 +92,7 @@ export function targetPrefix(
 }
 
 /**
- * Build the S3 object key for one run. `runId` is appended to the timestamp so
+ * Build the object key for one run. `runId` is appended to the timestamp so
  * two runs of the same target in the same second never collide on the key (and
  * so the key is traceable back to its BackupRun).
  */
@@ -117,14 +121,14 @@ export function buildObjectKey(input: {
  *  - every other run is doomed when it's older than `retentionDays` OR beyond the
  *    `maxPerTarget` cap (counting newest-first, across all statuses).
  *
- * Failed runs own no S3 object, so the caller only issues `S3Delete` for the
+ * Failed runs own no artifact, so the caller only issues a delete for the
  * doomed runs that succeeded — but it still drops the failed run records here, so
  * a long tail of failures can't grow the table unbounded.
  *
  * "Newest first" is `(startedAt, seq)` DESC, NOT `startedAt` alone (PLAN §5): two
  * runs written in the same millisecond tie on the timestamp, and ordering them by
  * timestamp alone is non-deterministic — it could pick the wrong "newest
- * successful run to keep" and then `S3Delete` the live object. The DB-generated
+ * successful run to keep" and then delete the live artifact. The DB-generated
  * `seq` (`bigint identity`) breaks that tie by insertion order. The relational
  * `pruneRetention` selects `seq`; if a caller omits it (a unit test asserting the
  * legacy timestamp-only behaviour), the tie falls back to the input order.

@@ -26,6 +26,20 @@ import { downloadBackupArtifact } from "@/lib/data/backups";
  * letting a download manager assume resume works and produce a corrupt file.
  */
 
+/**
+ * The HTTP status that matches what the data layer refused.
+ *
+ * Matched on the message because that layer throws plain Errors — every gate in
+ * `lib/data` does, and giving backups their own error taxonomy for one route
+ * would be the wrong place to start one. The default is 400, so an unrecognised
+ * message is no worse than it was.
+ */
+function statusFor(message: string): number {
+  if (/not found/i.test(message)) return 404;
+  if (/permission|not allowed|can't access|cannot access/i.test(message)) return 403;
+  return 400;
+}
+
 // Long-lived streamed response; must run at request time on the Node runtime.
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -44,11 +58,12 @@ export async function GET(
     artifact = await downloadBackupArtifact(runId);
   } catch (e) {
     // The data layer's message is the useful one ("not found", "no permission",
-    // "this backup is in an S3 bucket") — surface it verbatim.
-    return Response.json(
-      { error: e instanceof Error ? e.message : String(e) },
-      { status: 400 },
-    );
+    // "this backup is in an S3 bucket") — surface it verbatim, under a status
+    // that means what it says. Everything used to be a 400, so a browser, a
+    // proxy log and a script all read "you sent a bad request" for a run that
+    // exists and a permission the caller does not have.
+    const message = e instanceof Error ? e.message : String(e);
+    return Response.json({ error: message }, { status: statusFor(message) });
   }
 
   const body = new ReadableStream<Uint8Array>({

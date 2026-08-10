@@ -130,6 +130,14 @@ const METRICS_STREAM_MAX_QUEUED = 4;
 // A dump+upload (or download+restore) of a large DB or volume-heavy project can
 // be long; the agent caps each step at ~30min, this is that plus dial slack.
 const BACKUP_DEADLINE_MS = 60 * 60_000;
+/**
+ * How long a `running` backup run may sit before the boot reconcile calls it
+ * orphaned. Derived from the deadline above rather than guessed alongside it:
+ * the two used to be picked independently and disagreed with a comment claiming
+ * a third number, so a run could be declared dead while its RPC was still legal.
+ * The margin covers the dial, the descriptor build and the terminal write.
+ */
+export const BACKUP_RUN_MAX_MS = BACKUP_DEADLINE_MS + 30 * 60_000;
 // S3Check/S3Delete are quick bucket ops, but a slow/unreachable S3 endpoint must
 // time out rather than hang the request that triggered it.
 const S3_OP_DEADLINE_MS = 60_000;
@@ -503,6 +511,10 @@ export interface AgentConnection {
   readStoreFile(
     store: StoreTarget,
     ageIdentity?: string,
+    /** The sha256 recorded when this artifact was written. The agent refuses to
+     *  stream a byte if the file on disk no longer hashes to it. Omit only for a
+     *  run taken before integrity checking shipped. */
+    expectedSha256?: string,
   ): AsyncGenerator<Buffer, void, unknown>;
   /** Stream an artifact INTO a store — the destination half of a cross-host
    *  backup. Returns what actually landed (bytes + sha256), which is the number
@@ -1592,13 +1604,13 @@ function dial(target: DialTarget): AgentConnection {
         },
       );
     },
-    readStoreFile(store: StoreTarget, ageIdentity = "") {
+    readStoreFile(store: StoreTarget, ageIdentity = "", expectedSha256 = "") {
       // Server-streaming bytes: same shape as exportVolume, same backpressure —
       // an artifact is exactly the kind of stream an unbounded queue turns into
       // an OOM.
       return (async function* () {
         const stream = client.readStoreFile(
-          { store, ageIdentity },
+          { store, ageIdentity, expectedSha256 },
           { deadline: new Date(Date.now() + BACKUP_DEADLINE_MS) },
         );
         for await (const chunk of streamEvents<StoreChunk>(stream, {
@@ -1879,6 +1891,16 @@ const BACKUP_CAPABILITY = "backup";
  */
 const BACKUP_STORE_CAPABILITY = "backup-store";
 
+/**
+ * The agent honours `age_recipient` for a BUCKET artifact (and reports a sha256
+ * for the upload). Without it the field is silently ignored, the archive - which
+ * carries the app's whole decrypted env - lands in the bucket in the clear, and
+ * the run records a `.age` key for a file that is not encrypted. That downgrade
+ * is invisible, so an encrypted destination refuses to run on an agent lacking
+ * this rather than quietly writing plaintext.
+ */
+const BACKUP_ENCRYPT_S3_CAPABILITY = "backup-encrypt-s3";
+
 /** The capability an agent advertises once it can run cron jobs
  *  (StartJob/PollJob/KillJob - ADR-0018). */
 export const CRON_CAPABILITY = "cron";
@@ -2035,7 +2057,7 @@ export async function connectBackupAgent(
   /** Also require `"backup-store"` — set when the artifact lives on THIS host's
    *  disk. Split from the base check so an agent that can dump to S3 but cannot
    *  hold artifacts fails the SECOND thing with a message that names it. */
-  opts: { store?: boolean } = {},
+  opts: { store?: boolean; encryptedS3?: boolean } = {},
 ): Promise<AgentConnection> {
   const conn = await connectAgent(serverId);
   try {
@@ -2050,6 +2072,20 @@ export async function connectBackupAgent(
       throw new AgentBackupStoreUnsupportedError(
         `The agent on this server is too old to store backups on its disk. ` +
           `Update the agent on this server, then try again.`,
+      );
+    }
+    // FAIL rather than downgrade. An agent without this ignores the recipient and
+    // writes the artifact - the app's entire decrypted env included - to the
+    // bucket in plaintext, under a key whose `.age` suffix says otherwise. A
+    // backup that is quietly not encrypted is worse than one that did not run.
+    if (
+      opts.encryptedS3 &&
+      !hello.capabilities?.includes(BACKUP_ENCRYPT_S3_CAPABILITY)
+    ) {
+      throw new AgentBackupStoreUnsupportedError(
+        `The agent on this server is too old to encrypt backups sent to a bucket, ` +
+          `and Deplo will not write them unencrypted. Update the agent on this ` +
+          `server, then try again.`,
       );
     }
   } catch (e) {

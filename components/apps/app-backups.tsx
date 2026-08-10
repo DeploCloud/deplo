@@ -53,10 +53,11 @@ import {
   PendingRows,
   usePendingCreate,
 } from "@/components/shared/pending-create";
+import { ScheduleLabel } from "@/components/shared/schedule-picker";
 import {
-  ScheduleLabel,
-  SchedulePicker,
-} from "@/components/shared/schedule-picker";
+  BackupScheduleFields,
+  browserTimezone,
+} from "@/components/storage/backup-schedule-fields";
 import { DestinationCombobox } from "@/components/storage/destination-combobox";
 import { gqlAction } from "@/lib/graphql-client";
 import { DEFAULT_SCHEDULE, isValidSchedule } from "@/lib/schedule";
@@ -73,6 +74,7 @@ export function AppBackups({
   schedules,
   runs,
   destinations,
+  canTestDestinations,
 }: {
   appId: string;
   serviceName: string;
@@ -83,6 +85,8 @@ export function AppBackups({
   schedules: BackupDTO[];
   runs: BackupRun[];
   destinations: Destination[];
+  /** Whether this user may run the live connection probe the picker fires. */
+  canTestDestinations: boolean;
 }) {
   const noDeps = destinations.length === 0;
   const destName = React.useMemo(
@@ -112,11 +116,13 @@ export function AppBackups({
               appId={appId}
               destinations={destinations}
               serverId={serverId}
+              canTestDestinations={canTestDestinations}
             />
             <ScheduleBackup
               appId={appId}
               destinations={destinations}
               serverId={serverId}
+              canTestDestinations={canTestDestinations}
             />
           </div>
         </div>
@@ -146,6 +152,7 @@ export function AppBackups({
                     schedule={s}
                     destinations={destinations}
                     serverId={serverId}
+                    canTestDestinations={canTestDestinations}
                   />
                 ))}
               </TableBody>
@@ -230,10 +237,12 @@ function BackUpNow({
   appId,
   destinations,
   serverId,
+  canTestDestinations,
 }: {
   appId: string;
   destinations: Destination[];
   serverId: string | null;
+  canTestDestinations: boolean;
 }) {
   const [open, setOpen] = React.useState(false);
   const { create } = usePendingCreate();
@@ -254,7 +263,7 @@ function BackUpNow({
     const dest = destinations.find((d) => d.id === destinationId);
     setOpen(false);
     create(
-      { label: dest?.name ?? "Backup", note: "Backing up…" },
+      { label: dest?.name ?? "Backup", note: "Backing up" },
       () =>
         gqlAction(
           `mutation($appId: String!, $destinationId: String!) {
@@ -305,7 +314,7 @@ function BackUpNow({
           <div className="space-y-2">
             <FieldLabel
               htmlFor="backup-now-destination"
-              info="Where this backup is written. Opening the list re-checks every destination, so the status you see is live."
+              info="Where this backup is written. Each one shows whether Deplo could reach it."
             >
               Destination
             </FieldLabel>
@@ -315,6 +324,7 @@ function BackUpNow({
               value={destinationId}
               onChange={setDestinationId}
               sameDiskServerId={serverId}
+              canProbe={canTestDestinations}
             />
           </div>
           <DialogFooter>
@@ -339,20 +349,23 @@ function ScheduleBackup({
   appId,
   destinations,
   serverId,
+  canTestDestinations,
 }: {
   appId: string;
   destinations: Destination[];
   serverId: string | null;
+  canTestDestinations: boolean;
 }) {
   const router = useRouter();
   const [open, setOpen] = React.useState(false);
   const [pending, startTransition] = React.useTransition();
-  const [fields, setFields] = React.useState<ScheduleFields>({
+  const [fields, setFields] = React.useState<ScheduleFields>(() => ({
     name: "",
     destinationId: destinations[0]?.id ?? "",
     schedule: DEFAULT_SCHEDULE,
+    timezone: browserTimezone(),
     retention: 14,
-  });
+  }));
   const noDeps = destinations.length === 0;
 
   function onSubmit(e: React.FormEvent) {
@@ -371,6 +384,7 @@ function ScheduleBackup({
             appId,
             destinationId: fields.destinationId,
             schedule: fields.schedule,
+            timezone: fields.timezone,
             retentionDays: fields.retention,
           },
         },
@@ -423,6 +437,7 @@ function ScheduleBackup({
             onChange={setFields}
             destinations={destinations}
             serverId={serverId}
+            canTestDestinations={canTestDestinations}
           />
           <DialogFooter>
             <Button variant="outline" onClick={() => setOpen(false)} disabled={pending}>
@@ -437,7 +452,7 @@ function ScheduleBackup({
                 !isValidSchedule(fields.schedule)
               }
             >
-              {pending ? "Creating…" : "Create schedule"}
+              {pending ? <Loader2 className="size-4 animate-spin" /> : "Create schedule"}
             </Button>
           </DialogFooter>
         </form>
@@ -455,6 +470,7 @@ type ScheduleFields = {
   name: string;
   destinationId: string;
   schedule: string;
+  timezone: string;
   retention: number;
 };
 
@@ -463,12 +479,14 @@ function ScheduleFormFields({
   onChange,
   destinations,
   serverId,
+  canTestDestinations,
 }: {
   fields: ScheduleFields;
   onChange: React.Dispatch<React.SetStateAction<ScheduleFields>>;
   destinations: Destination[];
   /** This app's server, so the destination picker can flag a same-disk pick. */
   serverId: string | null;
+  canTestDestinations: boolean;
 }) {
   return (
     <div className="grid gap-4">
@@ -484,7 +502,7 @@ function ScheduleFormFields({
       <div className="space-y-2">
         <FieldLabel
           htmlFor="app-backup-destination"
-          info="Where scheduled backups are written. Opening the list re-checks every destination, so the status you see is live."
+          info="Where scheduled backups are written. Each one shows whether Deplo could reach it."
         >
           Destination
         </FieldLabel>
@@ -494,32 +512,17 @@ function ScheduleFormFields({
           value={fields.destinationId}
           onChange={(v) => onChange((f) => ({ ...f, destinationId: v }))}
           sameDiskServerId={serverId}
+          canProbe={canTestDestinations}
         />
       </div>
-      <SchedulePicker
-        id="app-backup-schedule"
-        value={fields.schedule}
-        onChange={(cron) => onChange((f) => ({ ...f, schedule: cron }))}
-        info="How often this backup runs. Pick a frequency — the details it needs appear next to it. Writing a cron expression by hand is the last option in the list."
-        trailing={
-          <div className="space-y-2">
-            <FieldLabel
-              htmlFor="app-backup-retention"
-              info="How long completed backup artifacts are kept in the destination before older ones are pruned."
-            >
-              Retention (days)
-            </FieldLabel>
-            <Input
-              id="app-backup-retention"
-              type="number"
-              value={fields.retention}
-              onChange={(e) =>
-                onChange((f) => ({ ...f, retention: Number(e.target.value) || 7 }))
-              }
-              min={1}
-            />
-          </div>
-        }
+      <BackupScheduleFields
+        idPrefix="app-backup"
+        schedule={fields.schedule}
+        onScheduleChange={(cron) => onChange((f) => ({ ...f, schedule: cron }))}
+        timezone={fields.timezone}
+        onTimezoneChange={(tz) => onChange((f) => ({ ...f, timezone: tz }))}
+        retention={fields.retention}
+        onRetentionChange={(days) => onChange((f) => ({ ...f, retention: days }))}
       />
     </div>
   );
@@ -529,12 +532,14 @@ function EditScheduleDialog({
   schedule,
   destinations,
   serverId,
+  canTestDestinations,
   open,
   onOpenChange,
 }: {
   schedule: BackupDTO;
   destinations: Destination[];
   serverId: string | null;
+  canTestDestinations: boolean;
   open: boolean;
   onOpenChange: (open: boolean) => void;
 }) {
@@ -547,6 +552,7 @@ function EditScheduleDialog({
     name: schedule.name,
     destinationId: schedule.destinationId,
     schedule: schedule.schedule,
+    timezone: schedule.timezone || "UTC",
     retention: schedule.retentionDays,
   });
 
@@ -565,6 +571,7 @@ function EditScheduleDialog({
             name: fields.name,
             destinationId: fields.destinationId,
             schedule: fields.schedule,
+            timezone: fields.timezone,
             retentionDays: fields.retention,
           },
         },
@@ -595,6 +602,7 @@ function EditScheduleDialog({
             onChange={setFields}
             destinations={destinations}
             serverId={serverId}
+            canTestDestinations={canTestDestinations}
           />
           <DialogFooter>
             <Button variant="outline" onClick={() => onOpenChange(false)} disabled={pending}>
@@ -609,7 +617,7 @@ function EditScheduleDialog({
                 !isValidSchedule(fields.schedule)
               }
             >
-              {pending ? "Saving…" : "Save changes"}
+              {pending ? <Loader2 className="size-4 animate-spin" /> : "Save changes"}
             </Button>
           </DialogFooter>
         </form>
@@ -626,10 +634,12 @@ function ScheduleRow({
   schedule,
   destinations,
   serverId,
+  canTestDestinations,
 }: {
   schedule: BackupDTO;
   destinations: Destination[];
   serverId: string | null;
+  canTestDestinations: boolean;
 }) {
   const router = useRouter();
   const [pending, startTransition] = React.useTransition();
@@ -667,7 +677,7 @@ function ScheduleRow({
         {schedule.destinationName}
       </TableCell>
       <TableCell>
-        <ScheduleLabel cron={schedule.schedule} />
+        <ScheduleLabel cron={schedule.schedule} timezone={schedule.timezone} />
       </TableCell>
       <TableCell className="text-muted-foreground">
         {schedule.retentionDays}d
@@ -730,6 +740,7 @@ function ScheduleRow({
           schedule={schedule}
           destinations={destinations}
           serverId={serverId}
+          canTestDestinations={canTestDestinations}
           open={editOpen}
           onOpenChange={setEditOpen}
         />
@@ -803,6 +814,14 @@ function RunRow({
             <StatusDot status={run.status} />
             {run.status}
           </span>
+        )}
+        {/* See RestoreRunsDialog: only the runs from before checksums say so. */}
+        {run.status === "success" && !run.sha256 && (
+          <SimpleTooltip content="Taken before Deplo recorded checksums, so it cannot prove this file is unchanged">
+            <span className="mt-1 block text-[10px] text-muted-foreground">
+              Not checksummed
+            </span>
+          </SimpleTooltip>
         )}
       </TableCell>
       <TableCell className="text-right">

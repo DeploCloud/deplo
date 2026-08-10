@@ -5,8 +5,7 @@ import { hasCapability } from "@/lib/membership";
 import { listBackups } from "@/lib/data/backups";
 import {
   ensureDefaultDestination,
-  listDestinations,
-  toDestinationOption,
+  listDestinationOptions,
 } from "@/lib/data/destinations";
 import { PageHeader } from "@/components/shared/page-header";
 import { EmptyState } from "@/components/shared/empty-state";
@@ -28,7 +27,7 @@ export default async function DatabaseBackupsPage(
       <EmptyState
         icon={Lock}
         title="No access to backups"
-        description="You don't have permission to manage this database's backups. Ask a team admin for the “Manage infrastructure” permission."
+        description="You don't have permission to manage this database's backups. Ask a team admin for the “Manage backups” permission."
       />
     );
   }
@@ -36,10 +35,13 @@ export default async function DatabaseBackupsPage(
   // Same lazy default as the Storage page: a database's Backups tab should not
   // be the place someone discovers they have nowhere to put a backup.
   await ensureDefaultDestination();
-  const [allBackups, destinations] = await Promise.all([
-    listBackups(),
-    listDestinations(),
-  ]);
+  const [allBackups, destinations, canRestore, canTestDestinations] =
+    await Promise.all([
+      listBackups(),
+      listDestinationOptions(),
+      hasCapability("restore_backups"),
+      hasCapability("manage_backup_destinations"),
+    ]);
   // Only this database's schedules — listBackups returns the whole team's.
   const schedules = allBackups.filter(
     (b) => b.targetKind === "database" && b.databaseId === db.id,
@@ -54,7 +56,10 @@ export default async function DatabaseBackupsPage(
       <DatabaseBackups
         database={{ id: db.id, name: db.name, serverId: db.serverId }}
         schedules={schedules}
-        destinations={destinations.map(toDestinationOption)}
+        destinations={destinations}
+        canManage
+        canRestore={canRestore}
+        canTestDestinations={canTestDestinations}
       />
     </div>
   );

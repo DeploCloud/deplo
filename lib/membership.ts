@@ -562,9 +562,15 @@ export async function currentMemberScope(): Promise<NodeScope | null> {
 export async function reachesWholeTeam(): Promise<boolean> {
   if (narrowedScope()) return false;
   const user = await getCurrentUser();
-  if (!user) return true;
+  // FAIL CLOSED. "No user" and "no active team" are not the same shape as "an
+  // unscoped member", and this answer is read as an authorization decision in
+  // places that treat `true` as full reach — a database backup schedule, a run
+  // history, an artifact sweep. Every caller today happens to prove a session
+  // first, so this changes nothing about who can do what; it is the default
+  // being right that matters, because the next caller will not check.
+  if (!user) return false;
   const teamId = await getActiveTeamId();
-  if (!teamId) return true;
+  if (!teamId) return false;
   return (await memberScopeFor(user.id, teamId)) == null;
 }
 

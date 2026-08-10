@@ -22,6 +22,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import { Checkbox } from "@/components/ui/checkbox";
 import { StatusBadge } from "@/components/shared/status-badge";
 import { ConfirmAction } from "@/components/shared/confirm-action";
 import { SimpleTooltip } from "@/components/ui/tooltip";
@@ -32,6 +33,18 @@ import {
 } from "@/components/storage/destination-test-log-dialog";
 import { formatBytes, timeAgo } from "@/lib/utils";
 import { gql, gqlAction } from "@/lib/graphql-client";
+
+/** What removing a destination destroys, so the dialog can name it. */
+interface RemovalImpact {
+  schedules: number;
+  runs: number;
+  artifacts: number;
+}
+
+/** "3 schedules", "1 schedule" - the plural nobody should hand-write twice. */
+function plural(n: number, one: string, many = `${one}s`): string {
+  return `${n} ${n === 1 ? one : many}`;
+}
 
 /**
  * The first line of an agent message, for the toast. Errors can arrive as a
@@ -85,6 +98,10 @@ export function DestinationCard({
   const router = useRouter();
   const [pending, startTransition] = React.useTransition();
   const [confirmOpen, setConfirmOpen] = React.useState(false);
+  // What the removal takes with it, fetched when the dialog opens. Null while
+  // unknown, so the copy never asserts a count it does not have.
+  const [impact, setImpact] = React.useState<RemovalImpact | null>(null);
+  const [alsoDeleteFiles, setAlsoDeleteFiles] = React.useState(false);
   const [logOpen, setLogOpen] = React.useState(false);
   const isServer = dest.kind === "server";
 
@@ -172,6 +189,39 @@ export function DestinationCard({
       }
     });
   }
+
+  // Reset on CLOSE, in the handler rather than in the effect: a synchronous
+  // setState inside an effect cascades a render, and the repo's dialogs already
+  // do their resetting where the close actually happens.
+  function onConfirmOpenChange(next: boolean) {
+    if (!next) {
+      setImpact(null);
+      setAlsoDeleteFiles(false);
+    }
+    setConfirmOpen(next);
+  }
+
+  // Fetch the impact each time the dialog opens - a backup may have run since.
+  React.useEffect(() => {
+    if (!confirmOpen) return;
+    let cancelled = false;
+    gql<{ destinationRemovalImpact: RemovalImpact }>(
+      `query ($id: String!) {
+        destinationRemovalImpact(id: $id) { schedules runs artifacts }
+      }`,
+      { id: dest.id },
+    )
+      .then((d) => {
+        if (!cancelled) setImpact(d.destinationRemovalImpact);
+      })
+      .catch(() => {
+        // Unknown stays unknown: the dialog then says only what it is sure of.
+        if (!cancelled) setImpact(null);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [confirmOpen, dest.id]);
 
   return (
     <>
@@ -364,21 +414,59 @@ export function DestinationCard({
         onTested={() => router.refresh()}
       />
 
+      {/* The copy used to say backups "will stop running", which was not what
+          happened: the schedules and the whole run history are DELETED. And for
+          a server destination "the files are not deleted" left them on that disk
+          with nothing in Deplo able to name them again — reclaimable only over
+          SSH, which is the one thing this platform exists to make unnecessary.
+          So: say the real numbers, and offer the sweep. */}
       <ConfirmAction
         open={confirmOpen}
-        onOpenChange={setConfirmOpen}
+        onOpenChange={onConfirmOpenChange}
         title={`Remove ${dest.name}?`}
         description={
-          isServer
-            ? "Backups configured to use this destination will stop running. The backup files on the server are not deleted."
-            : "Backups configured to use this destination will stop running. Your bucket contents are not affected."
+          <span className="flex flex-col gap-2">
+            <span>
+              {impact && (impact.schedules > 0 || impact.runs > 0)
+                ? `This deletes ${plural(impact.schedules, "backup schedule")} and ${plural(impact.runs, "restore point")}. `
+                : "This deletes the backup schedules and restore points that use it. "}
+              {alsoDeleteFiles
+                ? "The backup files are deleted too."
+                : isServer
+                  ? "The backup files stay on the server."
+                  : "Your bucket contents are not affected."}
+            </span>
+          </span>
+        }
+        extra={
+          impact && impact.artifacts > 0 ? (
+            <label className="flex cursor-pointer items-start gap-2.5 rounded-lg border border-border p-3 text-sm">
+              <Checkbox
+                checked={alsoDeleteFiles}
+                onCheckedChange={(v) => setAlsoDeleteFiles(v === true)}
+                className="mt-0.5"
+              />
+              <span>
+                <span className="font-medium">
+                  Also delete the {plural(impact.artifacts, "backup file")}
+                </span>
+                <span className="mt-1 block text-xs text-muted-foreground">
+                  {isServer
+                    ? "Frees the space on the server. Without this they stay on disk and Deplo can no longer reach them."
+                    : "Removes the objects from your bucket. Without this they stay there for you to manage yourself."}
+                </span>
+              </span>
+            </label>
+          ) : undefined
         }
         confirmLabel="Remove destination"
         successMessage="Destination removed"
         onConfirm={async () => {
           const res = await gqlAction(
-            `mutation ($id: String!) { deleteDestination(id: $id) }`,
-            { id: dest.id },
+            `mutation ($id: String!, $deleteArtifacts: Boolean) {
+              deleteDestination(id: $id, deleteArtifacts: $deleteArtifacts)
+            }`,
+            { id: dest.id, deleteArtifacts: alsoDeleteFiles },
           );
           if (res.ok) router.refresh();
           return res;

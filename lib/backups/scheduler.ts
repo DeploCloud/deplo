@@ -8,8 +8,12 @@ import { eq } from "drizzle-orm";
 import { getDb } from "../db/client";
 import { backups as backupsTable } from "../db/schema/control-plane";
 import { assembleBackup } from "../data/backup-rows";
-import { runScheduledBackup } from "../data/backups";
-import { cronMatches } from "./cron";
+import type { Backup } from "../types";
+import {
+  runScheduledBackup,
+  sweepOrphanedBackupArtifacts,
+} from "../data/backups";
+import { cronMatchesInZone, dedupeKeyFor } from "../crons/cron-tz";
 import {
   acquireLease,
   releaseLease,
@@ -45,6 +49,10 @@ import {
 
 const TICK_MS = 60_000;
 
+/** How often the orphaned-artifact sweep runs. Daily: it scans every orphaned
+ *  run on the instance, and a month-old file can wait an hour. */
+const ORPHAN_SWEEP_EVERY_MS = 24 * 60 * 60_000;
+
 /** A label identifying THIS process as the lease owner across restarts. */
 function makeOwner(): string {
   return `${hostname()}:${process.pid}:${randomBytes(4).toString("hex")}`;
@@ -54,15 +62,26 @@ interface SchedulerState {
   started: boolean;
   timer: ReturnType<typeof setInterval> | null;
   owner: string;
-  /** Guards against firing one schedule twice within the same wall-clock minute
-   *  (overlapping ticks / drift): backupId → the minute key we last fired it for. */
-  lastFired: Map<string, string>;
+  /**
+   * Guards against firing one schedule twice for the same scheduled instant
+   * (overlapping ticks / drift): backupId → the dedupe key we last fired it for,
+   * plus WHEN we recorded it so the map can be bounded.
+   *
+   * The key is zone-aware, so a daily backup fires ONCE across a fall-back hour
+   * that repeats 03:00, and an every-N-minutes one still fires all 25 hours'
+   * worth (see `dedupeKeyFor`). It is keyed on the SCHEDULED instant, not on the
+   * tick's own clock — after a slow drain those differ by the whole catch-up
+   * window, which is exactly when a double fire would happen.
+   */
+  lastFired: Map<string, { key: string; at: number }>;
   /** True while a tick is in flight, so a slow tick never overlaps the next. */
   ticking: boolean;
   /** The `now` of the last tick that reached the lease check (held or not), so a
    *  tick after a long drain can replay the cron minutes the drain stepped over.
    *  Null on a fresh process — restarts never replay (no persisted last run). */
   lastTickAt: Date | null;
+  /** When the orphan-artifact sweep last ran (epoch ms; 0 = never this process). */
+  lastOrphanSweepAt: number;
 }
 
 const STATE_KEY = Symbol.for("deplo.backup.scheduler");
@@ -74,12 +93,8 @@ const state: SchedulerState = (g[STATE_KEY] ??= {
   lastFired: new Map(),
   ticking: false,
   lastTickAt: null,
+  lastOrphanSweepAt: 0,
 });
-
-/** Minute-precision key for the dedup guard, e.g. "2026-06-23T17:45". */
-function minuteKey(at: Date): string {
-  return at.toISOString().slice(0, 16);
-}
 
 /**
  * One scheduler tick: claim the lease, then run every enabled schedule due this
@@ -94,7 +109,6 @@ export async function runSchedulerTick(now: Date = new Date()): Promise<void> {
     const held = await acquireLease(BACKUP_SCHEDULER_LEASE, state.owner, now);
     if (!held) return;
 
-    const key = minuteKey(now);
     // CATCH-UP over an overrun drain: one slow dump holds `state.ticking`, so the
     // interval ticks under it are SKIPPED — which used to step straight past every
     // schedule whose exact cron minute fell inside the drain, silently losing that
@@ -122,13 +136,34 @@ export async function runSchedulerTick(now: Date = new Date()): Promise<void> {
       .select()
       .from(backupsTable)
       .where(eq(backupsTable.enabled, true));
-    const due = enabledRows.map(assembleBackup).filter((b) => {
-      const cron = b.schedule;
-      if (!cron || state.lastFired.get(b.id) === key) return false;
-      return minutes.some((m) => cronMatches(cron, m));
-    });
+    // Each due schedule carries the exact minute it matched, so the dedupe key is
+    // the SCHEDULED instant rather than the tick's own clock — the two differ by
+    // the whole catch-up window after a slow drain.
+    const due: { backup: Backup; firedFor: string }[] = [];
+    for (const b of enabledRows.map(assembleBackup)) {
+      if (!b.schedule) continue;
+      // A schedule now names the zone it is read in. A bad one throws out of
+      // `cronMatchesInZone`; contained per row, so one bad value cannot stop the
+      // instance's other backups (same rule the cron runner follows).
+      let fireAt: Date | undefined;
+      try {
+        fireAt = minutes
+          .filter((m) => cronMatchesInZone(b.schedule, m, b.timezone || "UTC"))
+          .pop();
+      } catch (e) {
+        console.warn(
+          `[backups] schedule ${b.id} has an unusable timezone ${b.timezone}: ` +
+            `${e instanceof Error ? e.message : String(e)}`,
+        );
+        continue;
+      }
+      if (!fireAt) continue;
+      const firedFor = dedupeKeyFor(b.schedule, fireAt, b.timezone || "UTC");
+      if (state.lastFired.get(b.id)?.key === firedFor) continue;
+      due.push({ backup: b, firedFor });
+    }
 
-    for (const b of due) {
+    for (const { backup: b, firedFor } of due) {
       // Heartbeat mid-drain: one slow dump can outlast LEASE_STALE_MS, and a lease
       // whose heartbeat only advances at tick start would go stale — free for
       // another instance to steal and double-fire. Renew per item (real wall-clock,
@@ -137,7 +172,7 @@ export async function runSchedulerTick(now: Date = new Date()): Promise<void> {
       if (!(await acquireLease(BACKUP_SCHEDULER_LEASE, state.owner))) break;
       // Stamp BEFORE awaiting so a re-entrant/overlapping tick in the same minute
       // can't double-fire this schedule even before the run resolves.
-      state.lastFired.set(b.id, key);
+      state.lastFired.set(b.id, { key: firedFor, at: now.getTime() });
       try {
         await runScheduledBackup(b);
       } catch (e) {
@@ -148,10 +183,28 @@ export async function runSchedulerTick(now: Date = new Date()): Promise<void> {
       }
     }
 
-    // Bound the dedup map: drop entries for minutes other than the current one
-    // (a schedule fires at most once a minute, so older keys are dead weight).
-    for (const [id, k] of state.lastFired) {
-      if (k !== key) state.lastFired.delete(id);
+    // Bound the dedup map by AGE, not by "is this the current minute": an entry
+    // stays useful for as long as its scheduled instant can still be replayed,
+    // and the replay window is the lease's staleness bound. Dropping anything
+    // older than that keeps the map to the handful of schedules that actually
+    // fired recently.
+    for (const [id, seen] of state.lastFired) {
+      if (now.getTime() - seen.at > LEASE_STALE_MS) state.lastFired.delete(id);
+    }
+
+    // Reclaim the artifacts of apps and databases that no longer exist. Under the
+    // same lease, so exactly one control plane does it, and once a day rather
+    // than once a minute: it scans every orphaned run on the instance, and there
+    // is nothing time-critical about a month-old file living another hour.
+    if (now.getTime() - state.lastOrphanSweepAt > ORPHAN_SWEEP_EVERY_MS) {
+      state.lastOrphanSweepAt = now.getTime();
+      try {
+        await sweepOrphanedBackupArtifacts();
+      } catch (e) {
+        console.warn(
+          `[backups] orphan sweep failed: ${e instanceof Error ? e.message : String(e)}`,
+        );
+      }
     }
   } finally {
     // Advance even when the lease was denied: those minutes were the OTHER

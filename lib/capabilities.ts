@@ -214,8 +214,15 @@ export const CAPABILITY_META: Record<Capability, CapabilityMeta> = {
   },
   manage_backup_destinations: {
     label: "Manage backup destinations",
-    description: "Connect, test and remove the places backups are stored.",
-    keywords: "bucket s3 server disk storage remote credentials minio garage path",
+    description:
+      "Connect, test and remove the places backups are stored, and download the key that decrypts them.",
+    keywords: "bucket s3 server disk storage remote credentials minio garage path recovery key",
+    // Sensitive, and not because connecting a bucket is dangerous: this is the
+    // capability that hands over the recovery key, which decrypts EVERY artifact
+    // at a destination - including backups of apps the holder has no grant on.
+    // That is strictly more reach than `restore_backups`, which is marked, and
+    // it was reading as a settings chore.
+    sensitive: true,
   },
 
   /* ---- Integrations ---- */

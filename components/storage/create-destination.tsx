@@ -12,6 +12,7 @@ import {
   DialogTrigger,
 } from "@/components/ui/dialog";
 import { Badge } from "@/components/ui/badge";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -44,6 +45,16 @@ const PROVIDERS: { id: S3Provider; name: string; endpointHint: string }[] = [
   { id: "minio", name: "MinIO (self-hosted)", endpointHint: "https://minio.example.com" },
   { id: "other", name: "Other S3-compatible", endpointHint: "https://..." },
 ];
+
+/**
+ * The endpoint to send, or "" when there is nothing usable. Blank means "use the
+ * provider's default", which is right for every provider whose hint is a real
+ * URL — and wrong for "other", whose hint is a placeholder shape.
+ */
+function endpointOrHint(typed: string, hint: string): string {
+  const value = typed.trim() || hint;
+  return value.includes("...") ? "" : value;
+}
 
 export interface DestinationServerOption {
   id: string;
@@ -97,19 +108,29 @@ export function CreateDestination({
   const [advancedOpen, setAdvancedOpen] = React.useState(false);
   const [provider, setProvider] = React.useState<S3Provider>("cloudflare-r2");
   const [s3, setS3] = React.useState(EMPTY_S3);
+  const [allowPrivate, setAllowPrivate] = React.useState(false);
 
   const hint = PROVIDERS.find((p) => p.id === provider)!.endpointHint;
   const setField = (k: keyof typeof s3) => (e: React.ChangeEvent<HTMLInputElement>) =>
     setS3((f) => ({ ...f, [k]: e.target.value }));
 
+  // The button asks for everything the SERVER asks for. It used to check only
+  // the bucket, so a form missing its keys closed, failed, and reopened with the
+  // error - which is a slower way of saying "this field is required".
   const valid =
-    kind === "server" ? Boolean(serverId) && servers.length > 0 : Boolean(s3.bucket.trim());
+    kind === "server"
+      ? Boolean(serverId) && servers.length > 0
+      : Boolean(s3.bucket.trim()) &&
+        Boolean(s3.accessKey.trim()) &&
+        Boolean(s3.secretKey.trim()) &&
+        Boolean(endpointOrHint(s3.endpoint, hint));
 
   function reset() {
     setName("");
     setPath("");
     setAdvancedOpen(false);
     setS3(EMPTY_S3);
+    setAllowPrivate(false);
   }
 
   function onSubmit(e: React.FormEvent) {
@@ -122,7 +143,7 @@ export function CreateDestination({
     // verified. The whole form is kept aside: this is the create most likely to
     // be rejected (a wrong key, a folder that is not empty), and retyping six
     // fields would be the worst possible answer.
-    const typed = { kind, name, serverId, path, provider, ...s3 };
+    const typed = { kind, name, serverId, path, provider, allowPrivate, ...s3 };
     const serverName = servers.find((s) => s.id === typed.serverId)?.name ?? "";
     setOpen(false);
     reset();
@@ -147,11 +168,16 @@ export function CreateDestination({
                     name: typed.name || typed.bucket,
                     kind: "s3",
                     provider: typed.provider.toUpperCase().replace(/-/g, "_"),
-                    endpoint: typed.endpoint || hint,
+                    // The provider hint is a real endpoint for every provider but
+                    // "other", whose placeholder is literally "https://..." — a
+                    // string that parses as a URL and resolves to nothing, so it
+                    // used to be saved as a destination that could never work.
+                    endpoint: endpointOrHint(typed.endpoint, hint),
                     region: typed.region,
                     bucket: typed.bucket,
                     accessKey: typed.accessKey,
                     secretKey: typed.secretKey,
+                    allowPrivateEndpoint: typed.allowPrivate,
                   },
           },
         ),
@@ -163,6 +189,7 @@ export function CreateDestination({
           setServerId(typed.serverId);
           setPath(typed.path);
           setProvider(typed.provider);
+          setAllowPrivate(typed.allowPrivate);
           setS3({
             endpoint: typed.endpoint,
             region: typed.region,
@@ -334,6 +361,30 @@ export function CreateDestination({
                     autoComplete="off"
                   />
                 </div>
+                {/* Self-hosting means the bucket is often on the same private
+                    network as the fleet, and both guards refused that outright -
+                    so "MinIO (self-hosted)" was in the list and unusable at any
+                    ordinary address. Instance admins only, the same bar a custom
+                    backup folder carries, because the agent dials it as root. */}
+                {isInstanceAdmin && (
+                  <label className="flex cursor-pointer items-start gap-2.5 rounded-lg border border-border p-3 text-sm">
+                    <Checkbox
+                      checked={allowPrivate}
+                      onCheckedChange={(v) => setAllowPrivate(v === true)}
+                      className="mt-0.5"
+                    />
+                    <span>
+                      <span className="font-medium">
+                        This bucket is on my own network
+                      </span>
+                      <span className="mt-1 block text-xs text-muted-foreground">
+                        Allows a private address like 10.0.0.5 or a hostname that
+                        resolves to one. Off by default so a mistyped endpoint
+                        cannot reach inside your network.
+                      </span>
+                    </span>
+                  </label>
+                )}
               </>
             )}
           </div>

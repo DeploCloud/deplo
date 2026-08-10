@@ -2,6 +2,8 @@ import { builder } from "../builder";
 import { S3ProviderEnum } from "./enums";
 import {
   listDestinations,
+  listDestinationOptions,
+  destinationRemovalImpact,
   createDestination,
   testDestination,
   testDestinations,
@@ -9,6 +11,7 @@ import {
   deleteDestination,
   revealRecoveryKey,
   type DestinationDTO,
+  type DestinationOption,
   type DestinationTestResult,
 } from "@/lib/data/destinations";
 import type {
@@ -69,6 +72,18 @@ export const BackupDestinationRef = builder
       region: t.exposeString("region", { nullable: true }),
       bucket: t.exposeString("bucket", { nullable: true }),
       accessKeyMasked: t.exposeString("accessKeyMasked", { nullable: true }),
+      allowPrivateEndpoint: t.exposeBoolean("allowPrivateEndpoint", {
+        description:
+          "Whether this bucket is allowed to live on a private address. " +
+          "Instance-admin only to set.",
+      }),
+      encrypted: t.boolean({
+        description:
+          "Whether artifacts written here are encrypted. Always true for a " +
+          "server destination, and for any bucket connected since bucket " +
+          "artifacts started being encrypted.",
+        resolve: (d) => Boolean(d.ageRecipient),
+      }),
 
       /* ---- kind: server ---- */
       serverId: t.exposeID("serverId", { nullable: true }),
@@ -84,6 +99,46 @@ export const BackupDestinationRef = builder
       // card: an encrypted backup whose only key lives inside the thing that
       // might be lost is not a backup.
       recoveryKeySavedAt: t.exposeString("recoveryKeySavedAt", { nullable: true }),
+    }),
+  });
+
+/**
+ * A destination as a PICKER needs it: what to call it, where it points, how it
+ * last answered. Its own type rather than a slice of the one above, because the
+ * two answer to different gates — this one is readable by any member of the
+ * team, and it carries nothing that would not already be visible to someone who
+ * can take a backup.
+ */
+const BackupDestinationOptionRef = builder
+  .objectRef<DestinationOption>("BackupDestinationOption")
+  .implement({
+    description:
+      "A backup destination as a picker shows it. No credentials, no test " +
+      "history: readable by anyone who may schedule or run a backup, including " +
+      "a member scoped to one folder.",
+    fields: (t) => ({
+      id: t.exposeID("id"),
+      name: t.exposeString("name"),
+      kind: t.field({ type: DestinationKindEnum, resolve: (d) => d.kind }),
+      where: t.exposeString("where"),
+      status: t.field({ type: DestinationStatusEnum, resolve: (d) => d.status }),
+      serverId: t.exposeID("serverId", { nullable: true }),
+    }),
+  });
+
+/** What removing a destination destroys, so the dialog can say it. */
+const DestinationRemovalImpactRef = builder
+  .objectRef<{ schedules: number; runs: number; artifacts: number }>(
+    "DestinationRemovalImpact",
+  )
+  .implement({
+    description:
+      "What deleting this destination takes with it: the schedules that point " +
+      "at it, the run history, and how many stored backup files it holds.",
+    fields: (t) => ({
+      schedules: t.exposeInt("schedules"),
+      runs: t.exposeInt("runs"),
+      artifacts: t.exposeInt("artifacts"),
     }),
   });
 
@@ -203,6 +258,10 @@ const CreateDestinationInputType = builder.inputType("CreateDestinationInput", {
     bucket: t.string({ required: false }),
     accessKey: t.string({ required: false }),
     secretKey: t.string({ required: false }),
+    // Instance-admin only, checked in the data layer. Lets a bucket on the
+    // operator's own network be used at all, which on a self-hosting platform is
+    // an ordinary thing to want.
+    allowPrivateEndpoint: t.boolean({ required: false }),
     // server — `path` is instance-admin only; null means the agent's own
     // managed store, which is what almost everyone wants.
     serverId: t.string({ required: false }),
@@ -220,6 +279,26 @@ builder.queryFields((t) => ({
     authScopes: { loggedIn: true },
     description: "All backup destinations in the active team, newest first.",
     resolve: () => listDestinations(),
+  }),
+  backupDestinationOptions: t.field({
+    type: [BackupDestinationOptionRef],
+    authScopes: { loggedIn: true },
+    description:
+      "The team's backup destinations as a picker needs them, newest first. " +
+      "Unlike `backupDestinations` this is readable by a member scoped to part " +
+      "of the team: they may hold `manage_backups` on an app and still need " +
+      "somewhere to send its backups.",
+    resolve: () => listDestinationOptions(),
+  }),
+  destinationRemovalImpact: t.field({
+    type: DestinationRemovalImpactRef,
+    authScopes: { loggedIn: true },
+    description:
+      "What deleting this destination would destroy. Read by the confirm " +
+      "dialog, so it can name the schedules and restore points instead of " +
+      "saying backups will 'stop running'.",
+    args: { id: t.arg.string({ required: true }) },
+    resolve: (_r, { id }) => destinationRemovalImpact(id),
   }),
   destinationTestReport: t.field({
     type: S3TestReportRef,
@@ -251,6 +330,7 @@ builder.mutationFields((t) => ({
         bucket: input.bucket ?? null,
         accessKey: input.accessKey ?? null,
         secretKey: input.secretKey ?? null,
+        allowPrivateEndpoint: input.allowPrivateEndpoint ?? false,
         serverId: input.serverId ?? null,
         path: input.path ?? null,
       }),
@@ -293,11 +373,16 @@ builder.mutationFields((t) => ({
     type: "Boolean",
     authScopes: { capability: "manage_backup_destinations" },
     description:
-      "Delete the destination and the schedules and run records that point at it. " +
-      "The artifacts themselves are not touched. Returns true.",
-    args: { id: t.arg.string({ required: true }) },
-    resolve: async (_r, { id }) => {
-      await deleteDestination(id);
+      "Delete the destination, and with it every schedule and run record that " +
+      "points at it. With `deleteArtifacts`, the stored backup files go too - " +
+      "otherwise they stay where they are, which for a server destination means " +
+      "on that disk with nothing left in Deplo that can name them. Returns true.",
+    args: {
+      id: t.arg.string({ required: true }),
+      deleteArtifacts: t.arg.boolean({ required: false }),
+    },
+    resolve: async (_r, { id, deleteArtifacts }) => {
+      await deleteDestination(id, { deleteArtifacts: deleteArtifacts ?? false });
       return true;
     },
   }),

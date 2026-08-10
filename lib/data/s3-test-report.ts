@@ -350,7 +350,13 @@ export function emptyS3TestReport(target: S3TestTarget): S3TestReport {
 export function reproduceCommand(target: S3TestTarget): string {
   if (target.kind === "server") return reproduceStoreCommand(target);
   const url = endpointUrl(target.endpoint);
-  const common = `--endpoint-url ${url} --region ${target.region || "auto"}`;
+  // QUOTED, all of it. This block is what an admin pastes into a shell precisely
+  // when a destination is failing, and the bucket and region are strings someone
+  // else typed into a form. Deplo validates them on the way in as well; either
+  // guard alone is one refactor away from being the only one, and the cost of
+  // both is a pair of quotes.
+  const common = `--endpoint-url ${shellQuote(url)} --region ${shellQuote(target.region || "auto")}`;
+  const bucket = shellQuote(target.bucket);
   const styleNote = pathStyle(target.provider)
     ? `\n# ${target.provider} needs path-style addressing (deplo sets it for you):\naws configure set default.s3.addressing_style path`
     : "";
@@ -363,13 +369,13 @@ export function reproduceCommand(target: S3TestTarget): string {
     `export AWS_EC2_METADATA_DISABLED=true${styleNote}`,
     ``,
     `# 1. the bucket exists and these credentials can see it`,
-    `aws ${common} s3api head-bucket --bucket ${target.bucket}`,
+    `aws ${common} s3api head-bucket --bucket ${bucket}`,
     ``,
     `# 2. the credentials can WRITE (a read-only key fails here)`,
-    `aws ${common} s3api put-object --bucket ${target.bucket} --key ${PROBE_KEY}`,
+    `aws ${common} s3api put-object --bucket ${bucket} --key ${PROBE_KEY}`,
     ``,
     `# 3. clean the probe file up again`,
-    `aws ${common} s3api delete-object --bucket ${target.bucket} --key ${PROBE_KEY}`,
+    `aws ${common} s3api delete-object --bucket ${bucket} --key ${PROBE_KEY}`,
   ].join("\n");
 }
 

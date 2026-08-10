@@ -1,6 +1,6 @@
 import "server-only";
 
-import { and, count, desc, eq, inArray, lt } from "drizzle-orm";
+import { and, count, desc, eq, inArray, isNotNull, isNull, lt } from "drizzle-orm";
 
 import { getDb } from "../db/client";
 import {
@@ -9,6 +9,7 @@ import {
   databases as databasesTable,
   apps as appsTable,
   backupDestination as destinationTable,
+  servers as serversTable,
 } from "../db/schema/control-plane";
 import {
   assembleBackup,
@@ -40,14 +41,15 @@ import {
   isValidSchedule,
 } from "../schedule";
 import { parseConnectionPassword } from "../deploy/database-compose";
-import { mapBackupUnsupported } from "../infra/agent-client";
+import { canonicalTimeZone } from "../crons/cron-tz";
+import { BACKUP_RUN_MAX_MS, mapBackupUnsupported } from "../infra/agent-client";
 import { getDestinationWithSecretsForTeam } from "./destinations";
 import {
   backupToDestination,
-  deleteFromDestination,
   deleteManyFromDestination,
   openArtifactDownload,
   restoreFromDestination,
+  type BackupOutcome,
 } from "./backup-transport";
 import {
   buildProjectDescriptor,
@@ -56,7 +58,6 @@ import {
 import {
   artifactExt,
   buildObjectKey,
-  targetPrefix,
   selectDoomedRuns,
   type RunForRetention,
 } from "./backup-objectkey";
@@ -70,7 +71,7 @@ import type {
 } from "../types";
 
 /** Newest run plus a cap on how many runs we keep per target (alongside the
- *  age-based `retentionDays`). Bounds the JSONB `backupRuns` array + the bucket. */
+ *  age-based `retentionDays`). Bounds the run history + what a destination holds. */
 const MAX_RUNS_PER_TARGET = 50;
 
 export interface BackupDTO extends Backup {
@@ -243,6 +244,23 @@ function normalizeSchedule(schedule: string): string {
   return expr;
 }
 
+/**
+ * The zone a schedule's cron is read in.
+ *
+ * REJECTED, not repaired, for the same reason a bad cron is: `cronMatchesInZone`
+ * throws on an unknown zone and the scheduler contains that per row, so an
+ * accepted-but-unusable zone is a backup that silently never runs while the UI
+ * says it is enabled. Empty falls back to UTC, which is what every schedule made
+ * before this was askable already meant.
+ */
+function normalizeTimezone(tz: string | null | undefined): string {
+  const raw = (tz ?? "").trim();
+  if (!raw) return "UTC";
+  const canonical = canonicalTimeZone(raw);
+  if (!canonical) throw new Error(`"${raw}" is not a timezone Deplo recognises`);
+  return canonical;
+}
+
 export async function createBackup(input: {
   name: string;
   targetKind?: BackupTargetKind;
@@ -250,6 +268,7 @@ export async function createBackup(input: {
   appId?: string | null;
   destinationId: string;
   schedule: string;
+  timezone?: string | null;
   retentionDays: number;
 }): Promise<BackupDTO> {
   // The capability is asked ONCE, on the right thing: a database target has no
@@ -263,6 +282,7 @@ export async function createBackup(input: {
   if (!input.name.trim()) throw new Error("Name is required");
   if (!input.destinationId) throw new Error("Select a destination");
   const schedule = normalizeSchedule(input.schedule);
+  const timezone = normalizeTimezone(input.timezone);
 
   const targetKind: BackupTargetKind = input.targetKind ?? "database";
   const appId = input.appId ?? null;
@@ -295,6 +315,7 @@ export async function createBackup(input: {
     appId: targetKind === "app" ? appId : null,
     destinationId: input.destinationId,
     schedule,
+    timezone,
     retentionDays: Math.max(1, input.retentionDays || 7),
     lastRunAt: null,
     lastStatus: "never",
@@ -479,8 +500,14 @@ async function executeBackup(
     databaseId: opts.kind === "database" ? opts.databaseId : null,
     appId: opts.kind === "app" ? opts.appId : null,
     destinationId: opts.destinationId,
+    // Denormalized on purpose: the two FK columns above are ON DELETE SET NULL,
+    // so deleting the app or database blanks them and nothing is left naming
+    // what the artifact on disk belonged to. This one survives, and it is what
+    // the orphan sweep uses to reclaim that disk.
+    targetId: (opts.kind === "database" ? opts.databaseId : opts.appId) ?? "",
     objectKey: "", // filled once the key is built (after resolution)
     sizeBytes: 0,
+    sha256: null,
     status: "running",
     error: null,
     startedAt,
@@ -504,7 +531,7 @@ async function executeBackup(
   // itself) lands on the same `failed`-run path below.
   let label = opts.kind === "database" ? "database" : "app";
   let activityAppId: string | null = opts.kind === "app" ? opts.appId : null;
-  let result: { ok: boolean; error: string; objectKey: string; sizeBytes: number } | null = null;
+  let result: BackupOutcome | null = null;
   let failure: string | null = null;
   let objectKey = "";
   try {
@@ -519,7 +546,11 @@ async function executeBackup(
       runId,
       // A store artifact is age-encrypted, so its name says so — the `.age` a
       // user would need to know to decrypt it by hand with the recovery key.
-      ext: artifactExt(opts.kind, target.dbType, creds.destination.kind),
+      ext: artifactExt(
+        opts.kind,
+        target.dbType,
+        Boolean(creds.destination.ageRecipient),
+      ),
       at: new Date(startedAt),
     });
     // Record the resolved key on the running record now, so a crash mid-dump
@@ -581,6 +612,10 @@ async function executeBackup(
           error: null,
           objectKey: result!.objectKey,
           sizeBytes: result!.sizeBytes,
+          // Empty means the agent predates integrity checking. Stored NULL, so a
+          // restore can say "this backup was taken before Deplo could prove what
+          // it wrote" instead of silently skipping the check.
+          sha256: result!.sha256 || null,
           finishedAt,
         };
     const updated = await tx
@@ -621,18 +656,19 @@ async function executeBackup(
 }
 
 /**
- * Prune a target's run history + S3 artifacts past the age limit AND the per-
- * target count cap. We delete the OLD objects individually (`s3Delete` by exact
- * key) rather than the whole prefix, so a still-current artifact is never caught.
+ * Prune a target's run history + artifacts past the age limit AND the per-target
+ * count cap. We delete the OLD artifacts individually, by exact key, rather than
+ * by prefix — so a still-current artifact, or another destination sharing the
+ * same folder on the same host, is never caught.
  * A `running` run is left alone (it's in flight). Only successful runs own an
  * object worth deleting.
  *
- * SCOPED TO ONE DESTINATION: a target can have runs in more than one bucket (an
+ * SCOPED TO ONE DESTINATION: a target can have runs in more than one place (an
  * ad-hoc run to a different destination, a re-pointed schedule), and we only hold
  * THIS destination's creds here. Pruning across destinations would compute the
- * "newest success to keep" against the wrong set AND drop the OTHER bucket's run
- * records while their objects survive (an orphan + a vanished restore point). So
- * we consider only runs that live in `destinationId`.
+ * "newest success to keep" against the wrong set AND drop the OTHER destination's
+ * run records while their artifacts survive (an orphan + a vanished restore
+ * point). So we consider only runs that live in `destinationId`.
  *
  * A run record is dropped ONLY when its object is gone — actually deleted, or it
  * never owned one (a failed run). A delete that FAILS (threw, or the agent
@@ -725,10 +761,7 @@ async function loadRunsForTarget(
       and(
         eq(backupRunsTable.teamId, teamId),
         eq(backupRunsTable.destinationId, destinationId),
-        eq(backupRunsTable.targetKind, kind),
-        kind === "database"
-          ? eq(backupRunsTable.databaseId, targetId ?? "")
-          : eq(backupRunsTable.appId, targetId ?? ""),
+        runTargetWhere(kind, targetId ?? ""),
       ),
     );
   return rows.map((r) => ({ ...assembleBackupRun(r), seq: r.seq }));
@@ -891,7 +924,7 @@ export async function downloadBackupArtifact(runId: string): Promise<{
     run.targetKind === "database"
       ? ((await databaseNameFor(run.databaseId, teamId)) ?? "database")
       : ((run.appId ? (await loadAppGraph(run.appId))?.name : null) ?? "app");
-  const opened = await openArtifactDownload(creds, run.objectKey);
+  const opened = await openArtifactDownload(creds, run.objectKey, run.sha256 ?? "");
 
   await recordActivity(
     "backup",
@@ -964,6 +997,10 @@ export async function restoreBackup(runId: string): Promise<void> {
         project: target.project,
       },
       run.objectKey,
+      // The agent refuses an artifact that no longer hashes to what we recorded
+      // when we wrote it. Empty for a run older than integrity checking, which
+      // skips the check — see the warning the caller surfaces for those.
+      run.sha256 ?? "",
     );
     if (!result.ok) failure = result.error || "the agent reported a failed restore";
   } catch (e) {
@@ -1049,6 +1086,7 @@ export async function updateBackup(
     name: string;
     destinationId: string;
     schedule: string;
+    timezone?: string | null;
     retentionDays: number;
   },
 ): Promise<BackupDTO> {
@@ -1058,6 +1096,7 @@ export async function updateBackup(
   if (!input.name.trim()) throw new Error("Name is required");
   if (!input.destinationId) throw new Error("Select a destination");
   const schedule = normalizeSchedule(input.schedule);
+  const timezone = normalizeTimezone(input.timezone);
 
   // The (possibly changed) destination must belong to this team.
   if (!(await destinationExists(input.destinationId, teamId)))
@@ -1073,6 +1112,7 @@ export async function updateBackup(
       name: input.name.trim(),
       destinationId: input.destinationId,
       schedule,
+      timezone,
       retentionDays: Math.max(1, input.retentionDays || 7),
     })
     .where(and(eq(backupsTable.id, id), eq(backupsTable.teamId, teamId)))
@@ -1100,18 +1140,25 @@ export async function deleteBackup(id: string): Promise<void> {
 }
 
 /**
- * Delete a target's S3 artifacts in ONE destination (its whole folder) via a
- * single prefix-delete — the "delete artifacts too" branch of DB/project
- * deletion (Step 5). Best-effort + idempotent: returns the count removed, or
- * throws when no backup-capable agent can be reached OR the agent reports the
- * prefix-delete failed. The caller decides whether a failure blocks the
- * target's deletion.
+ * Delete a target's artifacts in ONE destination — the "delete artifacts too"
+ * branch of DB/project deletion. Returns the count removed; throws when the
+ * destination cannot be reached, so the caller can abort rather than delete a
+ * target over artifacts it could not clear.
  *
- * SCOPED TO ONE DESTINATION: the prefix-delete only touches `input.destinationId`
- * bucket, so we only drop the run records that live in THAT bucket — records for
- * the same target in another destination (whose objects still exist) are kept, so
- * they neither orphan their objects nor vanish from history. A caller that wants
- * to wipe every bucket calls this once per distinct destination.
+ * BY EXACT KEY, never by prefix, and that is the whole shape of this function.
+ * A prefix is `deplo/<team>/<kind>/<target>/`, which says nothing about WHICH
+ * destination wrote what is under it — and two `server` destinations on the same
+ * host with no custom path resolve to the SAME managed folder. So the prefix
+ * sweep, which believed itself scoped to one destination, deleted the other's
+ * artifacts too and then dropped only its own run records: the exact pair of an
+ * orphaned file and a restore point pointing at nothing that the scoping was
+ * there to prevent. That is not a rare shape either — the team's auto-seeded
+ * default lives in the managed folder, and the second destination someone adds
+ * by hand usually lands beside it.
+ *
+ * The keys come from `backup_runs`, which is the only record of what this
+ * destination actually wrote. A run whose delete FAILS keeps its record so the
+ * next attempt can find the file again.
  */
 export async function deleteBackupArtifacts(input: {
   kind: BackupTargetKind;
@@ -1125,25 +1172,12 @@ export async function deleteBackupArtifacts(input: {
   if (!(await backupTargetInScope(input.kind, input.targetId)))
     throw new Error("Not found");
   const creds = await getDestinationWithSecretsForTeam(teamId, input.destinationId);
-  const prefix = targetPrefix(teamId, input.kind, input.targetId);
 
-  // The prefix-delete (RPC) runs BEFORE the record delete — outside any tx.
-  // `input.serverId` is the TARGET's host and is only a fallback here: for a
-  // server destination the artifacts live on the destination's own disk, so
-  // deleteFromDestination dials that one instead.
-  const res = await deleteFromDestination(creds, input.serverId, prefix, true);
-  // The agent resolves `ok:false` (not a throw) on a destination-side failure —
-  // gate the record delete on it, like pruneRetention: dropping the rows while
-  // their objects survive would orphan the artifacts AND erase the history that
-  // lets a retry find them.
-  if (!res.ok)
-    throw new Error(res.error || "the agent could not delete the backup artifacts");
-  const deleted = res.deleted;
-
-  // Drop the run records for THIS target in THIS destination (the bucket we just
-  // swept) — records in other destinations (whose objects survive) stay.
-  await getDb()
-    .delete(backupRunsTable)
+  // Every run this target has in this destination. A `running` one is in flight
+  // and owns no committed artifact yet; a failed one owns none at all.
+  const runs = await getDb()
+    .select({ id: backupRunsTable.id, objectKey: backupRunsTable.objectKey, status: backupRunsTable.status })
+    .from(backupRunsTable)
     .where(
       and(
         eq(backupRunsTable.teamId, teamId),
@@ -1151,23 +1185,61 @@ export async function deleteBackupArtifacts(input: {
         runTargetWhere(input.kind, input.targetId),
       ),
     );
+  const withArtifacts = runs.filter((r) => r.status === "success" && r.objectKey);
+
+  // The deletes (RPC) run BEFORE the record delete — outside any tx.
+  // `input.serverId` is the TARGET's host and is only a fallback here: for a
+  // server destination the artifacts live on the destination's own disk, so
+  // deleteManyFromDestination dials that one instead.
+  const results = await deleteManyFromDestination(
+    creds,
+    input.serverId,
+    withArtifacts.map((r) => ({ key: r.objectKey })),
+  );
+  // The agent resolves `ok:false` (not a throw) on a destination-side failure.
+  // One that fails is the whole call's failure: the caller's contract is "either
+  // this target's artifacts are gone or you are told", and a partial sweep that
+  // reported success would delete the target over a folder still holding data.
+  const failed = results.filter((r) => !r.ok);
+  if (failed.length > 0)
+    throw new Error(
+      failed[0]!.error ||
+        `Could not delete ${failed.length} backup artifact${failed.length === 1 ? "" : "s"}.`,
+    );
+  const deleted = results.reduce((n, r) => n + r.deleted, 0);
+
+  // Drop the run records for THIS target in THIS destination — records in other
+  // destinations (whose artifacts survive) stay. Runs that never owned a file go
+  // too: nothing is orphaned by removing them.
+  const removable = runs.map((r) => r.id);
+  if (removable.length > 0)
+    await getDb()
+      .delete(backupRunsTable)
+      .where(inArray(backupRunsTable.id, removable));
   return deleted;
 }
 
-/** The `backup_runs` WHERE clause selecting one target (database OR project). */
+/**
+ * The `backup_runs` WHERE clause selecting one target (database OR project).
+ *
+ * On `target_id`, NOT on the `database_id` / `app_id` FKs, and that is the fix
+ * for a whole class of silently leaked disk: those two are ON DELETE SET NULL,
+ * so the moment an app or database was deleted every one of its runs stopped
+ * matching here. Retention no longer saw them, no screen listed them, and their
+ * artifacts sat on the destination forever with nothing left that could name
+ * them. `target_id` is written at insert and outlives the row it names.
+ */
 function runTargetWhere(kind: BackupTargetKind, targetId: string) {
   return and(
     eq(backupRunsTable.targetKind, kind),
-    kind === "database"
-      ? eq(backupRunsTable.databaseId, targetId)
-      : eq(backupRunsTable.appId, targetId),
+    eq(backupRunsTable.targetId, targetId),
   )!;
 }
 
 /**
- * How many stored backup artifacts a single target still has in S3 — one per
- * SUCCESSFUL run (a `failed`/`running` run never wrote an object). Team-scoped;
- * exactly one target selected by kind.
+ * How many stored backup artifacts a single target still has — one per SUCCESSFUL
+ * run (a `failed`/`running` run never wrote one). Team-scoped; exactly one target
+ * selected by kind.
  *
  * Drives the delete dialog's "also delete backup artifacts" affordance, which is
  * hidden at 0: offering an operator a bucket sweep with nothing to sweep is both
@@ -1196,7 +1268,7 @@ export async function countBackupArtifacts(input: {
 
 /**
  * The distinct destinations a target has runs in — so a "delete artifacts too"
- * caller can sweep EVERY bucket (calling {@link deleteBackupArtifacts} once per
+ * caller can sweep EVERY one (calling {@link deleteBackupArtifacts} once per
  * destination) rather than just the one a single schedule used. Team-scoped.
  */
 export async function backupDestinationsForTarget(input: {
@@ -1216,23 +1288,21 @@ export async function backupDestinationsForTarget(input: {
 }
 
 /**
- * Wipe EVERY S3 artifact of one target across all the destinations it ever ran
- * to — the "also delete backup artifacts" branch of DB/project deletion (Step 5).
- * Sweeps each distinct destination via {@link deleteBackupArtifacts}, performed
- * by the target's OWN owning agent (the host that produced the dumps, so its
- * agent is the natural one to reach S3). Returns the total objects removed plus
- * any destinations whose sweep failed.
+ * Wipe EVERY artifact of one target across all the destinations it ever ran to —
+ * the "also delete backup artifacts" branch of DB/project deletion. Sweeps each
+ * distinct destination via {@link deleteBackupArtifacts}. Returns the total
+ * removed plus any destinations whose sweep failed.
  *
  * Capability mirrors the target's OWN delete gate so this can never become a
  * privilege escalation OR an unexpected hard block: a database's artifacts need
- * `manage_infra` (like `deleteDatabase`), a project's need `deploy` (like
+ * `delete_databases` (like `deleteDatabase`), an app's need `delete_apps` (like
  * `deleteApp`). Run BEFORE the target row is deleted, so it still resolves to
  * its owning server.
  *
  * A partial failure is NOT swallowed: the call returns the failing destinations,
  * and the GraphQL resolver throws on a non-empty `failedDestinations` so the
  * delete flow aborts (a half-done "delete with backups" that silently leaves a
- * bucket full is worse than a retryable no-op).
+ * destination full is worse than a retryable no-op).
  */
 export async function deleteAllBackupArtifacts(input: {
   kind: BackupTargetKind;
@@ -1244,7 +1314,12 @@ export async function deleteAllBackupArtifacts(input: {
   const { teamId } =
     input.kind === "app"
       ? await requireAppCapability(input.targetId, "delete_apps")
-      : await requireCapability("manage_backups");
+      // `delete_databases`, matching `deleteDatabase` — NOT `manage_backups`.
+      // This wipes every restore point a database has, with no undo, and
+      // `manage_backups` says "create, edit, disable and run backup schedules"
+      // and is handed out on that reading. Whoever may destroy the database may
+      // destroy its backups; nobody else.
+      : await requireCapability("delete_databases");
   // `manage_backups` survives the project clamp, so the database branch above
   // would otherwise let a narrowed token wipe a target it can't reach. Mirrors
   // the check in {@link deleteBackupArtifacts}.
@@ -1298,13 +1373,137 @@ export async function deleteAllBackupArtifacts(input: {
 }
 
 /**
- * The longest a real backup could still be running before we call a `running`
- * record orphaned: the agent caps each dump/upload step at ~30min, plus generous
- * slack for a volume-heavy project + dial. A `running` run older than this is one
- * whose driving request died (a control-plane restart / crash) — its agent stream
- * is gone, so it will never reach its terminal mutate.
+ * How long the backups of a DELETED app or database are kept before the sweep
+ * reclaims their disk.
+ *
+ * Deleting a target offers "also delete the backup artifacts", off by default —
+ * keeping them is the safe answer, and it is the right one: the backups of the
+ * thing you just deleted are exactly what you want on the day you regret it. But
+ * "keep" used to mean "keep forever, invisibly": nothing listed them, retention
+ * could not see them, and on a `server` destination they were disk nobody could
+ * ever reclaim without a shell — which is the one thing the platform promises
+ * you never need.
+ *
+ * So they are kept, for a month, and then let go. Long enough to cover the
+ * regret, bounded enough that a busy team's storage box does not fill with the
+ * backups of apps that no longer exist.
  */
-const RUN_ORPHAN_AFTER_MS = 90 * 60_000;
+const ORPHAN_ARTIFACT_KEEP_MS = 30 * 24 * 60 * 60_000;
+
+/**
+ * Reclaim the artifacts of targets that no longer exist.
+ *
+ * A run's `database_id` / `app_id` are ON DELETE SET NULL, so a deleted target
+ * leaves runs pointing at nothing — that is the shape this looks for, and it is
+ * the ONLY shape, so a live target's artifacts are never in scope no matter how
+ * old. Runs younger than {@link ORPHAN_ARTIFACT_KEEP_MS} are left alone.
+ *
+ * Best-effort and idempotent, like every other prune here: a record is dropped
+ * only once its artifact is confirmed gone, so a destination that is down today
+ * simply gets swept tomorrow. Grouped by destination so a fleet-wide sweep opens
+ * one connection per destination rather than one per artifact.
+ *
+ * Runs on the backup scheduler's tick, under the same lease, so exactly one
+ * control plane does it however many are running.
+ */
+/**
+ * Any provisioned server whose agent can reach a BUCKET.
+ *
+ * A store destination dials its own host, but an S3 one is normally reached
+ * through the WORKLOAD's agent — and in a sweep the workload is exactly what no
+ * longer exists. Any backup-capable agent can talk to a bucket (it needs network
+ * and credentials, not Docker), which is the same reasoning `testDestination`
+ * already uses to probe one. Raw query rather than `listAllServers`, because the
+ * sweep runs on a scheduler tick with no session to resolve.
+ */
+async function anyBackupCapableServer(): Promise<string | null> {
+  const rows = await getDb()
+    .select({ id: serversTable.id })
+    .from(serversTable)
+    .where(isNotNull(serversTable.agentCertFingerprint))
+    .limit(1);
+  return rows[0]?.id ?? null;
+}
+
+export async function sweepOrphanedBackupArtifacts(): Promise<number> {
+  const cutoff = new Date(Date.now() - ORPHAN_ARTIFACT_KEEP_MS).toISOString();
+  const orphaned = await getDb()
+    .select()
+    .from(backupRunsTable)
+    .where(
+      and(
+        isNull(backupRunsTable.appId),
+        isNull(backupRunsTable.databaseId),
+        lt(backupRunsTable.startedAt, cutoff),
+      ),
+    );
+  if (orphaned.length === 0) return 0;
+
+  // (team, destination) is the unit a delete can be issued for: the creds and the
+  // agent to dial both come from the destination, and the team is what scopes the
+  // read of it.
+  const byDestination = new Map<string, typeof orphaned>();
+  for (const r of orphaned) {
+    const key = `${r.teamId} ${r.destinationId}`;
+    byDestination.set(key, [...(byDestination.get(key) ?? []), r]);
+  }
+
+  let reclaimed = 0;
+  for (const [key, runs] of byDestination) {
+    const [teamId, destinationId] = key.split(" ") as [string, string];
+    // A record with no artifact (a failed run, or one that never got a key) is
+    // dropped outright: there is nothing on any disk to confirm.
+    const removable = new Set(
+      runs.filter((r) => r.status !== "success" || !r.objectKey).map((r) => r.id),
+    );
+    const withArtifacts = runs.filter((r) => r.status === "success" && r.objectKey);
+    if (withArtifacts.length > 0) {
+      try {
+        const creds = await getDestinationWithSecretsForTeam(teamId, destinationId);
+        const via = creds.destination.serverId ?? (await anyBackupCapableServer());
+        if (!via) {
+          console.warn(
+            `[backups] orphan sweep found no server able to reach destination ` +
+              `${destinationId}; will retry`,
+          );
+          continue;
+        }
+        const results = await deleteManyFromDestination(
+          creds,
+          via,
+          withArtifacts.map((r) => ({ key: r.objectKey })),
+        );
+        results.forEach((res, i) => {
+          if (!res.ok) return; // keep the record; the next sweep retries
+          removable.add(withArtifacts[i]!.id);
+          reclaimed += res.deleted;
+        });
+      } catch (e) {
+        console.warn(
+          `[backups] orphan sweep could not reach destination ${destinationId}: ` +
+            `${e instanceof Error ? e.message : String(e)} (will retry)`,
+        );
+      }
+    }
+    if (removable.size > 0)
+      await getDb()
+        .delete(backupRunsTable)
+        .where(inArray(backupRunsTable.id, [...removable]));
+  }
+  if (reclaimed > 0)
+    console.log(`[deplo] reclaimed ${reclaimed} backup artifact(s) of deleted targets`);
+  return reclaimed;
+}
+
+/**
+ * The longest a real backup could still be running before we call a `running`
+ * record orphaned. Derived from the agent RPC's own deadline
+ * ({@link BACKUP_RUN_MAX_MS}) plus slack for the dial and the terminal write,
+ * rather than picked next to it: the two used to be independent numbers that
+ * disagreed with a comment claiming a third, so a run could be declared dead
+ * while its RPC was still legally running.
+ */
+const RUN_ORPHAN_AFTER_MS = BACKUP_RUN_MAX_MS;
 
 /**
  * Reconcile backup runs orphaned by a control-plane restart — the backup analogue

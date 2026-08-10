@@ -210,8 +210,8 @@ test("a team with a database, a backup destination, schedules and run history de
       values ('s3_1', '${TEAM_A}', 'dest', 's3', 'aws', 'e', 'r', 'b', 'a', 's', 'connected', '${T0}');
     insert into backups (id, team_id, name, target_kind, database_id, app_id, destination_id, schedule, retention_days, last_status, enabled, created_at)
       values ('bak_1', '${TEAM_A}', 'nightly', 'database', 'db_x', null, 's3_1', '0 3 * * *', 7, 'never', true, '${T0}');
-    insert into backup_runs (id, team_id, backup_id, target_kind, database_id, app_id, destination_id, object_key, size_bytes, status, started_at)
-      values ('run_1', '${TEAM_A}', 'bak_1', 'database', 'db_x', null, 's3_1', 'k', 1, 'success', '${T0}');
+    insert into backup_runs (id, team_id, backup_id, target_kind, database_id, app_id, destination_id, target_id, object_key, size_bytes, status, started_at)
+      values ('run_1', '${TEAM_A}', 'bak_1', 'database', 'db_x', null, 's3_1', 'db_x', 'k', 1, 'success', '${T0}');
   `);
 
   await runWithIdentity({ userId: USER_1, teamId: TEAM_A }, () => deleteTeam(TEAM_A));

@@ -1872,6 +1872,14 @@ export const backupDestination = pgTable(
     ageRecipient: text("age_recipient"),
     ageIdentityEnc: text("age_identity_enc"),
     recoveryKeySavedAt: isoTimestamptz("recovery_key_saved_at"),
+    // Opt OUT of the SSRF guard on the endpoint, for a bucket that lives on the
+    // operator's own private network. Instance-admin only to set, the same bar a
+    // custom store `path` carries, and for the same reason: the agent dials this
+    // address as root. Default false, so nothing anyone creates from the ordinary
+    // form can aim inside the deployment.
+    allowPrivateEndpoint: boolean("allow_private_endpoint")
+      .notNull()
+      .default(false),
     status: text("status").notNull(),
     createdAt: isoTimestamptz("created_at").notNull(),
     // Last "Test connection" verdict, kept so the card can say WHY a destination
@@ -1903,10 +1911,19 @@ export const backupDestination = pgTable(
     index("backup_destination_server_idx").on(t.serverId),
     check(
       "backup_destination_kind_shape",
+      // The age columns are no longer the `server` kind's alone: a bucket
+      // artifact is encrypted too (migration 0086), because a project archive
+      // carries the app's whole decrypted env and the bucket was the one place it
+      // landed in the clear. They stay NULLABLE for `s3` and only there, so a
+      // destination created before that keeps resolving and keeps writing the
+      // plaintext artifacts its existing objects already are — the extension on
+      // the run's own key is what says which of the two any artifact is.
       sql`(${t.kind} = 's3' and ${t.provider} is not null and ${t.endpoint} is not null
              and ${t.region} is not null and ${t.bucket} is not null
              and ${t.accessKeyEnc} is not null and ${t.secretKeyEnc} is not null
-             and ${t.serverId} is null and ${t.ageRecipient} is null and ${t.ageIdentityEnc} is null)
+             and ${t.serverId} is null
+             and ((${t.ageRecipient} is null and ${t.ageIdentityEnc} is null)
+               or (${t.ageRecipient} is not null and ${t.ageIdentityEnc} is not null)))
           or (${t.kind} = 'server' and ${t.serverId} is not null and ${t.ageRecipient} is not null
              and ${t.ageIdentityEnc} is not null and ${t.bucket} is null
              and ${t.accessKeyEnc} is null and ${t.secretKeyEnc} is null)`,
@@ -1939,6 +1956,12 @@ export const backups = pgTable(
       .notNull()
       .references(() => backupDestination.id, { onDelete: "restrict" }),
     schedule: text("schedule").notNull(),
+    // The IANA zone `schedule` is read in. "UTC" for every row that existed
+    // before migration 0086, which is what they always meant. A backup at 03:00
+    // is a backup you want in your own small hours: leaving it UTC-only meant a
+    // European team's "nightly" dump ran at 04:00 or 05:00 depending on the
+    // season, and the cron-jobs feature next door already carries a per-job zone.
+    timezone: text("timezone").notNull().default("UTC"),
     retentionDays: integer("retention_days").notNull(),
     lastRunAt: isoTimestamptz("last_run_at"),
     lastStatus: text("last_status").notNull(),
@@ -1985,8 +2008,22 @@ export const backupRuns = pgTable(
     destinationId: text("destination_id")
       .notNull()
       .references(() => backupDestination.id, { onDelete: "restrict" }),
+    // The target's id as PLAIN TEXT, alongside the two FK columns above.
+    // Deliberate denormalization, and the reason is the `SET NULL` on those FKs:
+    // deleting an app or a database blanked the only column that named what its
+    // artifacts belonged to, so retention stopped seeing them, no screen listed
+    // them, and the files sat on the destination's disk forever with nothing left
+    // that could name them. This column survives the delete, so the orphan sweep
+    // can still find them (migration 0086).
+    targetId: text("target_id").notNull(),
     objectKey: text("object_key").notNull(),
     sizeBytes: bigint("size_bytes", { mode: "number" }).notNull(),
+    // Hex sha256 of the artifact AS WRITTEN (ciphertext, before any decryption).
+    // The agent computes it on both halves of a relay and on an S3 upload; the
+    // control plane compares them, records the winner here, and re-checks it
+    // before a restore. NULL for a run taken before migration 0086, and for those
+    // a restore says so rather than silently skipping the check.
+    sha256: text("sha256"),
     status: text("status").notNull(),
     error: text("error"),
     startedAt: isoTimestamptz("started_at").notNull(),
@@ -2006,6 +2043,9 @@ export const backupRuns = pgTable(
     index("backup_runs_app_idx").on(t.appId),
     index("backup_runs_database_idx").on(t.databaseId),
     index("backup_runs_destination_idx").on(t.destinationId),
+    // Retention and the orphan sweep both select by (team, target), which is the
+    // pair that outlives the FKs above.
+    index("backup_runs_team_target_idx").on(t.teamId, t.targetId),
   ],
 );
 

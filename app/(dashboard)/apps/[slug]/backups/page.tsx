@@ -2,12 +2,11 @@ import { notFound } from "next/navigation";
 import { Lock } from "lucide-react";
 import { getAppBySlug } from "@/lib/data/apps";
 import { hasAppCapability } from "@/lib/data/node-access";
-import { reachesWholeTeam } from "@/lib/membership";
+import { hasCapability } from "@/lib/membership";
 import { listBackups, listBackupRuns } from "@/lib/data/backups";
 import {
   ensureDefaultDestination,
-  listDestinations,
-  toDestinationOption,
+  listDestinationOptions,
 } from "@/lib/data/destinations";
 import { AppBackups } from "@/components/apps/app-backups";
 import { PendingCreateProvider } from "@/components/shared/pending-create";
@@ -35,18 +34,21 @@ export default async function AppBackupsPage(
     );
   }
 
-  // The team's backup destinations are a team-wide read: a member limited to part of
-  // the team keeps their app's backups and loses the list of places to send them
-  // to, which the empty state below says rather than throwing.
-  const wholeTeam = await reachesWholeTeam();
   // Same lazy default as the Storage page, because THIS is where someone most
   // often first wants a backup: arriving at an app's Backups tab and finding a
   // destination already there is the difference between one click and a detour.
-  if (wholeTeam) await ensureDefaultDestination();
-  const [allBackups, runs, destinations] = await Promise.all([
+  await ensureDefaultDestination();
+  // `listDestinationOptions`, NOT `listDestinations`: the second is team-wide
+  // only, and using it here meant a member scoped to one folder saw an empty
+  // list - so every artifact read "Unknown destination", the download button
+  // vanished, and the page claimed no destination was configured while
+  // disabling the buttons that would have made one. They held `manage_backups`
+  // on this app and had no way to use it.
+  const [allBackups, runs, destinations, canTestDestinations] = await Promise.all([
     listBackups(),
     listBackupRuns({ appId: project.id }),
-    wholeTeam ? listDestinations() : Promise.resolve([]),
+    listDestinationOptions(),
+    hasCapability("manage_backup_destinations"),
   ]);
 
   // Only this app's schedules — listBackups returns the whole team's.
@@ -65,7 +67,8 @@ export default async function AppBackupsPage(
         serverId={project.serverId ?? null}
         schedules={schedules}
         runs={runs}
-        destinations={destinations.map(toDestinationOption)}
+        destinations={destinations}
+        canTestDestinations={canTestDestinations}
       />
     </PendingCreateProvider>
   );

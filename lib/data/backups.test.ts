@@ -11,7 +11,12 @@ import {
   backupRuns as backupRunsTable,
 } from "../db/schema/control-plane";
 import { runWithIdentity } from "../auth/request-context";
-import { seedIdentity, TEAM_A, USER_1 } from "./identity-test-helpers";
+import {
+  seedIdentity,
+  TEAM_A,
+  TRUNCATE_IDENTITY,
+  USER_1,
+} from "./identity-test-helpers";
 import { seedApp, seedServer, SERVER_1 } from "./app-graph-test-helpers";
 import {
   seedBackup,
@@ -24,10 +29,12 @@ import {
   backupDestinationsForTarget,
   countBackupArtifacts,
   createBackup,
+  deleteAllBackupArtifacts,
   deleteBackup,
   listBackupRuns,
   reconcileInFlightBackupRuns,
   runBackup,
+  sweepOrphanedBackupArtifacts,
   toggleBackup,
   updateBackup,
 } from "./backups";
@@ -312,4 +319,145 @@ test("reconcileInFlightBackupRuns is idempotent / a no-op with nothing stale", a
     id: "r1", destinationId: "s3_1", databaseId: "db_1", status: "success",
   });
   assert.equal(await reconcileInFlightBackupRuns(), 0);
+});
+
+/* ------------------------------------------------------------------ */
+/* Orphaned artifacts: a deleted target must not leak disk forever      */
+/* ------------------------------------------------------------------ */
+
+test("a deleted target's runs stay findable, and the sweep reclaims them", async () => {
+  // The FKs on backup_runs are ON DELETE SET NULL, so deleting an app used to
+  // blank the only columns naming what its artifacts belonged to: retention
+  // stopped seeing them, no screen listed them, and the files sat on the
+  // destination forever with nothing left that could name them. `target_id` is
+  // what survives.
+  await seedRun(db, {
+    id: "r_1",
+    destinationId: "s3_1",
+    appId: "prj_1",
+    targetKind: "app",
+    startedAt: "2020-01-01T00:00:00.000Z",
+  });
+  await pg.exec(`delete from apps where id = 'prj_1';`);
+
+  const [row] = await db
+    .select()
+    .from(backupRunsTable)
+    .where(eq(backupRunsTable.id, "r_1"));
+  assert.equal(row!.appId, null, "the FK really is blanked by the delete");
+  assert.equal(row!.targetId, "prj_1", "target_id survives it");
+
+  // Older than the keep window and orphaned => swept. The destination is
+  // unreachable in tests, so the ARTIFACT delete fails and the record is kept on
+  // purpose: a record is only ever dropped once its file is confirmed gone.
+  const reclaimed = await sweepOrphanedBackupArtifacts();
+  assert.equal(reclaimed, 0, "nothing confirmed deleted against a dead agent");
+  const still = await db
+    .select()
+    .from(backupRunsTable)
+    .where(eq(backupRunsTable.id, "r_1"));
+  assert.equal(still.length, 1, "the record is kept so the next sweep retries");
+});
+
+test("the sweep drops orphaned records that never owned a file", async () => {
+  // A failed run wrote no artifact, so there is nothing to confirm and nothing
+  // to leak — its record goes on the first sweep.
+  await seedRun(db, {
+    id: "r_failed",
+    destinationId: "s3_1",
+    appId: "prj_1",
+    targetKind: "app",
+    status: "failed",
+    startedAt: "2020-01-01T00:00:00.000Z",
+  });
+  await pg.exec(`delete from apps where id = 'prj_1';`);
+  await sweepOrphanedBackupArtifacts();
+  const rows = await db
+    .select()
+    .from(backupRunsTable)
+    .where(eq(backupRunsTable.id, "r_failed"));
+  assert.equal(rows.length, 0, "an artifact-less orphan is dropped");
+});
+
+test("the sweep never touches a LIVE target, however old its runs", async () => {
+  // The only shape it looks for is "both FKs null", which is precisely what a
+  // deleted target leaves behind. Age alone must never be enough — that would
+  // make it a second, unasked-for retention policy.
+  await seedRun(db, {
+    id: "r_live",
+    destinationId: "s3_1",
+    appId: "prj_1",
+    targetKind: "app",
+    startedAt: "2020-01-01T00:00:00.000Z",
+  });
+  await sweepOrphanedBackupArtifacts();
+  const rows = await db
+    .select()
+    .from(backupRunsTable)
+    .where(eq(backupRunsTable.id, "r_live"));
+  assert.equal(rows.length, 1, "a live app's artifacts are not the sweep's business");
+});
+
+test("the sweep leaves a RECENT orphan alone", async () => {
+  // Deleting an app offers "keep the backups", and keeping them has to mean
+  // something: they survive the keep window, which is the point of the window.
+  await seedRun(db, {
+    id: "r_recent",
+    destinationId: "s3_1",
+    appId: "prj_1",
+    targetKind: "app",
+    status: "failed",
+    startedAt: new Date().toISOString(),
+  });
+  await pg.exec(`delete from apps where id = 'prj_1';`);
+  await sweepOrphanedBackupArtifacts();
+  const rows = await db
+    .select()
+    .from(backupRunsTable)
+    .where(eq(backupRunsTable.id, "r_recent"));
+  assert.equal(rows.length, 1, "still inside the keep window");
+});
+
+/* ------------------------------------------------------------------ */
+/* Deleting a target's artifacts                                        */
+/* ------------------------------------------------------------------ */
+
+test("deleteAllBackupArtifacts (database) needs delete_databases, not manage_backups", async () => {
+  // It wipes every restore point a database has, with no undo. `manage_backups`
+  // reads as "create, edit, disable and run backup schedules" and is handed out
+  // on that reading — whoever may destroy the database may destroy its backups,
+  // and nobody else.
+  // Re-seed the whole identity graph with a SECOND member who holds exactly the
+  // capability the old gate accepted, and nothing that may destroy a database.
+  await pg.exec(TRUNCATE_IDENTITY);
+  await seedIdentity(db, {
+    users: [
+      { id: USER_1, teamId: TEAM_A, role: "owner" },
+      {
+        id: "usr_backups",
+        teamId: TEAM_A,
+        role: "member",
+        capabilities: ["view", "manage_backups"],
+      },
+    ],
+  });
+  // The identity truncate cascades through the team, so everything downstream is
+  // re-seeded rather than assumed.
+  await seedServer(db);
+  await seedDatabase(db, { id: "db_1", name: "main" });
+  await seedS3(db, { id: "s3_1" });
+  await seedRun(db, { id: "r_1", destinationId: "s3_1", databaseId: "db_1" });
+
+  await runWithIdentity({ userId: "usr_backups", teamId: TEAM_A }, async () => {
+    await assert.rejects(
+      () => deleteAllBackupArtifacts({ kind: "database", targetId: "db_1" }),
+      /permission|not allowed|delete/i,
+    );
+  });
+  // The run — and therefore the artifact it names — is untouched.
+  const rows = await db
+    .select()
+    .from(backupRunsTable)
+    .where(eq(backupRunsTable.id, "r_1"));
+  assert.equal(rows.length, 1);
 });

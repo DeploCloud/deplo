@@ -224,10 +224,26 @@ test("reproduce commands cover the same three calls, in order", () => {
   const put = cmd.indexOf("put-object");
   const del = cmd.indexOf("delete-object");
   assert.ok(head > 0 && put > head && del > put, cmd);
-  assert.ok(cmd.includes(`--bucket ${target.bucket}`));
-  assert.ok(cmd.includes(`--endpoint-url https://s3.example.com`));
-  assert.ok(cmd.includes(`--region eu-central-1`));
+  // Single-quoted, all of it. This block is what an admin pastes into a shell
+  // exactly when a destination is failing, and the bucket and region are strings
+  // somebody else typed into a form.
+  assert.ok(cmd.includes(`--bucket '${target.bucket}'`));
+  assert.ok(cmd.includes(`--endpoint-url 'https://s3.example.com'`));
+  assert.ok(cmd.includes(`--region 'eu-central-1'`));
   assert.ok(cmd.includes(PROBE_KEY));
+});
+
+test("a bucket name carrying shell syntax cannot escape the reproduce block", () => {
+  // Deplo validates the name on the way in too, so this is the second of two
+  // guards - and it is the one that survives someone loosening the first.
+  const hostile = "b'; rm -rf /; echo '";
+  const cmd = reproduceCommand({ ...target, bucket: hostile });
+  // Every single quote inside the value is closed, escaped and reopened, so the
+  // whole thing stays ONE shell word rather than three commands.
+  const quoted = "'" + hostile.replaceAll("'", "'\\''") + "'";
+  assert.ok(cmd.includes(`--bucket ${quoted}`), cmd);
+  // And it never appears bare, which is the form that would actually run.
+  assert.ok(!cmd.includes(`--bucket ${hostile}`), cmd);
 });
 
 test("reproduce commands NEVER carry a real credential", () => {
