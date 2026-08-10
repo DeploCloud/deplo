@@ -10,7 +10,7 @@ import {
   cronRuns as cronRunsTable,
   databases as databasesTable,
 } from "../db/schema/control-plane";
-import { decryptSecret } from "../crypto";
+import { decryptSecretOrThrow } from "../crypto";
 import { newId } from "../ids";
 import {
   AgentCronUnsupportedError,
@@ -379,7 +379,13 @@ async function jobEnv(jobId: string): Promise<{ name: string; value: string }[]>
     .select({ key: cronJobEnvTable.key, valueEnc: cronJobEnvTable.valueEnc })
     .from(cronJobEnvTable)
     .where(eq(cronJobEnvTable.jobId, jobId));
-  return rows.map((r) => ({ name: r.key, value: decryptSecret(r.valueEnc) }));
+  // Strict for the same reason the deploy edge is: this becomes the job's
+  // environment, and a job that runs with a blank credential does its damage
+  // quietly and on a schedule.
+  return rows.map((r) => ({
+    name: r.key,
+    value: decryptSecretOrThrow(r.valueEnc, `The variable ${r.key}`),
+  }));
 }
 
 /**

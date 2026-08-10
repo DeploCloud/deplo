@@ -60,7 +60,7 @@
     "graphql-yoga": "^5.21.2",
     "js-yaml": "^4.3.1",
     "lucide-react": "^1.28.0",
-    "next": "16.2.9",
+    "next": "16.2.12",
     "node-pty": "^1.1.0",
     "nodemailer": "^9.0.4",
     "pg": "^8.22.0",
@@ -89,7 +89,7 @@
     "@xterm/headless": "^6.0.0",
     "drizzle-kit": "^0.31.10",
     "eslint": "^9.39.5",
-    "eslint-config-next": "16.2.9",
+    "eslint-config-next": "16.2.12",
     "tailwindcss": "^4.3.3",
     "ts-proto": "^2.12.0",
     "tsx": "^4.23.7",
@@ -108,6 +108,13 @@
     "graphql": "16.14.2",
     "@codemirror/state": "$@codemirror/state",
     "@codemirror/view": "$@codemirror/view",
-    "@codemirror/language": "$@codemirror/language"
+    "@codemirror/language": "$@codemirror/language",
+    "postcss": "^8.5.26",
+    "nanoid": "^3.3.18",
+    "brace-expansion": "^1.1.18",
+    "js-yaml": "^4.3.1",
+    "sharp": "^0.35.3",
+    "protobufjs": "^7.6.5",
+    "esbuild": "^0.28.2"
   }
 }

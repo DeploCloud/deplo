@@ -19,6 +19,7 @@ import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
+import { Checkbox } from "@/components/ui/checkbox";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -91,6 +92,7 @@ export function GitPanel({
   providers,
   previewReadiness,
   gitStatus,
+  isInstanceAdmin,
 }: {
   githubApps: GithubAppDTO[];
   connections: GitConnectionDTO[];
@@ -98,6 +100,8 @@ export function GitPanel({
   providers: GitProviderChoice[];
   previewReadiness?: PreviewReadiness;
   gitStatus?: string;
+  /** Gates the one advanced option: pointing a connection inside the network. */
+  isInstanceAdmin: boolean;
 }) {
   const router = useRouter();
   const [connectProviderId, setConnectProviderId] = React.useState<
@@ -185,6 +189,7 @@ export function GitPanel({
       {connectProvider && (
         <ConnectDialog
           provider={connectProvider}
+          isInstanceAdmin={isInstanceAdmin}
           onClose={() => setConnectProviderId(null)}
         />
       )}
@@ -494,6 +499,12 @@ function ConnectionCard({
               Token expires {conn.tokenExpiresAt.slice(0, 10)}
             </Badge>
           )}
+          {/* An address inside the network is an instance-admin exception, so it
+              is stated on the card rather than left to whoever remembers making
+              it. */}
+          {conn.allowPrivateEndpoint && (
+            <Badge variant="muted">On your own network</Badge>
+          )}
         </div>
       )}
     </HostCard>
@@ -512,9 +523,11 @@ function ConnectionCard({
  */
 function ConnectDialog({
   provider,
+  isInstanceAdmin,
   onClose,
 }: {
   provider: GitProviderChoice;
+  isInstanceAdmin: boolean;
   onClose: () => void;
 }) {
   const router = useRouter();
@@ -523,6 +536,7 @@ function ConnectDialog({
   const [baseUrl, setBaseUrl] = React.useState(provider.defaultBaseUrl ?? "");
   const [username, setUsername] = React.useState(provider.defaultUsername);
   const [token, setToken] = React.useState("");
+  const [allowPrivate, setAllowPrivate] = React.useState(false);
 
   const canSubmit = Boolean(baseUrl.trim() && token.trim() && !pending);
 
@@ -541,6 +555,7 @@ function ConnectDialog({
             baseUrl: baseUrl.trim(),
             username: username.trim(),
             token: token.trim(),
+            allowPrivateEndpoint: allowPrivate,
           },
         },
       );
@@ -636,6 +651,32 @@ function ConnectDialog({
                 </p>
               )}
             </div>
+
+            {/* Self-hosted GitLab/Gitea is often on the same private network as
+                the fleet, and the SSRF guard on the address refuses that
+                outright - so the ordinary form would reject a perfectly normal
+                setup. Instance admins only, the same bar a private bucket
+                endpoint carries, because deplo dials this address itself and
+                shows what comes back. */}
+            {isInstanceAdmin && (
+              <label className="flex cursor-pointer items-start gap-2.5 rounded-lg border border-border p-3 text-sm">
+                <Checkbox
+                  checked={allowPrivate}
+                  onCheckedChange={(v) => setAllowPrivate(v === true)}
+                  className="mt-0.5"
+                />
+                <span>
+                  <span className="font-medium">
+                    This git server is on my own network
+                  </span>
+                  <span className="mt-1 block text-xs text-muted-foreground">
+                    Allows a private address like 10.0.0.5 or a hostname that
+                    resolves to one. Off by default so a mistyped address cannot
+                    reach inside your network.
+                  </span>
+                </span>
+              </label>
+            )}
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={onClose} disabled={pending}>

@@ -145,6 +145,15 @@ export async function recordActivity(
   // Awaiting it keeps the write inside the request's lifecycle (no floated query
   // that could outlive a DB connection); any failure is swallowed so the caller's
   // action still succeeds.
+  //
+  // Swallowed, but no longer lost quietly: see {@link insertActivityRow} for the
+  // retry, and {@link flushDroppedMarker} for why a gap in the trail has to be
+  // legible in the trail itself rather than only in the process's stderr.
+  // Whether the row actually landed. Read by the catch below so that a failure
+  // AFTER the insert - the alert dispatch, say - is not counted as a lost
+  // entry: a marker claiming something was dropped when it was written is a
+  // false alarm in the one place that has to be believable.
+  let written = false;
   try {
     const db = getDb();
     let resolved = teamId;
@@ -175,7 +184,11 @@ export async function recordActivity(
       appId,
       createdAt: nowIso(),
     };
-    await db.insert(activitiesTable).values(activityToRow(activity));
+    await insertActivityRow(activity);
+    written = true;
+    // Written AFTER the row it follows, so the marker cannot itself be the
+    // thing that fails and leaves the real entry missing.
+    await flushDroppedMarker(resolved);
     // The audit row is already written in the dashboard's own voice, so the
     // alert reuses it verbatim rather than inventing a second phrasing.
     if (alert)
@@ -187,7 +200,80 @@ export async function recordActivity(
         path: "/activity",
       });
   } catch (e) {
+    if (!written) droppedEntries += 1;
     console.error("[deplo] recordActivity failed:", e);
+  }
+}
+
+/**
+ * How many entries this process failed to write.
+ *
+ * An audit trail that can lose rows without saying so is not an audit trail: the
+ * question a company actually asks it ("who did this, and when") is answered by
+ * ABSENCE as much as by presence, and an absence with no marker reads as "nobody
+ * did anything". A `console.error` on a self-hosted box is not an answer -
+ * nobody is tailing that log, and the person who needs to know is looking at the
+ * Activity page.
+ *
+ * Process-global rather than per-team on purpose: a failure can happen before
+ * the team is even resolved, so there is frequently no team to attribute it to.
+ * The marker therefore says what is true - this instance dropped entries -
+ * rather than claiming which team's they were.
+ */
+let droppedEntries = 0;
+
+/**
+ * Insert the row, with ONE retry.
+ *
+ * The overwhelming cause of a lost entry is transient: a pool timeout, a
+ * connection recycled underneath the write, a database restarted while a deploy
+ * was finishing. One retry a moment later converts most of those into a row that
+ * is simply there. More than one would start to matter to the request the caller
+ * is still inside, and the marker below covers what retrying cannot.
+ */
+async function insertActivityRow(activity: Activity): Promise<void> {
+  try {
+    await getDb().insert(activitiesTable).values(activityToRow(activity));
+    return;
+  } catch (e) {
+    console.warn("[deplo] recordActivity insert failed, retrying once:", e);
+  }
+  await new Promise((r) => setTimeout(r, 150));
+  await getDb().insert(activitiesTable).values(activityToRow(activity));
+}
+
+/**
+ * Leave a legible hole where the lost entries were.
+ *
+ * Runs on the next SUCCESSFUL write, which is the first moment we know the
+ * database is answering again. Its own failure is swallowed and the count kept:
+ * the marker is worth retrying forever, and losing the count would be losing the
+ * only record that anything was lost at all.
+ */
+async function flushDroppedMarker(teamId: string): Promise<void> {
+  if (droppedEntries === 0) return;
+  const n = droppedEntries;
+  try {
+    await getDb()
+      .insert(activitiesTable)
+      .values(
+        activityToRow({
+          id: newId("act"),
+          teamId,
+          type: "member",
+          message:
+            n === 1
+              ? "1 activity entry could not be recorded on this instance"
+              : `${n} activity entries could not be recorded on this instance`,
+          actor: "Deplo",
+          actorUserId: null,
+          appId: null,
+          createdAt: nowIso(),
+        }),
+      );
+    droppedEntries -= n;
+  } catch (e) {
+    console.error("[deplo] could not record the dropped-activity marker:", e);
   }
 }
 

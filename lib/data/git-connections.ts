@@ -8,9 +8,14 @@ import {
   gitConnections as gitConnectionsTable,
 } from "../db/schema/control-plane";
 import { getCurrentUser } from "../auth";
-import { decryptSecret, encryptSecret } from "../crypto";
+import { decryptSecret, decryptSecretOrThrow, encryptSecret } from "../crypto";
 import { newId, nowIso } from "../ids";
-import { requireActiveTeamId, requireCapability } from "../membership";
+import {
+  requireActiveTeamId,
+  requireCapability,
+  requireInstanceAdmin,
+} from "../membership";
+import { assertSafeOutboundUrl } from "../outbound-url";
 import { PUBLIC_URL_PLACEHOLDER, resolveManifestBaseUrl } from "../public-url";
 import {
   ensureWebhook,
@@ -54,6 +59,7 @@ function toDTO(
     provider: row.provider as GitProviderId,
     label: row.label,
     baseUrl: row.baseUrl,
+    allowPrivateEndpoint: row.allowPrivateEndpoint,
     username: row.username,
     accountLogin: row.accountLogin,
     avatarUrl: row.avatarUrl,
@@ -115,7 +121,13 @@ export async function readGitCredential(
     provider: row.provider as GitProviderId,
     baseUrl: row.baseUrl,
     username: row.username,
-    token: decryptSecret(row.tokenEnc),
+    // Strict on the token: it authenticates a clone and every provider call, so
+    // decrypting to "" turned a key mismatch into the provider's own "bad
+    // credentials" - sending whoever hit it to rotate a token that was never
+    // the problem. The webhook secret stays best-effort: it is only ever
+    // compared against an inbound signature, and a comparison that cannot
+    // succeed is already the correct outcome.
+    token: decryptSecretOrThrow(row.tokenEnc, "This git connection's token"),
     webhookSecret: decryptSecret(row.webhookSecretEnc),
     teamId: row.teamId,
   };
@@ -187,11 +199,31 @@ export interface ConnectGitProviderInput {
   baseUrl: string;
   username: string;
   token: string;
+  /**
+   * Let this connection's address point inside the deployment. Instance-admin
+   * only (enforced below, not by the caller), for a git server on the operator's
+   * own LAN. Absent/false ⇒ the ordinary SSRF guard applies.
+   */
+  allowPrivateEndpoint?: boolean | null;
 }
 
-/** Normalise a user-typed host into an origin: https by default, no trailing
- *  slash, no path, no embedded credentials. */
-function cleanBaseUrl(raw: string): string {
+/**
+ * Normalise a user-typed host into an origin: https by default, no trailing
+ * slash, no path, no embedded credentials - and, unless this connection was
+ * deliberately allowed to, not an address inside the deployment.
+ *
+ * The SSRF guard matters more here than the shape rules do. The control plane
+ * dials this origin ITSELF (proving the token below, listing repositories,
+ * registering the push webhook) and `lib/git/providers.ts` surfaces the
+ * provider's own response body in its error message, so an unguarded base URL is
+ * not a blind request - `http://169.254.169.254/...` would have come back readable
+ * to whoever typed it. `manage_git` is a low bar for that.
+ *
+ * `allowHttp` because a self-hosted Gitea on a LAN is commonly fronted without
+ * TLS, exactly as a self-hosted MinIO is; `allowPrivate` is the instance-admin
+ * escape its caller gates, mirroring `backup_destinations`.
+ */
+async function cleanBaseUrl(raw: string, allowPrivate: boolean): Promise<string> {
   const trimmed = raw.trim();
   if (!trimmed) throw new Error("Enter the address of your git server");
   const withScheme = /^https?:\/\//i.test(trimmed) ? trimmed : `https://${trimmed}`;
@@ -204,6 +236,7 @@ function cleanBaseUrl(raw: string): string {
   if (u.username || u.password) {
     throw new Error("Put the token in the token field, not in the address");
   }
+  if (!allowPrivate) await assertSafeOutboundUrl(u.origin, "Address", { allowHttp: true });
   return u.origin;
 }
 
@@ -227,7 +260,16 @@ export async function connectGitProvider(
     : "git";
   const adapter = providerFor(provider);
 
-  const baseUrl = cleanBaseUrl(input.baseUrl || adapter.defaultBaseUrl || "");
+  // Reaching inside the deployment is an instance-level decision, exactly like a
+  // private S3 endpoint: `manage_git` is a team capability, and a team
+  // capability must never be enough to aim the control plane at its own network.
+  const allowPrivateEndpoint = Boolean(input.allowPrivateEndpoint);
+  if (allowPrivateEndpoint) await requireInstanceAdmin();
+
+  const baseUrl = await cleanBaseUrl(
+    input.baseUrl || adapter.defaultBaseUrl || "",
+    allowPrivateEndpoint,
+  );
   const token = input.token.trim();
   if (!token) throw new Error("Enter an access token");
   const username = (input.username.trim() || adapter.defaultUsername).trim();
@@ -244,6 +286,7 @@ export async function connectGitProvider(
     provider,
     label: input.label.trim() || adapter.label,
     baseUrl,
+    allowPrivateEndpoint,
     username,
     tokenEnc: encryptSecret(token),
     webhookSecretEnc: encryptSecret(randomBytes(32).toString("hex")),

@@ -40,13 +40,13 @@ const BURST_WINDOW_MS = 10 * 60_000;
  * requests they sent. Attributable or silent; there is no third option that is
  * safe here.
  */
-export function noteFailedLogin(subject: string): void {
+export async function noteFailedLogin(subject: string): Promise<void> {
   // `rateLimit` returns ok while under the limit; the first refusal IS the burst.
-  if (rateLimit(`failed-login:${subject}`, {
+  const burst = await rateLimit(`failed-login:${subject}`, {
     limit: BURST_LIMIT,
     windowMs: BURST_WINDOW_MS,
-  }).ok)
-    return;
+  });
+  if (burst.ok) return;
 
   void (async () => {
     const teams = await teamsForSubject(subject);

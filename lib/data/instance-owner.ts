@@ -155,7 +155,7 @@ export async function transferInstanceOwner(input: {
         )
         .limit(1)
     )[0];
-    if (!me?.password || !verifyPassword(input.password, me.password))
+    if (!me?.password || !(await verifyPassword(input.password, me.password)))
       throw new Error("That password is not correct");
 
     const target = (

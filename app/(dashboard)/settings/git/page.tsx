@@ -1,4 +1,4 @@
-import { reachesWholeTeam } from "@/lib/membership";
+import { isInstanceAdmin, reachesWholeTeam } from "@/lib/membership";
 import { githubAppsPreviewReadiness, listGithubApps } from "@/lib/data/github";
 import { listGitConnections } from "@/lib/data/git-connections";
 import { PROVIDERS, tokenHelpUrl } from "@/lib/git/providers";
@@ -48,6 +48,7 @@ export default async function SettingsGitPage(props: {
       providers={providers}
       previewReadiness={previewReadiness}
       gitStatus={gitStatus}
+      isInstanceAdmin={await isInstanceAdmin()}
     />
   );
 }

@@ -2,6 +2,7 @@ import "server-only";
 
 import {
   randomBytes,
+  scrypt,
   scryptSync,
   timingSafeEqual,
   createCipheriv,
@@ -56,23 +57,143 @@ export function deriveKey(purpose: string): Buffer {
 /* Passwords (scrypt)                                                  */
 /* ------------------------------------------------------------------ */
 
-export function hashPassword(password: string): string {
-  const salt = randomBytes(16);
-  const derived = scryptSync(password, salt, 64);
-  return `scrypt$${salt.toString("hex")}$${derived.toString("hex")}`;
+/**
+ * The scrypt work factor NEW hashes are made with.
+ *
+ * Raising these is a one-line change BECAUSE every hash carries the parameters
+ * it was produced with (see the format below). The original format did not:
+ * `scrypt$<salt>$<hash>` said nothing about cost, so verification had to assume
+ * node's defaults forever, and the work factor was frozen at N=16384 for the
+ * life of the product - there was no way to strengthen it that did not
+ * invalidate every existing password at once.
+ *
+ * N=65536 rather than the 2^17 OWASP names first, deliberately. Memory is
+ * `128 * N * r` ≈ 64 MiB per hash here, against 128 MiB at 2^17, and this runs
+ * on whatever box the operator self-hosts on. Async scrypt executes on libuv's
+ * threadpool (4 by default), so the real ceiling is ~4 concurrent hashes: 256
+ * MiB and ~180ms each at this setting, versus 512 MiB at 2^17. Four times the
+ * old cost, bounded memory, and the number is now a knob rather than a
+ * one-way door.
+ */
+const SCRYPT_PARAMS = { N: 65536, r: 8, p: 1 } as const;
+/** Node caps scrypt memory at 32 MiB by default, well under `128 * N * r`. */
+const SCRYPT_MAXMEM = 512 * 1024 * 1024;
+const SCRYPT_KEYLEN = 64;
+
+/** The cost node's `scryptSync(pw, salt, len)` defaults to - what every hash
+ *  written before the parameters were recorded was made with. */
+const LEGACY_PARAMS = { N: 16384, r: 8, p: 1 } as const;
+
+interface ScryptParams {
+  N: number;
+  r: number;
+  p: number;
 }
 
-export function verifyPassword(password: string, stored: string): boolean {
+function scryptAsync(
+  password: string,
+  salt: Buffer,
+  keylen: number,
+  params: ScryptParams,
+): Promise<Buffer> {
+  return new Promise((resolve, reject) => {
+    scrypt(
+      password,
+      salt,
+      keylen,
+      { ...params, maxmem: SCRYPT_MAXMEM },
+      (err, derived) => (err ? reject(err) : resolve(derived)),
+    );
+  });
+}
+
+/**
+ * Hash a password: `scrypt$<N>$<r>$<p>$<salt-hex>$<hash-hex>`.
+ *
+ * Async, not sync, and that is a security property rather than a style
+ * preference: `scryptSync` at this cost blocks the event loop for ~180ms per
+ * call, so the rate limiter's own allowance (30 login attempts per address per
+ * minute) would have been enough to stall the whole control plane. The async
+ * form runs on the threadpool, which also bounds how many can be in flight -
+ * see {@link SCRYPT_PARAMS}.
+ */
+export async function hashPassword(password: string): Promise<string> {
+  const salt = randomBytes(16);
+  const derived = await scryptAsync(password, salt, SCRYPT_KEYLEN, SCRYPT_PARAMS);
+  const { N, r, p } = SCRYPT_PARAMS;
+  return `scrypt$${N}$${r}$${p}$${salt.toString("hex")}$${derived.toString("hex")}`;
+}
+
+/**
+ * Split a stored hash into its parameters, salt and digest, accepting BOTH
+ * formats. Null when it is neither.
+ *
+ * The legacy shape has three fields and the current one six, so the field count
+ * is the discriminator - no version byte to keep in sync, and no ambiguity: a
+ * hex salt can never be mistaken for a decimal cost.
+ */
+function parseStoredPassword(
+  stored: string,
+): { params: ScryptParams; salt: Buffer; expected: Buffer } | null {
+  const parts = stored.split("$");
+  if (parts[0] !== "scrypt") return null;
+  if (parts.length === 3)
+    return {
+      params: LEGACY_PARAMS,
+      salt: Buffer.from(parts[1], "hex"),
+      expected: Buffer.from(parts[2], "hex"),
+    };
+  if (parts.length === 6) {
+    const [N, r, p] = [Number(parts[1]), Number(parts[2]), Number(parts[3])];
+    if (!Number.isInteger(N) || !Number.isInteger(r) || !Number.isInteger(p))
+      return null;
+    return {
+      params: { N, r, p },
+      salt: Buffer.from(parts[4], "hex"),
+      expected: Buffer.from(parts[5], "hex"),
+    };
+  }
+  return null;
+}
+
+export async function verifyPassword(
+  password: string,
+  stored: string,
+): Promise<boolean> {
   try {
-    const [scheme, saltHex, hashHex] = stored.split("$");
-    if (scheme !== "scrypt") return false;
-    const salt = Buffer.from(saltHex, "hex");
-    const expected = Buffer.from(hashHex, "hex");
-    const derived = scryptSync(password, salt, expected.length);
-    return timingSafeEqual(derived, expected);
+    const parsed = parseStoredPassword(stored);
+    if (!parsed || parsed.expected.length === 0) return false;
+    const derived = await scryptAsync(
+      password,
+      parsed.salt,
+      parsed.expected.length,
+      parsed.params,
+    );
+    return timingSafeEqual(derived, parsed.expected);
   } catch {
     return false;
   }
+}
+
+/**
+ * Whether a stored hash was made with a WEAKER setting than the current one, and
+ * should therefore be replaced.
+ *
+ * Only the caller that just saw the plaintext can act on this - the login path -
+ * which is why it is a separate predicate rather than an extra return value on
+ * {@link verifyPassword}: everything else that verifies a password (the
+ * step-up prompt before a destructive action, the recover script) has no
+ * business rewriting the credential.
+ *
+ * Compares the WORK, not the tuple: `N * r * p` is what an attacker pays, so a
+ * hash written at a higher cost by a future release is never downgraded by an
+ * older binary that happens to run afterwards.
+ */
+export function passwordNeedsRehash(stored: string): boolean {
+  const parsed = parseStoredPassword(stored);
+  if (!parsed) return false;
+  const work = (x: ScryptParams) => x.N * x.r * x.p;
+  return work(parsed.params) < work(SCRYPT_PARAMS);
 }
 
 /**
@@ -200,10 +321,29 @@ export function encryptSecret(plaintext: string): string {
   )}`;
 }
 
-export function decryptSecret(payload: string): string {
+/**
+ * Open a ciphertext, saying WHETHER it opened as well as what came out.
+ *
+ * The distinction is the whole point. {@link decryptSecret} answers `""` both
+ * for "this secret is the empty string" and for "this ciphertext could not be
+ * opened", and almost every caller reads that as "nothing is set" - so a
+ * `DEPLO_SECRET` that no longer matches degrades into an app deployed with
+ * blank credentials, a backup destination that looks unconfigured, and a
+ * restore that would try to read an encrypted artifact as plaintext. All of it
+ * silent, and none of it distinguishable from the operator simply not having
+ * filled the field in.
+ *
+ * A guess cannot recover the difference either: an empty value has a perfectly
+ * valid, non-empty ciphertext, so "plaintext is empty but ciphertext was not"
+ * is a heuristic that fires on a legitimately blank environment variable. Only
+ * the decrypt itself knows, which is why the answer is reported from here.
+ */
+export function tryDecryptSecret(
+  payload: string,
+): { ok: true; value: string } | { ok: false } {
   try {
     const [version, ivB64, tagB64, dataB64] = payload.split(".");
-    if (version !== "v1") return "";
+    if (version !== "v1") return { ok: false };
     const key = deriveKey("secrets");
     const decipher = createDecipheriv(
       "aes-256-gcm",
@@ -215,10 +355,44 @@ export function decryptSecret(payload: string): string {
       decipher.update(Buffer.from(dataB64, "base64")),
       decipher.final(),
     ]);
-    return dec.toString("utf8");
+    return { ok: true, value: dec.toString("utf8") };
   } catch {
-    return "";
+    return { ok: false };
   }
+}
+
+/**
+ * Open a ciphertext, or `""` if it will not open.
+ *
+ * The lossy form, kept because most callers genuinely do want a best-effort
+ * read (a masked display, an optional field). Anywhere a wrong answer is
+ * ACTED on - credentials handed to an agent, a token sent to a provider, a key
+ * that decides whether an artifact is encrypted - use
+ * {@link decryptSecretOrThrow} instead, and let the failure be loud.
+ */
+export function decryptSecret(payload: string): string {
+  const res = tryDecryptSecret(payload);
+  return res.ok ? res.value : "";
+}
+
+/**
+ * {@link decryptSecret} for the call sites where `""` is not an answer.
+ *
+ * `what` names the thing in the operator's language, because there is exactly
+ * one cause worth reporting and it is not a bug: the value was sealed under a
+ * different `DEPLO_SECRET` than the one this process booted with. There is no
+ * key versioning to fall back through, so the honest message says what is
+ * unreadable and why, rather than surfacing whatever confusing downstream error
+ * an empty credential would have produced three layers later.
+ */
+export function decryptSecretOrThrow(payload: string, what: string): string {
+  const res = tryDecryptSecret(payload);
+  if (!res.ok)
+    throw new Error(
+      `${what} could not be decrypted. It was encrypted with a different ` +
+        `DEPLO_SECRET than this instance is running with.`,
+    );
+  return res.value;
 }
 
 /* ------------------------------------------------------------------ */

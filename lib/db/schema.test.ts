@@ -104,6 +104,11 @@ const CONTROL_PLANE = [
   // instance — singleton holding the instance-owner crown (the tier above
   // instance admin, immutable to every other admin).
   "instance_settings",
+  // rate limiting - durable fixed-window counters for login, the two-factor
+  // challenge and the register link. Un-scoped by design: a bucket is about an
+  // ATTEMPT, often against a subject that does not exist, so it has no team and
+  // no user FK to cascade from.
+  "rate_limits",
   // services
   "apps",
   "app_build",

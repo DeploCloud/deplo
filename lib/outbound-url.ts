@@ -4,7 +4,15 @@ import { lookup } from "node:dns/promises";
 
 /**
  * The SSRF guard for every user-supplied URL Deplo dials itself: an S3 endpoint,
- * a Discord/Slack/generic webhook.
+ * a Discord/Slack/generic webhook, a git connection's base URL.
+ *
+ * The list is exhaustive on purpose - a dialer that is not on it is a hole, and
+ * the git base URL was exactly that for as long as it was missing: the control
+ * plane proved the token against it, listed repositories through it and
+ * registered a webhook on it, while surfacing the provider's own response body
+ * in its error message. That last part is what made it worse than the usual
+ * blind case. Before adding an outbound `fetch` anywhere, put its address
+ * through here first.
  *
  * A LEAF module on purpose. It used to live in `lib/data/s3.ts`, which records
  * activity - and once the activity log started raising alerts, every alert

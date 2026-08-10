@@ -673,6 +673,11 @@ type CertificateAccount {
 
 input ConnectGitProviderInput {
   """
+  Allow an address inside the deployment, for a git server on your own network. Instance-admin only; refused otherwise.
+  """
+  allowPrivateEndpoint: Boolean
+
+  """
   Origin of the git host. A bare domain becomes https://; a path or embedded credentials are refused.
   """
   baseUrl: String!
@@ -1581,6 +1586,11 @@ A team's stored credentials for one git host that is not GitHub. The token is ne
 """
 type GitConnection {
   accountLogin: String
+
+  """
+  The address points inside the deployment, which only an instance admin can allow. False for every ordinary connection.
+  """
+  allowPrivateEndpoint: Boolean
 
   """Apps whose clone this connection authenticates."""
   appCount: Int

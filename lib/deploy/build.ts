@@ -16,7 +16,7 @@ import {
   appPreviewEnvVars as appPreviewEnvVarsTable,
 } from "../db/schema/control-plane";
 import { newId, nowIso } from "../ids";
-import { decryptSecret } from "../crypto";
+import { decryptSecretOrThrow } from "../crypto";
 import { resolveEnvEntries } from "./env-resolve";
 import { loadInstanceEnv } from "../data/global-env";
 import { loadSharedVarsForApp } from "../data/shared-vars";
@@ -711,7 +711,13 @@ async function appEnv(
     keep(instanceGlobals),
     keep(previewOverrides),
   )) {
-    out[e.key] = decryptSecret(e.valueEnc);
+    // STRICT at the deploy edge. This is the value that becomes the container's
+    // environment, and `decryptSecret`'s "" would have handed the app a blank
+    // DATABASE_URL or API key and let it boot - a production incident that
+    // looks like an application bug and nothing in deplo would have said a
+    // word. Refusing to deploy is the only honest answer to a secret we cannot
+    // read.
+    out[e.key] = decryptSecretOrThrow(e.valueEnc, `The variable ${e.key}`);
   }
   return out;
 }

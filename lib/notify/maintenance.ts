@@ -8,6 +8,7 @@ import {
   servers as serversTable,
 } from "../db/schema/control-plane";
 import { decryptSecret } from "../crypto";
+import { sweepRateLimits } from "../security";
 import { probeCredential } from "../data/git-connections";
 import { sweepDomainDns } from "../data/domains";
 import { describeStackCertificates } from "../data/server-certificates";
@@ -45,9 +46,13 @@ export async function runMaintenanceSweep(): Promise<void> {
   await settle("certificates", checkCustomCertificates);
   await settle("domain dns", sweepDomainDns);
   await settle("git tokens", checkGitConnections);
+  // Housekeeping rather than a check: closed rate-limit windows are already
+  // treated as absent, this just stops a year of guessed addresses accumulating
+  // as dead rows.
+  await settle("rate limits", sweepRateLimits);
 }
 
-/** One failing check must never stop the other three. */
+/** One failing step must never stop the others. */
 async function settle(what: string, fn: () => Promise<void>): Promise<void> {
   try {
     await fn();

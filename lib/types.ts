@@ -2140,6 +2140,13 @@ export interface GitConnection {
   label: string;
   /** Origin with no trailing slash, e.g. https://gitlab.com. */
   baseUrl: string;
+  /**
+   * The address points inside the deployment, and an instance admin said so.
+   * Surfaced rather than kept internal for the same reason a backup
+   * destination's encryption state is: a connection whose reach nobody can see
+   * is one nobody audits.
+   */
+  allowPrivateEndpoint: boolean;
   /** Basic-auth username for the clone URL ("oauth2", "x-token-auth", …). */
   username: string;
   /** Account the token belongs to, resolved from the provider. */

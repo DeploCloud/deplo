@@ -2817,6 +2817,16 @@ export const gitConnections = pgTable(
     // https://git.acme.com. Self-hosted GitLab/Gitea is the main reason this
     // column exists at all.
     baseUrl: text("base_url").notNull(),
+    // Opt OUT of the SSRF guard on `base_url`, for a git server that lives on
+    // the operator's own private network. Instance-admin only to set - the same
+    // bar, and the same reason, as `backup_destinations.allow_private_endpoint`:
+    // the control plane dials this address itself and surfaces the response, so
+    // an unguarded one is a readable request into its own network. Default
+    // false, so nothing created from the ordinary form can aim inside the
+    // deployment.
+    allowPrivateEndpoint: boolean("allow_private_endpoint")
+      .notNull()
+      .default(false),
     // The userinfo half of the clone URL. Provider-dependent and NOT cosmetic:
     // GitLab wants "oauth2", Bitbucket "x-token-auth", Gitea the real username.
     username: text("username").notNull(),
@@ -3106,3 +3116,34 @@ export const instanceSettings = pgTable("instance_settings", {
   vapidPrivateKeyEnc: text("vapid_private_key_enc"),
   updatedAt: isoTimestamptz("updated_at").notNull(),
 });
+
+/* ================================================================== */
+/* Rate limiting                                                       */
+/* ================================================================== */
+
+/**
+ * Fixed-window counters for the sensitive paths (login, the 2FA challenge, the
+ * register link, the notification test button).
+ *
+ * DURABLE, and that is the point - they used to be a process-global `Map`. A
+ * restart emptied it, so anyone who could make the control plane restart also
+ * handed every account a fresh allowance of login attempts; and a second
+ * instance serving the same database would have kept its own, quietly
+ * multiplying every limit by the instance count.
+ *
+ * Deliberately un-scoped: no team, no user FK, no cascade. A bucket is about an
+ * ATTEMPT, and the most important attempts are the ones against a subject that
+ * may not exist - a guessed address, a token that was already consumed. Joining
+ * this to anything would delete exactly the counters an attacker wants gone.
+ */
+export const rateLimits = pgTable(
+  "rate_limits",
+  {
+    /** Opaque, caller-chosen: `login:email:<addr>`, `2fa-step-up:<userId>`, ... */
+    key: text("key").primaryKey(),
+    count: integer("count").notNull(),
+    /** When the window ends. A row past it is treated as absent, then reused. */
+    resetAt: isoTimestamptz("reset_at").notNull(),
+  },
+  (t) => [index("rate_limits_reset_at_idx").on(t.resetAt)],
+);

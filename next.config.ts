@@ -4,6 +4,13 @@ import type { NextConfig } from "next";
  * Security headers here are defense-in-depth and cover responses the proxy
  * matcher skips (API routes, static assets). The per-request CSP nonce is set
  * in proxy.ts.
+ *
+ * `Strict-Transport-Security` is deliberately NOT in this list: it must only be
+ * sent when the instance is really served over TLS, and that is a RUNTIME fact
+ * (the panel's address is editable in Settings), not something this file can
+ * know at build time. It already lives in proxy.ts, behind the same `isHttps`
+ * check that gates `upgrade-insecure-requests`. Proxy-only is enough - the
+ * header is remembered per origin, and every navigation goes through the proxy.
  */
 const securityHeaders = [
   { key: "X-Content-Type-Options", value: "nosniff" },

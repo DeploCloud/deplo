@@ -103,15 +103,21 @@ async function pendingLoginEmail(): Promise<string | null> {
   return rows[0]?.email ?? null;
 }
 
-/** Returns an error message when any limiter trips, else null. */
-function checkLimits(
+/**
+ * Returns an error message when any limiter trips, else null.
+ *
+ * Every check is counted even once one has already failed: they are separate
+ * buckets (the address, the client, the pending login) and skipping the rest
+ * after the first refusal would let an attacker keep one of them under its
+ * limit for free.
+ */
+async function checkLimits(
   checks: { key: string; limit: number; windowMs: number }[],
-): string | null {
-  let worst = 0;
-  for (const c of checks) {
-    const r = rateLimit(c.key, { limit: c.limit, windowMs: c.windowMs });
-    if (!r.ok) worst = Math.max(worst, r.retryAfterSec);
-  }
+): Promise<string | null> {
+  const results = await Promise.all(
+    checks.map((c) => rateLimit(c.key, { limit: c.limit, windowMs: c.windowMs })),
+  );
+  const worst = results.reduce((w, r) => (r.ok ? w : Math.max(w, r.retryAfterSec)), 0);
   return worst > 0 ? `Too many attempts. Try again in ${worst}s.` : null;
 }
 
@@ -179,7 +185,7 @@ builder.mutationFields((t) => ({
       // No global bucket: a shared fixed-window counter lets an anonymous
       // attacker exhaust it and lock every user out. Limiting is per-email and
       // per-client-IP only.
-      const limited = checkLimits([
+      const limited = await checkLimits([
         { key: `login:email:${email}`, limit: 8, windowMs: 60_000 },
         { key: await clientKey("login"), limit: 30, windowMs: 60_000 },
       ]);
@@ -194,7 +200,7 @@ builder.mutationFields((t) => ({
         // Counted here rather than in `lib/auth.ts`: this resolver has the
         // normalised address in scope and already knows a credential rejection
         // from a rate-limit one.
-        noteFailedLogin(email);
+        void noteFailedLogin(email);
         throw new Error(res.error ?? "Invalid email or password");
       }
       return { viewer: await getCurrentUser() };
@@ -225,7 +231,7 @@ builder.mutationFields((t) => ({
       // Auth set when the password was accepted: it caps the attempts against
       // one challenge no matter how many addresses they arrive from, without
       // this resolver having to learn which account is behind it.
-      const limited = checkLimits([
+      const limited = await checkLimits([
         { key: await clientKey("2fa"), limit: 5, windowMs: 15 * 60_000 },
         ...(await pendingLoginKey()),
       ]);
@@ -240,7 +246,7 @@ builder.mutationFields((t) => ({
         // reaches that account's teams. A challenge whose cookie no longer
         // resolves has nobody to warn.
         const who = await pendingLoginEmail();
-        if (who) noteFailedLogin(who);
+        if (who) void noteFailedLogin(who);
         throw new Error(res.error ?? "That code is not valid");
       }
       return { viewer: await getCurrentUser() };
@@ -260,7 +266,7 @@ builder.mutationFields((t) => ({
       const parsed = setupSchema.safeParse(args);
       if (!parsed.success)
         throw new Error(parsed.error.issues[0]?.message ?? "Invalid input");
-      const limited = checkLimits([
+      const limited = await checkLimits([
         { key: "setup:global", limit: 10, windowMs: 60_000 },
       ]);
       if (limited) throw new Error(limited);
@@ -291,12 +297,17 @@ builder.mutationFields((t) => ({
         h.get("x-forwarded-for")?.split(",")[0]?.trim() ||
         h.get("x-real-ip") ||
         "local";
-      const limited =
-        !rateLimit(`register:ip:${ip}`, { limit: 10, windowMs: 60_000 }).ok ||
-        !rateLimit(`register:token:${parsed.data.token.slice(0, 12)}`, {
+      // Through `checkLimits` rather than two inline calls, so both buckets are
+      // always counted: the `||` short-circuited, which left the token bucket
+      // un-incremented whenever the address bucket refused first.
+      const limited = await checkLimits([
+        { key: `register:ip:${ip}`, limit: 10, windowMs: 60_000 },
+        {
+          key: `register:token:${parsed.data.token.slice(0, 12)}`,
           limit: 8,
           windowMs: 60_000,
-        }).ok;
+        },
+      ]);
       if (limited) throw new Error("Too many attempts. Try again shortly.");
 
       const username = normalizeUsername(parsed.data.username);

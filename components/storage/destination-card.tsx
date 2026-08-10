@@ -10,6 +10,7 @@ import {
   PlugZap,
   ScrollText,
   Server,
+  ShieldOff,
   Trash2,
 } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
@@ -380,7 +381,10 @@ export function DestinationCard({
                 </div>
                 <div>
                   <dt className="text-muted-foreground">Encryption</dt>
-                  <dd>{encrypted ? "Always on" : "Off (older destination)"}</dd>
+                  {/* Terse on purpose: the warning above this grid is where the
+                      "off" case is explained, and saying it twice in two voices
+                      reads as two different facts. */}
+                  <dd>{encrypted ? "Always on" : "Off"}</dd>
                 </div>
               </>
             )}
@@ -389,6 +393,39 @@ export function DestinationCard({
               <dd>{timeAgo(dest.createdAt)}</dd>
             </div>
           </dl>
+
+          {/* The UNENCRYPTED nudge, and it is deliberately the loudest thing on
+              the card.
+
+              A destination connected before bucket artifacts started being
+              encrypted has no keypair, so the agent skips the age layer and
+              writes plaintext dumps into the bucket. That state was already
+              stated - as "Encryption: Off (older destination)", four lines into
+              a detail grid you have to expand, in the neutral voice of a
+              setting. Two cards looked identical on their face while one of them
+              was writing an app's entire decrypted environment somewhere the
+              bucket's own file browser can read.
+
+              There is no in-place upgrade: the keypair is minted at creation and
+              the artifacts already written stay readable by whoever has the
+              bucket. So the nudge asks for the only thing that actually fixes
+              it, rather than offering a button that would quietly re-encrypt
+              nothing. */}
+          {!encrypted && (
+            <div className="flex w-full items-start gap-2 rounded-lg border border-[var(--warning)]/30 bg-[var(--warning)]/5 p-3 text-left">
+              <ShieldOff className="mt-0.5 size-3.5 shrink-0 text-[var(--warning)]" />
+              <span className="min-w-0 flex-1 space-y-0.5">
+                <span className="block text-xs font-medium">
+                  Backups here are not encrypted
+                </span>
+                <span className="block text-xs text-muted-foreground">
+                  This destination was added before encryption, so anyone who can
+                  read the bucket can read these backups. Add it again to get an
+                  encrypted one, then point your schedules at it.
+                </span>
+              </span>
+            </div>
+          )}
 
           {/* The recovery-key nudge. These backups are encrypted, so a key kept
               only inside Deplo is a key that dies with the instance the backups

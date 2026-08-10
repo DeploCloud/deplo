@@ -13,7 +13,7 @@ import {
   users as usersTable,
 } from "./db/schema/control-plane";
 import { account as accountTable } from "./db/schema/auth";
-import { hashPassword, verifyPassword } from "./crypto";
+import { hashPassword, passwordNeedsRehash, verifyPassword } from "./crypto";
 import type { Capability, PublicUser, Role, Team, User } from "./types";
 import { capabilitiesForRole, cleanCapabilities } from "./membership-shared";
 import { normalizeUsername, validateUsername } from "./username";
@@ -158,7 +158,7 @@ async function insertUserCore(
     userId: user.id,
     accountId: user.id,
     providerId: "credential",
-    password: hashPassword(input.password),
+    password: await hashPassword(input.password),
   });
   return user;
 }
@@ -508,7 +508,7 @@ export async function verifyUserPassword(
     .limit(1);
   const stored = rows[0]?.password;
   if (!stored) return false;
-  return verifyPassword(password, stored);
+  return await verifyPassword(password, stored);
 }
 
 /** Replace a user's stored credential. Used by admin reset + the recover script. */
@@ -520,7 +520,7 @@ export async function setUserPassword(
   const db = tx ?? getDb();
   const updated = await db
     .update(accountTable)
-    .set({ password: hashPassword(password), updatedAt: new Date() })
+    .set({ password: await hashPassword(password), updatedAt: new Date() })
     .where(
       and(
         eq(accountTable.userId, userId),
@@ -536,7 +536,7 @@ export async function setUserPassword(
       userId,
       accountId: userId,
       providerId: "credential",
-      password: hashPassword(password),
+      password: await hashPassword(password),
     });
 }
 
@@ -593,6 +593,16 @@ export async function login(
       headers: await authHeaders(),
       asResponse: false,
     });
+    // The credential was just proven, so this is the one moment the plaintext
+    // and the identity are both in hand - the only place a hash written at an
+    // older, weaker cost can be replaced without asking anyone to reset
+    // anything. Best-effort: a failure here must never turn a successful login
+    // into an error.
+    //
+    // BEFORE the two-factor branch, not after: reaching a challenge means the
+    // password half already succeeded, and returning first would have left every
+    // 2FA account - the ones most worth strengthening - on the old cost forever.
+    void upgradePasswordHash(normalized, password);
     if (res && "twoFactorRedirect" in res && res.twoFactorRedirect)
       return { ok: false, requiresTwoFactor: true };
     return { ok: true };
@@ -604,6 +614,54 @@ export async function login(
     if (isCredentialRejection(e))
       return { ok: false, error: "Invalid email or password" };
     throw e;
+  }
+}
+
+/**
+ * Re-hash a just-proven password when the stored one was made with a weaker
+ * setting than {@link hashPassword} now uses.
+ *
+ * Silent and best-effort by design. Nobody asked for this, it changes nothing
+ * the user can see, and the login it rides on has already succeeded - so every
+ * failure path here (the row moved, the database blipped) ends in a shrug and
+ * the old hash surviving until the next sign-in. What it must never do is make
+ * a correct password look wrong.
+ *
+ * Scoped to the `credential` provider row: a social/OIDC account has no password
+ * to upgrade, and matching on the user alone would rewrite the wrong row the day
+ * a second provider exists.
+ */
+async function upgradePasswordHash(
+  normalizedEmail: string,
+  password: string,
+): Promise<void> {
+  try {
+    const rows = await getDb()
+      .select({ id: accountTable.id, password: accountTable.password })
+      .from(accountTable)
+      .innerJoin(usersTable, eq(usersTable.id, accountTable.userId))
+      .where(
+        and(
+          eq(sql`lower(${usersTable.email})`, normalizedEmail),
+          eq(accountTable.providerId, "credential"),
+        ),
+      )
+      .limit(1);
+    const row = rows[0];
+    if (!row?.password || !passwordNeedsRehash(row.password)) return;
+    const fresh = await hashPassword(password);
+    await getDb()
+      .update(accountTable)
+      // The old hash is part of the WHERE: between the read above and this
+      // write the user may have changed their password in another tab, and
+      // overwriting THAT with a re-hash of the old one would silently restore a
+      // credential they had just replaced.
+      .set({ password: fresh, updatedAt: new Date() })
+      .where(
+        and(eq(accountTable.id, row.id), eq(accountTable.password, row.password)),
+      );
+  } catch {
+    // Deliberately swallowed - see the docblock.
   }
 }
 

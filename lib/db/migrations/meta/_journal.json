@@ -617,6 +617,20 @@
       "when": 1784678600000,
       "tag": "0087_backup_run_orphaned_at",
       "breakpoints": true
+    },
+    {
+      "idx": 88,
+      "version": "7",
+      "when": 1784678800000,
+      "tag": "0088_git_connection_private_endpoint",
+      "breakpoints": true
+    },
+    {
+      "idx": 89,
+      "version": "7",
+      "when": 1784679000000,
+      "tag": "0089_rate_limits",
+      "breakpoints": true
     }
   ]
 }

@@ -201,6 +201,18 @@ is remapped onto the control-plane `users` table. Deploy execution is the Go age
   journal), `db:migrate` (prod). Migrations **auto-apply at boot** via the `instrumentation.ts`
   hook (`lib/db/migrate.ts` → Drizzle migrator, idempotent, re-throws on failure); `db:migrate`
   stays available to apply them out-of-band.
+- **CI is `.github/workflows/ci.yml`** - lint, tests, `tsc --noEmit` and `bun audit
+  --audit-level=high` on every push/PR, plus a weekly audit run so a newly-published advisory
+  turns the repo red on its own. The tests job must keep `DEPLO_DATABASE_URL` **unset** (the
+  suite is pglite in-process; a real URL makes the lease/scheduler tests bind to it and fail).
+  `docker-image.yml` is separate and still fires only on a `v*` tag.
+- **`overrides` in `package.json` are security pins, not preferences.** `postcss`, `nanoid`,
+  `brace-expansion`, `js-yaml`, `sharp`, `protobufjs` and `esbuild` reach us only through `next`,
+  `@tailwindcss/postcss`, `@grpc/grpc-js`, `drizzle-kit`, `tsx` and `eslint`, all of which pin
+  ranges below the patched versions. Without the overrides `bun audit` reports 25 advisories
+  (16 high) and the CI audit job cannot pass; with them it reports none. Re-check when bumping
+  `next` or the grpc/drizzle toolchain: once the upstream range moves past a pin, delete that
+  entry rather than leaving a stale one.
 
 ## API layer (Pothos + yoga)
 
@@ -254,7 +266,10 @@ Single endpoint `app/api/graphql/route.ts` (thin) → `lib/graphql/yoga.ts`. One
   under a **folder** need a second gate: `await requireFolderCapabilityForApp(appId, cap)`.
 - Auth helpers: `getCurrentUser()` (nullable), `assertUser()` (**throws** — resolvers/data),
   `requireUser()` (**redirects** — RSC/pages). `recordActivity(...)` runs **outside** any open
-  transaction (own connection; deadlocks pglite otherwise) and is fire-and-forget.
+  transaction (own connection; deadlocks pglite otherwise) and is fire-and-forget - but not
+  silently lossy: it retries the insert once, and an entry it still could not write becomes a
+  visible "N activity entries could not be recorded" row on the next successful write. A gap in an
+  audit trail has to be legible **in the trail**, not only in stderr.
 - **Capabilities are FINE-GRAINED (41)** — one action each, catalogued with labels,
   descriptions, search keywords and browse categories in **`lib/capabilities.ts`**
   (`create_apps`, `deploy_apps`, `delete_apps`, `open_app_console`, `read_app_files` vs
@@ -284,12 +299,31 @@ Single endpoint `app/api/graphql/route.ts` (thin) → `lib/graphql/yoga.ts`. One
   add a JSONB column** (nested → child table, list → ordered/junction table). `*_at` columns use
   the `isoTimestamptz` custom type, never plain `timestamp` (Better Auth tables aside).
 - **`DEPLO_SECRET` derives every key** via `deriveKey(purpose)`: `secrets` (AES-256-GCM), `session`
-  (HMAC), `state` (CSRF), `agent-mtls-ca` (CA seed). Rotating it is destructive — all `*_enc`
-  become undecryptable, all sessions invalid, every agent cert re-mints. No key versioning;
-  `decryptSecret` fails **closed** to `""`.
+  (HMAC), `state` (CSRF), `agent-mtls-ca` (CA seed), `better-auth`. Rotating it is destructive -
+  all `*_enc` become undecryptable, all sessions invalid, every agent cert re-mints. No key
+  versioning.
+- **Three decrypt entry points, and picking the wrong one is silent.** `decryptSecret` is
+  best-effort and answers `""` for BOTH "empty value" and "will not open" - fine for a masked
+  display, wrong anywhere the answer is acted on. Use **`decryptSecretOrThrow(payload, what)`**
+  wherever `""` would be used as a real value (the deploy edge, cron env, destination credentials,
+  a git token), and `tryDecryptSecret` when you need to branch on the difference yourself.
 - **Secrets are write-only / masked with no reveal path for the client.** `*_enc` ciphertext is
   never projected into DTOs; masked values decrypt only via `manage_env`-gated `reveal*` calls or
-  at the deploy edge. **Never add a "show secret" affordance.** Passwords are scrypt + constant-time.
+  at the deploy edge. **Never add a "show secret" affordance.**
+- **Passwords are `scrypt$<N>$<r>$<p>$<salt>$<hash>`, async, with the cost as a stored parameter.**
+  Raising `SCRYPT_PARAMS` in `lib/crypto.ts` is a one-line change: `verifyPassword` reads each
+  hash's own parameters, the pre-parameter 3-field form still verifies, and `login()` re-hashes a
+  weaker one in place on the next successful sign-in (`passwordNeedsRehash`). Both helpers are
+  **async on purpose** - scrypt at this cost must not run on the event loop.
+- **Every user-supplied outbound address goes through `lib/outbound-url.ts` first**
+  (`assertSafeOutboundUrl` / `assertSafeOutboundHost` for a bare SMTP host). S3 endpoints,
+  notification webhooks, push endpoints and git base URLs are all on it; reaching inside the
+  deployment is an `allowPrivateEndpoint` flag gated on `requireInstanceAdmin`, never on a team
+  capability. A new `fetch` to an address a user typed is a hole until it is on this list.
+- **The rate limiter (`lib/security.ts`) is Postgres-backed and `async`.** One UPSERT per attempt,
+  so it survives a restart and works across instances; it **fails open** when the database is
+  unreachable (a limiter that locks everyone out on a DB blip is worse than one that stops
+  counting). `sweepRateLimits` runs in the maintenance sweep.
 - **Better Auth is the live auth path** (ADR-0014, migration 0055): session cookie
   `deplo.session_token` (a real `session` row, `__Secure-` prefixed over https), configured in
   `lib/auth/better-auth.ts`. `deplo_team` still carries the active team and stays deplo's own.

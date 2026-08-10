@@ -12,6 +12,29 @@ import type { TestDb } from "../db/test-harness";
 import type { Capability, Role } from "../types";
 
 /**
+ * `hashPassword` for SEEDED users, memoized per plaintext.
+ *
+ * The real thing is scrypt at the production work factor - deliberately, around
+ * 180ms a call - and almost every test file seeds several users in a
+ * `beforeEach`. Hashing "password1" afresh for each of them, in every test, in
+ * every file, added minutes to the suite for no coverage at all.
+ *
+ * What is lost is a distinct salt per seeded row, which is a property of the
+ * PRODUCTION path and is asserted where it belongs (lib/crypto.test.ts). What is
+ * kept is the part any test could care about: a real hash of the real password,
+ * produced by the real function, that `verifyPassword` accepts.
+ */
+const seedHashes = new Map<string, Promise<string>>();
+function seedHash(password: string): Promise<string> {
+  let p = seedHashes.get(password);
+  if (!p) {
+    p = hashPassword(password);
+    seedHashes.set(password, p);
+  }
+  return p;
+}
+
+/**
  * Shared seeding for the identity cut-set (b) data-layer tests (relational-store
  * PLAN Step 3). Identity (`users`/`teams`/`memberships`(+capabilities) +
  * `registrationLinks`) is RELATIONAL: the authz backbone and `getCurrentUser`
@@ -104,14 +127,18 @@ export async function seedIdentity(
   );
   // The credential lives on the Better Auth `account` row since migration 0055,
   // so a seeded user needs one too or every password re-check reads null.
+  // Hashing is async (scrypt on the threadpool), so the rows are built first and
+  // inserted after - `.map()` cannot await.
   await db.insert(account).values(
-    seedUsers.map((u) => ({
-      id: `bacc_${u.id}`,
-      userId: u.id,
-      accountId: u.id,
-      providerId: "credential",
-      password: hashPassword(u.password ?? "password1"),
-    })),
+    await Promise.all(
+      seedUsers.map(async (u) => ({
+        id: `bacc_${u.id}`,
+        userId: u.id,
+        accountId: u.id,
+        providerId: "credential",
+        password: await seedHash(u.password ?? "password1"),
+      })),
+    ),
   );
   await db.insert(teams).values(
     seedTeams.map((t) => ({

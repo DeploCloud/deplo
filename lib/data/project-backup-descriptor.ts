@@ -2,7 +2,7 @@ import "server-only";
 
 import yaml from "js-yaml";
 
-import { decryptSecret } from "../crypto";
+import { decryptSecretOrThrow } from "../crypto";
 import { hostVolumeName, usesComposeStack } from "../utils";
 import { resolveEnvEntries } from "../deploy/env-resolve";
 import { loadEnvVarsForApp } from "./app-graph-load";
@@ -60,7 +60,10 @@ export async function appEnvSnapshot(
   ]);
   const out: Record<string, string> = {};
   for (const e of resolveEnvEntries("production", appId, vars, sharedVars, instanceGlobals)) {
-    out[e.key] = decryptSecret(e.valueEnc);
+    // Strict: this descriptor is what a RESTORE writes back as the app's real
+    // `.env`, so a value that silently became "" would not break the backup -
+    // it would break the recovery, months later, at the worst possible moment.
+    out[e.key] = decryptSecretOrThrow(e.valueEnc, `The variable ${e.key}`);
   }
   return out;
 }

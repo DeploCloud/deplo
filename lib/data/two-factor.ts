@@ -58,7 +58,7 @@ export interface TwoFactorEnrolment {
  */
 export async function stepUpPassword(password: string) {
   const user = await assertUser();
-  const limit = rateLimit(`2fa-step-up:${user.id}`, STEP_UP_LIMIT);
+  const limit = await rateLimit(`2fa-step-up:${user.id}`, STEP_UP_LIMIT);
   if (!limit.ok)
     throw new Error(`Too many attempts. Try again in ${limit.retryAfterSec}s.`);
   if (!(await verifyUserPassword(user.id, password)))
@@ -120,7 +120,7 @@ export async function startTwoFactorEnrolment(
 export async function confirmTwoFactorEnrolment(code: string): Promise<void> {
   requirePersonalSession("two-factor settings");
   const user = await assertUser();
-  const limit = rateLimit(`2fa-step-up:${user.id}`, STEP_UP_LIMIT);
+  const limit = await rateLimit(`2fa-step-up:${user.id}`, STEP_UP_LIMIT);
   if (!limit.ok)
     throw new Error(`Too many attempts. Try again in ${limit.retryAfterSec}s.`);
   await stepUpCode(code);

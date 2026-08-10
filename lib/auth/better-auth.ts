@@ -25,8 +25,11 @@ import { cookiesAreSecure, publicBaseUrl } from "@/lib/public-url";
  *     table under the key `users`.
  *
  *  2. **`password: { hash, verify }`.** Wired to deplo's own scrypt pair, so every
- *     `scrypt$salt$hash` written before the migration still verifies and nobody
- *     had to reset a password. Change this and you invalidate every credential.
+ *     hash ever written still verifies and nobody had to reset a password -
+ *     `scrypt$salt$hash` from before the migration, `scrypt$N$r$p$salt$hash`
+ *     since the work factor became a stored parameter. Change this and you
+ *     invalidate every credential. Both are async: `verify` sits on the login
+ *     path and scrypt at the current cost must not run on the event loop.
  *
  *  3. **`disableSignUp: true`.** `users` has NOT NULL columns Better Auth knows
  *     nothing about (`username`, `role`, `avatar_color`), so it must never INSERT
@@ -111,8 +114,8 @@ function createAuth(db: DrizzleClient) {
       disableSignUp: true,
       minPasswordLength: 8,
       password: {
-        hash: async (password) => hashPassword(password),
-        verify: async ({ hash, password }) => verifyPassword(password, hash),
+        hash: (password) => hashPassword(password),
+        verify: ({ hash, password }) => verifyPassword(password, hash),
       },
     },
     session: {

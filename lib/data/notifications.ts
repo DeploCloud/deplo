@@ -545,7 +545,7 @@ export async function sendTestNotification(channelId: string): Promise<void> {
   // One button press is one outbound request to an address the presser chose, so
   // it is counted like every other sensitive action. Without this the settings
   // page is a request generator anybody with the capability can hold down.
-  if (!rateLimit(`notify-test:${userId}`, { limit: 10, windowMs: 60_000 }).ok)
+  if (!(await rateLimit(`notify-test:${userId}`, { limit: 10, windowMs: 60_000 })).ok)
     throw new Error("Too many test alerts. Wait a minute and try again.");
   const row = await channelRow(teamId, channelId);
   if (!row) throw new Error("Channel not found");

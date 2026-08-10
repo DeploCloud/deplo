@@ -1,0 +1,87 @@
+name: CI
+
+on:
+  push:
+    branches: ["main"]
+  pull_request:
+  # So a newly-published advisory turns the repo red on its own, without waiting
+  # for somebody to push. The audit job is the only one that finds work when the
+  # code has not changed.
+  schedule:
+    - cron: "0 6 * * 1"
+  workflow_dispatch:
+
+# Node.js 20 is deprecated on the runners; force JS-based actions onto Node 24.
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"
+
+# A second push to the same branch cancels the first: the suite is ~12 minutes
+# and nobody reads the result of a superseded commit.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  lint:
+    name: Lint
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+      - run: bun install --frozen-lockfile
+      - run: bun run lint
+
+  test:
+    name: Tests
+    runs-on: ubuntu-latest
+    # The suite runs in-process against pglite and takes ~15 minutes on a decent
+    # box; a hosted runner is slower. The cap is a runaway guard, not a target,
+    # so it is set well clear of the real number rather than close to it - a
+    # timeout that trips is a red build that says nothing about the code.
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v5
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+      - run: bun install --frozen-lockfile
+      - name: Run the suite
+        # DEPLO_DATABASE_URL must stay UNSET. The suite runs in-process against
+        # pglite (`makeTestDb` + `__setTestDb`); with a real URL exported, the
+        # lease/scheduler tests bind to that database instead and fail. There is
+        # no Postgres service container here on purpose.
+        env:
+          DEPLO_SECRET: ci-test-secret-not-used-for-anything-real
+        run: bun run test
+
+  audit:
+    name: Dependency audit
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+      - run: bun install --frozen-lockfile
+      - name: Fail on a high-severity advisory
+        # Only `high` and above break the build. Moderate advisories in
+        # build-time-only tooling (postcss, esbuild, the eslint dependency tree)
+        # would otherwise make this job permanently red, and a check that is
+        # always red is a check nobody reads.
+        run: bun audit --audit-level=high
+
+  typecheck:
+    name: Types
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+      - run: bun install --frozen-lockfile
+      # `next build` would also typecheck, but it needs DEPLO_DATABASE_URL at
+      # module load (lib/db/pg.ts fail-fasts) and takes minutes. tsc alone
+      # answers the only question this job asks.
+      - run: bunx tsc --noEmit

@@ -77,7 +77,7 @@ test("createAccountWithTeam writes user + team + owner membership with caps", as
   )[0]!;
   assert.equal(arow.providerId, "credential");
   assert.notEqual(arow.password, "Passw0rd!1");
-  assert.ok(verifyPassword("Passw0rd!1", arow.password!));
+  assert.ok(await verifyPassword("Passw0rd!1", arow.password!));
 
   const mrows = await db
     .select()

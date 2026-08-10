@@ -29,7 +29,7 @@ import {
   requireTeamWide,
 } from "../membership";
 import { recordActivity } from "./activity";
-import { encryptSecret, decryptSecret } from "../crypto";
+import { encryptSecret, decryptSecret, decryptSecretOrThrow } from "../crypto";
 import {
   connectBackupAgent,
   mapBackupUnsupported,
@@ -198,11 +198,24 @@ export async function getDestinationWithSecretsForTeam(
 ): Promise<DestinationWithSecrets> {
   const d = await loadDestination(id, teamId);
   if (!d) throw new Error("Destination not found");
+  // Strict, not best-effort. Every one of these is about to be ACTED on: the
+  // keys go to an agent that dials the bucket with them, and `ageIdentity` is
+  // what a restore reads the artifact with. Decrypting to "" would have turned
+  // a key-mismatch into "these credentials are wrong" from the S3 provider and,
+  // worse, into "this destination is not encrypted" - which is the one wrong
+  // answer that ends with a restore refusing an artifact it could actually have
+  // read, or a backup written in the clear.
   return {
     destination: d,
-    accessKey: d.accessKeyEnc ? decryptSecret(d.accessKeyEnc) : "",
-    secretKey: d.secretKeyEnc ? decryptSecret(d.secretKeyEnc) : "",
-    ageIdentity: d.ageIdentityEnc ? decryptSecret(d.ageIdentityEnc) : "",
+    accessKey: d.accessKeyEnc
+      ? decryptSecretOrThrow(d.accessKeyEnc, "This destination's access key")
+      : "",
+    secretKey: d.secretKeyEnc
+      ? decryptSecretOrThrow(d.secretKeyEnc, "This destination's secret key")
+      : "",
+    ageIdentity: d.ageIdentityEnc
+      ? decryptSecretOrThrow(d.ageIdentityEnc, "This destination's recovery key")
+      : "",
   };
 }
 

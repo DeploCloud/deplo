@@ -24,6 +24,10 @@ import { resolveCloneUrl, redactCloneUrl } from "../git/clone-url";
 import { updateAppSource } from "./apps";
 import { loadAppGraph } from "./app-graph-load";
 import { gitConnections as gitConnectionsTable } from "../db/schema/control-plane";
+import {
+  __setDnsLookupForTest,
+  __resetDnsLookupForTest,
+} from "../outbound-url";
 
 /**
  * Git connections: the team boundary and the write-only token.
@@ -40,9 +44,18 @@ let pg: PGlite;
 before(async () => {
   ({ db, pg } = await makeTestDb());
   __setTestDb(db);
+  // The SSRF guard on `baseUrl` resolves hostnames, and a real lookup would make
+  // this suite depend on the network AND answer differently per machine. Every
+  // name is public here except the one case that names itself.
+  __setDnsLookupForTest(async (host) =>
+    host === "git.internal.example.com"
+      ? [{ address: "10.0.0.7" }]
+      : [{ address: "93.184.216.34" }],
+  );
 });
 
 after(async () => {
+  __resetDnsLookupForTest();
   __resetTestDb();
   await pg.close();
 });
@@ -55,6 +68,9 @@ beforeEach(async () => {
     users: [
       { id: USER_1, teamId: TEAM_A, role: "owner" },
       { id: "user_2", teamId: TEAM_B, role: "owner" },
+      // Holds `manage_git` in TEAM_A but is NOT an instance admin - the
+      // distinction the private-address gate turns on.
+      { id: "user_3", teamId: TEAM_A, role: "owner", isInstanceAdmin: false },
     ],
   });
   await seedServer(db);
@@ -286,4 +302,91 @@ test("an app cannot borrow another team's connection", async () => {
   const app = await loadAppGraph("prj_1");
   assert.equal(app?.repo?.connectionId ?? null, null);
   assert.equal(app?.repo?.repo, "acme/site");
+});
+
+/* ------------------------------------------------------------------ */
+/* The address is dialed by the control plane, so it is SSRF surface    */
+/* ------------------------------------------------------------------ */
+
+/**
+ * `base_url` was the one user-supplied outbound address that never went through
+ * the shared guard. That mattered more than the usual blind-SSRF case: the
+ * control plane dials it itself to prove the token, and `lib/git/providers.ts`
+ * puts the provider's own response body into the error it surfaces - so
+ * `http://169.254.169.254/latest/meta-data/` came back READABLE to anyone
+ * holding `manage_git`, a team capability.
+ *
+ * The escape exists because a self-hosted GitLab or Gitea on the operator's LAN
+ * is an ordinary thing to want, and it is gated exactly like a private bucket
+ * endpoint: instance admin only, and recorded on the row so nobody has to
+ * remember who made the exception.
+ */
+
+const connectTo = (baseUrl: string, allowPrivateEndpoint = false) =>
+  connectGitProvider({
+    provider: "git",
+    label: "Somewhere",
+    baseUrl,
+    username: "deploy",
+    token: "t",
+    allowPrivateEndpoint,
+  });
+
+test("an address inside the deployment is refused", async () => {
+  for (const addr of [
+    "http://169.254.169.254", // the cloud metadata endpoint
+    "http://127.0.0.1:3000",
+    "https://10.0.0.5",
+    "https://192.168.1.10",
+    "https://172.16.4.4",
+    "http://localhost:8080",
+    "https://[::1]",
+  ]) {
+    await assert.rejects(
+      () => asTeamA(() => connectTo(addr)),
+      /private or internal/,
+      `${addr} must be refused`,
+    );
+  }
+});
+
+test("a NAME that resolves inside the deployment is refused too", async () => {
+  // The politely-spelled version of the same attack. Refusing only the literal
+  // would have stopped nothing.
+  await assert.rejects(
+    () => asTeamA(() => connectTo("https://git.internal.example.com")),
+    /private or internal/,
+  );
+});
+
+test("a private address needs instance admin, not just manage_git", async () => {
+  // `user_3` (seeded above) holds the capability in TEAM_A but is not an
+  // instance admin, which is the whole distinction: a team capability must never
+  // be enough to aim the control plane at its own network.
+  await assert.rejects(
+    () =>
+      runWithIdentity({ userId: "user_3", teamId: TEAM_A }, () =>
+        connectTo("https://10.0.0.5", true),
+      ),
+    /instance admin/i,
+  );
+});
+
+test("an instance admin can point a connection at their own network, and it says so", async () => {
+  const created = await asTeamA(() => connectTo("https://10.0.0.5", true));
+  assert.equal(created.baseUrl, "https://10.0.0.5");
+  assert.equal(
+    created.allowPrivateEndpoint,
+    true,
+    "the exception is carried on the row, not only in whoever's memory made it",
+  );
+
+  const listed = await asTeamA(() => listGitConnections());
+  assert.equal(listed[0].allowPrivateEndpoint, true);
+});
+
+test("an ordinary public address still connects, and is not flagged", async () => {
+  const created = await asTeamA(() => connectTo("git.acme.com"));
+  assert.equal(created.baseUrl, "https://git.acme.com");
+  assert.equal(created.allowPrivateEndpoint, false);
 });

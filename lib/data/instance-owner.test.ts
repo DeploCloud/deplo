@@ -143,7 +143,7 @@ test("another admin cannot RESET the instance owner's password", async () => {
   const after = await userRow(OWNER);
   assert.equal(after.passwordHash, before, "the hash must be untouched");
   assert.ok(
-    verifyPassword(SEEDED_PW, after.passwordHash!),
+    await verifyPassword(SEEDED_PW, after.passwordHash!),
     "the owner's original password still works",
   );
 });
@@ -169,7 +169,7 @@ test("the owner can still edit their own account (password included)", async () 
     updateUserAdmin(edit(OWNER, { newPassword: "A-new-passw0rd!" })),
   );
   const row = await userRow(OWNER);
-  assert.ok(verifyPassword("A-new-passw0rd!", row.passwordHash!));
+  assert.ok(await verifyPassword("A-new-passw0rd!", row.passwordHash!));
   assert.equal(row.isInstanceAdmin, true);
 });
 

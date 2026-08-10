@@ -168,7 +168,7 @@ async function cmdPassword(handle: string, given: string | undefined) {
   // free of `next/headers` (it runs from a terminal, not a request).
   const updated = await getDb()
     .update(accountTable)
-    .set({ password: hashPassword(password), updatedAt: new Date() })
+    .set({ password: await hashPassword(password), updatedAt: new Date() })
     .where(
       and(
         eq(accountTable.userId, user.id),
@@ -182,7 +182,7 @@ async function cmdPassword(handle: string, given: string | undefined) {
       userId: user.id,
       accountId: user.id,
       providerId: "credential",
-      password: hashPassword(password),
+      password: await hashPassword(password),
     });
   // Kill every live session: whoever locked this account out must not keep a cookie.
   await getDb().delete(sessionTable).where(eq(sessionTable.userId, user.id));

@@ -36,6 +36,10 @@ const GitConnectionRef = builder
       }),
       label: t.exposeString("label"),
       baseUrl: t.exposeString("baseUrl"),
+      allowPrivateEndpoint: t.exposeBoolean("allowPrivateEndpoint", {
+        description:
+          "The address points inside the deployment, which only an instance admin can allow. False for every ordinary connection.",
+      }),
       username: t.exposeString("username"),
       accountLogin: t.exposeString("accountLogin"),
       avatarUrl: t.exposeString("avatarUrl"),
@@ -176,6 +180,11 @@ const ConnectGitProviderInputRef = builder.inputType("ConnectGitProviderInput", 
       description: "Basic-auth username for the clone. Defaults per provider.",
     }),
     token: t.string({ required: true, description: "Access token. Write-only." }),
+    allowPrivateEndpoint: t.boolean({
+      required: false,
+      description:
+        "Allow an address inside the deployment, for a git server on your own network. Instance-admin only; refused otherwise.",
+    }),
   }),
 });
 
@@ -204,6 +213,7 @@ builder.mutationFields((t) => ({
         baseUrl: input.baseUrl,
         username: input.username ?? "",
         token: input.token,
+        allowPrivateEndpoint: input.allowPrivateEndpoint ?? false,
       }),
   }),
   updateGitConnection: t.field({
