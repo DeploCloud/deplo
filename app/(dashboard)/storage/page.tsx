@@ -268,6 +268,7 @@ export default async function StoragePage(props: PageProps<"/storage">) {
                       where: destinationWhere(dest),
                       freeBytes: dest.lastFreeBytes,
                       totalBytes: dest.lastTotalBytes,
+                      encrypted: Boolean(dest.ageRecipient),
                     }}
                     canManage={canManageDestinations}
                   />

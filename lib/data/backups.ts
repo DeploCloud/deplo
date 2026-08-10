@@ -508,6 +508,7 @@ async function executeBackup(
     objectKey: "", // filled once the key is built (after resolution)
     sizeBytes: 0,
     sha256: null,
+    orphanedAt: null,
     status: "running",
     error: null,
     startedAt,
@@ -623,6 +624,10 @@ async function executeBackup(
       .set(set)
       .where(eq(backupRunsTable.id, runId))
       .returning();
+    // The record can be gone: deleting a target sweeps its run history, and a
+    // backup can be in flight when that happens. Report the run we have rather
+    // than dereferencing an empty result inside the transaction.
+    if (updated.length === 0) return { ...run, ...set } as BackupRun;
     if (opts.backupId) {
       await tx
         .update(backupsTable)
@@ -917,7 +922,10 @@ export async function downloadBackupArtifact(runId: string): Promise<{
   const creds = await getDestinationWithSecretsForTeam(teamId, run.destinationId);
   if (creds.destination.kind !== "server")
     throw new Error(
-      "This backup is in an S3 bucket. Download it from your bucket instead.",
+      creds.destination.ageRecipient
+        ? "This backup is in your bucket. Fetch the object with your own " +
+          "credentials, then decrypt it with this destination's recovery key."
+        : "This backup is in your bucket. Fetch the object with your own credentials.",
     );
 
   const label =
@@ -926,9 +934,14 @@ export async function downloadBackupArtifact(runId: string): Promise<{
       : ((run.appId ? (await loadAppGraph(run.appId))?.name : null) ?? "app");
   const opened = await openArtifactDownload(creds, run.objectKey, run.sha256 ?? "");
 
+  // Recorded HERE, when the stream opens, not when it finishes — and worded for
+  // that instant. The audit-relevant fact is that this person was handed the
+  // decryption key's output at all; a download they abort halfway still exposed
+  // the bytes it delivered, so "started" is the honest verb and waiting for a
+  // clean EOF would simply lose the entry for anyone who cancelled.
   await recordActivity(
     "backup",
-    `Downloaded a backup of ${label}`,
+    `Started downloading a backup of ${label}`,
     user.name,
     run.appId,
     teamId,
@@ -1211,7 +1224,14 @@ export async function deleteBackupArtifacts(input: {
   // Drop the run records for THIS target in THIS destination — records in other
   // destinations (whose artifacts survive) stay. Runs that never owned a file go
   // too: nothing is orphaned by removing them.
-  const removable = runs.map((r) => r.id);
+  //
+  // EXCEPT a `running` one. Its artifact does not exist yet, so it was not in the
+  // sweep above — and deleting its record means the dump finishes, the file
+  // lands, and nothing anywhere names it: a permanent orphan the sweep cannot see
+  // either, because there is no row left to find it by. (The terminal write would
+  // also come back empty.) Keeping the record leaves the run to fail or finish
+  // normally, and the FK cascade then turns it into an ordinary orphan.
+  const removable = runs.filter((r) => r.status !== "running").map((r) => r.id);
   if (removable.length > 0)
     await getDb()
       .delete(backupRunsTable)
@@ -1391,22 +1411,6 @@ export async function deleteAllBackupArtifacts(input: {
 const ORPHAN_ARTIFACT_KEEP_MS = 30 * 24 * 60 * 60_000;
 
 /**
- * Reclaim the artifacts of targets that no longer exist.
- *
- * A run's `database_id` / `app_id` are ON DELETE SET NULL, so a deleted target
- * leaves runs pointing at nothing — that is the shape this looks for, and it is
- * the ONLY shape, so a live target's artifacts are never in scope no matter how
- * old. Runs younger than {@link ORPHAN_ARTIFACT_KEEP_MS} are left alone.
- *
- * Best-effort and idempotent, like every other prune here: a record is dropped
- * only once its artifact is confirmed gone, so a destination that is down today
- * simply gets swept tomorrow. Grouped by destination so a fleet-wide sweep opens
- * one connection per destination rather than one per artifact.
- *
- * Runs on the backup scheduler's tick, under the same lease, so exactly one
- * control plane does it however many are running.
- */
-/**
  * Any provisioned server whose agent can reach a BUCKET.
  *
  * A store destination dials its own host, but an S3 one is normally reached
@@ -1425,18 +1429,65 @@ async function anyBackupCapableServer(): Promise<string | null> {
   return rows[0]?.id ?? null;
 }
 
+/**
+ * How many artifacts one sweep will try to remove. It runs daily and is
+ * idempotent, so a backlog simply drains over a few days — and the cap is what
+ * keeps a first sweep on a long-lived instance from holding the scheduler's
+ * lease through thousands of agent round trips.
+ */
+const ORPHAN_SWEEP_BATCH = 500;
+
+/**
+ * Reclaim the artifacts of targets that no longer exist.
+ *
+ * A run's `database_id` / `app_id` are ON DELETE SET NULL, so a deleted target
+ * leaves runs pointing at nothing — that is the shape this looks for, and it is
+ * the ONLY shape, so a live target's artifacts are never in scope no matter how
+ * old.
+ *
+ * TWO PASSES, and the split is the whole point. The first time a run is seen
+ * orphaned it is STAMPED and left alone; only a stamp older than
+ * {@link ORPHAN_ARTIFACT_KEEP_MS} is acted on. Measuring the window from
+ * `started_at` instead — which is what this did first — meant an app deleted
+ * TODAY with two-month-old backups was already past it, so "keep the backup
+ * files", the default and an explicit choice, deleted them within the day. It
+ * also meant the first sweep after the feature shipped would have removed every
+ * artifact already orphaned on the instance, as a side effect of an upgrade.
+ *
+ * Stamping HERE rather than in the delete paths is deliberate: a target can go
+ * through `deleteApp`, `deleteDatabase`, a folder or team cascade, or a FK the
+ * database resolves with nothing in the app watching. One observer catches all
+ * of them.
+ *
+ * Best-effort and idempotent, like every other prune here: a record is dropped
+ * only once its artifact is confirmed gone, so a destination that is down today
+ * simply gets swept tomorrow. Grouped by destination so a sweep opens one
+ * connection per destination rather than one per artifact.
+ *
+ * Runs on the backup scheduler's tick, under the same lease, so exactly one
+ * control plane does it however many are running.
+ */
 export async function sweepOrphanedBackupArtifacts(): Promise<number> {
+  const orphanedTargets = and(
+    isNull(backupRunsTable.appId),
+    isNull(backupRunsTable.databaseId),
+  );
+
+  // PASS 1 — start the clock on anything newly orphaned. Nothing is deleted on
+  // the tick that first notices a target is gone.
+  await getDb()
+    .update(backupRunsTable)
+    .set({ orphanedAt: nowIso() })
+    .where(and(orphanedTargets, isNull(backupRunsTable.orphanedAt)));
+
+  // PASS 2 — act on the ones that have been orphaned long enough.
   const cutoff = new Date(Date.now() - ORPHAN_ARTIFACT_KEEP_MS).toISOString();
   const orphaned = await getDb()
     .select()
     .from(backupRunsTable)
-    .where(
-      and(
-        isNull(backupRunsTable.appId),
-        isNull(backupRunsTable.databaseId),
-        lt(backupRunsTable.startedAt, cutoff),
-      ),
-    );
+    .where(and(orphanedTargets, lt(backupRunsTable.orphanedAt, cutoff)))
+    .orderBy(backupRunsTable.orphanedAt)
+    .limit(ORPHAN_SWEEP_BATCH);
   if (orphaned.length === 0) return 0;
 
   // (team, destination) is the unit a delete can be issued for: the creds and the
@@ -1444,13 +1495,13 @@ export async function sweepOrphanedBackupArtifacts(): Promise<number> {
   // read of it.
   const byDestination = new Map<string, typeof orphaned>();
   for (const r of orphaned) {
-    const key = `${r.teamId} ${r.destinationId}`;
+    const key = `${r.teamId} ${r.destinationId}`;
     byDestination.set(key, [...(byDestination.get(key) ?? []), r]);
   }
 
   let reclaimed = 0;
   for (const [key, runs] of byDestination) {
-    const [teamId, destinationId] = key.split(" ") as [string, string];
+    const [teamId, destinationId] = key.split(" ") as [string, string];
     // A record with no artifact (a failed run, or one that never got a key) is
     // dropped outright: there is nothing on any disk to confirm.
     const removable = new Set(

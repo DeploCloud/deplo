@@ -37,6 +37,7 @@ import {
   listDestinationOptions,
   destinationRemovalImpact,
   destinationTestReport,
+  revealRecoveryKey,
   testDestinations,
   toDestinationOption,
   destinationServerId,
@@ -658,4 +659,67 @@ test("destinationRemovalImpact counts what the confirm dialog has to name", asyn
     assert.equal(impact.runs, 2, "history, whatever its outcome");
     assert.equal(impact.artifacts, 1, "only a successful run wrote a file");
   });
+});
+
+test("an encrypted BUCKET has a recovery key, and an older one honestly has none", async () => {
+  // Encryption without a way to get the key back is the trap the whole design
+  // exists to avoid: artifacts nobody can read, locked by a key that lives only
+  // inside the instance they are meant to survive. Gating this on kind ==
+  // "server" recreated it for every bucket the moment buckets were encrypted.
+  await asUser1(async () => {
+    const bucket = await createDestination({
+      name: "encrypted bucket",
+      kind: "s3",
+      provider: "aws",
+      endpoint: "https://s3.us-east-1.amazonaws.com",
+      region: "us-east-1",
+      bucket: "deplo-backups",
+      accessKey: "AKIA_TEST",
+      secretKey: "secret_test",
+    });
+    const key = await revealRecoveryKey(bucket.id);
+    assert.ok(key.identity.startsWith("AGE-SECRET-KEY"), "the private half comes back");
+    assert.equal(key.recipient, bucket.ageRecipient);
+  });
+
+  await seedDestination(db, { id: "dst_old", kind: "s3", legacyPlaintext: true });
+  await asUser1(async () => {
+    await assert.rejects(
+      () => revealRecoveryKey("dst_old"),
+      /not encrypted/i,
+      "a plaintext destination says so rather than pretending to have a key",
+    );
+  });
+});
+
+test("deleteDestination can take the backup files with it, or leave them", async () => {
+  // Leaving them was the only option, and for a server destination that meant
+  // files on a disk with nothing left in Deplo able to name them - reclaimable
+  // only over SSH, which is the one thing this platform exists to remove.
+  await seedDestination(db, { id: "dst_keep", kind: "s3" });
+  await seedDatabase(db, { id: "db_2", name: "two" });
+  await seedRun(db, { id: "r_keep", destinationId: "dst_keep", databaseId: "db_2" });
+  await asUser1(async () => {
+    await deleteDestination("dst_keep");
+  });
+  const left = await db.select().from(backupRunsTable);
+  assert.equal(
+    left.filter((r) => r.id === "r_keep").length,
+    0,
+    "the records always go with the destination",
+  );
+
+  // With the sweep asked for, an unreachable destination ABORTS the removal
+  // rather than dropping the rows that name the files.
+  await seedDestination(db, { id: "dst_sweep", kind: "s3" });
+  await seedRun(db, { id: "r_sweep", destinationId: "dst_sweep", databaseId: "db_2" });
+  await asUser1(async () => {
+    await assert.rejects(() => deleteDestination("dst_sweep", { deleteArtifacts: true }));
+  });
+  const survivors = await db.select().from(backupRunsTable);
+  assert.equal(
+    survivors.filter((r) => r.id === "r_sweep").length,
+    1,
+    "nothing is dropped while its file is still out there",
+  );
 });

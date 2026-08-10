@@ -2024,6 +2024,11 @@ export const backupRuns = pgTable(
     // before a restore. NULL for a run taken before migration 0086, and for those
     // a restore says so rather than silently skipping the check.
     sha256: text("sha256"),
+    // When the sweep FIRST saw this run's target gone, not when the backup ran.
+    // The keep window for a deleted target's artifacts is measured from here, so
+    // deleting an app today does not immediately expire month-old backups the
+    // operator explicitly chose to keep (migration 0087).
+    orphanedAt: isoTimestamptz("orphaned_at"),
     status: text("status").notNull(),
     error: text("error"),
     startedAt: isoTimestamptz("started_at").notNull(),
@@ -2046,6 +2051,10 @@ export const backupRuns = pgTable(
     // Retention and the orphan sweep both select by (team, target), which is the
     // pair that outlives the FKs above.
     index("backup_runs_team_target_idx").on(t.teamId, t.targetId),
+    // The sweep asks only for runs whose target is already gone.
+    index("backup_runs_orphaned_idx")
+      .on(t.orphanedAt)
+      .where(sql`${t.appId} is null and ${t.databaseId} is null`),
   ],
 );
 

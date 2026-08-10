@@ -241,6 +241,7 @@ export interface SeedRunOpts {
   targetKind?: BackupRun["targetKind"];
   targetId?: string;
   sha256?: string | null;
+  orphanedAt?: string | null;
   status?: BackupRun["status"];
   objectKey?: string;
   startedAt?: string;
@@ -267,6 +268,7 @@ export async function seedRun(db: TestDb, opts: SeedRunOpts): Promise<string> {
     objectKey: opts.objectKey ?? `deplo/team_a/${targetKind}/t/${opts.id}.gz`,
     sizeBytes: 1024,
     sha256: opts.sha256 ?? null,
+    orphanedAt: opts.orphanedAt ?? null,
     status: opts.status ?? "success",
     error: null,
     startedAt: opts.startedAt ?? T0,

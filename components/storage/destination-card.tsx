@@ -82,6 +82,9 @@ export interface DestinationCardView {
   accessKeyMasked: string | null;
   serverName: string | null;
   resolvedPath: string | null;
+  /** Whether artifacts written here are encrypted — true for every server
+   *  destination, and for any bucket connected since buckets were encrypted. */
+  encrypted: boolean;
   freeBytes: number | null;
   totalBytes: number | null;
   recoveryKeySavedAt: string | null;
@@ -104,6 +107,11 @@ export function DestinationCard({
   const [alsoDeleteFiles, setAlsoDeleteFiles] = React.useState(false);
   const [logOpen, setLogOpen] = React.useState(false);
   const isServer = dest.kind === "server";
+  // What decides whether there is a key to save is the KEYPAIR, not the kind: a
+  // bucket connected since bucket artifacts started being encrypted has one too,
+  // and gating on `isServer` left those backups locked by a key that existed
+  // only inside the instance they are meant to survive.
+  const encrypted = dest.encrypted;
 
   /**
    * Test the destination and say what actually happened.
@@ -281,7 +289,7 @@ export function DestinationCard({
                       Connection log
                     </DropdownMenuItem>
                   </SimpleTooltip>
-                  {isServer && (
+                  {encrypted && (
                     <SimpleTooltip
                       content="The key that decrypts these backups. Keep it outside Deplo."
                       side="left"
@@ -352,6 +360,10 @@ export function DestinationCard({
                   <dt className="text-muted-foreground">Access key</dt>
                   <dd className="font-mono">{dest.accessKeyMasked}</dd>
                 </div>
+                <div>
+                  <dt className="text-muted-foreground">Encryption</dt>
+                  <dd>{encrypted ? "Always on" : "Off (older destination)"}</dd>
+                </div>
               </>
             )}
             <div>
@@ -363,7 +375,7 @@ export function DestinationCard({
           {/* The recovery-key nudge. These backups are encrypted, so a key kept
               only inside Deplo is a key that dies with the instance the backups
               exist to survive. Stays until someone downloads it. */}
-          {isServer && canManage && !dest.recoveryKeySavedAt && (
+          {encrypted && canManage && !dest.recoveryKeySavedAt && (
             <button
               type="button"
               onClick={downloadRecoveryKey}
@@ -459,6 +471,10 @@ export function DestinationCard({
             </label>
           ) : undefined
         }
+        // Typed, like a restore. This deletes every schedule and the whole run
+        // history, and with the box ticked the backup files as well - there is no
+        // undo for any of it, and it used to be one click.
+        confirmText={dest.name}
         confirmLabel="Remove destination"
         successMessage="Destination removed"
         onConfirm={async () => {

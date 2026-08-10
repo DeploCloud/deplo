@@ -116,6 +116,7 @@ const run = (id: string, daysAgo: number, over: Partial<BackupRun> = {}): Backup
   objectKey: `deplo/t/database/db_1/${id}.dump.gz`,
   sizeBytes: 100,
   sha256: null,
+  orphanedAt: null,
   status: "success",
   error: null,
   startedAt: new Date(NOW.getTime() - daysAgo * DAY).toISOString(),

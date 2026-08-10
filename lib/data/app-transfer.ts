@@ -9,6 +9,7 @@ import {
   appEnvironments as appEnvironmentsTable,
   apps as appsTable,
   backups as backupsTable,
+  backupRuns as backupRunsTable,
   environments as environmentsTable,
   folders as foldersTable,
   gitConnections as gitConnectionsTable,
@@ -451,10 +452,26 @@ export async function transferAppToTeam(
         .where(eq(sharedEnvVarAppsTable.appId, appId));
       // Backup schedules point at the SOURCE team's backup destination, which the
       // destination team cannot see, read or rotate. The runs already taken stay
-      // as that team's history (its bucket, its audit trail).
+      // as that team's history (its destination, its audit trail).
       await tx
         .delete(backupsTable)
         .where(and(eq(backupsTable.appId, appId), eq(backupsTable.teamId, teamId)));
+      // Their POINTER to the app goes, though, and that is not bookkeeping. The
+      // app now belongs to another team, so a run row keeping `app_id` would be a
+      // cross-team reference — and a practical dead end: the source team can no
+      // longer reach the app, so nothing lists those artifacts or offers to
+      // delete them, and retention never runs on that target again because the
+      // schedules just went. They would sit on the destination forever.
+      //
+      // Nulling it makes them ordinary orphans, which is what they are, and the
+      // sweep reclaims them after the usual keep window. `target_id` still names
+      // what they were, so the history stays readable.
+      await tx
+        .update(backupRunsTable)
+        .set({ appId: null })
+        .where(
+          and(eq(backupRunsTable.appId, appId), eq(backupRunsTable.teamId, teamId)),
+        );
       // Keep the source team's log entries, drop the pointer: those rows must not
       // deep-link members into an app their team no longer owns.
       await tx

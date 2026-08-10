@@ -325,7 +325,7 @@ test("reconcileInFlightBackupRuns is idempotent / a no-op with nothing stale", a
 /* Orphaned artifacts: a deleted target must not leak disk forever      */
 /* ------------------------------------------------------------------ */
 
-test("a deleted target's runs stay findable, and the sweep reclaims them", async () => {
+test("a deleted target's runs stay findable, and the sweep stamps them", async () => {
   // The FKs on backup_runs are ON DELETE SET NULL, so deleting an app used to
   // blank the only columns naming what its artifacts belonged to: retention
   // stopped seeing them, no screen listed them, and the files sat on the
@@ -346,37 +346,65 @@ test("a deleted target's runs stay findable, and the sweep reclaims them", async
     .where(eq(backupRunsTable.id, "r_1"));
   assert.equal(row!.appId, null, "the FK really is blanked by the delete");
   assert.equal(row!.targetId, "prj_1", "target_id survives it");
+  assert.equal(row!.orphanedAt, null, "nothing has noticed yet");
 
-  // Older than the keep window and orphaned => swept. The destination is
-  // unreachable in tests, so the ARTIFACT delete fails and the record is kept on
-  // purpose: a record is only ever dropped once its file is confirmed gone.
+  // FIRST sighting: stamped, never deleted. The backup is two years old and the
+  // app went a second ago — measuring the keep window from the RUN would expire
+  // it immediately, which is the opposite of "keep the backup files".
   const reclaimed = await sweepOrphanedBackupArtifacts();
-  assert.equal(reclaimed, 0, "nothing confirmed deleted against a dead agent");
-  const still = await db
+  assert.equal(reclaimed, 0, "the first sweep only starts the clock");
+  const [stamped] = await db
     .select()
     .from(backupRunsTable)
     .where(eq(backupRunsTable.id, "r_1"));
-  assert.equal(still.length, 1, "the record is kept so the next sweep retries");
+  assert.ok(stamped!.orphanedAt, "orphaned_at is set");
+
+  // And it does not move on the next pass, or the window would never elapse.
+  await sweepOrphanedBackupArtifacts();
+  const [again] = await db
+    .select()
+    .from(backupRunsTable)
+    .where(eq(backupRunsTable.id, "r_1"));
+  assert.equal(again!.orphanedAt, stamped!.orphanedAt, "the clock is not reset");
 });
 
-test("the sweep drops orphaned records that never owned a file", async () => {
-  // A failed run wrote no artifact, so there is nothing to confirm and nothing
-  // to leak — its record goes on the first sweep.
+test("an artifact is only reclaimed once the keep window has elapsed", async () => {
   await seedRun(db, {
-    id: "r_failed",
+    id: "r_old",
     destinationId: "s3_1",
     appId: "prj_1",
     targetKind: "app",
-    status: "failed",
+    status: "failed", // owns no file, so the delete needs no agent
     startedAt: "2020-01-01T00:00:00.000Z",
+    orphanedAt: "2020-01-02T00:00:00.000Z",
   });
   await pg.exec(`delete from apps where id = 'prj_1';`);
   await sweepOrphanedBackupArtifacts();
   const rows = await db
     .select()
     .from(backupRunsTable)
-    .where(eq(backupRunsTable.id, "r_failed"));
-  assert.equal(rows.length, 0, "an artifact-less orphan is dropped");
+    .where(eq(backupRunsTable.id, "r_old"));
+  assert.equal(rows.length, 0, "orphaned long enough, and it owned no file");
+});
+
+test("a successful orphan is kept until its artifact is confirmed gone", async () => {
+  // The destination is unreachable in tests, so the delete fails and the record
+  // stays: a record is only ever dropped once its file is confirmed gone.
+  await seedRun(db, {
+    id: "r_keep",
+    destinationId: "s3_1",
+    appId: "prj_1",
+    targetKind: "app",
+    startedAt: "2020-01-01T00:00:00.000Z",
+    orphanedAt: "2020-01-02T00:00:00.000Z",
+  });
+  await pg.exec(`delete from apps where id = 'prj_1';`);
+  assert.equal(await sweepOrphanedBackupArtifacts(), 0);
+  const rows = await db
+    .select()
+    .from(backupRunsTable)
+    .where(eq(backupRunsTable.id, "r_keep"));
+  assert.equal(rows.length, 1, "kept so the next sweep retries");
 });
 
 test("the sweep never touches a LIVE target, however old its runs", async () => {
@@ -391,31 +419,11 @@ test("the sweep never touches a LIVE target, however old its runs", async () => 
     startedAt: "2020-01-01T00:00:00.000Z",
   });
   await sweepOrphanedBackupArtifacts();
-  const rows = await db
+  const [row] = await db
     .select()
     .from(backupRunsTable)
     .where(eq(backupRunsTable.id, "r_live"));
-  assert.equal(rows.length, 1, "a live app's artifacts are not the sweep's business");
-});
-
-test("the sweep leaves a RECENT orphan alone", async () => {
-  // Deleting an app offers "keep the backups", and keeping them has to mean
-  // something: they survive the keep window, which is the point of the window.
-  await seedRun(db, {
-    id: "r_recent",
-    destinationId: "s3_1",
-    appId: "prj_1",
-    targetKind: "app",
-    status: "failed",
-    startedAt: new Date().toISOString(),
-  });
-  await pg.exec(`delete from apps where id = 'prj_1';`);
-  await sweepOrphanedBackupArtifacts();
-  const rows = await db
-    .select()
-    .from(backupRunsTable)
-    .where(eq(backupRunsTable.id, "r_recent"));
-  assert.equal(rows.length, 1, "still inside the keep window");
+  assert.equal(row!.orphanedAt, null, "a live app's artifacts are not the sweep's business");
 });
 
 /* ------------------------------------------------------------------ */

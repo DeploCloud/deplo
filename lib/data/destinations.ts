@@ -790,7 +790,14 @@ async function probeAndRecord(
     } else {
       // `S3Check` ignores the object key (it's a bucket probe), but the wire type
       // requires one — a sentinel that documents intent.
-      const verdict = await checkOnAnyBackupAgent(s3TargetFor(creds, "deplo/.s3check"));
+      const verdict = await checkOnAnyBackupAgent(
+        s3TargetFor(creds, "deplo/.s3check"),
+        // An ENCRYPTED bucket needs an agent that honours the recipient. Without
+        // this the probe passed on an agent that would ignore it, so the card
+        // said `connected` while every backup to it was refused - a green badge
+        // over a destination that cannot work is worse than no badge at all.
+        Boolean(d.ageRecipient),
+      );
       ok = verdict.ok;
       error = verdict.error;
       serverId = verdict.serverId;
@@ -939,7 +946,10 @@ async function checkStoreOnItsServer(d: BackupDestination): Promise<{
  * (so the UI says "update the agent"); throws {@link AgentUnreachableError} when
  * no server is reachable at all.
  */
-async function checkOnAnyBackupAgent(target: S3Target): Promise<{
+async function checkOnAnyBackupAgent(
+  target: S3Target,
+  encrypted = false,
+): Promise<{
   ok: boolean;
   error: string;
   /** The server whose agent answered; null when none did. */
@@ -961,7 +971,7 @@ async function checkOnAnyBackupAgent(target: S3Target): Promise<{
   for (const server of servers) {
     let conn;
     try {
-      conn = await connectBackupAgent(server.id);
+      conn = await connectBackupAgent(server.id, { encryptedS3: encrypted });
     } catch (e) {
       const mapped = mapBackupUnsupported(e);
       attempts.push(`${serverLabel(server)} — ${mapped.message}`);
@@ -1012,8 +1022,14 @@ export async function revealRecoveryKey(
   const { teamId } = await requireCapability("manage_backup_destinations");
   const d = await loadDestination(id, teamId);
   if (!d) throw new Error("Not found");
-  if (d.kind !== "server" || !d.ageIdentityEnc)
-    throw new Error("Only a server destination has a recovery key");
+  // On the KEYPAIR, not on the kind. Gating this on `kind === "server"` while
+  // bucket artifacts had just started being encrypted produced exactly the trap
+  // encryption exists to avoid: artifacts nobody can read, locked by a key that
+  // lives only inside the instance they are meant to survive.
+  if (!d.ageIdentityEnc || !d.ageRecipient)
+    throw new Error(
+      "This destination's backups are not encrypted, so it has no recovery key",
+    );
   const user = (await getCurrentUser())!;
   // Decrypt FIRST. The stamp is what silences the "save your recovery key"
   // nudge, and setting it before we know there is a key to hand over meant a
