@@ -33,6 +33,10 @@ import {
   S3_TEST_REPORT_FIELDS,
   type S3TestReportView,
 } from "@/components/storage/destination-test-log-dialog";
+import {
+  downloadRecoveryKey,
+  RecoveryKeyNudge,
+} from "@/components/storage/recovery-key";
 import { formatBytes, timeAgo } from "@/lib/utils";
 import { gql, gqlAction } from "@/lib/graphql-client";
 
@@ -41,19 +45,6 @@ interface RemovalImpact {
   schedules: number;
   runs: number;
   artifacts: number;
-}
-
-/** The destination's name, flattened into something safe for a filename. */
-function keyFileSlug(name: string): string {
-  return (
-    name
-      .toLowerCase()
-      .normalize("NFD")
-      .replace(/[\u0300-\u036f]/g, "")
-      .replace(/[^a-z0-9]+/g, "-")
-      .replace(/^-|-$/g, "")
-      .slice(0, 40) || "destination"
-  );
 }
 
 /** "3 schedules", "1 schedule" - the plural nobody should hand-write twice. */
@@ -168,53 +159,11 @@ export function DestinationCard({
     });
   }
 
-  /**
-   * Hand over the recovery key as a file.
-   *
-   * Downloading rather than showing: this key is meant to leave Deplo and be
-   * kept somewhere else, and a string on screen invites a screenshot instead.
-   * The download also stamps the destination as saved, which is what stops the
-   * nudge below.
-   */
-  function downloadRecoveryKey() {
+  /** Hand over the recovery key as a file (see `recovery-key.tsx`), then repaint
+   *  so the nudge below goes away. */
+  function saveRecoveryKey() {
     startTransition(async () => {
-      try {
-        const data = await gql<{
-          destinationRecoveryKey: { name: string; recipient: string; identity: string };
-        }>(
-          `mutation ($id: String!) { destinationRecoveryKey(id: $id) { name recipient identity } }`,
-          { id: dest.id },
-        );
-        const key = data.destinationRecoveryKey;
-        // The age key-file format: comments, then the secret key on its own line.
-        // `age -d -i this-file backup.tar.gz.age` reads it as-is.
-        const body =
-          `# Deplo backups - recovery key for the destination "${key.name}"\n` +
-          `# Keep this somewhere outside Deplo. Without it, the backups at this\n` +
-          `# destination cannot be read if this instance is lost.\n` +
-          `#\n` +
-          `#   age -d -i deplo-recovery-key.txt backup.tar.gz.age > backup.tar.gz\n` +
-          `#\n` +
-          `# public key: ${key.recipient}\n` +
-          `${key.identity}\n`;
-        const url = URL.createObjectURL(new Blob([body], { type: "text/plain" }));
-        const a = document.createElement("a");
-        a.href = url;
-        // Named for what it is AND which destination it opens. This file ends up
-        // in a password manager or a drawer, years before anyone needs it, next
-        // to whatever else was downloaded that day - "deplo-recovery-key.txt"
-        // told its finder neither product nor purpose, and an instance with two
-        // destinations produced two files with the same name.
-        a.download = `deplo-backups-recovery-key-${keyFileSlug(key.name)}.txt`;
-        a.click();
-        URL.revokeObjectURL(url);
-        toast.success("Recovery key downloaded", {
-          description: "Keep it somewhere outside Deplo",
-        });
-        router.refresh();
-      } catch (e) {
-        toast.error(e instanceof Error ? e.message : "The recovery key could not be read");
-      }
+      if (await downloadRecoveryKey(dest.id)) router.refresh();
     });
   }
 
@@ -332,7 +281,7 @@ export function DestinationCard({
                       side="left"
                     >
                       <DropdownMenuItem
-                        onClick={downloadRecoveryKey}
+                        onClick={saveRecoveryKey}
                         disabled={pending || !canManage}
                       >
                         <KeyRound className="size-4" />
@@ -438,21 +387,10 @@ export function DestinationCard({
               only inside Deplo is a key that dies with the instance the backups
               exist to survive. Stays until someone downloads it. */}
           {encrypted && canManage && !dest.recoveryKeySavedAt && (
-            <button
-              type="button"
-              onClick={downloadRecoveryKey}
-              disabled={pending}
-              className="flex w-full items-start gap-2 rounded-lg border border-[var(--warning)]/30 bg-[var(--warning)]/5 p-3 text-left transition-colors hover:bg-[var(--warning)]/10"
-            >
-              <KeyRound className="mt-0.5 size-3.5 shrink-0 text-[var(--warning)]" />
-              <span className="min-w-0 flex-1 space-y-0.5">
-                <span className="block text-xs font-medium">Save your recovery key</span>
-                <span className="block text-xs text-muted-foreground">
-                  These backups are encrypted. Without this key they cannot be read if
-                  you lose this instance.
-                </span>
-              </span>
-            </button>
+            <RecoveryKeyNudge
+              destinationId={dest.id}
+              onSaved={() => router.refresh()}
+            />
           )}
 
           {/* Why the badge is red, right on the card. The status alone used to be
@@ -509,28 +447,48 @@ export function DestinationCard({
                 : isServer
                   ? "The backup files stay on the server."
                   : "Your bucket contents are not affected."}
+              {/* The keypair goes with the row, so from here on those files can
+                  only be opened by a recovery key someone already holds. */}
+              {!alsoDeleteFiles &&
+                encrypted &&
+                " They are encrypted, and only the recovery key can read them once this destination is gone."}
             </span>
           </span>
         }
         extra={
           impact && impact.artifacts > 0 ? (
-            <label className="flex cursor-pointer items-start gap-2.5 rounded-lg border border-border p-3 text-sm">
-              <Checkbox
-                checked={alsoDeleteFiles}
-                onCheckedChange={(v) => setAlsoDeleteFiles(v === true)}
-                className="mt-0.5"
-              />
-              <span>
-                <span className="font-medium">
-                  Also delete the {plural(impact.artifacts, "backup file")}
+            <div className="grid gap-3">
+              {/* Removing the destination deletes its keypair with it. "The
+                  backup files stay on the server" was true and useless: what
+                  stays is ciphertext, and the only key that opens it is the one
+                  this dialog is about to destroy. Anyone who kept the files to
+                  be safe was keeping bytes nobody will ever read again. */}
+              {encrypted && !alsoDeleteFiles && !dest.recoveryKeySavedAt && (
+                <RecoveryKeyNudge
+                  destinationId={dest.id}
+                  title="Take the recovery key first"
+                  description={`The ${plural(impact.artifacts, "backup file")} you keep are encrypted, and removing this destination deletes the only key that opens them.`}
+                  onSaved={() => router.refresh()}
+                />
+              )}
+              <label className="flex cursor-pointer items-start gap-2.5 rounded-lg border border-border p-3 text-sm">
+                <Checkbox
+                  checked={alsoDeleteFiles}
+                  onCheckedChange={(v) => setAlsoDeleteFiles(v === true)}
+                  className="mt-0.5"
+                />
+                <span>
+                  <span className="font-medium">
+                    Also delete the {plural(impact.artifacts, "backup file")}
+                  </span>
+                  <span className="mt-1 block text-xs text-muted-foreground">
+                    {isServer
+                      ? "Frees the space on the server. Without this they stay on disk and Deplo can no longer reach them."
+                      : "Removes the objects from your bucket. Without this they stay there for you to manage yourself."}
+                  </span>
                 </span>
-                <span className="mt-1 block text-xs text-muted-foreground">
-                  {isServer
-                    ? "Frees the space on the server. Without this they stay on disk and Deplo can no longer reach them."
-                    : "Removes the objects from your bucket. Without this they stay there for you to manage yourself."}
-                </span>
-              </span>
-            </label>
+              </label>
+            </div>
           ) : undefined
         }
         // Typed, like a restore. This deletes every schedule and the whole run

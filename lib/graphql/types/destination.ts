@@ -129,6 +129,8 @@ const BackupDestinationOptionRef = builder
       where: t.exposeString("where"),
       status: t.field({ type: DestinationStatusEnum, resolve: (d) => d.status }),
       serverId: t.exposeID("serverId", { nullable: true }),
+      encrypted: t.exposeBoolean("encrypted"),
+      recoveryKeySavedAt: t.exposeString("recoveryKeySavedAt", { nullable: true }),
     }),
   });
 
@@ -167,16 +169,27 @@ function destinationWhereField(d: DestinationDTO): string {
  * any machine.
  */
 const RecoveryKeyRef = builder
-  .objectRef<{ name: string; recipient: string; identity: string }>("RecoveryKey")
+  .objectRef<{
+    name: string;
+    recipient: string;
+    identity: string;
+    where: string;
+  }>("RecoveryKey")
   .implement({
     description:
-      "The private key that decrypts a server destination's artifacts. Save it " +
+      "The private key that decrypts a destination's artifacts. Save it " +
       "somewhere outside Deplo: it is the only way to read those backups if this " +
       "instance is lost. Fetching it is recorded in Activity.",
     fields: (t) => ({
       name: t.exposeString("name"),
       recipient: t.exposeString("recipient"),
       identity: t.exposeString("identity"),
+      where: t.exposeString("where", {
+        description:
+          "Where the artifacts this key opens are stored, in one line. It goes " +
+          "into the key file, because whoever reads that file has lost the " +
+          "instance that knew the bucket or the folder.",
+      }),
     }),
   });
 

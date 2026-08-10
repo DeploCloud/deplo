@@ -56,6 +56,7 @@ import {
   suggestScheduleName,
 } from "@/components/storage/backup-schedule-fields";
 import { DestinationCombobox } from "@/components/storage/destination-combobox";
+import { RecoveryKeyNudge } from "@/components/storage/recovery-key";
 import { gqlAction } from "@/lib/graphql-client";
 import { DEFAULT_SCHEDULE, isValidSchedule } from "@/lib/schedule";
 import type { BackupDTO } from "@/lib/data/backups";
@@ -113,9 +114,11 @@ export function BackupsPanel({
   /** `restore_backups` — its own, because a restore overwrites live data (and
    *  a download hands over every byte, which is the same power). */
   canRestore: boolean;
-  /** Whether this user may run the live connection probe the picker fires. */
+  /** `manage_backup_destinations`: whether this user may run the live connection
+   *  probe the picker fires, and take a destination's recovery key. */
   canTestDestinations: boolean;
 }) {
+  const router = useRouter();
   const noDeps = destinations.length === 0;
   const destName = React.useMemo(
     () => new Map(destinations.map((d) => [d.id, d.name] as const)),
@@ -167,6 +170,21 @@ export function BackupsPanel({
     runningNow > 0 ||
     schedules.some((s) => s.lastStatus === "running");
 
+  // Destinations this target already writes to, whose artifacts are encrypted
+  // and whose key nobody has taken. Scheduled OR already used: a one-off run is
+  // as much a restore point as a nightly job, and its bytes are just as
+  // unreadable without the key.
+  const unsavedKeyDestinations = React.useMemo(() => {
+    if (!canTestDestinations) return [];
+    const used = new Set([
+      ...schedules.map((s) => s.destinationId),
+      ...runs.map((r) => r.destinationId),
+    ]);
+    return destinations.filter(
+      (d) => used.has(d.id) && d.encrypted && !d.recoveryKeySavedAt,
+    );
+  }, [canTestDestinations, schedules, runs, destinations]);
+
   return (
     <div className="space-y-8">
       {/* Faster while a run started here has not surfaced yet: that gap is the
@@ -176,6 +194,22 @@ export function BackupsPanel({
         active={anythingRunning}
         intervalMs={pending.length > 0 ? 2_000 : 5_000}
       />
+      {/* The recovery key, asked for where the backups actually are.
+          The Storage page's card was the only screen that ever mentioned it, and
+          it is not the screen anyone stands on: the default destination is
+          seeded right here, on first visit, and a schedule made here writes
+          encrypted artifacts from that moment on. Only the destinations THIS
+          target writes to, so a page for one app never nags about a bucket it
+          has nothing to do with. */}
+      {unsavedKeyDestinations.map((d) => (
+        <RecoveryKeyNudge
+          key={d.id}
+          destinationId={d.id}
+          title={`Save the recovery key for ${d.name}`}
+          description="These backups are encrypted. Without this key they cannot be read if you lose this instance."
+          onSaved={() => router.refresh()}
+        />
+      ))}
       {/* Actions: ad-hoc run + schedule editor */}
       <section className="space-y-4">
         <div className="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">

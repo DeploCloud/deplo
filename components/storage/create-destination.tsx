@@ -39,6 +39,7 @@ import { useRouter } from "next/navigation";
 import { usePendingCreate } from "@/components/shared/pending-create";
 import { gqlAction } from "@/lib/graphql-client";
 import { KindCard } from "@/components/shared/kind-card";
+import { offerRecoveryKey } from "@/components/storage/recovery-key";
 import { S3_ARGS_ALLOWED, validateS3Args } from "@/lib/backups/s3-args";
 import type { DestinationKind, S3Provider } from "@/lib/types";
 
@@ -173,7 +174,7 @@ export function CreateDestination({
         note: "Checking destination",
       },
       () =>
-        gqlAction(
+        gqlAction<{ createDestination: { id: string } }>(
           `mutation($input: CreateDestinationInput!) { createDestination(input: $input) { id } }`,
           {
             input:
@@ -204,6 +205,17 @@ export function CreateDestination({
         ),
       {
         success: "Backup destination added",
+        // Every destination is born encrypted, so every destination is born with
+        // a key that exists only inside this instance. Ask for it HERE, where the
+        // person who made the thing is still looking, instead of waiting for them
+        // to notice a nudge on a card they may never scroll to.
+        onSuccess: (data) => {
+          if (data?.createDestination.id)
+            offerRecoveryKey(
+              data.createDestination.id,
+              typed.name || (typed.kind === "server" ? serverName : typed.bucket),
+            );
+        },
         onError: () => {
           setKind(typed.kind);
           setName(typed.name);

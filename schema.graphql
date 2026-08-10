@@ -498,9 +498,11 @@ type BackupDestination {
 A backup destination as a picker shows it. No credentials, no test history: readable by anyone who may schedule or run a backup, including a member scoped to one folder.
 """
 type BackupDestinationOption {
+  encrypted: Boolean
   id: ID
   kind: DestinationKind
   name: String
+  recoveryKeySavedAt: String
   serverId: ID
   status: DestinationStatus
   where: String
@@ -3172,12 +3174,17 @@ type RecognizedFramework {
 }
 
 """
-The private key that decrypts a server destination's artifacts. Save it somewhere outside Deplo: it is the only way to read those backups if this instance is lost. Fetching it is recorded in Activity.
+The private key that decrypts a destination's artifacts. Save it somewhere outside Deplo: it is the only way to read those backups if this instance is lost. Fetching it is recorded in Activity.
 """
 type RecoveryKey {
   identity: String
   name: String
   recipient: String
+
+  """
+  Where the artifacts this key opens are stored, in one line. It goes into the key file, because whoever reads that file has lost the instance that knew the bucket or the folder.
+  """
+  where: String
 }
 
 """A single-use link to register a new account."""

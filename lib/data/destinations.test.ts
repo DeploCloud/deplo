@@ -190,6 +190,9 @@ test("toDestinationOption keeps only what a picker needs, for both kinds", async
       where: "https://s3.us-east-1.amazonaws.com",
       status: "connected",
       serverId: null,
+      // Whether there is a key, and whether anyone has taken it. Not the key.
+      encrypted: true,
+      recoveryKeySavedAt: null,
     });
   });
 });
@@ -619,8 +622,13 @@ test("listDestinationOptions carries no credential and no test history", async (
   await asUser1(async () => {
     const opts = await listDestinationOptions();
     const one = opts.find((d) => d.id === "dst_s3")!;
+    // `encrypted` and `recoveryKeySavedAt` are here on purpose: the Backups tab
+    // of an app is where a first schedule is made, and it has to be able to say
+    // that those backups are locked by a key nobody has taken yet. Neither is a
+    // secret - one is a boolean, the other a timestamp.
     assert.deepEqual(Object.keys(one).sort(), [
-      "id", "kind", "name", "serverId", "status", "where",
+      "encrypted", "id", "kind", "name", "recoveryKeySavedAt",
+      "serverId", "status", "where",
     ]);
     const json = JSON.stringify(opts);
     assert.equal(json.includes("AKIA"), false);
@@ -680,6 +688,11 @@ test("an encrypted BUCKET has a recovery key, and an older one honestly has none
     const key = await revealRecoveryKey(bucket.id);
     assert.ok(key.identity.startsWith("AGE-SECRET-KEY"), "the private half comes back");
     assert.equal(key.recipient, bucket.ageRecipient);
+    // The file is read in exactly one situation: this instance is gone. A key
+    // with no address is most of the way to no key at all, so it carries where
+    // the artifacts actually are.
+    assert.match(key.where, /deplo-backups/);
+    assert.match(key.where, /s3\.us-east-1\.amazonaws\.com/);
   });
 
   await seedDestination(db, { id: "dst_old", kind: "s3", legacyPlaintext: true });
@@ -689,6 +702,26 @@ test("an encrypted BUCKET has a recovery key, and an older one honestly has none
       /not encrypted/i,
       "a plaintext destination says so rather than pretending to have a key",
     );
+  });
+});
+
+test("a server destination's key file says which host and which folder", async () => {
+  // Same reason as the bucket's: the one screen that could have told them the
+  // path is not running any more. An untested destination has no resolved path
+  // yet and must still say something an operator can act on, rather than a bare
+  // host name and a shrug.
+  await seedDestination(db, { id: "dst_where", kind: "server", serverId: SERVER_1 });
+  await asUser1(async () => {
+    const fresh = await revealRecoveryKey("dst_where");
+    assert.match(fresh.where, /managed backups folder/);
+  });
+  await db
+    .update(destTable)
+    .set({ resolvedPath: "/data/backups" })
+    .where(eq(destTable.id, "dst_where"));
+  await asUser1(async () => {
+    const probed = await revealRecoveryKey("dst_where");
+    assert.match(probed.where, /\/data\/backups/);
   });
 });
 

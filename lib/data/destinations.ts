@@ -100,6 +100,14 @@ export interface DestinationOption {
   status: DestinationStatus;
   /** Which server holds it, so a caller can spot a same-disk backup. */
   serverId: string | null;
+  /** Whether artifacts written here are age-encrypted. */
+  encrypted: boolean;
+  /** When someone last took the recovery key, or null if nobody ever has. The
+   *  picker ships it so the screens that USE a destination can say that its
+   *  backups are locked by a key living only inside this instance - the Storage
+   *  card was the only place that said so, and it is not the screen where
+   *  someone schedules their first backup. */
+  recoveryKeySavedAt: string | null;
 }
 
 /** Project a destination down to {@link DestinationOption}. */
@@ -111,6 +119,8 @@ export function toDestinationOption(d: DestinationDTO): DestinationOption {
     where: destinationWhere(d),
     status: d.status,
     serverId: d.serverId,
+    encrypted: Boolean(d.ageRecipient),
+    recoveryKeySavedAt: d.recoveryKeySavedAt,
   };
 }
 
@@ -1049,7 +1059,7 @@ async function checkOnAnyBackupAgent(
  */
 export async function revealRecoveryKey(
   id: string,
-): Promise<{ name: string; recipient: string; identity: string }> {
+): Promise<{ name: string; recipient: string; identity: string; where: string }> {
   const { teamId } = await requireCapability("manage_backup_destinations");
   const d = await loadDestination(id, teamId);
   if (!d) throw new Error("Not found");
@@ -1086,7 +1096,37 @@ export async function revealRecoveryKey(
     null,
     teamId,
   );
-  return { name: d.name, recipient: d.ageRecipient ?? "", identity };
+  return {
+    name: d.name,
+    recipient: d.ageRecipient ?? "",
+    identity,
+    where: await artifactLocation(d),
+  };
+}
+
+/**
+ * Where the artifacts this key opens actually LIVE, in one line, for the key
+ * file itself.
+ *
+ * The file is read in exactly one situation: this instance is gone. Whoever
+ * opens it then has a key and, until now, no address - the endpoint, the bucket,
+ * the host and the folder all lived in the database that was lost, and the card
+ * that could have told them is not running any more. Deliberately more than the
+ * card's `destinationWhere`: that one distinguishes two destinations for someone
+ * looking at both, this one has to be enough to find the bytes years later.
+ */
+async function artifactLocation(d: BackupDestination): Promise<string> {
+  if (d.kind === "s3")
+    return `bucket "${d.bucket ?? ""}" at ${d.endpoint ?? ""}`;
+  const [dto] = await withServerNames([d]);
+  const host = dto?.serverName ?? "a server that is no longer in the fleet";
+  // `resolvedPath` is what the agent actually used, and it is the only one that
+  // names the managed folder - `path` is null for every destination that did not
+  // ask for a custom one, which is most of them.
+  const folder = d.resolvedPath ?? d.path;
+  return folder
+    ? `${host}, in ${folder}`
+    : `${host}, in the agent's managed backups folder`;
 }
 
 /**
