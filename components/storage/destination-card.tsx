@@ -41,6 +41,19 @@ interface RemovalImpact {
   artifacts: number;
 }
 
+/** The destination's name, flattened into something safe for a filename. */
+function keyFileSlug(name: string): string {
+  return (
+    name
+      .toLowerCase()
+      .normalize("NFD")
+      .replace(/[\u0300-\u036f]/g, "")
+      .replace(/[^a-z0-9]+/g, "-")
+      .replace(/^-|-$/g, "")
+      .slice(0, 40) || "destination"
+  );
+}
+
 /** "3 schedules", "1 schedule" - the plural nobody should hand-write twice. */
 function plural(n: number, one: string, many = `${one}s`): string {
   return `${n} ${n === 1 ? one : many}`;
@@ -174,7 +187,7 @@ export function DestinationCard({
         // The age key-file format: comments, then the secret key on its own line.
         // `age -d -i this-file backup.tar.gz.age` reads it as-is.
         const body =
-          `# Deplo backup recovery key for "${key.name}"\n` +
+          `# Deplo backups - recovery key for the destination "${key.name}"\n` +
           `# Keep this somewhere outside Deplo. Without it, the backups at this\n` +
           `# destination cannot be read if this instance is lost.\n` +
           `#\n` +
@@ -185,7 +198,12 @@ export function DestinationCard({
         const url = URL.createObjectURL(new Blob([body], { type: "text/plain" }));
         const a = document.createElement("a");
         a.href = url;
-        a.download = "deplo-recovery-key.txt";
+        // Named for what it is AND which destination it opens. This file ends up
+        // in a password manager or a drawer, years before anyone needs it, next
+        // to whatever else was downloaded that day - "deplo-recovery-key.txt"
+        // told its finder neither product nor purpose, and an instance with two
+        // destinations produced two files with the same name.
+        a.download = `deplo-backups-recovery-key-${keyFileSlug(key.name)}.txt`;
         a.click();
         URL.revokeObjectURL(url);
         toast.success("Recovery key downloaded", {
