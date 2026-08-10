@@ -1,3 +1,5 @@
+import { version as packageVersion } from "../package.json";
+
 import { FALLBACK_AGENT_VERSION } from "./agent/release";
 
 /**
@@ -5,8 +7,15 @@ import { FALLBACK_AGENT_VERSION } from "./agent/release";
  * dashboard compares this against the latest GitHub release to surface available
  * updates. This is the WEBSITE's version and is independent of the agent version
  * below — they release on their own cadences.
+ *
+ * Read from package.json rather than written twice. It used to be a literal here,
+ * and it drifted the first time it mattered: `chore(release): deplo 1.2.0` bumped
+ * package.json, the tag and the image, while this constant stayed at 1.1.0 — so a
+ * fully updated instance kept telling its operator "v1.2.0 is available, you have
+ * v1.1.0", forever. Both readers (`lib/data/updates.ts`, `lib/data/instance-settings.ts`)
+ * are server-only, so the JSON import never reaches a client bundle.
  */
-export const DEPLO_VERSION = "1.1.0";
+export const DEPLO_VERSION: string = packageVersion;
 export const DEPLO_REPO = "IdraDev/deplo";
 
 /**
