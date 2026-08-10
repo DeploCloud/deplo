@@ -13,7 +13,8 @@ import {
 } from "./destinations";
 import { BackupKind, type BackupRequest, type RestoreRequest } from "../agent/gen/agent";
 import type { DatabaseDescriptor, ProjectDescriptor } from "../agent/gen/agent";
-import type { BackupTargetKind } from "../types";
+import type { BackupDestination, BackupTargetKind } from "../types";
+import { parseS3Args } from "../backups/s3-args";
 
 /**
  * HOW bytes get to and from a destination — the one place that knows there are
@@ -87,6 +88,12 @@ function wireKind(kind: BackupTargetKind): BackupKind {
  * transfer is what the receiving agent fsynced. The two are also cross-checked —
  * a mismatch fails the run rather than recording a backup that is not there.
  */
+/** Whether this destination carries advanced S3 flags — the soft capability gate
+ *  in `connectBackupAgent` warns when the host is too old to apply them. */
+function hasS3Args(dest: BackupDestination): boolean {
+  return dest.kind === "s3" && parseS3Args(dest.s3ExtraArgs).length > 0;
+}
+
 export async function backupToDestination(
   creds: DestinationWithSecrets,
   target: TransportTarget,
@@ -113,6 +120,7 @@ export async function backupToDestination(
       // app's whole decrypted env inside it - to the bucket in the clear, under a
       // key ending `.age`. Refusing is the only safe answer to that.
       encryptedS3: dest.kind === "s3" && !!dest.ageRecipient,
+      s3Args: hasS3Args(dest),
     });
     try {
       return await consumeBackup(conn, req, objectKey);
@@ -347,6 +355,7 @@ export async function restoreFromDestination(
       // Same gate on the way back: an agent that ignores the identity would feed
       // ciphertext to gunzip and report something about a corrupt archive.
       encryptedS3: dest.kind === "s3" && !!dest.ageRecipient,
+      s3Args: hasS3Args(dest),
     });
     try {
       return await consumeRestore(conn.restore(req));
@@ -428,7 +437,10 @@ export async function deleteManyFromDestination(
   if (targets.length === 0) return [];
   const dest = creds.destination;
   const serverId = destinationServerId(dest, targetServerId);
-  const conn = await connectBackupAgent(serverId, { store: dest.kind === "server" });
+  const conn = await connectBackupAgent(serverId, {
+    store: dest.kind === "server",
+    s3Args: hasS3Args(dest),
+  });
   try {
     const out: { ok: boolean; error: string; deleted: number }[] = [];
     for (const t of targets) {

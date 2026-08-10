@@ -138,6 +138,7 @@ export async function seedDestination(
     lastTotalBytes: null,
     resolvedPath: null,
     allowPrivateEndpoint: false,
+    s3ExtraArgs: null,
   };
   const row: BackupDestination =
     kind === "server"

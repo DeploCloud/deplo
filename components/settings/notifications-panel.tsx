@@ -303,7 +303,8 @@ export function NotificationsPanel({
           however far down the alert list you are. `max-h` is a floor for short
           viewports - without it a 600px laptop would push the footer off screen. */}
       <Dialog open={open} onOpenChange={(next) => !next && setOpen(false)}>
-        <DialogContent className="h-[46rem] max-h-[85vh] max-w-2xl gap-0 p-0 grid-rows-[minmax(0,1fr)]">
+        <DialogContent
+        selfManaged className="h-[46rem] max-h-[85vh] max-w-2xl gap-0 p-0 grid-rows-[minmax(0,1fr)]">
           {/* A real form, so Enter in a webhook field saves instead of doing
               nothing. THIS is where a channel is saved: a page-level Save made
               no sense when everything you can change lives in here. */}

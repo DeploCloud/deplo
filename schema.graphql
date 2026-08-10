@@ -481,6 +481,11 @@ type BackupDestination {
   recoveryKeySavedAt: String
   region: String
   resolvedPath: String
+
+  """
+  Advanced per-store quirk flags, as typed. Null when none. A server whose agent is too old ignores them and Deplo says so.
+  """
+  s3ExtraArgs: String
   serverId: ID
   serverName: String
   status: DestinationStatus
@@ -836,6 +841,7 @@ input CreateDestinationInput {
   path: String
   provider: S3Provider
   region: String
+  s3ExtraArgs: String
   secretKey: String
   serverId: String
 }

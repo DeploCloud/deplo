@@ -1537,6 +1537,12 @@ export interface BackupDestination {
    * ordinary form.
    */
   allowPrivateEndpoint: boolean;
+  /**
+   * Advanced quirk flags for this one store (`--s3-sign-accept-encoding=false`),
+   * as typed. NULL means none. Validated against the allowlist in
+   * `lib/backups/s3-args.ts`; the agent applies the ones its version knows.
+   */
+  s3ExtraArgs: string | null;
   /* ---- kind: "server" ---- */
   /** The server holding the artifacts. */
   serverId: ID | null;

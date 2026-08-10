@@ -1,6 +1,7 @@
 "use client";
 
 import * as React from "react";
+import { createPortal } from "react-dom";
 import { ChevronsUpDown, Loader2 } from "lucide-react";
 
 import { Input } from "@/components/ui/input";
@@ -74,6 +75,8 @@ export function Combobox<T>({
   const [query, setQuery] = React.useState("");
   const [highlight, setHighlight] = React.useState(0);
   const containerRef = React.useRef<HTMLDivElement | null>(null);
+  const fieldRef = React.useRef<HTMLDivElement | null>(null);
+  const menuRef = React.useRef<HTMLDivElement | null>(null);
 
   const selected = items.find((i) => getKey(i) === value) ?? null;
 
@@ -89,6 +92,54 @@ export function Combobox<T>({
     setOpen(false);
     setQuery("");
   }
+
+  /**
+   * Where the menu goes, in viewport coordinates.
+   *
+   * PORTALED to the body rather than positioned inside the field, because any
+   * ancestor that scrolls clips it — and every dialog has one now (see
+   * `DialogContent`). Positioned absolutely inside a scroll box, opening the menu
+   * turned a two-field step into a scrolling one and cut the options off at the
+   * fold. Radix's own Select and Popover portal for exactly this reason.
+   */
+  const [rect, setRect] = React.useState<{
+    left: number;
+    top: number;
+    width: number;
+    flipped: boolean;
+  } | null>(null);
+
+  React.useLayoutEffect(() => {
+    // Left as it was while closed rather than cleared: the menu only renders
+    // when `open`, and this effect re-measures before the next paint, so a stale
+    // rect is never on screen.
+    if (!open) return;
+    const place = () => {
+      const el = fieldRef.current;
+      if (!el) return;
+      const r = el.getBoundingClientRect();
+      // The menu's own cap (max-h-72) plus its gap, so the decision to flip is
+      // made against the room it will actually ask for.
+      const wanted = 288 + 8;
+      const below = window.innerHeight - r.bottom;
+      const flipped = below < wanted && r.top > below;
+      setRect({
+        left: r.left,
+        top: flipped ? r.top - 4 : r.bottom + 4,
+        width: r.width,
+        flipped,
+      });
+    };
+    place();
+    // Capture, so a scroll INSIDE any ancestor moves the menu with its field and
+    // not only a scroll of the page.
+    window.addEventListener("scroll", place, true);
+    window.addEventListener("resize", place);
+    return () => {
+      window.removeEventListener("scroll", place, true);
+      window.removeEventListener("resize", place);
+    };
+  }, [open]);
 
   // Escape closes the MENU, and only the menu.
   //
@@ -115,7 +166,11 @@ export function Combobox<T>({
   // swallow the click that lands on another field.
   React.useEffect(() => {
     function onPointerDown(e: MouseEvent) {
-      if (containerRef.current && !containerRef.current.contains(e.target as Node)) {
+      const target = e.target as Node;
+      // The menu is portaled, so it is NOT a descendant of the container — a
+      // press on an option would otherwise read as a press outside the field.
+      if (menuRef.current?.contains(target)) return;
+      if (containerRef.current && !containerRef.current.contains(target)) {
         setOpen(false);
         setQuery("");
       }
@@ -170,7 +225,7 @@ export function Combobox<T>({
           caller hangs under it: the chevron is centred with `top-1/2`, so a
           footer inside this box would drag it down into that text and leave the
           input looking like a broken control. */}
-      <div className="relative">
+      <div ref={fieldRef} className="relative">
         {selected && renderLeading && (
           <span className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2">
             {renderLeading(selected)}
@@ -219,44 +274,57 @@ export function Combobox<T>({
           )}
         </span>
 
-        {open && (
-          <div
-            id={id ? `${id}-listbox` : undefined}
-            role="listbox"
-            className="absolute z-50 mt-1 w-full overflow-hidden rounded-md border border-border bg-popover shadow-md"
-          >
-            {filtered.length === 0 ? (
-              <p className="px-3 py-2 text-xs text-muted-foreground">
-                {emptyLabel(items.length > 0)}
-              </p>
-            ) : (
-              <ul className="max-h-72 overflow-auto p-1">
-                {filtered.map((item, i) => (
-                  <li key={getKey(item)}>
-                    <button
-                      type="button"
-                      role="option"
-                      aria-selected={getKey(item) === value}
-                      onMouseEnter={() => setHighlight(i)}
-                      // mousedown, not click: the input's blur would otherwise
-                      // close the menu before the click landed.
-                      onMouseDown={(e) => {
-                        e.preventDefault();
-                        choose(item);
-                      }}
-                      className={cn(
-                        "w-full space-y-0.5 rounded-sm px-2 py-1.5 text-left",
-                        i === activeIndex ? "bg-accent" : "hover:bg-accent/60",
-                      )}
-                    >
-                      {renderOption(item)}
-                    </button>
-                  </li>
-                ))}
-              </ul>
-            )}
-          </div>
-        )}
+        {open &&
+          rect &&
+          createPortal(
+            <div
+              ref={menuRef}
+              id={id ? `${id}-listbox` : undefined}
+              role="listbox"
+              // Above the dialog's own z-50, and `fixed` because the coordinates
+              // it is given are the viewport's.
+              className="fixed z-[60] overflow-hidden rounded-md border border-border bg-popover shadow-md"
+              style={{
+                left: rect.left,
+                width: rect.width,
+                ...(rect.flipped
+                  ? { bottom: window.innerHeight - rect.top }
+                  : { top: rect.top }),
+              }}
+            >
+              {filtered.length === 0 ? (
+                <p className="px-3 py-2 text-xs text-muted-foreground">
+                  {emptyLabel(items.length > 0)}
+                </p>
+              ) : (
+                <ul className="max-h-72 overflow-auto p-1">
+                  {filtered.map((item, i) => (
+                    <li key={getKey(item)}>
+                      <button
+                        type="button"
+                        role="option"
+                        aria-selected={getKey(item) === value}
+                        onMouseEnter={() => setHighlight(i)}
+                        // mousedown, not click: the input's blur would otherwise
+                        // close the menu before the click landed.
+                        onMouseDown={(e) => {
+                          e.preventDefault();
+                          choose(item);
+                        }}
+                        className={cn(
+                          "w-full space-y-0.5 rounded-sm px-2 py-1.5 text-left",
+                          i === activeIndex ? "bg-accent" : "hover:bg-accent/60",
+                        )}
+                      >
+                        {renderOption(item)}
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </div>,
+            document.body,
+          )}
 
       </div>
 

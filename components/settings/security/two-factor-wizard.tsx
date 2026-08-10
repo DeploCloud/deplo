@@ -241,6 +241,7 @@ export function TwoFactorWizard({
       {/* Fixed height so the stepper and the footer hold their place instead of
           jumping as the body goes from one field to a QR code to ten codes. */}
       <DialogContent
+        selfManaged
         className="h-[min(92vh,38rem)] grid-rows-[auto_minmax(0,1fr)] overflow-hidden sm:max-w-lg"
         // Once the codes are on screen they exist nowhere else, so a stray click
         // outside must not be what loses them.

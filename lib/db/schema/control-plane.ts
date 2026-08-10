@@ -1880,6 +1880,12 @@ export const backupDestination = pgTable(
     allowPrivateEndpoint: boolean("allow_private_endpoint")
       .notNull()
       .default(false),
+    // Advanced per-store quirk flags (`--s3-sign-accept-encoding=false`, …), as
+    // typed. NULL for every destination that needs none, which is nearly all of
+    // them. One column rather than a boolean per quirk: the allowlist that gives
+    // them meaning lives in lib/backups/s3-args.ts and in the agent, so the next
+    // gateway workaround is not a migration.
+    s3ExtraArgs: text("s3_extra_args"),
     status: text("status").notNull(),
     createdAt: isoTimestamptz("created_at").notNull(),
     // Last "Test connection" verdict, kept so the card can say WHY a destination

@@ -241,7 +241,8 @@ export function RegisterUserWizard({
     >
       {/* Fixed height so the stepper and the footer hold their place instead of
           jumping between a two-card choice, a team list and a link. */}
-      <DialogContent className="h-[min(92vh,34rem)] grid-rows-[auto_minmax(0,1fr)] overflow-hidden sm:max-w-lg">
+      <DialogContent
+        selfManaged className="h-[min(92vh,34rem)] grid-rows-[auto_minmax(0,1fr)] overflow-hidden sm:max-w-lg">
         <DialogHeader className="space-y-0 pr-8">
           <DialogTitle className="sr-only">Register a new user</DialogTitle>
           <DialogDescription className="sr-only">

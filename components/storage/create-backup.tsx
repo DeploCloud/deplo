@@ -296,7 +296,7 @@ export function CreateBackup({
       {/* No `overflow-hidden` here: the step box below clips itself while it is
           animating, and the rest of the time a combobox menu has to be free to
           hang past the field it belongs to. */}
-      <DialogContent className="sm:max-w-lg">
+      <DialogContent selfManaged className="sm:max-w-lg">
         <DialogHeader className="space-y-0 pr-8">
           <DialogTitle className="sr-only">Schedule a backup</DialogTitle>
           <DialogDescription className="sr-only">

@@ -77,6 +77,12 @@ export const BackupDestinationRef = builder
           "Whether this bucket is allowed to live on a private address. " +
           "Instance-admin only to set.",
       }),
+      s3ExtraArgs: t.exposeString("s3ExtraArgs", {
+        nullable: true,
+        description:
+          "Advanced per-store quirk flags, as typed. Null when none. A server " +
+          "whose agent is too old ignores them and Deplo says so.",
+      }),
       encrypted: t.boolean({
         description:
           "Whether artifacts written here are encrypted. Always true for a " +
@@ -262,6 +268,10 @@ const CreateDestinationInputType = builder.inputType("CreateDestinationInput", {
     // operator's own network be used at all, which on a self-hosting platform is
     // an ordinary thing to want.
     allowPrivateEndpoint: t.boolean({ required: false }),
+    // Advanced quirk flags for one misbehaving store. Refused by the data layer
+    // when they are not on its allowlist, so a flag that would change nothing is
+    // never accepted quietly.
+    s3ExtraArgs: t.string({ required: false }),
     // server — `path` is instance-admin only; null means the agent's own
     // managed store, which is what almost everyone wants.
     serverId: t.string({ required: false }),
@@ -331,6 +341,7 @@ builder.mutationFields((t) => ({
         accessKey: input.accessKey ?? null,
         secretKey: input.secretKey ?? null,
         allowPrivateEndpoint: input.allowPrivateEndpoint ?? false,
+        s3ExtraArgs: input.s3ExtraArgs ?? null,
         serverId: input.serverId ?? null,
         path: input.path ?? null,
       }),

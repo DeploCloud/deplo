@@ -1901,6 +1901,19 @@ const BACKUP_STORE_CAPABILITY = "backup-store";
  */
 const BACKUP_ENCRYPT_S3_CAPABILITY = "backup-encrypt-s3";
 
+/**
+ * The agent reads `S3Target.extra_args` — a destination's advanced quirk flags
+ * reach its minio client instead of being ignored.
+ *
+ * A SOFT gate, unlike the encryption one above, and the difference is what is at
+ * stake: an agent that ignores the age recipient writes a decrypted archive into
+ * somebody's bucket, so that one refuses to run. An agent that ignores
+ * `--s3-force-path-style` just talks to the store the way it always did — the
+ * backup either works anyway or fails loudly at the gateway. Refusing there
+ * would take backups away from a whole fleet mid-rollout over a workaround.
+ */
+const BACKUP_S3_ARGS_CAPABILITY = "backup-s3-args";
+
 /** The capability an agent advertises once it can run cron jobs
  *  (StartJob/PollJob/KillJob - ADR-0018). */
 export const CRON_CAPABILITY = "cron";
@@ -2057,7 +2070,13 @@ export async function connectBackupAgent(
   /** Also require `"backup-store"` — set when the artifact lives on THIS host's
    *  disk. Split from the base check so an agent that can dump to S3 but cannot
    *  hold artifacts fails the SECOND thing with a message that names it. */
-  opts: { store?: boolean; encryptedS3?: boolean } = {},
+  opts: {
+    store?: boolean;
+    encryptedS3?: boolean;
+    /** This destination carries advanced S3 flags — warn if they will be
+     *  dropped, but never refuse. */
+    s3Args?: boolean;
+  } = {},
 ): Promise<AgentConnection> {
   const conn = await connectAgent(serverId);
   try {
@@ -2086,6 +2105,20 @@ export async function connectBackupAgent(
         `The agent on this server is too old to encrypt backups sent to a bucket, ` +
           `and Deplo will not write them unencrypted. Update the agent on this ` +
           `server, then try again.`,
+      );
+    }
+    // Said out loud, not swallowed: the flags exist because a store misbehaves
+    // without them, so an operator whose backup is failing needs to know this
+    // host is not applying them. It is a log line rather than an error because
+    // taking backups away is the worse outcome of the two.
+    if (
+      opts.s3Args &&
+      !hello.capabilities?.includes(BACKUP_S3_ARGS_CAPABILITY)
+    ) {
+      console.warn(
+        `[backups] the agent on server ${serverId} is too old to apply this ` +
+          `destination's advanced S3 flags — it is talking to the bucket ` +
+          `without them. Update the agent on this server to apply them.`,
       );
     }
   } catch (e) {

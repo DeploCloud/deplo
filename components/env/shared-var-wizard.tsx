@@ -295,7 +295,8 @@ export function SharedVarDialog({
           height is FIXED (not content-driven) so the stepper and the Back/Next
           buttons hold their place instead of jumping around as you move between a
           three-field form and a hundred app cards — only the middle row scrolls. */}
-      <DialogContent className="h-[min(90vh,52rem)] grid-rows-[auto_minmax(0,1fr)] overflow-hidden sm:max-w-3xl">
+      <DialogContent
+        selfManaged className="h-[min(90vh,52rem)] grid-rows-[auto_minmax(0,1fr)] overflow-hidden sm:max-w-3xl">
         <DialogHeader>
           <DialogTitle>
             {editing ? "Edit shared variable" : "New shared variable"}

@@ -1,7 +1,7 @@
 "use client";
 
 import * as React from "react";
-import { ChevronDown, Cloud, Plus, Server } from "lucide-react";
+import { Cloud, Plus, Server } from "lucide-react";
 import {
   Dialog,
   DialogContent,
@@ -11,6 +11,12 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "@/components/ui/dialog";
+import {
+  Accordion,
+  AccordionContent,
+  AccordionItem,
+  AccordionTrigger,
+} from "@/components/ui/accordion";
 import { Badge } from "@/components/ui/badge";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Button } from "@/components/ui/button";
@@ -33,7 +39,7 @@ import { useRouter } from "next/navigation";
 import { usePendingCreate } from "@/components/shared/pending-create";
 import { gqlAction } from "@/lib/graphql-client";
 import { KindCard } from "@/components/shared/kind-card";
-import { cn } from "@/lib/utils";
+import { S3_ARGS_ALLOWED, validateS3Args } from "@/lib/backups/s3-args";
 import type { DestinationKind, S3Provider } from "@/lib/types";
 
 // Inlined (lib/data/destinations is server-only and cannot be imported here).
@@ -106,10 +112,22 @@ export function CreateDestination({
   const [name, setName] = React.useState("");
   const [serverId, setServerId] = React.useState(servers[0]?.id ?? "");
   const [path, setPath] = React.useState("");
-  const [advancedOpen, setAdvancedOpen] = React.useState(false);
   const [provider, setProvider] = React.useState<S3Provider>("cloudflare-r2");
   const [s3, setS3] = React.useState(EMPTY_S3);
   const [allowPrivate, setAllowPrivate] = React.useState(false);
+  const [s3Args, setS3Args] = React.useState("");
+  const argsError = validateS3Args(s3Args);
+  // What Advanced holds, without opening it — the disclosure this replaced had
+  // the same line, and losing it would make the section look empty.
+  const advancedSummary =
+    kind === "server"
+      ? path.trim() || "Managed folder"
+      : [
+          allowPrivate ? "Own network" : null,
+          s3Args.trim() ? "Custom flags" : null,
+        ]
+          .filter(Boolean)
+          .join(" · ") || "Nothing set";
 
   const hint = PROVIDERS.find((p) => p.id === provider)!.endpointHint;
   const setField = (k: keyof typeof s3) => (e: React.ChangeEvent<HTMLInputElement>) =>
@@ -124,14 +142,15 @@ export function CreateDestination({
       : Boolean(s3.bucket.trim()) &&
         Boolean(s3.accessKey.trim()) &&
         Boolean(s3.secretKey.trim()) &&
-        Boolean(endpointOrHint(s3.endpoint, hint));
+        Boolean(endpointOrHint(s3.endpoint, hint)) &&
+        !argsError;
 
   function reset() {
     setName("");
     setPath("");
-    setAdvancedOpen(false);
     setS3(EMPTY_S3);
     setAllowPrivate(false);
+    setS3Args("");
   }
 
   function onSubmit(e: React.FormEvent) {
@@ -144,7 +163,7 @@ export function CreateDestination({
     // verified. The whole form is kept aside: this is the create most likely to
     // be rejected (a wrong key, a folder that is not empty), and retyping six
     // fields would be the worst possible answer.
-    const typed = { kind, name, serverId, path, provider, allowPrivate, ...s3 };
+    const typed = { kind, name, serverId, path, provider, allowPrivate, s3Args, ...s3 };
     const serverName = servers.find((s) => s.id === typed.serverId)?.name ?? "";
     setOpen(false);
     reset();
@@ -179,6 +198,7 @@ export function CreateDestination({
                     accessKey: typed.accessKey,
                     secretKey: typed.secretKey,
                     allowPrivateEndpoint: typed.allowPrivate,
+                    s3ExtraArgs: typed.s3Args.trim() || null,
                   },
           },
         ),
@@ -191,6 +211,7 @@ export function CreateDestination({
           setPath(typed.path);
           setProvider(typed.provider);
           setAllowPrivate(typed.allowPrivate);
+          setS3Args(typed.s3Args);
           setS3({
             endpoint: typed.endpoint,
             region: typed.region,
@@ -198,7 +219,6 @@ export function CreateDestination({
             accessKey: typed.accessKey,
             secretKey: typed.secretKey,
           });
-          setAdvancedOpen(Boolean(typed.path));
           setOpen(true);
         },
       },
@@ -283,12 +303,7 @@ export function CreateDestination({
               <ServerFields
                 servers={servers}
                 serverId={serverId}
-                onServerChange={setServerId}
-                path={path}
-                onPathChange={setPath}
-                isInstanceAdmin={isInstanceAdmin}
-                advancedOpen={advancedOpen}
-                onAdvancedToggle={() => setAdvancedOpen((v) => !v)}
+              onServerChange={setServerId}
               />
             ) : (
               <>
@@ -362,35 +377,114 @@ export function CreateDestination({
                     autoComplete="off"
                   />
                 </div>
-                {/* Self-hosting means the bucket is often on the same private
-                    network as the fleet, and both guards refused that outright -
-                    so "MinIO (self-hosted)" was in the list and unusable at any
-                    ordinary address. Instance admins only, the same bar a custom
-                    backup folder carries, because the agent dials it as root. */}
-                {isInstanceAdmin && (
-                  <label className="flex cursor-pointer items-start gap-2.5 rounded-lg border border-border p-3 text-sm">
-                    <Checkbox
-                      checked={allowPrivate}
-                      onCheckedChange={(v) => setAllowPrivate(v === true)}
-                      className="mt-0.5"
-                    />
-                    <span>
-                      <span className="font-medium">
-                        This bucket is on my own network
-                      </span>
-                      <span className="mt-1 block text-xs text-muted-foreground">
-                        Allows a private address like 10.0.0.5 or a hostname that
-                        resolves to one. Off by default so a mistyped endpoint
-                        cannot reach inside your network.
+              </>
+            )}
+
+            {/* One Advanced section for both kinds — the server branch used to
+                hand-roll its own disclosure next to a checkbox that had none.
+                Rendered only when it would hold something: an empty "Advanced"
+                that opens onto nothing is worse than no Advanced at all. */}
+            {(kind === "s3" || isInstanceAdmin) && (
+              <Accordion type="single" collapsible>
+                <AccordionItem value="advanced" className="border-none">
+                  <AccordionTrigger className="group py-2 text-sm">
+                    <span className="flex min-w-0 flex-1 items-center justify-between gap-2 pr-2">
+                      Advanced
+                      {/* What is in there, without opening it. Hidden once it is
+                          open, since the fields say it better. */}
+                      <span className="truncate text-xs font-normal text-muted-foreground group-data-[state=open]:hidden">
+                        {advancedSummary}
                       </span>
                     </span>
-                  </label>
-                )}
-              </>
+                  </AccordionTrigger>
+                  <AccordionContent className="space-y-4 pt-2">
+                    {kind === "server" ? (
+                      <div className="space-y-2">
+                        <FieldLabel info="An absolute path that ALREADY EXISTS on that server, for example a mounted storage volume, and is empty the first time it is used. Leave blank to let Deplo create and manage the folder.">
+                          Folder
+                        </FieldLabel>
+                        <Input
+                          value={path}
+                          onChange={(e) => setPath(e.target.value)}
+                          placeholder="/mnt/backups"
+                          className="font-mono text-xs"
+                        />
+                      </div>
+                    ) : (
+                      <>
+                        {/* Self-hosting means the bucket is often on the same
+                            private network as the fleet, and both guards refused
+                            that outright - so "MinIO (self-hosted)" was in the
+                            list and unusable at any ordinary address. Instance
+                            admins only, the same bar a custom backup folder
+                            carries, because the agent dials it as root. */}
+                        {isInstanceAdmin && (
+                          <label className="flex cursor-pointer items-start gap-2.5 rounded-lg border border-border p-3 text-sm">
+                            <Checkbox
+                              checked={allowPrivate}
+                              onCheckedChange={(v) => setAllowPrivate(v === true)}
+                              className="mt-0.5"
+                            />
+                            <span>
+                              <span className="font-medium">
+                                This bucket is on my own network
+                              </span>
+                              <span className="mt-1 block text-xs text-muted-foreground">
+                                Allows a private address like 10.0.0.5 or a hostname that
+                                resolves to one. Off by default so a mistyped endpoint
+                                cannot reach inside your network.
+                              </span>
+                            </span>
+                          </label>
+                        )}
+                        <div className="space-y-2">
+                          <FieldLabel
+                            info={
+                              <>
+                                Workarounds for a store that needs one. Deplo
+                                applies the flags it knows and refuses the rest,
+                                so nothing here can be set and quietly ignored.
+                              </>
+                            }
+                          >
+                            Additional flags
+                            <Badge
+                              variant="info"
+                              className="px-1.5 py-0 text-[10px] font-normal"
+                            >
+                              Beta
+                            </Badge>
+                          </FieldLabel>
+                          <Input
+                            value={s3Args}
+                            onChange={(e) => setS3Args(e.target.value)}
+                            placeholder="--s3-sign-accept-encoding=false"
+                            className="font-mono text-xs"
+                            autoComplete="off"
+                            spellCheck={false}
+                          />
+                          {argsError ? (
+                            <p className="text-xs text-destructive">{argsError}</p>
+                          ) : (
+                            <p className="text-xs text-muted-foreground">
+                              {Object.keys(S3_ARGS_ALLOWED).length} flags are
+                              understood, and a server applies them once its
+                              agent is new enough. Example:{" "}
+                              <code className="font-mono">
+                                --s3-force-path-style=true
+                              </code>
+                            </p>
+                          )}
+                        </div>
+                      </>
+                    )}
+                  </AccordionContent>
+                </AccordionItem>
+              </Accordion>
             )}
           </div>
           <DialogFooter>
-            <Button variant="outline" onClick={() => setOpen(false)}>
+            <Button type="button" variant="outline" onClick={() => setOpen(false)}>
               Cancel
             </Button>
             <Button type="submit" disabled={!valid}>
@@ -403,24 +497,16 @@ export function CreateDestination({
   );
 }
 
+/** The server picker. The folder that goes with it lives in Advanced, one level
+ *  up, so both destination kinds have exactly one advanced section between them. */
 function ServerFields({
   servers,
   serverId,
   onServerChange,
-  path,
-  onPathChange,
-  isInstanceAdmin,
-  advancedOpen,
-  onAdvancedToggle,
 }: {
   servers: DestinationServerOption[];
   serverId: string;
   onServerChange: (v: string) => void;
-  path: string;
-  onPathChange: (v: string) => void;
-  isInstanceAdmin: boolean;
-  advancedOpen: boolean;
-  onAdvancedToggle: () => void;
 }) {
   if (servers.length === 0) {
     return (
@@ -430,76 +516,31 @@ function ServerFields({
     );
   }
   return (
-    <>
-      <div className="space-y-2">
-        <FieldLabel info="The server whose disk holds the backup files. Backups of apps on other servers are copied here.">
-          Server
-        </FieldLabel>
-        <Select value={serverId} onValueChange={onServerChange}>
-          <SelectTrigger>
-            <SelectValue placeholder="Select a server" />
-          </SelectTrigger>
-          <SelectContent>
-            {servers.map((s) => (
-              <SelectItem key={s.id} value={s.id}>
-                <span className="flex items-center gap-2">
-                  <Server className="size-4 text-muted-foreground" />
-                  {s.name}
-                  {s.storageOnly && (
-                    <Badge variant="muted" className="text-[10px] font-normal">
-                      Storage only
-                    </Badge>
-                  )}
-                </span>
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-      </div>
-
-      {/* Advanced: the folder. Everyone else gets the one Deplo manages, which
-          is the whole point of not asking. Instance admins only, because an
-          arbitrary absolute path on a shared host is an instance-level call. */}
-      {isInstanceAdmin && (
-        <div className="rounded-lg border border-border">
-          <button
-            type="button"
-            aria-expanded={advancedOpen}
-            onClick={onAdvancedToggle}
-            className="flex w-full cursor-pointer items-center justify-between gap-2 rounded-lg px-4 py-3 text-left text-sm transition-colors hover:bg-accent/40"
-          >
-            <span>Advanced</span>
-            <span className="flex min-w-0 items-center gap-2">
-              {!advancedOpen && (
-                <span className="truncate text-xs text-muted-foreground">
-                  {path.trim() || "Managed folder"}
-                </span>
-              )}
-              <ChevronDown
-                className={cn(
-                  "size-4 shrink-0 text-muted-foreground transition-transform",
-                  advancedOpen && "rotate-180",
+    <div className="space-y-2">
+      <FieldLabel info="The server whose disk holds the backup files. Backups of apps on other servers are copied here.">
+        Server
+      </FieldLabel>
+      <Select value={serverId} onValueChange={onServerChange}>
+        <SelectTrigger>
+          <SelectValue placeholder="Select a server" />
+        </SelectTrigger>
+        <SelectContent>
+          {servers.map((s) => (
+            <SelectItem key={s.id} value={s.id}>
+              <span className="flex items-center gap-2">
+                <Server className="size-4 text-muted-foreground" />
+                {s.name}
+                {s.storageOnly && (
+                  <Badge variant="muted" className="text-[10px] font-normal">
+                    Storage only
+                  </Badge>
                 )}
-              />
-            </span>
-          </button>
-          {advancedOpen && (
-            <div className="border-t border-border p-4">
-              <div className="space-y-2">
-                <FieldLabel info="An absolute path that ALREADY EXISTS on that server, for example a mounted storage volume, and is empty the first time it is used. Leave blank to let Deplo create and manage the folder.">
-                  Folder
-                </FieldLabel>
-                <Input
-                  value={path}
-                  onChange={(e) => onPathChange(e.target.value)}
-                  placeholder="/mnt/backups"
-                  className="font-mono text-xs"
-                />
-              </div>
-            </div>
-          )}
-        </div>
-      )}
-    </>
+              </span>
+            </SelectItem>
+          ))}
+        </SelectContent>
+      </Select>
+    </div>
   );
 }
+

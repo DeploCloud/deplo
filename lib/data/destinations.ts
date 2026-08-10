@@ -12,6 +12,7 @@ import {
 } from "../db/schema/control-plane";
 import { assembleDestination, destinationToRow } from "./backup-rows";
 import { assertSafeOutboundUrl } from "../outbound-url";
+import { parseS3Args, validateS3Args } from "../backups/s3-args";
 import {
   buildS3TestReport,
   emptyS3TestReport,
@@ -270,6 +271,9 @@ export function s3TargetFor(s: DestinationWithSecrets, objectKey: string): S3Tar
     // Off for everything created from the ordinary form; on only where an
     // instance admin said the bucket lives on their own network.
     allowPrivateEndpoint: d.allowPrivateEndpoint,
+    // The agent applies the flags its version knows and logs the rest — see the
+    // soft gate in `connectBackupAgent`, which warns rather than refusing.
+    extraArgs: parseS3Args(d.s3ExtraArgs),
   };
 }
 
@@ -370,6 +374,9 @@ export interface CreateDestinationInput {
   secretKey?: string | null;
   /** Instance-admin only: dial an endpoint on a private address. */
   allowPrivateEndpoint?: boolean | null;
+  /** Advanced quirk flags for this store, validated against the allowlist in
+   *  `lib/backups/s3-args.ts`. */
+  s3ExtraArgs?: string | null;
   /* server */
   serverId?: string | null;
   path?: string | null;
@@ -450,6 +457,14 @@ async function s3DestinationFields(input: CreateDestinationInput) {
   // else's storage in the clear undid deplo's own write-only-secrets model.
   // Existing destinations keep `null` here and keep writing plaintext — their
   // objects already are, and rewriting history is not on offer.
+  // Refused here, not dropped: a flag the agent has no mapping for would look
+  // applied and change nothing, which on a store that is already misbehaving is
+  // the worst possible answer. The dialog checks the same function while typing.
+  const rawArgs = (input.s3ExtraArgs ?? "").trim();
+  const argsError = validateS3Args(rawArgs);
+  if (argsError) throw new Error(argsError);
+  const s3ExtraArgs = rawArgs || null;
+
   const { identity, recipient } = await generateAgeKeypair();
   return {
     kind: "s3" as const,
@@ -460,6 +475,7 @@ async function s3DestinationFields(input: CreateDestinationInput) {
     accessKeyEnc: encryptSecret(input.accessKey),
     secretKeyEnc: encryptSecret(input.secretKey),
     allowPrivateEndpoint,
+    s3ExtraArgs,
     serverId: null,
     path: null,
     ageRecipient: recipient,
@@ -551,6 +567,7 @@ async function serverDestinationFields(input: CreateDestinationInput) {
     accessKeyEnc: null,
     secretKeyEnc: null,
     allowPrivateEndpoint: false,
+    s3ExtraArgs: null,
     serverId,
     path,
     ageRecipient: recipient,
@@ -659,6 +676,7 @@ export async function ensureDefaultDestination(): Promise<void> {
       name,
       kind: "server",
       provider: null,
+      s3ExtraArgs: null,
       endpoint: null,
       region: null,
       bucket: null,

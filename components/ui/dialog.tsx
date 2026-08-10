@@ -36,12 +36,22 @@ const DialogContent = React.forwardRef<
   React.ElementRef<typeof DialogPrimitive.Content>,
   React.ComponentPropsWithoutRef<typeof DialogPrimitive.Content> & {
     hideClose?: boolean;
+    /**
+     * This dialog owns its own height and scrolling — skip the bounded shell.
+     *
+     * For the handful that already do it better than a generic wrapper can: the
+     * wizards, whose `grid-rows-[auto_minmax(0,1fr)]` addresses the content's
+     * direct children and would be aimed at the wrapper instead, and the backup
+     * wizard, whose animated height depends on being able to overflow.
+     */
+    selfManaged?: boolean;
   }
 >((
   {
     className,
     children,
     hideClose,
+    selfManaged,
     onInteractOutside,
     onOpenAutoFocus,
     ...props
@@ -66,6 +76,16 @@ const DialogContent = React.forwardRef<
         // modal instead of scrolling inside it. Pinning the column to min 0 makes
         // the child's own overflow-auto do its job.
         "fixed left-[50%] top-[50%] z-50 grid grid-cols-[minmax(0,1fr)] w-full max-w-lg translate-x-[-50%] translate-y-[-50%] gap-4 border border-border bg-card p-6 shadow-2xl duration-200 data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 data-[state=closed]:zoom-out-95 data-[state=open]:zoom-in-95 rounded-xl",
+        // Centred with a translate and nothing bounding it, a dialog taller than
+        // the window used to run off BOTH edges at once - and Radix scroll-locks
+        // the page behind it, so neither end could be reached. Zooming in is all
+        // it takes. `dvh` rather than `vh` so a phone's collapsing browser chrome
+        // cannot hide the footer.
+        // `grid-rows-[minmax(0,1fr)]` as well as the cap: a grid row's automatic
+        // minimum size is its content, so the wrapper below would grow straight
+        // past the max-height and overflow the dialog instead of scrolling
+        // inside it. `min-h-0` on the item alone does not relax the TRACK.
+        !selfManaged && "max-h-[calc(100dvh-2rem)] grid-rows-[minmax(0,1fr)]",
         className
       )}
       onInteractOutside={(event) => {
@@ -85,7 +105,19 @@ const DialogContent = React.forwardRef<
       }}
       {...props}
     >
-      {children}
+      {/* The scroll lives on a WRAPPER, not on the content itself: the close
+          button below is absolutely positioned and would scroll away with the
+          body, and `p-6` would go with it. The wrapper carries the grid + gap
+          the content used to provide, so header / body / footer keep their
+          rhythm. `focus-safe-scroll` is what stops a focused full-width field
+          having its ring sliced by the clip. */}
+      {selfManaged ? (
+        children
+      ) : (
+        <div className="grid min-h-0 grid-cols-[minmax(0,1fr)] gap-4 overflow-y-auto focus-safe-scroll">
+          {children}
+        </div>
+      )}
       {!hideClose && (
         <DialogPrimitive.Close
           type="button"

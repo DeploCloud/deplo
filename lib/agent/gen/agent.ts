@@ -1168,6 +1168,23 @@ export interface S3Target {
    * turning it on is the person who owns the network.
    */
   allowPrivateEndpoint: boolean;
+  /**
+   * Per-destination quirks of ONE S3-compatible store, as `--flag=value` tokens
+   * (`--s3-sign-accept-encoding=false`, `--s3-force-path-style=true`, …).
+   *
+   * Every S3-compatible gateway is S3-compatible in its own way, and the ones
+   * that need a workaround need a different one each. Rather than grow a bool per
+   * gateway on this message - each of which then has to be understood by every
+   * agent that ever sees it - the control plane sends the operator's tokens and
+   * the agent maps the ones it knows onto minio-go options.
+   *
+   * Both sides validate against an allowlist and BOTH sides drop what they do not
+   * recognise: an unknown flag must never fail a backup, because the alternative
+   * is a fleet where the same destination works on one host and refuses on the
+   * next. Capability: "backup-s3-args" (an older agent ignores the field
+   * entirely, and the control plane says so rather than pretending it applied).
+   */
+  extraArgs: string[];
 }
 
 /**
@@ -6608,6 +6625,7 @@ function createBaseS3Target(): S3Target {
     objectKey: "",
     pathStyle: false,
     allowPrivateEndpoint: false,
+    extraArgs: [],
   };
 }
 
@@ -6636,6 +6654,9 @@ export const S3Target: MessageFns<S3Target> = {
     }
     if (message.allowPrivateEndpoint !== false) {
       writer.uint32(64).bool(message.allowPrivateEndpoint);
+    }
+    for (const v of message.extraArgs) {
+      writer.uint32(74).string(v!);
     }
     return writer;
   },
@@ -6711,6 +6732,14 @@ export const S3Target: MessageFns<S3Target> = {
           message.allowPrivateEndpoint = reader.bool();
           continue;
         }
+        case 9: {
+          if (tag !== 74) {
+            break;
+          }
+
+          message.extraArgs.push(reader.string());
+          continue;
+        }
       }
       if ((tag & 7) === 4 || tag === 0) {
         break;
@@ -6750,6 +6779,11 @@ export const S3Target: MessageFns<S3Target> = {
         : isSet(object.allow_private_endpoint)
         ? globalThis.Boolean(object.allow_private_endpoint)
         : false,
+      extraArgs: globalThis.Array.isArray(object?.extraArgs)
+        ? object.extraArgs.map((e: any) => globalThis.String(e))
+        : globalThis.Array.isArray(object?.extra_args)
+        ? object.extra_args.map((e: any) => globalThis.String(e))
+        : [],
     };
   },
 
@@ -6779,6 +6813,9 @@ export const S3Target: MessageFns<S3Target> = {
     if (message.allowPrivateEndpoint !== false) {
       obj.allowPrivateEndpoint = message.allowPrivateEndpoint;
     }
+    if (message.extraArgs?.length) {
+      obj.extraArgs = message.extraArgs;
+    }
     return obj;
   },
 
@@ -6795,6 +6832,7 @@ export const S3Target: MessageFns<S3Target> = {
     message.objectKey = object.objectKey ?? "";
     message.pathStyle = object.pathStyle ?? false;
     message.allowPrivateEndpoint = object.allowPrivateEndpoint ?? false;
+    message.extraArgs = object.extraArgs?.map((e) => e) || [];
     return message;
   },
 };
