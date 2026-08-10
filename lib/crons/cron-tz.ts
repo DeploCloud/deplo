@@ -254,39 +254,81 @@ export function canonicalTimeZone(tz: string): string | null {
 }
 
 /**
- * Does this zone change its clocks? Two probes six months apart, which is enough
- * for every zone in the database - including the southern hemisphere, where the
- * shift runs the other way.
+ * The wall clock `tz` DELETES at its next spring-forward, as fake-UTC instants
+ * (`[start, end)`, so `start` is the first minute that never happens). Null for a
+ * zone that has no such jump in the next 13 months.
  *
- * Used for one thing: deciding whether the job form should mention DST at all.
+ * Found rather than guessed: monthly probes for the pair of months whose offsets
+ * differ upward, then a binary search over minutes for the exact transition. ~30
+ * `Intl` reads on a zone that moves, 14 on one that doesn't.
+ *
+ * The scan is the ONLY test - a "does this zone use DST?" shortcut comparing
+ * January to July is wrong for Africa/Casablanca, which is UTC+1 in both and
+ * still deletes an hour when it comes back off its Ramadan offset.
+ *
+ * ponytail: reports the FIRST spring-forward ahead, which is the one a schedule
+ *   meets first. A zone with two of them in the window (Africa/Casablanca pauses
+ *   DST for Ramadan) can hold a second gap this does not name. Upgrade: return
+ *   the list and warn on each.
  */
-export function zoneHasDst(tz: string, year = new Date().getUTCFullYear()): boolean {
-  try {
-    const jan = offsetAt(new Date(Date.UTC(year, 0, 15)), tz);
-    const jul = offsetAt(new Date(Date.UTC(year, 6, 15)), tz);
-    return jan !== jul;
-  } catch {
-    return false;
+function springForwardGap(tz: string, from: Date): { start: Date; end: Date } | null {
+  const probes = [from];
+  for (let i = 1; i <= 13; i++) {
+    probes.push(new Date(Date.UTC(from.getUTCFullYear(), from.getUTCMonth() + i, 1)));
   }
+  for (let i = 0; i < probes.length - 1; i++) {
+    const before = offsetAt(probes[i], tz);
+    if (offsetAt(probes[i + 1], tz) <= before) continue;
+    // Bisect to the minute: `lo` is the last minute on the old offset, `lo + 1`
+    // the first on the new one.
+    let lo = Math.floor(probes[i].getTime() / MINUTE_MS);
+    let hi = Math.ceil(probes[i + 1].getTime() / MINUTE_MS);
+    while (hi - lo > 1) {
+      const mid = Math.floor((lo + hi) / 2);
+      if (offsetAt(new Date(mid * MINUTE_MS), tz) === before) lo = mid;
+      else hi = mid;
+    }
+    return {
+      start: new Date(fakeUtcOf(new Date(lo * MINUTE_MS), tz).getTime() + MINUTE_MS),
+      end: fakeUtcOf(new Date(hi * MINUTE_MS), tz),
+    };
+  }
+  return null;
 }
 
+const wallDay = new Intl.DateTimeFormat("en-US", {
+  timeZone: "UTC",
+  day: "numeric",
+  month: "long",
+  year: "numeric",
+});
+
+/** `hh:mm` of a fake-UTC wall clock. */
+const wallTime = (at: Date) => `${pad(at.getUTCHours())}:${pad(at.getUTCMinutes())}`;
+
 /**
- * The sentence to show under a schedule that DST could skip, or null.
+ * The sentence to show under a schedule spring forward will skip, or null.
  *
- * A wall-clock hour that spring forward removes simply never matches, so a job
- * pinned inside it does not run that day (Vixie cron fires it right after the
- * jump; we don't - see ADR-0018 §4). This tells the user before they find out in
- * March.
+ * A wall-clock minute the jump deletes never matches, so a schedule pinned inside
+ * it does not run that day (Vixie cron fires it right after the jump; we don't -
+ * see ADR-0018 §4). This says so, with the date and the missing hour, instead of
+ * asking the reader to move a time they picked for a reason.
  *
- * ponytail: flags the 00:00-04:59 window rather than computing the zone's actual
- *   transition, which is where every DST shift on earth happens. Cheap (two
- *   `Intl` reads) and never misses a real case; it can warn on an hour that
- *   happens to be safe in one particular zone. Exact needs a binary search for
- *   the transition instant, for the same one sentence.
+ * Only for schedules that PIN an hour: an interval that loses 12 of its 288 daily
+ * fires once a year is not news. The check is the real one - does the expression
+ * match any minute inside the gap - so day-of-week and day-of-month narrow it too.
  */
-export function dstSkipWarning(expr: string, tz: string): string | null {
-  if (!pinsHour(expr) || !zoneHasDst(tz)) return null;
-  const hour = Number(expr.trim().split(/\s+/)[1]);
-  if (!Number.isInteger(hour) || hour > 4) return null;
-  return `On the day ${tz} moves its clocks forward, this hour may not exist and the job will not run that day. Pick a later hour to be sure.`;
+export function dstSkipWarning(
+  expr: string,
+  tz: string,
+  from: Date = new Date(),
+): string | null {
+  if (!pinsHour(expr)) return null;
+  const gap = springForwardGap(tz, from);
+  if (!gap) return null;
+  for (let t = gap.start.getTime(); t < gap.end.getTime(); t += MINUTE_MS) {
+    if (!cronMatches(expr, new Date(t))) continue;
+    return `${tz} skips ${wallTime(gap.start)} to ${wallTime(gap.end)} on ${wallDay.format(gap.start)}, so nothing runs at this time that day.`;
+  }
+  return null;
 }

@@ -8,7 +8,6 @@ import {
   dstSkipWarning,
   nextCronRunInZone,
   pinsHour,
-  zoneHasDst,
   zoneParts,
 } from "./cron-tz";
 
@@ -131,9 +130,6 @@ test("southern hemisphere: the shift runs the other way", () => {
     firesAt("30 2 * * *", "Australia/Sydney", "2026-10-03T13:00:00Z", "2026-10-04T13:00:00Z").length,
     0,
   );
-  assert.equal(zoneHasDst("Australia/Sydney"), true);
-  assert.equal(zoneHasDst("UTC"), false);
-  assert.equal(zoneHasDst("Asia/Tokyo"), false);
 });
 
 test("nextCronRunInZone lands on the right instant", () => {
@@ -175,12 +171,31 @@ test("timezones are validated, not trusted", () => {
   assert.equal(canonicalTimeZone("'; drop table cron_jobs; --"), null);
 });
 
-test("the DST warning fires only where it can bite", () => {
-  assert.ok(dstSkipWarning("30 2 * * *", "Europe/Rome"));
-  // No DST in the zone: nothing to warn about.
-  assert.equal(dstSkipWarning("30 2 * * *", "UTC"), null);
-  // Outside the window every transition on earth happens in.
-  assert.equal(dstSkipWarning("0 14 * * *", "Europe/Rome"), null);
+test("the DST warning fires only on the hour that really disappears", () => {
+  const before = new Date("2026-01-10T00:00:00Z"); // Rome jumps 02:00 -> 03:00 on 29 March
+  assert.equal(
+    dstSkipWarning("30 2 * * *", "Europe/Rome", before),
+    "Europe/Rome skips 02:00 to 03:00 on March 29, 2026, so nothing runs at this time that day.",
+  );
+  // The hours AROUND the gap all exist that morning - the old 00:00-04:59 guess
+  // warned on every one of them.
+  for (const h of [0, 1, 3, 4]) {
+    assert.equal(dstSkipWarning(`30 ${h} * * *`, "Europe/Rome", before), null, `${h}:30 exists`);
+  }
+  // Zones that delete no hour at all: nothing to warn about.
+  assert.equal(dstSkipWarning("30 2 * * *", "UTC", before), null);
+  assert.equal(dstSkipWarning("30 2 * * *", "Asia/Tokyo", before), null);
   // An interval schedule cannot lose a fire it never pinned.
-  assert.equal(dstSkipWarning("*/15 * * * *", "Europe/Rome"), null);
+  assert.equal(dstSkipWarning("*/15 * * * *", "Europe/Rome", before), null);
+  // 29 March 2026 is a Sunday, so a Monday-only job never meets the gap.
+  assert.equal(dstSkipWarning("30 2 * * 1", "Europe/Rome", before), null);
+  // Southern hemisphere: Sydney jumps 02:00 -> 03:00 on 4 October 2026.
+  assert.ok(dstSkipWarning("30 2 * * *", "Australia/Sydney", before));
+  // Africa/Casablanca is UTC+1 in January AND July, so a jan-vs-jul "does this
+  // zone use DST?" check calls it fixed - it still deletes 02:00-02:59 coming
+  // back off its Ramadan offset.
+  assert.ok(dstSkipWarning("30 2 * * *", "Africa/Casablanca", before));
+  // A half-hour jump only deletes half an hour: Lord Howe skips 02:00-02:29.
+  assert.ok(dstSkipWarning("15 2 * * *", "Australia/Lord_Howe", before));
+  assert.equal(dstSkipWarning("45 2 * * *", "Australia/Lord_Howe", before), null);
 });
