@@ -90,6 +90,27 @@ export function Combobox<T>({
     setQuery("");
   }
 
+  // Escape closes the MENU, and only the menu.
+  //
+  // On `window`, in the capture phase, because that is the only place early
+  // enough: Radix's dialog listens for Escape on `document` (also capture), and
+  // capture runs outermost-first, so a handler on the input itself — or anywhere
+  // else inside the tree — is already too late. Without this, the first Escape
+  // meant to shut a dropdown closed the whole wizard and threw away every answer
+  // in it. One Escape closes the menu; the next, with no menu open, reaches the
+  // dialog as usual.
+  React.useEffect(() => {
+    if (!open) return;
+    function onEscape(e: KeyboardEvent) {
+      if (e.key !== "Escape") return;
+      e.stopPropagation();
+      setOpen(false);
+      setQuery("");
+    }
+    window.addEventListener("keydown", onEscape, true);
+    return () => window.removeEventListener("keydown", onEscape, true);
+  }, [open]);
+
   // Close on outside click — the menu lives inside a dialog, so it must not
   // swallow the click that lands on another field.
   React.useEffect(() => {
@@ -138,9 +159,6 @@ export function Combobox<T>({
       // from inside an open menu.
       e.preventDefault();
       if (filtered.length > 0) choose(filtered[activeIndex]!);
-    } else if (e.key === "Escape") {
-      e.preventDefault();
-      close();
     } else if (e.key === "Tab") {
       close();
     }

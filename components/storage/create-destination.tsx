@@ -32,6 +32,7 @@ import {
 import { useRouter } from "next/navigation";
 import { usePendingCreate } from "@/components/shared/pending-create";
 import { gqlAction } from "@/lib/graphql-client";
+import { KindCard } from "@/components/shared/kind-card";
 import { cn } from "@/lib/utils";
 import type { DestinationKind, S3Provider } from "@/lib/types";
 
@@ -399,43 +400,6 @@ export function CreateDestination({
         </form>
       </DialogContent>
     </Dialog>
-  );
-}
-
-/** One of the two destination-type cards. Mirrors the volume-kind picker. */
-function KindCard({
-  selected,
-  onSelect,
-  icon,
-  title,
-  caption,
-  badge,
-}: {
-  selected: boolean;
-  onSelect: () => void;
-  icon: React.ReactNode;
-  title: string;
-  caption: string;
-  badge?: React.ReactNode;
-}) {
-  return (
-    <button
-      type="button"
-      role="radio"
-      aria-checked={selected}
-      onClick={onSelect}
-      className={cn(
-        "rounded-lg border border-border p-3 text-left transition-colors hover:bg-accent/40",
-        selected && "border-primary bg-primary/[0.06] ring-1 ring-primary/60",
-      )}
-    >
-      <span className="flex items-center gap-2 text-sm font-medium">
-        {icon}
-        {title}
-        {badge}
-      </span>
-      <span className="mt-1 block text-xs text-muted-foreground">{caption}</span>
-    </button>
   );
 }
 

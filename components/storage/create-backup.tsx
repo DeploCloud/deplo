@@ -30,7 +30,7 @@ import {
   TooltipContent,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
-import { ChoiceCard } from "@/components/shared/choice-card";
+import { KindCard } from "@/components/shared/kind-card";
 import { WizardStepper } from "@/components/shared/wizard-stepper";
 import {
   BackupScheduleFields,
@@ -187,11 +187,50 @@ export function CreateBackup({
   const index = STEPS.findIndex((s) => s.id === step);
   const { icon: StepIcon, title, blurb } = COPY[step];
 
+  // What the current step actually measures, so the dialog is the size of its
+  // step. Undefined until the first measurement: `auto` -> a number does not
+  // animate, which is what keeps the dialog from unfolding as it opens.
+  const [bodyEl, setBodyEl] = React.useState<HTMLDivElement | null>(null);
+  const [bodyHeight, setBodyHeight] = React.useState<number>();
+  const measured = React.useRef<number>(undefined);
+  // Clipped only WHILE the height is moving. At rest the box overflows freely,
+  // which is what lets a combobox menu hang below its field instead of turning
+  // a two-field step into a scrolling one; mid-animation the taller content is
+  // already laid out, and without the clip it would sit on top of the footer
+  // for the length of the transition.
+  const [growing, setGrowing] = React.useState(false);
+  // A step taller than the window is the one case that has to scroll on its own
+  // — and there the menus clip, as they do in every scrolling dialog.
+  const [scrolls, setScrolls] = React.useState(false);
+  React.useLayoutEffect(() => {
+    if (!bodyEl) return;
+    // An observer, not a one-shot read: the body also grows WITHIN a step — a
+    // DST warning appearing, a same-disk card, the "keeps about a week" line
+    // following a frequency — and those deserve the same easing.
+    const ro = new ResizeObserver(() => {
+      const h = bodyEl.getBoundingClientRect().height;
+      if (measured.current === h) return;
+      const first = measured.current === undefined;
+      measured.current = h;
+      setBodyHeight(h);
+      setScrolls(h > window.innerHeight * 0.75);
+      if (!first) setGrowing(true);
+    });
+    ro.observe(bodyEl);
+    return () => ro.disconnect();
+  }, [bodyEl]);
+
   function close() {
     setOpen(false);
     // Deferred so the close animation does not play over a form that has
-    // already snapped back to step one.
-    setTimeout(() => setStep("target"), 200);
+    // already snapped back to step one. The height goes with it: reopening must
+    // measure from `auto` again, not animate out of the last step's number.
+    setTimeout(() => {
+      setStep("target");
+      measured.current = undefined;
+      setBodyHeight(undefined);
+      setGrowing(false);
+    }, 200);
   }
 
   /** Enter runs whatever the current step's primary button does. */
@@ -254,12 +293,10 @@ export function CreateBackup({
         </TooltipTrigger>
         <TooltipContent>{blocked ?? "Schedule a backup"}</TooltipContent>
       </Tooltip>
-      {/* Fixed height so the rail and the footer hold their place instead of
-          jumping as the body goes from two cards to one field to five. Sized for
-          the TALLEST step (Schedule, with its name, frequency, time, zone and
-          retention): a step that has to scroll cuts a field in half at the fold,
-          which reads as the form ending there. */}
-      <DialogContent className="h-[min(92vh,42rem)] grid-rows-[auto_minmax(0,1fr)] overflow-hidden sm:max-w-lg">
+      {/* No `overflow-hidden` here: the step box below clips itself while it is
+          animating, and the rest of the time a combobox menu has to be free to
+          hang past the field it belongs to. */}
+      <DialogContent className="sm:max-w-lg">
         <DialogHeader className="space-y-0 pr-8">
           <DialogTitle className="sr-only">Schedule a backup</DialogTitle>
           <DialogDescription className="sr-only">
@@ -280,14 +317,31 @@ export function CreateBackup({
           />
         </DialogHeader>
 
-        <form
-          onSubmit={onSubmit}
-          className="grid min-h-0 grid-rows-[minmax(0,1fr)_auto] gap-4 overflow-hidden"
-        >
-          {/* `m-auto` centres a short step without clipping a tall one — see the
-              two-factor wizard, same reasoning. */}
-          <div className="flex flex-col overflow-y-auto focus-safe-scroll">
-            <div className="m-auto flex w-full max-w-md shrink-0 flex-col gap-5 py-2">
+        <form onSubmit={onSubmit} className="grid gap-4">
+          {/* The height is the STEP's, measured, so "what are you backing up?"
+              is a short box and only the schedule step is a tall one — a wizard
+              padded to its tallest step spends two thirds of itself on air. It
+              animates between them rather than snapping, which is the difference
+              between a dialog that grew and one that was replaced. `max-h` still
+              wins on a short window, and the box scrolls there. */}
+          <div
+            className={cn(
+              "transition-[height] duration-300 ease-out",
+              scrolls
+                ? "max-h-[75vh] overflow-y-auto focus-safe-scroll"
+                : growing
+                  ? "overflow-hidden"
+                  : "overflow-visible",
+            )}
+            style={{ height: bodyHeight }}
+            onTransitionEnd={(e) =>
+              e.propertyName === "height" && setGrowing(false)
+            }
+          >
+            <div
+              ref={setBodyEl}
+              className="mx-auto flex w-full max-w-md flex-col gap-5 py-2"
+            >
               {/* One heading block, same shape on every step, so the eye lands
                   in the same place each time the body swaps under it. */}
               <div className="flex flex-col items-center gap-2 text-center">
@@ -307,19 +361,19 @@ export function CreateBackup({
                     aria-label="What to back up"
                     className="grid gap-3 sm:grid-cols-2"
                   >
-                    <ChoiceCard
+                    <KindCard
                       title="App"
-                      blurb="Volumes, files and settings"
-                      icon={Boxes}
+                      caption="Volumes, files and settings"
+                      icon={<Boxes className="size-4" />}
                       selected={targetKind === "app"}
                       disabled={services.length === 0}
                       disabledNote="No apps in this team yet"
                       onSelect={() => setTargetKind("app")}
                     />
-                    <ChoiceCard
+                    <KindCard
                       title="Database"
-                      blurb="A dump of one database"
-                      icon={DatabaseIcon}
+                      caption="A dump of one database"
+                      icon={<DatabaseIcon className="size-4" />}
                       selected={targetKind === "database"}
                       disabled={databases.length === 0}
                       disabledNote="No databases in this team yet"
