@@ -13,8 +13,6 @@ import { sweepDomainDns } from "../data/domains";
 import { describeStackCertificates } from "../data/server-certificates";
 import { getUpdateInfo } from "../data/updates";
 import { connectAgent } from "../infra/agent-client";
-import { resolveExpectedAgentVersion } from "../version";
-import { isAgentOutdated } from "../version";
 import { dispatchAlert, dispatchServerAlert, dispatchToTeams } from "./dispatch";
 import { allTeamIds } from "./server-teams";
 import type { GitProviderId } from "../types";
@@ -22,17 +20,20 @@ import type { GitProviderId } from "../types";
 /**
  * The things nobody polls.
  *
- * Four conditions that are real, checkable and — until now — only ever noticed
+ * Three conditions that are real, checkable and — until now — only ever noticed
  * by somebody who happened to open the right page:
  *  - a new Deplo release (`getUpdateInfo` is a `revalidate: 3600` fetch, so on an
  *    instance nobody visits the check never runs at all),
- *  - a server agent left behind by the fleet,
  *  - a custom certificate about to lapse with nothing set to renew it,
  *  - a domain whose DNS was repointed after it was added.
  *
+ * An agent BEHIND THE LATEST RELEASE is deliberately not one of them: a version
+ * number is not a fault, and a fleet-wide alert every time a release lands is
+ * the kind of notification people turn off wholesale.
+ *
  * Rides the existing twice-daily certificate-renewal interval rather than adding
  * a scheduler: none of these is urgent to the minute, a new tick would cost a
- * lease name, a module and a teardown handler to run four queries a day, and the
+ * lease name, a module and a teardown handler to run three queries a day, and the
  * cooldown state is per-process either way, so a lease would buy nothing.
  */
 
@@ -41,7 +42,6 @@ const CERT_WARN_DAYS = 21;
 
 export async function runMaintenanceSweep(): Promise<void> {
   await settle("deplo update", checkDeploUpdate);
-  await settle("agent versions", checkAgentVersions);
   await settle("certificates", checkCustomCertificates);
   await settle("domain dns", sweepDomainDns);
   await settle("git tokens", checkGitConnections);
@@ -71,33 +71,6 @@ async function checkDeploUpdate(): Promise<void> {
     body: `This instance is on ${info.current}.`,
     path: "/settings/deplo",
   });
-}
-
-/**
- * Agents behind the fleet. Read from the stored `agent_version` column rather
- * than the telemetry frame's `agentOutdated`: same answer, no dial, and a
- * twice-daily cadence instead of every five seconds.
- */
-async function checkAgentVersions(): Promise<void> {
-  const expected = await resolveExpectedAgentVersion();
-  const rows = await getDb()
-    .select({
-      id: serversTable.id,
-      name: serversTable.name,
-      agentVersion: serversTable.agentVersion,
-    })
-    .from(serversTable)
-    .where(isNotNull(serversTable.agentVersion));
-  for (const s of rows) {
-    if (!isAgentOutdated(s.agentVersion, expected)) continue;
-    dispatchServerAlert(s.id, {
-      key: "agent_update_available",
-      dedupe: { id: `agentver:${s.id}`, state: expected },
-      title: `${s.name} can update its agent`,
-      body: `It runs ${s.agentVersion}; ${expected} is out. Update it from the server's actions menu.`,
-      path: "/settings/servers",
-    });
-  }
 }
 
 /**

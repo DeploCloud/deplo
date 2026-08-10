@@ -1643,6 +1643,13 @@ export interface BackupRun {
    * rather than quietly skipping the check.
    */
   sha256: string | null;
+  /**
+   * When the orphan sweep first saw this run's target gone. The keep window for
+   * a deleted target's artifacts runs from HERE, not from `startedAt` - an app
+   * deleted today may well have month-old backups, and "keep them" has to mean
+   * something.
+   */
+  orphanedAt: string | null;
   status: BackupRunStatus;
   error: string | null;
   startedAt: string;
@@ -1956,7 +1963,6 @@ export type AlertKey =
   | "server_trust_changed"
   | "server_resources_high"
   | "server_disk_low"
-  | "agent_update_available"
   | "agent_certificate_failed"
   | "cleanup_failed"
   // This Deplo instance
@@ -2001,7 +2007,6 @@ export const ALL_ALERTS: AlertKey[] = [
   "server_trust_changed",
   "server_resources_high",
   "server_disk_low",
-  "agent_update_available",
   "agent_certificate_failed",
   "cleanup_failed",
   "deplo_update_available",

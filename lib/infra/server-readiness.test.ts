@@ -108,7 +108,6 @@ function srv(over: Partial<Server> = {}): Server {
 function probe(over: Partial<ReadinessProbe> = {}): ReadinessProbe {
   return {
     server: srv(),
-    expectedAgentVersion: "1.1.0",
     grantedTeamCount: 0,
     observedAt: "2026-07-13T10:00:00.000Z",
     hello: hello(),
@@ -513,17 +512,16 @@ test("a `fail` outranks `provisioning` — an unreachable, ungranted server is N
 /* 24. agent version                                                   */
 /* ------------------------------------------------------------------ */
 
-test("agent version: outdated warns, current passes, and a version we cannot compare is INFO — never 'up to date'", () => {
-  const outdated = classifyServerReadiness(
-    probe({ hello: hello({ agentVersion: "1.0.0" }), expectedAgentVersion: "1.1.0" }),
-  );
-  assert.equal(byId(outdated, "agent.version").severity, "warn");
-  assert.equal(byId(outdated, "agent.version").detail, READINESS_DETAILS.versionOutdated("1.0.0", "1.1.0"));
-  assert.equal(byId(outdated, "agent.version").hint, READINESS_HINTS.updateAgent);
+test("agent version: reported as a neutral fact, never as 'you are behind'", () => {
+  // An older version is NOT a finding: nothing here compares against a release.
+  const older = classifyServerReadiness(probe({ hello: hello({ agentVersion: "1.0.0" }) }));
+  assert.equal(byId(older, "agent.version").severity, "pass");
+  assert.equal(byId(older, "agent.version").detail, READINESS_DETAILS.versionRunning("1.0.0"));
+  assert.equal(byId(older, "agent.version").hint, undefined);
 
-  const latest = classifyServerReadiness(probe());
-  assert.equal(byId(latest, "agent.version").severity, "pass");
-  assert.equal(byId(latest, "agent.version").detail, READINESS_DETAILS.versionLatest("1.1.0"));
+  const current = classifyServerReadiness(probe());
+  assert.equal(byId(current, "agent.version").severity, "pass");
+  assert.equal(byId(current, "agent.version").detail, READINESS_DETAILS.versionRunning("1.1.0"));
 
   const dev = classifyServerReadiness(probe({ hello: hello({ agentVersion: "dev" }) }));
   assert.equal(byId(dev, "agent.version").severity, "info");

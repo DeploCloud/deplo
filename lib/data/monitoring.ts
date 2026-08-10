@@ -7,7 +7,7 @@ import { connectAgent } from "../infra/agent-client";
 import { markServerSeen, observedTraefik } from "./servers";
 import { recordServerHealth } from "./server-health";
 import { classifyServerHealth } from "../infra/server-health";
-import { isAgentOutdated, reportedAgentVersion, resolveExpectedAgentVersion } from "../version";
+import { reportedAgentVersion, resolveExpectedAgentVersion } from "../version";
 import { nowIso } from "../ids";
 import { getMetricsHistory, recordMetricsSample } from "../monitoring/history";
 import { isMetricsSavingEnabled } from "./monitoring-settings";
@@ -47,8 +47,7 @@ export interface ServerMetrics {
    * The agent version this server is running, as last reported (refreshed on this
    * same poll's Hello). Null until the agent has called home. Carried in the live
    * payload so the version badge — and the outdated check below — update without a
-   * page reload: when an operator clicks "Check for updates" and a newer release
-   * exists, the next poll (~1s) flips every open Servers tab's badge to outdated.
+   * page reload.
    */
   agentVersion: string | null;
   /**
@@ -58,26 +57,19 @@ export interface ServerMetrics {
    * badges through the poll, not just a page refresh.
    */
   expectedAgentVersion: string;
-  /** True when agentVersion is strictly behind expectedAgentVersion (live). */
-  agentOutdated: boolean;
   ts: number;
 }
 
 /**
- * The live agent-version triple stamped onto every snapshot. `server` may be
- * absent (a server we couldn't even look up) — then the version is unknown and,
- * per isAgentOutdated, never flagged outdated.
+ * The live agent-version pair stamped onto every snapshot. `server` may be
+ * absent (a server we couldn't even look up) — then the version is unknown.
  */
 function agentVersionFields(
   expected: string,
   server?: Server,
-): Pick<ServerMetrics, "agentVersion" | "expectedAgentVersion" | "agentOutdated"> {
+): Pick<ServerMetrics, "agentVersion" | "expectedAgentVersion"> {
   const agentVersion = server ? reportedAgentVersion(server) : null;
-  return {
-    agentVersion,
-    expectedAgentVersion: expected,
-    agentOutdated: isAgentOutdated(agentVersion, expected),
-  };
+  return { agentVersion, expectedAgentVersion: expected };
 }
 
 function unavailable(serverId: string, expected: string, server?: Server): ServerMetrics {
@@ -187,7 +179,6 @@ async function measureRemote(server: Server, expected: string): Promise<ServerMe
       containers: m.runningContainers,
       agentVersion: liveAgentVersion,
       expectedAgentVersion: expected,
-      agentOutdated: isAgentOutdated(liveAgentVersion, expected),
       ts: Date.now(),
     };
   } finally {

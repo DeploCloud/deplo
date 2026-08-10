@@ -2,7 +2,6 @@ import { status as GrpcStatus } from "@grpc/grpc-js";
 
 import { ContractVersion, type HelloResponse, type HostMetrics } from "../agent/gen/agent";
 import { AgentUnreachableError } from "./agent-client";
-import { isAgentOutdated } from "../version";
 import type { Server } from "../types";
 
 /**
@@ -99,8 +98,6 @@ export type PortProbe =
 export interface ReadinessProbe {
   /** The row as the control plane knows it. Never dialed to obtain. */
   server: Server;
-  /** The latest agent release, resolved by the CALLER (async, so never in here). */
-  expectedAgentVersion: string;
   /** How many teams are explicitly granted this server (0 when `server.allTeams`). */
   grantedTeamCount: number;
   /** ISO instant the probe started. */
@@ -197,13 +194,8 @@ export const READINESS_DETAILS = {
     "The agent answered a live handshake over its pinned, mutually-authenticated connection.",
   contractOk: "The agent speaks the V1 agent contract this control plane uses.",
   versionUnreported: "The agent did not report a version.",
-  versionUncomparable: (v: string) =>
-    `The agent reports version "${v}", which can't be compared to a release.`,
-  versionLatest: (v: string) => `The agent is running v${v} — the latest release.`,
-  versionAhead: (v: string, expected: string) =>
-    `The agent is running v${v}, ahead of the latest release (v${expected}).`,
-  versionOutdated: (v: string, expected: string) =>
-    `This server runs agent v${v}. v${expected} is available.`,
+  versionUncomparable: (v: string) => `The agent reports version "${v}".`,
+  versionRunning: (v: string) => `The agent is running v${v}.`,
   featuresAllSupported:
     "This agent supports every platform feature Deplo uses: backups, host metrics, host port checks, in-place agent updates, and moving data between servers.",
   featuresMissing: (names: string[]) =>
@@ -475,7 +467,7 @@ export function classifyServerReadiness(probe: ReadinessProbe): ReadinessReport 
     severity: "pass",
     detail: READINESS_DETAILS.contractOk,
   });
-  checks.push(versionCheck(hello.agentVersion, probe.expectedAgentVersion));
+  checks.push(versionCheck(hello.agentVersion));
   checks.push(featuresCheck(hello.capabilities ?? []));
 
   // docker. A STORAGE-ONLY server has none by design — it holds backups and runs
@@ -578,7 +570,16 @@ function helloFailure(err: unknown): ReadinessCheck {
 const AGENT_SEMVER_RE = /^v?\d+\.\d+\.\d+/;
 const stripV = (v: string) => v.replace(/^v/i, "");
 
-function versionCheck(agentVersion: string, expected: string): ReadinessCheck {
+/**
+ * Which version the agent runs, as a NEUTRAL fact.
+ *
+ * It deliberately does not compare against the latest release: a released
+ * version is not a readiness property, and what actually decides whether this
+ * host can do something is `featuresCheck` below, which asks the agent what it
+ * supports. Nagging about a version number on top of that is noise the operator
+ * has to read past on every check.
+ */
+function versionCheck(agentVersion: string): ReadinessCheck {
   const base = { id: "agent.version", group: "agent" as const, label: "Agent version" };
   if (!agentVersion)
     return { ...base, severity: "info", detail: READINESS_DETAILS.versionUnreported };
@@ -588,20 +589,11 @@ function versionCheck(agentVersion: string, expected: string): ReadinessCheck {
       severity: "info",
       detail: READINESS_DETAILS.versionUncomparable(agentVersion),
     };
-  if (isAgentOutdated(agentVersion, expected))
-    return {
-      ...base,
-      severity: "warn",
-      detail: READINESS_DETAILS.versionOutdated(stripV(agentVersion), stripV(expected)),
-      hint: READINESS_HINTS.updateAgent,
-    };
-  return stripV(agentVersion) === stripV(expected)
-    ? { ...base, severity: "pass", detail: READINESS_DETAILS.versionLatest(stripV(agentVersion)) }
-    : {
-        ...base,
-        severity: "pass",
-        detail: READINESS_DETAILS.versionAhead(stripV(agentVersion), stripV(expected)),
-      };
+  return {
+    ...base,
+    severity: "pass",
+    detail: READINESS_DETAILS.versionRunning(stripV(agentVersion)),
+  };
 }
 
 function featuresCheck(capabilities: string[]): ReadinessCheck {

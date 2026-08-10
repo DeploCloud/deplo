@@ -50,7 +50,6 @@ const COOLDOWN_MS: Partial<Record<AlertKey, number>> = {
   // A weekly nag, not a daily one. The dedupe state is the VERSION, so a new
   // release re-fires immediately instead of waiting out the week.
   deplo_update_available: 7 * 24 * 60 * 60_000,
-  agent_update_available: 7 * 24 * 60 * 60_000,
   certificate_expiring: 24 * 60 * 60_000,
   domain_dns_drift: 24 * 60 * 60_000,
   failed_logins: 15 * 60_000,

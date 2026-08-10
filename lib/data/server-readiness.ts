@@ -20,7 +20,6 @@ import {
 } from "../infra/server-readiness";
 import { requireInstanceAdmin } from "../membership";
 import { nowIso } from "../ids";
-import { resolveExpectedAgentVersion } from "../version";
 import { getServerById, getServerTeamIds } from "./servers";
 import type { HelloResponse, HostMetrics } from "../agent/gen/agent";
 import type { Server } from "../types";
@@ -133,11 +132,7 @@ export async function checkServerReadiness(id: string): Promise<ReadinessReport>
   if (!server) throw new Error("Server not found");
 
   const observedAt = nowIso();
-  const [expectedAgentVersion, teamIds] = await Promise.all([
-    resolveExpectedAgentVersion(),
-    getServerTeamIds(id),
-  ]);
-  const grantedTeamCount = teamIds.length;
+  const grantedTeamCount = (await getServerTeamIds(id)).length;
 
   // The fence, identical to the health prober's: a NON-EMPTY cert pin is the only proof there
   // is an agent on the other end. `removeServer` revokes trust by writing "" (not NULL), so a
@@ -148,7 +143,6 @@ export async function checkServerReadiness(id: string): Promise<ReadinessReport>
   if (!server.agent?.certFingerprint) {
     return classifyServerReadiness({
       server,
-      expectedAgentVersion,
       grantedTeamCount,
       observedAt,
       ...NOT_DIALED,
@@ -169,7 +163,6 @@ export async function checkServerReadiness(id: string): Promise<ReadinessReport>
 
   return classifyServerReadiness({
     server,
-    expectedAgentVersion,
     grantedTeamCount,
     observedAt,
     ...dialed,

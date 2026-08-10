@@ -25,7 +25,6 @@ import {
 } from "../data/container-metrics";
 import { reconcileAppStatusFromTelemetry } from "../data/app-status-reconcile";
 import { resolveExpectedAgentVersion } from "../version";
-import { isAgentOutdated } from "../version";
 import type { ServerMetrics } from "../data/monitoring";
 import type {
   ContainerStat,
@@ -255,7 +254,6 @@ function hostSampleFrom(
     containers: h.runningContainers,
     agentVersion: facts.agentVersion,
     expectedAgentVersion: facts.expectedAgentVersion,
-    agentOutdated: isAgentOutdated(facts.agentVersion, facts.expectedAgentVersion),
     ts: Date.now(),
   };
 }

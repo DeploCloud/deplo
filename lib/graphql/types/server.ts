@@ -34,13 +34,9 @@ import {
 import { deploHostSelfAddresses, isDeploHostServer } from "@/lib/deploy/domains";
 import { refreshAgentVersion } from "@/lib/data/updates";
 import { checkServerReadiness } from "@/lib/data/server-readiness";
-import {
-  isAgentOutdated,
-  reportedAgentVersion,
-  resolveExpectedAgentVersion,
-} from "@/lib/version";
-// (resolveExpectedAgentVersion is awaited per-request; it is cached so the three
-// agent fields below don't each hit GitHub.)
+import { reportedAgentVersion, resolveExpectedAgentVersion } from "@/lib/version";
+// (resolveExpectedAgentVersion is awaited per-request; it is cached so the agent
+// fields below don't each hit GitHub.)
 import type { ReadinessCheck, ReadinessReport } from "@/lib/infra/server-readiness";
 import type { Server } from "@/lib/types";
 
@@ -141,14 +137,6 @@ export const ServerRef = builder.objectRef<Server>("Server").implement({
       description:
         "The agent version this server should be running — the latest GitHub release of the agent (DeploCloud/deplo-agent). Resolved at request time and cached; falls back to a built-in version when GitHub is unreachable.",
       resolve: () => resolveExpectedAgentVersion(),
-    }),
-    agentOutdated: t.boolean({
-      description:
-        "True when this server's reported agent version is strictly older than expectedAgentVersion. False for an unseen agent or a non-semver/dev version we can't confidently compare.",
-      resolve: async (s) => {
-        const expected = await resolveExpectedAgentVersion();
-        return isAgentOutdated(reportedAgentVersion(s), expected);
-      },
     }),
     lastSeenAt: t.string({
       nullable: true,

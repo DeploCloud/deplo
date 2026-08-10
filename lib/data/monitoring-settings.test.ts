@@ -100,7 +100,6 @@ function sample(
     containers: 1,
     agentVersion: "1.0.0",
     expectedAgentVersion: "1.0.0",
-    agentOutdated: false,
     ts,
     ...over,
   };

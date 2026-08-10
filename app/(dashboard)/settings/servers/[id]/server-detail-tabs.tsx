@@ -84,9 +84,9 @@ export type ServerSummary = {
   suggestedTraefikDomain: string | null;
   isDeploHost: boolean;
   provisioning: boolean;
-  /** null when the agent has never reported one — a distinct state from "old". */
+  /** null when the agent has never reported one. */
   agentVersion: string | null;
-  outdated: boolean;
+  /** The version "Update agent" would install — the latest agent release. */
   expectedAgentVersion: string;
 };
 
@@ -268,17 +268,19 @@ function OverviewTab({ server }: { server: ServerSummary }) {
           </p>
         </CardHeader>
         <CardContent className="flex flex-wrap items-center gap-3">
-          <AgentVersionBadge
-            version={server.agentVersion}
-            expected={server.expectedAgentVersion}
-            outdated={server.outdated}
-          />
-          {server.outdated ? (
-            <Button size="sm" onClick={() => setConfirmUpdate(true)} disabled={pending}>
-              <CircleFadingArrowUp className="size-4" />
-              Update to v{server.expectedAgentVersion}
-            </Button>
-          ) : null}
+          <AgentVersionBadge version={server.agentVersion} />
+          {/* Always offered, never nagged about: the button is how you update an
+              agent, so it does not wait for the version to fall behind a release
+              before it exists. */}
+          <Button
+            size="sm"
+            variant="outline"
+            onClick={() => setConfirmUpdate(true)}
+            disabled={pending}
+          >
+            <CircleFadingArrowUp className="size-4" />
+            Update to v{server.expectedAgentVersion}
+          </Button>
           <Button
             size="sm"
             variant="outline"

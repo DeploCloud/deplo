@@ -15,7 +15,7 @@ import type { ServerStatus } from "../types";
  * is a decision that can never be tested. Everything that is actually hard here
  * (which failures are the host's fault, which are the agent's, which must never be
  * persisted) lives in this file and is exercised by lib/infra/server-health.test.ts
- * without a socket. Mirrors `reconcileStatus` / `isAgentOutdated` / `agentCanHandle`.
+ * without a socket. Mirrors `reconcileStatus` / `agentCanHandle`.
  */
 
 export interface ServerHealth {
@@ -109,7 +109,7 @@ function isCertValidityError(err: AgentUnreachableError): boolean {
  *  - `warning` has exactly ONE member — Docker unreachable — and it means "the agent
  *    is up and trusted, but nothing can be deployed here". It is deliberately NOT
  *    used for a stopped Traefik (legitimate on a DB/worker host, and it already has
- *    its own live badge) nor for an outdated agent (deploys fine, has its own badge).
+ *    its own live badge) nor for an agent behind the latest release (deploys fine).
  *    A warning that fires on a normal configuration is a warning operators learn to
  *    ignore.
  *  - everything else — connection refused, no answer inside the deadline — is

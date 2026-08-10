@@ -19,7 +19,7 @@ import {
   resolveServerIp,
 } from "@/lib/deploy/domains";
 import { serverLabel } from "@/lib/utils";
-import { resolveExpectedAgentVersion, reportedAgentVersion, isAgentOutdated } from "@/lib/version";
+import { resolveExpectedAgentVersion, reportedAgentVersion } from "@/lib/version";
 import type { TeamOption } from "@/components/servers/server-team-access";
 import { ServerHealthProvider, type ServerHealthState } from "../server-health-provider";
 import { ServerHealthChip } from "../server-health-chip";
@@ -143,7 +143,6 @@ export default async function ServerDetailPage(props: PageProps<"/settings/serve
             isDeploHost,
             provisioning: hydrated.status === "provisioning",
             agentVersion,
-            outdated: isAgentOutdated(agentVersion, expectedAgentVersion),
             expectedAgentVersion,
           }}
           teams={teams}

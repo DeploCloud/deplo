@@ -32,11 +32,7 @@ import { listAllTeamsForAdmin } from "@/lib/data/teams";
 import { isInstanceAdmin } from "@/lib/membership";
 import { hydrateServerSpecs } from "@/lib/data/monitoring";
 import { serverLabel } from "@/lib/utils";
-import {
-  isAgentOutdated,
-  reportedAgentVersion,
-  resolveExpectedAgentVersion,
-} from "@/lib/version";
+import { reportedAgentVersion } from "@/lib/version";
 import type { Server } from "@/lib/types";
 import type { TeamOption } from "@/components/servers/server-team-access";
 import { CheckUpdatesButton } from "./check-updates-button";
@@ -79,12 +75,10 @@ function Spec({
 
 function ServerCard({
   server,
-  expectedAgentVersion,
   accessTeamIds,
   isDeploHost,
 }: {
   server: Server;
-  expectedAgentVersion: string;
   accessTeamIds: string[];
   /**
    * True for the ONE host that also runs the Deplo control plane (dashboard + API),
@@ -94,7 +88,6 @@ function ServerCard({
   isDeploHost: boolean;
 }) {
   const agentVersion = reportedAgentVersion(server);
-  const outdated = isAgentOutdated(agentVersion, expectedAgentVersion);
   const accessLabel = server.allTeams
     ? "All teams"
     : `${accessTeamIds.length} team${accessTeamIds.length === 1 ? "" : "s"}`;
@@ -178,11 +171,7 @@ function ServerCard({
               lastReachedAt: server.lastSeenAt ?? null,
             }}
           />
-          <AgentVersionBadge
-            version={agentVersion}
-            expected={expectedAgentVersion}
-            outdated={outdated}
-          />
+          <AgentVersionBadge version={agentVersion} />
         </div>
       </CardHeader>
       <CardContent>
@@ -232,10 +221,9 @@ export default async function ServersPage(
   const autoOpenServer =
     (Array.isArray(newParam) ? newParam[0] : newParam) === "1";
 
-  const [serversRaw, expectedAgentVersion, serverTeamIds, teamsRaw] =
+  const [serversRaw, serverTeamIds, teamsRaw] =
     await Promise.all([
       listAllServers(),
-      resolveExpectedAgentVersion(),
       listAllServerTeamIds(),
       // The team list feeds the per-server "Team access" editor. Read it via the
       // instance-admin variant so it matches this page's admin-only gate — the
@@ -325,7 +313,6 @@ export default async function ServersPage(
               <ServerCard
                 key={server.id}
                 server={server}
-                expectedAgentVersion={expectedAgentVersion}
                 accessTeamIds={serverTeamIds.get(server.id) ?? []}
                 isDeploHost={isDeploHostServer(server, selfAddrs)}
               />

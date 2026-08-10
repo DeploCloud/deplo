@@ -11,7 +11,7 @@ import { gqlAction } from "@/lib/graphql-client";
 /**
  * "Check for updates" — force the control plane to re-resolve the latest agent
  * release from GitHub right now, bypassing the in-process cache, then refresh the
- * page so every server's outdated badge reflects the fresh "latest".
+ * page so "Update agent" offers the fresh version.
  *
  * Without this, a newly published agent release isn't reflected until the release
  * memo's TTL elapses (lib/agent/release.ts). The button is the operator's
@@ -36,8 +36,8 @@ export function CheckUpdatesButton() {
       toast.success(
         latest ? `Latest agent version is v${latest}` : "Checked for updates",
       );
-      // Re-run the server-side reads so the outdated badges recompute against the
-      // freshly resolved "expected" version.
+      // Re-run the server-side reads so each server's "Update agent" points at
+      // the freshly resolved version.
       router.refresh();
     });
   }
@@ -50,7 +50,7 @@ export function CheckUpdatesButton() {
       disabled={pending}
     >
       <RefreshCw className={pending ? "size-4 animate-spin" : "size-4"} />
-      {pending ? "Checking…" : "Check for updates"}
+      {pending ? "Checking" : "Check for updates"}
     </Button>
   );
 }

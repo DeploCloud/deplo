@@ -168,12 +168,6 @@ export const ALERT_META: Record<AlertKey, AlertMeta> = {
     keywords: "storage space full disk",
     defaultOn: true,
   },
-  agent_update_available: {
-    label: "Server agent update available",
-    description: "A newer server agent can be installed.",
-    keywords: "version outdated upgrade host",
-    defaultOn: true,
-  },
   agent_certificate_failed: {
     label: "Server agent certificate not renewed",
     description: "Deplo could not renew a server's certificate and will lose access to it.",
@@ -332,7 +326,6 @@ export const ALERT_CATEGORIES: {
       "server_trust_changed",
       "server_resources_high",
       "server_disk_low",
-      "agent_update_available",
       "agent_certificate_failed",
       "cleanup_failed",
     ],

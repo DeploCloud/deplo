@@ -14,10 +14,8 @@ export const DEPLO_REPO = "IdraDev/deplo";
  * its own repo (DeploCloud/deplo-agent) and ships as GitHub releases, so the
  * real "latest" is resolved at runtime via resolveExpectedAgentVersion() — see
  * lib/agent/release.ts. This constant is the OFFLINE FALLBACK used only when
- * GitHub can't be reached; it must stay a conservative value, because the
- * outdated check treats an unparseable/older "expected" as "nothing is outdated"
- * (so a stale fallback never wrongly flags a healthy agent). Deliberately NOT
- * tied to DEPLO_VERSION.
+ * GitHub can't be reached, and it is what "Update agent" would install then.
+ * Deliberately NOT tied to DEPLO_VERSION.
  */
 export const EXPECTED_AGENT_VERSION = FALLBACK_AGENT_VERSION;
 
@@ -44,22 +42,7 @@ export function isNewer(latest: string, current: string): boolean {
 }
 
 /**
- * Whether a server's reported agent version is older than what we expect. A
- * non-semver or empty version (e.g. "dev", or a not-yet-seen agent) is treated
- * as NOT outdated — we only flag a version we can confidently compare and prove
- * is behind, never a placeholder we can't reason about.
- */
-export function isAgentOutdated(
-  agentVersion: string | null | undefined,
-  expected: string = EXPECTED_AGENT_VERSION,
-): boolean {
-  if (!agentVersion) return false;
-  return isNewer(expected, agentVersion);
-}
-
-/**
- * The agent version a server is effectively running, for display and the
- * outdated check. Every server (the host running Deplo included) runs an agent
+ * The agent version a server is effectively running, for display. Every server (the host running Deplo included) runs an agent
  * installed via install-agent.sh that reports its version on each Hello (cached
  * in `agent.version`); an empty string or absent agent (not-yet-provisioned)
  * collapses to null.
