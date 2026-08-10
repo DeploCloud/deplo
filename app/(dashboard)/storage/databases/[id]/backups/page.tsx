@@ -52,7 +52,7 @@ export default async function DatabaseBackupsPage(
         description="Scheduled dumps of this database to a backup destination, and restore."
       />
       <DatabaseBackups
-        database={{ id: db.id, name: db.name }}
+        database={{ id: db.id, name: db.name, serverId: db.serverId }}
         schedules={schedules}
         destinations={destinations.map(toDestinationOption)}
       />

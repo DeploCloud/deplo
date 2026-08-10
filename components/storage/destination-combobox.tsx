@@ -1,7 +1,7 @@
 "use client";
 
 import * as React from "react";
-import { ChevronsUpDown, Cloud, Loader2, Server } from "lucide-react";
+import { AlertTriangle, ChevronsUpDown, Cloud, Loader2, Server } from "lucide-react";
 
 import { Input } from "@/components/ui/input";
 import { isOverlayAutoFocusing } from "@/components/ui/overlay-autofocus";
@@ -51,6 +51,8 @@ export function DestinationCombobox({
   onChange,
   id,
   disabled,
+  sameDiskServerId,
+  sameDiskNoun = "app",
 }: {
   destinations: DestinationOption[];
   /** The selected destination id, or "" for none. */
@@ -58,6 +60,13 @@ export function DestinationCombobox({
   onChange: (id: string) => void;
   id?: string;
   disabled?: boolean;
+  /** The server the thing being backed up runs on. Picking a destination that
+   *  lives on THAT server is a copy on the same disk — worth having, it survives
+   *  a bad migration or a dropped table, but it is not a second place. Said
+   *  once, here, at the moment the choice is made. */
+  sameDiskServerId?: string | null;
+  /** What that warning calls the thing being backed up. */
+  sameDiskNoun?: "app" | "database";
 }) {
   const [open, setOpen] = React.useState(false);
   const [query, setQuery] = React.useState("");
@@ -71,6 +80,10 @@ export function DestinationCombobox({
   const lastProbeRef = React.useRef(0);
 
   const selected = destinations.find((d) => d.id === value) ?? null;
+  const sameDisk =
+    !!sameDiskServerId &&
+    selected?.kind === "server" &&
+    selected.serverId === sameDiskServerId;
 
   /** Re-probe every destination and repaint the badges from the verdicts. */
   const probe = React.useCallback(() => {
@@ -286,6 +299,18 @@ export function DestinationCombobox({
             </ul>
           )}
         </div>
+      )}
+
+      {/* Same-disk honesty, only once it is actually the choice. Rendered after
+          the menu so the menu keeps its static position under the input. */}
+      {sameDisk && selected && (
+        <p className="mt-1.5 flex items-start gap-1.5 text-xs text-[var(--warning)]">
+          <AlertTriangle className="mt-px size-3.5 shrink-0" />
+          <span>
+            {selected.name} is on the same disk as this {sameDiskNoun}: protects
+            against a mistake, not against a disk failure.
+          </span>
+        </p>
       )}
     </div>
   );

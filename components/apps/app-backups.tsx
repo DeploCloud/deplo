@@ -76,9 +76,9 @@ export function AppBackups({
 }: {
   appId: string;
   serviceName: string;
-  /** The server this app runs on, so a backup landing on that same disk can say
-   *  so. It is still worth having — it protects against a mistake — but it is a
-   *  copy, not a second place, and the UI should not pretend otherwise. */
+  /** The server this app runs on. Passed to every destination picker so that
+   *  CHOOSING a destination on that same disk says so — a copy, not a second
+   *  place. Nothing is said while the choice isn't being made. */
   serverId: string | null;
   schedules: BackupDTO[];
   runs: BackupRun[];
@@ -92,14 +92,6 @@ export function AppBackups({
   const destKind = React.useMemo(
     () => new Map(destinations.map((d) => [d.id, d.kind] as const)),
     [destinations],
-  );
-  // Any destination pointing at this app's own server.
-  const sameDisk = React.useMemo(
-    () =>
-      serverId
-        ? destinations.filter((d) => d.kind === "server" && d.serverId === serverId)
-        : [],
-    [destinations, serverId],
   );
 
   return (
@@ -116,8 +108,16 @@ export function AppBackups({
             </p>
           </div>
           <div className="flex items-center gap-2">
-            <BackUpNow appId={appId} destinations={destinations} />
-            <ScheduleBackup appId={appId} destinations={destinations} />
+            <BackUpNow
+              appId={appId}
+              destinations={destinations}
+              serverId={serverId}
+            />
+            <ScheduleBackup
+              appId={appId}
+              destinations={destinations}
+              serverId={serverId}
+            />
           </div>
         </div>
       </section>
@@ -145,24 +145,13 @@ export function AppBackups({
                     key={s.id}
                     schedule={s}
                     destinations={destinations}
+                    serverId={serverId}
                   />
                 ))}
               </TableBody>
             </Table>
           </div>
         </section>
-      )}
-
-      {/* Same-disk honesty. A backup kept on the machine it came from survives a
-          bad migration or a dropped table; it does not survive the disk. One
-          line, no dialog, no block — the operator chose this and it is a real
-          improvement over no backup at all. */}
-      {!noDeps && sameDisk.length > 0 && (
-        <p className="text-xs text-muted-foreground">
-          {sameDisk.map((d) => d.name).join(", ")}{" "}
-          {sameDisk.length === 1 ? "is" : "are"} on the same disk as this app:
-          protects against a mistake, not against a disk failure.
-        </p>
       )}
 
       {/* No destination yet — backups have nowhere to go without one. This
@@ -240,9 +229,11 @@ export function AppBackups({
 function BackUpNow({
   appId,
   destinations,
+  serverId,
 }: {
   appId: string;
   destinations: Destination[];
+  serverId: string | null;
 }) {
   const [open, setOpen] = React.useState(false);
   const { create } = usePendingCreate();
@@ -323,6 +314,7 @@ function BackUpNow({
               destinations={destinations}
               value={destinationId}
               onChange={setDestinationId}
+              sameDiskServerId={serverId}
             />
           </div>
           <DialogFooter>
@@ -346,9 +338,11 @@ function BackUpNow({
 function ScheduleBackup({
   appId,
   destinations,
+  serverId,
 }: {
   appId: string;
   destinations: Destination[];
+  serverId: string | null;
 }) {
   const router = useRouter();
   const [open, setOpen] = React.useState(false);
@@ -428,6 +422,7 @@ function ScheduleBackup({
             fields={fields}
             onChange={setFields}
             destinations={destinations}
+            serverId={serverId}
           />
           <DialogFooter>
             <Button variant="outline" onClick={() => setOpen(false)} disabled={pending}>
@@ -467,10 +462,13 @@ function ScheduleFormFields({
   fields,
   onChange,
   destinations,
+  serverId,
 }: {
   fields: ScheduleFields;
   onChange: React.Dispatch<React.SetStateAction<ScheduleFields>>;
   destinations: Destination[];
+  /** This app's server, so the destination picker can flag a same-disk pick. */
+  serverId: string | null;
 }) {
   return (
     <div className="grid gap-4">
@@ -495,6 +493,7 @@ function ScheduleFormFields({
           destinations={destinations}
           value={fields.destinationId}
           onChange={(v) => onChange((f) => ({ ...f, destinationId: v }))}
+          sameDiskServerId={serverId}
         />
       </div>
       <SchedulePicker
@@ -529,11 +528,13 @@ function ScheduleFormFields({
 function EditScheduleDialog({
   schedule,
   destinations,
+  serverId,
   open,
   onOpenChange,
 }: {
   schedule: BackupDTO;
   destinations: Destination[];
+  serverId: string | null;
   open: boolean;
   onOpenChange: (open: boolean) => void;
 }) {
@@ -593,6 +594,7 @@ function EditScheduleDialog({
             fields={fields}
             onChange={setFields}
             destinations={destinations}
+            serverId={serverId}
           />
           <DialogFooter>
             <Button variant="outline" onClick={() => onOpenChange(false)} disabled={pending}>
@@ -623,9 +625,11 @@ function EditScheduleDialog({
 function ScheduleRow({
   schedule,
   destinations,
+  serverId,
 }: {
   schedule: BackupDTO;
   destinations: Destination[];
+  serverId: string | null;
 }) {
   const router = useRouter();
   const [pending, startTransition] = React.useTransition();
@@ -725,6 +729,7 @@ function ScheduleRow({
           key={editOpen ? "edit-open" : "edit-closed"}
           schedule={schedule}
           destinations={destinations}
+          serverId={serverId}
           open={editOpen}
           onOpenChange={setEditOpen}
         />

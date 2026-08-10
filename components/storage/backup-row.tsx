@@ -305,6 +305,8 @@ function EditBackupDialog({
                 destinations={destinations}
                 value={destinationId}
                 onChange={setDestinationId}
+                sameDiskServerId={backup.targetServerId}
+                sameDiskNoun={backup.targetKind === "app" ? "app" : "database"}
               />
             </div>
             <SchedulePicker

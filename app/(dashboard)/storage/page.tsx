@@ -283,8 +283,16 @@ export default async function StoragePage(props: PageProps<"/storage">) {
               Scheduled backups of your databases and apps.
             </p>
             <CreateBackup
-              databases={databases.map((d) => ({ id: d.id, name: d.name }))}
-              services={services.map((p) => ({ id: p.id, name: p.name }))}
+              databases={databases.map((d) => ({
+                id: d.id,
+                name: d.name,
+                serverId: d.serverId,
+              }))}
+              services={services.map((p) => ({
+                id: p.id,
+                name: p.name,
+                serverId: p.serverId,
+              }))}
               destinations={destinations.map(toDestinationOption)}
               canCreate={canManageBackups}
               autoOpen={autoOpenBackup}

@@ -12,7 +12,7 @@ import {
 } from "../db/schema/control-plane";
 import { runWithIdentity } from "../auth/request-context";
 import { seedIdentity, TEAM_A, USER_1 } from "./identity-test-helpers";
-import { seedApp, seedServer } from "./app-graph-test-helpers";
+import { seedApp, seedServer, SERVER_1 } from "./app-graph-test-helpers";
 import {
   seedBackup,
   seedDatabase,
@@ -87,6 +87,8 @@ test("createBackup (database) inserts a schedule and resolves names in the DTO",
     assert.equal(dto.databaseName, "main");
     assert.equal(dto.serviceName, null);
     assert.equal(dto.destinationName, "s3_1");
+    // Feeds the "same disk as this database" warning in the edit dialog.
+    assert.equal(dto.targetServerId, SERVER_1);
   });
   // The row holds the XOR-consistent target (database set, project null).
   const rows = await db.select().from(backupsTable);
@@ -108,6 +110,7 @@ test("createBackup (project) sets only the project target", async () => {
     });
     assert.equal(dto.serviceName, "prj_1");
     assert.equal(dto.databaseName, null);
+    assert.equal(dto.targetServerId, SERVER_1);
   });
   const rows = await db.select().from(backupsTable);
   assert.equal(rows[0]!.appId, "prj_1");

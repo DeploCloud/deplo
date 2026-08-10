@@ -28,7 +28,7 @@ export function DatabaseBackups({
   schedules,
   destinations,
 }: {
-  database: { id: string; name: string };
+  database: { id: string; name: string; serverId?: string | null };
   schedules: BackupDTO[];
   destinations: Destination[];
 }) {

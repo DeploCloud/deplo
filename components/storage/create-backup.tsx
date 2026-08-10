@@ -44,8 +44,10 @@ export function CreateBackup({
   canCreate = true,
   autoOpen = false,
 }: {
-  databases: { id: string; name: string }[];
-  services?: { id: string; name: string }[];
+  /** `serverId` is only used to flag a destination sitting on the target's own
+   *  disk; leave it out and the picker simply says nothing. */
+  databases: { id: string; name: string; serverId?: string | null }[];
+  services?: { id: string; name: string; serverId?: string | null }[];
   destinations: DestinationOption[];
   /** Whether the current user may schedule a backup (`manage_backups`). False
    *  shows the button disabled with a tooltip saying so and nothing can open the
@@ -96,6 +98,10 @@ export function CreateBackup({
   // The chosen target must have a concrete id selected — otherwise the schedule
   // would point at nothing.
   const targetId = targetKind === "database" ? databaseId : appId;
+  // The server the chosen target runs on — a destination on it is a same-disk copy.
+  const targetServerId =
+    (targetKind === "database" ? databases : services).find((t) => t.id === targetId)
+      ?.serverId ?? null;
 
   function onSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -253,6 +259,8 @@ export function CreateBackup({
                   destinations={destinations}
                   value={destinationId}
                   onChange={setDestinationId}
+                  sameDiskServerId={targetServerId}
+                  sameDiskNoun={targetKind === "database" ? "database" : "app"}
                 />
               </div>
             </div>

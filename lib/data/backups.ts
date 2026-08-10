@@ -77,6 +77,9 @@ export interface BackupDTO extends Backup {
   databaseName: string | null;
   serviceName: string | null;
   destinationName: string;
+  /** The server the backed-up app/database runs on, so the edit dialog can flag
+   *  a destination sitting on that same disk. Null if the target is gone. */
+  targetServerId: string | null;
 }
 
 /** Resolve the display name of a database by id (team-scoped), or null. */
@@ -129,14 +132,17 @@ async function destinationNameFor(id: string, teamId: string): Promise<string> {
 async function toDTO(b: Backup): Promise<BackupDTO> {
   // Every related collection is relational now: the database/destination names by
   // point lookup, the project name via the project graph (cut-set c).
-  const serviceName = b.appId
-    ? ((await loadAppGraph(b.appId))?.name ?? null)
-    : null;
+  const app = b.appId ? await loadAppGraph(b.appId) : null;
   return {
     ...b,
     databaseName: await databaseNameFor(b.databaseId, b.teamId),
-    serviceName,
+    serviceName: app?.name ?? null,
     destinationName: await destinationNameFor(b.destinationId, b.teamId),
+    targetServerId: b.appId
+      ? (app?.serverId ?? null)
+      : b.databaseId
+        ? await databaseServerId(b.databaseId, b.teamId)
+        : null,
   };
 }
 
