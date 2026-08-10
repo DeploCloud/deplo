@@ -180,9 +180,9 @@ builder.queryFields((t) => ({
   backupArtifactCount: t.int({
     authScopes: { loggedIn: true },
     description:
-      "How many stored backup artifacts (successful runs) one target has. 0 " +
-      "means there is nothing to sweep — the delete dialog hides its 'also " +
-      "delete backup artifacts' option in that case.",
+      "How many stored backup artifacts (successful runs) one target has. " +
+      "Deleting the target removes them, so this is what that delete takes " +
+      "with it.",
     args: {
       targetKind: t.arg({ type: BackupTargetKindEnum, required: true }),
       targetId: t.arg.string({ required: true }),

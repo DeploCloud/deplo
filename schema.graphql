@@ -2837,7 +2837,7 @@ type Query {
   apps: [App!]
 
   """
-  How many stored backup artifacts (successful runs) one target has. 0 means there is nothing to sweep — the delete dialog hides its 'also delete backup artifacts' option in that case.
+  How many stored backup artifacts (successful runs) one target has. Deleting the target removes them, so this is what that delete takes with it.
   """
   backupArtifactCount(targetId: String!, targetKind: BackupTargetKind!): Int
 
@@ -3371,10 +3371,6 @@ input SaveSharedVarInput {
 
 """A connected host running deployments (reached via its agent)."""
 type Server {
-  """
-  True when this server's reported agent version is strictly older than expectedAgentVersion. False for an unseen agent or a non-semver/dev version we can't confidently compare.
-  """
-  agentOutdated: Boolean
   agentPort: Int
 
   """
@@ -3585,7 +3581,6 @@ type ServerHostInfo {
 A live resource-usage snapshot for one server (CPU, memory, disk, network, load and running-container count).
 """
 type ServerMetrics {
-  agentOutdated: Boolean
   agentVersion: String
   containers: Int
   cpu: Float
