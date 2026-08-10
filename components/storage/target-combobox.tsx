@@ -47,6 +47,13 @@ export function TargetCombobox({
   disabled?: boolean;
 }) {
   const noun = kind === "app" ? "app" : "database";
+  /** The thing's own icon — the one its card and its header already wear. */
+  const mark = (t: BackupTargetOption) =>
+    kind === "app" ? (
+      <AppLogo logo={t.logo ?? null} size={20} />
+    ) : (
+      <DatabaseLogo type={t.type ?? "postgres"} logo={t.logo ?? null} size={20} />
+    );
   return (
     <Combobox<BackupTargetOption>
       id={id}
@@ -65,13 +72,11 @@ export function TargetCombobox({
         hasItems ? `No ${noun} matches that` : `No ${noun}s in this team yet`
       }
       disabled={disabled}
+      // The same mark the rows carry, kept in the field once one is picked.
+      renderLeading={mark}
       renderOption={(t) => (
         <span className="flex min-w-0 items-center gap-2">
-          {kind === "app" ? (
-            <AppLogo logo={t.logo ?? null} size={20} />
-          ) : (
-            <DatabaseLogo type={t.type ?? "postgres"} logo={t.logo ?? null} size={20} />
-          )}
+          {mark(t)}
           <span className="min-w-0">
             <span className="block truncate text-sm">{t.name}</span>
             {t.detail && (

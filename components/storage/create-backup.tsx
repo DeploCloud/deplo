@@ -3,7 +3,16 @@
 import * as React from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
-import { Boxes, Database as DatabaseIcon, Loader2, Plus } from "lucide-react";
+import {
+  Archive,
+  Boxes,
+  CalendarClock,
+  ChevronLeft,
+  ChevronRight,
+  Database as DatabaseIcon,
+  Loader2,
+  Plus,
+} from "lucide-react";
 import {
   Dialog,
   DialogContent,
@@ -22,6 +31,7 @@ import {
   TooltipTrigger,
 } from "@/components/ui/tooltip";
 import { ChoiceCard } from "@/components/shared/choice-card";
+import { WizardStepper } from "@/components/shared/wizard-stepper";
 import {
   BackupScheduleFields,
   DEFAULT_RETENTION,
@@ -35,10 +45,60 @@ import {
 } from "@/components/storage/target-combobox";
 import { gqlAction } from "@/lib/graphql-client";
 import { DEFAULT_SCHEDULE, isValidSchedule } from "@/lib/schedule";
+import { cn } from "@/lib/utils";
 import type { DestinationOption } from "@/lib/data/destinations";
 
 type TargetKind = "database" | "app";
 
+type StepId = "target" | "destination" | "schedule";
+
+const STEPS: { id: StepId; label: string }[] = [
+  { id: "target", label: "Target" },
+  { id: "destination", label: "Destination" },
+  { id: "schedule", label: "Schedule" },
+];
+
+/** Per-step heading, icon and one line of orientation. */
+const COPY: Record<
+  StepId,
+  { icon: React.ComponentType<{ className?: string }>; title: string; blurb: string }
+> = {
+  target: {
+    icon: Boxes,
+    title: "What are you backing up?",
+    blurb:
+      "An app backup captures its volumes, files and settings. A database backup is a dump of that database alone.",
+  },
+  destination: {
+    icon: Archive,
+    title: "Where should it go?",
+    blurb:
+      "A folder on one of your servers, or any S3 bucket. Each one shows whether Deplo could reach it.",
+  },
+  schedule: {
+    icon: CalendarClock,
+    title: "When should it run?",
+    blurb:
+      "Pick how often, and how many backups to keep. Older ones are removed after each successful run.",
+  },
+};
+
+/**
+ * Schedule a backup from Storage, where nothing about the target is known yet.
+ *
+ * A WIZARD rather than one long form, and the reason is the first field: this is
+ * the only backup dialog that has to ask WHAT is being backed up, and that
+ * answer changes the two questions after it. Asked all at once it was a
+ * ten-control modal opening on a decision most people make in a second; asked in
+ * order it is three short screens - what, where, when - each with one thing on
+ * it. The per-app and per-database tabs keep their single form, because there
+ * the target is already settled and a wizard would be three steps for two
+ * fields.
+ *
+ * Same shape as the two-factor wizard next door: a step rail that doubles as the
+ * way back, a fixed-height body so the footer never moves under the cursor, and
+ * Enter always running the current step's primary button.
+ */
 export function CreateBackup({
   databases,
   services = [],
@@ -68,6 +128,7 @@ export function CreateBackup({
   const router = useRouter();
   const [open, setOpen] = React.useState(autoOpen && canCreate);
   const [pending, startTransition] = React.useTransition();
+  const [step, setStep] = React.useState<StepId>("target");
 
   // Drop the ?new=backup param after opening so a refresh/Back doesn't reopen it.
   React.useEffect(() => {
@@ -84,7 +145,7 @@ export function CreateBackup({
   // Apps are the common case — a whole app (volumes, files, compose/env
   // snapshot) is what most people come here to protect, and a database that
   // matters usually belongs to one. Databases still win the default when the
-  // team has no apps at all, so the dialog never opens on an empty select.
+  // team has no apps at all, so the dialog never opens on an empty picker.
   const [targetKind, setTargetKind] = React.useState<TargetKind>(
     services.length === 0 && databases.length > 0 ? "database" : "app"
   );
@@ -117,9 +178,28 @@ export function CreateBackup({
     (targetKind === "database" ? databases : services).find((t) => t.id === targetId)
       ?.serverId ?? null;
 
+  /** What each step needs before the next one means anything. */
+  const complete: Record<StepId, boolean> = {
+    target: !!targetId,
+    destination: !!destinationId,
+    schedule: !!name.trim() && isValidSchedule(schedule),
+  };
+  const index = STEPS.findIndex((s) => s.id === step);
+  const { icon: StepIcon, title, blurb } = COPY[step];
+
+  function close() {
+    setOpen(false);
+    // Deferred so the close animation does not play over a form that has
+    // already snapped back to step one.
+    setTimeout(() => setStep("target"), 200);
+  }
+
+  /** Enter runs whatever the current step's primary button does. */
   function onSubmit(e: React.FormEvent) {
     e.preventDefault();
-    submit();
+    if (pending || !complete[step]) return;
+    if (step === "schedule") submit();
+    else setStep(STEPS[index + 1]!.id);
   }
 
   function submit() {
@@ -141,7 +221,7 @@ export function CreateBackup({
       );
       if (res.ok) {
         toast.success("Backup schedule created");
-        setOpen(false);
+        close();
         router.refresh();
       } else {
         toast.error(res.error);
@@ -150,7 +230,7 @@ export function CreateBackup({
   }
 
   return (
-    <Dialog open={open} onOpenChange={setOpen}>
+    <Dialog open={open} onOpenChange={(o) => (o ? setOpen(true) : close())}>
       <Tooltip>
         <TooltipTrigger asChild>
           {blocked ? (
@@ -174,140 +254,189 @@ export function CreateBackup({
         </TooltipTrigger>
         <TooltipContent>{blocked ?? "Schedule a backup"}</TooltipContent>
       </Tooltip>
-      <DialogContent>
-        <DialogHeader>
-          <DialogTitle>Schedule a backup</DialogTitle>
-          <DialogDescription>
-            Periodically back up a database or an app to a backup destination.
+      {/* Fixed height so the rail and the footer hold their place instead of
+          jumping as the body goes from two cards to one field to five. Sized for
+          the TALLEST step (Schedule, with its name, frequency, time, zone and
+          retention): a step that has to scroll cuts a field in half at the fold,
+          which reads as the form ending there. */}
+      <DialogContent className="h-[min(92vh,42rem)] grid-rows-[auto_minmax(0,1fr)] overflow-hidden sm:max-w-lg">
+        <DialogHeader className="space-y-0 pr-8">
+          <DialogTitle className="sr-only">Schedule a backup</DialogTitle>
+          <DialogDescription className="sr-only">
+            Periodically back up a database or an app to a backup destination, in
+            three steps.
           </DialogDescription>
+          <WizardStepper
+            steps={STEPS}
+            current={step}
+            // Every answer here is the user's own and stays editable, so any step
+            // whose predecessors are settled can be jumped back to.
+            reachable={(s) =>
+              STEPS.slice(0, STEPS.findIndex((x) => x.id === s)).every(
+                (x) => complete[x.id],
+              )
+            }
+            onSelect={setStep}
+          />
         </DialogHeader>
-        <form className="grid gap-4" onSubmit={onSubmit}>
-          <div className="grid gap-4">
-            <div className="space-y-2">
-              <FieldLabel
-                htmlFor="new-backup-name"
-                info="What this schedule is called in the list. Follows the frequency until you change it."
-              >
-                Name
-              </FieldLabel>
-              <Input
-                id="new-backup-name"
-                value={name}
-                onChange={(e) => {
-                  setNameTouched(true);
-                  setName(e.target.value);
-                }}
-              />
-            </div>
-            {/* Target-kind choice: a schedule backs up either a database or a
-                whole app (volumes + files + compose/env snapshot). Two cards in
-                a real radio group - the pair of Buttons this replaced looked
-                like a segmented control and answered to neither the arrow keys
-                nor a screen reader. */}
-            <div className="space-y-2">
-              <FieldLabel info="An app backup captures its volumes, files and compose/env snapshot. A database backup is a dump of that database alone.">
-                Target
-              </FieldLabel>
-              <div
-                role="radiogroup"
-                aria-label="What to back up"
-                className="grid gap-3 sm:grid-cols-2"
-              >
-                <ChoiceCard
-                  title="App"
-                  blurb="Volumes, files and settings"
-                  icon={Boxes}
-                  selected={targetKind === "app"}
-                  disabled={services.length === 0}
-                  disabledNote="No apps in this team yet"
-                  onSelect={() => setTargetKind("app")}
-                />
-                <ChoiceCard
-                  title="Database"
-                  blurb="A dump of one database"
-                  icon={DatabaseIcon}
-                  selected={targetKind === "database"}
-                  disabled={databases.length === 0}
-                  disabledNote="No databases in this team yet"
-                  onSelect={() => setTargetKind("database")}
-                />
+
+        <form
+          onSubmit={onSubmit}
+          className="grid min-h-0 grid-rows-[minmax(0,1fr)_auto] gap-4 overflow-hidden"
+        >
+          {/* `m-auto` centres a short step without clipping a tall one — see the
+              two-factor wizard, same reasoning. */}
+          <div className="flex flex-col overflow-y-auto focus-safe-scroll">
+            <div className="m-auto flex w-full max-w-md shrink-0 flex-col gap-5 py-2">
+              {/* One heading block, same shape on every step, so the eye lands
+                  in the same place each time the body swaps under it. */}
+              <div className="flex flex-col items-center gap-2 text-center">
+                <span className="flex size-10 items-center justify-center rounded-full bg-primary/10">
+                  <StepIcon className="size-5 text-primary" />
+                </span>
+                <h2 className="text-base font-semibold">{title}</h2>
+                <p className="text-sm text-balance text-muted-foreground">
+                  {blurb}
+                </p>
               </div>
-            </div>
-            <div className="grid gap-4 sm:grid-cols-2">
-              <div className="space-y-2">
-                {targetKind === "database" ? (
-                  <>
-                    <FieldLabel htmlFor="new-backup-database">
-                      Database
+
+              {step === "target" && (
+                <div className="space-y-4">
+                  <div
+                    role="radiogroup"
+                    aria-label="What to back up"
+                    className="grid gap-3 sm:grid-cols-2"
+                  >
+                    <ChoiceCard
+                      title="App"
+                      blurb="Volumes, files and settings"
+                      icon={Boxes}
+                      selected={targetKind === "app"}
+                      disabled={services.length === 0}
+                      disabledNote="No apps in this team yet"
+                      onSelect={() => setTargetKind("app")}
+                    />
+                    <ChoiceCard
+                      title="Database"
+                      blurb="A dump of one database"
+                      icon={DatabaseIcon}
+                      selected={targetKind === "database"}
+                      disabled={databases.length === 0}
+                      disabledNote="No databases in this team yet"
+                      onSelect={() => setTargetKind("database")}
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    {targetKind === "database" ? (
+                      <>
+                        <FieldLabel htmlFor="new-backup-database">
+                          Database
+                        </FieldLabel>
+                        <TargetCombobox
+                          id="new-backup-database"
+                          kind="database"
+                          targets={databases}
+                          value={databaseId}
+                          onChange={setDatabaseId}
+                        />
+                      </>
+                    ) : (
+                      <>
+                        <FieldLabel htmlFor="new-backup-app">App</FieldLabel>
+                        <TargetCombobox
+                          id="new-backup-app"
+                          kind="app"
+                          targets={services}
+                          value={appId}
+                          onChange={setAppId}
+                        />
+                      </>
+                    )}
+                  </div>
+                </div>
+              )}
+
+              {step === "destination" && (
+                <div className="space-y-2">
+                  <FieldLabel
+                    htmlFor="new-backup-destination"
+                    info="Where backup archives are written and kept. Each one shows whether Deplo could reach it."
+                  >
+                    Destination
+                  </FieldLabel>
+                  <DestinationCombobox
+                    id="new-backup-destination"
+                    destinations={destinations}
+                    value={destinationId}
+                    onChange={setDestinationId}
+                    sameDiskServerId={targetServerId}
+                    sameDiskNoun={targetKind === "database" ? "database" : "app"}
+                    canProbe={canTestDestinations}
+                  />
+                </div>
+              )}
+
+              {step === "schedule" && (
+                <div className="space-y-4">
+                  <div className="space-y-2">
+                    <FieldLabel
+                      htmlFor="new-backup-name"
+                      info="What this schedule is called in the list. Follows the frequency until you change it."
+                    >
+                      Name
                     </FieldLabel>
-                    <TargetCombobox
-                      id="new-backup-database"
-                      kind="database"
-                      targets={databases}
-                      value={databaseId}
-                      onChange={setDatabaseId}
+                    <Input
+                      id="new-backup-name"
+                      value={name}
+                      onChange={(e) => {
+                        setNameTouched(true);
+                        setName(e.target.value);
+                      }}
                     />
-                  </>
-                ) : (
-                  <>
-                    <FieldLabel htmlFor="new-backup-app">App</FieldLabel>
-                    <TargetCombobox
-                      id="new-backup-app"
-                      kind="app"
-                      targets={services}
-                      value={appId}
-                      onChange={setAppId}
-                    />
-                  </>
-                )}
-              </div>
-              <div className="space-y-2">
-                <FieldLabel
-                  htmlFor="new-backup-destination"
-                  info="Where backup archives are written and kept. Each one shows whether Deplo could reach it."
-                >
-                  Destination
-                </FieldLabel>
-                <DestinationCombobox
-                  id="new-backup-destination"
-                  destinations={destinations}
-                  value={destinationId}
-                  onChange={setDestinationId}
-                  sameDiskServerId={targetServerId}
-                  sameDiskNoun={targetKind === "database" ? "database" : "app"}
-                  canProbe={canTestDestinations}
-                />
-              </div>
+                  </div>
+                  <BackupScheduleFields
+                    idPrefix="new-backup"
+                    schedule={schedule}
+                    onScheduleChange={(cron) => {
+                      setSchedule(cron);
+                      if (!nameTouched) setName(suggestScheduleName(cron));
+                    }}
+                    timezone={timezone}
+                    onTimezoneChange={setTimezone}
+                    retention={retention}
+                    onRetentionChange={setRetention}
+                  />
+                </div>
+              )}
             </div>
-            <BackupScheduleFields
-              idPrefix="new-backup"
-              schedule={schedule}
-              onScheduleChange={(cron) => {
-                setSchedule(cron);
-                if (!nameTouched) setName(suggestScheduleName(cron));
-              }}
-              timezone={timezone}
-              onTimezoneChange={setTimezone}
-              retention={retention}
-              onRetentionChange={setRetention}
-            />
           </div>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setOpen(false)} disabled={pending}>
-              Cancel
-            </Button>
+
+          <DialogFooter className="flex-row items-center justify-between sm:justify-between">
             <Button
-              type="submit"
-              disabled={
-                pending ||
-                !name.trim() ||
-                !destinationId ||
-                !targetId ||
-                !isValidSchedule(schedule)
-              }
+              type="button"
+              variant="ghost"
+              onClick={() => setStep(STEPS[index - 1]!.id)}
+              disabled={index === 0 || pending}
+              className={cn(index === 0 && "invisible")}
             >
-              {pending ? <Loader2 className="size-4 animate-spin" /> : "Create schedule"}
+              <ChevronLeft className="size-4" />
+              Back
             </Button>
+            <div className="flex gap-2">
+              <Button type="button" variant="outline" onClick={close} disabled={pending}>
+                Cancel
+              </Button>
+              {step === "schedule" ? (
+                <Button type="submit" disabled={pending || !complete.schedule}>
+                  {pending ? <Loader2 className="size-4 animate-spin" /> : "Create schedule"}
+                </Button>
+              ) : (
+                <Button type="submit" disabled={!complete[step]}>
+                  Continue
+                  <ChevronRight className="size-4" />
+                </Button>
+              )}
+            </div>
           </DialogFooter>
         </form>
       </DialogContent>

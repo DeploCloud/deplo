@@ -29,6 +29,7 @@ export function Combobox<T>({
   getKey,
   matches,
   renderOption,
+  renderLeading,
   displayValue,
   id,
   placeholder,
@@ -47,6 +48,13 @@ export function Combobox<T>({
   /** Whether `item` survives the typed query (already lower-cased, trimmed). */
   matches: (item: T, query: string) => boolean;
   renderOption: (item: T) => React.ReactNode;
+  /**
+   * A mark for the SELECTED item, drawn inside the field to the left of the
+   * text — an app's own icon, say. Without it a picker shows you a logo per row
+   * while you choose and then a bare name once you have, which reads as having
+   * lost track of what you picked.
+   */
+  renderLeading?: (item: T) => React.ReactNode;
   /** What the closed field shows for the selection. */
   displayValue: (item: T) => string;
   id?: string;
@@ -139,91 +147,103 @@ export function Combobox<T>({
   }
 
   return (
-    <div ref={containerRef} className="relative">
-      <Input
-        id={id}
-        role="combobox"
-        aria-expanded={open}
-        aria-controls={id ? `${id}-listbox` : undefined}
-        aria-autocomplete="list"
-        autoComplete="off"
-        spellCheck={false}
-        disabled={disabled}
-        // Open shows what you are typing; closed shows what you picked.
-        value={open ? query : selected ? displayValue(selected) : ""}
-        placeholder={
-          open
-            ? selected
-              ? displayValue(selected)
-              : searchPlaceholder
-            : placeholder
-        }
-        onChange={(e) => {
-          setQuery(e.target.value);
-          setHighlight(0);
-          if (!open) openMenu();
-        }}
-        onFocus={() => {
-          // A dialog placing focus here as it opens is Radix, not the user —
-          // and it is not a reason to unfurl the menu or probe every bucket.
-          if (isOverlayAutoFocusing()) return;
-          openMenu();
-        }}
-        onMouseDown={() => {
-          if (!open) openMenu();
-        }}
-        onKeyDown={onKeyDown}
-        className="pr-9"
-      />
-      <span className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground">
-        {busy ? (
-          <Loader2 className="size-4 animate-spin" />
-        ) : (
-          <ChevronsUpDown className="size-4" />
+    <div ref={containerRef}>
+      {/* The positioning context is the FIELD, not the field plus whatever the
+          caller hangs under it: the chevron is centred with `top-1/2`, so a
+          footer inside this box would drag it down into that text and leave the
+          input looking like a broken control. */}
+      <div className="relative">
+        {selected && renderLeading && (
+          <span className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2">
+            {renderLeading(selected)}
+          </span>
         )}
-      </span>
-
-      {open && (
-        <div
-          id={id ? `${id}-listbox` : undefined}
-          role="listbox"
-          className="absolute z-50 mt-1 w-full overflow-hidden rounded-md border border-border bg-popover shadow-md"
-        >
-          {filtered.length === 0 ? (
-            <p className="px-3 py-2 text-xs text-muted-foreground">
-              {emptyLabel(items.length > 0)}
-            </p>
+        <Input
+          id={id}
+          role="combobox"
+          aria-expanded={open}
+          aria-controls={id ? `${id}-listbox` : undefined}
+          aria-autocomplete="list"
+          autoComplete="off"
+          spellCheck={false}
+          disabled={disabled}
+          // Open shows what you are typing; closed shows what you picked.
+          value={open ? query : selected ? displayValue(selected) : ""}
+          placeholder={
+            open
+              ? selected
+                ? displayValue(selected)
+                : searchPlaceholder
+              : placeholder
+          }
+          onChange={(e) => {
+            setQuery(e.target.value);
+            setHighlight(0);
+            if (!open) openMenu();
+          }}
+          onFocus={() => {
+            // A dialog placing focus here as it opens is Radix, not the user —
+            // and it is not a reason to unfurl the menu or probe every bucket.
+            if (isOverlayAutoFocusing()) return;
+            openMenu();
+          }}
+          onMouseDown={() => {
+            if (!open) openMenu();
+          }}
+          onKeyDown={onKeyDown}
+          className={cn("pr-9", selected && renderLeading && "pl-9")}
+        />
+        <span className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground">
+          {busy ? (
+            <Loader2 className="size-4 animate-spin" />
           ) : (
-            <ul className="max-h-72 overflow-auto p-1">
-              {filtered.map((item, i) => (
-                <li key={getKey(item)}>
-                  <button
-                    type="button"
-                    role="option"
-                    aria-selected={getKey(item) === value}
-                    onMouseEnter={() => setHighlight(i)}
-                    // mousedown, not click: the input's blur would otherwise
-                    // close the menu before the click landed.
-                    onMouseDown={(e) => {
-                      e.preventDefault();
-                      choose(item);
-                    }}
-                    className={cn(
-                      "w-full space-y-0.5 rounded-sm px-2 py-1.5 text-left",
-                      i === activeIndex ? "bg-accent" : "hover:bg-accent/60",
-                    )}
-                  >
-                    {renderOption(item)}
-                  </button>
-                </li>
-              ))}
-            </ul>
+            <ChevronsUpDown className="size-4" />
           )}
-        </div>
-      )}
+        </span>
 
-      {/* Rendered after the menu so the menu keeps its static position under
-          the input. */}
+        {open && (
+          <div
+            id={id ? `${id}-listbox` : undefined}
+            role="listbox"
+            className="absolute z-50 mt-1 w-full overflow-hidden rounded-md border border-border bg-popover shadow-md"
+          >
+            {filtered.length === 0 ? (
+              <p className="px-3 py-2 text-xs text-muted-foreground">
+                {emptyLabel(items.length > 0)}
+              </p>
+            ) : (
+              <ul className="max-h-72 overflow-auto p-1">
+                {filtered.map((item, i) => (
+                  <li key={getKey(item)}>
+                    <button
+                      type="button"
+                      role="option"
+                      aria-selected={getKey(item) === value}
+                      onMouseEnter={() => setHighlight(i)}
+                      // mousedown, not click: the input's blur would otherwise
+                      // close the menu before the click landed.
+                      onMouseDown={(e) => {
+                        e.preventDefault();
+                        choose(item);
+                      }}
+                      className={cn(
+                        "w-full space-y-0.5 rounded-sm px-2 py-1.5 text-left",
+                        i === activeIndex ? "bg-accent" : "hover:bg-accent/60",
+                      )}
+                    >
+                      {renderOption(item)}
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
+        )}
+
+      </div>
+
+      {/* Outside the field's positioning box on purpose (see above), so anything
+          the caller hangs here can be as tall as it needs to be. */}
       {footer}
     </div>
   );

@@ -182,15 +182,23 @@ export function DestinationCombobox({
         );
       }}
       footer={
-        // Same-disk honesty, only once it is actually the choice.
+        // Same-disk honesty, only once it is actually the choice. A CARD, not a
+        // line of amber text hanging off the field: three lines of wrapped copy
+        // under an input read as part of the control and, when this sat inside
+        // the field's own box, dragged the chevron down with them.
         sameDisk && selected ? (
-          <p className="mt-1.5 flex items-start gap-1.5 text-xs text-[var(--warning)]">
-            <AlertTriangle className="mt-px size-3.5 shrink-0" />
-            <span>
-              {selected.name} is on the same disk as this {sameDiskNoun}: protects
-              against a mistake, not against a disk failure.
-            </span>
-          </p>
+          <div className="mt-2 flex items-start gap-2 rounded-lg border border-[var(--warning)]/30 bg-[var(--warning)]/5 p-3">
+            <AlertTriangle className="mt-0.5 size-3.5 shrink-0 text-[var(--warning)]" />
+            <div className="min-w-0 flex-1 space-y-1">
+              <p className="text-xs font-medium">
+                Same disk as this {sameDiskNoun}
+              </p>
+              <p className="text-xs text-muted-foreground">
+                {selected.name} is on the server this {sameDiskNoun} runs on.
+                It protects against a mistake, not against a disk failure.
+              </p>
+            </div>
+          </div>
         ) : null
       }
     />
