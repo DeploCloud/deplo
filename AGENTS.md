@@ -205,6 +205,12 @@ is remapped onto the control-plane `users` table. Deploy execution is the Go age
   --audit-level=high` on every push/PR, plus a weekly audit run so a newly-published advisory
   turns the repo red on its own. The tests job must keep `DEPLO_DATABASE_URL` **unset** (the
   suite is pglite in-process; a real URL makes the lease/scheduler tests bind to it and fail).
+  The types job runs **`bunx next typegen` first**: `PageProps` / `LayoutProps` / `RouteContext`
+  are GENERATED globals under `.next/types` (which `tsconfig.json` includes), so they exist on
+  any machine that has run the dev server and on none that has not - a bare `tsc --noEmit` on a
+  fresh checkout reports ~65 phantom "Cannot find name" errors while every local run is green.
+  `typegen` emits them without a build and needs no environment. Run it before `tsc` in a clean
+  tree too.
   `docker-image.yml` is separate and still fires only on a `v*` tag.
 - **`overrides` in `package.json` are security pins, not preferences.** `postcss`, `nanoid`,
   `brace-expansion`, `js-yaml`, `sharp`, `protobufjs` and `esbuild` reach us only through `next`,

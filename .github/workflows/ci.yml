@@ -81,7 +81,15 @@ jobs:
         with:
           bun-version: latest
       - run: bun install --frozen-lockfile
-      # `next build` would also typecheck, but it needs DEPLO_DATABASE_URL at
-      # module load (lib/db/pg.ts fail-fasts) and takes minutes. tsc alone
-      # answers the only question this job asks.
+      # `PageProps` / `LayoutProps` / `RouteContext` are GENERATED globals: Next
+      # writes them into `.next/types`, which `tsconfig.json` includes. They exist
+      # on any machine that has run the dev server or a build, and on a fresh
+      # checkout they do not - so tsc alone reported ~65 phantom "Cannot find
+      # name" errors here while every developer's local run was green.
+      #
+      # `typegen` is the subcommand for exactly this: it emits those definitions
+      # WITHOUT a build, so this job stays seconds rather than minutes. It also
+      # needs no environment - unlike `next build`, which loads the app and
+      # fail-fasts on a missing DEPLO_DATABASE_URL (lib/db/pg.ts).
+      - run: bunx next typegen
       - run: bunx tsc --noEmit
