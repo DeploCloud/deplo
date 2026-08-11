@@ -401,7 +401,7 @@ export function ServerCleanupTab({
               <div className="space-y-2">
                 <FieldLabel
                   htmlFor="cleanup-keep-images"
-                  info="How many of the newest images to keep per app. Older ones are removed right after each deploy and by the sweep; a removed image comes back only by rebuilding."
+                  info="For apps that can't be rolled back: a compose stack, a prebuilt image, a pull request preview. An app Deplo builds keeps what its own Rollbacks setting says instead. A removed image comes back only by rebuilding."
                 >
                   Images kept per app
                 </FieldLabel>

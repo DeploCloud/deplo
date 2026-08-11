@@ -36,7 +36,9 @@ export default async function DeploymentDetailPage(
   // the viewer lacks it - which renders as a blank terminal that looks broken -
   // so ask first and say why instead, exactly as the Logs tab does.
   const canReadLogs = await hasAppCapability(project.id, "view_logs");
-  const canRollback = await hasAppCapability(project.id, "rollback_apps");
+  // NOT the same question as `deployment.canRollback`, which is whether this
+  // build is still a target at all. This is whether the VIEWER may take it.
+  const canRollbackApps = await hasAppCapability(project.id, "rollback_apps");
   const logs = canReadLogs ? await getLogs(id) : [];
   // Its live slot in the owning server's build queue (null unless still queued),
   // so the "in queue" banner paints its position without waiting on the first poll.
@@ -115,7 +117,7 @@ export default async function DeploymentDetailPage(
                 appSlug={slug}
                 commitSha={deployment.commitSha}
                 commitMessage={deployment.commitMessage}
-                can={canRollback}
+                can={canRollbackApps}
               />
             )}
             <Button variant="outline" size="sm" asChild>

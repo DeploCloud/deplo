@@ -23,7 +23,7 @@ import {
 // app and a dangling volume may hold user data — do not add a value here.
 const DockerCleanupScopeEnum = builder.enumType("DockerCleanupScope", {
   description:
-    "A class of Docker object a cleanup may reclaim. build_cache = the daemon's BuildKit cache. dangling_images = untagged layers (never `-a`). orphan_buildkit_cache = dangling volumes proven to be abandoned buildkitd stores. unused_app_images = old app images no container references, bounded by keepImagesPerApp (Deplo pushes to no registry, so a removed image comes back only by a rebuild — the newest image per app always survives). All four are on by default.",
+    "A class of Docker object a cleanup may reclaim. build_cache = the daemon's BuildKit cache. dangling_images = untagged layers (never `-a`). orphan_buildkit_cache = dangling volumes proven to be abandoned buildkitd stores. unused_app_images = old app images no container references, bounded per app by that app's `rollbackKeep` (falling back to keepImagesPerApp where a rollback is impossible). Deplo pushes to no registry, so a removed image comes back only by a rebuild - the newest image per app always survives. All four are on by default.",
   values: [
     "build_cache",
     "dangling_images",
@@ -58,7 +58,11 @@ const DockerCleanupPolicyRef = builder
         description: "Only reclaim objects older than this. 0 = no age filter.",
       }),
       keepImagesPerApp: t.exposeInt("keepImagesPerApp", {
-        description: "unused_app_images only: how many of the newest images to keep per app.",
+        description:
+          "unused_app_images only: how many of the newest images to keep for an " +
+          "app that CANNOT be rolled back - a compose stack, a prebuilt image, a " +
+          "pull request preview. An app Deplo builds is governed by its own " +
+          "`App.rollbackKeep` instead, which the sweep sends per app.",
       }),
       scopes: t.field({
         type: [DockerCleanupScopeEnum],

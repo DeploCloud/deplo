@@ -334,6 +334,9 @@ async function commitOutcome(
   target: DeployTarget,
   depPatch: Partial<Deployment>,
   appPatch: Partial<typeof appsTable.$inferInsert>,
+  /** This deploy went BACKWARDS. Only the alert copy cares: everything else
+   *  about settling a rollback is identical to settling any other deploy. */
+  opts: { rollback?: boolean } = {},
 ): Promise<boolean> {
   if (!(await setDep(depId, depPatch, { onlyIfNotCanceled: true }))) {
     await markStopped(depId, target);
@@ -356,9 +359,13 @@ async function commitOutcome(
   dispatchAlert({
     teamId: target.teamId,
     key: ok ? "deployment_succeeded" : "deployment_failed",
-    title: `${what} ${ok ? "deployed" : "failed to deploy"}`,
+    // A rollback is not "a new version": saying so to a channel would tell the
+    // team something shipped forward at the exact moment somebody undid it.
+    title: `${what} ${ok ? (opts.rollback ? "rolled back" : "deployed") : "failed to deploy"}`,
     body: ok
-      ? "The new version is live."
+      ? opts.rollback
+        ? "An earlier version is live again."
+        : "The new version is live."
       : "The build log has the error that stopped it.",
     path:
       target.kind === "preview"
@@ -1889,6 +1896,7 @@ async function runDeployment(depId: string): Promise<void> {
           // is unrouted until a domain is added back).
           ...(dep.environment === "production" ? { productionUrl: dep.url || null } : {}),
         },
+        { rollback: Boolean(dep.rollbackOf) },
       );
       if (applied) {
         log(

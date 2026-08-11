@@ -24,6 +24,7 @@ import { loadDeploymentsForApp } from "./app-graph-load";
 import { getDb } from "../db/client";
 import { apps as appsTable } from "../db/schema/control-plane";
 import { eq } from "drizzle-orm";
+import { readFile } from "node:fs/promises";
 
 /**
  * Rollback, at the data layer: which deployments an app can be put back on, and
@@ -394,4 +395,18 @@ test("the single-row read agrees with the list, over a history long enough to bo
     listed.filter((d) => d.canRollback).map((d) => d.id),
     ["dpl_001", "dpl_002"],
   );
+});
+
+test("the alert for a rollback does not announce a new version", async () => {
+  // The notification goes to a channel the whole team reads. "The new version is
+  // live" at the exact moment somebody undid a deploy is the wrong sentence, and
+  // it is the only place the direction of a deploy is ever spelled out.
+  const src = await readFile(
+    new URL("../deploy/build.ts", import.meta.url),
+    "utf8",
+  );
+  assert.match(src, /rolled back/);
+  assert.match(src, /An earlier version is live again\./);
+  // And it is driven by the ROW, not by a caller remembering to pass a flag.
+  assert.match(src, /\{ rollback: Boolean\(dep\.rollbackOf\) \}/);
 });
