@@ -9,7 +9,6 @@ import {
   databases as databasesTable,
   apps as appsTable,
   backupDestination as destinationTable,
-  domains as domainsTable,
   servers as serversTable,
 } from "../db/schema/control-plane";
 import {
@@ -79,7 +78,6 @@ import type {
   BackupTargetKind,
   Database,
   DatabaseType,
-  DestinationKind,
 } from "../types";
 
 /** How many run RECORDS a target keeps per destination, regardless of how many
@@ -136,77 +134,14 @@ async function databaseServerId(
   return rows[0]?.serverId ?? null;
 }
 
-/** The destination `id` if this team owns it, or null — just enough of it to
- *  answer {@link circularDestinationRefusal} without a second query. */
-async function destinationForTeam(
-  id: string,
-  teamId: string,
-): Promise<{ kind: DestinationKind; endpoint: string | null } | null> {
+/** Whether a team owns the backup destination `id`. */
+async function destinationExists(id: string, teamId: string): Promise<boolean> {
   const rows = await getDb()
-    .select({ kind: destinationTable.kind, endpoint: destinationTable.endpoint })
+    .select({ id: destinationTable.id })
     .from(destinationTable)
     .where(and(eq(destinationTable.id, id), eq(destinationTable.teamId, teamId)))
     .limit(1);
-  const row = rows[0];
-  return row ? { kind: row.kind as DestinationKind, endpoint: row.endpoint } : null;
-}
-
-/**
- * The host a bucket destination writes to, lowercased, or "" when it has none.
- *
- * Separate and exported because it is the whole input to {@link circularDestinationRefusal}
- * and the one part of it worth testing on strings rather than on a database.
- */
-export function destinationEndpointHost(endpoint: string | null): string {
-  if (!endpoint?.trim()) return "";
-  try {
-    return new URL(endpoint.trim()).hostname.toLowerCase();
-  } catch {
-    return "";
-  }
-}
-
-/**
- * Why this destination must not hold THIS app's backups, or null when it may.
- *
- * The trap it closes is a backup that eats itself. An app can serve object
- * storage (that is what an S3-compatible app IS), and pointing a destination at
- * a bucket on `https://s3.example.com` is exactly the sensible thing to do with
- * it — right up until the app being backed up is the one answering that address.
- * Then the archive of its volumes CONTAINS every artifact already written to
- * that bucket, so backup n holds backups 1..n-1 and the size doubles every run:
- * 3.6 GB, 9.8 GB, 19 GB, until the disk the whole fleet shares is full.
- *
- * Nothing about it looks wrong from the panel — the destination tests green, the
- * runs succeed, and the only symptom is a number growing — which is why this is
- * a refusal and not a warning. There is no version of it anyone wants: an
- * artifact stored inside the thing it is an artifact OF is not a backup.
- *
- * Matched on the app's own domains, because that is what the endpoint resolves
- * through in practice and it costs one indexed lookup. A destination pointed at
- * the app by raw IP:port is not caught here; the size on the run is.
- */
-async function circularDestinationRefusal(
-  dest: { kind: DestinationKind; endpoint: string | null },
-  appId: string | null,
-): Promise<string | null> {
-  if (!appId || dest.kind !== "s3") return null;
-  const host = destinationEndpointHost(dest.endpoint);
-  if (!host) return null;
-  // Domain names are stored lowercased (see lib/data/domains.ts), so this is an
-  // exact index hit. NOT team-scoped on purpose: the comparison is against an id
-  // the caller already holds, and an app in another team serving this bucket is
-  // someone else's business — only "it is THIS app" is refusable here.
-  const rows = await getDb()
-    .select({ appId: domainsTable.appId })
-    .from(domainsTable)
-    .where(eq(domainsTable.name, host))
-    .limit(1);
-  if (rows[0]?.appId !== appId) return null;
-  return (
-    `This app serves the storage at ${host}, so each backup would be stored ` +
-    `inside the next one and grow without limit. Pick another destination.`
-  );
+  return rows.length > 0;
 }
 
 /** Resolve the display name of a backup destination by id (team-scoped), or "". */
@@ -379,8 +314,8 @@ export async function createBackup(input: {
 
   // The chosen destination + the target (database OR project) must belong to this
   // team. Exactly one target is set, matching `targetKind`.
-  const dest = await destinationForTeam(input.destinationId, teamId);
-  if (!dest) throw new Error("Select a destination");
+  if (!(await destinationExists(input.destinationId, teamId)))
+    throw new Error("Select a destination");
   if (targetKind === "database") {
     if (!databaseId) throw new Error("Select a database to back up");
     // A principal who reaches only part of the team can't see any database, so
@@ -394,10 +329,6 @@ export async function createBackup(input: {
     if (!(await loadTeamApp(appId, teamId)))
       throw new Error("App not found");
   }
-  // Said at the moment the choice is made, rather than leaving the schedule to
-  // fail (or worse, succeed) on its first run.
-  const circular = await circularDestinationRefusal(dest, appId);
-  if (circular) throw new Error(circular);
 
   const b: Backup = {
     id: newId("bkp"),
@@ -631,20 +562,6 @@ async function executeBackup(
   let objectKey = "";
   try {
     const creds = await getDestinationWithSecretsForTeam(teamId, opts.destinationId);
-    // BEFORE resolveTarget, which for an app dials the owning agent to read the
-    // live stack: a run that must be refused should not cost a round trip, and
-    // the id this needs is the one the caller already passed.
-    //
-    // The real guard, not the one in createBackup: a schedule made before this
-    // shipped, or one whose app was given the destination's domain afterwards,
-    // reaches here with nothing else standing between it and a runaway artifact.
-    // A refused run is recorded `failed` with this as its error, which is how the
-    // operator finds out at all.
-    const circular = await circularDestinationRefusal(
-      creds.destination,
-      opts.kind === "app" ? opts.appId : null,
-    );
-    if (circular) throw new Error(circular);
     const target = await resolveTarget(teamId, opts.kind, opts.databaseId, opts.appId);
     label = target.label;
     activityAppId = target.appId;
@@ -1004,7 +921,7 @@ async function runAdHocBackup(
   ) {
     throw new Error("Database not found");
   }
-  if (!(await destinationForTeam(destinationId, teamId)))
+  if (!(await destinationExists(destinationId, teamId)))
     throw new Error("Select a destination");
   return executeBackup(teamId, user.name, {
     backupId: null,
@@ -1619,14 +1536,12 @@ export async function updateBackup(
   const timezone = normalizeTimezone(input.timezone);
 
   // The (possibly changed) destination must belong to this team.
-  const dest = await destinationForTeam(input.destinationId, teamId);
-  if (!dest) throw new Error("Select a destination");
+  if (!(await destinationExists(input.destinationId, teamId)))
+    throw new Error("Select a destination");
 
   const cur = await loadBackup(id, teamId);
   if (!cur) throw new Error("Not found");
   await requireBackupCapability(cur, "manage_backups");
-  const circular = await circularDestinationRefusal(dest, cur.appId);
-  if (circular) throw new Error(circular);
 
   const updated = await getDb()
     .update(backupsTable)
