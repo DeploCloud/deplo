@@ -1510,6 +1510,23 @@ export interface ReadStoreFileRequest {
    * the stack configuration is ever re-applied.
    */
   expectedSha256: string;
+  /**
+   * Set INSTEAD of `store` to read the artifact out of a BUCKET. Same job, same
+   * framing, same decryption: the only difference is where the bytes come from.
+   *
+   * It exists because a backup a user cannot get their hands on is half a
+   * backup. Without this the panel could only offer Download for artifacts kept
+   * on a server's disk, and a bucket artifact came with instructions: fetch the
+   * object with your own S3 credentials, then decrypt it yourself with age.
+   * That is the sort of answer this platform exists not to give.
+   *
+   * One difference the caller must know about: a file on disk can be hashed
+   * before a single byte is sent, but a bucket object can only be checked AS IT
+   * GOES PAST. So an S3 read that fails its digest fails at the END, after bytes
+   * have already been handed over, and the stream closes in error rather than
+   * completing. Gated by the `backup-s3-read` capability.
+   */
+  s3?: S3Target | undefined;
 }
 
 /**
@@ -8449,7 +8466,7 @@ export const S3DeleteResponse: MessageFns<S3DeleteResponse> = {
 };
 
 function createBaseReadStoreFileRequest(): ReadStoreFileRequest {
-  return { store: undefined, ageIdentity: "", expectedSha256: "" };
+  return { store: undefined, ageIdentity: "", expectedSha256: "", s3: undefined };
 }
 
 export const ReadStoreFileRequest: MessageFns<ReadStoreFileRequest> = {
@@ -8462,6 +8479,9 @@ export const ReadStoreFileRequest: MessageFns<ReadStoreFileRequest> = {
     }
     if (message.expectedSha256 !== "") {
       writer.uint32(26).string(message.expectedSha256);
+    }
+    if (message.s3 !== undefined) {
+      S3Target.encode(message.s3, writer.uint32(34).fork()).join();
     }
     return writer;
   },
@@ -8497,6 +8517,14 @@ export const ReadStoreFileRequest: MessageFns<ReadStoreFileRequest> = {
           message.expectedSha256 = reader.string();
           continue;
         }
+        case 4: {
+          if (tag !== 34) {
+            break;
+          }
+
+          message.s3 = S3Target.decode(reader, reader.uint32());
+          continue;
+        }
       }
       if ((tag & 7) === 4 || tag === 0) {
         break;
@@ -8519,6 +8547,7 @@ export const ReadStoreFileRequest: MessageFns<ReadStoreFileRequest> = {
         : isSet(object.expected_sha256)
         ? globalThis.String(object.expected_sha256)
         : "",
+      s3: isSet(object.s3) ? S3Target.fromJSON(object.s3) : undefined,
     };
   },
 
@@ -8533,6 +8562,9 @@ export const ReadStoreFileRequest: MessageFns<ReadStoreFileRequest> = {
     if (message.expectedSha256 !== "") {
       obj.expectedSha256 = message.expectedSha256;
     }
+    if (message.s3 !== undefined) {
+      obj.s3 = S3Target.toJSON(message.s3);
+    }
     return obj;
   },
 
@@ -8546,6 +8578,7 @@ export const ReadStoreFileRequest: MessageFns<ReadStoreFileRequest> = {
       : undefined;
     message.ageIdentity = object.ageIdentity ?? "";
     message.expectedSha256 = object.expectedSha256 ?? "";
+    message.s3 = (object.s3 !== undefined && object.s3 !== null) ? S3Target.fromPartial(object.s3) : undefined;
     return message;
   },
 };
@@ -15714,8 +15747,9 @@ export const AgentService = {
     responseDeserialize: (value: Buffer): S3DeleteResponse => S3DeleteResponse.decode(value),
   },
   /**
-   * Stream an artifact OUT of this host's store, for a restore or a download
-   * whose reader lives elsewhere. Emits `data` frames only (no header). By
+   * Stream an artifact OUT, for a restore or a download whose reader lives
+   * elsewhere. The artifact is either on this host's store or in a bucket this
+   * host can dial (`store` or `s3`). Emits `data` frames only (no header). By
    * default the bytes are exactly what was written — still age-encrypted — so a
    * control plane relaying them to another host never holds plaintext. Pass
    * `age_identity` to decrypt on the way out instead, which is what a user
@@ -16476,8 +16510,9 @@ export interface AgentServer extends UntypedServiceImplementation {
    */
   s3Delete: handleUnaryCall<S3DeleteRequest, S3DeleteResponse>;
   /**
-   * Stream an artifact OUT of this host's store, for a restore or a download
-   * whose reader lives elsewhere. Emits `data` frames only (no header). By
+   * Stream an artifact OUT, for a restore or a download whose reader lives
+   * elsewhere. The artifact is either on this host's store or in a bucket this
+   * host can dial (`store` or `s3`). Emits `data` frames only (no header). By
    * default the bytes are exactly what was written — still age-encrypted — so a
    * control plane relaying them to another host never holds plaintext. Pass
    * `age_identity` to decrypt on the way out instead, which is what a user
@@ -17218,8 +17253,9 @@ export interface AgentClient extends Client {
     callback: (error: ServiceError | null, response: S3DeleteResponse) => void,
   ): ClientUnaryCall;
   /**
-   * Stream an artifact OUT of this host's store, for a restore or a download
-   * whose reader lives elsewhere. Emits `data` frames only (no header). By
+   * Stream an artifact OUT, for a restore or a download whose reader lives
+   * elsewhere. The artifact is either on this host's store or in a bucket this
+   * host can dial (`store` or `s3`). Emits `data` frames only (no header). By
    * default the bytes are exactly what was written — still age-encrypted — so a
    * control plane relaying them to another host never holds plaintext. Pass
    * `age_identity` to decrypt on the way out instead, which is what a user

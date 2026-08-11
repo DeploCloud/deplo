@@ -31,6 +31,7 @@ import {
   createBackup,
   deleteAllBackupArtifacts,
   deleteBackup,
+  downloadBackupArtifact,
   listBackupRuns,
   reconcileInFlightBackupRuns,
   runBackup,
@@ -501,5 +502,73 @@ test("runDatabaseBackup records a failed run rather than throwing past the execu
     assert.equal(runs[0]!.status, "failed");
     assert.equal(runs[0]!.backupId, null); // ad-hoc: no owning schedule
     assert.equal(runs[0]!.databaseId, "db_1");
+  });
+});
+
+/* ------------------------------------------------------------------ */
+/* Downloading an artifact that lives in a bucket                       */
+/* ------------------------------------------------------------------ */
+
+test("a bucket artifact is no longer refused: the download reaches the agent", async () => {
+  await asUser1(async () => {
+    await seedRun(db, {
+      id: "brun_dl",
+      destinationId: "s3_1",
+      targetKind: "app",
+      appId: "prj_1",
+    });
+    // The seeded server has no live agent, so this gets as far as the dial and
+    // fails THERE. Which failure is the whole point: "this backup is in your
+    // bucket, fetch it with your own credentials" was a refusal by design, and
+    // it left the Download button dead for every team whose backups live in one.
+    await assert.rejects(
+      () => downloadBackupArtifact("brun_dl"),
+      (e: Error) => {
+        assert.doesNotMatch(e.message, /in your bucket/i);
+        assert.match(e.message, /not provisioned|unreachable|too old/i);
+        return true;
+      },
+    );
+  });
+});
+
+test("a legacy plaintext bucket destination downloads by the same path", async () => {
+  await asUser1(async () => {
+    // No keypair, so its objects really are in the clear. The identity is empty,
+    // the agent skips the age layer, and nothing here has to know the difference.
+    await seedS3(db, { id: "s3_old", legacyPlaintext: true });
+    await seedRun(db, {
+      id: "brun_old",
+      destinationId: "s3_old",
+      targetKind: "app",
+      appId: "prj_1",
+    });
+    await assert.rejects(
+      () => downloadBackupArtifact("brun_old"),
+      (e: Error) => {
+        assert.doesNotMatch(e.message, /in your bucket/i);
+        return true;
+      },
+    );
+  });
+});
+
+test("an artifact whose app was deleted says WHICH server it lacks", async () => {
+  await asUser1(async () => {
+    // `app_id` is ON DELETE SET NULL, so a run outlives its target - and that
+    // artifact is exactly the one somebody still wants. With no workload host
+    // left, any provisioned agent could dial the bucket; this harness has none,
+    // so the message must name that, not the deleted app.
+    await seedRun(db, {
+      id: "brun_orphan",
+      destinationId: "s3_1",
+      targetKind: "app",
+      appId: null,
+      targetId: "prj_gone",
+    });
+    await assert.rejects(
+      () => downloadBackupArtifact("brun_orphan"),
+      /No server on this instance can reach/,
+    );
   });
 });

@@ -131,17 +131,6 @@ export function BackupsPanel({
     () => new Map(destinations.map((d) => [d.id, d.name] as const)),
     [destinations],
   );
-  const destKind = React.useMemo(
-    () => new Map(destinations.map((d) => [d.id, d.kind] as const)),
-    [destinations],
-  );
-  // Only for what the row says about an artifact it cannot hand over: a bucket
-  // object is a `.age` file, and someone who fetches it without knowing that
-  // reads the failure as a corrupt backup.
-  const destEncrypted = React.useMemo(
-    () => new Set(destinations.filter((d) => d.encrypted).map((d) => d.id)),
-    [destinations],
-  );
 
   // A dump runs on the host for minutes with nothing on this page changing by
   // itself, and the mutation that started it only resolves at the very END. So a
@@ -341,7 +330,6 @@ export function BackupsPanel({
                       destName.get(p.destinationId) ?? "Unknown destination"
                     }
                     canRestore={canRestore}
-                    downloadable={destKind.get(p.destinationId) === "server"}
                   />
                 ))}
                 {runs.map((run) => (
@@ -353,8 +341,6 @@ export function BackupsPanel({
                     destinationName={
                       destName.get(run.destinationId) ?? "Unknown destination"
                     }
-                    downloadable={destKind.get(run.destinationId) === "server"}
-                    encrypted={destEncrypted.has(run.destinationId)}
                   />
                 ))}
               </TableBody>
@@ -1145,11 +1131,9 @@ function IconAction({
  */
 function PendingRunRow({
   destinationName,
-  downloadable,
   canRestore,
 }: {
   destinationName: string;
-  downloadable: boolean;
   canRestore: boolean;
 }) {
   return (
@@ -1168,7 +1152,6 @@ function PendingRunRow({
           href={null}
           running
           ok={false}
-          downloadable={downloadable}
           canRestore={canRestore}
         />
       </TableCell>
@@ -1186,8 +1169,6 @@ function RunActions({
   href,
   running,
   ok,
-  downloadable,
-  encrypted,
   canRestore,
   onRestore,
 }: {
@@ -1195,17 +1176,14 @@ function RunActions({
   href: string | null;
   running: boolean;
   ok: boolean;
-  /** Whether the artifact is on a server we can stream it from. An S3 one is not:
-   *  pulling it out of the bucket and back through Deplo would double the
-   *  transfer to hand over a file the operator can already fetch themselves. */
-  downloadable: boolean;
-  /** Whether that bucket object is age-encrypted. Only read when it is NOT
-   *  downloadable — a pending row never gets as far as saying so. */
-  encrypted?: boolean;
   canRestore: boolean;
   onRestore?: () => void;
 }) {
-  const canDownload = ok && canRestore && downloadable && href !== null;
+  // Every successful artifact is downloadable, wherever it is kept. Where it
+  // LIVES used to decide that: an artifact in a bucket got a disabled button and
+  // a tooltip explaining how to fetch it with your own S3 credentials and decrypt
+  // it yourself, which is a shell answer to a question asked in a panel.
+  const canDownload = ok && canRestore && href !== null;
   function reason(verb: "download" | "restore") {
     if (!canRestore) return `You don't have permission to ${verb} backups`;
     if (running) return "This backup is still running";
@@ -1213,15 +1191,9 @@ function RunActions({
       return verb === "download"
         ? "Only a successful backup can be downloaded"
         : "Only a successful backup can be restored";
-    if (verb === "restore") return "Restore this backup in place";
-    if (downloadable) return "Download this backup file";
-    // Naming the encryption is the whole point of this branch: the object in the
-    // bucket ends in `.age`, and the person who fetches it and feeds it to gunzip
-    // gets garbage back and concludes their backup is corrupt. Same wording as
-    // the server's refusal, so the two never disagree.
-    return encrypted
-      ? "This backup is in your bucket. Fetch it with your own credentials, then decrypt it with the recovery key."
-      : "This backup is in your bucket. Fetch it with your own credentials.";
+    return verb === "restore"
+      ? "Restore this backup in place"
+      : "Download this backup file";
   }
   // Icon + label as DIRECT children of the button, never wrapped: one <span>
   // around them makes the pair a single flex item, and the button's `gap-2` and
@@ -1278,20 +1250,11 @@ function RunRow({
   run,
   target,
   destinationName,
-  downloadable,
-  encrypted,
   canRestore,
 }: {
   run: BackupRun;
   target: BackupTarget;
   destinationName: string;
-  /** Whether this run's artifact is on a server we can stream it from. An S3
-   *  artifact is not offered here: pulling it out of the bucket and back through
-   *  Deplo would double the transfer to hand over a file the operator can
-   *  already fetch with their own credentials. */
-  downloadable: boolean;
-  /** Whether that bucket object is age-encrypted, so the row can say so. */
-  encrypted: boolean;
   canRestore: boolean;
 }) {
   const router = useRouter();
@@ -1340,8 +1303,6 @@ function RunRow({
           href={`/api/backups/${run.id}/download`}
           running={run.status === "running"}
           ok={ok}
-          downloadable={downloadable}
-          encrypted={encrypted}
           canRestore={canRestore}
           onRestore={() => setRestoreOpen(true)}
         />

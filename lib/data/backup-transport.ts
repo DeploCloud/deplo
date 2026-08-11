@@ -376,7 +376,7 @@ export async function restoreFromDestination(
     // Verbatim (no identity here): the ciphertext crosses this process and is
     // decrypted inside the workload's agent, which is the only place that needs
     // to see plaintext.
-    const bytes = src.readStoreFile(storeTargetFor(dest, objectKey));
+    const bytes = src.readStoreFile({ store: storeTargetFor(dest, objectKey) });
     return await consumeRestore(
       workload.restoreFrom(
         {
@@ -518,9 +518,12 @@ export async function deleteManyFromDestination(
 /**
  * Stream one artifact out DECRYPTED, for the download route.
  *
- * Store destinations only: an S3 artifact would mean pulling it out of the
- * bucket and back through here, doubling the transfer to serve a file the user
- * can already fetch from their own bucket.
+ * BOTH destination kinds, and that is the point. A bucket artifact used to be
+ * refused here, on the reasoning that the operator could fetch the object with
+ * their own S3 credentials and decrypt it themselves. That is a shell answer to
+ * a panel question, and it made the Download button dead for anyone whose
+ * backups live in a bucket - which is the default shape of a destination someone
+ * brings from outside the fleet.
  *
  * The agent decrypts, not the control plane, because age is a STREAM — the agent
  * does it chunk by chunk at constant memory, while doing it here would mean
@@ -529,18 +532,31 @@ export async function deleteManyFromDestination(
  */
 export async function openArtifactDownload(
   creds: DestinationWithSecrets,
+  /** Which agent fetches it: the destination's own host for a store, and a host
+   *  that can dial the bucket for S3 (see {@link destinationServerId}). */
+  viaServerId: string,
   objectKey: string,
-  /** The digest recorded for this artifact. The agent hashes the file before it
-   *  streams a byte, so a replaced file is refused rather than handed over. */
+  /** The digest recorded for this artifact. A STORE artifact is hashed before a
+   *  byte leaves, so a replaced file is refused outright; a BUCKET object can
+   *  only be hashed as it goes past, so a mismatch ends the stream in an error
+   *  after bytes have arrived. Both refuse; only one can refuse in time. */
   expectedSha256 = "",
 ): Promise<{ chunks: AsyncGenerator<Buffer, void, unknown>; close: () => void }> {
   const dest = creds.destination;
-  if (dest.kind !== "server" || !dest.serverId)
-    throw new Error("Only backups stored on a server can be downloaded");
-  const conn = await connectBackupAgent(dest.serverId, { store: true });
+  const store = dest.kind === "server";
+  // The agent decrypts on the way out (that is what `ageIdentity` asks for), so
+  // what reaches the browser is the .tar.gz / .dump.gz itself. An old S3
+  // destination has no keypair and its objects really are plaintext: the identity
+  // is empty and the agent skips the age layer, exactly as a restore does.
+  const conn = await connectBackupAgent(viaServerId, {
+    store,
+    s3Read: !store,
+  });
   return {
     chunks: conn.readStoreFile(
-      storeTargetFor(dest, objectKey),
+      store
+        ? { store: storeTargetFor(dest, objectKey) }
+        : { s3: s3TargetFor(creds, objectKey) },
       creds.ageIdentity,
       expectedSha256,
     ),

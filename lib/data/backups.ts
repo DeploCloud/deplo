@@ -44,7 +44,10 @@ import {
 import { parseConnectionPassword } from "../deploy/database-compose";
 import { canonicalTimeZone } from "../crons/cron-tz";
 import { BACKUP_RUN_MAX_MS, mapBackupUnsupported } from "../infra/agent-client";
-import { getDestinationWithSecretsForTeam } from "./destinations";
+import {
+  destinationServerId,
+  getDestinationWithSecretsForTeam,
+} from "./destinations";
 import {
   backupToDestination,
   deleteManyFromDestination,
@@ -949,9 +952,12 @@ export function runDatabaseBackup(
  * strictly more than scheduling one. `restore_backups` is already the sensitive
  * capability the token presets withhold, so this needs no new one.
  *
- * Server destinations only. Pulling an S3 artifact back through the control
- * plane would double the transfer to hand over a file the operator can already
- * fetch from their own bucket with their own credentials.
+ * Works for BOTH destination kinds. A bucket artifact used to be refused here
+ * with instructions - fetch the object with your own S3 credentials, then
+ * decrypt it yourself with the recovery key - which made the Download button
+ * dead for every team whose backups live in a bucket, and answered a panel
+ * question with a shell. The agent reads the object out and decrypts it on the
+ * way, the same as it already did for one on its own disk.
  *
  * Returns the chunks plus the filename to offer. The caller MUST call `close()`
  * once the response is finished — the agent connection stays open behind it.
@@ -977,19 +983,22 @@ export async function downloadBackupArtifact(runId: string): Promise<{
   await requireBackupCapability(run, "restore_backups");
 
   const creds = await getDestinationWithSecretsForTeam(teamId, run.destinationId);
-  if (creds.destination.kind !== "server")
-    throw new Error(
-      creds.destination.ageRecipient
-        ? "This backup is in your bucket. Fetch the object with your own " +
-          "credentials, then decrypt it with this destination's recovery key."
-        : "This backup is in your bucket. Fetch the object with your own credentials.",
-    );
+  const target = await downloadTargetFor(run, teamId);
+  const label = target.label;
 
-  const label =
-    run.targetKind === "database"
-      ? ((await databaseNameFor(run.databaseId, teamId)) ?? "database")
-      : ((run.appId ? (await loadAppGraph(run.appId))?.name : null) ?? "app");
-  const opened = await openArtifactDownload(creds, run.objectKey, run.sha256 ?? "");
+  // The destination decides WHICH agent fetches it: its own host for a store,
+  // the workload's for a bucket. A run whose target has since been deleted has no
+  // workload host left, and any provisioned agent can dial a bucket - so the
+  // artifact of a deleted app stays downloadable instead of becoming unreachable
+  // the moment the thing it backed up is gone.
+  const via =
+    destinationServerId(creds.destination, target.serverId ?? "") ||
+    (await anyBackupCapableServer());
+  if (!via)
+    throw new Error(
+      "No server on this instance can reach the destination this backup is kept in",
+    );
+  const opened = await openArtifactDownload(creds, via, run.objectKey, run.sha256 ?? "");
 
   // Recorded HERE, when the stream opens, not when it finishes — and worded for
   // that instant. The audit-relevant fact is that this person was handed the
@@ -1004,6 +1013,38 @@ export async function downloadBackupArtifact(runId: string): Promise<{
     teamId,
   );
   return { filename: downloadFilename(label, run), ...opened };
+}
+
+/**
+ * What a download needs to know about the run's target: what to call the file,
+ * and which host runs the thing it came from.
+ *
+ * Deliberately NOT `resolveTarget`: that one builds the full project descriptor,
+ * which dials the owning agent to read the live stack. A download needs a name
+ * and a server id, and paying for a round trip to get them would make every
+ * download wait on the very host it may not even be talking to.
+ *
+ * Both are best-effort. A run outlives its target (`app_id` / `database_id` are
+ * ON DELETE SET NULL), and an artifact whose app is gone is exactly the one
+ * somebody still wants.
+ */
+async function downloadTargetFor(
+  run: BackupRun,
+  teamId: string,
+): Promise<{ label: string; serverId: string | null }> {
+  if (run.targetKind === "database") {
+    if (!run.databaseId) return { label: "database", serverId: null };
+    const rows = await getDb()
+      .select({ name: databasesTable.name, serverId: databasesTable.serverId })
+      .from(databasesTable)
+      .where(
+        and(eq(databasesTable.id, run.databaseId), eq(databasesTable.teamId, teamId)),
+      )
+      .limit(1);
+    return { label: rows[0]?.name ?? "database", serverId: rows[0]?.serverId ?? null };
+  }
+  const app = run.appId ? await loadAppGraph(run.appId) : null;
+  return { label: app?.name ?? "app", serverId: app?.serverId ?? null };
 }
 
 /**

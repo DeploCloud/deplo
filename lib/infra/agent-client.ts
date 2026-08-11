@@ -504,16 +504,19 @@ export interface AgentConnection {
     store: StoreTarget,
     prefix?: boolean,
   ): Promise<{ ok: boolean; error: string; deleted: number }>;
-  /** Stream an artifact out of a store. Verbatim (still encrypted) by default —
-   *  which is what a relay needs; pass `ageIdentity` to have the agent DECRYPT on
-   *  the way out, which is what a download needs. Never gunzipped: the file the
-   *  user wants IS the .tar.gz / .dump.gz. */
+  /** Stream an artifact out of wherever it is kept: this host's store, or a
+   *  bucket the host can dial (exactly one of `store` / `s3`). Verbatim (still
+   *  encrypted) by default - which is what a relay needs; pass `ageIdentity` to
+   *  have the agent DECRYPT on the way out, which is what a download needs. Never
+   *  gunzipped: the file the user wants IS the .tar.gz / .dump.gz. */
   readStoreFile(
-    store: StoreTarget,
+    target: { store?: StoreTarget; s3?: S3Target },
     ageIdentity?: string,
-    /** The sha256 recorded when this artifact was written. The agent refuses to
-     *  stream a byte if the file on disk no longer hashes to it. Omit only for a
-     *  run taken before integrity checking shipped. */
+    /** The sha256 recorded when this artifact was written. A STORE artifact is
+     *  hashed before a byte leaves, so a mismatch refuses outright; a BUCKET one
+     *  can only be hashed as it goes past, so the stream ends in an error after
+     *  bytes have already arrived. Omit only for a run taken before integrity
+     *  checking shipped. */
     expectedSha256?: string,
   ): AsyncGenerator<Buffer, void, unknown>;
   /** Stream an artifact INTO a store — the destination half of a cross-host
@@ -1604,13 +1607,17 @@ function dial(target: DialTarget): AgentConnection {
         },
       );
     },
-    readStoreFile(store: StoreTarget, ageIdentity = "", expectedSha256 = "") {
+    readStoreFile(
+      target: { store?: StoreTarget; s3?: S3Target },
+      ageIdentity = "",
+      expectedSha256 = "",
+    ) {
       // Server-streaming bytes: same shape as exportVolume, same backpressure —
       // an artifact is exactly the kind of stream an unbounded queue turns into
       // an OOM.
       return (async function* () {
         const stream = client.readStoreFile(
-          { store, ageIdentity, expectedSha256 },
+          { ...target, ageIdentity, expectedSha256 },
           { deadline: new Date(Date.now() + BACKUP_DEADLINE_MS) },
         );
         for await (const chunk of streamEvents<StoreChunk>(stream, {
@@ -1914,6 +1921,17 @@ const BACKUP_ENCRYPT_S3_CAPABILITY = "backup-encrypt-s3";
  */
 const BACKUP_S3_ARGS_CAPABILITY = "backup-s3-args";
 
+/**
+ * `ReadStoreFile` accepts an S3Target, so an artifact in a BUCKET can be streamed
+ * back out decrypted - which is the whole of the Download button for a bucket
+ * destination.
+ *
+ * A HARD gate. Without it there is no RPC to call at all, and the honest answer
+ * is "update the agent on this server": a download that silently does not happen,
+ * or hands back a file nobody decrypted, is worse than one that says why.
+ */
+const BACKUP_S3_READ_CAPABILITY = "backup-s3-read";
+
 /** The capability an agent advertises once it can run cron jobs
  *  (StartJob/PollJob/KillJob - ADR-0018). */
 export const CRON_CAPABILITY = "cron";
@@ -2076,6 +2094,9 @@ export async function connectBackupAgent(
     /** This destination carries advanced S3 flags — warn if they will be
      *  dropped, but never refuse. */
     s3Args?: boolean;
+    /** Also require `"backup-s3-read"` - set when the artifact is to be streamed
+     *  back OUT of a bucket, which only an agent with that RPC arm can do. */
+    s3Read?: boolean;
   } = {},
 ): Promise<AgentConnection> {
   const conn = await connectAgent(serverId);
@@ -2105,6 +2126,12 @@ export async function connectBackupAgent(
         `The agent on this server is too old to encrypt backups sent to a bucket, ` +
           `and Deplo will not write them unencrypted. Update the agent on this ` +
           `server, then try again.`,
+      );
+    }
+    if (opts.s3Read && !hello.capabilities?.includes(BACKUP_S3_READ_CAPABILITY)) {
+      throw new AgentBackupStoreUnsupportedError(
+        `The agent on this server is too old to read a backup back out of a ` +
+          `bucket. Update the agent on this server, then try again.`,
       );
     }
     // Said out loud, not swallowed: the flags exist because a store misbehaves
