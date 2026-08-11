@@ -3,11 +3,11 @@ import { Lock } from "lucide-react";
 import { PageHeader } from "@/components/shared/page-header";
 import { EmptyState } from "@/components/shared/empty-state";
 import { Button } from "@/components/ui/button";
-import { TemplatesBrowser } from "@/components/templates/templates-browser";
-import { TEMPLATES, topTags } from "@/lib/templates";
+import { TEMPLATES } from "@/lib/templates";
 import { hasCapability } from "@/lib/membership";
 import { resolveOverviewPlacement } from "@/lib/data/placement";
 import { placementFromSearchParams } from "@/lib/overview-links";
+import { TemplatesBrowser } from "@/components/templates/templates-browser";
 
 export const metadata = { title: "Templates" };
 
@@ -45,11 +45,8 @@ export default async function TemplatesPage(props: PageProps<"/templates">) {
           (placement ? ` Deploys land in ${placement.label}.` : "")
         }
       />
-      <TemplatesBrowser
-        templates={TEMPLATES}
-        tags={topTags(16)}
-        placement={placement}
-      />
+
+      <TemplatesBrowser />
     </div>
   );
 }

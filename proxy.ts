@@ -41,6 +41,12 @@ export function proxy(request: NextRequest) {
   const isHttps =
     (process.env.DEPLO_PUBLIC_URL ?? "").startsWith("https://") ||
     request.headers.get("x-forwarded-proto") === "https";
+  let templatesOrigin = "";
+  try {
+    templatesOrigin = new URL(
+      process.env.NEXT_PUBLIC_DEPLO_TEMPLATES_API_URL ?? "",
+    ).origin;
+  } catch {}
   const nonce = generateNonce();
 
   const csp = [
@@ -53,9 +59,9 @@ export function proxy(request: NextRequest) {
     // service worker registration is refused outright.
     `worker-src 'self'`,
     `style-src 'self' 'unsafe-inline'`,
-    `img-src 'self' blob: data:`,
+    `img-src 'self' blob: data:${templatesOrigin ? ` ${templatesOrigin}` : ""}`,
     `font-src 'self' data:`,
-    `connect-src 'self'`,
+    `connect-src 'self'${templatesOrigin ? ` ${templatesOrigin}` : ""}`,
     `object-src 'none'`,
     `base-uri 'self'`,
     // github.com is allowed so the one-click GitHub App manifest flow can POST
