@@ -36,6 +36,7 @@ import {
   TooltipTrigger,
 } from "@/components/ui/tooltip";
 import { useRouter } from "next/navigation";
+import { AnimatedHeight } from "@/components/shared/animated-height";
 import { usePendingCreate } from "@/components/shared/pending-create";
 import { gqlAction } from "@/lib/graphql-client";
 import { KindCard } from "@/components/shared/kind-card";
@@ -266,7 +267,10 @@ export function CreateDestination({
             : "You don't have permission to add backup destinations"}
         </TooltipContent>
       </Tooltip>
-      <DialogContent className="max-w-lg">
+      {/* `selfManaged`, like the backup wizard: the body below owns its own
+          height and clips itself only while that height is moving, which is what
+          lets a Select menu hang past the field it belongs to at rest. */}
+      <DialogContent selfManaged className="max-w-lg">
         <DialogHeader>
           <DialogTitle>Add backup destination</DialogTitle>
           <DialogDescription>
@@ -274,7 +278,10 @@ export function CreateDestination({
           </DialogDescription>
         </DialogHeader>
         <form className="grid gap-4" onSubmit={onSubmit}>
-          <div className="space-y-4">
+          {/* Server and bucket are branches of very different heights, and the
+              Advanced section opens inside the taller one: eased, the dialog
+              reads as itself growing instead of being redrawn. */}
+          <AnimatedHeight className="space-y-4">
             <div
               role="radiogroup"
               aria-label="Destination type"
@@ -494,7 +501,7 @@ export function CreateDestination({
                 </AccordionItem>
               </Accordion>
             )}
-          </div>
+          </AnimatedHeight>
           <DialogFooter>
             <Button type="button" variant="outline" onClick={() => setOpen(false)}>
               Cancel
