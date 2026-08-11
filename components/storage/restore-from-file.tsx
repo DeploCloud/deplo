@@ -4,6 +4,7 @@ import * as React from "react";
 import { useRouter } from "next/navigation";
 import { AlertTriangle, Upload } from "lucide-react";
 
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Progress } from "@/components/ui/progress";
@@ -50,6 +51,14 @@ export function RestoreFromFile({
     <Button size="sm" variant="outline" disabled={!canRestore}>
       <Upload className="size-4" />
       Restore from file
+      {/* On the button, not inside the dialog: this is the newest way to put data
+          back and the only one whose input comes from outside the fleet, so the
+          maturity note belongs where someone decides to start - not after they
+          have already picked a file. `info` and not `warning`, like every other
+          Beta chip here: it is a maturity note, not something wrong. */}
+      <Badge variant="info" className="text-[10px] font-normal">
+        Beta
+      </Badge>
     </Button>
   );
 
