@@ -1258,17 +1258,19 @@ function RunActions({
           Restore
         </Button>
       </TooltipWhenDisabled>
-      <TooltipWhenDisabled disabled={!canDelete || running} tooltip={deleteReason()}>
-        <Button
-          variant="ghost"
-          size="icon-sm"
-          aria-label="Delete this backup"
-          disabled={!canDelete || running}
-          onClick={onDelete}
-        >
-          <Trash2 className="size-4" />
-        </Button>
-      </TooltipWhenDisabled>
+      {/* Icon-only, unlike its two neighbours: this is the destructive one, and
+          a third labelled button would give it the same weight as Download.
+          IconAction is the file's own pattern for that - same h-8 as `size="sm"`,
+          so the row stays aligned, and its tooltip shows whether or not it is
+          disabled, which is what an unlabelled button needs. */}
+      <IconAction
+        label="Delete this backup"
+        tooltip={deleteReason()}
+        disabled={!canDelete || running}
+        onClick={() => onDelete?.()}
+      >
+        <Trash2 className="size-4" />
+      </IconAction>
     </div>
   );
 }
