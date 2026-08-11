@@ -5,15 +5,19 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import {
+  AlertTriangle,
+  Archive,
+  ArrowUpRight,
+  CalendarClock,
+  ChevronLeft,
+  ChevronRight,
+  Download,
+  Loader2,
+  Pencil,
   Play,
   Plus,
-  Pencil,
   RotateCcw,
   Trash2,
-  Loader2,
-  AlertTriangle,
-  Download,
-  ArrowUpRight,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -43,10 +47,12 @@ import {
   SimpleTooltip,
 } from "@/components/ui/tooltip";
 import { StatusDot } from "@/components/shared/status-badge";
+import { AnimatedHeight } from "@/components/shared/animated-height";
 import { ConfirmAction } from "@/components/shared/confirm-action";
 import { EmptyState } from "@/components/shared/empty-state";
+import { WizardStepper } from "@/components/shared/wizard-stepper";
 import { BackupGraphic } from "@/components/apps/backup-graphic";
-import { formatBytes, timeAgo } from "@/lib/utils";
+import { cn, formatBytes, timeAgo } from "@/lib/utils";
 import { AutoRefresh } from "@/components/shared/auto-refresh";
 import { ScheduleLabel } from "@/components/shared/schedule-picker";
 import {
@@ -486,6 +492,41 @@ type ScheduleFields = {
   retention: number;
 };
 
+type StepId = "destination" | "schedule";
+
+const STEPS: { id: StepId; label: string }[] = [
+  { id: "destination", label: "Destination" },
+  { id: "schedule", label: "Schedule" },
+];
+
+/** Per-step heading, icon and one line of orientation. Same wording as the
+ *  Storage wizard, minus its first step: here the target is the page. */
+const STEP_COPY: Record<
+  StepId,
+  { icon: React.ComponentType<{ className?: string }>; title: string; blurb: string }
+> = {
+  destination: {
+    icon: Archive,
+    title: "Where should it go?",
+    blurb:
+      "A folder on one of your servers, or any S3 bucket. Each one shows whether Deplo could reach it.",
+  },
+  schedule: {
+    icon: CalendarClock,
+    title: "When should it run?",
+    blurb:
+      "Pick how often, and how many backups to keep. Older ones are removed after each successful run.",
+  },
+};
+
+/**
+ * Schedule a backup of THIS app or database — the Storage wizard without its
+ * first step, because the page already answers what is being backed up.
+ *
+ * Two screens, where and when, so the two questions are read one at a time
+ * instead of arriving as one seven-control form. Edit keeps its single form:
+ * there nothing is being decided, a field is being corrected.
+ */
 function ScheduleBackup({
   target,
   destinations,
@@ -500,6 +541,9 @@ function ScheduleBackup({
   const router = useRouter();
   const [open, setOpen] = React.useState(false);
   const [pending, startTransition] = React.useTransition();
+  const [step, setStep] = React.useState<StepId>("destination");
+  // The name follows the frequency until the user types their own.
+  const [nameTouched, setNameTouched] = React.useState(false);
   const [fields, setFields] = React.useState<ScheduleFields>(() => ({
     name: suggestScheduleName(DEFAULT_SCHEDULE),
     destinationId: destinations[0]?.id ?? "",
@@ -513,9 +557,27 @@ function ScheduleBackup({
       ? "Add a backup destination first"
       : null;
 
+  /** What each step needs before the next one means anything. */
+  const complete: Record<StepId, boolean> = {
+    destination: !!fields.destinationId,
+    schedule: !!fields.name.trim() && isValidSchedule(fields.schedule),
+  };
+  const index = STEPS.findIndex((s) => s.id === step);
+  const { icon: StepIcon, title, blurb } = STEP_COPY[step];
+
+  function close() {
+    setOpen(false);
+    // Deferred so the close animation does not play over a form that has
+    // already snapped back to step one.
+    setTimeout(() => setStep("destination"), 200);
+  }
+
+  /** Enter runs whatever the current step's primary button does. */
   function onSubmit(e: React.FormEvent) {
     e.preventDefault();
-    submit();
+    if (pending || !complete[step]) return;
+    if (step === "schedule") submit();
+    else setStep(STEPS[index + 1]!.id);
   }
 
   function submit() {
@@ -537,7 +599,7 @@ function ScheduleBackup({
       );
       if (res.ok) {
         toast.success("Backup schedule created");
-        setOpen(false);
+        close();
         router.refresh();
       } else {
         toast.error(res.error);
@@ -546,7 +608,7 @@ function ScheduleBackup({
   }
 
   return (
-    <Dialog open={open} onOpenChange={setOpen}>
+    <Dialog open={open} onOpenChange={(o) => (o ? setOpen(true) : close())}>
       <Tooltip>
         <TooltipTrigger asChild>
           {blocked ? (
@@ -569,36 +631,103 @@ function ScheduleBackup({
           {blocked ?? "Schedule recurring backups"}
         </TooltipContent>
       </Tooltip>
-      <DialogContent>
-        <DialogHeader>
-          <DialogTitle>Schedule a backup</DialogTitle>
-          <DialogDescription>
-            Periodically back up this {noun(target)} to a backup destination.
+      {/* `selfManaged`: the step box below animates its own height and has to be
+          free to overflow, so a combobox menu can hang past its field. */}
+      <DialogContent selfManaged className="sm:max-w-lg">
+        <DialogHeader className="space-y-0 pr-8">
+          <DialogTitle className="sr-only">Schedule a backup</DialogTitle>
+          <DialogDescription className="sr-only">
+            Periodically back up this {noun(target)} to a backup destination, in
+            two steps.
           </DialogDescription>
-        </DialogHeader>
-        <form className="grid gap-4" onSubmit={onSubmit}>
-          <ScheduleFormFields
-            fields={fields}
-            onChange={setFields}
-            target={target}
-            destinations={destinations}
-            canTestDestinations={canTestDestinations}
+          <WizardStepper
+            steps={STEPS}
+            current={step}
+            reachable={(s) =>
+              STEPS.slice(0, STEPS.findIndex((x) => x.id === s)).every(
+                (x) => complete[x.id],
+              )
+            }
+            onSelect={setStep}
           />
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setOpen(false)} disabled={pending}>
-              Cancel
-            </Button>
+        </DialogHeader>
+
+        <form className="grid gap-4" onSubmit={onSubmit}>
+          <AnimatedHeight className="mx-auto flex w-full max-w-md flex-col gap-5 py-2">
+            {/* One heading block, same shape on every step, so the eye lands in
+                the same place each time the body swaps under it. */}
+            <div className="flex flex-col items-center gap-2 text-center">
+              <span className="flex size-10 items-center justify-center rounded-full bg-primary/10">
+                <StepIcon className="size-5 text-primary" />
+              </span>
+              <h2 className="text-base font-semibold">{title}</h2>
+              <p className="text-sm text-balance text-muted-foreground">{blurb}</p>
+            </div>
+
+            {step === "destination" ? (
+              <DestinationField
+                value={fields.destinationId}
+                onChange={(v) => setFields((f) => ({ ...f, destinationId: v }))}
+                target={target}
+                destinations={destinations}
+                canTestDestinations={canTestDestinations}
+              />
+            ) : (
+              <div className="space-y-4">
+                <NameField
+                  value={fields.name}
+                  onChange={(v) => {
+                    setNameTouched(true);
+                    setFields((f) => ({ ...f, name: v }));
+                  }}
+                />
+                <BackupScheduleFields
+                  idPrefix="backup"
+                  schedule={fields.schedule}
+                  onScheduleChange={(cron) =>
+                    setFields((f) => ({
+                      ...f,
+                      schedule: cron,
+                      name: nameTouched ? f.name : suggestScheduleName(cron),
+                    }))
+                  }
+                  timezone={fields.timezone}
+                  onTimezoneChange={(tz) => setFields((f) => ({ ...f, timezone: tz }))}
+                  retention={fields.retention}
+                  onRetentionChange={(count) =>
+                    setFields((f) => ({ ...f, retention: count }))
+                  }
+                />
+              </div>
+            )}
+          </AnimatedHeight>
+
+          <DialogFooter className="flex-row items-center justify-between sm:justify-between">
             <Button
-              type="submit"
-              disabled={
-                pending ||
-                !fields.name.trim() ||
-                !fields.destinationId ||
-                !isValidSchedule(fields.schedule)
-              }
+              type="button"
+              variant="ghost"
+              onClick={() => setStep(STEPS[index - 1]!.id)}
+              disabled={index === 0 || pending}
+              className={cn(index === 0 && "invisible")}
             >
-              {pending ? <Loader2 className="size-4 animate-spin" /> : "Create schedule"}
+              <ChevronLeft className="size-4" />
+              Back
             </Button>
+            <div className="flex gap-2">
+              <Button type="button" variant="outline" onClick={close} disabled={pending}>
+                Cancel
+              </Button>
+              {step === "schedule" ? (
+                <Button type="submit" disabled={pending || !complete.schedule}>
+                  {pending ? <Loader2 className="size-4 animate-spin" /> : "Create schedule"}
+                </Button>
+              ) : (
+                <Button type="submit" disabled={!complete.destination}>
+                  Continue
+                  <ChevronRight className="size-4" />
+                </Button>
+              )}
+            </div>
           </DialogFooter>
         </form>
       </DialogContent>
@@ -606,75 +735,66 @@ function ScheduleBackup({
   );
 }
 
-function ScheduleFormFields({
-  fields,
+/** The schedule's name — one field, shared by the wizard's last step and the
+ *  edit form, so the two never label or explain it differently. */
+function NameField({
+  value,
+  onChange,
+  autoFocus,
+}: {
+  value: string;
+  onChange: (value: string) => void;
+  autoFocus?: boolean;
+}) {
+  return (
+    <div className="space-y-2">
+      <FieldLabel
+        htmlFor="backup-name"
+        info="What this schedule is called in the list. Follows the frequency until you change it."
+      >
+        Name
+      </FieldLabel>
+      <Input
+        id="backup-name"
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        autoFocus={autoFocus}
+      />
+    </div>
+  );
+}
+
+/** Where the archives are written — the wizard's first step, and one row of the
+ *  edit form. */
+function DestinationField({
+  value,
   onChange,
   target,
   destinations,
   canTestDestinations,
-  /** Whether the name is the user's own — an edit starts true, a create starts
-   *  false and flips the first time they type in it. */
-  named = false,
 }: {
-  fields: ScheduleFields;
-  onChange: React.Dispatch<React.SetStateAction<ScheduleFields>>;
+  value: string;
+  onChange: (value: string) => void;
   target: BackupTarget;
   destinations: Destination[];
   canTestDestinations: boolean;
-  named?: boolean;
 }) {
-  const [nameTouched, setNameTouched] = React.useState(named);
-
   return (
-    <div className="grid gap-4">
-      <div className="space-y-2">
-        <FieldLabel
-          htmlFor="backup-name"
-          info="What this schedule is called in the list. Follows the frequency until you change it."
-        >
-          Name
-        </FieldLabel>
-        <Input
-          id="backup-name"
-          value={fields.name}
-          onChange={(e) => {
-            setNameTouched(true);
-            onChange((f) => ({ ...f, name: e.target.value }));
-          }}
-          autoFocus
-        />
-      </div>
-      <div className="space-y-2">
-        <FieldLabel
-          htmlFor="backup-destination"
-          info="Where scheduled backups are written. Each one shows whether Deplo could reach it."
-        >
-          Destination
-        </FieldLabel>
-        <DestinationCombobox
-          id="backup-destination"
-          destinations={destinations}
-          value={fields.destinationId}
-          onChange={(v) => onChange((f) => ({ ...f, destinationId: v }))}
-          sameDiskServerId={target.serverId}
-          sameDiskNoun={noun(target)}
-          canProbe={canTestDestinations}
-        />
-      </div>
-      <BackupScheduleFields
-        idPrefix="backup"
-        schedule={fields.schedule}
-        onScheduleChange={(cron) =>
-          onChange((f) => ({
-            ...f,
-            schedule: cron,
-            name: nameTouched ? f.name : suggestScheduleName(cron),
-          }))
-        }
-        timezone={fields.timezone}
-        onTimezoneChange={(tz) => onChange((f) => ({ ...f, timezone: tz }))}
-        retention={fields.retention}
-        onRetentionChange={(count) => onChange((f) => ({ ...f, retention: count }))}
+    <div className="space-y-2">
+      <FieldLabel
+        htmlFor="backup-destination"
+        info="Where scheduled backups are written. Each one shows whether Deplo could reach it."
+      >
+        Destination
+      </FieldLabel>
+      <DestinationCombobox
+        id="backup-destination"
+        destinations={destinations}
+        value={value}
+        onChange={onChange}
+        sameDiskServerId={target.serverId}
+        sameDiskNoun={noun(target)}
+        canProbe={canTestDestinations}
       />
     </div>
   );
@@ -749,13 +869,27 @@ function EditScheduleDialog({
           </DialogDescription>
         </DialogHeader>
         <form className="grid gap-4" onSubmit={onSubmit}>
-          <ScheduleFormFields
-            fields={fields}
-            onChange={setFields}
+          {/* No auto-rename here: the name is already the user's own. */}
+          <NameField
+            value={fields.name}
+            onChange={(v) => setFields((f) => ({ ...f, name: v }))}
+            autoFocus
+          />
+          <DestinationField
+            value={fields.destinationId}
+            onChange={(v) => setFields((f) => ({ ...f, destinationId: v }))}
             target={target}
             destinations={destinations}
             canTestDestinations={canTestDestinations}
-            named
+          />
+          <BackupScheduleFields
+            idPrefix="backup"
+            schedule={fields.schedule}
+            onScheduleChange={(cron) => setFields((f) => ({ ...f, schedule: cron }))}
+            timezone={fields.timezone}
+            onTimezoneChange={(tz) => setFields((f) => ({ ...f, timezone: tz }))}
+            retention={fields.retention}
+            onRetentionChange={(count) => setFields((f) => ({ ...f, retention: count }))}
           />
           <DialogFooter>
             <Button variant="outline" onClick={() => onOpenChange(false)} disabled={pending}>

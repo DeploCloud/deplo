@@ -30,6 +30,7 @@ import {
   TooltipContent,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
+import { AnimatedHeight } from "@/components/shared/animated-height";
 import { KindCard } from "@/components/shared/kind-card";
 import { WizardStepper } from "@/components/shared/wizard-stepper";
 import {
@@ -91,9 +92,9 @@ const COPY: Record<
  * answer changes the two questions after it. Asked all at once it was a
  * ten-control modal opening on a decision most people make in a second; asked in
  * order it is three short screens - what, where, when - each with one thing on
- * it. The per-app and per-database tabs keep their single form, because there
- * the target is already settled and a wizard would be three steps for two
- * fields.
+ * it. The per-app and per-database tabs run the same wizard minus this first
+ * step (`ScheduleBackup` in `backups-panel.tsx`), because there the target is
+ * the page.
  *
  * Same shape as the two-factor wizard next door: a step rail that doubles as the
  * way back, a fixed-height body so the footer never moves under the cursor, and
@@ -187,50 +188,11 @@ export function CreateBackup({
   const index = STEPS.findIndex((s) => s.id === step);
   const { icon: StepIcon, title, blurb } = COPY[step];
 
-  // What the current step actually measures, so the dialog is the size of its
-  // step. Undefined until the first measurement: `auto` -> a number does not
-  // animate, which is what keeps the dialog from unfolding as it opens.
-  const [bodyEl, setBodyEl] = React.useState<HTMLDivElement | null>(null);
-  const [bodyHeight, setBodyHeight] = React.useState<number>();
-  const measured = React.useRef<number>(undefined);
-  // Clipped only WHILE the height is moving. At rest the box overflows freely,
-  // which is what lets a combobox menu hang below its field instead of turning
-  // a two-field step into a scrolling one; mid-animation the taller content is
-  // already laid out, and without the clip it would sit on top of the footer
-  // for the length of the transition.
-  const [growing, setGrowing] = React.useState(false);
-  // A step taller than the window is the one case that has to scroll on its own
-  // — and there the menus clip, as they do in every scrolling dialog.
-  const [scrolls, setScrolls] = React.useState(false);
-  React.useLayoutEffect(() => {
-    if (!bodyEl) return;
-    // An observer, not a one-shot read: the body also grows WITHIN a step — a
-    // DST warning appearing, a same-disk card, the "keeps about a week" line
-    // following a frequency — and those deserve the same easing.
-    const ro = new ResizeObserver(() => {
-      const h = bodyEl.getBoundingClientRect().height;
-      if (measured.current === h) return;
-      const first = measured.current === undefined;
-      measured.current = h;
-      setBodyHeight(h);
-      setScrolls(h > window.innerHeight * 0.75);
-      if (!first) setGrowing(true);
-    });
-    ro.observe(bodyEl);
-    return () => ro.disconnect();
-  }, [bodyEl]);
-
   function close() {
     setOpen(false);
     // Deferred so the close animation does not play over a form that has
-    // already snapped back to step one. The height goes with it: reopening must
-    // measure from `auto` again, not animate out of the last step's number.
-    setTimeout(() => {
-      setStep("target");
-      measured.current = undefined;
-      setBodyHeight(undefined);
-      setGrowing(false);
-    }, 200);
+    // already snapped back to step one.
+    setTimeout(() => setStep("target"), 200);
   }
 
   /** Enter runs whatever the current step's primary button does. */
@@ -320,150 +282,129 @@ export function CreateBackup({
         <form onSubmit={onSubmit} className="grid gap-4">
           {/* The height is the STEP's, measured, so "what are you backing up?"
               is a short box and only the schedule step is a tall one — a wizard
-              padded to its tallest step spends two thirds of itself on air. It
-              animates between them rather than snapping, which is the difference
-              between a dialog that grew and one that was replaced. `max-h` still
-              wins on a short window, and the box scrolls there. */}
-          <div
-            className={cn(
-              "transition-[height] duration-300 ease-out",
-              scrolls
-                ? "max-h-[75vh] overflow-y-auto focus-safe-scroll"
-                : growing
-                  ? "overflow-hidden"
-                  : "overflow-visible",
-            )}
-            style={{ height: bodyHeight }}
-            onTransitionEnd={(e) =>
-              e.propertyName === "height" && setGrowing(false)
-            }
-          >
-            <div
-              ref={setBodyEl}
-              className="mx-auto flex w-full max-w-md flex-col gap-5 py-2"
-            >
-              {/* One heading block, same shape on every step, so the eye lands
-                  in the same place each time the body swaps under it. */}
-              <div className="flex flex-col items-center gap-2 text-center">
-                <span className="flex size-10 items-center justify-center rounded-full bg-primary/10">
-                  <StepIcon className="size-5 text-primary" />
-                </span>
-                <h2 className="text-base font-semibold">{title}</h2>
-                <p className="text-sm text-balance text-muted-foreground">
-                  {blurb}
-                </p>
-              </div>
+              padded to its tallest step spends two thirds of itself on air. */}
+          <AnimatedHeight className="mx-auto flex w-full max-w-md flex-col gap-5 py-2">
+            {/* One heading block, same shape on every step, so the eye lands
+                in the same place each time the body swaps under it. */}
+            <div className="flex flex-col items-center gap-2 text-center">
+              <span className="flex size-10 items-center justify-center rounded-full bg-primary/10">
+                <StepIcon className="size-5 text-primary" />
+              </span>
+              <h2 className="text-base font-semibold">{title}</h2>
+              <p className="text-sm text-balance text-muted-foreground">
+                {blurb}
+              </p>
+            </div>
 
-              {step === "target" && (
-                <div className="space-y-4">
-                  <div
-                    role="radiogroup"
-                    aria-label="What to back up"
-                    className="grid gap-3 sm:grid-cols-2"
-                  >
-                    <KindCard
-                      title="App"
-                      caption="Volumes, files and settings"
-                      icon={<Boxes className="size-4" />}
-                      selected={targetKind === "app"}
-                      disabled={services.length === 0}
-                      disabledNote="No apps in this team yet"
-                      onSelect={() => setTargetKind("app")}
-                    />
-                    <KindCard
-                      title="Database"
-                      caption="A dump of one database"
-                      icon={<DatabaseIcon className="size-4" />}
-                      selected={targetKind === "database"}
-                      disabled={databases.length === 0}
-                      disabledNote="No databases in this team yet"
-                      onSelect={() => setTargetKind("database")}
-                    />
-                  </div>
-                  <div className="space-y-2">
-                    {targetKind === "database" ? (
-                      <>
-                        <FieldLabel htmlFor="new-backup-database">
-                          Database
-                        </FieldLabel>
-                        <TargetCombobox
-                          id="new-backup-database"
-                          kind="database"
-                          targets={databases}
-                          value={databaseId}
-                          onChange={setDatabaseId}
-                        />
-                      </>
-                    ) : (
-                      <>
-                        <FieldLabel htmlFor="new-backup-app">App</FieldLabel>
-                        <TargetCombobox
-                          id="new-backup-app"
-                          kind="app"
-                          targets={services}
-                          value={appId}
-                          onChange={setAppId}
-                        />
-                      </>
-                    )}
-                  </div>
+            {step === "target" && (
+              <div className="space-y-4">
+                <div
+                  role="radiogroup"
+                  aria-label="What to back up"
+                  className="grid gap-3 sm:grid-cols-2"
+                >
+                  <KindCard
+                    title="App"
+                    caption="Volumes, files and settings"
+                    icon={<Boxes className="size-4" />}
+                    selected={targetKind === "app"}
+                    disabled={services.length === 0}
+                    disabledNote="No apps in this team yet"
+                    onSelect={() => setTargetKind("app")}
+                  />
+                  <KindCard
+                    title="Database"
+                    caption="A dump of one database"
+                    icon={<DatabaseIcon className="size-4" />}
+                    selected={targetKind === "database"}
+                    disabled={databases.length === 0}
+                    disabledNote="No databases in this team yet"
+                    onSelect={() => setTargetKind("database")}
+                  />
                 </div>
-              )}
+                <div className="space-y-2">
+                  {targetKind === "database" ? (
+                    <>
+                      <FieldLabel htmlFor="new-backup-database">
+                        Database
+                      </FieldLabel>
+                      <TargetCombobox
+                        id="new-backup-database"
+                        kind="database"
+                        targets={databases}
+                        value={databaseId}
+                        onChange={setDatabaseId}
+                      />
+                    </>
+                  ) : (
+                    <>
+                      <FieldLabel htmlFor="new-backup-app">App</FieldLabel>
+                      <TargetCombobox
+                        id="new-backup-app"
+                        kind="app"
+                        targets={services}
+                        value={appId}
+                        onChange={setAppId}
+                      />
+                    </>
+                  )}
+                </div>
+              </div>
+            )}
 
-              {step === "destination" && (
+            {step === "destination" && (
+              <div className="space-y-2">
+                <FieldLabel
+                  htmlFor="new-backup-destination"
+                  info="Where backup archives are written and kept. Each one shows whether Deplo could reach it."
+                >
+                  Destination
+                </FieldLabel>
+                <DestinationCombobox
+                  id="new-backup-destination"
+                  destinations={destinations}
+                  value={destinationId}
+                  onChange={setDestinationId}
+                  sameDiskServerId={targetServerId}
+                  sameDiskNoun={targetKind === "database" ? "database" : "app"}
+                  canProbe={canTestDestinations}
+                />
+              </div>
+            )}
+
+            {step === "schedule" && (
+              <div className="space-y-4">
                 <div className="space-y-2">
                   <FieldLabel
-                    htmlFor="new-backup-destination"
-                    info="Where backup archives are written and kept. Each one shows whether Deplo could reach it."
+                    htmlFor="new-backup-name"
+                    info="What this schedule is called in the list. Follows the frequency until you change it."
                   >
-                    Destination
+                    Name
                   </FieldLabel>
-                  <DestinationCombobox
-                    id="new-backup-destination"
-                    destinations={destinations}
-                    value={destinationId}
-                    onChange={setDestinationId}
-                    sameDiskServerId={targetServerId}
-                    sameDiskNoun={targetKind === "database" ? "database" : "app"}
-                    canProbe={canTestDestinations}
-                  />
-                </div>
-              )}
-
-              {step === "schedule" && (
-                <div className="space-y-4">
-                  <div className="space-y-2">
-                    <FieldLabel
-                      htmlFor="new-backup-name"
-                      info="What this schedule is called in the list. Follows the frequency until you change it."
-                    >
-                      Name
-                    </FieldLabel>
-                    <Input
-                      id="new-backup-name"
-                      value={name}
-                      onChange={(e) => {
-                        setNameTouched(true);
-                        setName(e.target.value);
-                      }}
-                    />
-                  </div>
-                  <BackupScheduleFields
-                    idPrefix="new-backup"
-                    schedule={schedule}
-                    onScheduleChange={(cron) => {
-                      setSchedule(cron);
-                      if (!nameTouched) setName(suggestScheduleName(cron));
+                  <Input
+                    id="new-backup-name"
+                    value={name}
+                    onChange={(e) => {
+                      setNameTouched(true);
+                      setName(e.target.value);
                     }}
-                    timezone={timezone}
-                    onTimezoneChange={setTimezone}
-                    retention={retention}
-                    onRetentionChange={setRetention}
                   />
                 </div>
-              )}
-            </div>
-          </div>
+                <BackupScheduleFields
+                  idPrefix="new-backup"
+                  schedule={schedule}
+                  onScheduleChange={(cron) => {
+                    setSchedule(cron);
+                    if (!nameTouched) setName(suggestScheduleName(cron));
+                  }}
+                  timezone={timezone}
+                  onTimezoneChange={setTimezone}
+                  retention={retention}
+                  onRetentionChange={setRetention}
+                />
+              </div>
+            )}
+          </AnimatedHeight>
 
           <DialogFooter className="flex-row items-center justify-between sm:justify-between">
             <Button
