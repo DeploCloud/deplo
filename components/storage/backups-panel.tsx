@@ -328,6 +328,8 @@ export function BackupsPanel({
                     destinationName={
                       destName.get(p.destinationId) ?? "Unknown destination"
                     }
+                    canRestore={canRestore}
+                    downloadable={destKind.get(p.destinationId) === "server"}
                   />
                 ))}
                 {runs.map((run) => (
@@ -1126,9 +1128,17 @@ function IconAction({
  * The dump takes minutes and the mutation only answers at the end, so without
  * this the table sits unchanged for a whole refresh interval after the click —
  * on a first backup, still showing "No backups yet". It never pretends to be
- * finished: it pulses, it carries no actions, and it says Running.
+ * finished: it pulses, its actions are dead, and it says Running.
  */
-function PendingRunRow({ destinationName }: { destinationName: string }) {
+function PendingRunRow({
+  destinationName,
+  downloadable,
+  canRestore,
+}: {
+  destinationName: string;
+  downloadable: boolean;
+  canRestore: boolean;
+}) {
   return (
     <TableRow aria-busy className="animate-pulse select-none">
       <TableCell className="text-sm">just now</TableCell>
@@ -1140,8 +1150,105 @@ function PendingRunRow({ destinationName }: { destinationName: string }) {
           Running
         </span>
       </TableCell>
-      <TableCell />
+      <TableCell className="text-right">
+        <RunActions
+          href={null}
+          running
+          ok={false}
+          downloadable={downloadable}
+          canRestore={canRestore}
+        />
+      </TableCell>
     </TableRow>
+  );
+}
+
+/**
+ * The two things you can do with an artifact. ALWAYS both, disabled with the
+ * reason in the tooltip rather than hidden: a row's actions must not appear,
+ * move or vanish as the run settles, and a member who cannot act should still
+ * see that the action exists. The server refuses either way.
+ */
+function RunActions({
+  href,
+  running,
+  ok,
+  downloadable,
+  canRestore,
+  onRestore,
+}: {
+  /** The download URL, or null for a run that has no id yet (the placeholder). */
+  href: string | null;
+  running: boolean;
+  ok: boolean;
+  /** Whether the artifact is on a server we can stream it from. An S3 one is not:
+   *  pulling it out of the bucket and back through Deplo would double the
+   *  transfer to hand over a file the operator can already fetch themselves. */
+  downloadable: boolean;
+  canRestore: boolean;
+  onRestore?: () => void;
+}) {
+  const canDownload = ok && canRestore && downloadable && href !== null;
+  function reason(verb: "download" | "restore") {
+    if (!canRestore) return `You don't have permission to ${verb} backups`;
+    if (running) return "This backup is still running";
+    if (!ok)
+      return verb === "download"
+        ? "Only a successful backup can be downloaded"
+        : "Only a successful backup can be restored";
+    if (verb === "restore") return "Restore this backup in place";
+    return downloadable
+      ? "Download this backup file"
+      : "This backup is in your bucket. Fetch it with your own credentials.";
+  }
+  // Icon + label as DIRECT children of the button, never wrapped: one <span>
+  // around them makes the pair a single flex item, and the button's `gap-2` and
+  // `items-center` stop applying — the icon glues to the text and drops onto its
+  // baseline. That is only visible on a run that did NOT succeed, which is
+  // exactly the row that also carries an error line.
+  const downloadLabel = (
+    <>
+      <Download className="size-4" />
+      Download
+    </>
+  );
+
+  return (
+    <div className="flex items-center justify-end gap-1">
+      {/* The file itself, decrypted. The reason a folder on your own server is
+          worth having: the backup is a thing you can hold, not only a thing
+          Deplo can put back. */}
+      <TooltipWhenDisabled disabled={!canDownload} tooltip={reason("download")}>
+        <Button
+          variant="ghost"
+          size="sm"
+          asChild={canDownload}
+          disabled={!canDownload}
+        >
+          {canDownload ? (
+            <a href={href} download>
+              {downloadLabel}
+            </a>
+          ) : (
+            downloadLabel
+          )}
+        </Button>
+      </TooltipWhenDisabled>
+      <TooltipWhenDisabled
+        disabled={!ok || !canRestore}
+        tooltip={reason("restore")}
+      >
+        <Button
+          variant="ghost"
+          size="sm"
+          disabled={!ok || !canRestore}
+          onClick={onRestore}
+        >
+          <RotateCcw className="size-4" />
+          Restore
+        </Button>
+      </TooltipWhenDisabled>
+    </div>
   );
 }
 
@@ -1165,17 +1272,6 @@ function RunRow({
   const router = useRouter();
   const [restoreOpen, setRestoreOpen] = React.useState(false);
   const ok = run.status === "success";
-  // Icon + label as DIRECT children of the button, never wrapped: one <span>
-  // around them makes the pair a single flex item, and the button's `gap-2` and
-  // `items-center` stop applying — the icon glues to the text and drops onto its
-  // baseline. That is only visible on a run that did NOT succeed, which is
-  // exactly the row that also carries an error line.
-  const downloadLabel = (
-    <>
-      <Download className="size-4" />
-      Download
-    </>
-  );
 
   return (
     <TableRow>
@@ -1215,59 +1311,14 @@ function RunRow({
         )}
       </TableCell>
       <TableCell className="text-right">
-        <div className="flex items-center justify-end gap-1">
-          {/* The file itself, decrypted. The reason a folder on your own server
-              is worth having: the backup is a thing you can hold, not only a
-              thing Deplo can put back. */}
-          {downloadable && (
-            <TooltipWhenDisabled
-              disabled={!ok || !canRestore}
-              tooltip={
-                !canRestore
-                  ? "You don't have permission to download backups"
-                  : ok
-                    ? "Download this backup file"
-                    : "Only a successful backup can be downloaded"
-              }
-            >
-              <Button
-                variant="ghost"
-                size="sm"
-                asChild={ok && canRestore}
-                disabled={!ok || !canRestore}
-              >
-                {ok && canRestore ? (
-                  <a href={`/api/backups/${run.id}/download`} download>
-                    {downloadLabel}
-                  </a>
-                ) : (
-                  downloadLabel
-                )}
-              </Button>
-            </TooltipWhenDisabled>
-          )}
-          {/* Restore is only meaningful for a completed artifact. */}
-          <TooltipWhenDisabled
-            disabled={!ok || !canRestore}
-            tooltip={
-              !canRestore
-                ? "You don't have permission to restore backups"
-                : ok
-                  ? "Restore this backup in place"
-                  : "Only a successful backup can be restored"
-            }
-          >
-            <Button
-              variant="ghost"
-              size="sm"
-              disabled={!ok || !canRestore}
-              onClick={() => setRestoreOpen(true)}
-            >
-              <RotateCcw className="size-4" />
-              Restore
-            </Button>
-          </TooltipWhenDisabled>
-        </div>
+        <RunActions
+          href={`/api/backups/${run.id}/download`}
+          running={run.status === "running"}
+          ok={ok}
+          downloadable={downloadable}
+          canRestore={canRestore}
+          onRestore={() => setRestoreOpen(true)}
+        />
         <ConfirmAction
           open={restoreOpen}
           onOpenChange={setRestoreOpen}
