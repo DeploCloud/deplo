@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import {
   AlertTriangle,
+  Building2,
   CheckCircle2,
   ChevronDown,
   ExternalLink,
@@ -13,6 +14,7 @@ import {
   Pencil,
   Plug,
   Trash2,
+  User,
 } from "lucide-react";
 
 import { Card } from "@/components/ui/card";
@@ -25,6 +27,9 @@ import {
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuSeparator,
+  DropdownMenuSub,
+  DropdownMenuSubContent,
+  DropdownMenuSubTrigger,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import {
@@ -255,43 +260,132 @@ function ConnectMenu({
   onPick: (id: string) => void;
 }) {
   const { connect, pending } = useGithubConnect();
+  const [orgOpen, setOrgOpen] = React.useState(false);
 
   return (
-    <DropdownMenu>
-      <DropdownMenuTrigger asChild>
-        <Button size="sm" disabled={pending}>
-          {pending ? (
-            <Loader2 className="size-4 animate-spin" />
-          ) : (
-            <Plug className="size-4" />
-          )}
-          Connect
-          <ChevronDown className="size-3.5 opacity-70" />
-        </Button>
-      </DropdownMenuTrigger>
-      <DropdownMenuContent align="end" className="w-52">
-        {/* Every host in the menu wears the same coloured mark it wears on its
-            card below, so picking one is recognising a logo rather than reading
-            a list. */}
-        <DropdownMenuItem onSelect={() => connect()}>
-          <GitProviderMark provider="github" className="size-5" />
-          GitHub
-        </DropdownMenuItem>
-        <DropdownMenuSeparator />
-        {providers.map((p) => (
-          <DropdownMenuItem key={p.id} onSelect={() => onPick(p.id)}>
-            <GitProviderMark provider={p.id} className="size-5" />
-            {p.label}
-            <Badge
-              variant="info"
-              className="ml-auto text-[10px] font-normal uppercase"
+    <>
+      <DropdownMenu>
+        <DropdownMenuTrigger asChild>
+          <Button size="sm" disabled={pending}>
+            {pending ? (
+              <Loader2 className="size-4 animate-spin" />
+            ) : (
+              <Plug className="size-4" />
+            )}
+            Connect
+            <ChevronDown className="size-3.5 opacity-70" />
+          </Button>
+        </DropdownMenuTrigger>
+        <DropdownMenuContent align="end" className="w-52">
+          {/* Every host in the menu wears the same coloured mark it wears on its
+              card below, so picking one is recognising a logo rather than reading
+              a list. */}
+          {/* GitHub creates the App under whoever owns it, and the two owners
+              live at different addresses on github.com - so the owner is picked
+              here, before the browser leaves. */}
+          <DropdownMenuSub>
+            <DropdownMenuSubTrigger>
+              <GitProviderMark provider="github" className="size-5" />
+              GitHub
+            </DropdownMenuSubTrigger>
+            <DropdownMenuSubContent className="w-52">
+              <DropdownMenuItem onSelect={() => connect()}>
+                <User className="size-4" />
+                Personal account
+              </DropdownMenuItem>
+              <DropdownMenuItem onSelect={() => setOrgOpen(true)}>
+                <Building2 className="size-4" />
+                Organization
+              </DropdownMenuItem>
+            </DropdownMenuSubContent>
+          </DropdownMenuSub>
+          <DropdownMenuSeparator />
+          {providers.map((p) => (
+            <DropdownMenuItem key={p.id} onSelect={() => onPick(p.id)}>
+              <GitProviderMark provider={p.id} className="size-5" />
+              {p.label}
+              <Badge
+                variant="info"
+                className="ml-auto text-[10px] font-normal uppercase"
+              >
+                Beta
+              </Badge>
+            </DropdownMenuItem>
+          ))}
+        </DropdownMenuContent>
+      </DropdownMenu>
+
+      {orgOpen && (
+        <GithubOrgDialog
+          onClose={() => setOrgOpen(false)}
+          onConnect={(org) => connect(org)}
+        />
+      )}
+    </>
+  );
+}
+
+/**
+ * GitHub has no API to list the organizations of someone who has not connected
+ * yet, so the name is typed once here and becomes the address the manifest is
+ * POSTed to. Only members who can create Apps there will get past GitHub.
+ */
+function GithubOrgDialog({
+  onClose,
+  onConnect,
+}: {
+  onClose: () => void;
+  onConnect: (org: string) => void;
+}) {
+  const [org, setOrg] = React.useState("");
+
+  return (
+    <Dialog open onOpenChange={(o) => !o && onClose()}>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle className="flex items-center gap-2.5">
+            <GitProviderMark provider="github" className="size-7" />
+            Connect an organization
+          </DialogTitle>
+          <DialogDescription>
+            GitHub asks you to create the App inside the organization you name.
+          </DialogDescription>
+        </DialogHeader>
+        <form
+          className="grid gap-4"
+          onSubmit={(e) => {
+            e.preventDefault();
+            if (!org.trim()) return;
+            onConnect(org.trim());
+          }}
+        >
+          <div className="space-y-2">
+            <FieldLabel
+              htmlFor="github-org"
+              info="The name in the organization's address on github.com, like github.com/acme."
             >
-              Beta
-            </Badge>
-          </DropdownMenuItem>
-        ))}
-      </DropdownMenuContent>
-    </DropdownMenu>
+              Organization
+            </FieldLabel>
+            <Input
+              id="github-org"
+              value={org}
+              onChange={(e) => setOrg(e.target.value)}
+              placeholder="acme"
+              autoFocus
+              autoComplete="off"
+            />
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={onClose}>
+              Cancel
+            </Button>
+            <Button type="submit" disabled={!org.trim()}>
+              Continue
+            </Button>
+          </DialogFooter>
+        </form>
+      </DialogContent>
+    </Dialog>
   );
 }
 

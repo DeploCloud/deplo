@@ -18,7 +18,10 @@ import { gqlAction } from "@/lib/graphql-client";
 export function useGithubConnect() {
   const [pending, startTransition] = React.useTransition();
 
-  const connect = React.useCallback(() => {
+  const connect = React.useCallback((org?: string) => {
+    // Call sites pass this straight to onClick/onSelect, so the first argument
+    // is often an Event: anything that is not an org name means "my account".
+    const owner = typeof org === "string" && org.trim() ? org.trim() : null;
     startTransition(async () => {
       const res = await gqlAction<
         {
@@ -30,8 +33,8 @@ export function useGithubConnect() {
         },
         { actionUrl: string; manifest: string; state: string } | null
       >(
-        `mutation { startGithubConnect { actionUrl manifest state } }`,
-        undefined,
+        `mutation ($org: String) { startGithubConnect(org: $org) { actionUrl manifest state } }`,
+        { org: owner },
         (d) => d.startGithubConnect,
       );
       if (!res.ok || !res.data) {
@@ -79,7 +82,7 @@ export function GithubConnectButton({
       variant={variant}
       size={size}
       className={className}
-      onClick={connect}
+      onClick={() => connect()}
       disabled={pending}
     >
       <GitHubIcon className="size-4" />

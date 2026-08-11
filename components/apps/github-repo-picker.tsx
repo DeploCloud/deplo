@@ -214,7 +214,7 @@ export function GithubRepoPicker({
                 </>
               )}
               <DropdownMenuItem
-                onSelect={connect}
+                onSelect={() => connect()}
                 disabled={connecting}
                 className="gap-2"
               >
