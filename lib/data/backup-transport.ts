@@ -11,7 +11,12 @@ import {
   storeTargetFor,
   type DestinationWithSecrets,
 } from "./destinations";
-import { BackupKind, type BackupRequest, type RestoreRequest } from "../agent/gen/agent";
+import {
+  BackupKind,
+  type BackupRequest,
+  type RestoreEvent,
+  type RestoreRequest,
+} from "../agent/gen/agent";
 import type { DatabaseDescriptor, ProjectDescriptor } from "../agent/gen/agent";
 import type { BackupDestination, BackupTargetKind } from "../types";
 import { parseS3Args } from "../backups/s3-args";
@@ -388,6 +393,52 @@ export async function restoreFromDestination(
     workload?.close();
     src.close();
   }
+}
+
+/**
+ * Restore from an artifact that has no destination at all: the operator is
+ * uploading it, and the bytes arrive from their browser.
+ *
+ * The FOURTH shape, and the only one whose source is outside the fleet. It is
+ * the cross-host branch above with the source agent removed - same RPC, same
+ * capability gate, same reason (staging the artifact on the host being restored
+ * would need a full artifact's worth of free space on exactly the machine that
+ * is already in trouble).
+ *
+ * `expectedSha256` is empty and CANNOT be otherwise: nobody recorded a digest
+ * for these bytes, and hashing what we were just handed would prove nothing.
+ * The agent knows what that means - for an app it keeps the control plane's own
+ * stack configuration instead of the archive's, which is the right answer for an
+ * artifact that arrived as untrusted input.
+ *
+ * Returns the LIVE event stream (the caller relays it to the browser) plus the
+ * connection's `close` - the caller owns both, exactly like
+ * {@link openArtifactDownload}.
+ */
+export async function openUploadRestore(
+  target: TransportTarget,
+  /** The identity the artifact is encrypted to: the operator's recovery key, or
+   *  an ephemeral one when the control plane wrapped a plaintext upload. */
+  ageIdentity: string,
+  chunks: AsyncIterable<Buffer>,
+): Promise<{
+  events: AsyncGenerator<RestoreEvent, void, unknown>;
+  close: () => void;
+}> {
+  const conn = await connectBackupAgent(target.serverId, { store: true });
+  return {
+    events: conn.restoreFrom(
+      {
+        kind: wireKind(target.kind),
+        database: target.database,
+        project: target.project,
+        ageIdentity,
+        expectedSha256: "",
+      },
+      chunks,
+    ),
+    close: () => conn.close(),
+  };
 }
 
 async function consumeRestore(

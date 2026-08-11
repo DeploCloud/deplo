@@ -49,9 +49,11 @@ import {
   backupToDestination,
   deleteManyFromDestination,
   openArtifactDownload,
+  openUploadRestore,
   restoreFromDestination,
   type BackupOutcome,
 } from "./backup-transport";
+import { SNIFF_HEAD_BYTES, sniffArtifact } from "../backups/artifact-sniff";
 import {
   buildProjectDescriptor,
   type ProjectBackupDescriptor,
@@ -62,7 +64,11 @@ import {
   selectDoomedRuns,
   type RunForRetention,
 } from "./backup-objectkey";
-import type { DatabaseDescriptor, ProjectDescriptor } from "../agent/gen/agent";
+import type {
+  DatabaseDescriptor,
+  ProjectDescriptor,
+  RestoreEvent,
+} from "../agent/gen/agent";
 import type {
   Backup,
   BackupRun,
@@ -1105,6 +1111,248 @@ export async function restoreBackup(runId: string): Promise<void> {
     path: "/storage",
   });
   if (failure) throw new Error(failure);
+}
+
+/**
+ * Targets with an upload restore streaming into them right now.
+ *
+ * Two of these at once would untar into the same volumes while the other is
+ * wiping them, and neither would be the backup anyone asked for. The second
+ * caller is refused rather than queued: it is holding a file open in a browser,
+ * and "wait for the other one" is an answer it can act on. Same shape and same
+ * reasoning as `uploadsInFlight` in app/api/apps/[id]/upload/route.ts -
+ * sufficient because the control plane is a single Node process.
+ */
+const uploadRestoresInFlight = new Set<string>();
+
+/**
+ * Restore an app or a database from an artifact the operator UPLOADS, rather
+ * than from a run this instance recorded.
+ *
+ * This is the only recovery path that survives losing the control plane. Every
+ * other restore starts from a `backup_runs` row: it knows the destination, the
+ * object key and the digest. When the instance is gone, or the destination was
+ * deleted, those rows are gone too and the artifacts on the disk or in the
+ * bucket become unreachable through Deplo - which is exactly the moment a backup
+ * is supposed to be worth something.
+ *
+ * Everything that can refuse, refuses BEFORE the agent is dialed: the capability,
+ * the lock, and then the artifact itself (see {@link sniffArtifact} - the wrong
+ * file or the wrong key would otherwise be discovered after the stack is stopped
+ * and the volumes are wiped).
+ *
+ * The bytes never touch a disk on the way through. Encrypted uploads travel to
+ * the agent exactly as they arrived, with the operator's key alongside them; a
+ * PLAINTEXT upload - which is what Deplo's own Download hands out - is wrapped
+ * here with an EPHEMERAL age keypair that exists only for the length of this
+ * request, because the agent's RestoreFrom has no unencrypted mode.
+ *
+ * Returns the live event stream, so the caller can relay the agent's own log
+ * lines to whoever is watching. All the gates run before it, so a refusal is a
+ * thrown error the route can map to a status code, not a failed event. Abandoning
+ * the stream (`return()`) is the abort: it runs the same cleanup a finished
+ * restore does, which is what a browser closing mid-restore comes down to.
+ */
+export async function prepareUploadRestore(input: {
+  kind: BackupTargetKind;
+  targetId: string;
+  /** The destination's recovery key. Ignored for a plaintext artifact; never
+   *  stored, never logged, never written to the Activity trail. */
+  recoveryKey: string;
+  body: ReadableStream<Uint8Array>;
+}): Promise<AsyncGenerator<RestoreEvent, void, unknown>> {
+  const { membership } = await requireMembership();
+  const teamId = membership.teamId;
+  // Resolved NOW, while the request context still exists. The generator below
+  // outlives the route handler that returns its Response, and `getCurrentUser()`
+  // reads cookies - asking for it at the end would ask outside the request.
+  const user = (await getCurrentUser())!;
+  const appId = input.kind === "app" ? input.targetId : null;
+  const databaseId = input.kind === "database" ? input.targetId : null;
+
+  // Same gate as restoring a recorded run, and for the same reason: this
+  // overwrites live data. For an app it also carries the folder grant.
+  await requireBackupCapability({ targetKind: input.kind, appId }, "restore_backups");
+
+  const noun = input.kind === "app" ? "app" : "database";
+  const lockKey = `${teamId} ${input.targetId}`;
+  if (uploadRestoresInFlight.has(lockKey))
+    throw new Error(
+      `A restore is already running for this ${noun} - wait for it to finish`,
+    );
+  uploadRestoresInFlight.add(lockKey);
+
+  let opened: Awaited<ReturnType<typeof openUploadRestore>> | null = null;
+  let target: ResolvedTarget;
+  try {
+    // The artifact is judged FIRST, before the target is even resolved: for an
+    // app that resolution already dials the owning agent (the descriptor carries
+    // the live stack), and a file that was never a backup should cost nobody a
+    // round trip, let alone reach a host.
+    //
+    // Buffer only the head, then hand the SAME reader to the pump: the bytes
+    // already read are re-emitted first and the rest streams straight through,
+    // so nothing is ever held in memory but this prefix.
+    const reader = input.body.getReader();
+    const head = await readUploadHead(reader);
+    const { encrypted } = await sniffArtifact(head, {
+      kind: input.kind,
+      recoveryKey: input.recoveryKey,
+    });
+
+    target = await resolveTarget(teamId, input.kind, databaseId, appId);
+
+    const uploaded = uploadChunks(head, reader);
+    const wrapped = encrypted
+      ? { ageIdentity: input.recoveryKey.trim(), chunks: uploaded }
+      : await wrapPlaintextUpload(uploaded);
+
+    opened = await openUploadRestore(target, wrapped.ageIdentity, wrapped.chunks);
+    // Only once the agent has the request: a dial that fails must not leave an
+    // app parked on "restoring" with nothing running to move it off.
+    if (target.appId) await setAppStatus(target.appId, "restoring");
+  } catch (e) {
+    opened?.close();
+    uploadRestoresInFlight.delete(lockKey);
+    throw mapBackupUnsupported(e);
+  }
+
+  const agent = opened;
+  const resolved = target;
+  async function* relay(): AsyncGenerator<RestoreEvent, void, unknown> {
+    let failure: string | null = null;
+    let settled = false;
+    try {
+      try {
+        for await (const ev of agent.events) {
+          if (ev.result) {
+            settled = true;
+            if (!ev.result.ok)
+              failure = ev.result.error || "the agent reported a failed restore";
+          }
+          yield ev;
+        }
+        if (!settled) failure = "the agent ended the restore without a result";
+      } catch (e) {
+        failure = (mapBackupUnsupported(e) as Error).message;
+      }
+      // The agent yields its own failing result; this covers the cases where it
+      // never got to (a dropped connection, a stream that just ended), so the
+      // browser always reads a verdict as the last line.
+      if (failure && !settled) yield { result: { ok: false, error: failure } };
+    } finally {
+      // In the finally because this also has to run when the WATCHER walks away:
+      // the browser closing cancels the response stream, which returns into this
+      // generator here. An app left on "restoring" because nobody stayed to see
+      // the end would never move off it again.
+      const problem =
+        failure ??
+        (settled ? null : "the restore was interrupted before it finished");
+      if (resolved.appId)
+        await setAppStatus(resolved.appId, problem ? "error" : "active");
+      await recordActivity(
+        "backup",
+        problem
+          ? `Restore of ${resolved.label} from an uploaded file failed: ${problem}`
+          : `Restored ${resolved.label} from an uploaded file`,
+        user.name,
+        resolved.appId,
+        teamId,
+      );
+      dispatchAlert({
+        teamId,
+        key: problem ? "restore_failed" : "restore_succeeded",
+        title: problem
+          ? `Restore of ${resolved.label} failed`
+          : `Restored ${resolved.label}`,
+        body: problem ?? "The data is back in place.",
+        path: "/storage",
+      });
+      agent.close();
+      uploadRestoresInFlight.delete(lockKey);
+    }
+  }
+
+  return relay();
+}
+
+/**
+ * Read at most {@link SNIFF_HEAD_BYTES} from the upload, leaving the reader
+ * positioned for the rest. Short reads are normal - a whole artifact smaller
+ * than the head simply ends here.
+ */
+async function readUploadHead(
+  reader: ReadableStreamDefaultReader<Uint8Array>,
+): Promise<Buffer> {
+  const parts: Buffer[] = [];
+  let total = 0;
+  while (total < SNIFF_HEAD_BYTES) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    parts.push(Buffer.from(value));
+    total += value.length;
+  }
+  return Buffer.concat(parts);
+}
+
+/** The upload as the agent pump wants it: the sniffed head, then the remainder. */
+async function* uploadChunks(
+  head: Buffer,
+  reader: ReadableStreamDefaultReader<Uint8Array>,
+): AsyncGenerator<Buffer, void, unknown> {
+  try {
+    if (head.length > 0) yield head;
+    for (;;) {
+      const { done, value } = await reader.read();
+      if (done) return;
+      yield Buffer.from(value);
+    }
+  } finally {
+    // Whoever stops reading stops the upload. A restore that fails early (or an
+    // agent that drops) otherwise leaves the browser pushing gigabytes into a
+    // socket nobody drains; cancelling tears the request body down instead.
+    void reader.cancel().catch(() => {});
+  }
+}
+
+/**
+ * Wrap a plaintext upload for an agent that only restores encrypted artifacts.
+ *
+ * The keypair lives for this request and is never written anywhere: it is not a
+ * secret anyone has to keep, only the shape RestoreFrom insists on. Pull-based
+ * throughout, so the agent's flow control still paces the browser and the
+ * control plane holds one chunk at a time regardless of the file's size.
+ */
+async function wrapPlaintextUpload(source: AsyncIterable<Buffer>): Promise<{
+  ageIdentity: string;
+  chunks: AsyncIterable<Buffer>;
+}> {
+  const age = await import("age-encryption");
+  const identity = await age.generateX25519Identity();
+  const encrypter = new age.Encrypter();
+  encrypter.addRecipient(await age.identityToRecipient(identity));
+  const iterator = source[Symbol.asyncIterator]();
+  const encrypted = await encrypter.encrypt(
+    new ReadableStream<Uint8Array>({
+      async pull(controller) {
+        const next = await iterator.next();
+        if (next.done) controller.close();
+        else controller.enqueue(next.value);
+      },
+    }),
+  );
+  return { ageIdentity: identity, chunks: streamBuffers(encrypted) };
+}
+
+async function* streamBuffers(
+  stream: ReadableStream<Uint8Array>,
+): AsyncGenerator<Buffer, void, unknown> {
+  const reader = stream.getReader();
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (done) return;
+    yield Buffer.from(value);
+  }
 }
 
 /**

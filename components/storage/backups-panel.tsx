@@ -63,6 +63,7 @@ import {
 } from "@/components/storage/backup-schedule-fields";
 import { DestinationCombobox } from "@/components/storage/destination-combobox";
 import { RecoveryKeyNudge } from "@/components/storage/recovery-key";
+import { RestoreFromFile } from "@/components/storage/restore-from-file";
 import { gqlAction } from "@/lib/graphql-client";
 import { DEFAULT_SCHEDULE, isValidSchedule } from "@/lib/schedule";
 import type { BackupDTO } from "@/lib/data/backups";
@@ -240,6 +241,10 @@ export function BackupsPanel({
               canTestDestinations={canTestDestinations}
               onStart={startRun}
             />
+            {/* Deliberately here even when there is no destination at all: this
+                is the one restore that needs nothing this instance remembers,
+                and the operator reaching for it has usually just lost the rest. */}
+            <RestoreFromFile target={target} canRestore={canRestore} />
             <ScheduleBackup
               target={target}
               destinations={destinations}
