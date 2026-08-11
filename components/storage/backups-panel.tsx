@@ -110,6 +110,7 @@ export function BackupsPanel({
   destinations,
   canManage,
   canRestore,
+  canDelete,
   canTestDestinations,
 }: {
   target: BackupTarget;
@@ -121,6 +122,9 @@ export function BackupsPanel({
   /** `restore_backups` — its own, because a restore overwrites live data (and
    *  a download hands over every byte, which is the same power). */
   canRestore: boolean;
+  /** `delete_backups` — its own capability, and the only irreversible one on
+   *  this screen: the artifact is the last copy of that moment. */
+  canDelete: boolean;
   /** `manage_backup_destinations`: whether this user may run the live connection
    *  probe the picker fires, and take a destination's recovery key. */
   canTestDestinations: boolean;
@@ -338,6 +342,7 @@ export function BackupsPanel({
                     run={run}
                     target={target}
                     canRestore={canRestore}
+                    canDelete={canDelete}
                     destinationName={
                       destName.get(run.destinationId) ?? "Unknown destination"
                     }
@@ -1170,14 +1175,18 @@ function RunActions({
   running,
   ok,
   canRestore,
+  canDelete = false,
   onRestore,
+  onDelete,
 }: {
   /** The download URL, or null for a run that has no id yet (the placeholder). */
   href: string | null;
   running: boolean;
   ok: boolean;
   canRestore: boolean;
+  canDelete?: boolean;
   onRestore?: () => void;
+  onDelete?: () => void;
 }) {
   // Every successful artifact is downloadable, wherever it is kept. Where it
   // LIVES used to decide that: an artifact in a bucket got a disabled button and
@@ -1194,6 +1203,13 @@ function RunActions({
     return verb === "restore"
       ? "Restore this backup in place"
       : "Download this backup file";
+  }
+  // Delete is the one action a FAILED run still has: its record is clutter and
+  // clearing it is the only thing left to do with it.
+  function deleteReason() {
+    if (!canDelete) return "You don't have permission to delete backups";
+    if (running) return "This backup is still running";
+    return "Delete this backup permanently";
   }
   // Icon + label as DIRECT children of the button, never wrapped: one <span>
   // around them makes the pair a single flex item, and the button's `gap-2` and
@@ -1242,6 +1258,17 @@ function RunActions({
           Restore
         </Button>
       </TooltipWhenDisabled>
+      <TooltipWhenDisabled disabled={!canDelete || running} tooltip={deleteReason()}>
+        <Button
+          variant="ghost"
+          size="icon-sm"
+          aria-label="Delete this backup"
+          disabled={!canDelete || running}
+          onClick={onDelete}
+        >
+          <Trash2 className="size-4" />
+        </Button>
+      </TooltipWhenDisabled>
     </div>
   );
 }
@@ -1251,14 +1278,17 @@ function RunRow({
   target,
   destinationName,
   canRestore,
+  canDelete,
 }: {
   run: BackupRun;
   target: BackupTarget;
   destinationName: string;
   canRestore: boolean;
+  canDelete: boolean;
 }) {
   const router = useRouter();
   const [restoreOpen, setRestoreOpen] = React.useState(false);
+  const [deleteOpen, setDeleteOpen] = React.useState(false);
   const ok = run.status === "success";
 
   return (
@@ -1304,7 +1334,9 @@ function RunRow({
           running={run.status === "running"}
           ok={ok}
           canRestore={canRestore}
+          canDelete={canDelete}
           onRestore={() => setRestoreOpen(true)}
+          onDelete={() => setDeleteOpen(true)}
         />
         <ConfirmAction
           open={restoreOpen}
@@ -1330,6 +1362,31 @@ function RunRow({
           onConfirm={async () => {
             const res = await gqlAction(
               `mutation($runId: String!) { restoreBackup(runId: $runId) }`,
+              { runId: run.id },
+            );
+            if (res.ok) router.refresh();
+            return res;
+          }}
+        />
+        {/* No typed confirmation, unlike Restore. That one overwrites a live
+            target and the typing is what stops a misclick from taking an app
+            down; this removes one restore point and leaves everything running.
+            Asking someone to type an app's name to delete a failed run would be
+            ceremony, and ceremony everywhere is ceremony nowhere. */}
+        <ConfirmAction
+          open={deleteOpen}
+          onOpenChange={setDeleteOpen}
+          title="Delete this backup?"
+          confirmLabel="Delete backup"
+          successMessage="Backup deleted"
+          description={
+            ok
+              ? `The ${formatBytes(run.sizeBytes)} file from ${timeAgo(run.startedAt)} is deleted from ${destinationName}. You can't restore ${target.name} from it afterwards.`
+              : `This run failed and left no file, so only its record is removed.`
+          }
+          onConfirm={async () => {
+            const res = await gqlAction(
+              `mutation($runId: String!) { deleteBackupRun(runId: $runId) }`,
               { runId: run.id },
             );
             if (res.ok) router.refresh();

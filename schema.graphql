@@ -617,6 +617,7 @@ enum Capability {
   create_folders
   create_projects
   delete_apps
+  delete_backups
   delete_databases
   delete_folders
   delete_projects
@@ -2046,6 +2047,11 @@ type Mutation {
   Delete ALL of a target's backup artifacts (across every destination it ran to) plus their run records. The 'also delete backups' branch of deleting a database or an app. Returns the number removed. Throws if any destination's sweep failed, so the caller can abort the target deletion rather than orphan the files.
   """
   deleteBackupArtifacts(targetId: String!, targetKind: BackupTargetKind!): Int
+
+  """
+  Permanently delete ONE backup: the artifact at its destination and the run record together. Not the schedule (see deleteBackup) and not the target's whole history (see deleteBackupArtifacts). Returns true.
+  """
+  deleteBackupRun(runId: String!): Boolean
 
   """Delete a job and its run history."""
   deleteCronJob(id: ID!): Boolean

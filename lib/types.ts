@@ -57,6 +57,7 @@ export type Capability =
   // Backups & storage
   | "manage_backups"
   | "restore_backups"
+  | "delete_backups"
   | "manage_backup_destinations"
   // Integrations & API
   | "manage_registries"
@@ -110,6 +111,7 @@ export const ALL_CAPABILITIES: Capability[] = [
   "open_database_console",
   "manage_backups",
   "restore_backups",
+  "delete_backups",
   "manage_backup_destinations",
   "manage_registries",
   "manage_git",

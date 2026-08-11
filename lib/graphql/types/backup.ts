@@ -11,6 +11,7 @@ import {
   toggleBackup,
   updateBackup,
   deleteBackup,
+  deleteBackupRun,
   deleteAllBackupArtifacts,
   type BackupDTO,
 } from "@/lib/data/backups";
@@ -305,6 +306,19 @@ builder.mutationFields((t) => ({
         timezone: input.timezone ?? null,
         retentionCount: input.retentionCount,
       });
+      return true;
+    },
+  }),
+  deleteBackupRun: t.field({
+    type: "Boolean",
+    authScopes: { capability: "delete_backups" },
+    description:
+      "Permanently delete ONE backup: the artifact at its destination and the " +
+      "run record together. Not the schedule (see deleteBackup) and not the " +
+      "target's whole history (see deleteBackupArtifacts). Returns true.",
+    args: { runId: t.arg.string({ required: true }) },
+    resolve: async (_r, { runId }) => {
+      await deleteBackupRun(runId);
       return true;
     },
   }),

@@ -139,6 +139,10 @@ export const PROJECT_SCOPED_CAPABILITIES: Capability[] = [
   "write_app_files",
   "manage_backups",
   "restore_backups",
+  // A backup belongs to ONE app, so deleting one means something inside a
+  // Project - and a per-app grant is exactly how "you look after this app, its
+  // backups included" is expressed.
+  "delete_backups",
   "view_logs",
   "view_metrics",
   "view_activity",

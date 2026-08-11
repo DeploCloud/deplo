@@ -50,6 +50,7 @@ import {
 } from "./destinations";
 import {
   backupToDestination,
+  deleteFromDestination,
   deleteManyFromDestination,
   openArtifactDownload,
   openUploadRestore,
@@ -809,19 +810,20 @@ async function loadRunsForTarget(
 
 /**
  * Gate a backup operation on its TARGET. An app target answers to its own node —
- * `manage_backups` / `restore_backups` can be held on one app or folder alone
- * (ADR-0016) — while a database target has no node dimension and stays team-wide.
+ * `manage_backups` / `restore_backups` / `delete_backups` can be held on one app
+ * or folder alone (ADR-0016) — while a database target has no node dimension and
+ * stays team-wide.
  */
 async function requireBackupCapability(
   target: { targetKind: BackupTargetKind; appId: string | null },
-  cap: "manage_backups" | "restore_backups",
+  cap: "manage_backups" | "restore_backups" | "delete_backups",
 ): Promise<void> {
   if (target.targetKind === "app" && target.appId) {
     await requireAppCapability(target.appId, cap);
     return;
   }
   // A database belongs to no Project, so a principal who reaches only part of
-  // the team reaches none of them — and both capabilities here survive the
+  // the team reaches none of them — and all three capabilities here survive the
   // clamp (they mean something on an app), so the team-wide `requireCapability`
   // below would let one through. NOT FOUND rather than a scope error, the same answer
   // {@link deleteBackupArtifacts} gives: a scope must never become an oracle for
@@ -1574,6 +1576,85 @@ export async function deleteBackup(id: string): Promise<void> {
   await getDb()
     .delete(backupsTable)
     .where(and(eq(backupsTable.id, id), eq(backupsTable.teamId, teamId)));
+}
+
+/**
+ * Delete ONE backup, artifact and record together.
+ *
+ * The panel's per-row Delete, and the only way to retire a single restore point:
+ * everything else here is wholesale (retention thins a target's history,
+ * {@link deleteAllBackupArtifacts} runs when the target itself is deleted). An
+ * operator who took a bad backup, or one carrying data that should not have
+ * left, needs a way to remove exactly that one.
+ *
+ * Gated on `delete_backups`, its own capability and not `manage_backups`, for
+ * the reason it is its own capability: this is the one verb in the backup
+ * surface with no way back and nothing downstream to catch it. Scheduling a dump
+ * and destroying the last copy of one are not the same permission, and an admin
+ * handing out the first must not be handing out the second. An app's backup
+ * answers to the app's own grant (ADR-0016) exactly like every other action on
+ * it.
+ *
+ * The ORDER is the artifact first, the record second, and it is the same rule
+ * `pruneRetention` follows: a record dropped while its object survives is an
+ * orphan nothing can name any more - not the retention pass, not the sweep,
+ * which both start from the row. A delete that fails therefore keeps the row and
+ * says so.
+ *
+ * A `running` run is refused rather than deleted: its artifact does not exist
+ * yet, so there is nothing to remove, and taking the row away would let the dump
+ * land a file nothing on this instance could ever find.
+ */
+export async function deleteBackupRun(runId: string): Promise<void> {
+  const { membership } = await requireMembership();
+  const teamId = membership.teamId;
+  const user = (await getCurrentUser())!;
+
+  const runRows = await getDb()
+    .select()
+    .from(backupRunsTable)
+    .where(and(eq(backupRunsTable.id, runId), eq(backupRunsTable.teamId, teamId)))
+    .limit(1);
+  if (!runRows[0]) throw new Error("Backup not found");
+  const run = assembleBackupRun(runRows[0]);
+  await requireBackupCapability(run, "delete_backups");
+  if (run.status === "running")
+    throw new Error("This backup is still running - wait for it to finish");
+
+  const target = await downloadTargetFor(run, teamId);
+  // Only a successful run owns a file. A failed one never wrote anything, so its
+  // record goes on its own with nothing to delete first.
+  if (run.objectKey && run.status === "success") {
+    const creds = await getDestinationWithSecretsForTeam(teamId, run.destinationId);
+    // The DESTINATION decides which agent holds the bytes, never the workload's
+    // host: an artifact on another server's disk would otherwise be looked for on
+    // the app's own, come back "no such file", and leave the file behind while
+    // the record disappeared.
+    const via =
+      destinationServerId(creds.destination, target.serverId ?? "") ||
+      (await anyBackupCapableServer());
+    if (!via)
+      throw new Error(
+        "No server on this instance can reach the destination this backup is kept in",
+      );
+    const res = await deleteFromDestination(creds, via, run.objectKey);
+    // The agent resolves `ok:false` rather than throwing for a destination-side
+    // refusal, so both shapes have to be checked or a failure reads as success.
+    if (!res.ok)
+      throw new Error(res.error || "The backup file could not be deleted.");
+  }
+
+  await getDb()
+    .delete(backupRunsTable)
+    .where(and(eq(backupRunsTable.id, runId), eq(backupRunsTable.teamId, teamId)));
+
+  await recordActivity(
+    "backup",
+    `Deleted a backup of ${target.label} from ${formatBytes(run.sizeBytes)}`,
+    user.name,
+    run.appId,
+    teamId,
+  );
 }
 
 /**

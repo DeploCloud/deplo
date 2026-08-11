@@ -31,6 +31,7 @@ import {
   createBackup,
   deleteAllBackupArtifacts,
   deleteBackup,
+  deleteBackupRun,
   downloadBackupArtifact,
   listBackupRuns,
   reconcileInFlightBackupRuns,
@@ -68,7 +69,19 @@ beforeEach(async () => {
   await pg.exec(`${TRUNCATE_BACKUPS}
     truncate table app_build_method_settings, app_build, apps, servers,
       users, teams restart identity cascade;`);
-  await seedIdentity(db, { users: [{ id: USER_1, teamId: TEAM_A, role: "owner" }] });
+  await seedIdentity(db, {
+    users: [
+      { id: USER_1, teamId: TEAM_A, role: "owner" },
+      // Holds the whole backup surface EXCEPT the one destructive verb, which is
+      // the split `delete_backups` exists to make.
+      {
+        id: USER_SCHEDULER,
+        teamId: TEAM_A,
+        role: "member",
+        capabilities: ["view", "manage_backups", "restore_backups"],
+      },
+    ],
+  });
   await seedServer(db);
   await seedDatabase(db, { id: "db_1", name: "main" });
   await seedApp(db, { id: "prj_1", teamId: TEAM_A });
@@ -77,6 +90,9 @@ beforeEach(async () => {
 
 const asUser1 = <T>(fn: () => Promise<T>): Promise<T> =>
   runWithIdentity({ userId: USER_1, teamId: TEAM_A }, fn);
+
+/** A member who may schedule and restore backups but not destroy one. */
+const USER_SCHEDULER = "user_scheduler";
 
 /* ------------------------------------------------------------------ */
 /* CRUD + validation                                                   */
@@ -606,3 +622,86 @@ test("a run keeps the decrypted size apart from the stored one", async () => {
   });
 });
 
+
+/* ------------------------------------------------------------------ */
+/* Deleting one backup                                                 */
+/* ------------------------------------------------------------------ */
+
+test("a failed run leaves no file, so its record goes on its own", async () => {
+  await asUser1(async () => {
+    // The only shape that completes without an agent, and the one an operator
+    // most often wants gone: a run that failed is a row of clutter.
+    await seedRun(db, {
+      id: "brun_failed",
+      destinationId: "s3_1",
+      targetKind: "app",
+      appId: "prj_1",
+      status: "failed",
+      objectKey: "",
+    });
+    await deleteBackupRun("brun_failed");
+    const left = await listBackupRuns({ appId: "prj_1" });
+    assert.equal(left.length, 0);
+  });
+});
+
+test("a file that could not be deleted KEEPS its record", async () => {
+  await asUser1(async () => {
+    // The invariant retention follows too: a record dropped while its object
+    // survives is an orphan nothing can name any more, because every sweep
+    // starts from the row.
+    await seedRun(db, {
+      id: "brun_keep",
+      destinationId: "s3_1",
+      targetKind: "app",
+      appId: "prj_1",
+    });
+    await assert.rejects(
+      () => deleteBackupRun("brun_keep"),
+      /not provisioned|unreachable|too old/,
+    );
+    const left = await listBackupRuns({ appId: "prj_1" });
+    assert.deepEqual(
+      left.map((r) => r.id),
+      ["brun_keep"],
+    );
+  });
+});
+
+test("a running backup is refused rather than half-deleted", async () => {
+  await asUser1(async () => {
+    // Its artifact does not exist yet, so taking the row away would let the dump
+    // land a file nothing on this instance could ever find again.
+    await seedRun(db, {
+      id: "brun_live",
+      destinationId: "s3_1",
+      targetKind: "app",
+      appId: "prj_1",
+      status: "running",
+    });
+    await assert.rejects(() => deleteBackupRun("brun_live"), /still running/);
+    assert.equal((await listBackupRuns({ appId: "prj_1" })).length, 1);
+  });
+});
+
+test("deleting a backup needs delete_backups, not manage_backups", async () => {
+  // The whole reason it is its own capability: scheduling a dump and destroying
+  // the last copy of one are not the same permission.
+  await asUser1(() =>
+    seedRun(db, {
+      id: "brun_guarded",
+      destinationId: "s3_1",
+      targetKind: "app",
+      appId: "prj_1",
+      status: "failed",
+      objectKey: "",
+    }),
+  );
+  await runWithIdentity({ userId: USER_SCHEDULER, teamId: TEAM_A }, async () => {
+    await assert.rejects(() => deleteBackupRun("brun_guarded"), /permission/i);
+  });
+  // Still there.
+  await asUser1(async () => {
+    assert.equal((await listBackupRuns({ appId: "prj_1" })).length, 1);
+  });
+});

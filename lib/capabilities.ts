@@ -212,6 +212,17 @@ export const CAPABILITY_META: Record<Capability, CapabilityMeta> = {
     keywords: "recover rollback import overwrite",
     sensitive: true,
   },
+  delete_backups: {
+    label: "Delete backups",
+    description:
+      "Permanently delete a single backup, removing the file it was restored from.",
+    keywords: "remove artifact purge prune erase restore point",
+    // The only verb here that destroys data with no way back and no warning
+    // further down: the artifact is the last copy of what an app or database
+    // looked like at that moment, and deleting it can silently leave a target
+    // with no restore point at all.
+    sensitive: true,
+  },
   manage_backup_destinations: {
     label: "Manage backup destinations",
     description:
@@ -370,7 +381,12 @@ export const CAPABILITY_CATEGORIES: {
     key: "backups",
     label: "Backups & storage",
     description: "Backup schedules and where they are stored.",
-    caps: ["manage_backups", "restore_backups", "manage_backup_destinations"],
+    caps: [
+      "manage_backups",
+      "restore_backups",
+      "delete_backups",
+      "manage_backup_destinations",
+    ],
   },
   {
     key: "integrations",
@@ -444,6 +460,11 @@ export const LEGACY_CAPABILITY_EXPANSION: Record<string, Capability[]> = {
     "open_database_console",
     "manage_backups",
     "restore_backups",
+    // Under `manage_infra` because `delete_databases` already is, and that is
+    // the verb the backfill seeds this one from: deleting a database ALREADY
+    // sweeps every artifact it has. An API client still sending the retired
+    // coarse name gets exactly what it always implied.
+    "delete_backups",
     "manage_backup_destinations",
     "manage_registries",
     "manage_git",
