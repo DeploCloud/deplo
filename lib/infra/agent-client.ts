@@ -1932,6 +1932,19 @@ const BACKUP_S3_ARGS_CAPABILITY = "backup-s3-args";
  */
 const BACKUP_S3_READ_CAPABILITY = "backup-s3-read";
 
+/**
+ * `RestoreFrom` honours `untrusted_config`: an artifact that came from OUTSIDE
+ * the fleet contributes data only, never the compose/env/mounts the stack comes
+ * back up with.
+ *
+ * A HARD gate, and it has to be. An agent without this ignores the field, and
+ * ignoring it restores precisely what the flag exists to prevent: with no digest
+ * to prove an uploaded archive, the agent falls back to ITS config whenever the
+ * control plane sends none, which is root on that host for whoever uploaded the
+ * file. A silently-ignored security flag is worse than a refused restore.
+ */
+const BACKUP_UNTRUSTED_CONFIG_CAPABILITY = "backup-untrusted-config";
+
 /** The capability an agent advertises once it can run cron jobs
  *  (StartJob/PollJob/KillJob - ADR-0018). */
 export const CRON_CAPABILITY = "cron";
@@ -2097,6 +2110,10 @@ export async function connectBackupAgent(
     /** Also require `"backup-s3-read"` - set when the artifact is to be streamed
      *  back OUT of a bucket, which only an agent with that RPC arm can do. */
     s3Read?: boolean;
+    /** Also require `"backup-untrusted-config"` - set when the artifact came from
+     *  outside the fleet, so it is only ever handed to an agent that will refuse
+     *  to take its stack configuration. */
+    untrustedConfig?: boolean;
   } = {},
 ): Promise<AgentConnection> {
   const conn = await connectAgent(serverId);
@@ -2132,6 +2149,16 @@ export async function connectBackupAgent(
       throw new AgentBackupStoreUnsupportedError(
         `The agent on this server is too old to read a backup back out of a ` +
           `bucket. Update the agent on this server, then try again.`,
+      );
+    }
+    if (
+      opts.untrustedConfig &&
+      !hello.capabilities?.includes(BACKUP_UNTRUSTED_CONFIG_CAPABILITY)
+    ) {
+      throw new AgentBackupStoreUnsupportedError(
+        `The agent on this server is too old to restore from an uploaded file ` +
+          `safely: it would take the stack configuration out of the file itself. ` +
+          `Update the agent on this server, then try again.`,
       );
     }
     // Said out loud, not swallowed: the flags exist because a store misbehaves

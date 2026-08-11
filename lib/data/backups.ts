@@ -1324,21 +1324,15 @@ export async function prepareUploadRestore(input: {
  * Why an UPLOADED artifact must not be restored into this target, or null when
  * it may proceed. Pure, so the rule it encodes can be read and tested on its own.
  *
- * The rule exists because an uploaded archive is untrusted input, and the agent's
- * "whose stack configuration wins" has one gap that only matters for this path.
- * With no recorded digest there is nothing to prove the artifact with, so the
- * agent keeps the CONTROL PLANE's compose rather than the archive's - unless the
- * control plane sent none, and then it falls back to the archive's (see
- * `restoreConfig` in deplo-agent). The descriptor's compose IS the stack file
- * read off the host, so it is empty for an app that was never deployed there.
+ * NOT the security boundary - that is the `untrusted_config` flag the upload
+ * carries, which stops the agent taking compose, env or mounts out of an archive
+ * that came from outside the fleet at all. This is the second line, and it is
+ * here for a plainer reason: an app that was never deployed on its host has no
+ * stack, so there is no container and no volume for the data to land in. Better
+ * to say that than to accept the file, unpack it into nothing and report success.
  *
- * Restoring an uploaded archive into such an app would hand `docker compose up` a
- * YAML the uploader wrote. A bind mount of `/`, `privileged: true`, or the docker
- * socket is then root on that machine - held by someone with one capability on
- * one app, and neither `canMountHostVolumes` nor instance admin.
- *
- * Refusing costs nothing real: with no stack there is no container and no volume
- * for the data to land in either.
+ * The descriptor's compose IS the stack file read off the host, which is why its
+ * emptiness is the test for "never deployed here".
  */
 export function uploadRestoreRefusal(target: {
   kind: BackupTargetKind;

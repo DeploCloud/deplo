@@ -1601,6 +1601,23 @@ export interface RestoreChunk_Header {
    * the stack configuration is ever re-applied.
    */
   expectedSha256: string;
+  /**
+   * The artifact came from OUTSIDE the fleet - a file somebody uploaded - so
+   * nothing in it may ever configure what comes back up.
+   *
+   * Without this the archive is still a fallback. `restoreConfig` prefers the
+   * control plane's compose/env/mounts for an unproven artifact, but falls back
+   * to the archive's whenever the control plane sent none: an app never
+   * deployed on this host has no stack file, an app with no variables has no
+   * env. That fallback exists for artifacts Deplo itself wrote, before it
+   * recorded digests. For an uploaded one it means the uploader chooses what
+   * `docker compose up` runs and what environment it runs with.
+   *
+   * Default false, so every existing caller keeps the behaviour it has. Gated
+   * by the `backup-untrusted-config` capability, because an agent that ignores
+   * this field would silently restore exactly what the flag exists to prevent.
+   */
+  untrustedConfig: boolean;
 }
 
 export interface FollowLogsRequest {
@@ -8930,7 +8947,14 @@ export const RestoreChunk: MessageFns<RestoreChunk> = {
 };
 
 function createBaseRestoreChunk_Header(): RestoreChunk_Header {
-  return { kind: 0, database: undefined, project: undefined, ageIdentity: "", expectedSha256: "" };
+  return {
+    kind: 0,
+    database: undefined,
+    project: undefined,
+    ageIdentity: "",
+    expectedSha256: "",
+    untrustedConfig: false,
+  };
 }
 
 export const RestoreChunk_Header: MessageFns<RestoreChunk_Header> = {
@@ -8949,6 +8973,9 @@ export const RestoreChunk_Header: MessageFns<RestoreChunk_Header> = {
     }
     if (message.expectedSha256 !== "") {
       writer.uint32(42).string(message.expectedSha256);
+    }
+    if (message.untrustedConfig !== false) {
+      writer.uint32(48).bool(message.untrustedConfig);
     }
     return writer;
   },
@@ -9000,6 +9027,14 @@ export const RestoreChunk_Header: MessageFns<RestoreChunk_Header> = {
           message.expectedSha256 = reader.string();
           continue;
         }
+        case 6: {
+          if (tag !== 48) {
+            break;
+          }
+
+          message.untrustedConfig = reader.bool();
+          continue;
+        }
       }
       if ((tag & 7) === 4 || tag === 0) {
         break;
@@ -9024,6 +9059,11 @@ export const RestoreChunk_Header: MessageFns<RestoreChunk_Header> = {
         : isSet(object.expected_sha256)
         ? globalThis.String(object.expected_sha256)
         : "",
+      untrustedConfig: isSet(object.untrustedConfig)
+        ? globalThis.Boolean(object.untrustedConfig)
+        : isSet(object.untrusted_config)
+        ? globalThis.Boolean(object.untrusted_config)
+        : false,
     };
   },
 
@@ -9044,6 +9084,9 @@ export const RestoreChunk_Header: MessageFns<RestoreChunk_Header> = {
     if (message.expectedSha256 !== "") {
       obj.expectedSha256 = message.expectedSha256;
     }
+    if (message.untrustedConfig !== false) {
+      obj.untrustedConfig = message.untrustedConfig;
+    }
     return obj;
   },
 
@@ -9061,6 +9104,7 @@ export const RestoreChunk_Header: MessageFns<RestoreChunk_Header> = {
       : undefined;
     message.ageIdentity = object.ageIdentity ?? "";
     message.expectedSha256 = object.expectedSha256 ?? "";
+    message.untrustedConfig = object.untrustedConfig ?? false;
     return message;
   },
 };

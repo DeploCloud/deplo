@@ -385,6 +385,10 @@ export async function restoreFromDestination(
           project: target.project,
           ageIdentity: creds.ageIdentity,
           expectedSha256,
+          // FALSE, and deliberately: this artifact is one Deplo wrote, carried
+          // between two hosts of its own fleet, with the digest to prove it. Its
+          // configuration snapshot is the whole point of restoring from it.
+          untrustedConfig: false,
         },
         bytes,
       ),
@@ -425,7 +429,10 @@ export async function openUploadRestore(
   events: AsyncGenerator<RestoreEvent, void, unknown>;
   close: () => void;
 }> {
-  const conn = await connectBackupAgent(target.serverId, { store: true });
+  const conn = await connectBackupAgent(target.serverId, {
+    store: true,
+    untrustedConfig: true,
+  });
   return {
     events: conn.restoreFrom(
       {
@@ -434,6 +441,11 @@ export async function openUploadRestore(
         project: target.project,
         ageIdentity,
         expectedSha256: "",
+        // The bytes came from outside the fleet, so nothing in them configures
+        // what comes back up: only the DATA is restored. Without this the agent
+        // would fall back to the archive's compose/env whenever this side sent
+        // none, which is the uploader choosing what `docker compose up` runs.
+        untrustedConfig: true,
       },
       chunks,
     ),
