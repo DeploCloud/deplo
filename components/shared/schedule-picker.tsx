@@ -76,6 +76,7 @@ export function SchedulePicker({
   label = "Schedule",
   info = DEFAULT_INFO,
   timezone = "UTC",
+  summary = true,
 }: {
   value: string;
   onChange: (cron: string) => void;
@@ -98,6 +99,13 @@ export function SchedulePicker({
    * labelled UTC on a schedule that fires at 03:00 in Rome is a plain lie.
    */
   timezone?: string;
+  /**
+   * The line under the fields reading the schedule back in words plus its next
+   * run. Off where the controls already say it plainly enough and the line was
+   * just one more thing to read past. The invalid-expression message is NOT part
+   * of it: that one always shows, or a typo would be accepted in silence.
+   */
+  summary?: boolean;
 }) {
   const [parts, setParts] = React.useState<ScheduleParts>(
     () => partsFromCron(value) ?? DEFAULT_PARTS,
@@ -277,16 +285,18 @@ export function SchedulePicker({
         )}
 
         {valid ? (
-          <p className="text-xs text-muted-foreground">
-            {description ?? "Custom schedule"}
-            {nextRun && (
-              <>
-                {" · next run "}
-                <span className="text-foreground">{formatLocal(nextRun)}</span>
-                {" your time"}
-              </>
-            )}
-          </p>
+          summary && (
+            <p className="text-xs text-muted-foreground">
+              {description ?? "Custom schedule"}
+              {nextRun && (
+                <>
+                  {" · next run "}
+                  <span className="text-foreground">{formatLocal(nextRun)}</span>
+                  {" your time"}
+                </>
+              )}
+            </p>
+          )
         ) : (
           <p className="text-xs text-destructive">
             Not a valid cron expression. Use 5 fields — minute hour day month weekday.

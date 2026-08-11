@@ -6,11 +6,7 @@ import { FieldLabel } from "@/components/ui/info-tip";
 import { SchedulePicker } from "@/components/shared/schedule-picker";
 import { TimezonePicker } from "@/components/servers/timezone-picker";
 import { dstSkipWarning } from "@/lib/crons/cron-tz";
-import {
-  SCHEDULE_OPTIONS,
-  partsFromCron,
-  retentionCoverage,
-} from "@/lib/schedule";
+import { SCHEDULE_OPTIONS, partsFromCron } from "@/lib/schedule";
 import { cn } from "@/lib/utils";
 
 /** What a schedule keeps when the field is left empty — the server's own default. */
@@ -39,9 +35,8 @@ export function suggestScheduleName(cron: string): string {
  * RETENTION IS A COUNT, not a window in days. "Keep the last 3" is the question
  * people actually ask, and it is the only phrasing that survives a change of
  * cadence: 7 days of an hourly schedule is 168 artifacts, which nobody asked for.
- * The line under the field converts it back into time, because how far back you
- * are covered is still what the number is FOR, and only the schedule knows the
- * exchange rate.
+ * The unit rides inside the field, which is the whole explanation the number
+ * needs.
  *
  * The TIMEZONE is the other part worth explaining. A backup schedule used to be
  * read in UTC and nothing said so above the field, which for anyone outside that
@@ -74,7 +69,6 @@ export function BackupScheduleFields({
   // Date on every render would restart that ticking on each keystroke.
   const [pickerNow] = React.useState(() => Date.now());
   const dstWarning = dstSkipWarning(schedule, timezone);
-  const coverage = retentionCoverage(schedule, retention);
 
   return (
     <div className="space-y-4">
@@ -83,6 +77,7 @@ export function BackupScheduleFields({
         value={schedule}
         onChange={onScheduleChange}
         timezone={timezone}
+        summary={false}
         info="How often this backup runs. Pick a frequency - the details it needs appear next to it. Writing a cron expression by hand is the last option in the list."
         trailing={
           <div className="space-y-2">
@@ -131,11 +126,6 @@ export function BackupScheduleFields({
             {retention === 1 ? "backup" : "backups"}
           </span>
         </div>
-        {coverage && (
-          <p className="text-xs text-muted-foreground">
-            Keeps {coverage} of history.
-          </p>
-        )}
       </div>
     </div>
   );
