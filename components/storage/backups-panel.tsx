@@ -134,6 +134,13 @@ export function BackupsPanel({
     () => new Map(destinations.map((d) => [d.id, d.kind] as const)),
     [destinations],
   );
+  // Only for what the row says about an artifact it cannot hand over: a bucket
+  // object is a `.age` file, and someone who fetches it without knowing that
+  // reads the failure as a corrupt backup.
+  const destEncrypted = React.useMemo(
+    () => new Set(destinations.filter((d) => d.encrypted).map((d) => d.id)),
+    [destinations],
+  );
 
   // A dump runs on the host for minutes with nothing on this page changing by
   // itself, and the mutation that started it only resolves at the very END. So a
@@ -342,6 +349,7 @@ export function BackupsPanel({
                       destName.get(run.destinationId) ?? "Unknown destination"
                     }
                     downloadable={destKind.get(run.destinationId) === "server"}
+                    encrypted={destEncrypted.has(run.destinationId)}
                   />
                 ))}
               </TableBody>
@@ -1174,6 +1182,7 @@ function RunActions({
   running,
   ok,
   downloadable,
+  encrypted,
   canRestore,
   onRestore,
 }: {
@@ -1185,6 +1194,9 @@ function RunActions({
    *  pulling it out of the bucket and back through Deplo would double the
    *  transfer to hand over a file the operator can already fetch themselves. */
   downloadable: boolean;
+  /** Whether that bucket object is age-encrypted. Only read when it is NOT
+   *  downloadable — a pending row never gets as far as saying so. */
+  encrypted?: boolean;
   canRestore: boolean;
   onRestore?: () => void;
 }) {
@@ -1197,8 +1209,13 @@ function RunActions({
         ? "Only a successful backup can be downloaded"
         : "Only a successful backup can be restored";
     if (verb === "restore") return "Restore this backup in place";
-    return downloadable
-      ? "Download this backup file"
+    if (downloadable) return "Download this backup file";
+    // Naming the encryption is the whole point of this branch: the object in the
+    // bucket ends in `.age`, and the person who fetches it and feeds it to gunzip
+    // gets garbage back and concludes their backup is corrupt. Same wording as
+    // the server's refusal, so the two never disagree.
+    return encrypted
+      ? "This backup is in your bucket. Fetch it with your own credentials, then decrypt it with the recovery key."
       : "This backup is in your bucket. Fetch it with your own credentials.";
   }
   // Icon + label as DIRECT children of the button, never wrapped: one <span>
@@ -1257,6 +1274,7 @@ function RunRow({
   target,
   destinationName,
   downloadable,
+  encrypted,
   canRestore,
 }: {
   run: BackupRun;
@@ -1267,6 +1285,8 @@ function RunRow({
    *  Deplo would double the transfer to hand over a file the operator can
    *  already fetch with their own credentials. */
   downloadable: boolean;
+  /** Whether that bucket object is age-encrypted, so the row can say so. */
+  encrypted: boolean;
   canRestore: boolean;
 }) {
   const router = useRouter();
@@ -1316,6 +1336,7 @@ function RunRow({
           running={run.status === "running"}
           ok={ok}
           downloadable={downloadable}
+          encrypted={encrypted}
           canRestore={canRestore}
           onRestore={() => setRestoreOpen(true)}
         />
