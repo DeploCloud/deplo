@@ -15,7 +15,11 @@ import {
   requireCapability,
   requireMembership,
 } from "../membership";
-import { repoCommitUrl, githubPullRequestUrl } from "../utils";
+import {
+  repoCommitUrl,
+  githubPullRequestUrl,
+  appBuildsItsOwnImage,
+} from "../utils";
 import { publishAppChanged } from "../graphql/pubsub";
 import { recordActivity } from "./activity";
 import { startDeployment, destroyStack, rerouteApp } from "../deploy/build";
@@ -76,7 +80,12 @@ export async function listDeployments(filter?: {
       name: appsTable.name,
       slug: appsTable.slug,
       serverId: appsTable.serverId,
+      // Rollback eligibility: the retention depth, plus the four columns that say
+      // whether this app builds an image of its own at all (see rollbackTargetIds).
       rollbackKeep: appsTable.rollbackKeep,
+      source: appsTable.source,
+      compose: appsTable.compose,
+      dockerImage: appsTable.dockerImage,
       folderId: appsTable.folderId,
       projectId: appsTable.projectId,
       environmentId: appsTable.environmentId,
@@ -216,6 +225,10 @@ export async function canRollbackTo(dep: Deployment): Promise<boolean> {
     .select({
       serverId: appsTable.serverId,
       rollbackKeep: appsTable.rollbackKeep,
+      source: appsTable.source,
+      compose: appsTable.compose,
+      repoUrl: appsTable.repoUrl,
+      dockerImage: appsTable.dockerImage,
     })
     .from(appsTable)
     .where(eq(appsTable.id, dep.appId))
@@ -352,7 +365,14 @@ export async function reloadApp(
  * exact answer needs an image-listing RPC the agent does not have.
  */
 function rollbackTargetIds(
-  app: { serverId: string | null; rollbackKeep: number },
+  app: {
+    serverId: string | null;
+    rollbackKeep: number;
+    source: string;
+    compose: string | null;
+    repoUrl: string | null;
+    dockerImage: string | null;
+  },
   /** The app's deployments, NEWEST FIRST - a prefix is fine (truncating can only
    *  drop candidates, never promote one into the window). */
   deps: Pick<
@@ -360,6 +380,12 @@ function rollbackTargetIds(
     "id" | "status" | "environment" | "imageRef" | "rollbackOf" | "serverId"
   >[],
 ): Set<string> {
+  // Asked of the app AS IT IS NOW. An app switched to a compose stack (or to a
+  // prebuilt image) still has old rows carrying an `image_ref`, and offering one
+  // would be offering a deploy the pipeline answers differently - its compose
+  // branch runs first and would redeploy the CURRENT stack while the row claimed
+  // to be a rollback.
+  if (!appBuildsItsOwnImage({ ...app, repo: app.repoUrl })) return new Set();
   const production = deps.filter(
     (d) => d.environment === "production" && d.status === "ready",
   );
@@ -407,11 +433,25 @@ export async function rollbackDeployment(
       serverId: appsTable.serverId,
       rollbackKeep: appsTable.rollbackKeep,
       name: appsTable.name,
+      source: appsTable.source,
+      compose: appsTable.compose,
+      repoUrl: appsTable.repoUrl,
+      dockerImage: appsTable.dockerImage,
     })
     .from(appsTable)
     .where(and(eq(appsTable.id, dep.appId), eq(appsTable.teamId, membership.teamId)))
     .limit(1);
   if (!app) throw new Error("App not found");
+
+  // The app AS IT IS NOW. This one is checked before the per-deployment refusals
+  // below because it is about the app, not the target: `runDeployment` answers a
+  // compose app through its own branch, so a rollback there would redeploy the
+  // CURRENT stack and report success - the one failure mode that lies.
+  if (!appBuildsItsOwnImage({ ...app, repo: app.repoUrl })) {
+    throw new Error(
+      "This app doesn't build an image Deplo can re-run, so it has nothing to roll back to. Only an app deployed from a repository or an uploaded archive can.",
+    );
+  }
 
   // The cheap, specific refusals first, so the common mistakes name themselves
   // instead of falling through to the generic window message.

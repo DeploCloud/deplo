@@ -10,7 +10,7 @@ import { SettingsSection } from "@/components/apps/settings/settings-shared";
 import { DeploymentSettingsForm } from "@/components/apps/settings/deployment-settings-form";
 import { RollbackSettingsForm } from "@/components/apps/settings/rollback-settings-form";
 import { CapabilityFieldset } from "@/components/apps/app-capabilities";
-import { usesComposeStack } from "@/lib/utils";
+import { appBuildsItsOwnImage } from "@/lib/utils";
 
 export const metadata = { title: "Deployment" };
 
@@ -44,14 +44,9 @@ export default async function AppDeploymentSettingsPage(
       ? await appWebhookStatus(project.repo)
       : null;
 
-  // Whether this app accrues rollbacks at all - the same rule the deploy edge
-  // uses to decide it mints an image (`deployImageRef`): a repository or an
-  // uploaded archive, and not a compose stack.
-  const canRollBack =
-    !usesComposeStack(project) &&
-    (project.source === "github" ||
-      project.source === "git" ||
-      project.source === "upload");
+  // Whether this app accrues rollbacks at all - the SAME predicate the data layer
+  // gates on, so the card cannot offer a setting the action would refuse.
+  const canRollBack = appBuildsItsOwnImage(project);
 
   return (
     <section className="space-y-4">

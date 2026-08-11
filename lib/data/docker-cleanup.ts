@@ -23,7 +23,7 @@ import { parseCron } from "../backups/cron";
 import { runAgentCleanup } from "../infra/agent-client";
 import { CleanupScope } from "../agent/gen/agent";
 import type { CleanupScopeResult } from "../agent/gen/agent";
-import { formatBytes } from "../utils";
+import { appBuildsItsOwnImage, formatBytes } from "../utils";
 
 /**
  * Docker cleanup — reclaiming disk on a server's host.
@@ -1005,19 +1005,39 @@ export function serversWithDeploySweepInFlight(): string[] {
  * preview is torn down with its pull request and is not a rollback target, so it
  * keeps falling back to the instance-wide scalar.
  *
+ * ONLY apps that can actually be rolled back are named. A compose stack cannot be
+ * (each service brings its own image, so there is no single one to re-run) and a
+ * prebuilt `docker-image` source pins nothing - naming either would hold four
+ * images per service on the host in exchange for a button that is never offered.
+ * They fall back to the instance scalar, exactly as before the feature existed.
+ *
  * Not team-scoped, and it must not be: a server is shared cross-team infra and one
  * sweep covers every app on it. This is a HOST fact, assembled behind the
  * instance-admin gate the policy already sits behind.
+ *
+ * Exported for tests. The `+ 1` is the whole arithmetic of the feature and it is
+ * off-by-one bait: get it wrong and every app silently keeps one rollback fewer
+ * than its setting promises, which nobody notices until they need the oldest one.
  */
-async function rollbackKeepBySlug(
+export async function rollbackKeepBySlug(
   serverId: string,
 ): Promise<Record<string, number>> {
   const rows = await getDb()
-    .select({ slug: appsTable.slug, keep: appsTable.rollbackKeep })
+    .select({
+      slug: appsTable.slug,
+      keep: appsTable.rollbackKeep,
+      source: appsTable.source,
+      compose: appsTable.compose,
+      repoUrl: appsTable.repoUrl,
+      dockerImage: appsTable.dockerImage,
+    })
     .from(appsTable)
     .where(eq(appsTable.serverId, serverId));
   const out: Record<string, number> = {};
-  for (const r of rows) out[r.slug] = Math.max(1, r.keep + 1);
+  for (const r of rows) {
+    if (!appBuildsItsOwnImage({ ...r, repo: r.repoUrl })) continue;
+    out[r.slug] = Math.max(1, r.keep + 1);
+  }
   return out;
 }
 

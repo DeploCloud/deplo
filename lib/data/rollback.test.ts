@@ -21,6 +21,9 @@ import {
 } from "./app-graph-test-helpers";
 import { listDeployments, rollbackDeployment } from "./deployments";
 import { loadDeploymentsForApp } from "./app-graph-load";
+import { getDb } from "../db/client";
+import { apps as appsTable } from "../db/schema/control-plane";
+import { eq } from "drizzle-orm";
 
 /**
  * Rollback, at the data layer: which deployments an app can be put back on, and
@@ -274,4 +277,83 @@ test("a member without rollback_apps cannot roll back", async () => {
     () => asUser1(() => rollbackDeployment("dpl_1")),
     /permission|capability|rollback/i,
   );
+});
+
+/* ------------------------------------------------------------------ */
+/* The app as it is NOW, not as it was                                 */
+/* ------------------------------------------------------------------ */
+
+/**
+ * An app can CHANGE SOURCE, and its old rows keep the `image_ref` they were built
+ * with. Offering one is offering a deploy the pipeline answers differently: a
+ * compose app is handled by its own branch of `runDeployment`, which would bring
+ * the CURRENT stack up and report success while the row claimed to be a rollback
+ * of an old commit. That is the one failure shape worth a test of its own - it
+ * does not error, it lies.
+ */
+test("an app that has SINCE become a compose stack offers none of its old builds", async () => {
+  await seedApp(db, { id: "prj_1", teamId: TEAM_A, slug: "web", source: "github" });
+  for (const [id, ago] of [
+    ["dpl_0", 1],
+    ["dpl_1", 2],
+  ] as const) {
+    await seedDeployment(db, {
+      id,
+      appId: "prj_1",
+      status: "ready",
+      createdAt: at(ago),
+      serverId: SERVER_1,
+      imageRef: `deplo/web:${id}`,
+    });
+  }
+  // Switched to a compose stack and deployed as one; a compose deploy mints no
+  // image, so its row carries image_ref NULL.
+  await getDb()
+    .update(appsTable)
+    .set({ source: "compose", compose: "services:\n  web:\n    image: nginx\n" })
+    .where(eq(appsTable.id, "prj_1"));
+  await seedDeployment(db, {
+    id: "dpl_c",
+    appId: "prj_1",
+    status: "ready",
+    createdAt: at(0),
+    serverId: SERVER_1,
+  });
+
+  assert.deepEqual(await rollbackable(), []);
+  await assert.rejects(
+    () => asUser1(() => rollbackDeployment("dpl_0")),
+    /nothing to roll back to/i,
+  );
+});
+
+test("an app that has SINCE become a prebuilt image offers none of its old builds", async () => {
+  await seedApp(db, { id: "prj_1", teamId: TEAM_A, slug: "web", source: "github" });
+  for (const [id, ago] of [
+    ["dpl_0", 1],
+    ["dpl_1", 2],
+  ] as const) {
+    await seedDeployment(db, {
+      id,
+      appId: "prj_1",
+      status: "ready",
+      createdAt: at(ago),
+      serverId: SERVER_1,
+      imageRef: `deplo/web:${id}`,
+    });
+  }
+  // A registry tag pins nothing: "back" would land on whatever it points at today.
+  await getDb()
+    .update(appsTable)
+    .set({ source: "docker-image", dockerImage: "nginx:1.27", repoUrl: null, repoRepo: null })
+    .where(eq(appsTable.id, "prj_1"));
+  await seedDeployment(db, {
+    id: "dpl_i",
+    appId: "prj_1",
+    status: "ready",
+    createdAt: at(0),
+    serverId: SERVER_1,
+  });
+
+  assert.deepEqual(await rollbackable(), []);
 });

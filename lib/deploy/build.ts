@@ -1480,6 +1480,26 @@ async function runDeployment(depId: string): Promise<void> {
     // even if a stale compose lingers from a previous source. See usesComposeStack.
     const hasCompose = Boolean(project.compose && project.compose.trim());
     const useCompose = usesComposeStack(project);
+    // A ROLLBACK must never reach the compose branch. It would bring the CURRENT
+    // stack up, settle `ready`, and leave a row that says it went back to an old
+    // commit - success reported for something that did not happen. The data layer
+    // refuses to create such a row (an app is only rollback-able while it still
+    // builds its own image), so this is the second lock on the one failure mode
+    // here that is silent rather than loud.
+    if (useCompose && dep.rollbackOf) {
+      log(
+        depId,
+        "error",
+        "This app deploys a compose stack now, so there is no single image to roll back to.",
+      );
+      await commitOutcome(
+        depId,
+        target,
+        { status: "error", buildDurationMs: Date.now() - started },
+        { status: "error" },
+      );
+      return;
+    }
     if (useCompose && hasCompose) {
       const composeOpts = {
         depId,
