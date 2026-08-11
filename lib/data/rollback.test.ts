@@ -19,7 +19,7 @@ import {
   SERVER_1,
   TRUNCATE_PROJECT_GRAPH,
 } from "./app-graph-test-helpers";
-import { listDeployments, rollbackDeployment } from "./deployments";
+import { listDeployments, rollbackDeployment, getDeployment } from "./deployments";
 import { loadDeploymentsForApp } from "./app-graph-load";
 import { getDb } from "../db/client";
 import { apps as appsTable } from "../db/schema/control-plane";
@@ -356,4 +356,42 @@ test("an app that has SINCE become a prebuilt image offers none of its old build
   });
 
   assert.deepEqual(await rollbackable(), []);
+});
+
+/* ------------------------------------------------------------------ */
+/* The single-row path                                                 */
+/* ------------------------------------------------------------------ */
+
+/**
+ * `getDeployment` answers `canRollback` for ONE row (the deployment page, and any
+ * GraphQL path that did not come through a list). It shares the ranking with the
+ * list but reads its own bounded slice of history, so the two have to agree - a
+ * page that offers a button the list would not is the same lie either way round.
+ */
+test("the single-row read agrees with the list, over a history long enough to bound", async () => {
+  await seedApp(db, { id: "prj_1", teamId: TEAM_A, slug: "web", rollbackKeep: 2 });
+  for (let i = 0; i < 40; i++) {
+    await seedDeployment(db, {
+      id: `dpl_${String(i).padStart(3, "0")}`,
+      appId: "prj_1",
+      status: "ready",
+      createdAt: at(i),
+      serverId: SERVER_1,
+      imageRef: `deplo/web:dpl_${i}`,
+    });
+  }
+  const listed = await asUser1(() => listDeployments({ appId: "prj_1" }));
+  for (const id of ["dpl_000", "dpl_001", "dpl_002", "dpl_003", "dpl_020"]) {
+    const one = await asUser1(() => getDeployment(id));
+    assert.equal(
+      one?.canRollback,
+      listed.find((d) => d.id === id)?.canRollback,
+      `${id}: the deployment page and the list disagree`,
+    );
+  }
+  // And the window is still exactly rollback_keep deep, 40 rows of history later.
+  assert.deepEqual(
+    listed.filter((d) => d.canRollback).map((d) => d.id),
+    ["dpl_001", "dpl_002"],
+  );
 });

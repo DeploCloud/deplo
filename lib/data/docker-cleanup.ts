@@ -24,6 +24,7 @@ import { runAgentCleanup } from "../infra/agent-client";
 import { CleanupScope } from "../agent/gen/agent";
 import type { CleanupScopeResult } from "../agent/gen/agent";
 import { appBuildsItsOwnImage, formatBytes } from "../utils";
+import { MAX_ROLLBACK_KEEP } from "../types";
 
 /**
  * Docker cleanup — reclaiming disk on a server's host.
@@ -1036,7 +1037,14 @@ export async function rollbackKeepBySlug(
   const out: Record<string, number> = {};
   for (const r of rows) {
     if (!appBuildsItsOwnImage({ ...r, repo: r.repoUrl })) continue;
-    out[r.slug] = Math.max(1, r.keep + 1);
+    // Clamped at BOTH ends, not just the floor. The setter already bounds what it
+    // writes, but the column carries no CHECK, and the wire field is an int32 - a
+    // value that got in some other way would not fail loudly here, it would
+    // overflow on the way to the agent.
+    out[r.slug] = Math.min(
+      MAX_ROLLBACK_KEEP + 1,
+      Math.max(1, Math.trunc(r.keep) + 1),
+    );
   }
   return out;
 }

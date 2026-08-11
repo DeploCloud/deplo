@@ -211,13 +211,31 @@ export async function getDeployment(
 }
 
 /**
+ * How far back the single-row check reads before it gives up.
+ *
+ * The window itself is at most {@link MAX_ROLLBACK_KEEP} + 1 BUILDS, but rollback
+ * rows sit among them without being builds, so the scan has to be deeper than the
+ * window. This much deeper is far past any real history: an app would need two
+ * hundred successful production deploys, nearly all of them rollbacks, before the
+ * cut could bite - and when it does it fails CLOSED (the target reads as
+ * ineligible), which is the safe direction.
+ *
+ * It exists because this read is reachable per-object through GraphQL
+ * (`apps { latestDeployment { canRollback } }`), where an unbounded history load
+ * per app turns one small query into thousands of rows of work. The cost limiter
+ * scores a query by its SHAPE, so a resolver that fans out has to bound itself.
+ */
+const ROLLBACK_SCAN_LIMIT = 200;
+
+/**
  * Whether ONE deployment is a rollback target - the single-row read the detail
  * page needs. Shares {@link rollbackTargetIds} with the list and the gate, so all
  * three answer the same question with the same code.
  *
- * Cheap enough to leave un-batched: the window is decided by the app's own
- * history, which is one indexed read (`deployments_app_created_idx`) on a page
- * that is already loading that app.
+ * Bounded on purpose: it reads only the rows that can affect the answer (a
+ * successful PRODUCTION deploy - everything else is discarded as the first thing
+ * the ranking does, so filtering here changes nothing but the volume) and stops
+ * at {@link ROLLBACK_SCAN_LIMIT}.
  */
 export async function canRollbackTo(dep: Deployment): Promise<boolean> {
   if (!dep.imageRef || dep.rollbackOf || dep.status !== "ready") return false;
@@ -234,7 +252,29 @@ export async function canRollbackTo(dep: Deployment): Promise<boolean> {
     .where(eq(appsTable.id, dep.appId))
     .limit(1);
   if (!app) return false;
-  return rollbackTargetIds(app, await loadDeploymentsForApp(dep.appId)).has(dep.id);
+  const history = await getDb()
+    .select({
+      id: deploymentsTable.id,
+      status: deploymentsTable.status,
+      environment: deploymentsTable.environment,
+      imageRef: deploymentsTable.imageRef,
+      rollbackOf: deploymentsTable.rollbackOf,
+      serverId: deploymentsTable.serverId,
+    })
+    .from(deploymentsTable)
+    .where(
+      and(
+        eq(deploymentsTable.appId, dep.appId),
+        eq(deploymentsTable.environment, "production"),
+        eq(deploymentsTable.status, "ready"),
+      ),
+    )
+    .orderBy(desc(deploymentsTable.createdAt), desc(deploymentsTable.seq))
+    .limit(ROLLBACK_SCAN_LIMIT);
+  return rollbackTargetIds(
+    app,
+    history as Parameters<typeof rollbackTargetIds>[1],
+  ).has(dep.id);
 }
 
 /**

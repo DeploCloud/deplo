@@ -31,8 +31,11 @@ import { setAppRollbackKeep } from "./apps";
 import { rollbackKeepBySlug } from "./docker-cleanup";
 import { isInstanceAdmin } from "../membership";
 import { loadAppGraph, loadDeploymentsForApp } from "./app-graph-load";
-import { ALL_CAPABILITIES, type Capability } from "../types";
+import { ALL_CAPABILITIES, MAX_ROLLBACK_KEEP, type Capability } from "../types";
 import { NODE_GRANTABLE_CAPABILITIES } from "../membership-shared";
+import { getDb } from "../db/client";
+import { apps as appsSchema } from "../db/schema/control-plane";
+import { eq } from "drizzle-orm";
 
 /**
  * Rollback as an ATTACKER sees it.
@@ -393,6 +396,19 @@ test("an app that CANNOT roll back is absent from the map", async () => {
   });
   await seedApp(db, { id: "prj_g", teamId: TEAM_A, slug: "web" });
   assert.deepEqual(await rollbackKeepBySlug(SERVER_1), { web: 4 });
+});
+
+test("a value that got past the setter is still clamped on the way to the wire", async () => {
+  await seedApp(db, { id: "prj_1", teamId: TEAM_A, slug: "web" });
+  // The column carries no CHECK and the proto field is an int32, so a value that
+  // arrived some other way must not ride out as-is.
+  await getDb()
+    .update(appsSchema)
+    .set({ rollbackKeep: 2_000_000_000 })
+    .where(eq(appsSchema.id, "prj_1"));
+  assert.deepEqual(await rollbackKeepBySlug(SERVER_1), {
+    web: MAX_ROLLBACK_KEEP + 1,
+  });
 });
 
 test("a preview stack is deliberately absent from the map", async () => {
