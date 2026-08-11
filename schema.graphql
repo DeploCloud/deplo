@@ -537,12 +537,14 @@ type BackupRun {
 }
 
 enum BackupRunStatus {
+  canceled
   failed
   running
   success
 }
 
 enum BackupStatus {
+  canceled
   failed
   never
   running
@@ -633,7 +635,7 @@ enum Capability {
   manage_environments
   manage_files @deprecated(reason: "Split into finer permissions. Still accepted on input, where it means: read_app_files, write_app_files.")
   manage_git
-  manage_infra @deprecated(reason: "Split into finer permissions. Still accepted on input, where it means: create_databases, configure_databases, control_databases, delete_databases, open_database_console, manage_backups, restore_backups, manage_backup_destinations, manage_registries, manage_git, manage_tokens, manage_notifications, manage_monitoring.")
+  manage_infra @deprecated(reason: "Split into finer permissions. Still accepted on input, where it means: create_databases, configure_databases, control_databases, delete_databases, open_database_console, manage_backups, restore_backups, delete_backups, manage_backup_destinations, manage_registries, manage_git, manage_tokens, manage_notifications, manage_monitoring.")
   manage_members
   manage_monitoring
   manage_notifications
@@ -1914,6 +1916,11 @@ type Mutation {
   Cancel every in-progress deployment (queued/building) for one app (appId given) or across the whole active team (appId omitted), optionally narrowed to the deployments view filters: one owning server (serverId), one environment, and/or one status. Terminal deployments are left. Returns how many builds were stopped.
   """
   cancelAllDeployments(appId: ID, environment: String, serverId: ID, status: String): Int
+
+  """
+  Stop a backup that is running: the record settles as canceled and the dump is aborted on the host it runs on. Returns false when it had already finished.
+  """
+  cancelBackupRun(runId: String!): Boolean
 
   """Stop a run that is in flight."""
   cancelCronRun(id: ID!): Boolean

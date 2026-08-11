@@ -558,14 +558,23 @@ async function executeBackup(
   // itself) lands on the same `failed`-run path below.
   let label = opts.kind === "database" ? "database" : "app";
   let activityAppId: string | null = opts.kind === "app" ? opts.appId : null;
+  // Kept out here for the cancel cleanup below, which runs after the try block
+  // that resolves it.
+  let targetServerId = "";
   let result: BackupOutcome | null = null;
   let failure: string | null = null;
   let objectKey = "";
+  // Registered before the first dial and removed in the `finally` below, so
+  // "Stop" can reach this dump for exactly as long as it is running.
+  const abort = new AbortController();
+  backupRunsInFlight.set(runId, abort);
+  let creds: Awaited<ReturnType<typeof getDestinationWithSecretsForTeam>> | null = null;
   try {
-    const creds = await getDestinationWithSecretsForTeam(teamId, opts.destinationId);
+    creds = await getDestinationWithSecretsForTeam(teamId, opts.destinationId);
     const target = await resolveTarget(teamId, opts.kind, opts.databaseId, opts.appId);
     label = target.label;
     activityAppId = target.appId;
+    targetServerId = target.serverId;
     objectKey = buildObjectKey({
       teamId,
       kind: opts.kind,
@@ -599,6 +608,7 @@ async function executeBackup(
         project: target.project,
       },
       objectKey,
+      abort.signal,
     );
     if (!result.ok) failure = result.error || "the agent reported a failed backup";
 
@@ -624,12 +634,21 @@ async function executeBackup(
     }
   } catch (e) {
     failure = (mapBackupUnsupported(e) as Error).message;
+  } finally {
+    backupRunsInFlight.delete(runId);
   }
 
   const finishedAt = nowIso();
   // TERMINAL transaction (short): flip the run to its final status + stamp the
   // schedule. The SECOND of the two short transactions; the agent dump completed
   // above, outside any tx (PLAN §1 rule (a)).
+  //
+  // A COMPARE-AND-SWAP on `running`, the same shape `commitOutcome` uses for a
+  // stopped build: `cancelBackupRun` flips the row on another connection while
+  // this is still unwinding, and a cancel that landed at ANY point before this
+  // write must win. 0 rows match, the run stays `canceled`, and the block below
+  // clears up after it.
+  let canceled = false;
   const finished = await getDb().transaction(async (tx): Promise<BackupRun> => {
     const set = failure
       ? { status: "failed" as const, error: failure, finishedAt }
@@ -651,12 +670,21 @@ async function executeBackup(
     const updated = await tx
       .update(backupRunsTable)
       .set(set)
-      .where(eq(backupRunsTable.id, runId))
+      .where(and(eq(backupRunsTable.id, runId), eq(backupRunsTable.status, "running")))
       .returning();
-    // The record can be gone: deleting a target sweeps its run history, and a
-    // backup can be in flight when that happens. Report the run we have rather
-    // than dereferencing an empty result inside the transaction.
-    if (updated.length === 0) return { ...run, ...set } as BackupRun;
+    // The record can be gone (deleting a target sweeps its run history, and a
+    // backup can be in flight when that happens) or no longer `running` (it was
+    // canceled). Both come back empty; the second is the one worth knowing about,
+    // so it is asked for rather than assumed.
+    if (updated.length === 0) {
+      const still = await tx
+        .select({ status: backupRunsTable.status })
+        .from(backupRunsTable)
+        .where(eq(backupRunsTable.id, runId))
+        .limit(1);
+      canceled = still[0]?.status === "canceled";
+      return { ...run, ...set } as BackupRun;
+    }
     if (opts.backupId) {
       await tx
         .update(backupsTable)
@@ -665,6 +693,32 @@ async function executeBackup(
     }
     return assembleBackupRun(updated[0]!);
   });
+
+  // The cancel already said what happened, in its own Activity entry and to the
+  // person who pressed the button. What it could NOT know is whether the dump
+  // beat it: a cancel landing in the instant between the agent finishing its
+  // upload and the write above leaves a complete artifact at the destination with
+  // no successful run pointing at it - an orphan nothing would ever collect,
+  // which for a backup is a multi-GB object billed forever. So the artifact goes
+  // with the run that was stopped.
+  if (canceled) {
+    if (!failure && result?.ok && result.objectKey && creds) {
+      try {
+        const via =
+          destinationServerId(creds.destination, targetServerId) ||
+          (await anyBackupCapableServer());
+        if (via) await deleteFromDestination(creds, via, result.objectKey);
+      } catch (e) {
+        console.warn(
+          `[backups] canceled run ${runId} left ${result.objectKey} behind: ` +
+            `${e instanceof Error ? e.message : String(e)}`,
+        );
+      }
+    }
+    // Thrown, not returned: every caller of this treats a non-success as an
+    // error, and "the backup you stopped did not produce one" is the truth.
+    throw new Error("This backup was canceled");
+  }
 
   await recordActivity(
     "backup",
@@ -1190,6 +1244,25 @@ export async function restoreBackup(runId: string): Promise<void> {
 const uploadRestoresInFlight = new Set<string>();
 
 /**
+ * The dumps this process is currently driving, by run id, so "Stop" can reach
+ * one that is already halfway through a 25 GB tar.
+ *
+ * Aborting the controller closes the agent connection, which cancels the gRPC
+ * call, which cancels the stream context the agent's own write loop checks - so
+ * the work actually stops ON THE HOST rather than being merely un-recorded here.
+ * That is the difference from `cancelDeployment`, which can only flag the row and
+ * let the build finish in the background: a backup's stream is one this process
+ * holds open, so it has the lever.
+ *
+ * MODULE-LEVEL and in-memory, the same shape and the same reasoning as
+ * `uploadRestoresInFlight`: the control plane is a single Node process. A run
+ * this process does not hold (it restarted, or another instance owns it) is
+ * still marked canceled - the record is the part that must always settle, and
+ * `reconcileInFlightBackupRuns` sweeps whatever is left.
+ */
+const backupRunsInFlight = new Map<string, AbortController>();
+
+/**
  * Restore an app or a database from an artifact the operator UPLOADS, rather
  * than from a run this instance recorded.
  *
@@ -1576,6 +1649,79 @@ export async function deleteBackup(id: string): Promise<void> {
   await getDb()
     .delete(backupsTable)
     .where(and(eq(backupsTable.id, id), eq(backupsTable.teamId, teamId)));
+}
+
+/**
+ * Stop a backup that is running.
+ *
+ * Two things happen, and the ORDER is the point. The record is flipped first, as
+ * a compare-and-swap on `running`, so the answer is settled the moment the button
+ * is pressed and cannot be undone by the dump finishing a second later
+ * ({@link executeBackup}'s terminal write is the matching half). Then the dump
+ * itself is aborted, which closes the agent connection and cancels the stream
+ * context the agent's own write loop checks - so the tar stops and the upload
+ * stops, on the host, rather than running to completion into a bucket nobody
+ * wants it in.
+ *
+ * Gated on `manage_backups`, the capability whose own description is "create,
+ * edit, disable and RUN backup schedules on demand": stopping a dump you are
+ * allowed to start is the same power, and needing a second permission to undo
+ * your own click would be a trap rather than a safeguard. It destroys nothing -
+ * a canceled run produced no restore point - so it is not `delete_backups`.
+ *
+ * Returns whether a run was actually stopped: `false` when it had already
+ * finished, so the caller can avoid claiming otherwise.
+ */
+export async function cancelBackupRun(runId: string): Promise<boolean> {
+  const { membership } = await requireMembership();
+  const teamId = membership.teamId;
+  const user = (await getCurrentUser())!;
+
+  const runRows = await getDb()
+    .select()
+    .from(backupRunsTable)
+    .where(and(eq(backupRunsTable.id, runId), eq(backupRunsTable.teamId, teamId)))
+    .limit(1);
+  if (!runRows[0]) throw new Error("Backup not found");
+  const run = assembleBackupRun(runRows[0]);
+  await requireBackupCapability(run, "manage_backups");
+
+  // `running` is part of the WHERE, not just a pre-check: a dump that finished
+  // between the read above and this write must NOT be retroactively flipped from
+  // success to canceled - it produced a real artifact and a real restore point.
+  const stopped = await getDb()
+    .update(backupRunsTable)
+    .set({
+      status: "canceled",
+      error: `Canceled by ${user.name}`,
+      finishedAt: nowIso(),
+    })
+    .where(and(eq(backupRunsTable.id, runId), eq(backupRunsTable.status, "running")))
+    .returning({ id: backupRunsTable.id });
+  if (stopped.length === 0) return false;
+
+  // The schedule stops reading "Running" at once, rather than waiting out
+  // whatever the abort below takes to unwind.
+  if (run.backupId)
+    await getDb()
+      .update(backupsTable)
+      .set({ lastStatus: "canceled" })
+      .where(and(eq(backupsTable.id, run.backupId), eq(backupsTable.teamId, teamId)));
+
+  // Only this process can hold the stream. One that does not (it restarted, or
+  // another instance owns the run) still settles the record above, and
+  // `reconcileInFlightBackupRuns` sweeps whatever is left behind.
+  backupRunsInFlight.get(runId)?.abort();
+
+  const target = await downloadTargetFor(run, teamId);
+  await recordActivity(
+    "backup",
+    `Canceled a running backup of ${target.label}`,
+    user.name,
+    run.appId,
+    teamId,
+  );
+  return true;
 }
 
 /**

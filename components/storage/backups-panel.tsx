@@ -17,6 +17,7 @@ import {
   Play,
   Plus,
   RotateCcw,
+  Square,
   Trash2,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -343,6 +344,7 @@ export function BackupsPanel({
                     target={target}
                     canRestore={canRestore}
                     canDelete={canDelete}
+                    canManage={canManage}
                     destinationName={
                       destName.get(run.destinationId) ?? "Unknown destination"
                     }
@@ -1176,8 +1178,10 @@ function RunActions({
   ok,
   canRestore,
   canDelete = false,
+  canManage = false,
   onRestore,
   onDelete,
+  onCancel,
 }: {
   /** The download URL, or null for a run that has no id yet (the placeholder). */
   href: string | null;
@@ -1185,8 +1189,11 @@ function RunActions({
   ok: boolean;
   canRestore: boolean;
   canDelete?: boolean;
+  /** `manage_backups` — whoever may start a dump may stop it. */
+  canManage?: boolean;
   onRestore?: () => void;
   onDelete?: () => void;
+  onCancel?: () => void;
 }) {
   // Every successful artifact is downloadable, wherever it is kept. Where it
   // LIVES used to decide that: an artifact in a bucket got a disabled button and
@@ -1258,6 +1265,22 @@ function RunActions({
           Restore
         </Button>
       </TooltipWhenDisabled>
+      {/* Only while it is running, and then it is the ONLY thing to do with the
+          row: nothing else on it can act on a dump that has not finished. */}
+      {running && onCancel && (
+        <IconAction
+          label="Stop this backup"
+          tooltip={
+            canManage
+              ? "Stop this backup and discard what it has written"
+              : "You don't have permission to stop backups"
+          }
+          disabled={!canManage}
+          onClick={onCancel}
+        >
+          <Square className="size-4" />
+        </IconAction>
+      )}
       {/* Icon-only, unlike its two neighbours: this is the destructive one, and
           a third labelled button would give it the same weight as Download.
           IconAction is the file's own pattern for that - same h-8 as `size="sm"`,
@@ -1281,16 +1304,19 @@ function RunRow({
   destinationName,
   canRestore,
   canDelete,
+  canManage,
 }: {
   run: BackupRun;
   target: BackupTarget;
   destinationName: string;
   canRestore: boolean;
   canDelete: boolean;
+  canManage: boolean;
 }) {
   const router = useRouter();
   const [restoreOpen, setRestoreOpen] = React.useState(false);
   const [deleteOpen, setDeleteOpen] = React.useState(false);
+  const [cancelOpen, setCancelOpen] = React.useState(false);
   const ok = run.status === "success";
 
   return (
@@ -1337,8 +1363,26 @@ function RunRow({
           ok={ok}
           canRestore={canRestore}
           canDelete={canDelete}
+          canManage={canManage}
           onRestore={() => setRestoreOpen(true)}
           onDelete={() => setDeleteOpen(true)}
+          onCancel={() => setCancelOpen(true)}
+        />
+        <ConfirmAction
+          open={cancelOpen}
+          onOpenChange={setCancelOpen}
+          title="Stop this backup?"
+          confirmLabel="Stop backup"
+          successMessage="Backup stopped"
+          description="The dump stops on the server and nothing is kept: the half-written file is removed, so this leaves no backup behind."
+          onConfirm={async () => {
+            const res = await gqlAction(
+              `mutation($runId: String!) { cancelBackupRun(runId: $runId) }`,
+              { runId: run.id },
+            );
+            if (res.ok) router.refresh();
+            return res;
+          }}
         />
         <ConfirmAction
           open={restoreOpen}

@@ -30,6 +30,7 @@ import {
   countBackupArtifacts,
   createBackup,
   deleteAllBackupArtifacts,
+  cancelBackupRun,
   deleteBackup,
   deleteBackupRun,
   downloadBackupArtifact,
@@ -80,6 +81,12 @@ beforeEach(async () => {
         role: "member",
         capabilities: ["view", "manage_backups", "restore_backups"],
       },
+      {
+        id: USER_RESTORER,
+        teamId: TEAM_A,
+        role: "member",
+        capabilities: ["view", "restore_backups"],
+      },
     ],
   });
   await seedServer(db);
@@ -93,6 +100,8 @@ const asUser1 = <T>(fn: () => Promise<T>): Promise<T> =>
 
 /** A member who may schedule and restore backups but not destroy one. */
 const USER_SCHEDULER = "user_scheduler";
+/** A member who may restore a backup but not schedule, run or stop one. */
+const USER_RESTORER = "user_restorer";
 
 /* ------------------------------------------------------------------ */
 /* CRUD + validation                                                   */
@@ -703,5 +712,80 @@ test("deleting a backup needs delete_backups, not manage_backups", async () => {
   // Still there.
   await asUser1(async () => {
     assert.equal((await listBackupRuns({ appId: "prj_1" })).length, 1);
+  });
+});
+
+/* ------------------------------------------------------------------ */
+/* Stopping a backup that is running                                   */
+/* ------------------------------------------------------------------ */
+
+test("cancelling settles the run and the schedule at once", async () => {
+  await asUser1(async () => {
+    // The record is the half that must ALWAYS settle: the dump may be running in
+    // another process, or in none at all, and the panel cannot sit on "Running"
+    // waiting to find out.
+    await seedBackup(db, {
+      id: "bkp_live",
+      destinationId: "s3_1",
+      targetKind: "app",
+      appId: "prj_1",
+    });
+    await seedRun(db, {
+      id: "brun_going",
+      destinationId: "s3_1",
+      backupId: "bkp_live",
+      targetKind: "app",
+      appId: "prj_1",
+      status: "running",
+    });
+    assert.equal(await cancelBackupRun("brun_going"), true);
+    const [run] = await listBackupRuns({ appId: "prj_1" });
+    assert.equal(run!.status, "canceled");
+    assert.match(run!.error ?? "", /Canceled by/);
+    assert.ok(run!.finishedAt, "a stopped run is finished, not left open");
+    const [schedule] = await db
+      .select()
+      .from(backupsTable)
+      .where(eq(backupsTable.id, "bkp_live"));
+    assert.equal(schedule!.lastStatus, "canceled");
+  });
+});
+
+test("cancelling a backup that already finished changes nothing", async () => {
+  await asUser1(async () => {
+    // The dump can land between the click and the write. Flipping a real restore
+    // point to `canceled` would throw away an artifact that exists.
+    await seedRun(db, {
+      id: "brun_done",
+      destinationId: "s3_1",
+      targetKind: "app",
+      appId: "prj_1",
+      status: "success",
+    });
+    assert.equal(await cancelBackupRun("brun_done"), false);
+    const [run] = await listBackupRuns({ appId: "prj_1" });
+    assert.equal(run!.status, "success");
+    assert.equal(run!.error, null);
+  });
+});
+
+test("stopping a backup needs manage_backups", async () => {
+  await asUser1(() =>
+    seedRun(db, {
+      id: "brun_guard",
+      destinationId: "s3_1",
+      targetKind: "app",
+      appId: "prj_1",
+      status: "running",
+    }),
+  );
+  // A member who may restore but not schedule cannot stop one either: starting
+  // and stopping a dump are the same power, and it is `manage_backups`.
+  await runWithIdentity({ userId: USER_RESTORER, teamId: TEAM_A }, async () => {
+    await assert.rejects(() => cancelBackupRun("brun_guard"), /permission/i);
+  });
+  await asUser1(async () => {
+    const [run] = await listBackupRuns({ appId: "prj_1" });
+    assert.equal(run!.status, "running");
   });
 });

@@ -1597,7 +1597,9 @@ export interface BackupDestination {
 /** What a backup schedule / run targets. */
 export type BackupTargetKind = "database" | "app";
 
-export type BackupRunStatus = "running" | "success" | "failed";
+/** `canceled` spelled the way `deployments.status` already spells it, so the two
+ *  "somebody pressed Stop" states read the same everywhere in the UI. */
+export type BackupRunStatus = "running" | "success" | "failed" | "canceled";
 
 export interface Backup {
   id: ID;
@@ -1622,7 +1624,7 @@ export interface Backup {
    *  newest successful one is never removed. */
   retentionCount: number;
   lastRunAt: string | null;
-  lastStatus: "success" | "failed" | "running" | "never";
+  lastStatus: "success" | "failed" | "running" | "canceled" | "never";
   enabled: boolean;
   createdAt: string;
 }

@@ -111,6 +111,14 @@ export async function backupToDestination(
   creds: DestinationWithSecrets,
   target: TransportTarget,
   objectKey: string,
+  /**
+   * Abort the dump WHERE IT RUNS. Closing the connection cancels the gRPC call,
+   * which cancels the agent's stream context, which is what the agent's own
+   * write loop checks - so the tar stops, the upload stops, and a multi-GB dump
+   * nobody wants any more stops costing disk and bandwidth. Without it a "cancel"
+   * could only mark the record and let the host finish the work regardless.
+   */
+  signal?: AbortSignal,
 ): Promise<BackupOutcome> {
   const dest = creds.destination;
   const destServer = destinationServerId(dest, target.serverId);
@@ -135,15 +143,40 @@ export async function backupToDestination(
       encryptedS3: dest.kind === "s3" && !!dest.ageRecipient,
       s3Args: hasS3Args(dest),
     });
+    const release = abortWith(signal, conn);
     try {
       return await consumeBackup(conn, req, objectKey);
     } finally {
+      release();
       conn.close();
     }
   }
 
   // Shape 3: relay. Two connections, one pipe, backpressure end to end.
-  return relayBackup(creds, target, objectKey, destServer, req);
+  return relayBackup(creds, target, objectKey, destServer, req, signal);
+}
+
+/**
+ * Close `conn` if `signal` aborts, and hand back the undo.
+ *
+ * The undo matters: a connection outlives its listener here (one relay holds
+ * two), and a signal left holding a reference to a closed connection is how a
+ * long-lived AbortController turns into a leak.
+ */
+function abortWith(
+  signal: AbortSignal | undefined,
+  ...conns: { close: () => void }[]
+): () => void {
+  if (!signal) return () => {};
+  const stop = () => {
+    for (const c of conns) c.close();
+  };
+  if (signal.aborted) {
+    stop();
+    return () => {};
+  }
+  signal.addEventListener("abort", stop, { once: true });
+  return () => signal.removeEventListener("abort", stop);
 }
 
 /** Drain a Backup stream and fold its terminal result into a {@link BackupOutcome}. */
@@ -208,6 +241,7 @@ async function relayBackup(
   objectKey: string,
   destServer: string,
   base: BackupRequest,
+  signal?: AbortSignal,
 ): Promise<BackupOutcome> {
   const dest = creds.destination;
   // `store: true` even though the SOURCE writes nothing: `stream_out` is part of
@@ -219,8 +253,15 @@ async function relayBackup(
   // into.
   const src = await connectBackupAgent(target.serverId, { store: true });
   let sink: AgentConnection | null = null;
+  // Registered per connection as each opens, so a cancel between the two dials
+  // still stops the one that is already running.
+  let release = abortWith(signal, src);
   try {
     sink = await connectBackupAgent(destServer, { store: true });
+    // Both halves now, so a cancel tears down the whole pipe rather than leaving
+    // the destination waiting on a source that has stopped sending.
+    release();
+    release = abortWith(signal, src, sink);
     // A box rather than a bare `let`: the assignment happens inside the
     // generator's closure, which TypeScript cannot see, so a `let` would narrow
     // to `never` at every read below.
@@ -341,6 +382,7 @@ async function relayBackup(
       sha256: landed.sha256 || produced.sha256,
     };
   } finally {
+    release();
     sink?.close();
     src.close();
   }
