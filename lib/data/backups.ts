@@ -1243,6 +1243,9 @@ export async function prepareUploadRestore(input: {
 
     target = await resolveTarget(teamId, input.kind, databaseId, appId);
 
+    const blocked = uploadRestoreRefusal(target);
+    if (blocked) throw new Error(blocked);
+
     const uploaded = uploadChunks(head, reader);
     const wrapped = encrypted
       ? { ageIdentity: input.recoveryKey.trim(), chunks: uploaded }
@@ -1315,6 +1318,38 @@ export async function prepareUploadRestore(input: {
   }
 
   return relay();
+}
+
+/**
+ * Why an UPLOADED artifact must not be restored into this target, or null when
+ * it may proceed. Pure, so the rule it encodes can be read and tested on its own.
+ *
+ * The rule exists because an uploaded archive is untrusted input, and the agent's
+ * "whose stack configuration wins" has one gap that only matters for this path.
+ * With no recorded digest there is nothing to prove the artifact with, so the
+ * agent keeps the CONTROL PLANE's compose rather than the archive's - unless the
+ * control plane sent none, and then it falls back to the archive's (see
+ * `restoreConfig` in deplo-agent). The descriptor's compose IS the stack file
+ * read off the host, so it is empty for an app that was never deployed there.
+ *
+ * Restoring an uploaded archive into such an app would hand `docker compose up` a
+ * YAML the uploader wrote. A bind mount of `/`, `privileged: true`, or the docker
+ * socket is then root on that machine - held by someone with one capability on
+ * one app, and neither `canMountHostVolumes` nor instance admin.
+ *
+ * Refusing costs nothing real: with no stack there is no container and no volume
+ * for the data to land in either.
+ */
+export function uploadRestoreRefusal(target: {
+  kind: BackupTargetKind;
+  project?: { composeYaml: string };
+}): string | null {
+  if (target.kind !== "app") return null;
+  if (target.project?.composeYaml) return null;
+  return (
+    "This app has never been deployed on its server, so there is no stack to " +
+    "restore into. Deploy it once, then restore the backup over it."
+  );
 }
 
 /**

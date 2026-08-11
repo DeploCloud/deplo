@@ -16,7 +16,7 @@ import {
 } from "./identity-test-helpers";
 import { seedApp, seedServer } from "./app-graph-test-helpers";
 import { seedDatabase, TRUNCATE_BACKUPS } from "./backup-test-helpers";
-import { prepareUploadRestore } from "./backups";
+import { prepareUploadRestore, uploadRestoreRefusal } from "./backups";
 
 /**
  * `prepareUploadRestore` is the only restore that does not start from a run this
@@ -265,4 +265,34 @@ test("a refusal releases the lock, so the next attempt is judged on its own", as
     // The same refusal, NOT "a restore is already running".
     /not an app backup/,
   );
+});
+
+/* ------------------------------------------------------------------ */
+/* The archive's own stack configuration must never be the one applied  */
+/* ------------------------------------------------------------------ */
+
+test("an app with no stack on its host refuses an uploaded archive", () => {
+  // The escalation this closes: with no recorded digest the agent prefers the
+  // control plane's compose, but falls back to the ARCHIVE's when the control
+  // plane has none - and it has none exactly when the app was never deployed on
+  // that host. That fallback would run a `docker compose up` on YAML the
+  // uploader wrote, which is root on the machine for someone holding one
+  // capability on one app.
+  assert.match(
+    uploadRestoreRefusal({ kind: "app", project: { composeYaml: "" } }) ?? "",
+    /never been deployed/,
+  );
+  assert.match(uploadRestoreRefusal({ kind: "app" }) ?? "", /never been deployed/);
+});
+
+test("an app with a live stack proceeds, and a database is never in scope", () => {
+  // A non-empty control-plane compose is what makes the agent's unproven branch
+  // keep ITS config, so there is nothing left to fall back to.
+  assert.equal(
+    uploadRestoreRefusal({ kind: "app", project: { composeYaml: "services: {}" } }),
+    null,
+  );
+  // A database restore replays a dump into an engine; it re-applies no stack
+  // configuration at all, so the archive has nothing to smuggle.
+  assert.equal(uploadRestoreRefusal({ kind: "database" }), null);
 });
