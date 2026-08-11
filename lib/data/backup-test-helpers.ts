@@ -100,6 +100,9 @@ export interface SeedDestinationOpts {
   status?: BackupDestination["status"];
   /** `s3` (the default) or a folder on `serverId`. */
   kind?: BackupDestination["kind"];
+  /** `s3` only: the bucket's address. Defaults to a real AWS endpoint; set it
+   *  to an app's own domain to seed the destination that eats its own target. */
+  endpoint?: string;
   /** Required for kind `server`. */
   serverId?: string;
   path?: string | null;
@@ -160,7 +163,7 @@ export async function seedDestination(
           ...common,
           kind: "s3",
           provider: "aws",
-          endpoint: "https://s3.us-east-1.amazonaws.com",
+          endpoint: opts.endpoint ?? "https://s3.us-east-1.amazonaws.com",
           region: "us-east-1",
           bucket: "deplo-backups",
           accessKeyEnc: encryptSecret("AKIA_TEST"),
@@ -242,6 +245,7 @@ export interface SeedRunOpts {
   targetKind?: BackupRun["targetKind"];
   targetId?: string;
   sha256?: string | null;
+  decryptedSizeBytes?: number | null;
   orphanedAt?: string | null;
   status?: BackupRun["status"];
   objectKey?: string;
@@ -268,6 +272,7 @@ export async function seedRun(db: TestDb, opts: SeedRunOpts): Promise<string> {
       "t",
     objectKey: opts.objectKey ?? `deplo/team_a/${targetKind}/t/${opts.id}.gz`,
     sizeBytes: 1024,
+    decryptedSizeBytes: opts.decryptedSizeBytes ?? null,
     sha256: opts.sha256 ?? null,
     orphanedAt: opts.orphanedAt ?? null,
     status: opts.status ?? "success",

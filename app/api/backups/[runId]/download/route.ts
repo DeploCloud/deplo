@@ -25,6 +25,15 @@ import { statusForBackupError } from "@/lib/backups/http-status";
  * out, and an age stream is not seekable — so a byte range would mean decrypting
  * from zero and discarding the prefix. `Accept-Ranges: none` says so rather than
  * letting a download manager assume resume works and produce a corrupt file.
+ *
+ * `Content-Length` IS sent, whenever the run recorded one. Without it a browser
+ * has no total to compare against: no size, no percentage, no time remaining —
+ * a download that reads as if it will never end, on a file that can genuinely
+ * take a quarter of an hour. It comes from the run's `decryptedSizeBytes` and
+ * never from `sizeBytes`, which is the artifact as stored, age layer and all.
+ * A run taken before the agent reported it has none, and then this behaves as it
+ * always did rather than advertising a length that would be a few hundred KB
+ * too long — which the browser would sit and wait for forever.
  */
 
 // Long-lived streamed response; must run at request time on the Node runtime.
@@ -82,6 +91,11 @@ export async function GET(
     headers: {
       "Content-Type": "application/gzip",
       "Content-Disposition": `attachment; filename="${artifact.filename}"`,
+      // A short stream now FAILS the download instead of saving a truncated
+      // archive that looks complete — which is the right outcome for a backup.
+      ...(artifact.sizeBytes !== null
+        ? { "Content-Length": String(artifact.sizeBytes) }
+        : {}),
       "Accept-Ranges": "none",
       "Cache-Control": "no-store",
     },

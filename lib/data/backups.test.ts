@@ -9,6 +9,7 @@ import { __setTestDb, __resetTestDb } from "../db/client";
 import {
   backups as backupsTable,
   backupRuns as backupRunsTable,
+  domains as domainsTable,
 } from "../db/schema/control-plane";
 import { runWithIdentity } from "../auth/request-context";
 import {
@@ -21,6 +22,7 @@ import { seedApp, seedServer, SERVER_1 } from "./app-graph-test-helpers";
 import {
   seedBackup,
   seedDatabase,
+  seedDestination,
   seedRun,
   seedS3,
   TRUNCATE_BACKUPS,
@@ -31,6 +33,7 @@ import {
   createBackup,
   deleteAllBackupArtifacts,
   deleteBackup,
+  destinationEndpointHost,
   downloadBackupArtifact,
   listBackupRuns,
   reconcileInFlightBackupRuns,
@@ -571,4 +574,194 @@ test("an artifact whose app was deleted says WHICH server it lacks", async () =>
       /No server on this instance can reach/,
     );
   });
+});
+
+/* ------------------------------------------------------------------ */
+/* A destination the target itself serves (the backup that eats itself) */
+/* ------------------------------------------------------------------ */
+
+/** Give `appId` the domain `host`, the way an S3-compatible app gets its own
+ *  address. Enough of a row for the endpoint lookup; the rest of the domain
+ *  machinery is not what is under test here. */
+async function seedDomain(appId: string, host: string): Promise<void> {
+  await db.insert(domainsTable).values({
+    id: `dom_${host.replace(/\W/g, "")}`,
+    appId,
+    name: host,
+    status: "active",
+    isPrimary: false,
+    ssl: true,
+    source: "custom",
+    createdAt: T0,
+  });
+}
+
+test("an app cannot be backed up into a bucket it serves itself", async () => {
+  await asUser1(async () => {
+    // The shape that produced 3.6 GB, then 9.8 GB, then 19 GB from an app whose
+    // data never changed: the artifact lands in the app's own storage, so every
+    // backup contains all the ones before it.
+    await seedDomain("prj_1", "s3.example.com");
+    await seedS3(db, { id: "s3_self", endpoint: "https://s3.example.com" });
+    await assert.rejects(
+      () =>
+        createBackup({
+          name: "nightly",
+          targetKind: "app",
+          databaseId: null,
+          appId: "prj_1",
+          destinationId: "s3_self",
+          schedule: "0 3 * * *",
+          retentionCount: 7,
+        }),
+      /serves the storage at s3\.example\.com/,
+    );
+  });
+});
+
+test("the same bucket is fine for every app except the one serving it", async () => {
+  await asUser1(async () => {
+    await seedDomain("prj_1", "s3.example.com");
+    await seedS3(db, { id: "s3_self", endpoint: "https://s3.example.com" });
+    await seedApp(db, { id: "prj_2", teamId: TEAM_A });
+    // An object store IS a sensible destination — that is the whole point of
+    // running one. Only pointing it at itself is refused.
+    const b = await createBackup({
+      name: "other app",
+      targetKind: "app",
+      databaseId: null,
+      appId: "prj_2",
+      destinationId: "s3_self",
+      schedule: "0 3 * * *",
+      retentionCount: 7,
+    });
+    assert.equal(b.destinationId, "s3_self");
+  });
+});
+
+test("a database schedule is never caught by the self-serving check", async () => {
+  await asUser1(async () => {
+    // A database has no domains, so there is nothing it could be serving.
+    await seedDomain("prj_1", "s3.example.com");
+    await seedS3(db, { id: "s3_self", endpoint: "https://s3.example.com" });
+    const b = await createBackup({
+      name: "db nightly",
+      targetKind: "database",
+      databaseId: "db_1",
+      destinationId: "s3_self",
+      schedule: "0 3 * * *",
+      retentionCount: 7,
+    });
+    assert.equal(b.destinationId, "s3_self");
+  });
+});
+
+test("an existing schedule cannot be re-pointed at the app's own bucket", async () => {
+  await asUser1(async () => {
+    await seedDomain("prj_1", "s3.example.com");
+    await seedS3(db, { id: "s3_self", endpoint: "https://s3.example.com" });
+    await seedBackup(db, {
+      id: "bkp_edit",
+      destinationId: "s3_1",
+      targetKind: "app",
+      appId: "prj_1",
+    });
+    await assert.rejects(
+      () =>
+        updateBackup("bkp_edit", {
+          name: "nightly",
+          destinationId: "s3_self",
+          schedule: "0 3 * * *",
+          retentionCount: 7,
+        }),
+      /serves the storage at s3\.example\.com/,
+    );
+  });
+});
+
+test("a schedule that predates the check fails its run instead of growing", async () => {
+  await asUser1(async () => {
+    // The domain can also be added AFTER the schedule, so create-time is not
+    // where this can be enforced. The run refuses, and the refusal is recorded
+    // on the run — which is the only way the operator finds out at all.
+    await seedS3(db, { id: "s3_self", endpoint: "https://s3.example.com" });
+    await seedBackup(db, {
+      id: "bkp_old",
+      destinationId: "s3_self",
+      targetKind: "app",
+      appId: "prj_1",
+    });
+    await seedDomain("prj_1", "s3.example.com");
+    await assert.rejects(() => runBackup("bkp_old"), /serves the storage at/);
+    const runs = await db
+      .select()
+      .from(backupRunsTable)
+      .where(eq(backupRunsTable.backupId, "bkp_old"));
+    assert.equal(runs.length, 1);
+    assert.equal(runs[0]!.status, "failed");
+    assert.match(runs[0]!.error ?? "", /serves the storage at/);
+  });
+});
+
+test("a server destination has no endpoint and is left alone", async () => {
+  await asUser1(async () => {
+    await seedDomain("prj_1", "s3.example.com");
+    await seedDestination(db, { id: "srv_dest", kind: "server" });
+    const b = await createBackup({
+      name: "to a folder",
+      targetKind: "app",
+      databaseId: null,
+      appId: "prj_1",
+      destinationId: "srv_dest",
+      schedule: "0 3 * * *",
+      retentionCount: 7,
+    });
+    assert.equal(b.destinationId, "srv_dest");
+  });
+});
+
+/* ------------------------------------------------------------------ */
+/* The size a download advertises                                      */
+/* ------------------------------------------------------------------ */
+
+test("a run keeps the decrypted size apart from the stored one", async () => {
+  await asUser1(async () => {
+    // The two are different numbers: the stored artifact carries an age header
+    // plus a tag per 64 KiB chunk. Sending the stored one as Content-Length
+    // would leave the browser waiting for bytes that never arrive.
+    await seedRun(db, {
+      id: "brun_sized",
+      destinationId: "s3_1",
+      targetKind: "app",
+      appId: "prj_1",
+      decryptedSizeBytes: 900,
+    });
+    await seedRun(db, {
+      id: "brun_legacy",
+      destinationId: "s3_1",
+      targetKind: "app",
+      appId: "prj_1",
+    });
+    const runs = await listBackupRuns({ appId: "prj_1" });
+    const sized = runs.find((r) => r.id === "brun_sized")!;
+    const legacy = runs.find((r) => r.id === "brun_legacy")!;
+    assert.equal(sized.decryptedSizeBytes, 900);
+    assert.notEqual(sized.decryptedSizeBytes, sized.sizeBytes);
+    // A run taken before the agent reported it advertises no length at all,
+    // rather than the stored size, which would be wrong by the age overhead.
+    assert.equal(legacy.decryptedSizeBytes, null);
+  });
+});
+
+test("the endpoint host ignores the port, the scheme and the casing", async () => {
+  // A self-hosted object store is routinely reached on a port, and an endpoint
+  // is stored as typed while a domain is stored lowercased. Both sides have to
+  // normalise to the same string or the check silently never fires.
+  assert.equal(destinationEndpointHost("https://S3.Example.com:3900"), "s3.example.com");
+  assert.equal(destinationEndpointHost("http://s3.example.com/bucket"), "s3.example.com");
+  assert.equal(destinationEndpointHost(null), "");
+  assert.equal(destinationEndpointHost("   "), "");
+  // Never throws on something that is not a URL: an unparseable endpoint means
+  // "no host to compare", not a backup that cannot run.
+  assert.equal(destinationEndpointHost("not a url"), "");
 });

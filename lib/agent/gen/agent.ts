@@ -1369,6 +1369,22 @@ export interface BackupResult {
    * StoreResult.sha256.
    */
   sha256: string;
+  /**
+   * How big the artifact is once DECRYPTED — i.e. exactly how many bytes
+   * ReadStoreFile emits when it is handed an age identity, which is what a
+   * download hands to a browser.
+   *
+   * It is not derivable from size_bytes: age adds a header plus a tag per 64 KiB
+   * chunk, so the stored artifact is always a little larger than the .tar.gz /
+   * .dump.gz inside it, and only the writer ever sees both numbers. Without it
+   * the download can send no Content-Length, and a browser with no
+   * Content-Length shows a download with no size, no percentage and no estimate
+   * — it looks like it is running forever.
+   *
+   * Zero means an agent from before this field: the control plane records
+   * nothing and the download stays length-less, exactly as it was.
+   */
+  decryptedSizeBytes: number;
 }
 
 export interface RestoreRequest {
@@ -7623,7 +7639,7 @@ export const BackupEvent: MessageFns<BackupEvent> = {
 };
 
 function createBaseBackupResult(): BackupResult {
-  return { ok: false, error: "", objectKey: "", sizeBytes: 0, sha256: "" };
+  return { ok: false, error: "", objectKey: "", sizeBytes: 0, sha256: "", decryptedSizeBytes: 0 };
 }
 
 export const BackupResult: MessageFns<BackupResult> = {
@@ -7642,6 +7658,9 @@ export const BackupResult: MessageFns<BackupResult> = {
     }
     if (message.sha256 !== "") {
       writer.uint32(42).string(message.sha256);
+    }
+    if (message.decryptedSizeBytes !== 0) {
+      writer.uint32(48).int64(message.decryptedSizeBytes);
     }
     return writer;
   },
@@ -7693,6 +7712,14 @@ export const BackupResult: MessageFns<BackupResult> = {
           message.sha256 = reader.string();
           continue;
         }
+        case 6: {
+          if (tag !== 48) {
+            break;
+          }
+
+          message.decryptedSizeBytes = longToNumber(reader.int64());
+          continue;
+        }
       }
       if ((tag & 7) === 4 || tag === 0) {
         break;
@@ -7717,6 +7744,11 @@ export const BackupResult: MessageFns<BackupResult> = {
         ? globalThis.Number(object.size_bytes)
         : 0,
       sha256: isSet(object.sha256) ? globalThis.String(object.sha256) : "",
+      decryptedSizeBytes: isSet(object.decryptedSizeBytes)
+        ? globalThis.Number(object.decryptedSizeBytes)
+        : isSet(object.decrypted_size_bytes)
+        ? globalThis.Number(object.decrypted_size_bytes)
+        : 0,
     };
   },
 
@@ -7737,6 +7769,9 @@ export const BackupResult: MessageFns<BackupResult> = {
     if (message.sha256 !== "") {
       obj.sha256 = message.sha256;
     }
+    if (message.decryptedSizeBytes !== 0) {
+      obj.decryptedSizeBytes = Math.round(message.decryptedSizeBytes);
+    }
     return obj;
   },
 
@@ -7750,6 +7785,7 @@ export const BackupResult: MessageFns<BackupResult> = {
     message.objectKey = object.objectKey ?? "";
     message.sizeBytes = object.sizeBytes ?? 0;
     message.sha256 = object.sha256 ?? "";
+    message.decryptedSizeBytes = object.decryptedSizeBytes ?? 0;
     return message;
   },
 };

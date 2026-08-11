@@ -9,6 +9,7 @@ import {
   databases as databasesTable,
   apps as appsTable,
   backupDestination as destinationTable,
+  domains as domainsTable,
   servers as serversTable,
 } from "../db/schema/control-plane";
 import {
@@ -78,6 +79,7 @@ import type {
   BackupTargetKind,
   Database,
   DatabaseType,
+  DestinationKind,
 } from "../types";
 
 /** How many run RECORDS a target keeps per destination, regardless of how many
@@ -134,14 +136,77 @@ async function databaseServerId(
   return rows[0]?.serverId ?? null;
 }
 
-/** Whether a team owns the backup destination `id`. */
-async function destinationExists(id: string, teamId: string): Promise<boolean> {
+/** The destination `id` if this team owns it, or null — just enough of it to
+ *  answer {@link circularDestinationRefusal} without a second query. */
+async function destinationForTeam(
+  id: string,
+  teamId: string,
+): Promise<{ kind: DestinationKind; endpoint: string | null } | null> {
   const rows = await getDb()
-    .select({ id: destinationTable.id })
+    .select({ kind: destinationTable.kind, endpoint: destinationTable.endpoint })
     .from(destinationTable)
     .where(and(eq(destinationTable.id, id), eq(destinationTable.teamId, teamId)))
     .limit(1);
-  return rows.length > 0;
+  const row = rows[0];
+  return row ? { kind: row.kind as DestinationKind, endpoint: row.endpoint } : null;
+}
+
+/**
+ * The host a bucket destination writes to, lowercased, or "" when it has none.
+ *
+ * Separate and exported because it is the whole input to {@link circularDestinationRefusal}
+ * and the one part of it worth testing on strings rather than on a database.
+ */
+export function destinationEndpointHost(endpoint: string | null): string {
+  if (!endpoint?.trim()) return "";
+  try {
+    return new URL(endpoint.trim()).hostname.toLowerCase();
+  } catch {
+    return "";
+  }
+}
+
+/**
+ * Why this destination must not hold THIS app's backups, or null when it may.
+ *
+ * The trap it closes is a backup that eats itself. An app can serve object
+ * storage (that is what an S3-compatible app IS), and pointing a destination at
+ * a bucket on `https://s3.example.com` is exactly the sensible thing to do with
+ * it — right up until the app being backed up is the one answering that address.
+ * Then the archive of its volumes CONTAINS every artifact already written to
+ * that bucket, so backup n holds backups 1..n-1 and the size doubles every run:
+ * 3.6 GB, 9.8 GB, 19 GB, until the disk the whole fleet shares is full.
+ *
+ * Nothing about it looks wrong from the panel — the destination tests green, the
+ * runs succeed, and the only symptom is a number growing — which is why this is
+ * a refusal and not a warning. There is no version of it anyone wants: an
+ * artifact stored inside the thing it is an artifact OF is not a backup.
+ *
+ * Matched on the app's own domains, because that is what the endpoint resolves
+ * through in practice and it costs one indexed lookup. A destination pointed at
+ * the app by raw IP:port is not caught here; the size on the run is.
+ */
+async function circularDestinationRefusal(
+  dest: { kind: DestinationKind; endpoint: string | null },
+  appId: string | null,
+): Promise<string | null> {
+  if (!appId || dest.kind !== "s3") return null;
+  const host = destinationEndpointHost(dest.endpoint);
+  if (!host) return null;
+  // Domain names are stored lowercased (see lib/data/domains.ts), so this is an
+  // exact index hit. NOT team-scoped on purpose: the comparison is against an id
+  // the caller already holds, and an app in another team serving this bucket is
+  // someone else's business — only "it is THIS app" is refusable here.
+  const rows = await getDb()
+    .select({ appId: domainsTable.appId })
+    .from(domainsTable)
+    .where(eq(domainsTable.name, host))
+    .limit(1);
+  if (rows[0]?.appId !== appId) return null;
+  return (
+    `This app serves the storage at ${host}, so each backup would be stored ` +
+    `inside the next one and grow without limit. Pick another destination.`
+  );
 }
 
 /** Resolve the display name of a backup destination by id (team-scoped), or "". */
@@ -314,8 +379,8 @@ export async function createBackup(input: {
 
   // The chosen destination + the target (database OR project) must belong to this
   // team. Exactly one target is set, matching `targetKind`.
-  if (!(await destinationExists(input.destinationId, teamId)))
-    throw new Error("Select a destination");
+  const dest = await destinationForTeam(input.destinationId, teamId);
+  if (!dest) throw new Error("Select a destination");
   if (targetKind === "database") {
     if (!databaseId) throw new Error("Select a database to back up");
     // A principal who reaches only part of the team can't see any database, so
@@ -329,6 +394,10 @@ export async function createBackup(input: {
     if (!(await loadTeamApp(appId, teamId)))
       throw new Error("App not found");
   }
+  // Said at the moment the choice is made, rather than leaving the schedule to
+  // fail (or worse, succeed) on its first run.
+  const circular = await circularDestinationRefusal(dest, appId);
+  if (circular) throw new Error(circular);
 
   const b: Backup = {
     id: newId("bkp"),
@@ -531,6 +600,7 @@ async function executeBackup(
     targetId: (opts.kind === "database" ? opts.databaseId : opts.appId) ?? "",
     objectKey: "", // filled once the key is built (after resolution)
     sizeBytes: 0,
+    decryptedSizeBytes: null,
     sha256: null,
     orphanedAt: null,
     status: "running",
@@ -561,6 +631,20 @@ async function executeBackup(
   let objectKey = "";
   try {
     const creds = await getDestinationWithSecretsForTeam(teamId, opts.destinationId);
+    // BEFORE resolveTarget, which for an app dials the owning agent to read the
+    // live stack: a run that must be refused should not cost a round trip, and
+    // the id this needs is the one the caller already passed.
+    //
+    // The real guard, not the one in createBackup: a schedule made before this
+    // shipped, or one whose app was given the destination's domain afterwards,
+    // reaches here with nothing else standing between it and a runaway artifact.
+    // A refused run is recorded `failed` with this as its error, which is how the
+    // operator finds out at all.
+    const circular = await circularDestinationRefusal(
+      creds.destination,
+      opts.kind === "app" ? opts.appId : null,
+    );
+    if (circular) throw new Error(circular);
     const target = await resolveTarget(teamId, opts.kind, opts.databaseId, opts.appId);
     label = target.label;
     activityAppId = target.appId;
@@ -636,6 +720,10 @@ async function executeBackup(
           error: null,
           objectKey: result!.objectKey,
           sizeBytes: result!.sizeBytes,
+          // 0 means the agent that wrote it predates the field. Stored NULL, so
+          // the download can tell "no length recorded" from "an empty file" and
+          // simply omits Content-Length rather than advertising nothing.
+          decryptedSizeBytes: result!.decryptedSizeBytes || null,
           // Empty means the agent predates integrity checking. Stored NULL, so a
           // restore can say "this backup was taken before Deplo could prove what
           // it wrote" instead of silently skipping the check.
@@ -916,7 +1004,7 @@ async function runAdHocBackup(
   ) {
     throw new Error("Database not found");
   }
-  if (!(await destinationExists(destinationId, teamId)))
+  if (!(await destinationForTeam(destinationId, teamId)))
     throw new Error("Select a destination");
   return executeBackup(teamId, user.name, {
     backupId: null,
@@ -964,6 +1052,18 @@ export function runDatabaseBackup(
  */
 export async function downloadBackupArtifact(runId: string): Promise<{
   filename: string;
+  /**
+   * The exact number of bytes the stream below will produce, or null when the
+   * run never recorded it (taken before the agent reported it). The route turns
+   * it into `Content-Length`, which is the whole difference between a browser
+   * that shows a size, a percentage and an estimate and one that shows a
+   * download with no end in sight.
+   *
+   * NOT `sizeBytes`: that is the artifact as STORED, and the agent strips the
+   * age layer on the way out. Advertising it would leave the browser waiting for
+   * bytes that never come.
+   */
+  sizeBytes: number | null;
   chunks: AsyncGenerator<Buffer, void, unknown>;
   close: () => void;
 }> {
@@ -1012,7 +1112,11 @@ export async function downloadBackupArtifact(runId: string): Promise<{
     run.appId,
     teamId,
   );
-  return { filename: downloadFilename(label, run), ...opened };
+  return {
+    filename: downloadFilename(label, run),
+    sizeBytes: run.decryptedSizeBytes,
+    ...opened,
+  };
 }
 
 /**
@@ -1193,6 +1297,14 @@ const uploadRestoresInFlight = new Set<string>();
  * thrown error the route can map to a status code, not a failed event. Abandoning
  * the stream (`return()`) is the abort: it runs the same cleanup a finished
  * restore does, which is what a browser closing mid-restore comes down to.
+ *
+ * `abandon()` is the SAME cleanup, reachable without the stream. It exists
+ * because an async generator that was never pulled runs no `finally` at all: a
+ * browser that goes away between this resolving and the response's first read
+ * would leave the restore running on the host with its lock held for the life of
+ * the process, the target parked on `restoring`, and - the part that actually
+ * matters - a destructive operation with no entry in the Activity trail.
+ * Idempotent, so the route can call both without settling twice.
  */
 export async function prepareUploadRestore(input: {
   kind: BackupTargetKind;
@@ -1201,7 +1313,10 @@ export async function prepareUploadRestore(input: {
    *  stored, never logged, never written to the Activity trail. */
   recoveryKey: string;
   body: ReadableStream<Uint8Array>;
-}): Promise<AsyncGenerator<RestoreEvent, void, unknown>> {
+}): Promise<{
+  events: AsyncGenerator<RestoreEvent, void, unknown>;
+  abandon: () => Promise<void>;
+}> {
   const { membership } = await requireMembership();
   const teamId = membership.teamId;
   // Resolved NOW, while the request context still exists. The generator below
@@ -1263,6 +1378,42 @@ export async function prepareUploadRestore(input: {
 
   const agent = opened;
   const resolved = target;
+  const INTERRUPTED = "the restore was interrupted before it finished";
+
+  // The bookkeeping every ending shares, run exactly once. Deliberately NOT
+  // inside the generator's `finally`: that only runs for a generator somebody
+  // pulled at least once, and the ending we most need to record - the browser
+  // vanishing - is also the one that may never pull.
+  let closed = false;
+  async function finish(problem: string | null): Promise<void> {
+    if (closed) return;
+    closed = true;
+    // An app left on "restoring" because nobody stayed to watch would never move
+    // off it again.
+    if (resolved.appId)
+      await setAppStatus(resolved.appId, problem ? "error" : "active");
+    await recordActivity(
+      "backup",
+      problem
+        ? `Restore of ${resolved.label} from an uploaded file failed: ${problem}`
+        : `Restored ${resolved.label} from an uploaded file`,
+      user.name,
+      resolved.appId,
+      teamId,
+    );
+    dispatchAlert({
+      teamId,
+      key: problem ? "restore_failed" : "restore_succeeded",
+      title: problem
+        ? `Restore of ${resolved.label} failed`
+        : `Restored ${resolved.label}`,
+      body: problem ?? "The data is back in place.",
+      path: "/storage",
+    });
+    agent.close();
+    uploadRestoresInFlight.delete(lockKey);
+  }
+
   async function* relay(): AsyncGenerator<RestoreEvent, void, unknown> {
     let failure: string | null = null;
     let settled = false;
@@ -1285,39 +1436,11 @@ export async function prepareUploadRestore(input: {
       // browser always reads a verdict as the last line.
       if (failure && !settled) yield { result: { ok: false, error: failure } };
     } finally {
-      // In the finally because this also has to run when the WATCHER walks away:
-      // the browser closing cancels the response stream, which returns into this
-      // generator here. An app left on "restoring" because nobody stayed to see
-      // the end would never move off it again.
-      const problem =
-        failure ??
-        (settled ? null : "the restore was interrupted before it finished");
-      if (resolved.appId)
-        await setAppStatus(resolved.appId, problem ? "error" : "active");
-      await recordActivity(
-        "backup",
-        problem
-          ? `Restore of ${resolved.label} from an uploaded file failed: ${problem}`
-          : `Restored ${resolved.label} from an uploaded file`,
-        user.name,
-        resolved.appId,
-        teamId,
-      );
-      dispatchAlert({
-        teamId,
-        key: problem ? "restore_failed" : "restore_succeeded",
-        title: problem
-          ? `Restore of ${resolved.label} failed`
-          : `Restored ${resolved.label}`,
-        body: problem ?? "The data is back in place.",
-        path: "/storage",
-      });
-      agent.close();
-      uploadRestoresInFlight.delete(lockKey);
+      await finish(failure ?? (settled ? null : INTERRUPTED));
     }
   }
 
-  return relay();
+  return { events: relay(), abandon: () => finish(INTERRUPTED) };
 }
 
 /**
@@ -1496,12 +1619,14 @@ export async function updateBackup(
   const timezone = normalizeTimezone(input.timezone);
 
   // The (possibly changed) destination must belong to this team.
-  if (!(await destinationExists(input.destinationId, teamId)))
-    throw new Error("Select a destination");
+  const dest = await destinationForTeam(input.destinationId, teamId);
+  if (!dest) throw new Error("Select a destination");
 
   const cur = await loadBackup(id, teamId);
   if (!cur) throw new Error("Not found");
   await requireBackupCapability(cur, "manage_backups");
+  const circular = await circularDestinationRefusal(dest, cur.appId);
+  if (circular) throw new Error(circular);
 
   const updated = await getDb()
     .update(backupsTable)

@@ -57,6 +57,14 @@ export interface BackupOutcome {
   objectKey: string;
   sizeBytes: number;
   /**
+   * The artifact's size with its age layer off — what a download delivers, so
+   * what its Content-Length must be. Always the SOURCE agent's number, on every
+   * shape including a relay: the destination only ever sees ciphertext, so it is
+   * the one half of a relay that cannot answer this. 0 from an agent that
+   * predates the field, and the run then records null.
+   */
+  decryptedSizeBytes: number;
+  /**
    * Hex sha256 of the artifact as written. Recorded on the run and re-checked
    * before a restore ever acts on those bytes, because an artifact is not
    * trusted input: a bucket object can be replaced by anyone with write access,
@@ -152,6 +160,7 @@ async function consumeBackup(
         error: ev.result.error,
         objectKey: ev.result.objectKey || objectKey,
         sizeBytes: Number(ev.result.sizeBytes ?? 0),
+        decryptedSizeBytes: Number(ev.result.decryptedSizeBytes ?? 0),
         sha256: ev.result.sha256 ?? "",
       };
     }
@@ -162,6 +171,7 @@ async function consumeBackup(
       error: "the agent ended the backup without a result",
       objectKey,
       sizeBytes: 0,
+      decryptedSizeBytes: 0,
       sha256: "",
     }
   );
@@ -237,6 +247,7 @@ async function relayBackup(
             error: ev.result.error,
             objectKey,
             sizeBytes: Number(ev.result.sizeBytes ?? 0),
+            decryptedSizeBytes: Number(ev.result.decryptedSizeBytes ?? 0),
             sha256: ev.result.sha256 ?? "",
           };
           if (!ev.result.ok) throw new RelayAborted();
@@ -260,6 +271,7 @@ async function relayBackup(
           error: "the agent ended the backup without a result",
           objectKey,
           sizeBytes: 0,
+          decryptedSizeBytes: 0,
           sha256: "",
         }
       );
@@ -272,6 +284,7 @@ async function relayBackup(
         error: "the agent ended the backup without a result",
         objectKey,
         sizeBytes: 0,
+        decryptedSizeBytes: 0,
         sha256: "",
       };
     }
@@ -282,6 +295,7 @@ async function relayBackup(
         error: landed.error || "the destination server rejected the backup",
         objectKey,
         sizeBytes: 0,
+        decryptedSizeBytes: 0,
         sha256: "",
       };
     }
@@ -304,13 +318,24 @@ async function relayBackup(
             `${e instanceof Error ? e.message : String(e)}`,
         );
       }
-      return { ok: false, error: mismatch, objectKey, sizeBytes: 0, sha256: "" };
+      return {
+        ok: false,
+        error: mismatch,
+        objectKey,
+        sizeBytes: 0,
+        decryptedSizeBytes: 0,
+        sha256: "",
+      };
     }
     return {
       ok: true,
       error: "",
       objectKey,
       sizeBytes: landed.bytesWritten,
+      // The SOURCE's, unlike the two above: the destination was handed
+      // ciphertext and never saw the artifact inside it, so it has no opinion on
+      // how big that is.
+      decryptedSizeBytes: produced.decryptedSizeBytes,
       // The DESTINATION's digest is the one recorded: it is what that disk
       // actually fsynced, and it is what a later restore reads back.
       sha256: landed.sha256 || produced.sha256,

@@ -2024,6 +2024,17 @@ export const backupRuns = pgTable(
     targetId: text("target_id").notNull(),
     objectKey: text("object_key").notNull(),
     sizeBytes: bigint("size_bytes", { mode: "number" }).notNull(),
+    // How big the artifact is once DECRYPTED — the exact byte count a download
+    // hands the browser, and so its Content-Length. NOT derivable from
+    // `size_bytes`: age adds a header plus a tag per 64 KiB chunk, so the stored
+    // artifact is always slightly larger than the .tar.gz / .dump.gz inside it,
+    // and only the agent that wrote it ever saw both numbers.
+    //
+    // NULL for every run taken before migration 0092 and for one written by an
+    // agent that predates the field. A download then sends no Content-Length,
+    // which is exactly what it did before — the browser shows a size-less
+    // download rather than a wrong one (migration 0092).
+    decryptedSizeBytes: bigint("decrypted_size_bytes", { mode: "number" }),
     // Hex sha256 of the artifact AS WRITTEN (ciphertext, before any decryption).
     // The agent computes it on both halves of a relay and on an S3 upload; the
     // control plane compares them, records the winner here, and re-checks it

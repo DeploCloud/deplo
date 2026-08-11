@@ -49,9 +49,9 @@ export async function POST(request: NextRequest) {
     return Response.json({ error: "No file was uploaded" }, { status: 400 });
   }
 
-  let events: Awaited<ReturnType<typeof prepareUploadRestore>>;
+  let restore: Awaited<ReturnType<typeof prepareUploadRestore>>;
   try {
-    events = await prepareUploadRestore({
+    restore = await prepareUploadRestore({
       kind: appId ? "app" : "database",
       targetId: (appId ?? databaseId)!,
       recoveryKey: request.headers.get("x-recovery-key") ?? "",
@@ -66,6 +66,7 @@ export async function POST(request: NextRequest) {
     return Response.json({ error: message }, { status: statusForBackupError(message) });
   }
 
+  const events = restore.events;
   const encoder = new TextEncoder();
   const line = (value: unknown) => encoder.encode(`${JSON.stringify(value)}\n`);
 
@@ -101,6 +102,12 @@ export async function POST(request: NextRequest) {
       // runs its cleanup: the agent connection closes, the target comes off
       // "restoring", and the interruption is recorded rather than left hanging.
       void events.return(undefined);
+      // ...unless nothing ever pulled from it, in which case there is no
+      // `finally` to return into - a generator abandoned before its first
+      // `next()` runs none of its body. That is reachable here: this cancel
+      // fires for a request already aborted when the response was built. Same
+      // cleanup, and idempotent, so the ordinary case settles once.
+      void restore.abandon();
     },
   });
 

@@ -1652,6 +1652,14 @@ export interface BackupRun {
   objectKey: string;
   sizeBytes: number;
   /**
+   * How big the artifact is once decrypted: the exact number of bytes a download
+   * delivers, and so its Content-Length. Not derivable from `sizeBytes` (age
+   * adds a header plus a tag per 64 KiB chunk), so only the agent that wrote the
+   * artifact ever saw it. Null for a run taken before it was recorded, and the
+   * download then sends no length at all rather than a wrong one.
+   */
+  decryptedSizeBytes: number | null;
+  /**
    * Hex sha256 of the artifact as written (ciphertext, before decryption) —
    * what a restore checks before feeding those bytes to anything. Null for a run
    * taken before integrity checking shipped, and a restore says so out loud
