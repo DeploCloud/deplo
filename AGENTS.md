@@ -270,7 +270,7 @@ Single endpoint `app/api/graphql/route.ts` (thin) → `lib/graphql/yoga.ts`. One
   silently lossy: it retries the insert once, and an entry it still could not write becomes a
   visible "N activity entries could not be recorded" row on the next successful write. A gap in an
   audit trail has to be legible **in the trail**, not only in stderr.
-- **Capabilities are FINE-GRAINED (41)** — one action each, catalogued with labels,
+- **Capabilities are FINE-GRAINED (45)** — one action each, catalogued with labels,
   descriptions, search keywords and browse categories in **`lib/capabilities.ts`**
   (`create_apps`, `deploy_apps`, `delete_apps`, `open_app_console`, `read_app_files` vs
   `write_app_files`, `create_databases`, `restore_backups`, `manage_tokens`,

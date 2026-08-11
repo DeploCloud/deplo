@@ -955,6 +955,14 @@ export const apps = pgTable(
     // decide WHICH stack comes up are refused on both sides. See
     // lib/deploy/compose-args.ts.
     composeUpArgs: text("compose_up_args"),
+    // How many previous deployments this app can be rolled back to (migration
+    // 0094). It is a RETENTION number, not a feature flag: it decides how many of
+    // this app's built images survive on its server, so 0 genuinely means "keep
+    // nothing to go back to" and the Rollback action disappears. Defaults to 3 -
+    // the point of the feature is that a bad deploy is undoable without anyone
+    // configuring anything first. The host enforces it exactly, via the per-slug
+    // map on DockerCleanupRequest (lib/data/docker-cleanup.ts).
+    rollbackKeep: integer("rollback_keep").notNull().default(3),
     // Per-app resource limits (flattened ResourceLimits, like repo_*/upload_*).
     // Every column NULLABLE with NO default: NULL ⇒ that dimension is UNCAPPED,
     // and an all-NULL row ⇒ `resources` assembles to null (no limits set), so an
@@ -1271,6 +1279,27 @@ export const deployments = pgTable(
     // Rebuild reported success without ever replacing the container. Every other
     // deploy leaves it false so an unchanged reroute still causes no restart.
     forceRecreate: boolean("force_recreate").notNull().default(false),
+    // The image tag this deploy actually rendered into its stack - the string the
+    // agent built and `compose up` ran (migration 0094). Written ONLY by the arms
+    // Deplo builds (git, upload), where it is
+    // `deplo/<deploy_key>:<first 12 of this row's id>` and the image lives on the
+    // owning host. NULL everywhere else: a compose stack has no single image, and a
+    // prebuilt `docker-image` source is a mutable registry tag with nothing pinned
+    // behind it. So NOT NULL reads as "there is an image of ours to go back to",
+    // which is exactly what makes this row a rollback target.
+    //
+    // Recorded rather than derived on demand: the tag is derivable from the id, but
+    // only for a deploy that actually built one - an app that used to be a
+    // `docker-image` source would answer with a `deplo/` tag nobody ever minted.
+    imageRef: text("image_ref"),
+    // Set when this deploy is a ROLLBACK: the id of the deployment whose image it
+    // re-ran. Plain text with NO foreign key, like `server_id` - history has to
+    // survive the deletion of what it points at.
+    //
+    // It is also load-bearing for retention: a rollback row reuses an existing
+    // image rather than building one, so it must not consume a slot when ranking
+    // which builds are still on the host. NULL ⇒ "this deploy built its own image".
+    rollbackOf: text("rollback_of"),
     creator: text("creator").notNull(),
     createdAt: isoTimestamptz("created_at").notNull(),
   },

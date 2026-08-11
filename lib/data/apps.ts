@@ -48,7 +48,11 @@ import {
   VOLUME_NAME_MAX,
   VOLUME_NAME_RE,
 } from "../apps/volume-model";
-import { MOUNT_PROPAGATIONS } from "../types";
+import {
+  DEFAULT_ROLLBACK_KEEP,
+  MAX_ROLLBACK_KEEP,
+  MOUNT_PROPAGATIONS,
+} from "../types";
 import { encryptSecret } from "../crypto";
 import { recordActivity } from "./activity";
 import { buildConfigFor } from "../frameworks";
@@ -771,6 +775,9 @@ export async function createApp(
     deployHookEnabled: true,
     // The bring-up command starts untouched; extra flags are an advanced setting.
     composeUpArgs: null,
+    // Rollbacks are on from the first deploy - being able to undo one is not
+    // something anyone should have to find a setting for first.
+    rollbackKeep: DEFAULT_ROLLBACK_KEEP,
     // New apps start uncapped; limits are set later from Settings → Resources.
     resources: null,
     latestDeploymentId: null,
@@ -1876,6 +1883,48 @@ export async function setAppComposeUpArgs(
     raw
       ? `Set extra compose flags to ${parseComposeUpArgs(raw).join(" ")}`
       : "Cleared the extra compose flags",
+    user.name,
+    id,
+  );
+  publishAppChanged(id);
+}
+
+/**
+ * Set how many previous deployments this app can be rolled back to.
+ *
+ * `configure_apps`, not `rollback_apps`: this is a RETENTION number - it decides
+ * how many of the app's images stay on its server, i.e. how much disk it holds -
+ * and retention belongs with the app's other settings. Being trusted to put the
+ * app back on last week's build is not the same as being trusted to decide how
+ * much of the host it occupies, which is why the two are separate permissions.
+ *
+ * Takes effect on the NEXT sweep, which is the one right after the next deploy:
+ * lowering it does not reach out and delete images now, and raising it cannot
+ * bring back ones already gone. Both are said in the UI rather than papered over.
+ */
+export async function setAppRollbackKeep(
+  id: string,
+  count: number,
+): Promise<void> {
+  const { membership } = await requireAppCapability(id, "configure_apps");
+  const user = (await getCurrentUser())!;
+  // Clamp rather than reject: the field is a number input with the same bounds,
+  // so anything outside them arrived from an API client, and the honest answer to
+  // "keep 900 rollbacks" is the ceiling, not an error about a number nobody typed.
+  const keep = Number.isFinite(count)
+    ? Math.min(MAX_ROLLBACK_KEEP, Math.max(0, Math.trunc(count)))
+    : DEFAULT_ROLLBACK_KEEP;
+  const updated = await getDb()
+    .update(appsTable)
+    .set({ rollbackKeep: keep, updatedAt: nowIso() })
+    .where(and(eq(appsTable.id, id), eq(appsTable.teamId, membership.teamId)))
+    .returning({ id: appsTable.id });
+  if (updated.length === 0) throw new Error("App not found");
+  await recordActivity(
+    "app",
+    keep === 0
+      ? "Turned rollbacks off"
+      : `Set rollbacks kept to ${keep}`,
     user.name,
     id,
   );

@@ -48,9 +48,20 @@ export type AgentBuildPlan =
       build: BuildConfig;
     }
   | {
-      /** The agent runs a prebuilt image as-is (source: docker-image). */
+      /** The agent runs an already-existing image as-is - no build. */
       kind: "image";
       image: string;
+      /**
+       * Whether the agent must `docker pull` it first. Spelled out at both call
+       * sites rather than defaulted, because the two mean opposite things and
+       * getting it wrong fails in a way that reads like the wrong error:
+       *  - a `docker-image` SOURCE is a registry ref by definition, so it pulls
+       *    (that also refreshes a moved tag and turns a typo'd image into a clear
+       *    pull error instead of a stale local one running);
+       *  - a ROLLBACK re-runs `deplo/<key>:<dep>`, which exists only on that host
+       *    and is in no registry anywhere - pulling it could only ever fail.
+       */
+      pull: boolean;
     }
   | {
       /**
@@ -499,11 +510,11 @@ export async function buildDeployRequest(opts: {
       ...base,
       sourceKind: SourceKind.SOURCE_KIND_IMAGE,
       buildKind: BuildKind.BUILD_KIND_NONE,
-      // The local docker-image path ALWAYS pulls (build.ts streamDocker "pull"),
-      // so the agent always pulls too — exact parity. A docker-image source is a
-      // registry ref by definition; pulling refreshes a moved tag and surfaces a
-      // missing image as a clear pull error instead of running a stale local one.
-      pullImage: true,
+      // The plan decides - see `pull` on the image arm of AgentBuildPlan. A
+      // docker-image source pulls (parity with the old local path, which always
+      // did); a rollback must not, because its image is local to that host and
+      // exists in no registry.
+      pullImage: opts.plan.pull,
     };
   }
 

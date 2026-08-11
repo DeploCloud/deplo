@@ -16,6 +16,7 @@ import {
   appToRow,
 } from "./app-graph-rows";
 import type { TestDb } from "../db/test-harness";
+import { DEFAULT_ROLLBACK_KEEP } from "../types";
 import type { Deployment, App } from "../types";
 import { TEAM_A, USER_1 } from "./identity-test-helpers";
 
@@ -89,6 +90,8 @@ export interface SeedAppOpts {
   status?: App["status"];
   source?: App["source"];
   resources?: App["resources"];
+  /** How many previous deployments this app can be rolled back to. */
+  rollbackKeep?: number;
   /** Compose YAML — pair with `source: "compose"` to seed a compose-stack app. */
   compose?: string | null;
   /** Park the app inside a folder (seed the folder row yourself first). */
@@ -138,6 +141,7 @@ export async function seedApp(
     autoDeploy: true,
     deployHookEnabled: true,
     composeUpArgs: null,
+    rollbackKeep: opts.rollbackKeep ?? DEFAULT_ROLLBACK_KEEP,
     resources: opts.resources ?? null,
     latestDeploymentId: null,
     createdAt: T0,
@@ -173,6 +177,12 @@ export async function seedDeployment(
     deployKey?: string;
     previewId?: string | null;
     prNumber?: number | null;
+    /** The image this deploy rendered - set it to make the row a rollback target
+     *  (a build Deplo made), or leave it null for a compose / prebuilt-image one. */
+    imageRef?: string | null;
+    /** Mark the row as a rollback TO another deployment (so it occupies no
+     *  retention slot of its own). */
+    rollbackOf?: string | null;
   },
 ): Promise<void> {
   const dep: Deployment = {
@@ -196,6 +206,8 @@ export async function seedDeployment(
     startedAt: opts.startedAt ?? null,
     readyAt: null,
     buildDurationMs: null,
+    imageRef: opts.imageRef ?? null,
+    rollbackOf: opts.rollbackOf ?? null,
     creator: "Owner",
   };
   await db

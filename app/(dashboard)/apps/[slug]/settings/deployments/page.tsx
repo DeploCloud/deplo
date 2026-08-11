@@ -8,7 +8,9 @@ import { appWebhookStatus, listGitConnections } from "@/lib/data/git-connections
 import { providerFor } from "@/lib/git/providers";
 import { SettingsSection } from "@/components/apps/settings/settings-shared";
 import { DeploymentSettingsForm } from "@/components/apps/settings/deployment-settings-form";
+import { RollbackSettingsForm } from "@/components/apps/settings/rollback-settings-form";
 import { CapabilityFieldset } from "@/components/apps/app-capabilities";
+import { usesComposeStack } from "@/lib/utils";
 
 export const metadata = { title: "Deployment" };
 
@@ -41,6 +43,15 @@ export default async function AppDeploymentSettingsPage(
     providerTriggers && project.source !== "github" && project.autoDeploy
       ? await appWebhookStatus(project.repo)
       : null;
+
+  // Whether this app accrues rollbacks at all - the same rule the deploy edge
+  // uses to decide it mints an image (`deployImageRef`): a repository or an
+  // uploaded archive, and not a compose stack.
+  const canRollBack =
+    !usesComposeStack(project) &&
+    (project.source === "github" ||
+      project.source === "git" ||
+      project.source === "upload");
 
   return (
     <section className="space-y-4">
@@ -82,6 +93,16 @@ export default async function AppDeploymentSettingsPage(
             providerTriggers ? null : await deployHookUrlMasked(project.id)
           }
         />
+        {/* Only where a rollback can exist at all: the app has to be one Deplo
+            BUILDS. A compose stack has no single image to re-run, and a prebuilt
+            `docker-image` source is a registry tag with nothing pinned behind it -
+            going "back" to it would land on whatever it points at today. */}
+        {canRollBack && (
+          <RollbackSettingsForm
+            appId={project.id}
+            rollbackKeep={project.rollbackKeep}
+          />
+        )}
       </CapabilityFieldset>
     </section>
   );

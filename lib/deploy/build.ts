@@ -50,9 +50,9 @@ import {
   detectTreeFramework,
 } from "../apps/framework-source";
 import { supportsFrameworkDetection, type FrameworkId } from "../apps/framework-catalog";
-import { appSlugFromDeployKey, stackName } from "./deploy-key";
+import { appSlugFromDeployKey, deployImageRef, stackName } from "./deploy-key";
 import { syncPreviewComment } from "./preview-comment";
-import { planDeploySource, resolveBuildDir } from "./source";
+import { planDeploySource, resolveBuildDir, type SourcePlan } from "./source";
 import { normalizeBuildConfig } from "../frameworks";
 import { usesComposeStack, hostVolumeName, formatBytes } from "../utils";
 import { detectDefaultApp } from "./compose-stack";
@@ -150,6 +150,7 @@ async function setDep(
   if (patch.readyAt !== undefined) set.readyAt = patch.readyAt;
   if (patch.buildDurationMs !== undefined)
     set.buildDurationMs = patch.buildDurationMs;
+  if (patch.imageRef !== undefined) set.imageRef = patch.imageRef;
   const rows = await getDb()
     .update(deploymentsTable)
     .set(set)
@@ -1081,14 +1082,47 @@ export async function startDeployment(
       /** Where previews of this app run. Empty ⇒ the app's own server. */
       serverId?: string | null;
     } | null;
+    /**
+     * This build is a ROLLBACK to a deployment that already succeeded: it re-runs
+     * that build's image instead of producing a new one, so there is no clone, no
+     * build and no pull - seconds instead of minutes.
+     *
+     * The caller (`rollbackDeployment` in lib/data/deployments.ts) has already
+     * proved the target is eligible; everything needed to run it travels here, so
+     * the queued job never has to re-read the source row.
+     *
+     * Only the IMAGE goes back. The stack is re-rendered from the app's CURRENT
+     * variables, domains, volumes and resource limits, exactly like any other
+     * deploy - rolling a password back because the code rolled back is not
+     * something anyone asked for.
+     */
+    rollback?: {
+      /** The deployment being returned to (recorded as `rollback_of`). */
+      deploymentId: string;
+      /** Its `image_ref` - the tag on the owning host this deploy will run. */
+      imageRef: string;
+      commitSha: string;
+      commitMessage: string;
+      commitAuthor: string;
+      /** When the build being returned to was made - the only thing that names it
+       *  in the Activity trail when the source has no commit sha (an upload). */
+      builtAt: string;
+    } | null;
   },
 ): Promise<string> {
   const project = await loadAppGraph(appId);
   if (!project) throw new Error("App not found");
   const preview = opts.preview ?? null;
+  const rollback = opts.rollback ?? null;
   const environment = opts.environment ?? (preview ? "preview" : "production");
   if (preview && environment !== "preview") {
     throw new Error("A preview deployment must use the preview environment");
+  }
+  // A preview is an ephemeral stack of ITS OWN commit; there is no "the previous
+  // one" to return it to, and its key/host belong to a pull request. Refuse rather
+  // than let a caller combine the two into a deploy nobody can reason about.
+  if (rollback && preview) {
+    throw new Error("A pull request preview cannot be rolled back");
   }
   const branch = opts.branch ?? project.repo?.branch ?? "main";
   // Production routes through the project's EXISTING registered primary domain
@@ -1123,9 +1157,13 @@ export async function startDeployment(
     deployKey,
     previewId: preview?.id ?? null,
     prNumber: preview?.prNumber ?? null,
-    commitSha: "",
-    commitMessage: opts.commitMessage ?? "Deploy",
-    commitAuthor: opts.creator,
+    // A rollback re-runs a build that already happened, so it inherits that
+    // build's commit rather than inventing one: the list has to keep saying which
+    // code is live, and after a rollback that is the OLD commit.
+    commitSha: rollback?.commitSha ?? "",
+    commitMessage:
+      rollback?.commitMessage || opts.commitMessage || "Deploy",
+    commitAuthor: rollback?.commitAuthor || opts.creator,
     branch,
     url,
     createdAt: nowIso(),
@@ -1134,6 +1172,10 @@ export async function startDeployment(
     readyAt: null,
     buildDurationMs: null,
     forceRecreate: opts.forceRecreate ?? false,
+    // A rollback carries the image it is going back to and the row it came from.
+    // Both are what `runDeployment` reads to take the no-build path.
+    imageRef: rollback?.imageRef ?? null,
+    rollbackOf: rollback?.deploymentId ?? null,
     creator: opts.creator,
     serverId: preview?.serverId || project.serverId,
   };
@@ -1180,7 +1222,17 @@ export async function startDeployment(
     "deployment",
     preview
       ? `Deploying ${project.name} preview for pull request #${preview.prNumber}`
-      : `Deploying ${project.name}`,
+      : rollback
+        ? // Name the commit, not the deployment id: "who put us back on what" is
+          // the question the trail gets asked, and a `dpl_` id answers neither
+          // half. An uploaded archive has no sha, so it falls back to the date the
+          // build it is returning to was made.
+          `Rolling ${project.name} back to ${
+            rollback.commitSha
+              ? rollback.commitSha.slice(0, 7)
+              : `the build from ${rollback.builtAt.slice(0, 10)}`
+          }`
+        : `Deploying ${project.name}`,
     opts.creator,
     appId,
   );
@@ -1497,7 +1549,14 @@ async function runDeployment(depId: string): Promise<void> {
     // "update the agent" message instead (mirrors the compose.multi gate + P5's
     // fail-fast-on-an-incapable-agent discipline). The Dockerfile family + a
     // prebuilt image need no heavy capability, so the check is skipped for them.
-    const requiredCapability = agentCapabilityForMethod(project.build);
+    //
+    // A ROLLBACK is exempt: it runs an image that already exists on this host and
+    // never invokes a builder, so gating it on the app's CURRENT build method
+    // would refuse a perfectly runnable image because of how the next build would
+    // be made.
+    const requiredCapability = dep.rollbackOf
+      ? null
+      : agentCapabilityForMethod(project.build);
     if (requiredCapability) {
       try {
         const hello = await agentPreflight(serverId);
@@ -1613,7 +1672,16 @@ async function runDeployment(depId: string): Promise<void> {
     // Each arm materialises a tree (or pulls an image) then funnels through the
     // shared buildImageFromTree, so the rootDirectory containment + build
     // dispatch live in one place.
-    const plan = planDeploySource(project);
+    //
+    // A ROLLBACK short-circuits that choice: it re-runs an image a previous build
+    // of this app already produced, so the app's source is irrelevant - there is
+    // nothing to clone, nothing to build, nothing to pull. It is a plan kind of its
+    // own rather than a branch around the switch so it settles through the same
+    // `tryAgent` → `commitOutcome` path as every other deploy.
+    const plan: SourcePlan | { kind: "rollback"; image: string; of: string } =
+      dep.rollbackOf && dep.imageRef
+        ? { kind: "rollback", image: dep.imageRef, of: dep.rollbackOf }
+        : planDeploySource(project);
     // A cache-less build is minutes slower than a cached one, so say why before
     // the log fills with build output — and spend the one-shot clear here, where
     // a build is genuinely about to run (a prebuilt image never builds, so its
@@ -1623,6 +1691,39 @@ async function runDeployment(depId: string): Promise<void> {
       if (project.build.buildCacheClearPending) await consumeCacheClear(project.id);
     }
     switch (plan.kind) {
+      case "rollback": {
+        // Re-run an image THIS app already built. No clone, no build, no pull -
+        // the agent writes the stack and brings it up, which is why a rollback
+        // takes seconds where the deploy that produced this image took minutes.
+        //
+        // The stack is still rendered from the app AS IT IS NOW (renderStack reads
+        // current variables, domains, volumes and resource limits). Only the image
+        // comes from the past: rolling a password back because the code rolled
+        // back is not something anyone asked for.
+        //
+        // Nothing pre-flights whether the image is still on the host - no RPC can
+        // ask. Retention is what keeps it there (`apps.rollback_keep`, enforced
+        // host-side by the per-slug map the cleanup sweep sends) and the caller has
+        // already refused a target outside that window. If it is gone anyway,
+        // `compose up` says so in the host's own words and this deploy fails with
+        // the RUNNING CONTAINER UNTOUCHED - compose resolves images before it
+        // replaces anything.
+        imageRef = plan.image;
+        log(depId, "info", `Rolling back to the image from deployment ${plan.of}`);
+        const { composeYaml, env } = await renderStack(imageRef);
+        const { outcome } = await tryAgent({
+          depId,
+          serverId,
+          project: { id: project.id, deployKey, composeUpArgs: project.composeUpArgs },
+          imageRef,
+          composeYaml,
+          env,
+          plan: { kind: "image", image: imageRef, pull: false },
+          forceRecreate,
+        });
+        agentOutcome = outcome === "agent" ? "agent" : "failed";
+        break;
+      }
       case "docker-image": {
         imageRef = plan.image;
         // A prebuilt image: the owning agent pulls + runs it on its host.
@@ -1634,7 +1735,7 @@ async function runDeployment(depId: string): Promise<void> {
           imageRef,
           composeYaml,
           env,
-          plan: { kind: "image", image: plan.image },
+          plan: { kind: "image", image: plan.image, pull: true },
           forceRecreate,
         });
         agentOutcome = outcome === "agent" ? "agent" : "failed";
@@ -1665,10 +1766,12 @@ async function runDeployment(depId: string): Promise<void> {
         // it, the stored preference is a no-op here (the clone descriptor below has
         // no submodules flag to forward).
         const cloneUrl = await resolveCloneUrl(repo);
-        // The agent tags the image by the sha IT resolves; until then use the
-        // deploy id as a placeholder tag (the rendered compose references this
-        // same imageRef).
-        imageRef = `deplo/${deployKey}:${depId.slice(0, 12)}`;
+        // One tag per deployment, and the agent builds under exactly this string -
+        // it resolves the commit sha but never retags with it. Recorded on the row
+        // so a later ROLLBACK can re-run this image without deriving the convention
+        // (which would answer wrongly for an app that has since changed source).
+        imageRef = deployImageRef(deployKey, depId);
+        await setDep(depId, { imageRef });
         const { composeYaml, env } = await renderStack(imageRef);
         log(depId, "command", `git clone ${repo.url} (${dep.branch}) [on agent]`);
         const attempt = await tryAgent({
@@ -1708,7 +1811,10 @@ async function runDeployment(depId: string): Promise<void> {
           const root = await extractArchive(upload, work, (line) =>
             log(depId, "info", line),
           );
-          imageRef = `deplo/${deployKey}:${depId.slice(0, 12)}`;
+          // Same per-deployment tag as the git arm, recorded for the same reason:
+          // an uploaded archive builds a real image, so it accrues rollbacks too.
+          imageRef = deployImageRef(deployKey, depId);
+          await setDep(depId, { imageRef });
           // Auto-set the display logo from an icon/favicon in the extracted tree
           // when the app has none yet (reusing this tree — no re-extract).
           await autoDetectLogoFromTree(

@@ -93,7 +93,8 @@ the ones you will meet most:
 
 | Capability                                          | Covers                                              |
 | --------------------------------------------------- | --------------------------------------------------- |
-| `create_apps` · `deploy_apps` · `control_apps`       | create an app · deploy/redeploy/promote · start/stop |
+| `create_apps` · `deploy_apps` · `control_apps`       | create an app · deploy/redeploy/cancel · start/stop  |
+| `rollback_apps`                                      | put an app back on a previous deployment             |
 | `configure_apps` · `delete_apps` · `move_apps`       | build & source settings · delete · folder/project/team |
 | `open_app_console`                                   | shell into a running container                       |
 | `manage_domains` · `manage_basic_auth`               | custom domains & routing · the edge password gate    |
@@ -156,6 +157,10 @@ therefore not capped per team.
   `apiTokens`, `activity`, `me`, `viewerTeam`, …. Object
   types are navigable — e.g. `App.deployments`, `App.latestDeployment`.
 - **Mutations** mirror every former server action: `createApp`, `redeploy`,
+  `rollbackDeployment(deploymentId)` (re-runs the image that build left on the
+  server - ask `Deployment.canRollback` first, and note that only the CODE goes
+  back: variables, domains, storage and limits stay current),
+  `setAppRollbackKeep(id, count)` (how many it keeps, 0-20, `configure_apps`),
   `stopApp`, `createProject`, `createEnvironment`, `upsertEnvironmentEnv`,
   `addDomain`, `createDatabase`, `updateDatabase`, `restartDatabase`,
   `redeployDatabase`, `rebuildDatabase`, `updateDatabaseResources`, `updateDatabaseImage`,

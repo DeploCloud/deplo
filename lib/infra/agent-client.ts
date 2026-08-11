@@ -2344,6 +2344,12 @@ export async function selfUpdateServerAgent(
  *  Exported so the readiness report can name the gap before anyone clicks. */
 export const DOCKER_CLEANUP_CAPABILITY = "docker-cleanup";
 
+/** The Hello capability gating `DockerCleanupRequest.keep_per_slug` - per-APP
+ *  image retention, which is what carries each app's rollback depth. Soft, unlike
+ *  {@link DOCKER_CLEANUP_CAPABILITY}: see the compensation in
+ *  {@link runAgentCleanup}. */
+const CLEANUP_KEEP_PER_SLUG_CAPABILITY = "cleanup.keep-per-slug";
+
 /**
  * Reclaim Docker disk on `serverId`'s host: dial → Hello → capability pre-flight →
  * DockerCleanup → close, all in one self-contained op. Shaped like
@@ -2373,6 +2379,37 @@ export const DOCKER_CLEANUP_CAPABILITY = "docker-cleanup";
  *  - {@link AgentCleanupUnsupportedError} when the reachable agent is too old, whether
  *    that shows up in Hello or as UNIMPLEMENTED on the call itself.
  */
+/**
+ * Make `keep_per_slug` safe to send at an agent that has never heard of it.
+ *
+ * An old agent does not reject the field, it IGNORES it - and silently falling
+ * back to the scalar would delete the very images an app's rollback depth exists
+ * to keep. So when the capability is missing the map is dropped and the scalar is
+ * raised to the deepest value it held: that host then over-keeps for every app
+ * instead of under-keeping for one. More disk on an un-updated host is a cost;
+ * deleting the image a rollback was about to run is a broken feature.
+ *
+ * A no-op in both directions once the fleet is updated, and a no-op today for any
+ * request that carries no map at all.
+ *
+ * Exported for tests: this is a wire-compatibility rule, and the failure it
+ * prevents (an image pruned out from under a rollback) is invisible until someone
+ * needs it.
+ */
+export function compensateKeepPerSlug(
+  req: DockerCleanupRequest,
+  hello: HelloResponse,
+): DockerCleanupRequest {
+  const perSlug = Object.values(req.keepPerSlug ?? {});
+  if (perSlug.length === 0) return req;
+  if (hello.capabilities?.includes(CLEANUP_KEEP_PER_SLUG_CAPABILITY)) return req;
+  return {
+    ...req,
+    keepImagesPerApp: Math.max(req.keepImagesPerApp, ...perSlug),
+    keepPerSlug: {},
+  };
+}
+
 export async function runAgentCleanup(
   serverId: string,
   req: DockerCleanupRequest,
@@ -2389,7 +2426,7 @@ export async function runAgentCleanup(
     if (!hello.capabilities?.includes(DOCKER_CLEANUP_CAPABILITY)) {
       throw new AgentCleanupUnsupportedError(CLEANUP_UNSUPPORTED_MESSAGE);
     }
-    return await conn.dockerCleanup(req);
+    return await conn.dockerCleanup(compensateKeepPerSlug(req, hello));
   } catch (e) {
     // Belt-and-braces: an agent one version behind on the RPC can advertise the
     // capability and still answer UNIMPLEMENTED. mapCleanupUnsupported turns that

@@ -9,6 +9,7 @@ import {
   Trash2,
   CircleStop,
   Server,
+  Undo2,
   ListFilter,
   ArrowUpDown,
   ChevronLeft,
@@ -204,6 +205,12 @@ export interface DeploymentRow {
   createdAt: string;
   creator: string;
   url: string;
+  /** The app can be put back on this deployment - the SERVER's answer (whether
+   *  its image is still on the host), never re-derived in the browser. */
+  canRollback?: boolean;
+  /** This deployment WAS a rollback: it re-ran an older build's image rather than
+   *  producing one. Shown as a badge so the history says what happened. */
+  rollbackOf?: string | null;
 }
 
 /**
@@ -234,6 +241,7 @@ export function DeploymentsTable({
   showServer = false,
   scopeAppId,
   canManage,
+  canRollbackApps = false,
 }: {
   deployments: DeploymentRow[];
   /** Title/subtitle block rendered on the left of the header row, opposite the
@@ -247,6 +255,10 @@ export function DeploymentsTable({
   scopeAppId?: string;
   /** Whether to show the delete affordances (cosmetic — server re-checks). */
   canManage: boolean;
+  /** Whether the viewer holds `rollback_apps`. Its own permission, so it is its
+   *  own prop: the Rollback item greys out rather than vanishing, and the data
+   *  layer re-checks it either way. */
+  canRollbackApps?: boolean;
 }) {
   const router = useRouter();
   const [selected, setSelected] = React.useState<Set<string>>(() => new Set());
@@ -806,11 +818,25 @@ export function DeploymentsTable({
                       >
                         {d.commitMessage}
                       </Link>
-                      <CommitLink
-                        sha={d.commitSha}
-                        url={d.commitUrl}
-                        className="font-mono text-xs text-muted-foreground"
-                      />
+                      <span className="flex items-center gap-1.5">
+                        <CommitLink
+                          sha={d.commitSha}
+                          url={d.commitUrl}
+                          className="font-mono text-xs text-muted-foreground"
+                        />
+                        {/* This build did not produce its code - it went BACK to
+                            it. Without the badge the row is indistinguishable
+                            from the original deploy of the same commit, which is
+                            exactly the question the history gets asked. */}
+                        {d.rollbackOf ? (
+                          <SimpleTooltip content="This deployment put the app back on an earlier build">
+                            <Badge variant="outline" className="gap-1 px-1.5 py-0 text-xs font-normal">
+                              <Undo2 className="size-3" />
+                              Rollback
+                            </Badge>
+                          </SimpleTooltip>
+                        ) : null}
+                      </span>
                     </TableCell>
 
                     {showApp && (
@@ -893,6 +919,10 @@ export function DeploymentsTable({
                         pullRequestUrl={d.pullRequestUrl}
                         canDelete={canManage}
                         canDeploy={canManage}
+                        canRollback={d.canRollback}
+                        canRollbackApps={canRollbackApps}
+                        commitSha={d.commitSha}
+                        commitMessage={d.commitMessage}
                       />
                     </TableCell>
                   </TableRow>

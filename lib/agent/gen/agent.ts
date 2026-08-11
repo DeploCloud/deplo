@@ -2143,6 +2143,31 @@ export interface DockerCleanupRequest {
    * (a stopped app must stay redeployable without a rebuild).
    */
   keepImagesPerApp: number;
+  /**
+   * UNUSED_APP_IMAGES only: a PER-SLUG override of keep_images_per_app, keyed by
+   * the deplo.slug label. A slug absent from the map falls back to the scalar, and
+   * every value floors at 1 for the same reason the scalar does.
+   *
+   * This is how an app's own ROLLBACK DEPTH is enforced. Retention decides how far
+   * back an app can be rolled, and that is a per-app product decision: one number
+   * for the whole host would either starve the app that wants five rollbacks or
+   * make every other app on the box pay for it in disk. The control plane sends
+   * one entry per app on this host; a preview stack (`<slug>__pr-<n>`) is never in
+   * the map and keeps falling back to the scalar, which is correct — a preview is
+   * not a rollback target.
+   *
+   * Gated by the "cleanup.keep-per-slug" Hello capability: an agent without it
+   * ignores this field entirely, so the control plane compensates by RAISING the
+   * scalar to the map's maximum. That over-keeps on an old host rather than
+   * under-keeping — a rollback still works, it just costs more disk until the
+   * agent is updated.
+   */
+  keepPerSlug: { [key: string]: number };
+}
+
+export interface DockerCleanupRequest_KeepPerSlugEntry {
+  key: string;
+  value: number;
 }
 
 export interface CleanupScopeResult {
@@ -13332,7 +13357,7 @@ export const TunnelStatus: MessageFns<TunnelStatus> = {
 };
 
 function createBaseDockerCleanupRequest(): DockerCleanupRequest {
-  return { scopes: [], dryRun: false, minAgeHours: 0, keepImagesPerApp: 0 };
+  return { scopes: [], dryRun: false, minAgeHours: 0, keepImagesPerApp: 0, keepPerSlug: {} };
 }
 
 export const DockerCleanupRequest: MessageFns<DockerCleanupRequest> = {
@@ -13351,6 +13376,9 @@ export const DockerCleanupRequest: MessageFns<DockerCleanupRequest> = {
     if (message.keepImagesPerApp !== 0) {
       writer.uint32(32).int32(message.keepImagesPerApp);
     }
+    globalThis.Object.entries(message.keepPerSlug).forEach(([key, value]: [string, number]) => {
+      DockerCleanupRequest_KeepPerSlugEntry.encode({ key: key as any, value }, writer.uint32(42).fork()).join();
+    });
     return writer;
   },
 
@@ -13403,6 +13431,17 @@ export const DockerCleanupRequest: MessageFns<DockerCleanupRequest> = {
           message.keepImagesPerApp = reader.int32();
           continue;
         }
+        case 5: {
+          if (tag !== 42) {
+            break;
+          }
+
+          const entry5 = DockerCleanupRequest_KeepPerSlugEntry.decode(reader, reader.uint32());
+          if (entry5.value !== undefined) {
+            message.keepPerSlug[entry5.key] = entry5.value;
+          }
+          continue;
+        }
       }
       if ((tag & 7) === 4 || tag === 0) {
         break;
@@ -13430,6 +13469,23 @@ export const DockerCleanupRequest: MessageFns<DockerCleanupRequest> = {
         : isSet(object.keep_images_per_app)
         ? globalThis.Number(object.keep_images_per_app)
         : 0,
+      keepPerSlug: isObject(object.keepPerSlug)
+        ? (globalThis.Object.entries(object.keepPerSlug) as [string, any][]).reduce(
+          (acc: { [key: string]: number }, [key, value]: [string, any]) => {
+            acc[key] = globalThis.Number(value);
+            return acc;
+          },
+          {},
+        )
+        : isObject(object.keep_per_slug)
+        ? (globalThis.Object.entries(object.keep_per_slug) as [string, any][]).reduce(
+          (acc: { [key: string]: number }, [key, value]: [string, any]) => {
+            acc[key] = globalThis.Number(value);
+            return acc;
+          },
+          {},
+        )
+        : {},
     };
   },
 
@@ -13447,6 +13503,15 @@ export const DockerCleanupRequest: MessageFns<DockerCleanupRequest> = {
     if (message.keepImagesPerApp !== 0) {
       obj.keepImagesPerApp = Math.round(message.keepImagesPerApp);
     }
+    if (message.keepPerSlug) {
+      const entries = globalThis.Object.entries(message.keepPerSlug) as [string, number][];
+      if (entries.length > 0) {
+        obj.keepPerSlug = {};
+        entries.forEach(([k, v]) => {
+          obj.keepPerSlug[k] = Math.round(v);
+        });
+      }
+    }
     return obj;
   },
 
@@ -13459,6 +13524,95 @@ export const DockerCleanupRequest: MessageFns<DockerCleanupRequest> = {
     message.dryRun = object.dryRun ?? false;
     message.minAgeHours = object.minAgeHours ?? 0;
     message.keepImagesPerApp = object.keepImagesPerApp ?? 0;
+    message.keepPerSlug = (globalThis.Object.entries(object.keepPerSlug ?? {}) as [string, number][]).reduce(
+      (acc: { [key: string]: number }, [key, value]: [string, number]) => {
+        if (value !== undefined) {
+          acc[key] = globalThis.Number(value);
+        }
+        return acc;
+      },
+      {},
+    );
+    return message;
+  },
+};
+
+function createBaseDockerCleanupRequest_KeepPerSlugEntry(): DockerCleanupRequest_KeepPerSlugEntry {
+  return { key: "", value: 0 };
+}
+
+export const DockerCleanupRequest_KeepPerSlugEntry: MessageFns<DockerCleanupRequest_KeepPerSlugEntry> = {
+  encode(message: DockerCleanupRequest_KeepPerSlugEntry, writer: BinaryWriter = new BinaryWriter()): BinaryWriter {
+    if (message.key !== "") {
+      writer.uint32(10).string(message.key);
+    }
+    if (message.value !== 0) {
+      writer.uint32(16).int32(message.value);
+    }
+    return writer;
+  },
+
+  decode(input: BinaryReader | Uint8Array, length?: number): DockerCleanupRequest_KeepPerSlugEntry {
+    const reader = input instanceof BinaryReader ? input : new BinaryReader(input);
+    const end = length === undefined ? reader.len : reader.pos + length;
+    const message = createBaseDockerCleanupRequest_KeepPerSlugEntry();
+    while (reader.pos < end) {
+      const tag = reader.uint32();
+      switch (tag >>> 3) {
+        case 1: {
+          if (tag !== 10) {
+            break;
+          }
+
+          message.key = reader.string();
+          continue;
+        }
+        case 2: {
+          if (tag !== 16) {
+            break;
+          }
+
+          message.value = reader.int32();
+          continue;
+        }
+      }
+      if ((tag & 7) === 4 || tag === 0) {
+        break;
+      }
+      reader.skip(tag & 7);
+    }
+    return message;
+  },
+
+  fromJSON(object: any): DockerCleanupRequest_KeepPerSlugEntry {
+    return {
+      key: isSet(object.key) ? globalThis.String(object.key) : "",
+      value: isSet(object.value) ? globalThis.Number(object.value) : 0,
+    };
+  },
+
+  toJSON(message: DockerCleanupRequest_KeepPerSlugEntry): unknown {
+    const obj: any = {};
+    if (message.key !== "") {
+      obj.key = message.key;
+    }
+    if (message.value !== 0) {
+      obj.value = Math.round(message.value);
+    }
+    return obj;
+  },
+
+  create<I extends Exact<DeepPartial<DockerCleanupRequest_KeepPerSlugEntry>, I>>(
+    base?: I,
+  ): DockerCleanupRequest_KeepPerSlugEntry {
+    return DockerCleanupRequest_KeepPerSlugEntry.fromPartial(base ?? ({} as any));
+  },
+  fromPartial<I extends Exact<DeepPartial<DockerCleanupRequest_KeepPerSlugEntry>, I>>(
+    object: I,
+  ): DockerCleanupRequest_KeepPerSlugEntry {
+    const message = createBaseDockerCleanupRequest_KeepPerSlugEntry();
+    message.key = object.key ?? "";
+    message.value = object.value ?? 0;
     return message;
   },
 };

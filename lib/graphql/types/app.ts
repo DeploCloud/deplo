@@ -33,6 +33,7 @@ import {
   previewRepoFramework,
   setAppFramework,
   setAppComposeUpArgs,
+  setAppRollbackKeep,
   type AppSummary,
   type ResourceLimitsInput,
 } from "@/lib/data/apps";
@@ -59,6 +60,8 @@ import {
   getLogs,
   getQueuePosition,
   redeploy,
+  rollbackDeployment,
+  canRollbackTo,
   reloadApp as reapplyRouting,
   cancelDeployment,
   cancelAllDeployments,
@@ -88,7 +91,10 @@ const LogLineRef = builder.objectRef<LogLine>("LogLine").implement({
 });
 
 export const DeploymentRef = builder
-  .objectRef<Deployment>("Deployment")
+  // `canRollback` rides along when the caller already computed it for a whole
+  // list (listDeployments does it once for the app's history); the field below
+  // falls back to the single-row read when it did not.
+  .objectRef<Deployment & { canRollback?: boolean }>("Deployment")
   .implement({
     description: "A single build + release of an app.",
     fields: (t) => ({
@@ -131,6 +137,21 @@ export const DeploymentRef = builder
       readyAt: t.exposeString("readyAt", { nullable: true }),
       buildDurationMs: t.exposeInt("buildDurationMs", { nullable: true }),
       creator: t.exposeString("creator"),
+      rollbackOf: t.exposeID("rollbackOf", {
+        nullable: true,
+        description:
+          "Set when this deploy was a rollback: the deployment whose image it " +
+          "re-ran. Null when it built its own.",
+      }),
+      canRollback: t.field({
+        type: "Boolean",
+        description:
+          "This app can be put back on this deployment: it succeeded, it built " +
+          "an image, that image is still on the app's current server, and it is " +
+          "not the one already running.",
+        resolve: (d) =>
+          d.canRollback !== undefined ? d.canRollback : canRollbackTo(d),
+      }),
       logs: t.field({
         type: [LogLineRef],
         // A build log prints the app's build-time variables; `view_logs` is the
@@ -254,6 +275,12 @@ export const AppRef = builder
           "Extra flags this app appends to the `docker compose up` that brings " +
           "it up, or null for the untouched command. Additive only — the flags " +
           "that choose the project, stack file or env-file are refused.",
+      }),
+      rollbackKeep: t.exposeInt("rollbackKeep", {
+        description:
+          "How many previous deployments this app can be rolled back to (0-20, " +
+          "default 3). Retention: its server keeps this many of the app's images " +
+          "behind the running one. 0 means there is nothing to go back to.",
       }),
       domainCount: t.exposeInt("domainCount"),
       createdAt: t.exposeString("createdAt"),
@@ -1104,6 +1131,42 @@ builder.mutationFields((t) => ({
     authScopes: { capability: "deploy_apps" },
     args: { appId: t.arg.string({ required: true }) },
     resolve: (_r, { appId }) => redeploy(appId),
+  }),
+  rollbackDeployment: t.field({
+    type: DeploymentRef,
+    authScopes: { capability: "rollback_apps" },
+    description:
+      "Put an app back on a previous deployment by re-running the image that " +
+      "build left on the server - no clone, no rebuild, no pull. Only a " +
+      "successful production deployment of an app Deplo builds (a repository or " +
+      "an uploaded archive), still inside the app's rollback retention and on " +
+      "the app's current server, can be rolled back to; ask for `canRollback` " +
+      "on the deployment to know. The code goes back and NOTHING ELSE does: the " +
+      "stack is rendered from the app's current variables, domains, volumes and " +
+      "resource limits. Returns the new deployment.",
+    args: { deploymentId: t.arg.string({ required: true }) },
+    resolve: (_r, { deploymentId }) => rollbackDeployment(deploymentId),
+  }),
+  setAppRollbackKeep: t.field({
+    type: AppRef,
+    // `configure_apps`, not `rollback_apps`: how many rollbacks an app keeps is
+    // how much disk its images hold on the server, which is a setting, not the
+    // act of going back. See the note on the data-layer function.
+    authScopes: { capability: "configure_apps" },
+    description:
+      "How many previous deployments this app can be rolled back to (0-20, " +
+      "default 3). It is retention: the app's server keeps this many of its " +
+      "images behind the running one. Takes effect on the next sweep - lowering " +
+      "it removes nothing now, and raising it cannot bring back images already " +
+      "removed.",
+    args: {
+      id: t.arg.string({ required: true }),
+      count: t.arg.int({ required: true }),
+    },
+    resolve: async (_r, { id, count }) => {
+      await setAppRollbackKeep(id, count);
+      return reloadApp(id);
+    },
   }),
   cancelDeployment: t.field({
     type: "Boolean",

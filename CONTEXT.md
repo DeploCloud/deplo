@@ -72,7 +72,7 @@ its members), user group, team role level.
 **Capability**:
 ONE action a member may be allowed to take — `create_apps`, `deploy_apps`, `delete_apps`,
 `open_app_console`, `manage_previews`, `create_databases`, `restore_backups`,
-`manage_tokens`, `organize_folders`, … (forty-one of them; the catalog with labels,
+`manage_tokens`, `rollback_apps`, `organize_folders`, … (forty-five of them; the catalog with labels,
 descriptions, search keywords and browse categories is `lib/capabilities.ts`). Never a
 bundle: if a name covers
 two actions an admin might want to separate, it is two capabilities. `view` is the
@@ -401,8 +401,26 @@ _Avoid_: deployment (that is the build event, not the runtime), production conta
 **Deployment**:
 A single build-and-release event that produces or updates the production stack (or a
 **pull request preview**). Always image-based; recorded as a `Deployment` row, which
-carries the **deploy key** naming the stack it actually touched.
+carries the **deploy key** naming the stack it actually touched. Every deploy of a source
+Deplo BUILDS records the tag it rendered (`deployments.image_ref`,
+`deplo/<key>:<first 12 of the row id>`) - unique per deployment, never overwritten, which
+is what makes a **Rollback** possible.
 _Avoid_: build (the build is one phase of a deployment), release.
+
+**Rollback**:
+Putting an App back on a previous **Deployment** by re-running the image that build left
+on the owning **server** - no clone, no build, no pull, so it lands in seconds. It is a
+real Deployment of its own (`rollback_of` names the one it returned to), with its own row,
+logs and Activity entry; only the CODE goes back, because the stack is re-rendered from
+the App's current variables, domains, volumes and resource limits.
+Only a source Deplo builds accrues rollbacks: a **compose** stack has no single image, and
+a `docker-image` source is a mutable registry tag with nothing pinned behind it. How far
+back an App can go is `apps.rollback_keep` (default 3, `0` = none) - a RETENTION number,
+enforced on the host by the per-slug map **Docker cleanup** sends, because Deplo pushes to
+no registry and an image it prunes is gone. Gated by its own Capability `rollback_apps`;
+the retention number is `configure_apps`, like every other App setting.
+_Avoid_: promote (that was the deleted preview action, and it only moved metadata), revert
+(that is a git commit), restore (that is a **backup**), "redeploy" (that rebuilds HEAD).
 
 **Git connection**:
 A team's stored credentials for ONE git host that is not GitHub — GitLab, Bitbucket,

@@ -18,6 +18,7 @@ import { CommitMessage } from "@/components/apps/commit-message";
 import { repoCommitUrl, timeAgo } from "@/lib/utils";
 import { BuildLogStream } from "@/components/apps/build-log-stream";
 import { BuildDuration } from "@/components/apps/build-duration";
+import { RollbackButton } from "@/components/apps/rollback-deployment";
 
 export const metadata = { title: "Deployment" };
 
@@ -35,6 +36,7 @@ export default async function DeploymentDetailPage(
   // the viewer lacks it - which renders as a blank terminal that looks broken -
   // so ask first and say why instead, exactly as the Logs tab does.
   const canReadLogs = await hasAppCapability(project.id, "view_logs");
+  const canRollback = await hasAppCapability(project.id, "rollback_apps");
   const logs = canReadLogs ? await getLogs(id) : [];
   // Its live slot in the owning server's build queue (null unless still queued),
   // so the "in queue" banner paints its position without waiting on the first poll.
@@ -104,7 +106,18 @@ export default async function DeploymentDetailPage(
               {timeAgo(deployment.createdAt)} by {deployment.creator}
             </span>
           </Meta>
-          <div className="flex items-end">
+          <div className="flex items-end gap-2">
+            {/* Only where the server says this build can still be re-run: its
+                image has to be on the app's current host and not already live. */}
+            {deployment.canRollback && (
+              <RollbackButton
+                id={deployment.id}
+                appSlug={slug}
+                commitSha={deployment.commitSha}
+                commitMessage={deployment.commitMessage}
+                can={canRollback}
+              />
+            )}
             <Button variant="outline" size="sm" asChild>
               <a
                 href={deployment.url}

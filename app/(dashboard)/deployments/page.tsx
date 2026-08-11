@@ -7,9 +7,10 @@ import { DeploymentsTable } from "@/components/apps/deployments-table";
 export const metadata = { title: "Deployments" };
 
 export default async function DeploymentsPage() {
-  const [deployments, canDeploy, isAdmin] = await Promise.all([
+  const [deployments, canDeploy, canRollback, isAdmin] = await Promise.all([
     listDeployments(),
     hasCapability("deploy_apps"),
+    hasCapability("rollback_apps"),
     isInstanceAdmin(),
   ]);
   const canManage = canDeploy || isAdmin;
@@ -42,6 +43,7 @@ export default async function DeploymentsPage() {
           showApp
           showServer
           canManage={canManage}
+          canRollbackApps={canRollback || isAdmin}
           deployments={deployments.map((d) => ({
             id: d.id,
             appId: d.appId,
@@ -58,6 +60,8 @@ export default async function DeploymentsPage() {
             createdAt: d.createdAt,
             creator: d.creator,
             url: d.url,
+            canRollback: d.canRollback,
+            rollbackOf: d.rollbackOf,
           }))}
         />
       )}

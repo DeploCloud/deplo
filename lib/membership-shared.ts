@@ -121,6 +121,9 @@ export const PROJECT_SCOPED_CAPABILITIES: Capability[] = [
   "view",
   "create_apps",
   "deploy_apps",
+  // A rollback targets ONE app's own deployment history, so it means something
+  // inside a Project exactly as much as deploying does.
+  "rollback_apps",
   "control_apps",
   "configure_apps",
   "delete_apps",

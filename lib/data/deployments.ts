@@ -60,6 +60,10 @@ export async function listDeployments(filter?: {
     serverId: string | null;
     /** Display name of {@link serverId}, or null when it can't be resolved. */
     serverName: string | null;
+    /** This deployment can be rolled back to - see {@link rollbackTargetIds}.
+     *  Decided HERE, never in the UI: whether an image is still on the host is a
+     *  server fact, and a client re-deriving it would drift from the gate. */
+    canRollback: boolean;
   })[]
 > {
   const teamId = await requireActiveTeamId();
@@ -72,6 +76,7 @@ export async function listDeployments(filter?: {
       name: appsTable.name,
       slug: appsTable.slug,
       serverId: appsTable.serverId,
+      rollbackKeep: appsTable.rollbackKeep,
       folderId: appsTable.folderId,
       projectId: appsTable.projectId,
       environmentId: appsTable.environmentId,
@@ -138,6 +143,24 @@ export async function listDeployments(filter?: {
         ).map((s) => [s.id, s.name] as const),
   );
 
+  // Which rows may be rolled back to, per app. Computed BEFORE the environment /
+  // status filters below, because the ranking is over the app's whole history:
+  // filtering to "ready" first would make a failed build look like a version, and
+  // filtering to one environment would renumber the window.
+  const byApp = new Map<string, Deployment[]>();
+  for (const row of rows) {
+    const dep = assembleDeployment(row);
+    const list = byApp.get(dep.appId);
+    if (list) list.push(dep);
+    else byApp.set(dep.appId, [dep]);
+  }
+  const rollbackable = new Set<string>();
+  for (const p of teamApps) {
+    for (const id of rollbackTargetIds(p, byApp.get(p.id) ?? [])) {
+      rollbackable.add(id);
+    }
+  }
+
   return rows
     .map((row) => ({ dep: assembleDeployment(row), rowServerId: row.serverId }))
     .filter(({ dep }) => !filter?.environment || dep.environment === filter.environment)
@@ -147,6 +170,7 @@ export async function listDeployments(filter?: {
       const serverId = rowServerId ?? p?.serverId ?? null;
       return {
         ...dep,
+        canRollback: rollbackable.has(dep.id),
         serviceName: p?.name ?? "",
         appSlug: p?.slug ?? "",
         serverId,
@@ -163,7 +187,9 @@ export async function listDeployments(filter?: {
     });
 }
 
-export async function getDeployment(id: string): Promise<Deployment | null> {
+export async function getDeployment(
+  id: string,
+): Promise<(Deployment & { canRollback: boolean }) | null> {
   const teamId = await requireActiveTeamId();
   const dep = await loadDeployment(id);
   if (!dep) return null;
@@ -171,7 +197,31 @@ export async function getDeployment(id: string): Promise<Deployment | null> {
   // …and the app has to be one the caller can reach at all - same answer for
   // "no such deployment" and "not yours", so neither can be told apart. A
   // narrowed principal is not exempt, exactly as in `listDeployments` above.
-  return (await appCapabilities(dep.appId)).length > 0 ? dep : null;
+  if ((await appCapabilities(dep.appId)).length === 0) return null;
+  return { ...dep, canRollback: await canRollbackTo(dep) };
+}
+
+/**
+ * Whether ONE deployment is a rollback target - the single-row read the detail
+ * page needs. Shares {@link rollbackTargetIds} with the list and the gate, so all
+ * three answer the same question with the same code.
+ *
+ * Cheap enough to leave un-batched: the window is decided by the app's own
+ * history, which is one indexed read (`deployments_app_created_idx`) on a page
+ * that is already loading that app.
+ */
+export async function canRollbackTo(dep: Deployment): Promise<boolean> {
+  if (!dep.imageRef || dep.rollbackOf || dep.status !== "ready") return false;
+  const [app] = await getDb()
+    .select({
+      serverId: appsTable.serverId,
+      rollbackKeep: appsTable.rollbackKeep,
+    })
+    .from(appsTable)
+    .where(eq(appsTable.id, dep.appId))
+    .limit(1);
+  if (!app) return false;
+  return rollbackTargetIds(app, await loadDeploymentsForApp(dep.appId)).has(dep.id);
 }
 
 /**
@@ -269,6 +319,154 @@ export async function reloadApp(
   if (result === "rerouted")
     await recordActivity("app", `Reloaded routing`, user.name, appId);
   return result;
+}
+
+/* ------------------------------------------------------------------ */
+/* Rollback                                                            */
+/* ------------------------------------------------------------------ */
+
+/**
+ * The deployments an app can be put back on, as ids.
+ *
+ * Rollback runs an image a previous build LEFT ON THE HOST - Deplo pushes to no
+ * registry, so what is offered has to match what retention actually kept. Five
+ * conditions, and each one is a different way of being gone:
+ *
+ *  - it produced its own image (`image_ref`, and `rollback_of` null - a rollback
+ *    row re-runs someone else's image and never adds one to the host, so it must
+ *    not occupy a slot when ranking);
+ *  - it SUCCEEDED, and is a production build (a preview stack is torn down with
+ *    its pull request);
+ *  - it ran on the server the app is on TODAY (images do not follow an app across
+ *    a host move);
+ *  - it is inside the app's retention window - the newest `rollback_keep` builds
+ *    behind the one that is live, which is exactly what the per-slug map tells the
+ *    host to keep;
+ *  - it is not the image already running, which would be a deploy that changes
+ *    nothing.
+ *
+ * ponytail: ranks SUCCESSFUL builds, while the host ranks IMAGES - a failed build
+ * that got as far as tagging one occupies a slot here invisibly, so a target at
+ * the very edge of the window can still be gone. The failure is safe and legible
+ * (compose reports the missing image, the running container is untouched), and the
+ * exact answer needs an image-listing RPC the agent does not have.
+ */
+function rollbackTargetIds(
+  app: { serverId: string | null; rollbackKeep: number },
+  /** The app's deployments, NEWEST FIRST - a prefix is fine (truncating can only
+   *  drop candidates, never promote one into the window). */
+  deps: Pick<
+    Deployment,
+    "id" | "status" | "environment" | "imageRef" | "rollbackOf" | "serverId"
+  >[],
+): Set<string> {
+  const production = deps.filter(
+    (d) => d.environment === "production" && d.status === "ready",
+  );
+  // What the container is running now: the newest successful production deploy,
+  // rollback rows INCLUDED (a rollback is how the live image most recently
+  // changed). Anything pointing at the same image is a no-op, not a rollback.
+  const liveImage = production[0]?.imageRef ?? null;
+  const builds = production.filter((d) => !d.rollbackOf && d.imageRef);
+  return new Set(
+    builds
+      // The live build plus the ones behind it that retention keeps.
+      .slice(0, Math.max(0, app.rollbackKeep) + 1)
+      .filter((d) => d.imageRef !== liveImage && d.serverId === app.serverId)
+      .map((d) => d.id),
+  );
+}
+
+/**
+ * Put an app back on a previous deployment - its image, not its settings.
+ *
+ * Gated on `rollback_apps`, which is deliberately NOT `deploy_apps`: they are two
+ * decisions an admin may want to make separately, and this one is the smaller of
+ * the two (anyone who can deploy can already ship a revert commit; this just makes
+ * it take seconds instead of a build). The retention number that decides how FAR
+ * back an app can go is a third decision again, and lives under `configure_apps`
+ * with every other app setting.
+ *
+ * Every refusal below says which of the several ways this target is unusable it
+ * fell into, because "Rollback failed" would leave the operator guessing between a
+ * host move, a pruned image and a build that never succeeded.
+ */
+export async function rollbackDeployment(
+  deploymentId: string,
+): Promise<Deployment> {
+  await requireMembership();
+  const user = (await getCurrentUser())!;
+  const dep = await loadDeployment(deploymentId);
+  if (!dep) throw new Error("Deployment not found");
+  const { membership } = await requireAppCapability(dep.appId, "rollback_apps");
+  if (!(await appInTeam(dep.appId, membership.teamId)))
+    throw new Error("Deployment not found");
+
+  const [app] = await getDb()
+    .select({
+      serverId: appsTable.serverId,
+      rollbackKeep: appsTable.rollbackKeep,
+      name: appsTable.name,
+    })
+    .from(appsTable)
+    .where(and(eq(appsTable.id, dep.appId), eq(appsTable.teamId, membership.teamId)))
+    .limit(1);
+  if (!app) throw new Error("App not found");
+
+  // The cheap, specific refusals first, so the common mistakes name themselves
+  // instead of falling through to the generic window message.
+  if (dep.environment !== "production")
+    throw new Error(
+      "Only a production deployment can be rolled back to - a pull request preview is torn down with its pull request.",
+    );
+  if (dep.status !== "ready")
+    throw new Error(
+      `Only a deployment that finished successfully can be rolled back to (this one is ${dep.status}).`,
+    );
+  if (!dep.imageRef)
+    throw new Error(
+      "This deployment left no image to go back to. Only an app Deplo builds - from a repository or an uploaded archive - can be rolled back.",
+    );
+  if (dep.rollbackOf)
+    throw new Error(
+      "This deployment is itself a rollback. Roll back to the deployment that built the image instead.",
+    );
+  if (dep.serverId !== app.serverId)
+    throw new Error(
+      "This deployment ran on another server, and its image stayed there. Only builds from this app's current server can be rolled back to.",
+    );
+
+  // The window is the expensive check (it needs the app's history), so it goes
+  // last - and it is the same function the list uses to decide what to offer, so
+  // the button and the gate can never disagree.
+  const history = await loadDeploymentsForApp(dep.appId);
+  const targets = rollbackTargetIds(app, history);
+  if (!targets.has(dep.id)) {
+    // Two ways to be outside it, and they need different sentences.
+    const live =
+      history.find(
+        (d) => d.environment === "production" && d.status === "ready",
+      )?.imageRef ?? null;
+    throw new Error(
+      live && live === dep.imageRef
+        ? "This is the deployment the app is already running."
+        : `This deployment's image is no longer kept on the server. ${app.name} keeps ${app.rollbackKeep} ${app.rollbackKeep === 1 ? "rollback" : "rollbacks"} - raise that in Settings → Deployments to keep more of them.`,
+    );
+  }
+
+  const depId = await startDeployment(dep.appId, {
+    environment: "production",
+    creator: user.name,
+    rollback: {
+      deploymentId: dep.id,
+      imageRef: dep.imageRef,
+      commitSha: dep.commitSha,
+      commitMessage: dep.commitMessage,
+      commitAuthor: dep.commitAuthor,
+      builtAt: dep.readyAt ?? dep.createdAt,
+    },
+  });
+  return (await loadDeployment(depId))!;
 }
 
 /** Trigger a fresh production build + deploy of the latest commit. */

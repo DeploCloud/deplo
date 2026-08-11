@@ -44,9 +44,13 @@ export const CAPABILITY_META: Record<Capability, CapabilityMeta> = {
   },
   deploy_apps: {
     label: "Deploy apps",
-    description:
-      "Deploy, redeploy, cancel a running deploy and promote a previous one.",
-    keywords: "redeploy build rollback promote release",
+    description: "Deploy, redeploy and cancel a running deploy.",
+    keywords: "redeploy build release ship",
+  },
+  rollback_apps: {
+    label: "Roll back apps",
+    description: "Put an app back on a previous deployment, with no rebuild.",
+    keywords: "rollback revert previous version undo restore",
   },
   control_apps: {
     label: "Start & stop apps",
@@ -329,6 +333,7 @@ export const CAPABILITY_CATEGORIES: {
     caps: [
       "create_apps",
       "deploy_apps",
+      "rollback_apps",
       "control_apps",
       "configure_apps",
       "delete_apps",
@@ -430,6 +435,11 @@ export const LEGACY_CAPABILITY_EXPANSION: Record<string, Capability[]> = {
   deploy: [
     "create_apps",
     "deploy_apps",
+    // Anyone the coarse `deploy` covered could already ship any commit they liked,
+    // reverting one included - so going back to a build that already shipped is
+    // strictly less power than they had. Withholding it here would take something
+    // away from an API client that has been sending `deploy` for a year.
+    "rollback_apps",
     "control_apps",
     "configure_apps",
     "delete_apps",

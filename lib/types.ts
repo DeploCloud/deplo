@@ -26,6 +26,7 @@ export type Capability =
   // Apps
   | "create_apps"
   | "deploy_apps"
+  | "rollback_apps"
   | "control_apps"
   | "configure_apps"
   | "delete_apps"
@@ -84,6 +85,7 @@ export const ALL_CAPABILITIES: Capability[] = [
   "view",
   "create_apps",
   "deploy_apps",
+  "rollback_apps",
   "control_apps",
   "configure_apps",
   "delete_apps",
@@ -1057,6 +1059,15 @@ export interface App {
    */
   composeUpArgs: string | null;
   /**
+   * How many previous deployments this app can be rolled back to (default 3).
+   *
+   * A retention number, not a toggle: it is what keeps that many of this app's
+   * built images alive on its server, so `0` means there is nothing to go back to
+   * and the Rollback action disappears. Only a source Deplo builds accrues
+   * rollbacks - a compose stack has no single image to re-run.
+   */
+  rollbackKeep: number;
+  /**
    * Per-app resource caps applied at deploy time, or `null` when the app has no
    * limits set (the default). See {@link ResourceLimits}.
    */
@@ -1065,6 +1076,21 @@ export interface App {
   createdAt: string;
   updatedAt: string;
 }
+
+/**
+ * How many previous deployments a new app can be rolled back to.
+ *
+ * Three, not zero: the feature exists so that a bad deploy is undoable, and a
+ * default of zero would mean every app only becomes undoable once someone has
+ * found the setting - which is the same as not shipping it. It costs three extra
+ * images per app on the host, which is the honest price of being able to go back.
+ */
+export const DEFAULT_ROLLBACK_KEEP = 3;
+
+/** The ceiling on {@link App.rollbackKeep}. Retention is disk: past this, an app
+ *  is hoarding gigabytes of images nobody will ever roll back to. `0` is the
+ *  floor and means "keep nothing to go back to". */
+export const MAX_ROLLBACK_KEEP = 20;
 
 export type DeploymentStatus =
   | "queued"
@@ -1120,6 +1146,18 @@ export interface Deployment {
    * restart.
    */
   forceRecreate: boolean;
+  /**
+   * The image tag this deploy rendered into its stack and the agent ran. Set only
+   * where Deplo BUILT it (git, upload) - `deplo/<deployKey>:<id[0:12]}`, living on
+   * the owning server. Null for a compose stack (no single image) and for a
+   * prebuilt `docker-image` source (a mutable registry tag, nothing pinned), so a
+   * non-null value is exactly "there is an image of ours to go back to".
+   */
+  imageRef: string | null;
+  /** Set when this deploy is a ROLLBACK: the deployment whose image it re-ran.
+   *  Null ⇒ this deploy built its own image (which is also what decides whether it
+   *  occupies a retention slot - a rollback reuses an image, it does not add one). */
+  rollbackOf: ID | null;
   creator: string;
 }
 

@@ -199,3 +199,37 @@ test("no-cache and force-recreate ride the request independently", async () => {
   assert.equal(rebuilt.forceRecreate, true);
   assert.equal(rebuilt.noBuildCache, false);
 });
+
+/**
+ * The IMAGE plan serves two opposite jobs, and `pull` is what tells them apart.
+ * Getting it wrong is not a subtle bug: a rollback that pulls goes looking for
+ * `deplo/<slug>:<deployment>` in a registry that has never existed, and fails on
+ * something that was sitting on the host the whole time.
+ */
+test("a prebuilt docker-image source PULLS its registry ref", async () => {
+  const req = await buildDeployRequest({
+    ...base,
+    imageRef: "ghcr.io/acme/api:1.4.2",
+    plan: { kind: "image", image: "ghcr.io/acme/api:1.4.2", pull: true },
+  });
+  assert.equal(req.sourceKind, SourceKind.SOURCE_KIND_IMAGE);
+  assert.equal(req.buildKind, BuildKind.BUILD_KIND_NONE);
+  assert.equal(req.pullImage, true);
+  assert.equal(req.imageRef, "ghcr.io/acme/api:1.4.2");
+});
+
+test("a ROLLBACK runs the host's own image with no build and no pull", async () => {
+  const req = await buildDeployRequest({
+    ...base,
+    imageRef: "deplo/myapp:dpl_abc123",
+    plan: { kind: "image", image: "deplo/myapp:dpl_abc123", pull: false },
+  });
+  assert.equal(req.sourceKind, SourceKind.SOURCE_KIND_IMAGE);
+  assert.equal(req.buildKind, BuildKind.BUILD_KIND_NONE);
+  assert.equal(req.pullImage, false);
+  assert.equal(req.imageRef, "deplo/myapp:dpl_abc123");
+  // Nothing is shipped to build from: the image already exists on that host.
+  assert.equal(req.contextTar.length, 0);
+  assert.equal(req.git, undefined);
+  assert.equal(req.buildSpec, undefined);
+});

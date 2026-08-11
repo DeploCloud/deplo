@@ -172,6 +172,11 @@ type App {
   Per-app resource caps applied at deploy time, or null when the app has no limits set.
   """
   resources: ResourceLimits
+
+  """
+  How many previous deployments this app can be rolled back to (0-20, default 3). Retention: its server keeps this many of the app's images behind the running one. 0 means there is nothing to go back to.
+  """
+  rollbackKeep: Int
   serverId: ID
   slug: String
   source: DeploySource
@@ -624,7 +629,7 @@ enum Capability {
   delete_folders
   delete_projects
   delete_team
-  deploy @deprecated(reason: "Split into finer permissions. Still accepted on input, where it means: create_apps, deploy_apps, control_apps, configure_apps, delete_apps, move_apps, open_app_console, manage_previews, manage_crons, create_folders, organize_folders, delete_folders, create_projects, organize_projects, delete_projects, manage_environments.")
+  deploy @deprecated(reason: "Split into finer permissions. Still accepted on input, where it means: create_apps, deploy_apps, rollback_apps, control_apps, configure_apps, delete_apps, move_apps, open_app_console, manage_previews, manage_crons, create_folders, organize_folders, delete_folders, create_projects, organize_projects, delete_projects, manage_environments.")
   deploy_apps
   manage_backup_destinations
   manage_backups
@@ -653,6 +658,7 @@ enum Capability {
   read_app_files
   restore_backups
   reveal_secrets
+  rollback_apps
   view
   view_activity
   view_logs
@@ -1178,6 +1184,11 @@ type Deployment {
   appId: ID
   branch: String
   buildDurationMs: Int
+
+  """
+  This app can be put back on this deployment: it succeeded, it built an image, that image is still on the app's current server, and it is not the one already running.
+  """
+  canRollback: Boolean
   commitAuthor: String
   commitMessage: String
   commitSha: String
@@ -1209,6 +1220,11 @@ type Deployment {
   """
   queuePosition: Int
   readyAt: String
+
+  """
+  Set when this deploy was a rollback: the deployment whose image it re-ran. Null when it built its own.
+  """
+  rollbackOf: ID
 
   """
   When the build was claimed off the queue and started running — the origin `buildDurationMs` is measured from, and what a live build timer counts up from. Null while still queued.
@@ -2405,6 +2421,11 @@ type Mutation {
   revokeToken(id: String!): Boolean
 
   """
+  Put an app back on a previous deployment by re-running the image that build left on the server - no clone, no rebuild, no pull. Only a successful production deployment of an app Deplo builds (a repository or an uploaded archive), still inside the app's rollback retention and on the app's current server, can be rolled back to; ask for `canRollback` on the deployment to know. The code goes back and NOTHING ELSE does: the stack is rendered from the app's current variables, domains, volumes and resource limits. Returns the new deployment.
+  """
+  rollbackDeployment(deploymentId: String!): Deployment
+
+  """
   Mint a new deploy hook URL for the app and return it. Every copy of the previous URL stops working immediately.
   """
   rotateAppDeployHook(id: String!): String
@@ -2474,6 +2495,11 @@ type Mutation {
 
   """Turn pull request previews on or off, and set their options."""
   setAppPreviewSettings(appId: ID!, input: AppPreviewSettingsInput!): Boolean
+
+  """
+  How many previous deployments this app can be rolled back to (0-20, default 3). It is retention: the app's server keeps this many of its images behind the running one. Takes effect on the next sweep - lowering it removes nothing now, and raising it cannot bring back images already removed.
+  """
+  setAppRollbackKeep(count: Int!, id: String!): App
 
   """
   Replace an app's volumes (named, app-files, and host bind mounts). Compose-stack apps included — each volume names the service it mounts into.
