@@ -54,7 +54,7 @@ export default function Loading() {
             <Skeleton className="h-8 w-32 rounded-md" />
           </div>
 
-          <div className="grid gap-4 sm:grid-cols-2 3xl:grid-cols-3">
+          <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
             {ROW_FILL.map((fill, i) => (
               <Card key={i} className={fill || undefined}>
                 <CardContent className="space-y-4 p-5">

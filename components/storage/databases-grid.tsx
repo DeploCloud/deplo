@@ -202,11 +202,11 @@ export function DatabasesGrid({
   );
 }
 
-/** Mirrors the Overview grid's responsive scheme (1 / 2 / 3 cols) + a list mode. */
+/** 1 / 2 / 3 cols + a list mode; database cards fit 3-up earlier than app cards. */
 function gridClass(view: View): string {
   return view === "list"
     ? "flex flex-col gap-3"
-    : "grid gap-4 sm:grid-cols-2 3xl:grid-cols-3";
+    : "grid gap-4 sm:grid-cols-2 xl:grid-cols-3";
 }
 
 function Toolbar({
