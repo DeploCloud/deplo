@@ -212,13 +212,17 @@ is remapped onto the control-plane `users` table. Deploy execution is the Go age
   `typegen` emits them without a build and needs no environment. Run it before `tsc` in a clean
   tree too.
   `docker-image.yml` is separate and still fires only on a `v*` tag.
-- **`overrides` in `package.json` are security pins, not preferences.** `postcss`, `nanoid`,
-  `brace-expansion`, `js-yaml`, `sharp`, `protobufjs` and `esbuild` reach us only through `next`,
-  `@tailwindcss/postcss`, `@grpc/grpc-js`, `drizzle-kit`, `tsx` and `eslint`, all of which pin
-  ranges below the patched versions. Without the overrides `bun audit` reports 25 advisories
-  (16 high) and the CI audit job cannot pass; with them it reports none. Re-check when bumping
-  `next` or the grpc/drizzle toolchain: once the upstream range moves past a pin, delete that
-  entry rather than leaving a stale one.
+- **`overrides` in `package.json` are security pins, not preferences.** Three are left:
+  `esbuild` (the only one still stopping a live advisory - `drizzle-kit` and `tsx` both pin
+  ranges at or below 0.24.2), plus `postcss` and `js-yaml`, which still pull older copies into
+  the tree when removed. `graphql` is a different animal: a FUNCTIONAL pin, because
+  `graphql-yoga@5` peers `^15 || ^16` and will not take 17.
+  **Re-check every pin when you bump anything** - the rule is empirical, not historical: drop the
+  override, `bun install`, and read `bun audit` (bare, not `--audit-level=high`, or a moderate
+  hides). If nothing appears and no lower copy reappears, delete the entry rather than leaving a
+  stale one. That is how `nanoid`, `sharp`, `protobufjs` and `brace-expansion` were removed in
+  August 2026: upstream had moved past all four, and the `brace-expansion` pin had become
+  actively harmful - it held v1 while `eslint@10`'s minimatch needs the v2 `expand` export.
 
 ## API layer (Pothos + yoga)
 
