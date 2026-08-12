@@ -222,17 +222,20 @@ test("register → sign in → authorize → mint → consent → exchange → a
     "authorize must land on deplo's own consent page",
   );
 
-  // What the GraphQL resolver does, behind every gate.
-  await runWithIdentity({ userId: USER_1, teamId: TEAM_A }, () =>
-    mintMcpConnection({ clientId, capabilities: ["view"] }),
-  );
-
-  // What the consent page's browser fetch does.
+  // What the consent page's browser fetch does FIRST — it verifies the
+  // provider's signature and records the approval.
   const approved = await consent(cookie, {
     accept: true,
     oauth_query: authorized.oauthQuery ?? "",
   });
   assert.equal(approved.status, 200, `consent refused (${approved.status})`);
+
+  // And only then what the GraphQL resolver does, behind every gate — which now
+  // requires that recorded approval to exist.
+  await runWithIdentity({ userId: USER_1, teamId: TEAM_A }, () =>
+    mintMcpConnection({ clientId, capabilities: ["view"] }),
+  );
+
   const code = new URL(approved.url!).searchParams.get("code");
   assert.ok(code, `no code in ${approved.url}`);
 

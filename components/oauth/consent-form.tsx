@@ -3,6 +3,7 @@
 import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
+import { TriangleAlert } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import {
@@ -119,6 +120,7 @@ export function ConsentForm({
   oauthQuery,
   tree,
   activeTeamId,
+  publicOrigin,
 }: {
   client: ConsentClientDTO;
   scope: string;
@@ -126,6 +128,8 @@ export function ConsentForm({
   tree: ScopeTreeTeam[];
   /** The team the mint will actually use — the dropdown must start here. */
   activeTeamId: string;
+  /** The origin deplo publishes, which the consent POST must come from. */
+  publicOrigin: string | null;
 }) {
   const router = useRouter();
   const mcpPreset = TOKEN_PRESETS.find((p) => p.id === "mcp");
@@ -141,6 +145,15 @@ export function ConsentForm({
   const [advanced, setAdvanced] = useState(false);
   const [teamId, setTeamId] = useState(activeTeamId);
   const teamName = tree.find((t) => t.id === teamId)?.name;
+
+  // Better Auth refuses a cookie-carrying POST whose Origin is not the address
+  // deplo publishes — the CSRF defence the consent posts through. On an instance
+  // reachable at a second address that refusal is correct and completely
+  // baffling, so say it before the click rather than after.
+  const wrongOrigin =
+    typeof window !== "undefined" &&
+    !!publicOrigin &&
+    window.location.origin !== publicOrigin;
 
   const [pending, setPending] = useState(false);
   const switchTeam = useGraphqlMutation(SWITCH_TEAM);
@@ -163,9 +176,18 @@ export function ConsentForm({
     : { text: teamName ?? "This team", empty: false };
 
   /**
-   * Two steps, in this order. deplo mints the credential first, behind every
-   * gate; only then does the browser complete the handshake. The reverse would
-   * hand the client a code that resolves to nothing.
+   * Consent FIRST, mint second, navigate last.
+   *
+   * The order is the security property. `POST /oauth2/consent` verifies the
+   * provider's signature over the authorization query and only then records the
+   * approval, so the mint that follows can require that record and refuse to
+   * create a credential for anyone who merely got a person onto this page with
+   * a chosen `client_id`. Minting first answered to a URL.
+   *
+   * The code the consent hands back is not redeemable until the browser
+   * navigates, which is the last thing here — so the window in which a code
+   * exists without a connection behind it is this function, and a failure in it
+   * leaves a visible error rather than a working credential.
    *
    * `gqlAction`, not `useGraphqlMutation`: the latter's `error` is React state,
    * so reading it straight after the await gets the value from BEFORE the
@@ -176,6 +198,16 @@ export function ConsentForm({
   async function onApprove(e: React.FormEvent) {
     e.preventDefault();
     setPending(true);
+    const done = await postConsent({
+      accept: true,
+      ...(scope ? { scope } : {}),
+      ...(oauthQuery ? { oauth_query: oauthQuery } : {}),
+    });
+    if (!done.url) {
+      setPending(false);
+      toast.error(done.error || "deplo could not finish the connection");
+      return;
+    }
     // `teamIds` is deliberately not sent: the server takes the team from the
     // session and ignores anything a client claims about it.
     const minted = await gqlAction(AUTHORIZE, {
@@ -191,16 +223,6 @@ export function ConsentForm({
     if (!minted.ok) {
       setPending(false);
       toast.error(minted.error || "deplo refused the connection");
-      return;
-    }
-    const done = await postConsent({
-      accept: true,
-      ...(scope ? { scope } : {}),
-      ...(oauthQuery ? { oauth_query: oauthQuery } : {}),
-    });
-    if (!done.url) {
-      setPending(false);
-      toast.error(done.error || "deplo could not finish the connection");
       return;
     }
     // A full-page navigation, not router.push: the destination is the client's
@@ -231,6 +253,16 @@ export function ConsentForm({
           </p>
         </CardHeader>
         <CardContent>
+          {wrongOrigin ? (
+            <p className="mb-4 flex items-start gap-2 rounded-lg border border-amber-500/40 bg-amber-500/5 p-3 text-xs text-muted-foreground">
+              <TriangleAlert className="mt-0.5 size-3.5 shrink-0 text-amber-500" />
+              <span>
+                You opened deplo at a different address from the one it
+                publishes ({publicOrigin}). Approving will be refused. Open deplo
+                at that address and start the connection again.
+              </span>
+            </p>
+          ) : null}
           <form className="grid gap-6" onSubmit={onApprove}>
             <div className="grid gap-2">
               <FieldLabel
@@ -249,6 +281,11 @@ export function ConsentForm({
                     folderIds: [],
                     appIds: [],
                   });
+                  // Back to the preset too: permissions are held PER TEAM, so a
+                  // hand-picked set carried across can name things the person
+                  // does not hold here, and the refusal would arrive on submit
+                  // instead of on the control that caused it.
+                  setCapabilities(mcpPreset?.capabilities ?? ["view"]);
                   void switchTeam.run({ teamId: next }).then(() => {
                     router.refresh();
                   });

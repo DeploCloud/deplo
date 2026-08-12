@@ -24,6 +24,17 @@ function notConfigured() {
  */
 const REGISTER_LIMIT = { limit: 5, windowMs: 60_000 };
 
+/**
+ * The ceiling the per-address limit cannot provide.
+ *
+ * `x-forwarded-for` is a header, and on an instance that is not behind a proxy
+ * stripping it, whoever is calling can write whatever they like in it and get a
+ * fresh budget every request. So the per-address limit shapes ordinary traffic
+ * and this one bounds the total: no plausible instance sees sixty new AI clients
+ * registering in a minute, and one that does can wait.
+ */
+const REGISTER_CEILING = { limit: 60, windowMs: 60_000 };
+
 async function registrationAllowed(request: Request): Promise<Response | null> {
   if (!new URL(request.url).pathname.endsWith("/oauth2/register")) return null;
   const ip =
@@ -31,7 +42,11 @@ async function registrationAllowed(request: Request): Promise<Response | null> {
     request.headers.get("x-real-ip") ??
     request.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ??
     "unknown";
-  const limited = await rateLimit(`oauth-register:${ip}`, REGISTER_LIMIT);
+  const [perIp, overall] = await Promise.all([
+    rateLimit(`oauth-register:${ip}`, REGISTER_LIMIT),
+    rateLimit("oauth-register:all", REGISTER_CEILING),
+  ]);
+  const limited = perIp.ok ? overall : perIp;
   if (limited.ok) return null;
   return Response.json(
     {

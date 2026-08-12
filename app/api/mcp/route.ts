@@ -46,6 +46,27 @@ export const dynamic = "force-dynamic";
 const RATE = { limit: 120, windowMs: 60_000 };
 
 /**
+ * The limit on requests that never authenticate.
+ *
+ * The one above is keyed on the token, so until this existed a request WITHOUT
+ * a valid token was not counted at all — and discovery now tells the whole
+ * internet this endpoint is here. Guessing a token is hopeless (24 random
+ * bytes), but every attempt still costs a hash and an indexed lookup, and the
+ * OAuth shape costs a three-table join. Keyed on the address, because a caller
+ * that has not authenticated has no other name.
+ */
+const FAILED_AUTH_RATE = { limit: 60, windowMs: 60_000 };
+
+function callerAddress(request: Request): string {
+  return (
+    request.headers.get("cf-connecting-ip") ??
+    request.headers.get("x-real-ip") ??
+    request.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ??
+    "unknown"
+  );
+}
+
+/**
  * The factory runs once per request (the SDK's model under a stateless
  * protocol), so the tool list can be filtered to what this token may call.
  */
@@ -81,13 +102,38 @@ function unauthorized(message: string) {
   );
 }
 
+/**
+ * Count a request that failed to authenticate, and refuse once there are too
+ * many from one address. Runs on every unauthenticated answer, so the endpoint
+ * costs an attacker something even before a token is ever resolved.
+ */
+async function refuse(request: Request, message: string): Promise<Response> {
+  const limited = await rateLimit(
+    `mcp-auth:${callerAddress(request)}`,
+    FAILED_AUTH_RATE,
+  );
+  if (!limited.ok)
+    return Response.json(
+      { error: "Too many failed attempts." },
+      {
+        status: 429,
+        headers: {
+          ...OAUTH_CORS_HEADERS,
+          "retry-after": String(limited.retryAfterSec),
+        },
+      },
+    );
+  return unauthorized(message);
+}
+
 export async function POST(request: Request) {
   const header = request.headers.get("authorization") ?? "";
   // Case-insensitive: matching `Bearer ` exactly was a real bug on the deploy
   // hook, and MCP clients spell it however their HTTP library does.
   const raw = /^bearer /i.test(header) ? header.slice(7).trim() : "";
   if (!raw)
-    return unauthorized(
+    return refuse(
+      request,
       "Authenticate first. A web AI client should follow the OAuth challenge on this response; a terminal agent sends a deplo API token as `Authorization: Bearer deplo_…`, created under Settings → API tokens.",
     );
 
@@ -97,9 +143,9 @@ export async function POST(request: Request) {
   } catch (e) {
     // An unmet two-factor policy THROWS rather than returning null. Surfacing it
     // as the 401 body beats a 500 that tells the operator nothing.
-    return unauthorized(e instanceof Error ? e.message : "Not authorized");
+    return refuse(request, e instanceof Error ? e.message : "Not authorized");
   }
-  if (!identity) return unauthorized("That API token is not valid.");
+  if (!identity) return refuse(request, "That API token is not valid.");
 
   // Everything below resolves as the token's principal. Wrapped because the
   // membership reads inside can still refuse — the two-factor gate runs again in

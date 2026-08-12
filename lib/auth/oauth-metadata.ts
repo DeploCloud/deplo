@@ -35,6 +35,28 @@ export const OAUTH_CLIENT_SECRET_PREFIX = "dplo_cs_";
 /** RFC 9728's well-known prefix. */
 export const PROTECTED_RESOURCE_PATH = "/.well-known/oauth-protected-resource";
 
+/**
+ * Better Auth's base path — and therefore the authorization server's ISSUER.
+ *
+ * This is the string every discovery document has to agree on. Better Auth
+ * builds its issuer as `<origin><basePath>`, so it is `https://host/api/auth`
+ * and NOT the bare origin. Advertising the origin instead is not a cosmetic
+ * slip: RFC 8414 §3.3 requires a client to check that the `issuer` it reads
+ * back equals the identifier it built the discovery URL from, so a conformant
+ * client refuses the mismatch outright and a lenient one connects by luck.
+ *
+ * An issuer WITH a path also moves where its metadata lives: RFC 8414 inserts
+ * the path after the well-known segment, so the document must be served at
+ * `/.well-known/oauth-authorization-server/api/auth` as well as at the root.
+ */
+export const AUTH_BASE_PATH = "/api/auth";
+
+/** The authorization server's issuer identifier, or null with no address set. */
+export function oauthIssuer(): string | null {
+  const base = publicBaseUrl();
+  return base ? `${base}${AUTH_BASE_PATH}` : null;
+}
+
 /** The absolute resource identifier, or null when no public address is set. */
 export function mcpResource(): string | null {
   const base = publicBaseUrl();
@@ -69,7 +91,10 @@ export function protectedResourceMetadata(): ProtectedResourceMetadata | null {
   if (!base) return null;
   return {
     resource: `${base}${MCP_RESOURCE_PATH}`,
-    authorization_servers: [base],
+    // The issuer, not the origin — see `oauthIssuer`. A client that follows this
+    // fetches `/.well-known/oauth-authorization-server/api/auth`, which is why
+    // that route exists next to the bare one.
+    authorization_servers: [`${base}${AUTH_BASE_PATH}`],
     // The same four the authorization server advertises, so a client comparing
     // the two documents does not conclude it may not ask for one of them. They
     // decide nothing here: what an agent may do is its token's Capabilities.

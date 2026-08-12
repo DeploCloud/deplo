@@ -72,10 +72,20 @@ brings zero new transitive packages.
    Postgres rate limiter (5/min per IP; the plugin's own limiter is in-memory and forgets on
    restart) and by a maintenance sweep that drops clients with no consent after seven days.
 
-6. **Never auto-approve.** No trusted-client cache, no consent-skipping, no `prompt=none` shortcut.
-   The authorize leg is a top-level GET navigation, so a `SameSite=Lax` session cookie *is* sent: if
-   an existing consent could short-circuit the screen, a page could navigate a signed-in admin into
-   granting a credential. The click is the security decision.
+6. **Never auto-approve, and the mint requires a fresh approval on file.** No trusted-client cache,
+   no consent-skipping, and **`prompt=none` is refused** — the provider honours it, answering a
+   top-level GET with a 302 straight back to the client carrying a code, and a `SameSite=Lax`
+   session cookie *is* sent on that navigation. Ordinary OAuth silent re-authentication; wrong here,
+   because a consent is not a preference a client re-reads, it is the act that mints a credential.
+   `interaction_required` is the spec's own answer and a client retries with a real prompt.
+
+   The same reasoning binds the mint. It used to answer to a `client_id` plus a session and nothing
+   else, so a link to `/oauth/consent?client_id=<mine>` was enough to get somebody with the
+   capabilities to click Authorize and mint a live API token for a client they had never heard of.
+   The page therefore posts the consent FIRST — that endpoint verifies the provider's signature over
+   the authorization query before recording anything — and `mintMcpConnection` requires that record,
+   fresh within five minutes. The proof is a row rather than a signature deplo re-derives: the
+   database already knows what the library verified.
 
 7. **Opaque tokens, hashed with deplo's own `sha256Hex`.** deplo is the authorization server and the
    only resource server, in one process on one database, so a JWT would save nothing — the
@@ -135,6 +145,29 @@ brings zero new transitive packages.
   refused, and one that drives register → sign in → authorize → mint → consent → exchange → tool
   call in production's own order. Anything that reaches `auth.api` from `lib/data/*` on this path is
   the same bug returning.
+- **The issuer carries a path, and every document has to say so.** Better Auth builds its issuer as
+  `<origin><basePath>`, so deplo's is `https://host/api/auth` and not the bare origin. RFC 8414 §3.3
+  makes a client check the `issuer` it reads back against the identifier it built the discovery URL
+  from, so advertising the origin made a conformant client refuse outright while a lenient one
+  connected by luck. An issuer with a path also moves its metadata (§3.1 inserts the path after the
+  well-known segment), which is why `/.well-known/oauth-authorization-server/api/auth` exists beside
+  the root copy. `grant_types_supported` is narrowed to what deplo honours: `client_credentials` has
+  no user, so it could never resolve to a connection.
+- **`/api/mcp` rate-limits requests that never authenticate.** The per-token limit could not: it is
+  keyed on a token, and discovery now tells the whole internet the endpoint is there. Registration
+  gained a global ceiling beside its per-address limit, because `x-forwarded-for` is a header and an
+  instance not behind a proxy that strips it hands out a fresh budget per request.
+- **Better Auth's client-management surface is closed.** `clientPrivileges: () => false` — the hook
+  is skipped for unauthenticated registration, which is the path a web client actually uses, so open
+  DCR keeps working while `/oauth2/create-client` and friends stop answering to any signed-in
+  session. deplo has no UI for them and never intended to expose one.
+- **A trap worth knowing beyond this feature:** the Better Auth tables use plain `timestamp` WITHOUT
+  a time zone (the one exemption `AGENTS.md` grants), and on a naive column the two writers disagree
+  — a value the DRIVER writes round-trips as the same instant, while one SQL `now()` writes comes
+  back shifted by the server's offset. Measured on a UTC+2 box: 7ms versus a full hour. So an age
+  comparison on those columns must happen in JS against a driver-written value, never against SQL
+  `now()`, and a test seeding them has to write them the way the application does or it will
+  disagree with production for reasons unrelated to the code under test.
 - The signed authorization query must survive the round trip **byte for byte**: the provider signs
   the whole query onto the consent URL, and it repeats `ba_param` once per signed parameter, which
   Next hands back as an array. `rebuildOauthQuery` lives in `lib/auth/oauth-query.ts` rather than

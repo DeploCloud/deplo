@@ -11,7 +11,7 @@ import {
   teams as teamsTable,
   users as usersTable,
 } from "../db/schema/control-plane";
-import { oauthClient } from "../db/schema/auth";
+import { oauthClient, oauthConsent } from "../db/schema/auth";
 import {
   requireActiveTeamId,
   requireCapability,
@@ -79,6 +79,67 @@ export interface McpConnectionDTO {
 
 /** Names longer than this are clamped — `createToken` refuses over 40. */
 const MAX_CLIENT_NAME = 40;
+
+/** How recently the consent must have been given for a mint to follow it. */
+const CONSENT_FRESHNESS_MS = 5 * 60 * 1000;
+
+/**
+ * Refuse to mint unless the person has JUST approved this client for real.
+ *
+ * Without this the mint answers to a `client_id` and a session and nothing
+ * else — so a link to `/oauth/consent?client_id=<mine>` is enough to make
+ * somebody with the capabilities click Authorize and mint a live API token
+ * bound to a client they never heard of. It could not be used immediately (the
+ * attacker still has no signed consent), but the credential would exist.
+ *
+ * The proof is a row rather than a signature: `POST /oauth2/consent` verifies
+ * the provider's own HMAC over the authorization query before it writes
+ * `oauth_consent`, so the row IS the verified approval, and re-deriving that
+ * signature here would be re-implementing the library's crypto to learn
+ * something the database already knows. The page therefore posts the consent
+ * FIRST and mints second.
+ *
+ * Freshness matters as much as existence: a consent from a previous connection
+ * would otherwise stay a standing permission to mint. Revoking a connection
+ * deletes the row (`forgetOauthGrant`), and this window closes the rest.
+ */
+async function assertFreshConsent(
+  clientId: string,
+  userId: string,
+): Promise<void> {
+  // The age is compared in JS, and that is the CORRECT half of a real trap.
+  //
+  // These are Better Auth's tables, so the columns are plain `timestamp`
+  // WITHOUT a time zone — the one exception `AGENTS.md` allows to
+  // `isoTimestamptz`. On a naive column the two writers do not agree: a value
+  // the DRIVER writes (a JS `Date`, which is how the plugin writes this row)
+  // reads back as the same instant, while a value SQL `now()` writes comes back
+  // shifted by the server's offset. Measured on a UTC+2 box: driver-written is
+  // off by 7ms, `now()`-written by exactly an hour. So comparing this row
+  // against `now()` in SQL is what breaks, and comparing it against `Date.now()`
+  // is what works. Anything seeding this table in a test has to write it the way
+  // the application does, or it will disagree with production.
+  const row = (
+    await getDb()
+      .select({
+        createdAt: oauthConsent.createdAt,
+        updatedAt: oauthConsent.updatedAt,
+      })
+      .from(oauthConsent)
+      .where(
+        and(
+          eq(oauthConsent.clientId, clientId),
+          eq(oauthConsent.userId, userId),
+        ),
+      )
+      .limit(1)
+  )[0];
+  const at = row?.updatedAt ?? row?.createdAt;
+  if (!at || Date.now() - new Date(at).getTime() > CONSENT_FRESHNESS_MS)
+    throw new Error(
+      "That approval is not pending any more. Start the connection again from the app you were using.",
+    );
+}
 
 /**
  * Refuse a scope that narrows to something outside the team being connected.
@@ -237,6 +298,8 @@ export async function mintMcpConnection(
   const client = await getOAuthClientForConsent(input.clientId);
   if (!client) throw new Error("That app is not registered with deplo");
 
+  await assertFreshConsent(input.clientId, userId);
+
   // Re-approving MOVES a connection rather than leaving two the owner cannot
   // tell apart, and never widens the previous token in place: the old row goes,
   // a new one is minted with exactly what this screen submitted.
@@ -353,7 +416,8 @@ export async function listMcpConnections(): Promise<McpConnectionDTO[]> {
 
   return rows.map((r) => ({
     id: r.id,
-    clientName: r.clientName ?? "Unknown app",
+    // Attacker-chosen free text of any length; bounded before it reaches a screen.
+    clientName: (r.clientName ?? "Unknown app").slice(0, 80),
     clientUri: r.clientUri ?? null,
     clientIcon: r.clientIcon ?? null,
     redirectOrigin: originOf(r.redirectUris?.[0]),

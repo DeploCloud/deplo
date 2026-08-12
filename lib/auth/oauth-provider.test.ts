@@ -10,6 +10,11 @@ import { seedIdentity, TEAM_A, USER_1 } from "../data/identity-test-helpers";
 import { requireAuth, resetAuth } from "./better-auth";
 import { rebuildOauthQuery } from "./oauth-query";
 import {
+  authServerMetadataResponse,
+  protectedResourceResponse,
+} from "./oauth-well-known";
+import { GET as PATH_INSERTED_METADATA } from "@/app/.well-known/oauth-authorization-server/api/auth/route";
+import {
   authorize,
   consent,
   exchange,
@@ -40,6 +45,7 @@ let pg: PGlite;
 const EMAIL = `${USER_1}@example.io`;
 const PASSWORD = "password1";
 const REDIRECT = "https://client.test/callback";
+const BASE = "https://deplo.test";
 
 const TRUNCATE = `truncate table
   oauth_access_token, oauth_refresh_token, oauth_consent, oauth_client,
@@ -247,6 +253,73 @@ test("the audience allowlist has exactly one entry", async () => {
     line![1].split(",").filter((s) => s.trim()).length,
     1,
     "a second audience re-opens GHSA-p2fr-6hmx-4528",
+  );
+});
+
+test("the discovery documents agree on one issuer, and it resolves", async () => {
+  // RFC 8414 §3.3 makes a client check that the `issuer` it reads back equals
+  // the identifier it built the discovery URL from. deplo's issuer carries a
+  // path (`/api/auth`, Better Auth's base path), so advertising the bare origin
+  // made a conformant client reject the mismatch outright while a lenient one
+  // connected by luck. An issuer WITH a path also moves its metadata: §3.1
+  // inserts the path after the well-known segment.
+  const prm = (await (await protectedResourceResponse()).json()) as {
+    authorization_servers: string[];
+  };
+  const as = (await (
+    await authServerMetadataResponse(
+      new Request(`${BASE}/.well-known/oauth-authorization-server`),
+    )
+  ).json()) as { issuer: string; grant_types_supported: string[] };
+
+  assert.deepEqual(prm.authorization_servers, [as.issuer]);
+  assert.equal(as.issuer, `${BASE}/api/auth`);
+
+  // And the path-inserted document a client following that issuer would fetch.
+  const inserted = await PATH_INSERTED_METADATA(
+    new Request(`${BASE}/.well-known/oauth-authorization-server/api/auth`),
+  );
+  assert.equal(inserted.status, 200);
+  assert.equal(
+    ((await inserted.json()) as { issuer: string }).issuer,
+    as.issuer,
+  );
+
+  // A grant deplo will not honour must not be advertised: `client_credentials`
+  // has no user, so it could never resolve to a connection.
+  assert.deepEqual(as.grant_types_supported.sort(), [
+    "authorization_code",
+    "refresh_token",
+  ]);
+});
+
+test("prompt=none is refused instead of silently re-issuing a code", async () => {
+  // The provider honours it: with a consent on file it answers a top-level GET
+  // with a 302 straight back to the client carrying a fresh code, no screen and
+  // no click. Ordinary OAuth, wrong here — in deplo a consent is the act that
+  // mints an API token, and every one of those has to be somebody deciding.
+  const reg = await registerClient();
+  const clientId = String(reg.body.client_id);
+  const cookie = await signIn(EMAIL, PASSWORD);
+  const { challenge } = pkcePair();
+  const params = {
+    client_id: clientId,
+    redirect_uri: REDIRECT,
+    response_type: "code",
+    scope: "openid",
+    state: "st",
+    code_challenge: challenge,
+    code_challenge_method: "S256",
+  };
+  await consent(cookie, {
+    accept: true,
+    oauth_query: (await authorize(cookie, params)).oauthQuery ?? "",
+  });
+
+  const silent = await authorize(cookie, { ...params, prompt: "none" });
+  assert.ok(
+    !silent.location?.startsWith(REDIRECT),
+    `a code was issued with no interaction: ${silent.location}`,
   );
 });
 

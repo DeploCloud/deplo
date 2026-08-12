@@ -110,6 +110,35 @@ const twoFactorGate = createAuthMiddleware(async (ctx) => {
 });
 
 /**
+ * Refuse `prompt=none` on the authorization endpoint.
+ *
+ * The provider honours it: with a consent already on file it answers a
+ * top-level GET with a 302 straight back to the client carrying a fresh
+ * authorization code, no screen and no click. That is ordinary OAuth silent
+ * re-authentication, and it is wrong HERE, because in deplo a consent is not a
+ * preference a client re-reads — it is the act that mints an API token, and
+ * every one of those has to be somebody deciding on purpose (ADR-0022 §6).
+ *
+ * `interaction_required` is the spec's own answer, and a client that gets it
+ * retries with a normal prompt, which is exactly the screen we want shown.
+ */
+const silentAuthorizeGate = createAuthMiddleware(async (ctx) => {
+  if (!ctx.path.startsWith("/oauth2/authorize") || !ctx.request) return;
+  const prompt = new URL(ctx.request.url).searchParams.get("prompt");
+  if (!prompt?.split(/\s+/).includes("none")) return;
+  throw new APIError("BAD_REQUEST", {
+    error: "interaction_required",
+    error_description:
+      "deplo always asks the person before connecting an app. Retry without prompt=none.",
+  });
+});
+
+const authorizeGates = createAuthMiddleware(async (ctx) => {
+  await twoFactorGate(ctx);
+  await silentAuthorizeGate(ctx);
+});
+
+/**
  * The OAuth 2.1 provider's configuration.
  *
  * Why deplo runs an authorization server at all: claude.ai and chatgpt.com cannot
@@ -140,6 +169,19 @@ function oauthProviderOptions() {
     // lib/notify/maintenance.ts.
     allowDynamicClientRegistration: true,
     allowUnauthenticatedClientRegistration: true,
+
+    // An agent always acts FOR A PERSON. `client_credentials` has no user, so a
+    // token from it could never resolve to a connection anyway — but advertising
+    // a grant deplo will not honour only invites a client to try it and fail
+    // somewhere less legible than here.
+    grantTypes: ["authorization_code" as const, "refresh_token" as const],
+
+    // deplo has no UI for managing OAuth clients and never intended to expose
+    // one. Without this hook the plugin's `/oauth2/create-client` (and the rest
+    // of that surface) answers to any signed-in session; the hook is skipped for
+    // UNauthenticated registration, which is the path claude.ai actually uses,
+    // so open DCR keeps working while the session-backed surface closes.
+    clientPrivileges: () => false,
 
     // RFC 8707 resource indicators. An MCP client sends
     // `resource=<base>/api/mcp`, and the token endpoint refuses any audience not
@@ -250,7 +292,7 @@ function createAuth(db: DrizzleClient) {
         ipAddressHeaders: ["cf-connecting-ip", "x-real-ip", "x-forwarded-for"],
       },
     },
-    hooks: { before: twoFactorGate },
+    hooks: { before: authorizeGates },
     plugins: [
       // `issuer` is what an authenticator app labels the entry. Backup codes stay
       // at the plugin's default (10 codes, single-use), stored encrypted.

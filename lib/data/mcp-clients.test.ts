@@ -6,6 +6,7 @@ import type { PGlite } from "@electric-sql/pglite";
 import { makeTestDb, type TestDb } from "../db/test-harness";
 import { __setTestDb, __resetTestDb } from "../db/client";
 import { seedIdentity, TEAM_A, TEAM_B, USER_1 } from "./identity-test-helpers";
+import { oauthConsent } from "../db/schema/auth";
 import { runWithIdentity } from "../auth/request-context";
 import { listMcpConnections, mintMcpConnection } from "./mcp-clients";
 import { listTokens, revokeToken } from "./tokens";
@@ -66,6 +67,12 @@ beforeEach(async () => {
     ],
   });
   await registerClientRow(CLIENT, "Claude");
+  // The mint requires a FRESH approval on file — the row `POST /oauth2/consent`
+  // writes after verifying the provider's signature. Both people who approve in
+  // this file therefore start with one; the tests that assert the requirement
+  // delete it first.
+  await consentRow(CLIENT, OWNER);
+  await consentRow(CLIENT, MEMBER);
 });
 
 async function registerClientRow(clientId: string, name: string) {
@@ -74,6 +81,26 @@ async function registerClientRow(clientId: string, name: string) {
      values ($1, $2, $3, ARRAY['https://client.test/callback'], now())`,
     [`oc_${clientId}`, clientId, name],
   );
+}
+
+/**
+ * Seeded the way the APPLICATION writes it — a JS `Date` through the driver —
+ * and never with SQL `now()`. These are Better Auth's naive `timestamp` columns:
+ * a driver-written value round-trips as the same instant, a `now()`-written one
+ * comes back shifted by the server's offset (an hour, on the box this was
+ * measured on). Seeding with `now()` makes a fresh consent look stale and the
+ * test disagree with production for a reason that has nothing to do with the
+ * code under test.
+ */
+async function consentRow(clientId: string, userId: string, ageMs = 0) {
+  await db.insert(oauthConsent).values({
+    id: `ocs_${clientId}_${userId}`,
+    clientId,
+    userId,
+    scopes: ["openid"],
+    createdAt: new Date(Date.now() - ageMs),
+    updatedAt: new Date(Date.now() - ageMs),
+  });
 }
 
 function as<T>(userId: string, fn: () => Promise<T>, teamId = TEAM_A) {
@@ -199,6 +226,46 @@ test("a connection is scoped to EXACTLY the active team, whoever the approver is
   );
 });
 
+test("no approval on file mints nothing", async () => {
+  // The hole this closes: the mint used to answer to a `client_id` and a session
+  // and nothing else, so a link to `/oauth/consent?client_id=<mine>` was enough
+  // to make somebody with the capabilities click Authorize and mint a live API
+  // token bound to a client they had never heard of.
+  await pg.query(`delete from oauth_consent`);
+  await assert.rejects(
+    as(OWNER, () =>
+      mintMcpConnection({ clientId: CLIENT, capabilities: ["view"] }),
+    ),
+    /not pending any more/i,
+  );
+  assert.equal((await pg.query(`select id from api_tokens`)).rows.length, 0);
+});
+
+test("a stale approval mints nothing either", async () => {
+  // Existence is not enough: a consent from an earlier connection would
+  // otherwise be a standing permission to mint, and the crafted link would work
+  // again for anyone who had ever connected that client.
+  await pg.query(`delete from oauth_consent`);
+  await consentRow(CLIENT, OWNER, 30 * 60 * 1000);
+  await assert.rejects(
+    as(OWNER, () =>
+      mintMcpConnection({ clientId: CLIENT, capabilities: ["view"] }),
+    ),
+    /not pending any more/i,
+  );
+});
+
+test("one person's approval does not let another mint", async () => {
+  await pg.query(`delete from oauth_consent`);
+  await consentRow(CLIENT, OWNER);
+  await assert.rejects(
+    as(MEMBER, () =>
+      mintMcpConnection({ clientId: CLIENT, capabilities: ["view"] }),
+    ),
+    /not pending any more/i,
+  );
+});
+
 test("a team that drifted between the screen and the submit is refused", async () => {
   // The screen says which team it showed; the server still decides. They only
   // ever disagree when something moved underneath — another tab, a half-finished
@@ -254,6 +321,7 @@ test("an attacker-length client name does not break the mint", async () => {
   // `createToken` refuses a name over 40 characters, and the name is chosen by
   // whoever registered the client.
   await registerClientRow("client_long", "N".repeat(200));
+  await consentRow("client_long", OWNER);
   await as(OWNER, () =>
     mintMcpConnection({ clientId: "client_long", capabilities: ["view"] }),
   );
@@ -417,14 +485,23 @@ test("revoking the connection also clears its OAuth rows", async () => {
 
   await as(OWNER, () => revokeToken(tokenId));
 
-  for (const table of [
-    "oauth_access_token",
-    "oauth_refresh_token",
-    "oauth_consent",
-  ]) {
+  for (const table of ["oauth_access_token", "oauth_refresh_token"]) {
     const rows = (await pg.query(`select id from ${table}`)).rows;
     assert.equal(rows.length, 0, `${table} kept a row after revocation`);
   }
+  // Scoped to the person whose connection was revoked: another member's
+  // approval of the same client is none of this revocation's business.
+  const mine = (
+    await pg.query(
+      `select id from oauth_consent where client_id = $1 and user_id = $2`,
+      [CLIENT, OWNER],
+    )
+  ).rows;
+  assert.equal(mine.length, 0, "oauth_consent kept the revoked approval");
+  const theirs = (
+    await pg.query(`select id from oauth_consent where user_id = $1`, [MEMBER])
+  ).rows;
+  assert.equal(theirs.length, 1, "another member's approval was collateral");
 });
 
 test("revoking one person's connection leaves another's to the same client alone", async () => {

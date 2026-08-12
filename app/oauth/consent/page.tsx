@@ -5,6 +5,7 @@ import { getMcpSettings } from "@/lib/data/mcp-settings";
 import { listScopeTree } from "@/lib/data/tokens";
 import { hasCapability, requireActiveTeamId } from "@/lib/membership";
 import { rebuildOauthQuery } from "@/lib/auth/oauth-query";
+import { publicBaseUrl } from "@/lib/public-url";
 import { ConsentForm } from "@/components/oauth/consent-form";
 import { ConsentRefusal } from "@/components/oauth/consent-refusal";
 
@@ -30,6 +31,21 @@ export default async function OAuthConsentPage(props: {
   const oauthQuery = rebuildOauthQuery(params);
 
   if (!clientId) redirect("/settings/mcp");
+
+  // Refusing to render without the provider's signature is not the security
+  // boundary — the consent endpoint verifies it for real (and its expiry), and
+  // the mint requires the record that endpoint writes. It is what stops this
+  // page being a lookup service for "does this client_id exist, and what is it
+  // called", usable by anyone who happens to be signed in.
+  if (typeof params.sig !== "string" || !params.sig)
+    return (
+      <ConsentRefusal
+        title="This approval link isn't valid"
+        detail="Start the connection again from the app you were using."
+      />
+    );
+
+  const publicOrigin = publicBaseUrl();
 
   const client = await getOAuthClientForConsent(clientId);
   if (!client)
@@ -77,6 +93,7 @@ export default async function OAuthConsentPage(props: {
       oauthQuery={oauthQuery}
       tree={tree}
       activeTeamId={activeTeamId}
+      publicOrigin={publicOrigin}
     />
   );
 }

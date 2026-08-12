@@ -226,6 +226,8 @@ export async function listTokens(): Promise<ApiTokenDTO[]> {
 
   return rows.map((r) => ({
     ...r,
+    // Chosen by the app at registration: free text, any length, shown in a badge.
+    oauthClientName: r.oauthClientName?.slice(0, 80) ?? null,
     capabilities: inCatalogOrder(
       (capsById.get(r.id) ?? []) as Capability[],
     ),
@@ -943,8 +945,16 @@ async function forgetOauthGrant(
           eq(oauthConsent.userId, userId),
         ),
       );
-  } catch {
-    /* the credential is already deleted; leftovers resolve to nothing */
+  } catch (e) {
+    // Not fatal: the credential is already gone, so a leftover consent or
+    // refresh row grants nothing — the join that resolves an access token has
+    // no `api_tokens` row to land on. Said out loud anyway, because a silent
+    // failure here leaves rows that quietly change what `prompt=none` and the
+    // abandoned-client sweep do next.
+    console.warn(
+      `[deplo] could not clear the OAuth rows for a revoked connection (client ${clientId}):`,
+      e,
+    );
   }
 }
 
