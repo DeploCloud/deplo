@@ -610,7 +610,7 @@ export async function createToken(
       instanceAdmin,
       homeTeamId: teamId,
       createdByUsername: (await getCurrentUser())?.username ?? null,
-      // Set by `authorizeMcpClient` right after this, in the same flow, when the
+      // Set by `mintMcpConnection` right after this, in the same flow, when the
       // mint came from an OAuth consent rather than from the tokens page.
       oauthClientName: null,
       lastUsedAt: null,
@@ -717,6 +717,8 @@ export async function updateToken(
 interface TokenRow {
   id: string;
   userId: string;
+  /** The team the token is MANAGED from — where it was created. */
+  teamId: string;
   instanceAdmin: boolean;
   scoped: boolean;
 }
@@ -724,6 +726,7 @@ interface TokenRow {
 const TOKEN_ROW_COLUMNS = {
   id: apiTokens.id,
   userId: apiTokens.userId,
+  teamId: apiTokens.teamId,
   instanceAdmin: apiTokens.instanceAdmin,
   scoped: apiTokens.scoped,
 } as const;
@@ -761,10 +764,16 @@ export async function authenticateToken(
   }
   if (raw.startsWith(OAUTH_ACCESS_TOKEN_PREFIX)) {
     const row = await oauthTokenRow(raw);
-    // No teamHint: an OAuth connection is scoped to exactly the one team chosen
-    // at consent, so `X-Deplo-Team` has nothing to pick between and must not be
-    // able to steer it somewhere else.
-    return row ? identityForTokenRow(row, null) : null;
+    // The hint is the connection's OWN team, never `X-Deplo-Team`: a connection
+    // is approved for exactly one team on the consent screen, and the header
+    // must not be able to steer it elsewhere.
+    //
+    // Passing it rather than null is also the repair for a connection whose
+    // scope somehow names more than one team — a grant minted before the mint
+    // was fixed, say. Without a hint the fallback is `reachable[0]`, the OLDEST
+    // team the approver belongs to, and the agent silently works somewhere
+    // nobody chose.
+    return row ? identityForTokenRow(row, row.teamId) : null;
   }
   return null;
 }

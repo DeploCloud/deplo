@@ -26,10 +26,13 @@ import {
   exchange,
   fullFlow,
   pkcePair,
+  refresh,
   registerClient,
   signIn,
 } from "../auth/oauth-test-helpers";
 import { mintMcpConnection } from "../data/mcp-clients";
+import { revokeToken } from "../data/tokens";
+import { buildContext } from "../graphql/context";
 import { POST, GET, OPTIONS } from "@/app/api/mcp/route";
 import { GET as PROTECTED_RESOURCE } from "@/app/.well-known/oauth-protected-resource/api/mcp/route";
 import type { Capability } from "../types";
@@ -142,6 +145,18 @@ async function mcp(
   return { status: res.status, headers: res.headers, body };
 }
 
+/** The tool's own JSON, out of the JSON-RPC envelope the SDK wraps it in. */
+function toolJson(body: Record<string, unknown>): {
+  viewerTeam?: { id?: string };
+  [k: string]: unknown;
+} {
+  const text = (
+    body as { result?: { content?: { type: string; text?: string }[] } }
+  ).result?.content?.find((c) => c.type === "text")?.text;
+  assert.ok(text, `no text content in ${JSON.stringify(body)}`);
+  return JSON.parse(text!) as { viewerTeam?: { id?: string } };
+}
+
 /** Mint an ordinary API token as USER_1 in TEAM_A. */
 function mintToken(capabilities: Capability[]) {
   return runWithIdentity({ userId: USER_1, teamId: TEAM_A }, () =>
@@ -235,6 +250,104 @@ test("register → sign in → authorize → mint → consent → exchange → a
   assert.equal(res.status, 200, JSON.stringify(res.body));
   assert.ok(JSON.stringify(res.body).includes(USER_1));
   assert.ok(JSON.stringify(res.body).includes(TEAM_A));
+});
+
+test("a refreshed access token keeps working, and the spent refresh token dies", async () => {
+  // An access token lives an hour. EVERY connection depends on this path, and
+  // nothing exercised it: if a refreshed token did not resolve, every agent
+  // would work for an hour and then quietly go dead, which is the kind of bug
+  // that gets blamed on the AI client.
+  const conn = await connect(["view"]);
+  assert.equal((await mcp(conn.accessToken)).status, 200);
+  assert.ok(conn.refreshToken, "the flow should have issued a refresh token");
+
+  const again = await refresh(conn.refreshToken!, conn.clientId, RESOURCE);
+  assert.ok(again.body.access_token, JSON.stringify(again.body));
+  assert.notEqual(again.body.access_token, conn.accessToken);
+
+  const res = await mcp(again.body.access_token);
+  assert.equal(res.status, 200, JSON.stringify(res.body));
+  assert.equal(toolJson(res.body).viewerTeam?.id, TEAM_A);
+  // Still the same connection, not a second one.
+  const rows = (
+    await pg.query(`select id from api_tokens where oauth_client_id = $1`, [
+      conn.clientId,
+    ])
+  ).rows as { id: string }[];
+  assert.equal(rows.length, 1);
+
+  // The REFRESH token rotates and the spent one is dead — that is the property
+  // that matters, and the one a stolen refresh token would otherwise defeat.
+  // The previous ACCESS token deliberately lives out its hour: refreshing is not
+  // a revocation event, and a real revocation deletes the `api_tokens` row,
+  // which kills every access token for the connection at once (asserted above).
+  assert.notEqual(again.body.refresh_token, conn.refreshToken);
+  const replayed = await refresh(conn.refreshToken!, conn.clientId, RESOURCE);
+  assert.ok(!replayed.body.access_token, "a spent refresh token was reusable");
+});
+
+test("revoking the connection also kills its refresh token", async () => {
+  // Otherwise revocation is a one-hour inconvenience: the client just refreshes.
+  const conn = await connect(["view"]);
+  await runWithIdentity({ userId: USER_1, teamId: TEAM_A }, () =>
+    revokeToken(conn.tokenId),
+  );
+  const again = await refresh(conn.refreshToken!, conn.clientId, RESOURCE);
+  assert.ok(!again.body.access_token, "a revoked connection refreshed itself");
+});
+
+test("an access token with no user behind it authenticates nothing", async () => {
+  // The shape a machine-to-machine grant would have. It can only ever resolve
+  // through a connection, and a connection belongs to a person — so the join
+  // finds nothing rather than falling back to anything.
+  const conn = await connect(["view"]);
+  await pg.query(
+    `insert into oauth_access_token
+       (id, token, client_id, user_id, expires_at, created_at, scopes)
+     values ('oat_m2m', $1, $2, null, now() + interval '1 hour', now(), ARRAY['openid'])`,
+    ["deadbeef".repeat(8), conn.clientId],
+  );
+  const res = await mcp(`dplo_at_${"x".repeat(20)}`);
+  assert.equal(res.status, 401);
+});
+
+test("the same connection authenticates on the GraphQL API, with the same clamp", async () => {
+  // Deliberate: an OAuth grant IS an API token, so it reaches /api/graphql too.
+  // That is the widest surface it touches, and nothing tested it — a divergence
+  // here would mean two principals after all.
+  const conn = await connect(["view"]);
+  const ctx = await buildContext(
+    new Request("https://deplo.test/api/graphql", {
+      method: "POST",
+      headers: { authorization: `Bearer ${conn.accessToken}` },
+    }),
+  );
+  assert.equal(ctx.via, "token");
+  assert.equal(ctx.viewer?.id, USER_1);
+  assert.equal(ctx.teamId, TEAM_A);
+  // The clamp travels with it: `view` only, not the owner's whole set.
+  assert.deepEqual(ctx.capabilities, ["view"]);
+});
+
+test("an unauthenticated authorize sends the signed query to the login page", async () => {
+  // The login page resumes the flow by re-running authorize, and it recognises
+  // that state by `client_id` + `sig` being on ITS url. If the provider ever
+  // stopped putting them there, a first-time connect would sign in and land on
+  // the dashboard, with the AI client waiting forever.
+  const reg = await registerClient();
+  const res = await authorize("", {
+    client_id: String(reg.body.client_id),
+    redirect_uri: "https://client.test/callback",
+    response_type: "code",
+    scope: "openid",
+    state: "st",
+    code_challenge: pkcePair().challenge,
+    code_challenge_method: "S256",
+  });
+  assert.match(String(res.location), /^\/login\?/, String(res.location));
+  const sent = new URLSearchParams(res.oauthQuery ?? "");
+  assert.ok(sent.get("client_id"), "no client_id for the login page to resume on");
+  assert.ok(sent.get("sig"), "no signature for the login page to resume on");
 });
 
 /* ------------------------------------------------------------------ */
@@ -471,6 +584,28 @@ test("X-Deplo-Team cannot move an OAuth connection to another team", async () =>
   const text = JSON.stringify(res.body);
   assert.ok(text.includes(TEAM_A), text);
   assert.ok(!text.includes(TEAM_B), "the header moved the connection to team B");
+});
+
+test("a connection whose scope names two teams still resolves in the one it was approved for", async () => {
+  // The repair for grants minted before the mint was fixed. Without a hint the
+  // fallback is `reachable[0]` — the OLDEST team the approver belongs to — so a
+  // connection approved in TEAM_A would act in whichever team happens to sort
+  // first. TEAM_B is seeded older here precisely so the wrong answer wins if
+  // the hint is ever dropped.
+  const conn = await connect(["view"]);
+  await pg.query(`update teams set created_at = $1 where id = $2`, [
+    "2020-01-01T00:00:00.000Z",
+    TEAM_B,
+  ]);
+  await pg.query(
+    `insert into api_token_teams (token_id, team_id) values ($1, $2)`,
+    [conn.tokenId, TEAM_B],
+  );
+  const res = await mcp(conn.accessToken);
+  assert.equal(res.status, 200, JSON.stringify(res.body));
+  // On the resolved team, not the whole blob: `whoami` also returns `myTeams`,
+  // which legitimately lists every team the scope names.
+  assert.equal(toolJson(res.body).viewerTeam?.id, TEAM_A);
 });
 
 test("a deplo_ token still honours X-Deplo-Team", async () => {

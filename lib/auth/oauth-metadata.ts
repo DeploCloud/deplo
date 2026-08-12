@@ -70,7 +70,10 @@ export function protectedResourceMetadata(): ProtectedResourceMetadata | null {
   return {
     resource: `${base}${MCP_RESOURCE_PATH}`,
     authorization_servers: [base],
-    scopes_supported: ["openid", "offline_access"],
+    // The same four the authorization server advertises, so a client comparing
+    // the two documents does not conclude it may not ask for one of them. They
+    // decide nothing here: what an agent may do is its token's Capabilities.
+    scopes_supported: ["openid", "profile", "email", "offline_access"],
     bearer_methods_supported: ["header"],
     resource_name: "deplo MCP server",
     resource_documentation: `${base}/settings/mcp`,

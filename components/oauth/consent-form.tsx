@@ -39,18 +39,18 @@ const AUTHORIZE = /* GraphQL */ `
   mutation (
     $clientId: String!
     $capabilities: [String!]
-    $teamIds: [String!]
     $projectIds: [String!]
     $folderIds: [String!]
     $appIds: [String!]
+    $expectedTeamId: String
   ) {
     authorizeMcpClient(
       clientId: $clientId
       capabilities: $capabilities
-      teamIds: $teamIds
       projectIds: $projectIds
       folderIds: $folderIds
       appIds: $appIds
+      expectedTeamId: $expectedTeamId
     )
   }
 `;
@@ -176,16 +176,17 @@ export function ConsentForm({
   async function onApprove(e: React.FormEvent) {
     e.preventDefault();
     setPending(true);
-    const picked = selection.teamIds.length
-      ? selection
-      : { ...selection, teamIds: [teamId] };
+    // `teamIds` is deliberately not sent: the server takes the team from the
+    // session and ignores anything a client claims about it.
     const minted = await gqlAction(AUTHORIZE, {
       clientId: client.clientId,
       capabilities,
-      teamIds: picked.teamIds,
-      projectIds: picked.projectIds,
-      folderIds: picked.folderIds,
-      appIds: picked.appIds,
+      projectIds: selection.projectIds,
+      folderIds: selection.folderIds,
+      appIds: selection.appIds,
+      // What this screen is showing. The server decides the team; this only
+      // lets it refuse when the two have drifted apart.
+      expectedTeamId: teamId,
     });
     if (!minted.ok) {
       setPending(false);
@@ -343,11 +344,17 @@ export function ConsentForm({
               <FieldLabel info="Tick nothing and it reaches the whole team above. Tick a project, folder or app to narrow it to that.">
                 Access
               </FieldLabel>
+              {/* No team checkbox: the team is the dropdown on the card, and a
+                  connection serves exactly one. Ticking a second one here would
+                  offer something the server ignores, and used to leave the agent
+                  working in whichever team happened to be oldest. */}
               <ScopePicker
-                tree={tree}
+                tree={tree.filter((t) => t.id === teamId)}
                 selection={selection}
                 onChange={setSelection}
-                info="What this app can reach. Tick nothing and it reaches the whole team you picked."
+                teamPickable={false}
+                info="What this app can reach inside the team. Tick nothing and it reaches all of it."
+                emptyNote="This team has nothing to narrow to yet, so the app reaches all of it."
               />
             </div>
 

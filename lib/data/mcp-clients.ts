@@ -5,6 +5,9 @@ import { getDb } from "../db/client";
 import {
   apiTokenCapabilities,
   apiTokens,
+  apps as appsTable,
+  folders as foldersTable,
+  projects as projectsTable,
   teams as teamsTable,
   users as usersTable,
 } from "../db/schema/control-plane";
@@ -77,6 +80,53 @@ export interface McpConnectionDTO {
 /** Names longer than this are clamped — `createToken` refuses over 40. */
 const MAX_CLIENT_NAME = 40;
 
+/**
+ * Refuse a scope that narrows to something outside the team being connected.
+ *
+ * `createToken` already refuses a node in a team the approver does not belong
+ * to; this is the stricter rule a connection needs, because a project belonging
+ * to ANOTHER of their teams would make the connection reach two teams and land
+ * it back in the "which team is this request in" ambiguity above.
+ */
+async function assertNodesInTeam(
+  input: TokenScopeInput,
+  teamId: string,
+): Promise<void> {
+  const db = getDb();
+  const [projectRows, folderRows, appRows] = await Promise.all([
+    input.projectIds?.length
+      ? db
+          .select({ teamId: projectsTable.teamId })
+          .from(projectsTable)
+          .where(inArray(projectsTable.id, input.projectIds))
+      : [],
+    input.folderIds?.length
+      ? db
+          .select({ teamId: foldersTable.teamId })
+          .from(foldersTable)
+          .where(inArray(foldersTable.id, input.folderIds))
+      : [],
+    input.appIds?.length
+      ? db
+          .select({ teamId: appsTable.teamId })
+          .from(appsTable)
+          .where(inArray(appsTable.id, input.appIds))
+      : [],
+  ]);
+  // Deduped, like `resolveScopeInput` does: the same id twice is a UI slip, not
+  // a reason to refuse a legitimate scope.
+  const named = new Set([
+    ...(input.projectIds ?? []),
+    ...(input.folderIds ?? []),
+    ...(input.appIds ?? []),
+  ]).size;
+  const found = [...projectRows, ...folderRows, ...appRows];
+  if (found.length !== named || found.some((r) => r.teamId !== teamId))
+    throw new Error(
+      "A connection can only be narrowed to projects, folders or apps inside the team you are connecting.",
+    );
+}
+
 function originOf(url: string | null | undefined): string | null {
   if (!url) return null;
   try {
@@ -122,33 +172,39 @@ export async function getOAuthClientForConsent(
   };
 }
 
-export interface AuthorizeMcpClientInput extends TokenScopeInput {
+/**
+ * `teamIds` is deliberately absent. A connection serves exactly one team and the
+ * team comes from the session, so an argument for it could only ever be ignored
+ * or believed — and believing it is the bug this omission closes.
+ */
+export interface AuthorizeMcpClientInput
+  extends Omit<TokenScopeInput, "teamIds"> {
   clientId: string;
   capabilities?: Capability[];
-  /** The OAuth scopes to grant back, verbatim from the authorize request. */
-  scope?: string;
-  /** The signed authorization query the plugin put on the consent page's URL. */
-  oauthQuery?: string;
+  /**
+   * The team the consent screen SHOWED, for the server to disagree with.
+   *
+   * Not the client choosing the team — the server still takes it from the
+   * session. This is the screen saying what it displayed, so a team that
+   * changed underneath (another tab, a half-finished switch) is refused instead
+   * of quietly connecting the client somewhere the person never read.
+   */
+  expectedTeamId?: string;
 }
 
 /**
- * Approve a consent: mint the credential, then tell the plugin to hand the client
- * its authorization code.
- *
- * The `raw` secret `createToken` returns is DROPPED on the floor here. It is a
- * live bearer, and the client is going to be given an OAuth access token instead;
- * letting it reach the response, the redirect URL or the Activity trail would
- * leave a working credential behind after the connection is revoked.
- *
- * Order matters. The token is minted BEFORE the consent is recorded, because a
- * consent with no credential behind it would hand the client a code that resolves
- * to nothing. The reverse leftover — a token whose consent call then failed — is
- * visible as an unused connection in both settings pages and is one click to
- * revoke, and re-approving overwrites it through the `(client_id, user_id)`
- * unique index.
- */
-/**
  * Every gate, and the mint. This is deplo's whole half of a consent.
+ *
+ * The `raw` secret `createToken` returns is DROPPED on the floor. It is a live
+ * bearer, and the client is going to be handed an OAuth access token instead;
+ * letting it reach a response, a redirect URL or the Activity trail would leave
+ * a working credential behind after the connection is revoked.
+ *
+ * The credential is minted BEFORE the browser posts the consent, because a
+ * consent with nothing behind it hands the client a code that resolves to
+ * nothing. The opposite leftover — a token whose consent then failed — shows up
+ * as an unused connection in both settings pages, is one click to revoke, and is
+ * overwritten by re-approving through the `(client_id, user_id)` unique index.
  *
  * **The handshake that follows is the BROWSER's, not ours, and it cannot be
  * moved here.** `POST /api/auth/oauth2/consent` funnels into the provider's
@@ -167,6 +223,11 @@ export async function mintMcpConnection(
   const { teamId, userId } = await requireCapability("manage_mcp");
   // A narrowed token must not be able to mint a whole-team connection.
   await requireTeamWide("connecting an AI client");
+
+  if (input.expectedTeamId && input.expectedTeamId !== teamId)
+    throw new Error(
+      "The active team changed while you were approving. Check which team this connects, then try again.",
+    );
 
   if (!(await getMcpSettings()).enabled)
     throw new Error(
@@ -188,13 +249,31 @@ export async function mintMcpConnection(
       ),
     );
 
+  // ONE TEAM, decided here and not by the caller.
+  //
+  // A connection carries no `X-Deplo-Team` — the protocol is stateless and one
+  // endpoint serves one team (ADR-0021 §3), so there is nothing for the header,
+  // or a "switch team" tool, to switch. Which means a scope naming several teams
+  // has no way to say which one a request acts in: `authenticateToken` falls
+  // back to the first reachable team, i.e. the OLDEST one the approver belongs
+  // to. An agent then quietly works in a team nobody chose — it created an app
+  // in the wrong one before this was fixed.
+  //
+  // So the team comes from the session, the client's `teamIds` are ignored, and
+  // narrowing is only ever allowed INSIDE that team.
+  const narrowing = [
+    ...(input.projectIds ?? []),
+    ...(input.folderIds ?? []),
+    ...(input.appIds ?? []),
+  ];
+  if (narrowing.length > 0) await assertNodesInTeam(input, teamId);
+
   const { token } = await createToken({
     name: client.name.slice(0, MAX_CLIENT_NAME),
     capabilities: input.capabilities,
-    // Breadth, not depth: naming the team scopes the connection to it without
-    // stripping the team-wide capabilities the user actually ticked. Naming a
-    // project or app underneath IS depth, and is what the scope picker means.
-    teamIds: input.teamIds?.length ? input.teamIds : [teamId],
+    // Breadth or depth, never both: naming the whole team AND a project inside
+    // it reads as the whole team, which would silently undo the narrowing.
+    teamIds: narrowing.length > 0 ? [] : [teamId],
     projectIds: input.projectIds,
     folderIds: input.folderIds,
     appIds: input.appIds,

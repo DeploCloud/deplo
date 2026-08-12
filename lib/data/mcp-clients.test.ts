@@ -139,14 +139,11 @@ test("re-approving replaces the connection instead of widening the old token", a
 });
 
 test("the minted capabilities are the ones the form submitted, never the client's ask", async () => {
-  // A consent screen that trusted the `scope` parameter would grant what the
-  // client asked for while showing the user something else.
+  // A consent screen that trusted the OAuth `scope` parameter would grant what
+  // the client asked for while showing the user something else. `scope` is not
+  // even an argument here — Capabilities and OAuth scopes are different things.
   await as(OWNER, () =>
-    mintMcpConnection({
-      clientId: CLIENT,
-      capabilities: ["view"],
-      scope: "openid delete_apps manage_members",
-    }),
+    mintMcpConnection({ clientId: CLIENT, capabilities: ["view"] }),
   );
   const caps = (
     await pg.query(
@@ -160,6 +157,97 @@ test("the minted capabilities are the ones the form submitted, never the client'
     caps.map((c) => c.capability).sort(),
     ["view"],
   );
+});
+
+test("a connection is scoped to EXACTLY the active team, whoever the approver is", async () => {
+  // The bug this pins reached production. A connection carries no
+  // `X-Deplo-Team` — one endpoint serves one team (ADR-0021 §3) — so a scope
+  // naming several teams has no way to say which one a request acts in, and
+  // `authenticateToken` falls back to the FIRST reachable team: the oldest one
+  // the approver belongs to. An agent then works in a team nobody chose. It
+  // created an app in the wrong one before this was fixed.
+  //
+  // OWNER is a member of both teams here, so nothing but this rule keeps the
+  // second one out.
+  await pg.query(
+    `insert into memberships (id, user_id, team_id, role, created_at)
+     values ('mem_owner_b2', $1, $2, 'owner', '2025-01-01T00:00:00.000Z')`,
+    [OWNER, TEAM_B],
+  );
+  await pg.query(
+    `insert into membership_capabilities (membership_id, capability)
+     select 'mem_owner_b2', capability from membership_capabilities
+     where membership_id = $1`,
+    [`mem_${OWNER}`],
+  );
+
+  await as(OWNER, () =>
+    mintMcpConnection({ clientId: CLIENT, capabilities: ["view"] }),
+  );
+  const scope = (
+    await pg.query(
+      `select tt.team_id from api_token_teams tt
+       join api_tokens t on t.id = tt.token_id
+       where t.oauth_client_id = $1`,
+      [CLIENT],
+    )
+  ).rows as { team_id: string }[];
+  assert.deepEqual(
+    scope.map((r) => r.team_id),
+    [TEAM_A],
+    "the connection reaches more than the team it was approved for",
+  );
+});
+
+test("a team that drifted between the screen and the submit is refused", async () => {
+  // The screen says which team it showed; the server still decides. They only
+  // ever disagree when something moved underneath — another tab, a half-finished
+  // switch — and connecting a third party to a team nobody read is exactly the
+  // failure this whole area already had once.
+  await assert.rejects(
+    as(OWNER, () =>
+      mintMcpConnection({
+        clientId: CLIENT,
+        capabilities: ["view"],
+        expectedTeamId: TEAM_B,
+      }),
+    ),
+    /active team changed/i,
+  );
+  assert.equal((await pg.query(`select id from api_tokens`)).rows.length, 0);
+});
+
+test("a connection cannot be narrowed to a project in another team", async () => {
+  // The same ambiguity by the back door: a project belonging to another of the
+  // approver's teams would make the connection reach two teams again.
+  await pg.query(
+    `insert into memberships (id, user_id, team_id, role, created_at)
+     values ('mem_owner_b3', $1, $2, 'owner', '2025-01-01T00:00:00.000Z')`,
+    [OWNER, TEAM_B],
+  );
+  await pg.query(
+    `insert into membership_capabilities (membership_id, capability)
+     select 'mem_owner_b3', capability from membership_capabilities
+     where membership_id = $1`,
+    [`mem_${OWNER}`],
+  );
+  await pg.query(
+    `insert into projects (id, team_id, name, slug, created_at, updated_at)
+     values ('prc_elsewhere', $1, 'Elsewhere', 'elsewhere',
+             '2026-01-01T00:00:00.000Z', '2026-01-01T00:00:00.000Z')`,
+    [TEAM_B],
+  );
+  await assert.rejects(
+    as(OWNER, () =>
+      mintMcpConnection({
+        clientId: CLIENT,
+        capabilities: ["view"],
+        projectIds: ["prc_elsewhere"],
+      }),
+    ),
+    /inside the team you are connecting/i,
+  );
+  assert.equal((await pg.query(`select id from api_tokens`)).rows.length, 0);
 });
 
 test("an attacker-length client name does not break the mint", async () => {

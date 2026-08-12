@@ -49,31 +49,42 @@ brings zero new transitive packages.
    screen that only said "Allow" could not tell a person what they were handing a third party, and
    what they are handing it is a credential.
 
-3. **Two capabilities open the door: `manage_mcp` and `manage_tokens`.** The first is ADR-0021 §5's
+3. **A connection serves EXACTLY ONE team, and the server picks it.** ADR-0021 §3 made one
+   endpoint serve one team because the protocol is stateless — there is no session to hold an
+   "active team" between calls, which is why there is no `X-Deplo-Team` on this path and no
+   "switch team" tool. The consequence, learned the expensive way: a connection whose scope names
+   more than one team has no way to say which one a request acts in, so `authenticateToken` falls
+   back to the first reachable team — the OLDEST the approver belongs to — and an agent quietly
+   works somewhere nobody chose. It created an app in the wrong team before this was fixed. So
+   `mintMcpConnection` takes the team from the session, `authorizeMcpClient` has **no `teamIds`
+   argument at all**, and narrowing is only ever accepted inside that team. Connecting a second
+   team means connecting a second client, which is also what keeps the blast radius legible.
+
+4. **Two capabilities open the door: `manage_mcp` and `manage_tokens`.** The first is ADR-0021 §5's
    "may an agent drive this team at all"; the second is what minting a credential has always
    needed. `teams.mcp_enabled` gates the door as well as the request, so turning MCP off does not
    leave connections that resume when it flips back. `instanceAdmin` is unreachable here — the
    token is always scoped, and a scoped token is refused instance administration outright.
 
-4. **Registration is open, bounded, and swept.** RFC 7591 registration must be unauthenticated:
+5. **Registration is open, bounded, and swept.** RFC 7591 registration must be unauthenticated:
    claude.ai cannot pre-register. Registering buys nothing — a client with no consent holds no
    token, reaches no team and appears nowhere — so the exposure is row creation, bounded by deplo's
    Postgres rate limiter (5/min per IP; the plugin's own limiter is in-memory and forgets on
    restart) and by a maintenance sweep that drops clients with no consent after seven days.
 
-5. **Never auto-approve.** No trusted-client cache, no consent-skipping, no `prompt=none` shortcut.
+6. **Never auto-approve.** No trusted-client cache, no consent-skipping, no `prompt=none` shortcut.
    The authorize leg is a top-level GET navigation, so a `SameSite=Lax` session cookie *is* sent: if
    an existing consent could short-circuit the screen, a page could navigate a signed-in admin into
    granting a credential. The click is the security decision.
 
-6. **Opaque tokens, hashed with deplo's own `sha256Hex`.** deplo is the authorization server and the
+7. **Opaque tokens, hashed with deplo's own `sha256Hex`.** deplo is the authorization server and the
    only resource server, in one process on one database, so a JWT would save nothing — the
    `api_tokens` row is read on every request regardless, for capabilities, scope and the live
    creator clamp. Opaque instead gives instant revocation by construction, no JWKS table, and no
    `/api/auth/token` endpoint turning a session cookie into a bearer on instances that will never
    use MCP.
 
-7. **Scopes are not permissions.** The OAuth scopes stay the standard four
+8. **Scopes are not permissions.** The OAuth scopes stay the standard four
    (`openid`/`profile`/`email`/`offline_access`) and decide nothing. What an agent may do is the
    token's Capabilities. **Capability** is deplo's word and **scope** is OAuth's; they must never
    share a variable.
@@ -93,7 +104,12 @@ brings zero new transitive packages.
 - **Better Auth's `referenceId`**: rejected as the carrier. It is populated by a callback that runs
   *before* the consent form is filled in, so it cannot hold capabilities that have not been chosen
   yet, and it has no cascade.
-- **JWT access tokens** (the plugin's default): rejected, see decision 6.
+- **JWT access tokens** (the plugin's default): rejected, see decision 7.
+- **A "switch team" tool**: rejected, and it is the thing to reach for when a connection lands in the
+  wrong team. There is nowhere to keep an active team between calls (the protocol is stateless), so
+  such a tool could only rewrite the connection's own scope — an agent widening the credential it
+  runs on, which is exactly why `createToken`/`updateToken` are not tools either. One connection,
+  one team; a second team is a second connection.
 - **A per-connection "allow writes" switch**: rejected — migration 0100's mistake in OAuth clothing.
 
 ## Consequences

@@ -93,14 +93,22 @@ builder.mutationFields((t) => ({
       "scope, and link it to the client. Also needs `manage_tokens`, and cannot " +
       "grant more than the approver holds. The OAuth handshake itself is then " +
       "finished by the browser posting to `/api/auth/oauth2/consent` — that " +
-      "endpoint refuses a server-side call, so it cannot be done here.",
+      "endpoint refuses a server-side call, so it cannot be done here. There is " +
+      "no `teamIds` argument on purpose: a connection serves exactly one team " +
+      "and that team is the active one, never something the client names.",
     args: {
       clientId: t.arg.string({ required: true }),
       capabilities: t.arg.stringList({ required: false }),
-      teamIds: t.arg.stringList({ required: false }),
       projectIds: t.arg.stringList({ required: false }),
       folderIds: t.arg.stringList({ required: false }),
       appIds: t.arg.stringList({ required: false }),
+      expectedTeamId: t.arg.string({
+        required: false,
+        description:
+          "The team the consent screen showed. Not a choice — the server takes " +
+          "the team from the session — but a disagreement is refused rather " +
+          "than connecting the client to a team nobody read.",
+      }),
     },
     resolve: async (_p, a) => {
       await mintMcpConnection({
@@ -108,10 +116,10 @@ builder.mutationFields((t) => ({
         capabilities: (a.capabilities ?? undefined) as
           | Parameters<typeof mintMcpConnection>[0]["capabilities"]
           | undefined,
-        teamIds: a.teamIds ?? undefined,
         projectIds: a.projectIds ?? undefined,
         folderIds: a.folderIds ?? undefined,
         appIds: a.appIds ?? undefined,
+        expectedTeamId: a.expectedTeamId ?? undefined,
       });
       return true;
     },

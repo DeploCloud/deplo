@@ -27,13 +27,19 @@ export default async function McpSettingsPage() {
       />
     );
 
-  const [settings, publicUrl, team, canManage, connections] = await Promise.all([
-    getMcpSettings(),
-    instancePublicBaseUrl(),
-    getTeam(),
-    hasCapability("manage_mcp"),
-    listMcpConnections(),
-  ]);
+  const [settings, publicUrl, team, canManage, canRevoke, connections] =
+    await Promise.all([
+      getMcpSettings(),
+      instancePublicBaseUrl(),
+      getTeam(),
+      hasCapability("manage_mcp"),
+      // Revoking a connection IS revoking its API token, so it is gated on
+      // `manage_tokens` — not on the capability that governs the switch above.
+      // Showing the button to someone who cannot use it is a promise the server
+      // then breaks.
+      hasCapability("manage_tokens"),
+      listMcpConnections(),
+    ]);
 
   return (
     <div className="space-y-6">
@@ -52,7 +58,7 @@ export default async function McpSettingsPage() {
           anyone already living in a shell. */}
       <ConnectWeb publicUrl={publicUrl} />
       <ConnectSnippet publicUrl={publicUrl} teamSlug={team.slug} />
-      <ConnectedClients connections={connections} canManage={canManage} />
+      <ConnectedClients connections={connections} canManage={canRevoke} />
       <ToolTable />
     </div>
   );

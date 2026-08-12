@@ -141,6 +141,20 @@ export async function exchange(
   return { status: res.status, body };
 }
 
+/** Trade a refresh token for a fresh access token, as a client does hourly. */
+export async function refresh(
+  refreshToken: string,
+  clientId: string,
+  resource?: string,
+): Promise<{ status: number; body: Record<string, string> }> {
+  return exchange({
+    grant_type: "refresh_token",
+    refresh_token: refreshToken,
+    client_id: clientId,
+    ...(resource ? { resource } : {}),
+  });
+}
+
 export interface FullFlowResult {
   clientId: string;
   accessToken: string;
