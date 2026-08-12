@@ -2407,10 +2407,27 @@ export const apiTokens = pgTable(
     // emptied scope would read as "no scope" and silently WIDEN the token to
     // everything. Scoped with zero rows means "reaches nothing".
     scoped: boolean("scoped").notNull().default(false),
+    // Set when this token was minted by approving an OAuth consent instead of by
+    // the tokens page, and names the client that presented itself. It is what
+    // makes an OAuth connection AN ORDINARY API TOKEN rather than a second kind
+    // of credential: the access token an AI client sends is only a pointer at
+    // this row, so revoking it here stops the next request with no TTL window.
+    //
+    // The foreign key to `oauth_client(client_id)` lives in migration 0101 only,
+    // not here: `schema/auth.ts` already imports `users` from this module, and
+    // declaring the reference in Drizzle would close that import cycle.
+    oauthClientId: text("oauth_client_id"),
     lastUsedAt: isoTimestamptz("last_used_at"),
     createdAt: isoTimestamptz("created_at").notNull(),
   },
-  (t) => [uniqueIndex("api_tokens_token_hash_uq").on(t.tokenHash)],
+  (t) => [
+    uniqueIndex("api_tokens_token_hash_uq").on(t.tokenHash),
+    // One connection per (client, person): re-authorizing MOVES a connection
+    // rather than leaving two the owner cannot tell apart.
+    uniqueIndex("api_tokens_oauth_client_user_uq")
+      .on(t.oauthClientId, t.userId)
+      .where(sql`${t.oauthClientId} is not null`),
+  ],
 );
 
 /**

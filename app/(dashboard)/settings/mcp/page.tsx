@@ -6,8 +6,11 @@ import { PageHeader } from "@/components/shared/page-header";
 import { BetaChip } from "@/components/shared/beta-chip";
 import { OutsideYourAccess } from "@/components/shared/outside-your-access";
 import { McpPanel } from "@/components/settings/mcp/mcp-panel";
+import { ConnectWeb } from "@/components/settings/mcp/connect-web";
 import { ConnectSnippet } from "@/components/settings/mcp/connect-snippet";
+import { ConnectedClients } from "@/components/settings/mcp/connected-clients";
 import { ToolTable } from "@/components/settings/mcp/tool-table";
+import { listMcpConnections } from "@/lib/data/mcp-clients";
 
 export const metadata = { title: "Settings · MCP Server" };
 
@@ -24,11 +27,12 @@ export default async function McpSettingsPage() {
       />
     );
 
-  const [settings, publicUrl, team, canManage] = await Promise.all([
+  const [settings, publicUrl, team, canManage, connections] = await Promise.all([
     getMcpSettings(),
     instancePublicBaseUrl(),
     getTeam(),
     hasCapability("manage_mcp"),
+    listMcpConnections(),
   ]);
 
   return (
@@ -43,7 +47,12 @@ export default async function McpSettingsPage() {
         description="Let AI agents drive this team through deplo's API, using an API token you control."
       />
       <McpPanel enabled={settings.enabled} canManage={canManage} />
+      {/* The web case leads: it is the one that does not work without this, and
+          it is a single copied line. The terminal snippet stays below it for
+          anyone already living in a shell. */}
+      <ConnectWeb publicUrl={publicUrl} />
       <ConnectSnippet publicUrl={publicUrl} teamSlug={team.slug} />
+      <ConnectedClients connections={connections} canManage={canManage} />
       <ToolTable />
     </div>
   );

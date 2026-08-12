@@ -112,6 +112,11 @@ type ApiToken {
   instanceAdmin: Boolean
   lastUsedAt: String
   name: String
+
+  """
+  Set when this token was minted by connecting an AI client over OAuth rather than from the tokens page. Such a token is managed under Settings → MCP Server and is not edited by hand.
+  """
+  oauthClientName: String
   prefix: String
 
   """
@@ -1869,6 +1874,27 @@ type LogsInfo {
 }
 
 """
+An AI client connected to this team over OAuth. It holds an ordinary API token, minted when someone approved the consent screen — so `id` is that token's id, and revoking it is `revokeToken`.
+"""
+type McpConnection {
+  capabilities: [String!]
+  clientIcon: String
+  clientName: String
+  clientUri: String
+  createdAt: String
+  id: ID
+  lastUsedAt: String
+
+  """
+  Where this client may be redirected back to. The one thing about itself it cannot choose freely, unlike its name.
+  """
+  redirectOrigin: String
+  teamId: ID
+  teamName: String
+  username: String
+}
+
+"""
 The active team's MCP policy: whether AI agents may drive it at all. What an agent may DO is decided by its API token's capabilities, and by nothing here.
 """
 type McpSettings {
@@ -1954,6 +1980,11 @@ type Mutation {
   Unblock a fork's pull request and build it. Approval is per pull request, so later commits on it build automatically.
   """
   approvePreview(id: ID!): AppPreview
+
+  """
+  Approve an AI client's OAuth request: mint an API token with the chosen capabilities and scope, and hand the client its authorization code. Also needs `manage_tokens`, and cannot grant more than the approver holds.
+  """
+  authorizeMcpClient(appIds: [String!], capabilities: [String!], clientId: String!, folderIds: [String!], oauthQuery: String, projectIds: [String!], scope: String, teamIds: [String!]): OauthRedirect
 
   """
   Start, stop or restart EVERY app in one folder (its whole subtree) or one project (every environment). Gated again per app, so it only touches the ones the caller may control; one failure never stops the rest. Give exactly one of folderId / projectId.
@@ -2178,6 +2209,11 @@ type Mutation {
   Permanently delete a user account. Teams they are the only member of always go with it; the rest is opt-in.
   """
   deleteUser(input: DeleteUserInput!): DeleteUserResult
+
+  """
+  Turn down an AI client's OAuth request. Mints nothing; anyone signed in may decline a request addressed to them.
+  """
+  denyMcpClient(oauthQuery: String): OauthRedirect
 
   """
   Build a preview for a specific open pull request. Also approves it when it comes from a fork — clicking this IS the approval.
@@ -2833,6 +2869,11 @@ input NodeGrantInput {
   projectIds: [String!]
 }
 
+"""Where to send the browser to finish the OAuth flow."""
+type OauthRedirect {
+  redirectUrl: String
+}
+
 """
 How the Deplo panel itself is served, read live off the router that publishes it. `unavailable` says why it is not Deplo's to change here - the host is not added as a server, its proxy is not one Deplo installed, or the panel is still published by its own container.
 """
@@ -3152,6 +3193,9 @@ type Query {
 
   """Lighter instance list for the logs viewer."""
   logsInfo(appId: String!): LogsInfo
+
+  """AI clients connected to this team over OAuth."""
+  mcpConnections: [McpConnection!]
 
   """The active team's MCP policy."""
   mcpSettings: McpSettings

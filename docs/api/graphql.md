@@ -14,7 +14,7 @@ repo root and is browsable interactively via GraphiQL at the endpoint above.
 
 ## Authentication
 
-Two ways to authenticate, both resolving to the same per-request identity and
+Three ways to authenticate, all resolving to the same per-request identity and
 team scope:
 
 ### 1. Session cookie (browser / same-origin)
@@ -78,6 +78,31 @@ agents, App automation, Root access — or you can start from scratch.
 > is four optional lists on the same input — `teamIds`, `projectIds`,
 > `folderIds`, `appIds` — and `updateToken` changes a live token's permissions or
 > scope without re-minting it.
+
+### 3. OAuth access token (web AI clients)
+
+A web AI client — Claude, ChatGPT — cannot be handed a token by hand, so deplo is
+also an OAuth 2.1 authorization server for them: the client registers itself
+(RFC 7591), the user approves a consent screen, and **that approval mints an
+ordinary API token** (ADR-0022). The `dplo_at_…` access token the client then
+sends is a pointer at that row, so everything under §2 applies to it unchanged —
+same capabilities, same scope, same clamp, same revocation.
+
+```bash
+curl https://your-host/api/graphql \
+  -H "Authorization: Bearer dplo_at_xxxxxxxxxxxxxxxxxxxxxxxx" \
+  -H "Content-Type: application/json" \
+  -d '{"query":"{ me { username } }"}'
+```
+
+Discovery starts from the MCP endpoint's 401, which carries
+`WWW-Authenticate: Bearer … resource_metadata="…"`; the documents live at
+`/.well-known/oauth-protected-resource` and
+`/.well-known/oauth-authorization-server`. Unlike §2, the team is **not** chosen
+with `X-Deplo-Team` — it is fixed at consent time, so the header cannot move a
+connection somewhere else. Connections are listed and revoked under
+**Settings → MCP Server**, and appear in Settings → API tokens marked with the
+client's name.
 
 Unauthenticated requests resolve `me` to `null` and are rejected by any field
 that requires a login (`Not authorized to resolve …`).

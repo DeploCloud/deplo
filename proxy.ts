@@ -78,8 +78,15 @@ export function proxy(request: NextRequest) {
 
   if (!hasSession && !isPublic) {
     const url = request.nextUrl.clone();
+    // The query is dropped everywhere else on purpose (it can carry anything a
+    // link put there). The OAuth consent screen is the one page whose query IS
+    // the request: losing it strands someone mid-flow inside a third-party
+    // product with no way back except starting over there.
+    const back = pathname.startsWith("/oauth/")
+      ? pathname + request.nextUrl.search
+      : null;
     url.pathname = "/login";
-    url.search = "";
+    url.search = back ? `?next=${encodeURIComponent(back)}` : "";
     return NextResponse.redirect(url);
   }
   // Note: we intentionally do NOT redirect "has-cookie" users away from the
@@ -118,8 +125,12 @@ export function proxy(request: NextRequest) {
 export const config = {
   matcher: [
     {
+      // `.well-known` is excluded for the same reason `api` is: the OAuth
+      // discovery documents (RFC 8414 / RFC 9728) are probed by a client that has
+      // no cookie yet and no way to get one. Without this, every probe is a 302
+      // to /login and no web AI client can connect to the MCP server at all.
       source:
-        "/((?!api|_next/static|_next/image|favicon.ico|robots.txt|install|uninstall).*)",
+        "/((?!api|\\.well-known|_next/static|_next/image|favicon.ico|robots.txt|install|uninstall).*)",
       missing: [
         { type: "header", key: "next-router-prefetch" },
         { type: "header", key: "purpose", value: "prefetch" },

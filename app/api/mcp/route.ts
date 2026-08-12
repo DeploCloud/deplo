@@ -5,6 +5,10 @@ import { getCurrentUser } from "@/lib/auth";
 import { getActiveTeamId, reachableCapabilities } from "@/lib/membership";
 import { getMcpSettings } from "@/lib/data/mcp-settings";
 import { rateLimit } from "@/lib/security";
+import {
+  OAUTH_CORS_HEADERS,
+  resourceMetadataUrl,
+} from "@/lib/auth/oauth-metadata";
 import { buildMcpServer, type McpPrincipal } from "@/lib/mcp/server";
 
 /**
@@ -49,17 +53,29 @@ const handler = createMcpHandler((ctx) =>
   buildMcpServer(ctx.authInfo!.extra!.principal as McpPrincipal),
 );
 
+/**
+ * The RFC 6750 challenge, carrying RFC 9728 discovery.
+ *
+ * `resource_metadata` is how a web AI client that has never seen deplo finds its
+ * way in: it reads that document, learns the authorization server, registers
+ * itself and sends the user here to consent. A terminal agent keeps ignoring the
+ * header and sending a `deplo_` token, exactly as before.
+ *
+ * The message names both routes in, because a bare 401 leaves the operator
+ * guessing which of the two they were supposed to use. It names no team, user or
+ * token — a challenge must not be an oracle.
+ */
 function unauthorized(message: string) {
+  const metadata = resourceMetadataUrl();
   return Response.json(
     { error: message },
     {
       status: 401,
       headers: {
-        // RFC 6750 shape. deplo is not an OAuth resource server (the token is a
-        // deplo API token, not an access token from an authorization server),
-        // but a client that understands the challenge should still be told the
-        // scheme rather than being left to guess from a bare 401.
-        "www-authenticate": 'Bearer realm="deplo", error="invalid_token"',
+        ...OAUTH_CORS_HEADERS,
+        "www-authenticate": metadata
+          ? `Bearer realm="deplo", error="invalid_token", resource_metadata="${metadata}"`
+          : 'Bearer realm="deplo", error="invalid_token"',
       },
     },
   );
@@ -72,7 +88,7 @@ export async function POST(request: Request) {
   const raw = /^bearer /i.test(header) ? header.slice(7).trim() : "";
   if (!raw)
     return unauthorized(
-      "Send a deplo API token as `Authorization: Bearer deplo_…`. Create one under Settings → API tokens.",
+      "Authenticate first. A web AI client should follow the OAuth challenge on this response; a terminal agent sends a deplo API token as `Authorization: Bearer deplo_…`, created under Settings → API tokens.",
     );
 
   let identity;
@@ -123,7 +139,7 @@ export async function POST(request: Request) {
         error:
           "This team has turned off MCP access. An admin can switch it back on under Settings → MCP Server.",
       },
-      { status: 403 },
+      { status: 403, headers: OAUTH_CORS_HEADERS },
     );
   if (!prepared.principal)
     return Response.json(
@@ -131,6 +147,7 @@ export async function POST(request: Request) {
       {
         status: 429,
         headers: {
+          ...OAUTH_CORS_HEADERS,
           "retry-after": String(prepared.limited?.retryAfterSec ?? 60),
         },
       },
@@ -159,9 +176,18 @@ export async function GET() {
     {
       error: "Method not allowed",
       detail:
-        "This is deplo's MCP endpoint. Point an MCP client at it over POST with `Authorization: Bearer deplo_…`.",
+        "This is deplo's MCP endpoint. Paste this URL into a web AI client and sign in when asked, or point a terminal agent at it over POST with `Authorization: Bearer deplo_…`.",
       protocolVersion: "2026-07-28",
     },
-    { status: 405, headers: { allow: "POST" } },
+    { status: 405, headers: { ...OAUTH_CORS_HEADERS, allow: "POST" } },
   );
+}
+
+/**
+ * A browser-based MCP client preflights before it can send `Authorization` or
+ * read the challenge off a 401. Same headers everywhere, and no
+ * `Allow-Credentials`: this endpoint is bearer-only and has no cookie path.
+ */
+export function OPTIONS() {
+  return new Response(null, { status: 204, headers: OAUTH_CORS_HEADERS });
 }

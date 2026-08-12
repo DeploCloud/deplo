@@ -144,15 +144,27 @@ Deplo's endpoint for AI agents, at `/api/mcp`, speaking the Model Context Protoc
 (revision 2026-07-28). Ships as **beta**. It exposes a curated set of **tools** — each one a name, an input
 schema and a GraphQL document run in-process against the same schema `/api/graphql` serves,
 as the caller's own principal. It introduces **no credential of its own**: an agent
-authenticates with an ordinary **API token** and picks its team with `X-Deplo-Team`, exactly
-like any other external client. The protocol is stateless, so one endpoint serves one team,
-chosen when the agent is connected. One team switch governs it — whether agents are allowed at
+authenticates with an ordinary **API token**, either pasted in by hand (a terminal agent, picking
+its team with `X-Deplo-Team`) or minted by approving a **connected client**'s OAuth request (a web
+app, which picks its team on the consent screen). The protocol is stateless, so one endpoint serves
+one team, chosen when the agent is connected. One team switch governs it — whether agents are allowed at
 all — behind the `manage_mcp` **Capability**. What an agent may DO is decided by its token's
 Capabilities and by nothing on top; deplo adds no confirmation step of its own, and destructive
 tools are flagged so the MCP client can ask its own user. No tool can reveal a secret, whatever
 the token holds (ADR-0021).
 _Avoid_: MCP plugin (the withdrawn container relay, ADR-0013), MCP token / `MCP_BEARER` (there
 is no such credential), connector.
+
+**Connected client**:
+A web AI app — Claude, ChatGPT — that a member has authorised to drive a team over the **MCP
+server**, listed and revocable under Settings → MCP Server. It registers itself with deplo (deplo is
+an OAuth 2.1 authorization server for exactly this), and approving its consent screen **mints an
+ordinary API token**: the access token it goes on to present is only a pointer at that row, so
+revoking the token stops it, and it appears in Settings → API tokens too, marked. What it may do is
+that token's **Capabilities**; the OAuth *scopes* it holds decide nothing (ADR-0022). A client that
+has registered but has never been approved holds nothing and reaches nothing.
+_Avoid_: connector, OAuth app, integration, MCP client (that is the software talking the protocol,
+not the thing deplo has a row for), "connected app".
 
 ### Plugins
 

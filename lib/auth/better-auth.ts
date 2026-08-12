@@ -6,13 +6,20 @@ import { drizzleAdapter } from "better-auth/adapters/drizzle";
 import { nextCookies } from "better-auth/next-js";
 import { haveIBeenPwned } from "better-auth/plugins/haveibeenpwned";
 import { twoFactor } from "better-auth/plugins/two-factor";
+import { oauthProvider } from "@better-auth/oauth-provider";
 import { getDb, hasTestDb, type DrizzleClient } from "@/lib/db/client";
 import { isPostgresEnabled } from "@/lib/db/pg";
 import { schema } from "@/lib/db/schema";
-import { deriveKey, hashPassword, verifyPassword } from "@/lib/crypto";
+import {
+  deriveKey,
+  hashPassword,
+  sha256Hex,
+  verifyPassword,
+} from "@/lib/crypto";
 import { PWNED_PASSWORD_MESSAGE } from "@/lib/pwned-password";
 import { newId } from "@/lib/ids";
 import { cookiesAreSecure, publicBaseUrl } from "@/lib/public-url";
+import { MCP_RESOURCE_PATH } from "@/lib/auth/oauth-metadata";
 
 /**
  * Better Auth configuration — the LIVE login path since ADR-0014.
@@ -102,6 +109,100 @@ const twoFactorGate = createAuthMiddleware(async (ctx) => {
   });
 });
 
+/**
+ * The OAuth 2.1 provider's configuration.
+ *
+ * Why deplo runs an authorization server at all: claude.ai and chatgpt.com cannot
+ * be handed a bearer token the way a terminal agent can, and the MCP spec requires
+ * this flow (RFC 9728 + RFC 8414 + RFC 7591 + PKCE) of a protected MCP server.
+ * ADR-0021 recorded it as "deferred, not rejected"; this is that.
+ *
+ * **The one thing to understand before changing anything here: an OAuth grant is
+ * not a new kind of credential.** Approving the consent screen mints an ordinary
+ * `api_tokens` row, and the access token issued below is only a pointer at it
+ * (`lib/data/tokens.ts`). That is what keeps ADR-0021 §2 true — one authorization
+ * path, no second one to drift — and it is why nothing here decides what an agent
+ * may DO. An OAuth **scope** and a deplo **Capability** are different concepts and
+ * must never share a variable: the scopes below are the standard four, and the
+ * Capabilities live on the minted token.
+ */
+function oauthProviderOptions() {
+  const base = publicBaseUrl() ?? "";
+  return {
+    loginPage: "/login",
+    consentPage: "/oauth/consent",
+
+    // claude.ai and ChatGPT have no way to pre-register, so RFC 7591 registration
+    // has to be open. Registering buys nothing on its own: a client with no
+    // consent holds no token, reaches no team and appears nowhere. It is bounded
+    // by deplo's own Postgres rate limiter in app/api/auth/[...all]/route.ts (the
+    // plugin's built-in one is in-memory, so it forgets on restart) and swept in
+    // lib/notify/maintenance.ts.
+    allowDynamicClientRegistration: true,
+    allowUnauthenticatedClientRegistration: true,
+
+    // RFC 8707 resource indicators. An MCP client sends
+    // `resource=<base>/api/mcp`, and the token endpoint refuses any audience not
+    // listed here — so leaving the MCP resource out makes every exchange fail
+    // with "requested resource invalid" while everything else looks healthy.
+    //
+    // EXACTLY ONE entry, deliberately. GHSA-p2fr-6hmx-4528 (moderate, affects
+    // every 1.6.x): the plugin validates the `resource` parameter but does not
+    // BIND it to the grant, so with two or more valid audiences a client can
+    // obtain a token aimed at a resource server it was not authorised for. The
+    // advisory's own first workaround is to allow a single audience, and deplo
+    // has exactly one resource worth naming. Belt to that brace: an access token
+    // only resolves here by way of the `api_tokens` row its consent minted, so a
+    // token with the wrong audience would still reach the same connection and
+    // nothing else. Revisit when 1.7.0 ships — the fix needs a schema migration
+    // and changes `customAccessTokenClaims`, so it is not a version bump.
+    validAudiences: [`${base}${MCP_RESOURCE_PATH}`],
+
+    // Opaque tokens, hashed with the SAME digest `api_tokens.token_hash` uses.
+    // deplo is both the authorization server and the only resource server, in one
+    // process on one database, so a JWT would save nothing: the `api_tokens` row
+    // has to be read on every request anyway for capabilities, scope and the live
+    // creator clamp. Opaque instead buys instant revocation by construction, no
+    // JWKS table, and no `/api/auth/token` endpoint turning a session cookie into
+    // a bearer on instances that will never use MCP.
+    disableJwtPlugin: true,
+    storeTokens: { hash: (token: string) => sha256Hex(token) },
+    // Client secrets stay at the plugin's default for this mode ("encrypted",
+    // symmetric under the Better Auth secret) — the same treatment the twoFactor
+    // plugin gives a TOTP secret, keyed the same way. A self-registered client has
+    // no secret at all: unauthenticated registration forces
+    // `token_endpoint_auth_method: "none"`.
+    // Prefixes make the two credential families tellable apart in a log, and must
+    // NOT begin with `deplo_` — that literal is how `authenticateToken` decides
+    // which lookup to run.
+    prefix: {
+      opaqueAccessToken: "dplo_at_",
+      refreshToken: "dplo_rt_",
+      clientSecret: "dplo_cs_",
+    },
+
+    // Never auto-approve. The authorize leg is a top-level GET navigation, so a
+    // SameSite=Lax session cookie IS sent: if an existing consent could
+    // short-circuit the screen, any page could navigate a signed-in admin into
+    // granting a credential. The click is the security decision.
+    cachedTrustedClients: new Set<string>(),
+
+    // An explicit claim set, because Better Auth's `user` model IS the
+    // control-plane `users` table (ADR-0014). A generous default here would ship
+    // `is_instance_admin`, `suspended` and the rest of that row to every client
+    // that ever registered.
+    customUserInfoClaims: ({
+      user,
+    }: {
+      user: { id: string; name?: string | null; email?: string | null };
+    }) => ({ sub: user.id, name: user.name ?? null, email: user.email ?? null }),
+
+    // The root-path documents live in app/.well-known/*; the plugin's own copies
+    // sit under /api/auth and nothing probes them.
+    silenceWarnings: { oauthAuthServerConfig: true, openidConfig: true },
+  };
+}
+
 function createAuth(db: DrizzleClient) {
   return betterAuth({
     appName: "Deplo",
@@ -163,6 +264,9 @@ function createAuth(db: DrizzleClient) {
       // settings, the admin reset, basic auth and database passwords. Same
       // message from both so the refusal never reads like two different rules.
       haveIBeenPwned({ customPasswordCompromisedMessage: PWNED_PASSWORD_MESSAGE }),
+      // deplo as an OAuth 2.1 authorization server, so a web AI client can reach
+      // `/api/mcp`. See the docblock above `oauthProviderOptions`.
+      oauthProvider(oauthProviderOptions()),
       // MUST stay last: it is an `after` hook that forwards Set-Cookie into the
       // Next.js cookie store, so anything appended after it would not be seen.
       nextCookies(),

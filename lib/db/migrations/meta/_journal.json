@@ -708,6 +708,13 @@
       "when": 1784681200000,
       "tag": "0100_drop_mcp_confirm",
       "breakpoints": true
+    },
+    {
+      "idx": 101,
+      "version": "7",
+      "when": 1784681400000,
+      "tag": "0101_oauth_provider",
+      "breakpoints": true
     }
   ]
 }

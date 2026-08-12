@@ -3,7 +3,7 @@
 import * as React from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { Trash2, ShieldAlert, FolderTree, ServerCog } from "lucide-react";
+import { Trash2, ShieldAlert, FolderTree, ServerCog, Plug } from "lucide-react";
 import {
   Table,
   TableBody,
@@ -107,6 +107,14 @@ export function TokensList({
                         <ServerCog className="size-3" aria-hidden />
                         Instance admin
                       </Badge>
+                    )}
+                    {t.oauthClientName && (
+                      <SimpleTooltip content="Created by connecting this app over OAuth. Manage it under Settings → MCP Server.">
+                        <Badge variant="outline" className="gap-1">
+                          <Plug className="size-3" aria-hidden />
+                          {t.oauthClientName}
+                        </Badge>
+                      </SimpleTooltip>
                     )}
                   </span>
                 </TableCell>
