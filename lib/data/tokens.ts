@@ -120,7 +120,7 @@ const DTO_COLUMNS = {
  * cannot revoke it either, and "remove the person from the team" is too blunt an
  * instrument to be the only lever. Five indexed lookups, unioned in memory.
  */
-async function tokenIdsReaching(teamId: string): Promise<Set<string>> {
+export async function tokenIdsReaching(teamId: string): Promise<Set<string>> {
   const db = getDb();
   const [byTeam, byProject, byFolder, byApp, unscoped] = await Promise.all([
     db
@@ -766,16 +766,14 @@ export async function authenticateToken(
   }
   if (raw.startsWith(OAUTH_ACCESS_TOKEN_PREFIX)) {
     const row = await oauthTokenRow(raw);
-    // The hint is the connection's OWN team, never `X-Deplo-Team`: a connection
-    // is approved for exactly one team on the consent screen, and the header
-    // must not be able to steer it elsewhere.
-    //
-    // Passing it rather than null is also the repair for a connection whose
-    // scope somehow names more than one team — a grant minted before the mint
-    // was fixed, say. Without a hint the fallback is `reachable[0]`, the OLDEST
-    // team the approver belongs to, and the agent silently works somewhere
-    // nobody chose.
-    return row ? identityForTokenRow(row, row.teamId) : null;
+    // No hint means the connection's OWN team — never `reachable[0]`, the
+    // OLDEST team its approver belongs to, which is how an agent once worked
+    // somewhere nobody chose. A hint that IS given must be one of the teams the
+    // connection was granted; an unreachable one falls back here exactly as it
+    // does for a `deplo_` token, and the caller that must not tolerate that
+    // (a tool naming a team) resolves it against the granted set first and
+    // refuses, rather than asking this function to guess.
+    return row ? identityForTokenRow(row, teamHint ?? row.teamId) : null;
   }
   return null;
 }

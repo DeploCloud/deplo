@@ -13,13 +13,18 @@ import {
 } from "../db/schema/control-plane";
 import { oauthClient, oauthConsent } from "../db/schema/auth";
 import {
+  membershipFor,
   requireActiveTeamId,
   requireCapability,
   requireTeamWide,
 } from "../membership";
 import { assertUser } from "../auth";
 import { ALL_CAPABILITIES, type Capability } from "../types";
-import { createToken, type TokenScopeInput } from "./tokens";
+import {
+  createToken,
+  tokenIdsReaching,
+  type TokenScopeInput,
+} from "./tokens";
 import { getMcpSettings } from "./mcp-settings";
 import { recordActivity } from "./activity";
 
@@ -70,6 +75,7 @@ export interface McpConnectionDTO {
   clientIcon: string | null;
   redirectOrigin: string | null;
   username: string | null;
+  /** The team it is MANAGED from — which may not be the team reading this list. */
   teamId: string;
   teamName: string;
   capabilities: Capability[];
@@ -142,17 +148,21 @@ async function assertFreshConsent(
 }
 
 /**
- * Refuse a scope that narrows to something outside the team being connected.
+ * The teams the named projects, folders and apps belong to.
  *
- * `createToken` already refuses a node in a team the approver does not belong
- * to; this is the stricter rule a connection needs, because a project belonging
- * to ANOTHER of their teams would make the connection reach two teams and land
- * it back in the "which team is this request in" ambiguity above.
+ * A connection reaches every team its scope touches, not only the ones ticked
+ * as wholes — so a project is a grant of its team, and has to pass the same
+ * per-team gate. Refuses an id that resolves to nothing rather than silently
+ * dropping it, because a scope that quietly loses a node is a scope nobody read.
  */
-async function assertNodesInTeam(
-  input: TokenScopeInput,
-  teamId: string,
-): Promise<void> {
+async function teamsOfNodes(input: TokenScopeInput): Promise<string[]> {
+  const named = new Set([
+    ...(input.projectIds ?? []),
+    ...(input.folderIds ?? []),
+    ...(input.appIds ?? []),
+  ]);
+  if (named.size === 0) return [];
+
   const db = getDb();
   const [projectRows, folderRows, appRows] = await Promise.all([
     input.projectIds?.length
@@ -174,17 +184,37 @@ async function assertNodesInTeam(
           .where(inArray(appsTable.id, input.appIds))
       : [],
   ]);
-  // Deduped, like `resolveScopeInput` does: the same id twice is a UI slip, not
-  // a reason to refuse a legitimate scope.
-  const named = new Set([
-    ...(input.projectIds ?? []),
-    ...(input.folderIds ?? []),
-    ...(input.appIds ?? []),
-  ]).size;
   const found = [...projectRows, ...folderRows, ...appRows];
-  if (found.length !== named || found.some((r) => r.teamId !== teamId))
+  if (found.length !== named.size)
+    throw new Error("One of those projects, folders or apps no longer exists.");
+  return [...new Set(found.map((r) => r.teamId))];
+}
+
+/**
+ * May this person let an AI client into THIS team?
+ *
+ * Asked per team and answered in that team: membership (which is also where the
+ * two-factor policy refuses), the capability that governs AI access, and the
+ * team's own switch. `createToken` clamps what the connection may DO to what the
+ * approver holds, re-checked per team on every request — this is the separate
+ * question of whether an agent belongs there at all.
+ */
+async function assertMayConnect(teamId: string, userId: string): Promise<void> {
+  const membership = await membershipFor(userId, teamId);
+  if (!membership || !membership.capabilities.includes("manage_mcp"))
     throw new Error(
-      "A connection can only be narrowed to projects, folders or apps inside the team you are connecting.",
+      "You can only connect an app to a team where you may manage MCP access.",
+    );
+  const row = (
+    await getDb()
+      .select({ enabled: teamsTable.mcpEnabled })
+      .from(teamsTable)
+      .where(eq(teamsTable.id, teamId))
+      .limit(1)
+  )[0];
+  if (!row?.enabled)
+    throw new Error(
+      "One of those teams has turned off MCP access. An admin can switch it back on under Settings → MCP Server.",
     );
 }
 
@@ -234,12 +264,12 @@ export async function getOAuthClientForConsent(
 }
 
 /**
- * `teamIds` is deliberately absent. A connection serves exactly one team and the
- * team comes from the session, so an argument for it could only ever be ignored
- * or believed — and believing it is the bug this omission closes.
+ * `teamIds` names the teams this connection may work in. The team it is created
+ * FROM is always one of them — you cannot connect a client from here and leave
+ * here out — and every team named gets the same gate, checked in that team and
+ * not in this one.
  */
-export interface AuthorizeMcpClientInput
-  extends Omit<TokenScopeInput, "teamIds"> {
+export interface AuthorizeMcpClientInput extends TokenScopeInput {
   clientId: string;
   capabilities?: Capability[];
   /**
@@ -312,31 +342,37 @@ export async function mintMcpConnection(
       ),
     );
 
-  // ONE TEAM, decided here and not by the caller.
+  // Which teams this connection may work in — and the gate runs once PER TEAM,
+  // in that team.
   //
-  // A connection carries no `X-Deplo-Team` — the protocol is stateless and one
-  // endpoint serves one team (ADR-0021 §3), so there is nothing for the header,
-  // or a "switch team" tool, to switch. Which means a scope naming several teams
-  // has no way to say which one a request acts in: `authenticateToken` falls
-  // back to the first reachable team, i.e. the OLDEST one the approver belongs
-  // to. An agent then quietly works in a team nobody chose — it created an app
-  // in the wrong one before this was fixed.
+  // Naming a team is granting an AI client the run of it, so the question
+  // `manage_mcp` answers ("may an agent drive this team at all") has to be asked
+  // where the answer applies. Holding it here says nothing about there. The
+  // team being connected FROM is always included: you cannot connect a client
+  // from a team and leave that team out.
   //
-  // So the team comes from the session, the client's `teamIds` are ignored, and
-  // narrowing is only ever allowed INSIDE that team.
-  const narrowing = [
-    ...(input.projectIds ?? []),
-    ...(input.folderIds ?? []),
-    ...(input.appIds ?? []),
+  // Which team a given call then acts in is the call's own `team` argument — the
+  // protocol is stateless, so it is declared per request and never remembered
+  // (ADR-0021 §3). A team that was not granted is REFUSED there, never quietly
+  // swapped for another: that silent swap is how an app was once created in a
+  // team nobody had chosen.
+  const nodeTeams = await teamsOfNodes(input);
+  const granted = [
+    ...new Set([teamId, ...(input.teamIds ?? []), ...nodeTeams]),
   ];
-  if (narrowing.length > 0) await assertNodesInTeam(input, teamId);
+  for (const t of granted) await assertMayConnect(t, userId);
+
+  const namesNothing =
+    !input.teamIds?.length &&
+    !input.projectIds?.length &&
+    !input.folderIds?.length &&
+    !input.appIds?.length;
 
   const { token } = await createToken({
     name: client.name.slice(0, MAX_CLIENT_NAME),
     capabilities: input.capabilities,
-    // Breadth or depth, never both: naming the whole team AND a project inside
-    // it reads as the whole team, which would silently undo the narrowing.
-    teamIds: narrowing.length > 0 ? [] : [teamId],
+    // Ticking nothing means "the team I am connecting from, all of it".
+    teamIds: namesNothing ? [teamId] : input.teamIds,
     projectIds: input.projectIds,
     folderIds: input.folderIds,
     appIds: input.appIds,
@@ -373,6 +409,14 @@ export async function listMcpConnections(): Promise<McpConnectionDTO[]> {
   const teamId = await requireActiveTeamId();
   await requireTeamWide("connected MCP clients");
 
+  // Every connection that can ACT here, not the ones minted here — the same rule
+  // `listTokens` follows, and for its reason: a team that cannot see a
+  // credential operating inside it cannot revoke it either. Filtering on the
+  // home team looked identical while a connection reached exactly one team, and
+  // would have hidden an agent from a team the moment one reached two.
+  const reaching = await tokenIdsReaching(teamId);
+  if (reaching.size === 0) return [];
+
   const rows = await getDb()
     .select({
       id: apiTokens.id,
@@ -391,7 +435,10 @@ export async function listMcpConnections(): Promise<McpConnectionDTO[]> {
     .leftJoin(usersTable, eq(usersTable.id, apiTokens.userId))
     .leftJoin(teamsTable, eq(teamsTable.id, apiTokens.teamId))
     .where(
-      and(eq(apiTokens.teamId, teamId), isNotNull(apiTokens.oauthClientId)),
+      and(
+        inArray(apiTokens.id, [...reaching]),
+        isNotNull(apiTokens.oauthClientId),
+      ),
     )
     .orderBy(desc(apiTokens.createdAt));
   if (rows.length === 0) return [];

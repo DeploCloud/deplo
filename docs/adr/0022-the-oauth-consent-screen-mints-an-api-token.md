@@ -49,16 +49,23 @@ brings zero new transitive packages.
    screen that only said "Allow" could not tell a person what they were handing a third party, and
    what they are handing it is a credential.
 
-3. **A connection serves EXACTLY ONE team, and the server picks it.** ADR-0021 §3 made one
-   endpoint serve one team because the protocol is stateless — there is no session to hold an
-   "active team" between calls, which is why there is no `X-Deplo-Team` on this path and no
-   "switch team" tool. The consequence, learned the expensive way: a connection whose scope names
-   more than one team has no way to say which one a request acts in, so `authenticateToken` falls
-   back to the first reachable team — the OLDEST the approver belongs to — and an agent quietly
-   works somewhere nobody chose. It created an app in the wrong team before this was fixed. So
-   `mintMcpConnection` takes the team from the session, `authorizeMcpClient` has **no `teamIds`
-   argument at all**, and narrowing is only ever accepted inside that team. Connecting a second
-   team means connecting a second client, which is also what keeps the blast radius legible.
+3. **Authority is granted per team; the team is declared per call.** Two separate things, and
+   collapsing them is what broke this twice. ADR-0021 §3 rules out a REMEMBERED team — the protocol
+   is stateless, there is no session to hold one, and a `switch_team` tool could only rewrite the
+   connection's own scope, which is an agent widening the credential it runs on. A team named in the
+   call is the opposite of remembered state and fits the protocol exactly.
+
+   So the consent screen has **one control** for "where" (the scope picker: whole teams, or narrower
+   inside them) — a separate team dropdown beside it was two controls answering one question, free
+   to disagree, and they did: a connection approved for one team was granted four. Every team named
+   is gated **in that team** (`manage_mcp`, membership, the team's own switch), because holding a
+   capability here says nothing about there. The team a connection is made from is always included.
+
+   Every tool then takes an optional `team`. Omitted, it is the connection's own team. Named, it is
+   resolved against the granted set **and refused if absent** — never quietly swapped for another,
+   which is precisely how an app was once created in a team nobody had chosen. `X-Deplo-Team` keeps
+   its documented lenient behaviour for a `deplo_` token; the strictness belongs to the caller that
+   cannot tolerate a fallback, not to the shared resolver.
 
 4. **Two capabilities open the door: `manage_mcp` and `manage_tokens`.** The first is ADR-0021 §5's
    "may an agent drive this team at all"; the second is what minting a credential has always
@@ -107,6 +114,13 @@ brings zero new transitive packages.
   (`withMcpAuth`, `getMcpSession`) also bypass deplo's identity resolution entirely, never read
   `client.disabled`, and return the row including the refresh token. A test asserts they are
   imported nowhere.
+- **One connection per team, several connectors**: rejected. It gives the same one-team-per-request
+  property the design already has, while multiplying the tool surface by the number of teams (76
+  tools per connection, so 304 for four), making a cross-team move impossible by construction — it
+  needs authority on both sides — and, with the resource in the URL, requiring a per-team audience
+  list that the plugin only reads at construction, so a team created after boot would not be
+  connectable until a restart. Granting one team per connection is still available: it is what
+  ticking one team does.
 - **A separate `oauth_grants` table** linking a consent to its token: rejected. Every column it
   would need already exists on `api_tokens`; one nullable `oauth_client_id` column plus a partial
   unique index on `(oauth_client_id, user_id)` says the same thing and keeps one list answering

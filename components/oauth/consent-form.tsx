@@ -1,7 +1,6 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import { TriangleAlert } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -28,7 +27,6 @@ import {
   ScopePicker,
   type ScopeSelection,
 } from "@/components/settings/tokens/scope-picker";
-import { useGraphqlMutation } from "@/lib/use-graphql";
 import { gqlAction } from "@/lib/graphql-client";
 import { scopeLabel } from "@/components/settings/tokens/scope-label";
 import { TOKEN_PRESETS, presetIdFor } from "@/lib/token-presets";
@@ -40,6 +38,7 @@ const AUTHORIZE = /* GraphQL */ `
   mutation (
     $clientId: String!
     $capabilities: [String!]
+    $teamIds: [String!]
     $projectIds: [String!]
     $folderIds: [String!]
     $appIds: [String!]
@@ -48,17 +47,12 @@ const AUTHORIZE = /* GraphQL */ `
     authorizeMcpClient(
       clientId: $clientId
       capabilities: $capabilities
+      teamIds: $teamIds
       projectIds: $projectIds
       folderIds: $folderIds
       appIds: $appIds
       expectedTeamId: $expectedTeamId
     )
-  }
-`;
-
-const SWITCH_TEAM = /* GraphQL */ `
-  mutation ($teamId: String!) {
-    switchTeam(teamId: $teamId)
   }
 `;
 
@@ -131,7 +125,6 @@ export function ConsentForm({
   /** The origin deplo publishes, which the consent POST must come from. */
   publicOrigin: string | null;
 }) {
-  const router = useRouter();
   const mcpPreset = TOKEN_PRESETS.find((p) => p.id === "mcp");
   const [capabilities, setCapabilities] = useState<Capability[]>(
     mcpPreset?.capabilities ?? ["view"],
@@ -143,8 +136,10 @@ export function ConsentForm({
     appIds: [],
   });
   const [advanced, setAdvanced] = useState(false);
-  const [teamId, setTeamId] = useState(activeTeamId);
-  const teamName = tree.find((t) => t.id === teamId)?.name;
+  // The team this connection is being made FROM. Always granted (the server
+  // includes it whatever the picker says) and the default when nothing is
+  // ticked. Not a control any more — the picker is the only one.
+  const connectingTeam = tree.find((t) => t.id === activeTeamId);
 
   // Better Auth refuses a cookie-carrying POST whose Origin is not the address
   // deplo publishes — the CSRF defence the consent posts through. On an instance
@@ -156,11 +151,9 @@ export function ConsentForm({
     window.location.origin !== publicOrigin;
 
   const [pending, setPending] = useState(false);
-  const switchTeam = useGraphqlMutation(SWITCH_TEAM);
-
   const presetId = useMemo(() => presetIdFor(capabilities), [capabilities]);
   const preset = TOKEN_PRESETS.find((p) => p.id === presetId);
-  const busy = pending || switchTeam.pending;
+  const busy = pending;
 
   const scoped =
     selection.teamIds.length +
@@ -173,7 +166,7 @@ export function ConsentForm({
   // here, so the two screens do not name one thing twice.
   const accessLabel = scoped
     ? scopeLabel({ scoped: true, ...selection })
-    : { text: teamName ?? "This team", empty: false };
+    : { text: connectingTeam?.name ?? "This team", empty: false };
 
   /**
    * Consent FIRST, mint second, navigate last.
@@ -208,17 +201,16 @@ export function ConsentForm({
       toast.error(done.error || "deplo could not finish the connection");
       return;
     }
-    // `teamIds` is deliberately not sent: the server takes the team from the
-    // session and ignores anything a client claims about it.
     const minted = await gqlAction(AUTHORIZE, {
       clientId: client.clientId,
       capabilities,
+      teamIds: selection.teamIds,
       projectIds: selection.projectIds,
       folderIds: selection.folderIds,
       appIds: selection.appIds,
       // What this screen is showing. The server decides the team; this only
       // lets it refuse when the two have drifted apart.
-      expectedTeamId: teamId,
+      expectedTeamId: activeTeamId,
     });
     if (!minted.ok) {
       setPending(false);
@@ -265,47 +257,6 @@ export function ConsentForm({
           ) : null}
           <form className="grid gap-6" onSubmit={onApprove}>
             <div className="grid gap-2">
-              <FieldLabel
-                htmlFor="consent-team"
-                info="The app will act inside this team only. Switch teams to connect it somewhere else."
-              >
-                Team
-              </FieldLabel>
-              <Select
-                value={teamId}
-                onValueChange={(next) => {
-                  setTeamId(next);
-                  setSelection({
-                    teamIds: [],
-                    projectIds: [],
-                    folderIds: [],
-                    appIds: [],
-                  });
-                  // Back to the preset too: permissions are held PER TEAM, so a
-                  // hand-picked set carried across can name things the person
-                  // does not hold here, and the refusal would arrive on submit
-                  // instead of on the control that caused it.
-                  setCapabilities(mcpPreset?.capabilities ?? ["view"]);
-                  void switchTeam.run({ teamId: next }).then(() => {
-                    router.refresh();
-                  });
-                }}
-                disabled={busy}
-              >
-                <SelectTrigger id="consent-team" className="w-full">
-                  <SelectValue placeholder="Pick a team" />
-                </SelectTrigger>
-                <SelectContent>
-                  {tree.map((t) => (
-                    <SelectItem key={t.id} value={t.id}>
-                      {t.name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-
-            <div className="grid gap-2">
               <FieldLabel info="What the app may do, and what it may reach. It can never do more than you can.">
                 What it gets
               </FieldLabel>
@@ -350,7 +301,7 @@ export function ConsentForm({
               >
                 Cancel
               </Button>
-              <Button type="submit" disabled={busy || !teamId}>
+              <Button type="submit" disabled={busy}>
                 Authorize
               </Button>
             </div>
@@ -381,17 +332,15 @@ export function ConsentForm({
               <FieldLabel info="Tick nothing and it reaches the whole team above. Tick a project, folder or app to narrow it to that.">
                 Access
               </FieldLabel>
-              {/* No team checkbox: the team is the dropdown on the card, and a
-                  connection serves exactly one. Ticking a second one here would
-                  offer something the server ignores, and used to leave the agent
-                  working in whichever team happened to be oldest. */}
+              {/* ONE control for "where". A separate team dropdown next to this
+                  was the contradiction that let a connection be approved for one
+                  team and granted four: two controls both answering "which team",
+                  free to disagree. Tick whole teams, or narrow inside them. */}
               <ScopePicker
-                tree={tree.filter((t) => t.id === teamId)}
+                tree={tree}
                 selection={selection}
                 onChange={setSelection}
-                teamPickable={false}
-                info="What this app can reach inside the team. Tick nothing and it reaches all of it."
-                emptyNote="This team has nothing to narrow to yet, so the app reaches all of it."
+                info="Which teams this app may work in, and how much of each. Tick nothing and it gets the team you are connecting from."
               />
             </div>
 

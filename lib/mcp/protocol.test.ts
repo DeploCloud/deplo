@@ -39,6 +39,10 @@ function principal(
   instanceAdmin = false,
 ): McpPrincipal {
   return {
+    // Never called here: this file drives the SDK with a hand-built principal
+    // and no request behind it. The team argument's own behaviour is covered in
+    // lib/mcp/route.test.ts, against a real connection.
+    forTeam: () => Promise.reject(new Error("no team switching in this fixture")),
     gql: {
       viewer: null,
       teamId: "team_a",

@@ -93,12 +93,13 @@ builder.mutationFields((t) => ({
       "scope, and link it to the client. Also needs `manage_tokens`, and cannot " +
       "grant more than the approver holds. The OAuth handshake itself is then " +
       "finished by the browser posting to `/api/auth/oauth2/consent` — that " +
-      "endpoint refuses a server-side call, so it cannot be done here. There is " +
-      "no `teamIds` argument on purpose: a connection serves exactly one team " +
-      "and that team is the active one, never something the client names.",
+      "endpoint refuses a server-side call, so it cannot be done here. " +
+      "`teamIds` names the teams the connection may work in — the team it is " +
+      "created from is always included, and each one is gated in that team.",
     args: {
       clientId: t.arg.string({ required: true }),
       capabilities: t.arg.stringList({ required: false }),
+      teamIds: t.arg.stringList({ required: false }),
       projectIds: t.arg.stringList({ required: false }),
       folderIds: t.arg.stringList({ required: false }),
       appIds: t.arg.stringList({ required: false }),
@@ -116,6 +117,7 @@ builder.mutationFields((t) => ({
         capabilities: (a.capabilities ?? undefined) as
           | Parameters<typeof mintMcpConnection>[0]["capabilities"]
           | undefined,
+        teamIds: a.teamIds ?? undefined,
         projectIds: a.projectIds ?? undefined,
         folderIds: a.folderIds ?? undefined,
         appIds: a.appIds ?? undefined,

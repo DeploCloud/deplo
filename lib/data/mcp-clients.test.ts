@@ -103,6 +103,21 @@ async function consentRow(clientId: string, userId: string, ageMs = 0) {
   });
 }
 
+/** Make OWNER a full member of another team, with the same capabilities. */
+async function grantOwnerIn(teamId: string) {
+  await pg.query(
+    `insert into memberships (id, user_id, team_id, role, created_at)
+     values ('mem_owner_b2', $1, $2, 'owner', '2025-01-01T00:00:00.000Z')`,
+    [OWNER, teamId],
+  );
+  await pg.query(
+    `insert into membership_capabilities (membership_id, capability)
+     select 'mem_owner_b2', capability from membership_capabilities
+     where membership_id = $1`,
+    [`mem_${OWNER}`],
+  );
+}
+
 function as<T>(userId: string, fn: () => Promise<T>, teamId = TEAM_A) {
   return runWithIdentity({ userId, teamId }, fn);
 }
@@ -284,37 +299,70 @@ test("a team that drifted between the screen and the submit is refused", async (
   assert.equal((await pg.query(`select id from api_tokens`)).rows.length, 0);
 });
 
-test("a connection cannot be narrowed to a project in another team", async () => {
-  // The same ambiguity by the back door: a project belonging to another of the
-  // approver's teams would make the connection reach two teams again.
-  await pg.query(
-    `insert into memberships (id, user_id, team_id, role, created_at)
-     values ('mem_owner_b3', $1, $2, 'owner', '2025-01-01T00:00:00.000Z')`,
-    [OWNER, TEAM_B],
-  );
-  await pg.query(
-    `insert into membership_capabilities (membership_id, capability)
-     select 'mem_owner_b3', capability from membership_capabilities
-     where membership_id = $1`,
-    [`mem_${OWNER}`],
-  );
+test("another team may be granted, and then the connection really reaches it", async () => {
+  // The multi-team rule. Naming a project of TEAM_B grants TEAM_B — a scope
+  // reaches every team it touches, not only the ones ticked whole — so the same
+  // gate has to pass there, and here it does.
+  await grantOwnerIn(TEAM_B);
   await pg.query(
     `insert into projects (id, team_id, name, slug, created_at, updated_at)
      values ('prc_elsewhere', $1, 'Elsewhere', 'elsewhere',
              '2026-01-01T00:00:00.000Z', '2026-01-01T00:00:00.000Z')`,
     [TEAM_B],
   );
+  await as(OWNER, () =>
+    mintMcpConnection({
+      clientId: CLIENT,
+      capabilities: ["view"],
+      projectIds: ["prc_elsewhere"],
+    }),
+  );
+  const reach = (
+    await pg.query(
+      `select p.team_id from api_token_projects tp
+       join projects p on p.id = tp.project_id
+       join api_tokens t on t.id = tp.token_id
+       where t.oauth_client_id = $1`,
+      [CLIENT],
+    )
+  ).rows as { team_id: string }[];
+  assert.deepEqual(reach.map((r) => r.team_id), [TEAM_B]);
+});
+
+test("a team where you may not manage MCP access cannot be granted", async () => {
+  // The gate is asked in the team it applies to. Holding it here says nothing
+  // about there, and naming a team is letting an AI client into it.
+  await grantOwnerIn(TEAM_B);
+  await pg.query(
+    `delete from membership_capabilities
+     where membership_id = 'mem_owner_b2' and capability = 'manage_mcp'`,
+  );
   await assert.rejects(
     as(OWNER, () =>
       mintMcpConnection({
         clientId: CLIENT,
         capabilities: ["view"],
-        projectIds: ["prc_elsewhere"],
+        teamIds: [TEAM_A, TEAM_B],
       }),
     ),
-    /inside the team you are connecting/i,
+    /may manage MCP access/i,
   );
   assert.equal((await pg.query(`select id from api_tokens`)).rows.length, 0);
+});
+
+test("a team with MCP switched off cannot be granted either", async () => {
+  await grantOwnerIn(TEAM_B);
+  await pg.query(`update teams set mcp_enabled = false where id = $1`, [TEAM_B]);
+  await assert.rejects(
+    as(OWNER, () =>
+      mintMcpConnection({
+        clientId: CLIENT,
+        capabilities: ["view"],
+        teamIds: [TEAM_A, TEAM_B],
+      }),
+    ),
+    /turned off MCP access/i,
+  );
 });
 
 test("an attacker-length client name does not break the mint", async () => {

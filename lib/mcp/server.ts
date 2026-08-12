@@ -1,5 +1,6 @@
 import "server-only";
 
+import { z } from "zod";
 import { McpServer } from "@modelcontextprotocol/server";
 import { DEPLO_VERSION } from "../version";
 import type { Capability } from "../types";
@@ -32,7 +33,35 @@ export interface McpPrincipal {
   capabilities: Set<Capability>;
   /** Whether this TOKEN carries instance-admin (never inherited from the person). */
   instanceAdmin: boolean;
+  /**
+   * Resolve the context for ANOTHER team this connection was granted.
+   *
+   * The team is an argument of the call, never a remembered setting: the
+   * protocol is stateless, so there is no session to hold an "active team"
+   * between requests and nothing for a `switch_team` tool to switch. Declaring
+   * it per call is the shape that fits — and it means the connection has to
+   * have been granted that team at consent, which is the only place authority
+   * is handed out.
+   *
+   * MUST THROW for a team that was not granted. Falling back to another team is
+   * how an agent once created an app somewhere nobody chose, and with several
+   * teams in reach that mistake stops being visible at all.
+   */
+  forTeam: (team: string) => Promise<GraphQLContext>;
 }
+
+/**
+ * The team a call works in, when the connection was granted more than one.
+ *
+ * Optional on purpose: a connection granted one team — the common case — never
+ * needs it, and a model that omits it gets the team the connection belongs to.
+ */
+const TEAM_ARG = z
+  .string()
+  .optional()
+  .describe(
+    "Which team to work in. Only teams this connection was granted; see list_teams. Omit for the connection's own team.",
+  );
 
 function visible(tool: McpToolDef, principal: McpPrincipal): boolean {
   if (tool.requires === null) return true;
@@ -109,7 +138,10 @@ export function buildMcpServer(principal: McpPrincipal): McpServer {
       {
         title: tool.title,
         description: tool.description,
-        inputSchema: tool.input,
+        // Every tool takes the team as an optional argument. Added centrally so
+        // the 76 rows stay a table of what deplo can do, with nothing about
+        // tenancy repeated in each of them.
+        inputSchema: tool.input.extend({ team: TEAM_ARG }),
         annotations: {
           title: tool.title,
           readOnlyHint: tool.readOnly ?? false,
@@ -126,16 +158,20 @@ export function buildMcpServer(principal: McpPrincipal): McpServer {
         // first. `destructiveHint` above is how the caller's own client knows
         // to ask - which is the only place a prompt can actually be rendered.
         try {
-          if (tool.run) return text(await tool.run(args));
+          // `team` is deplo's, not the tool's: taken out before the arguments
+          // become GraphQL variables, and resolved into a whole principal
+          // rather than passed down as a value some resolver might trust.
+          const { team, ...rest } = args as Record<string, unknown> & {
+            team?: string;
+          };
+          const ctx = team ? await principal.forTeam(team) : principal.gql;
+
+          if (tool.run) return text(await tool.run(rest));
 
           const variables = tool.variables
-            ? tool.variables(args)
-            : (args as Record<string, unknown>);
-          const { data, error } = await runGraphql(
-            tool.query,
-            variables,
-            principal.gql,
-          );
+            ? tool.variables(rest)
+            : (rest as Record<string, unknown>);
+          const { data, error } = await runGraphql(tool.query, variables, ctx);
           // Surfaced verbatim: deplo's messages are written to be read by a
           // person ("This token is limited to specific projects and can't
           // access …"), and that is exactly the sentence the model needs in

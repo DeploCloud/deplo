@@ -98,7 +98,12 @@ beforeEach(async () => {
 /** One JSON-RPC call at the route, exactly as a client would make it. */
 async function mcp(
   bearer: string | null,
-  opts: { team?: string; tool?: string; cookie?: string } = {},
+  opts: {
+    team?: string;
+    tool?: string;
+    cookie?: string;
+    toolArgs?: Record<string, unknown>;
+  } = {},
 ): Promise<{ status: number; headers: Headers; body: Record<string, unknown> }> {
   const tool = opts.tool ?? "whoami";
   const headers: Record<string, string> = {
@@ -122,7 +127,7 @@ async function mcp(
         method: "tools/call",
         params: {
           name: tool,
-          arguments: {},
+          arguments: opts.toolArgs ?? {},
           _meta: {
             [PROTOCOL_VERSION_META_KEY]: "2026-07-28",
             [CLIENT_CAPABILITIES_META_KEY]: {},
@@ -168,7 +173,10 @@ function mintToken(capabilities: Capability[]) {
  * A complete OAuth connection: the real flow issues the credentials, then the
  * `api_tokens` row is minted and linked exactly as `mintMcpConnection` does.
  */
-async function connect(capabilities: Capability[] = ["view"]) {
+async function connect(
+  capabilities: Capability[] = ["view"],
+  teamIds: string[] = [TEAM_A],
+) {
   const flow = await fullFlow({
     email: EMAIL,
     password: PASSWORD,
@@ -177,11 +185,7 @@ async function connect(capabilities: Capability[] = ["view"]) {
   const { token } = await runWithIdentity(
     { userId: USER_1, teamId: TEAM_A },
     () =>
-      createToken({
-        name: "Test AI client",
-        capabilities,
-        teamIds: [TEAM_A],
-      }),
+      createToken({ name: "Test AI client", capabilities, teamIds }),
   );
   await pg.query(`update api_tokens set oauth_client_id = $1 where id = $2`, [
     flow.clientId,
@@ -578,7 +582,7 @@ test("turning on the team two-factor policy stops an issued connection", async (
 /* 6. Cross-team                                                       */
 /* ------------------------------------------------------------------ */
 
-test("X-Deplo-Team cannot move an OAuth connection to another team", async () => {
+test("X-Deplo-Team cannot move an OAuth connection to a team it was not granted", async () => {
   // The case that actually breaks: the approver owns BOTH teams, so nothing but
   // the connection's own scope stands between the client and team B.
   const conn = await connect(["view"]);
@@ -609,6 +613,29 @@ test("a connection whose scope names two teams still resolves in the one it was 
   // On the resolved team, not the whole blob: `whoami` also returns `myTeams`,
   // which legitimately lists every team the scope names.
   assert.equal(toolJson(res.body).viewerTeam?.id, TEAM_A);
+});
+
+test("a tool works in another GRANTED team when the call names it", async () => {
+  // The team is an argument of the call, never a remembered setting: the
+  // protocol is stateless, so there is nothing to switch and nothing to forget.
+  const conn = await connect(["view"], [TEAM_A, TEAM_B]);
+  const here = await mcp(conn.accessToken);
+  assert.equal(toolJson(here.body).viewerTeam?.id, TEAM_A);
+
+  const there = await mcp(conn.accessToken, { toolArgs: { team: "beta" } });
+  assert.equal(there.status, 200, JSON.stringify(there.body));
+  assert.equal(toolJson(there.body).viewerTeam?.id, TEAM_B);
+});
+
+test("a team the connection was NOT granted is refused, never swapped", async () => {
+  // The silent swap is how an app was created in a team nobody chose. With
+  // several teams in reach that mistake would leave no trace at all, so an
+  // ungranted team has to come back as an error and not as another team's data.
+  const conn = await connect(["view"], [TEAM_A]);
+  const res = await mcp(conn.accessToken, { toolArgs: { team: "beta" } });
+  const body = JSON.stringify(res.body);
+  assert.match(body, /no access to the team/i, body);
+  assert.ok(!body.includes(TEAM_B), "it answered about the other team anyway");
 });
 
 test("a deplo_ token still honours X-Deplo-Team", async () => {

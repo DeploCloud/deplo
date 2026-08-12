@@ -1,9 +1,14 @@
 import { createMcpHandler } from "@modelcontextprotocol/server";
 import { authenticateToken } from "@/lib/data/tokens";
-import { runWithIdentity } from "@/lib/auth/request-context";
+import {
+  runWithIdentity,
+  type RequestIdentity,
+} from "@/lib/auth/request-context";
 import { getCurrentUser } from "@/lib/auth";
 import { getActiveTeamId, reachableCapabilities } from "@/lib/membership";
 import { getMcpSettings } from "@/lib/data/mcp-settings";
+import { listMyTeams } from "@/lib/data/teams";
+import type { GraphQLContext } from "@/lib/graphql/context";
 import { rateLimit } from "@/lib/security";
 import {
   OAUTH_CORS_HEADERS,
@@ -126,6 +131,52 @@ async function refuse(request: Request, message: string): Promise<Response> {
   return unauthorized(message);
 }
 
+/**
+ * The context for a team a tool named explicitly, or a refusal.
+ *
+ * Re-authenticating the same bearer with a different hint is the whole
+ * mechanism: `authenticateToken` already decides which teams a credential may
+ * act in, so asking it again for another team reuses every gate — the scope, the
+ * live membership check, the two-factor policy, the per-team capability clamp —
+ * instead of adding a second way to be in a team.
+ *
+ * **It refuses rather than falling back.** The shared resolver's own behaviour
+ * for an unreachable hint is to ignore it, which is right for the
+ * `X-Deplo-Team` header a script sends (documented, and a client that guesses
+ * should not be handed another team by surprise). It is wrong for a team a tool
+ * NAMED: an agent asking for Acme and silently getting Idra Arts is how an app
+ * was created in the wrong team, and with several teams in reach that mistake
+ * leaves no trace at all.
+ */
+async function contextForTeam(
+  raw: string,
+  base: RequestIdentity,
+  team: string,
+): Promise<GraphQLContext> {
+  // Resolved against what this connection may reach BEFORE re-authenticating,
+  // so the hint below is guaranteed to land. Asking `authenticateToken` first
+  // and then checking where it ended up would mean guessing whether a fallback
+  // happened, and guessing is how the wrong team wins.
+  const teams = await runWithIdentity(base, () => listMyTeams());
+  const match = teams.find((t) => t.id === team || t.slug === team);
+  const refusal = new Error(
+    `This connection has no access to the team "${team}". Run list_teams to see the teams it was granted.`,
+  );
+  if (!match) throw refusal;
+
+  const identity = await authenticateToken(raw, match.id);
+  if (!identity) throw refusal;
+
+  return runWithIdentity(identity, async () => {
+    const [viewer, teamId, capabilities] = await Promise.all([
+      getCurrentUser(),
+      getActiveTeamId(),
+      reachableCapabilities(),
+    ]);
+    return { viewer, teamId, capabilities, via: "token" as const, identity };
+  });
+}
+
 export async function POST(request: Request) {
   const header = request.headers.get("authorization") ?? "";
   // Case-insensitive: matching `Bearer ` exactly was a real bug on the deploy
@@ -172,6 +223,7 @@ export async function POST(request: Request) {
         // Instance-admin is opt-in per token and never inherited from an admin
         // creator, so this is the token's own flag, not the person's.
         instanceAdmin: identity.token?.instanceAdmin === true,
+        forTeam: (team) => contextForTeam(raw, identity, team),
       };
       return { blocked: false as const, principal };
     });

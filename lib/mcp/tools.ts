@@ -1403,7 +1403,9 @@ const ORGANIZATION: McpToolDef[] = [
   tool({
     name: "move_app_to_folder",
     title: "Move an app into a folder",
-    description: "Move an app into a folder, or to the top level with no folderId.",
+    description:
+      "Move an app into a folder, or to the top level with no folderId. Within " +
+      "one team — to move it to a DIFFERENT team use transfer_app_to_team.",
     group: "Organization",
     requires: "move_apps",
     idempotent: true,
@@ -1411,6 +1413,27 @@ const ORGANIZATION: McpToolDef[] = [
     query: /* GraphQL */ `
       mutation McpMoveAppToFolder($appId: ID!, $folderId: ID) {
         moveAppToFolder(appId: $appId, folderId: $folderId)
+      }
+    `,
+  }),
+  tool({
+    name: "transfer_app_to_team",
+    title: "Move an app to another team",
+    description:
+      "Move an app, with everything it owns, to another team this connection " +
+      "was granted. Needs to manage apps AND environment variables on both " +
+      "sides — the app carries its encrypted variables across, so anyone moving " +
+      "it has to be allowed to read them where it lands. Use `team` to say which " +
+      "team the app is in now, and teamId for where it goes.",
+    group: "Organization",
+    requires: "move_apps",
+    // Crosses a tenancy boundary and takes the app's variables with it. Not
+    // reversible by re-running the tool: the destination has to send it back.
+    destructive: true,
+    input: z.object({ appId, teamId: z.string() }),
+    query: /* GraphQL */ `
+      mutation McpTransferAppToTeam($appId: String!, $teamId: String!) {
+        transferAppToTeam(appId: $appId, teamId: $teamId)
       }
     `,
   }),
@@ -1458,7 +1481,10 @@ const TEAM: McpToolDef[] = [
     name: "list_teams",
     title: "List reachable teams",
     description:
-      "Teams this token can reach. This connection acts in exactly one of them — change the X-Deplo-Team header to move.",
+      "Teams this connection may work in. Pass `team` on any tool to work in one " +
+      "of them; without it, tools use the first. A team that is not on this list " +
+      "was not granted and is refused — it is granted when the connection is " +
+      "approved, not from a setting anywhere.",
     group: "Team",
     requires: null,
     readOnly: true,
