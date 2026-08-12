@@ -22,6 +22,7 @@ const hello = (caps: string[]): HelloResponse => ({
   dockerVersion: "27",
   capabilities: caps,
   traefikRunning: true,
+  hostArch: "amd64",
 });
 
 const req = (over: Partial<DockerCleanupRequest> = {}): DockerCleanupRequest => ({

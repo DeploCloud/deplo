@@ -182,6 +182,8 @@ export function assembleApp(
     environmentId: row.environmentId ?? null,
     serverId: row.serverId,
     migrateFromServerId: row.migrateFromServerId ?? null,
+    buildServerId: row.buildServerId ?? null,
+    buildFallbackLocal: row.buildFallbackLocal ?? true,
     logo: row.logo,
     // Derived, and read back defensively: an id this binary's catalog doesn't
     // know (a row written by a newer Deplo) reads as "no framework" rather than
@@ -409,6 +411,8 @@ export function appToRow(p: App): AppInsert {
     environmentId: p.environmentId ?? null,
     serverId: p.serverId,
     migrateFromServerId: p.migrateFromServerId ?? null,
+    buildServerId: p.buildServerId ?? null,
+    buildFallbackLocal: p.buildFallbackLocal ?? true,
     logo: p.logo ?? null,
     framework: p.framework ?? null,
     frameworkOverride: p.frameworkOverride ?? null,
@@ -659,6 +663,7 @@ export function assembleDeployment(row: DeploymentRow): Deployment {
     previewId: row.previewId,
     prNumber: row.prNumber,
     serverId: row.serverId,
+    buildServerId: row.buildServerId ?? null,
     commitSha: row.commitSha,
     commitMessage: row.commitMessage,
     commitAuthor: row.commitAuthor,

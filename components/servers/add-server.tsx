@@ -3,7 +3,7 @@
 import * as React from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
-import { Plus, ServerCog } from "lucide-react";
+import { Archive, Hammer, Plus, ServerCog } from "lucide-react";
 import {
   Dialog,
   DialogContent,
@@ -17,10 +17,10 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { FieldLabel } from "@/components/ui/info-tip";
-import { Checkbox } from "@/components/ui/checkbox";
 import { CommandLine } from "@/components/shared/code-block";
 import { gqlAction } from "@/lib/graphql-client";
 import {
+  AccessOption,
   ServerTeamAccess,
   type ServerAccess,
   type TeamOption,
@@ -51,9 +51,12 @@ export function AddServer({
     teamIds: [],
   });
   const [command, setCommand] = React.useState<string | null>(null);
-  // A box bought purely to hold backups. The install command then skips Docker
-  // and Traefik entirely, and the server never appears as a deploy target.
-  const [storageOnly, setStorageOnly] = React.useState(false);
+  // What the box is FOR. "everything" is the default and what almost every server
+  // is; the other two change what the install command does on the host, which is
+  // why this is decided here and not editable freely afterwards.
+  const [role, setRole] = React.useState<"everything" | "build" | "storage">(
+    "everything",
+  );
 
   // Opened via the global "New ▸ Add server" menu (?new=1) → drop the param so a
   // refresh/Back doesn't reopen it.
@@ -66,7 +69,7 @@ export function AddServer({
     setName("");
     setHost("");
     setAccess({ allTeams: true, teamIds: [] });
-    setStorageOnly(false);
+    setRole("everything");
     setCommand(null);
   }
 
@@ -95,7 +98,8 @@ export function AddServer({
             host,
             allTeams: access.allTeams,
             teamIds: access.allTeams ? [] : access.teamIds,
-            storageOnly,
+            storageOnly: role === "storage",
+            buildOnly: role === "build",
           },
         },
       );
@@ -132,9 +136,11 @@ export function AddServer({
           </DialogTitle>
           <DialogDescription>
             {command
-              ? storageOnly
+              ? role === "storage"
                 ? "Run this once on the server. It installs the Deplo agent only — no Docker, no proxy — and the agent then calls home to finish provisioning."
-                : "Run this once on the server. It installs Docker (if needed) and the Deplo agent, which then calls home to finish provisioning."
+                : role === "build"
+                  ? "Run this once on the server. It installs Docker (if needed) and the Deplo agent, but no proxy, and the agent then calls home to finish provisioning."
+                  : "Run this once on the server. It installs Docker (if needed) and the Deplo agent, which then calls home to finish provisioning."
               : "Register the host, then run the install command it gives you on the box. Deplo never SSHes in — the agent connects out to this control plane."}
           </DialogDescription>
         </DialogHeader>
@@ -182,26 +188,49 @@ export function AddServer({
                 onChange={setAccess}
                 disabled={pending}
               />
-              {/* Advanced, and deliberately a checkbox rather than a mode: the
-                  difference is what the installer does on the box, and it cannot
-                  be changed afterwards without re-running it. */}
-              <label className="flex cursor-pointer items-start gap-3 rounded-lg border border-border p-3">
-                <Checkbox
-                  checked={storageOnly}
-                  onCheckedChange={(v) => setStorageOnly(v === true)}
-                  disabled={pending}
-                  className="mt-0.5"
-                />
-                <span>
-                  <span className="block text-sm font-medium">
-                    Only store backups on this server
-                  </span>
-                  <span className="mt-1 block text-xs text-muted-foreground">
-                    Skips Docker and the proxy. Nothing is deployed here, and it
-                    stays out of the deploy target list.
-                  </span>
-                </span>
-              </label>
+              {/* What the box is for. A choice rather than two checkboxes: the
+                  three are mutually exclusive, and each one changes what the
+                  installer does on the host. Only the build axis can be revised
+                  afterwards - the backups option skips installing Docker, which
+                  no later setting can undo. */}
+              <div className="space-y-2">
+                <FieldLabel info="Changes what the install command sets up on the host. Most servers should do everything.">
+                  What this server is for
+                </FieldLabel>
+                <div className="grid gap-2 sm:grid-cols-3">
+                  <AccessOption
+                    icon={ServerCog}
+                    title="Everything"
+                    description="Runs apps and builds them"
+                    selected={role === "everything"}
+                    disabled={pending}
+                    onSelect={() => setRole("everything")}
+                  />
+                  <AccessOption
+                    icon={Hammer}
+                    title="Only build"
+                    description="Builds for other servers"
+                    selected={role === "build"}
+                    disabled={pending}
+                    onSelect={() => setRole("build")}
+                  />
+                  <AccessOption
+                    icon={Archive}
+                    title="Only backups"
+                    description="Holds backup files"
+                    selected={role === "storage"}
+                    disabled={pending}
+                    onSelect={() => setRole("storage")}
+                  />
+                </div>
+                {role !== "everything" && (
+                  <p className="text-xs text-muted-foreground">
+                    {role === "build"
+                      ? "Skips the proxy. Nothing is deployed here, and it stays out of the deploy target list - apps on your other servers can build on it instead."
+                      : "Skips Docker and the proxy. Nothing is deployed here, and it stays out of the deploy target list."}
+                  </p>
+                )}
+              </div>
             </div>
           )}
 

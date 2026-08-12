@@ -51,6 +51,7 @@ export default async function DeploymentsPage() {
             serviceName: d.serviceName,
             serverId: d.serverId,
             serverName: d.serverName,
+            buildServerName: d.buildServerName,
             commitMessage: d.commitMessage,
             commitSha: d.commitSha,
             commitUrl: d.commitUrl,

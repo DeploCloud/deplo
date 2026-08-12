@@ -244,6 +244,8 @@ export async function runAgentDeploy(opts: {
   forceRecreate?: boolean;
   /** The app's extra `docker compose up` flags, already split into argv tokens. */
   composeUpArgs?: string[];
+  /** This host is a BUILD SERVER: build the image and stop. */
+  buildOnly?: boolean;
   sink: AgentDeploySink;
 }): Promise<AgentDeployResult> {
   // P5: fail fast if the agent doesn't answer, rather than hanging a deploy.
@@ -251,6 +253,16 @@ export async function runAgentDeploy(opts: {
   if (!hello.dockerAvailable) {
     throw new AgentUnavailableError(
       "the agent reports Docker is not available on the target server",
+    );
+  }
+  // A HARD gate, unlike the three soft ones below, and the difference is what
+  // ignoring the field would do: an older agent reads `build_only` as absent and
+  // DEPLOYS the app here - quietly running production on the build server. There is
+  // no version of that worth degrading into, so refuse before anything is built.
+  if (opts.buildOnly && !hello.capabilities.includes("deploy.build-only")) {
+    throw new AgentUnavailableError(
+      "this build server's agent is too old to build without deploying - update it " +
+        "from Settings → Servers, or build this app on its own server",
     );
   }
   // Both freshness switches are additive wire fields: an agent that predates them
@@ -460,6 +472,9 @@ export async function buildDeployRequest(opts: {
   /** The app's extra `docker compose up` flags, already split into argv tokens
    *  (lib/deploy/compose-args.ts). Empty for every app that never set any. */
   composeUpArgs?: string[];
+  /** Build the image and stop - this host is a BUILD SERVER and runs nothing of
+   *  the app. The caller then streams the image to the host that does. */
+  buildOnly?: boolean;
 }): Promise<DeployRequest> {
   const base: DeployRequest = {
     deployId: opts.deployId,
@@ -487,6 +502,11 @@ export async function buildDeployRequest(opts: {
     // Appended to the bring-up the AGENT assembles — the project name, stack file
     // and env-file are never ours to send. Empty for almost every app.
     composeUpArgs: opts.composeUpArgs ?? [],
+    // Stop after the build: nothing of this app is written to the stack dir and
+    // nothing is brought up here. Only ever set on the git/upload arms below - the
+    // agent rejects it for compose and for a plan that builds nothing, which is
+    // the same boundary the control plane enforces before it gets here.
+    buildOnly: opts.buildOnly ?? false,
   };
 
   if (opts.plan.kind === "compose") {

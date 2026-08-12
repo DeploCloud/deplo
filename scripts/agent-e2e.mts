@@ -89,6 +89,7 @@ networks:
       noBuildCache: false,
       forceRecreate: false,
     composeUpArgs: [],
+    buildOnly: false,
     })) {
       if (ev.log) console.log(`  [${ev.log.level}] ${ev.log.text}`);
       if (ev.phase) console.log(`  -- phase ${ev.phase.phase}`);

@@ -64,6 +64,9 @@ export async function listDeployments(filter?: {
     serverId: string | null;
     /** Display name of {@link serverId}, or null when it can't be resolved. */
     serverName: string | null;
+    /** Display name of the server this deploy BUILT on, when that was not
+     *  {@link serverId}. Null for the ordinary "built where it runs". */
+    buildServerName: string | null;
     /** This deployment can be rolled back to - see {@link rollbackTargetIds}.
      *  Decided HERE, never in the UI: whether an image is still on the host is a
      *  server fact, and a client re-deriving it would drift from the gate. */
@@ -137,6 +140,7 @@ export async function listDeployments(filter?: {
     ...new Set(
       [
         ...rows.map((r) => r.serverId),
+        ...rows.map((r) => r.buildServerId),
         ...teamApps.map((s) => s.serverId),
       ].filter((id): id is string => !!id),
     ),
@@ -184,6 +188,10 @@ export async function listDeployments(filter?: {
         appSlug: p?.slug ?? "",
         serverId,
         serverName: serverId ? (serverNameById.get(serverId) ?? null) : null,
+        buildServerName:
+          dep.buildServerId && dep.buildServerId !== serverId
+            ? (serverNameById.get(dep.buildServerId) ?? null)
+            : null,
         commitUrl: repoCommitUrl(
           { provider: p?.repoProvider, repo: p?.repoRepo, url: p?.repoUrl },
           dep.commitSha,

@@ -62,6 +62,7 @@ Register a remote server. Provisioned by a call-home bootstrap (no SSH-in): you 
 """
 input AddServerInput {
   allTeams: Boolean
+  buildOnly: Boolean
   host: String!
   name: String!
   storageOnly: Boolean
@@ -129,6 +130,16 @@ type ApiToken {
 """A deployable application owned by a team."""
 type App {
   autoDeploy: Boolean
+
+  """
+  Build on this app's own server when the build server cannot be reached, saying so in the deploy log. True by default. False fails the deploy instead, for whoever chose a small deploy server on purpose.
+  """
+  buildFallbackLocal: Boolean
+
+  """
+  The server that BUILDS this app's image, when that is not `serverId`. Null is Automatic: a build-only server if the fleet has one this team can reach and its architecture matches, otherwise build where the app runs. Setting it to `serverId` means 'always build on this app's own server'. Ignored by a compose stack and a docker-image source, neither of which Deplo builds.
+  """
+  buildServerId: ID
   compose: String
 
   """
@@ -594,6 +605,21 @@ input BuildConfigInput {
   settings: JSON
   skipUnchangedDeployments: Boolean
   startCommand: String
+}
+
+"""One entry in the 'Build on' picker: a host this team may compile on."""
+type BuildServerChoice {
+  """
+  True for a host dedicated to building (it runs no apps). False for an ordinary server that would build for this app in addition to hosting its own.
+  """
+  buildOnly: Boolean
+
+  """
+  Its CPU architecture ("amd64" | "arm64"), or "" when the agent is too old to report one. An image only runs on a host of the same architecture, so a choice whose arch differs from the app's server must be disabled rather than offered.
+  """
+  hostArch: String
+  id: ID
+  name: String
 }
 
 """
@@ -2476,6 +2502,11 @@ type Mutation {
   setAppAutoDeploy(id: String!, value: Boolean!): App
 
   """
+  Choose which server BUILDS this app. Null buildServerId is Automatic (a build-only server if the fleet has one this team can reach and its architecture matches, otherwise build where the app runs); passing the app's own server id means 'always build here'. buildFallbackLocal decides what happens when the build server is unreachable: build on the app's own server (the default) or fail the deploy. Changing either never starts a deploy.
+  """
+  setAppBuildServer(buildFallbackLocal: Boolean, buildServerId: String, id: String!): App
+
+  """
   Set (or clear, with null) the extra flags appended to this app's `docker compose up`. Rejects anything that isn't a plain flag, and any flag that would choose the project, stack file or env-file.
   """
   setAppComposeUpArgs(id: String!, value: String): App
@@ -2585,6 +2616,11 @@ type Mutation {
   Set how many deployments this server runs at once (the per-server slot count the deploy queue enforces). 1 = strict serialization. Whole number in [1, 50].
   """
   setServerDeployConcurrency(concurrency: Int!, id: String!): Server
+
+  """
+  Change what a server is for: "everything" or "build". Turning a server into a build server is refused while it still hosts apps or databases. "storage" cannot be set here - that installer skips Docker, so it is chosen when the server is registered.
+  """
+  setServerRole(id: String!, role: String!): Server
 
   """
   Set a server's team access. allTeams: true makes it available to every team; false restricts it to teamIds. Blocked (clear error) when a team that still has apps or databases on the server would lose access.
@@ -2930,6 +2966,11 @@ type Query {
   Basic-auth users of an app, alphabetical by username (requires manage_domains).
   """
   basicAuthUsers(appId: String!): [BasicAuthUser!]
+
+  """
+  The hosts this team can compile on, for an app's 'Build on' setting. Wider than the deploy-target list on purpose: a build-only server is here BECAUSE it cannot deploy, and an ordinary server is here too (one big machine can build for several small ones without giving up its own apps). Only storage-only hosts are excluded - no Docker, no build. `hostArch` is included so the caller can disable the servers whose architecture cannot produce a runnable image for the target.
+  """
+  buildServerChoices: [BuildServerChoice!]
 
   """Attachable instances + default target for an app's console."""
   consoleInfo(appId: String!): ConsoleInfo
@@ -3461,7 +3502,7 @@ type Server {
   createdAt: String
 
   """
-  How many deployments this server runs at once (default 1 = strict per-server serialization). Deploys on other servers run in parallel; a same-app deploy never overlaps regardless. Editable via setServerDeployConcurrency (instance-admin).
+  How many deployments this server runs at once (default 1 = strict per-server serialization). Deploys on other servers run in parallel; a same-app deploy never overlaps regardless. Editable via setServerDeployConcurrency (instance-admin). With a build server, the lane belongs to the BUILDER - that is where a deploy's cost is.
   """
   deployConcurrency: Int
   diskGb: Int
@@ -3473,6 +3514,11 @@ type Server {
   """
   expectedAgentVersion: String
   host: String
+
+  """
+  This host's CPU architecture ("amd64" | "arm64"), observed from the agent. Empty when the agent is too old to report it. A build server can only build for a host of the SAME architecture.
+  """
+  hostArch: String
   id: ID
   ip: String
 
@@ -3489,6 +3535,11 @@ type Server {
 
   """True once the server's agent has called home and been trusted."""
   provisioned: Boolean
+
+  """
+  What this server is for: "everything" (the default), "build" (Docker but no proxy; it compiles for other hosts and runs nothing) or "storage" (no Docker; it only holds backups). Only the build axis is changeable after installation.
+  """
+  role: String
   status: ServerStatus
 
   """

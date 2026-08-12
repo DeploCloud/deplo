@@ -6,6 +6,7 @@ import {
   listServersForTeam,
   assertServerAccessibleTx,
   getServerById,
+  canHostWorkloads,
 } from "./servers";
 import { getDb } from "../db/client";
 import { narrowedScope } from "../auth/request-context";
@@ -174,7 +175,11 @@ function assertPasswordSafe(password: string): void {
  * paths can't drift on what "a usable server" means.
  */
 async function resolveTeamServer(teamId: string, serverId?: string) {
-  const servers = await listServersForTeam(teamId);
+  // A specialised host runs no workload: storage-only has no Docker at all, and
+  // build-only compiles for other machines and has no proxy. Filtered HERE rather
+  // than in the picker alone, because the picker is UI and this is the boundary -
+  // an id can arrive from a bearer token too.
+  const servers = (await listServersForTeam(teamId)).filter(canHostWorkloads);
   if (servers.length === 0) throw new Error("No server available");
   let server;
   if (serverId) {

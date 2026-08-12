@@ -4,6 +4,7 @@ import {
   listServers,
   getServer,
   getPrimaryServer,
+  listBuildServerChoices,
   getServerTeams,
   addServer,
   reissueBootstrap,
@@ -11,6 +12,9 @@ import {
   updateServerAgent,
   setServerTeams,
   setServerDeployConcurrency,
+  setServerRole,
+  serverRole,
+  type ServerRole,
   type ServerRemoval,
 } from "@/lib/data/servers";
 import { checkServerHealth, checkAllServerHealth } from "@/lib/data/server-health";
@@ -103,7 +107,16 @@ export const ServerRef = builder.objectRef<Server>("Server").implement({
     }),
     deployConcurrency: t.exposeInt("deployConcurrency", {
       description:
-        "How many deployments this server runs at once (default 1 = strict per-server serialization). Deploys on other servers run in parallel; a same-app deploy never overlaps regardless. Editable via setServerDeployConcurrency (instance-admin).",
+        "How many deployments this server runs at once (default 1 = strict per-server serialization). Deploys on other servers run in parallel; a same-app deploy never overlaps regardless. Editable via setServerDeployConcurrency (instance-admin). With a build server, the lane belongs to the BUILDER - that is where a deploy's cost is.",
+    }),
+    role: t.string({
+      description:
+        'What this server is for: "everything" (the default), "build" (Docker but no proxy; it compiles for other hosts and runs nothing) or "storage" (no Docker; it only holds backups). Only the build axis is changeable after installation.',
+      resolve: (s) => serverRole(s),
+    }),
+    hostArch: t.exposeString("hostArch", {
+      description:
+        'This host\'s CPU architecture ("amd64" | "arm64"), observed from the agent. Empty when the agent is too old to report it. A build server can only build for a host of the SAME architecture.',
     }),
     teams: t.field({
       type: [TeamRef],
@@ -394,8 +407,33 @@ const AddServerInputType = builder.inputType("AddServerInput", {
     // A server that only holds backups: the install command skips Docker and
     // Traefik, and the readiness/health checks stop expecting them.
     storageOnly: t.boolean({ required: false }),
+    // A server that only builds: the install command skips Traefik (Docker and the
+    // address pools are installed as usual - it runs the whole build pipeline), and
+    // the host stays out of every deploy-target picker.
+    buildOnly: t.boolean({ required: false }),
   }),
 });
+
+const BuildServerChoiceRef = builder
+  .objectRef<{ id: string; name: string; hostArch: string; buildOnly: boolean }>(
+    "BuildServerChoice",
+  )
+  .implement({
+    description:
+      "One entry in the 'Build on' picker: a host this team may compile on.",
+    fields: (t) => ({
+      id: t.exposeID("id"),
+      name: t.exposeString("name"),
+      hostArch: t.exposeString("hostArch", {
+        description:
+          'Its CPU architecture ("amd64" | "arm64"), or "" when the agent is too old to report one. An image only runs on a host of the same architecture, so a choice whose arch differs from the app\'s server must be disabled rather than offered.',
+      }),
+      buildOnly: t.exposeBoolean("buildOnly", {
+        description:
+          "True for a host dedicated to building (it runs no apps). False for an ordinary server that would build for this app in addition to hosting its own.",
+      }),
+    }),
+  });
 
 const SetServerTeamsInputType = builder.inputType("SetServerTeamsInput", {
   description:
@@ -501,6 +539,13 @@ builder.queryFields((t) => ({
       "The first server available, or null when none has been added/provisioned yet.",
     resolve: () => getPrimaryServer(),
   }),
+  buildServerChoices: t.field({
+    type: [BuildServerChoiceRef],
+    authScopes: { loggedIn: true },
+    description:
+      "The hosts this team can compile on, for an app's 'Build on' setting. Wider than the deploy-target list on purpose: a build-only server is here BECAUSE it cannot deploy, and an ordinary server is here too (one big machine can build for several small ones without giving up its own apps). Only storage-only hosts are excluded - no Docker, no build. `hostArch` is included so the caller can disable the servers whose architecture cannot produce a runnable image for the target.",
+    resolve: () => listBuildServerChoices(),
+  }),
 }));
 
 /* ------------------------------------------------------------------ */
@@ -519,7 +564,19 @@ builder.mutationFields((t) => ({
         allTeams: input.allTeams ?? undefined,
         teamIds: input.teamIds ?? undefined,
         storageOnly: input.storageOnly ?? undefined,
+        buildOnly: input.buildOnly ?? undefined,
       }),
+  }),
+  setServerRole: t.field({
+    type: ServerRef,
+    authScopes: { instanceAdmin: true },
+    description:
+      'Change what a server is for: "everything" or "build". Turning a server into a build server is refused while it still hosts apps or databases. "storage" cannot be set here - that installer skips Docker, so it is chosen when the server is registered.',
+    args: {
+      id: t.arg.string({ required: true }),
+      role: t.arg.string({ required: true }),
+    },
+    resolve: (_r, { id, role }) => setServerRole(id, role as ServerRole),
   }),
   setServerTeams: t.field({
     type: ServerRef,

@@ -528,6 +528,23 @@ export interface Server {
    */
   storageOnly: boolean;
   /**
+   * A server bought purely to COMPILE: Docker is installed, Traefik is not, and no
+   * app of any team runs here. It builds images for the hosts that do, which receive
+   * them over the image relay.
+   *
+   * The twin of {@link storageOnly} and exclusive with it. It changes two things:
+   * the server drops out of every deploy-target picker (apps and databases alike),
+   * and the Traefik readiness check becomes a skip rather than a warning - a build
+   * server has no proxy by design. Docker is still required.
+   */
+  buildOnly: boolean;
+  /**
+   * This host's CPU architecture ("amd64" | "arm64"), observed from each Hello.
+   * "" when the agent is too old to report it, which keeps the server out of the
+   * build-server picker rather than risking an image the target cannot execute.
+   */
+  hostArch: string;
+  /**
    * How many deployments this server runs concurrently — the per-server slot count
    * the deploy queue enforces. 1 (the
    * default a server is born with) = strict serialization: one deploy at a time on
@@ -963,6 +980,23 @@ export interface App {
    */
   migrateFromServerId?: ID | null;
   /**
+   * Which server BUILDS this app's image, when that is not `serverId`. null is
+   * "Automatic": a build-only server if the fleet has one this team can reach and
+   * its arch matches, otherwise build where the app runs. Pinning `serverId` itself
+   * is how "always build on this app's own server" is said.
+   *
+   * Only meaningful for a source Deplo BUILDS (git / upload). A compose stack has no
+   * single image to move and a `docker-image` source builds nothing, so both ignore
+   * it entirely.
+   */
+  buildServerId?: ID | null;
+  /**
+   * Build on this app's own server when the build server is unreachable, saying so
+   * in the deploy log. true by default; false for whoever picked a small deploy
+   * server on purpose and would rather fail than have a build land on it.
+   */
+  buildFallbackLocal: boolean;
+  /**
    * Display logo for the project (a URL or local /templates/<x> path). Defaulted
    * from the template's logo when deployed from one, editable from settings.
    * Null ⇒ fall back to a generic icon. NOT the Docker image (`dockerImage`).
@@ -1127,6 +1161,15 @@ export interface Deployment {
    * only for rows that predate the column; every write since sets it.
    */
   serverId: ID | null;
+  /**
+   * The server this deploy BUILT on, when that was not `serverId`. null is the
+   * ordinary case, "built where it runs", and is also what every row that predates
+   * build servers holds. Denormalized and FK-less like `serverId`: the queue drains
+   * on it (the builder's lane is the one that matters, because the build is the
+   * cost), and it is the audit answer to where this app's source and secrets went -
+   * which must not vanish when someone decommissions a builder.
+   */
+  buildServerId: ID | null;
   commitSha: string;
   commitMessage: string;
   commitAuthor: string;

@@ -131,6 +131,8 @@ async function main() {
       cpuCores: 0, memoryMb: 0, diskGb: 0,
       cpuUsage: 0, memoryUsage: 0, diskUsage: 0, allTeams: true,
       storageOnly: false,
+      buildOnly: false,
+      hostArch: "amd64",
       deployConcurrency: 1,
       createdAt: new Date(0).toISOString(),
       agent: { port: AGENT_PORT, certFingerprint: pinnedFingerprint, certPem: "", version: "" },
@@ -200,6 +202,7 @@ async function main() {
     noBuildCache: false,
     forceRecreate: false,
     composeUpArgs: [],
+    buildOnly: false,
   })) {
     if (ev.seq) lastSeq = Number(ev.seq);
     if (ev.log) process.stdout.write(`  [${ev.log.level}] ${ev.log.text}\n`);
@@ -255,6 +258,7 @@ async function main() {
     noBuildCache: false,
     forceRecreate: false,
     composeUpArgs: [],
+    buildOnly: false,
   })) {
     if (ev.seq) cursor = Number(ev.seq);
     break; // DROP: simulate the control plane losing the stream mid-build

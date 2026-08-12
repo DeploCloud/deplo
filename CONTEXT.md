@@ -450,6 +450,38 @@ why the UI hides the hook exactly when a provider already triggers the app and n
 _Avoid_: webhook on its own (ambiguous with the inbound provider webhook and with a plugin
 **Event**'s delivery), deploy key (that is an SSH credential), trigger URL.
 
+**Build server**:
+A **server** that COMPILES for machines it does not run on. It exists because a host
+otherwise has to be sized for the build rather than the workload: an App that serves in
+300 MB can need several GB to compile, and while it compiles it competes with the Apps
+already running beside it. Marked at install time or from Manage
+(`servers.build_only`, the twin of `storage_only` and exclusive with it): Docker is
+installed exactly as usual, **Traefik is not** - nothing is routed to a host that runs
+nothing - and the server drops out of every deploy-target picker while becoming
+offerable in the App's **Build on** setting. An ordinary server is a legitimate build
+server too (one big machine can build for several small ones without giving up its own
+Apps); only a `build_only` one is chosen **automatically**, because a host somebody
+dedicated to building exists to be built on. A **Deployment** records where it compiled
+(`deployments.build_server_id`, denormalized and FK-less like `server_id` - it is the
+audit answer to where an App's source and decrypted env went, and must survive
+decommissioning the host it names).
+Mechanically the deploy splits in three: `Deploy(build_only)` on the builder (same
+events, same logs, same reattach - a build server's logs ARE the App's build logs),
+then `ExportImage`/`ImportImage` relaying the gzipped `docker save` **through the
+control plane** (agents are a star and cannot dial each other - the third sibling of
+the volume and files-dir copies), then an ordinary `SOURCE_KIND_IMAGE` deploy with
+`pull_image=false` on the target, which is byte for byte what a **Rollback** already
+does. The builder `docker rmi`s its copy immediately: there the image is a courier and
+the **Build cache** is the asset. Only a source Deplo BUILDS qualifies - a **compose
+stack** has no single image to move and a `docker-image` source builds nothing - and
+the two hosts must share a CPU architecture, which is a REFUSAL (`servers.host_arch`,
+observed from each Hello), because an amd64 image on an arm64 box dies with `exec
+format error` long after the deploy reported success. The deploy occupies the
+**builder's** queue lane, since that is where the cost is.
+_Avoid_: builder (that is the **build method**'s job - Nixpacks, Railpack, a
+Dockerfile), CI server / runner (nothing here runs a pipeline), worker, node, "remote
+build" (the build is not remote from anywhere; it is simply on another server).
+
 **Build cache**:
 The layers and builder cache mounts a **server** keeps from previous builds, so a redeploy
 that changes nothing takes seconds. It lives on the **server** (one BuildKit cache per host,

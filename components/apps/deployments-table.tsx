@@ -8,6 +8,7 @@ import {
   GitBranch,
   Trash2,
   CircleStop,
+  Hammer,
   Server,
   Undo2,
   ListFilter,
@@ -192,6 +193,9 @@ export interface DeploymentRow {
   serverId?: string | null;
   /** Owning server name — present on the global page (for the Server column). */
   serverName?: string | null;
+  /** The server this deploy BUILT on, when that was not the owning one. Null for
+   *  the ordinary "built where it runs", which is what almost every row is. */
+  buildServerName?: string | null;
   commitMessage: string;
   commitSha: string;
   commitUrl: string | null;
@@ -858,10 +862,27 @@ export function DeploymentsTable({
                     {showServer && (
                       <TableCell>
                         {d.serverName ? (
-                          <span className="flex items-center gap-1.5 text-muted-foreground">
-                            <Server className="size-3.5 shrink-0" />
-                            <span className="truncate">{d.serverName}</span>
-                          </span>
+                          // The BUILD server rides in the tooltip rather than a
+                          // column of its own: it is null for almost every row,
+                          // and a mostly-empty column is a worse way to say
+                          // "this one is different" than a mark on the one cell
+                          // that already names a host.
+                          <SimpleTooltip
+                            content={
+                              d.buildServerName
+                                ? `Built on ${d.buildServerName}, then released here`
+                                : `Built and released on ${d.serverName}`
+                            }
+                          >
+                            <span className="flex items-center gap-1.5 text-muted-foreground">
+                              {d.buildServerName ? (
+                                <Hammer className="size-3.5 shrink-0" />
+                              ) : (
+                                <Server className="size-3.5 shrink-0" />
+                              )}
+                              <span className="truncate">{d.serverName}</span>
+                            </span>
+                          </SimpleTooltip>
                         ) : (
                           <span className="text-muted-foreground">—</span>
                         )}

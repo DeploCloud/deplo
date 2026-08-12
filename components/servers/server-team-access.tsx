@@ -102,7 +102,11 @@ export function ServerTeamAccess({
   );
 }
 
-function AccessOption({
+/** One card in a card-shaped radio group. Exported because the server ROLE choice
+ *  in the Add server dialog is the same control with three options instead of two,
+ *  and two spellings of the same picker in one form would read as two different
+ *  kinds of decision. */
+export function AccessOption({
   icon: Icon,
   title,
   description,

@@ -50,6 +50,11 @@ AGENT_PORT="${DEPLO_AGENT_PORT:-9443}"
 # Set from the dashboard's Add server dialog, which prefixes the copy-paste
 # command with DEPLO_STORAGE_ONLY=1 when the box is ticked.
 STORAGE_ONLY="${DEPLO_STORAGE_ONLY:-0}"
+# A BUILD SERVER: Docker and the address pools exactly as usual (it runs the whole
+# build pipeline), but no Traefik - nothing is routed to a host that runs nothing.
+# Set from the dashboard's Add server dialog, which prefixes the copy-paste command
+# with DEPLO_BUILD_ONLY=1 when "Only build" is chosen.
+BUILD_ONLY="${DEPLO_BUILD_ONLY:-0}"
 
 err()  { printf "\033[31m[!!]\033[0m %s\n" "$1" >&2; }
 step() { printf "\033[36m[..]\033[0m %s\n" "$1"; }
@@ -305,6 +310,8 @@ fi
 TRAEFIK_DIR="$AGENT_DATA/traefik"
 if [ "$STORAGE_ONLY" = "1" ]; then
   ok "Storage-only server: skipping Traefik (nothing is routed here)"
+elif [ "$BUILD_ONLY" = "1" ]; then
+  ok "Build-only server: skipping Traefik (it builds images, it routes nothing)"
 elif docker ps --filter status=running --format '{{.Image}} {{.Names}}' 2>/dev/null \
      | grep -qi traefik; then
   ok "Traefik already running — leaving it untouched"

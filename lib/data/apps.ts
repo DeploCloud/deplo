@@ -8,6 +8,7 @@ import {
   listServersForTeam,
   getServerById,
   assertServerAccessibleTx,
+  canHostWorkloads,
 } from "./servers";
 import { getDb } from "../db/client";
 import {
@@ -701,9 +702,16 @@ export async function createApp(
   // Default to the first server available to the team; honour the explicit pick.
   // With no accessible server, surface a clear error so the operator adds (and
   // provisions) a host — or grants this team access — first.
+  // A specialised host cannot run an app: a storage-only one has no Docker, a
+  // build-only one has no proxy and exists to compile for other machines. The
+  // pickers already hide them, but this is the boundary - an id can also arrive
+  // from a bearer token, and the failure would otherwise land on the host.
+  const deployable = servers.filter(canHostWorkloads);
+  if (input.serverId && !deployable.some((s) => s.id === input.serverId))
+    throw new Error("That server doesn't run apps.");
   const server =
-    (input.serverId && servers.find((s) => s.id === input.serverId)) ||
-    servers[0];
+    (input.serverId && deployable.find((s) => s.id === input.serverId)) ||
+    deployable[0];
   if (!server)
     throw new Error(
       "No server available — add a server from Settings → Servers and run its install command first.",
@@ -745,6 +753,11 @@ export async function createApp(
     projectId: placement.projectId,
     environmentId: placement.environmentId,
     serverId: server.id,
+    // Born on Automatic: a new app uses a build server if the fleet has one and
+    // says nothing about it otherwise. Choosing a builder is an Advanced setting,
+    // and the create flow deliberately does not ask.
+    buildServerId: null,
+    buildFallbackLocal: true,
     // Defaulted from a template's logo (a /templates path); ignore anything that
     // isn't a valid inline logo so a crafted create payload can't store a URL.
     logo: input.logo && isValidLogoValue(input.logo) ? input.logo : null,
@@ -1024,6 +1037,60 @@ export async function clearAppBuildCache(id: string): Promise<void> {
   );
 }
 
+/**
+ * Choose where this app COMPILES, and what happens when that host is unreachable.
+ *
+ * `buildServerId` null is Automatic: use a build-only server if the fleet has one
+ * this team can reach whose architecture matches, otherwise build where the app
+ * runs. Passing the app's OWN server id is the explicit opt-out - "always build
+ * here" - and is stored as that id rather than a sentinel.
+ *
+ * Validated against the servers this team can actually reach, so a crafted request
+ * cannot point an app's build (with its source and decrypted env) at a host the
+ * team was never granted. A storage-only host is refused too: no Docker, no build.
+ *
+ * `configure_apps`, like every other app setting. Deliberately NOT a deploy trigger:
+ * changing where the next build happens should not start one.
+ */
+export async function setAppBuildServer(
+  id: string,
+  input: { buildServerId: string | null; buildFallbackLocal?: boolean },
+): Promise<void> {
+  const { membership } = await requireAppCapability(id, "configure_apps");
+  const user = (await getCurrentUser())!;
+  const project = await loadAppGraph(id);
+  if (!project || project.teamId !== membership.teamId)
+    throw new Error("App not found");
+
+  let buildServerId: string | null = null;
+  if (input.buildServerId) {
+    const servers = await listServersForTeam(membership.teamId);
+    const picked = servers.find((s) => s.id === input.buildServerId);
+    if (!picked) throw new Error("That server isn't available to this team.");
+    if (picked.storageOnly)
+      throw new Error("That server holds backups only - it has no Docker to build with.");
+    buildServerId = picked.id;
+  }
+  await getDb()
+    .update(appsTable)
+    .set({
+      buildServerId,
+      ...(input.buildFallbackLocal === undefined
+        ? {}
+        : { buildFallbackLocal: input.buildFallbackLocal }),
+      updatedAt: nowIso(),
+    })
+    .where(and(eq(appsTable.id, id), eq(appsTable.teamId, membership.teamId)));
+
+  const where =
+    buildServerId === null
+      ? "automatically"
+      : buildServerId === project.serverId
+        ? "on its own server"
+        : `on ${(await getServerById(buildServerId))?.name ?? buildServerId}`;
+  await recordActivity("app", `Set ${project.name} to build ${where}`, user.name, id);
+}
+
 export interface UpdateSourceInput {
   source: DeploySource;
   repo: GitRepo | null;
@@ -1137,10 +1204,19 @@ export async function updateAppSource(
       }
     }
 
+    // "Build on this app's own server" is stored as that server's id, so a MOVE has
+    // to carry it or the setting silently becomes "build on the machine I just left"
+    // - which is a real build server relationship, just not the one anyone asked
+    // for. A pin to some OTHER host is a deliberate choice about that host and
+    // stays put.
+    const buildServerId =
+      isMove && p.buildServerId === oldServerId ? serverId : (p.buildServerId ?? null);
+
     await tx
       .update(appsTable)
       .set({
         serverId,
+        buildServerId,
         // Record the migration source on a move (null clears any stale marker on a
         // non-move edit). The post-commit deploy consumes it.
         migrateFromServerId,

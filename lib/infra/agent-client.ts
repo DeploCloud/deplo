@@ -33,6 +33,7 @@ import {
   type FileEntry as PbFileEntry,
   type VolumeChunk,
   type FilesChunk,
+  type ImageChunk,
   type StoreTarget,
   type StoreChunk,
   type StoreResult,
@@ -403,6 +404,23 @@ export interface AgentConnection {
     wipeFirst: boolean,
     chunks: AsyncIterable<Buffer>,
   ): Promise<{ ok: boolean; error: string }>;
+  /** Stream a locally BUILT image OUT of this host as a gzipped `docker save` - the
+   *  third sibling of {@link exportVolume}/{@link exportFiles}, for a build server
+   *  that compiles for machines it does not run on. `removeAfter` deletes the image
+   *  here once the stream completes (a builder holds cache, not artifacts); a failed
+   *  export removes nothing. Rejects with UNIMPLEMENTED on a too-old agent. */
+  exportImage(
+    imageRef: string,
+    removeAfter: boolean,
+  ): AsyncGenerator<Buffer, void, unknown>;
+  /** Load a streamed image INTO this host's daemon - the receiving half. No wipe
+   *  flag: loading a tag replaces it, so there is nothing to empty first. Resolves
+   *  with the terminal StoreResult, whose `bytesWritten` is what this host actually
+   *  consumed. Rejects with UNIMPLEMENTED on a too-old agent. */
+  importImage(
+    imageRef: string,
+    chunks: AsyncIterable<Buffer>,
+  ): Promise<{ ok: boolean; error: string; bytesWritten: number }>;
   /** Read back the rendered stack YAML the agent has on disk, for the "View full
    *  compose" preview. `exists` is false (empty yaml) when never deployed. */
   readStack(slug: string): Promise<{ exists: boolean; yaml: string }>;
@@ -1407,6 +1425,53 @@ function dial(target: DialTarget): AgentConnection {
         );
       });
     },
+    exportImage(imageRef: string, removeAfter: boolean) {
+      // Server-streaming gzipped `docker save` - the exact shape of exportVolume,
+      // with ImageChunk{data} frames. `removeAfter` reclaims the builder's disk once
+      // the last byte is out: on a build server the image is a courier, and what is
+      // worth keeping across builds is the BuildKit cache, which this never touches.
+      return (async function* () {
+        const stream = client.exportImage(
+          { imageRef, removeAfter },
+          { deadline: new Date(Date.now() + VOLUME_COPY_DEADLINE_MS) },
+        );
+        for await (const chunk of streamEvents<ImageChunk>(stream, {
+          pauseAbove: STREAM_BYTES_PAUSE_ABOVE,
+          normalise: toAgentError,
+        })) {
+          if (chunk.data && chunk.data.length) yield Buffer.from(chunk.data);
+        }
+      })();
+    },
+    importImage(imageRef: string, chunks: AsyncIterable<Buffer>) {
+      // Client-streaming `docker image load` - mirrors importVolume with an image
+      // header and no wipe flag (loading a tag replaces it; there is nothing to
+      // empty first). Terminal StoreResult, not StackResult: a relayed artifact
+      // reports the bytes and sha256 that actually landed.
+      return new Promise<{ ok: boolean; error: string; bytesWritten: number }>(
+        (resolve, reject) => {
+          const call: ClientWritableStream<ImageChunk> = client.importImage(
+            new Metadata(),
+            { deadline: new Date(Date.now() + VOLUME_COPY_DEADLINE_MS) },
+            (err: ServiceError | null, resp: StoreResult) =>
+              err
+                ? reject(toAgentError(err))
+                : resolve({
+                    ok: resp.ok,
+                    error: resp.error,
+                    bytesWritten: Number(resp.bytesWritten ?? 0),
+                  }),
+          );
+          pumpClientStream<ImageChunk>(
+            call,
+            { header: { imageRef } },
+            chunks,
+            (data) => ({ data }),
+            (e) => reject(toAgentError(e)),
+          );
+        },
+      );
+    },
     readStack(slug: string) {
       return new Promise<{ exists: boolean; yaml: string }>((resolve, reject) => {
         client.readStack({ slug, removeVolumes: false }, (err, resp) =>
@@ -2221,7 +2286,14 @@ export async function agentPreflight(serverId: string): Promise<HelloResponse> {
     // Heartbeat cache (P5): best-effort, behind the live-read. Also refresh the
     // server's traefikEnabled from this live Hello so the badge reflects reality.
     try {
-      void markServerSeen(serverId, resp.agentVersion, observedTraefik(resp));
+      void markServerSeen(
+        serverId,
+        resp.agentVersion,
+        observedTraefik(resp),
+        undefined,
+        undefined,
+        resp.hostArch,
+      );
     } catch {
       /* unknown id: no row to touch */
     }

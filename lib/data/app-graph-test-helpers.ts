@@ -104,6 +104,10 @@ export interface SeedAppOpts {
    * written straight onto the row, exactly as `createApp` does.
    */
   createdByUserId?: string | null;
+  /** Pin the app to a build server (seed that server row first). */
+  buildServerId?: string | null;
+  /** Turn OFF "build here if the build server is unreachable". */
+  buildFallbackLocal?: boolean;
 }
 
 /** Seed one project + its 1-to-1 build / method-settings rows. Returns the id. */
@@ -123,6 +127,8 @@ export async function seedApp(
     projectId: opts.projectId ?? null,
     environmentId: opts.environmentId ?? null,
     serverId,
+    buildServerId: opts.buildServerId ?? null,
+    buildFallbackLocal: opts.buildFallbackLocal ?? true,
     logo: null,
     frameworkOverride: null,
     framework: null,
@@ -183,6 +189,8 @@ export async function seedDeployment(
     /** Mark the row as a rollback TO another deployment (so it occupies no
      *  retention slot of its own). */
     rollbackOf?: string | null;
+    /** The server this deploy BUILT on, when that was not `serverId`. */
+    buildServerId?: string | null;
   },
 ): Promise<void> {
   const dep: Deployment = {
@@ -191,6 +199,7 @@ export async function seedDeployment(
     status: opts.status ?? "ready",
     forceRecreate: false,
     serverId: opts.serverId ?? SERVER_1,
+    buildServerId: opts.buildServerId ?? null,
     environment: opts.environment ?? "production",
     // Defaults to the app's slug, which is what every production deploy uses.
     // Seeders that don't care never have to think about the key.
@@ -212,7 +221,11 @@ export async function seedDeployment(
   };
   await db
     .insert(deploymentsTable)
-    .values({ ...deploymentToRow(dep), serverId: opts.serverId ?? null });
+    .values({
+      ...deploymentToRow(dep),
+      serverId: opts.serverId ?? null,
+      buildServerId: opts.buildServerId ?? null,
+    });
 }
 
 /** Seed a pull request preview row for an app. Defaults to an open, same-repo

@@ -82,6 +82,8 @@ const SERVER_FIELDS = {
   diskUsage: true,
   allTeams: true,
   storageOnly: true,
+  buildOnly: true,
+  hostArch: true,
   deployConcurrency: true,
   traefikDashboard: true,
   createdAt: true,
@@ -112,6 +114,8 @@ export function serverToRow(s: Server): ServerInsert {
     diskUsage: s.diskUsage,
     allTeams: s.allTeams,
     storageOnly: s.storageOnly,
+    buildOnly: s.buildOnly,
+    hostArch: s.hostArch,
     deployConcurrency: s.deployConcurrency,
     // Flattened ServerAgent (NULL columns when not yet provisioned).
     agentPort: s.agent?.port ?? null,
@@ -161,6 +165,10 @@ export function assembleServer(row: ServerRow): Server {
     diskUsage: row.diskUsage,
     allTeams: row.allTeams,
     storageOnly: row.storageOnly ?? false,
+    buildOnly: row.buildOnly ?? false,
+    // "" is "the agent never told us", which never matches another host's arch -
+    // so an un-upgraded server is simply not offered as a builder.
+    hostArch: row.hostArch ?? "",
     // NULL-safe: rows created before the column default to strict serialization.
     deployConcurrency: row.deployConcurrency ?? 1,
     createdAt: row.createdAt,

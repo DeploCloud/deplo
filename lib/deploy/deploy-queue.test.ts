@@ -169,6 +169,70 @@ test("deploys on different servers run in parallel", async () => {
   await finish("d_b");
 });
 
+// The regression a BUILD SERVER makes possible. Two production deploys of one app
+// used to be guaranteed into the same lane (the app's own server), so the exclusion
+// could live there. With a build server the lane is the BUILDER, and the least-busy
+// tie-break puts two rapid deploys of one app on two different builders - so a
+// per-lane set would let them run at once and, worse, finish out of order, leaving
+// the app on the OLDER commit.
+test("two deploys of one app never overlap, even in different lanes", async () => {
+  const { runner, started, finish } = makeFakeRunner();
+  __setRunnerForTest(runner);
+  await seedServer(db, SRV_A);
+  await seedServer(db, SRV_B);
+  await seedApp(db, { id: "svc_x", serverId: SRV_A, status: "queued" });
+  // Same app, same stack (one deploy key), but routed to two different builders.
+  await seedDeployment(db, {
+    id: "b1", appId: "svc_x", serverId: SRV_A, buildServerId: SRV_A,
+    status: "queued", createdAt: "2026-01-01T00:00:01.000Z",
+  });
+  await seedDeployment(db, {
+    id: "b2", appId: "svc_x", serverId: SRV_A, buildServerId: SRV_B,
+    status: "queued", createdAt: "2026-01-01T00:00:02.000Z",
+  });
+
+  enqueueDeployment({ depId: "b1", serverId: SRV_A, appId: "svc_x", buildServerId: SRV_A });
+  enqueueDeployment({ depId: "b2", serverId: SRV_A, appId: "svc_x", buildServerId: SRV_B });
+
+  await waitFor(() => started.length === 1, "the first one starts");
+  await settle();
+  assert.deepEqual(started, ["b1"], "only the older deploy runs; the newer waits its turn");
+  assert.equal(await statusOf("b2"), "queued", "held back despite a free lane on the other builder");
+
+  await finish("b1");
+  await waitFor(() => started.includes("b2"), "b2 runs once b1 releases the stack");
+  assert.deepEqual(started, ["b1", "b2"], "strict order preserved across lanes");
+  await finish("b2");
+});
+
+// The other half of the same rule: the exclusion is on the STACK, not the app, so a
+// preview and a production deploy of one app are free to run at once. They touch
+// different containers, volumes and routers.
+test("a preview and a production deploy of one app do run in parallel", async () => {
+  const { runner, started, finish } = makeFakeRunner();
+  __setRunnerForTest(runner);
+  await seedServer(db, SRV_A);
+  await setConcurrency(SRV_A, 2);
+  await seedApp(db, { id: "svc_x", serverId: SRV_A, status: "queued" });
+  await seedDeployment(db, {
+    id: "prod", appId: "svc_x", serverId: SRV_A, status: "queued",
+    createdAt: "2026-01-01T00:00:01.000Z",
+  });
+  await seedDeployment(db, {
+    id: "prev", appId: "svc_x", serverId: SRV_A, status: "queued",
+    deployKey: "svc_x__pr-7", environment: "preview",
+    createdAt: "2026-01-01T00:00:02.000Z",
+  });
+
+  enqueueDeployment({ depId: "prod", serverId: SRV_A, appId: "svc_x" });
+  enqueueDeployment({ depId: "prev", serverId: SRV_A, appId: "svc_x" });
+
+  await waitFor(() => started.length === 2, "both run: different stacks");
+  assert.deepEqual([...started].sort(), ["prev", "prod"]);
+  await finish("prod");
+  await finish("prev");
+});
+
 test("concurrency 2: two distinct services run, but never two of the same service", async () => {
   const { runner, started, finish } = makeFakeRunner();
   __setRunnerForTest(runner);

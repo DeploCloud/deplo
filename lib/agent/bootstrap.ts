@@ -81,8 +81,15 @@ export function installCommand(opts: {
    * contract — and every command an operator already copied — is untouched.
    */
   storageOnly?: boolean;
+  /**
+   * A server that only BUILDS: Docker and the address pools exactly as usual (it
+   * runs the whole build pipeline), but no Traefik - nothing is routed to a host
+   * that runs nothing. Same env-prefix mechanism as `storageOnly`, and mutually
+   * exclusive with it: a build server without Docker could not build.
+   */
+  buildOnly?: boolean;
 }): string {
-  const { baseUrl, rawToken, fingerprint, storageOnly } = opts;
+  const { baseUrl, rawToken, fingerprint, storageOnly, buildOnly } = opts;
   // Order: <token> <control-plane-url> [fingerprint]. The script forwards them
   // to the agent's --bootstrap-* flags. Single-quoted so the shell treats them
   // as literals (the token is base64url, the url/fingerprint are constrained).
@@ -90,7 +97,11 @@ export function installCommand(opts: {
   // `sudo` does not forward the caller's environment, so the variable is set
   // INSIDE the elevated shell — `DEPLO_STORAGE_ONLY=1 sudo bash` would silently
   // install a normal agent.
-  const env = storageOnly ? "DEPLO_STORAGE_ONLY=1 " : "";
+  const env = storageOnly
+    ? "DEPLO_STORAGE_ONLY=1 "
+    : buildOnly
+      ? "DEPLO_BUILD_ONLY=1 "
+      : "";
   return `curl -fsSL '${baseUrl}/install-agent.sh' | sudo ${env}bash -s -- '${rawToken}' '${baseUrl}'${fp}`;
 }
 

@@ -101,6 +101,7 @@ networks:
         noBuildCache: false,
         forceRecreate: false,
     composeUpArgs: [],
+    buildOnly: false,
       })) {
         if (ev.result && !ev.result.ready) throw new Error("deploy failed: " + ev.result.error);
       }

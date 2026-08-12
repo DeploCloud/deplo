@@ -780,6 +780,34 @@ export const servers = pgTable(
     // checks skip, and the server drops out of every deploy-target picker while
     // staying eligible as a backup destination.
     storageOnly: boolean("storage_only").notNull().default(false),
+    // A server bought purely to COMPILE: Docker is installed, Traefik is not, and
+    // no app of any team runs here. It builds images for the hosts that do, which
+    // then receive them over the ExportImage/ImportImage relay.
+    //
+    // The sibling of `storage_only`, and exclusive with it (a CHECK enforces that):
+    // one specialises away the workload, the other specialises away Docker itself.
+    // Two flags rather than a `role` enum because both are absent for the ordinary
+    // server that does everything, which is what almost every row is.
+    //
+    // What it changes: the host drops out of every deploy-target picker (apps and
+    // databases alike), and the Traefik readiness check becomes a `skip` instead of
+    // a warning - a build server has no proxy BY DESIGN and should not read as
+    // half-configured for it. Docker is still required; that check is unchanged.
+    //
+    // Unlike `storage_only` this is reversible from the UI: the installer's only
+    // build-only branch is skipping Traefik, so the role is otherwise purely a
+    // control-plane decision. Turning it ON is refused while the host still has
+    // apps or databases on it.
+    buildOnly: boolean("build_only").notNull().default(false),
+    // This host's CPU architecture ("amd64" | "arm64"), observed from each Hello
+    // like `docker_version` and `traefik_enabled` - never asserted at registration.
+    // "" means an agent too old to report it, which can never equal another host's
+    // arch and so simply keeps this server out of the build-server picker.
+    //
+    // Persisted, unlike the rest of the Hello capability set, for one reason: the
+    // "Build on" picker has to grey out the mismatched hosts, and a picker that
+    // dialled every agent to render itself would be a page load per server.
+    hostArch: text("host_arch").notNull().default(""),
     // How many deployments this server's agent runs at once.
     // Default 1 = strict per-server serialization:
     // deploys on THIS server run one at a time; deploys on OTHER servers run in
@@ -890,6 +918,30 @@ export const apps = pgTable(
       () => servers.id,
       { onDelete: "set null" },
     ),
+    // Which server BUILDS this app's image, when that is not the one that runs it.
+    // NULL is "Automatic": use a build-only server if the fleet has one this team
+    // can reach and its arch matches, otherwise build where the app runs - which is
+    // what every app did before build servers existed, so NULL is also the honest
+    // default for every existing row.
+    //
+    // "Build on this app's own server" is expressed by pinning that server's id, not
+    // by a sentinel: a column of ids that sometimes holds a magic word is the kind of
+    // thing that reads fine and then breaks a join. `updateAppSource` carries the pin
+    // across a server move, exactly where it already re-hosts the app's domains.
+    //
+    // `SET NULL`, not RESTRICT: removing a build server must never be blocked by an
+    // app that merely preferred it, and falling back to Automatic is always valid.
+    buildServerId: text("build_server_id").references(() => servers.id, {
+      onDelete: "set null",
+    }),
+    // When the build server is unreachable, build on this app's own server instead
+    // and say so in the deploy log. ON by default: a deploy that ships beats a deploy
+    // that fails, and the previous version keeps serving either way.
+    //
+    // Turned OFF by whoever chose a small deploy server ON PURPOSE - for them a
+    // surprise build on the production box is the worse outcome, because it can take
+    // the apps already running there down with it.
+    buildFallbackLocal: boolean("build_fallback_local").notNull().default(true),
     logo: text("logo"),
     // The JavaScript framework Deplo recognised in this app's own source
     // ("nextjs", "astro", …; see lib/apps/framework-catalog.ts), or NULL when
@@ -1236,6 +1288,17 @@ export const deployments = pgTable(
     // deployment is a historical record that must survive its server's deletion
     // (apps.server_id is RESTRICT, so a live service can't lose its server).
     serverId: text("server_id"),
+    // The server this deploy BUILT on, when that was not `server_id`. NULL is the
+    // ordinary case and means "built where it runs" - including every row that
+    // predates build servers, which is why it needs no backfill.
+    //
+    // Denormalized and FK-less for the same two reasons `server_id` is: the queue
+    // drains on it (the build server's lane is the one that matters, because the
+    // build is where the cost is), and a deployment is a historical record that has
+    // to survive the deletion of the host it names. It is also the audit answer to
+    // "where did this app's source and secrets actually go", which is not a question
+    // whose answer may disappear when someone decommissions a builder.
+    buildServerId: text("build_server_id"),
     status: text("status").notNull(),
     environment: text("environment").notNull(),
     // The host-side KEY this deploy owns: the container `deplo-<key>`, the stack
@@ -1315,6 +1378,12 @@ export const deployments = pgTable(
     // ORDER BY.
     index("deployments_queued_server_idx")
       .on(t.serverId, t.createdAt, t.seq)
+      .where(sql`${t.status} = 'queued'`),
+    // The same hot path once a BUILD SERVER is in play: the queue drains on the
+    // lane, `coalesce(build_server_id, server_id)`, which the index above cannot
+    // serve. Its sibling stays because other readers still ask by owning server.
+    index("deployments_queued_lane_idx")
+      .on(sql`coalesce(${t.buildServerId}, ${t.serverId})`, t.createdAt, t.seq)
       .where(sql`${t.status} = 'queued'`),
     // A pull request preview's own build history, newest first.
     index("deployments_preview_idx").on(

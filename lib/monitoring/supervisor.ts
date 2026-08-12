@@ -389,6 +389,7 @@ async function runStreamLoop(
         observedTraefik(hello),
         undefined,
         hello.dockerVersion,
+        hello.hostArch,
       );
       let lastHealthWriteAt = Date.now();
       // 0, not `Date.now()`: the first frame after a (re)connect must reconcile

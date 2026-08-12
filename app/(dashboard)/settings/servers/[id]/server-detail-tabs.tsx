@@ -9,10 +9,12 @@ import {
   CircleFadingArrowUp,
   Cpu,
   Gauge,
+  Hammer,
   HardDrive,
   LayoutDashboard,
   ListChecks,
   MemoryStick,
+  ServerCog,
   ShieldCheck,
   SlidersHorizontal,
   Users,
@@ -44,6 +46,7 @@ import { Input } from "@/components/ui/input";
 import { FieldLabel } from "@/components/ui/info-tip";
 import { gqlAction } from "@/lib/graphql-client";
 import {
+  AccessOption,
   ServerTeamAccess,
   type ServerAccess,
   type TeamOption,
@@ -78,6 +81,9 @@ export type ServerSummary = {
   dockerVersion: string;
   allTeams: boolean;
   deployConcurrency: number;
+  /** What this server is for. Only the build axis is settable here - the backups
+   *  role skips installing Docker, which no later setting can undo. */
+  role: "everything" | "build" | "storage";
   traefikDashboard: { domain: string; username: string } | null;
   /** A zero-config nip.io hostname for the Traefik panel on THIS server, resolved
    *  server-side. Null when the host has no address such a name could point at. */
@@ -348,6 +354,7 @@ function AccessTab({
     teamIds: accessTeamIds,
   });
   const [concurrency, setConcurrency] = React.useState(String(server.deployConcurrency));
+  const [role, setRole] = React.useState(server.role);
 
   function saveAccess(e: React.FormEvent) {
     e.preventDefault();
@@ -373,6 +380,28 @@ function AccessTab({
         access.allTeams
           ? `${server.name} is now available to all teams`
           : `${server.name} team access updated`,
+      );
+      router.refresh();
+    });
+  }
+
+  function saveRole(e: React.FormEvent) {
+    e.preventDefault();
+    startTransition(async () => {
+      const res = await gqlAction<{ setServerRole: { id: string } }>(
+        `mutation SetServerRole($id: String!, $role: String!) {
+          setServerRole(id: $id, role: $role) { id }
+        }`,
+        { id: server.id, role },
+      );
+      if (!res.ok) {
+        toast.error(res.error);
+        return;
+      }
+      toast.success(
+        role === "build"
+          ? `${server.name} now only builds`
+          : `${server.name} runs apps again`,
       );
       router.refresh();
     });
@@ -436,6 +465,60 @@ function AccessTab({
           </form>
         </CardContent>
       </Card>
+
+      {/* Not offered on a backups-only host: that installer skips Docker, and no
+          database write puts Docker on a machine that never had it. */}
+      {server.role !== "storage" && (
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2 text-base">
+              <Hammer className="size-4" />
+              What this server is for
+            </CardTitle>
+            <p className="mt-1 text-sm text-muted-foreground">
+              A build server compiles images for apps that run on your other
+              servers, so those can stay small.
+            </p>
+          </CardHeader>
+          <CardContent>
+            <form className="space-y-4" onSubmit={saveRole}>
+              <div className="grid gap-2 sm:grid-cols-2">
+                <AccessOption
+                  icon={ServerCog}
+                  title="Everything"
+                  description="Runs apps and builds them"
+                  selected={role === "everything"}
+                  disabled={pending}
+                  onSelect={() => setRole("everything")}
+                />
+                <AccessOption
+                  icon={Hammer}
+                  title="Only build"
+                  description="Builds for other servers"
+                  selected={role === "build"}
+                  disabled={pending}
+                  onSelect={() => setRole("build")}
+                />
+              </div>
+              {role === "build" && server.role !== "build" && (
+                <p className="text-xs text-muted-foreground">
+                  Apps and databases have to be moved off this server first.
+                </p>
+              )}
+              {role === "everything" && server.role === "build" && (
+                <p className="text-xs text-muted-foreground">
+                  This server has no proxy installed, so apps deployed here will
+                  run but stay unreachable on their domains. Re-run the install
+                  command on the host to add one.
+                </p>
+              )}
+              <Button type="submit" disabled={pending || role === server.role}>
+                {pending ? "Saving" : "Save"}
+              </Button>
+            </form>
+          </CardContent>
+        </Card>
+      )}
 
       <Card>
         <CardHeader>

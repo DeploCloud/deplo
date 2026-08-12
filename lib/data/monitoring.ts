@@ -145,6 +145,7 @@ async function measureRemote(server: Server, expected: string): Promise<ServerMe
           diskGb: Math.round(Number(m.diskTotal) / (1024 * 1024 * 1024)),
         },
         hello.dockerVersion,
+        hello.hostArch,
       );
       // This Hello is a health OBSERVATION as good as the Servers page's own probe,
       // so it goes through the SAME recorder. Without this the two views contradict
