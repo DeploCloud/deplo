@@ -728,6 +728,12 @@ export async function requireAppCapability(
   // sits in a folder the caller can't see all answer the same thing — the gate is
   // never an oracle for which ids exist.
   if (!gate || gate.caps.length === 0) throw new Error("App not found");
+  // Confirmed for deletion (`apps.deleting_at`): the teardown is running behind
+  // the response and the row is on its way out. Nothing may act on it any more —
+  // not a deploy, not a rename, not a second delete — because there is no state
+  // left to act on. THE gate for every app-shaped mutation, so this one refusal
+  // covers every one of them, and it says what happened rather than "not found".
+  if (gate.deleting) throw new Error("This app is being deleted");
   if (!gate.caps.includes(cap)) {
     throw new Error(
       gate.folderId
@@ -778,6 +784,7 @@ async function appGate(appId: string): Promise<{
   ctx: ActiveMembership;
   folderId: string | null;
   caps: Capability[];
+  deleting: boolean;
 } | null> {
   const ctx = await requireMembership();
   const rows = await getDb()
@@ -785,6 +792,9 @@ async function appGate(appId: string): Promise<{
       teamId: appsTable.teamId,
       folderId: appsTable.folderId,
       projectId: appsTable.projectId,
+      // Confirmed for deletion: the row is still here, the app is not. See the
+      // refusal in requireAppCapability.
+      deletingAt: appsTable.deletingAt,
       // An app lives in exactly one place, and for an app inside a project that
       // place is its ENVIRONMENT. Omitting it here refused an
       // environment-scoped role every app it actually reaches, through every
@@ -815,5 +825,6 @@ async function appGate(appId: string): Promise<{
     ctx,
     folderId: app.folderId ?? null,
     caps: caps.get(appId) ?? [],
+    deleting: app.deletingAt != null,
   };
 }

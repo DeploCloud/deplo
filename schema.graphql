@@ -2080,14 +2080,16 @@ type Mutation {
   """
   deleteAllDeployments(appId: ID, environment: String, serverId: ID, status: String): Int
 
-  """Delete the app and tear down its stack. Returns true."""
+  """
+  Delete the app. Returns as soon as the deletion is RECORDED — from that moment the app is refused by every gate and gone from the product — and the stack teardown finishes on the host behind the response.
+  """
   deleteApp(id: String!): Boolean
 
   """Delete a file or folder (recursively). Returns true."""
   deleteAppFile(appId: String!, path: String!): Boolean
 
   """
-  Bulk-delete several apps (bounded-concurrency teardown + one write). Returns how many were deleted.
+  Bulk-delete several apps. Returns how many were recorded as deleted; the bounded-concurrency teardown runs behind the response.
   """
   deleteApps(ids: [ID!]!): Int
 

@@ -1107,6 +1107,16 @@ export interface App {
    */
   resources: ResourceLimits | null;
   latestDeploymentId: ID | null;
+  /**
+   * When someone confirmed this app's deletion, or null (every app that is not
+   * on its way out). Set before the teardown and cleared only by the row
+   * disappearing, so it is the one flag that says "this app is gone, the host
+   * just hasn't caught up yet".
+   *
+   * Treat it as gone: every gate refuses a stamped app, its pages 404, and the
+   * Overview keeps its card on screen dimmed and pulsing until the row goes.
+   */
+  deletingAt?: string | null;
   createdAt: string;
   updatedAt: string;
 }

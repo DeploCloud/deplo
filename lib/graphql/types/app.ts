@@ -23,8 +23,8 @@ import {
   stopApp,
   startApp,
   rebuildApp,
-  deleteApp,
-  deleteApps,
+  startAppDelete,
+  startAppsDelete,
   bulkAppAction,
   reorderApps,
   setAppVolumes,
@@ -1089,10 +1089,13 @@ builder.mutationFields((t) => ({
   deleteApp: t.field({
     type: "Boolean",
     authScopes: { capability: "delete_apps" },
-    description: "Delete the app and tear down its stack. Returns true.",
+    description:
+      "Delete the app. Returns as soon as the deletion is RECORDED — from that " +
+      "moment the app is refused by every gate and gone from the product — and " +
+      "the stack teardown finishes on the host behind the response.",
     args: { id: t.arg.string({ required: true }) },
     resolve: async (_r, { id }) => {
-      await deleteApp(id);
+      await startAppDelete(id);
       return true;
     },
   }),
@@ -1100,9 +1103,10 @@ builder.mutationFields((t) => ({
     type: "Int",
     authScopes: { capability: "delete_apps" },
     description:
-      "Bulk-delete several apps (bounded-concurrency teardown + one write). Returns how many were deleted.",
+      "Bulk-delete several apps. Returns how many were recorded as deleted; the " +
+      "bounded-concurrency teardown runs behind the response.",
     args: { ids: t.arg.idList({ required: true }) },
-    resolve: (_r, { ids }) => deleteApps(ids.map(String)),
+    resolve: (_r, { ids }) => startAppsDelete(ids.map(String)),
   }),
   bulkAppAction: t.field({
     type: BulkAppActionResultRef,

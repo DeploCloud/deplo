@@ -680,6 +680,13 @@
       "when": 1784680400000,
       "tag": "0096_build_servers",
       "breakpoints": true
+    },
+    {
+      "idx": 97,
+      "version": "7",
+      "when": 1784680600000,
+      "tag": "0097_app_deleting",
+      "breakpoints": true
     }
   ]
 }

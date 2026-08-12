@@ -44,7 +44,14 @@ export async function generateMetadata(
 export default async function AppLayout(props: LayoutProps<"/apps/[slug]">) {
   const { slug } = await props.params;
   const project = await getAppBySlug(slug);
-  if (!project) notFound();
+  // Gone, or on its way out: a delete is irreversible from the moment it is
+  // confirmed, so the app's pages stop existing then rather than when its host
+  // finishes the teardown — otherwise a reload during that window serves back
+  // every control (Deploy, Stop, Delete) for an app nothing can act on. The
+  // Overview keeps its card on screen, dimmed and pulsing, which is where the
+  // user reads that it is going. One check for the whole section: every tab
+  // below lives under this layout.
+  if (!project || project.deletingAt) notFound();
   // The Files entry only appears when the caller can manage files AND the app
   // actually has an on-disk files dir (appFilesExist returns false for both
   // a missing capability and a missing directory, so this one call covers both).

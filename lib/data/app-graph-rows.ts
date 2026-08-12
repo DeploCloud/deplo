@@ -217,6 +217,9 @@ export function assembleApp(
     // All-NULL resource columns ⇒ no limits set (null), like assembleRepo.
     resources: assembleResources(row),
     latestDeploymentId: row.latestDeploymentId,
+    // Deliberately absent from `appToRow`: the stamp is written by the delete
+    // path alone, never carried along by an ordinary save of the app.
+    deletingAt: row.deletingAt ?? null,
     createdAt: row.createdAt,
     updatedAt: row.updatedAt,
   };

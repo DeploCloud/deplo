@@ -1,7 +1,7 @@
 import "server-only";
 
 import { cache } from "react";
-import { and, eq, inArray, or, sql } from "drizzle-orm";
+import { and, eq, inArray, isNotNull, or, sql } from "drizzle-orm";
 
 import {
   listAllServers,
@@ -2095,12 +2095,51 @@ export async function rebuildApp(id: string): Promise<void> {
   });
 }
 
-export async function deleteApp(id: string): Promise<void> {
+/**
+ * Stamp `deleting_at` — the point of no return, written before a single byte is
+ * torn down.
+ *
+ * From here the app is GONE as far as the product is concerned even though its
+ * row is still there: `requireAppCapability` refuses it, its pages 404, and the
+ * Overview keeps its card on screen dimmed and pulsing so the delete survives a
+ * reload instead of serving back a live-looking app somebody can click into,
+ * deploy, or delete a second time while the first teardown is still running.
+ *
+ * Nothing ever clears it: the only exit is the row going away.
+ */
+async function markAppsDeleting(ids: string[]): Promise<void> {
+  if (ids.length === 0) return;
+  await getDb()
+    .update(appsTable)
+    .set({ deletingAt: nowIso() })
+    .where(inArray(appsTable.id, ids));
+}
+
+/**
+ * Gate the delete, load what the teardown needs, and mark the app. Split from
+ * the teardown so BOTH shapes of delete share one gate and one stamp: the
+ * awaited {@link deleteApp} and the fire-and-forget {@link startAppDelete} the
+ * UI uses.
+ */
+async function beginAppDelete(
+  id: string,
+): Promise<{ project: App; actor: string }> {
   const { membership } = await requireAppCapability(id, "delete_apps");
   const user = (await getCurrentUser())!;
   const project = await loadAppGraph(id);
   if (!project || project.teamId !== membership.teamId)
     throw new Error("App not found");
+  await markAppsDeleting([id]);
+  return { project, actor: user.name };
+}
+
+/**
+ * Delete an app and WAIT for its host to be clear of it. The identity-free half
+ * of the delete (`actor` is already resolved), so the boot reconcile can finish
+ * a delete whose control plane died without a session to read.
+ */
+async function destroyApp(project: App, actor: string): Promise<void> {
+  const id = project.id;
   // Tear down the running container/stack before dropping the records. A REMOTE
   // whose agent is unreachable can't be torn down now — proceed with the delete
   // anyway (P6 spirit: never leave records pinned to a dead box) and warn so the
@@ -2148,7 +2187,7 @@ export async function deleteApp(id: string): Promise<void> {
       "app",
       `Deleted ${project.name} but its server (${server.name}) was unreachable — ` +
         `leftover containers on that host must be removed manually.`,
-      user.name,
+      actor,
       null,
       project.teamId,
     );
@@ -2156,9 +2195,40 @@ export async function deleteApp(id: string): Promise<void> {
   await recordActivity(
     "app",
     `Deleted project ${project.name}`,
-    user.name,
+    actor,
     null,
     project.teamId,
+  );
+}
+
+/**
+ * Delete an app, waiting for the host to be clear of it — the whole operation in
+ * one await, for a caller that has no response to get out of the way of (a
+ * script, a test asserting the cascade). Anything serving a user wants
+ * {@link startAppDelete} instead.
+ */
+export async function deleteApp(id: string): Promise<void> {
+  const { project, actor } = await beginAppDelete(id);
+  await destroyApp(project, actor);
+}
+
+/**
+ * The same delete, minus the wait — what the dashboard calls.
+ *
+ * The app is stamped (and therefore locked everywhere, on every client, across
+ * a reload) before this returns; the teardown finishes behind the response.
+ * Deleting a stack takes seconds on a healthy host and up to the agent dial
+ * timeout on an unreachable one, which is a long time to hold someone in front
+ * of a spinner over a decision they have already confirmed and cannot undo.
+ *
+ * The teardown's failure is not the caller's to handle: by the time it can fail
+ * the delete is already irreversible, so it is logged, the row keeps its stamp,
+ * and {@link resumeAppDeletes} retries it at the next boot.
+ */
+export async function startAppDelete(id: string): Promise<void> {
+  const { project, actor } = await beginAppDelete(id);
+  void destroyApp(project, actor).catch((e) =>
+    console.error(`[deplo] delete of ${project.name} did not finish:`, errMsg(e)),
   );
 }
 
@@ -2171,14 +2241,42 @@ export async function deleteApp(id: string): Promise<void> {
  * Returns the number actually deleted.
  */
 export async function deleteApps(ids: string[]): Promise<number> {
+  const { apps, actor } = await beginAppsDelete(ids);
+  if (apps.length === 0) return 0;
+  await destroyApps(apps, actor);
+  return apps.length;
+}
+
+/**
+ * The bulk delete the dashboard calls — the multi-select twin of
+ * {@link startAppDelete}. Every selected app is stamped (and so locked, and so
+ * pulsing on the Overview) before this returns; the teardowns run behind the
+ * response, where a slow host can't hold up a selection of twenty.
+ */
+export async function startAppsDelete(ids: string[]): Promise<number> {
+  const { apps, actor } = await beginAppsDelete(ids);
+  if (apps.length === 0) return 0;
+  void destroyApps(apps, actor).catch((e) =>
+    console.error("[deplo] bulk delete did not finish:", errMsg(e)),
+  );
+  return apps.length;
+}
+
+/** Gate each app on its own node, then stamp them all. See {@link beginAppDelete}. */
+async function beginAppsDelete(
+  ids: string[],
+): Promise<{ apps: App[]; actor: string }> {
   const { membership } = await requireMembership();
   const user = (await getCurrentUser())!;
   const idSet = [...new Set(ids)];
   // Team- and scope-scoped: only the caller's own apps, fully loaded for teardown.
+  // An app already being deleted is dropped like an unknown id rather than
+  // refused: it is on its way out either way, and one already-doomed card in a
+  // multi-select must not fail the delete of the other nineteen.
   const apps = (await loadAppsByIds(idSet)).filter(
-    (p) => p.teamId === membership.teamId && inAppScope(p),
+    (p) => p.teamId === membership.teamId && inAppScope(p) && !p.deletingAt,
   );
-  if (apps.length === 0) return 0;
+  if (apps.length === 0) return { apps, actor: user.name };
 
   // Gate EACH app on its own node: bulk delete is not a way around per-folder
   // access, and since ADR-0016 `delete_apps` can be held on one app alone — so
@@ -2186,7 +2284,12 @@ export async function deleteApps(ids: string[]): Promise<number> {
   for (const p of apps) {
     await requireAppCapability(p.id, "delete_apps");
   }
+  await markAppsDeleting(apps.map((p) => p.id));
+  return { apps, actor: user.name };
+}
 
+/** The identity-free teardown half of {@link deleteApps}. */
+async function destroyApps(apps: App[], actor: string): Promise<void> {
   const serversById = new Map((await listAllServers()).map((s) => [s.id, s] as const));
   // Tear down stacks ≤4 at a time (agent calls OUTSIDE any tx). A throw/
   // unreachable for one project must not abort the others or the record removal.
@@ -2217,19 +2320,46 @@ export async function deleteApps(ids: string[]): Promise<number> {
   await recordActivity(
     "app",
     `Deleted ${apps.length} project${apps.length === 1 ? "" : "s"}`,
-    user.name,
+    actor,
     null,
+    apps[0]!.teamId,
   );
   if (unreachable.length) {
     await recordActivity(
       "app",
       `Some servers were unreachable during bulk delete — leftover containers may ` +
         `remain and must be removed manually: ${unreachable.join(", ")}`,
-      user.name,
+      actor,
       null,
+      apps[0]!.teamId,
     );
   }
-  return apps.length;
+}
+
+/**
+ * Finish the deletes a dead control plane left stamped.
+ *
+ * A teardown runs behind the response (see {@link startAppDelete}), so a restart
+ * in the middle of one loses the only thing that was going to remove the stack —
+ * and the app would sit stamped forever: refused by every gate, pulsing on the
+ * Overview, with nothing left to finish it. Boot picks them back up, exactly
+ * like the deployment and backup reconciles next to it.
+ *
+ * Identity-free by construction (the actor is "Deplo"): there is no session at
+ * boot, and the gate was already passed by whoever confirmed the delete.
+ */
+export async function resumeAppDeletes(): Promise<void> {
+  const rows = await getDb()
+    .select({ id: appsTable.id })
+    .from(appsTable)
+    .where(isNotNull(appsTable.deletingAt));
+  for (const { id } of rows) {
+    const project = await loadAppGraph(id);
+    if (!project) continue;
+    await destroyApp(project, "Deplo").catch((e) =>
+      console.error(`[deplo] could not finish deleting ${project.name}:`, errMsg(e)),
+    );
+  }
 }
 
 /** The lifecycle actions a folder or a project runs over all of its apps at once. */

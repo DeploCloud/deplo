@@ -136,6 +136,20 @@ export async function register(): Promise<void> {
     console.error("[deplo] docker-cleanup reconcile/scheduler startup failed:", e);
   }
   try {
+    // Deletes stamped by a control plane that died mid-teardown. A confirmed
+    // delete is irreversible the moment it is recorded, so the app is already
+    // locked and pulsing in every UI — leaving one unfinished would leave the
+    // stack running on the host with nothing left to remove it. Floated: a
+    // teardown per stranded app can take a while and nothing at boot waits on it,
+    // and on any healthy instance the query matches no rows.
+    const { resumeAppDeletes } = await import("./lib/data/apps");
+    void resumeAppDeletes().catch((e) =>
+      console.error("[deplo] unfinished app deletes could not be resumed:", e),
+    );
+  } catch (e) {
+    console.error("[deplo] app delete reconcile failed to start:", e);
+  }
+  try {
     // The pull request preview reaper — a third sibling under its own lease.
     // No reconcile to await: unlike backups and cleanup it keeps no `running`
     // rows, and every predicate it uses is a plain DB state query, so a tick

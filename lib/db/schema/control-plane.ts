@@ -1140,6 +1140,16 @@ export const apps = pgTable(
     createdByUserId: text("created_by_user_id").references(() => users.id, {
       onDelete: "set null",
     }),
+    // When someone confirmed this app's deletion (migration 0097). Set BEFORE the
+    // teardown, which takes seconds on a healthy host and up to the dial timeout
+    // on an unreachable one; the row itself goes when the teardown finishes.
+    //
+    // While it is set the app is GONE as far as the product is concerned: every
+    // gate refuses it, its pages 404, and the Overview renders it dimmed and
+    // pulsing instead of a card someone can click into and deploy. That is also
+    // what makes the operation crash-safe — a stamp with no process behind it is
+    // an unfinished delete, which `resumeAppDeletes` finishes at boot.
+    deletingAt: isoTimestamptz("deleting_at"),
     createdAt: isoTimestamptz("created_at").notNull(),
     updatedAt: isoTimestamptz("updated_at").notNull(),
   },

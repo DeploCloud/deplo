@@ -34,6 +34,9 @@ import {
   listApps,
   reorderApps,
   deleteApp,
+  deleteApps,
+  renameApp,
+  resumeAppDeletes,
   createApp,
   summarizeForTeam,
 } from "./apps";
@@ -136,6 +139,49 @@ test("deleteApp cascades every child + shared-var link (no orphans)", async () =
   // The per-app link to prj_1 is GONE (cascaded); the prj_2 link survives.
   const links = await db.select().from(sharedEnvVarApps);
   assert.deepEqual(links.map((l) => l.appId), ["prj_2"], "dead link cascaded, live one kept");
+});
+
+/* ------------------------------------------------------------------ */
+/* deleting_at — the delete is irreversible before the host catches up */
+/* ------------------------------------------------------------------ */
+
+test("an app being deleted is locked, still listed, and finished at boot", async () => {
+  await seedApp(db, { id: "prj_1", status: "active" });
+  await seedApp(db, { id: "prj_2", status: "active" });
+  // What `startAppDelete` leaves behind the instant someone confirms — stamped,
+  // teardown still running (or, here, its process already gone).
+  await db
+    .update(appsTable)
+    .set({ deletingAt: "2026-08-12T00:00:00.000Z" })
+    .where(eq(appsTable.id, "prj_1"));
+
+  await asUser1(async () => {
+    // Every app-shaped mutation goes through requireAppCapability, so one
+    // refusal covers all of them — rename stands in for the whole set.
+    await assert.rejects(
+      () => renameApp("prj_1", "Second thoughts"),
+      /being deleted/,
+      "a stamped app refuses every mutation",
+    );
+    await assert.rejects(
+      () => deleteApp("prj_1"),
+      /being deleted/,
+      "including a second delete",
+    );
+    // The READ side still serves it: the card stays on the grid (dimmed and
+    // pulsing) until the row actually goes.
+    const listed = await listApps();
+    assert.deepEqual(
+      listed.map((p) => [p.id, p.deletingAt != null]).sort(),
+      [["prj_1", true], ["prj_2", false]],
+    );
+    // A multi-select that happens to include it deletes the others anyway.
+    assert.equal(await deleteApps(["prj_1", "prj_2"]), 1);
+  });
+
+  // Boot picks up what a control plane that died mid-teardown left stamped.
+  await resumeAppDeletes();
+  assert.equal((await db.select({ n: count() }).from(appsTable))[0]!.n, 0);
 });
 
 /* ------------------------------------------------------------------ */
