@@ -113,6 +113,7 @@ export function AccessOption({
   selected,
   disabled,
   onSelect,
+  badge,
 }: {
   icon: React.ElementType;
   title: string;
@@ -120,6 +121,8 @@ export function AccessOption({
   selected: boolean;
   disabled?: boolean;
   onSelect: () => void;
+  /** A short chip beside the title, e.g. "Beta". */
+  badge?: React.ReactNode;
 }) {
   return (
     <button
@@ -139,6 +142,7 @@ export function AccessOption({
       <span className="flex items-center gap-1.5 text-sm font-medium">
         <Icon className="size-4" />
         {title}
+        {badge}
         {selected && <Check className="ml-auto size-4 text-primary" />}
       </span>
       <span className="text-xs text-muted-foreground">{description}</span>

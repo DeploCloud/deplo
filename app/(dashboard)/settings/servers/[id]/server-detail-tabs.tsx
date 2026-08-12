@@ -52,6 +52,7 @@ import {
   type TeamOption,
 } from "@/components/servers/server-team-access";
 import { ServerReadinessDialog } from "@/components/servers/server-readiness-dialog";
+import { BetaChip } from "@/components/shared/beta-chip";
 import type { CleanupPolicy, CleanupRunDTO } from "@/lib/data/docker-cleanup";
 import { AgentVersionBadge } from "../agent-version-badge";
 import { ServerMaintenanceTab } from "./maintenance-tab";
@@ -474,6 +475,7 @@ function AccessTab({
             <CardTitle className="flex items-center gap-2 text-base">
               <Hammer className="size-4" />
               What this server is for
+              <BetaChip />
             </CardTitle>
             <p className="mt-1 text-sm text-muted-foreground">
               A build server compiles images for apps that run on your other

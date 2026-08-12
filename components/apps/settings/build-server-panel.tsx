@@ -12,6 +12,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { BetaChip } from "@/components/shared/beta-chip";
 import { gqlAction } from "@/lib/graphql-client";
 
 export interface BuildServerChoice {
@@ -136,6 +137,7 @@ export function BuildServerPanel({
         <div className="space-y-0.5">
           <p className="flex items-center gap-1.5 text-sm font-medium">
             Build on
+            <BetaChip />
             <InfoTip
               content={
                 <>

@@ -1,6 +1,6 @@
 # ADR-0020: A build server builds for hosts it does not run on
 
-**Status**: accepted
+**Status**: accepted (shipped beta in agent v1.26.0)
 
 ## Context
 
@@ -106,6 +106,15 @@ re-hosts the app's domains.
 let ten servers at concurrency 1 aim ten simultaneous builds at one builder, which is the
 opposite of the point. The known cost is the mirror image - apps sharing a builder can now
 reach their own hosts at once - and that is the cheap phase.
+
+### It ships as beta
+
+Same chip the Git providers carry, on the three surfaces that expose it: the "Only build"
+role, the server role card, and the app's "Build on" setting. The machinery is proven
+against two real hosts (`scripts/buildserver-e2e.mts` - build here, run there, builder
+reclaimed), but the path through the dashboard has far fewer real fleets behind it than
+the rest of the product. It is not a warning label: nothing gets a build server by
+accident, because an instance admin has to mark a host for it first.
 
 ## Consequences
 

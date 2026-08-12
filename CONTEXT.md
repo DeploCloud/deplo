@@ -450,7 +450,7 @@ why the UI hides the hook exactly when a provider already triggers the app and n
 _Avoid_: webhook on its own (ambiguous with the inbound provider webhook and with a plugin
 **Event**'s delivery), deploy key (that is an SSH credential), trigger URL.
 
-**Build server**:
+**Build server** (beta):
 A **server** that COMPILES for machines it does not run on. It exists because a host
 otherwise has to be sized for the build rather than the workload: an App that serves in
 300 MB can need several GB to compile, and while it compiles it competes with the Apps
@@ -478,6 +478,10 @@ the two hosts must share a CPU architecture, which is a REFUSAL (`servers.host_a
 observed from each Hello), because an amd64 image on an arm64 box dies with `exec
 format error` long after the deploy reported success. The deploy occupies the
 **builder's** queue lane, since that is where the cost is.
+**Beta**, and carrying the same chip the **Git connection** providers do: the machinery
+is proven end to end against two real hosts (`scripts/buildserver-e2e.mts`), but the
+path through the dashboard has fewer real fleets behind it than the rest of the product.
+Nothing gets a build server by accident - an instance admin has to mark a host for it.
 _Avoid_: builder (that is the **build method**'s job - Nixpacks, Railpack, a
 Dockerfile), CI server / runner (nothing here runs a pipeline), worker, node, "remote
 build" (the build is not remote from anywhere; it is simply on another server).

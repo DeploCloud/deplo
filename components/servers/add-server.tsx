@@ -18,6 +18,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { FieldLabel } from "@/components/ui/info-tip";
 import { CommandLine } from "@/components/shared/code-block";
+import { BetaChip } from "@/components/shared/beta-chip";
 import { gqlAction } from "@/lib/graphql-client";
 import {
   AccessOption,
@@ -213,6 +214,7 @@ export function AddServer({
                     selected={role === "build"}
                     disabled={pending}
                     onSelect={() => setRole("build")}
+                    badge={<BetaChip />}
                   />
                   <AccessOption
                     icon={Archive}

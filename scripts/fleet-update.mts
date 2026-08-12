@@ -125,7 +125,17 @@ for (const [i, s] of order.entries()) {
       const h = await agentPreflight(s.id);
       if (h.agentVersion !== before) {
         confirmed = h.agentVersion;
-        await markServerSeen(s.id, h.agentVersion, h.traefikRunning, undefined, h.dockerVersion);
+        await markServerSeen(
+          s.id,
+          h.agentVersion,
+          h.traefikRunning,
+          undefined,
+          h.dockerVersion,
+          // The host's CPU architecture, which a build server is matched on. The
+          // preflight above already persists it; passing it here too keeps this
+          // call from depending on that side effect to be complete.
+          h.hostArch,
+        );
         console.log(
           `OK    ${label} — now ${h.agentVersion}, docker=${h.dockerAvailable}, caps=${h.capabilities.length}`,
         );
