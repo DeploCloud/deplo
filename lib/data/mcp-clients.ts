@@ -14,8 +14,7 @@ import {
   requireCapability,
   requireTeamWide,
 } from "../membership";
-import { assertUser, authHeaders } from "../auth";
-import { requireAuth } from "../auth/better-auth";
+import { assertUser } from "../auth";
 import { ALL_CAPABILITIES, type Capability } from "../types";
 import { createToken, type TokenScopeInput } from "./tokens";
 import { getMcpSettings } from "./mcp-settings";
@@ -148,26 +147,18 @@ export interface AuthorizeMcpClientInput extends TokenScopeInput {
  * revoke, and re-approving overwrites it through the `(client_id, user_id)`
  * unique index.
  */
-export async function authorizeMcpClient(
-  input: AuthorizeMcpClientInput,
-): Promise<{ redirectUrl: string }> {
-  await mintMcpConnection(input);
-  const result = await requireAuth().api.oauth2Consent({
-    body: {
-      accept: true,
-      ...(input.scope ? { scope: input.scope } : {}),
-      ...(input.oauthQuery ? { oauth_query: input.oauthQuery } : {}),
-    },
-    headers: await authHeaders(),
-  });
-  return { redirectUrl: result.url };
-}
-
 /**
- * Every gate, and the mint. Split from the handshake above because THIS is the
- * security boundary: the OAuth call after it is glue that needs a browser's
- * cookies, and a boundary that can only be exercised through a browser is a
- * boundary nothing tests.
+ * Every gate, and the mint. This is deplo's whole half of a consent.
+ *
+ * **The handshake that follows is the BROWSER's, not ours, and it cannot be
+ * moved here.** `POST /api/auth/oauth2/consent` funnels into the provider's
+ * `authorizeEndpoint`, which opens with `if (!ctx.request) throw
+ * UNAUTHORIZED("request not found")` — an in-process `auth.api.*({body,
+ * headers})` call has no `ctx.request` by construction, so calling it from a
+ * resolver fails every time, and it fails with an APIError whose `message` is
+ * EMPTY (the reason lives in `body.error_description`), which surfaces as an
+ * error notification with nothing written in it. Mint here, let the page post
+ * the consent, and both halves are exercised by the path production uses.
  */
 export async function mintMcpConnection(
   input: AuthorizeMcpClientInput,
@@ -226,21 +217,6 @@ export async function mintMcpConnection(
   );
 
   return { tokenId: token.id };
-}
-
-/** Turn down a consent without minting anything. */
-export async function denyMcpClient(input: {
-  oauthQuery?: string;
-}): Promise<{ redirectUrl: string }> {
-  await assertUser();
-  const result = await requireAuth().api.oauth2Consent({
-    body: {
-      accept: false,
-      ...(input.oauthQuery ? { oauth_query: input.oauthQuery } : {}),
-    },
-    headers: await authHeaders(),
-  });
-  return { redirectUrl: result.url };
 }
 
 /**

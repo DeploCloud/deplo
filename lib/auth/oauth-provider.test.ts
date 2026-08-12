@@ -93,6 +93,56 @@ test("the access token is stored hashed over the BARE secret", async () => {
   assert.equal(rows[0].token, expected);
 });
 
+test("the consent endpoint REFUSES a server-side call, and refuses it wordlessly", async () => {
+  // This is the bug that made Authorize a dead button, pinned from both ends.
+  //
+  // `consentEndpoint` funnels into `authorizeEndpoint`, which opens with
+  // `if (!ctx.request) throw UNAUTHORIZED("request not found")` — so calling it
+  // from a resolver with `auth.api.oauth2Consent({body, headers})` fails every
+  // single time, however valid the query and the cookie are. The browser has to
+  // post the consent, and `components/oauth/consent-form.tsx` is where that
+  // lives now.
+  //
+  // The second half is why nobody saw it: the APIError's `message` is EMPTY and
+  // the reason is in `body.error_description`, so a UI that shows `e.message`
+  // shows an error notification with nothing written inside it.
+  const reg = await registerClient();
+  const cookie = await signIn(EMAIL, PASSWORD);
+  const authorized = await authorize(cookie, {
+    client_id: String(reg.body.client_id),
+    redirect_uri: REDIRECT,
+    response_type: "code",
+    scope: "openid",
+    state: "st",
+    code_challenge: pkcePair().challenge,
+    code_challenge_method: "S256",
+  });
+  const headers = new Headers();
+  headers.set("cookie", cookie);
+
+  const thrown = await requireAuth()
+    .api.oauth2Consent({
+      body: { accept: true, oauth_query: authorized.oauthQuery ?? "" },
+      headers,
+    })
+    .then(
+      () => null,
+      (e: unknown) => e as { message?: string; body?: { error_description?: string } },
+    );
+
+  assert.ok(thrown, "an in-process consent SUCCEEDED — re-read this test's note");
+  assert.equal(
+    thrown!.body?.error_description,
+    "request not found",
+    "the refusal changed shape; check the provider still needs ctx.request",
+  );
+  assert.equal(
+    thrown!.message,
+    "",
+    "if the provider learned to fill `message`, a UI showing it is no longer silent",
+  );
+});
+
 test("the signed authorization query survives Next's searchParams round trip", async () => {
   // The bug this pins was invisible and total: the provider signs the whole
   // authorization query onto the consent URL, the page reads it back through

@@ -20,7 +20,16 @@ import {
 import { runWithIdentity } from "../auth/request-context";
 import { createToken } from "../data/tokens";
 import { resetAuth } from "../auth/better-auth";
-import { fullFlow } from "../auth/oauth-test-helpers";
+import {
+  authorize,
+  consent,
+  exchange,
+  fullFlow,
+  pkcePair,
+  registerClient,
+  signIn,
+} from "../auth/oauth-test-helpers";
+import { mintMcpConnection } from "../data/mcp-clients";
 import { POST, GET, OPTIONS } from "@/app/api/mcp/route";
 import { GET as PROTECTED_RESOURCE } from "@/app/.well-known/oauth-protected-resource/api/mcp/route";
 import type { Capability } from "../types";
@@ -165,6 +174,68 @@ async function connect(capabilities: Capability[] = ["view"]) {
   ]);
   return { ...flow, tokenId: token.id };
 }
+
+/* ------------------------------------------------------------------ */
+/* 0. The whole loop, in production's order                            */
+/* ------------------------------------------------------------------ */
+
+test("register → sign in → authorize → mint → consent → exchange → a tool answers", async () => {
+  // The test that was missing, and the reason a broken flow shipped twice: every
+  // other test here exercises ONE seam. This drives the sequence the browser
+  // actually performs, in the order it performs it — deplo mints the credential
+  // through the data layer first, then the PAGE posts the consent over HTTP
+  // (which is the only way that endpoint works), then the client redeems its
+  // code and calls a tool.
+  const reg = await registerClient();
+  const clientId = String(reg.body.client_id);
+  const cookie = await signIn(EMAIL, PASSWORD);
+
+  const { verifier, challenge } = pkcePair();
+  const authorized = await authorize(cookie, {
+    client_id: clientId,
+    redirect_uri: "https://client.test/callback",
+    response_type: "code",
+    scope: "openid offline_access",
+    state: "st",
+    code_challenge: challenge,
+    code_challenge_method: "S256",
+    resource: RESOURCE,
+  });
+  assert.match(
+    String(authorized.location),
+    /^\/oauth\/consent\?/,
+    "authorize must land on deplo's own consent page",
+  );
+
+  // What the GraphQL resolver does, behind every gate.
+  await runWithIdentity({ userId: USER_1, teamId: TEAM_A }, () =>
+    mintMcpConnection({ clientId, capabilities: ["view"] }),
+  );
+
+  // What the consent page's browser fetch does.
+  const approved = await consent(cookie, {
+    accept: true,
+    oauth_query: authorized.oauthQuery ?? "",
+  });
+  assert.equal(approved.status, 200, `consent refused (${approved.status})`);
+  const code = new URL(approved.url!).searchParams.get("code");
+  assert.ok(code, `no code in ${approved.url}`);
+
+  const token = await exchange({
+    grant_type: "authorization_code",
+    code: code!,
+    code_verifier: verifier,
+    client_id: clientId,
+    redirect_uri: "https://client.test/callback",
+    resource: RESOURCE,
+  });
+  assert.ok(token.body.access_token, JSON.stringify(token.body));
+
+  const res = await mcp(token.body.access_token);
+  assert.equal(res.status, 200, JSON.stringify(res.body));
+  assert.ok(JSON.stringify(res.body).includes(USER_1));
+  assert.ok(JSON.stringify(res.body).includes(TEAM_A));
+});
 
 /* ------------------------------------------------------------------ */
 /* 1. Baseline — the pre-OAuth path is unchanged                       */

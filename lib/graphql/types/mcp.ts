@@ -5,9 +5,8 @@ import {
   type McpSettings,
 } from "@/lib/data/mcp-settings";
 import {
-  authorizeMcpClient,
-  denyMcpClient,
   listMcpConnections,
+  mintMcpConnection,
   type McpConnectionDTO,
 } from "@/lib/data/mcp-clients";
 
@@ -54,13 +53,6 @@ export const McpConnectionRef = builder
     }),
   });
 
-export const OauthRedirectRef = builder
-  .objectRef<{ redirectUrl: string }>("OauthRedirect")
-  .implement({
-    description: "Where to send the browser to finish the OAuth flow.",
-    fields: (t) => ({ redirectUrl: t.exposeString("redirectUrl") }),
-  });
-
 /* ------------------------------------------------------------------ */
 /* Queries                                                             */
 /* ------------------------------------------------------------------ */
@@ -94,13 +86,14 @@ builder.mutationFields((t) => ({
     },
     resolve: (_p, a) => setMcpSettings({ enabled: a.enabled }),
   }),
-  authorizeMcpClient: t.field({
-    type: OauthRedirectRef,
+  authorizeMcpClient: t.boolean({
     authScopes: { capability: "manage_mcp" },
     description:
-      "Approve an AI client's OAuth request: mint an API token with the chosen " +
-      "capabilities and scope, and hand the client its authorization code. " +
-      "Also needs `manage_tokens`, and cannot grant more than the approver holds.",
+      "Approve an AI client: mint an API token with the chosen capabilities and " +
+      "scope, and link it to the client. Also needs `manage_tokens`, and cannot " +
+      "grant more than the approver holds. The OAuth handshake itself is then " +
+      "finished by the browser posting to `/api/auth/oauth2/consent` — that " +
+      "endpoint refuses a server-side call, so it cannot be done here.",
     args: {
       clientId: t.arg.string({ required: true }),
       capabilities: t.arg.stringList({ required: false }),
@@ -108,30 +101,19 @@ builder.mutationFields((t) => ({
       projectIds: t.arg.stringList({ required: false }),
       folderIds: t.arg.stringList({ required: false }),
       appIds: t.arg.stringList({ required: false }),
-      scope: t.arg.string({ required: false }),
-      oauthQuery: t.arg.string({ required: false }),
     },
-    resolve: (_p, a) =>
-      authorizeMcpClient({
+    resolve: async (_p, a) => {
+      await mintMcpConnection({
         clientId: a.clientId,
         capabilities: (a.capabilities ?? undefined) as
-          | Parameters<typeof authorizeMcpClient>[0]["capabilities"]
+          | Parameters<typeof mintMcpConnection>[0]["capabilities"]
           | undefined,
         teamIds: a.teamIds ?? undefined,
         projectIds: a.projectIds ?? undefined,
         folderIds: a.folderIds ?? undefined,
         appIds: a.appIds ?? undefined,
-        scope: a.scope ?? undefined,
-        oauthQuery: a.oauthQuery ?? undefined,
-      }),
-  }),
-  denyMcpClient: t.field({
-    type: OauthRedirectRef,
-    authScopes: { loggedIn: true },
-    description:
-      "Turn down an AI client's OAuth request. Mints nothing; anyone signed in " +
-      "may decline a request addressed to them.",
-    args: { oauthQuery: t.arg.string({ required: false }) },
-    resolve: (_p, a) => denyMcpClient({ oauthQuery: a.oauthQuery ?? undefined }),
+      });
+      return true;
+    },
   }),
 }));

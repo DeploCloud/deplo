@@ -109,6 +109,20 @@ brings zero new transitive packages.
   someone mid-flow inside a third-party product.
 - The consent page lives at `app/oauth/consent`, **not** under `app/(auth)` — that layout redirects
   a signed-in user to the dashboard, which is everyone who reaches consent.
+- **deplo mints; the BROWSER posts the consent.** Not a preference: `POST /oauth2/consent` funnels
+  into the provider's `authorizeEndpoint`, which opens with
+  `if (!ctx.request) throw UNAUTHORIZED("request not found")`, and an in-process
+  `auth.api.*({ body, headers })` call has no `ctx.request` by construction. Calling it from a
+  resolver fails every time — and fails with an `APIError` whose `message` is **empty**, the reason
+  living in `body.error_description`, so a UI showing `e.message` shows an error notification with
+  nothing written inside it. Both halves are pinned by a test that asserts the in-process call is
+  refused, and one that drives register → sign in → authorize → mint → consent → exchange → tool
+  call in production's own order. Anything that reaches `auth.api` from `lib/data/*` on this path is
+  the same bug returning.
+- The signed authorization query must survive the round trip **byte for byte**: the provider signs
+  the whole query onto the consent URL, and it repeats `ba_param` once per signed parameter, which
+  Next hands back as an array. `rebuildOauthQuery` lives in `lib/auth/oauth-query.ts` rather than
+  inline in the page so a test can reach it, with a control asserting the mangled form IS refused.
 - `app/api/mcp/route.ts` is now genuinely an OAuth resource server: its 401 carries
   `resource_metadata`, and it answers CORS preflights so a browser client can read the challenge.
   Its comment claiming deplo "is not an OAuth resource server" is gone.

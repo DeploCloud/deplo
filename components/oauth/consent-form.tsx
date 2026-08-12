@@ -43,8 +43,6 @@ const AUTHORIZE = /* GraphQL */ `
     $projectIds: [String!]
     $folderIds: [String!]
     $appIds: [String!]
-    $scope: String
-    $oauthQuery: String
   ) {
     authorizeMcpClient(
       clientId: $clientId
@@ -53,19 +51,7 @@ const AUTHORIZE = /* GraphQL */ `
       projectIds: $projectIds
       folderIds: $folderIds
       appIds: $appIds
-      scope: $scope
-      oauthQuery: $oauthQuery
-    ) {
-      redirectUrl
-    }
-  }
-`;
-
-const DENY = /* GraphQL */ `
-  mutation ($oauthQuery: String) {
-    denyMcpClient(oauthQuery: $oauthQuery) {
-      redirectUrl
-    }
+    )
   }
 `;
 
@@ -74,6 +60,49 @@ const SWITCH_TEAM = /* GraphQL */ `
     switchTeam(teamId: $teamId)
   }
 `;
+
+/**
+ * Finish the OAuth handshake from the BROWSER.
+ *
+ * It cannot be done server-side: `/api/auth/oauth2/consent` funnels into the
+ * provider's `authorizeEndpoint`, which opens with
+ * `if (!ctx.request) throw UNAUTHORIZED("request not found")`, and an in-process
+ * `auth.api.*` call has no request. Same-origin, so the CSP's `connect-src
+ * 'self'` allows it and the browser attaches both the session cookie and the
+ * `Origin` header the endpoint's CSRF check wants.
+ *
+ * The endpoint answers with JSON, not a 302, so there is no redirect to follow —
+ * we read the URL and navigate. Its refusals live in `error_description`, and
+ * `message` is empty, which is exactly how this once became an error toast with
+ * nothing written in it.
+ */
+async function postConsent(
+  body: { accept: boolean; scope?: string; oauth_query?: string },
+): Promise<{ url?: string; error?: string }> {
+  try {
+    const res = await fetch("/api/auth/oauth2/consent", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      credentials: "same-origin",
+      body: JSON.stringify(body),
+    });
+    const json = (await res.json().catch(() => ({}))) as {
+      url?: string;
+      error_description?: string;
+      message?: string;
+    };
+    if (!res.ok || !json.url)
+      return {
+        error:
+          json.error_description ||
+          json.message ||
+          `deplo could not finish the connection (${res.status})`,
+      };
+    return { url: json.url };
+  } catch {
+    return { error: "deplo could not reach its own sign-in service" };
+  }
+}
 
 /**
  * The consent screen's form. Approving it MINTS an API token, which is why it
@@ -134,10 +163,15 @@ export function ConsentForm({
     : { text: teamName ?? "This team", empty: false };
 
   /**
-   * `gqlAction`, not `useGraphqlMutation`: its `error` is React state, so
-   * reading it straight after the await gets the value from BEFORE the failure —
-   * the server's refusal would be swallowed and the button would look inert.
-   * The message is surfaced verbatim, as the house rule says.
+   * Two steps, in this order. deplo mints the credential first, behind every
+   * gate; only then does the browser complete the handshake. The reverse would
+   * hand the client a code that resolves to nothing.
+   *
+   * `gqlAction`, not `useGraphqlMutation`: the latter's `error` is React state,
+   * so reading it straight after the await gets the value from BEFORE the
+   * failure — the server's refusal would be swallowed and the button would look
+   * inert. Every path below ends in either a navigation or a message; none ends
+   * in silence.
    */
   async function onApprove(e: React.FormEvent) {
     e.preventDefault();
@@ -145,40 +179,41 @@ export function ConsentForm({
     const picked = selection.teamIds.length
       ? selection
       : { ...selection, teamIds: [teamId] };
-    const res = await gqlAction<
-      { authorizeMcpClient: { redirectUrl: string } },
-      string
-    >(
-      AUTHORIZE,
-      {
-        clientId: client.clientId,
-        capabilities,
-        teamIds: picked.teamIds,
-        projectIds: picked.projectIds,
-        folderIds: picked.folderIds,
-        appIds: picked.appIds,
-        scope: scope || null,
-        oauthQuery: oauthQuery || null,
-      },
-      (d) => d.authorizeMcpClient.redirectUrl,
-    );
-    if (!res.ok || !res.data) {
+    const minted = await gqlAction(AUTHORIZE, {
+      clientId: client.clientId,
+      capabilities,
+      teamIds: picked.teamIds,
+      projectIds: picked.projectIds,
+      folderIds: picked.folderIds,
+      appIds: picked.appIds,
+    });
+    if (!minted.ok) {
       setPending(false);
-      toast.error(res.ok ? "deplo did not get a redirect back" : res.error);
+      toast.error(minted.error || "deplo refused the connection");
+      return;
+    }
+    const done = await postConsent({
+      accept: true,
+      ...(scope ? { scope } : {}),
+      ...(oauthQuery ? { oauth_query: oauthQuery } : {}),
+    });
+    if (!done.url) {
+      setPending(false);
+      toast.error(done.error || "deplo could not finish the connection");
       return;
     }
     // A full-page navigation, not router.push: the destination is the client's
-    // own site, and what answers there is an OAuth redirect.
-    window.location.assign(res.data);
+    // own site.
+    window.location.assign(done.url);
   }
 
   async function onDeny() {
     setPending(true);
-    const res = await gqlAction<
-      { denyMcpClient: { redirectUrl: string } },
-      string
-    >(DENY, { oauthQuery: oauthQuery || null }, (d) => d.denyMcpClient.redirectUrl);
-    window.location.assign(res.ok && res.data ? res.data : "/settings/mcp");
+    const done = await postConsent({
+      accept: false,
+      ...(oauthQuery ? { oauth_query: oauthQuery } : {}),
+    });
+    window.location.assign(done.url ?? "/settings/mcp");
   }
 
   return (

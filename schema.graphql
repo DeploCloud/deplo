@@ -1982,9 +1982,9 @@ type Mutation {
   approvePreview(id: ID!): AppPreview
 
   """
-  Approve an AI client's OAuth request: mint an API token with the chosen capabilities and scope, and hand the client its authorization code. Also needs `manage_tokens`, and cannot grant more than the approver holds.
+  Approve an AI client: mint an API token with the chosen capabilities and scope, and link it to the client. Also needs `manage_tokens`, and cannot grant more than the approver holds. The OAuth handshake itself is then finished by the browser posting to `/api/auth/oauth2/consent` — that endpoint refuses a server-side call, so it cannot be done here.
   """
-  authorizeMcpClient(appIds: [String!], capabilities: [String!], clientId: String!, folderIds: [String!], oauthQuery: String, projectIds: [String!], scope: String, teamIds: [String!]): OauthRedirect
+  authorizeMcpClient(appIds: [String!], capabilities: [String!], clientId: String!, folderIds: [String!], projectIds: [String!], teamIds: [String!]): Boolean
 
   """
   Start, stop or restart EVERY app in one folder (its whole subtree) or one project (every environment). Gated again per app, so it only touches the ones the caller may control; one failure never stops the rest. Give exactly one of folderId / projectId.
@@ -2209,11 +2209,6 @@ type Mutation {
   Permanently delete a user account. Teams they are the only member of always go with it; the rest is opt-in.
   """
   deleteUser(input: DeleteUserInput!): DeleteUserResult
-
-  """
-  Turn down an AI client's OAuth request. Mints nothing; anyone signed in may decline a request addressed to them.
-  """
-  denyMcpClient(oauthQuery: String): OauthRedirect
 
   """
   Build a preview for a specific open pull request. Also approves it when it comes from a fork — clicking this IS the approval.
@@ -2867,11 +2862,6 @@ input NodeGrantInput {
   capabilities: [Capability!]!
   folderIds: [String!]
   projectIds: [String!]
-}
-
-"""Where to send the browser to finish the OAuth flow."""
-type OauthRedirect {
-  redirectUrl: String
 }
 
 """
