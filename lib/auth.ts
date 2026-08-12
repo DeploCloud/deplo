@@ -24,6 +24,7 @@ import { authRequestHeaders } from "./auth/request-headers";
 import { getAuth, requireAuth, sessionCookieNames } from "./auth/better-auth";
 import { cookiesAreSecure } from "./public-url";
 import { assertPasswordPolicy } from "./password-policy";
+import { assertPasswordNotPwned } from "./pwned-password";
 
 // Kept in sync with lib/membership.ts (ACTIVE_TEAM_COOKIE). Set here on
 // signup/setup so the new account lands with an active team immediately,
@@ -217,6 +218,7 @@ export async function createAccountWithTeam(
       .replace(/^-+|-+$/g, "") || "team";
 
   assertPasswordPolicy(input.password);
+  await assertPasswordNotPwned(input.password);
 
   const now = new Date().toISOString();
 
@@ -325,6 +327,7 @@ export async function createAccountWithTeams(
   const email = input.email.toLowerCase().trim();
   if (!email.includes("@")) throw new Error("Enter a valid email address");
   assertPasswordPolicy(input.password);
+  await assertPasswordNotPwned(input.password);
   if (assignments.length === 0)
     throw new Error("This registration link has no teams to join");
 

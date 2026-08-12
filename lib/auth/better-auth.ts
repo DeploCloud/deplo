@@ -4,11 +4,13 @@ import { betterAuth } from "better-auth";
 import { APIError, createAuthMiddleware } from "better-auth/api";
 import { drizzleAdapter } from "better-auth/adapters/drizzle";
 import { nextCookies } from "better-auth/next-js";
+import { haveIBeenPwned } from "better-auth/plugins/haveibeenpwned";
 import { twoFactor } from "better-auth/plugins/two-factor";
 import { getDb, hasTestDb, type DrizzleClient } from "@/lib/db/client";
 import { isPostgresEnabled } from "@/lib/db/pg";
 import { schema } from "@/lib/db/schema";
 import { deriveKey, hashPassword, verifyPassword } from "@/lib/crypto";
+import { PWNED_PASSWORD_MESSAGE } from "@/lib/pwned-password";
 import { newId } from "@/lib/ids";
 import { cookiesAreSecure, publicBaseUrl } from "@/lib/public-url";
 
@@ -152,6 +154,15 @@ function createAuth(db: DrizzleClient) {
       // `issuer` is what an authenticator app labels the entry. Backup codes stay
       // at the plugin's default (10 codes, single-use), stored encrypted.
       twoFactor({ issuer: "deplo" }),
+      // Breach check on the Better Auth endpoints themselves: `/api/auth/*` is
+      // mounted whole (app/api/auth/[...all]/route.ts), so `/change-password`
+      // and `/reset-password` are reachable over the network even though the
+      // dashboard never uses them. deplo's own writes do not pass through here -
+      // they call `assertPasswordNotPwned` in lib/pwned-password.ts, which is
+      // where the same check lives for setup, the registration link, the account
+      // settings, the admin reset, basic auth and database passwords. Same
+      // message from both so the refusal never reads like two different rules.
+      haveIBeenPwned({ customPasswordCompromisedMessage: PWNED_PASSWORD_MESSAGE }),
       // MUST stay last: it is an `after` hook that forwards Set-Cookie into the
       // Next.js cookie store, so anything appended after it would not be seen.
       nextCookies(),

@@ -40,6 +40,7 @@ import {
 import { twoFactor as twoFactorTable } from "../db/schema/auth";
 import { getCurrentUser, revokeAllSessions, setUserPassword } from "../auth";
 import { assertPasswordPolicy } from "../password-policy";
+import { assertPasswordNotPwned } from "../pwned-password";
 import { recordActivity } from "./activity";
 import { instanceOwnerUserId } from "./instance-owner";
 import {
@@ -1036,7 +1037,10 @@ export async function updateUserAdmin(input: {
 }): Promise<void> {
   const { userId: actingUserId } = await requireInstanceAdmin();
   const newPassword = input.newPassword?.trim() ? input.newPassword : null;
-  if (newPassword) assertPasswordPolicy(newPassword);
+  if (newPassword) {
+    assertPasswordPolicy(newPassword);
+    await assertPasswordNotPwned(newPassword);
+  }
 
   await getDb().transaction(async (tx) => {
     const target = (

@@ -45,6 +45,7 @@ import {
 import { isDockerLevelStderr } from "../infra/docker";
 import { isValidLogoValue } from "../apps/logo-shared";
 import { withKeyedLock } from "./keyed-mutex";
+import { assertPasswordNotPwned } from "../pwned-password";
 import { publishDatabaseChanged } from "../graphql/pubsub";
 import type { Database, DatabaseType } from "../types";
 
@@ -483,7 +484,10 @@ export async function createDatabase(input: {
   // Validate a supplied password up front — it is cheap, local input validation,
   // so fail fast (before any server lookup or agent probe) with a clear message
   // rather than surfacing it only after slower checks.
-  if (input.password) assertPasswordSafe(input.password);
+  if (input.password) {
+    assertPasswordSafe(input.password);
+    await assertPasswordNotPwned(input.password);
+  }
 
   const exposed = input.exposedPublicly ?? false;
   // Publishing a host port is a privileged action, separate from manage_infra:

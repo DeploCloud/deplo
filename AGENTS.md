@@ -333,6 +333,14 @@ Single endpoint `app/api/graphql/route.ts` (thin) → `lib/graphql/yoga.ts`. One
   hash's own parameters, the pre-parameter 3-field form still verifies, and `login()` re-hashes a
   weaker one in place on the next successful sign-in (`passwordNeedsRehash`). Both helpers are
   **async on purpose** - scrypt at this cost must not run on the event loop.
+- **Every password a person CHOOSES gets two gates:** `assertPasswordPolicy` (sync, shared with
+  the strength meter) and `await assertPasswordNotPwned` (`lib/pwned-password.ts`, the Have I Been
+  Pwned range API, k-anonymous and **failing open** so no-egress instances still work). Both run on
+  account creation, change-password, the admin reset, basic auth, the Traefik panel and a
+  database's engine password. Better Auth's own `/api/auth/*` endpoints are covered by the
+  `haveIBeenPwned` plugin instead - deplo's writes never reach them. External credentials
+  (registry, SMTP, S3, git tokens) are deliberately NOT checked: deplo cannot rotate them, so a hit
+  would only break a working integration.
 - **Every user-supplied outbound address goes through `lib/outbound-url.ts` first**
   (`assertSafeOutboundUrl` / `assertSafeOutboundHost` for a bare SMTP host). S3 endpoints,
   notification webhooks, push endpoints and git base URLs are all on it; reaching inside the
