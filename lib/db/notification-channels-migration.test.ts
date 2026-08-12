@@ -55,9 +55,11 @@ before(async () => {
     .sort();
   // 0085 rides along: it adds one column to `teams`, which the live-drizzle
   // seed below names in its INSERT. Any later additive column on a seeded table
-  // needs the same treatment.
+  // needs the same treatment — 0098 (the two MCP switches) is the next one.
   const preSeed = (f: string): boolean =>
-    Number(f.slice(0, 4)) < 75 || f.startsWith("0085_");
+    Number(f.slice(0, 4)) < 75 ||
+    f.startsWith("0085_") ||
+    f.startsWith("0098_");
   for (const f of files.filter(preSeed)) await applyFile(f);
 
   // Teams and users through the live schema: 0075 does not touch them.

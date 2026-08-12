@@ -1,0 +1,140 @@
+import { test, before, after, beforeEach } from "node:test";
+import assert from "node:assert/strict";
+
+import type { PGlite } from "@electric-sql/pglite";
+import { eq } from "drizzle-orm";
+
+import { makeTestDb, type TestDb } from "../db/test-harness";
+import { __setTestDb, __resetTestDb } from "../db/client";
+import {
+  teams as teamsTable,
+  membershipCapabilities,
+  memberships,
+} from "../db/schema/control-plane";
+import { runWithIdentity } from "../auth/request-context";
+import {
+  seedIdentity,
+  TEAM_A,
+  TEAM_B,
+  USER_1,
+} from "../data/leaf-test-helpers";
+import { getMcpSettings, setMcpSettings } from "../data/mcp-settings";
+
+/**
+ * The MCP kill switch and its Capability.
+ *
+ * The switch is the one thing standing between "this team's tokens may be
+ * spoken to by an agent" and "they may not", so the two questions worth pinning
+ * are: does a new team start ON (the answer the migration's DEFAULT gives), and
+ * is changing it actually gated on `manage_mcp` rather than on being logged in.
+ */
+
+let db: TestDb;
+let pg: PGlite;
+
+const TRUNCATE = `truncate table teams, users restart identity cascade;`;
+
+before(async () => {
+  ({ db, pg } = await makeTestDb());
+  __setTestDb(db);
+});
+
+after(async () => {
+  __resetTestDb();
+  await pg.close();
+});
+
+beforeEach(async () => {
+  await pg.exec(TRUNCATE);
+  await seedIdentity(db);
+});
+
+const asUser1 = <T>(fn: () => Promise<T>): Promise<T> =>
+  runWithIdentity({ userId: USER_1, teamId: TEAM_A }, fn);
+
+/** Drop one capability from USER_1's membership in TEAM_A. */
+async function revoke(capability: string) {
+  const m = (
+    await db
+      .select({ id: memberships.id })
+      .from(memberships)
+      .where(eq(memberships.teamId, TEAM_A))
+      .limit(1)
+  )[0];
+  await db
+    .delete(membershipCapabilities)
+    .where(eq(membershipCapabilities.membershipId, m.id));
+  // Re-seed everything except the one under test, so the caller still reaches
+  // the team (the `view` floor) and only this decision is missing.
+  const { ALL_CAPABILITIES } = await import("../types");
+  await db.insert(membershipCapabilities).values(
+    ALL_CAPABILITIES.filter((c) => c !== capability).map((c) => ({
+      membershipId: m.id,
+      capability: c,
+    })),
+  );
+}
+
+test("a team starts with MCP on and confirmations on", async () => {
+  const settings = await asUser1(() => getMcpSettings());
+  assert.deepEqual(settings, { enabled: true, confirmDestructive: true });
+});
+
+test("setMcpSettings changes only what it is given", async () => {
+  await asUser1(async () => {
+    const off = await setMcpSettings({ enabled: false });
+    assert.equal(off.enabled, false);
+    assert.equal(
+      off.confirmDestructive,
+      true,
+      "an omitted field must stay as it was",
+    );
+
+    const quiet = await setMcpSettings({ confirmDestructive: false });
+    assert.equal(quiet.enabled, false, "the other field is still off");
+    assert.equal(quiet.confirmDestructive, false);
+  });
+
+  const row = (
+    await db
+      .select({
+        enabled: teamsTable.mcpEnabled,
+        confirm: teamsTable.mcpConfirmDestructive,
+      })
+      .from(teamsTable)
+      .where(eq(teamsTable.id, TEAM_A))
+      .limit(1)
+  )[0];
+  assert.deepEqual(row, { enabled: false, confirm: false }, "persisted");
+});
+
+test("changing the policy needs manage_mcp, not merely membership", async () => {
+  await revoke("manage_mcp");
+  await assert.rejects(
+    () => asUser1(() => setMcpSettings({ enabled: false })),
+    /manage_mcp|permission|not allowed|capability/i,
+    "a member without manage_mcp must be refused",
+  );
+  // Reading is deliberately ungated: /api/mcp has to read its own kill switch
+  // as whatever principal the token carries.
+  const still = await asUser1(() => getMcpSettings());
+  assert.equal(still.enabled, true, "and the switch did not move");
+});
+
+test("the switch is per team, not per instance", async () => {
+  await asUser1(() => setMcpSettings({ enabled: false }));
+
+  // Asserted on the row rather than through `getMcpSettings`, which is
+  // `cache()`d for the request: this is a claim about the COLUMN, and reading
+  // it directly is the only way to make it one.
+  const rows = await db
+    .select({ id: teamsTable.id, enabled: teamsTable.mcpEnabled })
+    .from(teamsTable);
+  const byId = Object.fromEntries(rows.map((r) => [r.id, r.enabled]));
+  assert.equal(byId[TEAM_A], false, "the team that turned it off is off");
+  assert.equal(
+    byId[TEAM_B],
+    true,
+    "turning MCP off in one team must not touch another",
+  );
+});

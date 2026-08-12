@@ -139,6 +139,19 @@ two-factor authentication and they have not enrolled, the token resolves nothing
 _Avoid_: caller token (a retired name), API key (reserve for third-party provider keys in
 env), secret key.
 
+**MCP server**:
+Deplo's endpoint for AI agents, at `/api/mcp`, speaking the Model Context Protocol
+(revision 2026-07-28). It exposes a curated set of **tools** — each one a name, an input
+schema and a GraphQL document run in-process against the same schema `/api/graphql` serves,
+as the caller's own principal. It introduces **no credential of its own**: an agent
+authenticates with an ordinary **API token** and picks its team with `X-Deplo-Team`, exactly
+like any other external client. The protocol is stateless, so one endpoint serves one team,
+chosen when the agent is connected. Two team switches govern it — whether agents are allowed
+at all, and whether a destructive tool must be confirmed by a human first — both behind the
+`manage_mcp` **Capability**. No tool can reveal a secret, whatever the token holds (ADR-0021).
+_Avoid_: MCP plugin (the withdrawn container relay, ADR-0013), MCP token / `MCP_BEARER` (there
+is no such credential), connector.
+
 ### Plugins
 
 > **Deferred — not a live feature (ADR-0013).** Plugins have no UI, no GraphQL surface and no

@@ -64,6 +64,7 @@ export type Capability =
   | "manage_registries"
   | "manage_git"
   | "manage_tokens"
+  | "manage_mcp"
   | "manage_notifications"
   // Logs & monitoring
   | "view_logs"
@@ -118,6 +119,7 @@ export const ALL_CAPABILITIES: Capability[] = [
   "manage_registries",
   "manage_git",
   "manage_tokens",
+  "manage_mcp",
   "manage_notifications",
   "view_logs",
   "view_metrics",
@@ -1915,7 +1917,12 @@ export type ActivityType =
   /** Docker cleanup: a policy change, or a sweep that reclaimed disk on a server. */
   | "cleanup"
   /** Monitoring: a settings change (e.g. the "save metrics on server" switch). */
-  | "monitoring";
+  | "monitoring"
+  /**
+   * MCP: who let AI agents into this team, and when. "An agent deleted it" must
+   * never be a dead end — the trail names the human who opened the door.
+   */
+  | "mcp";
 
 export interface Activity {
   id: ID;

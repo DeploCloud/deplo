@@ -22,6 +22,7 @@ const ActivityTypeEnum = builder.enumType("ActivityType", {
     "cron",
     "cleanup",
     "monitoring",
+    "mcp",
   ] as const,
 });
 

@@ -104,7 +104,7 @@ the ones you will meet most:
 | `create_projects` · `organize_projects` · `delete_projects` · `manage_environments` | projects & their environments |
 | `create_databases` · `configure_databases` · `control_databases` · `delete_databases` · `open_database_console` | managed databases |
 | `manage_backups` · `restore_backups` · `manage_backup_destinations` | schedules & runs · restoring over live data · where backups are kept |
-| `manage_registries` · `manage_git` · `manage_tokens` · `manage_notifications` | integrations & API access |
+| `manage_registries` · `manage_git` · `manage_tokens` · `manage_mcp` · `manage_notifications` | integrations & API access · whether AI agents may drive the team |
 | `view_logs` · `view_metrics` · `manage_monitoring` · `view_activity` | logs, monitoring, the audit trail    |
 | `manage_members` · `manage_roles`                    | who is in the team · what each role grants           |
 | `manage_team` · `delete_team`                        | team settings · deleting the team                    |
@@ -161,12 +161,11 @@ therefore not capped per team.
   server - ask `Deployment.canRollback` first, and note that only the CODE goes
   back: variables, domains, storage and limits stay current),
   `setAppRollbackKeep(id, count)` (how many it keeps, 0-20, `configure_apps`),
-  `stopApp`, `createProject`, `createEnvironment`, `upsertEnvironmentEnv`,
+  `stopApp`, `createProject`, `createEnvironment`, `upsertEnv`,
   `addDomain`, `createDatabase`, `updateDatabase`, `restartDatabase`,
   `redeployDatabase`, `rebuildDatabase`, `updateDatabaseResources`, `updateDatabaseImage`,
-  `rotateDatabasePassword`, `execDatabaseConsole`, `setSaveMetrics`,
-  `setAppSaveMetrics(appId, enabled)`/`setDatabaseSaveMetrics(databaseId, enabled)`
-  (the per-resource "Save metrics" switch, `manage_infra`, default off),
+  `rotateDatabasePassword`, `execDatabaseConsole`, `setSaveMetrics`
+  (the instance-wide "Save metrics" switch, `manage_monitoring`),
   `createToken`, `updateTeam`, `createRole`/`updateRole`/`resetRole`/`deleteRole`
   (a role edit applies to every member holding it), `login`, `logout`, ….
   On `updateRole` every optional field means "leave it as it is": omit
@@ -227,17 +226,16 @@ mutation {
 }
 ```
 
-Share a variable with every app of a Project, in one environment's context
-(no `targets` — the environment IS the scope):
+Share a variable with several apps at once (a shared variable, linked per app —
+ADR-0012: the link is what injects it, the scope only suggests):
 
 ```graphql
 mutation {
-  upsertEnvironmentEnv(input: {
-    environmentId: "environ_123"
+  saveSharedVar(input: {
     key: "API_BASE_URL"
     value: "https://api.example.com"
     type: plain
-  }) { id key value }
+  }) { id key }
 }
 ```
 
@@ -267,6 +265,34 @@ A few endpoints stay REST because GraphQL is the wrong transport for them
 | `POST /api/github/webhook`        | GitHub webhook receiver          |
 | `POST /api/git/webhook/[token]`   | push receiver for every other provider — the token in the URL identifies the git connection, which says how to verify the delivery |
 | `POST /api/apps/[id]/deploy-hook/[token]` | deploy hook — a webhook sender posts a URL, it can't compose a query |
+| `POST /api/mcp`                   | the MCP server — JSON-RPC, not GraphQL (see below) |
+
+### MCP server
+
+AI agents reach deplo at `POST /api/mcp`, speaking the Model Context Protocol,
+**revision 2026-07-28**. It is a different framing of this same API, not a second one: each
+tool runs a GraphQL document in-process as the caller's own principal, so every capability
+gate, folder grant, token scope and 2FA policy applies identically.
+
+Authentication is the ordinary **API token** — there is no MCP-specific credential:
+
+```bash
+claude mcp add --transport http deplo https://deplo.example.com/api/mcp \
+  --header "Authorization: Bearer deplo_your_token" \
+  --header "X-Deplo-Team: acme"
+```
+
+The protocol is stateless (no session, no `initialize` handshake), so one endpoint serves
+**one team**, chosen by `X-Deplo-Team` when the agent is connected; connect a second server to
+work in another team. `tools/list` returns only the tools the token can actually call, so the
+"MCP & AI agents" template shows 34 of the 76. A `403` means the team has
+switched MCP off (Settings → MCP Server, `manage_mcp`); a `429` means the per-token rate limit.
+
+**No tool can reveal a secret**, whatever capabilities the token holds — `list_env` shows keys
+with masked values and there is no `reveal_env`. Destructive tools return
+`resultType: "input_required"` and wait for a human to confirm in their own client, unless the
+team turns that off. Full rationale in
+[ADR-0021](../adr/0021-the-mcp-server-is-a-first-party-route-not-a-plugin.md).
 
 ### Deploy hook
 

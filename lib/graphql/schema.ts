@@ -24,6 +24,7 @@ import "./types/folder";
 import "./types/git";
 import "./types/github";
 import "./types/instance";
+import "./types/mcp";
 import "./types/member";
 import "./types/monitoring";
 import "./types/notifications";

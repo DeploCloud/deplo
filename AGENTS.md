@@ -5,7 +5,7 @@ templates into Docker stacks fronted by Traefik. Read this before writing code, 
 the deeper docs it links (this file points; it does not restate them).
 
 - **`CONTEXT.md`** (repo root) — authoritative glossary / ubiquitous language. Single-context repo.
-- **`docs/adr/`** — numbered decisions (0001–0014). Contradicting one? Surface it, don't silently override.
+- **`docs/adr/`** — numbered decisions (0001-0021). Contradicting one? Surface it, don't silently override.
 - **`docs/api/graphql.md`** — external API reference · **`schema.graphql`** (root) — generated SDL.
 - **`docs/agents/`** — `issue-tracker.md`, `triage-labels.md`, `domain.md`.
 
@@ -251,10 +251,18 @@ Single endpoint `app/api/graphql/route.ts` (thin) → `lib/graphql/yoga.ts`. One
   `databases/[id]/attach` (SSE siblings of the app routes — reuse `lib/logs/session.ts` +
   `lib/attach/session.ts`), `github/webhook|callback|setup`, `auth/[...all]`, `agent/bootstrap`,
   `graphql/playground`, `health`, `node-versions`, `railpack-versions`, `registry/images`.
-  The **one exception to the cookie rule** is `apps/[id]/deploy-hook/[token]` (the **deploy
-  hook**): a webhook sender can't compose a GraphQL query, so it POSTs a URL and authenticates
-  with an API token (`Authorization: Bearer deplo_…`). It re-enters the normal gates via
-  `runWithIdentity` + `redeploy` — never bypass them with a hand-rolled capability check.
+  **Two exceptions to the cookie rule**, both authenticating with an API token
+  (`Authorization: Bearer deplo_…`) and both re-entering the normal gates via `runWithIdentity`
+  — never bypass them with a hand-rolled capability check:
+  - `apps/[id]/deploy-hook/[token]` (the **deploy hook**): a webhook sender can't compose a
+    GraphQL query, so it POSTs a URL and lets `redeploy` apply the gates.
+  - `mcp` (the **MCP server**, ADR-0021): JSON-RPC, not GraphQL, because that is what AI agents
+    speak. Every tool is a row in `lib/mcp/tools.ts` whose GraphQL document runs **in-process**
+    against the same schema via `lib/mcp/execute.ts`, so the gates are literally the same code.
+    Adding a tool is adding a row; adding an authorization check there is a bug — it belongs in
+    `lib/data/*`. Regenerate nothing, but keep `lib/mcp/tools.test.ts` green: it validates every
+    document against `schema.graphql`, which is what stops a renamed field from silently
+    breaking sixty tools.
 
 ## Data & mutations (the security boundary)
 
@@ -276,10 +284,10 @@ Single endpoint `app/api/graphql/route.ts` (thin) → `lib/graphql/yoga.ts`. One
   silently lossy: it retries the insert once, and an entry it still could not write becomes a
   visible "N activity entries could not be recorded" row on the next successful write. A gap in an
   audit trail has to be legible **in the trail**, not only in stderr.
-- **Capabilities are FINE-GRAINED (45)** — one action each, catalogued with labels,
+- **Capabilities are FINE-GRAINED (46)** — one action each, catalogued with labels,
   descriptions, search keywords and browse categories in **`lib/capabilities.ts`**
   (`create_apps`, `deploy_apps`, `delete_apps`, `open_app_console`, `read_app_files` vs
-  `write_app_files`, `create_databases`, `restore_backups`, `manage_tokens`,
+  `write_app_files`, `create_databases`, `restore_backups`, `manage_tokens`, `manage_mcp`,
   `organize_folders`, `manage_previews`, `view_logs`, `manage_roles`, `delete_team`, …). `view` is the always-on
   floor; plus instance-wide `instanceAdmin` and the orthogonal grants `canExposePorts` /
   `canMountHostVolumes`. **Never add a capability that covers two actions** — if an admin

@@ -11,6 +11,7 @@ import {
   Timer,
   Brush,
   Gauge,
+  Bot,
   Activity as ActivityIcon,
   type LucideIcon,
 } from "lucide-react";
@@ -36,6 +37,7 @@ const ICON_BY_TYPE: Record<ActivityType, LucideIcon> = {
   cron: Timer,
   cleanup: Brush,
   monitoring: Gauge,
+  mcp: Bot,
 };
 
 function iconFor(type: ActivityType): LucideIcon {

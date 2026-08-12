@@ -687,6 +687,20 @@
       "when": 1784680600000,
       "tag": "0097_app_deleting",
       "breakpoints": true
+    },
+    {
+      "idx": 98,
+      "version": "7",
+      "when": 1784680800000,
+      "tag": "0098_mcp_server",
+      "breakpoints": true
+    },
+    {
+      "idx": 99,
+      "version": "7",
+      "when": 1784681000000,
+      "tag": "0099_backfill_manage_mcp",
+      "breakpoints": true
     }
   ]
 }

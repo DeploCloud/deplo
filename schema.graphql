@@ -666,7 +666,8 @@ enum Capability {
   manage_environments
   manage_files @deprecated(reason: "Split into finer permissions. Still accepted on input, where it means: read_app_files, write_app_files.")
   manage_git
-  manage_infra @deprecated(reason: "Split into finer permissions. Still accepted on input, where it means: create_databases, configure_databases, control_databases, delete_databases, open_database_console, manage_backups, restore_backups, delete_backups, manage_backup_destinations, manage_registries, manage_git, manage_tokens, manage_notifications, manage_monitoring.")
+  manage_infra @deprecated(reason: "Split into finer permissions. Still accepted on input, where it means: create_databases, configure_databases, control_databases, delete_databases, open_database_console, manage_backups, restore_backups, delete_backups, manage_backup_destinations, manage_registries, manage_git, manage_tokens, manage_mcp, manage_notifications, manage_monitoring.")
+  manage_mcp
   manage_members
   manage_monitoring
   manage_notifications
@@ -1866,6 +1867,14 @@ type LogsInfo {
   unreachable: Boolean
 }
 
+"""
+The active team's MCP policy: whether AI agents may drive it, and whether they must ask a human before a destructive action.
+"""
+type McpSettings {
+  confirmDestructive: Boolean
+  enabled: Boolean
+}
+
 """A user's membership in the active team (no email exposed)."""
 type Member {
   avatarColor: String
@@ -2577,6 +2586,11 @@ type Mutation {
   setFolderGrant(capabilities: [String!]!, folderId: ID!, userId: ID!): [FolderGrant!]
 
   """
+  Turn MCP access on or off for this team, and choose whether destructive tools must be confirmed by a human first. Omitted fields are unchanged.
+  """
+  setMcpSettings(confirmDestructive: Boolean, enabled: Boolean): McpSettings
+
+  """
   Set one member's role and per-node overrides in the ACTIVE team. The team is the caller's own - there is no id to pass, which is what keeps it from reaching another one.
   """
   setMemberAccess(input: SetMemberAccessInput!): [UserTeamAccess!]
@@ -3140,6 +3154,9 @@ type Query {
 
   """Lighter instance list for the logs viewer."""
   logsInfo(appId: String!): LogsInfo
+
+  """The active team's MCP policy."""
+  mcpSettings: McpSettings
 
   """
   The authenticated viewer, or null when unauthenticated. Works with a session cookie or an API token.

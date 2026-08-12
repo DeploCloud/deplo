@@ -28,6 +28,7 @@
     "@escape.tech/graphql-armor-max-aliases": "^2.6.2",
     "@escape.tech/graphql-armor-max-depth": "^2.4.2",
     "@grpc/grpc-js": "^1.14.4",
+    "@modelcontextprotocol/server": "^2.0.0",
     "@peculiar/x509": "^1.14.3",
     "@pothos/core": "^4.13.1",
     "@pothos/plugin-scope-auth": "^4.1.7",

@@ -258,6 +258,13 @@ export const CAPABILITY_META: Record<Capability, CapabilityMeta> = {
     keywords: "api access token bearer cli automation",
     sensitive: true,
   },
+  manage_mcp: {
+    label: "Manage MCP access",
+    description:
+      "Decide whether AI agents may drive this team, and whether they must ask before destructive actions.",
+    keywords: "mcp ai agent assistant llm claude cursor copilot",
+    sensitive: true,
+  },
   manage_notifications: {
     label: "Manage notifications",
     description: "Choose which events are announced and where they are sent.",
@@ -401,6 +408,7 @@ export const CAPABILITY_CATEGORIES: {
       "manage_registries",
       "manage_git",
       "manage_tokens",
+      "manage_mcp",
       "manage_notifications",
     ],
   },
@@ -479,6 +487,10 @@ export const LEGACY_CAPABILITY_EXPANSION: Record<string, Capability[]> = {
     "manage_registries",
     "manage_git",
     "manage_tokens",
+    // Same rule as the 0098 backfill: deciding whether an AI agent may drive the
+    // team is the same class of decision as minting the bearer token that lets
+    // it in, so `manage_mcp` follows `manage_tokens` everywhere it appears.
+    "manage_mcp",
     "manage_notifications",
     "manage_monitoring",
   ],
