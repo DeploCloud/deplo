@@ -4,14 +4,17 @@ import * as React from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import {
+  Archive,
   Check,
   Clock,
+  Hammer,
   Cpu,
   ExternalLink,
   Globe,
   KeyRound,
   Loader2,
   RefreshCw,
+  ServerCog,
   ShieldAlert,
   Sparkles,
   Trash2,
@@ -37,6 +40,8 @@ import { FieldLabel, InfoTip } from "@/components/ui/info-tip";
 import { CommandLine } from "@/components/shared/code-block";
 import { SimpleTooltip } from "@/components/ui/tooltip";
 import { TimezonePicker } from "@/components/servers/timezone-picker";
+import { AccessOption } from "@/components/servers/server-team-access";
+import { BetaChip } from "@/components/shared/beta-chip";
 import { gqlAction } from "@/lib/graphql-client";
 import { regenerateNipDomain } from "@/lib/nip-suggestion";
 import { formatBytes } from "@/lib/utils";
@@ -124,6 +129,7 @@ export function ServerAdvancedTab({ server }: { server: ServerSummary }) {
 
   return (
     <>
+      <ServerRolePanel server={server} />
       <HostDetails info={info} loading={loading} error={error} onRetry={load} />
       <ServerClock server={server} reading={reading} onChanged={setReading} />
       <TraefikPanel server={server} info={info} onChanged={load} />
@@ -1028,5 +1034,126 @@ function DangerZone({ server }: { server: ServerSummary }) {
         </DialogContent>
       </Dialog>
     </>
+  );
+}
+
+/**
+ * What a server is FOR: it runs apps, or it only builds for the ones that do, or
+ * it only holds backups.
+ *
+ * ADVANCED, because it is a fleet-shaping decision nobody makes on their first
+ * day, and because the default ("Everything") is what almost every server is.
+ *
+ * The three are not symmetric in one direction only. Any host that HAS Docker can
+ * take any role - the role is a control-plane decision, and the installer's only
+ * per-role difference is whether it sets Traefik up. But a server INSTALLED as
+ * backups-only never had Docker put on it, and no database write can change that,
+ * so it cannot leave that role until the install command is re-run on the host.
+ */
+function ServerRolePanel({ server }: { server: ServerSummary }) {
+  const router = useRouter();
+  const [pending, startTransition] = React.useTransition();
+  const [role, setRole] = React.useState(server.role);
+
+  // A backups-only install has no Docker to become anything else with. `dockerVersion`
+  // is only ever non-empty because an agent reported one, so it is the honest signal.
+  const stuckOnStorage = server.role === "storage" && !server.dockerVersion;
+
+  function save(e: React.FormEvent) {
+    e.preventDefault();
+    startTransition(async () => {
+      const res = await gqlAction<{ setServerRole: { id: string } }>(
+        `mutation SetServerRole($id: String!, $role: String!) {
+          setServerRole(id: $id, role: $role) { id }
+        }`,
+        { id: server.id, role },
+      );
+      if (!res.ok) {
+        toast.error(res.error);
+        return;
+      }
+      toast.success(
+        role === "build"
+          ? `${server.name} now only builds`
+          : role === "storage"
+            ? `${server.name} now only holds backups`
+            : `${server.name} runs apps again`,
+      );
+      router.refresh();
+    });
+  }
+
+  // Saying "move them off first" only helps ahead of the refusal, so it is shown
+  // while the choice is still unsaved - not after the server has said no.
+  const needsEmptying = role !== "everything" && server.role === "everything";
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle className="flex items-center gap-2 text-base">
+          <Hammer className="size-4" />
+          What this server is for
+          <BetaChip />
+        </CardTitle>
+        <p className="mt-1 text-sm text-muted-foreground">
+          A build server compiles images for apps that run on your other servers,
+          so those can stay small.
+        </p>
+      </CardHeader>
+      <CardContent>
+        <form className="space-y-4" onSubmit={save}>
+          <div className="grid gap-2 sm:grid-cols-3">
+            <AccessOption
+              icon={ServerCog}
+              title="Everything"
+              description="Runs apps and builds them"
+              selected={role === "everything"}
+              disabled={pending || stuckOnStorage}
+              onSelect={() => setRole("everything")}
+            />
+            <AccessOption
+              icon={Hammer}
+              title="Only build"
+              description="Builds for other servers"
+              selected={role === "build"}
+              disabled={pending || stuckOnStorage}
+              onSelect={() => setRole("build")}
+              badge={<BetaChip />}
+            />
+            <AccessOption
+              icon={Archive}
+              title="Only backups"
+              description="Holds backup files"
+              selected={role === "storage"}
+              disabled={pending}
+              onSelect={() => setRole("storage")}
+            />
+          </div>
+          {stuckOnStorage && (
+            <Badge variant="warning">
+              This server was installed without Docker, so it can only hold
+              backups. Re-run the install command on the host to change that.
+            </Badge>
+          )}
+          {needsEmptying && (
+            <Badge variant="warning">
+              Apps and databases have to be moved off this server first.
+            </Badge>
+          )}
+          {role === "everything" && server.role === "build" && (
+            <Badge variant="warning">
+              This server has no proxy installed, so apps deployed here will run
+              but stay unreachable on their domains. Re-run the install command on
+              the host to add one.
+            </Badge>
+          )}
+          <div>
+            <Button type="submit" disabled={pending || role === server.role}>
+              {pending ? "Saving" : "Save"}
+            </Button>
+          </div>
+        </form>
+      </CardContent>
+    </Card>
   );
 }

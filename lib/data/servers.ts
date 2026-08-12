@@ -886,17 +886,23 @@ export function serverRole(s: Pick<Server, "storageOnly" | "buildOnly">): Server
 /**
  * Change what a server is for.
  *
- * Only the BUILD axis is settable after installation, and that asymmetry is real
- * rather than an oversight: the build-only installer's single difference is
- * skipping Traefik, so the role is otherwise a control-plane decision that can be
- * revised. Storage-only skips Docker itself, which no database write can undo - a
- * host that never installed Docker cannot be talked into having it.
+ * All three roles are settable after installation, because a role is a
+ * CONTROL-PLANE decision: it changes which pickers offer the host and which
+ * readiness rows apply, and the installer's only per-role difference is whether it
+ * sets Traefik up. A host that has Docker can therefore be any of them, and go
+ * back.
  *
- * Turning a server INTO a build server is refused while it still hosts anything,
- * reusing the same probe {@link removeServer} uses: a build server runs no
- * workloads, so accepting this would strand every app on it, unrouted, with no
- * indication of why. Turning one back into a general server always succeeds, but
- * the caller is expected to warn that Traefik is not installed there.
+ * The one true asymmetry is physical rather than a policy: a server INSTALLED as
+ * backups-only never had Docker put on it, and no database write can change that.
+ * It is pinned to that role until the install command is re-run on the host, and
+ * `dockerVersion` (only ever non-empty because an agent reported one) is how we
+ * tell that case from a Docker-having host somebody merely retired into storage.
+ *
+ * Leaving "Everything" is refused while the host still runs anything, reusing the
+ * probe {@link removeServer} uses: neither of the other roles serves workloads, so
+ * accepting it would strand every app on the box, unrouted, with no indication of
+ * why. Going back TO "Everything" always succeeds, but the caller is expected to
+ * warn that Traefik may not be installed there.
  *
  * Instance-admin, like every server mutation - servers are shared cross-team infra.
  */
@@ -906,28 +912,30 @@ export async function setServerRole(id: string, role: ServerRole): Promise<Serve
   const user = (await getCurrentUser())!;
   const server = await getServerById(id);
   if (!server) throw new Error("Server not found");
-  if (server.storageOnly)
+
+  const current = serverRole(server);
+  if (role === current) return server;
+
+  // The physical one-way door: no Docker on the box, nothing to run or build with.
+  if (current === "storage" && !server.dockerVersion)
     throw new Error(
       "This server was installed to hold backups only and has no Docker on it. " +
         "Re-run the install command on the host to change that.",
     );
-  if (role === "storage")
-    throw new Error(
-      "A backup-only server skips installing Docker, so it has to be chosen when " +
-        "the server is registered. Remove this server and add it again.",
-    );
-  const buildOnly = role === "build";
-  if (buildOnly === server.buildOnly) return server;
-  if (buildOnly) await assertNoWorkloads(id);
+  // Leaving "everything" means it stops serving what it serves today.
+  if (current === "everything") await assertNoWorkloads(id);
+
   await getDb()
     .update(serversTable)
-    .set({ buildOnly })
+    .set({ buildOnly: role === "build", storageOnly: role === "storage" })
     .where(eq(serversTable.id, id));
   await recordActivity(
     "member",
-    buildOnly
+    role === "build"
       ? `Set server ${server.name} to build only`
-      : `Set server ${server.name} to run apps again`,
+      : role === "storage"
+        ? `Set server ${server.name} to hold backups only`
+        : `Set server ${server.name} to run apps again`,
     user.name,
     null,
     teamId,

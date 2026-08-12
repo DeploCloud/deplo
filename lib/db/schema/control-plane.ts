@@ -794,10 +794,11 @@ export const servers = pgTable(
     // a warning - a build server has no proxy BY DESIGN and should not read as
     // half-configured for it. Docker is still required; that check is unchanged.
     //
-    // Unlike `storage_only` this is reversible from the UI: the installer's only
-    // build-only branch is skipping Traefik, so the role is otherwise purely a
-    // control-plane decision. Turning it ON is refused while the host still has
-    // apps or databases on it.
+    // Reversible from the UI, like every role: the installer's only build-only
+    // branch is skipping Traefik, so a role is otherwise purely a control-plane
+    // decision. Leaving "everything" is refused while the host still has apps or
+    // databases on it. The one true one-way door is physical - a host installed as
+    // backups-only has no Docker to build with.
     buildOnly: boolean("build_only").notNull().default(false),
     // This host's CPU architecture ("amd64" | "arm64"), observed from each Hello
     // like `docker_version` and `traefik_enabled` - never asserted at registration.

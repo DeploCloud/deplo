@@ -2618,7 +2618,7 @@ type Mutation {
   setServerDeployConcurrency(concurrency: Int!, id: String!): Server
 
   """
-  Change what a server is for: "everything" or "build". Turning a server into a build server is refused while it still hosts apps or databases. "storage" cannot be set here - that installer skips Docker, so it is chosen when the server is registered.
+  Change what a server is for: "everything", "build" or "storage". Leaving "everything" is refused while the host still has apps or databases on it. A server INSTALLED as backups-only has no Docker and stays pinned to "storage" until its install command is re-run on the host.
   """
   setServerRole(id: String!, role: String!): Server
 

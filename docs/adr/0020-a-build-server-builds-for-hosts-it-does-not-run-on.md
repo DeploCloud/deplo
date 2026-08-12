@@ -120,9 +120,11 @@ accident, because an instance admin has to mark a host for it first.
 
 - A build server needs no domain, no proxy and no ports: the installer's only build-only
   branch is skipping Traefik, and the readiness report skips that row instead of warning.
-- Because the role is only a control-plane decision, it is reversible from Manage, unlike
-  `storage_only` (which skips installing Docker, and no database write undoes that).
-  Turning it on is refused while the host still has apps or databases.
+- Because a role is only a control-plane decision, all three are settable from Manage on a
+  host that HAS Docker, and reversible. The one true one-way door is physical: a server
+  installed as backups-only never had Docker put on it, so it stays pinned to that role
+  until its install command is re-run. Leaving "everything" is refused while the host
+  still has apps or databases.
 - **The source and decrypted env of every app that builds there cross to that host.** It
   obeys the existing `all_teams` / `server_teams` grants and nothing new: the exposure is
   the same one any shared server already has, but it is now shared by apps that do not run

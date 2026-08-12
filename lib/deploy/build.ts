@@ -1430,6 +1430,13 @@ function agentDownReason(e: unknown): string {
     // These messages are ours, written at the throw site, and carry no address.
     return e.message;
   }
+  // A TRUST failure is not a dead host: the peer answered, it just is not the agent
+  // Deplo pinned (or it rejected our client cert). Saying "it did not answer" would
+  // send someone to check whether the box is up, which is the one thing that is
+  // fine. `trust` is captured at the dial, the only place that can tell them apart.
+  if (e instanceof AgentUnreachableError && e.trust) {
+    return "its certificate is not the one Deplo trusts - reissue its install command";
+  }
   return "it did not answer";
 }
 

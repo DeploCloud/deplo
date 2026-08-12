@@ -571,7 +571,7 @@ builder.mutationFields((t) => ({
     type: ServerRef,
     authScopes: { instanceAdmin: true },
     description:
-      'Change what a server is for: "everything" or "build". Turning a server into a build server is refused while it still hosts apps or databases. "storage" cannot be set here - that installer skips Docker, so it is chosen when the server is registered.',
+      'Change what a server is for: "everything", "build" or "storage". Leaving "everything" is refused while the host still has apps or databases on it. A server INSTALLED as backups-only has no Docker and stays pinned to "storage" until its install command is re-run on the host.',
     args: {
       id: t.arg.string({ required: true }),
       role: t.arg.string({ required: true }),

@@ -64,6 +64,9 @@ test("an ordinary build failure is NOT treated as the host being down", () => {
  */
 function agentDownReason(e: unknown): string {
   if (e instanceof AgentUnavailableError) return e.message;
+  if (e instanceof AgentUnreachableError && e.trust) {
+    return "its certificate is not the one Deplo trusts - reissue its install command";
+  }
   return "it did not answer";
 }
 
@@ -78,4 +81,19 @@ test("a transport error's address never reaches the deploy log", () => {
 test("our own curated messages DO survive - they carry no address", () => {
   const msg = "the agent reports Docker is not available on the target server";
   assert.equal(agentDownReason(new AgentUnavailableError(msg)), msg);
+});
+
+// A TRUST failure rides the SAME class as a dead host, and only the `trust` flag
+// separates them - the dial captures it because gRPC surfaces both as an opaque
+// transport error. Collapsing them would send someone to check whether the box is
+// up, which is precisely the thing that is fine.
+test("a certificate failure does not read as a dead host", () => {
+  const dead = new AgentUnreachableError("14 UNAVAILABLE: connection refused");
+  const untrusted = new AgentUnreachableError("14 UNAVAILABLE: handshake", 14, true);
+
+  assert.match(agentDownReason(dead), /did not answer/);
+  assert.match(agentDownReason(untrusted), /certificate/);
+  assert.doesNotMatch(agentDownReason(untrusted), /did not answer/);
+  // And it still says nothing an operator should not see.
+  assert.doesNotMatch(agentDownReason(untrusted), /UNAVAILABLE|handshake|\d+\.\d+\.\d+\.\d+/);
 });
