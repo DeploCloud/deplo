@@ -701,6 +701,13 @@
       "when": 1784681000000,
       "tag": "0099_backfill_manage_mcp",
       "breakpoints": true
+    },
+    {
+      "idx": 100,
+      "version": "7",
+      "when": 1784681200000,
+      "tag": "0100_drop_mcp_confirm",
+      "breakpoints": true
     }
   ]
 }

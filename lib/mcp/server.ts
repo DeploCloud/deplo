@@ -1,12 +1,6 @@
 import "server-only";
 
-import {
-  McpServer,
-  acceptedContent,
-  inputRequired,
-  CLIENT_CAPABILITIES_META_KEY,
-} from "@modelcontextprotocol/server";
-import * as z from "zod";
+import { McpServer } from "@modelcontextprotocol/server";
 import { DEPLO_VERSION } from "../version";
 import type { Capability } from "../types";
 import type { GraphQLContext } from "../graphql/context";
@@ -47,17 +41,6 @@ function visible(tool: McpToolDef, principal: McpPrincipal): boolean {
 }
 
 /**
- * The elicitation a destructive tool sends before it does anything. A zod schema
- * rather than raw JSON Schema: the SDK converts it to the restricted wire shape,
- * and one boolean is the most a confirmation should ever ask for.
- */
-const CONFIRM_SCHEMA = z.object({
-  confirm: z
-    .boolean()
-    .describe("Tick to let the assistant perform this action."),
-});
-
-/**
  * Slice the single top-level array in a result, so a fleet of 74 apps does not
  * arrive as one wall of JSON. Reports the true total, because a model that
  * cannot tell "these are all of them" from "these are the first fifty" will
@@ -83,24 +66,6 @@ function paginate(
     offset: from,
     hasMore: from + page.length < list.length,
   };
-}
-
-/**
- * Whether this client can actually show a confirmation prompt.
- *
- * A server may only ask for input the client declared it can provide — asking
- * anyway is a `-32021` protocol error, which reaches the model as an opaque
- * failure rather than as something it can act on. So we ask the envelope first
- * and, when the answer is no, refuse the action in a sentence that says what to
- * change. Refusing is the only honest branch: running the destructive tool
- * anyway would quietly ignore the team's policy, which is the one thing the
- * switch exists to prevent.
- */
-function canElicit(ctx: { mcpReq?: { envelope?: Record<string, unknown> } }) {
-  const caps = ctx.mcpReq?.envelope?.[CLIENT_CAPABILITIES_META_KEY] as
-    | { elicitation?: { form?: unknown } }
-    | undefined;
-  return Boolean(caps?.elicitation?.form);
 }
 
 /**
@@ -154,34 +119,12 @@ export function buildMcpServer(principal: McpPrincipal): McpServer {
           openWorldHint: false,
         },
       },
-      async (args, ctx) => {
-        // The human in the loop, when the team asked for one. `acceptedContent`
-        // returns undefined for a missing, declined or cancelled elicitation —
-        // all three mean "do not proceed", so one check covers them.
-        if (tool.destructive && principal.settings.confirmDestructive) {
-          const answer = acceptedContent<{ confirm?: boolean }>(
-            ctx.mcpReq?.inputResponses,
-            "confirm",
-          );
-          if (!answer?.confirm) {
-            if (answer !== undefined)
-              return failure("Cancelled: nobody confirmed this action.");
-            if (!canElicit(ctx))
-              return failure(
-                `${tool.name} needs a human to confirm it, but this MCP client can't show a confirmation prompt. ` +
-                  "Either use a client that supports elicitation, or turn off \"Ask before destructive actions\" in Settings → MCP Server.",
-              );
-            return inputRequired({
-              inputRequests: {
-                confirm: inputRequired.elicit({
-                  message: tool.confirm!(args),
-                  requestedSchema: CONFIRM_SCHEMA,
-                }),
-              },
-            });
-          }
-        }
-
+      async (args) => {
+        // No confirmation step, deliberately. What an agent may do is the
+        // token's Capabilities and nothing on top: a second gate here would be
+        // a second permission system, and it could only ever drift from the
+        // first. `destructiveHint` above is how the caller's own client knows
+        // to ask - which is the only place a prompt can actually be rendered.
         try {
           if (tool.run) return text(await tool.run(args));
 

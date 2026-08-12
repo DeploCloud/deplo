@@ -3,6 +3,7 @@ import { getMcpSettings } from "@/lib/data/mcp-settings";
 import { instancePublicBaseUrl } from "@/lib/data/instance-settings";
 import { getTeam } from "@/lib/data/teams";
 import { PageHeader } from "@/components/shared/page-header";
+import { BetaChip } from "@/components/shared/beta-chip";
 import { OutsideYourAccess } from "@/components/shared/outside-your-access";
 import { McpPanel } from "@/components/settings/mcp/mcp-panel";
 import { ConnectSnippet } from "@/components/settings/mcp/connect-snippet";
@@ -33,14 +34,15 @@ export default async function McpSettingsPage() {
   return (
     <div className="space-y-6">
       <PageHeader
-        title="MCP Server"
+        title={
+          <span className="flex items-center gap-2">
+            MCP Server
+            <BetaChip />
+          </span>
+        }
         description="Let AI agents drive this team through deplo's API, using an API token you control."
       />
-      <McpPanel
-        enabled={settings.enabled}
-        confirmDestructive={settings.confirmDestructive}
-        canManage={canManage}
-      />
+      <McpPanel enabled={settings.enabled} canManage={canManage} />
       <ConnectSnippet publicUrl={publicUrl} teamSlug={team.slug} />
       <ToolTable />
     </div>

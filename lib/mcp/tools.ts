@@ -48,13 +48,14 @@ export interface McpToolDef<
   requires: ToolRequirement | null;
   readOnly?: boolean;
   /**
-   * Destroys or replaces something. Sets `destructiveHint` (most clients ask on
-   * their own) and, when the team's switch is on, forces an MRTR confirmation.
+   * Destroys or replaces something. Its whole effect is `destructiveHint` in
+   * `tools/list`, which is what makes an MCP client ask its own user before
+   * running the tool. deplo adds no confirmation of its own: the token's
+   * Capabilities decide, and the prompt belongs to the only party that can
+   * render one.
    */
   destructive?: boolean;
   idempotent?: boolean;
-  /** The question the human is asked before a destructive call goes through. */
-  confirm?: (args: z.infer<S>) => string;
   /** Map tool args to GraphQL variables when the shapes differ. */
   variables?: (args: z.infer<S>) => Record<string, unknown>;
   /**
@@ -306,8 +307,6 @@ const APPS_OPS: McpToolDef[] = [
     group: "Apps",
     requires: "deploy_apps",
     destructive: true,
-    confirm: (a) =>
-      `Rebuild ${a.appId}? The image is built again from scratch and the running container is replaced.`,
     input: z.object({ appId }),
     query: /* GraphQL */ `
       mutation McpRebuildApp($id: String!) { rebuildApp(id: $id) { ${APP_FIELDS} } }
@@ -322,8 +321,6 @@ const APPS_OPS: McpToolDef[] = [
     group: "Apps",
     requires: "rollback_apps",
     destructive: true,
-    confirm: (a) =>
-      `Roll back to deployment ${a.deploymentId}? The app stops serving its current version.`,
     input: z.object({
       deploymentId: z
         .string()
@@ -368,7 +365,6 @@ const APPS_OPS: McpToolDef[] = [
     requires: "control_apps",
     idempotent: true,
     destructive: true,
-    confirm: (a) => `Stop ${a.appId}? It stops serving traffic until started again.`,
     input: z.object({ appId }),
     query: /* GraphQL */ `
       mutation McpStopApp($id: String!) { stopApp(id: $id) { ${APP_FIELDS} } }
@@ -397,8 +393,6 @@ const APPS_OPS: McpToolDef[] = [
     group: "Apps",
     requires: "control_apps",
     destructive: true,
-    confirm: (a) =>
-      `${a.action} every app in ${a.folderId ? `folder ${a.folderId}` : `project ${a.projectId}`}?`,
     input: z
       .object({
         action: z.enum(["start", "stop", "restart"]),
@@ -419,8 +413,6 @@ const APPS_OPS: McpToolDef[] = [
     group: "Apps",
     requires: "deploy_apps",
     destructive: true,
-    confirm: (a) =>
-      `Redeploy every app in ${a.folderId ? `folder ${a.folderId}` : `project ${a.projectId}`}?`,
     input: z.object({
       folderId: z.string().optional(),
       projectId: z.string().optional(),
@@ -628,8 +620,6 @@ const APPS_CONFIG: McpToolDef[] = [
     group: "Apps",
     requires: "delete_apps",
     destructive: true,
-    confirm: (a) =>
-      `Permanently delete app ${a.appId}, its containers and its volumes? This cannot be undone.`,
     input: z.object({ appId }),
     query: /* GraphQL */ `
       mutation McpDeleteApp($id: String!) { deleteApp(id: $id) }
@@ -701,7 +691,6 @@ const ENV: McpToolDef[] = [
     group: "Environment",
     requires: "manage_env",
     destructive: true,
-    confirm: (a) => `Delete environment variable ${a.id}?`,
     input: z.object({
       id: z.string().describe("The variable's id, from list_env."),
     }),
@@ -819,7 +808,6 @@ const DOMAINS: McpToolDef[] = [
     group: "Domains",
     requires: "manage_domains",
     destructive: true,
-    confirm: (a) => `Remove domain ${a.id}? It stops serving immediately.`,
     input: z.object({ id: z.string().describe("The domain's id.") }),
     query: /* GraphQL */ `
       mutation McpRemoveDomain($id: String!) { removeDomain(id: $id) }
@@ -946,8 +934,6 @@ const DATABASES: McpToolDef[] = [
     group: "Databases",
     requires: "delete_databases",
     destructive: true,
-    confirm: (a) =>
-      `Rebuild database ${a.id}? This DELETES its data volume and provisions it empty. There is no undo — restore from a backup afterwards if you need the data.`,
     input: z.object({ id: databaseId }),
     query: /* GraphQL */ `
       mutation McpRebuildDatabase($id: String!) { rebuildDatabase(id: $id) { ${DATABASE_FIELDS} } }
@@ -961,8 +947,6 @@ const DATABASES: McpToolDef[] = [
     group: "Databases",
     requires: "delete_databases",
     destructive: true,
-    confirm: (a) =>
-      `Permanently delete database ${a.id}, its container and its data volume? This cannot be undone.`,
     input: z.object({ id: databaseId }),
     query: /* GraphQL */ `
       mutation McpDeleteDatabase($id: String!) { deleteDatabase(id: $id) }
@@ -1174,8 +1158,6 @@ const BACKUPS: McpToolDef[] = [
     group: "Backups",
     requires: "restore_backups",
     destructive: true,
-    confirm: (a) =>
-      `Restore backup run ${a.runId}? The live data is OVERWRITTEN with the backup's contents. This cannot be undone.`,
     input: z.object({
       runId: z.string().describe("The backup run's id, from list_backup_runs."),
     }),
@@ -1290,7 +1272,6 @@ const CRON: McpToolDef[] = [
     group: "Cron",
     requires: "manage_crons",
     destructive: true,
-    confirm: (a) => `Delete cron job ${a.id} and its run history?`,
     input: z.object({ id: z.string() }),
     query: /* GraphQL */ `
       mutation McpDeleteCronJob($id: ID!) { deleteCronJob(id: $id) }
@@ -1342,7 +1323,6 @@ const PREVIEWS: McpToolDef[] = [
     group: "Previews",
     requires: "manage_previews",
     destructive: true,
-    confirm: (a) => `Destroy preview ${a.id}, including its containers and volumes?`,
     input: z.object({ id: z.string().describe("The preview's id.") }),
     query: /* GraphQL */ `
       mutation McpDestroyPreview($id: ID!) { destroyPreview(id: $id) }
@@ -1533,7 +1513,6 @@ const FILES: McpToolDef[] = [
     group: "Files",
     requires: "write_app_files",
     destructive: true,
-    confirm: (a) => `Write ${a.path} in app ${a.appId}? Any existing file is overwritten.`,
     input: z.object({ appId, path: z.string(), content: z.string() }),
     query: /* GraphQL */ `
       mutation McpWriteAppFile($appId: String!, $path: String!, $content: String!) {
@@ -1640,8 +1619,6 @@ const SERVERS: McpToolDef[] = [
     group: "Servers",
     requires: "instanceAdmin",
     destructive: true,
-    confirm: (a) =>
-      `Update the deplo agent on server ${a.id}? Agent releases are forward-only — there is no downgrade.`,
     input: z.object({ id: serverId }),
     query: /* GraphQL */ `
       mutation McpUpdateServerAgent($id: String!) { updateServerAgent(id: $id) }
@@ -1655,8 +1632,6 @@ const SERVERS: McpToolDef[] = [
     group: "Servers",
     requires: "instanceAdmin",
     destructive: true,
-    confirm: (a) =>
-      `Restart EVERY app and database on server ${a.id}? All of them stop serving traffic for a moment, across every team using this host.`,
     input: z.object({ id: serverId }),
     query: /* GraphQL */ `
       mutation McpRestartServerWorkloads($id: String!) {
@@ -1675,8 +1650,6 @@ const SERVERS: McpToolDef[] = [
     group: "Servers",
     requires: "instanceAdmin",
     destructive: true,
-    confirm: (a) =>
-      `Restart Traefik on server ${a.id}? Every domain served by this host is briefly unreachable.`,
     input: z.object({ id: serverId }),
     query: /* GraphQL */ `
       mutation McpRestartServerTraefik($id: String!) { restartServerTraefik(id: $id) }

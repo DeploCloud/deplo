@@ -34,6 +34,12 @@ non-expert bar, because copying one line is the whole product here.
 
 ## Decision
 
+0. **It ships as BETA.** The chip on Settings → MCP Server is a promise about support, not a
+   warning label: the endpoint works and is gated like everything else, but the protocol revision
+   it targets is weeks old, the client ecosystem is still moving under it, and the tool surface
+   will change as real use shows which of the seventy-six earn their place. Drop the chip when a
+   revision of the spec has passed without breaking us.
+
 1. **The MCP server is a first-party route at `/api/mcp`, speaking protocol revision 2026-07-28.**
    That revision is stateless — no session, no `initialize` handshake, no `Mcp-Session-Id` — which
    is why it fits a Next route handler with nothing kept between calls. The official v2 SDK
@@ -63,13 +69,19 @@ non-expert bar, because copying one line is the whole product here.
    `execConsole` is excluded on the same footing — it is arbitrary code execution in a live
    container, which the token preset's own threat model calls "RCE by another name".
 
-5. **Two team switches, one new Capability.** `teams.mcp_enabled` and
-   `teams.mcp_confirm_destructive`, both defaulting to **true**, governed by the new fine-grained
-   Capability `manage_mcp` (migration 0098 seeds it wherever `manage_tokens` already is: deciding
-   whether an agent may drive the team is the same class of decision as minting the token that
-   lets it in). Confirmation uses the 2026-07-28 Multi Round-Trip Request pattern: a destructive
-   tool returns `resultType: "input_required"` and the human answers in their own client before the
-   retry does anything.
+5. **One team switch, one new Capability, and no gate of deplo's own.** `teams.mcp_enabled`,
+   defaulting to **true**, governed by the new fine-grained Capability `manage_mcp` (migration 0099
+   seeds it wherever `manage_tokens` already is: deciding whether an agent may drive the team is
+   the same class of decision as minting the token that lets it in). That switch answers a question
+   no token can — whether a company allows AI agents at all. **What an agent may DO is the token's
+   Capabilities and nothing on top.**
+
+   A per-team "ask before destructive actions" switch shipped first and was removed two commits
+   later (migration 0100). It was a second permission system beside Capabilities, and a second one
+   can only ever drift from the first: if an agent should not delete an App, the answer is to not
+   grant `delete_apps`, not to grant it and then ask again at the door. Nothing is lost — every
+   tool still advertises `destructiveHint` in `tools/list`, and MCP clients ask their own user
+   before running one. The prompt still happens; it belongs to the only party that can render it.
 
 6. **Bounded on purpose.** A rate limit keyed on the token (the bearer path never had one, and an
    agent in a loop is exactly the client that needs it), 50-item pages on list tools, and truncated

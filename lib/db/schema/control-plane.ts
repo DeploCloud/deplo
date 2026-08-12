@@ -158,14 +158,6 @@ export const teams = pgTable(
     // company that wants AI access off, not the thing that makes the endpoint
     // safe. Off ⇒ the endpoint refuses the whole request, before any tool runs.
     mcpEnabled: boolean("mcp_enabled").notNull().default(true),
-    // Whether a destructive MCP tool must come back through the human first: the
-    // tool returns `resultType: "input_required"` (MRTR, protocol 2026-07-28) and
-    // the MCP client asks its user before the retry actually deletes/rebuilds.
-    // The token's Capabilities still decide WHETHER the tool exists at all; this
-    // only decides whether the agent may fire a destructive one unattended.
-    mcpConfirmDestructive: boolean("mcp_confirm_destructive")
-      .notNull()
-      .default(true),
     // When the team's default backup destination was seeded (lib/data/destinations.ts
     // `ensureDefaultDestination`). A ONE-SHOT marker, not a timestamp anyone reads:
     // seeding on "the team has no destinations" instead made the default

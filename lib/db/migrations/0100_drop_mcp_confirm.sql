@@ -1,0 +1,17 @@
+-- `mcp_confirm_destructive` is gone: the MCP server no longer runs a confirmation
+-- step of its own, so the column has nothing left to decide.
+--
+-- WHY IT WENT: an API token is a principal whose Capabilities someone chose one
+-- by one when they minted it (ADR-0015), and a second switch on top of that set
+-- was a second permission system - one that could only ever drift from the first.
+-- If an agent should not be able to delete an App, the answer is to not grant it
+-- `delete_apps`, not to grant it and then ask again at the door.
+--
+-- Nothing is lost in practice: every tool still advertises `destructiveHint` in
+-- `tools/list`, and MCP clients ask their own user before running a tool marked
+-- that way. The prompt still happens - it is just the client's to own, which is
+-- also the only place that can render it.
+--
+-- 0098 added it two commits ago, so on most instances this drops a column nobody
+-- ever read. Forward-only all the same: an applied migration is never edited.
+ALTER TABLE "teams" DROP COLUMN IF EXISTS "mcp_confirm_destructive";

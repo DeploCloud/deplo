@@ -270,7 +270,8 @@ A few endpoints stay REST because GraphQL is the wrong transport for them
 ### MCP server
 
 AI agents reach deplo at `POST /api/mcp`, speaking the Model Context Protocol,
-**revision 2026-07-28**. It is a different framing of this same API, not a second one: each
+**revision 2026-07-28**. The feature ships as **beta**: it works and is gated like
+everything else, but the spec revision is new and the tool surface will move. It is a different framing of this same API, not a second one: each
 tool runs a GraphQL document in-process as the caller's own principal, so every capability
 gate, folder grant, token scope and 2FA policy applies identically.
 
@@ -289,9 +290,9 @@ work in another team. `tools/list` returns only the tools the token can actually
 switched MCP off (Settings → MCP Server, `manage_mcp`); a `429` means the per-token rate limit.
 
 **No tool can reveal a secret**, whatever capabilities the token holds — `list_env` shows keys
-with masked values and there is no `reveal_env`. Destructive tools return
-`resultType: "input_required"` and wait for a human to confirm in their own client, unless the
-team turns that off. Full rationale in
+with masked values and there is no `reveal_env`. Everything else the token's capabilities allow,
+it can do: deplo adds no confirmation step of its own. Destructive tools carry `destructiveHint`
+in `tools/list`, which is what makes an MCP client ask its own user first. Full rationale in
 [ADR-0021](../adr/0021-the-mcp-server-is-a-first-party-route-not-a-plugin.md).
 
 ### Deploy hook

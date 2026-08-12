@@ -105,15 +105,12 @@ test("every `requires` is a real capability, or instanceAdmin", () => {
   }
 });
 
-test("a destructive tool carries the question it will ask", () => {
-  for (const t of MCP_TOOLS) {
-    if (!t.destructive) continue;
-    assert.ok(t.confirm, `${t.name} is destructive but has no confirm message`);
+test("nothing is both read-only and destructive", () => {
+  for (const t of MCP_TOOLS)
     assert.ok(
-      !t.readOnly,
+      !(t.destructive && t.readOnly),
       `${t.name} cannot be both read-only and destructive`,
     );
-  }
 });
 
 test("a paginated tool accepts limit and offset", () => {

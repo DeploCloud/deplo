@@ -13,20 +13,21 @@ import { assertUser } from "../auth";
 import { recordActivity } from "./activity";
 
 /**
- * The active team's MCP policy — the two switches on Settings → MCP Server.
+ * The active team's MCP policy — the one switch on Settings → MCP Server.
  *
- * Deliberately NOT part of the `Team` DTO: `getTeam()` is read on every dashboard
- * page, and neither field belongs in that hot path. Both are read in exactly two
- * places — the settings page, and `/api/mcp` before it dispatches a single tool.
+ * There is deliberately nothing else here. What an agent may DO is the token's
+ * Capabilities and nothing on top (ADR-0015, ADR-0021): a second permission
+ * system beside them could only ever drift from them. This switch answers a
+ * different question — whether a company allows AI agents at all — which no
+ * per-token setting can express.
+ *
+ * Deliberately NOT part of the `Team` DTO either: `getTeam()` is read on every
+ * dashboard page, and this is read in exactly two places — the settings page,
+ * and `/api/mcp` before it dispatches a single tool.
  */
 export interface McpSettings {
   /** Whether this team's API tokens may drive it over `/api/mcp`. */
   enabled: boolean;
-  /**
-   * Whether a destructive tool must come back through the human first (MRTR
-   * `input_required`, protocol revision 2026-07-28).
-   */
-  confirmDestructive: boolean;
 }
 
 /**
@@ -42,26 +43,19 @@ export const getMcpSettings = cache(async (): Promise<McpSettings> => {
   const teamId = await requireActiveTeamId();
   const row = (
     await getDb()
-      .select({
-        enabled: teamsTable.mcpEnabled,
-        confirmDestructive: teamsTable.mcpConfirmDestructive,
-      })
+      .select({ enabled: teamsTable.mcpEnabled })
       .from(teamsTable)
       .where(eq(teamsTable.id, teamId))
       .limit(1)
   )[0];
   // A missing row cannot happen behind requireActiveTeamId, but defaulting to
   // "off" rather than "on" is the right way to be wrong about a kill switch.
-  return {
-    enabled: row?.enabled ?? false,
-    confirmDestructive: row?.confirmDestructive ?? true,
-  };
+  return { enabled: row?.enabled ?? false };
 });
 
-/** Change the active team's MCP policy. Both fields are optional; absent = unchanged. */
+/** Turn MCP access on or off for the active team. */
 export async function setMcpSettings(input: {
-  enabled?: boolean;
-  confirmDestructive?: boolean;
+  enabled: boolean;
 }): Promise<McpSettings> {
   const { teamId } = await requireCapability("manage_mcp");
   // A narrowed token (one scoped to a project, folder or app) reaches part of the
@@ -70,49 +64,27 @@ export async function setMcpSettings(input: {
 
   const before = (
     await getDb()
-      .select({
-        enabled: teamsTable.mcpEnabled,
-        confirmDestructive: teamsTable.mcpConfirmDestructive,
-      })
+      .select({ enabled: teamsTable.mcpEnabled })
       .from(teamsTable)
       .where(eq(teamsTable.id, teamId))
       .limit(1)
   )[0];
   if (!before) throw new Error("No team");
 
-  const after: McpSettings = {
-    enabled: input.enabled ?? before.enabled,
-    confirmDestructive: input.confirmDestructive ?? before.confirmDestructive,
-  };
   await getDb()
     .update(teamsTable)
-    .set({
-      mcpEnabled: after.enabled,
-      mcpConfirmDestructive: after.confirmDestructive,
-    })
+    .set({ mcpEnabled: input.enabled })
     .where(eq(teamsTable.id, teamId));
 
-  // Outside any transaction (recordActivity owns its own connection). Both
-  // changes are worth a trail: one decides whether AI agents may act at all, the
-  // other whether they may act unattended.
-  const actor = (await assertUser()).name;
-  if (after.enabled !== before.enabled)
+  // Outside any transaction (recordActivity owns its own connection). Worth a
+  // trail: it is the answer to "who let an AI agent into this team, and when".
+  if (input.enabled !== before.enabled)
     await recordActivity(
       "mcp",
-      `AI agents can ${after.enabled ? "now" : "no longer"} drive this team over MCP`,
-      actor,
+      `AI agents can ${input.enabled ? "now" : "no longer"} drive this team over MCP`,
+      (await assertUser()).name,
       null,
       teamId,
     );
-  if (after.confirmDestructive !== before.confirmDestructive)
-    await recordActivity(
-      "mcp",
-      `AI agents ${
-        after.confirmDestructive ? "must now ask" : "no longer ask"
-      } before destructive actions over MCP`,
-      actor,
-      null,
-      teamId,
-    );
-  return after;
+  return { enabled: input.enabled };
 }

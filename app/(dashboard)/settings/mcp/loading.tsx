@@ -14,7 +14,10 @@ export default function Loading() {
       aria-label="Loading MCP settings"
     >
       <div className="space-y-1">
-        <Skeleton className="h-8 w-44" />
+        <div className="flex items-center gap-2">
+          <Skeleton className="h-8 w-44" />
+          <Skeleton className="h-5 w-12 rounded-md" />
+        </div>
         <Skeleton className="h-4 w-96" />
       </div>
 

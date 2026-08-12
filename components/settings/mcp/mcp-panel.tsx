@@ -9,52 +9,49 @@ import { InfoTip } from "@/components/ui/info-tip";
 import { gqlAction } from "@/lib/graphql-client";
 
 /**
- * The team's two MCP switches.
+ * The team's one MCP switch.
  *
- * Both ship ON. "Enabled" is a policy lever for a company that wants AI access
- * off, not what makes the endpoint safe — a token is required either way, and
- * revoking it is still the way access is taken away. "Ask before destructive
- * actions" is the one that earns its place on first run: the first time an
- * agent decides to delete something should be a question in the operator's
- * client, not a fact discovered afterwards.
+ * One, on purpose. It ships ON and it is a policy lever for a company that
+ * wants AI access off — not what makes the endpoint safe, since a token is
+ * required either way and revoking it is still how access is taken away. What
+ * an agent may DO is the token's Capabilities and nothing else: a second set of
+ * switches here would be a second permission system, and it could only ever
+ * drift from the first.
  */
 export function McpPanel({
   enabled: initialEnabled,
-  confirmDestructive: initialConfirm,
   canManage,
 }: {
   enabled: boolean;
-  confirmDestructive: boolean;
   canManage: boolean;
 }) {
   const router = useRouter();
   const [pending, startTransition] = React.useTransition();
   const [enabled, setEnabled] = React.useState(initialEnabled);
-  const [confirm, setConfirm] = React.useState(initialConfirm);
 
-  function save(
-    patch: { enabled?: boolean; confirmDestructive?: boolean },
-    revert: () => void,
-    message: string,
-  ) {
+  function toggle(next: boolean) {
+    setEnabled(next);
     startTransition(async () => {
       const res = await gqlAction<{ setMcpSettings: unknown }, unknown>(
         /* GraphQL */ `
-          mutation SetMcpSettings($enabled: Boolean, $confirmDestructive: Boolean) {
-            setMcpSettings(enabled: $enabled, confirmDestructive: $confirmDestructive) {
+          mutation SetMcpSettings($enabled: Boolean!) {
+            setMcpSettings(enabled: $enabled) {
               enabled
-              confirmDestructive
             }
           }
         `,
-        patch,
+        { enabled: next },
         (d) => d.setMcpSettings,
       );
       if (res.ok) {
-        toast.success(message);
+        toast.success(
+          next
+            ? "AI agents can now drive this team"
+            : "MCP access is off for this team",
+        );
         router.refresh();
       } else {
-        revert();
+        setEnabled(!next);
         toast.error(res.error);
       }
     });
@@ -68,7 +65,7 @@ export function McpPanel({
           <InfoTip content="Applies to every API token that reaches this team, whoever minted it." />
         </CardTitle>
       </CardHeader>
-      <CardContent className="space-y-3">
+      <CardContent>
         <div className="flex items-start justify-between gap-4 rounded-lg border border-border p-3">
           <div className="space-y-1">
             <p className="text-sm font-medium">Allow AI agents</p>
@@ -79,45 +76,9 @@ export function McpPanel({
           </div>
           <Switch
             checked={enabled}
-            onCheckedChange={(next) => {
-              setEnabled(next);
-              save(
-                { enabled: next },
-                () => setEnabled(!next),
-                next
-                  ? "AI agents can now drive this team"
-                  : "MCP access is off for this team",
-              );
-            }}
+            onCheckedChange={toggle}
             disabled={!canManage || pending}
             aria-label="Allow AI agents"
-          />
-        </div>
-
-        <div className="flex items-start justify-between gap-4 rounded-lg border border-border p-3">
-          <div className="space-y-1">
-            <p className="text-sm font-medium">
-              Ask before destructive actions
-            </p>
-            <p className="text-xs text-muted-foreground">
-              Deleting, rebuilding or restoring waits for you to confirm in your
-              AI client before it runs.
-            </p>
-          </div>
-          <Switch
-            checked={confirm}
-            onCheckedChange={(next) => {
-              setConfirm(next);
-              save(
-                { confirmDestructive: next },
-                () => setConfirm(!next),
-                next
-                  ? "Agents will ask before destructive actions"
-                  : "Agents will act without asking",
-              );
-            }}
-            disabled={!canManage || pending || !enabled}
-            aria-label="Ask before destructive actions"
           />
         </div>
       </CardContent>

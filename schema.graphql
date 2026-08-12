@@ -36,6 +36,7 @@ enum ActivityType {
   deployment
   domain
   env
+  mcp
   member
   monitoring
   project
@@ -1868,10 +1869,9 @@ type LogsInfo {
 }
 
 """
-The active team's MCP policy: whether AI agents may drive it, and whether they must ask a human before a destructive action.
+The active team's MCP policy: whether AI agents may drive it at all. What an agent may DO is decided by its API token's capabilities, and by nothing here.
 """
 type McpSettings {
-  confirmDestructive: Boolean
   enabled: Boolean
 }
 
@@ -2585,10 +2585,8 @@ type Mutation {
   """
   setFolderGrant(capabilities: [String!]!, folderId: ID!, userId: ID!): [FolderGrant!]
 
-  """
-  Turn MCP access on or off for this team, and choose whether destructive tools must be confirmed by a human first. Omitted fields are unchanged.
-  """
-  setMcpSettings(confirmDestructive: Boolean, enabled: Boolean): McpSettings
+  """Turn MCP access on or off for this team."""
+  setMcpSettings(enabled: Boolean!): McpSettings
 
   """
   Set one member's role and per-node overrides in the ACTIVE team. The team is the caller's own - there is no id to pass, which is what keeps it from reaching another one.

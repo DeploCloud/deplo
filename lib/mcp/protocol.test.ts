@@ -46,7 +46,7 @@ function principal(
       via: "token",
       identity: null,
     },
-    settings: { enabled: true, confirmDestructive: true },
+    settings: { enabled: true },
     capabilities: new Set(capabilities),
     instanceAdmin,
   };
@@ -162,53 +162,54 @@ test("instance-admin tools appear only for an instance-admin token", async () =>
   assert.ok(names(withAdmin).includes("restart_server_traefik"));
 });
 
-test("a destructive tool asks a human before it does anything", async () => {
-  // No database is reachable here, so if this returned anything other than the
-  // confirmation it would have had to touch the data layer first — which is
-  // exactly the regression this pins.
-  const { json } = await rpc("tools/call", principal(ALL, true), {
+test("a destructive tool runs straight away, with no confirmation step", () => {
+  // deplo adds no gate of its own: what an agent may do is the token's
+  // Capabilities and nothing on top. The tool reaches the data layer and fails
+  // THERE (no database in this test), which is the proof that nothing
+  // short-circuited it into a confirmation round trip.
+  return rpc("tools/call", principal(ALL, true), {
+    name: "delete_app",
+    arguments: { appId: "prj_whatever" },
+  }).then(({ json }) => {
+    assert.notEqual(
+      json.result?.resultType,
+      "input_required",
+      "deplo must not ask for input of its own",
+    );
+    assert.equal(json.result?.isError, true);
+  });
+});
+
+test("a client that cannot prompt is served exactly like one that can", async () => {
+  // The old behaviour refused here, because deplo owned the confirmation. Now
+  // the prompt belongs to the client, so a client without elicitation support
+  // is not a second-class caller — it just gets whatever its own approval flow
+  // decides to run.
+  const withPrompt = await rpc("tools/call", principal(ALL, true), {
     name: "delete_app",
     arguments: { appId: "prj_whatever" },
   });
-  assert.equal(
-    json.result.resultType,
-    "input_required",
-    `expected an elicitation, got ${JSON.stringify(json.result ?? json.error)}`,
-  );
-  const requests = json.result.inputRequests as Record<string, unknown>;
-  assert.ok(requests.confirm, "the elicitation is keyed `confirm`");
-});
-
-test("with confirmations off, a destructive tool runs straight away", async () => {
-  const who = principal(ALL, true);
-  who.settings = { enabled: true, confirmDestructive: false };
-  const { json } = await rpc("tools/call", who, {
-    name: "delete_app",
-    arguments: { appId: "prj_whatever" },
-  });
-  // It reaches the data layer and fails there (no database in this test), which
-  // is the proof that it was NOT short-circuited into an elicitation.
-  assert.notEqual(json.result?.resultType, "input_required");
-  assert.equal(json.result?.isError, true);
-});
-
-test("a client that cannot prompt is refused, not silently obeyed", async () => {
-  const { json } = await rpc(
+  const withoutPrompt = await rpc(
     "tools/call",
     principal(ALL, true),
     { name: "delete_app", arguments: { appId: "prj_whatever" } },
-    // No `elicitation` capability: this client cannot ask its user anything.
     {},
   );
-  assert.equal(
-    json.result?.isError,
-    true,
-    "the destructive tool must refuse rather than run unconfirmed",
+  assert.equal(withPrompt.json.result?.isError, withoutPrompt.json.result?.isError);
+  assert.notEqual(withoutPrompt.json.result?.resultType, "input_required");
+});
+
+test("every destructive tool advertises destructiveHint so the client can ask", async () => {
+  const { json } = await rpc("tools/list", principal(ALL, true));
+  const byName = new Map(
+    (json.result.tools as { name: string; annotations?: Record<string, unknown> }[]).map(
+      (t) => [t.name, t.annotations ?? {}],
+    ),
   );
-  const message = json.result.content[0].text as string;
-  assert.match(
-    message,
-    /can't show a confirmation prompt/,
-    `the refusal must say what to change, got: ${message}`,
-  );
+  for (const t of MCP_TOOLS.filter((t) => t.destructive))
+    assert.equal(
+      byName.get(t.name)?.destructiveHint,
+      true,
+      `${t.name} is destructive but does not say so in tools/list`,
+    );
 });

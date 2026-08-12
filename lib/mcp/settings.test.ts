@@ -75,37 +75,28 @@ async function revoke(capability: string) {
   );
 }
 
-test("a team starts with MCP on and confirmations on", async () => {
+test("a team starts with MCP on", async () => {
   const settings = await asUser1(() => getMcpSettings());
-  assert.deepEqual(settings, { enabled: true, confirmDestructive: true });
+  assert.deepEqual(settings, { enabled: true });
 });
 
-test("setMcpSettings changes only what it is given", async () => {
+test("setMcpSettings turns it off and back on", async () => {
   await asUser1(async () => {
-    const off = await setMcpSettings({ enabled: false });
-    assert.equal(off.enabled, false);
-    assert.equal(
-      off.confirmDestructive,
-      true,
-      "an omitted field must stay as it was",
-    );
-
-    const quiet = await setMcpSettings({ confirmDestructive: false });
-    assert.equal(quiet.enabled, false, "the other field is still off");
-    assert.equal(quiet.confirmDestructive, false);
+    assert.deepEqual(await setMcpSettings({ enabled: false }), {
+      enabled: false,
+    });
+    assert.deepEqual(await setMcpSettings({ enabled: true }), { enabled: true });
+    await setMcpSettings({ enabled: false });
   });
 
   const row = (
     await db
-      .select({
-        enabled: teamsTable.mcpEnabled,
-        confirm: teamsTable.mcpConfirmDestructive,
-      })
+      .select({ enabled: teamsTable.mcpEnabled })
       .from(teamsTable)
       .where(eq(teamsTable.id, TEAM_A))
       .limit(1)
   )[0];
-  assert.deepEqual(row, { enabled: false, confirm: false }, "persisted");
+  assert.deepEqual(row, { enabled: false }, "persisted");
 });
 
 test("changing the policy needs manage_mcp, not merely membership", async () => {

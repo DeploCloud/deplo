@@ -72,7 +72,7 @@ its members), user group, team role level.
 **Capability**:
 ONE action a member may be allowed to take — `create_apps`, `deploy_apps`, `delete_apps`,
 `open_app_console`, `manage_previews`, `create_databases`, `restore_backups`,
-`manage_tokens`, `rollback_apps`, `organize_folders`, … (forty-five of them; the catalog with labels,
+`manage_tokens`, `rollback_apps`, `organize_folders`, … (forty-six of them; the catalog with labels,
 descriptions, search keywords and browse categories is `lib/capabilities.ts`). Never a
 bundle: if a name covers
 two actions an admin might want to separate, it is two capabilities. `view` is the
@@ -141,14 +141,16 @@ env), secret key.
 
 **MCP server**:
 Deplo's endpoint for AI agents, at `/api/mcp`, speaking the Model Context Protocol
-(revision 2026-07-28). It exposes a curated set of **tools** — each one a name, an input
+(revision 2026-07-28). Ships as **beta**. It exposes a curated set of **tools** — each one a name, an input
 schema and a GraphQL document run in-process against the same schema `/api/graphql` serves,
 as the caller's own principal. It introduces **no credential of its own**: an agent
 authenticates with an ordinary **API token** and picks its team with `X-Deplo-Team`, exactly
 like any other external client. The protocol is stateless, so one endpoint serves one team,
-chosen when the agent is connected. Two team switches govern it — whether agents are allowed
-at all, and whether a destructive tool must be confirmed by a human first — both behind the
-`manage_mcp` **Capability**. No tool can reveal a secret, whatever the token holds (ADR-0021).
+chosen when the agent is connected. One team switch governs it — whether agents are allowed at
+all — behind the `manage_mcp` **Capability**. What an agent may DO is decided by its token's
+Capabilities and by nothing on top; deplo adds no confirmation step of its own, and destructive
+tools are flagged so the MCP client can ask its own user. No tool can reveal a secret, whatever
+the token holds (ADR-0021).
 _Avoid_: MCP plugin (the withdrawn container relay, ADR-0013), MCP token / `MCP_BEARER` (there
 is no such credential), connector.
 
