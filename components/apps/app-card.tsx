@@ -69,7 +69,13 @@ type MenuKit = {
  * and `inert` alongside this makes it exactly as unusable as it looks: no click,
  * no hover, no tab stop, nothing the server would refuse anyway.
  */
-const DELETING_CARD = "pointer-events-none animate-pulse opacity-50";
+/*
+ * No `opacity-50` here, deliberately: Tailwind v4's `pulse` keyframe declares
+ * only its 50% step, so the 0%/100% frames take the element's OWN opacity — a
+ * static `opacity-50` alongside it animates 0.5 → 0.5 → 0.5 and the card just
+ * sits there dimmed. The animation dips to 0.5 by itself; that dip IS the dim.
+ */
+const DELETING_CARD = "pointer-events-none animate-pulse";
 
 const DROPDOWN_KIT: MenuKit = {
   Item: DropdownMenuItem,
