@@ -4,6 +4,7 @@ import { getOAuthClientForConsent } from "@/lib/data/mcp-clients";
 import { getMcpSettings } from "@/lib/data/mcp-settings";
 import { listScopeTree } from "@/lib/data/tokens";
 import { hasCapability, requireActiveTeamId } from "@/lib/membership";
+import { rebuildOauthQuery } from "@/lib/auth/oauth-query";
 import { ConsentForm } from "@/components/oauth/consent-form";
 import { ConsentRefusal } from "@/components/oauth/consent-refusal";
 
@@ -25,13 +26,8 @@ export default async function OAuthConsentPage(props: {
   const clientId = typeof params.client_id === "string" ? params.client_id : "";
   const scope = typeof params.scope === "string" ? params.scope : "";
 
-  // The plugin signs the whole authorization query onto this URL and verifies it
-  // when the consent is posted back, so it travels through verbatim.
-  const oauthQuery = new URLSearchParams(
-    Object.entries(params).flatMap(([k, v]) =>
-      typeof v === "string" ? [[k, v] as [string, string]] : [],
-    ),
-  ).toString();
+  // Must survive the round trip byte for byte — see `rebuildOauthQuery`.
+  const oauthQuery = rebuildOauthQuery(params);
 
   if (!clientId) redirect("/settings/mcp");
 

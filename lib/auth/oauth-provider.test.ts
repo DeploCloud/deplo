@@ -8,6 +8,7 @@ import { makeTestDb, type TestDb } from "../db/test-harness";
 import { __setTestDb, __resetTestDb } from "../db/client";
 import { seedIdentity, TEAM_A, USER_1 } from "../data/identity-test-helpers";
 import { requireAuth, resetAuth } from "./better-auth";
+import { rebuildOauthQuery } from "./oauth-query";
 import {
   authorize,
   consent,
@@ -90,6 +91,78 @@ test("the access token is stored hashed over the BARE secret", async () => {
     .rows as { token: string }[];
   assert.equal(rows.length, 1);
   assert.equal(rows[0].token, expected);
+});
+
+test("the signed authorization query survives Next's searchParams round trip", async () => {
+  // The bug this pins was invisible and total: the provider signs the whole
+  // authorization query onto the consent URL, the page reads it back through
+  // Next's `searchParams` (an object, with an ARRAY for the repeated `ba_param`
+  // keys), and rebuilds it to post back. Drop the arrays and the signature stops
+  // matching — the consent is refused and Authorize looks like a dead button.
+  const reg = await registerClient();
+  const clientId = String(reg.body.client_id);
+  const cookie = await signIn(EMAIL, PASSWORD);
+  const { challenge } = pkcePair();
+  const authorized = await authorize(cookie, {
+    client_id: clientId,
+    redirect_uri: REDIRECT,
+    response_type: "code",
+    scope: "openid",
+    state: "st",
+    code_challenge: challenge,
+    code_challenge_method: "S256",
+  });
+  assert.ok(authorized.oauthQuery, "authorize produced no consent query");
+
+  // Exactly what Next hands a page: repeated keys collapse into an array.
+  const incoming = new URLSearchParams(authorized.oauthQuery!);
+  assert.ok(
+    incoming.getAll("ba_param").length > 1,
+    "this test is pointless unless the query really repeats a key",
+  );
+  const searchParams: Record<string, string | string[]> = {};
+  for (const key of new Set(incoming.keys())) {
+    const all = incoming.getAll(key);
+    searchParams[key] = all.length > 1 ? all : all[0];
+  }
+
+  const approved = await consent(cookie, {
+    accept: true,
+    oauth_query: rebuildOauthQuery(searchParams),
+  });
+  assert.equal(approved.status, 200, `consent refused (${approved.status})`);
+  assert.ok(approved.url?.startsWith(REDIRECT), approved.url ?? "no url");
+  assert.ok(new URL(approved.url!).searchParams.get("code"), "no code returned");
+});
+
+test("dropping the repeated keys is what broke it", async () => {
+  // The control for the test above: rebuild the way the first version did —
+  // string values only — and the consent must be REFUSED. Without this, a
+  // rebuild that silently stopped round-tripping would still look green.
+  const reg = await registerClient();
+  const clientId = String(reg.body.client_id);
+  const cookie = await signIn(EMAIL, PASSWORD);
+  const { challenge } = pkcePair();
+  const authorized = await authorize(cookie, {
+    client_id: clientId,
+    redirect_uri: REDIRECT,
+    response_type: "code",
+    scope: "openid",
+    state: "st",
+    code_challenge: challenge,
+    code_challenge_method: "S256",
+  });
+  const incoming = new URLSearchParams(authorized.oauthQuery!);
+  const stringsOnly = new URLSearchParams();
+  for (const key of new Set(incoming.keys())) {
+    const all = incoming.getAll(key);
+    if (all.length === 1) stringsOnly.set(key, all[0]);
+  }
+  const approved = await consent(cookie, {
+    accept: true,
+    oauth_query: stringsOnly.toString(),
+  });
+  assert.notEqual(approved.status, 200, "a mangled query was accepted");
 });
 
 test("a token cannot be requested for a resource deplo does not serve", async () => {

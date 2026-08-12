@@ -6,13 +6,21 @@ import { toast } from "sonner";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import {
   Select,
   SelectContent,
   SelectItem,
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { FieldLabel } from "@/components/ui/info-tip";
+import { FieldLabel, InfoTip } from "@/components/ui/info-tip";
 import { ConsentShell } from "@/components/oauth/consent-shell";
 import { PermissionPicker } from "@/components/settings/permission-picker";
 import {
@@ -20,6 +28,8 @@ import {
   type ScopeSelection,
 } from "@/components/settings/tokens/scope-picker";
 import { useGraphqlMutation } from "@/lib/use-graphql";
+import { gqlAction } from "@/lib/graphql-client";
+import { scopeLabel } from "@/components/settings/tokens/scope-label";
 import { TOKEN_PRESETS, presetIdFor } from "@/lib/token-presets";
 import type { Capability } from "@/lib/types";
 import type { ScopeTreeTeam } from "@/lib/data/tokens";
@@ -101,46 +111,74 @@ export function ConsentForm({
   });
   const [advanced, setAdvanced] = useState(false);
   const [teamId, setTeamId] = useState(activeTeamId);
+  const teamName = tree.find((t) => t.id === teamId)?.name;
 
-  const authorize = useGraphqlMutation<{
-    authorizeMcpClient: { redirectUrl: string };
-  }>(AUTHORIZE, { refresh: false });
-  const deny = useGraphqlMutation<{ denyMcpClient: { redirectUrl: string } }>(
-    DENY,
-    { refresh: false },
-  );
+  const [pending, setPending] = useState(false);
   const switchTeam = useGraphqlMutation(SWITCH_TEAM);
 
   const presetId = useMemo(() => presetIdFor(capabilities), [capabilities]);
-  const presetName =
-    TOKEN_PRESETS.find((p) => p.id === presetId)?.name ?? "Custom";
-  const busy = authorize.pending || deny.pending || switchTeam.pending;
+  const preset = TOKEN_PRESETS.find((p) => p.id === presetId);
+  const busy = pending || switchTeam.pending;
 
+  const scoped =
+    selection.teamIds.length +
+      selection.projectIds.length +
+      selection.folderIds.length +
+      selection.appIds.length >
+    0;
+  // "Access" is what this repo calls a token's reach and "Permissions" what it
+  // calls its capabilities (token-editor.tsx's own summary rows) — same words
+  // here, so the two screens do not name one thing twice.
+  const accessLabel = scoped
+    ? scopeLabel({ scoped: true, ...selection })
+    : { text: teamName ?? "This team", empty: false };
+
+  /**
+   * `gqlAction`, not `useGraphqlMutation`: its `error` is React state, so
+   * reading it straight after the await gets the value from BEFORE the failure —
+   * the server's refusal would be swallowed and the button would look inert.
+   * The message is surfaced verbatim, as the house rule says.
+   */
   async function onApprove(e: React.FormEvent) {
     e.preventDefault();
+    setPending(true);
     const picked = selection.teamIds.length
       ? selection
       : { ...selection, teamIds: [teamId] };
-    const res = await authorize.run({
-      clientId: client.clientId,
-      capabilities,
-      teamIds: picked.teamIds,
-      projectIds: picked.projectIds,
-      folderIds: picked.folderIds,
-      appIds: picked.appIds,
-      scope: scope || null,
-      oauthQuery: oauthQuery || null,
-    });
+    const res = await gqlAction<
+      { authorizeMcpClient: { redirectUrl: string } },
+      string
+    >(
+      AUTHORIZE,
+      {
+        clientId: client.clientId,
+        capabilities,
+        teamIds: picked.teamIds,
+        projectIds: picked.projectIds,
+        folderIds: picked.folderIds,
+        appIds: picked.appIds,
+        scope: scope || null,
+        oauthQuery: oauthQuery || null,
+      },
+      (d) => d.authorizeMcpClient.redirectUrl,
+    );
+    if (!res.ok || !res.data) {
+      setPending(false);
+      toast.error(res.ok ? "deplo did not get a redirect back" : res.error);
+      return;
+    }
     // A full-page navigation, not router.push: the destination is the client's
-    // own site, and the response that follows is an OAuth redirect.
-    if (res) window.location.assign(res.authorizeMcpClient.redirectUrl);
-    else if (authorize.error) toast.error(authorize.error);
+    // own site, and what answers there is an OAuth redirect.
+    window.location.assign(res.data);
   }
 
   async function onDeny() {
-    const res = await deny.run({ oauthQuery: oauthQuery || null });
-    if (res) window.location.assign(res.denyMcpClient.redirectUrl);
-    else window.location.assign("/settings/mcp");
+    setPending(true);
+    const res = await gqlAction<
+      { denyMcpClient: { redirectUrl: string } },
+      string
+    >(DENY, { oauthQuery: oauthQuery || null }, (d) => d.denyMcpClient.redirectUrl);
+    window.location.assign(res.ok && res.data ? res.data : "/settings/mcp");
   }
 
   return (
@@ -195,45 +233,40 @@ export function ConsentForm({
             </div>
 
             <div className="grid gap-2">
-              <FieldLabel info="What the app may do in this team. It can never do more than you can.">
-                Access
+              <FieldLabel info="What the app may do, and what it may reach. It can never do more than you can.">
+                What it gets
               </FieldLabel>
-              <p className="text-sm text-muted-foreground">
-                {presetName}
-                {presetId === "mcp"
-                  ? " — reads the team and restarts or redeploys an app, with nothing that can leak a secret or destroy data."
-                  : ""}
-              </p>
+              <dl className="grid gap-2 rounded-lg border border-border p-3 text-sm">
+                <div className="flex items-center gap-3">
+                  <dt className="shrink-0 text-muted-foreground">Access</dt>
+                  <dd className="min-w-0 flex-1 truncate text-right font-medium">
+                    {accessLabel.text}
+                  </dd>
+                </div>
+                <div className="flex items-center gap-3">
+                  <dt className="shrink-0 text-muted-foreground">Permissions</dt>
+                  <dd className="min-w-0 flex-1 truncate text-right font-medium">
+                    {preset ? preset.name : `${capabilities.length} selected`}
+                  </dd>
+                </div>
+              </dl>
+              {preset ? (
+                <p className="mt-1 text-xs text-muted-foreground">
+                  {preset.description}
+                </p>
+              ) : null}
               <div>
                 <Button
                   type="button"
                   variant="outline"
                   size="sm"
-                  onClick={() => setAdvanced((v) => !v)}
+                  onClick={() => setAdvanced(true)}
                   disabled={busy}
                 >
-                  {advanced ? "Hide advanced" : "Advanced"}
+                  Advanced
                 </Button>
               </div>
             </div>
-
-            {advanced ? (
-              <div className="grid gap-6">
-                <PermissionPicker
-                  capabilities={capabilities}
-                  onChange={setCapabilities}
-                  disabled={busy}
-                  hint="Tick exactly what this app should be able to do. Secrets can never be read over MCP, whatever is ticked here."
-                />
-                <ScopePicker
-                  tree={tree}
-                  selection={selection}
-                  onChange={setSelection}
-                  disabled={busy}
-                  info="What the app can reach. Tick nothing and it reaches the whole team you picked above."
-                />
-              </div>
-            ) : null}
 
             <div className="flex items-center justify-end gap-2">
               <Button
@@ -251,6 +284,91 @@ export function ConsentForm({
           </form>
         </CardContent>
       </Card>
+
+      {/* The whole permission surface, opened on demand so the default path is
+          one dropdown and one button. Access comes first: what an app can REACH
+          is the question people answer before what it may DO, and narrowing the
+          reach changes which permissions still mean anything. */}
+      <Dialog open={advanced} onOpenChange={setAdvanced}>
+        <DialogContent className="max-h-[85vh] overflow-y-auto sm:max-w-3xl">
+          <DialogHeader>
+            <DialogTitle>Access and permissions</DialogTitle>
+            <DialogDescription className="mt-1">
+              What {client.name} can reach, and what it may do there.
+            </DialogDescription>
+          </DialogHeader>
+          <form
+            className="grid gap-6"
+            onSubmit={(e) => {
+              e.preventDefault();
+              setAdvanced(false);
+            }}
+          >
+            <div className="grid gap-3">
+              <FieldLabel info="Tick nothing and it reaches the whole team above. Tick a project, folder or app to narrow it to that.">
+                Access
+              </FieldLabel>
+              <ScopePicker
+                tree={tree}
+                selection={selection}
+                onChange={setSelection}
+                info="What this app can reach. Tick nothing and it reaches the whole team you picked."
+              />
+            </div>
+
+            <div className="grid gap-3">
+              <div className="grid gap-2">
+                <FieldLabel
+                  htmlFor="consent-preset"
+                  info="A starting set you can then adjust. Custom appears once the ticks stop matching one."
+                >
+                  Permissions
+                </FieldLabel>
+                <Select
+                  value={presetId ?? CUSTOM}
+                  onValueChange={(id) => {
+                    const next = TOKEN_PRESETS.find((p) => p.id === id);
+                    if (next) setCapabilities(next.capabilities);
+                  }}
+                >
+                  <SelectTrigger id="consent-preset" className="w-full">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {TOKEN_PRESETS.map((p) => (
+                      <SelectItem key={p.id} value={p.id}>
+                        {p.name}
+                      </SelectItem>
+                    ))}
+                    {presetId ? null : (
+                      <SelectItem value={CUSTOM} disabled>
+                        Custom
+                      </SelectItem>
+                    )}
+                  </SelectContent>
+                </Select>
+                {preset ? (
+                  <p className="mt-1 text-xs text-muted-foreground">
+                    {preset.description}
+                  </p>
+                ) : null}
+              </div>
+              <PermissionPicker
+                capabilities={capabilities}
+                onChange={setCapabilities}
+                hint="Tick exactly what this app should be able to do. A secret can never be read over MCP, whatever is ticked here."
+              />
+            </div>
+
+            <DialogFooter>
+              <Button type="submit">Done</Button>
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
     </ConsentShell>
   );
 }
+
+/** Radix needs a value for the "matches no preset" state; it is never chosen. */
+const CUSTOM = "custom";
