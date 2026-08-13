@@ -2,8 +2,9 @@
 
 import { useMemo, useState } from "react";
 import { toast } from "sonner";
-import { TriangleAlert } from "lucide-react";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Globe, Loader2, Pencil, TriangleAlert } from "lucide-react";
+import { Card } from "@/components/ui/card";
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -20,7 +21,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { FieldLabel } from "@/components/ui/info-tip";
+import { FieldLabel, InfoTip } from "@/components/ui/info-tip";
 import { ConsentShell } from "@/components/oauth/consent-shell";
 import { PermissionPicker } from "@/components/settings/permission-picker";
 import {
@@ -116,6 +117,7 @@ export function ConsentForm({
   activeTeamId,
   connectableTeamIds,
   publicOrigin,
+  username,
 }: {
   client: ConsentClientDTO;
   scope: string;
@@ -134,6 +136,8 @@ export function ConsentForm({
   connectableTeamIds: string[];
   /** The origin deplo publishes, which the consent POST must come from. */
   publicOrigin: string | null;
+  /** Whose account the minted token will act as — worth saying before the click. */
+  username: string;
 }) {
   const mcpPreset = TOKEN_PRESETS.find((p) => p.id === "mcp");
   const [capabilities, setCapabilities] = useState<Capability[]>(
@@ -163,7 +167,6 @@ export function ConsentForm({
   const [pending, setPending] = useState(false);
   const presetId = useMemo(() => presetIdFor(capabilities), [capabilities]);
   const preset = TOKEN_PRESETS.find((p) => p.id === presetId);
-  const busy = pending;
 
   const scoped =
     selection.teamIds.length +
@@ -184,6 +187,17 @@ export function ConsentForm({
   const accessLabel = scoped
     ? scopeLabel({ scoped: true, ...selection }, teamNames)
     : { text: connectingTeam?.name ?? "This team", empty: false };
+  // A team wears its initials everywhere else in deplo (the team switcher), so
+  // it wears them here too — the reach of a connection is the one place a name
+  // in plain text is easiest to skim past. Only when teams are what is ticked:
+  // stamping the connecting team's badge next to "2 folders" would say the
+  // connection reaches all of it.
+  const accessTeams = (
+    selection.teamIds.length ? selection.teamIds : scoped ? [] : [activeTeamId]
+  )
+    .map((id) => tree.find((t) => t.id === id))
+    .filter((t): t is ScopeTreeTeam => !!t)
+    .slice(0, 3);
 
   /**
    * Consent FIRST, mint second, navigate last.
@@ -250,84 +264,115 @@ export function ConsentForm({
 
   return (
     <ConsentShell>
-      <Card>
-        <CardHeader>
-          <CardTitle className="text-base">
-            {client.name} wants to connect to deplo
-          </CardTitle>
-          <p className="mt-1 text-sm text-muted-foreground">
-            {client.redirectOrigin
-              ? `It will be sent back to ${client.redirectOrigin}. Give it only what it needs.`
-              : "Give it only what it needs."}
-          </p>
-        </CardHeader>
-        <CardContent>
-          {wrongOrigin ? (
-            <p className="mb-4 flex items-start gap-2 rounded-lg border border-amber-500/40 bg-amber-500/5 p-3 text-xs text-muted-foreground">
-              <TriangleAlert className="mt-0.5 size-3.5 shrink-0 text-amber-500" />
-              <span>
-                You opened deplo at a different address from the one it
-                publishes ({publicOrigin}). Approving will be refused. Open deplo
-                at that address and start the connection again.
-              </span>
-            </p>
-          ) : null}
-          <form className="grid gap-6" onSubmit={onApprove}>
-            <div className="grid gap-2">
-              <FieldLabel info="What the app may do, and what it may reach. It can never do more than you can.">
-                What it gets
-              </FieldLabel>
-              <dl className="grid gap-2 rounded-lg border border-border p-3 text-sm">
-                <div className="flex items-center gap-3">
-                  <dt className="shrink-0 text-muted-foreground">Access</dt>
-                  <dd className="min-w-0 flex-1 truncate text-right font-medium">
-                    {accessLabel.text}
-                  </dd>
-                </div>
-                <div className="flex items-center gap-3">
-                  <dt className="shrink-0 text-muted-foreground">Permissions</dt>
-                  <dd className="min-w-0 flex-1 truncate text-right font-medium">
-                    {preset ? preset.name : `${capabilities.length} selected`}
-                  </dd>
-                </div>
-              </dl>
-              {preset ? (
-                <p className="mt-1 text-xs text-muted-foreground">
-                  {preset.description}
-                </p>
-              ) : null}
-              <div>
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="sm"
-                  onClick={() => setAdvanced(true)}
-                  disabled={busy}
-                >
-                  Advanced
-                </Button>
-              </div>
-            </div>
+      {wrongOrigin ? (
+        <p className="mb-4 flex items-start gap-2 rounded-lg border border-amber-500/40 bg-amber-500/5 p-3 text-xs text-muted-foreground">
+          <TriangleAlert className="mt-0.5 size-3.5 shrink-0 text-amber-500" />
+          <span>
+            You opened deplo at a different address from the one it publishes (
+            {publicOrigin}). Approving will be refused. Open deplo at that
+            address and start the connection again.
+          </span>
+        </p>
+      ) : null}
 
-            <div className="flex items-center justify-end gap-2">
-              <Button
-                type="button"
-                variant="outline"
-                onClick={onDeny}
-                disabled={busy}
-              >
-                Cancel
-              </Button>
-              <Button type="submit" disabled={busy}>
-                Authorize
-              </Button>
+      <Card>
+        {/* One column, centred: the app asking, then the two lines that say
+            what it gets, then the choice. Everything else is behind a row. */}
+        <form className="grid gap-6 p-6" onSubmit={onApprove}>
+          <div className="grid justify-items-center gap-4 text-center">
+            {/* Remote icons never render — the CSP is `img-src 'self' blob:
+                data:` — so this is initials for almost every client, and the
+                `src` is here for the rare `data:` one. Radix falls back on the
+                blocked load by itself. */}
+            <Avatar className="size-14">
+              <AvatarImage src={client.icon ?? undefined} alt="" />
+              <AvatarFallback className="bg-muted text-base font-semibold">
+                {client.name.slice(0, 2).toUpperCase()}
+              </AvatarFallback>
+            </Avatar>
+            <div>
+              <h1 className="text-lg font-semibold tracking-tight">
+                Connect {client.name} to deplo
+              </h1>
+              {client.redirectOrigin ? (
+                <p className="mt-1 flex items-center justify-center gap-1.5 text-sm text-muted-foreground">
+                  <Globe className="size-3.5 shrink-0" />
+                  <span className="truncate">{client.redirectOrigin}</span>
+                  <InfoTip content="Where deplo sends it back after you approve. It is the one thing this app cannot make up about itself." />
+                </p>
+              ) : (
+                <p className="mt-1 text-sm text-muted-foreground">
+                  Give it only what it needs.
+                </p>
+              )}
             </div>
-          </form>
-        </CardContent>
+          </div>
+
+          <div className="grid gap-2">
+            <FieldLabel info="What the app may do, and what it may reach. It can never do more than you can.">
+              What it gets
+            </FieldLabel>
+            {/* Both rows open the same dialog: whichever half of the sentence
+                you want to change, you press the half you read. */}
+            <div className="divide-y divide-border overflow-hidden rounded-lg border border-border text-sm">
+              <SummaryRow
+                label="Access"
+                onClick={() => setAdvanced(true)}
+                disabled={pending}
+              >
+                {accessTeams.length ? (
+                  <span className="flex -space-x-1.5">
+                    {accessTeams.map((t) => (
+                      <Avatar key={t.id} className="size-6 border-2 border-card">
+                        <AvatarFallback className="bg-foreground text-[9px] text-background">
+                          {t.name.slice(0, 2).toUpperCase()}
+                        </AvatarFallback>
+                      </Avatar>
+                    ))}
+                  </span>
+                ) : null}
+                <span className="truncate font-medium">{accessLabel.text}</span>
+              </SummaryRow>
+              <SummaryRow
+                label="Permissions"
+                onClick={() => setAdvanced(true)}
+                disabled={pending}
+              >
+                <span className="truncate font-medium">
+                  {preset ? preset.name : `${capabilities.length} selected`}
+                </span>
+              </SummaryRow>
+            </div>
+            {preset ? (
+              <p className="text-xs text-muted-foreground">
+                {preset.description}
+              </p>
+            ) : null}
+          </div>
+
+          <div className="grid grid-cols-2 gap-3">
+            <Button
+              type="button"
+              variant="outline"
+              onClick={onDeny}
+              disabled={pending}
+            >
+              Cancel
+            </Button>
+            <Button type="submit" disabled={pending}>
+              {pending ? <Loader2 className="size-4 animate-spin" /> : null}
+              Authorize
+            </Button>
+          </div>
+        </form>
       </Card>
 
+      <p className="mt-4 text-center text-xs text-muted-foreground">
+        Connecting as {username} · revoke it any time in Settings → MCP Server
+      </p>
+
       {/* The whole permission surface, opened on demand so the default path is
-          one dropdown and one button. Access comes first: what an app can REACH
+          reading two lines and pressing Authorize. Access comes first: what an app can REACH
           is the question people answer before what it may DO, and narrowing the
           reach changes which permissions still mean anything. */}
       <Dialog open={advanced} onOpenChange={setAdvanced}>
@@ -413,3 +458,30 @@ export function ConsentForm({
 
 /** Radix needs a value for the "matches no preset" state; it is never chosen. */
 const CUSTOM = "custom";
+
+/** One line of the summary — a label, what it currently says, and a way in. */
+function SummaryRow({
+  label,
+  children,
+  onClick,
+  disabled,
+}: {
+  label: string;
+  children: React.ReactNode;
+  onClick: () => void;
+  disabled?: boolean;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      disabled={disabled}
+      aria-label={`Change ${label.toLowerCase()}`}
+      className="flex w-full cursor-pointer items-center gap-3 p-3 text-left transition-colors hover:bg-accent disabled:pointer-events-none disabled:opacity-60"
+    >
+      <span className="shrink-0 text-muted-foreground">{label}</span>
+      <span className="ml-auto flex min-w-0 items-center gap-2">{children}</span>
+      <Pencil className="size-3.5 shrink-0 text-muted-foreground" />
+    </button>
+  );
+}

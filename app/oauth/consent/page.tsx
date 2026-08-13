@@ -25,7 +25,7 @@ import { ConsentRefusal } from "@/components/oauth/consent-refusal";
 export default async function OAuthConsentPage(props: {
   searchParams: Promise<Record<string, string | string[] | undefined>>;
 }) {
-  await requireUser();
+  const user = await requireUser();
   const params = await props.searchParams;
   const clientId = typeof params.client_id === "string" ? params.client_id : "";
   const scope = typeof params.scope === "string" ? params.scope : "";
@@ -108,6 +108,7 @@ export default async function OAuthConsentPage(props: {
       activeTeamId={activeTeamId}
       connectableTeamIds={connectableTeamIds}
       publicOrigin={publicOrigin}
+      username={user.name || user.username}
     />
   );
 }
