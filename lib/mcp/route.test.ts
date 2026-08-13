@@ -650,6 +650,23 @@ test("a deplo_ token still honours X-Deplo-Team", async () => {
   assert.ok(JSON.stringify(res.body).includes(TEAM_B), JSON.stringify(res.body));
 });
 
+test("a tool that runs outside GraphQL resolves the same identity", async () => {
+  // `app_logs` and `database_logs` are the only tools that are not a GraphQL
+  // document, so they are the only two that do not get `runGraphql`'s
+  // `runWithIdentity` for free — and the SDK handler runs OUTSIDE the scope
+  // this route opened. Without the wrapper they resolved no team at all and
+  // every log read over MCP answered "No active team", which nothing noticed
+  // because these two tools legitimately fail late for a dozen other reasons.
+  const conn = await connect(["view", "view_logs"]);
+  const res = await mcp(conn.accessToken, {
+    tool: "app_logs",
+    toolArgs: { appId: "prj_missing" },
+  });
+  const body = JSON.stringify(res.body);
+  assert.ok(!body.includes("No active team"), body);
+  assert.match(body, /No such app in this team/, body);
+});
+
 /* ------------------------------------------------------------------ */
 /* 7. Static invariants                                                */
 /* ------------------------------------------------------------------ */

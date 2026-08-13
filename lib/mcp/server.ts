@@ -3,6 +3,7 @@ import "server-only";
 import { z } from "zod";
 import { McpServer } from "@modelcontextprotocol/server";
 import { DEPLO_VERSION } from "../version";
+import { runWithIdentity } from "../auth/request-context";
 import type { Capability } from "../types";
 import type { GraphQLContext } from "../graphql/context";
 import type { McpSettings } from "../data/mcp-settings";
@@ -166,7 +167,18 @@ export function buildMcpServer(principal: McpPrincipal): McpServer {
           };
           const ctx = team ? await principal.forTeam(team) : principal.gql;
 
-          if (tool.run) return text(await tool.run(rest));
+          // The two tools that bypass GraphQL have to enter the identity
+          // themselves: `runGraphql` does it for every other tool, and
+          // `handler.fetch` runs OUTSIDE the scope the route opened. Without
+          // this they resolve no team at all — `requireActiveTeamId` finds
+          // neither an identity nor a cookie — so every log read answered "No
+          // active team", and the `team` argument above was ignored for them.
+          if (tool.run) {
+            const go = () => tool.run!(rest);
+            return text(
+              await (ctx.identity ? runWithIdentity(ctx.identity, go) : go()),
+            );
+          }
 
           const variables = tool.variables
             ? tool.variables(rest)
