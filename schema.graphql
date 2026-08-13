@@ -2996,7 +2996,12 @@ type Query {
   appTransferInfo(appId: String!): AppTransferInfo
 
   """All apps in the active team, newest first."""
-  apps: [App!]
+  apps(
+    """
+    Keep only the apps whose name, slug or id contains this, ignoring case and separators. Use `search` to look across teams.
+    """
+    q: String
+  ): [App!]
 
   """
   How many stored backup artifacts (successful runs) one target has. Deleting the target removes them, so this is what that delete takes with it.
@@ -3066,7 +3071,12 @@ type Query {
   databaseShellLabel(databaseId: String!): String
 
   """All databases in the active team, newest first."""
-  databases: [Database!]
+  databases(
+    """
+    Keep only the databases whose name or id contains this, ignoring case and separators. Use `search` to look across teams.
+    """
+    q: String
+  ): [Database!]
 
   """
   What permanently deleting this account would remove. Read-only — nothing is deleted.
@@ -3250,6 +3260,14 @@ type Query {
 
   """All registry credentials in the active team, newest first."""
   registries: [Registry!]
+
+  """
+  Find apps and databases by name, slug or id across EVERY team the caller can reach - the one read in deplo that is not scoped to the active team. Each hit says which team it is in. Separators and case are ignored, so "better auth" finds `better-auth-docs`. Teams the caller cannot enter right now (an unmet two-factor policy, a narrowed token) contribute nothing rather than failing the search.
+  """
+  search(
+    """Part of a name, slug or id. Blank finds nothing."""
+    q: String!
+  ): SearchResults
 
   """Search registered users (by username/display name) to add to the team."""
   searchUsers(query: String!): [UserSearchResult!]
@@ -3545,6 +3563,40 @@ input SaveSharedVarInput {
   teamWide: Boolean!
   type: EnvVarType!
   value: String!
+}
+
+"""
+An app a search matched. Deliberately small: enough to recognise it and to read it in full with `app(slug:)` afterwards.
+"""
+type SearchApp {
+  id: ID
+  name: String
+  productionUrl: String
+  slug: String
+  status: AppStatus
+  team: SearchTeam
+}
+
+"""A database a search matched."""
+type SearchDatabase {
+  id: ID
+  name: String
+  status: DatabaseStatus
+  team: SearchTeam
+  type: DatabaseType
+}
+
+"""What a search found, grouped by kind. At most 50 of each."""
+type SearchResults {
+  apps: [SearchApp!]
+  databases: [SearchDatabase!]
+}
+
+"""The team a search hit was found in."""
+type SearchTeam {
+  id: ID
+  name: String
+  slug: String
 }
 
 """A connected host running deployments (reached via its agent)."""

@@ -34,6 +34,7 @@ import "./types/app";
 import "./types/app-files";
 import "./types/registry";
 import "./types/role";
+import "./types/search";
 import "./types/server";
 import "./types/session";
 import "./types/shared-env";

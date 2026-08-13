@@ -56,6 +56,7 @@ import {
 } from "../types";
 import { encryptSecret } from "../crypto";
 import { recordActivity } from "./activity";
+import { matchesQuery } from "./match-query";
 import { buildConfigFor } from "../frameworks";
 import type {
   BuildConfig,
@@ -285,7 +286,16 @@ async function appOrderRank(teamId: string): Promise<Map<string, number>> {
   return new Map(rows.map((r) => [r.appId, r.position] as const));
 }
 
-export async function listApps(): Promise<AppSummary[]> {
+/**
+ * Every app in the active team, newest first (or the team's manual order).
+ *
+ * `query` filters by name, slug or id - the same match `search` uses across
+ * teams, so "find it here" and "find it anywhere" never disagree about what
+ * counts as a hit. Filtering here rather than in SQL keeps the scope and folder
+ * gates below untouched: an app the caller may not list stays unlistable
+ * whatever they type.
+ */
+export async function listApps(query?: string): Promise<AppSummary[]> {
   const teamId = await requireActiveTeamId();
   const [all, rank] = await Promise.all([
     loadAppsByTeam(teamId),
@@ -314,11 +324,14 @@ export async function listApps(): Promise<AppSummary[]> {
     })),
   );
   const proj = scoped.filter((p) => (reach.get(p.id)?.length ?? 0) > 0);
-  const pre = await preloadSummaries(proj);
+  const hits = query
+    ? proj.filter((p) => matchesQuery(query, p.name, p.slug, p.id))
+    : proj;
+  const pre = await preloadSummaries(hits);
   // Honour the team's manual order (Overview drag-and-drop) when present:
   // explicitly-ordered apps come first in that order, anything not listed
   // (a brand-new project, or before any reorder) falls back to newest-first.
-  return proj
+  return hits
     .map((p) => ({ ...summarize(p, pre), capabilities: reach.get(p.id) }))
     .sort((a, b) => {
       const ra = rank.get(a.id) ?? Infinity;

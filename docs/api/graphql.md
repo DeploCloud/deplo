@@ -181,6 +181,16 @@ therefore not capped per team.
   `members`, `teamRoles` (the team's roles and exactly what each grants),
   `apiTokens`, `activity`, `me`, `viewerTeam`, …. Object
   types are navigable — e.g. `App.deployments`, `App.latestDeployment`.
+  `apps` and `databases` also take an optional `q`, which keeps only the ones
+  whose name, slug or id contains it (case and separators ignored).
+- **`search(q)` is the one query that is NOT scoped to the active team.**
+  It answers with the apps and databases matching `q` in every team the caller
+  can reach, each hit carrying the team it lives in — so a client that has an
+  app's name but not its team can find it and then work there — with
+  `X-Deplo-Team` for an API token, or the `team` argument of an MCP tool call.
+  It is a loop over the ordinary per-team reads, so a team the caller
+  cannot enter right now (an unmet two-factor policy, a token scoped elsewhere)
+  simply contributes nothing. At most 50 of each kind.
 - **Mutations** mirror every former server action: `createApp`, `redeploy`,
   `rollbackDeployment(deploymentId)` (re-runs the image that build left on the
   server - ask `Deployment.canRollback` first, and note that only the CODE goes
@@ -311,7 +321,7 @@ claude mcp add --transport http deplo https://deplo.example.com/api/mcp \
 The protocol is stateless (no session, no `initialize` handshake), so one endpoint serves
 **one team**, chosen by `X-Deplo-Team` when the agent is connected; connect a second server to
 work in another team. `tools/list` returns only the tools the token can actually call, so the
-"MCP & AI agents" template shows 34 of the 76. A `403` means the team has
+"MCP & AI agents" template shows 34 of the 78. A `403` means the team has
 switched MCP off (Settings → MCP Server, `manage_mcp`); a `429` means the per-token rate limit.
 
 **No tool can reveal a secret**, whatever capabilities the token holds — `list_env` shows keys

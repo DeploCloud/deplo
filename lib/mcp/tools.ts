@@ -185,9 +185,43 @@ const APPS_READ: McpToolDef[] = [
     readOnly: true,
     idempotent: true,
     paginate: true,
-    input: z.object({ ...page }),
+    input: z.object({
+      q: z
+        .string()
+        .optional()
+        .describe(
+          "Keep only apps whose name, slug or id contains this. Omit for all of them.",
+        ),
+      ...page,
+    }),
     query: /* GraphQL */ `
-      query McpListApps { apps { ${APP_FIELDS} } }
+      query McpListApps($q: String) { apps(q: $q) { ${APP_FIELDS} } }
+    `,
+  }),
+  tool({
+    name: "find",
+    title: "Find an app or database in any team",
+    description:
+      "Search apps and databases by name, slug or id across EVERY team this " +
+      "connection was granted - the only tool that is not scoped to one team. " +
+      "Use it when you don't know where something lives: each hit says which " +
+      "team it is in, which is the value to pass as `team` on the next call. " +
+      "Case and separators are ignored, so \"better auth\" finds " +
+      "`better-auth-docs`. At most 50 of each kind.",
+    group: "Apps",
+    requires: "view",
+    readOnly: true,
+    idempotent: true,
+    input: z.object({
+      q: z.string().describe("Part of a name, slug or id."),
+    }),
+    query: /* GraphQL */ `
+      query McpFind($q: String!) {
+        search(q: $q) {
+          apps { id name slug status productionUrl team { id name slug } }
+          databases { id name type status team { id name slug } }
+        }
+      }
     `,
   }),
   tool({
@@ -846,9 +880,17 @@ const DATABASES: McpToolDef[] = [
     readOnly: true,
     idempotent: true,
     paginate: true,
-    input: z.object({ ...page }),
+    input: z.object({
+      q: z
+        .string()
+        .optional()
+        .describe(
+          "Keep only databases whose name or id contains this. Omit for all of them.",
+        ),
+      ...page,
+    }),
     query: /* GraphQL */ `
-      query McpListDatabases { databases { ${DATABASE_FIELDS} } }
+      query McpListDatabases($q: String) { databases(q: $q) { ${DATABASE_FIELDS} } }
     `,
   }),
   tool({

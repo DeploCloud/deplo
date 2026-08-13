@@ -27,6 +27,7 @@ import {
   requireTeamWide,
 } from "../membership";
 import { recordActivity } from "./activity";
+import { matchesQuery } from "./match-query";
 import { dispatchAlert } from "../notify/dispatch";
 import { encryptSecret, decryptSecret, randomToken } from "../crypto";
 import { connectAgent, mapCheckPortUnsupported } from "../infra/agent-client";
@@ -350,7 +351,12 @@ async function databaseOrderRank(teamId: string): Promise<Map<string, number>> {
   return new Map(rows.map((r) => [r.databaseId, r.position] as const));
 }
 
-export async function listDatabases(): Promise<DatabaseDTO[]> {
+/**
+ * Every database in the active team. `query` filters by name or id, with the
+ * same match `listApps` and `search` use, so the three never disagree about what
+ * counts as a hit.
+ */
+export async function listDatabases(query?: string): Promise<DatabaseDTO[]> {
   await requireTeamWide("databases");
   const teamId = await requireActiveTeamId();
   const [rows, rank] = await Promise.all([
@@ -366,6 +372,7 @@ export async function listDatabases(): Promise<DatabaseDTO[]> {
   // the same rule the Overview apps grid uses.
   return rows
     .map((r) => toDTO(assembleDatabase(r)))
+    .filter((d) => !query || matchesQuery(query, d.name, d.id))
     .sort((a, b) => {
       const ra = rank.get(a.id) ?? Infinity;
       const rb = rank.get(b.id) ?? Infinity;

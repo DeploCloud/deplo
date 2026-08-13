@@ -602,7 +602,15 @@ builder.queryFields((t) => ({
     type: [AppRef],
     authScopes: { loggedIn: true },
     description: "All apps in the active team, newest first.",
-    resolve: () => listApps(),
+    args: {
+      q: t.arg.string({
+        required: false,
+        description:
+          "Keep only the apps whose name, slug or id contains this, ignoring " +
+          "case and separators. Use `search` to look across teams.",
+      }),
+    },
+    resolve: (_r, { q }) => listApps(q ?? undefined),
   }),
   app: t.field({
     type: AppRef,

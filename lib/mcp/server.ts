@@ -140,7 +140,7 @@ export function buildMcpServer(principal: McpPrincipal): McpServer {
         title: tool.title,
         description: tool.description,
         // Every tool takes the team as an optional argument. Added centrally so
-        // the 76 rows stay a table of what deplo can do, with nothing about
+        // the 78 rows stay a table of what deplo can do, with nothing about
         // tenancy repeated in each of them.
         inputSchema: tool.input.extend({ team: TEAM_ARG }),
         annotations: {

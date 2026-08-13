@@ -32,7 +32,7 @@ import type { ResourceLimitsInput } from "@/lib/data/apps";
 
 // DatabaseStatus is local to this domain — define it here rather than in the
 // shared enums file. No hyphens, so the plain value list is fine.
-const DatabaseStatusEnum = builder.enumType("DatabaseStatus", {
+export const DatabaseStatusEnum = builder.enumType("DatabaseStatus", {
   values: ["running", "stopped", "provisioning", "error"] as const,
 });
 
@@ -165,7 +165,15 @@ builder.queryFields((t) => ({
     type: [DatabaseRef],
     authScopes: { loggedIn: true },
     description: "All databases in the active team, newest first.",
-    resolve: () => listDatabases(),
+    args: {
+      q: t.arg.string({
+        required: false,
+        description:
+          "Keep only the databases whose name or id contains this, ignoring " +
+          "case and separators. Use `search` to look across teams.",
+      }),
+    },
+    resolve: (_r, { q }) => listDatabases(q ?? undefined),
   }),
   database: t.field({
     type: DatabaseRef,
