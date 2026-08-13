@@ -331,7 +331,7 @@ export function ConsentForm({
           is the question people answer before what it may DO, and narrowing the
           reach changes which permissions still mean anything. */}
       <Dialog open={advanced} onOpenChange={setAdvanced}>
-        <DialogContent className="max-h-[85vh] overflow-y-auto sm:max-w-3xl">
+        <DialogContent className="sm:max-w-3xl">
           <DialogHeader>
             <DialogTitle>Access and permissions</DialogTitle>
             <DialogDescription className="mt-1">

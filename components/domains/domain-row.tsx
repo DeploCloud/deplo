@@ -601,7 +601,7 @@ export function DomainRow({
           }}
         />
         <Dialog open={editOpen} onOpenChange={setEditOpen}>
-          <DialogContent className="max-h-[85vh] overflow-y-auto text-left">
+          <DialogContent className="text-left">
             <DialogHeader>
               <DialogTitle>Edit domain</DialogTitle>
               <DialogDescription>
