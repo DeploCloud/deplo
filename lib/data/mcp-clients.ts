@@ -7,6 +7,7 @@ import {
   apiTokens,
   apps as appsTable,
   folders as foldersTable,
+  memberships as membershipsTable,
   projects as projectsTable,
   teams as teamsTable,
   users as usersTable,
@@ -216,6 +217,40 @@ async function assertMayConnect(teamId: string, userId: string): Promise<void> {
     throw new Error(
       "One of those teams has turned off MCP access. An admin can switch it back on under Settings → MCP Server.",
     );
+}
+
+/**
+ * The teams this person may connect an AI client to, right now.
+ *
+ * Exactly the question {@link assertMayConnect} asks at the mint, asked ahead of
+ * time for every team they are in — so the consent screen can tick them all to
+ * begin with. A screen that opens with nothing ticked never says which teams the
+ * app is getting: the answer it silently meant ("the one you came from") was
+ * readable only by someone who knew the rule. A team the person may NOT grant
+ * stays unticked, because ticking it would turn Authorize into a refusal.
+ */
+export async function listConnectableTeamIds(): Promise<string[]> {
+  const user = await assertUser();
+  const rows = await getDb()
+    .select({ id: teamsTable.id, enabled: teamsTable.mcpEnabled })
+    .from(teamsTable)
+    .innerJoin(
+      membershipsTable,
+      and(
+        eq(membershipsTable.teamId, teamsTable.id),
+        eq(membershipsTable.userId, user.id),
+      ),
+    );
+  const ids = await Promise.all(
+    rows.map(async (t) => {
+      if (!t.enabled) return null;
+      // An unmet two-factor policy THROWS in here rather than answering null,
+      // and it is the same "no" as missing the capability.
+      const m = await membershipFor(user.id, t.id).catch(() => null);
+      return m?.capabilities.includes("manage_mcp") ? t.id : null;
+    }),
+  );
+  return ids.filter((id): id is string => id !== null);
 }
 
 function originOf(url: string | null | undefined): string | null {

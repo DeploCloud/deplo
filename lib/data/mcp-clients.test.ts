@@ -8,7 +8,11 @@ import { __setTestDb, __resetTestDb } from "../db/client";
 import { seedIdentity, TEAM_A, TEAM_B, USER_1 } from "./identity-test-helpers";
 import { oauthConsent } from "../db/schema/auth";
 import { runWithIdentity } from "../auth/request-context";
-import { listMcpConnections, mintMcpConnection } from "./mcp-clients";
+import {
+  listConnectableTeamIds,
+  listMcpConnections,
+  mintMcpConnection,
+} from "./mcp-clients";
 import { listTokens, revokeToken } from "./tokens";
 import { listActivity } from "./activity";
 import type { Capability } from "../types";
@@ -363,6 +367,36 @@ test("a team with MCP switched off cannot be granted either", async () => {
     ),
     /turned off MCP access/i,
   );
+});
+
+/* ------------------------------------------------------------------ */
+/* What the consent screen ticks                                       */
+/* ------------------------------------------------------------------ */
+
+test("the teams ticked by default are exactly the ones the mint would accept", async () => {
+  await grantOwnerIn(TEAM_B);
+  assert.deepEqual(
+    (await as(OWNER, listConnectableTeamIds)).sort(),
+    [TEAM_A, TEAM_B].sort(),
+  );
+
+  // The same two refusals the mint raises, so the screen never opens with a
+  // tick on a team that would fail at Authorize.
+  await pg.query(
+    `delete from membership_capabilities
+     where membership_id = 'mem_owner_b2' and capability = 'manage_mcp'`,
+  );
+  assert.deepEqual(await as(OWNER, listConnectableTeamIds), [TEAM_A]);
+});
+
+test("a team with MCP switched off is not ticked", async () => {
+  await grantOwnerIn(TEAM_B);
+  await pg.query(`update teams set mcp_enabled = false where id = $1`, [TEAM_B]);
+  assert.deepEqual(await as(OWNER, listConnectableTeamIds), [TEAM_A]);
+});
+
+test("a team you are not in is never ticked", async () => {
+  assert.deepEqual(await as(OWNER, listConnectableTeamIds), [TEAM_A]);
 });
 
 test("an attacker-length client name does not break the mint", async () => {

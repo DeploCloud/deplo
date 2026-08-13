@@ -1,6 +1,9 @@
 import { redirect } from "next/navigation";
 import { requireUser } from "@/lib/auth";
-import { getOAuthClientForConsent } from "@/lib/data/mcp-clients";
+import {
+  getOAuthClientForConsent,
+  listConnectableTeamIds,
+} from "@/lib/data/mcp-clients";
 import { getMcpSettings } from "@/lib/data/mcp-settings";
 import { listScopeTree } from "@/lib/data/tokens";
 import { hasCapability, requireActiveTeamId } from "@/lib/membership";
@@ -56,17 +59,27 @@ export default async function OAuthConsentPage(props: {
       />
     );
 
-  const [canManageMcp, canManageTokens, settings, tree, activeTeamId] =
-    await Promise.all([
-      hasCapability("manage_mcp"),
-      hasCapability("manage_tokens"),
-      getMcpSettings(),
-      listScopeTree(),
-      // The form MUST start on the active team, not on the first one in the
-      // tree: the mint resolves the team from the session, so a dropdown showing
-      // anything else would connect the client somewhere the person never read.
-      requireActiveTeamId(),
-    ]);
+  const [
+    canManageMcp,
+    canManageTokens,
+    settings,
+    tree,
+    activeTeamId,
+    connectableTeamIds,
+  ] = await Promise.all([
+    hasCapability("manage_mcp"),
+    hasCapability("manage_tokens"),
+    getMcpSettings(),
+    listScopeTree(),
+    // The form MUST start on the active team, not on the first one in the
+    // tree: the mint resolves the team from the session, so a dropdown showing
+    // anything else would connect the client somewhere the person never read.
+    requireActiveTeamId(),
+    // What the scope picker starts ticked. Only the teams the mint would
+    // actually accept — ticking one it refuses is a failed Authorize, not a
+    // connection.
+    listConnectableTeamIds(),
+  ]);
 
   if (!canManageMcp || !canManageTokens)
     return (
@@ -93,6 +106,7 @@ export default async function OAuthConsentPage(props: {
       oauthQuery={oauthQuery}
       tree={tree}
       activeTeamId={activeTeamId}
+      connectableTeamIds={connectableTeamIds}
       publicOrigin={publicOrigin}
     />
   );

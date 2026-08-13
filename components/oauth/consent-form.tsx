@@ -20,7 +20,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { FieldLabel, InfoTip } from "@/components/ui/info-tip";
+import { FieldLabel } from "@/components/ui/info-tip";
 import { ConsentShell } from "@/components/oauth/consent-shell";
 import { PermissionPicker } from "@/components/settings/permission-picker";
 import {
@@ -114,6 +114,7 @@ export function ConsentForm({
   oauthQuery,
   tree,
   activeTeamId,
+  connectableTeamIds,
   publicOrigin,
 }: {
   client: ConsentClientDTO;
@@ -122,6 +123,15 @@ export function ConsentForm({
   tree: ScopeTreeTeam[];
   /** The team the mint will actually use — the dropdown must start here. */
   activeTeamId: string;
+  /**
+   * The teams the mint would accept, ticked to begin with.
+   *
+   * Starting empty meant the screen never said where the app was going: the
+   * rule it relied on ("nothing ticked is the team you came from") is invisible,
+   * and untickable in the direction that matters. Starting on every team the
+   * person may grant makes the reach readable, and narrowing it is unticking.
+   */
+  connectableTeamIds: string[];
   /** The origin deplo publishes, which the consent POST must come from. */
   publicOrigin: string | null;
 }) {
@@ -130,7 +140,7 @@ export function ConsentForm({
     mcpPreset?.capabilities ?? ["view"],
   );
   const [selection, setSelection] = useState<ScopeSelection>({
-    teamIds: [],
+    teamIds: connectableTeamIds,
     projectIds: [],
     folderIds: [],
     appIds: [],
@@ -161,11 +171,18 @@ export function ConsentForm({
       selection.folderIds.length +
       selection.appIds.length >
     0;
+  // Named where we can name it: one ticked team reads "Idra Arts", not
+  // "1 team". Teams only — a mixed selection is honestly a count, and the
+  // deeper nodes are what the Advanced screen is for.
+  const teamNames = useMemo(
+    () => Object.fromEntries(tree.map((t) => [t.id, t.name])),
+    [tree],
+  );
   // "Access" is what this repo calls a token's reach and "Permissions" what it
   // calls its capabilities (token-editor.tsx's own summary rows) — same words
   // here, so the two screens do not name one thing twice.
   const accessLabel = scoped
-    ? scopeLabel({ scoped: true, ...selection })
+    ? scopeLabel({ scoped: true, ...selection }, teamNames)
     : { text: connectingTeam?.name ?? "This team", empty: false };
 
   /**
@@ -328,21 +345,17 @@ export function ConsentForm({
               setAdvanced(false);
             }}
           >
-            <div className="grid gap-3">
-              <FieldLabel info="Tick nothing and it reaches the whole team above. Tick a project, folder or app to narrow it to that.">
-                Access
-              </FieldLabel>
-              {/* ONE control for "where". A separate team dropdown next to this
-                  was the contradiction that let a connection be approved for one
-                  team and granted four: two controls both answering "which team",
-                  free to disagree. Tick whole teams, or narrow inside them. */}
-              <ScopePicker
-                tree={tree}
-                selection={selection}
-                onChange={setSelection}
-                info="Which teams this app may work in, and how much of each. Tick nothing and it gets the team you are connecting from."
-              />
-            </div>
+            {/* ONE control for "where", and it brings its own "Access" heading —
+                a FieldLabel here printed the word twice, one line above the
+                other. A separate team dropdown next to it was the contradiction
+                that let a connection be approved for one team and granted four:
+                two controls both answering "which team", free to disagree. */}
+            <ScopePicker
+              tree={tree}
+              selection={selection}
+              onChange={setSelection}
+              info="Which teams this app may work in, and how much of each. Every team you can connect is ticked to begin with - untick the ones it should not reach, or narrow one to a project, folder or app."
+            />
 
             <div className="grid gap-3">
               <div className="grid gap-2">
