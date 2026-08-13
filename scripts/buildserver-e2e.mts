@@ -18,10 +18,13 @@
  * tests cannot give, and it is what caught that the FIRST version of its own
  * existence check was wrong (see hasImage).
  */
-import { connectAgent, agentPreflight } from "/root/projects/deplo/lib/infra/agent-client";
-import { copyImageBetween } from "/root/projects/deplo/lib/data/volume-migration";
-import { SourceKind, BuildKind } from "/root/projects/deplo/lib/agent/gen/agent";
-import { listAllServers } from "/root/projects/deplo/lib/data/servers";
+// Relative, like every other script here: an absolute path off this box
+// resolves nowhere else, and `tsc` on a checkout that is not /root/projects
+// answers TS2307 for all four plus an implicit `any` per callback.
+import { connectAgent } from "../lib/infra/agent-client";
+import { copyImageBetween } from "../lib/data/volume-migration";
+import { SourceKind, BuildKind } from "../lib/agent/gen/agent";
+import { listAllServers } from "../lib/data/servers";
 
 const SLUG = "zz-buildsrv-probe";
 const TAG = `deplo/${SLUG}:${Date.now().toString(16).slice(-12)}`;
