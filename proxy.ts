@@ -1,4 +1,5 @@
 import { NextResponse, type NextRequest } from "next/server";
+import { templatesApiBase } from "@/templates/api-base";
 
 /**
  * Deplo proxy (Next.js 16 replacement for middleware).
@@ -41,9 +42,11 @@ export function proxy(request: NextRequest) {
   const isHttps =
     (process.env.DEPLO_PUBLIC_URL ?? "").startsWith("https://") ||
     request.headers.get("x-forwarded-proto") === "https";
+  // Template cards load their logos straight from the catalog service, so its
+  // origin has to be allowed here or every one of them is blocked.
   let templatesOrigin = "";
   try {
-    templatesOrigin = new URL(process.env.DEPLO_TEMPLATES_API_URL ?? "").origin;
+    templatesOrigin = new URL(templatesApiBase()).origin;
   } catch {}
   const nonce = generateNonce();
 
@@ -59,7 +62,7 @@ export function proxy(request: NextRequest) {
     `style-src 'self' 'unsafe-inline'`,
     `img-src 'self' blob: data:${templatesOrigin ? ` ${templatesOrigin}` : ""}`,
     `font-src 'self' data:`,
-    `connect-src 'self'${templatesOrigin ? ` ${templatesOrigin}` : ""}`,
+    `connect-src 'self'`,
     `object-src 'none'`,
     `base-uri 'self'`,
     // github.com is allowed so the one-click GitHub App manifest flow can POST

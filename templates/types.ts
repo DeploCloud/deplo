@@ -1,5 +1,4 @@
-import z from "zod";
-import { categoryListQuerySchema, templateListQuerySchema } from "./schema";
+import type z from "zod";
+import type { templateListQuerySchema } from "./schema";
 
 export type TemplateListQuery = z.input<typeof templateListQuerySchema>;
-export type CategoryListQuery = z.input<typeof categoryListQuerySchema>;

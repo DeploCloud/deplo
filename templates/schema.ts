@@ -1,6 +1,8 @@
+/**
+ * The shapes the template catalog service serves. Remote input: everything the
+ * client in `./catalog.ts` reads is parsed through here before it is used.
+ */
 import { z } from "zod";
-
-const catalogVersionSchema = z.hash("sha256", { enc: "hex" });
 
 export const slugSchema = z
   .string()
@@ -8,23 +10,16 @@ export const slugSchema = z
   .max(80)
   .regex(/^[a-z0-9]+(?:-[a-z0-9]+)*$/);
 
-const listQuerySchema = z
+export const templateListQuerySchema = z
   .object({
     page: z.number().int().positive().default(1),
     limit: z.number().int().positive().max(100).default(20),
     search: z.string().trim().max(200).default(""),
     order: z.enum(["asc", "desc"]).default("asc"),
+    category: slugSchema.optional(),
+    sort: z.enum(["name", "category", "createdAt", "lastUpdate"]).default("name"),
   })
   .strict();
-
-export const templateListQuerySchema = listQuerySchema.extend({
-  category: slugSchema.optional(),
-  sort: z.enum(["name", "category", "createdAt", "lastUpdate"]).default("name"),
-});
-
-export const categoryListQuerySchema = listQuerySchema.extend({
-  sort: z.literal("name").default("name"),
-});
 
 const httpsUrlSchema = z
   .url()
@@ -38,7 +33,7 @@ const apiLinkSchema = z
   })
   .strict();
 
-export const apiCategorySchema = z
+const apiCategorySchema = z
   .object({
     name: z.string().min(2).max(48),
     icon: z.string().min(3).max(64),
@@ -111,21 +106,6 @@ export const templatesResponseSchema = z
     data: z.array(apiTemplateSchema),
     pagination: paginationSchema,
   })
-  .strict();
-
-export const categoriesResponseSchema = z
-  .object({
-    data: z.array(apiCategorySchema),
-    pagination: paginationSchema,
-  })
-  .strict();
-
-export const statusResponseSchema = z
-  .object({ status: z.literal("ok") })
-  .strict();
-
-export const versionResponseSchema = z
-  .object({ version: catalogVersionSchema })
   .strict();
 
 export const templateAssetPathSchema = z.union([

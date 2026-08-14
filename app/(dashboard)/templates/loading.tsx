@@ -34,7 +34,7 @@ export default function Loading() {
             >
               <div className="flex items-start justify-between gap-2">
                 <Skeleton className="size-11 rounded-lg" />
-                <Skeleton className="h-5 w-16 rounded-md" />
+                <Skeleton className="size-8 rounded-md" />
               </div>
 
               <div className="flex-1">
@@ -46,9 +46,7 @@ export default function Loading() {
               </div>
 
               <div className="flex flex-wrap gap-1">
-                <Skeleton className="h-4 w-10 rounded" />
-                <Skeleton className="h-4 w-12 rounded" />
-                <Skeleton className="h-4 w-10 rounded" />
+                <Skeleton className="h-4 w-16 rounded" />
               </div>
 
               <Skeleton className="mt-1 h-8 w-full rounded-md" />

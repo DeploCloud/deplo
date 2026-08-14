@@ -170,7 +170,7 @@ lib/actions       server actions (Zod validated)
 lib/db            Postgres pool, Drizzle schema and document store
 lib/deploy        docker-compose and Traefik generation
 lib/frameworks.ts framework detection engine
-lib/templates.ts  one-click template catalog
+templates/        one-click template catalog client (the catalog itself is remote)
 lib/crypto.ts     hashing, encryption and session signing
 proxy.ts          CSP, security headers and the optimistic auth gate
 ```

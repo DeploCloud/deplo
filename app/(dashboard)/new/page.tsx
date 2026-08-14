@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { ArrowLeft, Lock } from "lucide-react";
+import { ArrowLeft, Lock, CloudOff } from "lucide-react";
 import { hasCapability } from "@/lib/membership";
 import { EmptyState } from "@/components/shared/empty-state";
 import { PageHeader } from "@/components/shared/page-header";
@@ -16,7 +16,7 @@ import {
   placementHref,
   templatesHref,
 } from "@/lib/overview-links";
-import { getTemplate } from "@/templates/actions";
+import { getTemplate, templateLogoDataUri } from "@/templates/catalog";
 
 export const metadata = { title: "New App" };
 
@@ -50,7 +50,25 @@ export default async function NewAppPage(props: PageProps<"/new">) {
   // layer re-authorizes the destination on create either way.
   const placement = await resolveOverviewPlacement(placementFromSearchParams(params));
 
-  const template = templateId ? await getTemplate(templateId) : undefined;
+  // The catalogue is a remote service: an unknown slug, a stale link or a
+  // service having a bad day must not take the whole wizard down.
+  const template = templateId
+    ? await getTemplate(templateId).catch(() => null)
+    : null;
+  if (templateId && !template)
+    return (
+      <EmptyState
+        icon={CloudOff}
+        title="That template isn't available"
+        description="Deplo could not load this template from the catalog. Pick another one, or create the app from Git or a Docker image."
+        action={
+          <Button asChild size="sm">
+            <Link href={templatesHref(placement)}>Back to templates</Link>
+          </Button>
+        }
+      />
+    );
+
   // Generate the template's public hostname (with its random words baked in) up
   // front and thread it into the blueprint env. createApp passes this same
   // string through as the app's `preferred` auto domain, so the value the
@@ -60,8 +78,11 @@ export default async function NewAppPage(props: PageProps<"/new">) {
     ? productionDomain(template.slug, instanceHost())
     : null;
   const blueprint = template
-    ? await getTemplateBlueprint(template.slug, { domain: autoDomain ?? undefined })
+    ? getTemplateBlueprint(template, { domain: autoDomain ?? undefined })
     : null;
+  // Apps store their logo inline, so the catalog's remote image is fetched once
+  // here: the icon then survives the catalog going away.
+  const logo = template ? await templateLogoDataUri(template.logo) : null;
   const servers = await listServerChoices();
   const installations = await listGithubInstallations();
   const connections = await listGitConnections();
@@ -112,8 +133,8 @@ export default async function NewAppPage(props: PageProps<"/new">) {
             ? {
                 id: template.slug,
                 name: template.name,
-                description: template.description,
-                logo: template.logo,
+                description: template.shortDescription,
+                logo,
                 compose: blueprint?.compose ?? "",
                 env: blueprint?.env ?? [],
                 expose: blueprint?.expose ?? null,

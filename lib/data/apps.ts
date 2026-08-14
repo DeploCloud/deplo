@@ -95,7 +95,7 @@ import { descendantFolderIds } from "./folders";
 import { destroyPreviewsForApp } from "../deploy/preview-lifecycle";
 import { withKeyedLock } from "./keyed-mutex";
 import { removeUploads } from "../deploy/upload";
-import { isValidLogoValue, isTemplateLogo } from "../apps/logo-shared";
+import { isValidLogoValue } from "../apps/logo-shared";
 import { detectAppFavicon } from "../apps/favicon-detect";
 import { faviconSourceKind } from "../apps/favicon-shared";
 import { detectRepoFramework } from "../apps/framework-source";
@@ -1793,11 +1793,9 @@ function noIconFoundMessage(app: Parameters<typeof detectAppFavicon>[0]): string
  * friendly message when the source has no detectable icon so the caller can
  * surface it. Returns the detected logo data-URI.
  *
- * EXCEPTION: a template's default icon ALWAYS takes priority — detection never
- * replaces it. A template-sourced app keeps its bundled `/templates/...`
- * logo unless the user removes it first (then it's a normal empty logo and
- * detection may fill it). This mirrors the automatic hooks, which only ever fill
- * a NULL logo.
+ * A template's icon is an ordinary inline image since the catalog moved to its
+ * own service, so there is nothing special to protect here: the automatic hooks
+ * still only ever fill a NULL logo, and this manual action is explicit intent.
  */
 export async function redetectAppLogo(id: string): Promise<string> {
   const { membership } = await requireAppCapability(id, "configure_apps");
@@ -1805,11 +1803,6 @@ export async function redetectAppLogo(id: string): Promise<string> {
   const project = await loadAppGraph(id);
   if (!project || project.teamId !== membership.teamId) {
     throw new Error("App not found");
-  }
-  if (isTemplateLogo(project.logo)) {
-    throw new Error(
-      "This app keeps its template's default icon, which takes priority. Remove it first to detect one from your source files.",
-    );
   }
   // A compose stack is read on its own server — its files, and the icon the
   // running app serves — so its routed domains come along: they name the compose

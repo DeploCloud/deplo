@@ -14,7 +14,6 @@ import {
   LOGO_ACCEPT_ATTR,
   LOGO_IMAGE_TYPES,
   MAX_LOGO_BYTES,
-  isTemplateLogo,
 } from "@/lib/apps/logo-shared";
 import { UnsavedChangesGuard } from "@/components/apps/unsaved-changes-guard";
 import { DirtyHint } from "@/components/apps/settings/settings-shared";
@@ -156,10 +155,7 @@ export function GeneralSettingsForm({
                   <ImageIcon className="size-4" />
                   {logo ? "Replace image" : "Upload image"}
                 </Button>
-                {/* A template's default icon takes priority — offer detection
-                    only when the logo isn't a template default (remove it first
-                    to detect one from source). Mirrors the server guard. */}
-                {detectable && !isTemplateLogo(logo) && (
+                {detectable && (
                   <Button
                     variant="outline"
                     size="sm"

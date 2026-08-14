@@ -1,0 +1,149 @@
+import "server-only";
+
+import { z } from "zod";
+import { MAX_LOGO_BYTES } from "@/lib/apps/logo-shared";
+import { templatesApiBase } from "./api-base";
+import {
+  apiTemplateSchema,
+  slugSchema,
+  templateAssetPathSchema,
+  templateListQuerySchema,
+  templatesResponseSchema,
+} from "./schema";
+import type { TemplateListQuery } from "./types";
+
+/**
+ * Client for the one-click template catalog (the `DeploCloud/templates`
+ * service). The catalog used to be a `catalog.json` + `templates/blueprints/`
+ * checked into this repo, which meant a new template needed a Deplo release.
+ * It is now fetched over HTTP and cached for an hour, so the catalogue moves on
+ * its own schedule.
+ *
+ * Every response is validated against `./schema` before it is used: this is
+ * remote input, and its `compose` / `template.toml` end up in a deploy.
+ */
+
+const cacheOptions = {
+  cache: "force-cache" as const,
+  next: { revalidate: 3600, tags: ["templates"] },
+} satisfies RequestInit;
+
+function apiUrl(path: string): string {
+  return `${templatesApiBase()}${path}`;
+}
+
+/**
+ * Absolute URL for a catalog asset (a logo, a screenshot, a blueprint file).
+ * The path always comes from the API's own response and is re-validated here,
+ * so a compromised catalog cannot point the browser at an arbitrary URL.
+ */
+export function templateAssetUrl(path: string): string {
+  return apiUrl(templateAssetPathSchema.parse(path));
+}
+
+async function get(url: string, accept: string, tags?: string[]) {
+  const response = await fetch(url, {
+    headers: { Accept: accept },
+    ...cacheOptions,
+    ...(tags ? { next: { revalidate: 3600, tags } } : {}),
+  });
+  return response;
+}
+
+async function fetchJson<T>(path: string, schema: z.ZodType<T>): Promise<T> {
+  const response = await get(apiUrl(path), "application/json");
+  if (!response.ok)
+    throw new Error(`Template catalog returned ${response.status}.`);
+  return schema.parse(await response.json());
+}
+
+async function fetchText(path: string, slug: string): Promise<string> {
+  const response = await get(templateAssetUrl(path), "text/plain", [
+    "templates",
+    `template:${slug}`,
+  ]);
+  if (!response.ok)
+    throw new Error(`Template catalog returned ${response.status}.`);
+  return response.text();
+}
+
+/** One page of the catalog. */
+export async function getTemplates(query: TemplateListQuery = {}) {
+  const parsed = templateListQuerySchema.parse(query);
+  const params = new URLSearchParams();
+  for (const [key, value] of Object.entries(parsed))
+    if (value !== undefined) params.set(key, String(value));
+  return fetchJson(`/templates?${params}`, templatesResponseSchema);
+}
+
+/**
+ * The whole catalog, trimmed to what a card renders. The browser filters a few
+ * hundred entries instantly client-side, so paging the API once an hour beats a
+ * round-trip per keystroke — and dropping the long descriptions here is what
+ * keeps that payload small.
+ */
+export async function listCatalogCards() {
+  const first = await getTemplates({ page: 1, limit: 100 });
+  const rest = await Promise.all(
+    Array.from({ length: Math.max(0, first.pagination.totalPages - 1) }, (_, i) =>
+      getTemplates({ page: i + 2, limit: 100 }),
+    ),
+  );
+  return [first, ...rest]
+    .flatMap((page) => page.data)
+    .map((t) => ({
+      slug: t.slug,
+      name: t.name,
+      description: t.shortDescription,
+      logo: t.logo ? templateAssetUrl(t.logo) : null,
+      category: t.category.name,
+      categorySlug: t.category.slug,
+      github: t.links.github ?? null,
+    }));
+}
+
+/**
+ * A single template plus its blueprint files. `null` when the slug is unknown —
+ * a stale `?template=` link degrades to "not available" instead of a 500.
+ */
+export async function getTemplate(slug: string) {
+  const safe = slugSchema.safeParse(slug);
+  if (!safe.success) return null;
+
+  const response = await get(
+    apiUrl(`/templates/${safe.data}`),
+    "application/json",
+  );
+  if (response.status === 404) return null;
+  if (!response.ok)
+    throw new Error(`Template catalog returned ${response.status}.`);
+
+  const template = apiTemplateSchema.parse(await response.json());
+  const [compose, config] = await Promise.all([
+    fetchText(template.files.compose, safe.data),
+    fetchText(template.files.config, safe.data),
+  ]);
+  return { ...template, compose, config };
+}
+
+/**
+ * A template's logo inlined as a data URI. Apps store their logo inline (see
+ * `isStorableLogo`), so a template's icon has to be fetched once here rather
+ * than left as a catalog URL: the icon then survives the catalog being
+ * unreachable, and a dashboard full of template-deployed apps never fires one
+ * remote image request per row.
+ */
+export async function templateLogoDataUri(
+  path: string | null,
+): Promise<string | null> {
+  if (!path) return null;
+  try {
+    const response = await get(templateAssetUrl(path), "image/webp");
+    if (!response.ok) return null;
+    const bytes = Buffer.from(await response.arrayBuffer());
+    if (!bytes.byteLength || bytes.byteLength > MAX_LOGO_BYTES) return null;
+    return `data:image/webp;base64,${bytes.toString("base64")}`;
+  } catch {
+    return null;
+  }
+}

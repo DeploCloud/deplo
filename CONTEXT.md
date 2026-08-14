@@ -193,9 +193,9 @@ the `app_` id prefix persist for compatibility, but the concept is a **Plugin**.
 The remote, online catalog of installable plugins (`catalog.json` + per-plugin manifests) an
 operator points Deplo at. Deplo fetches it read-only and treats a manifest's `image` and `env`
 as **opaque** — validated for shape, never evaluated. The source of every plugin's image and
-manifest. Distinct from **Templates**, which ship inside Deplo; plugins are fetched from
-outside. **Which repository Deplo would ship pointing at is undecided** (ADR-0013) — the
-former default was a private host and has been removed.
+manifest. Distinct from **Templates**, which are one-click compose stacks Deplo deploys as
+Apps; both are fetched from outside. **Which repository Deplo would ship pointing at is
+undecided** (ADR-0013) — the former default was a private host and has been removed.
 _Avoid_: app store, marketplace, registry (that is a container-image credential).
 
 **Plugin path**:

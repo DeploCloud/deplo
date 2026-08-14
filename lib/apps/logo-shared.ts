@@ -49,8 +49,8 @@ const DATA_URI_RE =
   /^data:image\/(png|jpeg|webp|svg\+xml|gif|x-icon|vnd\.microsoft\.icon);base64,[A-Za-z0-9+/]+=*$/;
 
 /** A template's bundled logo: a clean, traversal-free `/templates/<file>` path
- * served from /public. This is the shape `createApp` stores from a
- * template's default logo. */
+ * served from /public. Apps created before the catalog moved to its own service
+ * still store this shape, so it stays valid; new ones inline the image instead. */
 const TEMPLATE_PATH_RE = /^\/templates\/[A-Za-z0-9._-]+$/;
 
 /**
@@ -64,15 +64,4 @@ export function isValidLogoValue(value: string): boolean {
   if (DATA_URI_RE.test(value)) return true;
   if (TEMPLATE_PATH_RE.test(value)) return true;
   return false;
-}
-
-/**
- * Whether a stored logo is a TEMPLATE DEFAULT (a `/templates/<file>` path) as
- * opposed to a user-uploaded / auto-detected inline image. A template's default
- * icon ALWAYS wins over favicon auto-detection: neither the automatic hooks nor
- * the manual "Detect from source" action may replace it (the user must remove
- * it first). Kept here, next to the value grammar, as the single source of truth.
- */
-export function isTemplateLogo(value: string | null | undefined): boolean {
-  return typeof value === "string" && TEMPLATE_PATH_RE.test(value);
 }

@@ -1,14 +1,13 @@
 import "server-only";
 
 import { randomBytes, randomUUID } from "node:crypto";
-import { getTemplate } from "@/templates/actions";
 
 /**
- * Loads a one-click template's deployable blueprint from
- * `templates/blueprints/<id>/`: the docker-compose.yml plus the template.toml
- * that declares its variables, the environment it injects, which service is
+ * Turns a one-click template's files — the docker-compose.yml plus the
+ * template.toml the catalog serves alongside it — into a deployable blueprint:
+ * the variables it declares, the environment it injects, which service is
  * exposed publicly, and any config files to mount into the stack. This is the
- * Dokploy/Coolify template format:
+ * widely-used self-hosted template format:
  *
  *   [variables]            # ${password:N} / ${base64:N} / ${domain} / ${REF} ...
  *   [config]
@@ -61,11 +60,6 @@ export interface TemplateBlueprint {
   mounts: BlueprintMount[];
 }
 
-/** Strict id check so a template id can never escape the blueprints directory. */
-function isSafeId(id: string): boolean {
-  return /^[a-z0-9][a-z0-9._-]*$/i.test(id) && !id.includes("..");
-}
-
 function randomSecret(len: number): string {
   return randomBytes(Math.ceil(len)).toString("base64url").slice(0, len);
 }
@@ -77,7 +71,7 @@ function randomHex(len: number): string {
 }
 
 /**
- * Generate a value for a Dokploy template helper token. Returns null when the
+ * Generate a value for a template helper token. Returns null when the
  * token is not a generator (then it is treated as a ${REF} to another variable).
  * Helpers MUST produce fresh random secrets so deployed stacks never share
  * predictable credentials across installs.
@@ -355,12 +349,10 @@ function substituteRefs(
   );
 }
 
-export async function getTemplateBlueprint(
-  id: string,
+export function getTemplateBlueprint(
+  template: { slug: string; compose: string; config: string },
   opts: { domain?: string } = {},
-): Promise<TemplateBlueprint | null> {
-  if (!isSafeId(id)) return null;
-  const template = await getTemplate(id);
+): TemplateBlueprint {
   const compose = template.compose;
   const domain = opts.domain ?? "";
 
@@ -401,7 +393,7 @@ export async function getTemplateBlueprint(
           content: substituteRefs(mt.content, vars, domain),
         }));
 
-      warnUnresolved(id, env, mounts);
+      warnUnresolved(template.slug, env, mounts);
     } catch {
       env = [];
       exposes = [];
