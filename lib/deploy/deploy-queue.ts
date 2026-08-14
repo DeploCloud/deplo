@@ -19,7 +19,9 @@ import { runDeploymentGuarded } from "./build";
  *    `servers.deploy_concurrency` deploys at once (default 1). Deploys on
  *    DIFFERENT servers run in parallel.
  *  - Two deploys of the SAME app never overlap, even when a server's
- *    concurrency is > 1 (an app's stack/container is single-writer).
+ *    concurrency is > 1, AND even when they land in different lanes because the
+ *    app's build server changed between them (an app's stack is single-writer).
+ *    The exclusion is on the deploy KEY and is global - see `busyKeys`.
  *
  * HOW IT WORKS
  *  The `deployments` row with `status = 'queued'` IS the durable queue; this
@@ -45,8 +47,6 @@ import { runDeploymentGuarded } from "./build";
 interface ServerLane {
   /** depIds this process currently has running on the server (size <= concurrency). */
   running: Set<string>;
-  /** appIds with a running deploy — the same-app exclusion set. */
-  busyApps: Set<string>;
   /** A pump loop is currently executing for this server. */
   pumping: boolean;
   /** A wake-up arrived (enqueue / finish) — the pump makes another pass. */
@@ -54,13 +54,56 @@ interface ServerLane {
 }
 
 const REGISTRY_KEY = Symbol.for("deplo.deploy.queue.lanes");
-const g = globalThis as unknown as { [REGISTRY_KEY]?: Map<string, ServerLane> };
+const BUSY_KEY = Symbol.for("deplo.deploy.queue.busy");
+const g = globalThis as unknown as {
+  [REGISTRY_KEY]?: Map<string, ServerLane>;
+  [BUSY_KEY]?: Set<string>;
+};
 const lanes: Map<string, ServerLane> = (g[REGISTRY_KEY] ??= new Map());
+
+/**
+ * The deploy KEYS with a deploy in flight, across every lane - the exclusion that
+ * keeps two deploys of one stack from overlapping.
+ *
+ * GLOBAL, not per-lane, and that is load-bearing now that a lane can be a BUILD
+ * SERVER. Two production deploys of one app used to be guaranteed into the same
+ * lane (the app's own server); with build servers they can land in different ones -
+ * the least-busy tie-break makes it likely, not rare, as soon as a fleet has two
+ * builders. Per-lane sets would let them run at once and, worse, finish out of
+ * order, leaving the app on the OLDER commit.
+ *
+ * Keyed on the deploy key rather than the app id because the key IS the stack: a
+ * preview (`<slug>__pr-3`) and production (`<slug>`) touch different containers,
+ * different volumes and different routers, so they may legitimately overlap. Two
+ * deploys sharing a key never may.
+ *
+ * On `globalThis` for the same reason `lanes` is: Next builds the RSC and
+ * route-handler graphs separately, and a per-module set would give each its own.
+ */
+const busyKeys: Set<string> = (g[BUSY_KEY] ??= new Set());
+
+/**
+ * Which server's lane a deploy occupies: the BUILD server when it has one,
+ * otherwise the host it runs on.
+ *
+ * The build is where the cost is - CPU, RAM and disk for minutes - while the
+ * release is a `compose up` measured in seconds. Counting a deploy against the tiny
+ * host it lands on would let ten small servers at concurrency 1 each aim ten
+ * simultaneous builds at one builder, which is the opposite of what a build server
+ * is for. The same-app exclusion is keyed on the APP either way, so two deploys of
+ * one app still never overlap.
+ *
+ * The known cost is the mirror image: several apps that share a builder can now
+ * reach their own (different) hosts at once. That is the cheap phase, and a host
+ * that cannot survive two concurrent `compose up`s has a problem this queue was
+ * never going to solve.
+ */
+const laneKey = sql<string>`coalesce(${deploymentsTable.buildServerId}, ${deploymentsTable.serverId})`;
 
 function laneFor(serverId: string): ServerLane {
   let lane = lanes.get(serverId);
   if (!lane) {
-    lane = { running: new Set(), busyApps: new Set(), pumping: false, dirty: false };
+    lane = { running: new Set(), pumping: false, dirty: false };
     lanes.set(serverId, lane);
   }
   return lane;
@@ -104,14 +147,17 @@ async function concurrencyFor(serverId: string): Promise<number> {
  */
 async function pickNext(
   serverId: string,
-  busyApps: Set<string>,
-): Promise<{ id: string; appId: string } | null> {
+): Promise<{ id: string; appId: string; key: string } | null> {
   const rows = await getDb()
-    .select({ id: deploymentsTable.id, appId: deploymentsTable.appId })
+    .select({
+      id: deploymentsTable.id,
+      appId: deploymentsTable.appId,
+      deployKey: deploymentsTable.deployKey,
+    })
     .from(deploymentsTable)
     .where(
       and(
-        eq(deploymentsTable.serverId, serverId),
+        eq(laneKey, serverId),
         eq(deploymentsTable.status, "queued"),
       ),
     )
@@ -121,13 +167,16 @@ async function pickNext(
       asc(deploymentsTable.seq),
     );
   for (const r of rows) {
-    if (!busyApps.has(r.appId)) return r;
+    // A legacy row with no key falls back to the app id, which is what the
+    // exclusion used to be - never an empty string, which every row would share.
+    const key = r.deployKey || r.appId;
+    if (!busyKeys.has(key)) return { id: r.id, appId: r.appId, key };
   }
   return null;
 }
 
 /** Run one reserved deploy, freeing its slot + re-draining the server on finish. */
-function startOne(serverId: string, depId: string, appId: string): void {
+function startOne(serverId: string, depId: string, key: string): void {
   void invokeRunner(depId)
     // runDeploymentGuarded never rejects; a fake runner might. Swallow so the
     // cleanup + re-drain below always run and no slot is leaked.
@@ -137,10 +186,20 @@ function startOne(serverId: string, depId: string, appId: string): void {
     .finally(() => {
       const lane = laneFor(serverId);
       lane.running.delete(depId);
-      lane.busyApps.delete(appId);
-      // A slot freed — try to start whatever is next on this server (Coolify's
+      busyKeys.delete(key);
+      // A slot freed - try to start whatever is next (Coolify's
       // queue_next_deployment, called from transitionToStatus on every finish).
+      //
+      // EVERY lane, not just this one. The stack key that was just released is
+      // global, so the deploy it was blocking may be queued on a different
+      // builder's lane; waking only the lane that finished would leave that one
+      // parked forever with nothing left to re-arm it. One extra query per known
+      // lane per finish, on a list the size of the fleet, is the cheap half of
+      // that trade.
       scheduleServer(serverId);
+      for (const other of [...lanes.keys()]) {
+        if (other !== serverId) scheduleServer(other);
+      }
     });
 }
 
@@ -172,13 +231,13 @@ async function pump(serverId: string, lane: ServerLane): Promise<void> {
       lane.dirty = false;
       const concurrency = await concurrencyFor(serverId);
       while (lane.running.size < concurrency) {
-        const next = await pickNext(serverId, lane.busyApps);
+        const next = await pickNext(serverId);
         if (!next) break;
         // Reserve the slot in memory BEFORE the runner claims queued->building,
-        // so a re-drain in the same tick can't pick the same app twice.
+        // so a re-drain in the same tick can't pick the same stack twice.
         lane.running.add(next.id);
-        lane.busyApps.add(next.appId);
-        startOne(serverId, next.id, next.appId);
+        busyKeys.add(next.key);
+        startOne(serverId, next.id, next.key);
       }
     }
   } catch (e) {
@@ -213,8 +272,11 @@ export function enqueueDeployment(input: {
   depId: string;
   serverId: string;
   appId: string;
+  /** The BUILD server, when this deploy compiles somewhere other than where it
+   *  runs. It owns the lane - see {@link laneKey}. */
+  buildServerId?: string | null;
 }): void {
-  scheduleServer(input.serverId);
+  scheduleServer(input.buildServerId || input.serverId);
 }
 
 /**
@@ -246,8 +308,11 @@ export async function startDeployQueue(): Promise<void> {
         .where(eq(deploymentsTable.id, o.id));
     }
   }
+  // The LANE, not the owning server: a backlog waiting on a build server must wake
+  // that builder's lane, or a restart would leave it parked forever behind a lane
+  // nothing ever schedules.
   const servers = await db
-    .selectDistinct({ serverId: deploymentsTable.serverId })
+    .selectDistinct({ serverId: laneKey })
     .from(deploymentsTable)
     .where(eq(deploymentsTable.status, "queued"));
   for (const s of servers) {
@@ -268,6 +333,7 @@ export function __setRunnerForTest(fn: (depId: string) => Promise<void>): void {
 export function __resetQueueForTest(): void {
   overrideRunner = null;
   lanes.clear();
+  busyKeys.clear();
 }
 
 /** Snapshot a server lane's in-flight accounting (test assertions only). */
@@ -277,6 +343,8 @@ export function __laneSnapshotForTest(
   const lane = lanes.get(serverId);
   return {
     running: lane ? [...lane.running] : [],
-    busyApps: lane ? [...lane.busyApps] : [],
+    // The exclusion set is global now (see `busyKeys`); the name is kept so the
+    // existing assertions read the same, and it holds deploy KEYS.
+    busyApps: [...busyKeys],
   };
 }

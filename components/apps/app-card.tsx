@@ -59,6 +59,24 @@ type MenuKit = {
   Separator: React.ElementType;
 };
 
+/**
+ * How a card that is on its way out looks: dimmed and pulsing.
+ *
+ * A delete is recorded before its stack comes down, so the row outlives the
+ * decision by however long the host takes (seconds, or the dial timeout when
+ * that host is unreachable). The card stays in the grid for that window rather
+ * than vanishing and reappearing on the next reload — but it reads as leaving,
+ * and `inert` alongside this makes it exactly as unusable as it looks: no click,
+ * no hover, no tab stop, nothing the server would refuse anyway.
+ */
+/*
+ * No `opacity-50` here, deliberately: Tailwind v4's `pulse` keyframe declares
+ * only its 50% step, so the 0%/100% frames take the element's OWN opacity — a
+ * static `opacity-50` alongside it animates 0.5 → 0.5 → 0.5 and the card just
+ * sits there dimmed. The animation dips to 0.5 by itself; that dip IS the dim.
+ */
+const DELETING_CARD = "pointer-events-none animate-pulse";
+
 const DROPDOWN_KIT: MenuKit = {
   Item: DropdownMenuItem,
   Sub: DropdownMenuSub,
@@ -145,6 +163,10 @@ export function AppCard({
   const [pending, startTransition] = React.useTransition();
   const [confirmOpen, setConfirmOpen] = React.useState(false);
   const dep = project.latestDeployment;
+  // Confirmed for deletion: the row is still served (its host is still tearing
+  // the stack down) but the app is gone — every gate refuses it and its pages
+  // 404, so the card must not offer a way in. See {@link DELETING_CARD}.
+  const deleting = project.deletingAt != null;
   // What the viewer may do to THIS app (per-app, so a folder grant counts).
   // Absent means the list didn't resolve them - leave the item enabled and let
   // the server answer, rather than greying out an action they may well hold.
@@ -531,7 +553,10 @@ export function AppCard({
           id: project.id,
         })
       }
-      onDeleted={() => router.push("/")}
+      // The card is already on this screen and stays on it, dimmed and pulsing,
+      // until the host finishes — so re-render in place instead of bouncing the
+      // user to the root Overview and out of whatever folder they were in.
+      onDeleted={() => router.refresh()}
     />
   );
 
@@ -569,7 +594,11 @@ export function AppCard({
   const cardInner =
     view === "list" ? (
       <Card
-        className="group relative flex items-center gap-4 p-4 transition-colors hover:border-foreground/20"
+        inert={deleting}
+        className={cn(
+          "group relative flex items-center gap-4 p-4 transition-colors hover:border-foreground/20",
+          deleting && DELETING_CARD,
+        )}
       >
         {overlayLink}
         <div className="pointer-events-none relative z-[1] flex min-w-0 flex-1 items-center gap-4">
@@ -618,7 +647,11 @@ export function AppCard({
       </Card>
     ) : (
       <Card
-        className="group relative flex flex-col gap-4 p-5 transition-colors hover:border-foreground/20"
+        inert={deleting}
+        className={cn(
+          "group relative flex flex-col gap-4 p-5 transition-colors hover:border-foreground/20",
+          deleting && DELETING_CARD,
+        )}
       >
         {/* Stretched link: the whole card is clickable. Interactive controls
             below opt back into pointer events and sit above this overlay. */}

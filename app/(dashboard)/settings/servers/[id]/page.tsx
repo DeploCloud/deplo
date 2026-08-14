@@ -5,7 +5,7 @@ import { ArrowLeft, Server as ServerIcon } from "lucide-react";
 import { DeploMark } from "@/components/logo";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { getServerById, getServerTeamIds } from "@/lib/data/servers";
+import { getServerById, getServerTeamIds, serverRole } from "@/lib/data/servers";
 import { listAllTeamsForAdmin } from "@/lib/data/teams";
 import { getCleanupPolicy, listCleanupRuns } from "@/lib/data/docker-cleanup";
 import { isInstanceAdmin } from "@/lib/membership";
@@ -138,6 +138,7 @@ export default async function ServerDetailPage(props: PageProps<"/settings/serve
             dockerVersion: hydrated.dockerVersion,
             allTeams: hydrated.allTeams,
             deployConcurrency: hydrated.deployConcurrency,
+            role: serverRole(hydrated),
             traefikDashboard: hydrated.traefikDashboard ?? null,
             suggestedTraefikDomain,
             isDeploHost,

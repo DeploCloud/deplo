@@ -2,6 +2,7 @@ import { type NextRequest } from "next/server";
 
 import { getCurrentUser } from "@/lib/auth";
 import { downloadBackupArtifact } from "@/lib/data/backups";
+import { statusForBackupError } from "@/lib/backups/http-status";
 
 /**
  * Download one backup artifact.
@@ -24,21 +25,16 @@ import { downloadBackupArtifact } from "@/lib/data/backups";
  * out, and an age stream is not seekable — so a byte range would mean decrypting
  * from zero and discarding the prefix. `Accept-Ranges: none` says so rather than
  * letting a download manager assume resume works and produce a corrupt file.
- */
-
-/**
- * The HTTP status that matches what the data layer refused.
  *
- * Matched on the message because that layer throws plain Errors — every gate in
- * `lib/data` does, and giving backups their own error taxonomy for one route
- * would be the wrong place to start one. The default is 400, so an unrecognised
- * message is no worse than it was.
+ * `Content-Length` IS sent, whenever the run recorded one. Without it a browser
+ * has no total to compare against: no size, no percentage, no time remaining —
+ * a download that reads as if it will never end, on a file that can genuinely
+ * take a quarter of an hour. It comes from the run's `decryptedSizeBytes` and
+ * never from `sizeBytes`, which is the artifact as stored, age layer and all.
+ * A run taken before the agent reported it has none, and then this behaves as it
+ * always did rather than advertising a length that would be a few hundred KB
+ * too long — which the browser would sit and wait for forever.
  */
-function statusFor(message: string): number {
-  if (/not found/i.test(message)) return 404;
-  if (/permission|not allowed|can't access|cannot access/i.test(message)) return 403;
-  return 400;
-}
 
 // Long-lived streamed response; must run at request time on the Node runtime.
 export const dynamic = "force-dynamic";
@@ -63,7 +59,7 @@ export async function GET(
     // proxy log and a script all read "you sent a bad request" for a run that
     // exists and a permission the caller does not have.
     const message = e instanceof Error ? e.message : String(e);
-    return Response.json({ error: message }, { status: statusFor(message) });
+    return Response.json({ error: message }, { status: statusForBackupError(message) });
   }
 
   const body = new ReadableStream<Uint8Array>({
@@ -95,6 +91,11 @@ export async function GET(
     headers: {
       "Content-Type": "application/gzip",
       "Content-Disposition": `attachment; filename="${artifact.filename}"`,
+      // A short stream now FAILS the download instead of saving a truncated
+      // archive that looks complete — which is the right outcome for a backup.
+      ...(artifact.sizeBytes !== null
+        ? { "Content-Length": String(artifact.sizeBytes) }
+        : {}),
       "Accept-Ranges": "none",
       "Cache-Control": "no-store",
     },

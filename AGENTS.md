@@ -5,7 +5,7 @@ templates into Docker stacks fronted by Traefik. Read this before writing code, 
 the deeper docs it links (this file points; it does not restate them).
 
 - **`CONTEXT.md`** (repo root) — authoritative glossary / ubiquitous language. Single-context repo.
-- **`docs/adr/`** — numbered decisions (0001–0014). Contradicting one? Surface it, don't silently override.
+- **`docs/adr/`** — numbered decisions (0001-0021). Contradicting one? Surface it, don't silently override.
 - **`docs/api/graphql.md`** — external API reference · **`schema.graphql`** (root) — generated SDL.
 - **`docs/agents/`** — `issue-tracker.md`, `triage-labels.md`, `domain.md`.
 
@@ -205,14 +205,24 @@ is remapped onto the control-plane `users` table. Deploy execution is the Go age
   --audit-level=high` on every push/PR, plus a weekly audit run so a newly-published advisory
   turns the repo red on its own. The tests job must keep `DEPLO_DATABASE_URL` **unset** (the
   suite is pglite in-process; a real URL makes the lease/scheduler tests bind to it and fail).
+  The types job runs **`bunx next typegen` first**: `PageProps` / `LayoutProps` / `RouteContext`
+  are GENERATED globals under `.next/types` (which `tsconfig.json` includes), so they exist on
+  any machine that has run the dev server and on none that has not - a bare `tsc --noEmit` on a
+  fresh checkout reports ~65 phantom "Cannot find name" errors while every local run is green.
+  `typegen` emits them without a build and needs no environment. Run it before `tsc` in a clean
+  tree too.
   `docker-image.yml` is separate and still fires only on a `v*` tag.
-- **`overrides` in `package.json` are security pins, not preferences.** `postcss`, `nanoid`,
-  `brace-expansion`, `js-yaml`, `sharp`, `protobufjs` and `esbuild` reach us only through `next`,
-  `@tailwindcss/postcss`, `@grpc/grpc-js`, `drizzle-kit`, `tsx` and `eslint`, all of which pin
-  ranges below the patched versions. Without the overrides `bun audit` reports 25 advisories
-  (16 high) and the CI audit job cannot pass; with them it reports none. Re-check when bumping
-  `next` or the grpc/drizzle toolchain: once the upstream range moves past a pin, delete that
-  entry rather than leaving a stale one.
+- **`overrides` in `package.json` are security pins, not preferences.** Three are left:
+  `esbuild` (the only one still stopping a live advisory - `drizzle-kit` and `tsx` both pin
+  ranges at or below 0.24.2), plus `postcss` and `js-yaml`, which still pull older copies into
+  the tree when removed. `graphql` is a different animal: a FUNCTIONAL pin, because
+  `graphql-yoga@5` peers `^15 || ^16` and will not take 17.
+  **Re-check every pin when you bump anything** - the rule is empirical, not historical: drop the
+  override, `bun install`, and read `bun audit` (bare, not `--audit-level=high`, or a moderate
+  hides). If nothing appears and no lower copy reappears, delete the entry rather than leaving a
+  stale one. That is how `nanoid`, `sharp`, `protobufjs` and `brace-expansion` were removed in
+  August 2026: upstream had moved past all four, and the `brace-expansion` pin had become
+  actively harmful - it held v1 while `eslint@10`'s minimatch needs the v2 `expand` export.
 
 ## API layer (Pothos + yoga)
 
@@ -245,10 +255,18 @@ Single endpoint `app/api/graphql/route.ts` (thin) → `lib/graphql/yoga.ts`. One
   `databases/[id]/attach` (SSE siblings of the app routes — reuse `lib/logs/session.ts` +
   `lib/attach/session.ts`), `github/webhook|callback|setup`, `auth/[...all]`, `agent/bootstrap`,
   `graphql/playground`, `health`, `node-versions`, `railpack-versions`, `registry/images`.
-  The **one exception to the cookie rule** is `apps/[id]/deploy-hook/[token]` (the **deploy
-  hook**): a webhook sender can't compose a GraphQL query, so it POSTs a URL and authenticates
-  with an API token (`Authorization: Bearer deplo_…`). It re-enters the normal gates via
-  `runWithIdentity` + `redeploy` — never bypass them with a hand-rolled capability check.
+  **Two exceptions to the cookie rule**, both authenticating with an API token
+  (`Authorization: Bearer deplo_…`) and both re-entering the normal gates via `runWithIdentity`
+  — never bypass them with a hand-rolled capability check:
+  - `apps/[id]/deploy-hook/[token]` (the **deploy hook**): a webhook sender can't compose a
+    GraphQL query, so it POSTs a URL and lets `redeploy` apply the gates.
+  - `mcp` (the **MCP server**, ADR-0021): JSON-RPC, not GraphQL, because that is what AI agents
+    speak. Every tool is a row in `lib/mcp/tools.ts` whose GraphQL document runs **in-process**
+    against the same schema via `lib/mcp/execute.ts`, so the gates are literally the same code.
+    Adding a tool is adding a row; adding an authorization check there is a bug — it belongs in
+    `lib/data/*`. Regenerate nothing, but keep `lib/mcp/tools.test.ts` green: it validates every
+    document against `schema.graphql`, which is what stops a renamed field from silently
+    breaking sixty tools.
 
 ## Data & mutations (the security boundary)
 
@@ -270,10 +288,10 @@ Single endpoint `app/api/graphql/route.ts` (thin) → `lib/graphql/yoga.ts`. One
   silently lossy: it retries the insert once, and an entry it still could not write becomes a
   visible "N activity entries could not be recorded" row on the next successful write. A gap in an
   audit trail has to be legible **in the trail**, not only in stderr.
-- **Capabilities are FINE-GRAINED (41)** — one action each, catalogued with labels,
+- **Capabilities are FINE-GRAINED (46)** — one action each, catalogued with labels,
   descriptions, search keywords and browse categories in **`lib/capabilities.ts`**
   (`create_apps`, `deploy_apps`, `delete_apps`, `open_app_console`, `read_app_files` vs
-  `write_app_files`, `create_databases`, `restore_backups`, `manage_tokens`,
+  `write_app_files`, `create_databases`, `restore_backups`, `manage_tokens`, `manage_mcp`,
   `organize_folders`, `manage_previews`, `view_logs`, `manage_roles`, `delete_team`, …). `view` is the always-on
   floor; plus instance-wide `instanceAdmin` and the orthogonal grants `canExposePorts` /
   `canMountHostVolumes`. **Never add a capability that covers two actions** — if an admin
@@ -315,6 +333,14 @@ Single endpoint `app/api/graphql/route.ts` (thin) → `lib/graphql/yoga.ts`. One
   hash's own parameters, the pre-parameter 3-field form still verifies, and `login()` re-hashes a
   weaker one in place on the next successful sign-in (`passwordNeedsRehash`). Both helpers are
   **async on purpose** - scrypt at this cost must not run on the event loop.
+- **Every password a person CHOOSES gets two gates:** `assertPasswordPolicy` (sync, shared with
+  the strength meter) and `await assertPasswordNotPwned` (`lib/pwned-password.ts`, the Have I Been
+  Pwned range API, k-anonymous and **failing open** so no-egress instances still work). Both run on
+  account creation, change-password, the admin reset, basic auth, the Traefik panel and a
+  database's engine password. Better Auth's own `/api/auth/*` endpoints are covered by the
+  `haveIBeenPwned` plugin instead - deplo's writes never reach them. External credentials
+  (registry, SMTP, S3, git tokens) are deliberately NOT checked: deplo cannot rotate them, so a hit
+  would only break a working integration.
 - **Every user-supplied outbound address goes through `lib/outbound-url.ts` first**
   (`assertSafeOutboundUrl` / `assertSafeOutboundHost` for a bare SMTP host). S3 endpoints,
   notification webhooks, push endpoints and git base URLs are all on it; reaching inside the

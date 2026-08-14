@@ -80,6 +80,21 @@ export function stackName(deployKey: string): string {
 }
 
 /**
+ * The image tag one deploy of a BUILT source lands on: `deplo/<key>:<id[0:12]}`.
+ *
+ * Unique per deployment - nothing is ever overwritten, which is what makes a
+ * previous deploy re-runnable without a rebuild. The agent tags with exactly this
+ * string (it never derives one of its own) and the rendered compose references it,
+ * so the three have to agree; this function is where they do.
+ *
+ * Only a source Deplo BUILDS gets one. A prebuilt `docker-image` source runs the
+ * registry ref the user gave it, and a compose stack has no single image at all.
+ */
+export function deployImageRef(deployKey: string, deploymentId: string): string {
+  return `deplo/${deployKey}:${deploymentId.slice(0, 12)}`;
+}
+
+/**
  * The owning app's slug for any deploy key — structural, not a query. A slug is
  * `[a-z0-9-]`, so everything before the FIRST `__` is the slug and nothing else
  * can be. This is what lets a preview key resolve back to its app with no extra

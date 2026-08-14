@@ -8,6 +8,8 @@ import {
   HardDrive,
   Boxes,
   Settings2,
+  Hammer,
+  Archive,
 } from "lucide-react";
 
 import { PageHeader } from "@/components/shared/page-header";
@@ -124,6 +126,29 @@ function ServerCard({
             >
               <ServerIcon className="size-3" />
               Remote
+            </Badge>
+          )}
+          {/* A specialised host says so next to its name. Without it the page reads
+              as a list of interchangeable servers, and the one that runs nothing
+              looks like the one that is broken. */}
+          {server.buildOnly && (
+            <Badge
+              variant="muted"
+              className="shrink-0 gap-1"
+              title="This server only builds images, for apps that run on your other servers. Nothing is deployed here and it has no proxy."
+            >
+              <Hammer className="size-3" />
+              Build only
+            </Badge>
+          )}
+          {server.storageOnly && (
+            <Badge
+              variant="muted"
+              className="shrink-0 gap-1"
+              title="This server only holds backup files. It has no Docker and nothing is deployed here."
+            >
+              <Archive className="size-3" />
+              Backups only
             </Badge>
           )}
           <ServerHealthChip

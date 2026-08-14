@@ -115,6 +115,7 @@ const run = (id: string, daysAgo: number, over: Partial<BackupRun> = {}): Backup
   targetId: "db_1",
   objectKey: `deplo/t/database/db_1/${id}.dump.gz`,
   sizeBytes: 100,
+  decryptedSizeBytes: null,
   sha256: null,
   orphanedAt: null,
   status: "success",

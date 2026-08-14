@@ -125,6 +125,36 @@ export async function copyFilesBetween(
 }
 
 /**
+ * Copy a BUILT IMAGE from the server that compiled it to the server that will run
+ * it - the build-server relay, and the third use of this module's one idea: agents
+ * cannot dial each other, so the bytes pass through the control plane.
+ *
+ * `removeAfter` is true for every caller today. A build server holds no artifacts;
+ * the image is a courier and the BuildKit cache is what makes the next build fast,
+ * and that is untouched. Throws on failure so the deploy fails BEFORE the target's
+ * stack is rewritten, leaving whatever was running still running.
+ */
+export async function copyImageBetween(
+  source: AgentConnection,
+  dest: AgentConnection,
+  imageRef: string,
+  removeAfter = true,
+): Promise<number> {
+  let res: { ok: boolean; error: string; bytesWritten: number };
+  try {
+    res = await dest.importImage(
+      imageRef,
+      source.exportImage(imageRef, removeAfter),
+    );
+  } catch (e) {
+    throw attributeCopyError(e);
+  }
+  if (!res.ok)
+    throw new Error(res.error || `agent failed to load the image "${imageRef}"`);
+  return res.bytesWritten;
+}
+
+/**
  * Migrate a workload's full on-host state from one server to another: every named
  * volume (in order) and, optionally, the files dir. Opens ONE connection to each
  * host and reuses it for the whole set (an app can have several volumes). Throws

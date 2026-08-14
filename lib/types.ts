@@ -26,6 +26,7 @@ export type Capability =
   // Apps
   | "create_apps"
   | "deploy_apps"
+  | "rollback_apps"
   | "control_apps"
   | "configure_apps"
   | "delete_apps"
@@ -57,11 +58,13 @@ export type Capability =
   // Backups & storage
   | "manage_backups"
   | "restore_backups"
+  | "delete_backups"
   | "manage_backup_destinations"
   // Integrations & API
   | "manage_registries"
   | "manage_git"
   | "manage_tokens"
+  | "manage_mcp"
   | "manage_notifications"
   // Logs & monitoring
   | "view_logs"
@@ -83,6 +86,7 @@ export const ALL_CAPABILITIES: Capability[] = [
   "view",
   "create_apps",
   "deploy_apps",
+  "rollback_apps",
   "control_apps",
   "configure_apps",
   "delete_apps",
@@ -110,10 +114,12 @@ export const ALL_CAPABILITIES: Capability[] = [
   "open_database_console",
   "manage_backups",
   "restore_backups",
+  "delete_backups",
   "manage_backup_destinations",
   "manage_registries",
   "manage_git",
   "manage_tokens",
+  "manage_mcp",
   "manage_notifications",
   "view_logs",
   "view_metrics",
@@ -523,6 +529,23 @@ export interface Server {
    * a backup destination.
    */
   storageOnly: boolean;
+  /**
+   * A server bought purely to COMPILE: Docker is installed, Traefik is not, and no
+   * app of any team runs here. It builds images for the hosts that do, which receive
+   * them over the image relay.
+   *
+   * The twin of {@link storageOnly} and exclusive with it. It changes two things:
+   * the server drops out of every deploy-target picker (apps and databases alike),
+   * and the Traefik readiness check becomes a skip rather than a warning - a build
+   * server has no proxy by design. Docker is still required.
+   */
+  buildOnly: boolean;
+  /**
+   * This host's CPU architecture ("amd64" | "arm64"), observed from each Hello.
+   * "" when the agent is too old to report it, which keeps the server out of the
+   * build-server picker rather than risking an image the target cannot execute.
+   */
+  hostArch: string;
   /**
    * How many deployments this server runs concurrently — the per-server slot count
    * the deploy queue enforces. 1 (the
@@ -959,6 +982,23 @@ export interface App {
    */
   migrateFromServerId?: ID | null;
   /**
+   * Which server BUILDS this app's image, when that is not `serverId`. null is
+   * "Automatic": a build-only server if the fleet has one this team can reach and
+   * its arch matches, otherwise build where the app runs. Pinning `serverId` itself
+   * is how "always build on this app's own server" is said.
+   *
+   * Only meaningful for a source Deplo BUILDS (git / upload). A compose stack has no
+   * single image to move and a `docker-image` source builds nothing, so both ignore
+   * it entirely.
+   */
+  buildServerId?: ID | null;
+  /**
+   * Build on this app's own server when the build server is unreachable, saying so
+   * in the deploy log. true by default; false for whoever picked a small deploy
+   * server on purpose and would rather fail than have a build land on it.
+   */
+  buildFallbackLocal: boolean;
+  /**
    * Display logo for the project (a URL or local /templates/<x> path). Defaulted
    * from the template's logo when deployed from one, editable from settings.
    * Null ⇒ fall back to a generic icon. NOT the Docker image (`dockerImage`).
@@ -1055,14 +1095,48 @@ export interface App {
    */
   composeUpArgs: string | null;
   /**
+   * How many previous deployments this app can be rolled back to (default 3).
+   *
+   * A retention number, not a toggle: it is what keeps that many of this app's
+   * built images alive on its server, so `0` means there is nothing to go back to
+   * and the Rollback action disappears. Only a source Deplo builds accrues
+   * rollbacks - a compose stack has no single image to re-run.
+   */
+  rollbackKeep: number;
+  /**
    * Per-app resource caps applied at deploy time, or `null` when the app has no
    * limits set (the default). See {@link ResourceLimits}.
    */
   resources: ResourceLimits | null;
   latestDeploymentId: ID | null;
+  /**
+   * When someone confirmed this app's deletion, or null (every app that is not
+   * on its way out). Set before the teardown and cleared only by the row
+   * disappearing, so it is the one flag that says "this app is gone, the host
+   * just hasn't caught up yet".
+   *
+   * Treat it as gone: every gate refuses a stamped app, its pages 404, and the
+   * Overview keeps its card on screen dimmed and pulsing until the row goes.
+   */
+  deletingAt?: string | null;
   createdAt: string;
   updatedAt: string;
 }
+
+/**
+ * How many previous deployments a new app can be rolled back to.
+ *
+ * Three, not zero: the feature exists so that a bad deploy is undoable, and a
+ * default of zero would mean every app only becomes undoable once someone has
+ * found the setting - which is the same as not shipping it. It costs three extra
+ * images per app on the host, which is the honest price of being able to go back.
+ */
+export const DEFAULT_ROLLBACK_KEEP = 3;
+
+/** The ceiling on {@link App.rollbackKeep}. Retention is disk: past this, an app
+ *  is hoarding gigabytes of images nobody will ever roll back to. `0` is the
+ *  floor and means "keep nothing to go back to". */
+export const MAX_ROLLBACK_KEEP = 20;
 
 export type DeploymentStatus =
   | "queued"
@@ -1099,6 +1173,15 @@ export interface Deployment {
    * only for rows that predate the column; every write since sets it.
    */
   serverId: ID | null;
+  /**
+   * The server this deploy BUILT on, when that was not `serverId`. null is the
+   * ordinary case, "built where it runs", and is also what every row that predates
+   * build servers holds. Denormalized and FK-less like `serverId`: the queue drains
+   * on it (the builder's lane is the one that matters, because the build is the
+   * cost), and it is the audit answer to where this app's source and secrets went -
+   * which must not vanish when someone decommissions a builder.
+   */
+  buildServerId: ID | null;
   commitSha: string;
   commitMessage: string;
   commitAuthor: string;
@@ -1118,6 +1201,18 @@ export interface Deployment {
    * restart.
    */
   forceRecreate: boolean;
+  /**
+   * The image tag this deploy rendered into its stack and the agent ran. Set only
+   * where Deplo BUILT it (git, upload) - `deplo/<deployKey>:<id[0:12]}`, living on
+   * the owning server. Null for a compose stack (no single image) and for a
+   * prebuilt `docker-image` source (a mutable registry tag, nothing pinned), so a
+   * non-null value is exactly "there is an image of ours to go back to".
+   */
+  imageRef: string | null;
+  /** Set when this deploy is a ROLLBACK: the deployment whose image it re-ran.
+   *  Null ⇒ this deploy built its own image (which is also what decides whether it
+   *  occupies a retention slot - a rollback reuses an image, it does not add one). */
+  rollbackOf: ID | null;
   creator: string;
 }
 
@@ -1595,7 +1690,9 @@ export interface BackupDestination {
 /** What a backup schedule / run targets. */
 export type BackupTargetKind = "database" | "app";
 
-export type BackupRunStatus = "running" | "success" | "failed";
+/** `canceled` spelled the way `deployments.status` already spells it, so the two
+ *  "somebody pressed Stop" states read the same everywhere in the UI. */
+export type BackupRunStatus = "running" | "success" | "failed" | "canceled";
 
 export interface Backup {
   id: ID;
@@ -1620,7 +1717,7 @@ export interface Backup {
    *  newest successful one is never removed. */
   retentionCount: number;
   lastRunAt: string | null;
-  lastStatus: "success" | "failed" | "running" | "never";
+  lastStatus: "success" | "failed" | "running" | "canceled" | "never";
   enabled: boolean;
   createdAt: string;
 }
@@ -1651,6 +1748,14 @@ export interface BackupRun {
   /** Object key: `deplo/<teamId>/<kind>/<targetId>/<ISO-timestamp>.<ext>`. */
   objectKey: string;
   sizeBytes: number;
+  /**
+   * How big the artifact is once decrypted: the exact number of bytes a download
+   * delivers, and so its Content-Length. Not derivable from `sizeBytes` (age
+   * adds a header plus a tag per 64 KiB chunk), so only the agent that wrote the
+   * artifact ever saw it. Null for a run taken before it was recorded, and the
+   * download then sends no length at all rather than a wrong one.
+   */
+  decryptedSizeBytes: number | null;
   /**
    * Hex sha256 of the artifact as written (ciphertext, before decryption) —
    * what a restore checks before feeding those bytes to anything. Null for a run
@@ -1812,7 +1917,12 @@ export type ActivityType =
   /** Docker cleanup: a policy change, or a sweep that reclaimed disk on a server. */
   | "cleanup"
   /** Monitoring: a settings change (e.g. the "save metrics on server" switch). */
-  | "monitoring";
+  | "monitoring"
+  /**
+   * MCP: who let AI agents into this team, and when. "An agent deleted it" must
+   * never be a dead end — the trail names the human who opened the door.
+   */
+  | "mcp";
 
 export interface Activity {
   id: ID;

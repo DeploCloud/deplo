@@ -39,6 +39,10 @@ import { UnsavedChangesGuard } from "@/components/apps/unsaved-changes-guard";
 import { BuildOutputCard } from "@/components/apps/settings/build-output-card";
 import { BuildCachePanel } from "@/components/apps/settings/build-cache-panel";
 import { ComposeArgsPanel } from "@/components/apps/settings/compose-args-panel";
+import {
+  BuildServerPanel,
+  type BuildServerChoice,
+} from "@/components/apps/settings/build-server-panel";
 import { DeployHookPanel } from "@/components/apps/settings/deploy-hook-panel";
 import { RootDirectoryFields } from "@/components/apps/settings/root-directory-fields";
 import {
@@ -157,6 +161,9 @@ export function DeploymentSettingsForm({
   deployHookEnabled,
   deployHookUrlMasked,
   composeUpArgs,
+  buildServerId,
+  buildFallbackLocal,
+  buildServerChoices,
 }: {
   appId: string;
   slug: string;
@@ -194,6 +201,12 @@ export function DeploymentSettingsForm({
   /** Extra flags appended to this app's `docker compose up`, or null for the
    * untouched command (Advanced settings). */
   composeUpArgs: string | null;
+  /** Which server BUILDS this app; null is Automatic (Advanced settings). */
+  buildServerId: string | null;
+  /** Build on this app's own server when the build server is unreachable. */
+  buildFallbackLocal: boolean;
+  /** The hosts this team may compile on, with their architectures. */
+  buildServerChoices: BuildServerChoice[];
 }) {
   const router = useRouter();
   const [build, setBuild] = React.useState<BuildConfig>(initialBuild);
@@ -991,6 +1004,24 @@ export function DeploymentSettingsForm({
                     buildCacheClearPending: next.clearPending,
                   }))
                 }
+              />
+            )}
+            {/* Same gate as the build cache above: only an app Deplo BUILDS can
+                build somewhere else. A compose stack has no single image to move,
+                and a prebuilt image is not built at all. */}
+            {buildCardVisible && (
+              <BuildServerPanel
+                appId={appId}
+                serverId={serverId}
+                serverName={
+                  servers.find((s) => s.id === serverId)?.name ?? "its own server"
+                }
+                serverArch={
+                  buildServerChoices.find((c) => c.id === serverId)?.hostArch ?? ""
+                }
+                buildServerId={buildServerId}
+                buildFallbackLocal={buildFallbackLocal}
+                choices={buildServerChoices}
               />
             )}
             <ComposeArgsPanel

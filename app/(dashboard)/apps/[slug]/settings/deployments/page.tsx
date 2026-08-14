@@ -2,13 +2,15 @@ import { notFound } from "next/navigation";
 import { Rocket } from "lucide-react";
 import { getAppBySlug } from "@/lib/data/apps";
 import { deployHookUrlMasked } from "@/lib/data/deploy-hook";
-import { listServerChoices } from "@/lib/data/servers";
+import { listBuildServerChoices, listServerChoices } from "@/lib/data/servers";
 import { listGithubInstallations } from "@/lib/data/github";
 import { appWebhookStatus, listGitConnections } from "@/lib/data/git-connections";
 import { providerFor } from "@/lib/git/providers";
 import { SettingsSection } from "@/components/apps/settings/settings-shared";
 import { DeploymentSettingsForm } from "@/components/apps/settings/deployment-settings-form";
+import { RollbackSettingsForm } from "@/components/apps/settings/rollback-settings-form";
 import { CapabilityFieldset } from "@/components/apps/app-capabilities";
+import { appBuildsItsOwnImage } from "@/lib/utils";
 
 export const metadata = { title: "Deployment" };
 
@@ -20,6 +22,9 @@ export default async function AppDeploymentSettingsPage(
   if (!project) notFound();
 
   const servers = await listServerChoices();
+  // Wider than the deploy targets: a build-only server is here BECAUSE it cannot
+  // deploy, and an ordinary server can build for another one too.
+  const buildServerChoices = await listBuildServerChoices();
   const installations = await listGithubInstallations();
   const connections = await listGitConnections();
 
@@ -42,6 +47,10 @@ export default async function AppDeploymentSettingsPage(
       ? await appWebhookStatus(project.repo)
       : null;
 
+  // Whether this app accrues rollbacks at all - the SAME predicate the data layer
+  // gates on, so the card cannot offer a setting the action would refuse.
+  const canRollBack = appBuildsItsOwnImage(project);
+
   return (
     <section className="space-y-4">
       <SettingsSection icon={Rocket} title="Deployment" />
@@ -52,6 +61,9 @@ export default async function AppDeploymentSettingsPage(
           build={project.build}
           framework={project.framework}
           frameworkOverride={project.frameworkOverride}
+          buildServerId={project.buildServerId ?? null}
+          buildFallbackLocal={project.buildFallbackLocal}
+          buildServerChoices={buildServerChoices}
           autoDeploy={project.autoDeploy}
           source={project.source}
           repo={project.repo}
@@ -82,6 +94,16 @@ export default async function AppDeploymentSettingsPage(
             providerTriggers ? null : await deployHookUrlMasked(project.id)
           }
         />
+        {/* Only where a rollback can exist at all: the app has to be one Deplo
+            BUILDS. A compose stack has no single image to re-run, and a prebuilt
+            `docker-image` source is a registry tag with nothing pinned behind it -
+            going "back" to it would land on whatever it points at today. */}
+        {canRollBack && (
+          <RollbackSettingsForm
+            appId={project.id}
+            rollbackKeep={project.rollbackKeep}
+          />
+        )}
       </CapabilityFieldset>
     </section>
   );

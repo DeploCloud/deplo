@@ -645,6 +645,76 @@
       "when": 1784679400000,
       "tag": "0091_destination_s3_args",
       "breakpoints": true
+    },
+    {
+      "idx": 92,
+      "version": "7",
+      "when": 1784679600000,
+      "tag": "0092_backup_run_decrypted_size",
+      "breakpoints": true
+    },
+    {
+      "idx": 93,
+      "version": "7",
+      "when": 1784679800000,
+      "tag": "0093_backfill_delete_backups",
+      "breakpoints": true
+    },
+    {
+      "idx": 94,
+      "version": "7",
+      "when": 1784680000000,
+      "tag": "0094_rollback",
+      "breakpoints": true
+    },
+    {
+      "idx": 95,
+      "version": "7",
+      "when": 1784680200000,
+      "tag": "0095_backfill_rollback_apps",
+      "breakpoints": true
+    },
+    {
+      "idx": 96,
+      "version": "7",
+      "when": 1784680400000,
+      "tag": "0096_build_servers",
+      "breakpoints": true
+    },
+    {
+      "idx": 97,
+      "version": "7",
+      "when": 1784680600000,
+      "tag": "0097_app_deleting",
+      "breakpoints": true
+    },
+    {
+      "idx": 98,
+      "version": "7",
+      "when": 1784680800000,
+      "tag": "0098_mcp_server",
+      "breakpoints": true
+    },
+    {
+      "idx": 99,
+      "version": "7",
+      "when": 1784681000000,
+      "tag": "0099_backfill_manage_mcp",
+      "breakpoints": true
+    },
+    {
+      "idx": 100,
+      "version": "7",
+      "when": 1784681200000,
+      "tag": "0100_drop_mcp_confirm",
+      "breakpoints": true
+    },
+    {
+      "idx": 101,
+      "version": "7",
+      "when": 1784681400000,
+      "tag": "0101_oauth_provider",
+      "breakpoints": true
     }
   ]
 }

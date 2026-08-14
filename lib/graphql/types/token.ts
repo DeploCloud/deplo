@@ -71,6 +71,13 @@ export const ApiTokenRef = builder
         nullable: true,
         description: "The member this token acts as, and is clamped to.",
       }),
+      oauthClientName: t.exposeString("oauthClientName", {
+        nullable: true,
+        description:
+          "Set when this token was minted by connecting an AI client over " +
+          "OAuth rather than from the tokens page. Such a token is managed " +
+          "under Settings → MCP Server and is not edited by hand.",
+      }),
       lastUsedAt: t.exposeString("lastUsedAt", { nullable: true }),
       createdAt: t.exposeString("createdAt"),
     }),

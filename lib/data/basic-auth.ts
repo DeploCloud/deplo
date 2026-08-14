@@ -10,6 +10,7 @@ import { getCurrentUser } from "../auth";
 import { newId, nowIso } from "../ids";
 import { recordActivity } from "./activity";
 import { encryptSecret, decryptSecret, htpasswdLine } from "../crypto";
+import { assertPasswordNotPwned } from "../pwned-password";
 import { appInTeam } from "./app-graph-load";
 import { hasAppCapability, requireAppCapability } from "./node-access";
 import { authorOf, loadUserIdentities } from "./user-identity";
@@ -193,6 +194,7 @@ export async function addBasicAuthUser(
     )
     .limit(1);
   if (dup.length > 0) throw new Error("A user with that name already exists");
+  await assertPasswordNotPwned(password);
 
   const now = nowIso();
   const row = {
@@ -238,6 +240,7 @@ export async function updateBasicAuthUserPassword(
   );
   if (!(await appInTeam(existing.appId, membership.teamId)))
     throw new Error("Not found");
+  await assertPasswordNotPwned(password);
   const updated = {
     ...existing,
     passwordEnc: encryptSecret(password),

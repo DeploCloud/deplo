@@ -12,6 +12,7 @@ import {
 } from "../auth";
 import { requirePersonalSession } from "../auth/request-context";
 import { assertPasswordPolicy } from "../password-policy";
+import { assertPasswordNotPwned } from "../pwned-password";
 
 /**
  * The current user's own account.
@@ -75,6 +76,9 @@ export async function changePassword(input: {
   assertPasswordPolicy(input.newPassword);
   if (!(await verifyUserPassword(user.id, input.currentPassword)))
     throw new Error("Current password is incorrect");
+  // After the re-auth, not before: a wrong current password must be answered
+  // locally, without a round trip to an outside API that changes nothing.
+  await assertPasswordNotPwned(input.newPassword);
   await setUserPassword(user.id, input.newPassword);
   // Revoke every outstanding session: a changed password must log out anyone
   // holding a stolen/old cookie. That includes the initiator's own, so sign them

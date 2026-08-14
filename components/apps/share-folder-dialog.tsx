@@ -282,7 +282,7 @@ export function ShareFolderDialog({
         if (!o) resetAddFlow();
       }}
     >
-      <DialogContent className="max-h-[85vh] overflow-y-auto">
+      <DialogContent>
         <DialogHeader>
           <DialogTitle>Share “{folderName}”</DialogTitle>
           <DialogDescription>

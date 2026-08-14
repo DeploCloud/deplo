@@ -33,9 +33,20 @@ const VERIFY_2FA = /* GraphQL */ `
   }
 `;
 
-/** Only allow returning to a safe, in-app path (no open redirect). */
+/**
+ * Only allow returning to a safe, in-app path (no open redirect).
+ *
+ * A fixed allowlist, not a same-origin check: two destinations legitimately send
+ * someone here before they have a session, and everything else goes to the
+ * dashboard. `/oauth/consent` is on it because losing that page's query strands
+ * a person mid-flow inside a third-party product with no way back except
+ * starting over there.
+ */
 function safeNext(raw: string | null): string {
-  return raw && /^\/invite\/[A-Za-z0-9_-]+$/.test(raw) ? raw : "/";
+  if (!raw) return "/";
+  if (/^\/invite\/[A-Za-z0-9_-]+$/.test(raw)) return raw;
+  if (/^\/oauth\/consent\?/.test(raw)) return raw;
+  return "/";
 }
 
 export default function LoginPage() {
@@ -51,6 +62,17 @@ export default function LoginPage() {
   const [code, setCode] = useState("");
 
   function done() {
+    // Signing in mid-OAuth: the provider redirects here with the WHOLE signed
+    // authorization query, not a `next` param, so re-run authorize now that a
+    // session exists. A full-page assign because that is an API route answering
+    // with a 302, which the client router cannot follow.
+    const sp = new URLSearchParams(window.location.search);
+    if (sp.has("client_id") && sp.has("sig")) {
+      // Otherwise the provider sends us straight back here, forever.
+      if (sp.get("prompt") === "login") sp.delete("prompt");
+      window.location.assign(`/api/auth/oauth2/authorize?${sp}`);
+      return;
+    }
     // The session cookie is now set; navigate and refresh the RSC tree.
     router.push(safeNext(next));
     router.refresh();

@@ -206,6 +206,8 @@ export const READINESS_DETAILS = {
       : "The Docker daemon answered on the host.",
   dockerSkippedStorageOnly:
     "This server only stores backups, so Docker is not installed. Nothing is deployed here.",
+  traefikSkippedBuildOnly:
+    "This server only builds images, so no proxy is installed. Nothing is routed here.",
   // The ONLY signal is `traefikRunning`: a substring match over running containers' image and
   // name, which the agent's own comment says "covers the deplo-traefik instance and a
   // bring-your-own proxy alike". It does not prove the container is the one Deplo installed,
@@ -505,7 +507,7 @@ export function classifyServerReadiness(probe: ReadinessProbe): ReadinessReport 
   // Docker down we never actually looked — that is `skip`, not `warn`. Downstream, `traefik`
   // becomes null ("unknown") so the port rows stop reasoning about a fact we don't have.
   const traefik: boolean | null = hello.dockerAvailable ? hello.traefikRunning : null;
-  checks.push(traefikCheck(traefik));
+  checks.push(traefikCheck(traefik, probe.server.buildOnly));
   checks.push(portCheck("routing.port80", "Port 80 (HTTP)", HTTP_PORT, probe.port80, traefik));
   checks.push(
     portCheck("routing.port443", "Port 443 (HTTPS)", HTTPS_PORT, probe.port443, traefik),
@@ -621,8 +623,18 @@ function featuresCheck(capabilities: string[]): ReadinessCheck {
  * none, and a status that fires on a normal configuration is one operators learn to ignore
  * (the same decision `classifyServerHealth` makes and lib/infra/server-health.test.ts pins).
  */
-function traefikCheck(traefik: boolean | null): ReadinessCheck {
+function traefikCheck(traefik: boolean | null, buildOnly = false): ReadinessCheck {
   const base = { id: "routing.traefik", group: "routing" as const, label: "Traefik proxy" };
+  // A BUILD SERVER has no proxy by design - the installer skips it, because nothing
+  // is routed to a host that runs nothing. Reporting the absence would leave every
+  // build server permanently amber for working exactly as intended, which is the
+  // same reasoning that makes Docker a `skip` on a storage-only box.
+  if (buildOnly)
+    return {
+      ...base,
+      severity: "skip",
+      detail: READINESS_DETAILS.traefikSkippedBuildOnly,
+    };
   if (traefik === null)
     return {
       ...base,

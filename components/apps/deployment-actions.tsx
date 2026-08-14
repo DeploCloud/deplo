@@ -9,6 +9,7 @@ import {
   ExternalLink,
   ScrollText,
   RotateCw,
+  Undo2,
   GitPullRequest,
   Ban,
   Trash2,
@@ -23,6 +24,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { ConfirmAction } from "@/components/shared/confirm-action";
+import { RollbackDialog } from "@/components/apps/rollback-deployment";
 import { gqlAction } from "@/lib/graphql-client";
 import type { DeploymentStatus } from "@/lib/types";
 
@@ -35,6 +37,10 @@ export function DeploymentActions({
   pullRequestUrl,
   canDelete = false,
   canDeploy = false,
+  canRollback = false,
+  canRollbackApps = false,
+  commitSha = "",
+  commitMessage = "",
 }: {
   id: string;
   appId: string;
@@ -55,10 +61,28 @@ export function DeploymentActions({
    *  greyed out without it instead of failing on click. Cosmetic - every one of
    *  them is re-checked in the data layer. */
   canDeploy?: boolean;
+  /**
+   * Whether this deployment is one the app can be put BACK on - the server's
+   * answer (`Deployment.canRollback`), never re-derived here: whether the image
+   * is still on the host is a fact about the host.
+   */
+  canRollback?: boolean;
+  /**
+   * Whether the viewer holds `rollback_apps`. Separate from {@link canDeploy}
+   * because they are separate permissions - someone may be trusted to put the app
+   * back without being trusted to ship something new. Cosmetic; the data layer
+   * re-checks it.
+   */
+  canRollbackApps?: boolean;
+  /** What the app goes back TO, for the confirm dialog: the short sha or, for an
+   *  app built from an uploaded archive, nothing (the date carries it). */
+  commitSha?: string;
+  commitMessage?: string;
 }) {
   const router = useRouter();
   const [pending, startTransition] = React.useTransition();
   const [deleteOpen, setDeleteOpen] = React.useState(false);
+  const [rollbackOpen, setRollbackOpen] = React.useState(false);
 
   // A build in flight can be stopped; a still-queued one is simply canceled.
   const isBuilding = status === "building";
@@ -166,6 +190,15 @@ export function DeploymentActions({
             <RotateCw className="size-4" />
             Redeploy
           </DropdownMenuItem>
+          {canRollback && (
+            <DropdownMenuItem
+              onSelect={() => setRollbackOpen(true)}
+              disabled={pending || !canRollbackApps}
+            >
+              <Undo2 className="size-4" />
+              Rollback
+            </DropdownMenuItem>
+          )}
           {pullRequestUrl && (
             <DropdownMenuItem asChild>
               <a href={pullRequestUrl} target="_blank" rel="noreferrer">
@@ -203,6 +236,14 @@ export function DeploymentActions({
         </DropdownMenuContent>
       </DropdownMenu>
     </div>
+      <RollbackDialog
+        open={rollbackOpen}
+        onOpenChange={setRollbackOpen}
+        id={id}
+        appSlug={appSlug}
+        commitSha={commitSha}
+        commitMessage={commitMessage}
+      />
       <ConfirmAction
         open={deleteOpen}
         onOpenChange={setDeleteOpen}

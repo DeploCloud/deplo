@@ -31,6 +31,7 @@ import {
   Fingerprint,
   SlidersHorizontal,
   Cpu,
+  Bot,
   type LucideIcon,
 } from "lucide-react";
 
@@ -226,6 +227,16 @@ export const SETTINGS_NAV: NavSection[] = [
         href: "/settings/git",
         icon: GitBranch,
         tooltip: "Connected git providers",
+      },
+      {
+        label: "MCP Server",
+        href: "/settings/mcp",
+        icon: Bot,
+        tooltip: "AI agents that can drive this team",
+        // Same reasoning as Registries and Notifications: without the
+        // capability every switch on the page is refused server-side, so the
+        // page is a dead end rather than a read-only view.
+        requires: "manage_mcp",
       },
     ],
   },

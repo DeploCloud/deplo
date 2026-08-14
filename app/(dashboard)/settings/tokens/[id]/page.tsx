@@ -57,11 +57,28 @@ export default async function TokenPage(
           }
         />
       </div>
+      {token.oauthClientName ? (
+        <p className="rounded-lg border border-border bg-muted/40 p-3 text-sm text-muted-foreground">
+          This token was created by connecting {token.oauthClientName}. Change
+          what it can do, or revoke it, under{" "}
+          <Link
+            href="/settings/mcp"
+            className="underline underline-offset-4 hover:text-foreground"
+          >
+            Settings → MCP Server
+          </Link>
+          .
+        </p>
+      ) : null}
       <TokenEditor
         mode="edit"
         token={token}
         tree={tree}
-        canManage={canManage}
+        // A connection's permissions are chosen on the consent screen and
+        // changed by connecting again, so this form is read-only for one: two
+        // editors over one credential is how the two drift apart. Revoking
+        // still works from the list and from Settings → MCP.
+        canManage={canManage && !token.oauthClientName}
         canGrantInstanceAdmin={canGrantInstanceAdmin}
         publicUrl={await instancePublicBaseUrl()}
       />

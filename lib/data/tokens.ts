@@ -1,6 +1,6 @@
 import "server-only";
 
-import { and, desc, eq, inArray } from "drizzle-orm";
+import { and, desc, eq, gt, inArray, isNull, or } from "drizzle-orm";
 
 import { getDb, type DbTx } from "../db/client";
 import {
@@ -18,6 +18,13 @@ import {
   teams as teamsTable,
   users as usersTable,
 } from "../db/schema/control-plane";
+import {
+  oauthAccessToken,
+  oauthClient,
+  oauthConsent,
+  oauthRefreshToken,
+} from "../db/schema/auth";
+import { OAUTH_ACCESS_TOKEN_PREFIX } from "../auth/oauth-metadata";
 import { newId, nowIso } from "../ids";
 import {
   membershipFor,
@@ -81,6 +88,14 @@ export interface ApiTokenDTO {
   homeTeamId: string;
   /** The member it acts as. Its power is clamped to theirs, so name them. */
   createdByUsername: string | null;
+  /**
+   * The AI client this token was minted for, when it came from approving an
+   * OAuth consent rather than from the tokens page. Non-null means the row is
+   * managed under Settings → MCP and is not hand-editable — one list still
+   * answers "who can act in this team", which is why it is projected here and
+   * not kept in a separate world.
+   */
+  oauthClientName: string | null;
   lastUsedAt: string | null;
   createdAt: string;
 }
@@ -105,7 +120,7 @@ const DTO_COLUMNS = {
  * cannot revoke it either, and "remove the person from the team" is too blunt an
  * instrument to be the only lever. Five indexed lookups, unioned in memory.
  */
-async function tokenIdsReaching(teamId: string): Promise<Set<string>> {
+export async function tokenIdsReaching(teamId: string): Promise<Set<string>> {
   const db = getDb();
   const [byTeam, byProject, byFolder, byApp, unscoped] = await Promise.all([
     db
@@ -153,9 +168,14 @@ export async function listTokens(): Promise<ApiTokenDTO[]> {
   const reaching = await tokenIdsReaching(teamId);
   if (reaching.size === 0) return [];
   const rows = await getDb()
-    .select({ ...DTO_COLUMNS, createdByUsername: usersTable.username })
+    .select({
+      ...DTO_COLUMNS,
+      createdByUsername: usersTable.username,
+      oauthClientName: oauthClient.name,
+    })
     .from(apiTokens)
     .leftJoin(usersTable, eq(usersTable.id, apiTokens.userId))
+    .leftJoin(oauthClient, eq(oauthClient.clientId, apiTokens.oauthClientId))
     .where(inArray(apiTokens.id, [...reaching]))
     .orderBy(desc(apiTokens.createdAt));
   if (rows.length === 0) return [];
@@ -206,6 +226,8 @@ export async function listTokens(): Promise<ApiTokenDTO[]> {
 
   return rows.map((r) => ({
     ...r,
+    // Chosen by the app at registration: free text, any length, shown in a badge.
+    oauthClientName: r.oauthClientName?.slice(0, 80) ?? null,
     capabilities: inCatalogOrder(
       (capsById.get(r.id) ?? []) as Capability[],
     ),
@@ -590,6 +612,9 @@ export async function createToken(
       instanceAdmin,
       homeTeamId: teamId,
       createdByUsername: (await getCurrentUser())?.username ?? null,
+      // Set by `mintMcpConnection` right after this, in the same flow, when the
+      // mint came from an OAuth consent rather than from the tokens page.
+      oauthClientName: null,
       lastUsedAt: null,
       createdAt,
     },
@@ -690,9 +715,36 @@ export async function updateToken(
   );
 }
 
+/** The columns every bearer lookup resolves to before the identity is built. */
+interface TokenRow {
+  id: string;
+  userId: string;
+  /** The team the token is MANAGED from — where it was created. */
+  teamId: string;
+  instanceAdmin: boolean;
+  scoped: boolean;
+}
+
+const TOKEN_ROW_COLUMNS = {
+  id: apiTokens.id,
+  userId: apiTokens.userId,
+  teamId: apiTokens.teamId,
+  instanceAdmin: apiTokens.instanceAdmin,
+  scoped: apiTokens.scoped,
+} as const;
+
 /**
- * Resolve an incoming `deplo_…` bearer token to the identity the whole data
- * layer runs under, or null if it does not match a live token.
+ * Resolve an incoming bearer credential to the identity the whole data layer
+ * runs under, or null if it does not match a live token.
+ *
+ * TWO credential shapes arrive here and there is deliberately only ONE thing
+ * they resolve to:
+ *
+ *  - `deplo_…` — an API token minted from Settings → API tokens.
+ *  - `dplo_at_…` — an OAuth 2.1 access token, issued when someone approved a
+ *    consent screen. That approval minted an ordinary `api_tokens` row and the
+ *    access token is only a pointer at it, so an OAuth client is not a second
+ *    kind of principal and gets no second authorization path (ADR-0021 §2).
  *
  * `teamHint` picks WHICH of the token's teams this request acts in (the
  * `X-Deplo-Team` header, or the owning team of a deploy hook's app); an absent
@@ -704,22 +756,75 @@ export async function authenticateToken(
   raw: string,
   teamHint?: string | null,
 ): Promise<RequestIdentity | null> {
-  if (!raw.startsWith("deplo_")) return null;
-  const hash = sha256Hex(raw);
-  const rows = await getDb()
-    .select({
-      id: apiTokens.id,
-      userId: apiTokens.userId,
-      teamId: apiTokens.teamId,
-      instanceAdmin: apiTokens.instanceAdmin,
-      scoped: apiTokens.scoped,
-    })
-    .from(apiTokens)
-    .where(eq(apiTokens.tokenHash, hash))
-    .limit(1);
-  const match = rows[0];
-  if (!match) return null;
+  if (raw.startsWith("deplo_")) {
+    const rows = await getDb()
+      .select(TOKEN_ROW_COLUMNS)
+      .from(apiTokens)
+      .where(eq(apiTokens.tokenHash, sha256Hex(raw)))
+      .limit(1);
+    return rows[0] ? identityForTokenRow(rows[0], teamHint) : null;
+  }
+  if (raw.startsWith(OAUTH_ACCESS_TOKEN_PREFIX)) {
+    const row = await oauthTokenRow(raw);
+    // No hint means the connection's OWN team — never `reachable[0]`, the
+    // OLDEST team its approver belongs to, which is how an agent once worked
+    // somewhere nobody chose. A hint that IS given must be one of the teams the
+    // connection was granted; an unreachable one falls back here exactly as it
+    // does for a `deplo_` token, and the caller that must not tolerate that
+    // (a tool naming a team) resolves it against the granted set first and
+    // refuses, rather than asking this function to guess.
+    return row ? identityForTokenRow(row, teamHint ?? row.teamId) : null;
+  }
+  return null;
+}
 
+/**
+ * Resolve an opaque OAuth access token to the `api_tokens` row its grant minted.
+ *
+ * The join is the whole revocation story: delete the `api_tokens` row and this
+ * returns nothing on the very next request, whatever the access token's own
+ * expiry says. The token is stored hashed with the same `sha256Hex` the
+ * `deplo_` path uses — wired through the plugin's `storeTokens` option — and the
+ * plugin strips its prefix before hashing, so the digest is taken over the bare
+ * secret.
+ */
+async function oauthTokenRow(raw: string): Promise<TokenRow | null> {
+  const hash = sha256Hex(raw.slice(OAUTH_ACCESS_TOKEN_PREFIX.length));
+  const rows = await getDb()
+    .select(TOKEN_ROW_COLUMNS)
+    .from(oauthAccessToken)
+    .innerJoin(
+      apiTokens,
+      and(
+        eq(apiTokens.oauthClientId, oauthAccessToken.clientId),
+        eq(apiTokens.userId, oauthAccessToken.userId),
+      ),
+    )
+    .innerJoin(oauthClient, eq(oauthClient.clientId, oauthAccessToken.clientId))
+    .where(
+      and(
+        eq(oauthAccessToken.token, hash),
+        gt(oauthAccessToken.expiresAt, new Date()),
+        // A disabled client stops resolving immediately; the plugin's own token
+        // lookup does not check this, and a credential whose client was turned
+        // off is exactly the one an operator thinks they have stopped.
+        or(isNull(oauthClient.disabled), eq(oauthClient.disabled, false)),
+      ),
+    )
+    .limit(1);
+  return rows[0] ?? null;
+}
+
+/**
+ * THE identity builder. Everything from "which teams may this token act in"
+ * onward lives here and nowhere else, so both credential shapes above are
+ * subject to the same fail-closed membership check, the same two-factor policy,
+ * the same capability set and the same usage stamp.
+ */
+async function identityForTokenRow(
+  match: TokenRow,
+  teamHint?: string | null,
+): Promise<RequestIdentity | null> {
   const scope = match.scoped ? await loadScope(match.id) : null;
 
   // Fail CLOSED: the token acts only in teams its creator is STILL a member of,
@@ -779,8 +884,14 @@ export async function revokeToken(id: string): Promise<void> {
   const gone = await getDb()
     .delete(apiTokens)
     .where(eq(apiTokens.id, id))
-    .returning({ id: apiTokens.id, name: apiTokens.name });
+    .returning({
+      id: apiTokens.id,
+      name: apiTokens.name,
+      userId: apiTokens.userId,
+      oauthClientId: apiTokens.oauthClientId,
+    });
   if (gone.length === 0) throw new Error("Token not found");
+  await forgetOauthGrant(gone[0].userId, gone[0].oauthClientId);
   await recordActivity(
     "member",
     `Revoked the ${gone[0].name} API token`,
@@ -789,6 +900,60 @@ export async function revokeToken(id: string): Promise<void> {
     teamId,
     "token_revoked",
   );
+}
+
+/**
+ * Tear down the OAuth half of a connection when its token is revoked.
+ *
+ * Deleting the `api_tokens` row is already enough to stop the next request — the
+ * join in `oauthTokenRow` goes empty. This clears what would otherwise be left
+ * behind: the refresh token that would mint a fresh access token an hour later,
+ * and the consent record that would let the client re-authorize without the
+ * screen. It lives INSIDE `revokeToken` so both settings pages and the GraphQL
+ * mutation get it — one revocation lever, not two that can drift.
+ *
+ * Best-effort, like `lastUsedAt`: the credential is already gone by this point,
+ * and a failed cleanup must not turn a successful revoke into an error.
+ */
+async function forgetOauthGrant(
+  userId: string,
+  clientId: string | null,
+): Promise<void> {
+  if (!clientId) return;
+  try {
+    const db = getDb();
+    const owned = and(
+      eq(oauthAccessToken.clientId, clientId),
+      eq(oauthAccessToken.userId, userId),
+    );
+    await db.delete(oauthAccessToken).where(owned);
+    await db
+      .delete(oauthRefreshToken)
+      .where(
+        and(
+          eq(oauthRefreshToken.clientId, clientId),
+          eq(oauthRefreshToken.userId, userId),
+        ),
+      );
+    await db
+      .delete(oauthConsent)
+      .where(
+        and(
+          eq(oauthConsent.clientId, clientId),
+          eq(oauthConsent.userId, userId),
+        ),
+      );
+  } catch (e) {
+    // Not fatal: the credential is already gone, so a leftover consent or
+    // refresh row grants nothing — the join that resolves an access token has
+    // no `api_tokens` row to land on. Said out loud anyway, because a silent
+    // failure here leaves rows that quietly change what `prompt=none` and the
+    // abandoned-client sweep do next.
+    console.warn(
+      `[deplo] could not clear the OAuth rows for a revoked connection (client ${clientId}):`,
+      e,
+    );
+  }
 }
 
 /* ------------------------------------------------------------------ */

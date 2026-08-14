@@ -51,6 +51,14 @@ const PRE_EXISTING = [
   "verification",
   "two_factor",
   "scheduler_lease",
+  // The OAuth 2.1 provider's four (migration 0101): a registered client, what a
+  // person agreed to give it, and the two opaque credentials it presents. Owned
+  // by @better-auth/oauth-provider the way the four above are owned by Better
+  // Auth — deplo's own half of a connection is a row in `api_tokens`.
+  "oauth_client",
+  "oauth_consent",
+  "oauth_access_token",
+  "oauth_refresh_token",
 ] as const;
 
 /** The relational control-plane tables added in Step 1 (PLAN §2). */

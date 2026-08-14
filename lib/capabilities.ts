@@ -44,9 +44,13 @@ export const CAPABILITY_META: Record<Capability, CapabilityMeta> = {
   },
   deploy_apps: {
     label: "Deploy apps",
-    description:
-      "Deploy, redeploy, cancel a running deploy and promote a previous one.",
-    keywords: "redeploy build rollback promote release",
+    description: "Deploy, redeploy and cancel a running deploy.",
+    keywords: "redeploy build release ship",
+  },
+  rollback_apps: {
+    label: "Roll back apps",
+    description: "Put an app back on a previous deployment, with no rebuild.",
+    keywords: "rollback revert previous version undo restore",
   },
   control_apps: {
     label: "Start & stop apps",
@@ -212,6 +216,17 @@ export const CAPABILITY_META: Record<Capability, CapabilityMeta> = {
     keywords: "recover rollback import overwrite",
     sensitive: true,
   },
+  delete_backups: {
+    label: "Delete backups",
+    description:
+      "Permanently delete a single backup, removing the file it was restored from.",
+    keywords: "remove artifact purge prune erase restore point",
+    // The only verb here that destroys data with no way back and no warning
+    // further down: the artifact is the last copy of what an app or database
+    // looked like at that moment, and deleting it can silently leave a target
+    // with no restore point at all.
+    sensitive: true,
+  },
   manage_backup_destinations: {
     label: "Manage backup destinations",
     description:
@@ -241,6 +256,13 @@ export const CAPABILITY_META: Record<Capability, CapabilityMeta> = {
     description:
       "Mint and revoke the bearer tokens that drive deplo's API from outside the dashboard.",
     keywords: "api access token bearer cli automation",
+    sensitive: true,
+  },
+  manage_mcp: {
+    label: "Manage MCP access",
+    description:
+      "Decide whether AI agents may drive this team, and whether they must ask before destructive actions.",
+    keywords: "mcp ai agent assistant llm claude cursor copilot",
     sensitive: true,
   },
   manage_notifications: {
@@ -318,6 +340,7 @@ export const CAPABILITY_CATEGORIES: {
     caps: [
       "create_apps",
       "deploy_apps",
+      "rollback_apps",
       "control_apps",
       "configure_apps",
       "delete_apps",
@@ -370,7 +393,12 @@ export const CAPABILITY_CATEGORIES: {
     key: "backups",
     label: "Backups & storage",
     description: "Backup schedules and where they are stored.",
-    caps: ["manage_backups", "restore_backups", "manage_backup_destinations"],
+    caps: [
+      "manage_backups",
+      "restore_backups",
+      "delete_backups",
+      "manage_backup_destinations",
+    ],
   },
   {
     key: "integrations",
@@ -380,6 +408,7 @@ export const CAPABILITY_CATEGORIES: {
       "manage_registries",
       "manage_git",
       "manage_tokens",
+      "manage_mcp",
       "manage_notifications",
     ],
   },
@@ -414,6 +443,11 @@ export const LEGACY_CAPABILITY_EXPANSION: Record<string, Capability[]> = {
   deploy: [
     "create_apps",
     "deploy_apps",
+    // Anyone the coarse `deploy` covered could already ship any commit they liked,
+    // reverting one included - so going back to a build that already shipped is
+    // strictly less power than they had. Withholding it here would take something
+    // away from an API client that has been sending `deploy` for a year.
+    "rollback_apps",
     "control_apps",
     "configure_apps",
     "delete_apps",
@@ -444,10 +478,19 @@ export const LEGACY_CAPABILITY_EXPANSION: Record<string, Capability[]> = {
     "open_database_console",
     "manage_backups",
     "restore_backups",
+    // Under `manage_infra` because `delete_databases` already is, and that is
+    // the verb the backfill seeds this one from: deleting a database ALREADY
+    // sweeps every artifact it has. An API client still sending the retired
+    // coarse name gets exactly what it always implied.
+    "delete_backups",
     "manage_backup_destinations",
     "manage_registries",
     "manage_git",
     "manage_tokens",
+    // Same rule as the 0098 backfill: deciding whether an AI agent may drive the
+    // team is the same class of decision as minting the bearer token that lets
+    // it in, so `manage_mcp` follows `manage_tokens` everywhere it appears.
+    "manage_mcp",
     "manage_notifications",
     "manage_monitoring",
   ],

@@ -6,6 +6,7 @@ import {
   listServersForTeam,
   assertServerAccessibleTx,
   getServerById,
+  canHostWorkloads,
 } from "./servers";
 import { getDb } from "../db/client";
 import { narrowedScope } from "../auth/request-context";
@@ -26,6 +27,7 @@ import {
   requireTeamWide,
 } from "../membership";
 import { recordActivity } from "./activity";
+import { matchesQuery } from "./match-query";
 import { dispatchAlert } from "../notify/dispatch";
 import { encryptSecret, decryptSecret, randomToken } from "../crypto";
 import { connectAgent, mapCheckPortUnsupported } from "../infra/agent-client";
@@ -44,6 +46,7 @@ import {
 import { isDockerLevelStderr } from "../infra/docker";
 import { isValidLogoValue } from "../apps/logo-shared";
 import { withKeyedLock } from "./keyed-mutex";
+import { assertPasswordNotPwned } from "../pwned-password";
 import { publishDatabaseChanged } from "../graphql/pubsub";
 import type { Database, DatabaseType } from "../types";
 
@@ -174,7 +177,11 @@ function assertPasswordSafe(password: string): void {
  * paths can't drift on what "a usable server" means.
  */
 async function resolveTeamServer(teamId: string, serverId?: string) {
-  const servers = await listServersForTeam(teamId);
+  // A specialised host runs no workload: storage-only has no Docker at all, and
+  // build-only compiles for other machines and has no proxy. Filtered HERE rather
+  // than in the picker alone, because the picker is UI and this is the boundary -
+  // an id can arrive from a bearer token too.
+  const servers = (await listServersForTeam(teamId)).filter(canHostWorkloads);
   if (servers.length === 0) throw new Error("No server available");
   let server;
   if (serverId) {
@@ -344,7 +351,12 @@ async function databaseOrderRank(teamId: string): Promise<Map<string, number>> {
   return new Map(rows.map((r) => [r.databaseId, r.position] as const));
 }
 
-export async function listDatabases(): Promise<DatabaseDTO[]> {
+/**
+ * Every database in the active team. `query` filters by name or id, with the
+ * same match `listApps` and `search` use, so the three never disagree about what
+ * counts as a hit.
+ */
+export async function listDatabases(query?: string): Promise<DatabaseDTO[]> {
   await requireTeamWide("databases");
   const teamId = await requireActiveTeamId();
   const [rows, rank] = await Promise.all([
@@ -360,6 +372,7 @@ export async function listDatabases(): Promise<DatabaseDTO[]> {
   // the same rule the Overview apps grid uses.
   return rows
     .map((r) => toDTO(assembleDatabase(r)))
+    .filter((d) => !query || matchesQuery(query, d.name, d.id))
     .sort((a, b) => {
       const ra = rank.get(a.id) ?? Infinity;
       const rb = rank.get(b.id) ?? Infinity;
@@ -478,7 +491,10 @@ export async function createDatabase(input: {
   // Validate a supplied password up front — it is cheap, local input validation,
   // so fail fast (before any server lookup or agent probe) with a clear message
   // rather than surfacing it only after slower checks.
-  if (input.password) assertPasswordSafe(input.password);
+  if (input.password) {
+    assertPasswordSafe(input.password);
+    await assertPasswordNotPwned(input.password);
+  }
 
   const exposed = input.exposedPublicly ?? false;
   // Publishing a host port is a privileged action, separate from manage_infra:

@@ -72,7 +72,7 @@ its members), user group, team role level.
 **Capability**:
 ONE action a member may be allowed to take — `create_apps`, `deploy_apps`, `delete_apps`,
 `open_app_console`, `manage_previews`, `create_databases`, `restore_backups`,
-`manage_tokens`, `organize_folders`, … (forty-one of them; the catalog with labels,
+`manage_tokens`, `rollback_apps`, `organize_folders`, … (forty-six of them; the catalog with labels,
 descriptions, search keywords and browse categories is `lib/capabilities.ts`). Never a
 bundle: if a name covers
 two actions an admin might want to separate, it is two capabilities. `view` is the
@@ -138,6 +138,33 @@ A token also inherits its creator's **2FA** standing: if the team (or their role
 two-factor authentication and they have not enrolled, the token resolves nothing at all.
 _Avoid_: caller token (a retired name), API key (reserve for third-party provider keys in
 env), secret key.
+
+**MCP server**:
+Deplo's endpoint for AI agents, at `/api/mcp`, speaking the Model Context Protocol
+(revision 2026-07-28). Ships as **beta**. It exposes a curated set of **tools** — each one a name, an input
+schema and a GraphQL document run in-process against the same schema `/api/graphql` serves,
+as the caller's own principal. It introduces **no credential of its own**: an agent
+authenticates with an ordinary **API token**, either pasted in by hand (a terminal agent, picking
+its team with `X-Deplo-Team`) or minted by approving a **connected client**'s OAuth request (a web
+app, which picks its team on the consent screen). The protocol is stateless, so one endpoint serves
+one team, chosen when the agent is connected. One team switch governs it — whether agents are allowed at
+all — behind the `manage_mcp` **Capability**. What an agent may DO is decided by its token's
+Capabilities and by nothing on top; deplo adds no confirmation step of its own, and destructive
+tools are flagged so the MCP client can ask its own user. No tool can reveal a secret, whatever
+the token holds (ADR-0021).
+_Avoid_: MCP plugin (the withdrawn container relay, ADR-0013), MCP token / `MCP_BEARER` (there
+is no such credential), connector.
+
+**Connected client**:
+A web AI app — Claude, ChatGPT — that a member has authorised to drive a team over the **MCP
+server**, listed and revocable under Settings → MCP Server. It registers itself with deplo (deplo is
+an OAuth 2.1 authorization server for exactly this), and approving its consent screen **mints an
+ordinary API token**: the access token it goes on to present is only a pointer at that row, so
+revoking the token stops it, and it appears in Settings → API tokens too, marked. What it may do is
+that token's **Capabilities**; the OAuth *scopes* it holds decide nothing (ADR-0022). A client that
+has registered but has never been approved holds nothing and reaches nothing.
+_Avoid_: connector, OAuth app, integration, MCP client (that is the software talking the protocol,
+not the thing deplo has a row for), "connected app".
 
 ### Plugins
 
@@ -401,8 +428,26 @@ _Avoid_: deployment (that is the build event, not the runtime), production conta
 **Deployment**:
 A single build-and-release event that produces or updates the production stack (or a
 **pull request preview**). Always image-based; recorded as a `Deployment` row, which
-carries the **deploy key** naming the stack it actually touched.
+carries the **deploy key** naming the stack it actually touched. Every deploy of a source
+Deplo BUILDS records the tag it rendered (`deployments.image_ref`,
+`deplo/<key>:<first 12 of the row id>`) - unique per deployment, never overwritten, which
+is what makes a **Rollback** possible.
 _Avoid_: build (the build is one phase of a deployment), release.
+
+**Rollback**:
+Putting an App back on a previous **Deployment** by re-running the image that build left
+on the owning **server** - no clone, no build, no pull, so it lands in seconds. It is a
+real Deployment of its own (`rollback_of` names the one it returned to), with its own row,
+logs and Activity entry; only the CODE goes back, because the stack is re-rendered from
+the App's current variables, domains, volumes and resource limits.
+Only a source Deplo builds accrues rollbacks: a **compose** stack has no single image, and
+a `docker-image` source is a mutable registry tag with nothing pinned behind it. How far
+back an App can go is `apps.rollback_keep` (default 3, `0` = none) - a RETENTION number,
+enforced on the host by the per-slug map **Docker cleanup** sends, because Deplo pushes to
+no registry and an image it prunes is gone. Gated by its own Capability `rollback_apps`;
+the retention number is `configure_apps`, like every other App setting.
+_Avoid_: promote (that was the deleted preview action, and it only moved metadata), revert
+(that is a git commit), restore (that is a **backup**), "redeploy" (that rebuilds HEAD).
 
 **Git connection**:
 A team's stored credentials for ONE git host that is not GitHub — GitLab, Bitbucket,
@@ -431,6 +476,42 @@ Repository URL, a plain git server) has the deploy hook as its ONLY automatic tr
 why the UI hides the hook exactly when a provider already triggers the app and not before.
 _Avoid_: webhook on its own (ambiguous with the inbound provider webhook and with a plugin
 **Event**'s delivery), deploy key (that is an SSH credential), trigger URL.
+
+**Build server** (beta):
+A **server** that COMPILES for machines it does not run on. It exists because a host
+otherwise has to be sized for the build rather than the workload: an App that serves in
+300 MB can need several GB to compile, and while it compiles it competes with the Apps
+already running beside it. Marked at install time or from Manage
+(`servers.build_only`, the twin of `storage_only` and exclusive with it): Docker is
+installed exactly as usual, **Traefik is not** - nothing is routed to a host that runs
+nothing - and the server drops out of every deploy-target picker while becoming
+offerable in the App's **Build on** setting. An ordinary server is a legitimate build
+server too (one big machine can build for several small ones without giving up its own
+Apps); only a `build_only` one is chosen **automatically**, because a host somebody
+dedicated to building exists to be built on. A **Deployment** records where it compiled
+(`deployments.build_server_id`, denormalized and FK-less like `server_id` - it is the
+audit answer to where an App's source and decrypted env went, and must survive
+decommissioning the host it names).
+Mechanically the deploy splits in three: `Deploy(build_only)` on the builder (same
+events, same logs, same reattach - a build server's logs ARE the App's build logs),
+then `ExportImage`/`ImportImage` relaying the gzipped `docker save` **through the
+control plane** (agents are a star and cannot dial each other - the third sibling of
+the volume and files-dir copies), then an ordinary `SOURCE_KIND_IMAGE` deploy with
+`pull_image=false` on the target, which is byte for byte what a **Rollback** already
+does. The builder `docker rmi`s its copy immediately: there the image is a courier and
+the **Build cache** is the asset. Only a source Deplo BUILDS qualifies - a **compose
+stack** has no single image to move and a `docker-image` source builds nothing - and
+the two hosts must share a CPU architecture, which is a REFUSAL (`servers.host_arch`,
+observed from each Hello), because an amd64 image on an arm64 box dies with `exec
+format error` long after the deploy reported success. The deploy occupies the
+**builder's** queue lane, since that is where the cost is.
+**Beta**, and carrying the same chip the **Git connection** providers do: the machinery
+is proven end to end against two real hosts (`scripts/buildserver-e2e.mts`), but the
+path through the dashboard has fewer real fleets behind it than the rest of the product.
+Nothing gets a build server by accident - an instance admin has to mark a host for it.
+_Avoid_: builder (that is the **build method**'s job - Nixpacks, Railpack, a
+Dockerfile), CI server / runner (nothing here runs a pipeline), worker, node, "remote
+build" (the build is not remote from anywhere; it is simply on another server).
 
 **Build cache**:
 The layers and builder cache mounts a **server** keeps from previous builds, so a redeploy

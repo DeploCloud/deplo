@@ -1,6 +1,7 @@
 import "server-only";
 
 import { isFrameworkId } from "../apps/framework-catalog";
+import { DEFAULT_ROLLBACK_KEEP } from "../types";
 import type {
   BuildConfig,
   BuildMethodSettings,
@@ -181,6 +182,8 @@ export function assembleApp(
     environmentId: row.environmentId ?? null,
     serverId: row.serverId,
     migrateFromServerId: row.migrateFromServerId ?? null,
+    buildServerId: row.buildServerId ?? null,
+    buildFallbackLocal: row.buildFallbackLocal ?? true,
     logo: row.logo,
     // Derived, and read back defensively: an id this binary's catalog doesn't
     // know (a row written by a newer Deplo) reads as "no framework" rather than
@@ -210,9 +213,13 @@ export function assembleApp(
     deployHookEnabled: row.deployHookEnabled,
     // Empty string and NULL both mean "the untouched bring-up command".
     composeUpArgs: row.composeUpArgs?.trim() ? row.composeUpArgs : null,
+    rollbackKeep: row.rollbackKeep,
     // All-NULL resource columns ⇒ no limits set (null), like assembleRepo.
     resources: assembleResources(row),
     latestDeploymentId: row.latestDeploymentId,
+    // Deliberately absent from `appToRow`: the stamp is written by the delete
+    // path alone, never carried along by an ordinary save of the app.
+    deletingAt: row.deletingAt ?? null,
     createdAt: row.createdAt,
     updatedAt: row.updatedAt,
   };
@@ -407,6 +414,8 @@ export function appToRow(p: App): AppInsert {
     environmentId: p.environmentId ?? null,
     serverId: p.serverId,
     migrateFromServerId: p.migrateFromServerId ?? null,
+    buildServerId: p.buildServerId ?? null,
+    buildFallbackLocal: p.buildFallbackLocal ?? true,
     logo: p.logo ?? null,
     framework: p.framework ?? null,
     frameworkOverride: p.frameworkOverride ?? null,
@@ -434,6 +443,9 @@ export function appToRow(p: App): AppInsert {
     // stays NULL until someone opens the hook (lib/data/deploy-hook.ts).
     deployHookEnabled: p.deployHookEnabled ?? true,
     composeUpArgs: p.composeUpArgs ?? null,
+    // A new app keeps the default depth of rollbacks - undoing a bad deploy is not
+    // something anyone should have to switch on first.
+    rollbackKeep: p.rollbackKeep ?? DEFAULT_ROLLBACK_KEEP,
     // Flattened ResourceLimits (null ⇒ that dimension is uncapped). An app with
     // `resources: null` writes every column NULL, so it round-trips to null.
     ...resourceLimitsToRow(p.resources),
@@ -654,6 +666,7 @@ export function assembleDeployment(row: DeploymentRow): Deployment {
     previewId: row.previewId,
     prNumber: row.prNumber,
     serverId: row.serverId,
+    buildServerId: row.buildServerId ?? null,
     commitSha: row.commitSha,
     commitMessage: row.commitMessage,
     commitAuthor: row.commitAuthor,
@@ -664,6 +677,8 @@ export function assembleDeployment(row: DeploymentRow): Deployment {
     readyAt: row.readyAt,
     buildDurationMs: row.buildDurationMs,
     forceRecreate: row.forceRecreate,
+    imageRef: row.imageRef,
+    rollbackOf: row.rollbackOf,
     creator: row.creator,
   };
 }
@@ -687,6 +702,8 @@ export function deploymentToRow(d: Deployment): typeof deployments.$inferInsert 
     readyAt: d.readyAt ?? null,
     buildDurationMs: d.buildDurationMs ?? null,
     forceRecreate: d.forceRecreate ?? false,
+    imageRef: d.imageRef ?? null,
+    rollbackOf: d.rollbackOf ?? null,
     creator: d.creator,
     createdAt: d.createdAt,
   };

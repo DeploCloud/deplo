@@ -33,6 +33,7 @@ import {
   type FileEntry as PbFileEntry,
   type VolumeChunk,
   type FilesChunk,
+  type ImageChunk,
   type StoreTarget,
   type StoreChunk,
   type StoreResult,
@@ -403,6 +404,23 @@ export interface AgentConnection {
     wipeFirst: boolean,
     chunks: AsyncIterable<Buffer>,
   ): Promise<{ ok: boolean; error: string }>;
+  /** Stream a locally BUILT image OUT of this host as a gzipped `docker save` - the
+   *  third sibling of {@link exportVolume}/{@link exportFiles}, for a build server
+   *  that compiles for machines it does not run on. `removeAfter` deletes the image
+   *  here once the stream completes (a builder holds cache, not artifacts); a failed
+   *  export removes nothing. Rejects with UNIMPLEMENTED on a too-old agent. */
+  exportImage(
+    imageRef: string,
+    removeAfter: boolean,
+  ): AsyncGenerator<Buffer, void, unknown>;
+  /** Load a streamed image INTO this host's daemon - the receiving half. No wipe
+   *  flag: loading a tag replaces it, so there is nothing to empty first. Resolves
+   *  with the terminal StoreResult, whose `bytesWritten` is what this host actually
+   *  consumed. Rejects with UNIMPLEMENTED on a too-old agent. */
+  importImage(
+    imageRef: string,
+    chunks: AsyncIterable<Buffer>,
+  ): Promise<{ ok: boolean; error: string; bytesWritten: number }>;
   /** Read back the rendered stack YAML the agent has on disk, for the "View full
    *  compose" preview. `exists` is false (empty yaml) when never deployed. */
   readStack(slug: string): Promise<{ exists: boolean; yaml: string }>;
@@ -504,16 +522,19 @@ export interface AgentConnection {
     store: StoreTarget,
     prefix?: boolean,
   ): Promise<{ ok: boolean; error: string; deleted: number }>;
-  /** Stream an artifact out of a store. Verbatim (still encrypted) by default —
-   *  which is what a relay needs; pass `ageIdentity` to have the agent DECRYPT on
-   *  the way out, which is what a download needs. Never gunzipped: the file the
-   *  user wants IS the .tar.gz / .dump.gz. */
+  /** Stream an artifact out of wherever it is kept: this host's store, or a
+   *  bucket the host can dial (exactly one of `store` / `s3`). Verbatim (still
+   *  encrypted) by default - which is what a relay needs; pass `ageIdentity` to
+   *  have the agent DECRYPT on the way out, which is what a download needs. Never
+   *  gunzipped: the file the user wants IS the .tar.gz / .dump.gz. */
   readStoreFile(
-    store: StoreTarget,
+    target: { store?: StoreTarget; s3?: S3Target },
     ageIdentity?: string,
-    /** The sha256 recorded when this artifact was written. The agent refuses to
-     *  stream a byte if the file on disk no longer hashes to it. Omit only for a
-     *  run taken before integrity checking shipped. */
+    /** The sha256 recorded when this artifact was written. A STORE artifact is
+     *  hashed before a byte leaves, so a mismatch refuses outright; a BUCKET one
+     *  can only be hashed as it goes past, so the stream ends in an error after
+     *  bytes have already arrived. Omit only for a run taken before integrity
+     *  checking shipped. */
     expectedSha256?: string,
   ): AsyncGenerator<Buffer, void, unknown>;
   /** Stream an artifact INTO a store — the destination half of a cross-host
@@ -1404,6 +1425,53 @@ function dial(target: DialTarget): AgentConnection {
         );
       });
     },
+    exportImage(imageRef: string, removeAfter: boolean) {
+      // Server-streaming gzipped `docker save` - the exact shape of exportVolume,
+      // with ImageChunk{data} frames. `removeAfter` reclaims the builder's disk once
+      // the last byte is out: on a build server the image is a courier, and what is
+      // worth keeping across builds is the BuildKit cache, which this never touches.
+      return (async function* () {
+        const stream = client.exportImage(
+          { imageRef, removeAfter },
+          { deadline: new Date(Date.now() + VOLUME_COPY_DEADLINE_MS) },
+        );
+        for await (const chunk of streamEvents<ImageChunk>(stream, {
+          pauseAbove: STREAM_BYTES_PAUSE_ABOVE,
+          normalise: toAgentError,
+        })) {
+          if (chunk.data && chunk.data.length) yield Buffer.from(chunk.data);
+        }
+      })();
+    },
+    importImage(imageRef: string, chunks: AsyncIterable<Buffer>) {
+      // Client-streaming `docker image load` - mirrors importVolume with an image
+      // header and no wipe flag (loading a tag replaces it; there is nothing to
+      // empty first). Terminal StoreResult, not StackResult: a relayed artifact
+      // reports the bytes and sha256 that actually landed.
+      return new Promise<{ ok: boolean; error: string; bytesWritten: number }>(
+        (resolve, reject) => {
+          const call: ClientWritableStream<ImageChunk> = client.importImage(
+            new Metadata(),
+            { deadline: new Date(Date.now() + VOLUME_COPY_DEADLINE_MS) },
+            (err: ServiceError | null, resp: StoreResult) =>
+              err
+                ? reject(toAgentError(err))
+                : resolve({
+                    ok: resp.ok,
+                    error: resp.error,
+                    bytesWritten: Number(resp.bytesWritten ?? 0),
+                  }),
+          );
+          pumpClientStream<ImageChunk>(
+            call,
+            { header: { imageRef } },
+            chunks,
+            (data) => ({ data }),
+            (e) => reject(toAgentError(e)),
+          );
+        },
+      );
+    },
     readStack(slug: string) {
       return new Promise<{ exists: boolean; yaml: string }>((resolve, reject) => {
         client.readStack({ slug, removeVolumes: false }, (err, resp) =>
@@ -1604,13 +1672,17 @@ function dial(target: DialTarget): AgentConnection {
         },
       );
     },
-    readStoreFile(store: StoreTarget, ageIdentity = "", expectedSha256 = "") {
+    readStoreFile(
+      target: { store?: StoreTarget; s3?: S3Target },
+      ageIdentity = "",
+      expectedSha256 = "",
+    ) {
       // Server-streaming bytes: same shape as exportVolume, same backpressure —
       // an artifact is exactly the kind of stream an unbounded queue turns into
       // an OOM.
       return (async function* () {
         const stream = client.readStoreFile(
-          { store, ageIdentity, expectedSha256 },
+          { ...target, ageIdentity, expectedSha256 },
           { deadline: new Date(Date.now() + BACKUP_DEADLINE_MS) },
         );
         for await (const chunk of streamEvents<StoreChunk>(stream, {
@@ -1914,6 +1986,30 @@ const BACKUP_ENCRYPT_S3_CAPABILITY = "backup-encrypt-s3";
  */
 const BACKUP_S3_ARGS_CAPABILITY = "backup-s3-args";
 
+/**
+ * `ReadStoreFile` accepts an S3Target, so an artifact in a BUCKET can be streamed
+ * back out decrypted - which is the whole of the Download button for a bucket
+ * destination.
+ *
+ * A HARD gate. Without it there is no RPC to call at all, and the honest answer
+ * is "update the agent on this server": a download that silently does not happen,
+ * or hands back a file nobody decrypted, is worse than one that says why.
+ */
+const BACKUP_S3_READ_CAPABILITY = "backup-s3-read";
+
+/**
+ * `RestoreFrom` honours `untrusted_config`: an artifact that came from OUTSIDE
+ * the fleet contributes data only, never the compose/env/mounts the stack comes
+ * back up with.
+ *
+ * A HARD gate, and it has to be. An agent without this ignores the field, and
+ * ignoring it restores precisely what the flag exists to prevent: with no digest
+ * to prove an uploaded archive, the agent falls back to ITS config whenever the
+ * control plane sends none, which is root on that host for whoever uploaded the
+ * file. A silently-ignored security flag is worse than a refused restore.
+ */
+const BACKUP_UNTRUSTED_CONFIG_CAPABILITY = "backup-untrusted-config";
+
 /** The capability an agent advertises once it can run cron jobs
  *  (StartJob/PollJob/KillJob - ADR-0018). */
 export const CRON_CAPABILITY = "cron";
@@ -2076,6 +2172,13 @@ export async function connectBackupAgent(
     /** This destination carries advanced S3 flags — warn if they will be
      *  dropped, but never refuse. */
     s3Args?: boolean;
+    /** Also require `"backup-s3-read"` - set when the artifact is to be streamed
+     *  back OUT of a bucket, which only an agent with that RPC arm can do. */
+    s3Read?: boolean;
+    /** Also require `"backup-untrusted-config"` - set when the artifact came from
+     *  outside the fleet, so it is only ever handed to an agent that will refuse
+     *  to take its stack configuration. */
+    untrustedConfig?: boolean;
   } = {},
 ): Promise<AgentConnection> {
   const conn = await connectAgent(serverId);
@@ -2105,6 +2208,22 @@ export async function connectBackupAgent(
         `The agent on this server is too old to encrypt backups sent to a bucket, ` +
           `and Deplo will not write them unencrypted. Update the agent on this ` +
           `server, then try again.`,
+      );
+    }
+    if (opts.s3Read && !hello.capabilities?.includes(BACKUP_S3_READ_CAPABILITY)) {
+      throw new AgentBackupStoreUnsupportedError(
+        `The agent on this server is too old to read a backup back out of a ` +
+          `bucket. Update the agent on this server, then try again.`,
+      );
+    }
+    if (
+      opts.untrustedConfig &&
+      !hello.capabilities?.includes(BACKUP_UNTRUSTED_CONFIG_CAPABILITY)
+    ) {
+      throw new AgentBackupStoreUnsupportedError(
+        `The agent on this server is too old to restore from an uploaded file ` +
+          `safely: it would take the stack configuration out of the file itself. ` +
+          `Update the agent on this server, then try again.`,
       );
     }
     // Said out loud, not swallowed: the flags exist because a store misbehaves
@@ -2167,7 +2286,14 @@ export async function agentPreflight(serverId: string): Promise<HelloResponse> {
     // Heartbeat cache (P5): best-effort, behind the live-read. Also refresh the
     // server's traefikEnabled from this live Hello so the badge reflects reality.
     try {
-      void markServerSeen(serverId, resp.agentVersion, observedTraefik(resp));
+      void markServerSeen(
+        serverId,
+        resp.agentVersion,
+        observedTraefik(resp),
+        undefined,
+        undefined,
+        resp.hostArch,
+      );
     } catch {
       /* unknown id: no row to touch */
     }
@@ -2290,6 +2416,12 @@ export async function selfUpdateServerAgent(
  *  Exported so the readiness report can name the gap before anyone clicks. */
 export const DOCKER_CLEANUP_CAPABILITY = "docker-cleanup";
 
+/** The Hello capability gating `DockerCleanupRequest.keep_per_slug` - per-APP
+ *  image retention, which is what carries each app's rollback depth. Soft, unlike
+ *  {@link DOCKER_CLEANUP_CAPABILITY}: see the compensation in
+ *  {@link runAgentCleanup}. */
+const CLEANUP_KEEP_PER_SLUG_CAPABILITY = "cleanup.keep-per-slug";
+
 /**
  * Reclaim Docker disk on `serverId`'s host: dial → Hello → capability pre-flight →
  * DockerCleanup → close, all in one self-contained op. Shaped like
@@ -2319,6 +2451,37 @@ export const DOCKER_CLEANUP_CAPABILITY = "docker-cleanup";
  *  - {@link AgentCleanupUnsupportedError} when the reachable agent is too old, whether
  *    that shows up in Hello or as UNIMPLEMENTED on the call itself.
  */
+/**
+ * Make `keep_per_slug` safe to send at an agent that has never heard of it.
+ *
+ * An old agent does not reject the field, it IGNORES it - and silently falling
+ * back to the scalar would delete the very images an app's rollback depth exists
+ * to keep. So when the capability is missing the map is dropped and the scalar is
+ * raised to the deepest value it held: that host then over-keeps for every app
+ * instead of under-keeping for one. More disk on an un-updated host is a cost;
+ * deleting the image a rollback was about to run is a broken feature.
+ *
+ * A no-op in both directions once the fleet is updated, and a no-op today for any
+ * request that carries no map at all.
+ *
+ * Exported for tests: this is a wire-compatibility rule, and the failure it
+ * prevents (an image pruned out from under a rollback) is invisible until someone
+ * needs it.
+ */
+export function compensateKeepPerSlug(
+  req: DockerCleanupRequest,
+  hello: HelloResponse,
+): DockerCleanupRequest {
+  const perSlug = Object.values(req.keepPerSlug ?? {});
+  if (perSlug.length === 0) return req;
+  if (hello.capabilities?.includes(CLEANUP_KEEP_PER_SLUG_CAPABILITY)) return req;
+  return {
+    ...req,
+    keepImagesPerApp: Math.max(req.keepImagesPerApp, ...perSlug),
+    keepPerSlug: {},
+  };
+}
+
 export async function runAgentCleanup(
   serverId: string,
   req: DockerCleanupRequest,
@@ -2335,7 +2498,7 @@ export async function runAgentCleanup(
     if (!hello.capabilities?.includes(DOCKER_CLEANUP_CAPABILITY)) {
       throw new AgentCleanupUnsupportedError(CLEANUP_UNSUPPORTED_MESSAGE);
     }
-    return await conn.dockerCleanup(req);
+    return await conn.dockerCleanup(compensateKeepPerSlug(req, hello));
   } catch (e) {
     // Belt-and-braces: an agent one version behind on the RPC can advertise the
     // capability and still answer UNIMPLEMENTED. mapCleanupUnsupported turns that

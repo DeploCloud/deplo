@@ -53,6 +53,7 @@ function hello(over: Partial<HelloResponse> = {}): HelloResponse {
     dockerVersion: "27.0",
     capabilities: [...ALL_CAPS],
     traefikRunning: true,
+    hostArch: "amd64",
     ...over,
   };
 }
@@ -98,6 +99,8 @@ function srv(over: Partial<Server> = {}): Server {
     diskUsage: 0,
     allTeams: true,
     storageOnly: false,
+    buildOnly: false,
+    hostArch: "amd64",
     deployConcurrency: 1,
     createdAt: "2026-07-01T00:00:00.000Z",
     agent: { port: 9443, certFingerprint: "fp_1", certPem: "pem", version: "1.1.0" },

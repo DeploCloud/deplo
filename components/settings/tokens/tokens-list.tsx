@@ -3,7 +3,7 @@
 import * as React from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { Trash2, ShieldAlert, FolderTree, ServerCog } from "lucide-react";
+import { Trash2, ShieldAlert, FolderTree, ServerCog, Plug } from "lucide-react";
 import {
   Table,
   TableBody,
@@ -107,6 +107,17 @@ export function TokensList({
                         <ServerCog className="size-3" aria-hidden />
                         Instance admin
                       </Badge>
+                    )}
+                    {t.oauthClientName && (
+                      <SimpleTooltip content="Created by connecting this app over OAuth. Manage it under Settings → MCP Server.">
+                        {/* The name is whatever the app called itself at
+                            registration — free text, any length. Bounded here so
+                            a 200-character one cannot stretch the row. */}
+                        <Badge variant="outline" className="max-w-40 gap-1">
+                          <Plug className="size-3 shrink-0" aria-hidden />
+                          <span className="truncate">{t.oauthClientName}</span>
+                        </Badge>
+                      </SimpleTooltip>
                     )}
                   </span>
                 </TableCell>

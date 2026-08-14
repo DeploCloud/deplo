@@ -101,6 +101,10 @@ before(async () => {
   // custom_capabilities (0071) is 0064's case exactly: one additive ALTER with a
   // default on `memberships` (0003), invisible to 0027's backfill.
   // backup_default_seeded_at (0085) is that case once more, on `teams` (0000).
+  // mcp_enabled (0098) is the same again — which is why 0098 carries ONLY the
+  // ALTERs and the `manage_mcp` backfill lives in 0099, where it can stay in the
+  // post-27 batch with the other backfills. (0098 also added a second column
+  // that 0100 drops again; both run in their normal places.)
   const preSeed = (f: string): boolean =>
     Number(f.slice(0, 4)) < 27 ||
     f.startsWith("0043_") ||
@@ -108,7 +112,8 @@ before(async () => {
     f.startsWith("0055_") ||
     f.startsWith("0064_") ||
     f.startsWith("0071_") ||
-    f.startsWith("0085_");
+    f.startsWith("0085_") ||
+    f.startsWith("0098_");
   const pre27 = files.filter(preSeed);
   const from27 = files.filter((f) => !preSeed(f));
 

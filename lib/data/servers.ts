@@ -178,14 +178,53 @@ export async function listServerChoices(): Promise<
 > {
   const teamId = await requireActiveTeamId();
   return (await listServersForTeam(teamId))
-    // A storage-only server holds backups and runs nothing — offering it as a
-    // deploy target would let someone pick a host with no Docker on it and only
-    // find out when the deploy failed.
-    .filter((s) => !s.storageOnly)
+    .filter(canHostWorkloads)
     .map((s) => ({
       id: s.id,
       name: s.name,
       type: s.type,
+    }));
+}
+
+/**
+ * Whether a server may RUN a workload - the one predicate behind every deploy
+ * target picker, and behind the server-side re-checks in `createApp` and the
+ * database resolver that back them up.
+ *
+ * Both specialised roles are excluded, for the same reason stated two ways: a
+ * storage-only host has no Docker to run anything with, and a build-only host has
+ * Docker but exists to compile for other machines and has no proxy to route to it.
+ * Either way, picking one would produce a deploy that fails on the host after
+ * everything looked fine in the UI.
+ */
+export function canHostWorkloads(s: Server): boolean {
+  return !s.storageOnly && !s.buildOnly;
+}
+
+/**
+ * The BUILD SERVER picker: the hosts that can compile for another machine.
+ *
+ * Wider than {@link listServerChoices} on purpose - a build-only server is here
+ * BECAUSE it cannot deploy, and an ordinary server is here too, since a fleet with
+ * one big machine and several small ones wants the big one building for all of
+ * them without giving up its own apps. Only storage-only is excluded: no Docker,
+ * no build.
+ *
+ * `hostArch` rides along because the caller has to grey out the hosts whose
+ * architecture cannot produce a runnable image for the target, and asking each
+ * agent live would be a dial per server on every render.
+ */
+export async function listBuildServerChoices(): Promise<
+  { id: string; name: string; hostArch: string; buildOnly: boolean }[]
+> {
+  const teamId = await requireActiveTeamId();
+  return (await listServersForTeam(teamId))
+    .filter((s) => !s.storageOnly)
+    .map((s) => ({
+      id: s.id,
+      name: s.name,
+      hostArch: s.hostArch,
+      buildOnly: s.buildOnly,
     }));
 }
 
@@ -271,6 +310,8 @@ export interface AddServerInput {
   allTeams?: boolean;
   /** A server that only HOLDS backups: agent installed, no Docker, no deploys. */
   storageOnly?: boolean;
+  /** A server that only BUILDS: Docker installed, no Traefik, nothing deployed. */
+  buildOnly?: boolean;
   teamIds?: string[];
 }
 
@@ -328,7 +369,13 @@ export async function addServer(input: AddServerInput): Promise<AddServerResult>
     memoryUsage: 0,
     diskUsage: 0,
     allTeams,
+    // Exclusive by CHECK constraint too, but decided here so a client that sends
+    // both gets the safer of the two rather than a database error: storage-only is
+    // the one that skips Docker, and a host with no Docker cannot build.
     storageOnly: input.storageOnly ?? false,
+    buildOnly: !input.storageOnly && (input.buildOnly ?? false),
+    // Unknown until the agent says Hello, like dockerVersion above it.
+    hostArch: "",
     // Born strict: one deploy at a time on this host until an admin raises it.
     deployConcurrency: 1,
     createdAt: nowIso(),
@@ -350,6 +397,7 @@ export async function addServer(input: AddServerInput): Promise<AddServerResult>
       rawToken,
       fingerprint,
       storageOnly: server.storageOnly,
+      buildOnly: server.buildOnly,
     }),
   };
 }
@@ -401,6 +449,7 @@ export async function reissueBootstrap(id: string): Promise<AddServerResult> {
       rawToken,
       fingerprint,
       storageOnly: fresh.storageOnly,
+      buildOnly: fresh.buildOnly,
     }),
   };
 }
@@ -435,14 +484,17 @@ function nameList(names: string[], max = 5): string {
 }
 
 /**
- * Refuse a removal that would strand a running workload, BEFORE anything is
- * touched. Both tables' `server_id` FKs are RESTRICT, so the DELETE would fail
- * anyway — but as a raw Postgres foreign-key error, which tells the operator
- * nothing. This is the clear message, and it runs before the trust revoke so a
- * blocked removal has no side effects at all.
+ * Refuse when the host still RUNS something, BEFORE anything is touched. Both
+ * tables' `server_id` FKs are RESTRICT, so a removal would fail anyway - but as a
+ * raw Postgres foreign-key error, which tells the operator nothing.
+ *
+ * Its own function because two callers need exactly this and only one of them also
+ * cares about backup destinations: turning a server into a BUILD server strands its
+ * apps the same way removing it would, while a build server keeping backup
+ * artifacts on its disk is perfectly fine - the disk is still there.
  */
-async function assertServerRemovable(id: string): Promise<void> {
-  const [apps, dbs, destinations] = await Promise.all([
+async function assertNoWorkloads(id: string): Promise<void> {
+  const [apps, dbs] = await Promise.all([
     getDb()
       .select({ slug: appsTable.slug })
       .from(appsTable)
@@ -451,18 +503,6 @@ async function assertServerRemovable(id: string): Promise<void> {
       .select({ name: databasesTable.name })
       .from(databasesTable)
       .where(eq(databasesTable.serverId, id)),
-    // Backup destinations keeping their artifacts on this host.
-    // `backup_destination.server_id` is ON DELETE RESTRICT, so without this the
-    // preflight passes, trust is revoked, the DELETE throws deep in Postgres and
-    // the operator gets a raw constraint string naming nothing they can act on —
-    // with the server left un-removable forever. A destination is also the one
-    // blocker an instance admin may not be able to clear themselves: the rows are
-    // team-scoped and removal is instance-wide, so the message has to name the
-    // team, or the honest answer becomes "look in the database".
-    getDb()
-      .select({ name: destinationTable.name, teamId: destinationTable.teamId })
-      .from(destinationTable)
-      .where(eq(destinationTable.serverId, id)),
   ]);
   if (apps.length > 0)
     throw new Error(
@@ -474,6 +514,25 @@ async function assertServerRemovable(id: string): Promise<void> {
       `Move or delete the databases on this server first — still hosted here: ` +
         `${nameList(dbs.map((d) => d.name))}`,
     );
+}
+
+/**
+ * Everything {@link assertNoWorkloads} refuses, plus the backup destinations kept
+ * on this host. `backup_destination.server_id` is ON DELETE RESTRICT, so without
+ * this the preflight passes, trust is revoked, the DELETE throws deep in Postgres
+ * and the operator gets a raw constraint string naming nothing they can act on -
+ * with the server left un-removable forever. A destination is also the one blocker
+ * an instance admin may not be able to clear themselves: the rows are team-scoped
+ * and removal is instance-wide, so the message has to name the team, or the honest
+ * answer becomes "look in the database". It runs before the trust revoke, so a
+ * blocked removal has no side effects at all.
+ */
+async function assertServerRemovable(id: string): Promise<void> {
+  await assertNoWorkloads(id);
+  const destinations = await getDb()
+    .select({ name: destinationTable.name, teamId: destinationTable.teamId })
+    .from(destinationTable)
+    .where(eq(destinationTable.serverId, id));
   if (destinations.length > 0)
     throw new Error(
       `Remove the backup destinations kept on this server first — still pointing ` +
@@ -813,6 +872,77 @@ export async function setServerDeployConcurrency(
   return (await getServerById(id))!;
 }
 
+/** What a server is FOR. `everything` is the default and what almost every host is;
+ *  the other two are the specialised installs. */
+export type ServerRole = "everything" | "build" | "storage";
+
+/** The stored flags as one word. */
+export function serverRole(s: Pick<Server, "storageOnly" | "buildOnly">): ServerRole {
+  if (s.storageOnly) return "storage";
+  if (s.buildOnly) return "build";
+  return "everything";
+}
+
+/**
+ * Change what a server is for.
+ *
+ * All three roles are settable after installation, because a role is a
+ * CONTROL-PLANE decision: it changes which pickers offer the host and which
+ * readiness rows apply, and the installer's only per-role difference is whether it
+ * sets Traefik up. A host that has Docker can therefore be any of them, and go
+ * back.
+ *
+ * The one true asymmetry is physical rather than a policy: a server INSTALLED as
+ * backups-only never had Docker put on it, and no database write can change that.
+ * It is pinned to that role until the install command is re-run on the host, and
+ * `dockerVersion` (only ever non-empty because an agent reported one) is how we
+ * tell that case from a Docker-having host somebody merely retired into storage.
+ *
+ * Leaving "Everything" is refused while the host still runs anything, reusing the
+ * probe {@link removeServer} uses: neither of the other roles serves workloads, so
+ * accepting it would strand every app on the box, unrouted, with no indication of
+ * why. Going back TO "Everything" always succeeds, but the caller is expected to
+ * warn that Traefik may not be installed there.
+ *
+ * Instance-admin, like every server mutation - servers are shared cross-team infra.
+ */
+export async function setServerRole(id: string, role: ServerRole): Promise<Server> {
+  await requireInstanceAdmin();
+  const teamId = await requireActiveTeamId();
+  const user = (await getCurrentUser())!;
+  const server = await getServerById(id);
+  if (!server) throw new Error("Server not found");
+
+  const current = serverRole(server);
+  if (role === current) return server;
+
+  // The physical one-way door: no Docker on the box, nothing to run or build with.
+  if (current === "storage" && !server.dockerVersion)
+    throw new Error(
+      "This server was installed to hold backups only and has no Docker on it. " +
+        "Re-run the install command on the host to change that.",
+    );
+  // Leaving "everything" means it stops serving what it serves today.
+  if (current === "everything") await assertNoWorkloads(id);
+
+  await getDb()
+    .update(serversTable)
+    .set({ buildOnly: role === "build", storageOnly: role === "storage" })
+    .where(eq(serversTable.id, id));
+  await recordActivity(
+    "member",
+    role === "build"
+      ? `Set server ${server.name} to build only`
+      : role === "storage"
+        ? `Set server ${server.name} to hold backups only`
+        : `Set server ${server.name} to run apps again`,
+    user.name,
+    null,
+    teamId,
+  );
+  return (await getServerById(id))!;
+}
+
 /** What a calling-home agent sends, and what completeBootstrap signs against. */
 export interface BootstrapCallHome {
   /** The raw one-time token from the install command. */
@@ -925,6 +1055,7 @@ export async function markServerSeen(
   traefikRunning?: boolean,
   specs?: { cpuCores: number; memoryMb: number; diskGb: number },
   dockerVersion?: string,
+  hostArch?: string,
 ): Promise<void> {
   try {
     const set: Record<string, unknown> = { lastSeenAt: nowIso() };
@@ -939,6 +1070,11 @@ export async function markServerSeen(
     // a missing/Docker-unreachable Hello never blanks a good value). Drives the
     // Servers page's Docker spec tile without a live poll.
     if (dockerVersion) set.dockerVersion = dockerVersion;
+    // The host's CPU architecture, same read-live-then-persist deal as the Docker
+    // version. Guarded on non-empty so an agent too old to report it never blanks a
+    // value a newer one already wrote - that would silently take the server back out
+    // of the build-server picker.
+    if (hostArch) set.hostArch = hostArch;
     // Persist the host's hardware CAPACITY (cores / RAM / disk) the agent reports
     // alongside its live usage. Capacity is effectively static, so storing it lets
     // the Servers page render the specs without a live poll. Guard on cpuCores>0 so

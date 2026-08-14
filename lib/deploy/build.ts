@@ -6,6 +6,8 @@ import { join } from "node:path";
 import yaml from "js-yaml";
 import { and, eq, inArray, ne, sql } from "drizzle-orm";
 import { getServerById } from "../data/servers";
+import { copyImageBetween } from "../data/volume-migration";
+import { resolveBuildServer, buildServerLogLine } from "./build-server";
 import { getDb } from "../db/client";
 import { withKeyedLock } from "../data/keyed-mutex";
 import {
@@ -50,9 +52,9 @@ import {
   detectTreeFramework,
 } from "../apps/framework-source";
 import { supportsFrameworkDetection, type FrameworkId } from "../apps/framework-catalog";
-import { appSlugFromDeployKey, stackName } from "./deploy-key";
+import { appSlugFromDeployKey, deployImageRef, stackName } from "./deploy-key";
 import { syncPreviewComment } from "./preview-comment";
-import { planDeploySource, resolveBuildDir } from "./source";
+import { planDeploySource, resolveBuildDir, type SourcePlan } from "./source";
 import { normalizeBuildConfig } from "../frameworks";
 import { usesComposeStack, hostVolumeName, formatBytes } from "../utils";
 import { detectDefaultApp } from "./compose-stack";
@@ -80,7 +82,12 @@ import {
   AgentUnavailableError,
   type AgentBuildPlan,
 } from "./agent-deploy";
-import { connectAgent, agentPreflight } from "../infra/agent-client";
+import {
+  connectAgent,
+  agentPreflight,
+  AgentUnreachableError,
+  AgentVolumeCopyUnsupportedError,
+} from "../infra/agent-client";
 import { enqueueDeployment } from "./deploy-queue";
 import type {
   App,
@@ -150,6 +157,7 @@ async function setDep(
   if (patch.readyAt !== undefined) set.readyAt = patch.readyAt;
   if (patch.buildDurationMs !== undefined)
     set.buildDurationMs = patch.buildDurationMs;
+  if (patch.imageRef !== undefined) set.imageRef = patch.imageRef;
   const rows = await getDb()
     .update(deploymentsTable)
     .set(set)
@@ -333,6 +341,9 @@ async function commitOutcome(
   target: DeployTarget,
   depPatch: Partial<Deployment>,
   appPatch: Partial<typeof appsTable.$inferInsert>,
+  /** This deploy went BACKWARDS. Only the alert copy cares: everything else
+   *  about settling a rollback is identical to settling any other deploy. */
+  opts: { rollback?: boolean } = {},
 ): Promise<boolean> {
   if (!(await setDep(depId, depPatch, { onlyIfNotCanceled: true }))) {
     await markStopped(depId, target);
@@ -355,9 +366,13 @@ async function commitOutcome(
   dispatchAlert({
     teamId: target.teamId,
     key: ok ? "deployment_succeeded" : "deployment_failed",
-    title: `${what} ${ok ? "deployed" : "failed to deploy"}`,
+    // A rollback is not "a new version": saying so to a channel would tell the
+    // team something shipped forward at the exact moment somebody undid it.
+    title: `${what} ${ok ? (opts.rollback ? "rolled back" : "deployed") : "failed to deploy"}`,
     body: ok
-      ? "The new version is live."
+      ? opts.rollback
+        ? "An earlier version is live again."
+        : "The new version is live."
       : "The build log has the error that stopped it.",
     path:
       target.kind === "preview"
@@ -1081,14 +1096,47 @@ export async function startDeployment(
       /** Where previews of this app run. Empty ⇒ the app's own server. */
       serverId?: string | null;
     } | null;
+    /**
+     * This build is a ROLLBACK to a deployment that already succeeded: it re-runs
+     * that build's image instead of producing a new one, so there is no clone, no
+     * build and no pull - seconds instead of minutes.
+     *
+     * The caller (`rollbackDeployment` in lib/data/deployments.ts) has already
+     * proved the target is eligible; everything needed to run it travels here, so
+     * the queued job never has to re-read the source row.
+     *
+     * Only the IMAGE goes back. The stack is re-rendered from the app's CURRENT
+     * variables, domains, volumes and resource limits, exactly like any other
+     * deploy - rolling a password back because the code rolled back is not
+     * something anyone asked for.
+     */
+    rollback?: {
+      /** The deployment being returned to (recorded as `rollback_of`). */
+      deploymentId: string;
+      /** Its `image_ref` - the tag on the owning host this deploy will run. */
+      imageRef: string;
+      commitSha: string;
+      commitMessage: string;
+      commitAuthor: string;
+      /** When the build being returned to was made - the only thing that names it
+       *  in the Activity trail when the source has no commit sha (an upload). */
+      builtAt: string;
+    } | null;
   },
 ): Promise<string> {
   const project = await loadAppGraph(appId);
   if (!project) throw new Error("App not found");
   const preview = opts.preview ?? null;
+  const rollback = opts.rollback ?? null;
   const environment = opts.environment ?? (preview ? "preview" : "production");
   if (preview && environment !== "preview") {
     throw new Error("A preview deployment must use the preview environment");
+  }
+  // A preview is an ephemeral stack of ITS OWN commit; there is no "the previous
+  // one" to return it to, and its key/host belong to a pull request. Refuse rather
+  // than let a caller combine the two into a deploy nobody can reason about.
+  if (rollback && preview) {
+    throw new Error("A pull request preview cannot be rolled back");
   }
   const branch = opts.branch ?? project.repo?.branch ?? "main";
   // Production routes through the project's EXISTING registered primary domain
@@ -1123,9 +1171,13 @@ export async function startDeployment(
     deployKey,
     previewId: preview?.id ?? null,
     prNumber: preview?.prNumber ?? null,
-    commitSha: "",
-    commitMessage: opts.commitMessage ?? "Deploy",
-    commitAuthor: opts.creator,
+    // A rollback re-runs a build that already happened, so it inherits that
+    // build's commit rather than inventing one: the list has to keep saying which
+    // code is live, and after a rollback that is the OLD commit.
+    commitSha: rollback?.commitSha ?? "",
+    commitMessage:
+      rollback?.commitMessage || opts.commitMessage || "Deploy",
+    commitAuthor: rollback?.commitAuthor || opts.creator,
     branch,
     url,
     createdAt: nowIso(),
@@ -1134,8 +1186,14 @@ export async function startDeployment(
     readyAt: null,
     buildDurationMs: null,
     forceRecreate: opts.forceRecreate ?? false,
+    // A rollback carries the image it is going back to and the row it came from.
+    // Both are what `runDeployment` reads to take the no-build path.
+    imageRef: rollback?.imageRef ?? null,
+    rollbackOf: rollback?.deploymentId ?? null,
     creator: opts.creator,
     serverId: preview?.serverId || project.serverId,
+    // Resolved just below, once the target server row is in hand.
+    buildServerId: null,
   };
 
   // Insert the deployment, then point its OWNER at it (latestDeployment +
@@ -1145,9 +1203,16 @@ export async function startDeployment(
   // different machine than production, it is the ONLY authority on where this
   // deploy runs. Everything downstream reads the row, never the app.
   const deployServerId = preview?.serverId || project.serverId;
+  // Which host COMPILES this one, decided here and written down for the same reason
+  // `serverId` is: from this point everything reads the row. A rollback re-runs an
+  // image that already exists on the target, so it never wants a builder - asking
+  // for one would burn a queue slot on a machine with nothing to do.
+  const buildServerId = rollback
+    ? null
+    : await resolveBuildServerFor(project, deployServerId, depId);
   await getDb()
     .insert(deploymentsTable)
-    .values({ ...deploymentToRow(dep), serverId: deployServerId });
+    .values({ ...deploymentToRow(dep), serverId: deployServerId, buildServerId });
   await clearDeploymentLogs(depId);
   if (preview) {
     // A preview NEVER touches the App's row. Writing `apps.status` here would
@@ -1180,7 +1245,17 @@ export async function startDeployment(
     "deployment",
     preview
       ? `Deploying ${project.name} preview for pull request #${preview.prNumber}`
-      : `Deploying ${project.name}`,
+      : rollback
+        ? // Name the commit, not the deployment id: "who put us back on what" is
+          // the question the trail gets asked, and a `dpl_` id answers neither
+          // half. An uploaded archive has no sha, so it falls back to the date the
+          // build it is returning to was made.
+          `Rolling ${project.name} back to ${
+            rollback.commitSha
+              ? rollback.commitSha.slice(0, 7)
+              : `the build from ${rollback.builtAt.slice(0, 10)}`
+          }`
+        : `Deploying ${project.name}`,
     opts.creator,
     appId,
   );
@@ -1216,7 +1291,7 @@ export async function startDeployment(
   // deploy of this app is in flight. Deploys on OTHER servers run in parallel.
   // Returns immediately — the standalone Node server keeps the event loop alive
   // and the queue runs the build in the background (see lib/deploy/deploy-queue).
-  enqueueDeployment({ depId, serverId: deployServerId, appId });
+  enqueueDeployment({ depId, serverId: deployServerId, appId, buildServerId });
   return depId;
 }
 
@@ -1251,6 +1326,249 @@ interface AgentAttempt {
   commitSha: string;
 }
 
+/**
+ * Whether a plan actually compiles something. Only these two can be split across a
+ * build server: a prebuilt `image` has nothing to build, and a `compose` stack has
+ * no single image to move (its services come up from their own).
+ */
+function planBuilds(plan: AgentBuildPlan): boolean {
+  return plan.kind === "git" || plan.kind === "dockerfile";
+}
+
+/**
+ * The build server for a deploy about to be queued, or null for "build where it
+ * runs". Never throws: a fleet with no builder, an unresolvable target row, or any
+ * failure of the lookup itself all mean the same thing - deploy the way Deplo did
+ * before build servers existed. Choosing where to compile must not be able to stop
+ * an app from shipping.
+ */
+async function resolveBuildServerFor(
+  project: { teamId: string; serverId: string; buildServerId?: string | null },
+  deployServerId: string,
+  depId: string,
+): Promise<string | null> {
+  try {
+    const target = await getServerById(deployServerId);
+    if (!target) return null;
+    const choice = await resolveBuildServer(
+      {
+        teamId: project.teamId,
+        serverId: project.serverId,
+        buildServerId: project.buildServerId ?? null,
+      },
+      target,
+    );
+    return choice.serverId;
+  } catch (e) {
+    console.error(`[deplo] build server lookup failed for ${depId}:`, e);
+    return null;
+  }
+}
+
+/**
+ * The one line the deploy log gets about where this app compiled, derived from the
+ * row rather than re-run - the decision was made at enqueue time and the row is the
+ * authority on it, exactly as it is for `serverId`.
+ *
+ * Silent for the ordinary "built where it runs", because narrating the default on
+ * every deploy is noise that teaches people to skip the log. Loud when the app names
+ * a build server and did not get it: the setting still says that machine, and the
+ * deploy quietly did something else.
+ */
+async function explainBuildServer(
+  project: { serverId: string; buildServerId?: string | null },
+  dep: { buildServerId: string | null },
+  target: { id: string; name: string; hostArch: string },
+): Promise<{ level: LogLine["level"]; text: string } | null> {
+  if (dep.buildServerId) {
+    const builder = await getServerById(dep.buildServerId);
+    return buildServerLogLine(
+      {
+        serverId: dep.buildServerId,
+        reason: project.buildServerId ? "pinned" : "automatic",
+      },
+      builder?.name ?? dep.buildServerId,
+      target.name,
+    );
+  }
+  const pinned = project.buildServerId;
+  if (!pinned || pinned === project.serverId || pinned === target.id) return null;
+  // The pin did not apply. One extra lookup, only on this rare path, so the message
+  // can name the actual reason instead of a shrug.
+  const server = await getServerById(pinned);
+  const reason =
+    server && server.hostArch !== target.hostArch ? "arch-mismatch" : "none-available";
+  return buildServerLogLine({ serverId: null, reason }, server?.name ?? pinned, target.name);
+}
+
+/**
+ * Whether an error means "that host did not answer / cannot do this", across BOTH
+ * classes that mean it.
+ *
+ * They are unrelated types and the difference is not visible at the call site:
+ * `agentPreflight` rejects with `AgentUnreachableError` (the dial or the Hello
+ * failed), while `runAgentDeploy` raises `AgentUnavailableError` for its own
+ * refusals (no Docker, too old for a capability) and for a dead deploy stream.
+ * Matching only the second is how a fallback that exists precisely for "the build
+ * server is down" ends up never firing for it.
+ */
+function agentIsDown(e: unknown): boolean {
+  return e instanceof AgentUnavailableError || e instanceof AgentUnreachableError;
+}
+
+/**
+ * What the deploy log is allowed to say about a host that did not answer.
+ *
+ * A raw gRPC transport error embeds the dial address (`10.x.x.x:9443`) and can
+ * carry the pinned cert fingerprint - the same reason `READINESS_MESSAGES` is a
+ * closed set and `LogsFailure` is four words. A deploy log is read by any member
+ * with `view_logs`, which is a lower bar than the fleet page, so the raw text goes
+ * to `console.error` and the reader gets this.
+ */
+function agentDownReason(e: unknown): string {
+  if (e instanceof AgentUnavailableError) {
+    // These messages are ours, written at the throw site, and carry no address.
+    return e.message;
+  }
+  // A TRUST failure is not a dead host: the peer answered, it just is not the agent
+  // Deplo pinned (or it rejected our client cert). Saying "it did not answer" would
+  // send someone to check whether the box is up, which is the one thing that is
+  // fine. `trust` is captured at the dial, the only place that can tell them apart.
+  if (e instanceof AgentUnreachableError && e.trust) {
+    return "its certificate is not the one Deplo trusts - reissue its install command";
+  }
+  return "it did not answer";
+}
+
+/**
+ * The build half of a split deploy: compile on the build server, then stream the
+ * image to the host that will run it.
+ *
+ * Three outcomes, and the difference between them is the whole design:
+ *
+ *  - `built` - the image is on the target and the caller releases it exactly as a
+ *    rollback does.
+ *  - `fallback` - the build server could not be reached AT ALL, and this app allows
+ *    building on its own server. Nothing was built anywhere, so the caller simply
+ *    proceeds with the original plan. Deliberately narrow: it fires on an
+ *    unreachable agent, never on a build that ran and FAILED (rebuilding that
+ *    elsewhere would fail identically) and never on a transfer that broke halfway
+ *    (the build server has already done the expensive part).
+ *  - `failed` - everything else, with the reason already in the deploy log.
+ */
+async function buildOnBuildServer(opts: {
+  depId: string;
+  serverId: string;
+  buildServerId: string;
+  buildServerName?: string;
+  targetServerName?: string;
+  buildFallbackLocal?: boolean;
+  project: { id: string; deployKey: string; composeUpArgs: string | null };
+  imageRef: string;
+  composeYaml: string;
+  env: Record<string, string>;
+  plan: AgentBuildPlan;
+  noCache?: boolean;
+  sink: (level: LogLine["level"], text: string) => void;
+}): Promise<{ outcome: "built" | "fallback" | "failed"; commitSha: string }> {
+  const builderName = opts.buildServerName ?? "the build server";
+  const targetName = opts.targetServerName ?? "the app's server";
+
+  let commitSha = "";
+  try {
+    const built = await runAgentDeploy({
+      serverId: opts.buildServerId,
+      deployId: opts.depId,
+      slug: opts.project.deployKey,
+      appId: opts.project.id,
+      imageRef: opts.imageRef,
+      // The builder writes no stack and starts nothing, so the rendered compose is
+      // inert there. It still rides along: the request shape is the same one every
+      // deploy sends, and an empty `composeYaml` is what the agent rejects as a
+      // malformed request.
+      composeYaml: opts.composeYaml,
+      env: opts.env,
+      plan: opts.plan,
+      noCache: opts.noCache,
+      buildOnly: true,
+      sink: { log: opts.sink },
+    });
+    if (!built.ready) return { outcome: "failed", commitSha: built.commitSha };
+    commitSha = built.commitSha;
+  } catch (e) {
+    if (agentIsDown(e)) {
+      console.error(`[deplo] build server ${opts.buildServerId} unavailable:`, e);
+      const why = agentDownReason(e);
+      if (opts.buildFallbackLocal !== false) {
+        opts.sink(
+          "warn",
+          `${builderName} could not be reached (${why}). Building on ${targetName} instead.`,
+        );
+        return { outcome: "fallback", commitSha: "" };
+      }
+      opts.sink(
+        "error",
+        `${builderName} could not be reached (${why}), and this app is set not to ` +
+          `build on ${targetName}. The running version was not touched.`,
+      );
+      return { outcome: "failed", commitSha: "" };
+    }
+    throw e;
+  }
+
+  // The image exists on the builder and nowhere else. From here a failure is a
+  // failure: the build already happened, and repeating it on a host chosen for
+  // being small is the outcome the build server exists to avoid.
+  try {
+    const bytes = await relayBuiltImage(
+      opts.buildServerId,
+      opts.serverId,
+      opts.imageRef,
+    );
+    opts.sink(
+      "info",
+      `Copied ${formatBytes(bytes)} from ${builderName} to ${targetName}`,
+    );
+    return { outcome: "built", commitSha };
+  } catch (e) {
+    console.error(`[deplo] image copy ${opts.buildServerId} -> ${opts.serverId} failed:`, e);
+    // AgentVolumeCopyUnsupportedError's text is ours ("update the agent on the
+    // <side> server") and is the one thing worth repeating; anything else is a
+    // transport error whose text is not safe to show.
+    const why =
+      e instanceof AgentVolumeCopyUnsupportedError
+        ? e.message
+        : "the transfer did not complete";
+    opts.sink(
+      "error",
+      `Could not copy the built image from ${builderName} to ${targetName}: ${why}. ` +
+        `The running version was not touched.`,
+    );
+    return { outcome: "failed", commitSha };
+  }
+}
+
+/** Open one connection to each host and relay the image between them, closing both
+ *  however it ends. The bytes pass through the control plane because agents cannot
+ *  dial each other - the same path a cross-host volume copy takes. */
+async function relayBuiltImage(
+  buildServerId: string,
+  targetServerId: string,
+  imageRef: string,
+): Promise<number> {
+  const source = await connectAgent(buildServerId);
+  try {
+    const dest = await connectAgent(targetServerId);
+    try {
+      return await copyImageBetween(source, dest, imageRef);
+    } finally {
+      dest.close();
+    }
+  } finally {
+    source.close();
+  }
+}
+
 async function tryAgent(opts: {
   depId: string;
   serverId: string;
@@ -1267,6 +1585,15 @@ async function tryAgent(opts: {
   noCache?: boolean;
   /** Recreate the containers even if the stack is unchanged ("Rebuild container"). */
   forceRecreate?: boolean;
+  /** The BUILD SERVER this deploy compiles on, when that is not `serverId`. Null
+   *  (the ordinary case) builds and runs on the same host, exactly as before. */
+  buildServerId?: string | null;
+  /** Human name of the build server, for the log lines. */
+  buildServerName?: string;
+  /** Human name of the target server, for the log lines. */
+  targetServerName?: string;
+  /** Build on the target instead when the build server cannot be reached. */
+  buildFallbackLocal?: boolean;
 }): Promise<AgentAttempt> {
   // Serialize the agent bring-up against deleteApp/deleteApps on the app's
   // lifecycle lock (the same mutex the databases use for provision/delete). Two
@@ -1285,7 +1612,33 @@ async function tryAgent(opts: {
       log(opts.depId, "error", "App was deleted during the build — deploy aborted.");
       return { outcome: "failed", commitSha: "" };
     }
+    // The plan the TARGET runs, and the commit the BUILD resolved. Both are only
+    // rewritten by the build-server leg below; without one they stay as passed and
+    // this function behaves exactly as it always did.
+    let plan = opts.plan;
+    let builtCommitSha = "";
     try {
+      if (
+        opts.buildServerId &&
+        opts.buildServerId !== opts.serverId &&
+        planBuilds(opts.plan)
+      ) {
+        const leg = await buildOnBuildServer({
+          ...opts,
+          buildServerId: opts.buildServerId,
+          sink: (level: LogLine["level"], text: string) => log(opts.depId, level, text),
+        });
+        if (leg.outcome === "failed") return { outcome: "failed", commitSha: leg.commitSha };
+        if (leg.outcome === "built") {
+          builtCommitSha = leg.commitSha;
+          // The target now holds the image and runs it exactly as a ROLLBACK does:
+          // a local tag, in no registry, so pulling it could only ever fail.
+          plan = { kind: "image", image: opts.imageRef, pull: false };
+        }
+        // outcome "fallback": the builder was unreachable and this app allows a
+        // local build. `plan` is untouched, so the target builds it itself.
+      }
+
       const { ready, commitSha } = await runAgentDeploy({
         serverId: opts.serverId,
         deployId: opts.depId,
@@ -1294,7 +1647,7 @@ async function tryAgent(opts: {
         imageRef: opts.imageRef,
         composeYaml: opts.composeYaml,
         env: opts.env,
-        plan: opts.plan,
+        plan,
         readyTimeoutMs: opts.readyTimeoutMs ?? 60_000,
         noCache: opts.noCache,
         forceRecreate: opts.forceRecreate,
@@ -1302,12 +1655,19 @@ async function tryAgent(opts: {
         composeUpArgs: parseComposeUpArgs(opts.project.composeUpArgs),
         sink: { log: (level, text) => log(opts.depId, level, text) },
       });
-      return { outcome: ready ? "agent" : "failed", commitSha };
+      // A release of an already-built image reports no commit - the build did, one
+      // host ago. Prefer what the build resolved so the row still records the sha
+      // that is actually running.
+      return { outcome: ready ? "agent" : "failed", commitSha: commitSha || builtCommitSha };
     } catch (e) {
-      if (e instanceof AgentUnavailableError) {
+      if (agentIsDown(e)) {
         // No in-process build path to fall back to: surface the unreachable agent
-        // as a clear deploy failure (P5 — no hung deploys).
-        log(opts.depId, "error", `Agent unavailable: ${e.message}`);
+        // as a clear deploy failure (P5 - no hung deploys). Both error classes,
+        // because `agentPreflight` and the deploy stream raise different ones and
+        // only matching the second sent an unreachable host to the outer handler,
+        // which logs the raw gRPC text - dial address included.
+        console.error(`[deplo] agent ${opts.serverId} unavailable:`, e);
+        log(opts.depId, "error", `Agent unavailable: ${agentDownReason(e)}`);
         return { outcome: "failed", commitSha: "" };
       }
       throw e;
@@ -1428,6 +1788,26 @@ async function runDeployment(depId: string): Promise<void> {
     // even if a stale compose lingers from a previous source. See usesComposeStack.
     const hasCompose = Boolean(project.compose && project.compose.trim());
     const useCompose = usesComposeStack(project);
+    // A ROLLBACK must never reach the compose branch. It would bring the CURRENT
+    // stack up, settle `ready`, and leave a row that says it went back to an old
+    // commit - success reported for something that did not happen. The data layer
+    // refuses to create such a row (an app is only rollback-able while it still
+    // builds its own image), so this is the second lock on the one failure mode
+    // here that is silent rather than loud.
+    if (useCompose && dep.rollbackOf) {
+      log(
+        depId,
+        "error",
+        "This app deploys a compose stack now, so there is no single image to roll back to.",
+      );
+      await commitOutcome(
+        depId,
+        target,
+        { status: "error", buildDurationMs: Date.now() - started },
+        { status: "error" },
+      );
+      return;
+    }
     if (useCompose && hasCompose) {
       const composeOpts = {
         depId,
@@ -1490,6 +1870,26 @@ async function runDeployment(depId: string): Promise<void> {
     let agentOutcome: "agent" | "failed" | null = null;
     const serverId = runServerId;
 
+    // Where this deploy COMPILES, read off the row for the same reason `serverId`
+    // is: the choice was made when the deploy was queued and the row is what the
+    // queue already drained on. Spread into the two arms that actually build; the
+    // rollback and prebuilt-image arms never compile anything, so a build server
+    // would have nothing to do for them.
+    const targetServer = await getServerById(serverId);
+    const buildServer = dep.buildServerId
+      ? await getServerById(dep.buildServerId)
+      : null;
+    const buildServerOpts = {
+      buildServerId: dep.buildServerId,
+      buildServerName: buildServer?.name,
+      targetServerName: targetServer?.name ?? "the app's server",
+      buildFallbackLocal: project.buildFallbackLocal,
+    };
+    if (targetServer) {
+      const line = await explainBuildServer(project, dep, targetServer);
+      if (line) log(depId, line.level, line.text);
+    }
+
     // Per-server build-method capability gate. A heavy method (static/nixpacks/
     // buildpacks/railpack) needs the matching capability on THIS server's agent; an
     // older agent would accept the Deploy and only fail deep in its switch with an
@@ -1497,17 +1897,28 @@ async function runDeployment(depId: string): Promise<void> {
     // "update the agent" message instead (mirrors the compose.multi gate + P5's
     // fail-fast-on-an-incapable-agent discipline). The Dockerfile family + a
     // prebuilt image need no heavy capability, so the check is skipped for them.
-    const requiredCapability = agentCapabilityForMethod(project.build);
+    //
+    // A ROLLBACK is exempt: it runs an image that already exists on this host and
+    // never invokes a builder, so gating it on the app's CURRENT build method
+    // would refuse a perfectly runnable image because of how the next build would
+    // be made.
+    const requiredCapability = dep.rollbackOf
+      ? null
+      : agentCapabilityForMethod(project.build);
+    // The capability belongs to whichever host actually RUNS the builder. With a
+    // build server that is the builder, not the target: gating the target on a
+    // method it will never invoke would refuse a deploy for the wrong host's age.
+    const capServerId = dep.buildServerId || serverId;
     if (requiredCapability) {
       try {
-        const hello = await agentPreflight(serverId);
+        const hello = await agentPreflight(capServerId);
         if (!hello.capabilities.includes(requiredCapability)) {
           log(
             depId,
             "error",
-            `This server's agent is too old to run the ${project.build.buildMethod} ` +
-              `build method. Update the agent (reissue the install command from the ` +
-              `server's actions menu).`,
+            `${dep.buildServerId ? "The build server's" : "This server's"} agent is too ` +
+              `old to run the ${project.build.buildMethod} build method. Update the agent ` +
+              `(reissue the install command from the server's actions menu).`,
           );
           await commitOutcome(
             depId,
@@ -1518,18 +1929,24 @@ async function runDeployment(depId: string): Promise<void> {
           return;
         }
       } catch (e) {
-        log(
-          depId,
-          "error",
-          `Agent unavailable: ${e instanceof Error ? e.message : String(e)}`,
-        );
-        await commitOutcome(
-          depId,
-          target,
-          { status: "error", buildDurationMs: Date.now() - started },
-          { status: "error" },
-        );
-        return;
+        // An unreachable BUILD SERVER is not decided here. This is only a
+        // capability probe; the fallback policy (build on the app's own server, or
+        // fail) lives at the one place that actually attempts the build, and
+        // duplicating it here would give the same situation two different answers.
+        if (!dep.buildServerId) {
+          log(
+            depId,
+            "error",
+            `Agent unavailable: ${e instanceof Error ? e.message : String(e)}`,
+          );
+          await commitOutcome(
+            depId,
+            target,
+            { status: "error", buildDurationMs: Date.now() - started },
+            { status: "error" },
+          );
+          return;
+        }
       }
     }
 
@@ -1599,6 +2016,7 @@ async function runDeployment(depId: string): Promise<void> {
         plan: { kind: "dockerfile", buildDir, build: normalizeBuildConfig(project.build) },
         noCache,
         forceRecreate,
+        ...buildServerOpts,
       });
       agentOutcome = outcome === "agent" ? "agent" : "failed";
     };
@@ -1613,7 +2031,16 @@ async function runDeployment(depId: string): Promise<void> {
     // Each arm materialises a tree (or pulls an image) then funnels through the
     // shared buildImageFromTree, so the rootDirectory containment + build
     // dispatch live in one place.
-    const plan = planDeploySource(project);
+    //
+    // A ROLLBACK short-circuits that choice: it re-runs an image a previous build
+    // of this app already produced, so the app's source is irrelevant - there is
+    // nothing to clone, nothing to build, nothing to pull. It is a plan kind of its
+    // own rather than a branch around the switch so it settles through the same
+    // `tryAgent` → `commitOutcome` path as every other deploy.
+    const plan: SourcePlan | { kind: "rollback"; image: string; of: string } =
+      dep.rollbackOf && dep.imageRef
+        ? { kind: "rollback", image: dep.imageRef, of: dep.rollbackOf }
+        : planDeploySource(project);
     // A cache-less build is minutes slower than a cached one, so say why before
     // the log fills with build output — and spend the one-shot clear here, where
     // a build is genuinely about to run (a prebuilt image never builds, so its
@@ -1623,6 +2050,39 @@ async function runDeployment(depId: string): Promise<void> {
       if (project.build.buildCacheClearPending) await consumeCacheClear(project.id);
     }
     switch (plan.kind) {
+      case "rollback": {
+        // Re-run an image THIS app already built. No clone, no build, no pull -
+        // the agent writes the stack and brings it up, which is why a rollback
+        // takes seconds where the deploy that produced this image took minutes.
+        //
+        // The stack is still rendered from the app AS IT IS NOW (renderStack reads
+        // current variables, domains, volumes and resource limits). Only the image
+        // comes from the past: rolling a password back because the code rolled
+        // back is not something anyone asked for.
+        //
+        // Nothing pre-flights whether the image is still on the host - no RPC can
+        // ask. Retention is what keeps it there (`apps.rollback_keep`, enforced
+        // host-side by the per-slug map the cleanup sweep sends) and the caller has
+        // already refused a target outside that window. If it is gone anyway,
+        // `compose up` says so in the host's own words and this deploy fails with
+        // the RUNNING CONTAINER UNTOUCHED - compose resolves images before it
+        // replaces anything.
+        imageRef = plan.image;
+        log(depId, "info", `Rolling back to the image from deployment ${plan.of}`);
+        const { composeYaml, env } = await renderStack(imageRef);
+        const { outcome } = await tryAgent({
+          depId,
+          serverId,
+          project: { id: project.id, deployKey, composeUpArgs: project.composeUpArgs },
+          imageRef,
+          composeYaml,
+          env,
+          plan: { kind: "image", image: imageRef, pull: false },
+          forceRecreate,
+        });
+        agentOutcome = outcome === "agent" ? "agent" : "failed";
+        break;
+      }
       case "docker-image": {
         imageRef = plan.image;
         // A prebuilt image: the owning agent pulls + runs it on its host.
@@ -1634,7 +2094,7 @@ async function runDeployment(depId: string): Promise<void> {
           imageRef,
           composeYaml,
           env,
-          plan: { kind: "image", image: plan.image },
+          plan: { kind: "image", image: plan.image, pull: true },
           forceRecreate,
         });
         agentOutcome = outcome === "agent" ? "agent" : "failed";
@@ -1665,10 +2125,12 @@ async function runDeployment(depId: string): Promise<void> {
         // it, the stored preference is a no-op here (the clone descriptor below has
         // no submodules flag to forward).
         const cloneUrl = await resolveCloneUrl(repo);
-        // The agent tags the image by the sha IT resolves; until then use the
-        // deploy id as a placeholder tag (the rendered compose references this
-        // same imageRef).
-        imageRef = `deplo/${deployKey}:${depId.slice(0, 12)}`;
+        // One tag per deployment, and the agent builds under exactly this string -
+        // it resolves the commit sha but never retags with it. Recorded on the row
+        // so a later ROLLBACK can re-run this image without deriving the convention
+        // (which would answer wrongly for an app that has since changed source).
+        imageRef = deployImageRef(deployKey, depId);
+        await setDep(depId, { imageRef });
         const { composeYaml, env } = await renderStack(imageRef);
         log(depId, "command", `git clone ${repo.url} (${dep.branch}) [on agent]`);
         const attempt = await tryAgent({
@@ -1687,6 +2149,7 @@ async function runDeployment(depId: string): Promise<void> {
           },
           noCache,
           forceRecreate,
+          ...buildServerOpts,
         });
         if (attempt.commitSha) {
           commitSha = attempt.commitSha;
@@ -1708,7 +2171,10 @@ async function runDeployment(depId: string): Promise<void> {
           const root = await extractArchive(upload, work, (line) =>
             log(depId, "info", line),
           );
-          imageRef = `deplo/${deployKey}:${depId.slice(0, 12)}`;
+          // Same per-deployment tag as the git arm, recorded for the same reason:
+          // an uploaded archive builds a real image, so it accrues rollbacks too.
+          imageRef = deployImageRef(deployKey, depId);
+          await setDep(depId, { imageRef });
           // Auto-set the display logo from an icon/favicon in the extracted tree
           // when the app has none yet (reusing this tree — no re-extract).
           await autoDetectLogoFromTree(
@@ -1763,6 +2229,7 @@ async function runDeployment(depId: string): Promise<void> {
           // is unrouted until a domain is added back).
           ...(dep.environment === "production" ? { productionUrl: dep.url || null } : {}),
         },
+        { rollback: Boolean(dep.rollbackOf) },
       );
       if (applied) {
         log(

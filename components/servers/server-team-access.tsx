@@ -102,13 +102,18 @@ export function ServerTeamAccess({
   );
 }
 
-function AccessOption({
+/** One card in a card-shaped radio group. Exported because the server ROLE choice
+ *  in the Add server dialog is the same control with three options instead of two,
+ *  and two spellings of the same picker in one form would read as two different
+ *  kinds of decision. */
+export function AccessOption({
   icon: Icon,
   title,
   description,
   selected,
   disabled,
   onSelect,
+  badge,
 }: {
   icon: React.ElementType;
   title: string;
@@ -116,6 +121,8 @@ function AccessOption({
   selected: boolean;
   disabled?: boolean;
   onSelect: () => void;
+  /** A short chip beside the title, e.g. "Beta". */
+  badge?: React.ReactNode;
 }) {
   return (
     <button
@@ -135,6 +142,7 @@ function AccessOption({
       <span className="flex items-center gap-1.5 text-sm font-medium">
         <Icon className="size-4" />
         {title}
+        {badge}
         {selected && <Check className="ml-auto size-4 text-primary" />}
       </span>
       <span className="text-xs text-muted-foreground">{description}</span>

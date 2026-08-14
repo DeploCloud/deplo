@@ -33,6 +33,8 @@ function provisioningServer(over: Partial<Server> = {}): Server {
     diskUsage: 0,
     allTeams: true,
     storageOnly: false,
+    buildOnly: false,
+    hostArch: "amd64",
     deployConcurrency: 1,
     createdAt: new Date("2020-01-01").toISOString(),
     bootstrap: stored,

@@ -16,6 +16,7 @@ import {
   appToRow,
 } from "./app-graph-rows";
 import type { TestDb } from "../db/test-harness";
+import { DEFAULT_ROLLBACK_KEEP } from "../types";
 import type { Deployment, App } from "../types";
 import { TEAM_A, USER_1 } from "./identity-test-helpers";
 
@@ -89,6 +90,8 @@ export interface SeedAppOpts {
   status?: App["status"];
   source?: App["source"];
   resources?: App["resources"];
+  /** How many previous deployments this app can be rolled back to. */
+  rollbackKeep?: number;
   /** Compose YAML — pair with `source: "compose"` to seed a compose-stack app. */
   compose?: string | null;
   /** Park the app inside a folder (seed the folder row yourself first). */
@@ -101,6 +104,10 @@ export interface SeedAppOpts {
    * written straight onto the row, exactly as `createApp` does.
    */
   createdByUserId?: string | null;
+  /** Pin the app to a build server (seed that server row first). */
+  buildServerId?: string | null;
+  /** Turn OFF "build here if the build server is unreachable". */
+  buildFallbackLocal?: boolean;
 }
 
 /** Seed one project + its 1-to-1 build / method-settings rows. Returns the id. */
@@ -120,6 +127,8 @@ export async function seedApp(
     projectId: opts.projectId ?? null,
     environmentId: opts.environmentId ?? null,
     serverId,
+    buildServerId: opts.buildServerId ?? null,
+    buildFallbackLocal: opts.buildFallbackLocal ?? true,
     logo: null,
     frameworkOverride: null,
     framework: null,
@@ -138,6 +147,7 @@ export async function seedApp(
     autoDeploy: true,
     deployHookEnabled: true,
     composeUpArgs: null,
+    rollbackKeep: opts.rollbackKeep ?? DEFAULT_ROLLBACK_KEEP,
     resources: opts.resources ?? null,
     latestDeploymentId: null,
     createdAt: T0,
@@ -173,6 +183,14 @@ export async function seedDeployment(
     deployKey?: string;
     previewId?: string | null;
     prNumber?: number | null;
+    /** The image this deploy rendered - set it to make the row a rollback target
+     *  (a build Deplo made), or leave it null for a compose / prebuilt-image one. */
+    imageRef?: string | null;
+    /** Mark the row as a rollback TO another deployment (so it occupies no
+     *  retention slot of its own). */
+    rollbackOf?: string | null;
+    /** The server this deploy BUILT on, when that was not `serverId`. */
+    buildServerId?: string | null;
   },
 ): Promise<void> {
   const dep: Deployment = {
@@ -181,6 +199,7 @@ export async function seedDeployment(
     status: opts.status ?? "ready",
     forceRecreate: false,
     serverId: opts.serverId ?? SERVER_1,
+    buildServerId: opts.buildServerId ?? null,
     environment: opts.environment ?? "production",
     // Defaults to the app's slug, which is what every production deploy uses.
     // Seeders that don't care never have to think about the key.
@@ -196,11 +215,17 @@ export async function seedDeployment(
     startedAt: opts.startedAt ?? null,
     readyAt: null,
     buildDurationMs: null,
+    imageRef: opts.imageRef ?? null,
+    rollbackOf: opts.rollbackOf ?? null,
     creator: "Owner",
   };
   await db
     .insert(deploymentsTable)
-    .values({ ...deploymentToRow(dep), serverId: opts.serverId ?? null });
+    .values({
+      ...deploymentToRow(dep),
+      serverId: opts.serverId ?? null,
+      buildServerId: opts.buildServerId ?? null,
+    });
 }
 
 /** Seed a pull request preview row for an app. Defaults to an open, same-repo

@@ -44,15 +44,22 @@ export default async function AppBackupsPage(
   // vanished, and the page claimed no destination was configured while
   // disabling the buttons that would have made one. They held `manage_backups`
   // on this app and had no way to use it.
-  const [allBackups, runs, destinations, canRestore, canTestDestinations] =
-    await Promise.all([
-      listBackups(),
-      listBackupRuns({ appId: project.id }),
-      listDestinationOptions(),
-      // On THIS app (ADR-0016), the same way the page's own gate is asked.
-      hasAppCapability(project.id, "restore_backups"),
-      hasCapability("manage_backup_destinations"),
-    ]);
+  const [
+    allBackups,
+    runs,
+    destinations,
+    canRestore,
+    canDelete,
+    canTestDestinations,
+  ] = await Promise.all([
+    listBackups(),
+    listBackupRuns({ appId: project.id }),
+    listDestinationOptions(),
+    // On THIS app (ADR-0016), the same way the page's own gate is asked.
+    hasAppCapability(project.id, "restore_backups"),
+    hasAppCapability(project.id, "delete_backups"),
+    hasCapability("manage_backup_destinations"),
+  ]);
 
   // Only this app's schedules — listBackups returns the whole team's.
   const schedules = allBackups.filter(
@@ -79,6 +86,7 @@ export default async function AppBackupsPage(
         destinations={destinations}
         canManage
         canRestore={canRestore}
+        canDelete={canDelete}
         canTestDestinations={canTestDestinations}
       />
     </div>

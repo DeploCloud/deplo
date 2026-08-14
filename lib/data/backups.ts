@@ -44,14 +44,20 @@ import {
 import { parseConnectionPassword } from "../deploy/database-compose";
 import { canonicalTimeZone } from "../crons/cron-tz";
 import { BACKUP_RUN_MAX_MS, mapBackupUnsupported } from "../infra/agent-client";
-import { getDestinationWithSecretsForTeam } from "./destinations";
+import {
+  destinationServerId,
+  getDestinationWithSecretsForTeam,
+} from "./destinations";
 import {
   backupToDestination,
+  deleteFromDestination,
   deleteManyFromDestination,
   openArtifactDownload,
+  openUploadRestore,
   restoreFromDestination,
   type BackupOutcome,
 } from "./backup-transport";
+import { SNIFF_HEAD_BYTES, sniffArtifact } from "../backups/artifact-sniff";
 import {
   buildProjectDescriptor,
   type ProjectBackupDescriptor,
@@ -62,7 +68,11 @@ import {
   selectDoomedRuns,
   type RunForRetention,
 } from "./backup-objectkey";
-import type { DatabaseDescriptor, ProjectDescriptor } from "../agent/gen/agent";
+import type {
+  DatabaseDescriptor,
+  ProjectDescriptor,
+  RestoreEvent,
+} from "../agent/gen/agent";
 import type {
   Backup,
   BackupRun,
@@ -522,6 +532,7 @@ async function executeBackup(
     targetId: (opts.kind === "database" ? opts.databaseId : opts.appId) ?? "",
     objectKey: "", // filled once the key is built (after resolution)
     sizeBytes: 0,
+    decryptedSizeBytes: null,
     sha256: null,
     orphanedAt: null,
     status: "running",
@@ -547,14 +558,23 @@ async function executeBackup(
   // itself) lands on the same `failed`-run path below.
   let label = opts.kind === "database" ? "database" : "app";
   let activityAppId: string | null = opts.kind === "app" ? opts.appId : null;
+  // Kept out here for the cancel cleanup below, which runs after the try block
+  // that resolves it.
+  let targetServerId = "";
   let result: BackupOutcome | null = null;
   let failure: string | null = null;
   let objectKey = "";
+  // Registered before the first dial and removed in the `finally` below, so
+  // "Stop" can reach this dump for exactly as long as it is running.
+  const abort = new AbortController();
+  backupRunsInFlight.set(runId, abort);
+  let creds: Awaited<ReturnType<typeof getDestinationWithSecretsForTeam>> | null = null;
   try {
-    const creds = await getDestinationWithSecretsForTeam(teamId, opts.destinationId);
+    creds = await getDestinationWithSecretsForTeam(teamId, opts.destinationId);
     const target = await resolveTarget(teamId, opts.kind, opts.databaseId, opts.appId);
     label = target.label;
     activityAppId = target.appId;
+    targetServerId = target.serverId;
     objectKey = buildObjectKey({
       teamId,
       kind: opts.kind,
@@ -588,6 +608,7 @@ async function executeBackup(
         project: target.project,
       },
       objectKey,
+      abort.signal,
     );
     if (!result.ok) failure = result.error || "the agent reported a failed backup";
 
@@ -613,12 +634,21 @@ async function executeBackup(
     }
   } catch (e) {
     failure = (mapBackupUnsupported(e) as Error).message;
+  } finally {
+    backupRunsInFlight.delete(runId);
   }
 
   const finishedAt = nowIso();
   // TERMINAL transaction (short): flip the run to its final status + stamp the
   // schedule. The SECOND of the two short transactions; the agent dump completed
   // above, outside any tx (PLAN §1 rule (a)).
+  //
+  // A COMPARE-AND-SWAP on `running`, the same shape `commitOutcome` uses for a
+  // stopped build: `cancelBackupRun` flips the row on another connection while
+  // this is still unwinding, and a cancel that landed at ANY point before this
+  // write must win. 0 rows match, the run stays `canceled`, and the block below
+  // clears up after it.
+  let canceled = false;
   const finished = await getDb().transaction(async (tx): Promise<BackupRun> => {
     const set = failure
       ? { status: "failed" as const, error: failure, finishedAt }
@@ -627,6 +657,10 @@ async function executeBackup(
           error: null,
           objectKey: result!.objectKey,
           sizeBytes: result!.sizeBytes,
+          // 0 means the agent that wrote it predates the field. Stored NULL, so
+          // the download can tell "no length recorded" from "an empty file" and
+          // simply omits Content-Length rather than advertising nothing.
+          decryptedSizeBytes: result!.decryptedSizeBytes || null,
           // Empty means the agent predates integrity checking. Stored NULL, so a
           // restore can say "this backup was taken before Deplo could prove what
           // it wrote" instead of silently skipping the check.
@@ -636,12 +670,21 @@ async function executeBackup(
     const updated = await tx
       .update(backupRunsTable)
       .set(set)
-      .where(eq(backupRunsTable.id, runId))
+      .where(and(eq(backupRunsTable.id, runId), eq(backupRunsTable.status, "running")))
       .returning();
-    // The record can be gone: deleting a target sweeps its run history, and a
-    // backup can be in flight when that happens. Report the run we have rather
-    // than dereferencing an empty result inside the transaction.
-    if (updated.length === 0) return { ...run, ...set } as BackupRun;
+    // The record can be gone (deleting a target sweeps its run history, and a
+    // backup can be in flight when that happens) or no longer `running` (it was
+    // canceled). Both come back empty; the second is the one worth knowing about,
+    // so it is asked for rather than assumed.
+    if (updated.length === 0) {
+      const still = await tx
+        .select({ status: backupRunsTable.status })
+        .from(backupRunsTable)
+        .where(eq(backupRunsTable.id, runId))
+        .limit(1);
+      canceled = still[0]?.status === "canceled";
+      return { ...run, ...set } as BackupRun;
+    }
     if (opts.backupId) {
       await tx
         .update(backupsTable)
@@ -650,6 +693,32 @@ async function executeBackup(
     }
     return assembleBackupRun(updated[0]!);
   });
+
+  // The cancel already said what happened, in its own Activity entry and to the
+  // person who pressed the button. What it could NOT know is whether the dump
+  // beat it: a cancel landing in the instant between the agent finishing its
+  // upload and the write above leaves a complete artifact at the destination with
+  // no successful run pointing at it - an orphan nothing would ever collect,
+  // which for a backup is a multi-GB object billed forever. So the artifact goes
+  // with the run that was stopped.
+  if (canceled) {
+    if (!failure && result?.ok && result.objectKey && creds) {
+      try {
+        const via =
+          destinationServerId(creds.destination, targetServerId) ||
+          (await anyBackupCapableServer());
+        if (via) await deleteFromDestination(creds, via, result.objectKey);
+      } catch (e) {
+        console.warn(
+          `[backups] canceled run ${runId} left ${result.objectKey} behind: ` +
+            `${e instanceof Error ? e.message : String(e)}`,
+        );
+      }
+    }
+    // Thrown, not returned: every caller of this treats a non-success as an
+    // error, and "the backup you stopped did not produce one" is the truth.
+    throw new Error("This backup was canceled");
+  }
 
   await recordActivity(
     "backup",
@@ -795,19 +864,20 @@ async function loadRunsForTarget(
 
 /**
  * Gate a backup operation on its TARGET. An app target answers to its own node —
- * `manage_backups` / `restore_backups` can be held on one app or folder alone
- * (ADR-0016) — while a database target has no node dimension and stays team-wide.
+ * `manage_backups` / `restore_backups` / `delete_backups` can be held on one app
+ * or folder alone (ADR-0016) — while a database target has no node dimension and
+ * stays team-wide.
  */
 async function requireBackupCapability(
   target: { targetKind: BackupTargetKind; appId: string | null },
-  cap: "manage_backups" | "restore_backups",
+  cap: "manage_backups" | "restore_backups" | "delete_backups",
 ): Promise<void> {
   if (target.targetKind === "app" && target.appId) {
     await requireAppCapability(target.appId, cap);
     return;
   }
   // A database belongs to no Project, so a principal who reaches only part of
-  // the team reaches none of them — and both capabilities here survive the
+  // the team reaches none of them — and all three capabilities here survive the
   // clamp (they mean something on an app), so the team-wide `requireCapability`
   // below would let one through. NOT FOUND rather than a scope error, the same answer
   // {@link deleteBackupArtifacts} gives: a scope must never become an oracle for
@@ -943,15 +1013,30 @@ export function runDatabaseBackup(
  * strictly more than scheduling one. `restore_backups` is already the sensitive
  * capability the token presets withhold, so this needs no new one.
  *
- * Server destinations only. Pulling an S3 artifact back through the control
- * plane would double the transfer to hand over a file the operator can already
- * fetch from their own bucket with their own credentials.
+ * Works for BOTH destination kinds. A bucket artifact used to be refused here
+ * with instructions - fetch the object with your own S3 credentials, then
+ * decrypt it yourself with the recovery key - which made the Download button
+ * dead for every team whose backups live in a bucket, and answered a panel
+ * question with a shell. The agent reads the object out and decrypts it on the
+ * way, the same as it already did for one on its own disk.
  *
  * Returns the chunks plus the filename to offer. The caller MUST call `close()`
  * once the response is finished — the agent connection stays open behind it.
  */
 export async function downloadBackupArtifact(runId: string): Promise<{
   filename: string;
+  /**
+   * The exact number of bytes the stream below will produce, or null when the
+   * run never recorded it (taken before the agent reported it). The route turns
+   * it into `Content-Length`, which is the whole difference between a browser
+   * that shows a size, a percentage and an estimate and one that shows a
+   * download with no end in sight.
+   *
+   * NOT `sizeBytes`: that is the artifact as STORED, and the agent strips the
+   * age layer on the way out. Advertising it would leave the browser waiting for
+   * bytes that never come.
+   */
+  sizeBytes: number | null;
   chunks: AsyncGenerator<Buffer, void, unknown>;
   close: () => void;
 }> {
@@ -971,19 +1056,22 @@ export async function downloadBackupArtifact(runId: string): Promise<{
   await requireBackupCapability(run, "restore_backups");
 
   const creds = await getDestinationWithSecretsForTeam(teamId, run.destinationId);
-  if (creds.destination.kind !== "server")
-    throw new Error(
-      creds.destination.ageRecipient
-        ? "This backup is in your bucket. Fetch the object with your own " +
-          "credentials, then decrypt it with this destination's recovery key."
-        : "This backup is in your bucket. Fetch the object with your own credentials.",
-    );
+  const target = await downloadTargetFor(run, teamId);
+  const label = target.label;
 
-  const label =
-    run.targetKind === "database"
-      ? ((await databaseNameFor(run.databaseId, teamId)) ?? "database")
-      : ((run.appId ? (await loadAppGraph(run.appId))?.name : null) ?? "app");
-  const opened = await openArtifactDownload(creds, run.objectKey, run.sha256 ?? "");
+  // The destination decides WHICH agent fetches it: its own host for a store,
+  // the workload's for a bucket. A run whose target has since been deleted has no
+  // workload host left, and any provisioned agent can dial a bucket - so the
+  // artifact of a deleted app stays downloadable instead of becoming unreachable
+  // the moment the thing it backed up is gone.
+  const via =
+    destinationServerId(creds.destination, target.serverId ?? "") ||
+    (await anyBackupCapableServer());
+  if (!via)
+    throw new Error(
+      "No server on this instance can reach the destination this backup is kept in",
+    );
+  const opened = await openArtifactDownload(creds, via, run.objectKey, run.sha256 ?? "");
 
   // Recorded HERE, when the stream opens, not when it finishes — and worded for
   // that instant. The audit-relevant fact is that this person was handed the
@@ -997,7 +1085,43 @@ export async function downloadBackupArtifact(runId: string): Promise<{
     run.appId,
     teamId,
   );
-  return { filename: downloadFilename(label, run), ...opened };
+  return {
+    filename: downloadFilename(label, run),
+    sizeBytes: run.decryptedSizeBytes,
+    ...opened,
+  };
+}
+
+/**
+ * What a download needs to know about the run's target: what to call the file,
+ * and which host runs the thing it came from.
+ *
+ * Deliberately NOT `resolveTarget`: that one builds the full project descriptor,
+ * which dials the owning agent to read the live stack. A download needs a name
+ * and a server id, and paying for a round trip to get them would make every
+ * download wait on the very host it may not even be talking to.
+ *
+ * Both are best-effort. A run outlives its target (`app_id` / `database_id` are
+ * ON DELETE SET NULL), and an artifact whose app is gone is exactly the one
+ * somebody still wants.
+ */
+async function downloadTargetFor(
+  run: BackupRun,
+  teamId: string,
+): Promise<{ label: string; serverId: string | null }> {
+  if (run.targetKind === "database") {
+    if (!run.databaseId) return { label: "database", serverId: null };
+    const rows = await getDb()
+      .select({ name: databasesTable.name, serverId: databasesTable.serverId })
+      .from(databasesTable)
+      .where(
+        and(eq(databasesTable.id, run.databaseId), eq(databasesTable.teamId, teamId)),
+      )
+      .limit(1);
+    return { label: rows[0]?.name ?? "database", serverId: rows[0]?.serverId ?? null };
+  }
+  const app = run.appId ? await loadAppGraph(run.appId) : null;
+  return { label: app?.name ?? "app", serverId: app?.serverId ?? null };
 }
 
 /**
@@ -1105,6 +1229,315 @@ export async function restoreBackup(runId: string): Promise<void> {
     path: "/storage",
   });
   if (failure) throw new Error(failure);
+}
+
+/**
+ * Targets with an upload restore streaming into them right now.
+ *
+ * Two of these at once would untar into the same volumes while the other is
+ * wiping them, and neither would be the backup anyone asked for. The second
+ * caller is refused rather than queued: it is holding a file open in a browser,
+ * and "wait for the other one" is an answer it can act on. Same shape and same
+ * reasoning as `uploadsInFlight` in app/api/apps/[id]/upload/route.ts -
+ * sufficient because the control plane is a single Node process.
+ */
+const uploadRestoresInFlight = new Set<string>();
+
+/**
+ * The dumps this process is currently driving, by run id, so "Stop" can reach
+ * one that is already halfway through a 25 GB tar.
+ *
+ * Aborting the controller closes the agent connection, which cancels the gRPC
+ * call, which cancels the stream context the agent's own write loop checks - so
+ * the work actually stops ON THE HOST rather than being merely un-recorded here.
+ * That is the difference from `cancelDeployment`, which can only flag the row and
+ * let the build finish in the background: a backup's stream is one this process
+ * holds open, so it has the lever.
+ *
+ * MODULE-LEVEL and in-memory, the same shape and the same reasoning as
+ * `uploadRestoresInFlight`: the control plane is a single Node process. A run
+ * this process does not hold (it restarted, or another instance owns it) is
+ * still marked canceled - the record is the part that must always settle, and
+ * `reconcileInFlightBackupRuns` sweeps whatever is left.
+ */
+const backupRunsInFlight = new Map<string, AbortController>();
+
+/**
+ * Restore an app or a database from an artifact the operator UPLOADS, rather
+ * than from a run this instance recorded.
+ *
+ * This is the only recovery path that survives losing the control plane. Every
+ * other restore starts from a `backup_runs` row: it knows the destination, the
+ * object key and the digest. When the instance is gone, or the destination was
+ * deleted, those rows are gone too and the artifacts on the disk or in the
+ * bucket become unreachable through Deplo - which is exactly the moment a backup
+ * is supposed to be worth something.
+ *
+ * Everything that can refuse, refuses BEFORE the agent is dialed: the capability,
+ * the lock, and then the artifact itself (see {@link sniffArtifact} - the wrong
+ * file or the wrong key would otherwise be discovered after the stack is stopped
+ * and the volumes are wiped).
+ *
+ * The bytes never touch a disk on the way through. Encrypted uploads travel to
+ * the agent exactly as they arrived, with the operator's key alongside them; a
+ * PLAINTEXT upload - which is what Deplo's own Download hands out - is wrapped
+ * here with an EPHEMERAL age keypair that exists only for the length of this
+ * request, because the agent's RestoreFrom has no unencrypted mode.
+ *
+ * Returns the live event stream, so the caller can relay the agent's own log
+ * lines to whoever is watching. All the gates run before it, so a refusal is a
+ * thrown error the route can map to a status code, not a failed event. Abandoning
+ * the stream (`return()`) is the abort: it runs the same cleanup a finished
+ * restore does, which is what a browser closing mid-restore comes down to.
+ *
+ * `abandon()` is the SAME cleanup, reachable without the stream. It exists
+ * because an async generator that was never pulled runs no `finally` at all: a
+ * browser that goes away between this resolving and the response's first read
+ * would leave the restore running on the host with its lock held for the life of
+ * the process, the target parked on `restoring`, and - the part that actually
+ * matters - a destructive operation with no entry in the Activity trail.
+ * Idempotent, so the route can call both without settling twice.
+ */
+export async function prepareUploadRestore(input: {
+  kind: BackupTargetKind;
+  targetId: string;
+  /** The destination's recovery key. Ignored for a plaintext artifact; never
+   *  stored, never logged, never written to the Activity trail. */
+  recoveryKey: string;
+  body: ReadableStream<Uint8Array>;
+}): Promise<{
+  events: AsyncGenerator<RestoreEvent, void, unknown>;
+  abandon: () => Promise<void>;
+}> {
+  const { membership } = await requireMembership();
+  const teamId = membership.teamId;
+  // Resolved NOW, while the request context still exists. The generator below
+  // outlives the route handler that returns its Response, and `getCurrentUser()`
+  // reads cookies - asking for it at the end would ask outside the request.
+  const user = (await getCurrentUser())!;
+  const appId = input.kind === "app" ? input.targetId : null;
+  const databaseId = input.kind === "database" ? input.targetId : null;
+
+  // Same gate as restoring a recorded run, and for the same reason: this
+  // overwrites live data. For an app it also carries the folder grant.
+  await requireBackupCapability({ targetKind: input.kind, appId }, "restore_backups");
+
+  const noun = input.kind === "app" ? "app" : "database";
+  const lockKey = `${teamId} ${input.targetId}`;
+  if (uploadRestoresInFlight.has(lockKey))
+    throw new Error(
+      `A restore is already running for this ${noun} - wait for it to finish`,
+    );
+  uploadRestoresInFlight.add(lockKey);
+
+  let opened: Awaited<ReturnType<typeof openUploadRestore>> | null = null;
+  let target: ResolvedTarget;
+  try {
+    // The artifact is judged FIRST, before the target is even resolved: for an
+    // app that resolution already dials the owning agent (the descriptor carries
+    // the live stack), and a file that was never a backup should cost nobody a
+    // round trip, let alone reach a host.
+    //
+    // Buffer only the head, then hand the SAME reader to the pump: the bytes
+    // already read are re-emitted first and the rest streams straight through,
+    // so nothing is ever held in memory but this prefix.
+    const reader = input.body.getReader();
+    const head = await readUploadHead(reader);
+    const { encrypted } = await sniffArtifact(head, {
+      kind: input.kind,
+      recoveryKey: input.recoveryKey,
+    });
+
+    target = await resolveTarget(teamId, input.kind, databaseId, appId);
+
+    const blocked = uploadRestoreRefusal(target);
+    if (blocked) throw new Error(blocked);
+
+    const uploaded = uploadChunks(head, reader);
+    const wrapped = encrypted
+      ? { ageIdentity: input.recoveryKey.trim(), chunks: uploaded }
+      : await wrapPlaintextUpload(uploaded);
+
+    opened = await openUploadRestore(target, wrapped.ageIdentity, wrapped.chunks);
+    // Only once the agent has the request: a dial that fails must not leave an
+    // app parked on "restoring" with nothing running to move it off.
+    if (target.appId) await setAppStatus(target.appId, "restoring");
+  } catch (e) {
+    opened?.close();
+    uploadRestoresInFlight.delete(lockKey);
+    throw mapBackupUnsupported(e);
+  }
+
+  const agent = opened;
+  const resolved = target;
+  const INTERRUPTED = "the restore was interrupted before it finished";
+
+  // The bookkeeping every ending shares, run exactly once. Deliberately NOT
+  // inside the generator's `finally`: that only runs for a generator somebody
+  // pulled at least once, and the ending we most need to record - the browser
+  // vanishing - is also the one that may never pull.
+  let closed = false;
+  async function finish(problem: string | null): Promise<void> {
+    if (closed) return;
+    closed = true;
+    // An app left on "restoring" because nobody stayed to watch would never move
+    // off it again.
+    if (resolved.appId)
+      await setAppStatus(resolved.appId, problem ? "error" : "active");
+    await recordActivity(
+      "backup",
+      problem
+        ? `Restore of ${resolved.label} from an uploaded file failed: ${problem}`
+        : `Restored ${resolved.label} from an uploaded file`,
+      user.name,
+      resolved.appId,
+      teamId,
+    );
+    dispatchAlert({
+      teamId,
+      key: problem ? "restore_failed" : "restore_succeeded",
+      title: problem
+        ? `Restore of ${resolved.label} failed`
+        : `Restored ${resolved.label}`,
+      body: problem ?? "The data is back in place.",
+      path: "/storage",
+    });
+    agent.close();
+    uploadRestoresInFlight.delete(lockKey);
+  }
+
+  async function* relay(): AsyncGenerator<RestoreEvent, void, unknown> {
+    let failure: string | null = null;
+    let settled = false;
+    try {
+      try {
+        for await (const ev of agent.events) {
+          if (ev.result) {
+            settled = true;
+            if (!ev.result.ok)
+              failure = ev.result.error || "the agent reported a failed restore";
+          }
+          yield ev;
+        }
+        if (!settled) failure = "the agent ended the restore without a result";
+      } catch (e) {
+        failure = (mapBackupUnsupported(e) as Error).message;
+      }
+      // The agent yields its own failing result; this covers the cases where it
+      // never got to (a dropped connection, a stream that just ended), so the
+      // browser always reads a verdict as the last line.
+      if (failure && !settled) yield { result: { ok: false, error: failure } };
+    } finally {
+      await finish(failure ?? (settled ? null : INTERRUPTED));
+    }
+  }
+
+  return { events: relay(), abandon: () => finish(INTERRUPTED) };
+}
+
+/**
+ * Why an UPLOADED artifact must not be restored into this target, or null when
+ * it may proceed. Pure, so the rule it encodes can be read and tested on its own.
+ *
+ * NOT the security boundary - that is the `untrusted_config` flag the upload
+ * carries, which stops the agent taking compose, env or mounts out of an archive
+ * that came from outside the fleet at all. This is the second line, and it is
+ * here for a plainer reason: an app that was never deployed on its host has no
+ * stack, so there is no container and no volume for the data to land in. Better
+ * to say that than to accept the file, unpack it into nothing and report success.
+ *
+ * The descriptor's compose IS the stack file read off the host, which is why its
+ * emptiness is the test for "never deployed here".
+ */
+export function uploadRestoreRefusal(target: {
+  kind: BackupTargetKind;
+  project?: { composeYaml: string };
+}): string | null {
+  if (target.kind !== "app") return null;
+  if (target.project?.composeYaml) return null;
+  return (
+    "This app has never been deployed on its server, so there is no stack to " +
+    "restore into. Deploy it once, then restore the backup over it."
+  );
+}
+
+/**
+ * Read at most {@link SNIFF_HEAD_BYTES} from the upload, leaving the reader
+ * positioned for the rest. Short reads are normal - a whole artifact smaller
+ * than the head simply ends here.
+ */
+async function readUploadHead(
+  reader: ReadableStreamDefaultReader<Uint8Array>,
+): Promise<Buffer> {
+  const parts: Buffer[] = [];
+  let total = 0;
+  while (total < SNIFF_HEAD_BYTES) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    parts.push(Buffer.from(value));
+    total += value.length;
+  }
+  return Buffer.concat(parts);
+}
+
+/** The upload as the agent pump wants it: the sniffed head, then the remainder. */
+async function* uploadChunks(
+  head: Buffer,
+  reader: ReadableStreamDefaultReader<Uint8Array>,
+): AsyncGenerator<Buffer, void, unknown> {
+  try {
+    if (head.length > 0) yield head;
+    for (;;) {
+      const { done, value } = await reader.read();
+      if (done) return;
+      yield Buffer.from(value);
+    }
+  } finally {
+    // Whoever stops reading stops the upload. A restore that fails early (or an
+    // agent that drops) otherwise leaves the browser pushing gigabytes into a
+    // socket nobody drains; cancelling tears the request body down instead.
+    void reader.cancel().catch(() => {});
+  }
+}
+
+/**
+ * Wrap a plaintext upload for an agent that only restores encrypted artifacts.
+ *
+ * The keypair lives for this request and is never written anywhere: it is not a
+ * secret anyone has to keep, only the shape RestoreFrom insists on. Pull-based
+ * throughout, so the agent's flow control still paces the browser and the
+ * control plane holds one chunk at a time regardless of the file's size.
+ */
+async function wrapPlaintextUpload(source: AsyncIterable<Buffer>): Promise<{
+  ageIdentity: string;
+  chunks: AsyncIterable<Buffer>;
+}> {
+  const age = await import("age-encryption");
+  const identity = await age.generateX25519Identity();
+  const encrypter = new age.Encrypter();
+  encrypter.addRecipient(await age.identityToRecipient(identity));
+  const iterator = source[Symbol.asyncIterator]();
+  const encrypted = await encrypter.encrypt(
+    new ReadableStream<Uint8Array>({
+      async pull(controller) {
+        const next = await iterator.next();
+        if (next.done) controller.close();
+        else controller.enqueue(next.value);
+      },
+    }),
+  );
+  return { ageIdentity: identity, chunks: streamBuffers(encrypted) };
+}
+
+async function* streamBuffers(
+  stream: ReadableStream<Uint8Array>,
+): AsyncGenerator<Buffer, void, unknown> {
+  const reader = stream.getReader();
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (done) return;
+    yield Buffer.from(value);
+  }
 }
 
 /**
@@ -1216,6 +1649,158 @@ export async function deleteBackup(id: string): Promise<void> {
   await getDb()
     .delete(backupsTable)
     .where(and(eq(backupsTable.id, id), eq(backupsTable.teamId, teamId)));
+}
+
+/**
+ * Stop a backup that is running.
+ *
+ * Two things happen, and the ORDER is the point. The record is flipped first, as
+ * a compare-and-swap on `running`, so the answer is settled the moment the button
+ * is pressed and cannot be undone by the dump finishing a second later
+ * ({@link executeBackup}'s terminal write is the matching half). Then the dump
+ * itself is aborted, which closes the agent connection and cancels the stream
+ * context the agent's own write loop checks - so the tar stops and the upload
+ * stops, on the host, rather than running to completion into a bucket nobody
+ * wants it in.
+ *
+ * Gated on `manage_backups`, the capability whose own description is "create,
+ * edit, disable and RUN backup schedules on demand": stopping a dump you are
+ * allowed to start is the same power, and needing a second permission to undo
+ * your own click would be a trap rather than a safeguard. It destroys nothing -
+ * a canceled run produced no restore point - so it is not `delete_backups`.
+ *
+ * Returns whether a run was actually stopped: `false` when it had already
+ * finished, so the caller can avoid claiming otherwise.
+ */
+export async function cancelBackupRun(runId: string): Promise<boolean> {
+  const { membership } = await requireMembership();
+  const teamId = membership.teamId;
+  const user = (await getCurrentUser())!;
+
+  const runRows = await getDb()
+    .select()
+    .from(backupRunsTable)
+    .where(and(eq(backupRunsTable.id, runId), eq(backupRunsTable.teamId, teamId)))
+    .limit(1);
+  if (!runRows[0]) throw new Error("Backup not found");
+  const run = assembleBackupRun(runRows[0]);
+  await requireBackupCapability(run, "manage_backups");
+
+  // `running` is part of the WHERE, not just a pre-check: a dump that finished
+  // between the read above and this write must NOT be retroactively flipped from
+  // success to canceled - it produced a real artifact and a real restore point.
+  const stopped = await getDb()
+    .update(backupRunsTable)
+    .set({
+      status: "canceled",
+      error: `Canceled by ${user.name}`,
+      finishedAt: nowIso(),
+    })
+    .where(and(eq(backupRunsTable.id, runId), eq(backupRunsTable.status, "running")))
+    .returning({ id: backupRunsTable.id });
+  if (stopped.length === 0) return false;
+
+  // The schedule stops reading "Running" at once, rather than waiting out
+  // whatever the abort below takes to unwind.
+  if (run.backupId)
+    await getDb()
+      .update(backupsTable)
+      .set({ lastStatus: "canceled" })
+      .where(and(eq(backupsTable.id, run.backupId), eq(backupsTable.teamId, teamId)));
+
+  // Only this process can hold the stream. One that does not (it restarted, or
+  // another instance owns the run) still settles the record above, and
+  // `reconcileInFlightBackupRuns` sweeps whatever is left behind.
+  backupRunsInFlight.get(runId)?.abort();
+
+  const target = await downloadTargetFor(run, teamId);
+  await recordActivity(
+    "backup",
+    `Canceled a running backup of ${target.label}`,
+    user.name,
+    run.appId,
+    teamId,
+  );
+  return true;
+}
+
+/**
+ * Delete ONE backup, artifact and record together.
+ *
+ * The panel's per-row Delete, and the only way to retire a single restore point:
+ * everything else here is wholesale (retention thins a target's history,
+ * {@link deleteAllBackupArtifacts} runs when the target itself is deleted). An
+ * operator who took a bad backup, or one carrying data that should not have
+ * left, needs a way to remove exactly that one.
+ *
+ * Gated on `delete_backups`, its own capability and not `manage_backups`, for
+ * the reason it is its own capability: this is the one verb in the backup
+ * surface with no way back and nothing downstream to catch it. Scheduling a dump
+ * and destroying the last copy of one are not the same permission, and an admin
+ * handing out the first must not be handing out the second. An app's backup
+ * answers to the app's own grant (ADR-0016) exactly like every other action on
+ * it.
+ *
+ * The ORDER is the artifact first, the record second, and it is the same rule
+ * `pruneRetention` follows: a record dropped while its object survives is an
+ * orphan nothing can name any more - not the retention pass, not the sweep,
+ * which both start from the row. A delete that fails therefore keeps the row and
+ * says so.
+ *
+ * A `running` run is refused rather than deleted: its artifact does not exist
+ * yet, so there is nothing to remove, and taking the row away would let the dump
+ * land a file nothing on this instance could ever find.
+ */
+export async function deleteBackupRun(runId: string): Promise<void> {
+  const { membership } = await requireMembership();
+  const teamId = membership.teamId;
+  const user = (await getCurrentUser())!;
+
+  const runRows = await getDb()
+    .select()
+    .from(backupRunsTable)
+    .where(and(eq(backupRunsTable.id, runId), eq(backupRunsTable.teamId, teamId)))
+    .limit(1);
+  if (!runRows[0]) throw new Error("Backup not found");
+  const run = assembleBackupRun(runRows[0]);
+  await requireBackupCapability(run, "delete_backups");
+  if (run.status === "running")
+    throw new Error("This backup is still running - wait for it to finish");
+
+  const target = await downloadTargetFor(run, teamId);
+  // Only a successful run owns a file. A failed one never wrote anything, so its
+  // record goes on its own with nothing to delete first.
+  if (run.objectKey && run.status === "success") {
+    const creds = await getDestinationWithSecretsForTeam(teamId, run.destinationId);
+    // The DESTINATION decides which agent holds the bytes, never the workload's
+    // host: an artifact on another server's disk would otherwise be looked for on
+    // the app's own, come back "no such file", and leave the file behind while
+    // the record disappeared.
+    const via =
+      destinationServerId(creds.destination, target.serverId ?? "") ||
+      (await anyBackupCapableServer());
+    if (!via)
+      throw new Error(
+        "No server on this instance can reach the destination this backup is kept in",
+      );
+    const res = await deleteFromDestination(creds, via, run.objectKey);
+    // The agent resolves `ok:false` rather than throwing for a destination-side
+    // refusal, so both shapes have to be checked or a failure reads as success.
+    if (!res.ok)
+      throw new Error(res.error || "The backup file could not be deleted.");
+  }
+
+  await getDb()
+    .delete(backupRunsTable)
+    .where(and(eq(backupRunsTable.id, runId), eq(backupRunsTable.teamId, teamId)));
+
+  await recordActivity(
+    "backup",
+    `Deleted a backup of ${target.label} from ${formatBytes(run.sizeBytes)}`,
+    user.name,
+    run.appId,
+    teamId,
+  );
 }
 
 /**

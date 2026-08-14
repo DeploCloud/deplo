@@ -11,7 +11,12 @@ import {
   storeTargetFor,
   type DestinationWithSecrets,
 } from "./destinations";
-import { BackupKind, type BackupRequest, type RestoreRequest } from "../agent/gen/agent";
+import {
+  BackupKind,
+  type BackupRequest,
+  type RestoreEvent,
+  type RestoreRequest,
+} from "../agent/gen/agent";
 import type { DatabaseDescriptor, ProjectDescriptor } from "../agent/gen/agent";
 import type { BackupDestination, BackupTargetKind } from "../types";
 import { parseS3Args } from "../backups/s3-args";
@@ -51,6 +56,14 @@ export interface BackupOutcome {
   error: string;
   objectKey: string;
   sizeBytes: number;
+  /**
+   * The artifact's size with its age layer off — what a download delivers, so
+   * what its Content-Length must be. Always the SOURCE agent's number, on every
+   * shape including a relay: the destination only ever sees ciphertext, so it is
+   * the one half of a relay that cannot answer this. 0 from an agent that
+   * predates the field, and the run then records null.
+   */
+  decryptedSizeBytes: number;
   /**
    * Hex sha256 of the artifact as written. Recorded on the run and re-checked
    * before a restore ever acts on those bytes, because an artifact is not
@@ -98,6 +111,14 @@ export async function backupToDestination(
   creds: DestinationWithSecrets,
   target: TransportTarget,
   objectKey: string,
+  /**
+   * Abort the dump WHERE IT RUNS. Closing the connection cancels the gRPC call,
+   * which cancels the agent's stream context, which is what the agent's own
+   * write loop checks - so the tar stops, the upload stops, and a multi-GB dump
+   * nobody wants any more stops costing disk and bandwidth. Without it a "cancel"
+   * could only mark the record and let the host finish the work regardless.
+   */
+  signal?: AbortSignal,
 ): Promise<BackupOutcome> {
   const dest = creds.destination;
   const destServer = destinationServerId(dest, target.serverId);
@@ -122,15 +143,40 @@ export async function backupToDestination(
       encryptedS3: dest.kind === "s3" && !!dest.ageRecipient,
       s3Args: hasS3Args(dest),
     });
+    const release = abortWith(signal, conn);
     try {
       return await consumeBackup(conn, req, objectKey);
     } finally {
+      release();
       conn.close();
     }
   }
 
   // Shape 3: relay. Two connections, one pipe, backpressure end to end.
-  return relayBackup(creds, target, objectKey, destServer, req);
+  return relayBackup(creds, target, objectKey, destServer, req, signal);
+}
+
+/**
+ * Close `conn` if `signal` aborts, and hand back the undo.
+ *
+ * The undo matters: a connection outlives its listener here (one relay holds
+ * two), and a signal left holding a reference to a closed connection is how a
+ * long-lived AbortController turns into a leak.
+ */
+function abortWith(
+  signal: AbortSignal | undefined,
+  ...conns: { close: () => void }[]
+): () => void {
+  if (!signal) return () => {};
+  const stop = () => {
+    for (const c of conns) c.close();
+  };
+  if (signal.aborted) {
+    stop();
+    return () => {};
+  }
+  signal.addEventListener("abort", stop, { once: true });
+  return () => signal.removeEventListener("abort", stop);
 }
 
 /** Drain a Backup stream and fold its terminal result into a {@link BackupOutcome}. */
@@ -147,6 +193,7 @@ async function consumeBackup(
         error: ev.result.error,
         objectKey: ev.result.objectKey || objectKey,
         sizeBytes: Number(ev.result.sizeBytes ?? 0),
+        decryptedSizeBytes: Number(ev.result.decryptedSizeBytes ?? 0),
         sha256: ev.result.sha256 ?? "",
       };
     }
@@ -157,6 +204,7 @@ async function consumeBackup(
       error: "the agent ended the backup without a result",
       objectKey,
       sizeBytes: 0,
+      decryptedSizeBytes: 0,
       sha256: "",
     }
   );
@@ -193,6 +241,7 @@ async function relayBackup(
   objectKey: string,
   destServer: string,
   base: BackupRequest,
+  signal?: AbortSignal,
 ): Promise<BackupOutcome> {
   const dest = creds.destination;
   // `store: true` even though the SOURCE writes nothing: `stream_out` is part of
@@ -204,8 +253,15 @@ async function relayBackup(
   // into.
   const src = await connectBackupAgent(target.serverId, { store: true });
   let sink: AgentConnection | null = null;
+  // Registered per connection as each opens, so a cancel between the two dials
+  // still stops the one that is already running.
+  let release = abortWith(signal, src);
   try {
     sink = await connectBackupAgent(destServer, { store: true });
+    // Both halves now, so a cancel tears down the whole pipe rather than leaving
+    // the destination waiting on a source that has stopped sending.
+    release();
+    release = abortWith(signal, src, sink);
     // A box rather than a bare `let`: the assignment happens inside the
     // generator's closure, which TypeScript cannot see, so a `let` would narrow
     // to `never` at every read below.
@@ -232,6 +288,7 @@ async function relayBackup(
             error: ev.result.error,
             objectKey,
             sizeBytes: Number(ev.result.sizeBytes ?? 0),
+            decryptedSizeBytes: Number(ev.result.decryptedSizeBytes ?? 0),
             sha256: ev.result.sha256 ?? "",
           };
           if (!ev.result.ok) throw new RelayAborted();
@@ -255,6 +312,7 @@ async function relayBackup(
           error: "the agent ended the backup without a result",
           objectKey,
           sizeBytes: 0,
+          decryptedSizeBytes: 0,
           sha256: "",
         }
       );
@@ -267,6 +325,7 @@ async function relayBackup(
         error: "the agent ended the backup without a result",
         objectKey,
         sizeBytes: 0,
+        decryptedSizeBytes: 0,
         sha256: "",
       };
     }
@@ -277,6 +336,7 @@ async function relayBackup(
         error: landed.error || "the destination server rejected the backup",
         objectKey,
         sizeBytes: 0,
+        decryptedSizeBytes: 0,
         sha256: "",
       };
     }
@@ -299,18 +359,30 @@ async function relayBackup(
             `${e instanceof Error ? e.message : String(e)}`,
         );
       }
-      return { ok: false, error: mismatch, objectKey, sizeBytes: 0, sha256: "" };
+      return {
+        ok: false,
+        error: mismatch,
+        objectKey,
+        sizeBytes: 0,
+        decryptedSizeBytes: 0,
+        sha256: "",
+      };
     }
     return {
       ok: true,
       error: "",
       objectKey,
       sizeBytes: landed.bytesWritten,
+      // The SOURCE's, unlike the two above: the destination was handed
+      // ciphertext and never saw the artifact inside it, so it has no opinion on
+      // how big that is.
+      decryptedSizeBytes: produced.decryptedSizeBytes,
       // The DESTINATION's digest is the one recorded: it is what that disk
       // actually fsynced, and it is what a later restore reads back.
       sha256: landed.sha256 || produced.sha256,
     };
   } finally {
+    release();
     sink?.close();
     src.close();
   }
@@ -371,7 +443,7 @@ export async function restoreFromDestination(
     // Verbatim (no identity here): the ciphertext crosses this process and is
     // decrypted inside the workload's agent, which is the only place that needs
     // to see plaintext.
-    const bytes = src.readStoreFile(storeTargetFor(dest, objectKey));
+    const bytes = src.readStoreFile({ store: storeTargetFor(dest, objectKey) });
     return await consumeRestore(
       workload.restoreFrom(
         {
@@ -380,6 +452,10 @@ export async function restoreFromDestination(
           project: target.project,
           ageIdentity: creds.ageIdentity,
           expectedSha256,
+          // FALSE, and deliberately: this artifact is one Deplo wrote, carried
+          // between two hosts of its own fleet, with the digest to prove it. Its
+          // configuration snapshot is the whole point of restoring from it.
+          untrustedConfig: false,
         },
         bytes,
       ),
@@ -388,6 +464,60 @@ export async function restoreFromDestination(
     workload?.close();
     src.close();
   }
+}
+
+/**
+ * Restore from an artifact that has no destination at all: the operator is
+ * uploading it, and the bytes arrive from their browser.
+ *
+ * The FOURTH shape, and the only one whose source is outside the fleet. It is
+ * the cross-host branch above with the source agent removed - same RPC, same
+ * capability gate, same reason (staging the artifact on the host being restored
+ * would need a full artifact's worth of free space on exactly the machine that
+ * is already in trouble).
+ *
+ * `expectedSha256` is empty and CANNOT be otherwise: nobody recorded a digest
+ * for these bytes, and hashing what we were just handed would prove nothing.
+ * The agent knows what that means - for an app it keeps the control plane's own
+ * stack configuration instead of the archive's, which is the right answer for an
+ * artifact that arrived as untrusted input.
+ *
+ * Returns the LIVE event stream (the caller relays it to the browser) plus the
+ * connection's `close` - the caller owns both, exactly like
+ * {@link openArtifactDownload}.
+ */
+export async function openUploadRestore(
+  target: TransportTarget,
+  /** The identity the artifact is encrypted to: the operator's recovery key, or
+   *  an ephemeral one when the control plane wrapped a plaintext upload. */
+  ageIdentity: string,
+  chunks: AsyncIterable<Buffer>,
+): Promise<{
+  events: AsyncGenerator<RestoreEvent, void, unknown>;
+  close: () => void;
+}> {
+  const conn = await connectBackupAgent(target.serverId, {
+    store: true,
+    untrustedConfig: true,
+  });
+  return {
+    events: conn.restoreFrom(
+      {
+        kind: wireKind(target.kind),
+        database: target.database,
+        project: target.project,
+        ageIdentity,
+        expectedSha256: "",
+        // The bytes came from outside the fleet, so nothing in them configures
+        // what comes back up: only the DATA is restored. Without this the agent
+        // would fall back to the archive's compose/env whenever this side sent
+        // none, which is the uploader choosing what `docker compose up` runs.
+        untrustedConfig: true,
+      },
+      chunks,
+    ),
+    close: () => conn.close(),
+  };
 }
 
 async function consumeRestore(
@@ -467,9 +597,12 @@ export async function deleteManyFromDestination(
 /**
  * Stream one artifact out DECRYPTED, for the download route.
  *
- * Store destinations only: an S3 artifact would mean pulling it out of the
- * bucket and back through here, doubling the transfer to serve a file the user
- * can already fetch from their own bucket.
+ * BOTH destination kinds, and that is the point. A bucket artifact used to be
+ * refused here, on the reasoning that the operator could fetch the object with
+ * their own S3 credentials and decrypt it themselves. That is a shell answer to
+ * a panel question, and it made the Download button dead for anyone whose
+ * backups live in a bucket - which is the default shape of a destination someone
+ * brings from outside the fleet.
  *
  * The agent decrypts, not the control plane, because age is a STREAM — the agent
  * does it chunk by chunk at constant memory, while doing it here would mean
@@ -478,18 +611,31 @@ export async function deleteManyFromDestination(
  */
 export async function openArtifactDownload(
   creds: DestinationWithSecrets,
+  /** Which agent fetches it: the destination's own host for a store, and a host
+   *  that can dial the bucket for S3 (see {@link destinationServerId}). */
+  viaServerId: string,
   objectKey: string,
-  /** The digest recorded for this artifact. The agent hashes the file before it
-   *  streams a byte, so a replaced file is refused rather than handed over. */
+  /** The digest recorded for this artifact. A STORE artifact is hashed before a
+   *  byte leaves, so a replaced file is refused outright; a BUCKET object can
+   *  only be hashed as it goes past, so a mismatch ends the stream in an error
+   *  after bytes have arrived. Both refuse; only one can refuse in time. */
   expectedSha256 = "",
 ): Promise<{ chunks: AsyncGenerator<Buffer, void, unknown>; close: () => void }> {
   const dest = creds.destination;
-  if (dest.kind !== "server" || !dest.serverId)
-    throw new Error("Only backups stored on a server can be downloaded");
-  const conn = await connectBackupAgent(dest.serverId, { store: true });
+  const store = dest.kind === "server";
+  // The agent decrypts on the way out (that is what `ageIdentity` asks for), so
+  // what reaches the browser is the .tar.gz / .dump.gz itself. An old S3
+  // destination has no keypair and its objects really are plaintext: the identity
+  // is empty and the agent skips the age layer, exactly as a restore does.
+  const conn = await connectBackupAgent(viaServerId, {
+    store,
+    s3Read: !store,
+  });
   return {
     chunks: conn.readStoreFile(
-      storeTargetFor(dest, objectKey),
+      store
+        ? { store: storeTargetFor(dest, objectKey) }
+        : { s3: s3TargetFor(creds, objectKey) },
       creds.ageIdentity,
       expectedSha256,
     ),

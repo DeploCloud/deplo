@@ -35,14 +35,21 @@ export default async function DatabaseBackupsPage(
   // Same lazy default as the Storage page: a database's Backups tab should not
   // be the place someone discovers they have nowhere to put a backup.
   await ensureDefaultDestination();
-  const [allBackups, runs, destinations, canRestore, canTestDestinations] =
-    await Promise.all([
-      listBackups(),
-      listBackupRuns({ databaseId: db.id }),
-      listDestinationOptions(),
-      hasCapability("restore_backups"),
-      hasCapability("manage_backup_destinations"),
-    ]);
+  const [
+    allBackups,
+    runs,
+    destinations,
+    canRestore,
+    canDelete,
+    canTestDestinations,
+  ] = await Promise.all([
+    listBackups(),
+    listBackupRuns({ databaseId: db.id }),
+    listDestinationOptions(),
+    hasCapability("restore_backups"),
+    hasCapability("delete_backups"),
+    hasCapability("manage_backup_destinations"),
+  ]);
   // Only this database's schedules — listBackups returns the whole team's.
   const schedules = allBackups.filter(
     (b) => b.targetKind === "database" && b.databaseId === db.id,
@@ -66,6 +73,7 @@ export default async function DatabaseBackupsPage(
         destinations={destinations}
         canManage
         canRestore={canRestore}
+        canDelete={canDelete}
         canTestDestinations={canTestDestinations}
       />
     </div>

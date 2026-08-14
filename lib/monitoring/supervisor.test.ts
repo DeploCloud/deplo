@@ -162,6 +162,7 @@ function hello(over: Partial<HelloResponse> = {}): HelloResponse {
     dockerVersion: "27",
     capabilities: ["metrics-stream", "container-stats"],
     traefikRunning: true,
+    hostArch: "amd64",
     ...over,
   };
 }

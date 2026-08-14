@@ -183,6 +183,36 @@ export function usesComposeStack(project: {
 }
 
 /**
+ * Whether an App's deploys MINT AN IMAGE Deplo owns - the one condition a
+ * Rollback rests on, and the mirror of the branch `runDeployment` takes.
+ *
+ * True only for a source Deplo builds: a repository or an uploaded archive. A
+ * compose stack has no single image (each service brings its own), and a prebuilt
+ * `docker-image` source is a mutable registry tag with nothing pinned behind it,
+ * so "back" would land on whatever that tag points at today.
+ *
+ * It has to be asked of the app AS IT IS NOW, not of the deployment: an app that
+ * used to build from git and has since been switched to a compose stack still has
+ * old rows carrying an `image_ref`, and `runDeployment` would take its compose
+ * branch and quietly redeploy the current stack while the row claimed to be a
+ * rollback. One predicate, shared by the list, the detail page and the gate, so
+ * none of the three can offer what the pipeline would not honour.
+ */
+export function appBuildsItsOwnImage(project: {
+  source: string;
+  compose: string | null;
+  repo: unknown | null;
+  dockerImage: string | null;
+}): boolean {
+  if (usesComposeStack(project)) return false;
+  return (
+    project.source === "github" ||
+    project.source === "git" ||
+    project.source === "upload"
+  );
+}
+
+/**
  * What KIND of thing an App is, in one short human phrase — the contextual
  * subtitle its management header falls back to when the App has no domain
  * linked (and therefore no URL to show in that slot). Deliberately coarse: it

@@ -8,7 +8,9 @@ import {
   GitBranch,
   Trash2,
   CircleStop,
+  Hammer,
   Server,
+  Undo2,
   ListFilter,
   ArrowUpDown,
   ChevronLeft,
@@ -191,6 +193,9 @@ export interface DeploymentRow {
   serverId?: string | null;
   /** Owning server name — present on the global page (for the Server column). */
   serverName?: string | null;
+  /** The server this deploy BUILT on, when that was not the owning one. Null for
+   *  the ordinary "built where it runs", which is what almost every row is. */
+  buildServerName?: string | null;
   commitMessage: string;
   commitSha: string;
   commitUrl: string | null;
@@ -204,6 +209,12 @@ export interface DeploymentRow {
   createdAt: string;
   creator: string;
   url: string;
+  /** The app can be put back on this deployment - the SERVER's answer (whether
+   *  its image is still on the host), never re-derived in the browser. */
+  canRollback?: boolean;
+  /** This deployment WAS a rollback: it re-ran an older build's image rather than
+   *  producing one. Shown as a badge so the history says what happened. */
+  rollbackOf?: string | null;
 }
 
 /**
@@ -234,6 +245,7 @@ export function DeploymentsTable({
   showServer = false,
   scopeAppId,
   canManage,
+  canRollbackApps = false,
 }: {
   deployments: DeploymentRow[];
   /** Title/subtitle block rendered on the left of the header row, opposite the
@@ -247,6 +259,10 @@ export function DeploymentsTable({
   scopeAppId?: string;
   /** Whether to show the delete affordances (cosmetic — server re-checks). */
   canManage: boolean;
+  /** Whether the viewer holds `rollback_apps`. Its own permission, so it is its
+   *  own prop: the Rollback item greys out rather than vanishing, and the data
+   *  layer re-checks it either way. */
+  canRollbackApps?: boolean;
 }) {
   const router = useRouter();
   const [selected, setSelected] = React.useState<Set<string>>(() => new Set());
@@ -806,11 +822,25 @@ export function DeploymentsTable({
                       >
                         {d.commitMessage}
                       </Link>
-                      <CommitLink
-                        sha={d.commitSha}
-                        url={d.commitUrl}
-                        className="font-mono text-xs text-muted-foreground"
-                      />
+                      <span className="flex items-center gap-1.5">
+                        <CommitLink
+                          sha={d.commitSha}
+                          url={d.commitUrl}
+                          className="font-mono text-xs text-muted-foreground"
+                        />
+                        {/* This build did not produce its code - it went BACK to
+                            it. Without the badge the row is indistinguishable
+                            from the original deploy of the same commit, which is
+                            exactly the question the history gets asked. */}
+                        {d.rollbackOf ? (
+                          <SimpleTooltip content="This deployment put the app back on an earlier build">
+                            <Badge variant="outline" className="gap-1 px-1.5 py-0 text-xs font-normal">
+                              <Undo2 className="size-3" />
+                              Rollback
+                            </Badge>
+                          </SimpleTooltip>
+                        ) : null}
+                      </span>
                     </TableCell>
 
                     {showApp && (
@@ -832,10 +862,27 @@ export function DeploymentsTable({
                     {showServer && (
                       <TableCell>
                         {d.serverName ? (
-                          <span className="flex items-center gap-1.5 text-muted-foreground">
-                            <Server className="size-3.5 shrink-0" />
-                            <span className="truncate">{d.serverName}</span>
-                          </span>
+                          // The BUILD server rides in the tooltip rather than a
+                          // column of its own: it is null for almost every row,
+                          // and a mostly-empty column is a worse way to say
+                          // "this one is different" than a mark on the one cell
+                          // that already names a host.
+                          <SimpleTooltip
+                            content={
+                              d.buildServerName
+                                ? `Built on ${d.buildServerName}, then released here`
+                                : `Built and released on ${d.serverName}`
+                            }
+                          >
+                            <span className="flex items-center gap-1.5 text-muted-foreground">
+                              {d.buildServerName ? (
+                                <Hammer className="size-3.5 shrink-0" />
+                              ) : (
+                                <Server className="size-3.5 shrink-0" />
+                              )}
+                              <span className="truncate">{d.serverName}</span>
+                            </span>
+                          </SimpleTooltip>
                         ) : (
                           <span className="text-muted-foreground">—</span>
                         )}
@@ -893,6 +940,10 @@ export function DeploymentsTable({
                         pullRequestUrl={d.pullRequestUrl}
                         canDelete={canManage}
                         canDeploy={canManage}
+                        canRollback={d.canRollback}
+                        canRollbackApps={canRollbackApps}
+                        commitSha={d.commitSha}
+                        commitMessage={d.commitMessage}
                       />
                     </TableCell>
                   </TableRow>

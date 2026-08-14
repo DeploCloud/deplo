@@ -36,6 +36,7 @@ enum ActivityType {
   deployment
   domain
   env
+  mcp
   member
   monitoring
   project
@@ -62,6 +63,7 @@ Register a remote server. Provisioned by a call-home bootstrap (no SSH-in): you 
 """
 input AddServerInput {
   allTeams: Boolean
+  buildOnly: Boolean
   host: String!
   name: String!
   storageOnly: Boolean
@@ -110,6 +112,11 @@ type ApiToken {
   instanceAdmin: Boolean
   lastUsedAt: String
   name: String
+
+  """
+  Set when this token was minted by connecting an AI client over OAuth rather than from the tokens page. Such a token is managed under Settings → MCP Server and is not edited by hand.
+  """
+  oauthClientName: String
   prefix: String
 
   """
@@ -129,6 +136,16 @@ type ApiToken {
 """A deployable application owned by a team."""
 type App {
   autoDeploy: Boolean
+
+  """
+  Build on this app's own server when the build server cannot be reached, saying so in the deploy log. True by default. False fails the deploy instead, for whoever chose a small deploy server on purpose.
+  """
+  buildFallbackLocal: Boolean
+
+  """
+  The server that BUILDS this app's image, when that is not `serverId`. Null is Automatic: a build-only server if the fleet has one this team can reach and its architecture matches, otherwise build where the app runs. Setting it to `serverId` means 'always build on this app's own server'. Ignored by a compose stack and a docker-image source, neither of which Deplo builds.
+  """
+  buildServerId: ID
   compose: String
 
   """
@@ -172,6 +189,11 @@ type App {
   Per-app resource caps applied at deploy time, or null when the app has no limits set.
   """
   resources: ResourceLimits
+
+  """
+  How many previous deployments this app can be rolled back to (0-20, default 3). Retention: its server keeps this many of the app's images behind the running one. 0 means there is nothing to go back to.
+  """
+  rollbackKeep: Int
   serverId: ID
   slug: String
   source: DeploySource
@@ -537,12 +559,14 @@ type BackupRun {
 }
 
 enum BackupRunStatus {
+  canceled
   failed
   running
   success
 }
 
 enum BackupStatus {
+  canceled
   failed
   never
   running
@@ -589,6 +613,21 @@ input BuildConfigInput {
   startCommand: String
 }
 
+"""One entry in the 'Build on' picker: a host this team may compile on."""
+type BuildServerChoice {
+  """
+  True for a host dedicated to building (it runs no apps). False for an ordinary server that would build for this app in addition to hosting its own.
+  """
+  buildOnly: Boolean
+
+  """
+  Its CPU architecture ("amd64" | "arm64"), or "" when the agent is too old to report one. An image only runs on a host of the same architecture, so a choice whose arch differs from the app's server must be disabled rather than offered.
+  """
+  hostArch: String
+  id: ID
+  name: String
+}
+
 """
 A lifecycle action run over every app in a folder or project: start, stop, or restart (stop then start).
 """
@@ -617,11 +656,12 @@ enum Capability {
   create_folders
   create_projects
   delete_apps
+  delete_backups
   delete_databases
   delete_folders
   delete_projects
   delete_team
-  deploy @deprecated(reason: "Split into finer permissions. Still accepted on input, where it means: create_apps, deploy_apps, control_apps, configure_apps, delete_apps, move_apps, open_app_console, manage_previews, manage_crons, create_folders, organize_folders, delete_folders, create_projects, organize_projects, delete_projects, manage_environments.")
+  deploy @deprecated(reason: "Split into finer permissions. Still accepted on input, where it means: create_apps, deploy_apps, rollback_apps, control_apps, configure_apps, delete_apps, move_apps, open_app_console, manage_previews, manage_crons, create_folders, organize_folders, delete_folders, create_projects, organize_projects, delete_projects, manage_environments.")
   deploy_apps
   manage_backup_destinations
   manage_backups
@@ -632,7 +672,8 @@ enum Capability {
   manage_environments
   manage_files @deprecated(reason: "Split into finer permissions. Still accepted on input, where it means: read_app_files, write_app_files.")
   manage_git
-  manage_infra @deprecated(reason: "Split into finer permissions. Still accepted on input, where it means: create_databases, configure_databases, control_databases, delete_databases, open_database_console, manage_backups, restore_backups, manage_backup_destinations, manage_registries, manage_git, manage_tokens, manage_notifications, manage_monitoring.")
+  manage_infra @deprecated(reason: "Split into finer permissions. Still accepted on input, where it means: create_databases, configure_databases, control_databases, delete_databases, open_database_console, manage_backups, restore_backups, delete_backups, manage_backup_destinations, manage_registries, manage_git, manage_tokens, manage_mcp, manage_notifications, manage_monitoring.")
+  manage_mcp
   manage_members
   manage_monitoring
   manage_notifications
@@ -650,6 +691,7 @@ enum Capability {
   read_app_files
   restore_backups
   reveal_secrets
+  rollback_apps
   view
   view_activity
   view_logs
@@ -1175,6 +1217,11 @@ type Deployment {
   appId: ID
   branch: String
   buildDurationMs: Int
+
+  """
+  This app can be put back on this deployment: it succeeded, it built an image, that image is still on the app's current server, and it is not the one already running.
+  """
+  canRollback: Boolean
   commitAuthor: String
   commitMessage: String
   commitSha: String
@@ -1206,6 +1253,11 @@ type Deployment {
   """
   queuePosition: Int
   readyAt: String
+
+  """
+  Set when this deploy was a rollback: the deployment whose image it re-ran. Null when it built its own.
+  """
+  rollbackOf: ID
 
   """
   When the build was claimed off the queue and started running — the origin `buildDurationMs` is measured from, and what a live build timer counts up from. Null while still queued.
@@ -1274,7 +1326,9 @@ type DockerCleanupPolicy {
   """
   excludedServerIds: [String!]
 
-  """unused_app_images only: how many of the newest images to keep per app."""
+  """
+  unused_app_images only: how many of the newest images to keep for an app that CANNOT be rolled back - a compose stack, a prebuilt image, a pull request preview. An app Deplo builds is governed by its own `App.rollbackKeep` instead, which the sweep sends per app.
+  """
   keepImagesPerApp: Int
 
   """Only reclaim objects older than this. 0 = no age filter."""
@@ -1336,7 +1390,7 @@ enum DockerCleanupRunStatus {
 }
 
 """
-A class of Docker object a cleanup may reclaim. build_cache = the daemon's BuildKit cache. dangling_images = untagged layers (never `-a`). orphan_buildkit_cache = dangling volumes proven to be abandoned buildkitd stores. unused_app_images = old app images no container references, bounded by keepImagesPerApp (Deplo pushes to no registry, so a removed image comes back only by a rebuild — the newest image per app always survives). All four are on by default.
+A class of Docker object a cleanup may reclaim. build_cache = the daemon's BuildKit cache. dangling_images = untagged layers (never `-a`). orphan_buildkit_cache = dangling volumes proven to be abandoned buildkitd stores. unused_app_images = old app images no container references, bounded per app by that app's `rollbackKeep` (falling back to keepImagesPerApp where a rollback is impossible). Deplo pushes to no registry, so a removed image comes back only by a rebuild - the newest image per app always survives. All four are on by default.
 """
 enum DockerCleanupScope {
   build_cache
@@ -1819,6 +1873,34 @@ type LogsInfo {
   unreachable: Boolean
 }
 
+"""
+An AI client connected to this team over OAuth. It holds an ordinary API token, minted when someone approved the consent screen — so `id` is that token's id, and revoking it is `revokeToken`.
+"""
+type McpConnection {
+  capabilities: [String!]
+  clientIcon: String
+  clientName: String
+  clientUri: String
+  createdAt: String
+  id: ID
+  lastUsedAt: String
+
+  """
+  Where this client may be redirected back to. The one thing about itself it cannot choose freely, unlike its name.
+  """
+  redirectOrigin: String
+  teamId: ID
+  teamName: String
+  username: String
+}
+
+"""
+The active team's MCP policy: whether AI agents may drive it at all. What an agent may DO is decided by its API token's capabilities, and by nothing here.
+"""
+type McpSettings {
+  enabled: Boolean
+}
+
 """A user's membership in the active team (no email exposed)."""
 type Member {
   avatarColor: String
@@ -1900,6 +1982,23 @@ type Mutation {
   approvePreview(id: ID!): AppPreview
 
   """
+  Approve an AI client: mint an API token with the chosen capabilities and scope, and link it to the client. Also needs `manage_tokens`, and cannot grant more than the approver holds. The OAuth handshake itself is then finished by the browser posting to `/api/auth/oauth2/consent` — that endpoint refuses a server-side call, so it cannot be done here. `teamIds` names the teams the connection may work in — the team it is created from is always included, and each one is gated in that team.
+  """
+  authorizeMcpClient(
+    appIds: [String!]
+    capabilities: [String!]
+    clientId: String!
+
+    """
+    The team the consent screen showed. Not a choice — the server takes the team from the session — but a disagreement is refused rather than connecting the client to a team nobody read.
+    """
+    expectedTeamId: String
+    folderIds: [String!]
+    projectIds: [String!]
+    teamIds: [String!]
+  ): Boolean
+
+  """
   Start, stop or restart EVERY app in one folder (its whole subtree) or one project (every environment). Gated again per app, so it only touches the ones the caller may control; one failure never stops the rest. Give exactly one of folderId / projectId.
   """
   bulkAppAction(action: BulkAppAction!, folderId: ID, projectId: ID): BulkAppActionResult
@@ -1913,6 +2012,11 @@ type Mutation {
   Cancel every in-progress deployment (queued/building) for one app (appId given) or across the whole active team (appId omitted), optionally narrowed to the deployments view filters: one owning server (serverId), one environment, and/or one status. Terminal deployments are left. Returns how many builds were stopped.
   """
   cancelAllDeployments(appId: ID, environment: String, serverId: ID, status: String): Int
+
+  """
+  Stop a backup that is running: the record settles as canceled and the dump is aborted on the host it runs on. Returns false when it had already finished.
+  """
+  cancelBackupRun(runId: String!): Boolean
 
   """Stop a run that is in flight."""
   cancelCronRun(id: ID!): Boolean
@@ -2028,14 +2132,16 @@ type Mutation {
   """
   deleteAllDeployments(appId: ID, environment: String, serverId: ID, status: String): Int
 
-  """Delete the app and tear down its stack. Returns true."""
+  """
+  Delete the app. Returns as soon as the deletion is RECORDED — from that moment the app is refused by every gate and gone from the product — and the stack teardown finishes on the host behind the response.
+  """
   deleteApp(id: String!): Boolean
 
   """Delete a file or folder (recursively). Returns true."""
   deleteAppFile(appId: String!, path: String!): Boolean
 
   """
-  Bulk-delete several apps (bounded-concurrency teardown + one write). Returns how many were deleted.
+  Bulk-delete several apps. Returns how many were recorded as deleted; the bounded-concurrency teardown runs behind the response.
   """
   deleteApps(ids: [ID!]!): Int
 
@@ -2046,6 +2152,11 @@ type Mutation {
   Delete ALL of a target's backup artifacts (across every destination it ran to) plus their run records. The 'also delete backups' branch of deleting a database or an app. Returns the number removed. Throws if any destination's sweep failed, so the caller can abort the target deletion rather than orphan the files.
   """
   deleteBackupArtifacts(targetId: String!, targetKind: BackupTargetKind!): Int
+
+  """
+  Permanently delete ONE backup: the artifact at its destination and the run record together. Not the schedule (see deleteBackup) and not the target's whole history (see deleteBackupArtifacts). Returns true.
+  """
+  deleteBackupRun(runId: String!): Boolean
 
   """Delete a job and its run history."""
   deleteCronJob(id: ID!): Boolean
@@ -2392,6 +2503,11 @@ type Mutation {
   revokeToken(id: String!): Boolean
 
   """
+  Put an app back on a previous deployment by re-running the image that build left on the server - no clone, no rebuild, no pull. Only a successful production deployment of an app Deplo builds (a repository or an uploaded archive), still inside the app's rollback retention and on the app's current server, can be rolled back to; ask for `canRollback` on the deployment to know. The code goes back and NOTHING ELSE does: the stack is rendered from the app's current variables, domains, volumes and resource limits. Returns the new deployment.
+  """
+  rollbackDeployment(deploymentId: String!): Deployment
+
+  """
   Mint a new deploy hook URL for the app and return it. Every copy of the previous URL stops working immediately.
   """
   rotateAppDeployHook(id: String!): String
@@ -2440,6 +2556,11 @@ type Mutation {
   setAppAutoDeploy(id: String!, value: Boolean!): App
 
   """
+  Choose which server BUILDS this app. Null buildServerId is Automatic (a build-only server if the fleet has one this team can reach and its architecture matches, otherwise build where the app runs); passing the app's own server id means 'always build here'. buildFallbackLocal decides what happens when the build server is unreachable: build on the app's own server (the default) or fail the deploy. Changing either never starts a deploy.
+  """
+  setAppBuildServer(buildFallbackLocal: Boolean, buildServerId: String, id: String!): App
+
+  """
   Set (or clear, with null) the extra flags appended to this app's `docker compose up`. Rejects anything that isn't a plain flag, and any flag that would choose the project, stack file or env-file.
   """
   setAppComposeUpArgs(id: String!, value: String): App
@@ -2461,6 +2582,11 @@ type Mutation {
 
   """Turn pull request previews on or off, and set their options."""
   setAppPreviewSettings(appId: ID!, input: AppPreviewSettingsInput!): Boolean
+
+  """
+  How many previous deployments this app can be rolled back to (0-20, default 3). It is retention: the app's server keeps this many of its images behind the running one. Takes effect on the next sweep - lowering it removes nothing now, and raising it cannot bring back images already removed.
+  """
+  setAppRollbackKeep(count: Int!, id: String!): App
 
   """
   Replace an app's volumes (named, app-files, and host bind mounts). Compose-stack apps included — each volume names the service it mounts into.
@@ -2501,6 +2627,9 @@ type Mutation {
   Grant (or replace) a user's capabilities on a folder. Bounded by both the granter's and the grantee's caps; owner/admin only. Returns the fresh grant list.
   """
   setFolderGrant(capabilities: [String!]!, folderId: ID!, userId: ID!): [FolderGrant!]
+
+  """Turn MCP access on or off for this team."""
+  setMcpSettings(enabled: Boolean!): McpSettings
 
   """
   Set one member's role and per-node overrides in the ACTIVE team. The team is the caller's own - there is no id to pass, which is what keeps it from reaching another one.
@@ -2544,6 +2673,11 @@ type Mutation {
   Set how many deployments this server runs at once (the per-server slot count the deploy queue enforces). 1 = strict serialization. Whole number in [1, 50].
   """
   setServerDeployConcurrency(concurrency: Int!, id: String!): Server
+
+  """
+  Change what a server is for: "everything", "build" or "storage". Leaving "everything" is refused while the host still has apps or databases on it. A server INSTALLED as backups-only has no Docker and stays pinned to "storage" until its install command is re-run on the host.
+  """
+  setServerRole(id: String!, role: String!): Server
 
   """
   Set a server's team access. allTeams: true makes it available to every team; false restricts it to teamIds. Blocked (clear error) when a team that still has apps or databases on the server would lose access.
@@ -2862,7 +2996,12 @@ type Query {
   appTransferInfo(appId: String!): AppTransferInfo
 
   """All apps in the active team, newest first."""
-  apps: [App!]
+  apps(
+    """
+    Keep only the apps whose name, slug or id contains this, ignoring case and separators. Use `search` to look across teams.
+    """
+    q: String
+  ): [App!]
 
   """
   How many stored backup artifacts (successful runs) one target has. Deleting the target removes them, so this is what that delete takes with it.
@@ -2889,6 +3028,11 @@ type Query {
   Basic-auth users of an app, alphabetical by username (requires manage_domains).
   """
   basicAuthUsers(appId: String!): [BasicAuthUser!]
+
+  """
+  The hosts this team can compile on, for an app's 'Build on' setting. Wider than the deploy-target list on purpose: a build-only server is here BECAUSE it cannot deploy, and an ordinary server is here too (one big machine can build for several small ones without giving up its own apps). Only storage-only hosts are excluded - no Docker, no build. `hostArch` is included so the caller can disable the servers whose architecture cannot produce a runnable image for the target.
+  """
+  buildServerChoices: [BuildServerChoice!]
 
   """Attachable instances + default target for an app's console."""
   consoleInfo(appId: String!): ConsoleInfo
@@ -2927,7 +3071,12 @@ type Query {
   databaseShellLabel(databaseId: String!): String
 
   """All databases in the active team, newest first."""
-  databases: [Database!]
+  databases(
+    """
+    Keep only the databases whose name or id contains this, ignoring case and separators. Use `search` to look across teams.
+    """
+    q: String
+  ): [Database!]
 
   """
   What permanently deleting this account would remove. Read-only — nothing is deleted.
@@ -3057,6 +3206,12 @@ type Query {
   """Lighter instance list for the logs viewer."""
   logsInfo(appId: String!): LogsInfo
 
+  """AI clients connected to this team over OAuth."""
+  mcpConnections: [McpConnection!]
+
+  """The active team's MCP policy."""
+  mcpSettings: McpSettings
+
   """
   The authenticated viewer, or null when unauthenticated. Works with a session cookie or an API token.
   """
@@ -3105,6 +3260,14 @@ type Query {
 
   """All registry credentials in the active team, newest first."""
   registries: [Registry!]
+
+  """
+  Find apps and databases by name, slug or id across EVERY team the caller can reach - the one read in deplo that is not scoped to the active team. Each hit says which team it is in. Separators and case are ignored, so "better auth" finds `better-auth-docs`. Teams the caller cannot enter right now (an unmet two-factor policy, a narrowed token) contribute nothing rather than failing the search.
+  """
+  search(
+    """Part of a name, slug or id. Blank finds nothing."""
+    q: String!
+  ): SearchResults
 
   """Search registered users (by username/display name) to add to the team."""
   searchUsers(query: String!): [UserSearchResult!]
@@ -3402,6 +3565,40 @@ input SaveSharedVarInput {
   value: String!
 }
 
+"""
+An app a search matched. Deliberately small: enough to recognise it and to read it in full with `app(slug:)` afterwards.
+"""
+type SearchApp {
+  id: ID
+  name: String
+  productionUrl: String
+  slug: String
+  status: AppStatus
+  team: SearchTeam
+}
+
+"""A database a search matched."""
+type SearchDatabase {
+  id: ID
+  name: String
+  status: DatabaseStatus
+  team: SearchTeam
+  type: DatabaseType
+}
+
+"""What a search found, grouped by kind. At most 50 of each."""
+type SearchResults {
+  apps: [SearchApp!]
+  databases: [SearchDatabase!]
+}
+
+"""The team a search hit was found in."""
+type SearchTeam {
+  id: ID
+  name: String
+  slug: String
+}
+
 """A connected host running deployments (reached via its agent)."""
 type Server {
   agentPort: Int
@@ -3420,7 +3617,7 @@ type Server {
   createdAt: String
 
   """
-  How many deployments this server runs at once (default 1 = strict per-server serialization). Deploys on other servers run in parallel; a same-app deploy never overlaps regardless. Editable via setServerDeployConcurrency (instance-admin).
+  How many deployments this server runs at once (default 1 = strict per-server serialization). Deploys on other servers run in parallel; a same-app deploy never overlaps regardless. Editable via setServerDeployConcurrency (instance-admin). With a build server, the lane belongs to the BUILDER - that is where a deploy's cost is.
   """
   deployConcurrency: Int
   diskGb: Int
@@ -3432,6 +3629,11 @@ type Server {
   """
   expectedAgentVersion: String
   host: String
+
+  """
+  This host's CPU architecture ("amd64" | "arm64"), observed from the agent. Empty when the agent is too old to report it. A build server can only build for a host of the SAME architecture.
+  """
+  hostArch: String
   id: ID
   ip: String
 
@@ -3448,6 +3650,11 @@ type Server {
 
   """True once the server's agent has called home and been trusted."""
   provisioned: Boolean
+
+  """
+  What this server is for: "everything" (the default), "build" (Docker but no proxy; it compiles for other hosts and runs nothing) or "storage" (no Docker; it only holds backups). Only the build axis is changeable after installation.
+  """
+  role: String
   status: ServerStatus
 
   """

@@ -10,7 +10,9 @@ import {
   countBackupArtifacts,
   toggleBackup,
   updateBackup,
+  cancelBackupRun,
   deleteBackup,
+  deleteBackupRun,
   deleteAllBackupArtifacts,
   type BackupDTO,
 } from "@/lib/data/backups";
@@ -24,7 +26,7 @@ import type { BackupRun } from "@/lib/types";
 // across modules, so we define its enum here rather than in enums.ts. Every
 // value already matches /[_a-zA-Z0-9]/, so the plain array form is fine.
 const BackupStatusEnum = builder.enumType("BackupStatus", {
-  values: ["success", "failed", "running", "never"] as const,
+  values: ["success", "failed", "running", "canceled", "never"] as const,
 });
 
 // What a schedule / run targets. Local to this domain (mirrors how
@@ -36,7 +38,7 @@ const BackupTargetKindEnum = builder.enumType("BackupTargetKind", {
 // A single run's terminal/in-flight state — distinct from `BackupStatus`
 // (which has the schedule-only `"never"`). Local to this domain.
 const BackupRunStatusEnum = builder.enumType("BackupRunStatus", {
-  values: ["running", "success", "failed"] as const,
+  values: ["running", "success", "failed", "canceled"] as const,
 });
 
 /* ------------------------------------------------------------------ */
@@ -305,6 +307,29 @@ builder.mutationFields((t) => ({
         timezone: input.timezone ?? null,
         retentionCount: input.retentionCount,
       });
+      return true;
+    },
+  }),
+  cancelBackupRun: t.field({
+    type: "Boolean",
+    authScopes: { capability: "manage_backups" },
+    description:
+      "Stop a backup that is running: the record settles as canceled and the " +
+      "dump is aborted on the host it runs on. Returns false when it had " +
+      "already finished.",
+    args: { runId: t.arg.string({ required: true }) },
+    resolve: (_r, { runId }) => cancelBackupRun(runId),
+  }),
+  deleteBackupRun: t.field({
+    type: "Boolean",
+    authScopes: { capability: "delete_backups" },
+    description:
+      "Permanently delete ONE backup: the artifact at its destination and the " +
+      "run record together. Not the schedule (see deleteBackup) and not the " +
+      "target's whole history (see deleteBackupArtifacts). Returns true.",
+    args: { runId: t.arg.string({ required: true }) },
+    resolve: async (_r, { runId }) => {
+      await deleteBackupRun(runId);
       return true;
     },
   }),

@@ -1,12 +1,13 @@
 import "server-only";
 
-import { eq, isNotNull } from "drizzle-orm";
+import { and, eq, isNotNull, lt, notExists, sql } from "drizzle-orm";
 
 import { getDb } from "../db/client";
 import {
   gitConnections as gitConnectionsTable,
   servers as serversTable,
 } from "../db/schema/control-plane";
+import { oauthClient, oauthConsent } from "../db/schema/auth";
 import { decryptSecret } from "../crypto";
 import { sweepRateLimits } from "../security";
 import { probeCredential } from "../data/git-connections";
@@ -50,6 +51,34 @@ export async function runMaintenanceSweep(): Promise<void> {
   // treated as absent, this just stops a year of guessed addresses accumulating
   // as dead rows.
   await settle("rate limits", sweepRateLimits);
+  await settle("oauth clients", sweepAbandonedOauthClients);
+}
+
+/**
+ * Drop OAuth clients that registered and then never got approved.
+ *
+ * RFC 7591 registration has to be open — claude.ai and ChatGPT cannot
+ * pre-register — so anyone who can reach the instance can create rows here. The
+ * rate limit in `app/api/auth/[...all]/route.ts` bounds the RATE; this bounds
+ * the total. A client with a consent is somebody's live connection and is never
+ * touched; one with none has no token, no team and no access, so deleting it
+ * takes nothing away.
+ */
+async function sweepAbandonedOauthClients(): Promise<void> {
+  const cutoff = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
+  await getDb()
+    .delete(oauthClient)
+    .where(
+      and(
+        lt(oauthClient.createdAt, cutoff),
+        notExists(
+          getDb()
+            .select({ one: sql`1` })
+            .from(oauthConsent)
+            .where(eq(oauthConsent.clientId, oauthClient.clientId)),
+        ),
+      ),
+    );
 }
 
 /** One failing step must never stop the others. */

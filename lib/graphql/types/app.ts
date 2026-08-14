@@ -13,6 +13,7 @@ import {
   getAppById,
   createApp,
   updateAppBuild,
+  setAppBuildServer,
   clearAppBuildCache,
   updateAppSource,
   setAutoDeploy,
@@ -22,8 +23,8 @@ import {
   stopApp,
   startApp,
   rebuildApp,
-  deleteApp,
-  deleteApps,
+  startAppDelete,
+  startAppsDelete,
   bulkAppAction,
   reorderApps,
   setAppVolumes,
@@ -33,6 +34,7 @@ import {
   previewRepoFramework,
   setAppFramework,
   setAppComposeUpArgs,
+  setAppRollbackKeep,
   type AppSummary,
   type ResourceLimitsInput,
 } from "@/lib/data/apps";
@@ -59,6 +61,8 @@ import {
   getLogs,
   getQueuePosition,
   redeploy,
+  rollbackDeployment,
+  canRollbackTo,
   reloadApp as reapplyRouting,
   cancelDeployment,
   cancelAllDeployments,
@@ -88,7 +92,10 @@ const LogLineRef = builder.objectRef<LogLine>("LogLine").implement({
 });
 
 export const DeploymentRef = builder
-  .objectRef<Deployment>("Deployment")
+  // `canRollback` rides along when the caller already computed it for a whole
+  // list (listDeployments does it once for the app's history); the field below
+  // falls back to the single-row read when it did not.
+  .objectRef<Deployment & { canRollback?: boolean }>("Deployment")
   .implement({
     description: "A single build + release of an app.",
     fields: (t) => ({
@@ -131,6 +138,21 @@ export const DeploymentRef = builder
       readyAt: t.exposeString("readyAt", { nullable: true }),
       buildDurationMs: t.exposeInt("buildDurationMs", { nullable: true }),
       creator: t.exposeString("creator"),
+      rollbackOf: t.exposeID("rollbackOf", {
+        nullable: true,
+        description:
+          "Set when this deploy was a rollback: the deployment whose image it " +
+          "re-ran. Null when it built its own.",
+      }),
+      canRollback: t.field({
+        type: "Boolean",
+        description:
+          "This app can be put back on this deployment: it succeeded, it built " +
+          "an image, that image is still on the app's current server, and it is " +
+          "not the one already running.",
+        resolve: (d) =>
+          d.canRollback !== undefined ? d.canRollback : canRollbackTo(d),
+      }),
       logs: t.field({
         type: [LogLineRef],
         // A build log prints the app's build-time variables; `view_logs` is the
@@ -207,6 +229,17 @@ export const AppRef = builder
         resolve: (p) => p.projectId ?? null,
       }),
       serverId: t.exposeID("serverId"),
+      buildServerId: t.id({
+        nullable: true,
+        description:
+          "The server that BUILDS this app's image, when that is not `serverId`. Null is Automatic: a build-only server if the fleet has one this team can reach and its architecture matches, otherwise build where the app runs. Setting it to `serverId` means 'always build on this app's own server'. Ignored by a compose stack and a docker-image source, neither of which Deplo builds.",
+        resolve: (p) => p.buildServerId ?? null,
+      }),
+      buildFallbackLocal: t.boolean({
+        description:
+          "Build on this app's own server when the build server cannot be reached, saying so in the deploy log. True by default. False fails the deploy instead, for whoever chose a small deploy server on purpose.",
+        resolve: (p) => p.buildFallbackLocal,
+      }),
       logo: t.exposeString("logo", { nullable: true }),
       framework: t.string({
         nullable: true,
@@ -254,6 +287,12 @@ export const AppRef = builder
           "Extra flags this app appends to the `docker compose up` that brings " +
           "it up, or null for the untouched command. Additive only — the flags " +
           "that choose the project, stack file or env-file are refused.",
+      }),
+      rollbackKeep: t.exposeInt("rollbackKeep", {
+        description:
+          "How many previous deployments this app can be rolled back to (0-20, " +
+          "default 3). Retention: its server keeps this many of the app's images " +
+          "behind the running one. 0 means there is nothing to go back to.",
       }),
       domainCount: t.exposeInt("domainCount"),
       createdAt: t.exposeString("createdAt"),
@@ -563,7 +602,15 @@ builder.queryFields((t) => ({
     type: [AppRef],
     authScopes: { loggedIn: true },
     description: "All apps in the active team, newest first.",
-    resolve: () => listApps(),
+    args: {
+      q: t.arg.string({
+        required: false,
+        description:
+          "Keep only the apps whose name, slug or id contains this, ignoring " +
+          "case and separators. Use `search` to look across teams.",
+      }),
+    },
+    resolve: (_r, { q }) => listApps(q ?? undefined),
   }),
   app: t.field({
     type: AppRef,
@@ -787,6 +834,24 @@ builder.mutationFields((t) => ({
     },
     resolve: async (_r, { id, build }) => {
       await updateAppBuild(id, remapBuildInput(build) as never);
+      return reloadApp(id);
+    },
+  }),
+  setAppBuildServer: t.field({
+    type: AppRef,
+    authScopes: { capability: "configure_apps" },
+    description:
+      "Choose which server BUILDS this app. Null buildServerId is Automatic (a build-only server if the fleet has one this team can reach and its architecture matches, otherwise build where the app runs); passing the app's own server id means 'always build here'. buildFallbackLocal decides what happens when the build server is unreachable: build on the app's own server (the default) or fail the deploy. Changing either never starts a deploy.",
+    args: {
+      id: t.arg.string({ required: true }),
+      buildServerId: t.arg.string({ required: false }),
+      buildFallbackLocal: t.arg.boolean({ required: false }),
+    },
+    resolve: async (_r, { id, buildServerId, buildFallbackLocal }) => {
+      await setAppBuildServer(id, {
+        buildServerId: buildServerId ?? null,
+        buildFallbackLocal: buildFallbackLocal ?? undefined,
+      });
       return reloadApp(id);
     },
   }),
@@ -1032,10 +1097,13 @@ builder.mutationFields((t) => ({
   deleteApp: t.field({
     type: "Boolean",
     authScopes: { capability: "delete_apps" },
-    description: "Delete the app and tear down its stack. Returns true.",
+    description:
+      "Delete the app. Returns as soon as the deletion is RECORDED — from that " +
+      "moment the app is refused by every gate and gone from the product — and " +
+      "the stack teardown finishes on the host behind the response.",
     args: { id: t.arg.string({ required: true }) },
     resolve: async (_r, { id }) => {
-      await deleteApp(id);
+      await startAppDelete(id);
       return true;
     },
   }),
@@ -1043,9 +1111,10 @@ builder.mutationFields((t) => ({
     type: "Int",
     authScopes: { capability: "delete_apps" },
     description:
-      "Bulk-delete several apps (bounded-concurrency teardown + one write). Returns how many were deleted.",
+      "Bulk-delete several apps. Returns how many were recorded as deleted; the " +
+      "bounded-concurrency teardown runs behind the response.",
     args: { ids: t.arg.idList({ required: true }) },
-    resolve: (_r, { ids }) => deleteApps(ids.map(String)),
+    resolve: (_r, { ids }) => startAppsDelete(ids.map(String)),
   }),
   bulkAppAction: t.field({
     type: BulkAppActionResultRef,
@@ -1104,6 +1173,42 @@ builder.mutationFields((t) => ({
     authScopes: { capability: "deploy_apps" },
     args: { appId: t.arg.string({ required: true }) },
     resolve: (_r, { appId }) => redeploy(appId),
+  }),
+  rollbackDeployment: t.field({
+    type: DeploymentRef,
+    authScopes: { capability: "rollback_apps" },
+    description:
+      "Put an app back on a previous deployment by re-running the image that " +
+      "build left on the server - no clone, no rebuild, no pull. Only a " +
+      "successful production deployment of an app Deplo builds (a repository or " +
+      "an uploaded archive), still inside the app's rollback retention and on " +
+      "the app's current server, can be rolled back to; ask for `canRollback` " +
+      "on the deployment to know. The code goes back and NOTHING ELSE does: the " +
+      "stack is rendered from the app's current variables, domains, volumes and " +
+      "resource limits. Returns the new deployment.",
+    args: { deploymentId: t.arg.string({ required: true }) },
+    resolve: (_r, { deploymentId }) => rollbackDeployment(deploymentId),
+  }),
+  setAppRollbackKeep: t.field({
+    type: AppRef,
+    // `configure_apps`, not `rollback_apps`: how many rollbacks an app keeps is
+    // how much disk its images hold on the server, which is a setting, not the
+    // act of going back. See the note on the data-layer function.
+    authScopes: { capability: "configure_apps" },
+    description:
+      "How many previous deployments this app can be rolled back to (0-20, " +
+      "default 3). It is retention: the app's server keeps this many of its " +
+      "images behind the running one. Takes effect on the next sweep - lowering " +
+      "it removes nothing now, and raising it cannot bring back images already " +
+      "removed.",
+    args: {
+      id: t.arg.string({ required: true }),
+      count: t.arg.int({ required: true }),
+    },
+    resolve: async (_r, { id, count }) => {
+      await setAppRollbackKeep(id, count);
+      return reloadApp(id);
+    },
   }),
   cancelDeployment: t.field({
     type: "Boolean",

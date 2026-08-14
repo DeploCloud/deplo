@@ -16,6 +16,7 @@ import { getCurrentUser } from "../auth";
 import { encryptSecret, decryptSecret, htpasswdLine } from "../crypto";
 import { isDeploHostServer } from "../deploy/domains";
 import { withTraefikDashboard, traefikDashboardDomain } from "../deploy/traefik-stack";
+import { assertPasswordNotPwned } from "../pwned-password";
 import { recordActivity } from "./activity";
 import { getServerById } from "./servers";
 import { stopStackOn, startStackOn } from "./volume-migration";
@@ -442,6 +443,9 @@ export async function setServerTraefikDashboard(
     // A username with a colon would split the htpasswd line and silently create a
     // different account than the one the operator typed.
     if (username.includes(":")) throw new Error("A username cannot contain a colon");
+    // Only a freshly typed one: an edit that keeps the stored password must not
+    // be refused for a credential that is already published.
+    if (input.password) await assertPasswordNotPwned(input.password);
 
     // An empty password means "keep the stored one" — an edit that only moves the
     // domain must not require retyping it. Empty with nothing stored is the

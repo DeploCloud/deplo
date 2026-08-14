@@ -30,7 +30,10 @@ import {
   countBackupArtifacts,
   createBackup,
   deleteAllBackupArtifacts,
+  cancelBackupRun,
   deleteBackup,
+  deleteBackupRun,
+  downloadBackupArtifact,
   listBackupRuns,
   reconcileInFlightBackupRuns,
   runBackup,
@@ -67,7 +70,25 @@ beforeEach(async () => {
   await pg.exec(`${TRUNCATE_BACKUPS}
     truncate table app_build_method_settings, app_build, apps, servers,
       users, teams restart identity cascade;`);
-  await seedIdentity(db, { users: [{ id: USER_1, teamId: TEAM_A, role: "owner" }] });
+  await seedIdentity(db, {
+    users: [
+      { id: USER_1, teamId: TEAM_A, role: "owner" },
+      // Holds the whole backup surface EXCEPT the one destructive verb, which is
+      // the split `delete_backups` exists to make.
+      {
+        id: USER_SCHEDULER,
+        teamId: TEAM_A,
+        role: "member",
+        capabilities: ["view", "manage_backups", "restore_backups"],
+      },
+      {
+        id: USER_RESTORER,
+        teamId: TEAM_A,
+        role: "member",
+        capabilities: ["view", "restore_backups"],
+      },
+    ],
+  });
   await seedServer(db);
   await seedDatabase(db, { id: "db_1", name: "main" });
   await seedApp(db, { id: "prj_1", teamId: TEAM_A });
@@ -76,6 +97,11 @@ beforeEach(async () => {
 
 const asUser1 = <T>(fn: () => Promise<T>): Promise<T> =>
   runWithIdentity({ userId: USER_1, teamId: TEAM_A }, fn);
+
+/** A member who may schedule and restore backups but not destroy one. */
+const USER_SCHEDULER = "user_scheduler";
+/** A member who may restore a backup but not schedule, run or stop one. */
+const USER_RESTORER = "user_restorer";
 
 /* ------------------------------------------------------------------ */
 /* CRUD + validation                                                   */
@@ -501,5 +527,265 @@ test("runDatabaseBackup records a failed run rather than throwing past the execu
     assert.equal(runs[0]!.status, "failed");
     assert.equal(runs[0]!.backupId, null); // ad-hoc: no owning schedule
     assert.equal(runs[0]!.databaseId, "db_1");
+  });
+});
+
+/* ------------------------------------------------------------------ */
+/* Downloading an artifact that lives in a bucket                       */
+/* ------------------------------------------------------------------ */
+
+test("a bucket artifact is no longer refused: the download reaches the agent", async () => {
+  await asUser1(async () => {
+    await seedRun(db, {
+      id: "brun_dl",
+      destinationId: "s3_1",
+      targetKind: "app",
+      appId: "prj_1",
+    });
+    // The seeded server has no live agent, so this gets as far as the dial and
+    // fails THERE. Which failure is the whole point: "this backup is in your
+    // bucket, fetch it with your own credentials" was a refusal by design, and
+    // it left the Download button dead for every team whose backups live in one.
+    await assert.rejects(
+      () => downloadBackupArtifact("brun_dl"),
+      (e: Error) => {
+        assert.doesNotMatch(e.message, /in your bucket/i);
+        assert.match(e.message, /not provisioned|unreachable|too old/i);
+        return true;
+      },
+    );
+  });
+});
+
+test("a legacy plaintext bucket destination downloads by the same path", async () => {
+  await asUser1(async () => {
+    // No keypair, so its objects really are in the clear. The identity is empty,
+    // the agent skips the age layer, and nothing here has to know the difference.
+    await seedS3(db, { id: "s3_old", legacyPlaintext: true });
+    await seedRun(db, {
+      id: "brun_old",
+      destinationId: "s3_old",
+      targetKind: "app",
+      appId: "prj_1",
+    });
+    await assert.rejects(
+      () => downloadBackupArtifact("brun_old"),
+      (e: Error) => {
+        assert.doesNotMatch(e.message, /in your bucket/i);
+        return true;
+      },
+    );
+  });
+});
+
+test("an artifact whose app was deleted says WHICH server it lacks", async () => {
+  await asUser1(async () => {
+    // `app_id` is ON DELETE SET NULL, so a run outlives its target - and that
+    // artifact is exactly the one somebody still wants. With no workload host
+    // left, any provisioned agent could dial the bucket; this harness has none,
+    // so the message must name that, not the deleted app.
+    await seedRun(db, {
+      id: "brun_orphan",
+      destinationId: "s3_1",
+      targetKind: "app",
+      appId: null,
+      targetId: "prj_gone",
+    });
+    await assert.rejects(
+      () => downloadBackupArtifact("brun_orphan"),
+      /No server on this instance can reach/,
+    );
+  });
+});
+
+/* ------------------------------------------------------------------ */
+/* The size a download advertises                                      */
+/* ------------------------------------------------------------------ */
+
+test("a run keeps the decrypted size apart from the stored one", async () => {
+  await asUser1(async () => {
+    // The two are different numbers: the stored artifact carries an age header
+    // plus a tag per 64 KiB chunk. Sending the stored one as Content-Length
+    // would leave the browser waiting for bytes that never arrive.
+    await seedRun(db, {
+      id: "brun_sized",
+      destinationId: "s3_1",
+      targetKind: "app",
+      appId: "prj_1",
+      decryptedSizeBytes: 900,
+    });
+    await seedRun(db, {
+      id: "brun_legacy",
+      destinationId: "s3_1",
+      targetKind: "app",
+      appId: "prj_1",
+    });
+    const runs = await listBackupRuns({ appId: "prj_1" });
+    const sized = runs.find((r) => r.id === "brun_sized")!;
+    const legacy = runs.find((r) => r.id === "brun_legacy")!;
+    assert.equal(sized.decryptedSizeBytes, 900);
+    assert.notEqual(sized.decryptedSizeBytes, sized.sizeBytes);
+    // A run taken before the agent reported it advertises no length at all,
+    // rather than the stored size, which would be wrong by the age overhead.
+    assert.equal(legacy.decryptedSizeBytes, null);
+  });
+});
+
+
+/* ------------------------------------------------------------------ */
+/* Deleting one backup                                                 */
+/* ------------------------------------------------------------------ */
+
+test("a failed run leaves no file, so its record goes on its own", async () => {
+  await asUser1(async () => {
+    // The only shape that completes without an agent, and the one an operator
+    // most often wants gone: a run that failed is a row of clutter.
+    await seedRun(db, {
+      id: "brun_failed",
+      destinationId: "s3_1",
+      targetKind: "app",
+      appId: "prj_1",
+      status: "failed",
+      objectKey: "",
+    });
+    await deleteBackupRun("brun_failed");
+    const left = await listBackupRuns({ appId: "prj_1" });
+    assert.equal(left.length, 0);
+  });
+});
+
+test("a file that could not be deleted KEEPS its record", async () => {
+  await asUser1(async () => {
+    // The invariant retention follows too: a record dropped while its object
+    // survives is an orphan nothing can name any more, because every sweep
+    // starts from the row.
+    await seedRun(db, {
+      id: "brun_keep",
+      destinationId: "s3_1",
+      targetKind: "app",
+      appId: "prj_1",
+    });
+    await assert.rejects(
+      () => deleteBackupRun("brun_keep"),
+      /not provisioned|unreachable|too old/,
+    );
+    const left = await listBackupRuns({ appId: "prj_1" });
+    assert.deepEqual(
+      left.map((r) => r.id),
+      ["brun_keep"],
+    );
+  });
+});
+
+test("a running backup is refused rather than half-deleted", async () => {
+  await asUser1(async () => {
+    // Its artifact does not exist yet, so taking the row away would let the dump
+    // land a file nothing on this instance could ever find again.
+    await seedRun(db, {
+      id: "brun_live",
+      destinationId: "s3_1",
+      targetKind: "app",
+      appId: "prj_1",
+      status: "running",
+    });
+    await assert.rejects(() => deleteBackupRun("brun_live"), /still running/);
+    assert.equal((await listBackupRuns({ appId: "prj_1" })).length, 1);
+  });
+});
+
+test("deleting a backup needs delete_backups, not manage_backups", async () => {
+  // The whole reason it is its own capability: scheduling a dump and destroying
+  // the last copy of one are not the same permission.
+  await asUser1(() =>
+    seedRun(db, {
+      id: "brun_guarded",
+      destinationId: "s3_1",
+      targetKind: "app",
+      appId: "prj_1",
+      status: "failed",
+      objectKey: "",
+    }),
+  );
+  await runWithIdentity({ userId: USER_SCHEDULER, teamId: TEAM_A }, async () => {
+    await assert.rejects(() => deleteBackupRun("brun_guarded"), /permission/i);
+  });
+  // Still there.
+  await asUser1(async () => {
+    assert.equal((await listBackupRuns({ appId: "prj_1" })).length, 1);
+  });
+});
+
+/* ------------------------------------------------------------------ */
+/* Stopping a backup that is running                                   */
+/* ------------------------------------------------------------------ */
+
+test("cancelling settles the run and the schedule at once", async () => {
+  await asUser1(async () => {
+    // The record is the half that must ALWAYS settle: the dump may be running in
+    // another process, or in none at all, and the panel cannot sit on "Running"
+    // waiting to find out.
+    await seedBackup(db, {
+      id: "bkp_live",
+      destinationId: "s3_1",
+      targetKind: "app",
+      appId: "prj_1",
+    });
+    await seedRun(db, {
+      id: "brun_going",
+      destinationId: "s3_1",
+      backupId: "bkp_live",
+      targetKind: "app",
+      appId: "prj_1",
+      status: "running",
+    });
+    assert.equal(await cancelBackupRun("brun_going"), true);
+    const [run] = await listBackupRuns({ appId: "prj_1" });
+    assert.equal(run!.status, "canceled");
+    assert.match(run!.error ?? "", /Canceled by/);
+    assert.ok(run!.finishedAt, "a stopped run is finished, not left open");
+    const [schedule] = await db
+      .select()
+      .from(backupsTable)
+      .where(eq(backupsTable.id, "bkp_live"));
+    assert.equal(schedule!.lastStatus, "canceled");
+  });
+});
+
+test("cancelling a backup that already finished changes nothing", async () => {
+  await asUser1(async () => {
+    // The dump can land between the click and the write. Flipping a real restore
+    // point to `canceled` would throw away an artifact that exists.
+    await seedRun(db, {
+      id: "brun_done",
+      destinationId: "s3_1",
+      targetKind: "app",
+      appId: "prj_1",
+      status: "success",
+    });
+    assert.equal(await cancelBackupRun("brun_done"), false);
+    const [run] = await listBackupRuns({ appId: "prj_1" });
+    assert.equal(run!.status, "success");
+    assert.equal(run!.error, null);
+  });
+});
+
+test("stopping a backup needs manage_backups", async () => {
+  await asUser1(() =>
+    seedRun(db, {
+      id: "brun_guard",
+      destinationId: "s3_1",
+      targetKind: "app",
+      appId: "prj_1",
+      status: "running",
+    }),
+  );
+  // A member who may restore but not schedule cannot stop one either: starting
+  // and stopping a dump are the same power, and it is `manage_backups`.
+  await runWithIdentity({ userId: USER_RESTORER, teamId: TEAM_A }, async () => {
+    await assert.rejects(() => cancelBackupRun("brun_guard"), /permission/i);
+  });
+  await asUser1(async () => {
+    const [run] = await listBackupRuns({ appId: "prj_1" });
+    assert.equal(run!.status, "running");
   });
 });

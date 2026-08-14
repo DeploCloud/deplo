@@ -78,6 +78,10 @@ export type ServerSummary = {
   dockerVersion: string;
   allTeams: boolean;
   deployConcurrency: number;
+  /** What this server is for, editable from the Advanced tab. All three are
+   *  settable on a host that HAS Docker; one installed without it stays on
+   *  "storage" until its install command is re-run. */
+  role: "everything" | "build" | "storage";
   traefikDashboard: { domain: string; username: string } | null;
   /** A zero-config nip.io hostname for the Traefik panel on THIS server, resolved
    *  server-side. Null when the host has no address such a name could point at. */
@@ -436,6 +440,7 @@ function AccessTab({
           </form>
         </CardContent>
       </Card>
+
 
       <Card>
         <CardHeader>

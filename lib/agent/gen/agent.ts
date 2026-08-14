@@ -489,6 +489,19 @@ export interface HelloResponse {
    * apps run on the host but are not reachable on their domains.
    */
   traefikRunning: boolean;
+  /**
+   * This host's CPU architecture, from Go's runtime.GOARCH: "amd64" or "arm64"
+   * (the two the release publishes binaries for). Reported so the control plane
+   * can refuse to BUILD an image on one host and run it on a host of the other -
+   * an amd64 image loaded on an arm64 box starts and dies with `exec format
+   * error`, long after the deploy called itself a success. An agent too old to
+   * send this leaves it "", which the control plane reads as "unknown" and which
+   * can never match another host's arch, so a build server is simply not offered
+   * until both ends are new enough. Constant for the life of the host, but sent
+   * on every Hello for the same reason `docker_version` is: nothing here is
+   * stored on the agent side.
+   */
+  hostArch: string;
 }
 
 export interface MetricsRequest {
@@ -776,6 +789,27 @@ export interface DeployRequest {
    * Capability: "deploy.compose-args" (an older agent silently ignores them).
    */
   composeUpArgs: string[];
+  /**
+   * Build the image and STOP: no stack file is written, nothing is brought up,
+   * and this host runs no container for the app. Set when the app builds on a
+   * BUILD SERVER - a host that compiles for machines it does not run on. The
+   * caller then streams the image off with ExportImage and releases it on the
+   * target host with an ordinary SOURCE_KIND_IMAGE deploy (pull_image=false),
+   * which is byte for byte what a rollback already does.
+   *
+   * Everything else about the stream is unchanged: the same PhaseChange/LogLine
+   * events, the same seq numbering, the same ReattachDeploy replay - a build
+   * server's logs are the app's build logs and belong in the same deployment.
+   * The terminal DeployResult reports the BUILD's outcome; `ready` means the
+   * image exists and is tagged, not that anything is running.
+   *
+   * Only meaningful for a request that actually builds: BUILD_KIND_NONE and
+   * SOURCE_KIND_COMPOSE are rejected outright rather than silently producing an
+   * empty success (a compose stack has no single image to move).
+   * Capability: "deploy.build-only" - an older agent would IGNORE this field and
+   * deploy the app on the build server, so the control plane must preflight it.
+   */
+  buildOnly: boolean;
 }
 
 export interface DeployRequest_EnvEntry {
@@ -927,6 +961,48 @@ export interface FilesChunk_Header {
   slug: string;
   /** Empty the target files dir before untarring (default true for a move). */
   wipeFirst: boolean;
+}
+
+export interface ExportImageRequest {
+  /**
+   * The image tag to `docker save`, always the control plane's own
+   * `deplo/<deploy_key>:<deployment id[:12]>`. Re-validated agent-side with the
+   * same guard the build output uses, so a ref carrying shell or CSV metacharacters
+   * never reaches argv.
+   */
+  imageRef: string;
+  /**
+   * `docker rmi` the image here once the stream completes successfully. True for
+   * every build-server transfer: the builder holds no app images, only cache. A
+   * failed export never removes anything.
+   */
+  removeAfter: boolean;
+}
+
+/**
+ * A framed chunk of a cross-host IMAGE transfer, mirroring VolumeChunk. ExportImage
+ * emits `data` chunks (no header); ImportImage expects a `header` first then `data`.
+ */
+export interface ImageChunk {
+  header?:
+    | ImageChunk_Header
+    | undefined;
+  /**
+   * A raw slice of the gzipped `docker save` stream. Same 1 MiB framing as the
+   * volume relay; reassembled in order on the destination.
+   */
+  data?: Uint8Array | undefined;
+}
+
+export interface ImageChunk_Header {
+  /**
+   * The tag the stream is expected to carry. `docker load` restores whatever
+   * tags the archive names, so this is not what the load keys on - it is the
+   * caller's DECLARATION, and the agent enforces it: any other tag the archive
+   * brings is removed and the import fails. Must be `deplo/<name>:<tag>`; the
+   * namespace is re-validated agent-side because this RPC also deletes images.
+   */
+  imageRef: string;
 }
 
 /**
@@ -1369,6 +1445,22 @@ export interface BackupResult {
    * StoreResult.sha256.
    */
   sha256: string;
+  /**
+   * How big the artifact is once DECRYPTED — i.e. exactly how many bytes
+   * ReadStoreFile emits when it is handed an age identity, which is what a
+   * download hands to a browser.
+   *
+   * It is not derivable from size_bytes: age adds a header plus a tag per 64 KiB
+   * chunk, so the stored artifact is always a little larger than the .tar.gz /
+   * .dump.gz inside it, and only the writer ever sees both numbers. Without it
+   * the download can send no Content-Length, and a browser with no
+   * Content-Length shows a download with no size, no percentage and no estimate
+   * — it looks like it is running forever.
+   *
+   * Zero means an agent from before this field: the control plane records
+   * nothing and the download stays length-less, exactly as it was.
+   */
+  decryptedSizeBytes: number;
 }
 
 export interface RestoreRequest {
@@ -1510,6 +1602,23 @@ export interface ReadStoreFileRequest {
    * the stack configuration is ever re-applied.
    */
   expectedSha256: string;
+  /**
+   * Set INSTEAD of `store` to read the artifact out of a BUCKET. Same job, same
+   * framing, same decryption: the only difference is where the bytes come from.
+   *
+   * It exists because a backup a user cannot get their hands on is half a
+   * backup. Without this the panel could only offer Download for artifacts kept
+   * on a server's disk, and a bucket artifact came with instructions: fetch the
+   * object with your own S3 credentials, then decrypt it yourself with age.
+   * That is the sort of answer this platform exists not to give.
+   *
+   * One difference the caller must know about: a file on disk can be hashed
+   * before a single byte is sent, but a bucket object can only be checked AS IT
+   * GOES PAST. So an S3 read that fails its digest fails at the END, after bytes
+   * have already been handed over, and the stream closes in error rather than
+   * completing. Gated by the `backup-s3-read` capability.
+   */
+  s3?: S3Target | undefined;
 }
 
 /**
@@ -1584,6 +1693,23 @@ export interface RestoreChunk_Header {
    * the stack configuration is ever re-applied.
    */
   expectedSha256: string;
+  /**
+   * The artifact came from OUTSIDE the fleet - a file somebody uploaded - so
+   * nothing in it may ever configure what comes back up.
+   *
+   * Without this the archive is still a fallback. `restoreConfig` prefers the
+   * control plane's compose/env/mounts for an unproven artifact, but falls back
+   * to the archive's whenever the control plane sent none: an app never
+   * deployed on this host has no stack file, an app with no variables has no
+   * env. That fallback exists for artifacts Deplo itself wrote, before it
+   * recorded digests. For an uploaded one it means the uploader chooses what
+   * `docker compose up` runs and what environment it runs with.
+   *
+   * Default false, so every existing caller keeps the behaviour it has. Gated
+   * by the `backup-untrusted-config` capability, because an agent that ignores
+   * this field would silently restore exactly what the flag exists to prevent.
+   */
+  untrustedConfig: boolean;
 }
 
 export interface FollowLogsRequest {
@@ -2093,6 +2219,31 @@ export interface DockerCleanupRequest {
    * (a stopped app must stay redeployable without a rebuild).
    */
   keepImagesPerApp: number;
+  /**
+   * UNUSED_APP_IMAGES only: a PER-SLUG override of keep_images_per_app, keyed by
+   * the deplo.slug label. A slug absent from the map falls back to the scalar, and
+   * every value floors at 1 for the same reason the scalar does.
+   *
+   * This is how an app's own ROLLBACK DEPTH is enforced. Retention decides how far
+   * back an app can be rolled, and that is a per-app product decision: one number
+   * for the whole host would either starve the app that wants five rollbacks or
+   * make every other app on the box pay for it in disk. The control plane sends
+   * one entry per app on this host; a preview stack (`<slug>__pr-<n>`) is never in
+   * the map and keeps falling back to the scalar, which is correct - a preview is
+   * not a rollback target.
+   *
+   * Gated by the "cleanup.keep-per-slug" Hello capability: an agent without it
+   * ignores this field entirely, so the control plane compensates by RAISING the
+   * scalar to the map's maximum. That over-keeps on an old host rather than
+   * under-keeping - a rollback still works, it just costs more disk until the
+   * agent is updated.
+   */
+  keepPerSlug: { [key: string]: number };
+}
+
+export interface DockerCleanupRequest_KeepPerSlugEntry {
+  key: string;
+  value: number;
 }
 
 export interface CleanupScopeResult {
@@ -2660,6 +2811,7 @@ function createBaseHelloResponse(): HelloResponse {
     dockerVersion: "",
     capabilities: [],
     traefikRunning: false,
+    hostArch: "",
   };
 }
 
@@ -2682,6 +2834,9 @@ export const HelloResponse: MessageFns<HelloResponse> = {
     }
     if (message.traefikRunning !== false) {
       writer.uint32(48).bool(message.traefikRunning);
+    }
+    if (message.hostArch !== "") {
+      writer.uint32(58).string(message.hostArch);
     }
     return writer;
   },
@@ -2741,6 +2896,14 @@ export const HelloResponse: MessageFns<HelloResponse> = {
           message.traefikRunning = reader.bool();
           continue;
         }
+        case 7: {
+          if (tag !== 58) {
+            break;
+          }
+
+          message.hostArch = reader.string();
+          continue;
+        }
       }
       if ((tag & 7) === 4 || tag === 0) {
         break;
@@ -2780,6 +2943,11 @@ export const HelloResponse: MessageFns<HelloResponse> = {
         : isSet(object.traefik_running)
         ? globalThis.Boolean(object.traefik_running)
         : false,
+      hostArch: isSet(object.hostArch)
+        ? globalThis.String(object.hostArch)
+        : isSet(object.host_arch)
+        ? globalThis.String(object.host_arch)
+        : "",
     };
   },
 
@@ -2803,6 +2971,9 @@ export const HelloResponse: MessageFns<HelloResponse> = {
     if (message.traefikRunning !== false) {
       obj.traefikRunning = message.traefikRunning;
     }
+    if (message.hostArch !== "") {
+      obj.hostArch = message.hostArch;
+    }
     return obj;
   },
 
@@ -2817,6 +2988,7 @@ export const HelloResponse: MessageFns<HelloResponse> = {
     message.dockerVersion = object.dockerVersion ?? "";
     message.capabilities = object.capabilities?.map((e) => e) || [];
     message.traefikRunning = object.traefikRunning ?? false;
+    message.hostArch = object.hostArch ?? "";
     return message;
   },
 };
@@ -3863,6 +4035,7 @@ function createBaseDeployRequest(): DeployRequest {
     noBuildCache: false,
     forceRecreate: false,
     composeUpArgs: [],
+    buildOnly: false,
   };
 }
 
@@ -3924,6 +4097,9 @@ export const DeployRequest: MessageFns<DeployRequest> = {
     }
     for (const v of message.composeUpArgs) {
       writer.uint32(154).string(v!);
+    }
+    if (message.buildOnly !== false) {
+      writer.uint32(160).bool(message.buildOnly);
     }
     return writer;
   },
@@ -4090,6 +4266,14 @@ export const DeployRequest: MessageFns<DeployRequest> = {
           message.composeUpArgs.push(reader.string());
           continue;
         }
+        case 20: {
+          if (tag !== 160) {
+            break;
+          }
+
+          message.buildOnly = reader.bool();
+          continue;
+        }
       }
       if ((tag & 7) === 4 || tag === 0) {
         break;
@@ -4186,6 +4370,11 @@ export const DeployRequest: MessageFns<DeployRequest> = {
         : globalThis.Array.isArray(object?.compose_up_args)
         ? object.compose_up_args.map((e: any) => globalThis.String(e))
         : [],
+      buildOnly: isSet(object.buildOnly)
+        ? globalThis.Boolean(object.buildOnly)
+        : isSet(object.build_only)
+        ? globalThis.Boolean(object.build_only)
+        : false,
     };
   },
 
@@ -4254,6 +4443,9 @@ export const DeployRequest: MessageFns<DeployRequest> = {
     if (message.composeUpArgs?.length) {
       obj.composeUpArgs = message.composeUpArgs;
     }
+    if (message.buildOnly !== false) {
+      obj.buildOnly = message.buildOnly;
+    }
     return obj;
   },
 
@@ -4293,6 +4485,7 @@ export const DeployRequest: MessageFns<DeployRequest> = {
     message.noBuildCache = object.noBuildCache ?? false;
     message.forceRecreate = object.forceRecreate ?? false;
     message.composeUpArgs = object.composeUpArgs?.map((e) => e) || [];
+    message.buildOnly = object.buildOnly ?? false;
     return message;
   },
 };
@@ -5393,6 +5586,232 @@ export const FilesChunk_Header: MessageFns<FilesChunk_Header> = {
     const message = createBaseFilesChunk_Header();
     message.slug = object.slug ?? "";
     message.wipeFirst = object.wipeFirst ?? false;
+    return message;
+  },
+};
+
+function createBaseExportImageRequest(): ExportImageRequest {
+  return { imageRef: "", removeAfter: false };
+}
+
+export const ExportImageRequest: MessageFns<ExportImageRequest> = {
+  encode(message: ExportImageRequest, writer: BinaryWriter = new BinaryWriter()): BinaryWriter {
+    if (message.imageRef !== "") {
+      writer.uint32(10).string(message.imageRef);
+    }
+    if (message.removeAfter !== false) {
+      writer.uint32(16).bool(message.removeAfter);
+    }
+    return writer;
+  },
+
+  decode(input: BinaryReader | Uint8Array, length?: number): ExportImageRequest {
+    const reader = input instanceof BinaryReader ? input : new BinaryReader(input);
+    const end = length === undefined ? reader.len : reader.pos + length;
+    const message = createBaseExportImageRequest();
+    while (reader.pos < end) {
+      const tag = reader.uint32();
+      switch (tag >>> 3) {
+        case 1: {
+          if (tag !== 10) {
+            break;
+          }
+
+          message.imageRef = reader.string();
+          continue;
+        }
+        case 2: {
+          if (tag !== 16) {
+            break;
+          }
+
+          message.removeAfter = reader.bool();
+          continue;
+        }
+      }
+      if ((tag & 7) === 4 || tag === 0) {
+        break;
+      }
+      reader.skip(tag & 7);
+    }
+    return message;
+  },
+
+  fromJSON(object: any): ExportImageRequest {
+    return {
+      imageRef: isSet(object.imageRef)
+        ? globalThis.String(object.imageRef)
+        : isSet(object.image_ref)
+        ? globalThis.String(object.image_ref)
+        : "",
+      removeAfter: isSet(object.removeAfter)
+        ? globalThis.Boolean(object.removeAfter)
+        : isSet(object.remove_after)
+        ? globalThis.Boolean(object.remove_after)
+        : false,
+    };
+  },
+
+  toJSON(message: ExportImageRequest): unknown {
+    const obj: any = {};
+    if (message.imageRef !== "") {
+      obj.imageRef = message.imageRef;
+    }
+    if (message.removeAfter !== false) {
+      obj.removeAfter = message.removeAfter;
+    }
+    return obj;
+  },
+
+  create<I extends Exact<DeepPartial<ExportImageRequest>, I>>(base?: I): ExportImageRequest {
+    return ExportImageRequest.fromPartial(base ?? ({} as any));
+  },
+  fromPartial<I extends Exact<DeepPartial<ExportImageRequest>, I>>(object: I): ExportImageRequest {
+    const message = createBaseExportImageRequest();
+    message.imageRef = object.imageRef ?? "";
+    message.removeAfter = object.removeAfter ?? false;
+    return message;
+  },
+};
+
+function createBaseImageChunk(): ImageChunk {
+  return { header: undefined, data: undefined };
+}
+
+export const ImageChunk: MessageFns<ImageChunk> = {
+  encode(message: ImageChunk, writer: BinaryWriter = new BinaryWriter()): BinaryWriter {
+    if (message.header !== undefined) {
+      ImageChunk_Header.encode(message.header, writer.uint32(10).fork()).join();
+    }
+    if (message.data !== undefined) {
+      writer.uint32(18).bytes(message.data);
+    }
+    return writer;
+  },
+
+  decode(input: BinaryReader | Uint8Array, length?: number): ImageChunk {
+    const reader = input instanceof BinaryReader ? input : new BinaryReader(input);
+    const end = length === undefined ? reader.len : reader.pos + length;
+    const message = createBaseImageChunk();
+    while (reader.pos < end) {
+      const tag = reader.uint32();
+      switch (tag >>> 3) {
+        case 1: {
+          if (tag !== 10) {
+            break;
+          }
+
+          message.header = ImageChunk_Header.decode(reader, reader.uint32());
+          continue;
+        }
+        case 2: {
+          if (tag !== 18) {
+            break;
+          }
+
+          message.data = reader.bytes();
+          continue;
+        }
+      }
+      if ((tag & 7) === 4 || tag === 0) {
+        break;
+      }
+      reader.skip(tag & 7);
+    }
+    return message;
+  },
+
+  fromJSON(object: any): ImageChunk {
+    return {
+      header: isSet(object.header) ? ImageChunk_Header.fromJSON(object.header) : undefined,
+      data: isSet(object.data) ? bytesFromBase64(object.data) : undefined,
+    };
+  },
+
+  toJSON(message: ImageChunk): unknown {
+    const obj: any = {};
+    if (message.header !== undefined) {
+      obj.header = ImageChunk_Header.toJSON(message.header);
+    }
+    if (message.data !== undefined) {
+      obj.data = base64FromBytes(message.data);
+    }
+    return obj;
+  },
+
+  create<I extends Exact<DeepPartial<ImageChunk>, I>>(base?: I): ImageChunk {
+    return ImageChunk.fromPartial(base ?? ({} as any));
+  },
+  fromPartial<I extends Exact<DeepPartial<ImageChunk>, I>>(object: I): ImageChunk {
+    const message = createBaseImageChunk();
+    message.header = (object.header !== undefined && object.header !== null)
+      ? ImageChunk_Header.fromPartial(object.header)
+      : undefined;
+    message.data = object.data ?? undefined;
+    return message;
+  },
+};
+
+function createBaseImageChunk_Header(): ImageChunk_Header {
+  return { imageRef: "" };
+}
+
+export const ImageChunk_Header: MessageFns<ImageChunk_Header> = {
+  encode(message: ImageChunk_Header, writer: BinaryWriter = new BinaryWriter()): BinaryWriter {
+    if (message.imageRef !== "") {
+      writer.uint32(10).string(message.imageRef);
+    }
+    return writer;
+  },
+
+  decode(input: BinaryReader | Uint8Array, length?: number): ImageChunk_Header {
+    const reader = input instanceof BinaryReader ? input : new BinaryReader(input);
+    const end = length === undefined ? reader.len : reader.pos + length;
+    const message = createBaseImageChunk_Header();
+    while (reader.pos < end) {
+      const tag = reader.uint32();
+      switch (tag >>> 3) {
+        case 1: {
+          if (tag !== 10) {
+            break;
+          }
+
+          message.imageRef = reader.string();
+          continue;
+        }
+      }
+      if ((tag & 7) === 4 || tag === 0) {
+        break;
+      }
+      reader.skip(tag & 7);
+    }
+    return message;
+  },
+
+  fromJSON(object: any): ImageChunk_Header {
+    return {
+      imageRef: isSet(object.imageRef)
+        ? globalThis.String(object.imageRef)
+        : isSet(object.image_ref)
+        ? globalThis.String(object.image_ref)
+        : "",
+    };
+  },
+
+  toJSON(message: ImageChunk_Header): unknown {
+    const obj: any = {};
+    if (message.imageRef !== "") {
+      obj.imageRef = message.imageRef;
+    }
+    return obj;
+  },
+
+  create<I extends Exact<DeepPartial<ImageChunk_Header>, I>>(base?: I): ImageChunk_Header {
+    return ImageChunk_Header.fromPartial(base ?? ({} as any));
+  },
+  fromPartial<I extends Exact<DeepPartial<ImageChunk_Header>, I>>(object: I): ImageChunk_Header {
+    const message = createBaseImageChunk_Header();
+    message.imageRef = object.imageRef ?? "";
     return message;
   },
 };
@@ -7589,7 +8008,7 @@ export const BackupEvent: MessageFns<BackupEvent> = {
 };
 
 function createBaseBackupResult(): BackupResult {
-  return { ok: false, error: "", objectKey: "", sizeBytes: 0, sha256: "" };
+  return { ok: false, error: "", objectKey: "", sizeBytes: 0, sha256: "", decryptedSizeBytes: 0 };
 }
 
 export const BackupResult: MessageFns<BackupResult> = {
@@ -7608,6 +8027,9 @@ export const BackupResult: MessageFns<BackupResult> = {
     }
     if (message.sha256 !== "") {
       writer.uint32(42).string(message.sha256);
+    }
+    if (message.decryptedSizeBytes !== 0) {
+      writer.uint32(48).int64(message.decryptedSizeBytes);
     }
     return writer;
   },
@@ -7659,6 +8081,14 @@ export const BackupResult: MessageFns<BackupResult> = {
           message.sha256 = reader.string();
           continue;
         }
+        case 6: {
+          if (tag !== 48) {
+            break;
+          }
+
+          message.decryptedSizeBytes = longToNumber(reader.int64());
+          continue;
+        }
       }
       if ((tag & 7) === 4 || tag === 0) {
         break;
@@ -7683,6 +8113,11 @@ export const BackupResult: MessageFns<BackupResult> = {
         ? globalThis.Number(object.size_bytes)
         : 0,
       sha256: isSet(object.sha256) ? globalThis.String(object.sha256) : "",
+      decryptedSizeBytes: isSet(object.decryptedSizeBytes)
+        ? globalThis.Number(object.decryptedSizeBytes)
+        : isSet(object.decrypted_size_bytes)
+        ? globalThis.Number(object.decrypted_size_bytes)
+        : 0,
     };
   },
 
@@ -7703,6 +8138,9 @@ export const BackupResult: MessageFns<BackupResult> = {
     if (message.sha256 !== "") {
       obj.sha256 = message.sha256;
     }
+    if (message.decryptedSizeBytes !== 0) {
+      obj.decryptedSizeBytes = Math.round(message.decryptedSizeBytes);
+    }
     return obj;
   },
 
@@ -7716,6 +8154,7 @@ export const BackupResult: MessageFns<BackupResult> = {
     message.objectKey = object.objectKey ?? "";
     message.sizeBytes = object.sizeBytes ?? 0;
     message.sha256 = object.sha256 ?? "";
+    message.decryptedSizeBytes = object.decryptedSizeBytes ?? 0;
     return message;
   },
 };
@@ -8449,7 +8888,7 @@ export const S3DeleteResponse: MessageFns<S3DeleteResponse> = {
 };
 
 function createBaseReadStoreFileRequest(): ReadStoreFileRequest {
-  return { store: undefined, ageIdentity: "", expectedSha256: "" };
+  return { store: undefined, ageIdentity: "", expectedSha256: "", s3: undefined };
 }
 
 export const ReadStoreFileRequest: MessageFns<ReadStoreFileRequest> = {
@@ -8462,6 +8901,9 @@ export const ReadStoreFileRequest: MessageFns<ReadStoreFileRequest> = {
     }
     if (message.expectedSha256 !== "") {
       writer.uint32(26).string(message.expectedSha256);
+    }
+    if (message.s3 !== undefined) {
+      S3Target.encode(message.s3, writer.uint32(34).fork()).join();
     }
     return writer;
   },
@@ -8497,6 +8939,14 @@ export const ReadStoreFileRequest: MessageFns<ReadStoreFileRequest> = {
           message.expectedSha256 = reader.string();
           continue;
         }
+        case 4: {
+          if (tag !== 34) {
+            break;
+          }
+
+          message.s3 = S3Target.decode(reader, reader.uint32());
+          continue;
+        }
       }
       if ((tag & 7) === 4 || tag === 0) {
         break;
@@ -8519,6 +8969,7 @@ export const ReadStoreFileRequest: MessageFns<ReadStoreFileRequest> = {
         : isSet(object.expected_sha256)
         ? globalThis.String(object.expected_sha256)
         : "",
+      s3: isSet(object.s3) ? S3Target.fromJSON(object.s3) : undefined,
     };
   },
 
@@ -8533,6 +8984,9 @@ export const ReadStoreFileRequest: MessageFns<ReadStoreFileRequest> = {
     if (message.expectedSha256 !== "") {
       obj.expectedSha256 = message.expectedSha256;
     }
+    if (message.s3 !== undefined) {
+      obj.s3 = S3Target.toJSON(message.s3);
+    }
     return obj;
   },
 
@@ -8546,6 +9000,7 @@ export const ReadStoreFileRequest: MessageFns<ReadStoreFileRequest> = {
       : undefined;
     message.ageIdentity = object.ageIdentity ?? "";
     message.expectedSha256 = object.expectedSha256 ?? "";
+    message.s3 = (object.s3 !== undefined && object.s3 !== null) ? S3Target.fromPartial(object.s3) : undefined;
     return message;
   },
 };
@@ -8897,7 +9352,14 @@ export const RestoreChunk: MessageFns<RestoreChunk> = {
 };
 
 function createBaseRestoreChunk_Header(): RestoreChunk_Header {
-  return { kind: 0, database: undefined, project: undefined, ageIdentity: "", expectedSha256: "" };
+  return {
+    kind: 0,
+    database: undefined,
+    project: undefined,
+    ageIdentity: "",
+    expectedSha256: "",
+    untrustedConfig: false,
+  };
 }
 
 export const RestoreChunk_Header: MessageFns<RestoreChunk_Header> = {
@@ -8916,6 +9378,9 @@ export const RestoreChunk_Header: MessageFns<RestoreChunk_Header> = {
     }
     if (message.expectedSha256 !== "") {
       writer.uint32(42).string(message.expectedSha256);
+    }
+    if (message.untrustedConfig !== false) {
+      writer.uint32(48).bool(message.untrustedConfig);
     }
     return writer;
   },
@@ -8967,6 +9432,14 @@ export const RestoreChunk_Header: MessageFns<RestoreChunk_Header> = {
           message.expectedSha256 = reader.string();
           continue;
         }
+        case 6: {
+          if (tag !== 48) {
+            break;
+          }
+
+          message.untrustedConfig = reader.bool();
+          continue;
+        }
       }
       if ((tag & 7) === 4 || tag === 0) {
         break;
@@ -8991,6 +9464,11 @@ export const RestoreChunk_Header: MessageFns<RestoreChunk_Header> = {
         : isSet(object.expected_sha256)
         ? globalThis.String(object.expected_sha256)
         : "",
+      untrustedConfig: isSet(object.untrustedConfig)
+        ? globalThis.Boolean(object.untrustedConfig)
+        : isSet(object.untrusted_config)
+        ? globalThis.Boolean(object.untrusted_config)
+        : false,
     };
   },
 
@@ -9011,6 +9489,9 @@ export const RestoreChunk_Header: MessageFns<RestoreChunk_Header> = {
     if (message.expectedSha256 !== "") {
       obj.expectedSha256 = message.expectedSha256;
     }
+    if (message.untrustedConfig !== false) {
+      obj.untrustedConfig = message.untrustedConfig;
+    }
     return obj;
   },
 
@@ -9028,6 +9509,7 @@ export const RestoreChunk_Header: MessageFns<RestoreChunk_Header> = {
       : undefined;
     message.ageIdentity = object.ageIdentity ?? "";
     message.expectedSha256 = object.expectedSha256 ?? "";
+    message.untrustedConfig = object.untrustedConfig ?? false;
     return message;
   },
 };
@@ -13219,7 +13701,7 @@ export const TunnelStatus: MessageFns<TunnelStatus> = {
 };
 
 function createBaseDockerCleanupRequest(): DockerCleanupRequest {
-  return { scopes: [], dryRun: false, minAgeHours: 0, keepImagesPerApp: 0 };
+  return { scopes: [], dryRun: false, minAgeHours: 0, keepImagesPerApp: 0, keepPerSlug: {} };
 }
 
 export const DockerCleanupRequest: MessageFns<DockerCleanupRequest> = {
@@ -13238,6 +13720,9 @@ export const DockerCleanupRequest: MessageFns<DockerCleanupRequest> = {
     if (message.keepImagesPerApp !== 0) {
       writer.uint32(32).int32(message.keepImagesPerApp);
     }
+    globalThis.Object.entries(message.keepPerSlug).forEach(([key, value]: [string, number]) => {
+      DockerCleanupRequest_KeepPerSlugEntry.encode({ key: key as any, value }, writer.uint32(42).fork()).join();
+    });
     return writer;
   },
 
@@ -13290,6 +13775,17 @@ export const DockerCleanupRequest: MessageFns<DockerCleanupRequest> = {
           message.keepImagesPerApp = reader.int32();
           continue;
         }
+        case 5: {
+          if (tag !== 42) {
+            break;
+          }
+
+          const entry5 = DockerCleanupRequest_KeepPerSlugEntry.decode(reader, reader.uint32());
+          if (entry5.value !== undefined) {
+            message.keepPerSlug[entry5.key] = entry5.value;
+          }
+          continue;
+        }
       }
       if ((tag & 7) === 4 || tag === 0) {
         break;
@@ -13317,6 +13813,23 @@ export const DockerCleanupRequest: MessageFns<DockerCleanupRequest> = {
         : isSet(object.keep_images_per_app)
         ? globalThis.Number(object.keep_images_per_app)
         : 0,
+      keepPerSlug: isObject(object.keepPerSlug)
+        ? (globalThis.Object.entries(object.keepPerSlug) as [string, any][]).reduce(
+          (acc: { [key: string]: number }, [key, value]: [string, any]) => {
+            acc[key] = globalThis.Number(value);
+            return acc;
+          },
+          {},
+        )
+        : isObject(object.keep_per_slug)
+        ? (globalThis.Object.entries(object.keep_per_slug) as [string, any][]).reduce(
+          (acc: { [key: string]: number }, [key, value]: [string, any]) => {
+            acc[key] = globalThis.Number(value);
+            return acc;
+          },
+          {},
+        )
+        : {},
     };
   },
 
@@ -13334,6 +13847,15 @@ export const DockerCleanupRequest: MessageFns<DockerCleanupRequest> = {
     if (message.keepImagesPerApp !== 0) {
       obj.keepImagesPerApp = Math.round(message.keepImagesPerApp);
     }
+    if (message.keepPerSlug) {
+      const entries = globalThis.Object.entries(message.keepPerSlug) as [string, number][];
+      if (entries.length > 0) {
+        obj.keepPerSlug = {};
+        entries.forEach(([k, v]) => {
+          obj.keepPerSlug[k] = Math.round(v);
+        });
+      }
+    }
     return obj;
   },
 
@@ -13346,6 +13868,95 @@ export const DockerCleanupRequest: MessageFns<DockerCleanupRequest> = {
     message.dryRun = object.dryRun ?? false;
     message.minAgeHours = object.minAgeHours ?? 0;
     message.keepImagesPerApp = object.keepImagesPerApp ?? 0;
+    message.keepPerSlug = (globalThis.Object.entries(object.keepPerSlug ?? {}) as [string, number][]).reduce(
+      (acc: { [key: string]: number }, [key, value]: [string, number]) => {
+        if (value !== undefined) {
+          acc[key] = globalThis.Number(value);
+        }
+        return acc;
+      },
+      {},
+    );
+    return message;
+  },
+};
+
+function createBaseDockerCleanupRequest_KeepPerSlugEntry(): DockerCleanupRequest_KeepPerSlugEntry {
+  return { key: "", value: 0 };
+}
+
+export const DockerCleanupRequest_KeepPerSlugEntry: MessageFns<DockerCleanupRequest_KeepPerSlugEntry> = {
+  encode(message: DockerCleanupRequest_KeepPerSlugEntry, writer: BinaryWriter = new BinaryWriter()): BinaryWriter {
+    if (message.key !== "") {
+      writer.uint32(10).string(message.key);
+    }
+    if (message.value !== 0) {
+      writer.uint32(16).int32(message.value);
+    }
+    return writer;
+  },
+
+  decode(input: BinaryReader | Uint8Array, length?: number): DockerCleanupRequest_KeepPerSlugEntry {
+    const reader = input instanceof BinaryReader ? input : new BinaryReader(input);
+    const end = length === undefined ? reader.len : reader.pos + length;
+    const message = createBaseDockerCleanupRequest_KeepPerSlugEntry();
+    while (reader.pos < end) {
+      const tag = reader.uint32();
+      switch (tag >>> 3) {
+        case 1: {
+          if (tag !== 10) {
+            break;
+          }
+
+          message.key = reader.string();
+          continue;
+        }
+        case 2: {
+          if (tag !== 16) {
+            break;
+          }
+
+          message.value = reader.int32();
+          continue;
+        }
+      }
+      if ((tag & 7) === 4 || tag === 0) {
+        break;
+      }
+      reader.skip(tag & 7);
+    }
+    return message;
+  },
+
+  fromJSON(object: any): DockerCleanupRequest_KeepPerSlugEntry {
+    return {
+      key: isSet(object.key) ? globalThis.String(object.key) : "",
+      value: isSet(object.value) ? globalThis.Number(object.value) : 0,
+    };
+  },
+
+  toJSON(message: DockerCleanupRequest_KeepPerSlugEntry): unknown {
+    const obj: any = {};
+    if (message.key !== "") {
+      obj.key = message.key;
+    }
+    if (message.value !== 0) {
+      obj.value = Math.round(message.value);
+    }
+    return obj;
+  },
+
+  create<I extends Exact<DeepPartial<DockerCleanupRequest_KeepPerSlugEntry>, I>>(
+    base?: I,
+  ): DockerCleanupRequest_KeepPerSlugEntry {
+    return DockerCleanupRequest_KeepPerSlugEntry.fromPartial(base ?? ({} as any));
+  },
+  fromPartial<I extends Exact<DeepPartial<DockerCleanupRequest_KeepPerSlugEntry>, I>>(
+    object: I,
+  ): DockerCleanupRequest_KeepPerSlugEntry {
+    const message = createBaseDockerCleanupRequest_KeepPerSlugEntry();
+    message.key = object.key ?? "";
+    message.value = object.value ?? 0;
     return message;
   },
 };
@@ -15491,6 +16102,55 @@ export const AgentService = {
     responseDeserialize: (value: Buffer): StackResult => StackResult.decode(value),
   },
   /**
+   * Stream a BUILT IMAGE off this host, for a build server: the third sibling of
+   * the volume and files-dir relays, and the same star-topology reasoning - the
+   * control plane calls ExportImage on the BUILDER and feeds the chunks into
+   * ImportImage on the host that will run it. No registry, no agent↔agent link.
+   *
+   * `docker save <ref>` piped through gzip, framed like VolumeChunk. Only a local
+   * `deplo/<key>:<dep>` tag is ever asked for, and the ref is re-validated agent
+   * side before it reaches argv. `remove_after` deletes the image here once the
+   * last byte is written: on a build server the image is a courier, not an
+   * artifact - what is worth keeping is the BuildKit cache, which this never
+   * touches. Capability: "image-copy".
+   */
+  exportImage: {
+    path: "/deplo.agent.v1.Agent/ExportImage" as const,
+    requestStream: false as const,
+    responseStream: true as const,
+    requestSerialize: (value: ExportImageRequest): Buffer => Buffer.from(ExportImageRequest.encode(value).finish()),
+    requestDeserialize: (value: Buffer): ExportImageRequest => ExportImageRequest.decode(value),
+    responseSerialize: (value: ImageChunk): Buffer => Buffer.from(ImageChunk.encode(value).finish()),
+    responseDeserialize: (value: Buffer): ImageChunk => ImageChunk.decode(value),
+  },
+  /**
+   * The destination half of an image copy (see ExportImage). The FIRST client
+   * message MUST be an ImageChunk carrying `header`; every subsequent message
+   * carries `data`. The agent pipes the reassembled stream into `docker image
+   * load`, which decompresses it itself.
+   *
+   * The archive is NOT trusted to name itself: `docker load` restores whatever
+   * RepoTags it declares, not the tag the caller announced, so an archive could
+   * carry a second image and replace a neighbouring app's - or a base image - on a
+   * host that merely accepted a build. The agent diffs the host's tag list either
+   * side of the load and REFUSES (removing them) if any other `deplo/` tag
+   * appeared. Scoped to that namespace on purpose: other deploys mutate the same
+   * host concurrently, so treating a base image someone else just pulled as
+   * smuggled would break a deploy that did nothing wrong.
+   * Terminal StoreResult reports bytes + sha256 of what actually landed, the same
+   * proof of transfer WriteStoreFile returns - a loaded image has no ETag either.
+   * Capability: "image-copy".
+   */
+  importImage: {
+    path: "/deplo.agent.v1.Agent/ImportImage" as const,
+    requestStream: true as const,
+    responseStream: false as const,
+    requestSerialize: (value: ImageChunk): Buffer => Buffer.from(ImageChunk.encode(value).finish()),
+    requestDeserialize: (value: Buffer): ImageChunk => ImageChunk.decode(value),
+    responseSerialize: (value: StoreResult): Buffer => Buffer.from(StoreResult.encode(value).finish()),
+    responseDeserialize: (value: Buffer): StoreResult => StoreResult.decode(value),
+  },
+  /**
    * Read back the rendered stack YAML the agent has on disk (<stack_dir>/<slug>.yml)
    * for the "View full compose" preview. The single-image/built stack's image ref
    * + env live only in this file (not on the project), so the preview must read it
@@ -15714,8 +16374,9 @@ export const AgentService = {
     responseDeserialize: (value: Buffer): S3DeleteResponse => S3DeleteResponse.decode(value),
   },
   /**
-   * Stream an artifact OUT of this host's store, for a restore or a download
-   * whose reader lives elsewhere. Emits `data` frames only (no header). By
+   * Stream an artifact OUT, for a restore or a download whose reader lives
+   * elsewhere. The artifact is either on this host's store or in a bucket this
+   * host can dial (`store` or `s3`). Emits `data` frames only (no header). By
    * default the bytes are exactly what was written — still age-encrypted — so a
    * control plane relaying them to another host never holds plaintext. Pass
    * `age_identity` to decrypt on the way out instead, which is what a user
@@ -16334,6 +16995,39 @@ export interface AgentServer extends UntypedServiceImplementation {
    */
   importFiles: handleClientStreamingCall<FilesChunk, StackResult>;
   /**
+   * Stream a BUILT IMAGE off this host, for a build server: the third sibling of
+   * the volume and files-dir relays, and the same star-topology reasoning - the
+   * control plane calls ExportImage on the BUILDER and feeds the chunks into
+   * ImportImage on the host that will run it. No registry, no agent↔agent link.
+   *
+   * `docker save <ref>` piped through gzip, framed like VolumeChunk. Only a local
+   * `deplo/<key>:<dep>` tag is ever asked for, and the ref is re-validated agent
+   * side before it reaches argv. `remove_after` deletes the image here once the
+   * last byte is written: on a build server the image is a courier, not an
+   * artifact - what is worth keeping is the BuildKit cache, which this never
+   * touches. Capability: "image-copy".
+   */
+  exportImage: handleServerStreamingCall<ExportImageRequest, ImageChunk>;
+  /**
+   * The destination half of an image copy (see ExportImage). The FIRST client
+   * message MUST be an ImageChunk carrying `header`; every subsequent message
+   * carries `data`. The agent pipes the reassembled stream into `docker image
+   * load`, which decompresses it itself.
+   *
+   * The archive is NOT trusted to name itself: `docker load` restores whatever
+   * RepoTags it declares, not the tag the caller announced, so an archive could
+   * carry a second image and replace a neighbouring app's - or a base image - on a
+   * host that merely accepted a build. The agent diffs the host's tag list either
+   * side of the load and REFUSES (removing them) if any other `deplo/` tag
+   * appeared. Scoped to that namespace on purpose: other deploys mutate the same
+   * host concurrently, so treating a base image someone else just pulled as
+   * smuggled would break a deploy that did nothing wrong.
+   * Terminal StoreResult reports bytes + sha256 of what actually landed, the same
+   * proof of transfer WriteStoreFile returns - a loaded image has no ETag either.
+   * Capability: "image-copy".
+   */
+  importImage: handleClientStreamingCall<ImageChunk, StoreResult>;
+  /**
    * Read back the rendered stack YAML the agent has on disk (<stack_dir>/<slug>.yml)
    * for the "View full compose" preview. The single-image/built stack's image ref
    * + env live only in this file (not on the project), so the preview must read it
@@ -16476,8 +17170,9 @@ export interface AgentServer extends UntypedServiceImplementation {
    */
   s3Delete: handleUnaryCall<S3DeleteRequest, S3DeleteResponse>;
   /**
-   * Stream an artifact OUT of this host's store, for a restore or a download
-   * whose reader lives elsewhere. Emits `data` frames only (no header). By
+   * Stream an artifact OUT, for a restore or a download whose reader lives
+   * elsewhere. The artifact is either on this host's store or in a bucket this
+   * host can dial (`store` or `s3`). Emits `data` frames only (no header). By
    * default the bytes are exactly what was written — still age-encrypted — so a
    * control plane relaying them to another host never holds plaintext. Pass
    * `age_identity` to decrypt on the way out instead, which is what a user
@@ -16954,6 +17649,57 @@ export interface AgentClient extends Client {
     callback: (error: ServiceError | null, response: StackResult) => void,
   ): ClientWritableStream<FilesChunk>;
   /**
+   * Stream a BUILT IMAGE off this host, for a build server: the third sibling of
+   * the volume and files-dir relays, and the same star-topology reasoning - the
+   * control plane calls ExportImage on the BUILDER and feeds the chunks into
+   * ImportImage on the host that will run it. No registry, no agent↔agent link.
+   *
+   * `docker save <ref>` piped through gzip, framed like VolumeChunk. Only a local
+   * `deplo/<key>:<dep>` tag is ever asked for, and the ref is re-validated agent
+   * side before it reaches argv. `remove_after` deletes the image here once the
+   * last byte is written: on a build server the image is a courier, not an
+   * artifact - what is worth keeping is the BuildKit cache, which this never
+   * touches. Capability: "image-copy".
+   */
+  exportImage(request: ExportImageRequest, options?: Partial<CallOptions>): ClientReadableStream<ImageChunk>;
+  exportImage(
+    request: ExportImageRequest,
+    metadata?: Metadata,
+    options?: Partial<CallOptions>,
+  ): ClientReadableStream<ImageChunk>;
+  /**
+   * The destination half of an image copy (see ExportImage). The FIRST client
+   * message MUST be an ImageChunk carrying `header`; every subsequent message
+   * carries `data`. The agent pipes the reassembled stream into `docker image
+   * load`, which decompresses it itself.
+   *
+   * The archive is NOT trusted to name itself: `docker load` restores whatever
+   * RepoTags it declares, not the tag the caller announced, so an archive could
+   * carry a second image and replace a neighbouring app's - or a base image - on a
+   * host that merely accepted a build. The agent diffs the host's tag list either
+   * side of the load and REFUSES (removing them) if any other `deplo/` tag
+   * appeared. Scoped to that namespace on purpose: other deploys mutate the same
+   * host concurrently, so treating a base image someone else just pulled as
+   * smuggled would break a deploy that did nothing wrong.
+   * Terminal StoreResult reports bytes + sha256 of what actually landed, the same
+   * proof of transfer WriteStoreFile returns - a loaded image has no ETag either.
+   * Capability: "image-copy".
+   */
+  importImage(callback: (error: ServiceError | null, response: StoreResult) => void): ClientWritableStream<ImageChunk>;
+  importImage(
+    metadata: Metadata,
+    callback: (error: ServiceError | null, response: StoreResult) => void,
+  ): ClientWritableStream<ImageChunk>;
+  importImage(
+    options: Partial<CallOptions>,
+    callback: (error: ServiceError | null, response: StoreResult) => void,
+  ): ClientWritableStream<ImageChunk>;
+  importImage(
+    metadata: Metadata,
+    options: Partial<CallOptions>,
+    callback: (error: ServiceError | null, response: StoreResult) => void,
+  ): ClientWritableStream<ImageChunk>;
+  /**
    * Read back the rendered stack YAML the agent has on disk (<stack_dir>/<slug>.yml)
    * for the "View full compose" preview. The single-image/built stack's image ref
    * + env live only in this file (not on the project), so the preview must read it
@@ -17218,8 +17964,9 @@ export interface AgentClient extends Client {
     callback: (error: ServiceError | null, response: S3DeleteResponse) => void,
   ): ClientUnaryCall;
   /**
-   * Stream an artifact OUT of this host's store, for a restore or a download
-   * whose reader lives elsewhere. Emits `data` frames only (no header). By
+   * Stream an artifact OUT, for a restore or a download whose reader lives
+   * elsewhere. The artifact is either on this host's store or in a bucket this
+   * host can dial (`store` or `s3`). Emits `data` frames only (no header). By
    * default the bytes are exactly what was written — still age-encrypted — so a
    * control plane relaying them to another host never holds plaintext. Pass
    * `age_identity` to decrypt on the way out instead, which is what a user

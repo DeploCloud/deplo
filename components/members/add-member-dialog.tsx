@@ -184,7 +184,7 @@ export function AddMemberDialog({
         if (!o) reset();
       }}
     >
-      <DialogContent className="max-h-[85vh] overflow-y-auto">
+      <DialogContent>
         <DialogHeader>
           <DialogTitle>Add a member</DialogTitle>
           <DialogDescription>

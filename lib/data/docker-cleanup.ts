@@ -4,6 +4,7 @@ import { and, desc, eq, inArray, lt, ne, notInArray } from "drizzle-orm";
 
 import { getDb } from "../db/client";
 import {
+  apps as appsTable,
   dockerCleanupExcludedServers,
   dockerCleanupPolicy,
   dockerCleanupPolicyScopes,
@@ -22,7 +23,8 @@ import { parseCron } from "../backups/cron";
 import { runAgentCleanup } from "../infra/agent-client";
 import { CleanupScope } from "../agent/gen/agent";
 import type { CleanupScopeResult } from "../agent/gen/agent";
-import { formatBytes } from "../utils";
+import { appBuildsItsOwnImage, formatBytes } from "../utils";
+import { MAX_ROLLBACK_KEEP } from "../types";
 
 /**
  * Docker cleanup — reclaiming disk on a server's host.
@@ -704,6 +706,9 @@ async function finishCleanupRun(args: {
       dryRun: false,
       minAgeHours: policy.minAgeHours,
       keepImagesPerApp: policy.keepImagesPerApp,
+      // Per-app retention wins over the instance number wherever an app names one
+      // - that is what keeps its rollbacks alive. See rollbackKeepBySlug.
+      keepPerSlug: await rollbackKeepBySlug(serverId),
     });
     // A per-scope `error`/`skipped` is NOT a run failure — the agent declines a scope it
     // cannot prove is safe and sweeps the rest. Only `ok:false` (the sweep could not
@@ -988,6 +993,63 @@ export function serversWithDeploySweepInFlight(): string[] {
 }
 
 /**
+ * How many app images each app on `serverId` must keep - its rollback depth plus
+ * the one that is live.
+ *
+ * The `+ 1` is the whole arithmetic of the feature: "keep 3 rollbacks" means three
+ * builds you can go BACK to, and the build currently running is not one of them.
+ * An app at 0 lands on 1, which is also the floor the agent enforces anyway (a
+ * stopped app must stay startable without a rebuild).
+ *
+ * Keyed by SLUG, because the host groups its images by the `deplo.slug` label. A
+ * pull request preview stacks under `<slug>__pr-<n>` and is deliberately absent: a
+ * preview is torn down with its pull request and is not a rollback target, so it
+ * keeps falling back to the instance-wide scalar.
+ *
+ * ONLY apps that can actually be rolled back are named. A compose stack cannot be
+ * (each service brings its own image, so there is no single one to re-run) and a
+ * prebuilt `docker-image` source pins nothing - naming either would hold four
+ * images per service on the host in exchange for a button that is never offered.
+ * They fall back to the instance scalar, exactly as before the feature existed.
+ *
+ * Not team-scoped, and it must not be: a server is shared cross-team infra and one
+ * sweep covers every app on it. This is a HOST fact, assembled behind the
+ * instance-admin gate the policy already sits behind.
+ *
+ * Exported for tests. The `+ 1` is the whole arithmetic of the feature and it is
+ * off-by-one bait: get it wrong and every app silently keeps one rollback fewer
+ * than its setting promises, which nobody notices until they need the oldest one.
+ */
+export async function rollbackKeepBySlug(
+  serverId: string,
+): Promise<Record<string, number>> {
+  const rows = await getDb()
+    .select({
+      slug: appsTable.slug,
+      keep: appsTable.rollbackKeep,
+      source: appsTable.source,
+      compose: appsTable.compose,
+      repoUrl: appsTable.repoUrl,
+      dockerImage: appsTable.dockerImage,
+    })
+    .from(appsTable)
+    .where(eq(appsTable.serverId, serverId));
+  const out: Record<string, number> = {};
+  for (const r of rows) {
+    if (!appBuildsItsOwnImage({ ...r, repo: r.repoUrl })) continue;
+    // Clamped at BOTH ends, not just the floor. The setter already bounds what it
+    // writes, but the column carries no CHECK, and the wire field is an int32 - a
+    // value that got in some other way would not fail loudly here, it would
+    // overflow on the way to the agent.
+    out[r.slug] = Math.min(
+      MAX_ROLLBACK_KEEP + 1,
+      Math.max(1, Math.trunc(r.keep) + 1),
+    );
+  }
+  return out;
+}
+
+/**
  * Remove the superseded app images a deploy just left behind on `serverId` — the
  * deploy-time half of app-image retention. The nightly sweep alone cannot keep a
  * fast-iterating host inside its disk: a day of redeploys at 1-2GB per image
@@ -1027,6 +1089,11 @@ export async function sweepSupersededAppImages(serverId: string): Promise<number
       // (count-based retention + their fixed deploy grace decide).
       minAgeHours: policy.minAgeHours,
       keepImagesPerApp: policy.keepImagesPerApp,
+      // THE sweep that decides whether a rollback is possible: this one runs right
+      // after the deploy that superseded the previous image, so if it reads the
+      // instance scalar instead of the app's own depth, the rollback target is gone
+      // before anybody could have asked for it.
+      keepPerSlug: await rollbackKeepBySlug(serverId),
     });
     if (!resp.ok) {
       console.warn(`[cleanup] deploy-time image sweep on ${serverId} failed: ${resp.error || "unknown"}`);

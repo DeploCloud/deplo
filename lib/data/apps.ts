@@ -1,13 +1,14 @@
 import "server-only";
 
 import { cache } from "react";
-import { and, eq, inArray, or, sql } from "drizzle-orm";
+import { and, eq, inArray, isNotNull, or, sql } from "drizzle-orm";
 
 import {
   listAllServers,
   listServersForTeam,
   getServerById,
   assertServerAccessibleTx,
+  canHostWorkloads,
 } from "./servers";
 import { getDb } from "../db/client";
 import {
@@ -48,9 +49,14 @@ import {
   VOLUME_NAME_MAX,
   VOLUME_NAME_RE,
 } from "../apps/volume-model";
-import { MOUNT_PROPAGATIONS } from "../types";
+import {
+  DEFAULT_ROLLBACK_KEEP,
+  MAX_ROLLBACK_KEEP,
+  MOUNT_PROPAGATIONS,
+} from "../types";
 import { encryptSecret } from "../crypto";
 import { recordActivity } from "./activity";
+import { matchesQuery } from "./match-query";
 import { buildConfigFor } from "../frameworks";
 import type {
   BuildConfig,
@@ -280,7 +286,16 @@ async function appOrderRank(teamId: string): Promise<Map<string, number>> {
   return new Map(rows.map((r) => [r.appId, r.position] as const));
 }
 
-export async function listApps(): Promise<AppSummary[]> {
+/**
+ * Every app in the active team, newest first (or the team's manual order).
+ *
+ * `query` filters by name, slug or id - the same match `search` uses across
+ * teams, so "find it here" and "find it anywhere" never disagree about what
+ * counts as a hit. Filtering here rather than in SQL keeps the scope and folder
+ * gates below untouched: an app the caller may not list stays unlistable
+ * whatever they type.
+ */
+export async function listApps(query?: string): Promise<AppSummary[]> {
   const teamId = await requireActiveTeamId();
   const [all, rank] = await Promise.all([
     loadAppsByTeam(teamId),
@@ -309,11 +324,14 @@ export async function listApps(): Promise<AppSummary[]> {
     })),
   );
   const proj = scoped.filter((p) => (reach.get(p.id)?.length ?? 0) > 0);
-  const pre = await preloadSummaries(proj);
+  const hits = query
+    ? proj.filter((p) => matchesQuery(query, p.name, p.slug, p.id))
+    : proj;
+  const pre = await preloadSummaries(hits);
   // Honour the team's manual order (Overview drag-and-drop) when present:
   // explicitly-ordered apps come first in that order, anything not listed
   // (a brand-new project, or before any reorder) falls back to newest-first.
-  return proj
+  return hits
     .map((p) => ({ ...summarize(p, pre), capabilities: reach.get(p.id) }))
     .sort((a, b) => {
       const ra = rank.get(a.id) ?? Infinity;
@@ -697,9 +715,16 @@ export async function createApp(
   // Default to the first server available to the team; honour the explicit pick.
   // With no accessible server, surface a clear error so the operator adds (and
   // provisions) a host — or grants this team access — first.
+  // A specialised host cannot run an app: a storage-only one has no Docker, a
+  // build-only one has no proxy and exists to compile for other machines. The
+  // pickers already hide them, but this is the boundary - an id can also arrive
+  // from a bearer token, and the failure would otherwise land on the host.
+  const deployable = servers.filter(canHostWorkloads);
+  if (input.serverId && !deployable.some((s) => s.id === input.serverId))
+    throw new Error("That server doesn't run apps.");
   const server =
-    (input.serverId && servers.find((s) => s.id === input.serverId)) ||
-    servers[0];
+    (input.serverId && deployable.find((s) => s.id === input.serverId)) ||
+    deployable[0];
   if (!server)
     throw new Error(
       "No server available — add a server from Settings → Servers and run its install command first.",
@@ -741,6 +766,11 @@ export async function createApp(
     projectId: placement.projectId,
     environmentId: placement.environmentId,
     serverId: server.id,
+    // Born on Automatic: a new app uses a build server if the fleet has one and
+    // says nothing about it otherwise. Choosing a builder is an Advanced setting,
+    // and the create flow deliberately does not ask.
+    buildServerId: null,
+    buildFallbackLocal: true,
     // Defaulted from a template's logo (a /templates path); ignore anything that
     // isn't a valid inline logo so a crafted create payload can't store a URL.
     logo: input.logo && isValidLogoValue(input.logo) ? input.logo : null,
@@ -771,6 +801,9 @@ export async function createApp(
     deployHookEnabled: true,
     // The bring-up command starts untouched; extra flags are an advanced setting.
     composeUpArgs: null,
+    // Rollbacks are on from the first deploy - being able to undo one is not
+    // something anyone should have to find a setting for first.
+    rollbackKeep: DEFAULT_ROLLBACK_KEEP,
     // New apps start uncapped; limits are set later from Settings → Resources.
     resources: null,
     latestDeploymentId: null,
@@ -1017,6 +1050,60 @@ export async function clearAppBuildCache(id: string): Promise<void> {
   );
 }
 
+/**
+ * Choose where this app COMPILES, and what happens when that host is unreachable.
+ *
+ * `buildServerId` null is Automatic: use a build-only server if the fleet has one
+ * this team can reach whose architecture matches, otherwise build where the app
+ * runs. Passing the app's OWN server id is the explicit opt-out - "always build
+ * here" - and is stored as that id rather than a sentinel.
+ *
+ * Validated against the servers this team can actually reach, so a crafted request
+ * cannot point an app's build (with its source and decrypted env) at a host the
+ * team was never granted. A storage-only host is refused too: no Docker, no build.
+ *
+ * `configure_apps`, like every other app setting. Deliberately NOT a deploy trigger:
+ * changing where the next build happens should not start one.
+ */
+export async function setAppBuildServer(
+  id: string,
+  input: { buildServerId: string | null; buildFallbackLocal?: boolean },
+): Promise<void> {
+  const { membership } = await requireAppCapability(id, "configure_apps");
+  const user = (await getCurrentUser())!;
+  const project = await loadAppGraph(id);
+  if (!project || project.teamId !== membership.teamId)
+    throw new Error("App not found");
+
+  let buildServerId: string | null = null;
+  if (input.buildServerId) {
+    const servers = await listServersForTeam(membership.teamId);
+    const picked = servers.find((s) => s.id === input.buildServerId);
+    if (!picked) throw new Error("That server isn't available to this team.");
+    if (picked.storageOnly)
+      throw new Error("That server holds backups only - it has no Docker to build with.");
+    buildServerId = picked.id;
+  }
+  await getDb()
+    .update(appsTable)
+    .set({
+      buildServerId,
+      ...(input.buildFallbackLocal === undefined
+        ? {}
+        : { buildFallbackLocal: input.buildFallbackLocal }),
+      updatedAt: nowIso(),
+    })
+    .where(and(eq(appsTable.id, id), eq(appsTable.teamId, membership.teamId)));
+
+  const where =
+    buildServerId === null
+      ? "automatically"
+      : buildServerId === project.serverId
+        ? "on its own server"
+        : `on ${(await getServerById(buildServerId))?.name ?? buildServerId}`;
+  await recordActivity("app", `Set ${project.name} to build ${where}`, user.name, id);
+}
+
 export interface UpdateSourceInput {
   source: DeploySource;
   repo: GitRepo | null;
@@ -1130,10 +1217,19 @@ export async function updateAppSource(
       }
     }
 
+    // "Build on this app's own server" is stored as that server's id, so a MOVE has
+    // to carry it or the setting silently becomes "build on the machine I just left"
+    // - which is a real build server relationship, just not the one anyone asked
+    // for. A pin to some OTHER host is a deliberate choice about that host and
+    // stays put.
+    const buildServerId =
+      isMove && p.buildServerId === oldServerId ? serverId : (p.buildServerId ?? null);
+
     await tx
       .update(appsTable)
       .set({
         serverId,
+        buildServerId,
         // Record the migration source on a move (null clears any stale marker on a
         // non-move edit). The post-commit deploy consumes it.
         migrateFromServerId,
@@ -1883,6 +1979,48 @@ export async function setAppComposeUpArgs(
 }
 
 /**
+ * Set how many previous deployments this app can be rolled back to.
+ *
+ * `configure_apps`, not `rollback_apps`: this is a RETENTION number - it decides
+ * how many of the app's images stay on its server, i.e. how much disk it holds -
+ * and retention belongs with the app's other settings. Being trusted to put the
+ * app back on last week's build is not the same as being trusted to decide how
+ * much of the host it occupies, which is why the two are separate permissions.
+ *
+ * Takes effect on the NEXT sweep, which is the one right after the next deploy:
+ * lowering it does not reach out and delete images now, and raising it cannot
+ * bring back ones already gone. Both are said in the UI rather than papered over.
+ */
+export async function setAppRollbackKeep(
+  id: string,
+  count: number,
+): Promise<void> {
+  const { membership } = await requireAppCapability(id, "configure_apps");
+  const user = (await getCurrentUser())!;
+  // Clamp rather than reject: the field is a number input with the same bounds,
+  // so anything outside them arrived from an API client, and the honest answer to
+  // "keep 900 rollbacks" is the ceiling, not an error about a number nobody typed.
+  const keep = Number.isFinite(count)
+    ? Math.min(MAX_ROLLBACK_KEEP, Math.max(0, Math.trunc(count)))
+    : DEFAULT_ROLLBACK_KEEP;
+  const updated = await getDb()
+    .update(appsTable)
+    .set({ rollbackKeep: keep, updatedAt: nowIso() })
+    .where(and(eq(appsTable.id, id), eq(appsTable.teamId, membership.teamId)))
+    .returning({ id: appsTable.id });
+  if (updated.length === 0) throw new Error("App not found");
+  await recordActivity(
+    "app",
+    keep === 0
+      ? "Turned rollbacks off"
+      : `Set rollbacks kept to ${keep}`,
+    user.name,
+    id,
+  );
+  publishAppChanged(id);
+}
+
+/**
  * Set a project's status and notify every live subscriber.
  *
  * NOT gated and NOT team-scoped: every caller has already resolved this app
@@ -1970,12 +2108,51 @@ export async function rebuildApp(id: string): Promise<void> {
   });
 }
 
-export async function deleteApp(id: string): Promise<void> {
+/**
+ * Stamp `deleting_at` — the point of no return, written before a single byte is
+ * torn down.
+ *
+ * From here the app is GONE as far as the product is concerned even though its
+ * row is still there: `requireAppCapability` refuses it, its pages 404, and the
+ * Overview keeps its card on screen dimmed and pulsing so the delete survives a
+ * reload instead of serving back a live-looking app somebody can click into,
+ * deploy, or delete a second time while the first teardown is still running.
+ *
+ * Nothing ever clears it: the only exit is the row going away.
+ */
+async function markAppsDeleting(ids: string[]): Promise<void> {
+  if (ids.length === 0) return;
+  await getDb()
+    .update(appsTable)
+    .set({ deletingAt: nowIso() })
+    .where(inArray(appsTable.id, ids));
+}
+
+/**
+ * Gate the delete, load what the teardown needs, and mark the app. Split from
+ * the teardown so BOTH shapes of delete share one gate and one stamp: the
+ * awaited {@link deleteApp} and the fire-and-forget {@link startAppDelete} the
+ * UI uses.
+ */
+async function beginAppDelete(
+  id: string,
+): Promise<{ project: App; actor: string }> {
   const { membership } = await requireAppCapability(id, "delete_apps");
   const user = (await getCurrentUser())!;
   const project = await loadAppGraph(id);
   if (!project || project.teamId !== membership.teamId)
     throw new Error("App not found");
+  await markAppsDeleting([id]);
+  return { project, actor: user.name };
+}
+
+/**
+ * Delete an app and WAIT for its host to be clear of it. The identity-free half
+ * of the delete (`actor` is already resolved), so the boot reconcile can finish
+ * a delete whose control plane died without a session to read.
+ */
+async function destroyApp(project: App, actor: string): Promise<void> {
+  const id = project.id;
   // Tear down the running container/stack before dropping the records. A REMOTE
   // whose agent is unreachable can't be torn down now — proceed with the delete
   // anyway (P6 spirit: never leave records pinned to a dead box) and warn so the
@@ -2023,7 +2200,7 @@ export async function deleteApp(id: string): Promise<void> {
       "app",
       `Deleted ${project.name} but its server (${server.name}) was unreachable — ` +
         `leftover containers on that host must be removed manually.`,
-      user.name,
+      actor,
       null,
       project.teamId,
     );
@@ -2031,9 +2208,40 @@ export async function deleteApp(id: string): Promise<void> {
   await recordActivity(
     "app",
     `Deleted project ${project.name}`,
-    user.name,
+    actor,
     null,
     project.teamId,
+  );
+}
+
+/**
+ * Delete an app, waiting for the host to be clear of it — the whole operation in
+ * one await, for a caller that has no response to get out of the way of (a
+ * script, a test asserting the cascade). Anything serving a user wants
+ * {@link startAppDelete} instead.
+ */
+export async function deleteApp(id: string): Promise<void> {
+  const { project, actor } = await beginAppDelete(id);
+  await destroyApp(project, actor);
+}
+
+/**
+ * The same delete, minus the wait — what the dashboard calls.
+ *
+ * The app is stamped (and therefore locked everywhere, on every client, across
+ * a reload) before this returns; the teardown finishes behind the response.
+ * Deleting a stack takes seconds on a healthy host and up to the agent dial
+ * timeout on an unreachable one, which is a long time to hold someone in front
+ * of a spinner over a decision they have already confirmed and cannot undo.
+ *
+ * The teardown's failure is not the caller's to handle: by the time it can fail
+ * the delete is already irreversible, so it is logged, the row keeps its stamp,
+ * and {@link resumeAppDeletes} retries it at the next boot.
+ */
+export async function startAppDelete(id: string): Promise<void> {
+  const { project, actor } = await beginAppDelete(id);
+  void destroyApp(project, actor).catch((e) =>
+    console.error(`[deplo] delete of ${project.name} did not finish:`, errMsg(e)),
   );
 }
 
@@ -2046,14 +2254,42 @@ export async function deleteApp(id: string): Promise<void> {
  * Returns the number actually deleted.
  */
 export async function deleteApps(ids: string[]): Promise<number> {
+  const { apps, actor } = await beginAppsDelete(ids);
+  if (apps.length === 0) return 0;
+  await destroyApps(apps, actor);
+  return apps.length;
+}
+
+/**
+ * The bulk delete the dashboard calls — the multi-select twin of
+ * {@link startAppDelete}. Every selected app is stamped (and so locked, and so
+ * pulsing on the Overview) before this returns; the teardowns run behind the
+ * response, where a slow host can't hold up a selection of twenty.
+ */
+export async function startAppsDelete(ids: string[]): Promise<number> {
+  const { apps, actor } = await beginAppsDelete(ids);
+  if (apps.length === 0) return 0;
+  void destroyApps(apps, actor).catch((e) =>
+    console.error("[deplo] bulk delete did not finish:", errMsg(e)),
+  );
+  return apps.length;
+}
+
+/** Gate each app on its own node, then stamp them all. See {@link beginAppDelete}. */
+async function beginAppsDelete(
+  ids: string[],
+): Promise<{ apps: App[]; actor: string }> {
   const { membership } = await requireMembership();
   const user = (await getCurrentUser())!;
   const idSet = [...new Set(ids)];
   // Team- and scope-scoped: only the caller's own apps, fully loaded for teardown.
+  // An app already being deleted is dropped like an unknown id rather than
+  // refused: it is on its way out either way, and one already-doomed card in a
+  // multi-select must not fail the delete of the other nineteen.
   const apps = (await loadAppsByIds(idSet)).filter(
-    (p) => p.teamId === membership.teamId && inAppScope(p),
+    (p) => p.teamId === membership.teamId && inAppScope(p) && !p.deletingAt,
   );
-  if (apps.length === 0) return 0;
+  if (apps.length === 0) return { apps, actor: user.name };
 
   // Gate EACH app on its own node: bulk delete is not a way around per-folder
   // access, and since ADR-0016 `delete_apps` can be held on one app alone — so
@@ -2061,7 +2297,12 @@ export async function deleteApps(ids: string[]): Promise<number> {
   for (const p of apps) {
     await requireAppCapability(p.id, "delete_apps");
   }
+  await markAppsDeleting(apps.map((p) => p.id));
+  return { apps, actor: user.name };
+}
 
+/** The identity-free teardown half of {@link deleteApps}. */
+async function destroyApps(apps: App[], actor: string): Promise<void> {
   const serversById = new Map((await listAllServers()).map((s) => [s.id, s] as const));
   // Tear down stacks ≤4 at a time (agent calls OUTSIDE any tx). A throw/
   // unreachable for one project must not abort the others or the record removal.
@@ -2092,19 +2333,46 @@ export async function deleteApps(ids: string[]): Promise<number> {
   await recordActivity(
     "app",
     `Deleted ${apps.length} project${apps.length === 1 ? "" : "s"}`,
-    user.name,
+    actor,
     null,
+    apps[0]!.teamId,
   );
   if (unreachable.length) {
     await recordActivity(
       "app",
       `Some servers were unreachable during bulk delete — leftover containers may ` +
         `remain and must be removed manually: ${unreachable.join(", ")}`,
-      user.name,
+      actor,
       null,
+      apps[0]!.teamId,
     );
   }
-  return apps.length;
+}
+
+/**
+ * Finish the deletes a dead control plane left stamped.
+ *
+ * A teardown runs behind the response (see {@link startAppDelete}), so a restart
+ * in the middle of one loses the only thing that was going to remove the stack —
+ * and the app would sit stamped forever: refused by every gate, pulsing on the
+ * Overview, with nothing left to finish it. Boot picks them back up, exactly
+ * like the deployment and backup reconciles next to it.
+ *
+ * Identity-free by construction (the actor is "Deplo"): there is no session at
+ * boot, and the gate was already passed by whoever confirmed the delete.
+ */
+export async function resumeAppDeletes(): Promise<void> {
+  const rows = await getDb()
+    .select({ id: appsTable.id })
+    .from(appsTable)
+    .where(isNotNull(appsTable.deletingAt));
+  for (const { id } of rows) {
+    const project = await loadAppGraph(id);
+    if (!project) continue;
+    await destroyApp(project, "Deplo").catch((e) =>
+      console.error(`[deplo] could not finish deleting ${project.name}:`, errMsg(e)),
+    );
+  }
 }
 
 /** The lifecycle actions a folder or a project runs over all of its apps at once. */

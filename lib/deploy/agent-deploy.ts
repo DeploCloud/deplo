@@ -48,9 +48,20 @@ export type AgentBuildPlan =
       build: BuildConfig;
     }
   | {
-      /** The agent runs a prebuilt image as-is (source: docker-image). */
+      /** The agent runs an already-existing image as-is - no build. */
       kind: "image";
       image: string;
+      /**
+       * Whether the agent must `docker pull` it first. Spelled out at both call
+       * sites rather than defaulted, because the two mean opposite things and
+       * getting it wrong fails in a way that reads like the wrong error:
+       *  - a `docker-image` SOURCE is a registry ref by definition, so it pulls
+       *    (that also refreshes a moved tag and turns a typo'd image into a clear
+       *    pull error instead of a stale local one running);
+       *  - a ROLLBACK re-runs `deplo/<key>:<dep>`, which exists only on that host
+       *    and is in no registry anywhere - pulling it could only ever fail.
+       */
+      pull: boolean;
     }
   | {
       /**
@@ -233,6 +244,8 @@ export async function runAgentDeploy(opts: {
   forceRecreate?: boolean;
   /** The app's extra `docker compose up` flags, already split into argv tokens. */
   composeUpArgs?: string[];
+  /** This host is a BUILD SERVER: build the image and stop. */
+  buildOnly?: boolean;
   sink: AgentDeploySink;
 }): Promise<AgentDeployResult> {
   // P5: fail fast if the agent doesn't answer, rather than hanging a deploy.
@@ -240,6 +253,16 @@ export async function runAgentDeploy(opts: {
   if (!hello.dockerAvailable) {
     throw new AgentUnavailableError(
       "the agent reports Docker is not available on the target server",
+    );
+  }
+  // A HARD gate, unlike the three soft ones below, and the difference is what
+  // ignoring the field would do: an older agent reads `build_only` as absent and
+  // DEPLOYS the app here - quietly running production on the build server. There is
+  // no version of that worth degrading into, so refuse before anything is built.
+  if (opts.buildOnly && !hello.capabilities.includes("deploy.build-only")) {
+    throw new AgentUnavailableError(
+      "this build server's agent is too old to build without deploying - update it " +
+        "from Settings → Servers, or build this app on its own server",
     );
   }
   // Both freshness switches are additive wire fields: an agent that predates them
@@ -449,6 +472,9 @@ export async function buildDeployRequest(opts: {
   /** The app's extra `docker compose up` flags, already split into argv tokens
    *  (lib/deploy/compose-args.ts). Empty for every app that never set any. */
   composeUpArgs?: string[];
+  /** Build the image and stop - this host is a BUILD SERVER and runs nothing of
+   *  the app. The caller then streams the image to the host that does. */
+  buildOnly?: boolean;
 }): Promise<DeployRequest> {
   const base: DeployRequest = {
     deployId: opts.deployId,
@@ -476,6 +502,11 @@ export async function buildDeployRequest(opts: {
     // Appended to the bring-up the AGENT assembles — the project name, stack file
     // and env-file are never ours to send. Empty for almost every app.
     composeUpArgs: opts.composeUpArgs ?? [],
+    // Stop after the build: nothing of this app is written to the stack dir and
+    // nothing is brought up here. Only ever set on the git/upload arms below - the
+    // agent rejects it for compose and for a plan that builds nothing, which is
+    // the same boundary the control plane enforces before it gets here.
+    buildOnly: opts.buildOnly ?? false,
   };
 
   if (opts.plan.kind === "compose") {
@@ -499,11 +530,11 @@ export async function buildDeployRequest(opts: {
       ...base,
       sourceKind: SourceKind.SOURCE_KIND_IMAGE,
       buildKind: BuildKind.BUILD_KIND_NONE,
-      // The local docker-image path ALWAYS pulls (build.ts streamDocker "pull"),
-      // so the agent always pulls too — exact parity. A docker-image source is a
-      // registry ref by definition; pulling refreshes a moved tag and surfaces a
-      // missing image as a clear pull error instead of running a stale local one.
-      pullImage: true,
+      // The plan decides - see `pull` on the image arm of AgentBuildPlan. A
+      // docker-image source pulls (parity with the old local path, which always
+      // did); a rollback must not, because its image is local to that host and
+      // exists in no registry.
+      pullImage: opts.plan.pull,
     };
   }
 

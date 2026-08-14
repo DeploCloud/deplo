@@ -19,9 +19,10 @@ export default async function AppDeploymentsPage(
   const project = await getAppBySlug(slug);
   if (!project) notFound();
 
-  const [deployments, canDeploy, isAdmin] = await Promise.all([
+  const [deployments, canDeploy, canRollback, isAdmin] = await Promise.all([
     listDeployments({ appId: project.id }),
     hasAppCapability(project.id, "deploy_apps"),
+    hasAppCapability(project.id, "rollback_apps"),
     isInstanceAdmin(),
   ]);
   const inProgress = deployments.filter((d) => IN_PROGRESS.has(d.status)).length;
@@ -62,6 +63,7 @@ export default async function AppDeploymentsPage(
         <DeploymentsTable
           header={header}
           canManage={canManage}
+          canRollbackApps={canRollback || isAdmin}
           scopeAppId={project.id}
           deployments={deployments.map((d) => ({
             id: d.id,
@@ -77,6 +79,8 @@ export default async function AppDeploymentsPage(
             createdAt: d.createdAt,
             creator: d.creator,
             url: d.url,
+            canRollback: d.canRollback,
+            rollbackOf: d.rollbackOf,
           }))}
         />
       )}

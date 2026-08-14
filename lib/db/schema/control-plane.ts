@@ -153,6 +153,11 @@ export const teams = pgTable(
     // (lib/membership.ts). Off by default; enabling it is refused unless the actor
     // has 2FA themselves, so it can never lock its own author out.
     requireTwoFactor: boolean("require_two_factor").notNull().default(false),
+    // Whether this team's API tokens may drive it over MCP (`/api/mcp`). ON by
+    // default: a token is required anyway, so the switch is a policy lever for a
+    // company that wants AI access off, not the thing that makes the endpoint
+    // safe. Off ⇒ the endpoint refuses the whole request, before any tool runs.
+    mcpEnabled: boolean("mcp_enabled").notNull().default(true),
     // When the team's default backup destination was seeded (lib/data/destinations.ts
     // `ensureDefaultDestination`). A ONE-SHOT marker, not a timestamp anyone reads:
     // seeding on "the team has no destinations" instead made the default
@@ -780,6 +785,35 @@ export const servers = pgTable(
     // checks skip, and the server drops out of every deploy-target picker while
     // staying eligible as a backup destination.
     storageOnly: boolean("storage_only").notNull().default(false),
+    // A server bought purely to COMPILE: Docker is installed, Traefik is not, and
+    // no app of any team runs here. It builds images for the hosts that do, which
+    // then receive them over the ExportImage/ImportImage relay.
+    //
+    // The sibling of `storage_only`, and exclusive with it (a CHECK enforces that):
+    // one specialises away the workload, the other specialises away Docker itself.
+    // Two flags rather than a `role` enum because both are absent for the ordinary
+    // server that does everything, which is what almost every row is.
+    //
+    // What it changes: the host drops out of every deploy-target picker (apps and
+    // databases alike), and the Traefik readiness check becomes a `skip` instead of
+    // a warning - a build server has no proxy BY DESIGN and should not read as
+    // half-configured for it. Docker is still required; that check is unchanged.
+    //
+    // Reversible from the UI, like every role: the installer's only build-only
+    // branch is skipping Traefik, so a role is otherwise purely a control-plane
+    // decision. Leaving "everything" is refused while the host still has apps or
+    // databases on it. The one true one-way door is physical - a host installed as
+    // backups-only has no Docker to build with.
+    buildOnly: boolean("build_only").notNull().default(false),
+    // This host's CPU architecture ("amd64" | "arm64"), observed from each Hello
+    // like `docker_version` and `traefik_enabled` - never asserted at registration.
+    // "" means an agent too old to report it, which can never equal another host's
+    // arch and so simply keeps this server out of the build-server picker.
+    //
+    // Persisted, unlike the rest of the Hello capability set, for one reason: the
+    // "Build on" picker has to grey out the mismatched hosts, and a picker that
+    // dialled every agent to render itself would be a page load per server.
+    hostArch: text("host_arch").notNull().default(""),
     // How many deployments this server's agent runs at once.
     // Default 1 = strict per-server serialization:
     // deploys on THIS server run one at a time; deploys on OTHER servers run in
@@ -890,6 +924,30 @@ export const apps = pgTable(
       () => servers.id,
       { onDelete: "set null" },
     ),
+    // Which server BUILDS this app's image, when that is not the one that runs it.
+    // NULL is "Automatic": use a build-only server if the fleet has one this team
+    // can reach and its arch matches, otherwise build where the app runs - which is
+    // what every app did before build servers existed, so NULL is also the honest
+    // default for every existing row.
+    //
+    // "Build on this app's own server" is expressed by pinning that server's id, not
+    // by a sentinel: a column of ids that sometimes holds a magic word is the kind of
+    // thing that reads fine and then breaks a join. `updateAppSource` carries the pin
+    // across a server move, exactly where it already re-hosts the app's domains.
+    //
+    // `SET NULL`, not RESTRICT: removing a build server must never be blocked by an
+    // app that merely preferred it, and falling back to Automatic is always valid.
+    buildServerId: text("build_server_id").references(() => servers.id, {
+      onDelete: "set null",
+    }),
+    // When the build server is unreachable, build on this app's own server instead
+    // and say so in the deploy log. ON by default: a deploy that ships beats a deploy
+    // that fails, and the previous version keeps serving either way.
+    //
+    // Turned OFF by whoever chose a small deploy server ON PURPOSE - for them a
+    // surprise build on the production box is the worse outcome, because it can take
+    // the apps already running there down with it.
+    buildFallbackLocal: boolean("build_fallback_local").notNull().default(true),
     logo: text("logo"),
     // The JavaScript framework Deplo recognised in this app's own source
     // ("nextjs", "astro", …; see lib/apps/framework-catalog.ts), or NULL when
@@ -955,6 +1013,14 @@ export const apps = pgTable(
     // decide WHICH stack comes up are refused on both sides. See
     // lib/deploy/compose-args.ts.
     composeUpArgs: text("compose_up_args"),
+    // How many previous deployments this app can be rolled back to (migration
+    // 0094). It is a RETENTION number, not a feature flag: it decides how many of
+    // this app's built images survive on its server, so 0 genuinely means "keep
+    // nothing to go back to" and the Rollback action disappears. Defaults to 3 -
+    // the point of the feature is that a bad deploy is undoable without anyone
+    // configuring anything first. The host enforces it exactly, via the per-slug
+    // map on DockerCleanupRequest (lib/data/docker-cleanup.ts).
+    rollbackKeep: integer("rollback_keep").notNull().default(3),
     // Per-app resource limits (flattened ResourceLimits, like repo_*/upload_*).
     // Every column NULLABLE with NO default: NULL ⇒ that dimension is UNCAPPED,
     // and an all-NULL row ⇒ `resources` assembles to null (no limits set), so an
@@ -1079,6 +1145,16 @@ export const apps = pgTable(
     createdByUserId: text("created_by_user_id").references(() => users.id, {
       onDelete: "set null",
     }),
+    // When someone confirmed this app's deletion (migration 0097). Set BEFORE the
+    // teardown, which takes seconds on a healthy host and up to the dial timeout
+    // on an unreachable one; the row itself goes when the teardown finishes.
+    //
+    // While it is set the app is GONE as far as the product is concerned: every
+    // gate refuses it, its pages 404, and the Overview renders it dimmed and
+    // pulsing instead of a card someone can click into and deploy. That is also
+    // what makes the operation crash-safe — a stamp with no process behind it is
+    // an unfinished delete, which `resumeAppDeletes` finishes at boot.
+    deletingAt: isoTimestamptz("deleting_at"),
     createdAt: isoTimestamptz("created_at").notNull(),
     updatedAt: isoTimestamptz("updated_at").notNull(),
   },
@@ -1228,6 +1304,17 @@ export const deployments = pgTable(
     // deployment is a historical record that must survive its server's deletion
     // (apps.server_id is RESTRICT, so a live service can't lose its server).
     serverId: text("server_id"),
+    // The server this deploy BUILT on, when that was not `server_id`. NULL is the
+    // ordinary case and means "built where it runs" - including every row that
+    // predates build servers, which is why it needs no backfill.
+    //
+    // Denormalized and FK-less for the same two reasons `server_id` is: the queue
+    // drains on it (the build server's lane is the one that matters, because the
+    // build is where the cost is), and a deployment is a historical record that has
+    // to survive the deletion of the host it names. It is also the audit answer to
+    // "where did this app's source and secrets actually go", which is not a question
+    // whose answer may disappear when someone decommissions a builder.
+    buildServerId: text("build_server_id"),
     status: text("status").notNull(),
     environment: text("environment").notNull(),
     // The host-side KEY this deploy owns: the container `deplo-<key>`, the stack
@@ -1271,6 +1358,27 @@ export const deployments = pgTable(
     // Rebuild reported success without ever replacing the container. Every other
     // deploy leaves it false so an unchanged reroute still causes no restart.
     forceRecreate: boolean("force_recreate").notNull().default(false),
+    // The image tag this deploy actually rendered into its stack - the string the
+    // agent built and `compose up` ran (migration 0094). Written ONLY by the arms
+    // Deplo builds (git, upload), where it is
+    // `deplo/<deploy_key>:<first 12 of this row's id>` and the image lives on the
+    // owning host. NULL everywhere else: a compose stack has no single image, and a
+    // prebuilt `docker-image` source is a mutable registry tag with nothing pinned
+    // behind it. So NOT NULL reads as "there is an image of ours to go back to",
+    // which is exactly what makes this row a rollback target.
+    //
+    // Recorded rather than derived on demand: the tag is derivable from the id, but
+    // only for a deploy that actually built one - an app that used to be a
+    // `docker-image` source would answer with a `deplo/` tag nobody ever minted.
+    imageRef: text("image_ref"),
+    // Set when this deploy is a ROLLBACK: the id of the deployment whose image it
+    // re-ran. Plain text with NO foreign key, like `server_id` - history has to
+    // survive the deletion of what it points at.
+    //
+    // It is also load-bearing for retention: a rollback row reuses an existing
+    // image rather than building one, so it must not consume a slot when ranking
+    // which builds are still on the host. NULL ⇒ "this deploy built its own image".
+    rollbackOf: text("rollback_of"),
     creator: text("creator").notNull(),
     createdAt: isoTimestamptz("created_at").notNull(),
   },
@@ -1286,6 +1394,12 @@ export const deployments = pgTable(
     // ORDER BY.
     index("deployments_queued_server_idx")
       .on(t.serverId, t.createdAt, t.seq)
+      .where(sql`${t.status} = 'queued'`),
+    // The same hot path once a BUILD SERVER is in play: the queue drains on the
+    // lane, `coalesce(build_server_id, server_id)`, which the index above cannot
+    // serve. Its sibling stays because other readers still ask by owning server.
+    index("deployments_queued_lane_idx")
+      .on(sql`coalesce(${t.buildServerId}, ${t.serverId})`, t.createdAt, t.seq)
       .where(sql`${t.status} = 'queued'`),
     // A pull request preview's own build history, newest first.
     index("deployments_preview_idx").on(
@@ -2024,6 +2138,17 @@ export const backupRuns = pgTable(
     targetId: text("target_id").notNull(),
     objectKey: text("object_key").notNull(),
     sizeBytes: bigint("size_bytes", { mode: "number" }).notNull(),
+    // How big the artifact is once DECRYPTED — the exact byte count a download
+    // hands the browser, and so its Content-Length. NOT derivable from
+    // `size_bytes`: age adds a header plus a tag per 64 KiB chunk, so the stored
+    // artifact is always slightly larger than the .tar.gz / .dump.gz inside it,
+    // and only the agent that wrote it ever saw both numbers.
+    //
+    // NULL for every run taken before migration 0092 and for one written by an
+    // agent that predates the field. A download then sends no Content-Length,
+    // which is exactly what it did before — the browser shows a size-less
+    // download rather than a wrong one (migration 0092).
+    decryptedSizeBytes: bigint("decrypted_size_bytes", { mode: "number" }),
     // Hex sha256 of the artifact AS WRITTEN (ciphertext, before any decryption).
     // The agent computes it on both halves of a relay and on an S3 upload; the
     // control plane compares them, records the winner here, and re-checks it
@@ -2282,10 +2407,27 @@ export const apiTokens = pgTable(
     // emptied scope would read as "no scope" and silently WIDEN the token to
     // everything. Scoped with zero rows means "reaches nothing".
     scoped: boolean("scoped").notNull().default(false),
+    // Set when this token was minted by approving an OAuth consent instead of by
+    // the tokens page, and names the client that presented itself. It is what
+    // makes an OAuth connection AN ORDINARY API TOKEN rather than a second kind
+    // of credential: the access token an AI client sends is only a pointer at
+    // this row, so revoking it here stops the next request with no TTL window.
+    //
+    // The foreign key to `oauth_client(client_id)` lives in migration 0101 only,
+    // not here: `schema/auth.ts` already imports `users` from this module, and
+    // declaring the reference in Drizzle would close that import cycle.
+    oauthClientId: text("oauth_client_id"),
     lastUsedAt: isoTimestamptz("last_used_at"),
     createdAt: isoTimestamptz("created_at").notNull(),
   },
-  (t) => [uniqueIndex("api_tokens_token_hash_uq").on(t.tokenHash)],
+  (t) => [
+    uniqueIndex("api_tokens_token_hash_uq").on(t.tokenHash),
+    // One connection per (client, person): re-authorizing MOVES a connection
+    // rather than leaving two the owner cannot tell apart.
+    uniqueIndex("api_tokens_oauth_client_user_uq")
+      .on(t.oauthClientId, t.userId)
+      .where(sql`${t.oauthClientId} is not null`),
+  ],
 );
 
 /**
