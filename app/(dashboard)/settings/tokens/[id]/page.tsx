@@ -1,7 +1,11 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { ArrowLeft } from "lucide-react";
-import { hasCapability, isInstanceAdmin } from "@/lib/membership";
+import {
+  hasCapability,
+  isInstanceAdmin,
+  requireActiveTeamId,
+} from "@/lib/membership";
 import { getToken, listScopeTree } from "@/lib/data/tokens";
 
 import { PageHeader } from "@/components/shared/page-header";
@@ -21,12 +25,14 @@ export default async function TokenPage(
   props: PageProps<"/settings/tokens/[id]">,
 ) {
   const { id } = await props.params;
-  const [token, canManage, canGrantInstanceAdmin, tree] = await Promise.all([
-    getToken(id),
-    hasCapability("manage_tokens"),
-    isInstanceAdmin(),
-    listScopeTree(),
-  ]);
+  const [token, canManage, canGrantInstanceAdmin, tree, activeTeamId] =
+    await Promise.all([
+      getToken(id),
+      hasCapability("manage_tokens"),
+      isInstanceAdmin(),
+      listScopeTree(),
+      requireActiveTeamId(),
+    ]);
   // A token of another team resolves to nothing here, exactly as it does in the
   // data layer — there is no id to guess your way into.
   if (!token) notFound();
@@ -74,6 +80,7 @@ export default async function TokenPage(
         mode="edit"
         token={token}
         tree={tree}
+        activeTeamId={activeTeamId}
         // A connection's permissions are chosen on the consent screen and
         // changed by connecting again, so this form is read-only for one: two
         // editors over one credential is how the two drift apart. Revoking

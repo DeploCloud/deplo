@@ -35,6 +35,10 @@ import {
   type ScopeSelection,
 } from "@/components/settings/tokens/scope-picker";
 import { TokenCreated } from "@/components/settings/tokens/token-created";
+import {
+  revokeDescription,
+  revokeTitle,
+} from "@/components/settings/tokens/revoke-copy";
 import { gqlAction } from "@/lib/graphql-client";
 import { ALL_CAPABILITIES, type Capability } from "@/lib/types";
 import { CAPABILITY_CATEGORIES, CAPABILITY_META } from "@/lib/capabilities";
@@ -60,6 +64,7 @@ export function TokenEditor({
   token,
   preset,
   tree,
+  activeTeamId,
   canManage,
   canGrantInstanceAdmin,
   publicUrl,
@@ -67,6 +72,8 @@ export function TokenEditor({
   mode: "create" | "edit";
   /** The token being edited. */
   token?: ApiTokenDTO;
+  /** Revoking takes away THIS team's access, so the dialog has to name it. */
+  activeTeamId: string;
   /** The template a new token was started from (chosen in the "New token" menu). */
   preset?: TokenPreset | null;
   /** Every team, project and app the actor can reach — the scope picker's tree. */
@@ -106,6 +113,12 @@ export function TokenEditor({
   );
 
   const readOnly = !canManage;
+  const revokeCopy = {
+    kind: "token" as const,
+    teams: token?.teamsReached ?? [],
+    activeTeamId,
+    scoped: token?.scoped ?? false,
+  };
   const picked =
     scope.teamIds.length +
     scope.projectIds.length +
@@ -441,10 +454,12 @@ export function TokenEditor({
         <ConfirmAction
           open={revokeOpen}
           onOpenChange={setRevokeOpen}
-          title={`Revoke ${token!.name}?`}
-          description="Every client using it loses access immediately, including any deploy hook that sends it. This can't be undone; create a new token if you still need one."
+          title={revokeTitle(token!.name, revokeCopy)}
+          description={revokeDescription(revokeCopy)}
           confirmLabel="Revoke token"
-          successMessage="Token revoked"
+          successMessage={
+            token!.teamsReached.length > 1 ? "Access removed" : "Token revoked"
+          }
           onConfirm={async () => {
             const res = await gqlAction(
               `mutation($id: String!) { revokeToken(id: $id) }`,

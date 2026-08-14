@@ -58,7 +58,11 @@ export default async function McpSettingsPage() {
           anyone already living in a shell. */}
       <ConnectWeb publicUrl={publicUrl} />
       <ConnectSnippet publicUrl={publicUrl} teamSlug={team.slug} />
-      <ConnectedClients connections={connections} canManage={canRevoke} />
+      <ConnectedClients
+        connections={connections}
+        activeTeamId={team.id}
+        canManage={canRevoke}
+      />
       <ToolTable />
     </div>
   );

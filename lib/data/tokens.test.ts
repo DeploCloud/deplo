@@ -10,6 +10,7 @@ import {
   apiTokens,
   apiTokenCapabilities,
   apiTokenProjects,
+  apiTokenTeams,
   memberships,
   membershipCapabilities,
   projects as projectsTable,
@@ -59,6 +60,25 @@ beforeEach(async () => {
 
 const asUser1 = <T>(fn: () => Promise<T>): Promise<T> =>
   runWithIdentity({ userId: USER_1, teamId: TEAM_A }, fn);
+
+/** The same person, acting in the other team - what a partial revoke needs. */
+const asUser1InB = <T>(fn: () => Promise<T>): Promise<T> =>
+  runWithIdentity({ userId: USER_1, teamId: TEAM_B }, fn);
+
+async function alsoMemberOfB(): Promise<void> {
+  await db.insert(memberships).values({
+    id: "mem_user_1_b",
+    userId: USER_1,
+    teamId: TEAM_B,
+    role: "owner",
+    createdAt: T0,
+  });
+  await db
+    .insert(membershipCapabilities)
+    .values(
+      ALL_CAPABILITIES.map((c) => ({ membershipId: "mem_user_1_b", capability: c })),
+    );
+}
 
 async function seedProject(id: string, teamId: string, name = id) {
   await db.insert(projectsTable).values({
@@ -342,6 +362,109 @@ test("revokeToken removes only the active team's matching token", async () => {
     assert.equal((await listTokens()).length, 0);
   });
   assert.equal((await db.select().from(apiTokens).where(eq(apiTokens.id, id))).length, 0);
+});
+
+test("revoking a token scoped to this team alone deletes it", async () => {
+  const id = await asUser1(
+    async () => (await createToken({ name: "CI", teamIds: [TEAM_A] })).token.id,
+  );
+  await asUser1(() => revokeToken(id));
+  assert.equal(
+    (await db.select().from(apiTokens).where(eq(apiTokens.id, id))).length,
+    0,
+    "the last team to let go deletes the row",
+  );
+});
+
+test("revoking from one team leaves the token working in the others", async () => {
+  await alsoMemberOfB();
+  const raw = await asUser1(
+    async () =>
+      (await createToken({ name: "CI", teamIds: [TEAM_A, TEAM_B] })).raw,
+  );
+  const id = (await db.select().from(apiTokens))[0]!.id;
+
+  await asUser1InB(() => revokeToken(id));
+
+  assert.equal(
+    (await db.select().from(apiTokens).where(eq(apiTokens.id, id))).length,
+    1,
+    "team B revoking must not delete team A's credential",
+  );
+  assert.deepEqual(
+    (await db.select().from(apiTokenTeams).where(eq(apiTokenTeams.tokenId, id)))
+      .map((r) => r.teamId),
+    [TEAM_A],
+  );
+  // Still authenticates - but only into the team that kept it, even when the
+  // request asks for the one that revoked.
+  const identity = await authenticateToken(raw, TEAM_B);
+  assert.equal(identity?.teamId, TEAM_A);
+});
+
+test("revoking from the home team hands the token to a team still in scope", async () => {
+  await alsoMemberOfB();
+  const id = await asUser1(
+    async () =>
+      (await createToken({ name: "CI", teamIds: [TEAM_A, TEAM_B] })).token.id,
+  );
+  // TEAM_A is where it was minted, so it is also where it is EDITED from.
+  await asUser1(() => revokeToken(id));
+
+  const row = (await db.select().from(apiTokens).where(eq(apiTokens.id, id)))[0];
+  assert.equal(row?.teamId, TEAM_B, "the home moved with the access");
+  // Which is the whole point of moving it: it is still manageable.
+  await asUser1InB(() =>
+    updateToken({ id, name: "Renamed", teamIds: [TEAM_B] }),
+  );
+  assert.equal(
+    (await db.select().from(apiTokens).where(eq(apiTokens.id, id)))[0]?.name,
+    "Renamed",
+  );
+});
+
+test("a team reached only through a project is detached too", async () => {
+  await alsoMemberOfB();
+  await seedProject("prc_b", TEAM_B, "Beta");
+  const id = await asUser1(
+    async () =>
+      (
+        await createToken({
+          name: "CI",
+          teamIds: [TEAM_A],
+          projectIds: ["prc_b"],
+        })
+      ).token.id,
+  );
+
+  await asUser1InB(() => revokeToken(id));
+
+  assert.equal(
+    (
+      await db
+        .select()
+        .from(apiTokenProjects)
+        .where(eq(apiTokenProjects.tokenId, id))
+    ).length,
+    0,
+    "the project row is what reached team B, so it has to go with it",
+  );
+  assert.equal(
+    (await db.select().from(apiTokens).where(eq(apiTokens.id, id))).length,
+    1,
+  );
+});
+
+test("an unscoped token has no per-team grant to take away, so it is revoked outright", async () => {
+  await alsoMemberOfB();
+  const id = await asUser1(
+    async () => (await createToken({ name: "CI" })).token.id,
+  );
+  await asUser1InB(() => revokeToken(id));
+  assert.equal(
+    (await db.select().from(apiTokens).where(eq(apiTokens.id, id))).length,
+    0,
+  );
 });
 
 test("a cross-team id hits nothing, and says so", async () => {

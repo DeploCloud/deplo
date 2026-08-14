@@ -1,6 +1,10 @@
 import Link from "next/link";
 import { KeyRound, BookOpen, ArrowRight } from "lucide-react";
-import { hasCapability, reachesWholeTeam } from "@/lib/membership";
+import {
+  hasCapability,
+  reachesWholeTeam,
+  requireActiveTeamId,
+} from "@/lib/membership";
 import { listTokens } from "@/lib/data/tokens";
 import { listProjects } from "@/lib/data/projects";
 import { listApps } from "@/lib/data/apps";
@@ -26,14 +30,16 @@ export default async function TokensPage() {
       />
     );
 
-  const [tokens, projects, folders, apps, teams, canManage] = await Promise.all([
-    listTokens(),
-    listProjects(),
-    listFolders(),
-    listApps(),
-    listMyTeams(),
-    hasCapability("manage_tokens"),
-  ]);
+  const [tokens, projects, folders, apps, teams, canManage, activeTeamId] =
+    await Promise.all([
+      listTokens(),
+      listProjects(),
+      listFolders(),
+      listApps(),
+      listMyTeams(),
+      hasCapability("manage_tokens"),
+      requireActiveTeamId(),
+    ]);
   // A token can reach teams and apps this page can't name; `scopeLabel` falls
   // back to a count for anything missing here rather than showing a blank.
   const names = Object.fromEntries(
@@ -76,7 +82,12 @@ export default async function TokensPage() {
           }
         />
       ) : (
-        <TokensList tokens={tokens} names={names} canManage={canManage} />
+        <TokensList
+          tokens={tokens}
+          names={names}
+          activeTeamId={activeTeamId}
+          canManage={canManage}
+        />
       )}
     </div>
   );

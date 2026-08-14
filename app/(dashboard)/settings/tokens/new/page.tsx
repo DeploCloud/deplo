@@ -1,7 +1,11 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { ArrowLeft } from "lucide-react";
-import { hasCapability, isInstanceAdmin } from "@/lib/membership";
+import {
+  hasCapability,
+  isInstanceAdmin,
+  requireActiveTeamId,
+} from "@/lib/membership";
 
 import { listScopeTree } from "@/lib/data/tokens";
 import { tokenPreset } from "@/lib/token-presets";
@@ -16,11 +20,13 @@ export default async function NewTokenPage(
 ) {
   const sp = await props.searchParams;
   const wanted = Array.isArray(sp.preset) ? sp.preset[0] : sp.preset;
-  const [canManage, canGrantInstanceAdmin, tree] = await Promise.all([
-    hasCapability("manage_tokens"),
-    isInstanceAdmin(),
-    listScopeTree(),
-  ]);
+  const [canManage, canGrantInstanceAdmin, tree, activeTeamId] =
+    await Promise.all([
+      hasCapability("manage_tokens"),
+      isInstanceAdmin(),
+      listScopeTree(),
+      requireActiveTeamId(),
+    ]);
   // Reachable only from the "New token" menu, which is itself gated — but a
   // typed URL must not open an editor whose save can only fail.
   if (!canManage) redirect("/settings/tokens");
@@ -52,6 +58,7 @@ export default async function NewTokenPage(
         mode="create"
         preset={preset}
         tree={tree}
+        activeTeamId={activeTeamId}
         canManage
         canGrantInstanceAdmin={canGrantInstanceAdmin}
         publicUrl={await instancePublicBaseUrl()}

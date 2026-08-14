@@ -1874,7 +1874,7 @@ type LogsInfo {
 }
 
 """
-An AI client connected to this team over OAuth. It holds an ordinary API token, minted when someone approved the consent screen — so `id` is that token's id, and revoking it is `revokeToken`.
+An AI client connected to this team over OAuth. It holds an ordinary API token, minted when someone approved the consent screen — so `id` is that token's id, and revoking it is `revokeToken`, which takes away the active team's access and deletes the connection with the last team.
 """
 type McpConnection {
   capabilities: [String!]
@@ -1891,6 +1891,11 @@ type McpConnection {
   redirectOrigin: String
   teamId: ID
   teamName: String
+
+  """
+  Every team this connection was approved for. Revoking it removes the team you are acting in, not the connection - the others keep working until the last one lets go.
+  """
+  teamNames: [String!]
   username: String
 }
 
@@ -2499,7 +2504,9 @@ type Mutation {
   """
   revokeSession(id: String!): Boolean
 
-  """Revoke (delete) an API token. Returns true."""
+  """
+  Remove this token's access to the active team. A token scoped to several teams keeps working in the others; it is deleted when the team revoking was the last one it reached, or when it is not scoped at all (there is no per-team grant to take away). Returns true.
+  """
   revokeToken(id: String!): Boolean
 
   """

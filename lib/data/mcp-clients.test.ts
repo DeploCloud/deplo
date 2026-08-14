@@ -541,6 +541,51 @@ test("another team neither sees nor revokes this team's connection", async () =>
   );
 });
 
+test("a connection lists every team it was approved for", async () => {
+  await grantOwnerIn(TEAM_B);
+  await as(OWNER, () =>
+    mintMcpConnection({
+      clientId: CLIENT,
+      capabilities: ["view"],
+      teamIds: [TEAM_A, TEAM_B],
+    }),
+  );
+  const list = await as(OWNER, () => listMcpConnections());
+  assert.deepEqual(
+    list[0].teams.map((t) => t.id).sort(),
+    [TEAM_A, TEAM_B].sort(),
+    "the row has to say where else the client reaches, before Revoke is pressed",
+  );
+});
+
+test("revoking from one team leaves the client connected to the others", async () => {
+  await grantOwnerIn(TEAM_B);
+  const { tokenId } = await as(OWNER, () =>
+    mintMcpConnection({
+      clientId: CLIENT,
+      capabilities: ["view"],
+      teamIds: [TEAM_A, TEAM_B],
+    }),
+  );
+
+  await as(OWNER, () => revokeToken(tokenId), TEAM_B);
+
+  const stillThere = await as(OWNER, () => listMcpConnections());
+  assert.deepEqual(
+    stillThere.map((c) => c.id),
+    [tokenId],
+    "team A never asked for the client to be disconnected",
+  );
+  assert.deepEqual(await as(OWNER, () => listMcpConnections(), TEAM_B), []);
+  // The OAuth half is untouched: clearing it would sign the client out of team
+  // A too, which is the whole thing this path exists to avoid.
+  assert.equal(
+    (await pg.query(`select id from oauth_consent where user_id = $1`, [OWNER]))
+      .rows.length,
+    1,
+  );
+});
+
 test("revoking the connection also clears its OAuth rows", async () => {
   const { tokenId } = await as(OWNER, () =>
     mintMcpConnection({ clientId: CLIENT, capabilities: ["view"] }),

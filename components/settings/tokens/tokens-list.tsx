@@ -25,6 +25,10 @@ import { timeAgo } from "@/lib/utils";
 import { CAPABILITY_META } from "@/lib/capabilities";
 import { TOKEN_PRESETS, presetIdFor } from "@/lib/token-presets";
 import { scopeLabel } from "@/components/settings/tokens/scope-label";
+import {
+  revokeDescription,
+  revokeTitle,
+} from "@/components/settings/tokens/revoke-copy";
 import type { ApiTokenDTO } from "@/lib/data/tokens";
 
 /**
@@ -36,15 +40,24 @@ import type { ApiTokenDTO } from "@/lib/data/tokens";
 export function TokensList({
   tokens,
   names,
+  activeTeamId,
   canManage,
 }: {
   tokens: ApiTokenDTO[];
   /** Team / project / app id → name, as far as this team can resolve them. */
   names: Record<string, string>;
+  /** Revoking takes away THIS team's access, so the dialog has to name it. */
+  activeTeamId: string;
   canManage: boolean;
 }) {
   const router = useRouter();
   const [revoke, setRevoke] = React.useState<ApiTokenDTO | null>(null);
+  const copyFor = (t: ApiTokenDTO) => ({
+    kind: "token" as const,
+    teams: t.teamsReached,
+    activeTeamId,
+    scoped: t.scoped,
+  });
 
   return (
     <div className="rounded-xl border border-border">
@@ -166,10 +179,20 @@ export function TokensList({
       <ConfirmAction
         open={revoke !== null}
         onOpenChange={(v) => !v && setRevoke(null)}
-        title={revoke ? `Revoke ${revoke.name}?` : "Revoke this token?"}
-        description="Every client using it loses access immediately, including any deploy hook that sends it. This can't be undone; create a new token if you still need one."
+        title={
+          revoke ? revokeTitle(revoke.name, copyFor(revoke)) : "Revoke this token?"
+        }
+        description={
+          revoke
+            ? revokeDescription(copyFor(revoke))
+            : "Every client using it loses access immediately, including any deploy hook that sends it. This can't be undone; create a new token if you still need one."
+        }
         confirmLabel="Revoke token"
-        successMessage="Token revoked"
+        successMessage={
+          revoke && revoke.teamsReached.length > 1
+            ? "Access removed"
+            : "Token revoked"
+        }
         onConfirm={async () => {
           const res = await gqlAction(
             `mutation($id: String!) { revokeToken(id: $id) }`,

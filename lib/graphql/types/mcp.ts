@@ -32,7 +32,8 @@ export const McpConnectionRef = builder
     description:
       "An AI client connected to this team over OAuth. It holds an ordinary " +
       "API token, minted when someone approved the consent screen — so `id` is " +
-      "that token's id, and revoking it is `revokeToken`.",
+      "that token's id, and revoking it is `revokeToken`, which takes away the " +
+      "active team's access and deletes the connection with the last team.",
     fields: (t) => ({
       id: t.exposeID("id"),
       clientName: t.exposeString("clientName"),
@@ -47,6 +48,13 @@ export const McpConnectionRef = builder
       username: t.exposeString("username", { nullable: true }),
       teamId: t.exposeID("teamId"),
       teamName: t.exposeString("teamName"),
+      teamNames: t.stringList({
+        description:
+          "Every team this connection was approved for. Revoking it removes " +
+          "the team you are acting in, not the connection - the others keep " +
+          "working until the last one lets go.",
+        resolve: (c) => c.teams.map((x) => x.name),
+      }),
       capabilities: t.exposeStringList("capabilities"),
       lastUsedAt: t.exposeString("lastUsedAt", { nullable: true }),
       createdAt: t.exposeString("createdAt"),

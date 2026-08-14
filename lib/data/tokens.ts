@@ -83,6 +83,15 @@ export interface ApiTokenDTO {
   folderIds: string[];
   /** Individually-named apps in the scope. */
   appIds: string[];
+  /**
+   * Every team this token can act in, named - the four scope lists above
+   * flattened to the teams they land in. Empty when `scoped` is false, whose
+   * reach is "every team the creator belongs to" and is resolved live.
+   *
+   * Here because revoking is per-team: a screen offering Revoke has to say what
+   * survives it.
+   */
+  teamsReached: TokenTeam[];
   instanceAdmin: boolean;
   /** The team this token is MANAGED from — where it was created. */
   homeTeamId: string;
@@ -160,6 +169,87 @@ export async function tokenIdsReaching(teamId: string): Promise<Set<string>> {
   );
 }
 
+/** A team a token can act in, named for the screen that has to say so. */
+export interface TokenTeam {
+  id: string;
+  name: string;
+}
+
+/**
+ * The teams each token reaches, named - {@link tokenIdsReaching} read the other
+ * way round, for a whole list at once.
+ *
+ * Revoking is per-team (see {@link revokeToken}), so both settings screens have
+ * to say which teams a credential touches BEFORE the button is pressed, and the
+ * revoke itself needs the same answer to know whether anything is left. One
+ * helper, batched over every row, rather than a per-token query in a `.map`.
+ *
+ * A token with no junction rows (`scoped = false`) answers with nothing: its
+ * reach is "every team its creator belongs to", resolved live at authentication
+ * and not a set anyone can hand back here.
+ *
+ * The names are resolved server-side even for a team the reader is not in. That
+ * is deliberate and already the rule for `McpConnectionDTO.teamName`: a team
+ * hosting a credential must be able to see where else that credential goes,
+ * otherwise "revoke" is a decision taken blind.
+ */
+export async function teamsReachedByTokens(
+  ids: string[],
+): Promise<Map<string, TokenTeam[]>> {
+  const out = new Map<string, TokenTeam[]>();
+  if (ids.length === 0) return out;
+  const db = getDb();
+  const [byTeam, byProject, byFolder, byApp] = await Promise.all([
+    db
+      .select({
+        tokenId: apiTokenTeams.tokenId,
+        id: teamsTable.id,
+        name: teamsTable.name,
+      })
+      .from(apiTokenTeams)
+      .innerJoin(teamsTable, eq(teamsTable.id, apiTokenTeams.teamId))
+      .where(inArray(apiTokenTeams.tokenId, ids)),
+    db
+      .select({
+        tokenId: apiTokenProjects.tokenId,
+        id: teamsTable.id,
+        name: teamsTable.name,
+      })
+      .from(apiTokenProjects)
+      .innerJoin(projectsTable, eq(projectsTable.id, apiTokenProjects.projectId))
+      .innerJoin(teamsTable, eq(teamsTable.id, projectsTable.teamId))
+      .where(inArray(apiTokenProjects.tokenId, ids)),
+    db
+      .select({
+        tokenId: apiTokenFolders.tokenId,
+        id: teamsTable.id,
+        name: teamsTable.name,
+      })
+      .from(apiTokenFolders)
+      .innerJoin(foldersTable, eq(foldersTable.id, apiTokenFolders.folderId))
+      .innerJoin(teamsTable, eq(teamsTable.id, foldersTable.teamId))
+      .where(inArray(apiTokenFolders.tokenId, ids)),
+    db
+      .select({
+        tokenId: apiTokenApps.tokenId,
+        id: teamsTable.id,
+        name: teamsTable.name,
+      })
+      .from(apiTokenApps)
+      .innerJoin(appsTable, eq(appsTable.id, apiTokenApps.appId))
+      .innerJoin(teamsTable, eq(teamsTable.id, appsTable.teamId))
+      .where(inArray(apiTokenApps.tokenId, ids)),
+  ]);
+
+  for (const r of [...byTeam, ...byProject, ...byFolder, ...byApp]) {
+    const list = out.get(r.tokenId) ?? [];
+    if (list.some((t) => t.id === r.id)) continue;
+    out.set(r.tokenId, [...list, { id: r.id, name: r.name }]);
+  }
+  for (const list of out.values()) list.sort((a, b) => a.name.localeCompare(b.name));
+  return out;
+}
+
 export async function listTokens(): Promise<ApiTokenDTO[]> {
   const teamId = await requireActiveTeamId();
   // A narrowed token must not enumerate the team's OTHER credentials: its
@@ -182,7 +272,8 @@ export async function listTokens(): Promise<ApiTokenDTO[]> {
 
   const ids = rows.map((r) => r.id);
   // Every junction in one query each — never per-token (PLAN §6 "batch-load").
-  const [caps, teamRows, projRows, folderRows, appRows] = await Promise.all([
+  const [reachedByToken, caps, teamRows, projRows, folderRows, appRows] = await Promise.all([
+    teamsReachedByTokens(ids),
     getDb()
       .select({
         tokenId: apiTokenCapabilities.tokenId,
@@ -235,6 +326,7 @@ export async function listTokens(): Promise<ApiTokenDTO[]> {
     projectIds: projectsById.get(r.id) ?? [],
     folderIds: foldersById.get(r.id) ?? [],
     appIds: appsById.get(r.id) ?? [],
+    teamsReached: reachedByToken.get(r.id) ?? [],
   }));
 }
 
@@ -609,6 +701,7 @@ export async function createToken(
       projectIds: scope.projectIds,
       folderIds: scope.folderIds,
       appIds: scope.appIds,
+      teamsReached: (await teamsReachedByTokens([id])).get(id) ?? [],
       instanceAdmin,
       homeTeamId: teamId,
       createdByUsername: (await getCurrentUser())?.username ?? null,
@@ -875,12 +968,66 @@ async function identityForTokenRow(
   };
 }
 
+/**
+ * Revoke = "this team is done with this credential", not "delete the row".
+ *
+ * A token's scope can span several teams, and every one of them lists it (a team
+ * that cannot see a credential operating inside it cannot revoke it either). So
+ * the lever each of them holds has to be over ITS OWN access: cutting the row
+ * would let one team switch off another team's automation, which is the same
+ * objection that keeps `updateToken` to the home team. The row is deleted when
+ * the LAST team lets go - at which point the two behaviours coincide, which is
+ * why a single-team token still revokes exactly as it always did.
+ *
+ * A `scoped = false` token is the one case with nothing to detach: its reach is
+ * "every team the creator belongs to", resolved live at authentication rather
+ * than stored, so there are no rows here to remove and no way to say "all of
+ * them except this one" without freezing a set that is meant to move. It is
+ * revoked outright, and both dialogs say so.
+ */
 export async function revokeToken(id: string): Promise<void> {
   const { teamId } = await requireCapability("manage_tokens");
   // Any team the token can act in may cut it off — that is the lever a team has
   // over a credential someone else minted into it.
   if (!(await tokenIdsReaching(teamId)).has(id))
     throw new Error("Token not found");
+
+  const row = (
+    await getDb()
+      .select({
+        name: apiTokens.name,
+        userId: apiTokens.userId,
+        scoped: apiTokens.scoped,
+        homeTeamId: apiTokens.teamId,
+        oauthClientId: apiTokens.oauthClientId,
+      })
+      .from(apiTokens)
+      .where(eq(apiTokens.id, id))
+      .limit(1)
+  )[0];
+  if (!row) throw new Error("Token not found");
+
+  // Read the reach BEFORE opening any transaction: these helpers query on their
+  // own connection and pglite deadlocks if that happens inside one.
+  const remaining = ((await teamsReachedByTokens([id])).get(id) ?? []).filter(
+    (t) => t.id !== teamId,
+  );
+
+  if (row.scoped && remaining.length > 0) {
+    await detachTokenFromTeam(id, teamId, row.homeTeamId, remaining[0].id);
+    await recordActivity(
+      "member",
+      row.oauthClientId
+        ? `Removed ${row.name}'s MCP access to this team`
+        : `Removed the ${row.name} API token's access to this team`,
+      await actorUsername(),
+      null,
+      teamId,
+      "token_revoked",
+    );
+    return;
+  }
+
   const gone = await getDb()
     .delete(apiTokens)
     .where(eq(apiTokens.id, id))
@@ -903,6 +1050,78 @@ export async function revokeToken(id: string): Promise<void> {
 }
 
 /**
+ * Take one team out of a token's scope, leaving the credential itself alone.
+ *
+ * All four junctions, not just `api_token_teams`: a token reaches a team through
+ * any node that LIVES in it too (`tokenIdsReaching` unions the same four), so
+ * dropping the whole-team row alone would leave the connection listed and
+ * working here, and Revoke would look like it had done nothing.
+ *
+ * The OAuth rows are deliberately untouched - clearing the consent or the
+ * refresh token would sign the client out of every team at once, which is the
+ * bug this whole path exists to fix. The access token stays valid and simply
+ * stops resolving here: `identityForTokenRow` re-reads the scope on every
+ * request.
+ */
+async function detachTokenFromTeam(
+  id: string,
+  teamId: string,
+  homeTeamId: string,
+  fallbackHomeTeamId: string,
+): Promise<void> {
+  await getDb().transaction(async (tx) => {
+    await tx
+      .delete(apiTokenTeams)
+      .where(and(eq(apiTokenTeams.tokenId, id), eq(apiTokenTeams.teamId, teamId)));
+    await tx.delete(apiTokenProjects).where(
+      and(
+        eq(apiTokenProjects.tokenId, id),
+        inArray(
+          apiTokenProjects.projectId,
+          tx
+            .select({ id: projectsTable.id })
+            .from(projectsTable)
+            .where(eq(projectsTable.teamId, teamId)),
+        ),
+      ),
+    );
+    await tx.delete(apiTokenFolders).where(
+      and(
+        eq(apiTokenFolders.tokenId, id),
+        inArray(
+          apiTokenFolders.folderId,
+          tx
+            .select({ id: foldersTable.id })
+            .from(foldersTable)
+            .where(eq(foldersTable.teamId, teamId)),
+        ),
+      ),
+    );
+    await tx.delete(apiTokenApps).where(
+      and(
+        eq(apiTokenApps.tokenId, id),
+        inArray(
+          apiTokenApps.appId,
+          tx
+            .select({ id: appsTable.id })
+            .from(appsTable)
+            .where(eq(appsTable.teamId, teamId)),
+        ),
+      ),
+    );
+    // The home team is where the token is MANAGED from (`updateToken` refuses
+    // anywhere else) and the team a hintless OAuth request lands in. If it is
+    // the one walking away, hand both jobs to a team still in scope rather than
+    // leaving a credential nobody can edit, pointed at a team it cannot enter.
+    if (homeTeamId === teamId)
+      await tx
+        .update(apiTokens)
+        .set({ teamId: fallbackHomeTeamId })
+        .where(eq(apiTokens.id, id));
+  });
+}
+
+/**
  * Tear down the OAuth half of a connection when its token is revoked.
  *
  * Deleting the `api_tokens` row is already enough to stop the next request — the
@@ -910,7 +1129,9 @@ export async function revokeToken(id: string): Promise<void> {
  * behind: the refresh token that would mint a fresh access token an hour later,
  * and the consent record that would let the client re-authorize without the
  * screen. It lives INSIDE `revokeToken` so both settings pages and the GraphQL
- * mutation get it — one revocation lever, not two that can drift.
+ * mutation get it - one revocation lever, not two that can drift. Called only
+ * when the `api_tokens` row itself goes: a team detaching from a connection that
+ * still reaches other teams must not sign the client out of those.
  *
  * Best-effort, like `lastUsedAt`: the credential is already gone by this point,
  * and a failed cleanup must not turn a successful revoke into an error.

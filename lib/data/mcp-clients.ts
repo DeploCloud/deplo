@@ -23,8 +23,10 @@ import { assertUser } from "../auth";
 import { ALL_CAPABILITIES, type Capability } from "../types";
 import {
   createToken,
+  teamsReachedByTokens,
   tokenIdsReaching,
   type TokenScopeInput,
+  type TokenTeam,
 } from "./tokens";
 import { getMcpSettings } from "./mcp-settings";
 import { recordActivity } from "./activity";
@@ -69,7 +71,12 @@ export interface ConsentClientDTO {
 
 /** A live connection, as Settings → MCP lists it. */
 export interface McpConnectionDTO {
-  /** The `api_tokens` id — Revoke goes through `revokeToken`, one lever. */
+  /**
+   * The `api_tokens` id - Revoke goes through `revokeToken`, one lever, and it
+   * removes THIS team's access rather than the whole connection (the client
+   * keeps working in the other teams it was approved for, until the last one
+   * lets go).
+   */
   id: string;
   clientName: string;
   clientUri: string | null;
@@ -79,6 +86,12 @@ export interface McpConnectionDTO {
   /** The team it is MANAGED from — which may not be the team reading this list. */
   teamId: string;
   teamName: string;
+  /**
+   * Every team this connection was approved for, named. One consent can grant
+   * several, so the list has to show where else the client reaches before anyone
+   * presses Revoke - and the dialog has to name what survives it.
+   */
+  teams: TokenTeam[];
   capabilities: Capability[];
   lastUsedAt: string | null;
   createdAt: string;
@@ -107,8 +120,9 @@ const CONSENT_FRESHNESS_MS = 5 * 60 * 1000;
  * FIRST and mints second.
  *
  * Freshness matters as much as existence: a consent from a previous connection
- * would otherwise stay a standing permission to mint. Revoking a connection
- * deletes the row (`forgetOauthGrant`), and this window closes the rest.
+ * would otherwise stay a standing permission to mint. Revoking the LAST team of
+ * a connection deletes the row (`forgetOauthGrant`), and this window closes the
+ * rest - including a partial revoke, which leaves the consent alone on purpose.
  */
 async function assertFreshConsent(
   clientId: string,
@@ -479,18 +493,21 @@ export async function listMcpConnections(): Promise<McpConnectionDTO[]> {
   if (rows.length === 0) return [];
 
   // One query for every connection's capabilities, never one per row.
-  const caps = await getDb()
-    .select({
-      tokenId: apiTokenCapabilities.tokenId,
-      capability: apiTokenCapabilities.capability,
-    })
-    .from(apiTokenCapabilities)
-    .where(
-      inArray(
-        apiTokenCapabilities.tokenId,
-        rows.map((r) => r.id),
+  const [caps, teamsByToken] = await Promise.all([
+    getDb()
+      .select({
+        tokenId: apiTokenCapabilities.tokenId,
+        capability: apiTokenCapabilities.capability,
+      })
+      .from(apiTokenCapabilities)
+      .where(
+        inArray(
+          apiTokenCapabilities.tokenId,
+          rows.map((r) => r.id),
+        ),
       ),
-    );
+    teamsReachedByTokens(rows.map((r) => r.id)),
+  ]);
   const byToken = new Map<string, Set<string>>(
     rows.map((r) => [r.id, new Set<string>()]),
   );
@@ -506,6 +523,7 @@ export async function listMcpConnections(): Promise<McpConnectionDTO[]> {
     username: r.username ?? null,
     teamId: r.teamId,
     teamName: r.teamName ?? "",
+    teams: teamsByToken.get(r.id) ?? [],
     // Read live from the junction, never a copy taken at approval time: if the
     // token is edited, this list must show what it can do NOW or the revocation
     // screen is lying about what it is revoking.

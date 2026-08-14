@@ -203,7 +203,11 @@ builder.mutationFields((t) => ({
   revokeToken: t.field({
     type: "Boolean",
     authScopes: { capability: "manage_tokens" },
-    description: "Revoke (delete) an API token. Returns true.",
+    description:
+      "Remove this token's access to the active team. A token scoped to " +
+      "several teams keeps working in the others; it is deleted when the team " +
+      "revoking was the last one it reached, or when it is not scoped at all " +
+      "(there is no per-team grant to take away). Returns true.",
     args: { id: t.arg.string({ required: true }) },
     resolve: async (_r, { id }) => {
       await revokeToken(id);
