@@ -8,7 +8,6 @@ import {
   categoryListQuerySchema,
   slugSchema,
   statusResponseSchema,
-  templateAssetPathSchema,
   templateListQuerySchema,
   templatesResponseSchema,
   versionResponseSchema,
@@ -95,8 +94,4 @@ export async function getStatus() {
 
 export async function getVersion() {
   return fetchApi(apiUrl("/version"), versionResponseSchema);
-}
-
-export async function templateAssetUrl(path: string) {
-  return apiUrl(templateAssetPathSchema.parse(path));
 }
