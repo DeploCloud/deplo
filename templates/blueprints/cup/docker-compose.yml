@@ -1,8 +1,0 @@
-
-services:
-  cup:
-    image: ghcr.io/sergi0g/cup:latest
-    restart: unless-stopped
-    command: serve
-    volumes:
-      - /var/run/docker.sock:/var/run/docker.sock

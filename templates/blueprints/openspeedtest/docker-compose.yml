@@ -1,4 +1,0 @@
-services:
-  openspeedtest:
-    image: openspeedtest/latest:latest
-    restart: unless-stopped

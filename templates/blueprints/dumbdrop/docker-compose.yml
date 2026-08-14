@@ -1,8 +1,0 @@
-services:
-  dumbdrop:
-    image: dumbwareio/dumbdrop:latest
-    restart: unless-stopped
-    volumes:
-      - dumbdrop-uploads:/app/uploads
-volumes:
-  dumbdrop-uploads: {}

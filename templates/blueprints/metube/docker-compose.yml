@@ -1,6 +1,0 @@
-services:
-  metube:
-    image: ghcr.io/alexta69/metube
-    restart: unless-stopped
-    volumes:
-      - ./downloads:/downloads

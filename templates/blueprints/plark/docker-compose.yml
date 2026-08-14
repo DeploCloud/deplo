@@ -1,9 +1,0 @@
-services:
-  plark:
-    image: plarkinc/plark:latest
-    pull_policy: always
-    restart: unless-stopped
-    volumes:
-      - plark-data:/var/data
-volumes:
-  plark-data:

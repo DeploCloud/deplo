@@ -1,8 +1,0 @@
-services:
-  grimoire:
-    image: goniszewski/grimoire:latest
-    restart: unless-stopped
-    volumes:
-      - grimoire_data:/app/data
-volumes:
-  grimoire_data: {}

@@ -1,4 +1,0 @@
-
-[config.env]
-TAILSCALE_HOSTNAME = ""
-TAILSCALE_AUTHKEY = ""

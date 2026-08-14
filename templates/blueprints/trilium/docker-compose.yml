@@ -1,7 +1,0 @@
-services:
-  trilium:
-    image: zadam/trilium:latest
-    restart: always
-    volumes:
-      - /root/trilium-backups:/home/node/trilium-data/backup
-  

@@ -1,9 +1,0 @@
-services:
-  dumbbudget:
-    image: dumbwareio/dumbbudget:latest
-    restart: unless-stopped
-    volumes:
-      - dumbbudget-data:/app/data
-
-volumes:
-  dumbbudget-data: {}

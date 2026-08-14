@@ -1,9 +1,0 @@
-
-services:
-  collabora:
-    image: collabora/code:latest
-    environment:
-      - domain=${DOMAIN}
-      - username=${USERNAME}
-      - password=${PASSWORD}
-      - extra_params=--o:ssl.enable=false 

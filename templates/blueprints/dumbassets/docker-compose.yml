@@ -1,9 +1,0 @@
-services:
-  dumbassets:
-    image: dumbwareio/dumbassets:latest
-    restart: unless-stopped
-    volumes:
-      - dumbassets-data:/app/data
-
-volumes:
-  dumbassets-data: {}

@@ -1,7 +1,0 @@
-services:
-  server:
-    image: ghcr.io/spacedriveapp/spacedrive/server:latest
-    environment:
-      - SD_AUTH=${SD_USERNAME}:${SD_PASSWORD}
-    volumes:
-      - /var/spacedrive:/var/spacedrive

@@ -1,6 +1,0 @@
-services:
-  linkding:
-    image: sissbruecker/linkding:latest
-    restart: unless-stopped
-    volumes:
-      - ./linkding-data:/etc/linkding/data
