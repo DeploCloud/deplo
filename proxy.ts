@@ -43,9 +43,7 @@ export function proxy(request: NextRequest) {
     request.headers.get("x-forwarded-proto") === "https";
   let templatesOrigin = "";
   try {
-    templatesOrigin = new URL(
-      process.env.NEXT_PUBLIC_DEPLO_TEMPLATES_API_URL ?? "",
-    ).origin;
+    templatesOrigin = new URL(process.env.DEPLO_TEMPLATES_API_URL ?? "").origin;
   } catch {}
   const nonce = generateNonce();
 

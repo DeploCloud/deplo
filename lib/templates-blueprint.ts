@@ -1,8 +1,7 @@
 import "server-only";
 
-import { existsSync, readFileSync } from "node:fs";
-import { join } from "node:path";
 import { randomBytes, randomUUID } from "node:crypto";
+import { getTemplate } from "@/templates/actions";
 
 /**
  * Loads a one-click template's deployable blueprint from
@@ -28,8 +27,6 @@ import { randomBytes, randomUUID } from "node:crypto";
  * generated domain, and any required config files are materialised with the
  * SAME generated secrets the env uses.
  */
-
-const BLUEPRINTS_DIR = join(process.cwd(), "templates", "blueprints");
 
 export interface BlueprintEnv {
   key: string;
@@ -74,7 +71,9 @@ function randomSecret(len: number): string {
 }
 
 function randomHex(len: number): string {
-  return randomBytes(Math.ceil(len / 2)).toString("hex").slice(0, len);
+  return randomBytes(Math.ceil(len / 2))
+    .toString("hex")
+    .slice(0, len);
 }
 
 /**
@@ -230,7 +229,11 @@ function parseToml(toml: string): ParsedToml {
     const rhs = line.slice(eq + 1).trim();
 
     // A `content = """` that opens a triple-quoted block on this line.
-    if (section === "[[config.mounts]]" && key === "content" && rhs.startsWith('"""')) {
+    if (
+      section === "[[config.mounts]]" &&
+      key === "content" &&
+      rhs.startsWith('"""')
+    ) {
       const after = rhs.slice(3);
       const endIdx = after.indexOf('"""');
       const cur = mounts[mounts.length - 1];
@@ -291,7 +294,10 @@ function splitTopLevel(body: string): string[] {
 function pushKeyValEntry(list: BlueprintEnv[], entry: string): void {
   const eq = entry.indexOf("=");
   if (eq === -1) return;
-  list.push({ key: entry.slice(0, eq).trim(), value: entry.slice(eq + 1).trim() });
+  list.push({
+    key: entry.slice(0, eq).trim(),
+    value: entry.slice(eq + 1).trim(),
+  });
 }
 
 /**
@@ -338,24 +344,24 @@ function substituteRefs(
   vars: Record<string, string>,
   domain: string,
 ): string {
-  return input.replace(/\$\{([a-zA-Z0-9_]+)(?::([0-9_]+))?\}/g, (m, name, len) => {
-    if (name === "domain") return domain;
-    if (name in vars) return vars[name];
-    const gen = generateHelper(name, len);
-    return gen ?? m;
-  });
+  return input.replace(
+    /\$\{([a-zA-Z0-9_]+)(?::([0-9_]+))?\}/g,
+    (m, name, len) => {
+      if (name === "domain") return domain;
+      if (name in vars) return vars[name];
+      const gen = generateHelper(name, len);
+      return gen ?? m;
+    },
+  );
 }
 
-export function getTemplateBlueprint(
+export async function getTemplateBlueprint(
   id: string,
   opts: { domain?: string } = {},
-): TemplateBlueprint | null {
+): Promise<TemplateBlueprint | null> {
   if (!isSafeId(id)) return null;
-  const dir = join(BLUEPRINTS_DIR, id);
-  const composePath = join(dir, "docker-compose.yml");
-  if (!existsSync(composePath)) return null;
-
-  const compose = readFileSync(composePath, "utf8");
+  const template = await getTemplate(id);
+  const compose = template.compose;
   const domain = opts.domain ?? "";
 
   let env: BlueprintEnv[] = [];
@@ -363,13 +369,14 @@ export function getTemplateBlueprint(
   let exposes: BlueprintExpose[] = [];
   let mounts: BlueprintMount[] = [];
 
-  const tomlPath = join(dir, "template.toml");
-  if (existsSync(tomlPath)) {
+  if (template.config) {
     try {
-      const parsed = parseToml(readFileSync(tomlPath, "utf8"));
+      const parsed = parseToml(template.config);
       const vars = resolveVariables(parsed.variables, domain);
 
-      const source = parsed.configEnv.length ? parsed.configEnv : parsed.variables;
+      const source = parsed.configEnv.length
+        ? parsed.configEnv
+        : parsed.variables;
       env = source.map(({ key, value }) => ({
         key,
         value: substituteRefs(value, vars, domain),

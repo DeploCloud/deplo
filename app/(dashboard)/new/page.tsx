@@ -5,7 +5,6 @@ import { EmptyState } from "@/components/shared/empty-state";
 import { PageHeader } from "@/components/shared/page-header";
 import { Button } from "@/components/ui/button";
 import { NewAppWizard } from "@/components/apps/new-app-wizard";
-import { getTemplate } from "@/lib/templates";
 import { getTemplateBlueprint } from "@/lib/templates-blueprint";
 import { listServerChoices } from "@/lib/data/servers";
 import { listGithubInstallations } from "@/lib/data/github";
@@ -17,6 +16,7 @@ import {
   placementHref,
   templatesHref,
 } from "@/lib/overview-links";
+import { getTemplate } from "@/templates/actions";
 
 export const metadata = { title: "New App" };
 
@@ -39,32 +39,28 @@ export default async function NewAppPage(props: PageProps<"/new">) {
       />
     );
 
-  const sp = await props.searchParams;
-  const templateId = Array.isArray(sp.template) ? sp.template[0] : sp.template;
-  const repoParam = Array.isArray(sp.repo) ? sp.repo[0] : sp.repo;
+  const params = await props.searchParams;
+  const templateId = Array.isArray(params.template) ? params.template[0] : params.template;
+  const repoParam = Array.isArray(params.repo) ? params.repo[0] : params.repo;
 
   // The Overview drill-in this wizard was opened from (?folder= / ?project= &
   // ?env=): the app is CREATED THERE rather than at the team top level. Ids are
   // resolved against what this caller can actually see, so a stale or foreign
   // id degrades to "top level" instead of erroring on deploy — and the data
   // layer re-authorizes the destination on create either way.
-  const placement = await resolveOverviewPlacement(placementFromSearchParams(sp));
+  const placement = await resolveOverviewPlacement(placementFromSearchParams(params));
 
-  const template = templateId ? getTemplate(templateId) : undefined;
-  const presetName = template?.name
-    ?.toLowerCase()
-    .replace(/[^a-z0-9]+/g, "-")
-    .replace(/^-+|-+$/g, "");
+  const template = templateId ? await getTemplate(templateId) : undefined;
   // Generate the template's public hostname (with its random words baked in) up
   // front and thread it into the blueprint env. createApp passes this same
   // string through as the app's `preferred` auto domain, so the value the
   // app sees matches the domain Traefik routes and the one shown in the Domains
   // section — the words generated here are the words that get persisted.
   const autoDomain = template
-    ? productionDomain(presetName || template.id, instanceHost())
+    ? productionDomain(template.slug, instanceHost())
     : null;
   const blueprint = template
-    ? getTemplateBlueprint(template.id, { domain: autoDomain ?? undefined })
+    ? await getTemplateBlueprint(template.slug, { domain: autoDomain ?? undefined })
     : null;
   const servers = await listServerChoices();
   const installations = await listGithubInstallations();
@@ -114,7 +110,7 @@ export default async function NewAppPage(props: PageProps<"/new">) {
         template={
           template
             ? {
-                id: template.id,
+                id: template.slug,
                 name: template.name,
                 description: template.description,
                 logo: template.logo,
@@ -128,7 +124,7 @@ export default async function NewAppPage(props: PageProps<"/new">) {
             : undefined
         }
         presetRepo={repoParam}
-        presetName={presetName}
+        presetName={template?.slug}
         placement={placement}
       />
     </div>
