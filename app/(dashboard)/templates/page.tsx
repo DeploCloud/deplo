@@ -7,7 +7,7 @@ import { TemplatesBrowser } from "@/components/templates/templates-browser";
 import { hasCapability } from "@/lib/membership";
 import { resolveOverviewPlacement } from "@/lib/data/placement";
 import { placementFromSearchParams } from "@/lib/overview-links";
-import { listCatalogCards } from "@/templates/catalog";
+import { listCatalog } from "@/templates/catalog";
 
 export const metadata = { title: "Templates" };
 
@@ -39,7 +39,7 @@ export default async function TemplatesPage(props: PageProps<"/templates">) {
   // The catalogue lives on a remote service. An instance with no egress (or a
   // service having a bad day) gets a page that says so, not an error boundary
   // over the whole dashboard section.
-  const templates = await listCatalogCards().catch(() => null);
+  const templates = await listCatalog().catch(() => null);
   if (!templates)
     return (
       <div className="space-y-6">

@@ -14,23 +14,16 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { newAppHref, type OverviewPlacement } from "@/lib/overview-links";
-
-/** One catalogue entry, already trimmed and URL-resolved server-side. */
-export interface TemplateCard {
-  slug: string;
-  name: string;
-  description: string;
-  logo: string | null;
-  category: string;
-  categorySlug: string;
-  github: string | null;
-}
+import type { CatalogTemplate } from "@/templates/types";
 
 export function TemplatesBrowser({
   templates,
   placement = null,
 }: {
-  templates: TemplateCard[];
+  /** The whole catalogue, every field the service serves, URL-resolved
+   *  server-side — not a trimmed card shape, so anything a card wants to
+   *  show (author, links, screenshots, dates) is already here. */
+  templates: CatalogTemplate[];
   /** The Overview drill-in the catalogue was opened from — handed to the wizard
    *  so a template deployed from inside a folder is created IN that folder. */
   placement?: OverviewPlacement | null;
@@ -43,9 +36,9 @@ export function TemplatesBrowser({
   const categories = React.useMemo(() => {
     const counts = new Map<string, { label: string; n: number }>();
     for (const t of templates) {
-      const cur = counts.get(t.categorySlug);
-      counts.set(t.categorySlug, {
-        label: t.category,
+      const cur = counts.get(t.category.slug);
+      counts.set(t.category.slug, {
+        label: t.category.name,
         n: (cur?.n ?? 0) + 1,
       });
     }
@@ -55,13 +48,13 @@ export function TemplatesBrowser({
   }, [templates]);
 
   const filtered = templates.filter((t) => {
-    if (filter !== "all" && t.categorySlug !== filter) return false;
+    if (filter !== "all" && t.category.slug !== filter) return false;
     if (query) {
       const q = query.toLowerCase();
       return (
         t.name.toLowerCase().includes(q) ||
-        t.description.toLowerCase().includes(q) ||
-        t.category.toLowerCase().includes(q)
+        t.shortDescription.toLowerCase().includes(q) ||
+        t.category.name.toLowerCase().includes(q)
       );
     }
     return true;
@@ -134,7 +127,7 @@ export function TemplatesBrowser({
                   </span>
                 )}
               </div>
-              {t.github && (
+              {t.links.github && (
                 <Button
                   asChild
                   variant="ghost"
@@ -142,7 +135,7 @@ export function TemplatesBrowser({
                   className="text-muted-foreground"
                 >
                   <a
-                    href={t.github}
+                    href={t.links.github}
                     target="_blank"
                     rel="noopener noreferrer"
                     aria-label={`${t.name} on GitHub`}
@@ -156,13 +149,13 @@ export function TemplatesBrowser({
             <div className="flex-1">
               <h3 className="font-medium">{t.name}</h3>
               <p className="mt-1 line-clamp-2 text-sm text-muted-foreground">
-                {t.description}
+                {t.shortDescription}
               </p>
             </div>
 
             <div className="flex flex-wrap gap-1">
               <span className="rounded bg-secondary px-1.5 py-0.5 text-[11px] text-muted-foreground">
-                {t.category}
+                {t.category.name}
               </span>
             </div>
 

@@ -10,7 +10,7 @@ import {
   templateListQuerySchema,
   templatesResponseSchema,
 } from "./schema";
-import type { TemplateListQuery } from "./types";
+import type { ApiTemplate, CatalogTemplate, TemplateListQuery } from "./types";
 
 /**
  * Client for the one-click template catalog (the `DeploCloud/templates`
@@ -76,30 +76,30 @@ export async function getTemplates(query: TemplateListQuery = {}) {
   return fetchJson(`/templates?${params}`, templatesResponseSchema);
 }
 
+/** The same entry, with every asset path turned into an absolute URL. */
+function withAssetUrls(t: ApiTemplate): CatalogTemplate {
+  return {
+    ...t,
+    logo: t.logo ? templateAssetUrl(t.logo) : null,
+    images: t.images.map(templateAssetUrl),
+  };
+}
+
 /**
- * The whole catalog, trimmed to what a card renders. The browser filters a few
+ * The whole catalog, every field the service serves. The browser filters a few
  * hundred entries instantly client-side, so paging the API once an hour beats a
- * round-trip per keystroke — and dropping the long descriptions here is what
- * keeps that payload small.
+ * round-trip per keystroke. Nothing is trimmed on the way through: the author,
+ * the docs/website links, the screenshots and the long description are what the
+ * catalog exists to carry, and a card that wants them would have no way back.
  */
-export async function listCatalogCards() {
+export async function listCatalog(): Promise<CatalogTemplate[]> {
   const first = await getTemplates({ page: 1, limit: 100 });
   const rest = await Promise.all(
     Array.from({ length: Math.max(0, first.pagination.totalPages - 1) }, (_, i) =>
       getTemplates({ page: i + 2, limit: 100 }),
     ),
   );
-  return [first, ...rest]
-    .flatMap((page) => page.data)
-    .map((t) => ({
-      slug: t.slug,
-      name: t.name,
-      description: t.shortDescription,
-      logo: t.logo ? templateAssetUrl(t.logo) : null,
-      category: t.category.name,
-      categorySlug: t.category.slug,
-      github: t.links.github ?? null,
-    }));
+  return [first, ...rest].flatMap((page) => page.data).map(withAssetUrls);
 }
 
 /**
