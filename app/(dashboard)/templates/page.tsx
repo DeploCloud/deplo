@@ -3,11 +3,10 @@ import { Lock } from "lucide-react";
 import { PageHeader } from "@/components/shared/page-header";
 import { EmptyState } from "@/components/shared/empty-state";
 import { Button } from "@/components/ui/button";
-import { TEMPLATES } from "@/lib/templates";
 import { hasCapability } from "@/lib/membership";
 import { resolveOverviewPlacement } from "@/lib/data/placement";
 import { placementFromSearchParams } from "@/lib/overview-links";
-import { TemplatesBrowser } from "@/components/templates/templates-browser";
+import { getTemplates } from "@/templates/actions";
 
 export const metadata = { title: "Templates" };
 
@@ -29,24 +28,40 @@ export default async function TemplatesPage(props: PageProps<"/templates">) {
       />
     );
 
-  // The catalogue can be opened from an Overview drill-in ("Add New → From
-  // Template" inside a folder). Carry that context on to the wizard so the
-  // deployed template is created IN the folder/environment it was started from.
+  const params = await props.searchParams;
+  const value = (key: string) => {
+    const param = params[key];
+    return Array.isArray(param) ? param[0] : param;
+  };
+  const search = value("search") ?? "";
+  const sort = value("sort");
+  const order = value("order");
   const placement = await resolveOverviewPlacement(
-    placementFromSearchParams(await props.searchParams),
+    placementFromSearchParams(params),
   );
+  const data = await getTemplates({
+    page: Number(value("page") ?? 1),
+    limit: Number(value("limit") ?? 20),
+    search,
+    category: value("category") || undefined,
+    sort:
+      sort === "category" || sort === "createdAt" || sort === "lastUpdate"
+        ? sort
+        : "name",
+    order: order === "desc" ? "desc" : "asc",
+  });
 
   return (
     <div className="space-y-6">
       <PageHeader
         title="Templates"
         description={
-          `Deploy ${TEMPLATES.length} popular apps, databases and services to your servers in one click.` +
+          `Deploy ${data.pagination.total} popular apps, databases and services to your servers in one click.` +
           (placement ? ` Deploys land in ${placement.label}.` : "")
         }
       />
 
-      <TemplatesBrowser />
+      {data.data.map((t) => t.name).join(", ")}
     </div>
   );
 }
