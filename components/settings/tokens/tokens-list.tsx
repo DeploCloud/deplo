@@ -3,7 +3,15 @@
 import * as React from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { Trash2, ShieldAlert, FolderTree, ServerCog, Plug } from "lucide-react";
+import {
+  Trash2,
+  ShieldAlert,
+  FolderTree,
+  ServerCog,
+  Plug,
+  Pencil,
+  Eye,
+} from "lucide-react";
 import {
   Table,
   TableBody,
@@ -73,7 +81,7 @@ export function TokensList({
             <TableHead>Access</TableHead>
             <TableHead>Last used</TableHead>
             <TableHead>Created by</TableHead>
-            {canManage && <TableHead className="text-right">Actions</TableHead>}
+            <TableHead className="text-right">Actions</TableHead>
           </TableRow>
         </TableHeader>
         <TableBody>
@@ -86,6 +94,8 @@ export function TokensList({
               (c) => CAPABILITY_META[c]?.sensitive,
             );
             const scope = scopeLabel(t, names);
+            const editable =
+              canManage && !t.oauthClientName && t.homeTeamId === activeTeamId;
             return (
               <TableRow key={t.id}>
                 <TableCell>
@@ -164,19 +174,37 @@ export function TokensList({
                 <TableCell className="text-muted-foreground">
                   {t.createdByUsername ?? "—"}
                 </TableCell>
-                {canManage && (
-                  <TableCell className="text-right">
-                    <Button
-                      variant="ghost"
-                      size="icon-sm"
-                      className="text-muted-foreground hover:text-destructive"
-                      onClick={() => setRevoke(t)}
-                      aria-label={`Revoke ${t.name}`}
-                    >
-                      <Trash2 className="size-4" />
+                <TableCell className="text-right">
+                  <div className="flex justify-end gap-1">
+                    {/* Same rule the token's own page applies: an OAuth
+                        connection is re-authored by connecting again, and a
+                        token managed in another team can only be revoked here.
+                        Both still open — as a read-only view, so say View. */}
+                    <Button asChild variant="ghost" size="icon-sm">
+                      <Link
+                        href={`/settings/tokens/${t.id}`}
+                        aria-label={`${editable ? "Edit" : "View"} ${t.name}`}
+                      >
+                        {editable ? (
+                          <Pencil className="size-4" />
+                        ) : (
+                          <Eye className="size-4" />
+                        )}
+                      </Link>
                     </Button>
-                  </TableCell>
-                )}
+                    {canManage && (
+                      <Button
+                        variant="ghost"
+                        size="icon-sm"
+                        className="text-muted-foreground hover:text-destructive"
+                        onClick={() => setRevoke(t)}
+                        aria-label={`Revoke ${t.name}`}
+                      >
+                        <Trash2 className="size-4" />
+                      </Button>
+                    )}
+                  </div>
+                </TableCell>
               </TableRow>
             );
           })}
