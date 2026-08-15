@@ -1,0 +1,33 @@
+-- Record HOW a session proved who it belongs to.
+--
+-- 0102/0103 made a passkey satisfy a team's two-factor mandate, and closed the
+-- obvious hole (one factor clearing a two-factor policy) by refusing the
+-- password outright for such an account. That refusal was too blunt: it took
+-- away the property ADR-0014 §4 exists to guarantee.
+--
+-- "Blocked is recoverable, never a lockout" means an unmet mandate stops a
+-- member INSIDE the team while leaving their own account settings reachable, so
+-- they can enrol something and unblock themselves. Refusing the sign-in reaches
+-- further than that: somebody whose passkey is on a device they do not have with
+-- them could not reach Settings -> Security, could not enrol an authenticator
+-- app, and could not use the teams that require nothing at all. For the instance
+-- owner - whose row no other admin may touch - the way back in was the database.
+--
+-- With the method recorded, the password signs everyone in again and the mandate
+-- is judged on what was actually presented: a session stamped `passkey` carries
+-- two factors, a password session does not. Same shape as the TOTP path, and the
+-- lock screen becomes a way out rather than a wall.
+--
+-- deplo's own column on a library-owned table, like `passkey.rp_id`: Better Auth
+-- writes only the fields in its own model, so an extra nullable column is
+-- invisible to it, and `lib/auth.ts` stamps it immediately after a passkey
+-- sign-in (and after a passkey is registered, which is a user-verified ceremony
+-- on the device holding the session).
+--
+-- NULL means "a session from before this column existed, or a password
+-- sign-in", and both are treated the same: not a second factor. Nothing is
+-- backfilled, because there is nothing to backfill it FROM - and the safe
+-- direction is the one that asks for a second factor rather than the one that
+-- assumes it.
+
+ALTER TABLE "session" ADD COLUMN IF NOT EXISTS "auth_method" text;

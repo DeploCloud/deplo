@@ -439,11 +439,6 @@ type AppTransferTarget {
 
 type AuthPayload {
   """
-  The password was correct but this account's second factor IS its passkey: no session yet. Run the ceremony and send the result to `verifyPasskeyLogin`.
-  """
-  requiresPasskey: Boolean
-
-  """
   The password was correct but the account has 2FA: no session yet. Send a code to `verifyTwoFactorLogin`.
   """
   requiresTwoFactor: Boolean

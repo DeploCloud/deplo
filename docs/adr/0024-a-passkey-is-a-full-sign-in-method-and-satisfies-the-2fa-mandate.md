@@ -4,7 +4,7 @@
 - **Constrains**: `lib/auth/better-auth.ts`, `lib/auth.ts`, `lib/passkey-policy.ts`,
   `lib/membership.ts`, `lib/data/passkeys.ts`, `lib/data/two-factor.ts`,
   `lib/graphql/types/{passkey,auth,member}.ts`, `app/(auth)/login/*`,
-  `app/(dashboard)/settings/security/*`, and the `passkey` table (migrations 0102 and 0103).
+  `app/(dashboard)/settings/security/*`, and the `passkey` / `session` tables (migrations 0102, 0103 and 0104).
 - **Amends**: ADR-0014 §2 and §3, which defined a two-factor mandate as satisfied by enrolling
   an authenticator app.
 
@@ -50,24 +50,34 @@ that guard and this section becomes false.**
 There is no `users.has_passkey` column. The row is the fact; a denormalized copy is one more thing
 that can still say yes after the credential is gone.
 
-### 3. Under a mandate met by a passkey, the password alone mints no session
+### 3. A passkey counts for the session that presented one
 
-`login()` checks `passkeyLoginRequired(userId)` - a policy in force, no TOTP, at least one passkey
-- **before** `signInEmail`. In that shape it verifies the password, creates nothing, and answers
-`requiresPasskey`; the login page then runs the ordinary passkey sign-in.
+`twoFactorMandate` asks two questions, not one: does the account hold a usable passkey (§4), and
+did THIS request sign in with one. The second is `session.auth_method` (migration 0104), stamped by
+`verifyPasskeyLogin` and by `finishPasskeyRegistration` - registering a passkey is a user-verified
+ceremony on the device holding the session, which is the same proof a sign-in gives.
 
-Without this, §2 would let one factor clear a two-factor policy: register a passkey, never use it,
-and sign in with a password forever. The check runs before the session is minted rather than
-revoking one afterwards, because a revoke that throws leaves a live session behind.
+Without the second question, §2 would let one factor clear a two-factor policy: register a passkey,
+never use it, and sign in with a password forever.
 
-The password is still verified, and the flag only ever appears after a correct one - otherwise it
-would be an oracle telling an attacker which addresses exist and how they are protected.
+**The password always opens a session.** An earlier version of this decision refused it instead,
+and that was wrong: it reached past the policy and took away what ADR-0014 §4 guarantees. A blocked
+member is stopped INSIDE the mandated team and nowhere else - their own account settings stay
+reachable, and other teams are untouched - which is what lets them enrol an authenticator app, or
+add a passkey on the device in front of them, and unblock themselves. Refusing the sign-in meant
+somebody whose passkey was on a device they did not have with them could reach none of that, and for
+the instance owner, whose row no other admin may touch, the way back in was a database prompt.
 
-The follow-up ceremony is **not bound to the account that typed the password**: the plugin cannot
-scope a discoverable-credential challenge to a user, and it does not need to. Whoever completes it
-is signed in as the owner of the credential they used, which is a legitimate passkey sign-in under
-§1. Two consequences, both deliberate: nothing here is weaker than a direct passkey login, and a
-person who picks a different account's passkey on that screen lands in that account.
+Three shapes, all deliberate:
+
+- **A password session** on an account that owns a passkey: blocked in mandated teams, free
+  everywhere else, and holding its own account settings.
+- **A passkey session**: satisfied, like an enrolled authenticator app.
+- **A bearer token**: no session, so the question does not apply and the ACCOUNT's standing
+  decides, exactly as it already does with `two_factor_enabled`. Load-bearing mechanically too:
+  `identityForTokenRow` calls `membershipFor` before any identity is installed.
+
+NULL `auth_method` is a password session, and so is a session from before the column existed.
 
 ### 4. rpID is the panel URL, and nothing else
 
@@ -85,23 +95,19 @@ predicates in `lib/passkey-policy.ts` ask two questions rather than one: does th
 relying party at all, and was this credential minted for it. A credential that fails either stops
 counting as a second factor.
 
-That column is not bookkeeping, it is what keeps §3 from becoming a lockout. Two ordinary product
-actions make a registered passkey unusable - turning the panel's HTTPS off (`setPanelHttps(false)`)
-and moving it to a new hostname - and without the rpID, both left the password refused for a
-ceremony the browser could no longer complete. For the instance owner, whose row no other admin may
-touch, the only way back in was a database prompt. ADR-0014 §4 forbids exactly that.
-
-With the rpID recorded, the same two actions degrade to "this account has no second factor here":
-the person is asked to add one, which is a screen they can reach. Stale credentials stay listed in
-Settings → Security, marked **Not usable here**, because the only thing to do with one is remove it
-and a row that vanished silently would be a credential nobody could account for.
+Two ordinary product actions make a registered passkey unusable - turning the panel's HTTPS off
+(`setPanelHttps(false)`) and moving it to a new hostname. Without the rpID recorded, the account
+would go on looking protected by a credential no browser will offer. With it, both degrade to "this
+account has no second factor here": the person is asked to add one, which is a screen they can
+reach. Stale credentials stay listed in Settings → Security, marked **Not usable here**, because the
+only thing to do with one is remove it and a row that vanished silently would be a credential nobody
+could account for.
 
 `rp_id` is NULL for anything minted before 0103 and is deliberately not backfilled: guessing the
 address a credential was made for re-creates the lockout the moment the guess is wrong.
 
 The cost is still stated plainly: **moving the panel to a new hostname kills every registered
-passkey.** The credentials stay on the devices and simply stop matching; people re-register - and
-now they can, because the password still signs them in.
+passkey.** The credentials stay on the devices and simply stop matching, and people re-register.
 
 ### 5. The plugin's endpoints are closed to the network
 
@@ -149,6 +155,9 @@ member whose only device is gone reads as protected and cannot be told to enrol 
 ## Consequences
 
 - A team can turn `require_two_factor` on without asking anyone to install an app.
+- Passkeys ship as **beta**: the ceremony is covered end to end by a software authenticator
+  (`lib/webauthn-test-helpers.ts`), but no real fleet has carried it, and the rpID's coupling to
+  the panel address is a sharp edge operators meet the first time they move it.
 - An account holding a passkey may turn its authenticator app off, and the security page says why
   "Off" is allowed under an active policy.
 - `bun` had to move `better-auth` 1.6.27 → 1.6.29 (the plugin is the separate package
@@ -168,6 +177,10 @@ member whose only device is gone reads as protected and cannot be told to enrol 
 - **A per-team switch for whether passkeys count as two factors.** One more knob on a first-run
   path that should be selling the price tag, to express a preference nobody has: a
   user-verified passkey either is two factors or it is not, and §2 answers that once.
+- **Refusing the password for an account whose mandate rests on a passkey.** This is what §3
+  originally did. It closed the same hole, and it cost more than the hole: no session meant no
+  account settings, no other teams, and no self-recovery for anyone whose device was elsewhere. The
+  session marker closes the hole where the hole actually is.
 - **Hand-rolling WebAuthn on `@simplewebauthn/server`.** Avoids a version bump and gives full
   control of the table, at the cost of owning challenge storage, counter handling and session
   minting - the last of which `lib/data/sessions.ts` already argues must stay inside Better Auth's

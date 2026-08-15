@@ -729,6 +729,13 @@
       "when": 1784681800000,
       "tag": "0103_passkey_rp_id",
       "breakpoints": true
+    },
+    {
+      "idx": 104,
+      "version": "7",
+      "when": 1784682000000,
+      "tag": "0104_session_auth_method",
+      "breakpoints": true
     }
   ]
 }

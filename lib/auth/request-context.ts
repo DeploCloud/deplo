@@ -26,6 +26,19 @@ export interface RequestIdentity {
   userId: string;
   teamId: string;
   /**
+   * The browser session this request rides on, when the caller already knows it.
+   *
+   * Production's cookie path installs no identity at all - it resolves the
+   * session from the cookie on demand - so nothing sets this in the live
+   * pipeline. It exists because the TEST harness has no request scope and
+   * therefore no cookies, and "which session is this" is now a question the
+   * authorization rules ask: a passkey satisfies a two-factor mandate only for
+   * the session that actually presented one (lib/passkey-policy.ts). Without a
+   * way to say "this request is a browser, and this is its session", the main
+   * branch of that rule could not be tested at all.
+   */
+  sessionId?: string;
+  /**
    * Present ONLY for a bearer-token request: the token's own grant. A token is
    * never root — `membershipFor` in `lib/membership.ts` intersects the member's
    * live capabilities with these, so the token can do at most what it was given

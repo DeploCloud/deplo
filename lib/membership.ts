@@ -4,7 +4,7 @@ import { cache } from "react";
 import { cookies } from "next/headers";
 import { and, eq, inArray } from "drizzle-orm";
 import { getDb } from "./db/client";
-import { holdsAPasskey } from "./passkey-policy";
+import { holdsAPasskey, passkeyCountsForThisRequest } from "./passkey-policy";
 import {
   appGrants as appGrantsTable,
   apps as appsTable,
@@ -144,11 +144,12 @@ export class TwoFactorRequiredError extends Error {
  * "Custom" capability set — is covered by the team switch alone.
  *
  * SATISFIED BY EITHER SECOND FACTOR: an enrolled authenticator app, or a
- * registered passkey (ADR-0024). The passkey half is what lets a team turn the
- * policy on without asking every member to install anything - and the reason
- * `login()` refuses to hand a password-only session to an account whose mandate
- * rests on a passkey, which would otherwise let ONE factor clear a two-factor
- * policy.
+ * passkey that this request actually signed in with (ADR-0024). The passkey half
+ * is what lets a team turn the policy on without asking every member to install
+ * anything; the "actually signed in with" half is what stops one factor clearing
+ * a two-factor policy. A password session on an account that merely OWNS a
+ * passkey is blocked here - and, deliberately, only here: it keeps its own
+ * account settings, which is what makes the block recoverable (ADR-0014 §4).
  *
  * Request-cached: the gate runs on every read AND every capability check, so
  * without memoization a single page would re-run it dozens of times.
@@ -183,7 +184,11 @@ const twoFactorMandate = cache(
     // handling is the right answer, and inventing a 2FA error here would be a
     // confusing way to say "you were removed from this team".
     if (!r) return { satisfied: true, reason: "" };
-    if (r.enrolled || r.hasPasskey) return { satisfied: true, reason: "" };
+    if (r.enrolled) return { satisfied: true, reason: "" };
+    // Two questions, never one: the account holds a usable passkey, AND this
+    // request is one the passkey actually opened. See lib/passkey-policy.ts.
+    if (r.hasPasskey && (await passkeyCountsForThisRequest()))
+      return { satisfied: true, reason: "" };
     if (r.roleRequires)
       return { satisfied: false, reason: `The ${r.roleName} role` };
     if (r.teamRequires) return { satisfied: false, reason: r.teamName };

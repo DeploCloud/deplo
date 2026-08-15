@@ -3,7 +3,12 @@ import "server-only";
 import { cache } from "react";
 import { and, eq, sql } from "drizzle-orm";
 
-import { assertUser, authHeaders } from "../auth";
+import {
+  assertUser,
+  authHeaders,
+  currentSessionId,
+  markSessionAuthMethod,
+} from "../auth";
 import { requireAuth } from "../auth/better-auth";
 import { requirePersonalSession } from "../auth/request-context";
 import { getDb } from "../db/client";
@@ -125,12 +130,18 @@ export async function startPasskeyRegistration(
  * to a cookie, expires in five minutes and is consumed on first use - the same
  * argument `confirmTwoFactorEnrolment` makes for the second half of enrolment.
  *
- * The rpID is stamped straight after, because the plugin does not record it and
- * a credential whose hostname is unknown cannot be told apart from one that
- * still works. Best-effort: the passkey exists either way, and a row left
- * unstamped reads as "not usable here", which is the safe direction - the person
- * is asked for another second factor rather than refused their password for a
- * ceremony that cannot happen.
+ * Two stamps follow, and both are best-effort. The rpID goes on the credential,
+ * because the plugin does not record it and a passkey whose hostname is unknown
+ * cannot be told apart from one that still works. The SESSION is marked as
+ * passkey-authenticated, because registering one is a user-verified ceremony on
+ * the device holding this session - the same proof a sign-in gives. That second
+ * stamp is what turns the two-factor lock screen into a way out: somebody who
+ * signed in with their password, met a mandate they cannot satisfy, and added a
+ * passkey right there is unblocked by the act of adding it, rather than being
+ * told to sign out and come back.
+ *
+ * A failed stamp leaves the safe state in both cases: an unstamped credential
+ * reads as "not usable here", and an unstamped session reads as a password one.
  */
 export async function finishPasskeyRegistration(input: {
   response: unknown;
@@ -149,6 +160,8 @@ export async function finishPasskeyRegistration(input: {
       .update(passkeyTable)
       .set({ rpId })
       .where(and(eq(passkeyTable.id, row.id), eq(passkeyTable.userId, user.id)));
+  const sessionId = await currentSessionId();
+  if (sessionId) await markSessionAuthMethod(sessionId, "passkey");
   await announce(user.id, user.username, `Added the ${name} passkey`);
   return {
     id: row.id,

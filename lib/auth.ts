@@ -12,7 +12,10 @@ import {
   teams as teamsTable,
   users as usersTable,
 } from "./db/schema/control-plane";
-import { account as accountTable } from "./db/schema/auth";
+import {
+  account as accountTable,
+  session as sessionTable,
+} from "./db/schema/auth";
 import { hashPassword, passwordNeedsRehash, verifyPassword } from "./crypto";
 import type { Capability, PublicUser, Role, Team, User } from "./types";
 import { capabilitiesForRole, cleanCapabilities } from "./membership-shared";
@@ -23,7 +26,6 @@ import { currentIdentity } from "./auth/request-context";
 import { authRequestHeaders } from "./auth/request-headers";
 import { getAuth, requireAuth, sessionCookieNames } from "./auth/better-auth";
 import { cookiesAreSecure, passkeyRelyingParty } from "./public-url";
-import { passkeyLoginRequired } from "./passkey-policy";
 // Type-only: the assertion arrives as opaque JSON from the browser, and this is
 // the shape the plugin's verifier expects it to have.
 import type { AuthenticationResponseJSON } from "@simplewebauthn/browser";
@@ -466,7 +468,11 @@ export const getCurrentUser = cache(async (): Promise<PublicUser | null> => {
  * session TOKEN never leaves the server for that comparison.
  */
 export const currentSessionId = cache(async (): Promise<string | null> => {
-  return (await currentSession())?.session?.id ?? null;
+  // An identity that names its session wins: see `RequestIdentity.sessionId`.
+  // A bearer token never names one, so it still falls through to null.
+  return (
+    currentIdentity()?.sessionId ?? (await currentSession())?.session?.id ?? null
+  );
 });
 
 /**
@@ -565,13 +571,6 @@ export interface LoginResult {
   error?: string;
   /** The account has 2FA: no session was created, a TOTP code is still required. */
   requiresTwoFactor?: boolean;
-  /**
-   * The password was right, but this account's second factor IS its passkey: no
-   * session was created, and the sign-in finishes with the WebAuthn ceremony.
-   * Mutually exclusive with `requiresTwoFactor` - one means the account has an
-   * authenticator app, the other means it does not.
-   */
-  requiresPasskey?: boolean;
 }
 
 /**
@@ -594,29 +593,12 @@ export async function login(
   // Suspension is deplo's own concept: check it BEFORE handing Better Auth a
   // valid credential, so a suspended account never gets a session row at all.
   const rows = await getDb()
-    .select({ id: usersTable.id, suspended: usersTable.suspended })
+    .select({ suspended: usersTable.suspended })
     .from(usersTable)
     .where(eq(sql`lower(${usersTable.email})`, normalized))
     .limit(1);
   if (rows[0]?.suspended)
     return { ok: false, error: "This account has been suspended" };
-
-  // An account whose 2FA policy is satisfied by a PASSKEY and nothing else does
-  // not get a session for its password. The password is still verified - a wrong
-  // one must answer the same way it always did, and the flag must never appear
-  // for someone who has not proven the first factor, or it becomes an
-  // enumeration oracle. Then the sign-in finishes on the passkey screen
-  // (ADR-0024).
-  //
-  // BEFORE `signInEmail`, not after: minting a session and revoking it leaves a
-  // live one behind on any path where the revoke fails, and there is nothing
-  // here that needs one.
-  if (rows[0] && (await passkeyLoginRequired(rows[0].id))) {
-    if (!(await verifyUserPassword(rows[0].id, password)))
-      return { ok: false, error: "Invalid email or password" };
-    void upgradePasswordHash(normalized, password);
-    return { ok: false, requiresPasskey: true };
-  }
 
   try {
     const res = await requireAuth().api.signInEmail({
@@ -760,6 +742,58 @@ export async function passkeyChallenge(): Promise<unknown> {
 }
 
 /**
+ * Mark a session as opened by a WebAuthn ceremony.
+ *
+ * This is what lets a team's two-factor mandate be judged on what was PRESENTED
+ * rather than on what the account owns (ADR-0024 §3). Two callers, and both are
+ * the same proof: verifying an assertion, and registering a passkey - the second
+ * one matters, because it is what turns the lock screen into a way out for
+ * somebody who signed in with their password and needs to add a second factor
+ * from the device in front of them.
+ *
+ * Best-effort. A stamp that fails leaves the session looking like a password
+ * one, which is the safe direction: the person is asked for a second factor
+ * rather than credited with one they did not present.
+ */
+export async function markSessionAuthMethod(
+  sessionId: string,
+  method: "passkey",
+): Promise<void> {
+  try {
+    await getDb()
+      .update(sessionTable)
+      .set({ authMethod: method })
+      .where(eq(sessionTable.id, sessionId));
+  } catch {
+    /* see the docblock */
+  }
+}
+
+/**
+ * How the CURRENT request's session proved itself, or null when the question
+ * does not apply.
+ *
+ * Null for a bearer token, for a background job and for anything outside a
+ * request scope - none of those is a browser sign-in, so "which factor did you
+ * present" has no answer, and the caller falls back to the account-level rule.
+ * Null ALSO for an ordinary password session, which is the point.
+ *
+ * Request-cached: the mandate gate asks on every capability check.
+ */
+export const currentSessionAuthMethod = cache(
+  async (): Promise<string | null> => {
+    const id = await currentSessionId();
+    if (!id) return null;
+    const rows = await getDb()
+      .select({ method: sessionTable.authMethod })
+      .from(sessionTable)
+      .where(eq(sessionTable.id, id))
+      .limit(1);
+    return rows[0]?.method ?? null;
+  },
+);
+
+/**
  * Finish a passkey sign-in with what the authenticator produced.
  *
  * The session and its cookie are already written by the time this returns -
@@ -780,6 +814,8 @@ export async function verifyPasskeyLogin(
       headers: await authHeaders(),
     });
     userId = res.user.id;
+    // The session exists and its cookie is written; this is what says HOW.
+    await markSessionAuthMethod(res.session.id, "passkey");
   } catch (e) {
     // The plugin's own copy is the useful one here ("Passkey not found",
     // "Authentication failed", or the user-verification refusal deplo adds) -

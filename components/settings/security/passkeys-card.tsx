@@ -25,6 +25,7 @@ import { Input } from "@/components/ui/input";
 import { InfoTip, FieldLabel } from "@/components/ui/info-tip";
 import { Label } from "@/components/ui/label";
 import { SimpleTooltip } from "@/components/ui/tooltip";
+import { BetaChip } from "@/components/shared/beta-chip";
 import { ConfirmAction } from "@/components/shared/confirm-action";
 import { EmptyState } from "@/components/shared/empty-state";
 import { gqlAction } from "@/lib/graphql-client";
@@ -103,6 +104,11 @@ export function PasskeysCard({
       <CardHeader className="flex-row items-center justify-between gap-4 space-y-0">
         <CardTitle className="flex w-fit items-center gap-2 text-base">
           Passkeys
+          {/* A promise about support, not a warning: the ceremony is covered by
+              tests end to end, but no real fleet has carried it yet, and the
+              rpID is welded to the panel's address in a way operators will
+              meet the first time they move it. */}
+          <BetaChip />
           <InfoTip content="Sign in with your fingerprint, face or device PIN instead of a password, and it counts as your second factor." />
         </CardTitle>
         {blocked ? (

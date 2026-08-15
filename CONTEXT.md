@@ -114,14 +114,14 @@ _Avoid_: invite (reserved for adding an existing user to a team), email invite (
 **Passkey**:
 A WebAuthn credential a **user** registers from Settings → Security, held by their device and
 unlocked with a fingerprint, a face or a PIN. It is a **way to sign in**, not a second step:
-"Sign in with a passkey" on the login page replaces the password entirely, and the password
-stays only as the fallback. A passkey **satisfies a team's two-factor requirement** on its own
-(ADR-0024), because it is possession plus inherence in one gesture - which is why an account
-whose requirement rests on a passkey is not handed a session for its password alone. Bound to
-ONE hostname (the panel's own address), recorded on the credential: move the panel and every
-passkey stops counting as a second factor, stays listed as **Not usable here**, and the password
-signs people in again so they can register a new one. Adding or removing one asks for the
-password; renaming does not.
+"Sign in with a passkey" on the login page replaces the password entirely, and the password stays
+as the fallback. A passkey **satisfies a team's two-factor requirement** (ADR-0024), because it is
+possession plus inherence in one gesture - but it counts for the SESSION that presented one: sign in
+with the password and you are in, reaching your own account settings and every team with no policy,
+just not the ones that require a second factor. Bound to ONE hostname (the panel's own address),
+recorded on the credential: move the panel and every passkey stops counting, stays listed as
+**Not usable here**, and the password still signs people in so they can register a new one. Adding
+or removing one asks for the password; renaming does not. Ships as **beta**.
 _Avoid_: security key (that is one KIND of passkey - a hardware one), WebAuthn credential
 (spell it passkey in the UI), "passwordless" (the password is still there).
 

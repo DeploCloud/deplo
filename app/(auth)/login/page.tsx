@@ -26,7 +26,6 @@ const LOGIN = /* GraphQL */ `
     login(email: $email, password: $password) {
       viewer { id }
       requiresTwoFactor
-      requiresPasskey
     }
   }
 `;
@@ -74,11 +73,10 @@ export default function LoginPage() {
   const next = useSearchParams().get("next");
   const [error, setError] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
-  // Which half of the sign-in we are on. The password step succeeded but the
-  // account has a second factor: an authenticator app ("code") or a passkey
-  // ("passkey"). Either challenge lives in a short-lived httpOnly cookie the
-  // server set, so this flag is all the client holds - no token in state.
-  const [step, setStep] = useState<"password" | "code" | "passkey">("password");
+  // The password step succeeded but the account has an authenticator app. The
+  // challenge itself lives in a short-lived httpOnly cookie the server set, so
+  // this flag is all the client holds - no token in state.
+  const [step, setStep] = useState<"password" | "code">("password");
   const [useRecovery, setUseRecovery] = useState(false);
   const [code, setCode] = useState("");
 
@@ -107,18 +105,12 @@ export default function LoginPage() {
     setError(null);
     startTransition(async () => {
       try {
-        const res = await gql<{
-          login: { requiresTwoFactor: boolean; requiresPasskey: boolean };
-        }>(LOGIN, { email, password });
-        // Mutually exclusive by construction: one means the account has an
-        // authenticator app, the other means it does not and its team's policy
-        // is resting on its passkey instead.
+        const res = await gql<{ login: { requiresTwoFactor: boolean } }>(LOGIN, {
+          email,
+          password,
+        });
         if (res.login.requiresTwoFactor) {
           setStep("code");
-          return;
-        }
-        if (res.login.requiresPasskey) {
-          setStep("passkey");
           return;
         }
         done();
@@ -203,35 +195,6 @@ export default function LoginPage() {
       Back
     </button>
   );
-
-  if (step === "passkey")
-    return (
-      <Card className="bg-transparent! border-transparent!">
-        <CardHeader>
-          <CardTitle className="text-2xl">Finish with your passkey</CardTitle>
-          <CardDescription>
-            This account signs in with a passkey. Your device will ask for your
-            fingerprint, face or PIN.
-          </CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          {banner}
-          <Button
-            className="w-full"
-            onClick={signInWithPasskey}
-            disabled={pending}
-          >
-            {pending ? (
-              <Loader2 className="size-4 animate-spin" />
-            ) : (
-              <Fingerprint className="size-4" />
-            )}
-            Use your passkey
-          </Button>
-          <div className="flex items-center justify-end text-sm">{back}</div>
-        </CardContent>
-      </Card>
-    );
 
   if (step === "code")
     return (

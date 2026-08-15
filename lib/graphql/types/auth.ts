@@ -127,7 +127,6 @@ const AuthPayloadRef = builder
   .objectRef<{
     viewer: Awaited<ReturnType<typeof getCurrentUser>>;
     requiresTwoFactor?: boolean;
-    requiresPasskey?: boolean;
   }>("AuthPayload")
   .implement({
     fields: (t) => ({
@@ -140,11 +139,6 @@ const AuthPayloadRef = builder
         description:
           "The password was correct but the account has 2FA: no session yet. Send a code to `verifyTwoFactorLogin`.",
         resolve: (p) => p.requiresTwoFactor ?? false,
-      }),
-      requiresPasskey: t.boolean({
-        description:
-          "The password was correct but this account's second factor IS its passkey: no session yet. Run the ceremony and send the result to `verifyPasskeyLogin`.",
-        resolve: (p) => p.requiresPasskey ?? false,
       }),
     }),
   });
@@ -204,10 +198,6 @@ builder.mutationFields((t) => ({
       // client swap to the code step without treating it as a failed attempt.
       if (res.requiresTwoFactor)
         return { viewer: null, requiresTwoFactor: true };
-      // Same shape, same reason: the password was right and no session exists
-      // yet. The account has no authenticator app, so what finishes the sign-in
-      // is the passkey its team's policy is resting on (ADR-0024).
-      if (res.requiresPasskey) return { viewer: null, requiresPasskey: true };
       if (!res.ok) {
         // Counted here rather than in `lib/auth.ts`: this resolver has the
         // normalised address in scope and already knows a credential rejection

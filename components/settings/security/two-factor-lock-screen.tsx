@@ -65,10 +65,12 @@ export function TwoFactorLockScreen({
           <Button className="w-full" onClick={() => setWizard(true)}>
             Turn on two-factor authentication
           </Button>
-          {/* The other way to satisfy the same policy (ADR-0024). Offered as a
-              link rather than a second wizard: adding a passkey needs the
+          {/* The other way out of this screen (ADR-0024). Adding a passkey here
+              unblocks the CURRENT session, because registering one is a
+              user-verified ceremony on this device - so it is a way out and not
+              just a suggestion. A link rather than a second wizard: it needs the
               password and a prompt from the device, which is the Security page's
-              job, and this screen already stands between the person and it. */}
+              job. */}
           <p className="text-center text-sm text-muted-foreground">
             Or{" "}
             <Link

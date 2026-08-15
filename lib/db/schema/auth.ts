@@ -34,6 +34,22 @@ export const session = pgTable("session", {
   expiresAt: timestamp("expires_at").notNull(),
   ipAddress: text("ip_address"),
   userAgent: text("user_agent"),
+  /**
+   * deplo's own column, invisible to Better Auth: WHAT this session presented.
+   *
+   * `"passkey"` means the session was opened by a WebAuthn ceremony the
+   * authenticator marked user-verified - possession plus inherence, so two
+   * factors - or by registering a passkey on this device, which is the same
+   * proof. NULL is everything else, password sign-ins included, and is never
+   * treated as a second factor.
+   *
+   * It exists so a team's two-factor mandate can be judged on what was actually
+   * presented rather than on what the account merely owns. Without it the only
+   * way to stop one factor clearing a two-factor policy was to refuse the
+   * password entirely, which took away ADR-0014 §4's promise that a blocked
+   * member can still reach their own settings and unblock themselves.
+   */
+  authMethod: text("auth_method"),
   createdAt: timestamp("created_at").notNull().defaultNow(),
   updatedAt: timestamp("updated_at").notNull().defaultNow(),
 });

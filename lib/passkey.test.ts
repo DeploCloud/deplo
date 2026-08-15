@@ -2,24 +2,35 @@ import { test, before, after, beforeEach } from "node:test";
 import assert from "node:assert/strict";
 
 import type { PGlite } from "@electric-sql/pglite";
-import { eq } from "drizzle-orm";
+import { desc, eq } from "drizzle-orm";
 
 import { makeTestDb, type TestDb } from "./db/test-harness";
 import { __setTestDb, __resetTestDb } from "./db/client";
-import { passkey as passkeyTable } from "./db/schema/auth";
 import {
+  passkey as passkeyTable,
+  session as sessionTable,
+} from "./db/schema/auth";
+import {
+  memberships as membershipsTable,
+  teamRoles as teamRolesTable,
   teams as teamsTable,
   users as usersTable,
 } from "./db/schema/control-plane";
 import { runWithIdentity } from "./auth/request-context";
 import { requireAuth } from "./auth/better-auth";
-import { login } from "./auth";
+import {
+  getCurrentUser,
+  login,
+  markSessionAuthMethod,
+  passkeyChallenge,
+  verifyPasskeyLogin,
+} from "./auth";
 import {
   requireActiveTeamId,
   requireCapability,
   TwoFactorRequiredError,
 } from "./membership";
-import { passkeyLoginRequired, userHasPasskey } from "./passkey-policy";
+import { userHasPasskey } from "./passkey-policy";
 import {
   deletePasskey,
   listMyPasskeys,
@@ -27,7 +38,7 @@ import {
   startPasskeyRegistration,
 } from "./data/passkeys";
 import { resetUserPasskeys } from "./data/members";
-import { seedIdentity, TEAM_A, USER_1 } from "./data/identity-test-helpers";
+import { seedIdentity, TEAM_A, TEAM_B, USER_1 } from "./data/identity-test-helpers";
 import { setStoredPublicBaseUrl } from "./public-url";
 import { ALL_CAPABILITIES } from "./types";
 
@@ -89,8 +100,42 @@ beforeEach(async () => {
   });
 });
 
+/**
+ * A request with an identity but NO session - which is what a bearer token looks
+ * like, and what every pre-existing test in the repo means by "as this user".
+ */
 const asUser = <T>(userId: string, fn: () => Promise<T>): Promise<T> =>
   runWithIdentity({ userId, teamId: TEAM_A }, fn);
+
+/** The id of the newest session belonging to `userId`. */
+async function newestSession(userId: string): Promise<string> {
+  const rows = await db
+    .select({ id: sessionTable.id })
+    .from(sessionTable)
+    .where(eq(sessionTable.userId, userId))
+    .orderBy(desc(sessionTable.createdAt))
+    .limit(1);
+  assert.ok(rows[0], "fixture: expected a session to exist");
+  return rows[0].id;
+}
+
+/** A browser request riding on that account's newest session. */
+async function runWithSession<T>(
+  userId: string,
+  teamId: string,
+  fn: () => Promise<T>,
+): Promise<T> {
+  const sessionId = await newestSession(userId);
+  return runWithIdentity({ userId, teamId, sessionId }, fn);
+}
+
+const asSession = <T>(userId: string, fn: () => Promise<T>): Promise<T> =>
+  runWithSession(userId, TEAM_A, fn);
+
+/** Stamp the newest session the way a passkey sign-in would. */
+async function markCurrentSession(method: "passkey"): Promise<void> {
+  await markSessionAuthMethod(await newestSession(USER_1), method);
+}
 
 /**
  * Put a credential on the account without running a ceremony.
@@ -226,58 +271,213 @@ test("removing the passkey puts the account back under the mandate", async () =>
 });
 
 /* ------------------------------------------------------------------ */
-/* 3. The password alone stops being enough                            */
+/* 3. Owning a passkey is not the same as having used one              */
 /* ------------------------------------------------------------------ */
 
-test("under a mandate met by a passkey, the password mints no session", async () => {
+/**
+ * The hole, and the thing that closes it without becoming a lockout.
+ *
+ * A passkey satisfies a mandate, so an account that merely OWNS one must not
+ * clear a two-factor policy by typing a password - that would be one factor
+ * doing the work of two. But refusing the sign-in outright would take away what
+ * ADR-0014 §4 promises: a blocked member keeps their own account settings, which
+ * is what lets them unblock themselves. So the password always opens a session,
+ * and the session carries what it actually proved.
+ */
+
+test("a password session does not inherit the account's passkey", async () => {
   await requireForTeam();
   await seedPasskey(USER_1);
-  const before = await sessionCount();
 
   const res = await login(EMAIL_1, PASSWORD);
-  assert.equal(res.ok, false, "not signed in yet");
-  assert.equal(res.requiresPasskey, true);
-  assert.equal(res.error, undefined, "a challenge is not an error");
-  // The assertion that matters: one factor must not buy a session on an account
-  // whose policy is being satisfied by the other one.
-  assert.equal(
-    await sessionCount(),
-    before,
-    "the password alone must not create a session",
-  );
+  assert.equal(res.ok, true, "the password still signs people in");
+  assert.equal(await sessionCount(), 1);
+
+  await asSession(USER_1, async () => {
+    await assert.rejects(
+      () => requireCapability(SOME_CAPABILITY),
+      (e: unknown) => e instanceof TwoFactorRequiredError,
+      "one factor must not clear a two-factor policy",
+    );
+    await assert.rejects(
+      () => requireActiveTeamId(),
+      (e: unknown) => e instanceof TwoFactorRequiredError,
+    );
+  });
 });
 
-test("a wrong password still reads as a wrong password, not as a challenge", async () => {
+test("a session the passkey opened does satisfy the mandate", async () => {
   await requireForTeam();
   await seedPasskey(USER_1);
+  await login(EMAIL_1, PASSWORD);
+  await markCurrentSession("passkey");
 
+  await asSession(USER_1, async () => {
+    assert.equal(await requireActiveTeamId(), TEAM_A);
+    const ctx = await requireCapability(SOME_CAPABILITY);
+    assert.equal(ctx.userId, USER_1);
+  });
+});
+
+test("a bearer token still inherits the ACCOUNT's standing", async () => {
+  // A token presents no factors at all, so the session question does not apply
+  // to it - and `identityForTokenRow` asks this before any identity exists,
+  // which is the branch that would break token authentication outright.
+  await requireForTeam();
+  await seedPasskey(USER_1);
+  await asUser(USER_1, async () => {
+    assert.equal(await requireActiveTeamId(), TEAM_A);
+  });
+});
+
+test("a wrong password is still just a wrong password", async () => {
+  await requireForTeam();
+  await seedPasskey(USER_1);
   const res = await login(EMAIL_1, "not-the-password");
   assert.equal(res.ok, false);
-  assert.equal(
-    res.requiresPasskey,
-    undefined,
-    "the flag after a wrong password would be an enumeration oracle",
-  );
   assert.match(res.error ?? "", /Invalid email or password/);
+  assert.equal(await sessionCount(), 0);
 });
 
-test("no mandate, or a TOTP already enrolled, leaves the password path alone", async () => {
-  await seedPasskey(USER_1);
-  assert.equal(
-    await passkeyLoginRequired(USER_1),
-    false,
-    "a passkey is a convenience until a policy is resting on it",
-  );
+/* ------------------------------------------------------------------ */
+/* 10. The login path, in the shapes that are easy to get wrong        */
+/* ------------------------------------------------------------------ */
 
+test("a suspended account is refused before anything about passkeys is decided", async () => {
   await requireForTeam();
-  assert.equal(await passkeyLoginRequired(USER_1), true);
+  await seedPasskey(USER_1);
+  await db
+    .update(usersTable)
+    .set({ suspended: true })
+    .where(eq(usersTable.id, USER_1));
 
+  const res = await login(EMAIL_1, PASSWORD);
+  assert.equal(res.ok, false);
+  assert.match(res.error ?? "", /suspended/);
+  assert.equal(await sessionCount(), 0);
+});
+
+test("an authenticator app wins over a passkey at the login fork", async () => {
+  await requireForTeam();
+  await seedPasskey(USER_1);
   await enableTotp();
+  const res = await login(EMAIL_1, PASSWORD);
   assert.equal(
-    await passkeyLoginRequired(USER_1),
-    false,
-    "with an authenticator app the ordinary two-factor challenge applies",
+    res.requiresTwoFactor,
+    true,
+    "an enrolled app is still the challenge the password leads to",
   );
+  assert.equal(await sessionCount(), 0, "and no session until the code lands");
+});
+
+test("a role's mandate blocks a password session too, not just the team's", async () => {
+  // The role half of the policy is a separate column and a separate join; a
+  // predicate that only read `teams.require_two_factor` would pass every other
+  // test in this file.
+  await db.insert(teamRolesTable).values({
+    id: "role_locked",
+    teamId: TEAM_A,
+    name: "Locked",
+    builtinKey: null,
+    requireTwoFactor: true,
+    createdAt: new Date().toISOString(),
+  });
+  await db
+    .update(membershipsTable)
+    .set({ roleId: "role_locked" })
+    .where(eq(membershipsTable.userId, USER_1));
+  await seedPasskey(USER_1);
+
+  await login(EMAIL_1, PASSWORD);
+  await asSession(USER_1, () =>
+    assert.rejects(
+      () => requireActiveTeamId(),
+      (e: unknown) => e instanceof TwoFactorRequiredError,
+    ),
+  );
+});
+
+test("a garbage assertion signs nobody in and says nothing useful about why", async () => {
+  const before = await sessionCount();
+  const res = await verifyPasskeyLogin({
+    id: "made-up",
+    rawId: "made-up",
+    type: "public-key",
+    response: {},
+    clientExtensionResults: {},
+  });
+  assert.equal(res.ok, false);
+  assert.equal(await sessionCount(), before, "no session was minted");
+  // The message must still come from the auth layer rather than being swallowed
+  // by the sanitizer that keeps database errors off the sign-in page.
+  assert.notEqual(
+    res.error,
+    undefined,
+    "an anonymous caller still deserves to know the attempt failed",
+  );
+  assert.equal(
+    /password|postgres|relation|connect|ECONN/i.test(res.error ?? ""),
+    false,
+    `the message must not describe the inside of the instance: "${res.error}"`,
+  );
+});
+
+test("the challenge is refused outright when this panel cannot have passkeys", async () => {
+  setStoredPublicBaseUrl("http://deplo.example.com");
+  try {
+    await assert.rejects(() => passkeyChallenge(), /https address/);
+  } finally {
+    setStoredPublicBaseUrl(PANEL);
+  }
+});
+
+/* ------------------------------------------------------------------ */
+/* 11. Blocked, but never locked out                                   */
+/* ------------------------------------------------------------------ */
+
+/**
+ * The property ADR-0014 §4 exists for, now that a passkey can be the thing a
+ * mandate rests on: a member who cannot satisfy the policy is stopped INSIDE the
+ * team and nowhere else, so the screen that fixes it is reachable.
+ */
+test("a blocked password session can still reach its own account", async () => {
+  await requireForTeam();
+  await seedPasskey(USER_1);
+  await login(EMAIL_1, PASSWORD);
+
+  await asSession(USER_1, async () => {
+    await assert.rejects(
+      () => requireActiveTeamId(),
+      (e: unknown) => e instanceof TwoFactorRequiredError,
+      "the team is blocked",
+    );
+    // …and the account is not. These are exactly what Settings -> Security
+    // reads, and they are what makes the block recoverable rather than a wall.
+    const me = await getCurrentUser();
+    assert.equal(me?.id, USER_1);
+    assert.equal((await listMyPasskeys()).length, 1);
+  });
+});
+
+test("a mandate in one team leaves the others alone", async () => {
+  await db.insert(membershipsTable).values({
+    id: "mem_user_1_b",
+    userId: USER_1,
+    teamId: TEAM_B,
+    role: "owner",
+    createdAt: new Date().toISOString(),
+  });
+  await requireForTeam();
+  await seedPasskey(USER_1);
+  await login(EMAIL_1, PASSWORD);
+
+  await runWithSession(USER_1, TEAM_B, async () => {
+    assert.equal(
+      await requireActiveTeamId(),
+      TEAM_B,
+      "a policy TEAM_B never set must not reach into it",
+    );
+  });
 });
 
 /* ------------------------------------------------------------------ */
@@ -335,11 +535,10 @@ test("a passkey that is not the last one is removable under a policy", async () 
 /* ------------------------------------------------------------------ */
 
 /**
- * The lockout this section exists to stop: a passkey satisfies the mandate, so
- * `login()` refuses the password - and if the credential cannot be used on this
- * panel any more, the ceremony that was supposed to finish the sign-in cannot
- * happen either. The way out is that an unusable passkey stops counting, which
- * puts the account back on the ordinary "add a second factor" path.
+ * A credential the browser will not offer here is not a second factor here. The
+ * account falls back to "no second factor", which is the ordinary blocked-but-
+ * recoverable state - rather than looking protected by something nobody can
+ * present.
  */
 
 test("a passkey minted for another address counts for nothing", async () => {
@@ -347,16 +546,13 @@ test("a passkey minted for another address counts for nothing", async () => {
   await seedPasskey(USER_1, "pk-old", "Old address", "old.example.com");
 
   assert.equal(await userHasPasskey(USER_1), false);
-  assert.equal(
-    await passkeyLoginRequired(USER_1),
-    false,
-    "refusing the password here would be a lockout: the browser has nothing to offer",
-  );
-  await asUser(USER_1, async () => {
+  await login(EMAIL_1, PASSWORD);
+  await markCurrentSession("passkey");
+  await asSession(USER_1, async () => {
     await assert.rejects(
       () => requireActiveTeamId(),
       (e: unknown) => e instanceof TwoFactorRequiredError,
-      "the mandate is unmet, which is recoverable - unlike a refused sign-in",
+      "even a passkey-stamped session cannot lean on a credential for another address",
     );
   });
 });
@@ -365,25 +561,26 @@ test("a row from before rp_id existed counts for nothing either", async () => {
   await requireForTeam();
   await seedPasskey(USER_1, "pk-legacy", "Legacy", null);
   assert.equal(await userHasPasskey(USER_1), false);
-  assert.equal(await passkeyLoginRequired(USER_1), false);
 });
 
 test("turning the panel's https off makes every passkey stop counting", async () => {
   await requireForTeam();
   await seedPasskey(USER_1);
-  assert.equal(await passkeyLoginRequired(USER_1), true, "fixture");
+  assert.equal(await userHasPasskey(USER_1), true, "fixture");
+  await login(EMAIL_1, PASSWORD);
+  await markCurrentSession("passkey");
 
   // What `setPanelHttps(false)` does to the rest of the process.
   setStoredPublicBaseUrl("http://deplo.example.com");
   try {
     assert.equal(await userHasPasskey(USER_1), false);
-    assert.equal(
-      await passkeyLoginRequired(USER_1),
-      false,
-      "no relying party means no ceremony, so the password must still work",
+    await asSession(USER_1, () =>
+      assert.rejects(
+        () => requireActiveTeamId(),
+        (e: unknown) => e instanceof TwoFactorRequiredError,
+        "no relying party, no second factor - and the account is asked for one",
+      ),
     );
-    const res = await login(EMAIL_1, PASSWORD);
-    assert.notEqual(res.requiresPasskey, true);
   } finally {
     setStoredPublicBaseUrl(PANEL);
   }
