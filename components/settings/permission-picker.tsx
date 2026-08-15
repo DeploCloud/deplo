@@ -34,6 +34,7 @@ export function PermissionPicker({
   disabled = false,
   hint = "Every action deplo can gate, one permission each. Tick exactly what this role should be able to do — search by what you want it to reach.",
   muted,
+  scroll = false,
 }: {
   capabilities: Capability[];
   onChange: (caps: Capability[]) => void;
@@ -41,6 +42,14 @@ export function PermissionPicker({
   disabled?: boolean;
   /** Tooltip beside the heading — name the thing being granted. */
   hint?: string;
+  /**
+   * Bound the category list and scroll it, the way `ScopePicker` bounds its
+   * tree. For a dialog: forty-odd permissions unbounded push the footer past
+   * the modal's own cap, so Save is only reachable by scrolling the whole
+   * screen. On a page (the role and token editors) the page is the scroller and
+   * a second one inside it is the wrong shape — hence off by default.
+   */
+  scroll?: boolean;
   /**
    * Capabilities the current SCOPE makes meaningless. They stay ticked, stay
    * tickable and keep their value — only the rendering says they do nothing
@@ -153,7 +162,16 @@ export function PermissionPicker({
           No permission matches “{query}”.
         </p>
       ) : (
-        <div className="space-y-3">
+        <div
+          className={cn(
+            "space-y-3",
+            // The scope tree's own `max-h-96`, and a `dvh` ceiling so a short
+            // window cannot push the dialog past its 85dvh cap and take the
+            // footer with it — which is the whole reason this exists.
+            scroll &&
+              "max-h-[min(24rem,40dvh)] overflow-y-auto focus-safe-scroll",
+          )}
+        >
           {sections.map((cat) => {
             const granted = cat.caps.filter((c) => enabled.has(c)).length;
             const allShownOn = cat.shown.every((c) => enabled.has(c));
@@ -246,35 +264,34 @@ export function PermissionPicker({
               </section>
             );
           })}
-        </div>
-      )}
-
-      {/* view — the floor, last and category-less: same row, permanently ticked. */}
-      {viewShown && (
-        <div className="overflow-hidden rounded-lg border border-border">
-          <div className="flex items-start gap-3 px-3 py-2.5">
-            <Checkbox
-              checked
-              disabled
-              aria-label={`${CAPABILITY_META.view.label} — always granted`}
-              className="mt-0.5"
-            />
-            <span className="min-w-0">
-              <span className="flex flex-wrap items-center gap-1.5">
-                <span className="text-sm font-medium leading-tight">
-                  {CAPABILITY_META.view.label}
-                </span>
-                <SimpleTooltip content="Always granted: every member can see the team, so this one can't be taken away.">
-                  <span className="leading-none text-muted-foreground">
-                    <Lock className="size-3.5" aria-label="Always granted" />
+          {/* view — the floor, last and category-less: same row, permanently ticked. */}
+          {viewShown && (
+            <div className="overflow-hidden rounded-lg border border-border">
+              <div className="flex items-start gap-3 px-3 py-2.5">
+                <Checkbox
+                  checked
+                  disabled
+                  aria-label={`${CAPABILITY_META.view.label} — always granted`}
+                  className="mt-0.5"
+                />
+                <span className="min-w-0">
+                  <span className="flex flex-wrap items-center gap-1.5">
+                    <span className="text-sm font-medium leading-tight">
+                      {CAPABILITY_META.view.label}
+                    </span>
+                    <SimpleTooltip content="Always granted: every member can see the team, so this one can't be taken away.">
+                      <span className="leading-none text-muted-foreground">
+                        <Lock className="size-3.5" aria-label="Always granted" />
+                      </span>
+                    </SimpleTooltip>
                   </span>
-                </SimpleTooltip>
-              </span>
-              <span className="block text-xs leading-snug text-muted-foreground">
-                {CAPABILITY_META.view.description}
-              </span>
-            </span>
-          </div>
+                  <span className="block text-xs leading-snug text-muted-foreground">
+                    {CAPABILITY_META.view.description}
+                  </span>
+                </span>
+              </div>
+            </div>
+          )}
         </div>
       )}
 

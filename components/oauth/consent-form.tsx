@@ -1,6 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
+import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import { Globe, Loader2, Pencil, TriangleAlert } from "lucide-react";
 import { Card } from "@/components/ui/card";
@@ -22,7 +23,6 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { FieldLabel, InfoTip } from "@/components/ui/info-tip";
-import { DeploMark } from "@/components/logo";
 import { ConsentShell } from "@/components/oauth/consent-shell";
 import { PermissionPicker } from "@/components/settings/permission-picker";
 import {
@@ -140,6 +140,7 @@ export function ConsentForm({
   /** Whose account the minted token will act as — worth saying before the click. */
   username: string;
 }) {
+  const router = useRouter();
   const mcpPreset = TOKEN_PRESETS.find((p) => p.id === "mcp");
   const [capabilities, setCapabilities] = useState<Capability[]>(
     mcpPreset?.capabilities ?? ["view"],
@@ -264,15 +265,18 @@ export function ConsentForm({
    *
    * Back to THIS url after signing in, not to the dashboard: `safeNext` on the
    * login page allows `/oauth/consent?…` for exactly this reason, and losing
-   * the query strands someone mid-flow inside a third-party product. A full
-   * page assign, because the session cookie has just changed underneath the
-   * router.
+   * the query strands someone mid-flow inside a third-party product.
+   *
+   * `push` then `refresh`, the same pair the account menu logs out with — the
+   * session cookie has just changed, and the RSC tree cached behind it was
+   * rendered for the person who is no longer signed in.
    */
   async function onSwitchAccount() {
     setPending(true);
     await gqlAction(`mutation { logout }`, {});
     const here = window.location.pathname + window.location.search;
-    window.location.assign(`/login?next=${encodeURIComponent(here)}`);
+    router.push(`/login?next=${encodeURIComponent(here)}`);
+    router.refresh();
   }
 
   async function onDeny() {
@@ -302,28 +306,16 @@ export function ConsentForm({
             what it gets, then the choice. Everything else is behind a row. */}
         <form className="grid gap-6 p-6" onSubmit={onApprove}>
           <div className="grid justify-items-center gap-4 text-center">
-            {/* The app asking, a pulse running along the wire, deplo at the
-                other end — which way this request points, before a word of it
-                is read. */}
-            <div className="flex items-center gap-3">
-              {/* Remote icons never render — the CSP is `img-src 'self' blob:
-                  data:` — so this is initials for almost every client, and the
-                  `src` is here for the rare `data:` one. Radix falls back on the
-                  blocked load by itself. */}
-              <Avatar className="size-14">
-                <AvatarImage src={client.icon ?? undefined} alt="" />
-                <AvatarFallback className="bg-muted text-base font-semibold">
-                  {client.name.slice(0, 2).toUpperCase()}
-                </AvatarFallback>
-              </Avatar>
-              <span
-                aria-hidden="true"
-                className="deplo-consent-line h-0.5 w-16 shrink-0"
-              />
-              <span className="flex size-14 shrink-0 items-center justify-center rounded-full bg-foreground">
-                <DeploMark size={26} className="text-background" />
-              </span>
-            </div>
+            {/* Remote icons never render — the CSP is `img-src 'self' blob:
+                data:` — so this is initials for almost every client, and the
+                `src` is here for the rare `data:` one. Radix falls back on the
+                blocked load by itself. */}
+            <Avatar className="size-14">
+              <AvatarImage src={client.icon ?? undefined} alt="" />
+              <AvatarFallback className="bg-muted text-base font-semibold">
+                {client.name.slice(0, 2).toUpperCase()}
+              </AvatarFallback>
+            </Avatar>
             <div>
               <h1 className="text-lg font-semibold tracking-tight">
                 Connect {client.name} to deplo
@@ -510,9 +502,13 @@ export function ConsentForm({
                   </p>
                 ) : null}
               </div>
+              {/* Bounded and scrolled, like the scope tree next door: forty-odd
+                  permissions growing the dialog past its own cap put Done below
+                  the fold, reachable only by scrolling the whole modal. */}
               <PermissionPicker
                 capabilities={capabilities}
                 onChange={setCapabilities}
+                scroll
                 hint="Tick exactly what this app should be able to do. A secret can never be read over MCP, whatever is ticked here."
               />
             </div>
