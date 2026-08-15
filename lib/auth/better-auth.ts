@@ -59,10 +59,13 @@ import { MCP_RESOURCE_PATH } from "@/lib/auth/oauth-metadata";
  * `DEPLO_DATABASE_URL`), where there is no database to back the auth tables.
  */
 
-const SESSION_TTL_SECONDS = 60 * 60 * 24 * 7; // 7 days
+export const SESSION_TTL_SECONDS = 60 * 60 * 24 * 7; // 7 days
 
 /** The session cookie's base name. Better Auth prefixes `__Secure-` when secure. */
 export const SESSION_COOKIE_NAME = "deplo.session_token";
+
+/** The prefix a browser only accepts on a cookie set over https. */
+export const SECURE_COOKIE_PREFIX = "__Secure-";
 
 /**
  * Whether the session cookie may carry the `__Secure-` prefix.
@@ -81,7 +84,7 @@ function secureCookies(): boolean {
 
 /** Both names the session cookie can have, in the order a reader should try them. */
 export function sessionCookieNames(): [string, string] {
-  return [SESSION_COOKIE_NAME, `__Secure-${SESSION_COOKIE_NAME}`];
+  return [SESSION_COOKIE_NAME, `${SECURE_COOKIE_PREFIX}${SESSION_COOKIE_NAME}`];
 }
 
 /**

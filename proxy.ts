@@ -26,6 +26,42 @@ const SESSION_COOKIES = ["deplo.session_token", "__Secure-deplo.session_token"];
 // public — otherwise the proxy bounces them to /login before the page renders.
 const PUBLIC_PATHS = ["/login", "/signup", "/setup", "/register"];
 
+/**
+ * Whether THIS request arrived over TLS.
+ *
+ * Per REQUEST, never from the configured address, and that is the whole point: a
+ * deplo answers on its panel address AND on its server's own `http://<ip>:3000`,
+ * which is the way back in when the domain breaks. Deciding from
+ * `DEPLO_PUBLIC_URL` sent `upgrade-insecure-requests` to that plain-http page
+ * too, and the W3C algorithm has NO carve-out for IP hosts: navigations are
+ * exempt, so the document loads, and every relative stylesheet, chunk and font
+ * under it is promoted to an `https://<ip>:3000` nothing serves. The symptom is
+ * a panel with no CSS and no hydration. It also outlived turning HTTPS off from
+ * the panel, because that moves the stored address and never the env var.
+ *
+ * `x-forwarded-proto` wins - Traefik and every proxy in front of a deplo set it.
+ * With no proxy header the only host that can be the https one is the configured
+ * one; a request that reached this process on any other host got here directly,
+ * on plain http. The env var and not the stored address because this runs on the
+ * Edge runtime and cannot import `lib/public-url.ts` (`server-only`) - the same
+ * constraint that duplicates SESSION_COOKIES above.
+ */
+function requestIsHttps(request: NextRequest): boolean {
+  const forwarded = request.headers
+    .get("x-forwarded-proto")
+    ?.split(",")[0]
+    ?.trim();
+  if (forwarded) return forwarded === "https";
+  if (request.nextUrl.protocol === "https:") return true;
+  const configured = process.env.DEPLO_PUBLIC_URL?.trim() ?? "";
+  if (!configured.startsWith("https://")) return false;
+  try {
+    return new URL(configured).host === request.headers.get("host");
+  } catch {
+    return false;
+  }
+}
+
 function generateNonce(): string {
   const arr = new Uint8Array(16);
   crypto.getRandomValues(arr);
@@ -37,11 +73,10 @@ function generateNonce(): string {
 export function proxy(request: NextRequest) {
   const { pathname } = request.nextUrl;
   const isDev = process.env.NODE_ENV === "development";
-  // Only force HTTPS upgrades when the instance is actually served over TLS;
-  // otherwise an http://<ip> deployment would try (and fail) to upgrade assets.
-  const isHttps =
-    (process.env.DEPLO_PUBLIC_URL ?? "").startsWith("https://") ||
-    request.headers.get("x-forwarded-proto") === "https";
+  // Only force HTTPS upgrades when THIS request really came over TLS; see
+  // requestIsHttps - an http://<ip> page that upgrades its own assets is a panel
+  // with no CSS.
+  const isHttps = requestIsHttps(request);
   // Template cards load their logos straight from the catalog service, so its
   // origin has to be allowed here or every one of them is blocked.
   let templatesOrigin = "";
@@ -120,11 +155,18 @@ export function proxy(request: NextRequest) {
   // Private panel: never let any page enter a search index (belt-and-suspenders
   // with app/robots.ts and the `robots` metadata in app/layout.tsx).
   response.headers.set("X-Robots-Tag", "noindex, nofollow, noarchive");
+  // Six months, and deliberately WITHOUT `includeSubDomains; preload`.
+  //
+  // Both were a trap here. A browser remembers HSTS for the whole max-age and
+  // nothing in the panel can take it back, so `preload` at two years meant that
+  // turning HTTPS off - a setting that exists precisely to rescue a panel whose
+  // address cannot get a certificate - left that hostname unreachable over http
+  // for two years. And `includeSubDomains` reached past the panel entirely: apps
+  // are born on the `none` certificate provider and many live on a subdomain of
+  // the panel's own domain, so the header forced them onto an https they do not
+  // have.
   if (isHttps) {
-    response.headers.set(
-      "Strict-Transport-Security",
-      "max-age=63072000; includeSubDomains; preload",
-    );
+    response.headers.set("Strict-Transport-Security", "max-age=15552000");
   }
   return response;
 }

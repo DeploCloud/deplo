@@ -5,6 +5,7 @@ import {
   cookiesAreSecure,
   passkeyRelyingParty,
   publicBaseUrl,
+  requestIsHttps,
   setStoredPublicBaseUrl,
 } from "./public-url";
 
@@ -120,4 +121,20 @@ test("plain http has no relying party, except on localhost", () => {
 test("no address, and nothing to bind a passkey to", () => {
   delete process.env.DEPLO_PUBLIC_URL;
   assert.equal(passkeyRelyingParty(), null);
+});
+
+/**
+ * The per-request answer, which is what the panel's second address depends on.
+ *
+ * Only the fallback is reachable here: `headers()` needs a request scope, and
+ * outside one - a scheduler tick, a script, this test - the instance's own
+ * answer is the only one there is. Getting THAT wrong would flip every cookie
+ * write that happens off a request, so it is pinned.
+ */
+test("with no request to read, the instance's own answer stands", async () => {
+  setStoredPublicBaseUrl("https://deplo.example.com");
+  assert.equal(await requestIsHttps(), true);
+
+  setStoredPublicBaseUrl("http://198.51.100.7:3000");
+  assert.equal(await requestIsHttps(), false);
 });

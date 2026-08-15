@@ -46,6 +46,50 @@ export function authRequestHeaders(
       const value = request.get(name);
       if (value) out.set(name, value);
     }
-  if (cookie) out.set("cookie", cookie);
+  if (cookie) out.set("cookie", withBothCookieNames(cookie));
   return out;
+}
+
+/** Better Auth's cookie prefix on this instance (`advanced.cookiePrefix`). */
+const AUTH_COOKIE_PREFIX = "deplo.";
+const SECURE_PREFIX = "__Secure-";
+
+/**
+ * Offer every Better Auth cookie under BOTH the plain and the `__Secure-` name.
+ *
+ * A deplo answers on two addresses at once: its panel address, usually https,
+ * and its server's own `http://<ip>:3000`, the way back in when the domain
+ * breaks. A browser refuses a `Secure` cookie on the second one, so a session
+ * opened there is stored under the plain name - while `auth.api.getSession`
+ * looks the session up under EXACTLY one name, computed once from
+ * `useSecureCookies` when the auth instance is built (better-auth
+ * `cookies/index.mjs` → `createCookieGetter`). Without this, a session minted on
+ * the rescue address passes the proxy's presence check (proxy.ts accepts both
+ * names) and then resolves to nobody in the layout: a redirect loop back to
+ * /login rather than a panel.
+ *
+ * Additive and idempotent: a name already present is never overwritten, so on
+ * the canonical address this changes nothing. Only Better Auth's own cookies are
+ * twinned - `deplo_team` and `theme` are deplo's and are read by their one name.
+ */
+export function withBothCookieNames(cookie: string): string {
+  if (!cookie.includes(AUTH_COOKIE_PREFIX)) return cookie;
+  const pairs = cookie.split("; ").filter(Boolean);
+  const names = new Set(pairs.map((p) => p.slice(0, p.indexOf("="))));
+  const extra: string[] = [];
+  for (const pair of pairs) {
+    const eq = pair.indexOf("=");
+    if (eq < 0) continue;
+    const name = pair.slice(0, eq);
+    const twin = name.startsWith(SECURE_PREFIX)
+      ? name.slice(SECURE_PREFIX.length)
+      : `${SECURE_PREFIX}${name}`;
+    const bare = name.startsWith(SECURE_PREFIX)
+      ? name.slice(SECURE_PREFIX.length)
+      : name;
+    if (!bare.startsWith(AUTH_COOKIE_PREFIX) || names.has(twin)) continue;
+    names.add(twin);
+    extra.push(`${twin}=${pair.slice(eq + 1)}`);
+  }
+  return extra.length ? `${cookie}; ${extra.join("; ")}` : cookie;
 }

@@ -1,5 +1,7 @@
 import "server-only";
 
+import { headers } from "next/headers";
+
 /**
  * Resolve the canonical public base URL of this Deplo instance.
  *
@@ -58,6 +60,44 @@ export function publicBaseUrl(): string | null {
  */
 export function cookiesAreSecure(): boolean {
   return (publicBaseUrl() ?? "").startsWith("https://");
+}
+
+/**
+ * Whether THIS request arrived over https, and so whether a cookie it writes may
+ * carry `Secure`.
+ *
+ * {@link cookiesAreSecure} answers for the INSTANCE, from the address it calls
+ * itself. That is the right answer for the panel's own address and the wrong one
+ * for the other address every deplo answers on: its server's own
+ * `http://<ip>:3000`, the way back in when the domain breaks. There a `Secure`
+ * cookie is one the browser silently refuses, so signing in appears to succeed
+ * and the panel stays logged out - the rescue address that cannot rescue.
+ *
+ * `x-forwarded-proto` wins, because a proxy is the only thing that knows. With
+ * no proxy header the request reached this process directly, so the only host
+ * that can be the https one is the configured address itself; anything else -
+ * an IP, a LAN name - came in on plain http. Outside a request scope (a
+ * scheduler tick, a script) the instance's own answer is the only one there is.
+ *
+ * Cheap enough to call per cookie write: `headers()` is request-scoped state,
+ * not I/O.
+ */
+export async function requestIsHttps(): Promise<boolean> {
+  let h: Headers;
+  try {
+    h = await headers();
+  } catch {
+    return cookiesAreSecure();
+  }
+  const forwarded = h.get("x-forwarded-proto")?.split(",")[0]?.trim();
+  if (forwarded) return forwarded === "https";
+  const base = publicBaseUrl();
+  if (!base?.startsWith("https://")) return false;
+  try {
+    return new URL(base).host === h.get("host");
+  } catch {
+    return false;
+  }
 }
 
 /**

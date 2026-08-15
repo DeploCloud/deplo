@@ -26,7 +26,7 @@ import {
   boundedBy,
 } from "./membership-shared";
 import { currentIdentity, narrowedScope } from "./auth/request-context";
-import { cookiesAreSecure } from "./public-url";
+import { requestIsHttps } from "./public-url";
 // The leaf module: a role's reach, with no dependency back on this one.
 import { memberScopeFor, type NodeScope } from "./data/node-scope";
 
@@ -657,7 +657,9 @@ export async function setActiveTeam(teamId: string): Promise<void> {
   const store = await cookies();
   store.set(ACTIVE_TEAM_COOKIE, teamId, {
     httpOnly: true,
-    secure: cookiesAreSecure(),
+    // Per REQUEST, not per instance: see requestIsHttps. A `Secure` cookie
+    // written on the panel's plain-http IP address is one the browser drops.
+    secure: await requestIsHttps(),
     sameSite: "lax",
     path: "/",
     maxAge: ACTIVE_TEAM_TTL_SECONDS,

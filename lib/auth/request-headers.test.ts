@@ -52,7 +52,8 @@ test("the supplied cookie wins over the request's own", () => {
   // The cookie STORE sees writes made earlier in this request; the raw request
   // headers still carry the pre-login value.
   const out = authRequestHeaders(request, "deplo.session_token=fresh");
-  assert.equal(out.get("cookie"), "deplo.session_token=fresh");
+  assert.match(out.get("cookie") ?? "", /(^|; )deplo\.session_token=fresh(;|$)/);
+  assert.doesNotMatch(out.get("cookie") ?? "", /stale-pre-login-value/);
 });
 
 test("an empty cookie string sets no cookie header at all", () => {
@@ -64,11 +65,43 @@ test("an empty cookie string sets no cookie header at all", () => {
 
 test("no request scope degrades to cookie-only rather than throwing", () => {
   const out = authRequestHeaders(null, "deplo.session_token=abc");
-  assert.equal(out.get("cookie"), "deplo.session_token=abc");
+  assert.match(out.get("cookie") ?? "", /(^|; )deplo\.session_token=abc(;|$)/);
   assert.equal(out.get("user-agent"), null);
 });
 
 test("a request with none of the metadata headers yields just the cookie", () => {
   const out = authRequestHeaders(new Headers(), "a=b");
   assert.deepEqual([...out.keys()], ["cookie"]);
+});
+
+/**
+ * The panel answers on two addresses at once - its own, usually https, and its
+ * server's plain-http `http://<ip>:3000` backup - so the session cookie exists
+ * under two names depending on which one it was opened at. Better Auth looks it
+ * up under EXACTLY one, decided when the instance was built, so a session minted
+ * on one address would resolve to nobody on the other: a redirect loop back to
+ * /login instead of a panel. Offering both names is what keeps the backup
+ * address a way back in rather than a page you can never sign into.
+ */
+test("a plain-named auth cookie is also offered under __Secure-", () => {
+  const out = authRequestHeaders(null, "deplo.session_token=abc");
+  assert.match(out.get("cookie") ?? "", /__Secure-deplo\.session_token=abc/);
+});
+
+test("a __Secure- auth cookie is also offered under its plain name", () => {
+  const out = authRequestHeaders(null, "__Secure-deplo.two_factor=xyz");
+  assert.match(out.get("cookie") ?? "", /(^|; )deplo\.two_factor=xyz(;|$)/);
+});
+
+test("a name already present is never duplicated", () => {
+  const cookie = "deplo.session_token=a; __Secure-deplo.session_token=b";
+  const out = authRequestHeaders(null, cookie);
+  assert.equal(out.get("cookie"), cookie);
+});
+
+test("cookies that are not Better Auth's are left exactly as they are", () => {
+  // `deplo_team` and `theme` are deplo's own and are read by their one name;
+  // twinning them would be noise in every request.
+  const out = authRequestHeaders(null, "deplo_team=team_a; theme=dark");
+  assert.equal(out.get("cookie"), "deplo_team=team_a; theme=dark");
 });

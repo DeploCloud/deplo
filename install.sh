@@ -3,9 +3,10 @@
 # Deplo installer / updater
 # Usage:  curl -fsSL https://raw.githubusercontent.com/IdraDev/deplo/main/install.sh | bash
 #
-# By default the dashboard is served over plain HTTP on the server's IP at
-# port 3000 (http://<ip>:3000). Pass a real domain to route it through Traefik
-# with automatic Let's Encrypt HTTPS instead:
+# The dashboard ALWAYS answers on the server's IP at port 3000
+# (http://<ip>:3000) - that address is the way back in when a domain, a
+# certificate or the proxy is what broke. Pass a real domain to route it through
+# Traefik with automatic Let's Encrypt HTTPS as well:
 #   curl -fsSL .../install.sh | DEPLO_DOMAIN=deplo.example.com ACME_EMAIL=you@example.com bash
 #
 # Re-running on a machine that already has Deplo updates it in place (pulls the
@@ -246,6 +247,15 @@ DEPLO_DOMAIN="$(grep '^DEPLO_DOMAIN=' "$ENV_FILE" | cut -d= -f2-)"
 ACME_EMAIL="$(grep '^ACME_EMAIL=' "$ENV_FILE" | cut -d= -f2-)"
 SERVER_IP="$(detect_ip)"
 
+# The panel ALWAYS publishes :3000 on the host, domain or no domain, and this is
+# not an oversight to tidy up later: http://$SERVER_IP:3000 is the way back into
+# a panel whose domain stopped working - DNS moved, the certificate expired, the
+# proxy is down - and deplo cannot rewrite this file once it is running, so a
+# port left unpublished here can never be published from the panel afterwards.
+# The only way back would be an SSH session, which is the trip deplo exists to
+# remove. Settings, Deplo shows it as the panel's IP address.
+DEPLO_EXPOSE="$(printf '    ports:\n      - "3000:3000"')"
+
 # The panel's own route is a Traefik FILE-provider config, not labels on this
 # container - and that difference is the whole point. A container's compose file
 # belongs to this installer and no agent RPC can rewrite it, so a panel published
@@ -261,9 +271,9 @@ SERVER_IP="$(detect_ip)"
 if is_real_domain "$DEPLO_DOMAIN"; then
   USE_DOMAIN=true
   PUBLIC_URL="https://$DEPLO_DOMAIN"
-  # Nothing on the container itself: Traefik reaches it over the shared `deplo`
-  # network at the service's own name, and the route lives in the file below.
-  DEPLO_EXPOSE="$(printf '    # Published by Traefik as deplo-panel - see traefik/docker-compose.yml')"
+  # Traefik reaches the panel over the shared `deplo` network at the service's
+  # own name and the route lives in the file below; the published port above is
+  # the panel's IP address, not how the domain is served.
   TRAEFIK_CONFIG_MOUNT="$(printf '    configs:\n      - source: deplo-panel\n        target: /deplo-dynamic/deplo-panel.yml\n        mode: 256')"
   # Unquoted scalars on purpose: this is byte-for-byte what `withPanelRoute`
   # re-renders, so the first edit from the panel produces no spurious diff in the
@@ -273,7 +283,6 @@ if is_real_domain "$DEPLO_DOMAIN"; then
 else
   USE_DOMAIN=false
   PUBLIC_URL="http://$SERVER_IP:3000"
-  DEPLO_EXPOSE="$(printf '    ports:\n      - "3000:3000"')"
   TRAEFIK_CONFIG_MOUNT=""
   TRAEFIK_PANEL_CONFIG=""
   TRAEFIK_FILE_PROVIDER=""

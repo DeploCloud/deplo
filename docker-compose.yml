@@ -20,6 +20,11 @@ services:
       - DEPLO_SECRET=${DEPLO_SECRET:?set DEPLO_SECRET}
       - DEPLO_PUBLIC_URL=https://${DEPLO_DOMAIN:?set DEPLO_DOMAIN}
       - DEPLO_DATABASE_URL=postgres://deplo:${DEPLO_DB_PASSWORD:?set DEPLO_DB_PASSWORD}@postgres:5432/deplo
+    # Published even though Traefik serves the domain: http://<server-ip>:3000 is
+    # the panel's IP address, the way back in when its domain stopped working.
+    # Nothing can add this port later without recreating the container by hand.
+    ports:
+      - "3000:3000"
     volumes:
       - deplo-data:/data
       - /var/run/docker.sock:/var/run/docker.sock

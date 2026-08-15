@@ -24,8 +24,18 @@ import { newId } from "./ids";
 import { randomBytes } from "node:crypto";
 import { currentIdentity } from "./auth/request-context";
 import { authRequestHeaders } from "./auth/request-headers";
-import { getAuth, requireAuth, sessionCookieNames } from "./auth/better-auth";
-import { cookiesAreSecure, passkeyRelyingParty } from "./public-url";
+import {
+  getAuth,
+  requireAuth,
+  sessionCookieNames,
+  SECURE_COOKIE_PREFIX,
+  SESSION_TTL_SECONDS,
+} from "./auth/better-auth";
+import {
+  cookiesAreSecure,
+  passkeyRelyingParty,
+  requestIsHttps,
+} from "./public-url";
 // Type-only: the assertion arrives as opaque JSON from the browser, and this is
 // the shape the plugin's verifier expects it to have.
 import type { AuthenticationResponseJSON } from "@simplewebauthn/browser";
@@ -42,7 +52,10 @@ async function setActiveTeamCookie(teamId: string) {
   const store = await cookies();
   store.set(ACTIVE_TEAM_COOKIE, teamId, {
     httpOnly: true,
-    secure: cookiesAreSecure(),
+    // Per REQUEST, not per instance: on the panel's own IP address, which is
+    // plain http, a `Secure` cookie is one the browser drops - and this one
+    // carries the active team.
+    secure: await requestIsHttps(),
     sameSite: "lax",
     path: "/",
     maxAge: ACTIVE_TEAM_TTL_SECONDS,
@@ -418,6 +431,49 @@ export async function authHeaders(): Promise<Headers> {
 }
 
 /**
+ * Re-issue the cookies Better Auth just wrote, without `Secure`, when this
+ * request did not arrive over https.
+ *
+ * The panel answers on two addresses at once: its own, usually https, and its
+ * server's `http://<ip>:3000`, the way back in when the domain breaks. Better
+ * Auth decides `Secure` (and the `__Secure-` name prefix) ONCE, when the
+ * instance is built from the panel's address - there is no per-request path - so
+ * on the panel's IP address the browser silently drops the session cookie and
+ * two-factor challenge cookie. Signing in reports success and the panel stays
+ * logged out, which makes the rescue address useless in exactly the situation it
+ * exists for.
+ *
+ * So the cookies are rewritten after the fact, in the same request: Next's
+ * cookie store reflects writes made earlier in it (see `authHeaders` above), and
+ * `authRequestHeaders` offers Better Auth both names on the way back in, so the
+ * session still resolves. Only the session cookie keeps an explicit lifetime -
+ * everything else Better Auth writes here is a short-lived challenge, and a
+ * browser-session cookie is the safer default for those.
+ *
+ * A no-op on the canonical address, and a no-op on an instance that is already
+ * http: both paths leave the cookies exactly as Better Auth wrote them.
+ */
+async function keepAuthCookiesUsableOverHttp(): Promise<void> {
+  if (!cookiesAreSecure()) return;
+  if (await requestIsHttps()) return;
+  const secureSessionCookie = sessionCookieNames()[1];
+  const store = await cookies();
+  for (const c of store.getAll()) {
+    if (!c.name.startsWith(SECURE_COOKIE_PREFIX)) continue;
+    store.set(c.name.slice(SECURE_COOKIE_PREFIX.length), c.value, {
+      httpOnly: true,
+      secure: false,
+      sameSite: "lax",
+      path: "/",
+      ...(c.name === secureSessionCookie
+        ? { maxAge: SESSION_TTL_SECONDS }
+        : {}),
+    });
+    store.delete(c.name);
+  }
+}
+
+/**
  * This request's Better Auth session, resolved AT MOST ONCE.
  *
  * `getCurrentUser` and `currentSessionId` both need it and each `cache()`s only
@@ -606,6 +662,10 @@ export async function login(
       headers: await authHeaders(),
       asResponse: false,
     });
+    // Before the two-factor branch below: by this point Better Auth has written
+    // either the session cookie or the challenge cookie, and on the IP
+    // address both need declassifying for the browser to keep them.
+    await keepAuthCookiesUsableOverHttp();
     // The credential was just proven, so this is the one moment the plaintext
     // and the identity are both in hand - the only place a hash written at an
     // older, weaker cost can be replaced without asking anyone to reset
@@ -706,6 +766,7 @@ export async function verifyTwoFactorCode(
     if (kind === "backup")
       await auth.api.verifyBackupCode({ body: { code }, headers: reqHeaders });
     else await auth.api.verifyTOTP({ body: { code }, headers: reqHeaders });
+    await keepAuthCookiesUsableOverHttp();
     return { ok: true };
   } catch (e) {
     // The plugin's own message is the useful one ("Invalid code", or the lockout
@@ -934,6 +995,7 @@ export async function startSessionFor(
     headers: await authHeaders(),
     asResponse: false,
   });
+  await keepAuthCookiesUsableOverHttp();
   // Omitted when the caller is only re-issuing a session (e.g. after a password
   // change), where the existing `deplo_team` cookie must survive untouched.
   if (teamId) await setActiveTeamCookie(teamId);
