@@ -1738,3 +1738,60 @@
     opacity: 0;
   }
 }
+
+/* The OAuth consent screen's connector: the app asking sits on the left, deplo
+   on the right, and a pulse runs the wire between them. Direction is the whole
+   point - a static line says two logos are near each other, a moving one says
+   this app is asking deplo for something. Decoration only; the row is
+   aria-hidden and the heading under it says the same thing in words. */
+@keyframes deplo-consent-pulse {
+  0% {
+    left: 0;
+    opacity: 0;
+  }
+  20%,
+  80% {
+    opacity: 1;
+  }
+  100% {
+    left: 100%;
+    opacity: 0;
+  }
+}
+
+.deplo-consent-line {
+  position: relative;
+  border-radius: 9999px;
+  /* Dashes, not a solid rule: a wire with segments reads as a route rather than
+     a divider, and it is what the travelling dot passes over. */
+  background-image: repeating-linear-gradient(
+    90deg,
+    var(--border) 0 4px,
+    transparent 4px 8px
+  );
+}
+
+.deplo-consent-line::after {
+  content: "";
+  position: absolute;
+  top: 50%;
+  width: 6px;
+  height: 6px;
+  /* Half its own size back on both axes, so the dot is centred on the line and
+     rides from just outside one end to just outside the other. */
+  margin: -3px 0 0 -3px;
+  border-radius: 9999px;
+  background: var(--foreground);
+  box-shadow: 0 0 8px 2px
+    color-mix(in oklab, var(--foreground) 40%, transparent);
+  animation: deplo-consent-pulse 2.4s ease-in-out infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  /* Park it mid-wire: with the animation gone `left` is auto, which drops the
+     dot at the start of the line and reads as a broken connection. */
+  .deplo-consent-line::after {
+    animation: none;
+    left: 50%;
+  }
+}

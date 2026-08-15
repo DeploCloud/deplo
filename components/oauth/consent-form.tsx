@@ -22,6 +22,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { FieldLabel, InfoTip } from "@/components/ui/info-tip";
+import { DeploMark } from "@/components/logo";
 import { ConsentShell } from "@/components/oauth/consent-shell";
 import { PermissionPicker } from "@/components/settings/permission-picker";
 import {
@@ -149,7 +150,10 @@ export function ConsentForm({
     folderIds: [],
     appIds: [],
   });
-  const [advanced, setAdvanced] = useState(false);
+  // Which half of "what it gets" is being edited. Two dialogs, not one: the row
+  // you press is the question you wanted to answer, and answering the other one
+  // was never the reason you clicked.
+  const [editing, setEditing] = useState<null | "access" | "permissions">(null);
   // The team this connection is being made FROM. Always granted (the server
   // includes it whatever the picker says) and the default when nothing is
   // ticked. Not a control any more — the picker is the only one.
@@ -253,6 +257,24 @@ export function ConsentForm({
     window.location.assign(done.url);
   }
 
+  /**
+   * Signed in as the wrong person — the one thing this screen can be right
+   * about and still be wrong, because the token it mints acts as whoever is
+   * looking at it.
+   *
+   * Back to THIS url after signing in, not to the dashboard: `safeNext` on the
+   * login page allows `/oauth/consent?…` for exactly this reason, and losing
+   * the query strands someone mid-flow inside a third-party product. A full
+   * page assign, because the session cookie has just changed underneath the
+   * router.
+   */
+  async function onSwitchAccount() {
+    setPending(true);
+    await gqlAction(`mutation { logout }`, {});
+    const here = window.location.pathname + window.location.search;
+    window.location.assign(`/login?next=${encodeURIComponent(here)}`);
+  }
+
   async function onDeny() {
     setPending(true);
     const done = await postConsent({
@@ -280,16 +302,28 @@ export function ConsentForm({
             what it gets, then the choice. Everything else is behind a row. */}
         <form className="grid gap-6 p-6" onSubmit={onApprove}>
           <div className="grid justify-items-center gap-4 text-center">
-            {/* Remote icons never render — the CSP is `img-src 'self' blob:
-                data:` — so this is initials for almost every client, and the
-                `src` is here for the rare `data:` one. Radix falls back on the
-                blocked load by itself. */}
-            <Avatar className="size-14">
-              <AvatarImage src={client.icon ?? undefined} alt="" />
-              <AvatarFallback className="bg-muted text-base font-semibold">
-                {client.name.slice(0, 2).toUpperCase()}
-              </AvatarFallback>
-            </Avatar>
+            {/* The app asking, a pulse running along the wire, deplo at the
+                other end — which way this request points, before a word of it
+                is read. */}
+            <div className="flex items-center gap-3">
+              {/* Remote icons never render — the CSP is `img-src 'self' blob:
+                  data:` — so this is initials for almost every client, and the
+                  `src` is here for the rare `data:` one. Radix falls back on the
+                  blocked load by itself. */}
+              <Avatar className="size-14">
+                <AvatarImage src={client.icon ?? undefined} alt="" />
+                <AvatarFallback className="bg-muted text-base font-semibold">
+                  {client.name.slice(0, 2).toUpperCase()}
+                </AvatarFallback>
+              </Avatar>
+              <span
+                aria-hidden="true"
+                className="deplo-consent-line h-0.5 w-16 shrink-0"
+              />
+              <span className="flex size-14 shrink-0 items-center justify-center rounded-full bg-foreground">
+                <DeploMark size={26} className="text-background" />
+              </span>
+            </div>
             <div>
               <h1 className="text-lg font-semibold tracking-tight">
                 Connect {client.name} to deplo
@@ -312,12 +346,12 @@ export function ConsentForm({
             <FieldLabel info="What the app may do, and what it may reach. It can never do more than you can.">
               What it gets
             </FieldLabel>
-            {/* Both rows open the same dialog: whichever half of the sentence
-                you want to change, you press the half you read. */}
+            {/* One row, one dialog: press the half of the sentence you want to
+                change and that is the only thing you are asked about. */}
             <div className="divide-y divide-border overflow-hidden rounded-lg border border-border text-sm">
               <SummaryRow
                 label="Access"
-                onClick={() => setAdvanced(true)}
+                onClick={() => setEditing("access")}
                 disabled={pending}
               >
                 {accessTeams.length ? (
@@ -335,7 +369,7 @@ export function ConsentForm({
               </SummaryRow>
               <SummaryRow
                 label="Permissions"
-                onClick={() => setAdvanced(true)}
+                onClick={() => setEditing("permissions")}
                 disabled={pending}
               >
                 <span className="truncate font-medium">
@@ -343,11 +377,6 @@ export function ConsentForm({
                 </span>
               </SummaryRow>
             </div>
-            {preset ? (
-              <p className="text-xs text-muted-foreground">
-                {preset.description}
-              </p>
-            ) : null}
           </div>
 
           <div className="grid grid-cols-2 gap-3">
@@ -367,34 +396,50 @@ export function ConsentForm({
         </form>
       </Card>
 
-      <p className="mt-4 text-center text-xs text-muted-foreground">
-        Connecting as {username} · revoke it any time in Settings → MCP Server
-      </p>
+      <div className="mt-4 space-y-1 text-center text-xs text-muted-foreground">
+        <p>
+          Connecting as {username} · Not you?{" "}
+          <button
+            type="button"
+            onClick={() => void onSwitchAccount()}
+            disabled={pending}
+            className="cursor-pointer font-medium underline underline-offset-2 transition-colors hover:text-foreground disabled:pointer-events-none disabled:opacity-60"
+          >
+            Log out
+          </button>
+        </p>
+        <p>Revoke this connection any time in Settings → MCP Server</p>
+      </div>
 
-      {/* The whole permission surface, opened on demand so the default path is
-          reading two lines and pressing Authorize. Access comes first: what an app can REACH
-          is the question people answer before what it may DO, and narrowing the
-          reach changes which permissions still mean anything. */}
-      <Dialog open={advanced} onOpenChange={setAdvanced}>
-        <DialogContent className="sm:max-w-3xl">
+      {/* Where the app may work, opened on demand so the default path is reading
+          two lines and pressing Authorize. Its own dialog, because narrowing the
+          reach and picking what may be done there are two decisions, and the row
+          you pressed said which one you came for. */}
+      <Dialog
+        open={editing === "access"}
+        onOpenChange={(open) => setEditing(open ? "access" : null)}
+      >
+        <DialogContent className="sm:max-w-2xl">
           <DialogHeader>
-            <DialogTitle>Access and permissions</DialogTitle>
+            {/* Not titled "Access": the picker below brings its own heading, and
+                the word printed twice one line apart reads as a bug. */}
+            <DialogTitle>What {client.name} can reach</DialogTitle>
             <DialogDescription className="mt-1">
-              What {client.name} can reach, and what it may do there.
+              Every team you can connect is ticked. Untick what it should not
+              reach.
             </DialogDescription>
           </DialogHeader>
           <form
             className="grid gap-6"
             onSubmit={(e) => {
               e.preventDefault();
-              setAdvanced(false);
+              setEditing(null);
             }}
           >
-            {/* ONE control for "where", and it brings its own "Access" heading —
-                a FieldLabel here printed the word twice, one line above the
-                other. A separate team dropdown next to it was the contradiction
-                that let a connection be approved for one team and granted four:
-                two controls both answering "which team", free to disagree. */}
+            {/* ONE control for "where". A separate team dropdown next to it was
+                the contradiction that let a connection be approved for one team
+                and granted four: two controls both answering "which team", free
+                to disagree. */}
             <ScopePicker
               tree={tree}
               selection={selection}
@@ -402,13 +447,39 @@ export function ConsentForm({
               info="Which teams this app may work in, and how much of each. Every team you can connect is ticked to begin with - untick the ones it should not reach, or narrow one to a project, folder or app."
             />
 
+            <DialogFooter>
+              <Button type="submit">Done</Button>
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
+
+      {/* What it may do once it is in there. */}
+      <Dialog
+        open={editing === "permissions"}
+        onOpenChange={(open) => setEditing(open ? "permissions" : null)}
+      >
+        <DialogContent className="sm:max-w-3xl">
+          <DialogHeader>
+            <DialogTitle>What {client.name} may do</DialogTitle>
+            <DialogDescription className="mt-1">
+              Start from a template, then tick exactly what it needs.
+            </DialogDescription>
+          </DialogHeader>
+          <form
+            className="grid gap-6"
+            onSubmit={(e) => {
+              e.preventDefault();
+              setEditing(null);
+            }}
+          >
             <div className="grid gap-3">
               <div className="grid gap-2">
                 <FieldLabel
                   htmlFor="consent-preset"
                   info="A starting set you can then adjust. Custom appears once the ticks stop matching one."
                 >
-                  Permissions
+                  Template
                 </FieldLabel>
                 <Select
                   value={presetId ?? CUSTOM}
