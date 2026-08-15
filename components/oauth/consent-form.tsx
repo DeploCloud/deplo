@@ -388,20 +388,17 @@ export function ConsentForm({
         </form>
       </Card>
 
-      <div className="mt-4 space-y-1 text-center text-xs text-muted-foreground">
-        <p>
-          Connecting as {username} · Not you?{" "}
-          <button
-            type="button"
-            onClick={() => void onSwitchAccount()}
-            disabled={pending}
-            className="cursor-pointer font-medium underline underline-offset-2 transition-colors hover:text-foreground disabled:pointer-events-none disabled:opacity-60"
-          >
-            Log out
-          </button>
-        </p>
-        <p>Revoke this connection any time in Settings → MCP Server</p>
-      </div>
+      <p className="mt-4 text-center text-xs text-muted-foreground">
+        Connecting as {username} · Not you?{" "}
+        <button
+          type="button"
+          onClick={() => void onSwitchAccount()}
+          disabled={pending}
+          className="cursor-pointer font-medium underline underline-offset-2 transition-colors hover:text-foreground disabled:pointer-events-none disabled:opacity-60"
+        >
+          Log out
+        </button>
+      </p>
 
       {/* Where the app may work, opened on demand so the default path is reading
           two lines and pressing Authorize. Its own dialog, because narrowing the
