@@ -170,7 +170,6 @@ function HostDetails({
           <CardTitle className="flex items-center gap-2 text-base">
             <Cpu className="size-4" />
             Host details
-            <BetaChip />
           </CardTitle>
           <p className="mt-1 text-sm text-muted-foreground">
             What this machine is running, read from the server just now.
