@@ -37,7 +37,10 @@ import {
   encryptSecret,
   decryptSecret,
 } from "../crypto";
-import { twoFactor as twoFactorTable } from "../db/schema/auth";
+import {
+  passkey as passkeyTable,
+  twoFactor as twoFactorTable,
+} from "../db/schema/auth";
 import { getCurrentUser, revokeAllSessions, setUserPassword } from "../auth";
 import { assertPasswordPolicy } from "../password-policy";
 import { assertPasswordNotPwned } from "../pwned-password";
@@ -168,6 +171,8 @@ export interface UserDetailDTO {
   canMountHostVolumes: boolean;
   /** Drives the admin "Reset two-factor" escape hatch, which is only offered when on. */
   twoFactorEnabled: boolean;
+  /** How many passkeys they hold — the twin escape hatch, offered only above zero. */
+  passkeyCount: number;
   createdAt: string;
   teams: { teamId: string; teamName: string; role: Role }[];
 }
@@ -981,6 +986,12 @@ export async function getUserDetail(userId: string): Promise<UserDetailDTO> {
     .limit(1);
   const u = urows[0];
   if (!u) throw new Error("User not found");
+  // Count only, never the rows: an admin needs to know there is something to
+  // clear, not what the credentials are.
+  const passkeyRows = await db
+    .select({ id: passkeyTable.id })
+    .from(passkeyTable)
+    .where(eq(passkeyTable.userId, userId));
   const teamRows = await db
     .select({
       teamId: membershipsTable.teamId,
@@ -1002,6 +1013,7 @@ export async function getUserDetail(userId: string): Promise<UserDetailDTO> {
     canExposePorts: u.canExposePorts ?? false,
     canMountHostVolumes: u.canMountHostVolumes ?? false,
     twoFactorEnabled: u.twoFactorEnabled ?? false,
+    passkeyCount: passkeyRows.length,
     createdAt: u.createdAt,
     teams: teamRows.map((t) => ({
       teamId: t.teamId,
@@ -1229,6 +1241,60 @@ export async function resetUserTwoFactor(userId: string): Promise<void> {
   await recordForEveryTeamOf(
     userId,
     `Reset two-factor authentication for @${target.username}`,
+  );
+}
+
+/**
+ * Remove every passkey from a user's account. Instance admin only.
+ *
+ * The same backstop as {@link resetUserTwoFactor}, for the same failure: a
+ * device that is gone. A dead passkey is not merely clutter in the list — while
+ * it exists it satisfies the account's two-factor mandate, so a member whose
+ * only passkey was on a lost laptop reads as protected and cannot be told to
+ * enrol anything. Clearing it puts the account back under the policy, which is
+ * the honest state.
+ *
+ * A SEPARATE control from the 2FA reset, not a side effect of it: an admin
+ * clearing a lost authenticator app has no business taking away a passkey that
+ * still works, and the two devices are lost independently.
+ *
+ * Not a takeover route: the password is untouched and no session is minted. The
+ * instance owner's row is off limits to everyone but the owner.
+ */
+export async function resetUserPasskeys(userId: string): Promise<void> {
+  const { userId: actingUserId } = await requireInstanceAdmin();
+  // Your own are removable from Settings → Security, which asks for the
+  // password. Allowing it here would be that same removal with no password.
+  if (userId === actingUserId)
+    throw new Error(
+      "You can't remove your own passkeys here. Do it from Settings → Security, which asks for your password.",
+    );
+  const ownerUserId = await instanceOwnerUserId();
+  if (ownerUserId !== null && userId === ownerUserId && actingUserId !== ownerUserId)
+    throw new Error(
+      "Only the instance owner can edit the instance owner's account",
+    );
+  const target = (
+    await getDb()
+      .select({ username: usersTable.username })
+      .from(usersTable)
+      .where(eq(usersTable.id, userId))
+      .limit(1)
+  )[0];
+  if (!target) throw new Error("User not found");
+
+  const removed = await getDb()
+    .delete(passkeyTable)
+    .where(eq(passkeyTable.userId, userId))
+    .returning({ id: passkeyTable.id });
+  if (removed.length === 0)
+    throw new Error("That account has no passkeys");
+
+  await recordForEveryTeamOf(
+    userId,
+    removed.length === 1
+      ? `Removed @${target.username}'s passkey`
+      : `Removed @${target.username}'s ${removed.length} passkeys`,
   );
 }
 

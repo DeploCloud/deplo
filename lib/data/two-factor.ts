@@ -9,6 +9,7 @@ import {
 import { requireAuth } from "../auth/better-auth";
 import { requirePersonalSession } from "../auth/request-context";
 import { twoFactorMandateForCurrentUser } from "../membership";
+import { userHasPasskey } from "../passkey-policy";
 import { rateLimit } from "../security";
 
 /**
@@ -133,14 +134,21 @@ export async function confirmTwoFactorEnrolment(code: string): Promise<void> {
  * the button being disabled is cosmetic, and a policy that only holds in the UI
  * is not a policy. Checked before the code is verified so a refusal never burns
  * one of the user's recovery codes.
+ *
+ * A passkey satisfies the same mandate (ADR-0024), so holding one is what makes
+ * this allowed under a policy that would otherwise weld the authenticator app
+ * on. Without that exception the rule would be true in the gate and false here,
+ * which reads to the person as the policy having no way out.
  */
 export async function disableTwoFactor(input: {
   password: string;
   code: string;
 }): Promise<void> {
   requirePersonalSession("two-factor settings");
-  await stepUpPassword(input.password);
-  const mandate = await twoFactorMandateForCurrentUser();
+  const user = await stepUpPassword(input.password);
+  const mandate = (await userHasPasskey(user.id))
+    ? null
+    : await twoFactorMandateForCurrentUser();
   if (mandate)
     throw new Error(
       `${mandate} requires two-factor authentication, so it cannot be turned off.`,

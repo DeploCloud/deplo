@@ -111,6 +111,18 @@ Adding an **existing** user to a team is a separate flow: the team-members page 
 registered users by username and attaches a `Membership` directly.
 _Avoid_: invite (reserved for adding an existing user to a team), email invite (removed).
 
+**Passkey**:
+A WebAuthn credential a **user** registers from Settings → Security, held by their device and
+unlocked with a fingerprint, a face or a PIN. It is a **way to sign in**, not a second step:
+"Sign in with a passkey" on the login page replaces the password entirely, and the password
+stays only as the fallback. A passkey **satisfies a team's two-factor requirement** on its own
+(ADR-0024), because it is possession plus inherence in one gesture — which is why an account
+whose requirement rests on a passkey is not handed a session for its password alone. Bound to
+ONE hostname (the panel's own address), so it works nowhere else and does not survive moving
+the panel. Adding or removing one asks for the password; renaming does not.
+_Avoid_: security key (that is one KIND of passkey — a hardware one), WebAuthn credential
+(spell it passkey in the UI), "passwordless" (the password is still there).
+
 **API token**:
 The `deplo_` bearer token a **user** mints from Settings → API tokens to drive
 Deplo's GraphQL API from outside the dashboard (a script, CI, an AI agent). It is a
@@ -135,7 +147,8 @@ browser carries the Better Auth session cookie (`deplo.session_token`) instead.
 _Avoid_: "the token inherits its creator's capabilities" (pre-0061 language), personal access
 token (it belongs to the team, not the person).
 A token also inherits its creator's **2FA** standing: if the team (or their role) requires
-two-factor authentication and they have not enrolled, the token resolves nothing at all.
+two-factor authentication and they have neither enrolled an authenticator app nor registered a
+**Passkey**, the token resolves nothing at all.
 _Avoid_: caller token (a retired name), API key (reserve for third-party provider keys in
 env), secret key.
 

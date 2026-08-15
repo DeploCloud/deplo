@@ -28,6 +28,7 @@ import "./types/mcp";
 import "./types/member";
 import "./types/monitoring";
 import "./types/notifications";
+import "./types/passkey";
 import "./types/preview";
 import "./types/project";
 import "./types/app";

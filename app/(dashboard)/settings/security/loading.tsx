@@ -2,8 +2,8 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
 
 /**
- * Mirrors the three cards the security page always renders: password,
- * two-factor, and the active sessions list.
+ * Mirrors the four cards the security page always renders: password,
+ * two-factor, passkeys, and the active sessions list.
  */
 export default function Loading() {
   return (
@@ -52,6 +52,27 @@ export default function Loading() {
         </CardHeader>
           <CardContent>
             <Skeleton className="h-14 w-full rounded-lg" />
+          </CardContent>
+        </Card>
+
+        <Card>
+        <CardHeader className="flex-row items-center justify-between gap-4 space-y-0">
+          <div className="flex items-center gap-2">
+            <Skeleton className="size-4 rounded" />
+            <Skeleton className="h-5 w-20" />
+            <Skeleton className="size-3.5 rounded-full" />
+          </div>
+          <Skeleton className="h-8 w-32 rounded-md" />
+        </CardHeader>
+          <CardContent className="space-y-2">
+            {Array.from({ length: 2 }).map((_, i) => (
+              <Skeleton
+                key={i}
+                shimmer
+                style={{ ["--shimmer-delay" as string]: `-${(i * 0.09).toFixed(2)}s` }}
+                className="h-12 w-full rounded-lg"
+              />
+            ))}
           </CardContent>
         </Card>
 

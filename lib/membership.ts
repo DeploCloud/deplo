@@ -4,6 +4,7 @@ import { cache } from "react";
 import { cookies } from "next/headers";
 import { and, eq, inArray } from "drizzle-orm";
 import { getDb } from "./db/client";
+import { holdsAPasskey } from "./passkey-policy";
 import {
   appGrants as appGrantsTable,
   apps as appsTable,
@@ -142,6 +143,13 @@ export class TwoFactorRequiredError extends Error {
  * (`team_roles.require_two_factor`). A membership with no role — the hand-picked
  * "Custom" capability set — is covered by the team switch alone.
  *
+ * SATISFIED BY EITHER SECOND FACTOR: an enrolled authenticator app, or a
+ * registered passkey (ADR-0024). The passkey half is what lets a team turn the
+ * policy on without asking every member to install anything — and the reason
+ * `login()` refuses to hand a password-only session to an account whose mandate
+ * rests on a passkey, which would otherwise let ONE factor clear a two-factor
+ * policy.
+ *
  * Request-cached: the gate runs on every read AND every capability check, so
  * without memoization a single page would re-run it dozens of times.
  */
@@ -153,6 +161,7 @@ const twoFactorMandate = cache(
     const rows = await getDb()
       .select({
         enrolled: usersTable.twoFactorEnabled,
+        hasPasskey: holdsAPasskey(usersTable.id),
         teamRequires: teamsTable.requireTwoFactor,
         teamName: teamsTable.name,
         roleRequires: teamRolesTable.requireTwoFactor,
@@ -174,7 +183,7 @@ const twoFactorMandate = cache(
     // handling is the right answer, and inventing a 2FA error here would be a
     // confusing way to say "you were removed from this team".
     if (!r) return { satisfied: true, reason: "" };
-    if (r.enrolled) return { satisfied: true, reason: "" };
+    if (r.enrolled || r.hasPasskey) return { satisfied: true, reason: "" };
     if (r.roleRequires)
       return { satisfied: false, reason: `The ${r.roleName} role` };
     if (r.teamRequires) return { satisfied: false, reason: r.teamName };

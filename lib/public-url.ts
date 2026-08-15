@@ -60,6 +60,41 @@ export function cookiesAreSecure(): boolean {
   return (publicBaseUrl() ?? "").startsWith("https://");
 }
 
+/**
+ * The WebAuthn relying party this instance registers passkeys for, or null when
+ * it cannot have any.
+ *
+ * A passkey is welded to ONE rpID and the browser refuses the ceremony outright
+ * — before any request is sent — from any other origin. So the rpID has to be
+ * the instance's canonical address and nothing else: derive it from the request
+ * host and a passkey minted on `deplo.example.com` would silently fail to work
+ * on the IP, which is the same instance.
+ *
+ * Null has two causes, and both are the browser's rule rather than deplo's:
+ * WebAuthn requires a secure context (https, with `http://localhost` the one
+ * exception every browser grants), and it needs an address at all. The card in
+ * Settings → Security reads this and says which of the two is in the way.
+ *
+ * Consequence worth stating out loud: moving the panel to a new hostname kills
+ * every registered passkey. The credentials stay on the devices, they just stop
+ * matching, and there is no migration for that — people re-register. `resetAuth`
+ * makes the change land without a restart, so it is easy to do by accident.
+ */
+export function passkeyRelyingParty(): { rpId: string; origin: string } | null {
+  const base = publicBaseUrl();
+  if (!base) return null;
+  let url: URL;
+  try {
+    url = new URL(base);
+  } catch {
+    return null;
+  }
+  if (url.protocol !== "https:" && !isLoopbackHost(url.host)) return null;
+  // `origin` and not `base`: the plugin compares it against the origin signed
+  // into clientDataJSON, which never carries a path or a trailing slash.
+  return { rpId: url.hostname, origin: url.origin };
+}
+
 export function resolvePublicBaseUrl(h: Headers): string {
   const configured = publicBaseUrl();
   if (configured) return configured;

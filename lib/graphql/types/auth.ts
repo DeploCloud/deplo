@@ -10,6 +10,8 @@ import {
   createAccountWithTeams,
   startSessionFor,
   verifyTwoFactorCode,
+  passkeyChallenge,
+  verifyPasskeyLogin,
 } from "@/lib/auth";
 import { getCurrentUser } from "@/lib/auth";
 import {
@@ -125,6 +127,7 @@ const AuthPayloadRef = builder
   .objectRef<{
     viewer: Awaited<ReturnType<typeof getCurrentUser>>;
     requiresTwoFactor?: boolean;
+    requiresPasskey?: boolean;
   }>("AuthPayload")
   .implement({
     fields: (t) => ({
@@ -137,6 +140,11 @@ const AuthPayloadRef = builder
         description:
           "The password was correct but the account has 2FA: no session yet. Send a code to `verifyTwoFactorLogin`.",
         resolve: (p) => p.requiresTwoFactor ?? false,
+      }),
+      requiresPasskey: t.boolean({
+        description:
+          "The password was correct but this account's second factor IS its passkey: no session yet. Run the ceremony and send the result to `verifyPasskeyLogin`.",
+        resolve: (p) => p.requiresPasskey ?? false,
       }),
     }),
   });
@@ -196,6 +204,10 @@ builder.mutationFields((t) => ({
       // client swap to the code step without treating it as a failed attempt.
       if (res.requiresTwoFactor)
         return { viewer: null, requiresTwoFactor: true };
+      // Same shape, same reason: the password was right and no session exists
+      // yet. The account has no authenticator app, so what finishes the sign-in
+      // is the passkey its team's policy is resting on (ADR-0024).
+      if (res.requiresPasskey) return { viewer: null, requiresPasskey: true };
       if (!res.ok) {
         // Counted here rather than in `lib/auth.ts`: this resolver has the
         // normalised address in scope and already knows a credential rejection
@@ -249,6 +261,43 @@ builder.mutationFields((t) => ({
         if (who) void noteFailedLogin(who);
         throw new Error(res.error ?? "That code is not valid");
       }
+      return { viewer: await getCurrentUser() };
+    },
+  }),
+  passkeyChallenge: t.field({
+    type: "JSON",
+    description:
+      "Options for `navigator.credentials.get`. Public: this is the START of a sign-in, so there is no session yet.",
+    resolve: async () => {
+      // One bucket, on the client. There is nothing else to key on — the whole
+      // point of a discoverable credential is that no account is named until the
+      // browser answers — and a challenge is cheap to mint, so the limit is
+      // there to stop a flood of `verification` rows, not to protect a secret.
+      const limited = await checkLimits([
+        { key: await clientKey("passkey"), limit: 20, windowMs: 60_000 },
+      ]);
+      if (limited) throw new Error(limited);
+      return passkeyChallenge();
+    },
+  }),
+  verifyPasskeyLogin: t.field({
+    type: AuthPayloadRef,
+    description:
+      "Finish a passkey sign-in with what the authenticator produced. Sets the session cookie.",
+    args: { response: t.arg({ type: "JSON", required: true }) },
+    resolve: async (_r, { response }) => {
+      // Looser than the 2FA limiter and with no per-account bucket, both on
+      // purpose: an assertion is a signature over a server-chosen challenge, not
+      // six digits, so there is nothing to guess — the limit exists to cap the
+      // verification work. And nothing names an account until the credential
+      // resolves, which is also why no failed-login notice is sent from here:
+      // there is no address to warn.
+      const limited = await checkLimits([
+        { key: await clientKey("passkey-verify"), limit: 10, windowMs: 15 * 60_000 },
+      ]);
+      if (limited) throw new Error(limited);
+      const res = await verifyPasskeyLogin(response);
+      if (!res.ok) throw new Error(res.error ?? "That passkey did not work");
       return { viewer: await getCurrentUser() };
     },
   }),

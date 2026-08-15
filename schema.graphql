@@ -439,6 +439,11 @@ type AppTransferTarget {
 
 type AuthPayload {
   """
+  The password was correct but this account's second factor IS its passkey: no session yet. Run the ceremony and send the result to `verifyPasskeyLogin`.
+  """
+  requiresPasskey: Boolean
+
+  """
   The password was correct but the account has 2FA: no session yet. Send a code to `verifyTwoFactorLogin`.
   """
   requiresTwoFactor: Boolean
@@ -2198,6 +2203,11 @@ type Mutation {
   """Remove a channel. Its subscribed alerts go with it."""
   deleteNotificationChannel(id: ID!): Boolean
 
+  """
+  Remove a passkey. Requires the account password, and refuses the last one while a team's two-factor policy rests on it.
+  """
+  deletePasskey(id: String!, password: String!): Boolean
+
   """Remove a preview-only override."""
   deletePreviewEnvVar(appId: ID!, key: String!): Boolean
 
@@ -2263,6 +2273,11 @@ type Mutation {
   execDatabaseConsole(input: ExecDatabaseConsoleInput!): ExecResult
 
   """
+  Register the credential the authenticator produced. No password: the challenge it answers was minted behind one.
+  """
+  finishPasskeyRegistration(name: String!, response: JSON!): Passkey
+
+  """
   Suggest a host port that is currently free on the target server, for the database 'Expose publicly' flow. Requires the publish-ports grant.
   """
   generateAvailableDbPort(serverId: ID): Int
@@ -2310,6 +2325,11 @@ type Mutation {
   Read how the panel is served off the proxy that publishes it, live. A mutation despite writing nothing, for the same reason serverCertificateAccounts is one: it dials a server.
   """
   panelHttps: PanelHttps
+
+  """
+  Options for `navigator.credentials.get`. Public: this is the START of a sign-in, so there is no session yet.
+  """
+  passkeyChallenge: JSON
 
   """
   Rebuild the image from the current source and REPLACE the running container, even if nothing about the stack changed. Volumes, domains and data are untouched.
@@ -2407,6 +2427,9 @@ type Mutation {
   """Rename a folder."""
   renameFolder(id: ID!, name: String!): Boolean
 
+  """Relabel a passkey. A label is not a credential, so no password."""
+  renamePasskey(id: String!, name: String!): Boolean
+
   """Rename a Project container."""
   renameProject(id: ID!, name: String!): Boolean
 
@@ -2431,6 +2454,11 @@ type Mutation {
   Restore a default role to exactly what deplo ships, for its members too. Returns true.
   """
   resetRole(id: String!): Boolean
+
+  """
+  Remove every passkey from a user's account. The escape hatch for a lost device: while a dead passkey exists it still satisfies the account's two-factor policy. Touches no password and no session.
+  """
+  resetUserPasskeys(userId: String!): UserDetail
 
   """
   Clear a user's two-factor enrolment so they can sign in with their password again. The escape hatch for a lost phone AND lost recovery codes; touches no credential and no session.
@@ -2716,6 +2744,11 @@ type Mutation {
   startGithubConnect(org: String): GithubConnectStart
 
   """
+  Options for `navigator.credentials.create`. Requires the account password.
+  """
+  startPasskeyRegistration(password: String!): JSON
+
+  """
   Mint a TOTP secret and recovery codes. Requires the account password. Refused when two-factor is already on.
   """
   startTwoFactorEnrolment(password: String!): TwoFactorEnrolment
@@ -2865,6 +2898,11 @@ type Mutation {
   verifyDomain(id: String!): Domain
 
   """
+  Finish a passkey sign-in with what the authenticator produced. Sets the session cookie.
+  """
+  verifyPasskeyLogin(response: JSON!): AuthPayload
+
+  """
   Finish a login that returned `requiresTwoFactor`, with a TOTP code or a recovery code.
   """
   verifyTwoFactorLogin(code: String!, recoveryCode: Boolean): AuthPayload
@@ -2909,6 +2947,17 @@ type PanelReachability {
   error: String
   ok: Boolean
   url: String
+}
+
+"""
+A WebAuthn credential on this account. Carries no key material: the public key and the credential id stay server-side.
+"""
+type Passkey {
+  createdAt: String
+  id: String
+
+  """The label shown in the list, e.g. "Chrome on macOS"."""
+  name: String
 }
 
 """
@@ -3229,6 +3278,9 @@ type Query {
 
   """The instance-wide monitoring settings."""
   monitoringSettings: MonitoringSettings
+
+  """Passkeys registered on this account, newest first."""
+  myPasskeys: [Passkey!]
 
   """
   Every device currently signed in to the viewer's account, most recently seen first.
@@ -4275,6 +4327,11 @@ type UserDetail {
   """Owns the instance. Their account is editable only by themselves."""
   isInstanceOwner: Boolean
   name: String
+
+  """
+  How many passkeys they hold. Only above zero is `resetUserPasskeys` offered.
+  """
+  passkeyCount: Int
   suspended: Boolean
   teams: [UserDetailTeam!]
 

@@ -7,6 +7,7 @@ import { nextCookies } from "better-auth/next-js";
 import { haveIBeenPwned } from "better-auth/plugins/haveibeenpwned";
 import { twoFactor } from "better-auth/plugins/two-factor";
 import { oauthProvider } from "@better-auth/oauth-provider";
+import { passkey } from "@better-auth/passkey";
 import { getDb, hasTestDb, type DrizzleClient } from "@/lib/db/client";
 import { isPostgresEnabled } from "@/lib/db/pg";
 import { schema } from "@/lib/db/schema";
@@ -18,7 +19,11 @@ import {
 } from "@/lib/crypto";
 import { PWNED_PASSWORD_MESSAGE } from "@/lib/pwned-password";
 import { newId } from "@/lib/ids";
-import { cookiesAreSecure, publicBaseUrl } from "@/lib/public-url";
+import {
+  cookiesAreSecure,
+  passkeyRelyingParty,
+  publicBaseUrl,
+} from "@/lib/public-url";
 import { MCP_RESOURCE_PATH } from "@/lib/auth/oauth-metadata";
 
 /**
@@ -110,6 +115,70 @@ const twoFactorGate = createAuthMiddleware(async (ctx) => {
 });
 
 /**
+ * Refuse every `/passkey/*` endpoint that arrived over HTTP.
+ *
+ * Same shape and same reason as {@link twoFactorGate}, applied to a plugin whose
+ * gate is one notch lower still: registering a passkey asks for a SESSION and
+ * nothing else, so a stolen cookie is enough to weld a permanent credential onto
+ * somebody's account — one that then signs in with no password at all. deplo
+ * asks for the password first (`lib/data/passkeys.ts`), which is the bar the
+ * account's other credential changes already clear.
+ *
+ * The LOGIN endpoints are closed too, which is the part worth explaining. The
+ * plugin's `/passkey/verify-authentication` mints a session and sets the cookie,
+ * but it does not check `users.suspended`, does not touch the rate limiter and
+ * does not record a failed attempt — all three live in the GraphQL resolvers
+ * (`lib/graphql/types/auth.ts`) with every other sign-in path. Leaving the
+ * endpoint open would be a second front door with none of the locks.
+ *
+ * All seven endpoints share the `/passkey/` prefix (there is no
+ * `/sign-in/passkey`: the client's `signIn.passkey` is a browser-side composite
+ * of two of them), so one matcher closes the whole plugin.
+ */
+const passkeyGate = createAuthMiddleware(async (ctx) => {
+  if (!ctx.path.startsWith("/passkey/") || !ctx.request) return;
+  throw new APIError("FORBIDDEN", {
+    message:
+      "Passkeys are managed through deplo, which asks for your password first.",
+    code: "PASSKEY_STEP_UP_REQUIRED",
+  });
+});
+
+/**
+ * Refuse a ceremony the authenticator did not verify was a PERSON.
+ *
+ * The plugin hardcodes `requireUserVerification: false` in both verifiers, and
+ * `authenticatorSelection.userVerification: "required"` below is only a REQUEST
+ * — WebAuthn lets the authenticator answer without it, and the response still
+ * verifies. For an ordinary passkey that would be a shrug; here it is not,
+ * because in deplo a passkey SATISFIES a team's two-factor mandate. A credential
+ * that unlocks with no PIN, no fingerprint and no face is one factor
+ * (possession) wearing the badge of two, and the person relying on the policy is
+ * the team that turned it on, not the one holding the key.
+ *
+ * Cost of the guard: a hardware key with no PIN set is refused at registration,
+ * with a message that says what to fix.
+ */
+const requireUserVerified = ({
+  verification,
+}: {
+  verification: {
+    registrationInfo?: { userVerified: boolean };
+    authenticationInfo?: { userVerified: boolean };
+  };
+}): void => {
+  const verified =
+    verification.authenticationInfo?.userVerified ??
+    verification.registrationInfo?.userVerified;
+  if (verified) return;
+  throw new APIError("UNAUTHORIZED", {
+    message:
+      "That passkey did not verify it was you. Use one that asks for a PIN, a fingerprint or your face.",
+    code: "PASSKEY_USER_VERIFICATION_REQUIRED",
+  });
+};
+
+/**
  * Refuse `prompt=none` on the authorization endpoint.
  *
  * The provider honours it: with a consent already on file it answers a
@@ -135,6 +204,7 @@ const silentAuthorizeGate = createAuthMiddleware(async (ctx) => {
 
 const authorizeGates = createAuthMiddleware(async (ctx) => {
   await twoFactorGate(ctx);
+  await passkeyGate(ctx);
   await silentAuthorizeGate(ctx);
 });
 
@@ -245,6 +315,57 @@ function oauthProviderOptions() {
   };
 }
 
+/**
+ * The passkey plugin's configuration.
+ *
+ * Registered UNCONDITIONALLY, even on an instance that cannot have passkeys
+ * (no address, or plain http): the alternative leaves `auth.api.listPasskeys`
+ * undefined and forces every caller in lib/data to branch on it. The ceremony
+ * fails clearly instead — with no `origin` the plugin's own verifiers refuse —
+ * and the card in Settings → Security is what explains it to the person, which
+ * is where an explanation belongs.
+ *
+ * Three settings are decisions, not defaults:
+ *
+ *  - **`origin` must be explicit.** Both verifiers do
+ *    `options.origin || ctx.headers?.get("origin") || ""` and throw on the empty
+ *    string, and `authHeaders()` strips `origin` deliberately (see
+ *    ./request-headers.ts). Leave it off and every ceremony 400s.
+ *  - **`registration.requireSession: false`** takes `freshSessionMiddleware` off
+ *    the two registration endpoints. Its bar is `session.createdAt` newer than
+ *    `freshAge`, which defaults to 24 HOURS while deplo's sessions live a week:
+ *    with it on, "Add passkey" fails for anyone signed in since yesterday. The
+ *    global alternative (`session.freshAge: 0`) would also unlock
+ *    `/list-sessions`, which answers with raw session TOKENS. Nothing is lost:
+ *    `resolveRegistrationUser` still falls through to the session, and
+ *    verify-registration still refuses a credential for another user's id.
+ *  - **`residentKey: "required"`** is what makes signing in without typing an
+ *    email possible at all (a discoverable credential is one the browser can
+ *    offer unprompted). On a hardware key it consumes one of a small number of
+ *    resident slots; on a phone or a password manager it costs nothing.
+ */
+function passkeyOptions() {
+  const rp = passkeyRelyingParty();
+  return {
+    // "localhost" is the plugin's own fallback, and it is only ever reached on
+    // an instance that has no usable address, where the ceremony fails anyway.
+    rpID: rp?.rpId ?? "localhost",
+    // What the authenticator shows the person while it asks for their
+    // fingerprint. The instance's own name is not knowable synchronously here.
+    rpName: "deplo",
+    origin: rp?.origin ?? null,
+    authenticatorSelection: {
+      residentKey: "required" as const,
+      userVerification: "required" as const,
+    },
+    registration: {
+      requireSession: false,
+      afterVerification: requireUserVerified,
+    },
+    authentication: { afterVerification: requireUserVerified },
+  };
+}
+
 function createAuth(db: DrizzleClient) {
   return betterAuth({
     appName: "Deplo",
@@ -309,6 +430,9 @@ function createAuth(db: DrizzleClient) {
       // deplo as an OAuth 2.1 authorization server, so a web AI client can reach
       // `/api/mcp`. See the docblock above `oauthProviderOptions`.
       oauthProvider(oauthProviderOptions()),
+      // WebAuthn: a sign-in method AND the thing that satisfies a team's
+      // two-factor mandate (ADR-0024). See `passkeyOptions` above.
+      passkey(passkeyOptions()),
       // MUST stay last: it is an `after` hook that forwards Set-Cookie into the
       // Next.js cookie store, so anything appended after it would not be seen.
       nextCookies(),

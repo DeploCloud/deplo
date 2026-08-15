@@ -97,6 +97,49 @@ export const twoFactor = pgTable(
 );
 
 /**
+ * The `@better-auth/passkey` plugin's table — one WebAuthn credential per row.
+ *
+ * `publicKey` and `credentialID` are LIBRARY-OWNED and never belong in a DTO.
+ * Neither is a secret the way `two_factor.secret` is (a public key is public by
+ * construction, and the credential id is what the browser sends in the clear),
+ * but both are the credential's identity: shipping them to a client hands an
+ * attacker the exact material to correlate one person's device across every
+ * account it protects. `PasskeyDTO` in lib/data/passkeys.ts carries `id`, `name`
+ * and `createdAt`, and that is the whole list.
+ *
+ * `name` is nullable because the plugin writes `undefined` when the client sent
+ * no label; deplo always sends one, but the column has to allow the shape.
+ *
+ * ponytail: `counter` is `integer` (2^31) while WebAuthn defines a uint32. It
+ * matches what the Drizzle adapter hands over (a JS `number`) and the ceiling is
+ * unreachable in practice — most authenticators report 0 forever and never
+ * increment. Widen to `bigint` only if a real device ever gets close.
+ */
+export const passkey = pgTable(
+  "passkey",
+  {
+    id: text("id").primaryKey(),
+    name: text("name"),
+    publicKey: text("public_key").notNull(),
+    userId: text("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    // UNIQUE, not merely indexed as the plugin's own schema declares it: the
+    // authentication path resolves a credential with `findOne({credentialID})`,
+    // so a duplicate would make WHICH account a passkey signs in depend on row
+    // order. The database is the right place to make that impossible.
+    credentialID: text("credential_id").notNull().unique(),
+    counter: integer("counter").notNull(),
+    deviceType: text("device_type").notNull(),
+    backedUp: boolean("backed_up").notNull(),
+    transports: text("transports"),
+    createdAt: timestamp("created_at"),
+    aaguid: text("aaguid"),
+  },
+  (t) => [index("passkey_user_id_idx").on(t.userId)],
+);
+
+/**
  * The `@better-auth/oauth-provider` plugin's four tables — deplo as an OAuth 2.1
  * authorization server, so claude.ai and ChatGPT can connect to `/api/mcp` (they
  * cannot be handed a bearer token by hand the way a terminal agent can).

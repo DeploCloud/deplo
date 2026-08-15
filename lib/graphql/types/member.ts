@@ -9,6 +9,7 @@ import {
   listAllUsers,
   getUserDetail,
   updateUserAdmin,
+  resetUserPasskeys,
   resetUserTwoFactor,
   mintRegistrationLink,
   listRegistrationLinks,
@@ -159,6 +160,10 @@ export const UserDetailRef = builder
       twoFactorEnabled: t.exposeBoolean("twoFactorEnabled", {
         description:
           "Has an authenticator app enrolled. Only then is `resetUserTwoFactor` offered.",
+      }),
+      passkeyCount: t.exposeInt("passkeyCount", {
+        description:
+          "How many passkeys they hold. Only above zero is `resetUserPasskeys` offered.",
       }),
       createdAt: t.exposeString("createdAt"),
       teams: t.field({ type: [UserDetailTeamRef], resolve: (u) => u.teams }),
@@ -517,6 +522,17 @@ builder.mutationFields((t) => ({
     args: { userId: t.arg.string({ required: true }) },
     resolve: async (_r, { userId }) => {
       await resetUserTwoFactor(userId);
+      return getUserDetail(userId);
+    },
+  }),
+  resetUserPasskeys: t.field({
+    type: UserDetailRef,
+    authScopes: { instanceAdmin: true },
+    description:
+      "Remove every passkey from a user's account. The escape hatch for a lost device: while a dead passkey exists it still satisfies the account's two-factor policy. Touches no password and no session.",
+    args: { userId: t.arg.string({ required: true }) },
+    resolve: async (_r, { userId }) => {
+      await resetUserPasskeys(userId);
       return getUserDetail(userId);
     },
   }),

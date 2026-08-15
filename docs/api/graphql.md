@@ -56,9 +56,10 @@ whole teams restricts nothing inside them.
 A token is a principal, not a stand-in for the person who minted it, so it never
 reaches their **account**: the signed-in device list (`mySessions`,
 `revokeSession`, `revokeOtherSessions`), the profile (`updateProfile`,
-`updateEmail`, `changePassword`) and the two-factor settings all answer
-`An API token can't access …` however many capabilities the token holds. Those
-are dashboard actions taken by a person at a keyboard.
+`updateEmail`, `changePassword`), their passkeys (`myPasskeys`,
+`startPasskeyRegistration`, `deletePasskey`) and the two-factor settings all
+answer `An API token can't access …` however many capabilities the token holds.
+Those are dashboard actions taken by a person at a keyboard.
 
 A POST must be `Content-Type: application/json`; anything else is refused with
 **415**. GET still serves GraphiQL and query-over-GET.

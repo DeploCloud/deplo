@@ -349,9 +349,17 @@ function refusedByGrant(e: Endpoint, messages: string[]): boolean {
 
 /**
  * The only fields that may answer an anonymous caller. `login`, `logout`,
- * `completeSetup`, `registerThroughLink` and `verifyTwoFactorLogin` are the
- * public auth surface (they carry their own rate limiting); `me` and
- * `apiContext` describe the caller and answer null when there isn't one.
+ * `completeSetup`, `registerThroughLink`, `verifyTwoFactorLogin`,
+ * `passkeyChallenge` and `verifyPasskeyLogin` are the public auth surface (they
+ * carry their own rate limiting); `me` and `apiContext` describe the caller and
+ * answer null when there isn't one.
+ *
+ * The two passkey ones are public for the same reason `login` is: they ARE a
+ * sign-in, so requiring a session would be circular. `passkeyChallenge` hands
+ * out a server-chosen challenge and names no account (that is what a
+ * discoverable credential means), and `verifyPasskeyLogin` only succeeds against
+ * a signature over that challenge — see ADR-0024 §5 for why the plugin's own
+ * endpoints are closed while these two are not.
  */
 const PUBLIC_FIELDS = new Set([
   "Q.me",
@@ -361,6 +369,8 @@ const PUBLIC_FIELDS = new Set([
   "M.completeSetup",
   "M.registerThroughLink",
   "M.verifyTwoFactorLogin",
+  "M.passkeyChallenge",
+  "M.verifyPasskeyLogin",
 ]);
 
 test("every field of the API declares a gate, and only the auth surface is public", () => {

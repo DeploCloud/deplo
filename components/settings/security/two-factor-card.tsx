@@ -45,9 +45,16 @@ export function TwoFactorCard({
   enabled,
   /** Named when a team or role policy makes 2FA mandatory: disabling is refused. */
   requiredBy,
+  /**
+   * A policy IS in force, and this account's passkey is what satisfies it — so
+   * `requiredBy` is null and turning the app on is optional. Without saying so,
+   * "Off" under a team that mandates two-factor reads as something broken.
+   */
+  satisfiedByPasskey = false,
 }: {
   enabled: boolean;
   requiredBy?: string | null;
+  satisfiedByPasskey?: boolean;
 }) {
   const router = useRouter();
   const [wizard, setWizard] = React.useState(false);
@@ -126,10 +133,12 @@ export function TwoFactorCard({
                 {enabled ? "On" : "Off"}
                 {enabled && <Badge variant="secondary">Authenticator app</Badge>}
               </div>
-              <p className="text-sm text-muted-foreground">
+              <p className="mt-1 text-sm text-muted-foreground">
                 {enabled
                   ? "Sign-in asks for a code from your authenticator app."
-                  : "Your password is the only thing protecting this account."}
+                  : satisfiedByPasskey
+                    ? "Your passkey is already your second factor. An authenticator app is a spare, not a requirement."
+                    : "Your password is the only thing protecting this account."}
               </p>
             </div>
           </div>

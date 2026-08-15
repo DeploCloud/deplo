@@ -14,13 +14,33 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { OtpInput } from "@/components/ui/otp-input";
-import { AlertCircle, Loader2 } from "lucide-react";
+import { AlertCircle, Fingerprint, Loader2 } from "lucide-react";
+import {
+  getPasskeyAssertion,
+  passkeyError,
+  passkeysSupported,
+} from "@/lib/passkey-client";
 
 const LOGIN = /* GraphQL */ `
   mutation Login($email: String!, $password: String!) {
     login(email: $email, password: $password) {
       viewer { id }
       requiresTwoFactor
+      requiresPasskey
+    }
+  }
+`;
+
+const PASSKEY_CHALLENGE = /* GraphQL */ `
+  mutation PasskeyChallenge {
+    passkeyChallenge
+  }
+`;
+
+const VERIFY_PASSKEY = /* GraphQL */ `
+  mutation VerifyPasskeyLogin($response: JSON!) {
+    verifyPasskeyLogin(response: $response) {
+      viewer { id }
     }
   }
 `;
@@ -54,10 +74,11 @@ export default function LoginPage() {
   const next = useSearchParams().get("next");
   const [error, setError] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
-  // The password step succeeded but the account has a second factor. The
-  // challenge itself lives in a short-lived httpOnly cookie Better Auth set, so
-  // this flag is all the client needs to hold — no token in component state.
-  const [needsCode, setNeedsCode] = useState(false);
+  // Which half of the sign-in we are on. The password step succeeded but the
+  // account has a second factor: an authenticator app ("code") or a passkey
+  // ("passkey"). Either challenge lives in a short-lived httpOnly cookie the
+  // server set, so this flag is all the client holds — no token in state.
+  const [step, setStep] = useState<"password" | "code" | "passkey">("password");
   const [useRecovery, setUseRecovery] = useState(false);
   const [code, setCode] = useState("");
 
@@ -86,17 +107,54 @@ export default function LoginPage() {
     setError(null);
     startTransition(async () => {
       try {
-        const res = await gql<{ login: { requiresTwoFactor: boolean } }>(LOGIN, {
-          email,
-          password,
-        });
+        const res = await gql<{
+          login: { requiresTwoFactor: boolean; requiresPasskey: boolean };
+        }>(LOGIN, { email, password });
+        // Mutually exclusive by construction: one means the account has an
+        // authenticator app, the other means it does not and its team's policy
+        // is resting on its passkey instead.
         if (res.login.requiresTwoFactor) {
-          setNeedsCode(true);
+          setStep("code");
+          return;
+        }
+        if (res.login.requiresPasskey) {
+          setStep("passkey");
           return;
         }
         done();
       } catch (err) {
         setError(err instanceof Error ? err.message : "Sign in failed");
+      }
+    });
+  }
+
+  /**
+   * The whole passkey sign-in: challenge, ceremony, verify.
+   *
+   * Never fired on mount. A `navigator.credentials.get` with no user gesture
+   * behind it is the main source of spurious "cancelled" errors — some browsers
+   * refuse it outright, others show a prompt nobody asked for — and one click is
+   * cheaper than a login that fails for a reason the person cannot see.
+   */
+  function signInWithPasskey() {
+    if (pending) return;
+    setError(null);
+    startTransition(async () => {
+      try {
+        if (!passkeysSupported())
+          throw new Error("This browser can't use passkeys.");
+        // The server refuses the challenge outright on an instance that cannot
+        // have passkeys (no address, or plain http), with a message saying so —
+        // which is why the button is always offered rather than hidden behind a
+        // capability this page has no way to know.
+        const { passkeyChallenge } = await gql<{ passkeyChallenge: unknown }>(
+          PASSKEY_CHALLENGE,
+        );
+        const response = await getPasskeyAssertion(passkeyChallenge);
+        await gql(VERIFY_PASSKEY, { response });
+        done();
+      } catch (err) {
+        setError(passkeyError(err));
       }
     });
   }
@@ -131,7 +189,51 @@ export default function LoginPage() {
     </div>
   );
 
-  if (needsCode)
+  const back = (
+    <button
+      type="button"
+      className="text-muted-foreground hover:text-foreground"
+      onClick={() => {
+        setStep("password");
+        setUseRecovery(false);
+        setCode("");
+        setError(null);
+      }}
+    >
+      Back
+    </button>
+  );
+
+  if (step === "passkey")
+    return (
+      <Card className="bg-transparent! border-transparent!">
+        <CardHeader>
+          <CardTitle className="text-2xl">Finish with your passkey</CardTitle>
+          <CardDescription>
+            Your team requires a second factor, and this account&apos;s is its
+            passkey. Your device will ask for your fingerprint, face or PIN.
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          {banner}
+          <Button
+            className="w-full"
+            onClick={signInWithPasskey}
+            disabled={pending}
+          >
+            {pending ? (
+              <Loader2 className="size-4 animate-spin" />
+            ) : (
+              <Fingerprint className="size-4" />
+            )}
+            Use your passkey
+          </Button>
+          <div className="flex items-center justify-end text-sm">{back}</div>
+        </CardContent>
+      </Card>
+    );
+
+  if (step === "code")
     return (
       <Card className="bg-transparent! border-transparent!">
         <CardHeader>
@@ -202,18 +304,7 @@ export default function LoginPage() {
                   ? "Use your authenticator app"
                   : "Use a recovery code"}
               </button>
-              <button
-                type="button"
-                className="text-muted-foreground hover:text-foreground"
-                onClick={() => {
-                  setNeedsCode(false);
-                  setUseRecovery(false);
-                  setCode("");
-                  setError(null);
-                }}
-              >
-                Back
-              </button>
+              {back}
             </div>
           </form>
         </CardContent>
@@ -271,6 +362,18 @@ export default function LoginPage() {
             Sign in
           </Button>
         </form>
+        {/* Secondary, and outside the form so it can never submit it. No email
+            field: the challenge is for a discoverable credential, so the browser
+            offers the passkeys it holds for this site and the person picks one. */}
+        <Button
+          variant="outline"
+          className="mt-3 w-full"
+          onClick={signInWithPasskey}
+          disabled={pending}
+        >
+          <Fingerprint className="size-4" />
+          Sign in with a passkey
+        </Button>
       </CardContent>
     </Card>
   );

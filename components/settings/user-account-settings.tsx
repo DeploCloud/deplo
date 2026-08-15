@@ -7,6 +7,7 @@ import {
   AlertTriangle,
   Ban,
   Crown,
+  Fingerprint,
   KeyRound,
   Loader2,
   ShieldCheck,
@@ -165,9 +166,12 @@ export function UserAccountSettings({
   const [confirmDelete, setConfirmDelete] = React.useState(false);
   const [confirmResetTwoFactor, setConfirmResetTwoFactor] =
     React.useState(false);
+  const [confirmResetPasskeys, setConfirmResetPasskeys] =
+    React.useState(false);
   // Mirrors the server, like `suspended`: the reset applies on confirm rather
   // than waiting for Save changes, so it can only ever reflect what came back.
   const [twoFactorEnabled, setTwoFactorEnabled] = React.useState(false);
+  const [passkeyCount, setPasskeyCount] = React.useState(0);
   // The two narrow grants are folded away (the house "Advanced" affordance) so the
   // section leads with the permission that actually matters. Folded away is not
   // hidden, though: a grant that is ON opens the panel, or the admin would have to
@@ -197,6 +201,7 @@ export function UserAccountSettings({
           canExposePorts
           canMountHostVolumes
           twoFactorEnabled
+          passkeyCount
           teams { teamId teamName role }
         }
       }`,
@@ -215,6 +220,7 @@ export function UserAccountSettings({
         });
         setSuspended(res.data.suspended);
         setTwoFactorEnabled(res.data.twoFactorEnabled);
+        setPasskeyCount(res.data.passkeyCount);
         // …but it seeds the FORM only when the caller had nothing to seed it
         // with — never clobber a switch the admin just flipped.
         if (!hasSeed) {
@@ -326,6 +332,20 @@ export function UserAccountSettings({
     );
     if (!res.ok) return { ok: false as const, error: res.error };
     setTwoFactorEnabled(false);
+    router.refresh();
+    return { ok: true as const };
+  }
+
+  /** Clear every passkey. Same shape, same moment, separate control. */
+  async function resetPasskeys() {
+    const res = await gqlAction(
+      `mutation ($userId: String!) {
+        resetUserPasskeys(userId: $userId) { userId }
+      }`,
+      { userId: user.userId },
+    );
+    if (!res.ok) return { ok: false as const, error: res.error };
+    setPasskeyCount(0);
     router.refresh();
     return { ok: true as const };
   }
@@ -531,25 +551,50 @@ export function UserAccountSettings({
               />
             </Section>
 
-            {twoFactorEnabled && !isSelf && !ownerLocked && (
-              <Section icon={ShieldOff} title="Two-factor authentication">
-                <ActionRow
-                  title="Reset two-factor"
-                  info="For someone who lost their phone and their recovery codes. Their account goes back to password only, and they can set it up again. Nothing else changes: not their password, not their sessions."
-                  action={
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      disabled={pending}
-                      onClick={() => setConfirmResetTwoFactor(true)}
-                    >
-                      <ShieldOff className="size-4" />
-                      Reset
-                    </Button>
-                  }
-                />
-              </Section>
-            )}
+            {(twoFactorEnabled || passkeyCount > 0) &&
+              !isSelf &&
+              !ownerLocked && (
+                <Section icon={ShieldOff} title="Second factors">
+                  {twoFactorEnabled && (
+                    <ActionRow
+                      title="Reset two-factor"
+                      info="For someone who lost their phone and their recovery codes. Their account goes back to password only, and they can set it up again. Nothing else changes: not their password, not their sessions."
+                      action={
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          disabled={pending}
+                          onClick={() => setConfirmResetTwoFactor(true)}
+                        >
+                          <ShieldOff className="size-4" />
+                          Reset
+                        </Button>
+                      }
+                    />
+                  )}
+                  {/* Separate from the reset above on purpose: the phone and the
+                      laptop are lost independently, and clearing a dead
+                      authenticator is no reason to take away a passkey that
+                      still works. */}
+                  {passkeyCount > 0 && (
+                    <ActionRow
+                      title="Remove passkeys"
+                      info="For someone whose device is gone. Until it is removed, a dead passkey still satisfies their team's two-factor policy, so nobody can tell them to enrol anything. Nothing else changes: not their password, not their sessions."
+                      action={
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          disabled={pending}
+                          onClick={() => setConfirmResetPasskeys(true)}
+                        >
+                          <Fingerprint className="size-4" />
+                          Remove
+                        </Button>
+                      }
+                    />
+                  )}
+                </Section>
+              )}
 
             {showDanger && (
               <Section
@@ -672,6 +717,20 @@ export function UserAccountSettings({
         variant="default"
         successMessage="Two-factor reset"
         onConfirm={resetTwoFactor}
+      />
+      <ConfirmAction
+        open={confirmResetPasskeys}
+        onOpenChange={setConfirmResetPasskeys}
+        title={
+          passkeyCount === 1
+            ? `Remove @${user.username}'s passkey?`
+            : `Remove @${user.username}'s ${passkeyCount} passkeys?`
+        }
+        description="They stop signing in with any device they registered, and their account goes back to password only. Do this when the device is gone — check it is really them asking."
+        confirmLabel="Remove passkeys"
+        variant="default"
+        successMessage="Passkeys removed"
+        onConfirm={resetPasskeys}
       />
       {confirmDelete && (
         <DeleteUserDialog

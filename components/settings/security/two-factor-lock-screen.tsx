@@ -1,6 +1,7 @@
 "use client";
 
 import * as React from "react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { ShieldAlert } from "lucide-react";
 
@@ -56,14 +57,28 @@ export function TwoFactorLockScreen({
           </div>
           <CardTitle>Two-factor authentication required</CardTitle>
           <CardDescription>
-            {reason} requires every member to have two-factor authentication.
-            Turn it on to continue.
+            {reason} requires every member to have a second factor. Add one to
+            continue.
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
           <Button className="w-full" onClick={() => setWizard(true)}>
             Turn on two-factor authentication
           </Button>
+          {/* The other way to satisfy the same policy (ADR-0024). Offered as a
+              link rather than a second wizard: adding a passkey needs the
+              password and a prompt from the device, which is the Security page's
+              job, and this screen already stands between the person and it. */}
+          <p className="text-center text-sm text-muted-foreground">
+            Or{" "}
+            <Link
+              href="/settings/security"
+              className="underline underline-offset-4 hover:text-foreground"
+            >
+              add a passkey
+            </Link>{" "}
+            — that counts too.
+          </p>
 
           {otherTeams.length > 0 && (
             <div className="space-y-2 border-t border-border pt-4">
