@@ -171,7 +171,7 @@ export interface UserDetailDTO {
   canMountHostVolumes: boolean;
   /** Drives the admin "Reset two-factor" escape hatch, which is only offered when on. */
   twoFactorEnabled: boolean;
-  /** How many passkeys they hold — the twin escape hatch, offered only above zero. */
+  /** How many passkeys they hold - the twin escape hatch, offered only above zero. */
   passkeyCount: number;
   createdAt: string;
   teams: { teamId: string; teamName: string; role: Role }[];
@@ -1248,7 +1248,7 @@ export async function resetUserTwoFactor(userId: string): Promise<void> {
  * Remove every passkey from a user's account. Instance admin only.
  *
  * The same backstop as {@link resetUserTwoFactor}, for the same failure: a
- * device that is gone. A dead passkey is not merely clutter in the list — while
+ * device that is gone. A dead passkey is not merely clutter in the list - while
  * it exists it satisfies the account's two-factor mandate, so a member whose
  * only passkey was on a lost laptop reads as protected and cannot be told to
  * enrol anything. Clearing it puts the account back under the policy, which is

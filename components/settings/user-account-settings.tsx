@@ -726,7 +726,7 @@ export function UserAccountSettings({
             ? `Remove @${user.username}'s passkey?`
             : `Remove @${user.username}'s ${passkeyCount} passkeys?`
         }
-        description="They stop signing in with any device they registered, and their account goes back to password only. Do this when the device is gone — check it is really them asking."
+        description="They stop signing in with any device they registered, and their account goes back to password only. Do this when the device is gone - check it is really them asking."
         confirmLabel="Remove passkeys"
         variant="default"
         successMessage="Passkeys removed"

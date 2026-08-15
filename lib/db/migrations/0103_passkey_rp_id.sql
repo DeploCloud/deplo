@@ -1,0 +1,33 @@
+-- Record WHICH hostname each passkey was minted for.
+--
+-- A passkey is welded to one rpID and the browser refuses to offer it anywhere
+-- else - silently, before any request is sent. 0102 stored no rpID, so every
+-- credential looked equally valid whatever address the panel answered on, and
+-- two ordinary product actions turned that into a lockout:
+--
+--   * Settings -> deplo, HTTPS off (`setPanelHttps(false)`): the instance stops
+--     having a relying party at all, so no ceremony can start.
+--   * Moving the panel to a new hostname: the rpID changes and the browser finds
+--     no credential for it.
+--
+-- Either way the passkey still satisfied the account's two-factor mandate, so
+-- `login()` refused the password AND the ceremony could not complete. For the
+-- instance owner - whose row no other admin may touch - the only way back in was
+-- a database prompt, which is exactly what ADR-0014 §4 forbids.
+--
+-- With the rpID recorded, a credential that cannot be used here stops counting
+-- as a second factor. The account falls back to the ordinary "add a second
+-- factor" path, which is reachable and recoverable, and the stale rows stay
+-- visible in Settings -> Security so they can be removed.
+--
+-- NULL is deliberate and is NOT backfilled: a row from 0102 was minted for an
+-- address this migration cannot know. Treating it as "unknown, does not count"
+-- asks that person for another second factor; guessing the current address
+-- would re-create the lockout the moment the guess is wrong.
+--
+-- deplo's own column on a library-owned table, and the one exception to that
+-- rule here: the plugin writes only the fields in its own schema, so an extra
+-- nullable column is invisible to it. `finishPasskeyRegistration` stamps the
+-- value immediately after the plugin returns the new row.
+
+ALTER TABLE "passkey" ADD COLUMN IF NOT EXISTS "rp_id" text;

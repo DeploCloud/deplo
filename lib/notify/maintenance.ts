@@ -7,7 +7,7 @@ import {
   gitConnections as gitConnectionsTable,
   servers as serversTable,
 } from "../db/schema/control-plane";
-import { oauthClient, oauthConsent } from "../db/schema/auth";
+import { oauthClient, oauthConsent, verification } from "../db/schema/auth";
 import { decryptSecret } from "../crypto";
 import { sweepRateLimits } from "../security";
 import { probeCredential } from "../data/git-connections";
@@ -52,6 +52,24 @@ export async function runMaintenanceSweep(): Promise<void> {
   // as dead rows.
   await settle("rate limits", sweepRateLimits);
   await settle("oauth clients", sweepAbandonedOauthClients);
+  await settle("expired challenges", sweepExpiredVerifications);
+}
+
+/**
+ * Drop `verification` rows whose deadline has passed.
+ *
+ * Better Auth consumes a challenge on first use and never comes back for the
+ * ones nobody finishes, and it ships no pruning of its own. That was harmless
+ * while every writer was authenticated; `passkeyChallenge` is not - it is the
+ * START of a sign-in, so anyone who can reach the panel can write rows here.
+ *
+ * Exactly the argument {@link sweepAbandonedOauthClients} makes one function
+ * up: the rate limiter bounds the RATE, and this bounds the TOTAL. An expired
+ * challenge is already refused by `consumeVerificationValue`, so deleting one
+ * takes nothing away from anybody.
+ */
+async function sweepExpiredVerifications(): Promise<void> {
+  await getDb().delete(verification).where(lt(verification.expiresAt, new Date()));
 }
 
 /**

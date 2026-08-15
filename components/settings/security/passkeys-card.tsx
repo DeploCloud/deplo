@@ -19,6 +19,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { InfoTip, FieldLabel } from "@/components/ui/info-tip";
@@ -53,7 +54,7 @@ const FINISH = /* GraphQL */ `
 /**
  * The passkeys on this account: add, rename, remove.
  *
- * Add is the only action that needs the browser to be in the right place — a
+ * Add is the only action that needs the browser to be in the right place - a
  * passkey is welded to one hostname and the platform refuses the ceremony from
  * anywhere else, silently and before any request leaves the page. So the button
  * is disabled with the reason on it rather than left to fail in a way that looks
@@ -79,7 +80,7 @@ export function PasskeysCard({
 }) {
   const router = useRouter();
   // The two reasons the SERVER already knows, resolved during render from props
-  // — no state, no effect, and correct on the first paint. The third reason
+  // - no state, no effect, and correct on the first paint. The third reason
   // (this browser is on some other host) needs `window` and is checked when the
   // person actually adds one, inside the dialog.
   const blocked = !panelUrl
@@ -102,7 +103,7 @@ export function PasskeysCard({
       <CardHeader className="flex-row items-center justify-between gap-4 space-y-0">
         <CardTitle className="flex w-fit items-center gap-2 text-base">
           Passkeys
-          <InfoTip content="Sign in with your fingerprint, face or device PIN instead of a password. A passkey also counts as your second factor." />
+          <InfoTip content="Sign in with your fingerprint, face or device PIN instead of a password, and it counts as your second factor." />
         </CardTitle>
         {blocked ? (
           <SimpleTooltip content={blocked}>
@@ -139,6 +140,15 @@ export function PasskeysCard({
                     <span className="flex items-center gap-2">
                       <Fingerprint className="size-4 shrink-0 text-muted-foreground" />
                       <span className="font-medium">{p.name}</span>
+                      {/* A credential minted for another panel address. The
+                          browser will not offer it here, so saying so is the
+                          difference between "my passkey is broken" and "that
+                          one belongs to the old address". */}
+                      {!p.usableHere && (
+                        <SimpleTooltip content="Registered for a different address of this panel, so this browser will not offer it. Remove it.">
+                          <Badge variant="secondary">Not usable here</Badge>
+                        </SimpleTooltip>
+                      )}
                     </span>
                   </TableCell>
                   <TableCell className="text-muted-foreground">
@@ -171,8 +181,8 @@ export function PasskeysCard({
  *
  * The password is taken BEFORE the browser prompt rather than after, so a person
  * who cannot produce it is not asked for their fingerprint first. The label is
- * prefilled from the user agent — the same string the signed-in-devices table
- * shows — because "Chrome on macOS" is what they would have typed, and an empty
+ * prefilled from the user agent - the same string the signed-in-devices table
+ * shows - because "Chrome on macOS" is what they would have typed, and an empty
  * required field between them and a working passkey is a toll for nothing.
  */
 function AddPasskeyDialog({
@@ -233,7 +243,7 @@ function AddPasskeyDialog({
       trigger={trigger}
       open={open}
       onOpenChange={onOpenChange}
-      title="Add a passkey"
+      title="Add passkey"
       description="Your device will ask for your fingerprint, face or PIN. Nothing leaves it but a public key."
       confirmLabel="Add passkey"
       variant="default"
@@ -327,7 +337,7 @@ function RenamePasskey({
   );
 }
 
-/** Remove. Password required — this is taking a sign-in credential away. */
+/** Remove. Password required - this is taking a sign-in credential away. */
 function DeletePasskey({
   passkey,
   onDone,

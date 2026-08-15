@@ -116,11 +116,13 @@ A WebAuthn credential a **user** registers from Settings → Security, held by t
 unlocked with a fingerprint, a face or a PIN. It is a **way to sign in**, not a second step:
 "Sign in with a passkey" on the login page replaces the password entirely, and the password
 stays only as the fallback. A passkey **satisfies a team's two-factor requirement** on its own
-(ADR-0024), because it is possession plus inherence in one gesture — which is why an account
+(ADR-0024), because it is possession plus inherence in one gesture - which is why an account
 whose requirement rests on a passkey is not handed a session for its password alone. Bound to
-ONE hostname (the panel's own address), so it works nowhere else and does not survive moving
-the panel. Adding or removing one asks for the password; renaming does not.
-_Avoid_: security key (that is one KIND of passkey — a hardware one), WebAuthn credential
+ONE hostname (the panel's own address), recorded on the credential: move the panel and every
+passkey stops counting as a second factor, stays listed as **Not usable here**, and the password
+signs people in again so they can register a new one. Adding or removing one asks for the
+password; renaming does not.
+_Avoid_: security key (that is one KIND of passkey - a hardware one), WebAuthn credential
 (spell it passkey in the UI), "passwordless" (the password is still there).
 
 **API token**:

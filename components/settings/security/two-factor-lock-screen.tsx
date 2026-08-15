@@ -77,7 +77,7 @@ export function TwoFactorLockScreen({
             >
               add a passkey
             </Link>{" "}
-            — that counts too.
+            - that counts too.
           </p>
 
           {otherTeams.length > 0 && (

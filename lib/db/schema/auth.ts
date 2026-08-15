@@ -97,22 +97,23 @@ export const twoFactor = pgTable(
 );
 
 /**
- * The `@better-auth/passkey` plugin's table — one WebAuthn credential per row.
+ * The `@better-auth/passkey` plugin's table - one WebAuthn credential per row.
  *
  * `publicKey` and `credentialID` are LIBRARY-OWNED and never belong in a DTO.
  * Neither is a secret the way `two_factor.secret` is (a public key is public by
  * construction, and the credential id is what the browser sends in the clear),
  * but both are the credential's identity: shipping them to a client hands an
  * attacker the exact material to correlate one person's device across every
- * account it protects. `PasskeyDTO` in lib/data/passkeys.ts carries `id`, `name`
- * and `createdAt`, and that is the whole list.
+ * account it protects. `PasskeyDTO` in lib/data/passkeys.ts carries `id`, `name`,
+ * `createdAt` and whether the credential works on this address, and that is the
+ * whole list.
  *
  * `name` is nullable because the plugin writes `undefined` when the client sent
  * no label; deplo always sends one, but the column has to allow the shape.
  *
  * ponytail: `counter` is `integer` (2^31) while WebAuthn defines a uint32. It
  * matches what the Drizzle adapter hands over (a JS `number`) and the ceiling is
- * unreachable in practice — most authenticators report 0 forever and never
+ * unreachable in practice - most authenticators report 0 forever and never
  * increment. Widen to `bigint` only if a real device ever gets close.
  */
 export const passkey = pgTable(
@@ -135,6 +136,23 @@ export const passkey = pgTable(
     transports: text("transports"),
     createdAt: timestamp("created_at"),
     aaguid: text("aaguid"),
+    /**
+     * deplo's own column, invisible to the plugin: the rpID this credential was
+     * minted for, stamped right after registration.
+     *
+     * WebAuthn welds a credential to one hostname and the browser will not offer
+     * it anywhere else. Without recording which one, a panel that moves to a new
+     * address would leave every passkey unusable while they all still LOOK like
+     * a valid second factor - and an account whose two-factor policy rested on
+     * one would be refused its password and unable to complete the ceremony.
+     * That is a lockout with no way out but the database.
+     *
+     * NULL means "minted before this column existed", and it is deliberately
+     * treated as NOT satisfying the mandate: the safe direction is the one where
+     * the person is asked for another second factor, not the one where they are
+     * locked out.
+     */
+    rpId: text("rp_id"),
   },
   (t) => [index("passkey_user_id_idx").on(t.userId)],
 );

@@ -568,7 +568,7 @@ export interface LoginResult {
   /**
    * The password was right, but this account's second factor IS its passkey: no
    * session was created, and the sign-in finishes with the WebAuthn ceremony.
-   * Mutually exclusive with `requiresTwoFactor` — one means the account has an
+   * Mutually exclusive with `requiresTwoFactor` - one means the account has an
    * authenticator app, the other means it does not.
    */
   requiresPasskey?: boolean;
@@ -602,7 +602,7 @@ export async function login(
     return { ok: false, error: "This account has been suspended" };
 
   // An account whose 2FA policy is satisfied by a PASSKEY and nothing else does
-  // not get a session for its password. The password is still verified — a wrong
+  // not get a session for its password. The password is still verified - a wrong
   // one must answer the same way it always did, and the flag must never appear
   // for someone who has not proven the first factor, or it becomes an
   // enumeration oracle. Then the sign-in finishes on the passkey screen
@@ -736,19 +736,19 @@ export async function verifyTwoFactorCode(
 /**
  * The options the browser hands to `navigator.credentials.get` to sign in.
  *
- * Unauthenticated on purpose — this is the start of a login. The plugin answers
+ * Unauthenticated on purpose - this is the start of a login. The plugin answers
  * with a discoverable-credential challenge (no `allowCredentials`), which is why
  * signing in never asks for an email: the browser offers the passkeys it holds
  * for this origin and the person picks one.
  *
  * The challenge itself is a `verification` row pointed at by a short-lived
- * signed cookie, consumed on first use — nothing about it is held client-side,
+ * signed cookie, consumed on first use - nothing about it is held client-side,
  * exactly like the two-factor challenge.
  */
 export async function passkeyChallenge(): Promise<unknown> {
   // Refused up front on an instance that cannot have passkeys at all. Without
   // this the ceremony still starts and dies inside the browser with a message
-  // about origins, which reads to the person as the button doing nothing — and
+  // about origins, which reads to the person as the button doing nothing - and
   // the login page has no other way to learn the instance's address.
   if (!passkeyRelyingParty())
     throw new Error(
@@ -762,12 +762,12 @@ export async function passkeyChallenge(): Promise<unknown> {
 /**
  * Finish a passkey sign-in with what the authenticator produced.
  *
- * The session and its cookie are already written by the time this returns —
+ * The session and its cookie are already written by the time this returns -
  * the plugin mints them the moment the assertion verifies. So the suspension
  * check can only happen AFTER: the identity is not known until the credential
  * resolves to a row, which is the opposite order from `login()`, where the email
  * names the account up front. A suspended account that gets this far is signed
- * straight back out, and `getCurrentUser()` would refuse it anyway — the revoke
+ * straight back out, and `getCurrentUser()` would refuse it anyway - the revoke
  * is belt to that brace, so a live session row is never left behind.
  */
 export async function verifyPasskeyLogin(
@@ -782,8 +782,15 @@ export async function verifyPasskeyLogin(
     userId = res.user.id;
   } catch (e) {
     // The plugin's own copy is the useful one here ("Passkey not found",
-    // "Authentication failed", or the user-verification refusal deplo adds).
-    const message = e instanceof Error ? e.message : "";
+    // "Authentication failed", or the user-verification refusal deplo adds) -
+    // but ONLY its copy. A Better Auth rejection carries `body.code`; anything
+    // without one is the database being down or a misconfiguration, and putting
+    // a Postgres error on the sign-in page tells an anonymous visitor about the
+    // inside of the instance while telling the person nothing they can act on.
+    const fromAuth = Boolean(
+      (e as { body?: { code?: string } } | null)?.body?.code,
+    );
+    const message = fromAuth && e instanceof Error ? e.message : "";
     return { ok: false, error: message || "That passkey did not work" };
   }
   const rows = await getDb()

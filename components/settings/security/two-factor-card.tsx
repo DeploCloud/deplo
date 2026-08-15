@@ -46,7 +46,7 @@ export function TwoFactorCard({
   /** Named when a team or role policy makes 2FA mandatory: disabling is refused. */
   requiredBy,
   /**
-   * A policy IS in force, and this account's passkey is what satisfies it — so
+   * A policy IS in force, and this account's passkey is what satisfies it - so
    * `requiredBy` is null and turning the app on is optional. Without saying so,
    * "Off" under a team that mandates two-factor reads as something broken.
    */

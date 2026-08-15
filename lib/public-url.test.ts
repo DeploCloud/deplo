@@ -77,7 +77,7 @@ test("knowing no address at all is not a reason to mark cookies Secure", () => {
 
 /**
  * A passkey is welded to whatever this returns, so a wrong answer is not a bug
- * that shows up as an error — it is credentials that register fine and then
+ * that shows up as an error - it is credentials that register fine and then
  * refuse to sign anyone in, from inside the browser, with nothing on the wire.
  */
 
@@ -89,7 +89,7 @@ test("the relying party is the panel's own hostname, https only", () => {
     origin: "https://deplo.example.com",
   });
 
-  // A port is part of the origin but never part of the rpID — WebAuthn scopes a
+  // A port is part of the origin but never part of the rpID - WebAuthn scopes a
   // credential to a domain, not to a socket.
   setStoredPublicBaseUrl("https://deplo.example.com:8443");
   assert.deepEqual(passkeyRelyingParty(), {

@@ -120,14 +120,14 @@ const twoFactorGate = createAuthMiddleware(async (ctx) => {
  * Same shape and same reason as {@link twoFactorGate}, applied to a plugin whose
  * gate is one notch lower still: registering a passkey asks for a SESSION and
  * nothing else, so a stolen cookie is enough to weld a permanent credential onto
- * somebody's account — one that then signs in with no password at all. deplo
+ * somebody's account - one that then signs in with no password at all. deplo
  * asks for the password first (`lib/data/passkeys.ts`), which is the bar the
  * account's other credential changes already clear.
  *
  * The LOGIN endpoints are closed too, which is the part worth explaining. The
  * plugin's `/passkey/verify-authentication` mints a session and sets the cookie,
  * but it does not check `users.suspended`, does not touch the rate limiter and
- * does not record a failed attempt — all three live in the GraphQL resolvers
+ * does not record a failed attempt - all three live in the GraphQL resolvers
  * (`lib/graphql/types/auth.ts`) with every other sign-in path. Leaving the
  * endpoint open would be a second front door with none of the locks.
  *
@@ -149,7 +149,7 @@ const passkeyGate = createAuthMiddleware(async (ctx) => {
  *
  * The plugin hardcodes `requireUserVerification: false` in both verifiers, and
  * `authenticatorSelection.userVerification: "required"` below is only a REQUEST
- * — WebAuthn lets the authenticator answer without it, and the response still
+ * - WebAuthn lets the authenticator answer without it, and the response still
  * verifies. For an ordinary passkey that would be a shrug; here it is not,
  * because in deplo a passkey SATISFIES a team's two-factor mandate. A credential
  * that unlocks with no PIN, no fingerprint and no face is one factor
@@ -321,7 +321,7 @@ function oauthProviderOptions() {
  * Registered UNCONDITIONALLY, even on an instance that cannot have passkeys
  * (no address, or plain http): the alternative leaves `auth.api.listPasskeys`
  * undefined and forces every caller in lib/data to branch on it. The ceremony
- * fails clearly instead — with no `origin` the plugin's own verifiers refuse —
+ * fails clearly instead - with no `origin` the plugin's own verifiers refuse -
  * and the card in Settings → Security is what explains it to the person, which
  * is where an explanation belongs.
  *

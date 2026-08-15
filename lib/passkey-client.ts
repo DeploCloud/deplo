@@ -10,17 +10,17 @@ import {
  *
  * Everything else about passkeys is a GraphQL round trip; this is the one part
  * that cannot be, because `navigator.credentials` lives in the page. The two
- * wrappers exist only to hand the server's options straight through — the
+ * wrappers exist only to hand the server's options straight through - the
  * base64url encoding both directions is what `@simplewebauthn/browser` is for,
  * and it is the same library the verifier on the other end uses, so the wire
  * shapes cannot drift.
  *
  * {@link passkeyError} is the part that earns its keep. What the platform throws
  * is either a bare `NotAllowedError` (which covers "you cancelled", "it timed
- * out" and "your authenticator said no", indistinguishably, by design — the spec
+ * out" and "your authenticator said no", indistinguishably, by design - the spec
  * collapses them so a page cannot probe for credentials) or a `WebAuthnError`
  * whose message is written for a library author. Neither tells a person what to
- * do next, and one case in particular — the wrong hostname — fails INSIDE the
+ * do next, and one case in particular - the wrong hostname - fails INSIDE the
  * browser before any request is sent, so without a translation it looks like
  * deplo did nothing at all.
  */

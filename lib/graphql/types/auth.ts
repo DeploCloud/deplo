@@ -269,9 +269,9 @@ builder.mutationFields((t) => ({
     description:
       "Options for `navigator.credentials.get`. Public: this is the START of a sign-in, so there is no session yet.",
     resolve: async () => {
-      // One bucket, on the client. There is nothing else to key on — the whole
+      // One bucket, on the client. There is nothing else to key on - the whole
       // point of a discoverable credential is that no account is named until the
-      // browser answers — and a challenge is cheap to mint, so the limit is
+      // browser answers - and a challenge is cheap to mint, so the limit is
       // there to stop a flood of `verification` rows, not to protect a secret.
       const limited = await checkLimits([
         { key: await clientKey("passkey"), limit: 20, windowMs: 60_000 },
@@ -288,7 +288,7 @@ builder.mutationFields((t) => ({
     resolve: async (_r, { response }) => {
       // Looser than the 2FA limiter and with no per-account bucket, both on
       // purpose: an assertion is a signature over a server-chosen challenge, not
-      // six digits, so there is nothing to guess — the limit exists to cap the
+      // six digits, so there is nothing to guess - the limit exists to cap the
       // verification work. And nothing names an account until the credential
       // resolves, which is also why no failed-login notice is sent from here:
       // there is no address to warn.

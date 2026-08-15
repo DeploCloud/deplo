@@ -77,7 +77,7 @@ export default function LoginPage() {
   // Which half of the sign-in we are on. The password step succeeded but the
   // account has a second factor: an authenticator app ("code") or a passkey
   // ("passkey"). Either challenge lives in a short-lived httpOnly cookie the
-  // server set, so this flag is all the client holds — no token in state.
+  // server set, so this flag is all the client holds - no token in state.
   const [step, setStep] = useState<"password" | "code" | "passkey">("password");
   const [useRecovery, setUseRecovery] = useState(false);
   const [code, setCode] = useState("");
@@ -132,8 +132,8 @@ export default function LoginPage() {
    * The whole passkey sign-in: challenge, ceremony, verify.
    *
    * Never fired on mount. A `navigator.credentials.get` with no user gesture
-   * behind it is the main source of spurious "cancelled" errors — some browsers
-   * refuse it outright, others show a prompt nobody asked for — and one click is
+   * behind it is the main source of spurious "cancelled" errors - some browsers
+   * refuse it outright, others show a prompt nobody asked for - and one click is
    * cheaper than a login that fails for a reason the person cannot see.
    */
   function signInWithPasskey() {
@@ -144,7 +144,7 @@ export default function LoginPage() {
         if (!passkeysSupported())
           throw new Error("This browser can't use passkeys.");
         // The server refuses the challenge outright on an instance that cannot
-        // have passkeys (no address, or plain http), with a message saying so —
+        // have passkeys (no address, or plain http), with a message saying so -
         // which is why the button is always offered rather than hidden behind a
         // capability this page has no way to know.
         const { passkeyChallenge } = await gql<{ passkeyChallenge: unknown }>(
@@ -210,8 +210,8 @@ export default function LoginPage() {
         <CardHeader>
           <CardTitle className="text-2xl">Finish with your passkey</CardTitle>
           <CardDescription>
-            Your team requires a second factor, and this account&apos;s is its
-            passkey. Your device will ask for your fingerprint, face or PIN.
+            This account signs in with a passkey. Your device will ask for your
+            fingerprint, face or PIN.
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">

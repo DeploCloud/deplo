@@ -65,7 +65,7 @@ export function cookiesAreSecure(): boolean {
  * it cannot have any.
  *
  * A passkey is welded to ONE rpID and the browser refuses the ceremony outright
- * — before any request is sent — from any other origin. So the rpID has to be
+ * - before any request is sent - from any other origin. So the rpID has to be
  * the instance's canonical address and nothing else: derive it from the request
  * host and a passkey minted on `deplo.example.com` would silently fail to work
  * on the IP, which is the same instance.
@@ -77,7 +77,7 @@ export function cookiesAreSecure(): boolean {
  *
  * Consequence worth stating out loud: moving the panel to a new hostname kills
  * every registered passkey. The credentials stay on the devices, they just stop
- * matching, and there is no migration for that — people re-register. `resetAuth`
+ * matching, and there is no migration for that - people re-register. `resetAuth`
  * makes the change land without a restart, so it is easy to do by accident.
  */
 export function passkeyRelyingParty(): { rpId: string; origin: string } | null {

@@ -2958,6 +2958,11 @@ type Passkey {
 
   """The label shown in the list, e.g. "Chrome on macOS"."""
   name: String
+
+  """
+  False for a credential minted for a different address of this panel: the browser will not offer it here, so the only thing to do with it is remove it.
+  """
+  usableHere: Boolean
 }
 
 """

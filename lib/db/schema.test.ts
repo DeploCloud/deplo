@@ -52,7 +52,7 @@ const PRE_EXISTING = [
   "two_factor",
   // One WebAuthn credential per row (migration 0102), owned by
   // @better-auth/passkey. Its presence is what satisfies a team's two-factor
-  // mandate for an account with no TOTP — see lib/membership.ts.
+  // mandate for an account with no TOTP - see lib/membership.ts.
   "passkey",
   "scheduler_lease",
   // The OAuth 2.1 provider's four (migration 0101): a registered client, what a

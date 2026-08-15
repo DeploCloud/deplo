@@ -358,7 +358,7 @@ function refusedByGrant(e: Endpoint, messages: string[]): boolean {
  * sign-in, so requiring a session would be circular. `passkeyChallenge` hands
  * out a server-chosen challenge and names no account (that is what a
  * discoverable credential means), and `verifyPasskeyLogin` only succeeds against
- * a signature over that challenge — see ADR-0024 §5 for why the plugin's own
+ * a signature over that challenge - see ADR-0024 §5 for why the plugin's own
  * endpoints are closed while these two are not.
  */
 const PUBLIC_FIELDS = new Set([

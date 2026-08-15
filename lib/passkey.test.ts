@@ -20,19 +20,25 @@ import {
   TwoFactorRequiredError,
 } from "./membership";
 import { passkeyLoginRequired, userHasPasskey } from "./passkey-policy";
-import { deletePasskey, listMyPasskeys } from "./data/passkeys";
+import {
+  deletePasskey,
+  listMyPasskeys,
+  renamePasskey,
+  startPasskeyRegistration,
+} from "./data/passkeys";
 import { resetUserPasskeys } from "./data/members";
 import { seedIdentity, TEAM_A, USER_1 } from "./data/identity-test-helpers";
+import { setStoredPublicBaseUrl } from "./public-url";
 import { ALL_CAPABILITIES } from "./types";
 
 /**
- * A passkey as a SECOND FACTOR — the three things about it that are true only by
+ * A passkey as a SECOND FACTOR - the three things about it that are true only by
  * construction, and would stop being true silently (ADR-0024).
  *
  * 1. `/api/auth/passkey/*` cannot be reached over the network. The plugin
  *    registers a permanent, password-replacing credential on a session alone,
  *    which is a notch below the bar `lib/data/passkeys.ts` holds.
- * 2. Holding a passkey satisfies a team's two-factor mandate — the whole reason
+ * 2. Holding a passkey satisfies a team's two-factor mandate - the whole reason
  *    a team can turn the policy on without making everyone install an app.
  * 3. Because of (2), the password ALONE must stop creating a session for such an
  *    account. Get this wrong and one factor clears a two-factor policy, which is
@@ -40,7 +46,7 @@ import { ALL_CAPABILITIES } from "./types";
  *
  * The WebAuthn ceremony itself is not exercised: driving it needs a virtual
  * authenticator (Chrome DevTools Protocol) that this harness does not have, so
- * the credential is seeded as a row. That is deliberate — everything asserted
+ * the credential is seeded as a row. That is deliberate - everything asserted
  * here is about what deplo does with a passkey, not about whether
  * `@simplewebauthn/server` verifies signatures.
  */
@@ -53,13 +59,20 @@ let pg: PGlite;
 const PASSWORD = "password1";
 const EMAIL_1 = `${USER_1}@example.io`;
 const USER_2 = "user_2";
+/** The panel address every test runs against, and the rpID derived from it. */
+const PANEL = "https://deplo.example.com";
+const RP_ID = "deplo.example.com";
 
 before(async () => {
   ({ db, pg } = await makeTestDb());
   __setTestDb(db);
+  // Without an address there is no relying party, and a passkey satisfies
+  // nothing - which is a behaviour with its own tests further down.
+  setStoredPublicBaseUrl(PANEL);
 });
 
 after(async () => {
+  setStoredPublicBaseUrl(null);
   __resetTestDb();
   await pg.close();
 });
@@ -79,8 +92,18 @@ beforeEach(async () => {
 const asUser = <T>(userId: string, fn: () => Promise<T>): Promise<T> =>
   runWithIdentity({ userId, teamId: TEAM_A }, fn);
 
-/** Put a credential on the account without running a ceremony. */
-async function seedPasskey(userId: string, id = "pk-1", name = "Test device") {
+/**
+ * Put a credential on the account without running a ceremony.
+ *
+ * `rpId` defaults to this panel's; pass another to model a credential minted
+ * before the address moved, or null to model a row from migration 0102.
+ */
+async function seedPasskey(
+  userId: string,
+  id = "pk-1",
+  name = "Test device",
+  rpId: string | null = RP_ID,
+) {
   await db.insert(passkeyTable).values({
     id,
     name,
@@ -92,6 +115,7 @@ async function seedPasskey(userId: string, id = "pk-1", name = "Test device") {
     backedUp: false,
     transports: "internal",
     createdAt: new Date(),
+    rpId,
   });
 }
 
@@ -274,7 +298,7 @@ test("the last passkey cannot be removed while a policy rests on it", async () =
 
   // With an authenticator app on, the policy no longer depends on the passkey,
   // so the guard must stand aside. (The delete itself needs a live Better Auth
-  // session, which this harness has no request scope for — what is asserted is
+  // session, which this harness has no request scope for - what is asserted is
   // that the refusal is no longer the mandate.)
   await enableTotp();
   await asUser(USER_1, async () => {
@@ -307,7 +331,176 @@ test("a passkey that is not the last one is removable under a policy", async () 
 });
 
 /* ------------------------------------------------------------------ */
-/* 5. The admin escape hatch                                           */
+/* 5. A passkey only counts where it can be used                       */
+/* ------------------------------------------------------------------ */
+
+/**
+ * The lockout this section exists to stop: a passkey satisfies the mandate, so
+ * `login()` refuses the password - and if the credential cannot be used on this
+ * panel any more, the ceremony that was supposed to finish the sign-in cannot
+ * happen either. The way out is that an unusable passkey stops counting, which
+ * puts the account back on the ordinary "add a second factor" path.
+ */
+
+test("a passkey minted for another address counts for nothing", async () => {
+  await requireForTeam();
+  await seedPasskey(USER_1, "pk-old", "Old address", "old.example.com");
+
+  assert.equal(await userHasPasskey(USER_1), false);
+  assert.equal(
+    await passkeyLoginRequired(USER_1),
+    false,
+    "refusing the password here would be a lockout: the browser has nothing to offer",
+  );
+  await asUser(USER_1, async () => {
+    await assert.rejects(
+      () => requireActiveTeamId(),
+      (e: unknown) => e instanceof TwoFactorRequiredError,
+      "the mandate is unmet, which is recoverable - unlike a refused sign-in",
+    );
+  });
+});
+
+test("a row from before rp_id existed counts for nothing either", async () => {
+  await requireForTeam();
+  await seedPasskey(USER_1, "pk-legacy", "Legacy", null);
+  assert.equal(await userHasPasskey(USER_1), false);
+  assert.equal(await passkeyLoginRequired(USER_1), false);
+});
+
+test("turning the panel's https off makes every passkey stop counting", async () => {
+  await requireForTeam();
+  await seedPasskey(USER_1);
+  assert.equal(await passkeyLoginRequired(USER_1), true, "fixture");
+
+  // What `setPanelHttps(false)` does to the rest of the process.
+  setStoredPublicBaseUrl("http://deplo.example.com");
+  try {
+    assert.equal(await userHasPasskey(USER_1), false);
+    assert.equal(
+      await passkeyLoginRequired(USER_1),
+      false,
+      "no relying party means no ceremony, so the password must still work",
+    );
+    const res = await login(EMAIL_1, PASSWORD);
+    assert.notEqual(res.requiresPasskey, true);
+  } finally {
+    setStoredPublicBaseUrl(PANEL);
+  }
+});
+
+test("an unusable passkey is still listed, flagged, and removable", async () => {
+  await requireForTeam();
+  await seedPasskey(USER_1, "pk-here");
+  await seedPasskey(USER_1, "pk-old", "Old address", "old.example.com");
+
+  await asUser(USER_1, async () => {
+    const rows = await listMyPasskeys();
+    assert.equal(rows.length, 2, "a dead credential must not vanish from the list");
+    assert.equal(rows.find((r) => r.id === "pk-here")?.usableHere, true);
+    assert.equal(rows.find((r) => r.id === "pk-old")?.usableHere, false);
+    // The guard counts only the usable ones, so the stale row is never what
+    // stands between the person and removing it.
+    await deletePasskey({ id: "pk-old", password: PASSWORD });
+  });
+});
+
+/* ------------------------------------------------------------------ */
+/* 6. Registration guards                                              */
+/* ------------------------------------------------------------------ */
+
+test("registration is refused when the instance has no relying party", async () => {
+  setStoredPublicBaseUrl("http://deplo.example.com");
+  try {
+    await asUser(USER_1, () =>
+      assert.rejects(
+        () => startPasskeyRegistration(PASSWORD),
+        /https address/,
+        "better a clear refusal than a ceremony that dies inside the browser",
+      ),
+    );
+  } finally {
+    setStoredPublicBaseUrl(PANEL);
+  }
+});
+
+test("an account tops out at twenty passkeys", async () => {
+  for (let i = 0; i < 20; i++) await seedPasskey(USER_1, `pk-${i}`, `Key ${i}`);
+  await asUser(USER_1, () =>
+    assert.rejects(
+      () => startPasskeyRegistration(PASSWORD),
+      /already has 20 passkeys/,
+    ),
+  );
+});
+
+/* ------------------------------------------------------------------ */
+/* 7. Renaming                                                         */
+/* ------------------------------------------------------------------ */
+
+test("renaming is scoped to your own passkeys", async () => {
+  await seedPasskey(USER_2, "pk-theirs", "Theirs");
+  await asUser(USER_1, () =>
+    assert.rejects(
+      () => renamePasskey({ id: "pk-theirs", name: "Mine now" }),
+      /no longer on this account/,
+    ),
+  );
+  const [row] = await db
+    .select({ name: passkeyTable.name })
+    .from(passkeyTable)
+    .where(eq(passkeyTable.id, "pk-theirs"));
+  assert.equal(row?.name, "Theirs", "and it really did not move");
+});
+
+/* ------------------------------------------------------------------ */
+/* 8. The plugin's own view of deplo's hand-written table              */
+/* ------------------------------------------------------------------ */
+
+test("the plugin's adapter can write, find and update a passkey row", async () => {
+  // The one thing a rename in lib/db/schema/auth.ts breaks SILENTLY: the Drizzle
+  // adapter resolves a model field as `schema.passkey[field]`, so the JS property
+  // names are the plugin's field list verbatim. Nothing else here exercises them
+  // - the ceremony cannot run headless - and the first sign of a mismatch would
+  // otherwise be a real registration failing in a browser.
+  const adapter = (await requireAuth().$context).adapter;
+  const created = (await adapter.create({
+    model: "passkey",
+    data: {
+      name: "Probe",
+      publicKey: "cHVi",
+      userId: USER_1,
+      credentialID: "cred-probe",
+      counter: 3,
+      deviceType: "singleDevice",
+      backedUp: true,
+      transports: "internal,hybrid",
+      createdAt: new Date(),
+      aaguid: "aa-guid",
+    },
+  })) as { id: string };
+  assert.match(created.id, /^bas_/, "ids come from deplo's own generator");
+
+  const found = (await adapter.findOne({
+    model: "passkey",
+    where: [{ field: "credentialID", value: "cred-probe" }],
+  })) as { userId: string } | null;
+  assert.equal(found?.userId, USER_1, "the authentication path resolves by credentialID");
+
+  await adapter.update({
+    model: "passkey",
+    where: [{ field: "id", value: created.id }],
+    update: { counter: 9 },
+  });
+  const bumped = (await adapter.findOne({
+    model: "passkey",
+    where: [{ field: "id", value: created.id }],
+  })) as { counter: number } | null;
+  assert.equal(bumped?.counter, 9, "the replay counter is written back");
+});
+
+/* ------------------------------------------------------------------ */
+/* 9. The admin escape hatch                                           */
 /* ------------------------------------------------------------------ */
 
 const makeAdmin = (userId: string) =>
@@ -362,7 +555,7 @@ test("the list never projects key material", async () => {
   assert.equal(rows.length, 1);
   assert.deepEqual(
     Object.keys(rows[0]!).sort(),
-    ["createdAt", "id", "name"],
+    ["createdAt", "id", "name", "usableHere"],
     "publicKey and credentialID must never leave the data layer",
   );
   assert.equal(rows[0]!.name, "Test device");

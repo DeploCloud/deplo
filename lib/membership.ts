@@ -145,7 +145,7 @@ export class TwoFactorRequiredError extends Error {
  *
  * SATISFIED BY EITHER SECOND FACTOR: an enrolled authenticator app, or a
  * registered passkey (ADR-0024). The passkey half is what lets a team turn the
- * policy on without asking every member to install anything — and the reason
+ * policy on without asking every member to install anything - and the reason
  * `login()` refuses to hand a password-only session to an account whose mandate
  * rests on a passkey, which would otherwise let ONE factor clear a two-factor
  * policy.

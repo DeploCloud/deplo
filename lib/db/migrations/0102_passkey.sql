@@ -2,7 +2,7 @@
 --
 -- Why the table exists: an account could prove itself with a password and,
 -- optionally, a TOTP code. A passkey replaces both with a credential the device
--- holds and biometry or a PIN unlocks — unphishable by construction, because the
+-- holds and biometry or a PIN unlocks - unphishable by construction, because the
 -- browser refuses to hand it to any origin but the one it was minted for.
 --
 -- The plugin owns every row here, exactly as the `session`/`account`/
@@ -22,7 +22,7 @@
 -- but the column has to allow the shape the library can produce.
 --
 -- One thing this migration does NOT do: give the `users` row a flag. A passkey's
--- existence is the flag — `lib/membership.ts` asks `exists (select 1 from
+-- existence is the flag - `lib/membership.ts` asks `exists (select 1 from
 -- passkey …)` when it decides whether a member satisfies a team's two-factor
 -- mandate. A denormalized boolean would be one more thing to keep true.
 --
