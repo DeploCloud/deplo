@@ -19,14 +19,15 @@ import { TokensList } from "@/components/settings/tokens/tokens-list";
 export const metadata = { title: "Settings · API tokens" };
 
 export default async function TokensPage() {
-  // The page sits under Account, but every token on it belongs to the TEAM, and
-  // `listTokens` is team-wide. Nothing here survives without it.
+  // The page sits under Account and lists every token you minted, whatever team
+  // it acts in, plus the ones that can act in the active team, which is what
+  // `listTokens` needs whole-team reach for. Nothing here survives without it.
   if (!(await reachesWholeTeam()))
     return (
       <OutsideYourAccess
         title="API tokens"
-        description="Tokens that let scripts, CI jobs and other clients drive this team over the API. Each one carries its own permissions."
-        what="The team's API tokens"
+        description="Tokens that let scripts, CI jobs and other clients call the API. Each one carries its own permissions."
+        what="API tokens"
       />
     );
 
@@ -50,7 +51,7 @@ export default async function TokensPage() {
     <div className="space-y-6">
       <PageHeader
         title="API tokens"
-        description="Tokens that let scripts, CI jobs and other clients drive this team over the API. Each one carries its own permissions."
+        description="Tokens that let scripts, CI jobs and other clients call the API. Each one carries its own permissions."
         actions={canManage ? <NewTokenMenu /> : undefined}
       />
 

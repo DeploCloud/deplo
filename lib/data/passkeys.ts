@@ -161,7 +161,7 @@ export async function finishPasskeyRegistration(input: {
       .set({ rpId })
       .where(and(eq(passkeyTable.id, row.id), eq(passkeyTable.userId, user.id)));
   const sessionId = await currentSessionId();
-  if (sessionId) await markSessionAuthMethod(sessionId, "passkey");
+  if (sessionId) await markSessionAuthMethod(sessionId, user.id, "passkey");
   await announce(user.id, user.username, `Added the ${name} passkey`);
   return {
     id: row.id,

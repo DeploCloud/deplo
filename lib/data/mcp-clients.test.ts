@@ -522,23 +522,43 @@ test("another team neither sees nor revokes this team's connection", async () =>
   const { tokenId } = await as(OWNER, () =>
     mintMcpConnection({ clientId: CLIENT, capabilities: ["view"] }),
   );
+  // Another PERSON, in the other team: whoever approved the connection may
+  // always cut their own credential, so "another team" has to be someone else.
   await pg.query(
     `insert into memberships (id, user_id, team_id, role, created_at)
-     values ('mem_owner_b', $1, $2, 'owner', '2026-01-01T00:00:00.000Z')`,
-    [OWNER, TEAM_B],
+     values ('mem_member_b', $1, $2, 'owner', '2026-01-01T00:00:00.000Z')`,
+    [MEMBER, TEAM_B],
   );
   await pg.query(
     `insert into membership_capabilities (membership_id, capability)
-     select 'mem_owner_b', capability from membership_capabilities
+     select 'mem_member_b', capability from membership_capabilities
      where membership_id = $1`,
-    [`mem_${OWNER}`],
+    [`mem_${MEMBER}`],
   );
-  const fromB = await as(OWNER, () => listMcpConnections(), TEAM_B);
+  const fromB = await as(MEMBER, () => listMcpConnections(), TEAM_B);
   assert.deepEqual(fromB, []);
   await assert.rejects(
-    as(OWNER, () => revokeToken(tokenId), TEAM_B),
+    as(MEMBER, () => revokeToken(tokenId), TEAM_B),
     /not found/i,
   );
+});
+
+test("your own connection follows you into your other teams", async () => {
+  const { tokenId } = await as(OWNER, () =>
+    mintMcpConnection({ clientId: CLIENT, capabilities: ["view"] }),
+  );
+  await grantOwnerIn(TEAM_B);
+  // Settings → MCP is a TEAM screen and stays team-scoped. Settings → API tokens
+  // is the person's OWN list, and losing sight of the credential your AI client
+  // is using, with no team switcher on that page, is how it gets abandoned
+  // rather than revoked.
+  assert.deepEqual(await as(OWNER, () => listMcpConnections(), TEAM_B), []);
+  assert.deepEqual(
+    (await as(OWNER, () => listTokens(), TEAM_B)).map((t) => t.id),
+    [tokenId],
+  );
+  await as(OWNER, () => revokeToken(tokenId), TEAM_B);
+  assert.deepEqual(await as(OWNER, () => listTokens()), []);
 });
 
 test("a connection lists every team it was approved for", async () => {

@@ -1,5 +1,7 @@
 import "server-only";
 
+import { cache } from "react";
+
 import { and, eq, exists, or, sql } from "drizzle-orm";
 
 import { getDb } from "./db/client";
@@ -72,8 +74,13 @@ export const holdsAPasskey = (userIdColumn: typeof usersTable.id) => {
   );
 };
 
-/** Whether `userId` holds a passkey that can sign in on this panel. */
-export async function userHasPasskey(userId: string): Promise<boolean> {
+/**
+ * Whether `userId` holds a passkey that can sign in on this panel.
+ *
+ * Request-cached: the dashboard layout asks on every page load (the reminder and
+ * the lock screen both need it) and the Security page asks again.
+ */
+export const userHasPasskey = cache(async (userId: string): Promise<boolean> => {
   const rp = passkeyRelyingParty();
   if (!rp) return false;
   const rows = await getDb()
@@ -84,7 +91,7 @@ export async function userHasPasskey(userId: string): Promise<boolean> {
     )
     .limit(1);
   return rows.length > 0;
-}
+});
 
 /**
  * Whether a passkey may count as this REQUEST's second factor.

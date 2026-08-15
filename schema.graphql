@@ -104,6 +104,9 @@ type ApiToken {
   The team this token is MANAGED from — where it was created. Any team it reaches can revoke it; only this one can change it.
   """
   homeTeamId: ID
+
+  """That team's name, for a list that spans teams."""
+  homeTeamName: String
   id: ID
 
   """
@@ -3007,7 +3010,9 @@ type Query {
   """
   apiContext: JSON
 
-  """All API tokens in the active team."""
+  """
+  Every API token that can act in the active team. A dashboard session also gets the ones it minted in its other teams; a bearer request stays scoped to the team it resolved to.
+  """
   apiTokens: [ApiToken!]
   app(slug: String!): App
 

@@ -52,6 +52,19 @@ test("an unscoped token really is revoked everywhere, and says so", () => {
   assert.match(revokeDescription(input), /Every client using it loses access/);
 });
 
+test("revoking your own token from outside its reach promises it is gone", () => {
+  // The tokens page lists every token you minted, so the active team may be one
+  // the credential never touched, and there `revokeToken` deletes it outright.
+  const input = {
+    kind: "token" as const,
+    teams: [B, C],
+    activeTeamId: A.id,
+    scoped: true,
+  };
+  assert.equal(revokeTitle("CI", input), "Revoke CI?");
+  assert.match(revokeDescription(input), /Every client using it loses access/);
+});
+
 test("joinNames reads like a sentence at every length", () => {
   assert.equal(joinNames([]), "");
   assert.equal(joinNames(["Acme"]), "Acme");

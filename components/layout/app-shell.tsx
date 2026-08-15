@@ -14,6 +14,7 @@ export function AppShell({
   breadcrumb,
   capabilities,
   isAdmin,
+  hasPasskey = false,
   children,
 }: {
   user: PublicUser;
@@ -25,6 +26,8 @@ export function AppShell({
   capabilities: string[];
   /** Instance admin — gates admin-only nav (the Users settings section). */
   isAdmin: boolean;
+  /** Holds a passkey that works here: already a second factor. */
+  hasPasskey?: boolean;
   children: React.ReactNode;
 }) {
   return (
@@ -48,9 +51,13 @@ export function AppShell({
             isAdmin={isAdmin}
           />
           <UpdateBanner />
-          {/* Renders nothing for an account that already has 2FA, and nothing at
-              all once the user has dismissed it for good. */}
-          <TwoFactorReminder enabled={user.twoFactorEnabled} />
+          {/* Renders nothing for an account that already has a second factor -
+              an authenticator app OR a passkey (ADR-0024) - and nothing at all
+              once the user has dismissed it for good. Nagging somebody who has
+              set passkeys up is how a reminder teaches people to ignore it. */}
+          <TwoFactorReminder
+            hasSecondFactor={user.twoFactorEnabled || hasPasskey}
+          />
           <main className="flex-1 px-4 py-6 sm:px-6 lg:px-8">
             {/* Keyed by the active team so switching teams REMOUNTS the page
                 instead of re-rendering it in place. Switching now keeps you on

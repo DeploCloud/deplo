@@ -46,15 +46,22 @@ export function TwoFactorCard({
   /** Named when a team or role policy makes 2FA mandatory: disabling is refused. */
   requiredBy,
   /**
-   * A policy IS in force, and this account's passkey is what satisfies it - so
-   * `requiredBy` is null and turning the app on is optional. Without saying so,
-   * "Off" under a team that mandates two-factor reads as something broken.
+   * Where this account's passkey stands RIGHT NOW, which is not the same
+   * question as whether it owns one:
+   *
+   *  - `none`: no usable passkey. The password really is the only thing.
+   *  - `idle`: there is one, but this session signed in with the password, so it
+   *    is not carrying a second factor and a mandated team is blocked. Saying
+   *    "you are covered" here would be wrong at the exact moment somebody has
+   *    arrived from the lock screen to find out why they are not.
+   *  - `carrying`: this session was opened by a passkey, so the mandate is met
+   *    and an authenticator app is a spare rather than a requirement.
    */
-  satisfiedByPasskey = false,
+  passkeyStanding = "none",
 }: {
   enabled: boolean;
   requiredBy?: string | null;
-  satisfiedByPasskey?: boolean;
+  passkeyStanding?: "none" | "idle" | "carrying";
 }) {
   const router = useRouter();
   const [wizard, setWizard] = React.useState(false);
@@ -136,9 +143,11 @@ export function TwoFactorCard({
               <p className="mt-1 text-sm text-muted-foreground">
                 {enabled
                   ? "Sign-in asks for a code from your authenticator app."
-                  : satisfiedByPasskey
-                    ? "Your passkey is already your second factor. An authenticator app is a spare, not a requirement."
-                    : "Your password is the only thing protecting this account."}
+                  : passkeyStanding === "carrying"
+                    ? "Your passkey is already your second factor. An authenticator app is a spare."
+                    : passkeyStanding === "idle"
+                      ? "Your passkey counts as a second factor, but this session signed in with your password."
+                      : "Your password is the only thing protecting this account."}
               </p>
             </div>
           </div>

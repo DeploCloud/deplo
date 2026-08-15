@@ -66,6 +66,7 @@ export function TokenEditor({
   tree,
   activeTeamId,
   canManage,
+  canEdit = canManage,
   canGrantInstanceAdmin,
   publicUrl,
 }: {
@@ -79,6 +80,12 @@ export function TokenEditor({
   /** Every team, project and app the actor can reach — the scope picker's tree. */
   tree: ScopeTreeTeam[];
   canManage: boolean;
+  /**
+   * Whether the form itself may be changed here. Defaults to `canManage`, and is
+   * false for a token MANAGED in another team: only that team can re-author it,
+   * while revoking stays available to everyone who can see it.
+   */
+  canEdit?: boolean;
   /** Only an instance admin may hand out instance administration. */
   canGrantInstanceAdmin: boolean;
   /** This deplo's public URL, for the copy-paste curl after minting. */
@@ -112,7 +119,7 @@ export function TokenEditor({
     initial.instanceAdmin,
   );
 
-  const readOnly = !canManage;
+  const readOnly = !canEdit;
   const revokeCopy = {
     kind: "token" as const,
     teams: token?.teamsReached ?? [],

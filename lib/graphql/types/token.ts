@@ -61,6 +61,9 @@ export const ApiTokenRef = builder
           "The team this token is MANAGED from — where it was created. Any team " +
           "it reaches can revoke it; only this one can change it.",
       }),
+      homeTeamName: t.exposeString("homeTeamName", {
+        description: "That team's name, for a list that spans teams.",
+      }),
       instanceAdmin: t.exposeBoolean("instanceAdmin", {
         description:
           "The token may administer the whole instance — users, servers and " +
@@ -147,7 +150,10 @@ builder.queryFields((t) => ({
   apiTokens: t.field({
     type: [ApiTokenRef],
     authScopes: { loggedIn: true },
-    description: "All API tokens in the active team.",
+    description:
+      "Every API token that can act in the active team. A dashboard session " +
+      "also gets the ones it minted in its other teams; a bearer request stays " +
+      "scoped to the team it resolved to.",
     resolve: () => listTokens(),
   }),
 }));

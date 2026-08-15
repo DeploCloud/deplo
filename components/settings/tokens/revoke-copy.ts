@@ -29,6 +29,10 @@ export function joinNames(names: string[]): string {
 
 function othersOf({ teams, activeTeamId, scoped }: RevokeCopyInput): string[] {
   if (!scoped) return [];
+  // Revoking from OUTSIDE the credential's reach (your own token, seen from
+  // another team on the tokens page) cuts it outright: there is no per-team
+  // grant to hand back, so it gets the plain "gone" sentence.
+  if (!teams.some((t) => t.id === activeTeamId)) return [];
   return teams.filter((t) => t.id !== activeTeamId).map((t) => t.name);
 }
 

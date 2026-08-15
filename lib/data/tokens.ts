@@ -45,7 +45,11 @@ import { recordActivity } from "./activity";
 import { assertUser, getCurrentUser } from "../auth";
 import { sha256Hex, randomToken } from "../crypto";
 import { ALL_CAPABILITIES, type Capability } from "../types";
-import type { RequestIdentity, TokenScope } from "../auth/request-context";
+import {
+  currentIdentity,
+  type RequestIdentity,
+  type TokenScope,
+} from "../auth/request-context";
 
 /**
  * API tokens — bearer credentials that drive deplo's API from outside the
@@ -95,6 +99,12 @@ export interface ApiTokenDTO {
   instanceAdmin: boolean;
   /** The team this token is MANAGED from — where it was created. */
   homeTeamId: string;
+  /**
+   * That team, named. The list is a personal one and spans teams, so every row
+   * has to say where its credential lives: otherwise two tokens called "CI"
+   * are indistinguishable.
+   */
+  homeTeamName: string;
   /** The member it acts as. Its power is clamped to theirs, so name them. */
   createdByUsername: string | null;
   /**
@@ -250,23 +260,45 @@ export async function teamsReachedByTokens(
   return out;
 }
 
+/**
+ * The tokens Settings → API tokens shows: every one YOU minted, whatever team it
+ * acts in, plus every token that can act in the ACTIVE team.
+ *
+ * The personal half is not a nicety. That page is an account page (the topbar
+ * hides the team switcher on it, `NON_TEAM_SETTINGS_PREFIXES`), so a token
+ * filtered out by the active team is one you cannot reach from there at all,
+ * which is how someone loses track of the credential their AI client is using.
+ * The team half stays because a team that cannot SEE a credential operating
+ * inside it cannot revoke it either.
+ *
+ * A BEARER request is deliberately left team-scoped: reading the person's other
+ * teams is a personal-session action (see `requirePersonalSession`), and a token
+ * is a principal of its own, never a stand-in for the member who minted it.
+ */
 export async function listTokens(): Promise<ApiTokenDTO[]> {
   const teamId = await requireActiveTeamId();
   // A narrowed token must not enumerate the team's OTHER credentials: its
   // capability clamp already stops it minting one, this stops it reading them.
   await requireTeamWide("API tokens");
   const reaching = await tokenIdsReaching(teamId);
-  if (reaching.size === 0) return [];
+  const me = currentIdentity()?.token ? null : await getCurrentUser();
+  const wanted = [
+    ...(reaching.size > 0 ? [inArray(apiTokens.id, [...reaching])] : []),
+    ...(me ? [eq(apiTokens.userId, me.id)] : []),
+  ];
+  if (wanted.length === 0) return [];
   const rows = await getDb()
     .select({
       ...DTO_COLUMNS,
+      homeTeamName: teamsTable.name,
       createdByUsername: usersTable.username,
       oauthClientName: oauthClient.name,
     })
     .from(apiTokens)
+    .leftJoin(teamsTable, eq(teamsTable.id, apiTokens.teamId))
     .leftJoin(usersTable, eq(usersTable.id, apiTokens.userId))
     .leftJoin(oauthClient, eq(oauthClient.clientId, apiTokens.oauthClientId))
-    .where(inArray(apiTokens.id, [...reaching]))
+    .where(or(...wanted))
     .orderBy(desc(apiTokens.createdAt));
   if (rows.length === 0) return [];
 
@@ -317,6 +349,7 @@ export async function listTokens(): Promise<ApiTokenDTO[]> {
 
   return rows.map((r) => ({
     ...r,
+    homeTeamName: r.homeTeamName ?? "",
     // Chosen by the app at registration: free text, any length, shown in a badge.
     oauthClientName: r.oauthClientName?.slice(0, 80) ?? null,
     capabilities: inCatalogOrder(
@@ -704,6 +737,8 @@ export async function createToken(
       teamsReached: (await teamsReachedByTokens([id])).get(id) ?? [],
       instanceAdmin,
       homeTeamId: teamId,
+      homeTeamName:
+        (await teamsForUser(userId)).find((t) => t.id === teamId)?.name ?? "",
       createdByUsername: (await getCurrentUser())?.username ?? null,
       // Set by `mintMcpConnection` right after this, in the same flow, when the
       // mint came from an OAuth consent rather than from the tokens page.
@@ -751,8 +786,13 @@ export async function updateToken(
   )[0];
   if (!existing) throw new Error("Token not found");
   if (existing.homeTeamId !== teamId) {
-    // Don't leak that it exists to a team it can't reach at all.
-    if (!(await tokenIdsReaching(teamId)).has(input.id))
+    // Don't leak that it exists to a team it can't reach at all, unless it is
+    // the caller's OWN token, which their tokens page lists from every team, so
+    // "not found" would be a lie about a row they are looking at.
+    if (
+      existing.createdByUserId !== userId &&
+      !(await tokenIdsReaching(teamId)).has(input.id)
+    )
       throw new Error("Token not found");
     throw new Error(
       "This token is managed in the team it was created in. You can revoke it here, but not change it.",
@@ -979,6 +1019,10 @@ async function identityForTokenRow(
  * the LAST team lets go - at which point the two behaviours coincide, which is
  * why a single-team token still revokes exactly as it always did.
  *
+ * The one place that is NOT per-team is the creator revoking their own token
+ * from a team it never reached - their tokens page lists it there, so the button
+ * has to work there, and what it means is "this credential of mine is done".
+ *
  * A `scoped = false` token is the one case with nothing to detach: its reach is
  * "every team the creator belongs to", resolved live at authentication rather
  * than stored, so there are no rows here to remove and no way to say "all of
@@ -986,11 +1030,7 @@ async function identityForTokenRow(
  * revoked outright, and both dialogs say so.
  */
 export async function revokeToken(id: string): Promise<void> {
-  const { teamId } = await requireCapability("manage_tokens");
-  // Any team the token can act in may cut it off — that is the lever a team has
-  // over a credential someone else minted into it.
-  if (!(await tokenIdsReaching(teamId)).has(id))
-    throw new Error("Token not found");
+  const { teamId, userId } = await requireCapability("manage_tokens");
 
   const row = (
     await getDb()
@@ -1007,13 +1047,26 @@ export async function revokeToken(id: string): Promise<void> {
   )[0];
   if (!row) throw new Error("Token not found");
 
+  // Any team the token can act in may cut it off: that is the lever a team has
+  // over a credential someone else minted into it. Its CREATOR may cut it from
+  // ANY team: their tokens page lists every token they minted, and a row you can
+  // see but not revoke is a dead end, not a safeguard. Revoking from outside the
+  // token's reach is the whole credential going, not a per-team detach: there
+  // is no grant here to hand back.
+  const reachesHere = (await tokenIdsReaching(teamId)).has(id);
+  if (!reachesHere && row.userId !== userId)
+    throw new Error("Token not found");
+
   // Read the reach BEFORE opening any transaction: these helpers query on their
   // own connection and pglite deadlocks if that happens inside one.
   const remaining = ((await teamsReachedByTokens([id])).get(id) ?? []).filter(
     (t) => t.id !== teamId,
   );
+  // The trail belongs to the team that hosted the credential, which is not
+  // necessarily the one the owner happened to be looking at.
+  const trailTeamId = reachesHere ? teamId : row.homeTeamId;
 
-  if (row.scoped && remaining.length > 0) {
+  if (reachesHere && row.scoped && remaining.length > 0) {
     await detachTokenFromTeam(id, teamId, row.homeTeamId, remaining[0].id);
     await recordActivity(
       "member",
@@ -1044,7 +1097,7 @@ export async function revokeToken(id: string): Promise<void> {
     `Revoked the ${gone[0].name} API token`,
     await actorUsername(),
     null,
-    teamId,
+    trailTeamId,
     "token_revoked",
   );
 }

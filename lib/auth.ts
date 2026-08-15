@@ -3,7 +3,7 @@ import "server-only";
 import { cache } from "react";
 import { cookies, headers } from "next/headers";
 import { redirect } from "next/navigation";
-import { and, count, eq, inArray, or, sql } from "drizzle-orm";
+import { and, count, desc, eq, inArray, or, sql } from "drizzle-orm";
 import { getDb, type DbTx } from "./db/client";
 import {
   instanceSettings as instanceSettingsTable,
@@ -751,22 +751,51 @@ export async function passkeyChallenge(): Promise<unknown> {
  * somebody who signed in with their password and needs to add a second factor
  * from the device in front of them.
  *
+ * Scoped by OWNER as well as by id, the house rule for any row-targeting write:
+ * both callers already know whose session it is, and an id belonging to somebody
+ * else must hit zero rows rather than hand another account a second factor it
+ * never presented. Nothing passes a caller-supplied id today - this is what
+ * keeps that true the day something does.
+ *
  * Best-effort. A stamp that fails leaves the session looking like a password
  * one, which is the safe direction: the person is asked for a second factor
  * rather than credited with one they did not present.
  */
 export async function markSessionAuthMethod(
   sessionId: string,
+  userId: string,
   method: "passkey",
 ): Promise<void> {
   try {
     await getDb()
       .update(sessionTable)
       .set({ authMethod: method })
-      .where(eq(sessionTable.id, sessionId));
+      .where(
+        and(eq(sessionTable.id, sessionId), eq(sessionTable.userId, userId)),
+      );
   } catch {
     /* see the docblock */
   }
+}
+
+/**
+ * The newest session on an account, for the one caller that has just revoked
+ * every other one and needs to find the replacement it minted.
+ *
+ * Named for that caller and nobody else: "newest" is only unambiguous because
+ * `changePassword` deleted the rest microseconds ago. Anywhere else, an account
+ * has several sessions and this would be a guess.
+ */
+export async function replacementSessionIdFor(
+  userId: string,
+): Promise<string | null> {
+  const rows = await getDb()
+    .select({ id: sessionTable.id })
+    .from(sessionTable)
+    .where(eq(sessionTable.userId, userId))
+    .orderBy(desc(sessionTable.createdAt))
+    .limit(1);
+  return rows[0]?.id ?? null;
 }
 
 /**
@@ -815,7 +844,7 @@ export async function verifyPasskeyLogin(
     });
     userId = res.user.id;
     // The session exists and its cookie is written; this is what says HOW.
-    await markSessionAuthMethod(res.session.id, "passkey");
+    await markSessionAuthMethod(res.session.id, res.user.id, "passkey");
   } catch (e) {
     // The plugin's own copy is the useful one here ("Passkey not found",
     // "Authentication failed", or the user-verification refusal deplo adds) -

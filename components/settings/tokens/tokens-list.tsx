@@ -32,10 +32,14 @@ import {
 import type { ApiTokenDTO } from "@/lib/data/tokens";
 
 /**
- * The team's API tokens. A LIST, not a master-detail rail: nobody compares two
- * tokens side by side, and what you actually do here is scan metadata — how much
- * power, over what, last used when. That is columns. It also leaves the editor
- * the full page width, which is what forty permission checkboxes need.
+ * Your API tokens, and the ones that can act in the active team. A LIST, not a
+ * master-detail rail: nobody compares two tokens side by side, and what you
+ * actually do here is scan metadata — how much power, over what, last used when.
+ * That is columns. It also leaves the editor the full page width, which is what
+ * forty permission checkboxes need.
+ *
+ * The list spans teams, so it carries a Team column: without it two credentials
+ * called "CI" are the same row twice.
  */
 export function TokensList({
   tokens,
@@ -65,6 +69,7 @@ export function TokensList({
         <TableHeader>
           <TableRow>
             <TableHead>Name</TableHead>
+            <TableHead>Team</TableHead>
             <TableHead>Permissions</TableHead>
             <TableHead>Access</TableHead>
             <TableHead>Last used</TableHead>
@@ -94,6 +99,9 @@ export function TokensList({
                   <p className="mt-1 font-mono text-xs text-muted-foreground">
                     {`${t.prefix}${"•".repeat(8)}`}
                   </p>
+                </TableCell>
+                <TableCell className="text-muted-foreground">
+                  {t.homeTeamName || "—"}
                 </TableCell>
                 <TableCell>
                   <span className="flex flex-wrap items-center gap-1.5">

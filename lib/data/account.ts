@@ -5,6 +5,9 @@ import { getDb } from "../db/client";
 import { users as usersTable } from "../db/schema/control-plane";
 import {
   assertUser,
+  currentSessionAuthMethod,
+  markSessionAuthMethod,
+  replacementSessionIdFor,
   revokeAllSessions,
   setUserPassword,
   startSessionFor,
@@ -80,6 +83,13 @@ export async function changePassword(input: {
   // locally, without a round trip to an outside API that changes nothing.
   await assertPasswordNotPwned(input.newPassword);
   await setUserPassword(user.id, input.newPassword);
+  // Read BEFORE the revoke: the replacement session below is minted from a
+  // password, so without carrying this over, changing your password would
+  // silently demote a passkey session to a password one - and an account whose
+  // team requires two factors would meet the lock screen for no reason it could
+  // see. Changing a password does not undo the ceremony that opened the browser
+  // session, so the standing travels with it (ADR-0024 §3).
+  const wasPasskeySession = (await currentSessionAuthMethod()) === "passkey";
   // Revoke every outstanding session: a changed password must log out anyone
   // holding a stolen/old cookie. That includes the initiator's own, so sign them
   // straight back in with the password they just chose.
@@ -90,6 +100,10 @@ export async function changePassword(input: {
   // `deplo_team` cookie survives.
   try {
     await startSessionFor(user.email, input.newPassword);
+    if (wasPasskeySession) {
+      const fresh = await replacementSessionIdFor(user.id);
+      if (fresh) await markSessionAuthMethod(fresh, user.id, "passkey");
+    }
   } catch {
     /* no request scope / cookie write unavailable — logged out is fine */
   }

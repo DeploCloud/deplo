@@ -7,6 +7,7 @@ import {
   TwoFactorRequiredError,
 } from "@/lib/membership";
 import { getBreadcrumbGraph } from "@/lib/data/breadcrumb";
+import { userHasPasskey } from "@/lib/passkey-policy";
 import { AppShell } from "@/components/layout/app-shell";
 import { TwoFactorLockScreen } from "@/components/settings/security/two-factor-lock-screen";
 
@@ -49,6 +50,10 @@ export default async function DashboardLayout({
       return (
         <TwoFactorLockScreen
           reason={e.reason}
+          // Owning a usable passkey and being blocked anyway means one thing:
+          // this session signed in with the password. The screen says so rather
+          // than suggesting they add what they already have.
+          hasPasskey={await userHasPasskey(user.id)}
           otherTeams={teams
             .filter((t) => t.id !== e.teamId)
             .map((t) => ({ id: t.id, name: t.name }))}
@@ -65,6 +70,7 @@ export default async function DashboardLayout({
       breadcrumb={breadcrumb}
       capabilities={capabilities}
       isAdmin={isAdmin}
+      hasPasskey={await userHasPasskey(user.id)}
     >
       {children}
     </AppShell>

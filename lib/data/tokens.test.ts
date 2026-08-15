@@ -493,6 +493,38 @@ test("a cross-team id hits nothing, and says so", async () => {
   );
 });
 
+test("listTokens shows the tokens you minted in your OTHER teams", async () => {
+  await alsoMemberOfB();
+  const id = await asUser1(
+    async () =>
+      (await createToken({ name: "CI", teamIds: [TEAM_A] })).token.id,
+  );
+  // Settings → API tokens is an account page with no team switcher on it, so a
+  // token the active team filters out is one you cannot reach at all.
+  await asUser1InB(async () => {
+    const rows = await listTokens();
+    assert.deepEqual(
+      rows.map((r) => r.id),
+      [id],
+    );
+    assert.equal(rows[0]!.homeTeamName, "alpha", "every row names its team");
+  });
+});
+
+test("you can revoke your own token from a team it never reached", async () => {
+  await alsoMemberOfB();
+  const id = await asUser1(
+    async () =>
+      (await createToken({ name: "CI", teamIds: [TEAM_A] })).token.id,
+  );
+  await asUser1InB(() => revokeToken(id));
+  assert.equal(
+    (await db.select().from(apiTokens)).length,
+    0,
+    "revoking your own credential from outside its reach cuts the whole thing",
+  );
+});
+
 test("listTokens is scoped to the active team", async () => {
   await pg.exec(TRUNCATE);
   await seedIdentity(db, {

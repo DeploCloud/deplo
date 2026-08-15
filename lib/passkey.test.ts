@@ -38,6 +38,7 @@ import {
   startPasskeyRegistration,
 } from "./data/passkeys";
 import { resetUserPasskeys } from "./data/members";
+import { changePassword } from "./data/account";
 import { seedIdentity, TEAM_A, TEAM_B, USER_1 } from "./data/identity-test-helpers";
 import { setStoredPublicBaseUrl } from "./public-url";
 import { ALL_CAPABILITIES } from "./types";
@@ -134,7 +135,7 @@ const asSession = <T>(userId: string, fn: () => Promise<T>): Promise<T> =>
 
 /** Stamp the newest session the way a passkey sign-in would. */
 async function markCurrentSession(method: "passkey"): Promise<void> {
-  await markSessionAuthMethod(await newestSession(USER_1), method);
+  await markSessionAuthMethod(await newestSession(USER_1), USER_1, method);
 }
 
 /**
@@ -429,6 +430,131 @@ test("the challenge is refused outright when this panel cannot have passkeys", a
   } finally {
     setStoredPublicBaseUrl(PANEL);
   }
+});
+
+/* ------------------------------------------------------------------ */
+/* 10b. The stamp itself                                               */
+/* ------------------------------------------------------------------ */
+
+test("a session refresh does not wash the stamp off", async () => {
+  // Better Auth extends a session in place every `updateAge` (15 minutes here)
+  // by UPDATEing `expires_at`/`updated_at` on the same row. If that ever became
+  // a rotation - a new row, a new id - a passkey session would silently demote
+  // itself mid-afternoon and the person would meet the lock screen for no reason
+  // they could see. This drives the exact call the refresh path makes.
+  await requireForTeam();
+  await seedPasskey(USER_1);
+  await login(EMAIL_1, PASSWORD);
+  await markCurrentSession("passkey");
+
+  const id = await newestSession(USER_1);
+  const [row] = await db
+    .select({ token: sessionTable.token })
+    .from(sessionTable)
+    .where(eq(sessionTable.id, id));
+  await (await requireAuth().$context).internalAdapter.updateSession(row!.token, {
+    expiresAt: new Date(Date.now() + 7 * 24 * 3600 * 1000),
+    updatedAt: new Date(),
+  });
+
+  assert.equal(await newestSession(USER_1), id, "the row is the same row");
+  await asSession(USER_1, async () => {
+    assert.equal(await requireActiveTeamId(), TEAM_A);
+  });
+});
+
+test("the stamp cannot be put on somebody else's session", async () => {
+  await login(EMAIL_1, PASSWORD);
+  const victim = await newestSession(USER_1);
+  // A caller that knows an id but not whose it is must change nothing. Nothing
+  // passes a caller-supplied id today; this is what keeps that safe if one does.
+  await markSessionAuthMethod(victim, USER_2, "passkey");
+  const [row] = await db
+    .select({ method: sessionTable.authMethod })
+    .from(sessionTable)
+    .where(eq(sessionTable.id, victim));
+  assert.equal(row?.method, null, "the owner mismatch hit zero rows");
+});
+
+test("stamping a session that no longer exists is a no-op, not a crash", async () => {
+  await markSessionAuthMethod("ses_gone", USER_1, "passkey");
+});
+
+test("changing the password keeps a passkey session's standing", async () => {
+  // `changePassword` revokes every session and mints a replacement from the new
+  // password. Without carrying the standing across, a passkey session would
+  // demote itself the moment somebody rotated their password, and an account
+  // under a mandate would meet the lock screen with nothing to explain it.
+  // Changing a password does not undo the ceremony that opened the browser.
+  await requireForTeam();
+  await seedPasskey(USER_1);
+  await login(EMAIL_1, PASSWORD);
+  await markCurrentSession("passkey");
+
+  await asSession(USER_1, () =>
+    changePassword({ currentPassword: PASSWORD, newPassword: "Nq7-Zx4wPl2rTv" }),
+  );
+
+  const [row] = await db
+    .select({ method: sessionTable.authMethod })
+    .from(sessionTable)
+    .where(eq(sessionTable.userId, USER_1));
+  assert.equal(row?.method, "passkey", "the replacement session carries it");
+  await asSession(USER_1, async () => {
+    assert.equal(await requireActiveTeamId(), TEAM_A);
+  });
+});
+
+test("changing the password does not INVENT a standing", async () => {
+  await requireForTeam();
+  await seedPasskey(USER_1);
+  await login(EMAIL_1, PASSWORD); // password session, never stamped
+
+  await asSession(USER_1, () =>
+    changePassword({ currentPassword: PASSWORD, newPassword: "Nq7-Zx4wPl2rTv" }),
+  );
+
+  const [row] = await db
+    .select({ method: sessionTable.authMethod })
+    .from(sessionTable)
+    .where(eq(sessionTable.userId, USER_1));
+  assert.equal(row?.method, null, "a password session stays a password session");
+});
+
+test("signing out and back in with the password loses the standing", async () => {
+  await requireForTeam();
+  await seedPasskey(USER_1);
+  await login(EMAIL_1, PASSWORD);
+  await markCurrentSession("passkey");
+  await asSession(USER_1, async () => {
+    assert.equal(await requireActiveTeamId(), TEAM_A, "fixture");
+  });
+
+  await pg.exec(`delete from session;`);
+  await login(EMAIL_1, PASSWORD);
+  await asSession(USER_1, () =>
+    assert.rejects(
+      () => requireActiveTeamId(),
+      (e: unknown) => e instanceof TwoFactorRequiredError,
+      "a fresh password session starts with nothing to its name",
+    ),
+  );
+});
+
+test("deleting the passkey ends the standing of a session that used it", async () => {
+  await requireForTeam();
+  await seedPasskey(USER_1);
+  await login(EMAIL_1, PASSWORD);
+  await markCurrentSession("passkey");
+  await db.delete(passkeyTable).where(eq(passkeyTable.userId, USER_1));
+
+  await asSession(USER_1, () =>
+    assert.rejects(
+      () => requireActiveTeamId(),
+      (e: unknown) => e instanceof TwoFactorRequiredError,
+      "both halves are required, and the credential is one of them",
+    ),
+  );
 });
 
 /* ------------------------------------------------------------------ */

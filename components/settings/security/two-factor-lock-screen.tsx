@@ -26,13 +26,21 @@ import { gqlAction } from "@/lib/graphql-client";
  *
  * Three ways out, all of them honest: enrol (the wizard, which is the point),
  * switch to a team without the policy, or sign out.
+ *
+ * A FOURTH for somebody who already holds a passkey and simply signed in with
+ * their password (ADR-0024 §3): sign in again with the passkey. Telling that
+ * person to "add a passkey" would be advice they have already taken, at the one
+ * moment they most need to know why it is not counting.
  */
 export function TwoFactorLockScreen({
   reason,
   otherTeams,
+  hasPasskey = false,
 }: {
   reason: string;
   otherTeams: { id: string; name: string }[];
+  /** This account holds a passkey that works here, but did not sign in with it. */
+  hasPasskey?: boolean;
 }) {
   const router = useRouter();
   const [wizard, setWizard] = React.useState(false);
@@ -72,14 +80,20 @@ export function TwoFactorLockScreen({
               password and a prompt from the device, which is the Security page's
               job. */}
           <p className="text-center text-sm text-muted-foreground">
-            Or{" "}
-            <Link
-              href="/settings/security"
-              className="underline underline-offset-4 hover:text-foreground"
-            >
-              add a passkey
-            </Link>{" "}
-            - that counts too.
+            {hasPasskey ? (
+              <>Or sign out and sign back in with your passkey.</>
+            ) : (
+              <>
+                Or{" "}
+                <Link
+                  href="/settings/security"
+                  className="underline underline-offset-4 hover:text-foreground"
+                >
+                  add a passkey
+                </Link>{" "}
+                - that counts too.
+              </>
+            )}
           </p>
 
           {otherTeams.length > 0 && (

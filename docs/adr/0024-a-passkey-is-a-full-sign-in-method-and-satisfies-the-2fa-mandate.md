@@ -79,6 +79,20 @@ Three shapes, all deliberate:
 
 NULL `auth_method` is a password session, and so is a session from before the column existed.
 
+Two consequences that are easy to get wrong in either direction:
+
+- **Changing a password carries the standing over.** `changePassword` revokes every session and
+  mints a replacement from the new password; without carrying it, rotating a password would demote
+  a passkey session and drop the person on the lock screen with nothing to explain it. Changing a
+  password does not undo the ceremony that opened the browser. It carries only what was already
+  there - a password session stays a password session.
+- **The UI has to describe the session, not the account.** "Owns a passkey" and "signed in with
+  one" are different answers, and the Security card, the lock screen and the two-factor reminder
+  each need a different one: the card's Turn-off button follows the ACCOUNT (which is what the
+  server checks), its copy follows the SESSION, the lock screen tells somebody who already holds a
+  passkey to sign in with it rather than to add one, and the reminder counts a passkey as a second
+  factor so it stops nagging people who have set them up.
+
 ### 4. rpID is the panel URL, and nothing else
 
 `passkeyRelyingParty()` (`lib/public-url.ts`) derives the rpID and origin from `publicBaseUrl()`,

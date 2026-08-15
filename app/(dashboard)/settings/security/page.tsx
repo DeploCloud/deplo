@@ -1,6 +1,9 @@
 import { getCurrentUser } from "@/lib/auth";
 import { twoFactorMandateForCurrentUser } from "@/lib/membership";
-import { userHasPasskey } from "@/lib/passkey-policy";
+import {
+  passkeyCountsForThisRequest,
+  userHasPasskey,
+} from "@/lib/passkey-policy";
 import { passkeyRelyingParty, publicBaseUrl } from "@/lib/public-url";
 import { listMySessions } from "@/lib/data/sessions";
 import { listMyPasskeys } from "@/lib/data/passkeys";
@@ -24,11 +27,17 @@ export default async function SettingsSecurityPage() {
     listMySessions(),
     listMyPasskeys(),
   ]);
-  // A passkey satisfies the same mandate (ADR-0024), so it is what makes turning
-  // the authenticator app off allowed under a policy. Resolved here rather than
-  // inside `twoFactorMandateForCurrentUser`, which answers a different question
-  // ("which policy is in force") that other callers still need answered.
+  // Two questions, and the card needs both (ADR-0024 §3). Owning a usable
+  // passkey is what makes turning the authenticator app OFF allowed - the server
+  // asks exactly that, so the button must agree with it. Whether the passkey is
+  // carrying THIS session is what the copy has to describe, because a password
+  // session is blocked in a mandated team however many passkeys the account owns.
   const hasPasskey = user ? await userHasPasskey(user.id) : false;
+  const passkeyStanding = !hasPasskey
+    ? ("none" as const)
+    : (await passkeyCountsForThisRequest())
+      ? ("carrying" as const)
+      : ("idle" as const);
   const rp = passkeyRelyingParty();
 
   return (
@@ -46,7 +55,7 @@ export default async function SettingsSecurityPage() {
           <TwoFactorCard
             enabled={user.twoFactorEnabled}
             requiredBy={hasPasskey ? null : requiredBy}
-            satisfiedByPasskey={hasPasskey && requiredBy !== null}
+            passkeyStanding={passkeyStanding}
           />
           <PasskeysCard
             passkeys={passkeys}

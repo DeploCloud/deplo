@@ -23,9 +23,11 @@ import { Checkbox } from "@/components/ui/checkbox";
  * setting to migrate, back up, or explain. localStorage is exactly the right
  * lifetime for it.
  *
- * The one hard rule: it never appears for an account that already has 2FA. The
- * caller passes that in from the server-rendered viewer, so there is no window
- * where a compliant user gets asked anyway.
+ * The one hard rule: it never appears for an account that already has a second
+ * factor - an authenticator app OR a passkey (ADR-0024). The caller passes that
+ * in from the server-rendered viewer, so there is no window where a compliant
+ * user gets asked anyway, and somebody who set passkeys up is never told to go
+ * and set up the thing they already have.
  */
 const KEY = "deplo:2fa-reminder";
 const SNOOZE_MS = 7 * 24 * 60 * 60 * 1000;
@@ -52,13 +54,17 @@ function write(value: "off" | number): void {
   }
 }
 
-export function TwoFactorReminder({ enabled }: { enabled: boolean }) {
+export function TwoFactorReminder({
+  hasSecondFactor,
+}: {
+  hasSecondFactor: boolean;
+}) {
   const router = useRouter();
   const [open, setOpen] = React.useState(false);
   const [never, setNever] = React.useState(false);
 
   React.useEffect(() => {
-    if (enabled) return;
+    if (hasSecondFactor) return;
     // Read in an effect, not during render: localStorage does not exist on the
     // server, and deciding during hydration would mismatch.
     const state = readState();
@@ -68,9 +74,9 @@ export function TwoFactorReminder({ enabled }: { enabled: boolean }) {
     // the user actually navigated for.
     const t = setTimeout(() => setOpen(true), 1500);
     return () => clearTimeout(t);
-  }, [enabled]);
+  }, [hasSecondFactor]);
 
-  if (enabled) return null;
+  if (hasSecondFactor) return null;
 
   function dismiss() {
     write(never ? "off" : Date.now() + SNOOZE_MS);
