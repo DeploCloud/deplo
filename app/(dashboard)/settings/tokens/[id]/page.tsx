@@ -6,6 +6,7 @@ import {
   isInstanceAdmin,
   requireActiveTeamId,
 } from "@/lib/membership";
+import { requireUser } from "@/lib/auth";
 import { getToken, listScopeTree } from "@/lib/data/tokens";
 
 import { PageHeader } from "@/components/shared/page-header";
@@ -25,9 +26,10 @@ export default async function TokenPage(
   props: PageProps<"/settings/tokens/[id]">,
 ) {
   const { id } = await props.params;
-  const [token, canManage, canGrantInstanceAdmin, tree, activeTeamId] =
+  const [token, user, canManage, canGrantInstanceAdmin, tree, activeTeamId] =
     await Promise.all([
       getToken(id),
+      requireUser(),
       hasCapability("manage_tokens"),
       isInstanceAdmin(),
       listScopeTree(),
@@ -36,10 +38,13 @@ export default async function TokenPage(
   // Someone else's token, in a team you're not in, resolves to nothing here -
   // exactly as it does in the data layer. There is no id to guess your way into.
   if (!token) notFound();
-  // Your own token, opened from another team: it is REVOKABLE here but not
-  // editable, because re-authoring it is bounded by what you may do in the team
-  // it acts in (`updateToken`). Say so instead of failing on Save.
-  const managedHere = token.homeTeamId === activeTeamId;
+  // SOMEONE ELSE's token is editable only from the team it was created in:
+  // re-authoring it is bounded by what you may do there (`updateToken`). Say so
+  // instead of failing on Save. Your own follows you across teams - it was
+  // minted on your account, not inside one of them.
+  const editableHere =
+    token.createdByUserId === user.id || token.homeTeamId === activeTeamId;
+  const canEdit = canManage && editableHere;
 
   return (
     <div className="space-y-6">
@@ -67,20 +72,15 @@ export default async function TokenPage(
           }
         />
       </div>
-      {token.oauthClientName && managedHere ? (
+      {token.oauthClientName ? (
         <p className="rounded-lg border border-border bg-muted/40 p-3 text-sm text-muted-foreground">
-          This token was created by connecting {token.oauthClientName}. Change
-          what it can do under{" "}
-          <Link
-            href="/settings/mcp"
-            className="underline underline-offset-4 hover:text-foreground"
-          >
-            Settings → MCP Server
-          </Link>
-          .
+          Created by connecting {token.oauthClientName}.{" "}
+          {canEdit
+            ? "Changes take effect on its next call, without connecting it again."
+            : "It is also listed under Settings → MCP Server."}
         </p>
       ) : null}
-      {!managedHere ? (
+      {!editableHere ? (
         <p className="rounded-lg border border-border bg-muted/40 p-3 text-sm text-muted-foreground">
           This token is managed in {token.homeTeamName || "another team"}. You
           can revoke it here, but not change what it does.
@@ -92,12 +92,12 @@ export default async function TokenPage(
         tree={tree}
         activeTeamId={activeTeamId}
         canManage={canManage}
-        // A connection's permissions are chosen on the consent screen and
-        // changed by connecting again, so this form is read-only for one: two
-        // editors over one credential is how the two drift apart. Same for a
-        // token managed in another team. Revoking stays available in both
-        // cases: it is the lever that must never be a dead end.
-        canEdit={canManage && !token.oauthClientName && managedHere}
+        // An OAuth connection edits here like any other token: approving the
+        // consent screen mints an ordinary row and re-approving DELETES it for a
+        // fresh one, so there is never a second copy of the permissions to drift
+        // from this one. Read-only only for a token somebody else manages in
+        // another team, where revoking stays the lever that is never a dead end.
+        canEdit={canEdit}
         canGrantInstanceAdmin={canGrantInstanceAdmin}
         publicUrl={await instancePublicBaseUrl()}
       />

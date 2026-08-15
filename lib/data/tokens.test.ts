@@ -680,3 +680,47 @@ test("the creator editing their own token is untouched by the cross-team bound",
     "the clamp against the creator is what bounds it in team B",
   );
 });
+
+test("the creator edits their own token from any team, not only the one it was minted in", async () => {
+  await pg.exec(TRUNCATE);
+  await seedIdentity(db, {
+    users: [{ id: "u_creator", teamId: TEAM_A, role: "owner" }],
+  });
+  // Everything in A, a narrower set in B: the multi-team shape that used to be
+  // unsaveable from B (wrong home team) and from A (the ceiling was the team you
+  // stood in, so `delete_apps` would have been refused had they stood in B).
+  await seedMembership("u_creator", TEAM_B, [
+    "view",
+    "manage_tokens",
+    "deploy_apps",
+  ]);
+
+  const tokenId = await runWithIdentity(
+    { userId: "u_creator", teamId: TEAM_A },
+    async () =>
+      (
+        await createToken({
+          name: "agent",
+          capabilities: ["view", "delete_apps", "deploy_apps"],
+          teamIds: [TEAM_A, TEAM_B],
+        })
+      ).token.id,
+  );
+
+  await runWithIdentity({ userId: "u_creator", teamId: TEAM_B }, () =>
+    updateToken({
+      id: tokenId,
+      name: "agent renamed",
+      capabilities: ["view", "delete_apps", "deploy_apps"],
+      teamIds: [TEAM_A, TEAM_B],
+    }),
+  );
+
+  const row = (
+    await db.select().from(apiTokens).where(eq(apiTokens.id, tokenId))
+  )[0];
+  // Not merely "it didn't throw": the UPDATE is scoped by the token's home team,
+  // and scoping it by the ACTING team instead matches zero rows in silence.
+  assert.equal(row?.name, "agent renamed");
+  assert.equal(row?.teamId, TEAM_A, "the home team stays where it was minted");
+});

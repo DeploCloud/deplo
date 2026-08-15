@@ -139,7 +139,7 @@ export function TokensList({
                       </Badge>
                     )}
                     {t.oauthClientName && (
-                      <SimpleTooltip content="Created by connecting this app over OAuth. Manage it under Settings → MCP Server.">
+                      <SimpleTooltip content="Created by connecting this app over OAuth. It is also listed under Settings → MCP Server.">
                         {/* The name is whatever the app called itself at
                             registration — free text, any length. Bounded here so
                             a 200-character one cannot stretch the row. */}

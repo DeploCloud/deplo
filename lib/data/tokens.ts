@@ -44,7 +44,7 @@ import { expandFolders } from "./node-scope";
 import { recordActivity } from "./activity";
 import { assertUser, getCurrentUser } from "../auth";
 import { sha256Hex, randomToken } from "../crypto";
-import { ALL_CAPABILITIES, type Capability } from "../types";
+import { ALL_CAPABILITIES, type Capability, type Membership } from "../types";
 import {
   currentIdentity,
   type RequestIdentity,
@@ -108,9 +108,15 @@ export interface ApiTokenDTO {
   /** The member it acts as. Its power is clamped to theirs, so name them. */
   createdByUsername: string | null;
   /**
+   * That member's id. A token is minted on a PERSON's account and can reach
+   * several teams, so its creator manages it from any of them — this is what a
+   * screen asks to know whether it is looking at its own credential.
+   */
+  createdByUserId: string;
+  /**
    * The AI client this token was minted for, when it came from approving an
-   * OAuth consent rather than from the tokens page. Non-null means the row is
-   * managed under Settings → MCP and is not hand-editable — one list still
+   * OAuth consent rather than from the tokens page. It is an ordinary token
+   * either way, editable and revokable in the same places — one list still
    * answers "who can act in this team", which is why it is projected here and
    * not kept in a separate world.
    */
@@ -127,6 +133,7 @@ const DTO_COLUMNS = {
   scoped: apiTokens.scoped,
   instanceAdmin: apiTokens.instanceAdmin,
   homeTeamId: apiTokens.teamId,
+  createdByUserId: apiTokens.userId,
   lastUsedAt: apiTokens.lastUsedAt,
   createdAt: apiTokens.createdAt,
 } as const;
@@ -740,6 +747,7 @@ export async function createToken(
       homeTeamName:
         (await teamsForUser(userId)).find((t) => t.id === teamId)?.name ?? "",
       createdByUsername: (await getCurrentUser())?.username ?? null,
+      createdByUserId: userId,
       // Set by `mintMcpConnection` right after this, in the same flow, when the
       // mint came from an OAuth consent rather than from the tokens page.
       oauthClientName: null,
@@ -755,10 +763,20 @@ export async function createToken(
  * secret, webhook and client config that carries it — and a tightening that
  * costs a rotation is a tightening nobody performs.
  *
- * Editable only from the team it was created in: a token can reach several
- * teams, and re-authoring one from a team that merely happens to be in its scope
- * would let that team's admin quietly cut another team's automation. Any team it
- * reaches can still REVOKE it, which is the lever that matters.
+ * Its CREATOR edits it from any team. A token is minted on a person's ACCOUNT,
+ * not inside a team: the team it was created from only decides where its trail
+ * lands and which team a request that names none acts in, and for a credential
+ * spanning several teams that is merely whichever one they happened to be
+ * looking at. The bound that matters is live - `clampToToken` intersects the
+ * token with its creator's capabilities in whatever team the request resolves to
+ * - so gating the edit on where they stand buys nothing and strands the row on a
+ * page that lists it from every team. Same reasoning `revokeToken` already
+ * applies to the sibling action.
+ *
+ * ANYONE ELSE edits it only from the team it was created in: a token can reach
+ * several teams, and re-authoring one from a team that merely happens to be in
+ * its scope would let that team's admin quietly cut another team's automation.
+ * Any team it reaches can still REVOKE it, which is the lever that matters.
  */
 export async function updateToken(
   input: { id: string; name: string; capabilities?: Capability[]; instanceAdmin?: boolean } &
@@ -766,7 +784,6 @@ export async function updateToken(
 ): Promise<void> {
   const { teamId, userId, membership } = await requireCapability("manage_tokens");
   const name = cleanTokenName(input.name);
-  const capabilities = withinActor(input.capabilities, membership, "token");
   const { scoped, instanceAdmin } = await validateScope(input);
   const scope = await resolveScopeInput(input, userId);
 
@@ -785,19 +802,32 @@ export async function updateToken(
       .limit(1)
   )[0];
   if (!existing) throw new Error("Token not found");
-  if (existing.homeTeamId !== teamId) {
-    // Don't leak that it exists to a team it can't reach at all, unless it is
-    // the caller's OWN token, which their tokens page lists from every team, so
-    // "not found" would be a lie about a row they are looking at.
-    if (
-      existing.createdByUserId !== userId &&
-      !(await tokenIdsReaching(teamId)).has(input.id)
-    )
+
+  const isCreator = existing.createdByUserId === userId;
+  if (!isCreator && existing.homeTeamId !== teamId) {
+    // Don't leak that it exists to a team it can't reach at all.
+    if (!(await tokenIdsReaching(teamId)).has(input.id))
       throw new Error("Token not found");
     throw new Error(
       "This token is managed in the team it was created in. You can revoke it here, but not change it.",
     );
   }
+
+  // The teams the edited token will act in.
+  const reach = scoped
+    ? scope.teamsReached
+    : (await teamsForUser(existing.createdByUserId)).map((t) => t.id);
+  // What may be TICKED. The creator is measured across the teams the token
+  // reaches rather than the one they happen to be standing in, or a credential
+  // spanning teams would be unsaveable from any team that holds less than
+  // another. A token-driven request keeps the acting team's clamp: a narrowed
+  // token authoring a wider one is the escalation the clamp exists to stop.
+  const bound =
+    isCreator && !currentIdentity()?.token
+      ? await actorAcross(membership, reach)
+      : membership;
+  const capabilities = withinActor(input.capabilities, bound, "token");
+
   // Editing an instance-admin token is itself an instance-admin action: a plain
   // manage_tokens holder must not be able to rename it, re-scope it, or keep the
   // bit alive under a permission set of their own choosing.
@@ -805,21 +835,19 @@ export async function updateToken(
   // Re-authoring SOMEONE ELSE's token: the live clamp only measures it against
   // its creator, so bound the edit by the actor's own capabilities in every team
   // this token will reach.
-  if (existing.createdByUserId !== userId)
-    await assertWithinActorEverywhere(
-      capabilities,
-      userId,
-      teamId,
-      scoped
-        ? scope.teamsReached
-        : (await teamsForUser(existing.createdByUserId)).map((t) => t.id),
-    );
+  if (!isCreator)
+    await assertWithinActorEverywhere(capabilities, userId, teamId, reach);
 
   await db.transaction(async (tx) => {
     await tx
       .update(apiTokens)
       .set({ name, instanceAdmin, scoped })
-      .where(and(eq(apiTokens.id, input.id), eq(apiTokens.teamId, teamId)));
+      .where(
+        and(
+          eq(apiTokens.id, input.id),
+          eq(apiTokens.teamId, existing.homeTeamId),
+        ),
+      );
     // Whole-set replace on every junction: an edit says what the token grants
     // now, it does not add to what it granted before.
     await tx
@@ -844,7 +872,9 @@ export async function updateToken(
     `Updated the ${name} API token`,
     await actorUsername(),
     null,
-    teamId,
+    // The trail belongs to the team that hosts the credential, which is not
+    // necessarily the one its creator happened to be looking at.
+    existing.homeTeamId,
   );
 }
 
@@ -1348,6 +1378,32 @@ async function resolveScopeInput(
 }
 
 /**
+ * The actor, measured across the teams a token reaches instead of the one team
+ * they are standing in - the ceiling on what the CREATOR may tick when they edit
+ * their own token from somewhere else.
+ *
+ * A union, not an intersection: the token stores ONE capability set for every
+ * team it reaches, and `clampToToken` intersects it live with what the creator
+ * may do in whichever team the request lands in. So a permission they hold in
+ * only one of those teams is real there and inert everywhere else, and refusing
+ * to save it would make a multi-team token editable from nowhere.
+ */
+async function actorAcross(
+  actor: Membership,
+  teams: string[],
+): Promise<Membership> {
+  const caps = new Set<Capability>(teams.length === 0 ? actor.capabilities : []);
+  for (const teamId of teams) {
+    // A team whose two-factor policy this member has not met resolves NOTHING
+    // for them there, and `membershipFor` says so by throwing. Either way it
+    // contributes no capabilities.
+    const m = await membershipFor(actor.userId, teamId).catch(() => null);
+    if (m) for (const c of m.capabilities) caps.add(c);
+  }
+  return { ...actor, capabilities: [...caps] };
+}
+
+/**
  * Bound a token edit by what the ACTOR may do in every team the token will act
  * in — not merely in the team it is managed from.
  *
@@ -1367,12 +1423,13 @@ async function resolveScopeInput(
 async function assertWithinActorEverywhere(
   capabilities: Capability[],
   actorUserId: string,
-  homeTeamId: string,
+  boundedTeamId: string,
   reach: string[],
 ): Promise<void> {
   for (const teamId of reach) {
-    // The home team is already bounded by the `withinActor` call at the top.
-    if (teamId === homeTeamId) continue;
+    // The team the actor is acting in is already bounded by the `withinActor`
+    // call at the top.
+    if (teamId === boundedTeamId) continue;
     const membership = await membershipFor(actorUserId, teamId);
     if (!membership)
       throw new Error(
