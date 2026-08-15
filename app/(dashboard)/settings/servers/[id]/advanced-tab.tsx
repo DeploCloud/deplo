@@ -170,6 +170,7 @@ function HostDetails({
           <CardTitle className="flex items-center gap-2 text-base">
             <Cpu className="size-4" />
             Host details
+            <BetaChip />
           </CardTitle>
           <p className="mt-1 text-sm text-muted-foreground">
             What this machine is running, read from the server just now.
@@ -588,6 +589,7 @@ function TraefikPanel({
           <CardTitle className="flex items-center gap-2 text-base">
             <LayoutDashboard className="size-4" />
             Traefik web panel
+            <BetaChip />
             <InfoTip content="Traefik's own dashboard: the live view of every route and certificate on this server. Useful when a domain is not resolving the way you expect." />
           </CardTitle>
           <p className="mt-1 text-sm text-muted-foreground">
