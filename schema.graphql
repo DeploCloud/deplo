@@ -1902,11 +1902,6 @@ type McpConnection {
   redirectOrigin: String
   teamId: ID
   teamName: String
-
-  """
-  Every team this connection was approved for. Revoking it removes the team you are acting in, not the connection - the others keep working until the last one lets go.
-  """
-  teamNames: [String!]
   username: String
 }
 

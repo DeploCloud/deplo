@@ -57,7 +57,6 @@ export function TokensList({
   const router = useRouter();
   const [revoke, setRevoke] = React.useState<ApiTokenDTO | null>(null);
   const copyFor = (t: ApiTokenDTO) => ({
-    kind: "token" as const,
     teams: t.teamsReached,
     activeTeamId,
     scoped: t.scoped,

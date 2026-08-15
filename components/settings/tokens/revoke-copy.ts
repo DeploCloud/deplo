@@ -1,20 +1,21 @@
 import type { TokenTeam } from "@/lib/data/tokens";
 
 /**
- * What the Revoke dialog says, for a credential that may reach several teams.
+ * What the Revoke dialog says, for an API token that may reach several teams.
  *
  * Revoking takes away THIS team's access and leaves the rest (`revokeToken`), so
  * the old single sentence — "it loses access immediately" — is false the moment
- * a token or a connection spans two teams. Shared by all three dialogs that
- * offer the button, because the same action described two ways is how a UI
- * teaches the wrong model.
+ * a token spans two teams. Shared by both dialogs that offer the button, because
+ * the same action described two ways is how a UI teaches the wrong model.
  *
  * A token with no scope (`scoped: false`) reaches every team its creator belongs
  * to, live, with no per-team grant to remove: it really is revoked outright, and
  * keeps the sentence it always had.
+ *
+ * Connected clients (Settings → MCP) deliberately do NOT use this: that screen
+ * speaks about the active team only, and never names the others.
  */
 interface RevokeCopyInput {
-  kind: "client" | "token";
   /** Every team the credential reaches, named. Empty when it is not scoped. */
   teams: TokenTeam[];
   activeTeamId: string;
@@ -46,13 +47,9 @@ export function revokeTitle(name: string, input: RevokeCopyInput): string {
 export function revokeDescription(input: RevokeCopyInput): string {
   const others = othersOf(input);
   if (others.length === 0)
-    return input.kind === "client"
-      ? "It loses access immediately and will have to be connected again from scratch. This can't be undone."
-      : "Every client using it loses access immediately, including any deploy hook that sends it. This can't be undone; create a new token if you still need one.";
+    return "Every client using it loses access immediately, including any deploy hook that sends it. This can't be undone; create a new token if you still need one.";
 
   const here = input.teams.find((t) => t.id === input.activeTeamId)?.name;
   const where = here ? `to ${here}` : "to this team";
-  return input.kind === "client"
-    ? `It loses access ${where} immediately. It stays connected to ${joinNames(others)}, with the same permissions it has now.`
-    : `It loses access ${where} immediately. It keeps working in ${joinNames(others)}, so anything using it there is unaffected.`;
+  return `It loses access ${where} immediately. It keeps working in ${joinNames(others)}, so anything using it there is unaffected.`;
 }

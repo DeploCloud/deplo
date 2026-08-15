@@ -48,13 +48,6 @@ export const McpConnectionRef = builder
       username: t.exposeString("username", { nullable: true }),
       teamId: t.exposeID("teamId"),
       teamName: t.exposeString("teamName"),
-      teamNames: t.stringList({
-        description:
-          "Every team this connection was approved for. Revoking it removes " +
-          "the team you are acting in, not the connection - the others keep " +
-          "working until the last one lets go.",
-        resolve: (c) => c.teams.map((x) => x.name),
-      }),
       capabilities: t.exposeStringList("capabilities"),
       lastUsedAt: t.exposeString("lastUsedAt", { nullable: true }),
       createdAt: t.exposeString("createdAt"),

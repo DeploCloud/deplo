@@ -23,10 +23,8 @@ import { assertUser } from "../auth";
 import { ALL_CAPABILITIES, type Capability } from "../types";
 import {
   createToken,
-  teamsReachedByTokens,
   tokenIdsReaching,
   type TokenScopeInput,
-  type TokenTeam,
 } from "./tokens";
 import { getMcpSettings } from "./mcp-settings";
 import { recordActivity } from "./activity";
@@ -86,12 +84,6 @@ export interface McpConnectionDTO {
   /** The team it is MANAGED from — which may not be the team reading this list. */
   teamId: string;
   teamName: string;
-  /**
-   * Every team this connection was approved for, named. One consent can grant
-   * several, so the list has to show where else the client reaches before anyone
-   * presses Revoke - and the dialog has to name what survives it.
-   */
-  teams: TokenTeam[];
   capabilities: Capability[];
   lastUsedAt: string | null;
   createdAt: string;
@@ -493,21 +485,18 @@ export async function listMcpConnections(): Promise<McpConnectionDTO[]> {
   if (rows.length === 0) return [];
 
   // One query for every connection's capabilities, never one per row.
-  const [caps, teamsByToken] = await Promise.all([
-    getDb()
-      .select({
-        tokenId: apiTokenCapabilities.tokenId,
-        capability: apiTokenCapabilities.capability,
-      })
-      .from(apiTokenCapabilities)
-      .where(
-        inArray(
-          apiTokenCapabilities.tokenId,
-          rows.map((r) => r.id),
-        ),
+  const caps = await getDb()
+    .select({
+      tokenId: apiTokenCapabilities.tokenId,
+      capability: apiTokenCapabilities.capability,
+    })
+    .from(apiTokenCapabilities)
+    .where(
+      inArray(
+        apiTokenCapabilities.tokenId,
+        rows.map((r) => r.id),
       ),
-    teamsReachedByTokens(rows.map((r) => r.id)),
-  ]);
+    );
   const byToken = new Map<string, Set<string>>(
     rows.map((r) => [r.id, new Set<string>()]),
   );
@@ -523,7 +512,6 @@ export async function listMcpConnections(): Promise<McpConnectionDTO[]> {
     username: r.username ?? null,
     teamId: r.teamId,
     teamName: r.teamName ?? "",
-    teams: teamsByToken.get(r.id) ?? [],
     // Read live from the junction, never a copy taken at approval time: if the
     // token is edited, this list must show what it can do NOW or the revocation
     // screen is lying about what it is revoking.

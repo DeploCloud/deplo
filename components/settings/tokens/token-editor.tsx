@@ -121,7 +121,6 @@ export function TokenEditor({
 
   const readOnly = !canEdit;
   const revokeCopy = {
-    kind: "token" as const,
     teams: token?.teamsReached ?? [],
     activeTeamId,
     scoped: token?.scoped ?? false,

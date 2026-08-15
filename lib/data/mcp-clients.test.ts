@@ -561,7 +561,10 @@ test("your own connection follows you into your other teams", async () => {
   assert.deepEqual(await as(OWNER, () => listTokens()), []);
 });
 
-test("a connection lists every team it was approved for", async () => {
+test("a connection never carries the other teams it reaches", async () => {
+  // Settings → MCP speaks about the active team and nothing else: whoever reads
+  // it need not belong to the other teams the same consent was approved for, so
+  // neither their names nor their ids may ride along in the row.
   await grantOwnerIn(TEAM_B);
   await as(OWNER, () =>
     mintMcpConnection({
@@ -570,12 +573,12 @@ test("a connection lists every team it was approved for", async () => {
       teamIds: [TEAM_A, TEAM_B],
     }),
   );
-  const list = await as(OWNER, () => listMcpConnections());
-  assert.deepEqual(
-    list[0].teams.map((t) => t.id).sort(),
-    [TEAM_A, TEAM_B].sort(),
-    "the row has to say where else the client reaches, before Revoke is pressed",
-  );
+  const [row] = await as(OWNER, () => listMcpConnections());
+  const json = JSON.stringify(row);
+  assert.equal(row.teamId, TEAM_A);
+  assert.ok(!json.includes(TEAM_B), "the other team's id leaked into the row");
+  // Teams are seeded named after their slug.
+  assert.ok(!json.includes("beta"), "the other team's name leaked into the row");
 });
 
 test("revoking from one team leaves the client connected to the others", async () => {

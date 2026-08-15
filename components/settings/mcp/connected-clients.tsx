@@ -8,22 +8,9 @@ import { Button } from "@/components/ui/button";
 import { InfoTip } from "@/components/ui/info-tip";
 import { EmptyState } from "@/components/shared/empty-state";
 import { ConfirmAction } from "@/components/shared/confirm-action";
-import {
-  joinNames,
-  revokeDescription,
-  revokeTitle,
-} from "@/components/settings/tokens/revoke-copy";
 import { gqlAction } from "@/lib/graphql-client";
 import { timeAgo } from "@/lib/utils";
 import type { McpConnectionDTO } from "@/lib/data/mcp-clients";
-import type { TokenTeam } from "@/lib/data/tokens";
-
-/** "Acme, Beta and 3 more" - the row has one line, the dialog names them all. */
-function teamsSummary(teams: TokenTeam[]): string {
-  const names = teams.map((t) => t.name);
-  if (names.length <= 2) return joinNames(names);
-  return `${names[0]}, ${names[1]} and ${names.length - 2} more`;
-}
 
 /**
  * The AI clients connected to this team.
@@ -33,37 +20,30 @@ function teamsSummary(teams: TokenTeam[]): string {
  * not two that can drift. The same row also appears in Settings → API tokens,
  * marked, so one screen still answers "who can act in this team".
  *
- * One consent can approve several teams, and Revoke removes THIS team's access
- * rather than the connection - so the row names the teams it reaches and the
- * dialog names the ones that survive. A connection that only reaches here reads
- * exactly as it always did.
+ * This screen speaks about THIS team and nothing else. One consent can approve
+ * several teams and Revoke removes only the active one's access - but the other
+ * teams are somebody else's business, sometimes literally (a member here need
+ * not belong to them), so neither the row nor the dialog names them. The copy
+ * stays true by saying what happens here rather than what survives elsewhere.
  *
  * No action on the empty state: connecting happens in the card above.
  */
 export function ConnectedClients({
   connections,
-  activeTeamId,
   canManage,
 }: {
   connections: McpConnectionDTO[];
-  activeTeamId: string;
   canManage: boolean;
 }) {
   const router = useRouter();
   const [revoke, setRevoke] = React.useState<McpConnectionDTO | null>(null);
-  const copyFor = (c: McpConnectionDTO) => ({
-    kind: "client" as const,
-    teams: c.teams,
-    activeTeamId,
-    scoped: c.teams.length > 0,
-  });
 
   return (
     <Card>
       <CardHeader>
         <CardTitle className="flex w-fit items-center gap-2 text-base">
           Connected clients
-          <InfoTip content="Revoking one takes away this team's access from its next request. It keeps working in any other team it was approved for." />
+          <InfoTip content="Revoking one takes away this team's access from its next request." />
         </CardTitle>
         <p className="mt-1 text-sm text-muted-foreground">
           Apps connected to this team, each holding the permissions it was
@@ -88,10 +68,7 @@ export function ConnectedClients({
                   <p className="truncate text-sm font-medium">{c.clientName}</p>
                   <p className="truncate text-xs text-muted-foreground">
                     {c.username ? `Approved by ${c.username}` : "Approved"}
-                    {c.redirectOrigin ? ` · ${c.redirectOrigin}` : ""}
-                    {/* Only when it reaches somewhere else: on the usual
-                        single-team connection the team name is the page. */}
-                    {c.teams.length > 1 ? ` · ${teamsSummary(c.teams)}` : ""} ·{" "}
+                    {c.redirectOrigin ? ` · ${c.redirectOrigin}` : ""} ·{" "}
                     {c.capabilities.length} permission
                     {c.capabilities.length === 1 ? "" : "s"} ·{" "}
                     {c.lastUsedAt ? `used ${timeAgo(c.lastUsedAt)}` : "never used"}
@@ -115,20 +92,13 @@ export function ConnectedClients({
       <ConfirmAction
         open={revoke !== null}
         onOpenChange={(v) => !v && setRevoke(null)}
-        title={
-          revoke
-            ? revokeTitle(revoke.clientName, copyFor(revoke))
-            : "Revoke this client?"
-        }
-        description={
-          revoke
-            ? revokeDescription(copyFor(revoke))
-            : "It loses access immediately and will have to be connected again from scratch. This can't be undone."
-        }
+        title={revoke ? `Revoke ${revoke.clientName}?` : "Revoke this client?"}
+        // True whether or not the same consent reaches anywhere else, and it
+        // never has to name where: from here, the client is gone until someone
+        // approves it again.
+        description="It loses this team's access immediately and has to be approved again to come back. This can't be undone."
         confirmLabel="Revoke"
-        successMessage={
-          revoke && revoke.teams.length > 1 ? "Access removed" : "Client revoked"
-        }
+        successMessage="Access removed"
         onConfirm={async () => {
           const res = await gqlAction(
             `mutation($id: String!) { revokeToken(id: $id) }`,

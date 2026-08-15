@@ -16,38 +16,23 @@ const B = { id: "team_b", name: "Beta" };
 const C = { id: "team_c", name: "Gamma" };
 
 test("a credential that only reaches this team keeps the old, true sentence", () => {
-  const input = {
-    kind: "client" as const,
-    teams: [A],
-    activeTeamId: A.id,
-    scoped: true,
-  };
-  assert.equal(revokeTitle("Claude", input), "Revoke Claude?");
-  assert.match(revokeDescription(input), /connected again from scratch/);
+  const input = { teams: [A], activeTeamId: A.id, scoped: true };
+  assert.equal(revokeTitle("CI", input), "Revoke CI?");
+  assert.match(revokeDescription(input), /Every client using it loses access/);
 });
 
-test("a multi-team connection names what it loses and what survives", () => {
-  const input = {
-    kind: "client" as const,
-    teams: [A, B, C],
-    activeTeamId: A.id,
-    scoped: true,
-  };
-  assert.equal(revokeTitle("Claude", input), "Revoke Claude from Acme?");
+test("a multi-team token names what it loses and what survives", () => {
+  const input = { teams: [A, B, C], activeTeamId: A.id, scoped: true };
+  assert.equal(revokeTitle("CI", input), "Revoke CI from Acme?");
   const text = revokeDescription(input);
   assert.match(text, /loses access to Acme/);
-  assert.match(text, /stays connected to Beta and Gamma/);
+  assert.match(text, /keeps working in Beta and Gamma/);
 });
 
 test("an unscoped token really is revoked everywhere, and says so", () => {
   // No per-team grant to take away: its reach is "every team the creator
   // belongs to", so the old sentence is the correct one.
-  const input = {
-    kind: "token" as const,
-    teams: [],
-    activeTeamId: A.id,
-    scoped: false,
-  };
+  const input = { teams: [], activeTeamId: A.id, scoped: false };
   assert.equal(revokeTitle("CI", input), "Revoke CI?");
   assert.match(revokeDescription(input), /Every client using it loses access/);
 });
@@ -55,12 +40,7 @@ test("an unscoped token really is revoked everywhere, and says so", () => {
 test("revoking your own token from outside its reach promises it is gone", () => {
   // The tokens page lists every token you minted, so the active team may be one
   // the credential never touched, and there `revokeToken` deletes it outright.
-  const input = {
-    kind: "token" as const,
-    teams: [B, C],
-    activeTeamId: A.id,
-    scoped: true,
-  };
+  const input = { teams: [B, C], activeTeamId: A.id, scoped: true };
   assert.equal(revokeTitle("CI", input), "Revoke CI?");
   assert.match(revokeDescription(input), /Every client using it loses access/);
 });
