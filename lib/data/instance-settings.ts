@@ -1,15 +1,30 @@
 import "server-only";
 
 import { cache } from "react";
-import { eq } from "drizzle-orm";
+import { and, count, countDistinct, eq, gt, gte, isNotNull, isNull } from "drizzle-orm";
 import { headers } from "next/headers";
 
 import { getDb } from "../db/client";
-import { instanceSettings, users } from "../db/schema/control-plane";
+import {
+  apiTokens,
+  apps,
+  gitConnections,
+  githubApps,
+  instanceSettings,
+  pushSubscriptions,
+  registrationLinks,
+  servers as serversTable,
+  users,
+} from "../db/schema/control-plane";
+import { passkey, session } from "../db/schema/auth";
 import { getCurrentUser } from "../auth";
 import { nowIso } from "../ids";
 import { requireActiveTeamId, requireInstanceAdmin } from "../membership";
-import { resolvePublicBaseUrl, setStoredPublicBaseUrl } from "../public-url";
+import {
+  passkeyRelyingParty,
+  resolvePublicBaseUrl,
+  setStoredPublicBaseUrl,
+} from "../public-url";
 import {
   acmeEmail,
   DEFAULT_PANEL_TARGET,
@@ -19,7 +34,12 @@ import {
   withPanelRoute,
   type PanelRoute,
 } from "../deploy/traefik-stack";
-import { deploHostSelfAddresses, isDeploHostServer, isIpv4 } from "../deploy/domains";
+import {
+  deploHostSelfAddresses,
+  instanceHost,
+  isDeploHostServer,
+  isIpv4,
+} from "../deploy/domains";
 import { DEPLO_VERSION } from "../version";
 import { serverLabel } from "../utils";
 import { recordActivity } from "./activity";
@@ -38,11 +58,19 @@ import { instanceOwnerUserId } from "./instance-owner";
  *    by {@link instancePublicBaseUrl}, which is what every copy-and-run string
  *    Deplo hands out is built from (a server's install command, a deploy hook
  *    URL, an invite link). Moving to a real domain therefore takes one field
- *    instead of an SSH session, and the check below proves the new address
- *    actually reaches this instance before anyone trusts a link built from it.
- *    It also MOVES the panel's own route ({@link movePanelRoute}) on a Deplo
- *    that publishes itself through its proxy, so the address and the routing
- *    cannot drift apart.
+ *    instead of an SSH session. It also MOVES the panel's own route
+ *    ({@link movePanelRoute}) on a Deplo that publishes itself through its
+ *    proxy - proving the new address answers and putting the old one back when
+ *    it does not - so the address and the routing cannot drift apart.
+ *  - Moving it is DESTRUCTIVE, and invisibly so: a browser welds passkeys,
+ *    cookies and notification subscriptions to one origin.
+ *    {@link getPanelAddressImpact} counts what a given move would cost so the
+ *    dialog in front of it can name the casualties instead of warning in the
+ *    abstract, and the Activity entry records how many it took.
+ *  - Every instance also answers on {@link InstanceSettings.panelIpUrl},
+ *    its own machine's address, which is not a setting and cannot be turned
+ *    off: the panel's DNS, certificate and proxy are the three things it cannot
+ *    repair from inside itself, and that address needs none of them.
  *  - **Whether the panel is served over https at all** is a setting for the same
  *    reason, and read live off that route rather than stored. A Deplo installed
  *    on a domain that cannot get a certificate - not resolving publicly yet,
@@ -78,6 +106,19 @@ export type InstanceSettings = {
   panelUrlSource: PanelAddressSource;
   /** The stored override, or null when nothing has been set here. */
   storedPanelUrl: string | null;
+  /**
+   * The address this panel also answers on, straight on the machine it runs on:
+   * `http://<server ip>:3000`. Null only when Deplo cannot work out an address
+   * of its own that anyone else could reach.
+   *
+   * Not a setting and not stored: it is a FACT about where the panel is, and it
+   * is the way back in when the domain stops working - the panel's own DNS,
+   * certificate or proxy are the three things it cannot fix from inside itself.
+   * The installer publishes the port in every mode for exactly this reason.
+   */
+  panelIpUrl: string | null;
+  /** The IPv4 an A record for the panel's domain should point at. */
+  deploHostIp: string | null;
   /** This control plane's version. */
   version: string;
   /** The server running the panel, when it is one Deplo knows about. */
@@ -205,6 +246,26 @@ async function instanceOwnerName(): Promise<string | null> {
   return rows[0]?.name ?? null;
 }
 
+/**
+ * The IPv4 an outsider can reach this panel's machine on, or null.
+ *
+ * The server row wins over detection: it is the address an operator DECLARED
+ * for this host, which is what their DNS should point at, while a NIC scan can
+ * only see what the box knows about itself. Loopback is treated as "no answer" -
+ * an address nobody else can dial is worse than none, because it reads as
+ * a promise.
+ */
+function reachableHostIp(host: { ip?: string } | null): string | null {
+  const candidate = host?.ip?.trim() || instanceHost();
+  if (!isIpv4(candidate)) return null;
+  return candidate.startsWith("127.") ? null : candidate;
+}
+
+/** Where the panel listens on its own machine. The installer publishes this port. */
+function panelPort(): string {
+  return process.env.PORT?.trim() || "3000";
+}
+
 export async function getInstanceSettings(): Promise<InstanceSettings> {
   await requireInstanceAdmin();
   const { panelUrl } = await loadSettings();
@@ -212,9 +273,12 @@ export async function getInstanceSettings(): Promise<InstanceSettings> {
     deploHostServer(),
     instanceOwnerName(),
   ]);
+  const hostIp = reachableHostIp(host);
 
   return {
     panelUrl: panelUrl ?? (await instancePublicBaseUrl()),
+    panelIpUrl: hostIp ? `http://${hostIp}:${panelPort()}` : null,
+    deploHostIp: hostIp,
     panelUrlSource: panelUrl
       ? "stored"
       : process.env.DEPLO_PUBLIC_URL?.trim()
@@ -243,6 +307,16 @@ export async function setPanelUrl(input: string | null): Promise<InstanceSetting
   const user = (await getCurrentUser())!;
 
   const url = input === null || input.trim() === "" ? null : normalizePanelUrl(input);
+  // Read BEFORE the write, and not only for the log line: `rpId` is derived from
+  // the address, so once it has moved there is no way to say how many
+  // credentials it just invalidated. A trail that records the change without its
+  // casualties is what makes "my passkey stopped working" unanswerable later.
+  const current = await instancePublicBaseUrl();
+  const lostPasskeys =
+    url !== null &&
+    (hostOf(url) !== hostOf(current) || schemeOf(url) !== schemeOf(current))
+      ? await passkeysBoundToThisAddress()
+      : 0;
   // The routing moves FIRST, and this throws if it could not: storing an address
   // nothing routes to would break every install command copied from this page.
   // Clearing the address deliberately moves nothing - the route is real, and
@@ -252,9 +326,9 @@ export async function setPanelUrl(input: string | null): Promise<InstanceSetting
 
   await recordActivity(
     "member",
-    url
+    (url
       ? `Set the Deplo panel address to ${url}`
-      : "Cleared the Deplo panel address",
+      : "Cleared the Deplo panel address") + passkeyLossSuffix(lostPasskeys),
     user.name,
     null,
     teamId,
@@ -291,21 +365,215 @@ export function normalizePanelUrl(input: string): string {
   return `${parsed.protocol}//${parsed.host}`;
 }
 
+/* ------------------------------------------------------------------ */
+/* What changing the address would break                               */
+/* ------------------------------------------------------------------ */
+
 /**
- * Ask an address whether it reaches this instance, by calling the panel's own
- * liveness endpoint from the server side.
+ * What moving the panel to `url` would break, counted live and instance-wide.
  *
- * This is the honest half of the setting: Deplo can store what it should call
- * itself, but DNS and the proxy in front of it belong to the operator, so the
- * only useful thing to report is whether the address answers, and, when it does
- * not, what it answered with instead.
+ * The panel's address is not a label: a browser welds credentials, cookies and
+ * subscriptions to the exact origin they were created on, and everything Deplo
+ * has ever handed out is a string built from it. Changing it is therefore
+ * destructive in ways nothing on the screen shows, and the worst of them -
+ * every passkey on the instance - is silent and permanent.
+ *
+ * So the dialog states FACTS, in the shape {@link getDeleteUserImpact} set for
+ * deleting an account: real counts, only the lines that are true right now, and
+ * the repairable ones told apart from the ones that are gone. Read-only, and
+ * instance-wide rather than active-team - the setting is instance-admin gated
+ * and a team-shaped count would under-report, which is the one thing a warning
+ * must never do.
  */
-export async function checkPanelUrl(input: string): Promise<PanelReachability> {
+export type PanelAddressImpact = {
+  /** The address as it would be stored, normalised the same way the save does. */
+  url: string;
+  /** What it is right now. */
+  currentUrl: string;
+  /** Whether the hostname moves. Everything origin-bound dies on this. */
+  hostChanges: boolean;
+  /** Whether http/https changes. An origin change too, and https->https is not one. */
+  schemeChanges: boolean;
+  /** https -> http specifically: the browser remembers the old HSTS either way. */
+  losesHttps: boolean;
+  /** The address that keeps working through all of it, when there is one. */
+  panelIpUrl: string | null;
+  /** Passkeys welded to the address as it is now, and how many accounts hold them. */
+  passkeys: number;
+  passkeyPeople: number;
+  /** Live sessions, and the people behind them, who will have to sign in again. */
+  sessions: number;
+  sessionPeople: number;
+  /** Deploy hooks whose URL is already pasted into somebody else's CI. */
+  deployHooks: number;
+  /** AI clients connected over MCP, which have to be reconnected. */
+  mcpConnections: number;
+  /** Registration links already handed out. Repairable: the same link re-renders. */
+  registrationLinks: number;
+  /** Servers whose install command was issued but never run. Repairable. */
+  pendingServers: number;
+  /** Browser notification subscriptions, which are per-origin. */
+  pushSubscriptions: number;
+  /** Git connections and GitHub Apps, pinned to the INSTALLER's address, not this one. */
+  gitConnections: number;
+  githubApps: number;
+};
+
+export async function getPanelAddressImpact(
+  input: string,
+): Promise<PanelAddressImpact> {
   await requireInstanceAdmin();
-  return probePanel(normalizePanelUrl(input));
+  const url = normalizePanelUrl(input);
+  const currentUrl = await instancePublicBaseUrl();
+  const base: PanelAddressImpact = {
+    url,
+    currentUrl,
+    hostChanges: hostOf(url) !== hostOf(currentUrl),
+    schemeChanges: schemeOf(url) !== schemeOf(currentUrl),
+    losesHttps: schemeOf(currentUrl) === "https:" && schemeOf(url) === "http:",
+    panelIpUrl: null,
+    passkeys: 0,
+    passkeyPeople: 0,
+    sessions: 0,
+    sessionPeople: 0,
+    deployHooks: 0,
+    mcpConnections: 0,
+    registrationLinks: 0,
+    pendingServers: 0,
+    pushSubscriptions: 0,
+    gitConnections: 0,
+    githubApps: 0,
+  };
+  const host = await deploHostServer();
+  const hostIp = reachableHostIp(host);
+  base.panelIpUrl = hostIp ? `http://${hostIp}:${panelPort()}` : null;
+  // Same address, nothing to warn about. Counting anyway would put a wall of
+  // red in front of a save that changes nothing.
+  if (!base.hostChanges && !base.schemeChanges) return base;
+
+  const db = getDb();
+  // Null when this instance cannot have passkeys at all (no address, or plain
+  // http): then there are none to lose, rather than "none matched".
+  const rp = passkeyRelyingParty();
+  const now = nowIso();
+  const [
+    passkeys,
+    sessions,
+    deployHooks,
+    mcp,
+    links,
+    pending,
+    push,
+    gitConns,
+    ghApps,
+  ] = await Promise.all([
+    rp
+      ? db
+          .select({ n: count(), people: countDistinct(passkey.userId) })
+          .from(passkey)
+          .where(eq(passkey.rpId, rp.rpId))
+      : Promise.resolve([{ n: 0, people: 0 }]),
+    db
+      .select({ n: count(), people: countDistinct(session.userId) })
+      .from(session)
+      .where(gt(session.expiresAt, new Date())),
+    db
+      .select({ n: count() })
+      .from(apps)
+      .where(
+        and(
+          isNotNull(apps.deployHookTokenEnc),
+          eq(apps.deployHookEnabled, true),
+        ),
+      ),
+    db
+      .select({ n: count() })
+      .from(apiTokens)
+      .where(isNotNull(apiTokens.oauthClientId)),
+    db
+      .select({ n: count() })
+      .from(registrationLinks)
+      .where(
+        and(
+          eq(registrationLinks.status, "pending"),
+          gte(registrationLinks.expiresAt, now),
+        ),
+      ),
+    db
+      .select({ n: count() })
+      .from(serversTable)
+      .where(
+        and(
+          isNotNull(serversTable.bootstrapTokenHash),
+          isNull(serversTable.bootstrapUsedAt),
+        ),
+      ),
+    db.select({ n: count() }).from(pushSubscriptions),
+    db.select({ n: count() }).from(gitConnections),
+    db.select({ n: count() }).from(githubApps),
+  ]);
+
+  return {
+    ...base,
+    passkeys: Number(passkeys[0]?.n ?? 0),
+    passkeyPeople: Number(passkeys[0]?.people ?? 0),
+    sessions: Number(sessions[0]?.n ?? 0),
+    sessionPeople: Number(sessions[0]?.people ?? 0),
+    deployHooks: Number(deployHooks[0]?.n ?? 0),
+    mcpConnections: Number(mcp[0]?.n ?? 0),
+    registrationLinks: Number(links[0]?.n ?? 0),
+    pendingServers: Number(pending[0]?.n ?? 0),
+    pushSubscriptions: Number(push[0]?.n ?? 0),
+    gitConnections: Number(gitConns[0]?.n ?? 0),
+    githubApps: Number(ghApps[0]?.n ?? 0),
+  };
 }
 
-/** The probe itself, ungated: the two callers gate before they reach it. */
+/** The two halves of an address that decide whether an origin moved. */
+function hostOf(url: string): string {
+  try {
+    return new URL(url).host;
+  } catch {
+    return url;
+  }
+}
+
+function schemeOf(url: string): string {
+  try {
+    return new URL(url).protocol;
+  } catch {
+    return "";
+  }
+}
+
+/** What an address change cost, said in the trail rather than only in a dialog. */
+function passkeyLossSuffix(lost: number): string {
+  if (lost <= 0) return "";
+  return ` (${lost} passkey${lost === 1 ? "" : "s"} stopped working)`;
+}
+
+/** How many passkeys this address currently holds, for the Activity entry. */
+async function passkeysBoundToThisAddress(): Promise<number> {
+  const rp = passkeyRelyingParty();
+  if (!rp) return 0;
+  const [row] = await getDb()
+    .select({ n: count() })
+    .from(passkey)
+    .where(eq(passkey.rpId, rp.rpId));
+  return Number(row?.n ?? 0);
+}
+
+/**
+ * The probe, ungated: its callers are the route move and the adoption check,
+ * both already inside a gated mutation.
+ *
+ * There is deliberately NO "check this address" button in front of it any more.
+ * A button that answers "not yet" while DNS propagates taught nobody anything
+ * the save itself does not: {@link movePanelRoute} moves the route, proves the
+ * new address answers, and puts the old one back when it does not, which is the
+ * only outcome that matters. The card spends the space on the A record instead -
+ * the question an operator actually has at that moment.
+ */
 async function probePanel(url: string): Promise<PanelReachability> {
   try {
     const res = await fetch(`${url}/api/health`, {
@@ -459,6 +727,11 @@ export async function setPanelHttps(enabled: boolean): Promise<PanelHttps> {
       "The server running Deplo is not added here yet, so Deplo does not manage the panel's own address.",
     );
 
+  // Same reason as in setPanelUrl: after the scheme moves, the credentials it
+  // invalidated cannot be counted any more. Turning https OFF kills every
+  // passkey outright - WebAuthn has no relying party on plain http.
+  const lostPasskeys = enabled ? 0 : await passkeysBoundToThisAddress();
+
   const { fetchHostInfo, applyTraefikConfig, withTraefikStackLock } = await import(
     "../infra/agent-client"
   );
@@ -489,9 +762,10 @@ export async function setPanelHttps(enabled: boolean): Promise<PanelHttps> {
     await rememberPanelUrl(`${enabled ? "https" : "http"}://${moved.domain}`);
     await recordActivity(
       "member",
-      enabled
+      (enabled
         ? `Moved the panel to https://${moved.domain}`
-        : `Moved the panel to http://${moved.domain}`,
+        : `Moved the panel to http://${moved.domain}`) +
+        passkeyLossSuffix(lostPasskeys),
       user.name,
       null,
       teamId,

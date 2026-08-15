@@ -5,9 +5,8 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import {
-  Check,
   Globe,
-  Loader2,
+  LifeBuoy,
   Pencil,
   Server as ServerIcon,
   ShieldCheck,
@@ -28,6 +27,9 @@ import {
 import { Input } from "@/components/ui/input";
 import { Switch } from "@/components/ui/switch";
 import { InfoTip } from "@/components/ui/info-tip";
+import { CopyButton } from "@/components/shared/copy-button";
+import { RevealChip } from "@/components/shared/reveal-chip";
+import { PanelAddressDialog } from "@/components/settings/panel-address-dialog";
 import { UpdateCard } from "@/components/settings/update-card";
 import {
   InstanceOwnerCard,
@@ -45,9 +47,10 @@ import type { InstanceSettings } from "@/lib/data/instance-settings";
  *
  *  1. The address Deplo hands out for itself (install commands, deploy hooks,
  *     invite links), and whether it is served over https at all. Deplo cannot
- *     move its own DNS, so the honest thing to offer alongside the field is
- *     proof: the Check button asks the address whether it reaches this instance
- *     and reports what answered instead when it does not.
+ *     move its own DNS, so what the field is worth is the record BESIDE it: the
+ *     A record the typed domain needs, with this server's address ready to
+ *     paste. Under it sits the address that needs no DNS at all - the machine's
+ *     own - because a panel whose domain broke has to be reachable anyway.
  *  2. The account certificates are issued under, read from and written to each
  *     host's own proxy, and shown per host so a fleet that disagrees with itself
  *     says so rather than hiding behind one field.
@@ -122,12 +125,25 @@ const SOURCE_LABEL: Record<InstanceSettings["panelUrlSource"], string> = {
   request: "Guessed from your browser",
 };
 
+/** The hostname inside whatever the operator has typed so far, or "". */
+function hostFromInput(value: string): string {
+  const raw = value.trim();
+  if (!raw) return "";
+  try {
+    return new URL(/^https?:\/\//i.test(raw) ? raw : `https://${raw}`).hostname;
+  } catch {
+    return "";
+  }
+}
+
+const IPV4 = /^\d{1,3}(\.\d{1,3}){3}$/;
+
 function PanelAddressCard({ settings }: { settings: InstanceSettings }) {
   const router = useRouter();
-  const [pending, startTransition] = React.useTransition();
-  const [checking, setChecking] = React.useState(false);
-  const [value, setValue] = React.useState(settings.storedPanelUrl ?? settings.panelUrl);
-  const [reach, setReach] = React.useState<{ ok: boolean; error: string | null } | null>(null);
+  const [value, setValue] = React.useState(
+    settings.storedPanelUrl ?? settings.panelUrl,
+  );
+  const [confirming, setConfirming] = React.useState(false);
 
   // Adopt a fresh server render (a save ends in router.refresh()) as the new
   // baseline, the supported "adjust state during render" pattern.
@@ -137,51 +153,18 @@ function PanelAddressCard({ settings }: { settings: InstanceSettings }) {
     setValue(settings.storedPanelUrl ?? settings.panelUrl);
   }
 
-  const dirty = value.trim() !== (settings.storedPanelUrl ?? settings.panelUrl);
+  const target = value.trim();
+  const dirty = target !== (settings.storedPanelUrl ?? settings.panelUrl);
+  const typedHost = hostFromInput(target);
+  const wantsRecord = typedHost !== "" && !IPV4.test(typedHost);
 
-  async function check(url: string) {
-    setChecking(true);
-    const res = await gqlAction<{ checkPanelUrl: { ok: boolean; error: string | null } }>(
-      `mutation CheckPanelUrl($url: String!) {
-        checkPanelUrl(url: $url) { ok error }
-      }`,
-      { url },
+  async function save() {
+    const res = await gqlAction(
+      `mutation SetPanelUrl($url: String) { setPanelUrl(url: $url) { panelUrl } }`,
+      { url: target },
     );
-    setChecking(false);
-    if (!res.ok) {
-      toast.error(res.error);
-      return null;
-    }
-    setReach(res.data?.checkPanelUrl ?? null);
-    return res.data?.checkPanelUrl ?? null;
-  }
-
-  function save(e: React.FormEvent) {
-    e.preventDefault();
-    startTransition(async () => {
-      const res = await gqlAction(
-        `mutation SetPanelUrl($url: String) { setPanelUrl(url: $url) { panelUrl } }`,
-        { url: value.trim() || null },
-      );
-      // Surfaces the validation refusals verbatim: they name the fix.
-      if (!res.ok) {
-        toast.error(res.error);
-        return;
-      }
-      toast.success(
-        value.trim() ? `Deplo now calls itself ${value.trim()}` : "Panel address cleared",
-      );
-      router.refresh();
-      // Saving does not make an address answer, so the answer is checked right
-      // after: a stored address that nothing routes to would quietly break every
-      // install command copied from here.
-      if (value.trim()) {
-        const result = await check(value.trim());
-        if (result && !result.ok) toast.warning(result.error ?? "That address did not answer");
-      } else {
-        setReach(null);
-      }
-    });
+    if (res.ok) router.refresh();
+    return res;
   }
 
   return (
@@ -192,12 +175,18 @@ function PanelAddressCard({ settings }: { settings: InstanceSettings }) {
         <CardTitle className="flex w-fit items-center gap-2 text-base">
           <Globe className="size-4" />
           Panel address
-          <InfoTip content="Install commands, deploy hooks and invite links are built from this address. Point its DNS at this server first: Deplo can hand the address out, it cannot move your DNS." />
+          <InfoTip content="Install commands, deploy hooks and invite links are built from this address. Deplo can hand it out, it cannot move your DNS: point the record below at this server first." />
         </CardTitle>
         <Badge variant="muted">{SOURCE_LABEL[settings.panelUrlSource]}</Badge>
       </CardHeader>
-      <CardContent className="space-y-3">
-        <form className="flex flex-wrap items-center gap-2" onSubmit={save}>
+      <CardContent className="space-y-4">
+        <form
+          className="flex flex-wrap items-center gap-2"
+          onSubmit={(e) => {
+            e.preventDefault();
+            if (dirty && target) setConfirming(true);
+          }}
+        >
           <Input
             id="panel-url"
             aria-label="Panel address"
@@ -206,55 +195,132 @@ function PanelAddressCard({ settings }: { settings: InstanceSettings }) {
             placeholder="deplo.example.com"
             autoComplete="off"
             spellCheck={false}
-            disabled={pending}
             className="w-full max-w-sm font-mono text-sm"
           />
-          <Button type="submit" disabled={pending || !dirty}>
-            {pending ? "Saving" : "Save"}
+          {/* Default size, not `sm`: it sits on a row with an h-9 Input. */}
+          <Button type="submit" disabled={!dirty || !target}>
+            Save
           </Button>
-          <Button
-            type="button"
-            variant="outline"
-            disabled={checking || pending || !value.trim()}
-            onClick={() => void check(value.trim())}
-          >
-            {checking ? <Loader2 className="size-4 animate-spin" /> : null}
-            {checking ? "Checking" : "Check"}
-          </Button>
-          {settings.storedPanelUrl ? (
-            <Button
-              type="button"
-              variant="ghost"
-              disabled={pending}
-              onClick={() => {
-                setValue("");
-                setReach(null);
-              }}
-            >
-              Clear
-            </Button>
-          ) : null}
         </form>
 
-        {/* What the address itself answered, verbatim when it did not: a DNS
-            failure and a 502 need different fixes. */}
-        {reach ? (
-          reach.ok ? (
-            <p className="flex items-center gap-1.5 text-sm text-[var(--success)]">
-              <Check className="size-4 shrink-0" />
-              That address reaches this Deplo.
+        {/* The question an operator actually has in front of this field, which
+            the card used to leave them to guess: WHERE does the domain point.
+            Named after the record they have to create, with the value ready to
+            paste, and it follows what they are typing rather than describing
+            what is already saved. */}
+        <div>
+          <p className="text-sm font-medium">
+            {wantsRecord
+              ? "Create this DNS record first"
+              : "Point a domain at this server first"}
+          </p>
+          {!settings.deploHostIp ? (
+            <p className="mt-1 text-sm text-muted-foreground">
+              Add this server on Settings, Servers and Deplo can tell you which
+              address to point it at.
             </p>
+          ) : wantsRecord ? (
+            <div className="mt-1 overflow-x-auto rounded-lg border border-border">
+              <div className="grid min-w-[22rem] grid-cols-[3.5rem_1fr_auto] gap-x-4 border-b border-border px-3 py-1.5 text-xs text-muted-foreground">
+                <span>Type</span>
+                <span>Name</span>
+                <span>Value</span>
+              </div>
+              <div className="grid min-w-[22rem] grid-cols-[3.5rem_1fr_auto] items-center gap-x-4 px-3 py-1.5 font-mono text-sm">
+                <span>A</span>
+                <span className="truncate">{typedHost}</span>
+                <span className="flex items-center gap-1">
+                  {settings.deploHostIp}
+                  <CopyButton value={settings.deploHostIp} className="size-6" />
+                </span>
+              </div>
+            </div>
           ) : (
-            <p className="flex items-start gap-1.5 text-sm text-destructive">
-              <TriangleAlert className="mt-0.5 size-4 shrink-0" />
-              {reach.error}
+            <p className="mt-1 flex flex-wrap items-center gap-1 text-sm text-muted-foreground">
+              Its A record goes to
+              <span className="font-mono text-foreground">
+                {settings.deploHostIp}
+              </span>
+              <CopyButton value={settings.deploHostIp} className="size-6" />
             </p>
-          )
-        ) : null}
+          )}
+        </div>
 
         <PanelHttpsRow />
+        <PanelIpAddressRow
+          url={settings.panelIpUrl}
+          panelUrl={settings.panelUrl}
+        />
       </CardContent>
+
+      {/* Mounted only while open, so it always opens on freshly counted
+          consequences rather than the ones from the last time it was looked at. */}
+      {confirming && (
+        <PanelAddressDialog
+          open
+          onOpenChange={setConfirming}
+          url={target}
+          title={`Move the panel to ${target}?`}
+          confirmLabel="Change address"
+          successMessage={`Deplo now calls itself ${target}`}
+          onConfirm={save}
+        />
+      )}
     </Card>
+  );
+}
+
+/**
+ * The address the panel also answers on, on the machine itself.
+ *
+ * Always on, with no switch, and that is the feature: it is what makes every
+ * other thing on this card safe to touch. The panel's domain, its certificate
+ * and the proxy in front of it are the three things Deplo cannot fix from
+ * inside itself, and when one of them breaks this is the way back in - the
+ * alternative being an SSH session, which is the trip Deplo exists to remove.
+ *
+ * Covered by default like a secret, for the same reason an environment variable
+ * is: it is a working way into this panel, it is right there on a page people
+ * screen-share, and it is read far less often than it is looked past.
+ */
+function PanelIpAddressRow({
+  url,
+  panelUrl,
+}: {
+  url: string | null;
+  panelUrl: string;
+}) {
+  const [revealed, setRevealed] = React.useState(false);
+  // Nothing to say when the panel is already reached this way: it would be the
+  // same address twice, one of them labelled the fallback.
+  if (!url || url === panelUrl) return null;
+  return (
+    <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-2 rounded-lg border border-border p-3">
+      <div className="min-w-0">
+        <div className="flex items-center gap-2 text-sm font-medium">
+          <LifeBuoy className="size-4 text-muted-foreground" />
+          IP address
+          <Badge variant="muted">Always on</Badge>
+          <InfoTip content="Deplo answers here as well, straight on the server. It is served over plain http, so use the address above day to day." />
+        </div>
+        <p className="mt-1 text-sm text-muted-foreground">
+          Works even when the domain above stops answering. It cannot be turned
+          off.
+        </p>
+      </div>
+      <div className="flex w-full max-w-xs items-center gap-1">
+        <RevealChip
+          value={url}
+          revealed={revealed}
+          onToggle={() => setRevealed((v) => !v)}
+          labels={{
+            reveal: "Reveal the IP address",
+            hide: "Hide the IP address",
+          }}
+        />
+        <CopyButton value={url} />
+      </div>
+    </div>
   );
 }
 
@@ -280,7 +346,6 @@ function PanelHttpsRow() {
   const [cert, setCert] = React.useState<PanelHttps | null>(null);
   const [loading, setLoading] = React.useState(true);
   const [confirming, setConfirming] = React.useState<boolean | null>(null);
-  const [pending, startTransition] = React.useTransition();
 
   const load = React.useCallback(async () => {
     const res = await gqlAction<{ panelHttps: PanelHttps }>(
@@ -296,32 +361,23 @@ function PanelHttpsRow() {
     void load();
   }, [load]);
 
-  function toggle(enabled: boolean) {
-    startTransition(async () => {
-      const res = await gqlAction<{ setPanelHttps: PanelHttps }>(
-        `mutation SetPanelHttps($enabled: Boolean!) {
-          setPanelHttps(enabled: $enabled) { ${PANEL_HTTPS_FIELDS} }
-        }`,
-        { enabled },
-      );
-      if (!res.ok) {
-        toast.error(res.error);
-        return;
-      }
-      setCert(res.data?.setPanelHttps ?? null);
-      setConfirming(null);
-      // The scheme moved the STORED address with it, and that address is what
-      // the card above renders: without this it would keep showing the old one.
-      router.refresh();
-      toast.success(
-        enabled
-          ? "The panel is now served over https"
-          : "The panel is now served over http",
-      );
-    });
+  async function toggle(enabled: boolean) {
+    const res = await gqlAction<{ setPanelHttps: PanelHttps }>(
+      `mutation SetPanelHttps($enabled: Boolean!) {
+        setPanelHttps(enabled: $enabled) { ${PANEL_HTTPS_FIELDS} }
+      }`,
+      { enabled },
+    );
+    if (!res.ok) return res;
+    setCert(res.data?.setPanelHttps ?? null);
+    // The scheme moved the STORED address with it, and that address is what
+    // the card above renders: without this it would keep showing the old one.
+    router.refresh();
+    return res;
   }
 
-  if (loading) return <div className="h-14 animate-pulse rounded-lg bg-muted/50" />;
+  if (loading)
+    return <div className="h-14 animate-pulse rounded-lg bg-muted/50" />;
   if (!cert) return null;
 
   return (
@@ -334,7 +390,9 @@ function PanelHttpsRow() {
             <InfoTip content="Turn this off when the address cannot get a certificate: it does not resolve publicly yet, port 80 is closed, or the server is on an internal network. You can turn it back on once it can." />
           </div>
           {cert.unavailable ? (
-            <p className="mt-1 text-sm text-muted-foreground">{cert.unavailable}</p>
+            <p className="mt-1 text-sm text-muted-foreground">
+              {cert.unavailable}
+            </p>
           ) : cert.enabled ? null : (
             <p className="mt-1 text-sm text-[var(--warning)]">
               Anyone signing in sends their password unencrypted.
@@ -343,42 +401,41 @@ function PanelHttpsRow() {
         </div>
         <Switch
           checked={cert.enabled}
-          disabled={pending || !!cert.unavailable}
+          disabled={!!cert.unavailable}
           onCheckedChange={setConfirming}
           aria-label="Serve the panel over HTTPS"
         />
       </div>
 
-      {/* A confirm, like every other action that interrupts something: applying
-          this recreates the proxy on that host, which takes this page down with
-          it for a few seconds. */}
-      <Dialog open={confirming !== null} onOpenChange={(o) => !o && setConfirming(null)}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>
-              {confirming
-                ? `Serve the panel at https://${cert.domain}?`
-                : `Serve the panel at http://${cert.domain}?`}
-            </DialogTitle>
-            <DialogDescription>
-              {confirming
-                ? "The address has to reach this server from the internet for the certificate to be issued."
-                : "Anyone signing in sends their password unencrypted."}{" "}
-              The proxy restarts, so sites on this server are unreachable for a
-              few seconds. Then continue on {confirming ? "https" : "http"}://
-              {cert.domain} and sign in again.
-            </DialogDescription>
-          </DialogHeader>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setConfirming(null)} disabled={pending}>
-              Cancel
-            </Button>
-            <Button onClick={() => toggle(confirming!)} disabled={pending}>
-              {pending ? "Applying" : confirming ? "Turn HTTPS on" : "Turn HTTPS off"}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+      {/* The SAME confirm the address field opens, because this is the same
+          move: the scheme is half of an origin, so turning https off takes every
+          passkey with it exactly as a new hostname would. It used to say only
+          that the proxy restarts. */}
+      {confirming !== null && (
+        <PanelAddressDialog
+          open
+          onOpenChange={(o) => !o && setConfirming(null)}
+          url={`${confirming ? "https" : "http"}://${cert.domain}`}
+          title={
+            confirming
+              ? `Serve the panel at https://${cert.domain}?`
+              : `Serve the panel at http://${cert.domain}?`
+          }
+          confirmLabel={confirming ? "Turn HTTPS on" : "Turn HTTPS off"}
+          successMessage={
+            confirming
+              ? "The panel is now served over https"
+              : "The panel is now served over http"
+          }
+          note={
+            (confirming
+              ? "The address has to reach this server from the internet for the certificate to be issued."
+              : "Anyone signing in sends their password unencrypted.") +
+            " The proxy restarts, so sites on this server are unreachable for a few seconds."
+          }
+          onConfirm={() => toggle(confirming)}
+        />
+      )}
     </>
   );
 }
@@ -388,7 +445,9 @@ function PanelHttpsRow() {
 /* ------------------------------------------------------------------ */
 
 function CertificatesCard() {
-  const [accounts, setAccounts] = React.useState<CertificateAccount[] | null>(null);
+  const [accounts, setAccounts] = React.useState<CertificateAccount[] | null>(
+    null,
+  );
   const [error, setError] = React.useState<string | null>(null);
   const [loading, setLoading] = React.useState(true);
   const [email, setEmail] = React.useState("");
@@ -398,7 +457,9 @@ function CertificatesCard() {
   const load = React.useCallback(async () => {
     setLoading(true);
     setError(null);
-    const res = await gqlAction<{ serverCertificateAccounts: CertificateAccount[] }>(
+    const res = await gqlAction<{
+      serverCertificateAccounts: CertificateAccount[];
+    }>(
       `mutation ServerCertificateAccounts {
         serverCertificateAccounts { ${ACCOUNT_FIELDS} }
       }`,
@@ -413,7 +474,9 @@ function CertificatesCard() {
     // Prefill only when the fleet agrees with itself. When it does not, the
     // field starts empty: guessing which host is the right one would be a
     // silent vote for one of them.
-    const found = [...new Set(next.map((a) => a.email).filter((e): e is string => !!e))];
+    const found = [
+      ...new Set(next.map((a) => a.email).filter((e): e is string => !!e)),
+    ];
     setEmail(found.length === 1 ? found[0] : "");
   }, []);
 
@@ -427,11 +490,14 @@ function CertificatesCard() {
 
   const manageable = (accounts ?? []).filter((a) => !a.unavailable);
   const dirty =
-    email.trim() !== "" && manageable.some((a) => a.email !== email.trim().toLowerCase());
+    email.trim() !== "" &&
+    manageable.some((a) => a.email !== email.trim().toLowerCase());
 
   function apply() {
     startTransition(async () => {
-      const res = await gqlAction<{ setCertificateEmail: CertificateAccount[] }>(
+      const res = await gqlAction<{
+        setCertificateEmail: CertificateAccount[];
+      }>(
         `mutation SetCertificateEmail($email: String!) {
           setCertificateEmail(email: $email) { ${ACCOUNT_FIELDS} }
         }`,
@@ -444,7 +510,9 @@ function CertificatesCard() {
       setConfirming(false);
       const next = res.data?.setCertificateEmail ?? [];
       setAccounts(next);
-      const done = next.filter((a) => !a.unavailable && a.email === email.trim().toLowerCase());
+      const done = next.filter(
+        (a) => !a.unavailable && a.email === email.trim().toLowerCase(),
+      );
       const failed = next.filter((a) => a.unavailable);
       if (done.length === 0) {
         toast.error("No server accepted the change");
@@ -529,13 +597,16 @@ function CertificatesCard() {
                             : "font-mono text-xs text-muted-foreground"
                         }
                       >
-                        {account.unavailable ?? (account.email || "No address set")}
+                        {account.unavailable ??
+                          (account.email || "No address set")}
                       </span>
                       {/* Straight to THIS server's certificates: the fleet-wide
                           email is edited above, everything else about a host's
                           certificates belongs to the host. */}
                       <Button variant="ghost" size="sm" asChild>
-                        <Link href={`/settings/servers/${account.serverId}?tab=certificates`}>
+                        <Link
+                          href={`/settings/servers/${account.serverId}?tab=certificates`}
+                        >
                           <Pencil className="size-4" />
                           Edit
                         </Link>
@@ -545,24 +616,34 @@ function CertificatesCard() {
                 ))}
               </div>
             ) : (
-              <p className="text-sm text-muted-foreground">No servers connected yet.</p>
+              <p className="text-sm text-muted-foreground">
+                No servers connected yet.
+              </p>
             )}
           </form>
         </CardContent>
       </Card>
 
-      <Dialog open={confirming} onOpenChange={(o) => !o && setConfirming(false)}>
+      <Dialog
+        open={confirming}
+        onOpenChange={(o) => !o && setConfirming(false)}
+      >
         <DialogContent>
           <DialogHeader>
             <DialogTitle>Register certificates to {email.trim()}?</DialogTitle>
             <DialogDescription>
               Deplo restarts the proxy on {manageable.length} server
-              {manageable.length === 1 ? "" : "s"}, so sites there are unreachable
-              for a few seconds. Certificates already issued keep working.
+              {manageable.length === 1 ? "" : "s"}, so sites there are
+              unreachable for a few seconds. Certificates already issued keep
+              working.
             </DialogDescription>
           </DialogHeader>
           <DialogFooter>
-            <Button variant="outline" onClick={() => setConfirming(false)} disabled={pending}>
+            <Button
+              variant="outline"
+              onClick={() => setConfirming(false)}
+              disabled={pending}
+            >
               Cancel
             </Button>
             <Button onClick={apply} disabled={pending}>
@@ -584,7 +665,8 @@ function CertificatesCard() {
  */
 function CertificateExpiry({ account }: { account: CertificateAccount }) {
   const days = account.expiresInDays;
-  if (account.customCertificates === 0 || days === null || days > 21) return null;
+  if (account.customCertificates === 0 || days === null || days > 21)
+    return null;
   return (
     <Badge variant="destructive">
       <TriangleAlert className="size-3" />

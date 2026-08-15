@@ -1,7 +1,7 @@
 import { builder } from "../builder";
 import {
-  checkPanelUrl,
   getInstanceSettings,
+  getPanelAddressImpact,
   getPanelHttps,
   listCertificateAccounts,
   setCertificateEmail,
@@ -9,8 +9,8 @@ import {
   setPanelUrl,
   type CertificateAccount,
   type InstanceSettings,
+  type PanelAddressImpact,
   type PanelHttps,
-  type PanelReachability,
 } from "@/lib/data/instance-settings";
 
 /* ------------------------------------------------------------------ */
@@ -32,21 +32,54 @@ const InstanceSettingsRef = builder
           "`stored` (set here), `environment` (DEPLO_PUBLIC_URL, set at install time) or `request` (derived from the browser's own host, which is a guess).",
       }),
       storedPanelUrl: t.exposeString("storedPanelUrl", { nullable: true }),
+      panelIpUrl: t.exposeString("panelIpUrl", {
+        nullable: true,
+        description:
+          "The address the panel also answers on, straight on the machine it runs on (http://<server ip>:3000). Always on and not a setting: it is the way back in when the panel's domain, certificate or proxy stops working. Null only when Deplo cannot work out an address of its own that anyone else could reach.",
+      }),
+      deploHostIp: t.exposeString("deploHostIp", {
+        nullable: true,
+        description:
+          "The IPv4 an A record for the panel's domain should point at.",
+      }),
       version: t.exposeString("version"),
       deploHostId: t.exposeString("deploHostId", { nullable: true }),
       deploHostName: t.exposeString("deploHostName", { nullable: true }),
     }),
   });
 
-const PanelReachabilityRef = builder
-  .objectRef<PanelReachability>("PanelReachability")
+const PanelAddressImpactRef = builder
+  .objectRef<PanelAddressImpact>("PanelAddressImpact")
   .implement({
     description:
-      "Whether an address actually reaches this Deplo, asked of the address itself. DNS and the proxy in front of the panel belong to the operator, so this reports what the address answered rather than claiming it works.",
+      "What moving the panel to a given address would break, counted live and instance-wide. Every number is a fact about right now, so a dialog can name what is lost instead of warning in the abstract. Read-only: nothing here changes anything.",
     fields: (t) => ({
       url: t.exposeString("url"),
-      ok: t.exposeBoolean("ok"),
-      error: t.exposeString("error", { nullable: true }),
+      currentUrl: t.exposeString("currentUrl"),
+      hostChanges: t.exposeBoolean("hostChanges", {
+        description:
+          "Whether the hostname moves. Everything a browser welds to an origin - passkeys, cookies, push subscriptions - dies on this.",
+      }),
+      schemeChanges: t.exposeBoolean("schemeChanges"),
+      losesHttps: t.exposeBoolean("losesHttps", {
+        description:
+          "https to http. Browsers that already loaded the panel over https keep refusing plain http on that hostname until the HSTS they remember expires.",
+      }),
+      panelIpUrl: t.exposeString("panelIpUrl", { nullable: true }),
+      passkeys: t.exposeInt("passkeys"),
+      passkeyPeople: t.exposeInt("passkeyPeople"),
+      sessions: t.exposeInt("sessions"),
+      sessionPeople: t.exposeInt("sessionPeople"),
+      deployHooks: t.exposeInt("deployHooks"),
+      mcpConnections: t.exposeInt("mcpConnections"),
+      registrationLinks: t.exposeInt("registrationLinks"),
+      pendingServers: t.exposeInt("pendingServers"),
+      pushSubscriptions: t.exposeInt("pushSubscriptions"),
+      gitConnections: t.exposeInt("gitConnections", {
+        description:
+          "Git connections whose webhook is registered against the address the INSTALLER was given, not this setting - so this change does not move them.",
+      }),
+      githubApps: t.exposeInt("githubApps"),
     }),
   });
 
@@ -107,6 +140,14 @@ builder.queryFields((t) => ({
       "This instance's own settings. A plain database read: it never dials a server, so it answers even when the fleet is down.",
     resolve: () => getInstanceSettings(),
   }),
+  panelAddressImpact: t.field({
+    type: PanelAddressImpactRef,
+    authScopes: { instanceAdmin: true },
+    description:
+      "What moving the panel to this address would break: passkeys welded to the current hostname, sessions, deploy hooks already pasted into someone's CI, connected AI clients, invite links, servers still waiting for their install command, notification subscriptions. Counted live and instance-wide, and only meaningful when the address actually moves - an unchanged address answers all zeroes. A query, not a mutation: it reads the database and dials nothing.",
+    args: { url: t.arg.string({ required: true }) },
+    resolve: (_r, { url }) => getPanelAddressImpact(url),
+  }),
 }));
 
 /* ------------------------------------------------------------------ */
@@ -121,17 +162,6 @@ builder.mutationFields((t) => ({
       "Set the address this Deplo answers on, or pass no url to fall back to DEPLO_PUBLIC_URL. A bare domain becomes https://. The value is validated as a hostname with no path, no credentials and no shell metacharacters, because it is interpolated into copy-and-run strings such as a server's install command. On a Deplo that publishes itself through its own proxy this MOVES the panel's route too, and puts the old one back if the new address does not answer; DNS still has to point at the server first.",
     args: { url: t.arg.string({ required: false }) },
     resolve: (_r, { url }) => setPanelUrl(url ?? null),
-  }),
-  // A MUTATION despite writing nothing, for the same reason checkServerHostInfo
-  // is one: it dials out over the network, and the GraphQL route serves GET, so a
-  // side-effecting query would be reachable by a plain link.
-  checkPanelUrl: t.field({
-    type: PanelReachabilityRef,
-    authScopes: { instanceAdmin: true },
-    description:
-      "Ask an address whether it reaches this Deplo, by calling the panel's own liveness endpoint from the server side. Persists nothing. Reports what answered instead when it does not: a DNS failure, a 502 and 'something else lives here' all need different fixes.",
-    args: { url: t.arg.string({ required: true }) },
-    resolve: (_r, { url }) => checkPanelUrl(url),
   }),
   panelHttps: t.field({
     type: PanelHttpsRef,

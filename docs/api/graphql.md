@@ -149,7 +149,7 @@ minting registration links, the per-user admin editor, Docker cleanup
 (`dockerCleanupPolicy`, `dockerCleanupRuns`, `updateDockerCleanupPolicy`,
 `setServerCleanupExcluded`, `runDockerCleanupNow`) — one instance-wide policy over
 hosts every team shares — and the instance's own settings (`instanceSettings`,
-`setPanelUrl`, `checkPanelUrl`, `panelHttps`, `setPanelHttps`,
+`setPanelUrl`, `panelAddressImpact`, `panelHttps`, `setPanelHttps`,
 `serverCertificateAccounts`, `setCertificateEmail`):
 the address this Deplo answers on, and the Let's Encrypt account every host's
 proxy issues certificates under. The panel publishes ITSELF through its host's
@@ -161,6 +161,13 @@ browser warning on a page nobody has logged into. Turning it off moves the route
 the stored address and the session cookie together; a `__Secure-` cookie is one a
 browser will not send over http. On a Deplo installed before it published its own
 route, the first change adopts that route instead of requiring a re-install.
+Both moves are destructive in ways a text field does not show, so
+`panelAddressImpact(url)` counts what a given address would cost - passkeys
+welded to the current hostname, live sessions, deploy hooks already pasted into
+someone's CI, connected AI clients - and the UI puts those numbers in front of
+the change. `instanceSettings.panelIpUrl` is the address every instance also
+answers on, straight on its own machine: not a setting, cannot be turned off, and
+the way back in when a domain, a certificate or a proxy is what broke.
 A host's own TLS certificates are the same kind
 of thing (`serverCertificates`, `addServerCertificate`, `removeServerCertificate`):
 they front whatever any team runs on that server, they live in that host's proxy

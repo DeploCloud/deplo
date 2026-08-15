@@ -1836,7 +1836,15 @@ Settings that belong to this Deplo instance rather than to a team or a host: the
 """
 type InstanceSettings {
   deploHostId: String
+
+  """The IPv4 an A record for the panel's domain should point at."""
+  deploHostIp: String
   deploHostName: String
+
+  """
+  The address the panel also answers on, straight on the machine it runs on (http://<server ip>:3000). Always on and not a setting: it is the way back in when the panel's domain, certificate or proxy stops working. Null only when Deplo cannot work out an address of its own that anyone else could reach.
+  """
+  panelIpUrl: String
 
   """
   The address Deplo uses for itself right now. Every install command, deploy hook URL and invite link is built from it.
@@ -2050,11 +2058,6 @@ type Mutation {
 
   """Re-run the upstream release check and return the latest update info."""
   checkForUpdates: UpdateInfo
-
-  """
-  Ask an address whether it reaches this Deplo, by calling the panel's own liveness endpoint from the server side. Persists nothing. Reports what answered instead when it does not: a DNS failure, a 502 and 'something else lives here' all need different fixes.
-  """
-  checkPanelUrl(url: String!): PanelReachability
 
   """
   Probe ONE server's agent right now (a live Hello) and persist what it reports: online, warning (agent up, Docker unreachable), error (agent untrusted or broken) or offline. Returns the refreshed server. Throttled server-side even when forced, so it cannot be used to hammer a host; an inconclusive probe leaves the previous observation untouched rather than guessing.
@@ -2920,6 +2923,41 @@ input NodeGrantInput {
 }
 
 """
+What moving the panel to a given address would break, counted live and instance-wide. Every number is a fact about right now, so a dialog can name what is lost instead of warning in the abstract. Read-only: nothing here changes anything.
+"""
+type PanelAddressImpact {
+  currentUrl: String
+  deployHooks: Int
+
+  """
+  Git connections whose webhook is registered against the address the INSTALLER was given, not this setting - so this change does not move them.
+  """
+  gitConnections: Int
+  githubApps: Int
+
+  """
+  Whether the hostname moves. Everything a browser welds to an origin - passkeys, cookies, push subscriptions - dies on this.
+  """
+  hostChanges: Boolean
+
+  """
+  https to http. Browsers that already loaded the panel over https keep refusing plain http on that hostname until the HSTS they remember expires.
+  """
+  losesHttps: Boolean
+  mcpConnections: Int
+  panelIpUrl: String
+  passkeyPeople: Int
+  passkeys: Int
+  pendingServers: Int
+  pushSubscriptions: Int
+  registrationLinks: Int
+  schemeChanges: Boolean
+  sessionPeople: Int
+  sessions: Int
+  url: String
+}
+
+"""
 How the Deplo panel itself is served, read live off the router that publishes it. `unavailable` says why it is not Deplo's to change here - the host is not added as a server, its proxy is not one Deplo installed, or the panel is still published by its own container.
 """
 type PanelHttps {
@@ -2936,15 +2974,6 @@ type PanelHttps {
   """
   provider: String
   unavailable: String
-}
-
-"""
-Whether an address actually reaches this Deplo, asked of the address itself. DNS and the proxy in front of the panel belong to the operator, so this reports what the address answered rather than claiming it works.
-"""
-type PanelReachability {
-  error: String
-  ok: Boolean
-  url: String
 }
 
 """
@@ -3304,6 +3333,11 @@ type Query {
   Open pull requests on the app's repository, for the deploy picker. Needs only `pull_requests: read`, which every Deplo GitHub App has.
   """
   openPullRequests(appId: ID!): [GithubPullRequest!]
+
+  """
+  What moving the panel to this address would break: passkeys welded to the current hostname, sessions, deploy hooks already pasted into someone's CI, connected AI clients, invite links, servers still waiting for their install command, notification subscriptions. Counted live and instance-wide, and only meaningful when the address actually moves - an unchanged address answers all zeroes. A query, not a mutation: it reads the database and dials nothing.
+  """
+  panelAddressImpact(url: String!): PanelAddressImpact
 
   """The app's preview-only variable overrides (advanced)."""
   previewEnvVars(appId: ID!): [PreviewEnvVar!]

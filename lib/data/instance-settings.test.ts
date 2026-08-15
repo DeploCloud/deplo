@@ -6,10 +6,12 @@ import type { PGlite } from "@electric-sql/pglite";
 import { makeTestDb, type TestDb } from "../db/test-harness";
 import { __setTestDb, __resetTestDb } from "../db/client";
 import { instanceSettings } from "../db/schema/control-plane";
+import { passkey, session } from "../db/schema/auth";
 import { runWithIdentity } from "../auth/request-context";
 import { seedIdentity, TRUNCATE_IDENTITY, TEAM_A } from "./identity-test-helpers";
 import {
   getInstanceSettings,
+  getPanelAddressImpact,
   getPanelHttps,
   instancePublicBaseUrl,
   moveWithRollback,
@@ -130,6 +132,112 @@ test("a stored address wins over the one the box was installed with", async (t) 
   assert.equal(cleared.storedPanelUrl, null);
   assert.equal(cleared.panelUrl, "https://installed.example.com");
   assert.equal(cleared.panelUrlSource, "environment");
+});
+
+/* ------------------------------------------------------------------ */
+/* What moving the address would break                                 */
+/* ------------------------------------------------------------------ */
+
+/**
+ * The dialog in front of the address field states facts, and these are the two
+ * ways facts go wrong: counting things that are not affected (a wall of red in
+ * front of a save that changes nothing), and missing the one thing that is gone
+ * for good. A passkey cannot be moved to a new hostname and nothing warns about
+ * it anywhere else.
+ */
+async function seedPasskeyAndSession(rpId: string) {
+  await db.insert(passkey).values({
+    id: `pk_${rpId}`,
+    userId: ADMIN,
+    publicKey: "public",
+    credentialID: `cred_${rpId}`,
+    counter: 0,
+    deviceType: "singleDevice",
+    backedUp: false,
+    rpId,
+  });
+  await db.insert(session).values({
+    id: "sess_1",
+    userId: ADMIN,
+    token: "token_1",
+    expiresAt: new Date(Date.now() + 60 * 60 * 1000),
+  });
+}
+
+const withPanelUrl = async <T>(url: string, fn: () => Promise<T>): Promise<T> => {
+  const previous = process.env.DEPLO_PUBLIC_URL;
+  process.env.DEPLO_PUBLIC_URL = url;
+  const { setStoredPublicBaseUrl } = await import("../public-url");
+  setStoredPublicBaseUrl(url);
+  try {
+    return await fn();
+  } finally {
+    setStoredPublicBaseUrl(null);
+    if (previous === undefined) delete process.env.DEPLO_PUBLIC_URL;
+    else process.env.DEPLO_PUBLIC_URL = previous;
+  }
+};
+
+test("an address that does not move counts nothing", async () => {
+  await withPanelUrl("https://deplo.example.com", async () => {
+    await seedPasskeyAndSession("deplo.example.com");
+    const impact = await asUser(ADMIN, () =>
+      getPanelAddressImpact("deplo.example.com"),
+    );
+    assert.equal(impact.hostChanges, false);
+    assert.equal(impact.schemeChanges, false);
+    assert.equal(impact.passkeys, 0, "nothing is lost by saving the same address");
+    assert.equal(impact.sessions, 0);
+  });
+});
+
+test("a new hostname counts the passkeys and sessions it takes with it", async () => {
+  await withPanelUrl("https://deplo.example.com", async () => {
+    await seedPasskeyAndSession("deplo.example.com");
+    const impact = await asUser(ADMIN, () =>
+      getPanelAddressImpact("moved.example.com"),
+    );
+    assert.equal(impact.hostChanges, true);
+    assert.equal(impact.losesHttps, false);
+    assert.equal(impact.passkeys, 1);
+    assert.equal(impact.passkeyPeople, 1);
+    assert.equal(impact.sessions, 1);
+    assert.equal(impact.sessionPeople, 1);
+  });
+});
+
+test("a passkey minted for another address is not counted as a loss", async () => {
+  await withPanelUrl("https://deplo.example.com", async () => {
+    // It is already dead: it belongs to an address this panel does not answer
+    // on, so reporting it would inflate what this change costs.
+    await seedPasskeyAndSession("previous.example.com");
+    const impact = await asUser(ADMIN, () =>
+      getPanelAddressImpact("moved.example.com"),
+    );
+    assert.equal(impact.passkeys, 0);
+    assert.equal(impact.sessions, 1);
+  });
+});
+
+test("dropping https is counted as a loss even though the hostname stays", async () => {
+  await withPanelUrl("https://deplo.example.com", async () => {
+    await seedPasskeyAndSession("deplo.example.com");
+    const impact = await asUser(ADMIN, () =>
+      getPanelAddressImpact("http://deplo.example.com"),
+    );
+    assert.equal(impact.hostChanges, false);
+    assert.equal(impact.schemeChanges, true);
+    assert.equal(impact.losesHttps, true);
+    // WebAuthn has no relying party on plain http, so every one of them dies.
+    assert.equal(impact.passkeys, 1);
+  });
+});
+
+test("only an instance admin can ask what an address would break", async () => {
+  await assert.rejects(
+    () => asUser(MEMBER, () => getPanelAddressImpact("moved.example.com")),
+    /admin/i,
+  );
 });
 
 /* ------------------------------------------------------------------ */
