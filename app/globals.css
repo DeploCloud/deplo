@@ -2641,3 +2641,20 @@
     animation: none;
   }
 }
+
+/* The connect wizard's robot is drawn in the SELECTED agent's colour, so the
+   picture and the card you just ticked agree. Only the hue comes from the
+   agent (`RobotGraphic`'s `accent`); lightness and chroma are a theme
+   decision — a stroke has to be brighter on a dark background than on a light
+   one — and an agent whose mark has no hue at all (the near-black ones) never
+   sets the variable, so the robot keeps the theme's own ink. */
+:root {
+  --deplo-robot-ink: var(--primary);
+  --deplo-robot-l: 0.55;
+  --deplo-robot-c: 0.15;
+}
+
+.dark {
+  --deplo-robot-l: 0.78;
+  --deplo-robot-c: 0.14;
+}

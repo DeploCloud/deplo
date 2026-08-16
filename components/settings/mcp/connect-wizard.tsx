@@ -351,7 +351,13 @@ function WizardRun({
       {/* First in the DOM on a phone, where the picture on top reads as a
           heading; last on a wide screen, where it belongs on the right. */}
       <div className="relative order-first flex justify-center xl:order-last xl:sticky xl:top-24 xl:self-start">
-        <RobotGraphic state={robot} className="h-auto w-52 xl:w-full" />
+        {/* Drawn in the chosen agent's own colour — the same hue its card wears
+            when selected, so the picture and the tick agree. */}
+        <RobotGraphic
+          state={robot}
+          accent={agent?.veil}
+          className="h-auto w-52 xl:w-full"
+        />
         {/* Mounted only on success, so it plays once and replays whenever a new
             run reaches the end. */}
         {connected && <ConfettiBurst className="top-28" />}
@@ -516,6 +522,7 @@ function WizardRun({
               // thing nobody needed telling — what they do not know is that
               // the field lives behind Customize → Connectors, and that was in
               // small muted type under the code block, which is not a tutorial.
+              mark={<AgentMark agent={agent} size="lg" />}
               title={
                 web
                   ? `Add deplo as a connector in ${agent.label}`
@@ -721,15 +728,22 @@ function WizardRun({
  * then one primary button. Holding that shape is what makes the four steps feel
  * like one flow rather than four screens someone bolted together.
  *
- * Left-aligned, because the illustration is on the left: a centred column of
+ * Left-aligned, because the illustration is on the right: a centred column of
  * text beside a picture has no edge for the eye to come back to, and every line
  * starts somewhere different.
+ *
+ * `mark` is the chosen agent's own logo, above the heading. The step that shows
+ * a configuration is the one place the reader is following instructions for a
+ * specific client, and the wizard rail says "Connect" rather than which — so the
+ * mark is the confirmation that they are reading Cursor's file and not Windsurf's.
  */
 function StepShell({
+  mark,
   title,
   lead,
   children,
 }: {
+  mark?: React.ReactNode;
   title: string;
   lead: string;
   children: React.ReactNode;
@@ -737,11 +751,48 @@ function StepShell({
   return (
     <div className="flex flex-col items-start gap-5">
       <div>
+        {mark ? <span className="mb-3 flex">{mark}</span> : null}
         <h2 className="text-base font-semibold">{title}</h2>
         <p className="mt-1 max-w-prose text-sm text-muted-foreground">{lead}</p>
       </div>
       {children}
     </div>
+  );
+}
+
+/**
+ * An agent's logo on its own tile, in the agent's own colours.
+ *
+ * Coloured always — not only when selected. The tile is what you scan a grid
+ * of ten for, and one that only colours the card you already picked has helped
+ * you exactly once you no longer need it. The ring is a token, so a near-black
+ * brand still has an edge on a dark background; the fill and the glyph are the
+ * brand's and stay put in both themes.
+ */
+function AgentMark({
+  agent,
+  size = "sm",
+}: {
+  agent: AgentDef;
+  /** `lg` above a heading, `sm` inside a card. */
+  size?: "sm" | "lg";
+}) {
+  const Icon = agent.icon;
+  return (
+    <span
+      className={cn(
+        "flex shrink-0 items-center justify-center rounded-md ring-1 ring-border",
+        size === "lg" ? "size-10" : "size-8",
+        !agent.brand && "bg-muted/50 text-muted-foreground",
+      )}
+      style={
+        agent.brand
+          ? { backgroundColor: agent.brand.bg, color: agent.brand.fg }
+          : undefined
+      }
+    >
+      <Icon className={size === "lg" ? "size-5" : "size-4"} />
+    </span>
   );
 }
 
@@ -767,7 +818,6 @@ function AgentCard({
     agent.kind === "web"
       ? "Needs the permission to manage MCP access."
       : "Needs the permission to create API tokens.";
-  const Icon = agent.icon;
   // The same wash the template store's cards wear, in the brand's own colour:
   // lit on hover while you are still looking, and held lit once this is the one
   // you chose. It replaces the flat `bg-muted` hover — a grid of brand tiles
@@ -794,24 +844,7 @@ function AgentCard({
         veil.className,
       )}
     >
-      {/* The agent's own colours, always — not only when selected. The tile is
-          what you scan for, and a grid that only colours the card you already
-          picked has helped you exactly once you no longer need it. The ring is
-          a token, so a near-black brand still has an edge on a dark background;
-          the fill and the glyph are the brand's and stay put in both themes. */}
-      <span
-        className={cn(
-          "flex size-8 shrink-0 items-center justify-center rounded-md ring-1 ring-border",
-          !agent.brand && "bg-muted/50 text-muted-foreground",
-        )}
-        style={
-          agent.brand
-            ? { backgroundColor: agent.brand.bg, color: agent.brand.fg }
-            : undefined
-        }
-      >
-        <Icon className="size-4" />
-      </span>
+      <AgentMark agent={agent} />
       <span className="min-w-0 flex-1">
         <span className="block text-sm font-medium">{agent.label}</span>
         {/* Exactly two lines, reserved AND capped. The blurbs are written to

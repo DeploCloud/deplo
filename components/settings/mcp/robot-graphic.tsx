@@ -1,4 +1,6 @@
+import type * as React from "react";
 import { cn } from "@/lib/utils";
+import type { LogoAccent } from "@/lib/templates/logo-color";
 
 /**
  * The connect wizard's illustration: a robot, a cable, and deplo.
@@ -89,18 +91,36 @@ export type RobotState = "idle" | "key" | "reaching" | "connected";
 
 export function RobotGraphic({
   state = "idle",
+  accent,
   className,
 }: {
   state?: RobotState;
+  /**
+   * The chosen agent's colour, so the robot is drawn in it — the same hue its
+   * card wears when selected. A brand with no hue of its own (the near-black
+   * marks: ChatGPT, Cursor, Codex, Windsurf) passes `tone` or nothing and the
+   * robot keeps the theme's own ink, which is white on the dark theme.
+   */
+  accent?: LogoAccent;
   className?: string;
 }) {
   const live = state === "connected";
+  // Lightness and chroma live in `globals.css`, per theme: a stroke needs to be
+  // brighter on a dark background than on a light one, and that is a theme
+  // decision rather than a per-agent one. Only the hue comes from here.
+  const ink =
+    accent?.hue !== undefined
+      ? ({
+          "--deplo-robot-ink": `oklch(var(--deplo-robot-l) var(--deplo-robot-c) ${accent.hue})`,
+        } as React.CSSProperties)
+      : undefined;
   return (
     <svg
       viewBox="0 0 160 120"
       fill="none"
       role="img"
       aria-label={LABEL[state]}
+      style={ink}
       className={cn("h-32 w-auto", className)}
     >
       {/* ---- deplo, on the right. Recessive: it is already there, and the
@@ -162,7 +182,7 @@ export function RobotGraphic({
           d="M74 74 C90 76, 96 72, 112 72"
           className={
             live
-              ? "stroke-primary"
+              ? "stroke-[var(--deplo-robot-ink)]"
               : "deplo-robot-cable stroke-muted-foreground/70"
           }
           strokeWidth="2.5"
@@ -172,7 +192,7 @@ export function RobotGraphic({
 
       {/* ---- the key, only while permissions are being chosen ---- */}
       {state === "key" && (
-        <g className="deplo-robot-key stroke-primary" strokeWidth="2.5">
+        <g className="deplo-robot-key stroke-[var(--deplo-robot-ink)]" strokeWidth="2.5">
           <circle cx="76" cy="72" r="4.5" />
           <line x1="80" y1="72" x2="90" y2="72" strokeLinecap="round" />
           <line x1="86" y1="72" x2="86" y2="77" strokeLinecap="round" />
@@ -196,7 +216,7 @@ export function RobotGraphic({
         className={cn(
           state === "idle" && "deplo-robot-antenna",
           state === "key" && "deplo-robot-blip",
-          live ? "fill-[var(--success)]" : "fill-primary",
+          live ? "fill-[var(--success)]" : "fill-[var(--deplo-robot-ink)]",
         )}
       />
       <rect
@@ -205,13 +225,13 @@ export function RobotGraphic({
         width="40"
         height="32"
         rx="11"
-        className="stroke-primary"
+        className="stroke-[var(--deplo-robot-ink)]"
         strokeWidth="2.5"
       />
       <g
         className={cn(
           state === "idle" && "deplo-robot-eyes",
-          live ? "fill-[var(--success)]" : "fill-primary",
+          live ? "fill-[var(--success)]" : "fill-[var(--deplo-robot-ink)]",
         )}
       >
         <circle cx="36" cy="42" r="3.5" />
@@ -223,7 +243,7 @@ export function RobotGraphic({
         y1="58"
         x2="44"
         y2="63"
-        className="stroke-primary"
+        className="stroke-[var(--deplo-robot-ink)]"
         strokeWidth="2.5"
       />
       <rect
@@ -232,12 +252,12 @@ export function RobotGraphic({
         width="32"
         height="29"
         rx="8"
-        className="stroke-primary"
+        className="stroke-[var(--deplo-robot-ink)]"
         strokeWidth="2.5"
       />
       <path
         d="M60 71 L74 74"
-        className="stroke-primary"
+        className="stroke-[var(--deplo-robot-ink)]"
         strokeWidth="2.5"
         strokeLinecap="round"
       />
