@@ -29,6 +29,7 @@ import {
 import { getCurrentUser } from "../auth";
 import { nowIso } from "../ids";
 import { membershipFor, requireCapability } from "../membership";
+import { currentIdentity } from "../auth/request-context";
 import { recordActivity } from "./activity";
 import { requireAppCapability } from "./node-access";
 import { assertServerAccessibleTx } from "./servers";
@@ -295,11 +296,11 @@ async function homeLabelFor(app: {
  * Hand this app over to another team.
  *
  * Authorization is deliberately stricter than delete on the SOURCE side: it
- * needs `deploy` AND `manage_env`, because the app carries its encrypted
+ * needs `move_apps` AND `manage_env`, because the app carries its encrypted
  * variables across a tenancy boundary — without the second gate, a member who
  * may not read the team's secrets could move them into a team where they can.
  * On the DESTINATION side the bar is the one the mission states: the viewer must
- * belong to that team and hold `deploy` there (they must be able to manage apps
+ * belong to that team and hold `move_apps` there (they must be able to manage apps
  * where the app lands). A folder-scoped app additionally needs both capabilities
  * on its folder, exactly like pulling it out of that folder.
  */
@@ -322,6 +323,17 @@ export async function transferAppToTeam(
   if (!app) throw new Error("App not found");
   if (destTeamId === teamId)
     throw new Error("That app is already in this team");
+
+  // A SCOPED API token must not move an app into a team outside its scope. The
+  // destination gate below reads the human's live capabilities in destTeamId, but
+  // the token clamp in `membershipFor` keys on the token's OWN team — it does not
+  // fire for a DIFFERENT team, so a token scoped to team A would otherwise borrow
+  // its creator's access to team B and carry the app's encrypted env across. A
+  // cookie session (no token) and an unrestricted token (scope null, reaches every
+  // team its holder belongs to) are unaffected.
+  const tokenScope = currentIdentity()?.token?.scope;
+  if (tokenScope && !tokenScope.teamIds.includes(destTeamId))
+    throw new Error("This API token can't move apps into that team.");
 
   const dest = await membershipFor(userId, destTeamId);
   if (!dest) throw new Error("You're not a member of that team");

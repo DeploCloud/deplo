@@ -230,10 +230,9 @@ export async function getDatabaseShellLabel(id: string): Promise<string> {
 
 /**
  * Authorise an attach and resolve the real container. Attaching stdin to the
- * live engine is an infra-class operation → `manage_infra` (databases have no
- * folder/deploy story; manage_infra is the capability every other database
- * mutation gates on). Same discriminated result contract as
- * console.ts's resolveAttachTarget.
+ * live engine is a console operation → `open_database_console` (databases have no
+ * folder/deploy story; this is the capability the interactive console gates on).
+ * Same discriminated result contract as console.ts's resolveAttachTarget.
  */
 export async function resolveDatabaseAttachTarget(
   id: string,
@@ -300,8 +299,8 @@ export async function resolveDatabaseLogsTarget(
 
 /**
  * Run one console line inside the database container. RCE into the engine →
- * `manage_infra` in the data layer (the GraphQL field carries the same scope —
- * defense in depth). Reuses console.ts's exec semantics verbatim: `exit`/
+ * `open_database_console` in the data layer (the GraphQL field carries the same
+ * scope — defense in depth). Reuses console.ts's exec semantics verbatim: `exit`/
  * `logout` detach, `clear` is a form feed, docker-level stderr is classified
  * apart from the guest's own exit code, and an unreachable agent answers with
  * a clear line instead of throwing at the terminal.

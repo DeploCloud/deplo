@@ -27,10 +27,35 @@ export const runtime = "nodejs";
 // buffering the log firehose in memory without bound.
 const MAX_QUEUED_CHUNKS = 1024;
 
+/**
+ * Belt-and-braces CSRF check: refuse a request whose `Origin` points at another
+ * site. Same-origin EventSource either omits `Origin` or sends one matching the
+ * request host; a cross-site one carries a foreign origin. `SameSite=Lax` on the
+ * session cookie already blocks this — this mirrors the GraphQL route's explicit
+ * assertion so a shared cookie can't open a stream cross-origin. Absent `Origin`
+ * is allowed (Lax covers it); present-and-mismatched is refused.
+ */
+function isCrossSite(request: NextRequest): boolean {
+  const origin = request.headers.get("origin");
+  if (!origin) return false;
+  let originHost: string;
+  try {
+    originHost = new URL(origin).host;
+  } catch {
+    return true;
+  }
+  const host =
+    request.headers.get("x-forwarded-host") ?? request.headers.get("host") ?? "";
+  return originHost !== host;
+}
+
 export async function GET(
   request: NextRequest,
   ctx: RouteContext<"/api/apps/[id]/logs">,
 ) {
+  if (isCrossSite(request))
+    return Response.json({ error: "Cross-site request refused" }, { status: 403 });
+
   const user = await getCurrentUser();
   if (!user) return Response.json({ error: "Unauthorized" }, { status: 401 });
 

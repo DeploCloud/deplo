@@ -305,6 +305,26 @@ test("rebuildDatabase: unreachable agent fails clearly and leaves the row intact
   });
 });
 
+test("rebuild/redeploy refuse to render an undecryptable password (no empty-auth engine)", async () => {
+  // Simulate a `DEPLO_SECRET` rotation: the stored ciphertext no longer opens
+  // under the running key. Best-effort decryptSecret would yield "" here, and a
+  // rebuild (wipes the volume, re-inits from env) would boot the engine with NO
+  // password — a publicly-exposed redis with no auth. The guard runs BEFORE the
+  // agent dial, so the failure is the decrypt message, not "unreachable agent".
+  await seedDatabase(db, { id: "db_undec", name: "undec" });
+  await db
+    .update(databasesTable)
+    // v1-shaped but the auth tag won't verify → tryDecryptSecret returns not-ok.
+    .set({ connectionStringEnc: "v1.AAAAAAAAAAAAAAAA.AAAAAAAAAAAAAAAAAAAAAA.AAAA" })
+    .where(eq(databasesTable.id, "db_undec"));
+  await asUser1(async () => {
+    await assert.rejects(rebuildDatabase("db_undec"), /could not be decrypted/);
+    await assert.rejects(redeployDatabase("db_undec"), /could not be decrypted/);
+    // Nothing was torn down or dialed — the row is exactly as seeded.
+    assert.equal((await getDatabase("db_undec"))!.status, "running");
+  });
+});
+
 test("rotateDatabasePassword: requires a running database and a policy-clean password", async () => {
   await seedDatabase(db, { id: "db_rot", name: "rot", status: "stopped" });
   await asUser1(async () => {

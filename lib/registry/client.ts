@@ -138,7 +138,11 @@ async function fetchJson<T>(
       signal: ctrl.signal,
       headers: { "User-Agent": UA, ...(init?.headers ?? {}) },
       cache: "no-store",
+      // A 302 out of a checked URL would land the follow-up on a private/
+      // metadata target the SSRF guard never saw — refuse it, don't follow.
+      redirect: "manual",
     });
+    if (res.status >= 300 && res.status < 400) return { status: 0, body: null };
     let body: T | null = null;
     if (res.ok) {
       body = (await res.json().catch(() => null)) as T | null;
@@ -269,7 +273,10 @@ async function ociToken(
       headers: { "User-Agent": UA },
       signal: ctrl.signal,
       cache: "no-store",
+      // Never follow a 3xx off the checked host (SSRF: 302 → private target).
+      redirect: "manual",
     });
+    if (probe.status >= 300 && probe.status < 400) return null;
     if (probe.ok) return "none"; // open registry, no auth needed
     challenge = parseBearerChallenge(probe.headers.get("www-authenticate"));
   } catch {
@@ -388,8 +395,11 @@ export async function checkImageExists(
         },
         signal: ctrl.signal,
         cache: "no-store",
+        // Never follow a 3xx off the checked host (SSRF: 302 → private target).
+        redirect: "manual",
       },
     );
+    if (res.status >= 300 && res.status < 400) return { status: "unknown" };
     if (res.ok) {
       return {
         status: "exists",

@@ -10,6 +10,7 @@ import {
   membershipCapabilities as membershipCapabilitiesTable,
   registrationLinks as registrationLinksTable,
   users as usersTable,
+  instanceSettings as instanceSettingsTable,
 } from "./db/schema/control-plane";
 import { account as accountTable } from "./db/schema/auth";
 import { eq } from "drizzle-orm";
@@ -328,3 +329,50 @@ async function assertLoginAccepts(email: string, password: string): Promise<void
     );
   }
 }
+
+// First-run setup: the instance-owner claim is the atomic guard. completeSetup's
+// user-count check runs OUTSIDE the account transaction, so two concurrent
+// first-run calls can both pass it; they then serialize on the instance_settings
+// singleton and exactly one may commit a fully-privileged owner admin.
+const setupOwner = (username: string) =>
+  createAccountWithTeam(
+    {
+      username,
+      name: username,
+      email: `${username}@setup.io`,
+      password: "Passw0rd!1",
+      teamName: `${username}-team`,
+    },
+    { isInstanceAdmin: true, isInstanceOwner: true },
+  );
+
+test("first-run setup: two concurrent owner claims, exactly one wins", async () => {
+  const results = await Promise.allSettled([
+    setupOwner("owner_a"),
+    setupOwner("owner_b"),
+  ]);
+  assert.equal(
+    results.filter((r) => r.status === "fulfilled").length,
+    1,
+    "exactly one setup succeeds",
+  );
+  const rejected = results.filter((r) => r.status === "rejected");
+  assert.equal(rejected.length, 1, "exactly one setup is rejected");
+  assert.match(
+    (rejected[0] as PromiseRejectedResult).reason.message,
+    /already been completed/,
+  );
+
+  // The loser's whole account + team insert rolled back: one user, one owner.
+  assert.equal((await db.select().from(usersTable)).length, 1);
+  const settings = await db.select().from(instanceSettingsTable);
+  assert.equal(settings.length, 1);
+  const winner = (await db.select().from(usersTable))[0]!;
+  assert.equal(settings[0]!.ownerUserId, winner.id);
+});
+
+test("first-run setup: a second owner claim after one succeeds is refused", async () => {
+  await setupOwner("owner_first");
+  await assert.rejects(() => setupOwner("owner_second"), /already been completed/);
+  assert.equal((await db.select().from(usersTable)).length, 1);
+});

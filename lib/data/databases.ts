@@ -29,7 +29,12 @@ import {
 import { recordActivity } from "./activity";
 import { matchesQuery } from "./match-query";
 import { dispatchAlert } from "../notify/dispatch";
-import { encryptSecret, decryptSecret, randomToken } from "../crypto";
+import {
+  encryptSecret,
+  decryptSecret,
+  decryptSecretOrThrow,
+  randomToken,
+} from "../crypto";
 import { connectAgent, mapCheckPortUnsupported } from "../infra/agent-client";
 import {
   migrateWorkloadData,
@@ -945,7 +950,9 @@ export async function updateDatabase(
     // one. Deriving from `cur` here means we always re-encrypt the current
     // password. Host is the TARGET server's when exposed (a move changes it),
     // else the stable service DNS name (unaffected by a move — same `deplo` net).
-    const password = parseConnectionPassword(decryptSecret(cur.connectionStringEnc));
+    const password = parseConnectionPassword(
+      decryptSecretOrThrow(cur.connectionStringEnc, "The database password"),
+    );
     const connEnc = encryptSecret(
       buildConnectionString({
         type: cur.type,
@@ -1509,7 +1516,12 @@ export async function redeployDatabase(id: string): Promise<void> {
       throw new Error(
         "Database is still provisioning — wait for it to finish before redeploying it.",
       );
-    const password = parseConnectionPassword(decryptSecret(cur.connectionStringEnc));
+    // Consumed to RENDER the running stack (redis auth rides a compose `--requirepass`
+    // flag applied on every boot, so an empty password here would silently disable
+    // auth even on a preserved volume). Refuse rather than emit an empty credential.
+    const password = parseConnectionPassword(
+      decryptSecretOrThrow(cur.connectionStringEnc, "The database password"),
+    );
     const yaml = renderDatabaseStackYaml(cur, password);
     const conn = await connectAgent(cur.serverId);
     try {
@@ -1565,7 +1577,12 @@ export async function rebuildDatabase(id: string): Promise<void> {
       throw new Error(
         "Database is still provisioning — wait for it to finish before rebuilding it.",
       );
-    const password = parseConnectionPassword(decryptSecret(cur.connectionStringEnc));
+    // Rebuild WIPES the volume and re-inits the engine from these credentials, so an
+    // undecryptable password (post `DEPLO_SECRET` rotation) would boot the engine with
+    // NO auth — a publicly-exposed redis with an empty password. Refuse instead.
+    const password = parseConnectionPassword(
+      decryptSecretOrThrow(cur.connectionStringEnc, "The database password"),
+    );
     const yaml = renderDatabaseStackYaml(cur, password);
     const conn = await connectAgent(cur.serverId);
     try {

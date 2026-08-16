@@ -707,18 +707,21 @@ async function removeDeploymentRows(
   return deleted.length;
 }
 
-/** True if the caller may deploy this app, node grants included. Non-throwing
- *  companion to `requireAppCapability`, for the broad "delete all" sweep where an
- *  app the caller can't reach is skipped rather than fatal. */
-async function mayManageAppFolder(appId: string): Promise<boolean> {
-  return hasAppCapability(appId, "deploy_apps");
+/** True if the caller holds `cap` on this app, node grants included. Non-throwing
+ *  companion to `requireAppCapability`, for the broad "delete/cancel all" sweep
+ *  where an app the caller can't reach is skipped rather than fatal. */
+async function mayManageAppFolder(
+  appId: string,
+  cap: "deploy_apps" | "delete_apps",
+): Promise<boolean> {
+  return hasAppCapability(appId, cap);
 }
 
 /**
  * Delete finished deployments by id (the multi-select "Delete selected"). Only
  * terminal rows are removed; any in-progress id in the selection is left for the
  * caller to cancel first. Team-scoped, and — like `moveAppsToFolder` — it
- * requires `deploy` on each distinct app's folder, throwing on one the caller
+ * requires `delete_apps` on each distinct app's folder, throwing on one the caller
  * can't manage. Returns how many were actually deleted.
  */
 export async function deleteDeployments(ids: string[]): Promise<number> {
@@ -733,18 +736,20 @@ export async function deleteDeployments(ids: string[]): Promise<number> {
   return removeDeploymentRows(rows, membership.teamId, user.name);
 }
 
-/** Keep only rows whose app's folder the caller may `deploy` on — the
- *  team-wide-sweep guard shared by delete-all and cancel-all. SKIPS (rather than
- *  throws on) a locked folder so one never blocks clearing the rest, memoizing the
- *  per-app check. */
+/** Keep only rows whose app's folder the caller holds `cap` on — the
+ *  team-wide-sweep guard shared by delete-all (`delete_apps`) and cancel-all
+ *  (`deploy_apps`), each passing the capability its entry gate already required.
+ *  SKIPS (rather than throws on) a locked folder so one never blocks clearing the
+ *  rest, memoizing the per-app check. */
 async function folderPermittedRows(
   rows: { id: string; appId: string }[],
+  cap: "deploy_apps" | "delete_apps",
 ): Promise<{ id: string; appId: string }[]> {
   const allowed = new Map<string, boolean>();
   const permitted: { id: string; appId: string }[] = [];
   for (const r of rows) {
     if (!allowed.has(r.appId))
-      allowed.set(r.appId, await mayManageAppFolder(r.appId));
+      allowed.set(r.appId, await mayManageAppFolder(r.appId, cap));
     if (allowed.get(r.appId)) permitted.push(r);
   }
   return permitted;
@@ -756,7 +761,7 @@ async function folderPermittedRows(
  * null/absent, the global page's "Delete all"). Optional `serverId` / `environment`
  * / `status` narrow the sweep to the deployments page's active view filters (owning
  * server, environment, and a specific terminal status), so a filtered "Delete all"
- * removes exactly the rows on screen. The single-app form enforces folder `deploy`
+ * removes exactly the rows on screen. The single-app form enforces folder `delete_apps`
  * (throws if the caller can't manage it); the team-wide sweep SKIPS apps whose
  * folder the caller can't manage rather than failing whole, so one locked folder
  * never blocks clearing the rest. In-progress deployments are always left. Returns
@@ -786,7 +791,7 @@ export async function deleteAllDeployments(
     environment: environment ?? undefined,
     status: status ?? undefined,
   });
-  const permitted = await folderPermittedRows(rows);
+  const permitted = await folderPermittedRows(rows, "delete_apps");
   return removeDeploymentRows(permitted, membership.teamId, user.name);
 }
 
@@ -933,7 +938,7 @@ export async function cancelAllDeployments(
     environment: environment ?? undefined,
     status: status ?? undefined,
   });
-  const permitted = await folderPermittedRows(rows);
+  const permitted = await folderPermittedRows(rows, "deploy_apps");
   return cancelDeploymentRows(permitted, membership.teamId, user.name);
 }
 

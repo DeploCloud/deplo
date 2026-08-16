@@ -3,7 +3,7 @@ import "server-only";
 import { cache } from "react";
 import { cookies, headers } from "next/headers";
 import { redirect } from "next/navigation";
-import { and, count, desc, eq, inArray, or, sql } from "drizzle-orm";
+import { and, count, desc, eq, inArray, isNull, or, sql } from "drizzle-orm";
 import { getDb, type DbTx } from "./db/client";
 import {
   instanceSettings as instanceSettingsTable,
@@ -258,11 +258,29 @@ export async function createAccountWithTeam(
     // The crown, claimed in the same transaction as the account it belongs to.
     // Written here rather than through lib/data/instance-owner.ts to keep auth.ts
     // free of a lib/data import (that module reads back through this one).
-    if (opts.isInstanceOwner)
-      await tx
+    //
+    // This is ALSO the atomic first-run guard. completeSetup's user-count check
+    // runs outside this transaction, so two concurrent first-run calls can both
+    // pass it; they then serialize on THIS singleton row (the second blocks on
+    // the first's lock, then sees the owner already set). The claim is an UPDATE
+    // guarded on `owner_user_id IS NULL` — not DO NOTHING on the PK, because the
+    // row may already exist for a non-ownership reason (panel address, VAPID
+    // keys) and DO NOTHING would then leave the instance unowned. The loser
+    // claims 0 rows and throws, rolling back its whole account + team insert, so
+    // exactly one fully-privileged owner admin can ever be minted at setup.
+    if (opts.isInstanceOwner) {
+      const claimed = await tx
         .insert(instanceSettingsTable)
         .values({ id: "default", ownerUserId: user.id, updatedAt: now })
-        .onConflictDoNothing({ target: instanceSettingsTable.id });
+        .onConflictDoUpdate({
+          target: instanceSettingsTable.id,
+          set: { ownerUserId: user.id, updatedAt: now },
+          setWhere: isNull(instanceSettingsTable.ownerUserId),
+        })
+        .returning({ id: instanceSettingsTable.id });
+      if (claimed.length === 0)
+        throw new Error("Setup has already been completed");
+    }
 
     // Team name uniqueness + slug dedupe against live rows.
     const teamDup = await tx

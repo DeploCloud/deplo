@@ -187,7 +187,7 @@ test("composeNeedsHostPrivileges: an ordinary stack asks for nothing", () => {
     image: nginx:1.27
     privileged: false
     cap_add: []
-    pid: service:worker
+    network_mode: bridge
     volumes:
       - ./conf:/etc/nginx
     ports:
@@ -197,11 +197,24 @@ test("composeNeedsHostPrivileges: an ordinary stack asks for nothing", () => {
   assert.equal(composeNeedsHostPrivileges(yaml), false);
 });
 
-test("composeNeedsHostPrivileges: network_mode host is NOT a privilege", () => {
-  // It costs the container its Traefik routing (the linter says so) and grants
-  // nothing on the host, so gating it would refuse a legitimate network tool.
+test("composeNeedsHostPrivileges: network_mode host IS a privilege (H-3)", () => {
+  // The host network namespace lets the container bind arbitrary host ports and
+  // reach 127.0.0.1 host services, so it is gated behind canMountHostVolumes.
   const yaml = `services:\n  app:\n    image: nginx\n    network_mode: host`;
-  assert.equal(composeNeedsHostPrivileges(yaml), false);
+  assert.equal(composeNeedsHostPrivileges(yaml), true);
+});
+
+test("composeNeedsHostPrivileges: pid/ipc/network_mode container: escapes (C-1)", () => {
+  // Joining another container's namespace on the same daemon is a cross-tenant
+  // escape, not limited to this stack.
+  for (const line of [
+    "    pid: \"container:x\"",
+    "    ipc: \"container:x\"",
+    "    network_mode: \"container:x\"",
+  ]) {
+    const yaml = `services:\n  app:\n    image: nginx\n${line}`;
+    assert.equal(composeNeedsHostPrivileges(yaml), true, `not caught: ${line.trim()}`);
+  }
 });
 
 test("composeNeedsHostPrivileges: unparseable YAML is not a detection", () => {

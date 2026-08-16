@@ -9,6 +9,15 @@ import { resolvePublicBaseUrl } from "@/lib/public-url";
  * update) the App, with `installation_id`. We resolve which connected App owns
  * it, read the account it was installed on, and record the installation so its
  * repositories become available as deploy sources.
+ *
+ * No CSRF/state check here (unlike github/callback): GitHub's post-install
+ * setup redirect carries only `installation_id` + `setup_action`, never a
+ * `state` we minted, so there is nothing to verify against. A forged/replayed
+ * `installation_id` is instead defused downstream: this handler requires an
+ * authenticated session (below), and `upsertInstallation` re-gates on
+ * `manage_git` AND verifies the resolved App belongs to the caller's active
+ * team, so a foreign installation_id resolves to an App the caller cannot write
+ * and is rejected. Do not treat the raw param as authorization on its own.
  */
 export async function GET(request: NextRequest) {
   // Build redirects against the public base URL, NOT request.nextUrl.origin:

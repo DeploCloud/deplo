@@ -33,6 +33,29 @@ export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 /**
+ * Belt-and-braces CSRF check: refuse a state-changing request whose `Origin`
+ * points at another site. Same-origin browser requests either omit `Origin`
+ * (GET/EventSource) or send one matching the request host; a genuine cross-site
+ * form/fetch carries a foreign one. `SameSite=Lax` on the session cookie already
+ * blocks this, but the GraphQL route asserts it explicitly too — this mirrors
+ * that so a shared cookie can't be replayed cross-origin against these routes.
+ * Absent `Origin` is allowed (Lax covers it); present-and-mismatched is refused.
+ */
+function isCrossSite(request: NextRequest): boolean {
+  const origin = request.headers.get("origin");
+  if (!origin) return false;
+  let originHost: string;
+  try {
+    originHost = new URL(origin).host;
+  } catch {
+    return true;
+  }
+  const host =
+    request.headers.get("x-forwarded-host") ?? request.headers.get("host") ?? "";
+  return originHost !== host;
+}
+
+/**
  * App ids with an upload streaming right now. The deployment-based 409
  * guard below can't catch a *concurrent upload* — the deployment isn't created
  * until after the (potentially minute-long) stream finishes, so two uploads
@@ -47,6 +70,9 @@ export async function POST(
   request: NextRequest,
   ctx: RouteContext<"/api/apps/[id]/upload">,
 ) {
+  if (isCrossSite(request))
+    return Response.json({ error: "Cross-site request refused" }, { status: 403 });
+
   const user = await getCurrentUser();
   if (!user) return Response.json({ error: "Unauthorized" }, { status: 401 });
 

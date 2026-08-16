@@ -224,6 +224,51 @@ test("no domain routes ⇒ NO Traefik routers (the stack is built but unrouted)"
   assert.ok(!all.some((l) => l.includes(".rule=")));
 });
 
+test("a user-authored traefik.* label is stripped; Deplo's own routers survive", () => {
+  // Hostname hijack attempt: the author hand-writes a router claiming another
+  // team's host. The `domains` table is the ONLY routing source, so it must not
+  // survive — while Deplo's own domains-derived router for a real domain stays.
+  const doc = buildDoc(
+    `
+services:
+  web:
+    image: nginx
+    labels:
+      - traefik.http.routers.evil.rule=Host(\`victim.com\`)
+      - traefik.http.routers.evil.priority=1000
+      - com.example.keep=yes
+`,
+    { domainRoutes: [route("real.1.2.3.4.nip.io", "web", 80)] },
+  );
+  const labels = labelsOf(doc.services.web);
+  // The attacker's router is gone entirely.
+  assert.ok(!labels.some((l) => l.includes("victim.com")));
+  assert.ok(!labels.some((l) => l.includes("routers.evil")));
+  // A non-traefik user label is untouched.
+  assert.ok(labels.includes("com.example.keep=yes"));
+  // Deplo's own routing for the real domain is present.
+  assert.ok(labels.some((l) => l.includes("Host(`real.1.2.3.4.nip.io`)")));
+  assert.ok(labels.includes("traefik.docker.network=deplo"));
+});
+
+test("a user traefik.* label in MAP form is stripped too", () => {
+  const doc = buildDoc(
+    `
+services:
+  web:
+    image: nginx
+    labels:
+      traefik.http.routers.evil.rule: Host(\`victim.com\`)
+      com.example.keep: yes
+`,
+    { domainRoutes: [route("real.1.2.3.4.nip.io", "web", 80)] },
+  );
+  const labels = labelsOf(doc.services.web);
+  assert.ok(!labels.some((l) => l.includes("victim.com")));
+  assert.ok(labels.some((l) => l.startsWith("com.example.keep=")));
+  assert.ok(labels.some((l) => l.includes("Host(`real.1.2.3.4.nip.io`)")));
+});
+
 test("a path-scoped route emits a PathPrefix rule + stripprefix middleware", () => {
   const doc = buildDoc(WEB_API_COMPOSE, {
     domainRoutes: [

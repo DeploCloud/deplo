@@ -342,6 +342,31 @@ function traefikLabels(opts: {
 }
 
 /**
+ * Drop every user-authored `traefik.*` label from a service. The `domains` table
+ * is the ONLY routing source, so a hand-written `traefik.http.routers.X.rule=
+ * Host(victim.com)` (which `mergeLabels` would keep — its router key never
+ * collides with Deplo's) must not survive: joining the shared `deplo` network it
+ * would hijack another team's hostname, bypassing `assertHostnameNotAnotherTeams`.
+ * Called before Deplo injects its own domains-derived routers, so only those
+ * remain. Compose accepts list OR map form; both are handled. Match is
+ * case-insensitive because Docker lowercases label keys.
+ */
+function stripTraefikLabels(svc: App): void {
+  const isTraefik = (key: string): boolean => /^traefik\./i.test(key.trim());
+  if (Array.isArray(svc.labels)) {
+    svc.labels = svc.labels.filter(
+      (l) => !(typeof l === "string" && isTraefik(l.split("=")[0])),
+    );
+  } else if (svc.labels && typeof svc.labels === "object") {
+    const kept: Record<string, unknown> = {};
+    for (const [k, v] of Object.entries(svc.labels as Record<string, unknown>)) {
+      if (!isTraefik(k)) kept[k] = v;
+    }
+    svc.labels = kept;
+  }
+}
+
+/**
  * Merge new label strings into a service's existing `labels`, dropping any
  * existing entry whose `KEY` collides (so re-deploys don't accumulate stale
  * routing/tracking labels). Compose accepts list OR map form; we normalise the
@@ -705,6 +730,10 @@ export function buildComposeStack(input: ComposeStackInput): string {
       // Traefik, which is how a preview is meant to be visited anyway.
       if (input.stripPublishedPorts) delete (svc as App).ports;
       if (input.filesDir) rewriteAppVolumes(svc as App, input.filesDir);
+      // The `domains` table is the ONLY routing source: drop any user-authored
+      // `traefik.*` label before Deplo stamps its own, so a hand-written router
+      // rule can't claim another team's hostname on the shared network.
+      stripTraefikLabels(svc as App);
       mergeLabels(svc as App, tracking);
       // Built images get the same tracking as IMAGE labels (+ the service name)
       // so the cleanup's count-based retention can see and rank them.

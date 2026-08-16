@@ -27,7 +27,7 @@ import type { BasicAuthUser, VarAuthor } from "../types";
  * like env secrets) so the htpasswd credentials can be re-derived on every
  * render. A password is NEVER part of a DTO; the only way back to the plaintext
  * is {@link revealBasicAuthPassword}, one credential at a time, behind the same
- * `manage_domains` gate as every write here. That reveal exists — where an app
+ * `manage_basic_auth` gate as every write here. That reveal exists — where an app
  * secret has none — because a basic-auth login is a credential you HAND TO A
  * PERSON: without it, "what is the password again?" can only be answered by
  * overwriting it, which locks out everyone already using it.
@@ -41,8 +41,8 @@ import type { BasicAuthUser, VarAuthor } from "../types";
  * {@link basicAuthUsersValue} when rendering), so calling back into it would
  * close an import cycle.
  *
- * Gated on `manage_domains` — basic auth is a routing/edge concern attached to a
- * project's domains, so it shares the capability that governs them.
+ * Gated on `manage_basic_auth` — basic auth is a routing/edge concern attached to
+ * a project's domains, with its own dedicated capability.
  */
 
 /** A masked DTO for the UI — the password is never sent to the client. */
@@ -112,7 +112,7 @@ async function withAuthors(u: BasicAuthUser): Promise<BasicAuthUserDTO> {
 
 /**
  * The basic-auth users of a project, alphabetical by username. Requires
- * `manage_domains` — an out-of-team project yields none (matches a hidden tab).
+ * `manage_basic_auth` — an out-of-team project yields none (matches a hidden tab).
  */
 export async function listBasicAuthUsers(
   appId: string,
@@ -140,7 +140,7 @@ export async function listBasicAuthUsers(
  * The deliberate exception to "secrets are write-only": a basic-auth login is
  * meant to be given to a human, so a platform that cannot tell you what it is
  * forces you to reset it — locking out everyone who already has it — every time
- * someone asks. Same gate as every write here (`manage_domains` + the app's team
+ * someone asks. Same gate as every write here (`manage_basic_auth` + the app's team
  * + its folder), one credential per call, and never part of a list DTO: the
  * plaintext leaves the server only when someone deliberately asks for that one
  * password.

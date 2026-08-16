@@ -1,6 +1,7 @@
 import "server-only";
 
 import { lookup } from "node:dns/promises";
+import { isIP } from "node:net";
 
 /**
  * The SSRF guard for every user-supplied URL Deplo dials itself: an S3 endpoint,
@@ -99,8 +100,12 @@ export async function assertSafeOutboundHost(
     throw new Error(`${label} must not point at a private or internal address`);
   };
   if (isInternalHost(host)) refuse();
-  // A literal is its own answer; only a NAME has to be resolved.
-  if (/^[\d.]+$/.test(host) || host.includes(":")) return;
+  // A literal is its own answer; only a NAME has to be resolved. But ONLY a
+  // canonical dotted-quad counts as a literal here (isIP returns 0 for
+  // `2130706433`, `127.1`, `0177.0.0.1`, `2852039166` = 169.254.169.254) —
+  // isInternalHost can't read those forms, so they must fall through to
+  // dnsLookup and be judged on the address getaddrinfo(inet_aton) gives.
+  if (isIP(host) === 4 || host.includes(":")) return;
   let addresses: { address: string }[];
   try {
     addresses = await dnsLookup(host);

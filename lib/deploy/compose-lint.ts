@@ -739,9 +739,12 @@ export function composeMountsForeignStorage(composeYaml: string): boolean {
  * disk, and `cap_add`/`security_opt`/`userns_mode` remove the boundary a step at
  * a time. They are therefore the same permission ({@link composeNeedsHostPrivileges}).
  *
- * `network_mode: host` is deliberately ABSENT: it costs the container its Traefik
- * routing (the linter says so) but grants nothing on the host, and gating it
- * would refuse a legitimate, common way to run a network tool.
+ * `network_mode: host` is included: the host network namespace lets a container
+ * bind arbitrary host ports and reach `127.0.0.1` host services (the control
+ * plane, other stacks' internal ports), so it reaches past its own boundary like
+ * the rest. `network_mode: container:<name>` joins another container's namespace
+ * the same way. It ALSO costs the container its Traefik routing — the linter's
+ * separate `network-mode-host` warning still says so; both fire.
  */
 const HOST_PRIVILEGE_KEYS = [
   "privileged",
@@ -753,6 +756,7 @@ const HOST_PRIVILEGE_KEYS = [
   "pid",
   "ipc",
   "uts",
+  "network_mode",
   "userns_mode",
 ] as const;
 
@@ -776,9 +780,11 @@ const SAFE_SECURITY_OPTS = /^no-new-privileges\b/i;
  *
  * A key present but empty (`cap_add: []`, `privileged: false`) declares nothing
  * and does not count - the same rule `composePublishesPorts` applies to `ports`.
- * `pid`/`ipc`/`uts` are namespace SELECTORS rather than switches: only `host`
- * (and, for pid/ipc, another `container:` in the same stack) escapes, so an
- * ordinary value is left alone.
+ * `pid`/`ipc`/`uts`/`network_mode` are namespace SELECTORS rather than switches:
+ * `host` shares the host namespace, and `container:<name>`/`service:<name>` join
+ * ANOTHER container's namespace on the same daemon (not limited to this stack) —
+ * both escape, so both are flagged. An ordinary value (a bridge network name, a
+ * real hostname for uts) is left alone.
  */
 function hostPrivilegeKeys(svc: Record<string, unknown>): string[] {
   const out: string[] = [];
@@ -789,8 +795,14 @@ function hostPrivilegeKeys(svc: Record<string, unknown>): string[] {
       if (v === true) out.push(key);
       continue;
     }
-    if (key === "pid" || key === "ipc" || key === "uts") {
-      if (typeof v === "string" && v.trim().toLowerCase() === "host") out.push(key);
+    if (key === "pid" || key === "ipc" || key === "uts" || key === "network_mode") {
+      if (typeof v === "string") {
+        const val = v.trim().toLowerCase();
+        // `host` shares the host namespace; `container:`/`service:` joins ANOTHER
+        // container's namespace on the same daemon (not limited to this stack).
+        if (val === "host" || val.startsWith("container:") || val.startsWith("service:"))
+          out.push(key);
+      }
       continue;
     }
     if (key === "security_opt") {

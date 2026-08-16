@@ -17,6 +17,7 @@ import { runWithIdentity } from "../auth/request-context";
 import { decryptSecret } from "../crypto";
 import { seedIdentity, TEAM_A, TEAM_B, USER_1 } from "./identity-test-helpers";
 import { seedServer, SERVER_1 } from "./app-graph-test-helpers";
+import { assertSafeOutboundHost } from "../outbound-url";
 import { seedServerRow } from "./infra-test-helpers";
 import {
   seedBackup,
@@ -432,6 +433,44 @@ test("a hostname is resolved, so a name pointing inside is refused too", async (
       () => assertSafeOutboundUrl("http://hooks.example.com/x", "Webhook URL"),
       /must be an https URL/,
     );
+  } finally {
+    __resetDnsLookupForTest();
+  }
+});
+
+/**
+ * The bare-HOST guard (SMTP `host`, dialed by nodemailer without a URL) must not
+ * treat a non-canonical numeric IP as a self-answering literal: `2130706433`,
+ * `127.1`, `0177.0.0.1` and `2852039166` (= 169.254.169.254) all sail past
+ * isInternalHost's dotted-quad regex, and getaddrinfo(inet_aton) then dials the
+ * real internal address — SSRF via the manage_notifications SMTP field. They
+ * must fall through to DNS and be refused on the resolved address.
+ */
+test("the bare-host guard resolves non-canonical numeric IPs instead of trusting them", async () => {
+  // What getaddrinfo(inet_aton) would resolve each spelling to.
+  const resolved: Record<string, string> = {
+    "2130706433": "127.0.0.1",
+    "127.1": "127.0.0.1",
+    "0177.0.0.1": "127.0.0.1",
+    "2852039166": "169.254.169.254",
+    "private.example.com": "10.0.0.5",
+    "smtp.example.com": "93.184.216.34",
+  };
+  __setDnsLookupForTest(async (host) => {
+    const addr = resolved[host];
+    if (!addr) throw new Error("ENOTFOUND");
+    return [{ address: addr }];
+  });
+  try {
+    for (const host of ["2130706433", "127.1", "0177.0.0.1", "2852039166", "127.0.0.1", "private.example.com"]) {
+      await assert.rejects(
+        () => assertSafeOutboundHost(host, "SMTP host"),
+        /private or internal/,
+        `${host} must be refused`,
+      );
+    }
+    // The control: a normal public host still passes.
+    await assertSafeOutboundHost("smtp.example.com", "SMTP host");
   } finally {
     __resetDnsLookupForTest();
   }

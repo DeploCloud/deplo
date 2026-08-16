@@ -187,8 +187,8 @@ export const CAPABILITY_META: Record<Capability, CapabilityMeta> = {
   },
   control_databases: {
     label: "Start & stop databases",
-    description: "Start, stop, restart, redeploy and rebuild a database.",
-    keywords: "restart redeploy rebuild lifecycle",
+    description: "Start, stop, restart and redeploy a database.",
+    keywords: "restart redeploy lifecycle",
   },
   delete_databases: {
     label: "Delete databases",

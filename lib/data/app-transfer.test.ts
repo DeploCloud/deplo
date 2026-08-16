@@ -417,6 +417,74 @@ test("appTransferInfo offers only the viewer's OTHER teams that can deploy", asy
   });
 });
 
+test("a scoped API token can't move an app into a team outside its scope", async () => {
+  await joinTeam(USER_1, TEAM_B, ["view", "move_apps", "create_apps", "manage_env"]);
+  // A second and third app so the two SUCCESS cases each have their own row to
+  // move (a transfer is destructive — the app leaves TEAM_A).
+  await seedApp(db, { id: "prj_app2", teamId: TEAM_A });
+  await seedApp(db, { id: "prj_app3", teamId: TEAM_A });
+
+  const tokenCaps: Capability[] = ["view", "move_apps", "create_apps", "manage_env"];
+  const scopeFor = (teamIds: string[]) => ({
+    teamIds,
+    wholeTeamIds: teamIds,
+    projectIds: [],
+    folderIds: [],
+    appIds: [],
+    appProjectIds: [],
+  });
+  const asToken = <T>(scopeTeamIds: string[], fn: () => Promise<T>): Promise<T> =>
+    runWithIdentity(
+      {
+        userId: USER_1,
+        teamId: TEAM_A,
+        token: {
+          id: "tok_1",
+          capabilities: tokenCaps,
+          instanceAdmin: false,
+          scope: scopeFor(scopeTeamIds),
+        },
+      },
+      fn,
+    );
+
+  // A token scoped to TEAM_A only is refused when the destination is TEAM_B —
+  // even though its human holds move_apps + manage_env there.
+  await asToken([TEAM_A], async () => {
+    await assert.rejects(
+      transferAppToTeam(APP, TEAM_B),
+      /can't move apps into that team/i,
+    );
+  });
+  assert.equal((await appRow()).teamId, TEAM_A, "the out-of-scope move was blocked");
+
+  // A cookie session (no token) is unaffected.
+  await asOwner(() => transferAppToTeam("prj_app2", TEAM_B));
+  assert.equal(
+    (
+      await db
+        .select({ teamId: appsTable.teamId })
+        .from(appsTable)
+        .where(eq(appsTable.id, "prj_app2"))
+    )[0].teamId,
+    TEAM_B,
+    "a cookie session still moves an app",
+  );
+
+  // A token whose scope INCLUDES the destination team still works.
+  await asToken([TEAM_A, TEAM_B], () => transferAppToTeam("prj_app3", TEAM_B));
+  assert.equal(
+    (
+      await db
+        .select({ teamId: appsTable.teamId })
+        .from(appsTable)
+        .where(eq(appsTable.id, "prj_app3"))
+    )[0].teamId,
+    TEAM_B,
+    "an in-scope token still moves an app",
+  );
+});
+
 test("a transfer into the app's own team is refused", async () => {
   await asOwner(async () => {
     await assert.rejects(transferAppToTeam(APP, TEAM_A), /already in this team/i);
