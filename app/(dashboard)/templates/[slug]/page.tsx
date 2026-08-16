@@ -18,6 +18,7 @@ import {
   toStoreTemplate,
 } from "@/components/templates/template-card";
 import { TemplateMarkdown } from "@/components/templates/template-markdown";
+import { TemplateSearchLink } from "@/components/templates/template-search";
 import { TemplateScreenshots } from "@/components/templates/template-screenshots";
 import { hasCapability } from "@/lib/membership";
 import { resolveOverviewPlacement } from "@/lib/data/placement";
@@ -56,7 +57,7 @@ export default async function TemplatePage(props: PageProps<"/templates/[slug]">
   if (!template)
     return (
       <div className="mx-auto w-full max-w-4xl space-y-6">
-        <BackLink placement={placement} />
+        <TopBar placement={placement} />
         <EmptyState
           icon={CloudOff}
           title="That template isn't available"
@@ -86,7 +87,7 @@ export default async function TemplatePage(props: PageProps<"/templates/[slug]">
 
   return (
     <div className="mx-auto w-full max-w-4xl space-y-8">
-      <BackLink placement={placement} />
+      <TopBar placement={placement} />
 
       {/* Header: the logo sits on its own wash, in its own colour. */}
       <div className="flex flex-col gap-5 sm:flex-row sm:items-center sm:justify-between">
@@ -195,15 +196,24 @@ export default async function TemplatePage(props: PageProps<"/templates/[slug]">
   );
 }
 
-function BackLink({ placement }: { placement: OverviewPlacement | null }) {
+/**
+ * The way back and the way sideways. The search stays on this page on purpose:
+ * a store you can only search from its front page makes you go back before you
+ * can look for the next thing.
+ */
+function TopBar({ placement }: { placement: OverviewPlacement | null }) {
+  const scope = templatesHref(placement).split("?")[1] ?? "";
   return (
-    <Link
-      href={templatesHref(placement)}
-      className="inline-flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground"
-    >
-      <ArrowLeft className="size-4" />
-      Templates
-    </Link>
+    <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+      <Link
+        href={templatesHref(placement)}
+        className="inline-flex shrink-0 items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground"
+      >
+        <ArrowLeft className="size-4" />
+        Templates
+      </Link>
+      <TemplateSearchLink scope={scope} className="w-full sm:w-72" />
+    </div>
   );
 }
 

@@ -3,9 +3,9 @@
 import * as React from "react";
 import { useRouter } from "next/navigation";
 import { Search, LayoutGrid } from "lucide-react";
-import { Input } from "@/components/ui/input";
 import { EmptyState } from "@/components/shared/empty-state";
 import { CategoryIcon } from "@/components/templates/category-icon";
+import { TemplateSearchField } from "@/components/templates/template-search";
 import {
   TemplateCard,
   type StoreTemplate,
@@ -63,7 +63,11 @@ export function TemplateStore({
   React.useEffect(() => {
     categoryRef.current = category;
   }, [category]);
+  // Guarded on a real keystroke: on mount `q` is already what the URL says, and
+  // rewriting it to itself costs a server render on every visit to the store.
+  const typed = React.useRef(false);
   React.useEffect(() => {
+    if (!typed.current) return;
     const id = setTimeout(() => {
       router.replace(href(q, categoryRef.current), { scroll: false });
     }, 250);
@@ -144,16 +148,14 @@ export function TemplateStore({
             {templates.length} apps, databases and services, ready to run on
             your own servers.
           </p>
-          <div className="relative mt-5">
-            <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
-            <Input
-              value={q}
-              onChange={(e) => setQ(e.target.value)}
-              placeholder="Search templates"
-              aria-label="Search templates"
-              className="h-10 bg-background pl-9"
-            />
-          </div>
+          <TemplateSearchField
+            value={q}
+            onChange={(next) => {
+              typed.current = true;
+              setQ(next);
+            }}
+            className="mt-5"
+          />
         </div>
       </div>
 
