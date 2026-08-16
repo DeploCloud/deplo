@@ -3,6 +3,7 @@ import "server-only";
 import { and, eq, inArray, isNull } from "drizzle-orm";
 
 import { decryptSecret, encryptSecret } from "../crypto";
+import { assertSafeOutboundUrl } from "../outbound-url";
 import { getDb } from "../db/client";
 import {
   instanceSettings,
@@ -188,16 +189,20 @@ export async function sendWebPushTo(
   });
   const gone: string[] = [];
   const results = await Promise.allSettled(
-    subs.map((s) =>
-      webpush.sendNotification(
+    subs.map(async (s) => {
+      // Re-validate at the dial, like the other channels: the save-time guard ran
+      // on a different day, a subscription can predate it, and an endpoint host
+      // can rebind to an internal address after it was saved.
+      await assertSafeOutboundUrl(s.endpoint, "Push endpoint");
+      return webpush.sendNotification(
         { endpoint: s.endpoint, keys: { p256dh: s.p256dh, auth: s.auth } },
         payload,
         // web-push has no AbortSignal and no default deadline, so one endpoint
         // that accepts the connection and never answers would hold the whole
         // dispatch open. Its own socket timeout is what bounds this.
         { timeout: PUSH_TIMEOUT_MS },
-      ),
-    ),
+      );
+    }),
   );
   results.forEach((r, i) => {
     if (r.status !== "rejected") return;

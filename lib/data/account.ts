@@ -16,6 +16,7 @@ import {
 import { requirePersonalSession } from "../auth/request-context";
 import { assertPasswordPolicy } from "../password-policy";
 import { assertPasswordNotPwned } from "../pwned-password";
+import { rateLimit } from "../security";
 
 /**
  * The current user's own account.
@@ -41,6 +42,23 @@ export async function updateProfile(input: { name: string }): Promise<void> {
 }
 
 /** Change the current user's email, after re-checking their password. */
+/** Rate-limited current-password re-auth for a settings change — the same budget
+ *  as the 2FA step-up (two-factor.ts `stepUpPassword`), so a stolen LIVE session
+ *  can't brute-force the current password to escalate to a durable takeover (a
+ *  successful change-password logs the real owner out). Not reachable by an API
+ *  token — `requirePersonalSession` already blocks those at each caller. */
+const REAUTH_LIMIT = { limit: 6, windowMs: 5 * 60_000 };
+async function assertCurrentPassword(
+  userId: string,
+  password: string,
+): Promise<void> {
+  const limit = await rateLimit(`account-reauth:${userId}`, REAUTH_LIMIT);
+  if (!limit.ok)
+    throw new Error(`Too many attempts. Try again in ${limit.retryAfterSec}s.`);
+  if (!(await verifyUserPassword(userId, password)))
+    throw new Error("Current password is incorrect");
+}
+
 export async function updateEmail(input: {
   email: string;
   currentPassword: string;
@@ -50,8 +68,7 @@ export async function updateEmail(input: {
   const email = input.email.toLowerCase().trim();
   if (!email.includes("@")) throw new Error("Enter a valid email address");
   const db = getDb();
-  if (!(await verifyUserPassword(user.id, input.currentPassword)))
-    throw new Error("Current password is incorrect");
+  await assertCurrentPassword(user.id, input.currentPassword);
   const dup = await db
     .select({ id: usersTable.id })
     .from(usersTable)
@@ -77,8 +94,7 @@ export async function changePassword(input: {
   requirePersonalSession("your account settings");
   const user = await assertUser();
   assertPasswordPolicy(input.newPassword);
-  if (!(await verifyUserPassword(user.id, input.currentPassword)))
-    throw new Error("Current password is incorrect");
+  await assertCurrentPassword(user.id, input.currentPassword);
   // After the re-auth, not before: a wrong current password must be answered
   // locally, without a round trip to an outside API that changes nothing.
   await assertPasswordNotPwned(input.newPassword);
