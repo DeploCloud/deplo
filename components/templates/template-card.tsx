@@ -2,6 +2,7 @@ import Link from "next/link";
 import { Package } from "lucide-react";
 import { LogoImage } from "@/components/shared/project-logo";
 import { cn } from "@/lib/utils";
+import { plateClass, veilProps } from "@/components/templates/veil";
 import type { LogoAccent } from "@/lib/templates/logo-color";
 import type { CatalogTemplate } from "@/templates/types";
 
@@ -83,37 +84,4 @@ export function TemplateCard({
       </div>
     </Link>
   );
-}
-
-/**
- * The wash a logo's card wears, and the one number it needs.
- *
- * A logo with a hue wears that hue. A logo drawn in a single neutral has no
- * hue, so it wears its own ink instead (`tpl-veil-neutral`) — a white wordmark
- * lights its card white rather than being the one tile in the grid that stays
- * flat. A logo that read as neither renders plain.
- *
- * `lit` picks when: `"hover"` on the cards, `"on"` for the detail page's header.
- */
-export function veilProps(
-  accent: LogoAccent | undefined,
-  lit: "hover" | "on",
-): { style?: React.CSSProperties; className?: string } {
-  const when = lit === "on" ? "tpl-veil-on" : "tpl-veil-hover";
-  if (accent?.hue !== undefined)
-    return {
-      style: { "--tpl-hue": accent.hue } as React.CSSProperties,
-      className: cn("tpl-veil", when),
-    };
-  if (accent?.tone) return { className: cn("tpl-veil tpl-veil-neutral", when) };
-  return {};
-}
-
-/** The plate a logo needs, if any: black-only ink gets one on the dark theme,
- *  white-only ink gets one on the light theme, and the CSS scopes each to its
- *  own theme so the other surface is left alone. */
-export function plateClass(accent?: LogoAccent): string | undefined {
-  if (accent?.tone === "dark") return "tpl-plate-dark";
-  if (accent?.tone === "light") return "tpl-plate-light";
-  return undefined;
 }

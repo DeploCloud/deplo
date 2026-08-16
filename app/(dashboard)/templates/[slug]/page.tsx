@@ -14,11 +14,10 @@ import { GitHubIcon } from "@/components/shared/brand-icons";
 import { LogoImage } from "@/components/shared/project-logo";
 import { CategoryIcon } from "@/components/templates/category-icon";
 import {
-  plateClass,
   TemplateCard,
   toStoreTemplate,
-  veilProps,
 } from "@/components/templates/template-card";
+import { plateClass, veilProps } from "@/components/templates/veil";
 import { TemplateMarkdown } from "@/components/templates/template-markdown";
 import { TemplateRail } from "@/components/templates/template-rail";
 import { TemplateSearchLink } from "@/components/templates/template-search";

@@ -46,6 +46,7 @@ import type { ScopeTreeTeam } from "@/lib/data/tokens";
 import { AGENTS, TOKEN_PLACEHOLDER, type AgentDef, type AgentId } from "./agents";
 import { ConfettiBurst, RobotGraphic, type RobotState } from "./robot-graphic";
 import { ToolsDialog, type McpToolSummary } from "./tools-dialog";
+import { veilProps } from "@/components/templates/veil";
 
 /**
  * Connecting an AI agent, as one path that never leaves the page.
@@ -128,29 +129,17 @@ export function ConnectWizard({
   const host = publicUrl.replace(/\/+$/, "") || "https://your-deplo-host";
   const url = `${host}/api/mcp`;
   const https = url.startsWith("https://");
-
-  // Someone coming back to a team that already has agents wants the address, not
-  // four steps. The wizard is one button away and starts from scratch when
-  // pressed; a returning reader is not made to walk a path they finished.
-  const [running, setRunning] = React.useState(connectionCount === 0);
   const [runId, setRunId] = React.useState(0);
 
-  if (!running)
-    return (
-      <ConnectedSummary
-        url={url}
-        count={connectionCount}
-        onStart={() => {
-          setRunId((n) => n + 1);
-          setRunning(true);
-        }}
-      />
-    );
-
+  // The tab always opens on the wizard, whether or not agents are already
+  // connected. A summary screen used to stand in front of it once one was, and
+  // it read as a wall: you came to Connect to connect something and were shown a
+  // count instead. The count belongs beside the tabs, where it is answered
+  // without being in the way, and how many agents exist is Manage's business.
   return (
     <WizardRun
-      // Remounting is the reset: "Connect another" must not inherit the last
-      // run's token, agent or confetti.
+      // Remounting is the reset: starting over must not inherit the last run's
+      // token, agent or confetti.
       key={runId}
       mcpEnabled={mcpEnabled}
       canManageMcp={canManageMcp}
@@ -162,6 +151,7 @@ export function ConnectWizard({
       tools={tools}
       connectionCount={connectionCount}
       onGoToManage={onGoToManage}
+      onRestart={() => setRunId((n) => n + 1)}
       onRefresh={() => router.refresh()}
     />
   );
@@ -182,6 +172,7 @@ function WizardRun({
   tools,
   connectionCount,
   onGoToManage,
+  onRestart,
   onRefresh,
 }: {
   mcpEnabled: boolean;
@@ -194,6 +185,7 @@ function WizardRun({
   tools: McpToolSummary[];
   connectionCount: number;
   onGoToManage: () => void;
+  onRestart: () => void;
   onRefresh: () => void;
 }) {
   const [enabled, setEnabled] = React.useState(mcpEnabled);
@@ -589,6 +581,7 @@ function WizardRun({
                 onRefresh();
               }}
               onGoToManage={onGoToManage}
+              onRestart={onRestart}
             />
           )}
         </div>
@@ -754,6 +747,11 @@ function AgentCard({
       ? "Needs the permission to manage MCP access."
       : "Needs the permission to create API tokens.";
   const Icon = agent.icon;
+  // The same wash the template store's cards wear, in the brand's own colour:
+  // lit on hover while you are still looking, and held lit once this is the one
+  // you chose. It replaces the flat `bg-muted` hover — a grid of brand tiles
+  // deserves a hover that tells you WHICH brand you are about to pick.
+  const veil = veilProps(agent.veil, selected ? "on" : "hover");
 
   return (
     <button
@@ -762,13 +760,17 @@ function AgentCard({
       aria-checked={selected}
       disabled={blocked}
       onClick={onSelect}
+      style={veil.style}
       className={cn(
         "flex w-full items-start gap-3 rounded-lg border p-3 text-left transition-colors",
         "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1 focus-visible:ring-offset-background",
         "disabled:cursor-not-allowed disabled:opacity-50",
+        // The ring still carries "chosen": the wash says which brand, not which
+        // state, and on a card with no brand there would be nothing to say it.
         selected
-          ? "border-primary bg-primary/[0.06] ring-1 ring-primary/60"
-          : "border-border hover:border-foreground/20 hover:bg-muted/40",
+          ? "border-primary ring-1 ring-primary/60"
+          : "border-border hover:border-foreground/20",
+        veil.className,
       )}
     >
       {/* The agent's own colours, always — not only when selected. The tile is
@@ -817,6 +819,7 @@ function DoneStep({
   connected,
   onConnected,
   onGoToManage,
+  onRestart,
 }: {
   agent: AgentDef;
   tokenId: string | null;
@@ -825,6 +828,7 @@ function DoneStep({
   connected: boolean;
   onConnected: () => void;
   onGoToManage: () => void;
+  onRestart: () => void;
 }) {
   const [round, setRound] = React.useState(0);
   const [attempt, setAttempt] = React.useState(0);
@@ -865,10 +869,19 @@ function DoneStep({
       }
     >
       {connected ? (
-        <Button onClick={onGoToManage}>
-          <Check className="size-4" />
-          Done
-        </Button>
+        // Two ways on, because there are two things people do next: look at
+        // what they just let in, or let in the next one. Neither is a
+        // navigation away from this page.
+        <div className="flex flex-wrap gap-2">
+          <Button onClick={onGoToManage}>
+            <Check className="size-4" />
+            Done
+          </Button>
+          <Button variant="outline" onClick={onRestart}>
+            <Plug className="size-4" />
+            Connect another
+          </Button>
+        </div>
       ) : gaveUp ? (
         <Button
           variant="outline"
@@ -920,49 +933,6 @@ async function probe(
     (d) => d.mcpConnections.length,
   );
   return res.ok && typeof res.data === "number" && res.data > baseline;
-}
-
-/* ------------------------------------------------------------------ */
-/* The return view                                                     */
-/* ------------------------------------------------------------------ */
-
-function ConnectedSummary({
-  url,
-  count,
-  onStart,
-}: {
-  url: string;
-  count: number;
-  onStart: () => void;
-}) {
-  return (
-    // One centred column, unlike a wizard step: nothing here is being filled in,
-    // so there is no form to keep a left edge for. It is a status — how many
-    // agents, the address, and a way to add one more — and a status reads best
-    // stacked under its own picture.
-    <div className="mx-auto flex max-w-xl flex-col items-center gap-6 text-center">
-      <RobotGraphic state="connected" className="h-auto w-56 sm:w-64" />
-      <div>
-        <h2 className="text-base font-semibold">
-          {count} {count === 1 ? "agent is" : "agents are"} connected to this
-          team
-        </h2>
-        <p className="mt-1 text-sm text-balance text-muted-foreground">
-          This is the address they all use. Take an agent&apos;s access away
-          under Manage.
-        </p>
-      </div>
-      {/* The block stays left-aligned inside: a URL centred in a code box reads
-          as decoration rather than as something to copy. */}
-      <div className="w-full text-left">
-        <CodeBlock code={url} />
-      </div>
-      <Button onClick={onStart}>
-        <Plug className="size-4" />
-        Connect another
-      </Button>
-    </div>
-  );
 }
 
 /* ------------------------------------------------------------------ */

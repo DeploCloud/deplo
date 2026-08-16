@@ -2619,3 +2619,25 @@
 .deplo-confetti-piece:nth-child(3n + 3) {
   background: var(--warning);
 }
+
+/* The robot glyph on "N agents connected" (components/settings/mcp/robot-graphic.tsx).
+   Still while the page sits, awake when the row is pointed at or focused — a
+   header that animates on its own is noise, one that answers the pointer is an
+   invitation. Reuses the wizard's own blip so the small robot and the large one
+   move the same way. */
+.deplo-robot-mark-blip {
+  transform-box: fill-box;
+  transform-origin: center;
+}
+
+.group:hover .deplo-robot-mark-blip,
+.group:focus-visible .deplo-robot-mark-blip {
+  animation: deplo-robot-blip 1.4s ease-in-out infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .group:hover .deplo-robot-mark-blip,
+  .group:focus-visible .deplo-robot-mark-blip {
+    animation: none;
+  }
+}

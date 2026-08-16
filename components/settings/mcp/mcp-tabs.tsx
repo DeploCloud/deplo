@@ -13,6 +13,8 @@ import { ConnectWizard } from "./connect-wizard";
 import { McpPanel } from "./mcp-panel";
 import { ConnectedClients } from "./connected-clients";
 import { ToolsDialogLink, type McpToolSummary } from "./tools-dialog";
+import { RobotMark } from "./robot-graphic";
+import { cn } from "@/lib/utils";
 import type { McpConnectionDTO } from "@/lib/data/mcp-clients";
 import type { ScopeTreeTeam } from "@/lib/data/tokens";
 
@@ -101,8 +103,12 @@ export function McpTabs({
             </UnderlineTabsTrigger>
           )}
         </UnderlineTabsList>
-        {/* The tool list, out of the way but never more than one click off. */}
-        <ToolsDialogLink tools={tools} className="pb-3" />
+        {/* The one number worth having in view from both tabs: how many agents
+            can act in this team right now. Zero is a real answer and says so. */}
+        <ConnectedCount
+          count={connections.length}
+          onOpen={canManage ? () => selectTab("manage") : undefined}
+        />
       </div>
 
       <TabsContent value="connect" forceMount className="data-[state=inactive]:hidden">
@@ -126,8 +132,61 @@ export function McpTabs({
             connections={connections}
             canManage={canManageTokens}
           />
+          {/* The tool list closes the tab as a footnote: it is reference, not a
+              control, and the person here is auditing access rather than
+              wondering what an agent can reach. The wizard asks that question
+              where it actually comes up — at the permissions step. */}
+          <p className="border-t border-border pt-4">
+            <ToolsDialogLink tools={tools} />
+          </p>
         </TabsContent>
       )}
     </Tabs>
+  );
+}
+
+/**
+ * How many agents can act in this team, beside the tabs.
+ *
+ * It replaced a link to the tool list here, and the swap is the point: "what
+ * could an agent do" is a question you ask once, while "who is in my
+ * infrastructure right now" is the one a company asks every time it opens this
+ * page. Zero is a real answer and is shown as one.
+ *
+ * A button when there is somewhere to go, plain text when there is not — a
+ * viewer without the capabilities has no Manage tab to be sent to.
+ */
+function ConnectedCount({
+  count,
+  onOpen,
+}: {
+  count: number;
+  onOpen?: () => void;
+}) {
+  const label = `${count} ${count === 1 ? "agent" : "agents"} connected`;
+  const inner = (
+    <>
+      <RobotMark />
+      {label}
+    </>
+  );
+  const shared = "group inline-flex items-center gap-1.5 pb-3 text-sm";
+
+  if (!onOpen)
+    return (
+      <span className={cn(shared, "text-muted-foreground")}>{inner}</span>
+    );
+  return (
+    <button
+      type="button"
+      onClick={onOpen}
+      className={cn(
+        shared,
+        "cursor-pointer text-muted-foreground underline-offset-4 transition-colors hover:text-foreground hover:underline",
+        "focus-visible:outline-none focus-visible:text-foreground focus-visible:underline",
+      )}
+    >
+      {inner}
+    </button>
   );
 }

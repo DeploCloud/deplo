@@ -27,6 +27,57 @@ import { cn } from "@/lib/utils";
  * who cannot see it, so it describes the state and not the artwork.
  */
 
+/**
+ * The same robot, shrunk to a glyph.
+ *
+ * For the one line that counts the connected agents: at 16px the illustration
+ * above is a smudge, so this is just the head — the part that carries the
+ * character — drawn on lucide's 24 grid so it sits level with every other icon
+ * in the app.
+ *
+ * It blips only while its row is hovered or focused (`.group` on the parent),
+ * because a permanently animating glyph in a header is a distraction, and one
+ * that answers the pointer is an invitation.
+ */
+export function RobotMark({ className }: { className?: string }) {
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      fill="none"
+      aria-hidden
+      className={cn("size-4 shrink-0", className)}
+    >
+      <line
+        x1="12"
+        y1="6"
+        x2="12"
+        y2="4"
+        stroke="currentColor"
+        strokeWidth="1.8"
+        strokeLinecap="round"
+      />
+      <circle
+        cx="12"
+        cy="2.6"
+        r="1.5"
+        fill="currentColor"
+        className="deplo-robot-mark-blip"
+      />
+      <rect
+        x="4"
+        y="6"
+        width="16"
+        height="12"
+        rx="4.5"
+        stroke="currentColor"
+        strokeWidth="1.8"
+      />
+      <circle cx="9.2" cy="12" r="1.4" fill="currentColor" />
+      <circle cx="14.8" cy="12" r="1.4" fill="currentColor" />
+    </svg>
+  );
+}
+
 const LABEL: Record<RobotState, string> = {
   idle: "A robot waiting to be connected to deplo",
   key: "A robot holding a key, ready to be given permissions",

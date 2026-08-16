@@ -28,6 +28,7 @@
  */
 
 import type * as React from "react";
+import type { LogoAccent } from "@/lib/templates/logo-color";
 import { Bot } from "lucide-react";
 import {
   ClaudeIcon,
@@ -69,6 +70,16 @@ export interface AgentDef {
    */
   brand?: { bg: string; fg: string };
   /**
+   * The wash the whole card wears on hover and once chosen, in the same
+   * grammar the template store uses (`veilProps`): a hue when the brand has
+   * one, its own ink when it does not. Derived once from `brand.bg` in OKLCH —
+   * the three near-black marks come out at chroma ~0, which is exactly the case
+   * `tone` exists for.
+   *
+   * Absent on "Something else", which has no brand and stays a plain card.
+   */
+  veil?: LogoAccent;
+  /**
    * `web` connects over OAuth and is minted by the consent screen; `token`
    * carries a `deplo_` bearer the wizard creates.
    */
@@ -102,6 +113,7 @@ export const AGENTS: AgentDef[] = [
     blurb: "In the browser, at claude.ai.",
     icon: ClaudeIcon,
     brand: { bg: "#D97757", fg: "#FFFFFF" },
+    veil: { hue: 39 },
     kind: "web",
     form: "file",
     hint: "Settings → Connectors → Add custom connector, then paste this and approve when deplo asks.",
@@ -115,6 +127,7 @@ export const AGENTS: AgentDef[] = [
     blurb: "In the browser. Needs developer mode turned on first.",
     icon: OpenAiIcon,
     brand: { bg: "#000000", fg: "#FFFFFF" },
+    veil: { tone: "dark" },
     kind: "web",
     form: "file",
     hint: "Settings → Connectors → Advanced settings → Developer mode, then Create and paste this.",
@@ -128,6 +141,7 @@ export const AGENTS: AgentDef[] = [
     blurb: "The Claude app for Mac and Windows.",
     icon: ClaudeIcon,
     brand: { bg: "#D97757", fg: "#FFFFFF" },
+    veil: { hue: 39 },
     kind: "web",
     form: "file",
     hint: "Settings → Connectors → Add custom connector, then paste this and approve when deplo asks.",
@@ -141,6 +155,7 @@ export const AGENTS: AgentDef[] = [
     blurb: "The terminal agent. One command and it is registered.",
     icon: ClaudeIcon,
     brand: { bg: "#D97757", fg: "#FFFFFF" },
+    veil: { hue: 39 },
     kind: "token",
     form: "command",
     hint: "Run it once in your terminal. Add --scope user to reuse it in every project.",
@@ -154,6 +169,7 @@ export const AGENTS: AgentDef[] = [
     blurb: "The editor. Its config lives in your repo.",
     icon: CursorIcon,
     brand: { bg: "#000000", fg: "#FFFFFF" },
+    veil: { tone: "dark" },
     kind: "token",
     file: ".cursor/mcp.json",
     form: "file",
@@ -180,6 +196,7 @@ export const AGENTS: AgentDef[] = [
     blurb: "Copilot's agent mode, configured per repo.",
     icon: VsCodeIcon,
     brand: { bg: "#007ACC", fg: "#FFFFFF" },
+    veil: { hue: 249 },
     kind: "token",
     file: ".vscode/mcp.json",
     form: "file",
@@ -208,6 +225,7 @@ export const AGENTS: AgentDef[] = [
     blurb: "Cascade, configured once for your machine.",
     icon: WindsurfIcon,
     brand: { bg: "#0B100F", fg: "#FFFFFF" },
+    veil: { tone: "dark" },
     kind: "token",
     file: "~/.codeium/windsurf/mcp_config.json",
     form: "file",
@@ -234,6 +252,7 @@ export const AGENTS: AgentDef[] = [
     blurb: "Google's terminal agent.",
     icon: GeminiIcon,
     brand: { bg: "#8E75B2", fg: "#FFFFFF" },
+    veil: { hue: 303 },
     kind: "token",
     file: "~/.gemini/settings.json",
     form: "file",
@@ -261,6 +280,7 @@ export const AGENTS: AgentDef[] = [
     blurb: "OpenAI's terminal agent.",
     icon: OpenAiIcon,
     brand: { bg: "#000000", fg: "#FFFFFF" },
+    veil: { tone: "dark" },
     kind: "token",
     file: "~/.codex/config.toml",
     form: "file",
