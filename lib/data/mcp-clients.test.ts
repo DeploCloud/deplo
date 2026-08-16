@@ -582,7 +582,7 @@ test("a connection never carries the other teams it reaches", async () => {
   assert.ok(!json.includes("beta"), "the other team's name leaked into the row");
 });
 
-test("revoking from one team leaves the client connected to the others", async () => {
+test("revoking from one team disconnects the client from all of them", async () => {
   await grantOwnerIn(TEAM_B);
   const { tokenId } = await as(OWNER, () =>
     mintMcpConnection({
@@ -594,19 +594,14 @@ test("revoking from one team leaves the client connected to the others", async (
 
   await as(OWNER, () => revokeToken(tokenId), TEAM_B);
 
-  const stillThere = await as(OWNER, () => listMcpConnections());
-  assert.deepEqual(
-    stillThere.map((c) => c.id),
-    [tokenId],
-    "team A never asked for the client to be disconnected",
-  );
+  assert.deepEqual(await as(OWNER, () => listMcpConnections()), []);
   assert.deepEqual(await as(OWNER, () => listMcpConnections(), TEAM_B), []);
-  // The OAuth half is untouched: clearing it would sign the client out of team
-  // A too, which is the whole thing this path exists to avoid.
+  // The OAuth half goes with it: a surviving consent would let the client
+  // re-authorize with no screen, which is not what Revoke promised.
   assert.equal(
     (await pg.query(`select id from oauth_consent where user_id = $1`, [OWNER]))
       .rows.length,
-    1,
+    0,
   );
 });
 

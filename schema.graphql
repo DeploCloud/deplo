@@ -1903,7 +1903,7 @@ type LogsInfo {
 }
 
 """
-An AI client that can act in this team over MCP. Either a web connector approved on the consent screen, or an API token somebody pasted into a terminal or IDE agent — both are ordinary API tokens, so `id` is that token's id and revoking it is `revokeToken`, which takes away the active team's access and deletes the connection with the last team.
+An AI client that can act in this team over MCP. Either a web connector approved on the consent screen, or an API token somebody pasted into a terminal or IDE agent — both are ordinary API tokens, so `id` is that token's id and revoking it is `revokeToken`, which deletes the credential and disconnects the client from every team it reached.
 """
 type McpConnection {
   capabilities: [String!]
@@ -2558,7 +2558,7 @@ type Mutation {
   revokeSession(id: String!): Boolean
 
   """
-  Remove this token's access to the active team. A token scoped to several teams keeps working in the others; it is deleted when the team revoking was the last one it reached, or when it is not scoped at all (there is no per-team grant to take away). Returns true.
+  Delete this token. The credential stops working immediately in every team it reached, not only the active one, and an OAuth connection's consent and refresh token go with it. Any team it can act in may revoke it, and so may its creator. Returns true.
   """
   revokeToken(id: String!): Boolean
 

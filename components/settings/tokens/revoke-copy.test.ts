@@ -1,48 +1,61 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 
-import { joinNames, revokeDescription, revokeTitle } from "./revoke-copy";
+import { joinNames, revokeDescription } from "./revoke-copy";
 
 /**
  * What Revoke promises, against what `revokeToken` does.
  *
- * The button removes the ACTIVE team's access and leaves the rest, so the one
- * thing this copy must never do is claim a credential is gone when it is still
- * driving another team. Pure functions, so pinning it costs nothing.
+ * The button deletes the credential everywhere, so the one thing this copy must
+ * never do is suggest something survives - and, when the token also works in
+ * other teams, it has to name them: that is the blast radius of the click.
+ * Pure functions, so pinning it costs nothing.
  */
 
 const A = { id: "team_a", name: "Acme" };
 const B = { id: "team_b", name: "Beta" };
 const C = { id: "team_c", name: "Gamma" };
 
-test("a credential that only reaches this team keeps the old, true sentence", () => {
-  const input = { teams: [A], activeTeamId: A.id, scoped: true };
-  assert.equal(revokeTitle("CI", input), "Revoke CI?");
-  assert.match(revokeDescription(input), /Every client using it loses access/);
+test("a credential that only reaches this team gets the plain sentence", () => {
+  const text = revokeDescription({
+    teams: [A],
+    activeTeamId: A.id,
+    scoped: true,
+  });
+  assert.match(text, /Every client using it loses access immediately, including/);
+  assert.doesNotMatch(text, /too/);
 });
 
-test("a multi-team token names what it loses and what survives", () => {
-  const input = { teams: [A, B, C], activeTeamId: A.id, scoped: true };
-  assert.equal(revokeTitle("CI", input), "Revoke CI from Acme?");
-  const text = revokeDescription(input);
-  assert.match(text, /loses access to Acme/);
-  assert.match(text, /keeps working in Beta and Gamma/);
+test("a multi-team token names the other teams it takes down", () => {
+  const text = revokeDescription({
+    teams: [A, B, C],
+    activeTeamId: A.id,
+    scoped: true,
+  });
+  assert.match(text, /loses access immediately, in Beta and Gamma too/);
+  assert.doesNotMatch(text, /keeps working/);
 });
 
-test("an unscoped token really is revoked everywhere, and says so", () => {
-  // No per-team grant to take away: its reach is "every team the creator
-  // belongs to", so the old sentence is the correct one.
-  const input = { teams: [], activeTeamId: A.id, scoped: false };
-  assert.equal(revokeTitle("CI", input), "Revoke CI?");
-  assert.match(revokeDescription(input), /Every client using it loses access/);
-});
-
-test("revoking your own token from outside its reach promises it is gone", () => {
+test("revoking your own token from outside its reach names its teams too", () => {
   // The tokens page lists every token you minted, so the active team may be one
-  // the credential never touched, and there `revokeToken` deletes it outright.
-  const input = { teams: [B, C], activeTeamId: A.id, scoped: true };
-  assert.equal(revokeTitle("CI", input), "Revoke CI?");
-  assert.match(revokeDescription(input), /Every client using it loses access/);
+  // the credential never touched - and revoking it there still kills the teams
+  // it does reach.
+  const text = revokeDescription({
+    teams: [B, C],
+    activeTeamId: A.id,
+    scoped: true,
+  });
+  assert.match(text, /in Beta and Gamma too/);
+});
+
+test("an unscoped token has no stored teams to name", () => {
+  // Its reach is "every team the creator belongs to", resolved live.
+  const text = revokeDescription({
+    teams: [],
+    activeTeamId: A.id,
+    scoped: false,
+  });
+  assert.match(text, /Every client using it loses access immediately, including/);
 });
 
 test("joinNames reads like a sentence at every length", () => {

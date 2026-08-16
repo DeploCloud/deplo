@@ -103,9 +103,10 @@ Discovery starts from the MCP endpoint's 401, which carries
 with `X-Deplo-Team` — it is fixed at consent time, so the header cannot move a
 connection somewhere else. Connections are listed and revoked under
 **Settings → MCP Server**, and appear in Settings → API tokens marked with the
-client's name. One consent can grant several teams, and `revokeToken` takes away
-the access of the team it is called in: the client keeps working in the others
-until the last one revokes, which is when the connection itself is deleted.
+client's name. One consent can grant several teams, and `revokeToken` ends the
+credential in all of them: the token row, the consent and the refresh token go
+together, so the client is disconnected everywhere and has to be authorized
+again. Any team the connection reaches can call it.
 
 Unauthenticated requests resolve `me` to `null` and are rejected by any field
 that requires a login (`Not authorized to resolve …`).

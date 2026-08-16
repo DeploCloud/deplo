@@ -45,10 +45,12 @@ config, or an AI agent's configuration file.
    them, and only naming a project or an app strips that team's team-wide
    capabilities. A bearer request acts in ONE of the token's teams, chosen with
    `X-Deplo-Team` and defaulting to the first in scope; the token is managed from
-   the team it was created in, and any team it reaches can revoke ITS OWN access
-   - the grant for that team is dropped, the token itself is deleted only when
-   the last team lets go, and a token with no scope at all, having no per-team
-   grant to drop, is deleted outright.)* A
+   the team it was created in, and any team it reaches can REVOKE it - which
+   deletes the credential, in every team it reached, along with the OAuth consent
+   and refresh token of a connection. Revoking was briefly per-team, dropping only
+   the acting team's grant; that made one button mean two things and left a token
+   somebody had just revoked still answering requests next door, so delete now
+   means delete, with the trail written into every team that lost it.)* A
    scoped token cannot READ an app outside its projects, not merely not write
    one — an out-of-scope app answers exactly what a nonexistent id answers, so
    the scope is never an oracle for which ids exist. Enforcement is a pure,

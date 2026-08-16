@@ -33,10 +33,7 @@ import { timeAgo } from "@/lib/utils";
 import { CAPABILITY_META } from "@/lib/capabilities";
 import { TOKEN_PRESETS, presetIdFor } from "@/lib/token-presets";
 import { scopeLabel } from "@/components/settings/tokens/scope-label";
-import {
-  revokeDescription,
-  revokeTitle,
-} from "@/components/settings/tokens/revoke-copy";
+import { revokeDescription } from "@/components/settings/tokens/revoke-copy";
 import type { ApiTokenDTO } from "@/lib/data/tokens";
 
 /**
@@ -226,20 +223,14 @@ export function TokensList({
       <ConfirmAction
         open={revoke !== null}
         onOpenChange={(v) => !v && setRevoke(null)}
-        title={
-          revoke ? revokeTitle(revoke.name, copyFor(revoke)) : "Revoke this token?"
-        }
+        title={revoke ? `Revoke ${revoke.name}?` : "Revoke this token?"}
         description={
           revoke
             ? revokeDescription(copyFor(revoke))
             : "Every client using it loses access immediately, including any deploy hook that sends it. This can't be undone; create a new token if you still need one."
         }
         confirmLabel="Revoke token"
-        successMessage={
-          revoke && revoke.teamsReached.length > 1
-            ? "Access removed"
-            : "Token revoked"
-        }
+        successMessage="Token revoked"
         onConfirm={async () => {
           const res = await gqlAction(
             `mutation($id: String!) { revokeToken(id: $id) }`,

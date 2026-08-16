@@ -213,10 +213,11 @@ export interface TokenTeam {
  * The teams each token reaches, named - {@link tokenIdsReaching} read the other
  * way round, for a whole list at once.
  *
- * Revoking is per-team (see {@link revokeToken}), so both settings screens have
- * to say which teams a credential touches BEFORE the button is pressed, and the
- * revoke itself needs the same answer to know whether anything is left. One
- * helper, batched over every row, rather than a per-token query in a `.map`.
+ * Revoking ends the credential everywhere (see {@link revokeToken}), so both
+ * settings screens have to say which teams it touches BEFORE the button is
+ * pressed, and the revoke itself needs the same answer to write the trail into
+ * each of them. One helper, batched over every row, rather than a per-token
+ * query in a `.map`.
  *
  * A token with no junction rows (`scoped = false`) answers with nothing: its
  * reach is "every team its creator belongs to", resolved live at authentication
@@ -852,7 +853,8 @@ function cleanExpiry(raw: string | null | undefined): string | null {
  * ANYONE ELSE edits it only from the team it was created in: a token can reach
  * several teams, and re-authoring one from a team that merely happens to be in
  * its scope would let that team's admin quietly cut another team's automation.
- * Any team it reaches can still REVOKE it, which is the lever that matters.
+ * Any team it reaches can still REVOKE it outright, which is the lever that
+ * matters.
  */
 export async function updateToken(
   input: {
@@ -1168,25 +1170,20 @@ export function stampMcpUse(tokenId: string): void {
 }
 
 /**
- * Revoke = "this team is done with this credential", not "delete the row".
+ * Revoke = the credential is gone, everywhere. Delete means delete.
  *
- * A token's scope can span several teams, and every one of them lists it (a team
- * that cannot see a credential operating inside it cannot revoke it either). So
- * the lever each of them holds has to be over ITS OWN access: cutting the row
- * would let one team switch off another team's automation, which is the same
- * objection that keeps `updateToken` to the home team. The row is deleted when
- * the LAST team lets go - at which point the two behaviours coincide, which is
- * why a single-team token still revokes exactly as it always did.
+ * It used to detach the active team and leave the row alive for the others,
+ * which made one button mean two things: a token somebody had just revoked was
+ * still answering requests in the next team, and nothing on the screen it was
+ * pressed from ever said so again. Any team a token can act in may cut it (a
+ * team that cannot stop a credential operating inside it holds no lever at all),
+ * and so may its creator from anywhere - and either way it ends: the row, the
+ * OAuth consent and the refresh token go together.
  *
- * The one place that is NOT per-team is the creator revoking their own token
- * from a team it never reached - their tokens page lists it there, so the button
- * has to work there, and what it means is "this credential of mine is done".
- *
- * A `scoped = false` token is the one case with nothing to detach: its reach is
- * "every team the creator belongs to", resolved live at authentication rather
- * than stored, so there are no rows here to remove and no way to say "all of
- * them except this one" without freezing a set that is meant to move. It is
- * revoked outright, and both dialogs say so.
+ * The blast radius is why every team that was reaching it gets the entry in ITS
+ * OWN Activity, not only the one that pressed the button: the other teams lose
+ * an automation they did not switch off, and that has to be readable as a line
+ * with a name on it rather than discovered as an outage.
  */
 export async function revokeToken(id: string): Promise<void> {
   const { teamId, userId } = await requireCapability("manage_tokens");
@@ -1196,7 +1193,6 @@ export async function revokeToken(id: string): Promise<void> {
       .select({
         name: apiTokens.name,
         userId: apiTokens.userId,
-        scoped: apiTokens.scoped,
         instanceAdmin: apiTokens.instanceAdmin,
         homeTeamId: apiTokens.teamId,
         oauthClientId: apiTokens.oauthClientId,
@@ -1217,36 +1213,15 @@ export async function revokeToken(id: string): Promise<void> {
   // Any team the token can act in may cut it off: that is the lever a team has
   // over a credential someone else minted into it. Its CREATOR may cut it from
   // ANY team: their tokens page lists every token they minted, and a row you can
-  // see but not revoke is a dead end, not a safeguard. Revoking from outside the
-  // token's reach is the whole credential going, not a per-team detach: there
-  // is no grant here to hand back.
+  // see but not revoke is a dead end, not a safeguard.
   const reachesHere = (await tokenIdsReaching(teamId)).has(id);
   if (!reachesHere && row.userId !== userId)
     throw new Error("Token not found");
 
-  // Read the reach BEFORE opening any transaction: these helpers query on their
-  // own connection and pglite deadlocks if that happens inside one.
-  const remaining = ((await teamsReachedByTokens([id])).get(id) ?? []).filter(
-    (t) => t.id !== teamId,
-  );
-  // The trail belongs to the team that hosted the credential, which is not
-  // necessarily the one the owner happened to be looking at.
-  const trailTeamId = reachesHere ? teamId : row.homeTeamId;
-
-  if (reachesHere && row.scoped && remaining.length > 0) {
-    await detachTokenFromTeam(id, teamId, row.homeTeamId, remaining[0].id);
-    await recordActivity(
-      "member",
-      row.oauthClientId
-        ? `Removed ${row.name}'s MCP access to this team`
-        : `Removed the ${row.name} API token's access to this team`,
-      await actorUsername(),
-      null,
-      teamId,
-      "token_revoked",
-    );
-    return;
-  }
+  // Read the reach BEFORE the row goes: afterwards there is nothing left to ask.
+  // (Also before any transaction - this helper queries on its own connection and
+  // pglite deadlocks if that happens inside one.)
+  const reached = (await teamsReachedByTokens([id])).get(id) ?? [];
 
   const gone = await getDb()
     .delete(apiTokens)
@@ -1259,86 +1234,20 @@ export async function revokeToken(id: string): Promise<void> {
     });
   if (gone.length === 0) throw new Error("Token not found");
   await forgetOauthGrant(gone[0].userId, gone[0].oauthClientId);
-  await recordActivity(
-    "member",
-    `Revoked the ${gone[0].name} API token`,
-    await actorUsername(),
-    null,
-    trailTeamId,
-    "token_revoked",
-  );
-}
 
-/**
- * Take one team out of a token's scope, leaving the credential itself alone.
- *
- * All four junctions, not just `api_token_teams`: a token reaches a team through
- * any node that LIVES in it too (`tokenIdsReaching` unions the same four), so
- * dropping the whole-team row alone would leave the connection listed and
- * working here, and Revoke would look like it had done nothing.
- *
- * The OAuth rows are deliberately untouched - clearing the consent or the
- * refresh token would sign the client out of every team at once, which is the
- * bug this whole path exists to fix. The access token stays valid and simply
- * stops resolving here: `identityForTokenRow` re-reads the scope on every
- * request.
- */
-async function detachTokenFromTeam(
-  id: string,
-  teamId: string,
-  homeTeamId: string,
-  fallbackHomeTeamId: string,
-): Promise<void> {
-  await getDb().transaction(async (tx) => {
-    await tx
-      .delete(apiTokenTeams)
-      .where(and(eq(apiTokenTeams.tokenId, id), eq(apiTokenTeams.teamId, teamId)));
-    await tx.delete(apiTokenProjects).where(
-      and(
-        eq(apiTokenProjects.tokenId, id),
-        inArray(
-          apiTokenProjects.projectId,
-          tx
-            .select({ id: projectsTable.id })
-            .from(projectsTable)
-            .where(eq(projectsTable.teamId, teamId)),
-        ),
-      ),
-    );
-    await tx.delete(apiTokenFolders).where(
-      and(
-        eq(apiTokenFolders.tokenId, id),
-        inArray(
-          apiTokenFolders.folderId,
-          tx
-            .select({ id: foldersTable.id })
-            .from(foldersTable)
-            .where(eq(foldersTable.teamId, teamId)),
-        ),
-      ),
-    );
-    await tx.delete(apiTokenApps).where(
-      and(
-        eq(apiTokenApps.tokenId, id),
-        inArray(
-          apiTokenApps.appId,
-          tx
-            .select({ id: appsTable.id })
-            .from(appsTable)
-            .where(eq(appsTable.teamId, teamId)),
-        ),
-      ),
-    );
-    // The home team is where the token is MANAGED from (`updateToken` refuses
-    // anywhere else) and the team a hintless OAuth request lands in. If it is
-    // the one walking away, hand both jobs to a team still in scope rather than
-    // leaving a credential nobody can edit, pointed at a team it cannot enter.
-    if (homeTeamId === teamId)
-      await tx
-        .update(apiTokens)
-        .set({ teamId: fallbackHomeTeamId })
-        .where(eq(apiTokens.id, id));
-  });
+  // The team that pressed the button, plus every other team the credential was
+  // working in. An unscoped token reaches no stored teams, so this is just the
+  // one entry it always had.
+  const trailTeamIds = new Set([
+    reachesHere ? teamId : row.homeTeamId,
+    ...reached.map((t) => t.id),
+  ]);
+  const actor = await actorUsername();
+  const what = gone[0].oauthClientId
+    ? `Revoked ${gone[0].name}'s MCP access`
+    : `Revoked the ${gone[0].name} API token`;
+  for (const trailTeamId of trailTeamIds)
+    await recordActivity("member", what, actor, null, trailTeamId, "token_revoked");
 }
 
 /**
@@ -1349,9 +1258,7 @@ async function detachTokenFromTeam(
  * behind: the refresh token that would mint a fresh access token an hour later,
  * and the consent record that would let the client re-authorize without the
  * screen. It lives INSIDE `revokeToken` so both settings pages and the GraphQL
- * mutation get it - one revocation lever, not two that can drift. Called only
- * when the `api_tokens` row itself goes: a team detaching from a connection that
- * still reaches other teams must not sign the client out of those.
+ * mutation get it - one revocation lever, not two that can drift.
  *
  * Best-effort, like `lastUsedAt`: the credential is already gone by this point,
  * and a failed cleanup must not turn a successful revoke into an error.

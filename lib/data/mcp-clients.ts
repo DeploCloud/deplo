@@ -71,9 +71,8 @@ export interface ConsentClientDTO {
 export interface McpConnectionDTO {
   /**
    * The `api_tokens` id - Revoke goes through `revokeToken`, one lever, and it
-   * removes THIS team's access rather than the whole connection (the client
-   * keeps working in the other teams it was approved for, until the last one
-   * lets go).
+   * ends the credential: the client is disconnected from every team the same
+   * consent approved, not only this one.
    */
   id: string;
   /**

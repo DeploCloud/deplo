@@ -42,10 +42,7 @@ import {
   type ScopeSelection,
 } from "@/components/settings/tokens/scope-picker";
 import { TokenCreated } from "@/components/settings/tokens/token-created";
-import {
-  revokeDescription,
-  revokeTitle,
-} from "@/components/settings/tokens/revoke-copy";
+import { revokeDescription } from "@/components/settings/tokens/revoke-copy";
 import { gqlAction } from "@/lib/graphql-client";
 import { ALL_CAPABILITIES, type Capability } from "@/lib/types";
 import { CAPABILITY_CATEGORIES, CAPABILITY_META } from "@/lib/capabilities";
@@ -505,12 +502,10 @@ export function TokenEditor({
         <ConfirmAction
           open={revokeOpen}
           onOpenChange={setRevokeOpen}
-          title={revokeTitle(token!.name, revokeCopy)}
+          title={`Revoke ${token!.name}?`}
           description={revokeDescription(revokeCopy)}
           confirmLabel="Revoke token"
-          successMessage={
-            token!.teamsReached.length > 1 ? "Access removed" : "Token revoked"
-          }
+          successMessage="Token revoked"
           onConfirm={async () => {
             const res = await gqlAction(
               `mutation($id: String!) { revokeToken(id: $id) }`,

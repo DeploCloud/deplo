@@ -27,10 +27,10 @@ import type { McpConnectionDTO } from "@/lib/data/mcp-clients";
  * One lever over a credential, never two that can drift.
  *
  * This screen speaks about THIS team and nothing else. One consent can approve
- * several teams and Revoke removes only the active one's access - but the other
+ * several teams, and Revoke ends the credential in all of them - but the other
  * teams are somebody else's business, sometimes literally (a member here need
- * not belong to them), so neither the row nor the dialog names them. The copy
- * stays true by saying what happens here rather than what survives elsewhere.
+ * not belong to them), so neither the row nor the dialog names them. The dialog
+ * says the client stops everywhere without saying where everywhere is.
  *
  * No action on the empty state: connecting happens in the Connect tab, which is
  * one click away and already carries that button.
@@ -50,7 +50,7 @@ export function ConnectedClients({
       <CardHeader>
         <CardTitle className="flex w-fit items-center gap-2 text-base">
           Connected clients
-          <InfoTip content="Revoking one takes away this team's access from its next request." />
+          <InfoTip content="Revoking one deletes the credential, so the client stops working everywhere it was connected." />
         </CardTitle>
         <p className="mt-1 text-sm text-muted-foreground">
           Every AI agent that can act in this team, and what each one is allowed
@@ -109,12 +109,12 @@ export function ConnectedClients({
         open={revoke !== null}
         onOpenChange={(v) => !v && setRevoke(null)}
         title={revoke ? `Revoke ${revoke.clientName}?` : "Revoke this client?"}
-        // True whether or not the same credential reaches anywhere else, and it
-        // never has to name where: from here, the client is gone until someone
-        // connects it again.
-        description="It loses this team's access immediately and has to be connected again to come back. This can't be undone."
+        // The credential is deleted, so the client stops in every team the same
+        // consent approved - said without naming them, which is not this
+        // screen's business.
+        description="The credential is deleted: the client loses access immediately, in every team it was connected to, and has to be connected again to come back."
         confirmLabel="Revoke"
-        successMessage="Access removed"
+        successMessage="Access revoked"
         onConfirm={async () => {
           const res = await gqlAction(
             `mutation($id: String!) { revokeToken(id: $id) }`,

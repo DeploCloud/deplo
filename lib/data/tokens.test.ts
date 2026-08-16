@@ -406,7 +406,7 @@ test("updateToken rewrites both junctions rather than merging into them", async 
   assert.equal((await db.select().from(apiTokenProjects)).length, 0);
 });
 
-test("revokeToken removes only the active team's matching token", async () => {
+test("revokeToken deletes the row", async () => {
   const id = await asUser1(
     async () => (await createToken({ name: "CI" })).token.id,
   );
@@ -429,7 +429,7 @@ test("revoking a token scoped to this team alone deletes it", async () => {
   );
 });
 
-test("revoking from one team leaves the token working in the others", async () => {
+test("revoking from one team ends the token in every team it reached", async () => {
   await alsoMemberOfB();
   const raw = await asUser1(
     async () =>
@@ -441,42 +441,45 @@ test("revoking from one team leaves the token working in the others", async () =
 
   assert.equal(
     (await db.select().from(apiTokens).where(eq(apiTokens.id, id))).length,
-    1,
-    "team B revoking must not delete team A's credential",
+    0,
+    "revoke deletes the credential, it does not detach one team from it",
   );
-  assert.deepEqual(
+  assert.equal(
     (await db.select().from(apiTokenTeams).where(eq(apiTokenTeams.tokenId, id)))
-      .map((r) => r.teamId),
-    [TEAM_A],
+      .length,
+    0,
   );
-  // Still authenticates - but only into the team that kept it, even when the
-  // request asks for the one that revoked.
-  const identity = await authenticateToken(raw, TEAM_B);
-  assert.equal(identity?.teamId, TEAM_A);
+  // Dead everywhere, including the team that never pressed the button.
+  assert.equal(await authenticateToken(raw, TEAM_A), null);
 });
 
-test("revoking from the home team hands the token to a team still in scope", async () => {
+test("every team that lost the credential gets the trail entry", async () => {
   await alsoMemberOfB();
   const id = await asUser1(
     async () =>
       (await createToken({ name: "CI", teamIds: [TEAM_A, TEAM_B] })).token.id,
   );
-  // TEAM_A is where it was minted, so it is also where it is EDITED from.
-  await asUser1(() => revokeToken(id));
+  // Team A loses an automation it did not switch off: reading that as a line in
+  // Activity, with a name on it, is the only alternative to reading it as an
+  // outage.
+  await asUser1InB(() => revokeToken(id));
 
-  const row = (await db.select().from(apiTokens).where(eq(apiTokens.id, id)))[0];
-  assert.equal(row?.teamId, TEAM_B, "the home moved with the access");
-  // Which is the whole point of moving it: it is still manageable.
-  await asUser1InB(() =>
-    updateToken({ id, name: "Renamed", teamIds: [TEAM_B] }),
-  );
-  assert.equal(
-    (await db.select().from(apiTokens).where(eq(apiTokens.id, id)))[0]?.name,
-    "Renamed",
-  );
+  for (const teamId of [TEAM_A, TEAM_B]) {
+    const rows = (
+      await pg.query(
+        `select message from activities where team_id = $1 and message like 'Revoked%'`,
+        [teamId],
+      )
+    ).rows as { message: string }[];
+    assert.deepEqual(
+      rows.map((r) => r.message),
+      ["Revoked the CI API token"],
+      `team ${teamId} was not told`,
+    );
+  }
 });
 
-test("a team reached only through a project is detached too", async () => {
+test("a team reached only through a project may revoke the whole token", async () => {
   await alsoMemberOfB();
   await seedProject("prc_b", TEAM_B, "Beta");
   const id = await asUser1(
@@ -493,6 +496,11 @@ test("a team reached only through a project is detached too", async () => {
   await asUser1InB(() => revokeToken(id));
 
   assert.equal(
+    (await db.select().from(apiTokens).where(eq(apiTokens.id, id))).length,
+    0,
+    "the project row is what reached team B, and it is a full revoke lever",
+  );
+  assert.equal(
     (
       await db
         .select()
@@ -500,15 +508,11 @@ test("a team reached only through a project is detached too", async () => {
         .where(eq(apiTokenProjects.tokenId, id))
     ).length,
     0,
-    "the project row is what reached team B, so it has to go with it",
-  );
-  assert.equal(
-    (await db.select().from(apiTokens).where(eq(apiTokens.id, id))).length,
-    1,
+    "the junction rows go with the row",
   );
 });
 
-test("an unscoped token has no per-team grant to take away, so it is revoked outright", async () => {
+test("an unscoped token is revoked outright too", async () => {
   await alsoMemberOfB();
   const id = await asUser1(
     async () => (await createToken({ name: "CI" })).token.id,

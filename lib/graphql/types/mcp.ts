@@ -34,8 +34,8 @@ export const McpConnectionRef = builder
       "An AI client that can act in this team over MCP. Either a web connector " +
       "approved on the consent screen, or an API token somebody pasted into a " +
       "terminal or IDE agent — both are ordinary API tokens, so `id` is that " +
-      "token's id and revoking it is `revokeToken`, which takes away the active " +
-      "team's access and deletes the connection with the last team.",
+      "token's id and revoking it is `revokeToken`, which deletes the " +
+      "credential and disconnects the client from every team it reached.",
     fields: (t) => ({
       id: t.exposeID("id"),
       kind: t.exposeString("kind", {

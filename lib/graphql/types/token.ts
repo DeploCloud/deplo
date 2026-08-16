@@ -232,10 +232,10 @@ builder.mutationFields((t) => ({
     type: "Boolean",
     authScopes: { capability: "manage_tokens" },
     description:
-      "Remove this token's access to the active team. A token scoped to " +
-      "several teams keeps working in the others; it is deleted when the team " +
-      "revoking was the last one it reached, or when it is not scoped at all " +
-      "(there is no per-team grant to take away). Returns true.",
+      "Delete this token. The credential stops working immediately in every " +
+      "team it reached, not only the active one, and an OAuth connection's " +
+      "consent and refresh token go with it. Any team it can act in may revoke " +
+      "it, and so may its creator. Returns true.",
     args: { id: t.arg.string({ required: true }) },
     resolve: async (_r, { id }) => {
       await revokeToken(id);
