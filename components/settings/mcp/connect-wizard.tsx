@@ -341,20 +341,22 @@ function WizardRun({
         : "idle";
 
   return (
-    // Illustration left, everything else right. The drawing is the one element
-    // that never changes place, so it anchors the page while the column beside
-    // it swaps between a switch, a grid, a form and a snippet — and putting the
-    // rail with the content means "where am I" and "what do I do" are read in
-    // one glance instead of two.
+    // Everything you act on down the left, the illustration large on the right.
+    // The rail travels with the content, so "where am I" and "what do I do" are
+    // one glance rather than two, and the drawing is the one element that never
+    // changes place — it anchors the page while the column beside it swaps
+    // between a switch, a grid, a form and a snippet.
     //
     // Borderless on purpose: this IS the tab, and a card drawn around the whole
     // of a tab is a box around a box.
-    <div className="grid gap-8 lg:grid-cols-[18rem_minmax(0,40rem)] lg:gap-12">
-      <div className="relative flex justify-center lg:sticky lg:top-24 lg:self-start lg:justify-start">
-        <RobotGraphic state={robot} className="h-auto w-44 lg:w-full" />
+    <div className="mx-auto grid max-w-5xl gap-8 lg:grid-cols-[minmax(0,1fr)_24rem] lg:gap-12">
+      {/* First in the DOM on a phone, where the picture on top reads as a
+          heading; last on a wide screen, where it belongs on the right. */}
+      <div className="relative order-first flex justify-center lg:order-last lg:sticky lg:top-24 lg:self-start">
+        <RobotGraphic state={robot} className="h-auto w-52 lg:w-full" />
         {/* Mounted only on success, so it plays once and replays whenever a new
             run reaches the end. */}
-        {connected && <ConfettiBurst className="top-24" />}
+        {connected && <ConfettiBurst className="top-28" />}
       </div>
 
       <div className="min-w-0 space-y-6">
@@ -934,31 +936,31 @@ function ConnectedSummary({
   onStart: () => void;
 }) {
   return (
-    // Same two columns as a run, so pressing "Connect another" does not move
-    // the picture or reflow the text under it.
-    <div className="grid gap-8 lg:grid-cols-[18rem_minmax(0,40rem)] lg:gap-12">
-      <div className="flex justify-center lg:justify-start">
-        <RobotGraphic state="connected" className="h-auto w-44 lg:w-full" />
+    // One centred column, unlike a wizard step: nothing here is being filled in,
+    // so there is no form to keep a left edge for. It is a status — how many
+    // agents, the address, and a way to add one more — and a status reads best
+    // stacked under its own picture.
+    <div className="mx-auto flex max-w-xl flex-col items-center gap-6 text-center">
+      <RobotGraphic state="connected" className="h-auto w-56 sm:w-64" />
+      <div>
+        <h2 className="text-base font-semibold">
+          {count} {count === 1 ? "agent is" : "agents are"} connected to this
+          team
+        </h2>
+        <p className="mt-1 text-sm text-balance text-muted-foreground">
+          This is the address they all use. Take an agent&apos;s access away
+          under Manage.
+        </p>
       </div>
-      <div className="flex min-w-0 flex-col items-start gap-5">
-        <div>
-          <h2 className="text-base font-semibold">
-            {count} {count === 1 ? "agent is" : "agents are"} connected to this
-            team
-          </h2>
-          <p className="mt-1 max-w-prose text-sm text-muted-foreground">
-            This is the address they all use. Take an agent&apos;s access away
-            under Manage.
-          </p>
-        </div>
-        <div className="w-full">
-          <CodeBlock code={url} />
-        </div>
-        <Button onClick={onStart}>
-          <Plug className="size-4" />
-          Connect another
-        </Button>
+      {/* The block stays left-aligned inside: a URL centred in a code box reads
+          as decoration rather than as something to copy. */}
+      <div className="w-full text-left">
+        <CodeBlock code={url} />
       </div>
+      <Button onClick={onStart}>
+        <Plug className="size-4" />
+        Connect another
+      </Button>
     </div>
   );
 }
