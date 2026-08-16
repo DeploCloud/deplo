@@ -71,6 +71,10 @@ export type ServerSummary = {
   id: string;
   name: string;
   ip: string;
+  /** The dial address as typed by the operator (usually identical to ip). */
+  host: string;
+  /** The agent's gRPC port; null while the server is still provisioning. */
+  agentPort: number | null;
   status: string;
   cpuCores: number;
   memoryMb: number;

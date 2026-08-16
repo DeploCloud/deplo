@@ -86,6 +86,37 @@ export async function renewAgentCertIfDue(
   }
 }
 
+/**
+ * Renew a server's agent leaf NOW, signing it with `dialHosts` as its SANs -
+ * the address edit's half of renewal (updateServerAddress), driven over the
+ * CURRENT (still-pinned, still-working) dial before the row flips. The caller
+ * passes old + new addresses unioned, so the cert verifies from either side of
+ * the flip - cancelling after a failed reachability probe must leave the
+ * current address dialable. Throws on any failure (no window check, no
+ * capability-as-reason softening: the caller decides how soft the failure is).
+ */
+export async function renewAgentCert(serverId: string, dialHosts: string[]): Promise<void> {
+  const conn = await connectAgent(serverId);
+  try {
+    const hello = await conn.hello();
+    if (!hello.capabilities?.includes(CERT_RENEWAL_CAPABILITY))
+      throw new Error("the agent does not support certificate renewal - update it first");
+    const { csrPem } = await conn.renewalCsr();
+    const signed = await signAgentCsr(csrPem, dialHosts);
+    const res = await conn.installRenewedCert({ certPem: signed.certPem, caPem: "" });
+    if (!res.ok) throw new Error(`agent rejected the renewed certificate: ${res.error}`);
+    await getDb()
+      .update(serversTable)
+      .set({
+        agentCertPem: signed.certPem,
+        agentCertFingerprint: signed.fingerprint,
+      })
+      .where(eq(serversTable.id, serverId));
+  } finally {
+    conn.close();
+  }
+}
+
 function notAfterOf(certPem: string): string {
   const d = leafNotAfter(certPem);
   return d ? d.toISOString() : "unknown";

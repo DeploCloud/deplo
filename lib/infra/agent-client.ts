@@ -1951,6 +1951,33 @@ export async function connectAgent(serverId: string): Promise<AgentConnection> {
   return dial(target);
 }
 
+/**
+ * Open a connection to `serverId`'s agent at an OVERRIDDEN dial address - the
+ * verify-first probe behind the address edit (updateServerAddress): same client
+ * identity, same PINNED cert fingerprint, only the target differs. A Hello that
+ * succeeds over this therefore proves the box at the new address is the same
+ * agent we provisioned, not merely something listening there. Persists nothing.
+ */
+export async function connectAgentAt(
+  serverId: string,
+  overrides: { ip?: string; host?: string; agentPort?: number },
+): Promise<AgentConnection> {
+  const server = await getServerById(serverId);
+  if (!server) throw new AgentUnreachableError(`server ${serverId} not found`);
+  if (!server.agent?.certFingerprint)
+    throw new AgentUnreachableError(
+      `server ${server.name} is not provisioned (no agent has called home yet)`,
+    );
+  return dial(
+    await remoteTarget({
+      ...server,
+      ip: overrides.ip ?? server.ip,
+      host: overrides.host ?? server.host,
+      agent: { ...server.agent, port: overrides.agentPort ?? server.agent.port },
+    }),
+  );
+}
+
 /** The capability an agent advertises in Hello once it can dump/restore to S3
  *  (mirrors the "backup" entry in the agent's server.Capabilities). */
 const BACKUP_CAPABILITY = "backup";

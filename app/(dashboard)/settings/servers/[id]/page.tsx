@@ -131,6 +131,8 @@ export default async function ServerDetailPage(props: PageProps<"/settings/serve
             id: hydrated.id,
             name: serverLabel(hydrated),
             ip: hydrated.ip,
+            host: hydrated.host,
+            agentPort: hydrated.agent?.port ?? null,
             status: hydrated.status,
             cpuCores: hydrated.cpuCores,
             memoryMb: hydrated.memoryMb,

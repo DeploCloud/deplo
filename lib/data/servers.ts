@@ -634,6 +634,101 @@ export async function removeServer(id: string): Promise<ServerRemoval> {
   };
 }
 
+export interface UpdateServerAddressInput {
+  id: string;
+  /** The new dial address (IP or DNS name) - written to BOTH `host` and `ip`,
+   *  which nothing else ever makes diverge (addServer copies one into the other). */
+  address: string;
+  /** New agent gRPC port; omit to keep the current one. */
+  agentPort?: number | null;
+  /** Skip the reachability check - for a host that is not up at the new address yet. */
+  force?: boolean;
+}
+
+/**
+ * Rewrite where Deplo dials a server's agent (Danger zone -> "Change address") -
+ * the migration verb: a VPS got a new IP, or the whole instance moved hosts.
+ * Trust is the PINNED cert fingerprint, never the address, so an edit never
+ * re-bootstraps anything; a wrong address is recoverable by editing again (or,
+ * when the panel itself can no longer help, `bun run recover server-address` on
+ * the Deplo host).
+ *
+ * Verify-first: unless `force`, the agent must answer a Hello AT the new address
+ * before the row flips - and because that dial pins the same fingerprint, success
+ * also proves the box there is the same agent we provisioned. Before the probe,
+ * the agent's leaf is re-signed with old+new addresses unioned as SANs
+ * (best-effort): an IP dial verifies via the `localhost` DNS SAN either way, but
+ * a DNS-name dial needs its name in the cert, and the union keeps the OLD address
+ * dialable if the operator cancels after a failed probe.
+ */
+export async function updateServerAddress(
+  input: UpdateServerAddressInput,
+): Promise<{ warning: string | null }> {
+  await requireInstanceAdmin();
+  const teamId = await requireActiveTeamId();
+  const user = (await getCurrentUser())!;
+  const server = await getServerById(input.id);
+  if (!server) throw new Error("Server not found");
+
+  const address = input.address.trim();
+  if (!address) throw new Error("Address is required");
+  if (
+    input.agentPort != null &&
+    (!Number.isInteger(input.agentPort) || input.agentPort < 1 || input.agentPort > 65535)
+  )
+    throw new Error("Agent port must be between 1 and 65535");
+  const port = input.agentPort ?? server.agent?.port ?? DEFAULT_AGENT_PORT;
+  if (address === server.host && address === server.ip && port === (server.agent?.port ?? port))
+    return { warning: null };
+
+  let warning: string | null = null;
+  if (server.agent?.certFingerprint) {
+    const sans = [...new Set([address, server.ip, server.host].filter(Boolean))];
+    try {
+      const { renewAgentCert } = await import("../agent/cert-renewal");
+      await renewAgentCert(server.id, sans);
+    } catch (e) {
+      // Soft on purpose: the force path exists precisely because the old address
+      // may already be dead, and an IP-dialed host never consults these SANs.
+      warning =
+        `Could not refresh the agent certificate for the new address ` +
+        `(${e instanceof Error ? e.message : String(e)}). Dialing by IP still works; ` +
+        `a DNS-name address may fail TLS until the certificate renews.`;
+    }
+    if (!input.force) {
+      const { connectAgentAt } = await import("../infra/agent-client");
+      const conn = await connectAgentAt(server.id, {
+        ip: address,
+        host: address,
+        agentPort: port,
+      });
+      try {
+        await conn.hello();
+      } finally {
+        conn.close();
+      }
+    }
+  }
+
+  await getDb()
+    .update(serversTable)
+    .set({
+      host: address,
+      ip: address,
+      // Meaningless before an agent exists - bootstrap sets it when one calls home.
+      ...(server.agent && input.agentPort != null ? { agentPort: input.agentPort } : {}),
+    })
+    .where(eq(serversTable.id, input.id));
+  await recordActivity(
+    "member",
+    `Changed server ${server.name} address to ${address}:${port}`,
+    user.name,
+    null,
+    teamId,
+  );
+  return { warning };
+}
+
 /**
  * Update a server's agent binary in place to the latest released version WITHOUT
  * reissuing its certificates. Unlike re-running the installer (which mints a new

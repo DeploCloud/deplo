@@ -29,6 +29,7 @@ import { randomBytes } from "node:crypto";
 import { getDb } from "../lib/db/client";
 import {
   instanceSettings,
+  servers as serversTable,
   users as usersTable,
 } from "../lib/db/schema/control-plane";
 import {
@@ -57,6 +58,11 @@ deplo recover — break-glass account recovery (run on the Deplo host)
 
   bun run recover unsuspend <username>
       Lift a suspension.
+
+  bun run recover server-address <server> <address> [agentPort]
+      Rewrite where Deplo dials a server's agent (<server> is its name or id).
+      Direct write, no reachability check - for undoing a mistyped address when
+      the panel itself can no longer fix it.
 `.trim();
 
 function fail(message: string): never {
@@ -245,13 +251,62 @@ async function cmdUnsuspend(handle: string) {
   console.log(`\n  @${user.username} can sign in again.\n`);
 }
 
+/**
+ * The break-glass half of updateServerAddress (lib/data/servers.ts): same two
+ * columns, none of the checks. The product path verifies the agent answers at
+ * the new address before saving - which is exactly what makes it useless once a
+ * typo'd address is already stored and the panel can no longer reach the host
+ * to fix itself (the Deplo-host row most of all). Whoever can run this already
+ * owns the box, like every other command here.
+ */
+async function cmdServerAddress(handle: string, address?: string, portArg?: string) {
+  if (!address) fail(`\`server-address\` needs the new address.\n\n${USAGE}`);
+  const rows = await getDb()
+    .select({
+      id: serversTable.id,
+      name: serversTable.name,
+      host: serversTable.host,
+      ip: serversTable.ip,
+      agentPort: serversTable.agentPort,
+    })
+    .from(serversTable);
+  const needle = handle.toLowerCase();
+  const server = rows.find(
+    (s) => s.id === handle || s.name.toLowerCase() === needle,
+  );
+  if (!server)
+    fail(
+      `No server matches "${handle}". Known: ${rows.map((s) => `${s.name} (${s.id})`).join(", ") || "none"}.`,
+    );
+  const port = portArg ? Number(portArg) : null;
+  if (portArg && (!Number.isInteger(port) || port! < 1 || port! > 65535))
+    fail(`"${portArg}" is not a valid port.`);
+  await getDb()
+    .update(serversTable)
+    .set({
+      host: address,
+      ip: address,
+      ...(port && server.agentPort != null ? { agentPort: port } : {}),
+    })
+    .where(eq(serversTable.id, server.id));
+  console.log(
+    `\n  ${server.name}: ${server.ip} -> ${address}` +
+      (port && server.agentPort != null ? ` (agent port ${server.agentPort} -> ${port})` : "") +
+      `\n`,
+  );
+}
+
 async function main() {
-  const [command, handle, extra] = process.argv.slice(2);
+  const [command, handle, extra, extra2] = process.argv.slice(2);
   if (!command || command === "help" || command === "--help")
     return void console.log(`\n${USAGE}\n`);
 
   if (command === "list") return cmdList();
-  if (!handle) fail(`\`${command}\` needs a username.\n\n${USAGE}`);
+  if (!handle)
+    fail(
+      `\`${command}\` needs a ${command === "server-address" ? "server" : "username"}.\n\n${USAGE}`,
+    );
+  if (command === "server-address") return cmdServerAddress(handle, extra, extra2);
   if (command === "password") return cmdPassword(handle, extra);
   if (command === "owner") return cmdOwner(handle);
   if (command === "admin") return cmdAdmin(handle);

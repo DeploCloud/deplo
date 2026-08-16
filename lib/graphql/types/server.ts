@@ -14,6 +14,7 @@ import {
   setServerDeployConcurrency,
   setServerRole,
   serverRole,
+  updateServerAddress,
   type ServerRole,
   type ServerRemoval,
 } from "@/lib/data/servers";
@@ -609,6 +610,27 @@ builder.mutationFields((t) => ({
       "Mint a fresh install command for a server still provisioning (the original token expired or was lost).",
     args: { id: t.arg.string({ required: true }) },
     resolve: (_r, { id }) => reissueBootstrap(id),
+  }),
+  updateServerAddress: t.string({
+    nullable: true,
+    authScopes: { instanceAdmin: true },
+    description:
+      "Rewrite where Deplo dials this server's agent - the migration verb for a host whose IP changed. Unless `force`, the agent must answer at the new address (same pinned certificate) before anything is saved. Returns a warning to surface, or null.",
+    args: {
+      id: t.arg.string({ required: true }),
+      address: t.arg.string({ required: true }),
+      agentPort: t.arg.int({ required: false }),
+      force: t.arg.boolean({ required: false }),
+    },
+    resolve: async (_r, args) =>
+      (
+        await updateServerAddress({
+          id: args.id,
+          address: args.address,
+          agentPort: args.agentPort ?? null,
+          force: args.force ?? false,
+        })
+      ).warning,
   }),
   removeServer: t.field({
     type: ServerRemovalRef,
