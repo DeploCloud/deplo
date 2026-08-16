@@ -15,9 +15,11 @@ import type { CatalogTemplate } from "@/templates/types";
  *
  * **Tone.** A logo drawn only in black vanishes on the dark theme's near-black
  * card, and one drawn only in white vanishes on the light theme's white one.
- * Those get `tone`, and the card puts them on a plate in that theme only.
- * Measured over the live catalogue: 308 of 386 logos carry a hue and need
- * nothing, 38 are black-only, 35 are white-only.
+ * Those get `tone`, which does two things: the card puts them on a plate in that
+ * theme only, and it washes them in the theme's own ink instead of a hue, so a
+ * white wordmark is not the one flat tile in a grid of lit ones. Measured over
+ * the live catalogue: 308 of 388 logos carry a hue, 38 are black-only, 35 are
+ * white-only, 7 say nothing at all.
  *
  * A logo that HAS a hue never gets a plate, and that distinction is the whole
  * point: a dark navy mark reads loud on black because of its chroma, so judging

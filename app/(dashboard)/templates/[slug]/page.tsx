@@ -17,6 +17,7 @@ import {
   plateClass,
   TemplateCard,
   toStoreTemplate,
+  veilProps,
 } from "@/components/templates/template-card";
 import { TemplateMarkdown } from "@/components/templates/template-markdown";
 import { TemplateSearchLink } from "@/components/templates/template-search";
@@ -78,6 +79,7 @@ export default async function TemplatePage(props: PageProps<"/templates/[slug]">
   const logo = template.logo ? templateAssetUrl(template.logo) : null;
   const images = template.images.map(templateAssetUrl);
   const accent = await templateAccent(template.slug, logo);
+  const veil = veilProps(accent, "on");
 
   const catalog = await listCatalog().catch(() => []);
   const related = catalog
@@ -95,14 +97,10 @@ export default async function TemplatePage(props: PageProps<"/templates/[slug]">
       <div className="flex flex-col gap-5 sm:flex-row sm:items-center sm:justify-between">
         <div className="flex min-w-0 items-center gap-4">
           <div
-            style={
-              accent.hue === undefined
-                ? undefined
-                : ({ "--tpl-hue": accent.hue } as React.CSSProperties)
-            }
+            style={veil.style}
             className={cn(
               "flex size-18 shrink-0 items-center justify-center rounded-2xl border border-border",
-              accent.hue !== undefined && "tpl-veil tpl-veil-on",
+              veil.className,
             )}
           >
             <LogoImage

@@ -315,14 +315,30 @@
   transition: opacity 200ms ease-out;
   background-image: linear-gradient(
     to top,
-    oklch(var(--tpl-veil-l) 0.16 var(--tpl-hue) / var(--tpl-veil-a)) 0%,
-    oklch(var(--tpl-veil-l) 0.16 var(--tpl-hue) / 0) 72%
+    oklch(var(--tpl-veil-l) var(--tpl-veil-c, 0.16) var(--tpl-hue, 0) / var(--tpl-veil-a))
+      0%,
+    oklch(var(--tpl-veil-l) var(--tpl-veil-c, 0.16) var(--tpl-hue, 0) / 0) 72%
   );
 }
 
+/* A logo drawn in a single neutral has no hue, but it still has a colour: its
+   own ink. Wash the card in that instead of leaving it the only flat tile in
+   the grid — chroma 0, and the lightness of the ink itself (white on the dark
+   theme, near-black on the light one), so a white wordmark lights its card
+   white. Same gradient, same alpha, two variables. */
+.dark .tpl-veil-neutral {
+  --tpl-veil-c: 0;
+  --tpl-veil-l: 1;
+}
+
+:root:not(.dark) .tpl-veil-neutral {
+  --tpl-veil-c: 0;
+  --tpl-veil-l: 0.15;
+}
+
 /* Only on the cards, which are links: keyboard focus must light the same veil
-   the pointer does. A logo with no usable hue never gets the class, so ~20% of
-   the catalogue keeps the plain card instead of wearing an invented colour. */
+   the pointer does. A logo that read as neither a hue nor a single neutral
+   never gets the class, and keeps the plain card. */
 .tpl-veil-hover:hover::before,
 .tpl-veil-hover:focus-visible::before {
   opacity: 1;

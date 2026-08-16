@@ -57,15 +57,15 @@ export function TemplateCard({
   href: string;
   className?: string;
 }) {
-  const hue = accent?.hue;
+  const veil = veilProps(accent, "hover");
   return (
     <Link
       href={href}
-      style={hue === undefined ? undefined : ({ "--tpl-hue": hue } as React.CSSProperties)}
+      style={veil.style}
       className={cn(
         "group flex flex-col gap-3 rounded-xl border border-border bg-card p-4 transition-colors",
         "hover:border-foreground/20 focus-visible:border-foreground/20",
-        hue !== undefined && "tpl-veil tpl-veil-hover",
+        veil.className,
         className,
       )}
     >
@@ -83,6 +83,30 @@ export function TemplateCard({
       </div>
     </Link>
   );
+}
+
+/**
+ * The wash a logo's card wears, and the one number it needs.
+ *
+ * A logo with a hue wears that hue. A logo drawn in a single neutral has no
+ * hue, so it wears its own ink instead (`tpl-veil-neutral`) — a white wordmark
+ * lights its card white rather than being the one tile in the grid that stays
+ * flat. A logo that read as neither renders plain.
+ *
+ * `lit` picks when: `"hover"` on the cards, `"on"` for the detail page's header.
+ */
+export function veilProps(
+  accent: LogoAccent | undefined,
+  lit: "hover" | "on",
+): { style?: React.CSSProperties; className?: string } {
+  const when = lit === "on" ? "tpl-veil-on" : "tpl-veil-hover";
+  if (accent?.hue !== undefined)
+    return {
+      style: { "--tpl-hue": accent.hue } as React.CSSProperties,
+      className: cn("tpl-veil", when),
+    };
+  if (accent?.tone) return { className: cn("tpl-veil tpl-veil-neutral", when) };
+  return {};
 }
 
 /** The plate a logo needs, if any: black-only ink gets one on the dark theme,
