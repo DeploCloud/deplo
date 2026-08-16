@@ -95,17 +95,33 @@ export async function assertSafeOutboundHost(
   raw: string,
   label: string,
 ): Promise<void> {
-  const host = raw.trim().toLowerCase();
+  // Strip IPv6 brackets: the URL path already does, but a bare SMTP host arrives
+  // raw, so `[::1]` must be judged as `::1`, not sailed past as an opaque literal.
+  const host = raw.trim().toLowerCase().replace(/^\[|\]$/g, "");
   const refuse = () => {
     throw new Error(`${label} must not point at a private or internal address`);
   };
   if (isInternalHost(host)) refuse();
-  // A literal is its own answer; only a NAME has to be resolved. But ONLY a
-  // canonical dotted-quad counts as a literal here (isIP returns 0 for
-  // `2130706433`, `127.1`, `0177.0.0.1`, `2852039166` = 169.254.169.254) —
-  // isInternalHost can't read those forms, so they must fall through to
-  // dnsLookup and be judged on the address getaddrinfo(inet_aton) gives.
-  if (isIP(host) === 4 || host.includes(":")) return;
+  // An IPv6 LITERAL is its own answer (no DNS), but isInternalHost only reads the
+  // compressed form, so an un-compressed spelling (`0:0:0:0:0:0:0:1`, a padded
+  // loopback, an expanded v4-mapped address) sails past it. Canonicalize through
+  // WHATWG URL — which compresses IPv6 — and re-check the result before trusting.
+  if (isIP(host) === 6) {
+    let canon: string | null = null;
+    try {
+      canon = new URL(`http://[${host}]/`).hostname.replace(/^\[|\]$/g, "").toLowerCase();
+    } catch {
+      canon = null;
+    }
+    if (canon && isInternalHost(canon)) refuse();
+    return;
+  }
+  // A canonical dotted-quad is its own answer (isInternalHost already ran). A
+  // NON-canonical numeric IPv4 (`2130706433`, `127.1`, `0177.0.0.1`,
+  // `2852039166` = 169.254.169.254) is NOT a literal isInternalHost can read, so
+  // it falls through to dnsLookup and is judged on the address
+  // getaddrinfo(inet_aton) canonicalizes it to.
+  if (isIP(host) === 4) return;
   let addresses: { address: string }[];
   try {
     addresses = await dnsLookup(host);

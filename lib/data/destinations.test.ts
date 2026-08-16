@@ -476,6 +476,41 @@ test("the bare-host guard resolves non-canonical numeric IPs instead of trusting
   }
 });
 
+/**
+ * The IPv6 twin of the case above: the fix must not be IPv4-only. An
+ * un-compressed spelling of an internal IPv6 address (`0:0:0:0:0:0:0:1`, a
+ * padded loopback, `[::1]`, an expanded v4-mapped loopback) is a LITERAL, so it
+ * never reaches DNS — it must be canonicalized (compressed) and refused on the
+ * spot, not sailed past because it "contains a colon".
+ */
+test("the bare-host guard canonicalizes non-canonical IPv6 literals too", async () => {
+  __setDnsLookupForTest(async (host) => {
+    if (host === "smtp.example.com") return [{ address: "93.184.216.34" }];
+    throw new Error("ENOTFOUND");
+  });
+  try {
+    for (const host of [
+      "0:0:0:0:0:0:0:1",
+      "0000:0000:0000:0000:0000:0000:0000:0001",
+      "[::1]",
+      "::1",
+      "0:0:0:0:0:ffff:7f00:1", // expanded v4-mapped 127.0.0.1
+      "fe80:0:0:0:0:0:0:1", // link-local, expanded
+      "fc00:0:0:0:0:0:0:1", // ULA, expanded
+    ]) {
+      await assert.rejects(
+        () => assertSafeOutboundHost(host, "SMTP host"),
+        /private or internal/,
+        `${host} must be refused`,
+      );
+    }
+    // A PUBLIC IPv6 literal is not over-blocked.
+    await assertSafeOutboundHost("2606:4700:4700::1111", "SMTP host");
+  } finally {
+    __resetDnsLookupForTest();
+  }
+});
+
 test("a name that doesn't resolve is left alone, not refused", async () => {
   __setDnsLookupForTest(async () => {
     throw new Error("ENOTFOUND");
