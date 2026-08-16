@@ -1738,3 +1738,103 @@
     opacity: 0;
   }
 }
+
+/* The Logs empty state writes into an empty pane: three lines arrive from below
+   one after another, hold, then the buffer clears and the caret waits alone for
+   a beat. Same rest beat as the deploy conveyor - a drawing that never stops
+   moving reads as loading, which is the one thing this state is not.
+
+   The 0.4s stagger (6.7% of the cycle) is what turns three lines into one stream
+   being written; the last one still clears by ~91%, so the quiet beat survives. */
+@keyframes deplo-logs-line {
+  0%,
+  8% {
+    transform: translateY(4px);
+    opacity: 0;
+  }
+  14%,
+  72% {
+    transform: translateY(0);
+    opacity: 1;
+  }
+  78%,
+  100% {
+    transform: translateY(0);
+    opacity: 0;
+  }
+}
+
+/* Step, not a fade: a terminal caret is on or off, and 1.1s is the cadence
+   every user has already seen a thousand times. */
+@keyframes deplo-logs-caret {
+  0%,
+  49% {
+    opacity: 1;
+  }
+  50%,
+  100% {
+    opacity: 0;
+  }
+}
+
+.deplo-logs-line {
+  /* Translate in view-box units, so 4px is 4 units at any rendered size. */
+  transform-box: view-box;
+  animation: deplo-logs-line 6s ease-out infinite;
+  opacity: 0;
+}
+
+.deplo-logs-line:nth-child(2) {
+  animation-delay: 0.4s;
+}
+.deplo-logs-line:nth-child(3) {
+  animation-delay: 0.8s;
+}
+
+/* The caret follows the writing: one row down per line that lands, back to the
+   top when the buffer clears. The 1% ramps are 60ms - a snap, not a slide, which
+   is how a cursor moves. Rows are 10 view-box units, the line spacing. */
+@keyframes deplo-logs-caret-row {
+  0%,
+  13% {
+    transform: translateY(0);
+  }
+  14%,
+  20% {
+    transform: translateY(10px);
+  }
+  21%,
+  27% {
+    transform: translateY(20px);
+  }
+  28%,
+  84% {
+    transform: translateY(30px);
+  }
+  85%,
+  100% {
+    transform: translateY(0);
+  }
+}
+
+.deplo-logs-caret {
+  transform-box: view-box;
+  animation:
+    deplo-logs-caret 1.1s steps(1, end) infinite,
+    deplo-logs-caret-row 6s linear infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  /* Hold the written frame: three lines in the pane, caret steady. */
+  .deplo-logs-line {
+    animation: none;
+    opacity: 1;
+    transform: none;
+  }
+  .deplo-logs-caret {
+    animation: none;
+    opacity: 1;
+    /* Row four, since the held frame has all three lines written. */
+    transform: translateY(30px);
+  }
+}

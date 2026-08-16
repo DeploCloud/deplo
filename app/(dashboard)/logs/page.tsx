@@ -1,5 +1,5 @@
-import { ScrollText } from "lucide-react";
 import { listDeployments, getLogs } from "@/lib/data/deployments";
+import { LogsGraphic } from "@/components/apps/logs-graphic";
 import { hasAppCapability } from "@/lib/data/node-access";
 import { PageHeader } from "@/components/shared/page-header";
 import { EmptyState } from "@/components/shared/empty-state";
@@ -45,7 +45,7 @@ export default async function LogsPage() {
 
       {summaries.length === 0 ? (
         <EmptyState
-          icon={ScrollText}
+          graphic={<LogsGraphic />}
           title="No logs yet"
           description="Deploy an app to start streaming build and runtime logs here."
         />

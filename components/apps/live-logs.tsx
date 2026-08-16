@@ -1,10 +1,11 @@
 "use client";
 
 import * as React from "react";
-import { ScrollText, CircleAlert, Hammer, XCircle, RotateCw } from "lucide-react";
+import { CircleAlert, Hammer, XCircle, RotateCw } from "lucide-react";
 import { gql } from "@/lib/graphql-client";
 import { EmptyState } from "@/components/shared/empty-state";
 import { ContainerLogs } from "@/components/apps/container-logs";
+import { LogsGraphic } from "@/components/apps/logs-graphic";
 import { BuildLogStream } from "@/components/apps/build-log-stream";
 import { useLiveApp } from "@/components/apps/app-live-status";
 import {
@@ -140,7 +141,7 @@ export function LiveLogs({
 
   return (
     <EmptyState
-      icon={ScrollText}
+      graphic={<LogsGraphic />}
       title="No logs yet"
       description="Runtime logs stream from the app's container, and this project hasn't been deployed yet. Deploy it to see its build and runtime output here."
     />
