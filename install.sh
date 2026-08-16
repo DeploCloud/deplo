@@ -399,8 +399,15 @@ services:
       - POSTGRES_DB=deplo
     volumes:
       - deplo-postgres:/var/lib/postgresql/data
+    # NOT the shared \`deplo\` network - the same rule the socket proxy above
+    # follows, for the same reason one layer down. Every deployed app sits on
+    # that network and every container there can register a DNS name, so a
+    # tenant stack with a service called \`postgres\` would round-robin the
+    # control plane's own database lookups onto a container they control - and
+    # what arrives on the first packet is the password in the connection string.
+    # This leg is internal (no route off the host) and holds only these two.
     networks:
-      - deplo
+      - deplo-internal
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U deplo -d deplo"]
       interval: 10s
@@ -431,6 +438,7 @@ services:
       - /opt/deplo/data:/data
     networks:
       - deplo
+      - deplo-internal
 $DEPLO_EXPOSE
 
 volumes:
@@ -439,6 +447,9 @@ volumes:
 networks:
   deplo:
     external: true
+  # The panel and its database, and nothing else on it.
+  deplo-internal:
+    internal: true
 EOF
 
 # Pull the control-plane image first so a missing/private package (or, on an

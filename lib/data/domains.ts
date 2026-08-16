@@ -126,6 +126,54 @@ async function assertHostnameNotAnotherTeams(
     );
 }
 
+/**
+ * Refuse a PREVIEW BASE DOMAIN that lives under a hostname another team routes.
+ *
+ * `assertHostnameNotAnotherTeams` guards the `domains` table, and a preview host
+ * never goes in it: `previewHost` builds `<slug>-pr-<n>.<base>` straight into a
+ * Traefik router, with `certProvider: "letsencrypt"` by default. So a team that
+ * set its base to somebody else's domain got routers - and ACME orders - under a
+ * name that is not theirs, which is the takeover the domains guard closes, one
+ * level down.
+ *
+ * BOTH directions of the zone count, because a preview host is
+ * `<slug>-pr-<n>.<base>` and lands in whoever's zone `<base>` sits in:
+ *
+ *  - the victim serves `victim.com` and the base IS `victim.com` (or anything
+ *    under it, `preview.victim.com`) - the previews land in their zone;
+ *  - the victim serves `app.victim.com` and the base is `victim.com` - the
+ *    previews land ABOVE it, in the same zone, on the same wildcard record.
+ *
+ * Equal, ancestor or descendant: one team's claim. Inside one team nothing
+ * changes - pointing previews at a domain you already serve is the normal setup -
+ * and a name that merely ENDS WITH another (`notvictim.com`) is a different
+ * hostname, so the comparison is on label boundaries, never a bare suffix.
+ *
+ * Every domain row is read rather than narrowed by a `LIKE`: the ancestor
+ * direction has no usable prefix, this runs once on a settings save, and a
+ * hostname list is small.
+ */
+export async function assertPreviewBaseNotAnotherTeams(
+  base: string,
+  teamId: string,
+): Promise<void> {
+  const clean = base.trim().toLowerCase();
+  if (!clean) return;
+  const rows = await getDb()
+    .select({ name: domainsTable.name, teamId: appsTable.teamId })
+    .from(domainsTable)
+    .innerJoin(appsTable, eq(appsTable.id, domainsTable.appId));
+  const sameZone = (a: string, b: string) =>
+    a === b || a.endsWith(`.${b}`) || b.endsWith(`.${a}`);
+  const taken = rows.find(
+    (r) => r.teamId !== teamId && sameZone(r.name.toLowerCase(), clean),
+  );
+  if (taken)
+    throw new Error(
+      `${clean} is served by another team on this Deplo, so previews can't be published under it. A preview domain belongs to one team.`,
+    );
+}
+
 /** True if any project already owns this exact hostname (global uniqueness —
  * the `domains_name_pathprefix_uq` index is on (name, path) rather than on name
  * alone, so this is the stricter, hostname-only pre-check the generators use to

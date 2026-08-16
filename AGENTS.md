@@ -310,6 +310,32 @@ Single endpoint `app/api/graphql/route.ts` (thin) → `lib/graphql/yoga.ts`. One
   `composeHasHostBindMount`. Adding a compose key that escapes the sandbox means adding it to
   that list — and HARDENING is never gated (`no-new-privileges`, `cap_drop`, `read_only`), because
   a permission prompt in front of the safer choice is one people learn to route around.
+- **The shared `deplo` network is the PLATFORM's, not the stack's.** Postgres sits on its own
+  `internal: true` leg (install.sh + docker-compose.yml), because every app joins the shared one and
+  every container there registers its SERVICE NAME as a DNS alias - Docker round-robins a name two
+  containers both claim, so a tenant service called `postgres` collected the control plane's own
+  database connections, password and all, and one called `deplo` collects the PANEL's traffic
+  (Traefik forwards it to `http://deplo:3000`). `buildComposeStack` is the choke point: every
+  service that ends up on that network has its hand-written `aliases:` dropped, and a
+  RESERVED_SHARED_NETWORK_NAMES service on it is refused outright (`composeClaimsReservedName`
+  gives the same refusal early, at save). Both halves are needed - the network split alone does not
+  help, because the control plane is on both networks and its resolver sees both. **Resolve that
+  network by NAME, never by key** (`sharedNetworkKeys`): compose lets it be referenced under any key
+  while pointing at it with `name:`, so `{ sneaky: { external: true, name: deplo } }` is the same
+  network, and a rule matching the key alone is one rename from decorative.
+- **`canMountHostVolumes` gates the top-level `volumes:` block too**
+  (`composeMountsForeignStorage`). `composeHasHostBindMount` reads SERVICE mounts and calls a source
+  a host bind when it starts with `/` or climbs with `..`; a NAMED volume is neither, so
+  `external: true` (or a pinned `name:`) attached an EXISTING volume by host name - the volume names
+  are deterministic (`deplo-<slug>-<vol>`, and the control plane's own `…_deplo-postgres`), which
+  reached another team's data and the control-plane DATABASE at rest - and
+  `driver_opts: {type: none, device: /, o: bind}` was a bind mount of the host declared one level up
+  from where the check was looking. Read on the AUTHORED compose, so Deplo's own render-time entries
+  never trip it.
+- **A preview base domain belongs to one team too.** A preview host never enters `domains`
+  (`previewHost` builds `<slug>-pr-<n>.<base>` straight into a router, `letsencrypt` by default), so
+  `assertHostnameNotAnotherTeams` cannot see it. `assertPreviewBaseNotAnotherTeams` is its twin, and
+  it compares the whole ZONE in both directions: equal, ancestor or descendant is one team's claim.
 - **A HOSTNAME belongs to one team.** `domains` is unique on `(name, coalesce(path_prefix,''))`,
   not on `name`, so one team can serve `app.com` on `/` and `app.com` on `/api` from two apps -
   that is a feature and it stays. Across teams it was a takeover: `servers.all_teams` defaults to

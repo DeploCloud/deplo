@@ -2,7 +2,9 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 
 import {
+  composeClaimsReservedName,
   composeHasHostBindMount,
+  composeMountsForeignStorage,
   composeNeedsHostPrivileges,
   isEscapingSource,
   isFilesConventionSource,
@@ -205,4 +207,101 @@ test("composeNeedsHostPrivileges: network_mode host is NOT a privilege", () => {
 test("composeNeedsHostPrivileges: unparseable YAML is not a detection", () => {
   assert.equal(composeNeedsHostPrivileges("services: [oops"), false);
   assert.equal(composeNeedsHostPrivileges(""), false);
+});
+
+/* ------------------------------------------------------------------ */
+/* Foreign STORAGE: the other half of the host-volume permission        */
+/* ------------------------------------------------------------------ */
+
+/**
+ * The service-level bind check reads a mount's SOURCE and calls it a host bind
+ * when it starts with `/` or climbs with `..`. A named volume is neither, so the
+ * top-level `volumes:` block was ungated — and it carries two ways out of the
+ * app's own storage: attaching an EXISTING volume by host name (the control
+ * plane's own database is `…_deplo-postgres`, another team's app volume is
+ * `deplo-<slug>-<name>`, both deterministic), and a `driver_opts` bind of any
+ * path on the server.
+ */
+test("composeMountsForeignStorage: an external volume is foreign", () => {
+  for (const decl of [
+    "    external: true",
+    "    external: true\n    name: deplo_deplo-postgres",
+    "    external:\n      name: deplo-victim-data",
+    "    name: deplo-victim-data",
+  ]) {
+    const yaml = `services:\n  app:\n    image: nginx\n    volumes:\n      - stolen:/x\nvolumes:\n  stolen:\n${decl}`;
+    assert.equal(
+      composeMountsForeignStorage(yaml),
+      true,
+      `not caught:\n${decl}`,
+    );
+  }
+});
+
+test("composeMountsForeignStorage: a driver_opts bind of the host is foreign", () => {
+  const yaml = `services:
+  app:
+    image: nginx
+    volumes:
+      - hostroot:/host
+volumes:
+  hostroot:
+    driver: local
+    driver_opts:
+      type: none
+      device: /
+      o: bind`;
+  assert.equal(composeMountsForeignStorage(yaml), true);
+  // And the bind check still does not see it — which is exactly why this exists.
+  assert.equal(composeHasHostBindMount(yaml), false);
+});
+
+test("composeMountsForeignStorage: an ordinary app volume is not foreign", () => {
+  // No `name:`, no `external:`, no `driver_opts:` — compose creates it per
+  // project and Deplo pins its host name at RENDER time, after this has run.
+  const yaml = `services:
+  app:
+    image: postgres:16
+    volumes:
+      - data:/var/lib/postgresql/data
+volumes:
+  data: {}`;
+  assert.equal(composeMountsForeignStorage(yaml), false);
+});
+
+test("composeMountsForeignStorage: no volumes block, and unparseable YAML", () => {
+  assert.equal(composeMountsForeignStorage("services:\n  app:\n    image: nginx"), false);
+  assert.equal(composeMountsForeignStorage("volumes: [oops"), false);
+  assert.equal(composeMountsForeignStorage(""), false);
+});
+
+/* ------------------------------------------------------------------ */
+/* The shared network is Deplo's to hand out, not the tenant's to claim */
+/* ------------------------------------------------------------------ */
+
+/**
+ * A container on the shared `deplo` network registers its service name as a DNS
+ * alias there, and Docker round-robins a name two containers both claim. Deplo
+ * itself answers to `deplo` on that network (Traefik forwards the panel to
+ * `http://deplo:3000`) and, on an install created before the database moved to
+ * its own internal leg, to `postgres`. Either one, claimed by a tenant, splits
+ * the platform's own traffic with a container somebody else controls.
+ */
+test("composeClaimsReservedName: only when it joins the shared network", () => {
+  const onShared = `services:
+  postgres:
+    image: alpine
+    networks: [deplo]
+networks:
+  deplo: {external: true}`;
+  assert.equal(composeClaimsReservedName(onShared), "postgres");
+
+  // The ordinary case, and by far the most common compose file there is: a
+  // service called `postgres` on the stack's OWN network. Untouched.
+  const ordinary = `services:
+  web:
+    image: nginx
+  postgres:
+    image: postgres:16`;
+  assert.equal(composeClaimsReservedName(ordinary), null);
 });

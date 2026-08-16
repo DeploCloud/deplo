@@ -31,6 +31,7 @@ import { requireActiveTeamId, requireCapability } from "../membership";
 import { recordActivity } from "./activity";
 import { loadAppGraph } from "./app-graph-load";
 import { requireFolderCapabilityForApp } from "./folder-access";
+import { assertPreviewBaseNotAnotherTeams } from "./domains";
 import { getServerById } from "./servers";
 import { requireAppCapability } from "./node-access";
 
@@ -417,6 +418,11 @@ export async function setAppPreviewSettings(
         `"${clean}" is not a hostname. Use something like preview.example.com, and point a wildcard DNS record at this server.`,
       );
     }
+    // A preview host never goes in the `domains` table, so the cross-team
+    // hostname guard there does not see it - and every preview under this base
+    // gets a Traefik router and an ACME order. Same rule, applied where this
+    // writer lives.
+    if (clean) await assertPreviewBaseNotAnotherTeams(clean, membership.teamId);
     patch.previewBaseDomain = clean || null;
   }
   if (input.maxActive !== undefined) {

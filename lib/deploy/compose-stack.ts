@@ -8,6 +8,11 @@ import { hostVolumeName } from "../utils";
 import { certResolver } from "./domains";
 import { traefikRouterLabels, hash6 } from "./routing";
 import { mergeResourceLimits } from "./resources";
+import {
+  RESERVED_SHARED_NETWORK_NAMES,
+  reservedNameMessage,
+  sharedNetworkKeys,
+} from "./compose-lint";
 
 /**
  * Turn a raw template/user docker-compose file into a Deplo-deployable stack.
@@ -776,6 +781,42 @@ export function buildComposeStack(input: ComposeStackInput): string {
         ...(basicAuth ? { basicAuth } : {}),
       }),
     );
+  }
+
+  // THE choke point for the shared network: every service that ends up on it,
+  // whether Deplo wired it for routing or the author attached it by hand.
+  //
+  // Two things are settled here rather than trusted. A container on that network
+  // registers its SERVICE NAME as a DNS alias, and Docker round-robins a name two
+  // containers both claim - so a service called `deplo` would collect the panel's
+  // own traffic (Traefik forwards it to `http://deplo:3000`) and one called
+  // `postgres` would collect the control plane's database connections, password
+  // and all. And a hand-written `aliases:` list is a way to claim any OTHER name
+  // on a network shared with every app on the host, which no app has a reason to
+  // do: Deplo needs none, so none survive.
+  //
+  // The shared network is resolved by NAME, never by key: compose lets a network
+  // be referenced under any key while pointing at another by `name:`, so
+  // `{ sneaky: { external: true, name: deplo } }` is this network under an alias
+  // of the author's choosing - and a rule that matched the key alone was one
+  // rename away from decorative.
+  const sharedKeys = sharedNetworkKeys(doc as { networks?: unknown });
+  for (const [name, raw] of Object.entries(services)) {
+    const svc = raw as App | undefined;
+    if (!svc || typeof svc !== "object") continue;
+    const nets = svc.networks;
+    const joined = Array.isArray(nets)
+      ? nets.map(String).filter((k) => sharedKeys.has(k))
+      : nets && typeof nets === "object"
+        ? Object.keys(nets).filter((k) => sharedKeys.has(k))
+        : [];
+    if (joined.length === 0) continue;
+    if (RESERVED_SHARED_NETWORK_NAMES.has(name))
+      throw new Error(reservedNameMessage(name));
+    // Long form: keep the entry, drop whatever it carried. `null` is compose's
+    // own "join with no options" and is what the short form means.
+    if (!Array.isArray(nets) && nets && typeof nets === "object")
+      for (const key of joined) (nets as Record<string, unknown>)[key] = null;
   }
 
   // Declare the external deplo network at the top level.

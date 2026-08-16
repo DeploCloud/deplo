@@ -14,6 +14,7 @@ import {
 } from "./app-graph-test-helpers";
 import {
   addDomain,
+  assertPreviewBaseNotAnotherTeams,
   routableRoutes,
   updateDomain,
   __setDnsResolve4ForTest,
@@ -135,4 +136,39 @@ test("the same team may still share one hostname across two apps by path", async
 test("the same row can still be edited without tripping over itself", async () => {
   const own = await asVictim(() => addDomain("prj_victim", HOST, {}));
   await asVictim(() => updateDomain(own.id, { port: 8080 }));
+});
+
+/**
+ * A preview host never enters the `domains` table: `previewHost` builds
+ * `<slug>-pr-<n>.<base>` straight into a Traefik router, with `letsencrypt` by
+ * default. So the guard above has a twin here, or the takeover it closes is
+ * reachable one level down — routers AND certificate orders under a name that
+ * belongs to somebody else.
+ */
+test("a preview base domain under another team's hostname is refused", async () => {
+  await asVictim(() => addDomain("prj_victim", HOST, {}));
+  await assert.rejects(
+    () => assertPreviewBaseNotAnotherTeams(HOST, TEAM_B),
+    /another team/,
+    "the hostname itself",
+  );
+  await assert.rejects(
+    () => assertPreviewBaseNotAnotherTeams(`preview.${HOST}`, TEAM_B),
+    /another team/,
+    "and anything under it",
+  );
+});
+
+test("a team may point previews at a domain it already serves", async () => {
+  await asVictim(() => addDomain("prj_victim", HOST, {}));
+  await assertPreviewBaseNotAnotherTeams(HOST, TEAM_A);
+  await assertPreviewBaseNotAnotherTeams(`preview.${HOST}`, TEAM_A);
+  // And a hostname nobody serves is nobody's to refuse.
+  await assertPreviewBaseNotAnotherTeams("unclaimed.example.com", TEAM_B);
+});
+
+test("a suffix that is not a label boundary is not a claim", async () => {
+  await asVictim(() => addDomain("prj_victim", HOST, {}));
+  // `notvictim.com` merely ENDS WITH the victim's host; it is a different name.
+  await assertPreviewBaseNotAnotherTeams(`not${HOST}`, TEAM_B);
 });

@@ -729,3 +729,80 @@ services:
     "deplo.service=web",
   ]);
 });
+
+/**
+ * The shared network is the platform's, not the stack's. Two things are settled
+ * at render time because they cannot be settled anywhere else: a hand-written
+ * `aliases:` list would claim any name on a network every app on the host
+ * shares, and a service NAME is itself an alias there — so one called `deplo`
+ * would collect the panel's own traffic (Traefik forwards it to
+ * `http://deplo:3000`).
+ */
+test("a hand-written alias on the shared network does not survive the render", () => {
+  const out = buildComposeStack({
+    compose: `services:
+  web:
+    image: nginx
+    networks:
+      deplo:
+        aliases: [postgres, deplo]
+networks:
+  deplo: {external: true}`,
+    name: "deplo-demo",
+    deployKey: "demo",
+    appId: "p1",
+    domainRoutes: [],
+  });
+  assert.ok(!out.includes("aliases"), `an alias survived:\n${out}`);
+});
+
+test("a service claiming one of Deplo's own names on the shared network is refused", () => {
+  for (const name of ["deplo", "postgres", "traefik"]) {
+    assert.throws(
+      () =>
+        buildComposeStack({
+          compose: `services:\n  ${name}:\n    image: alpine\n    networks: [deplo]\nnetworks:\n  deplo: {external: true}`,
+          name: "deplo-demo",
+          deployKey: "demo",
+          appId: "p1",
+          domainRoutes: [],
+        }),
+      /can't be on Deplo's shared network/,
+      `${name} was allowed`,
+    );
+  }
+});
+
+test("the shared network is resolved by NAME, not by the key it is given", () => {
+  // `{ sneaky: { external: true, name: deplo } }` IS the shared network. A rule
+  // that matched the key alone was one rename away from decorative.
+  const sneaky = (service: string) => `services:
+  ${service}:
+    image: alpine
+    networks:
+      sneaky:
+        aliases: [deplo]
+networks:
+  sneaky: {external: true, name: deplo}`;
+
+  assert.throws(
+    () =>
+      buildComposeStack({
+        compose: sneaky("postgres"),
+        name: "deplo-demo",
+        deployKey: "demo",
+        appId: "p1",
+        domainRoutes: [],
+      }),
+    /can't be on Deplo's shared network/,
+  );
+
+  const out = buildComposeStack({
+    compose: sneaky("app"),
+    name: "deplo-demo",
+    deployKey: "demo",
+    appId: "p1",
+    domainRoutes: [],
+  });
+  assert.ok(!out.includes("aliases"), `an alias survived:\n${out}`);
+});

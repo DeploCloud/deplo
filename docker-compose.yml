@@ -25,11 +25,17 @@ services:
     # Nothing can add this port later without recreating the container by hand.
     ports:
       - "3000:3000"
+    # NO docker.sock, the same rule install.sh states: the panel is the one
+    # container here reachable from the internet, and that mount is root on the
+    # box for whoever reaches it. Nothing needs it any more — the last live line
+    # that touched a socket went with `ensureNetwork` (see lib/deploy/build.ts),
+    # and the plugin retirement sweep tolerates an unreachable daemon by design.
+    # Everything host-coupled goes over mTLS gRPC to the server agent, ADR-0006.
     volumes:
       - deplo-data:/data
-      - /var/run/docker.sock:/var/run/docker.sock
     networks:
       - deplo
+      - deplo-internal
     labels:
       - "traefik.enable=true"
       - "traefik.http.routers.deplo.rule=Host(`${DEPLO_DOMAIN}`)"
@@ -53,8 +59,14 @@ services:
       - POSTGRES_DB=deplo
     volumes:
       - deplo-postgres:/var/lib/postgresql/data
+    # NOT the shared `deplo` network. Every deployed app sits on that one, and
+    # every container there can register a DNS name: a stack with a service
+    # called `postgres` would round-robin the control plane's own database
+    # lookups onto a container a tenant controls, which is the credential in the
+    # connection string. This leg is internal (no route off the host) and holds
+    # only these two.
     networks:
-      - deplo
+      - deplo-internal
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U deplo -d deplo"]
       interval: 10s
@@ -69,3 +81,7 @@ volumes:
 networks:
   deplo:
     external: true
+  # The control plane and its database, and nothing else. `internal: true` means
+  # no route off the host at all.
+  deplo-internal:
+    internal: true

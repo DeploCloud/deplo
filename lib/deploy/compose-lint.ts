@@ -381,8 +381,9 @@ export function lintCompose(source: string): LintDiagnostic[] {
     }
 
     // Anything that takes a container out of its sandbox. Gated server-side
-    // behind the host-volume grant (see composeNeedsHostPrivileges), so the
-    // message names the permission rather than pretending it is only a smell.
+    // behind the host-volume grant (see composeNeedsHostPrivileges and
+    // composeMountsForeignStorage), so the message names the permission rather
+    // than pretending it is only a smell.
     for (const key of hostPrivilegeKeys(svc)) {
       diags.push({
         severity: "warning",
@@ -391,6 +392,23 @@ export function lintCompose(source: string): LintDiagnostic[] {
         line: lineOfServiceField(lines, svcLine, key),
       });
     }
+  }
+
+  // Top-level volumes that point somewhere this app does not own. Same gate as
+  // a host bind, so the message names the same permission — and it is a warning
+  // rather than an error because it IS a legitimate operator action, just not a
+  // team-level one.
+  const topLevelVolumes =
+    doc.volumes && typeof doc.volumes === "object" && !Array.isArray(doc.volumes)
+      ? (doc.volumes as Record<string, unknown>)
+      : {};
+  for (const key of foreignVolumeKeys(topLevelVolumes)) {
+    diags.push({
+      severity: "warning",
+      rule: "foreign-volume",
+      message: `Volume \`${key}\` points at storage outside this app (an existing volume, or a path on the server). This needs the host-volume permission.`,
+      line: lineOfTopKey(lines, "volumes"),
+    });
   }
 
   return sortDiags(diags);
@@ -521,6 +539,194 @@ export function composeHasHostBindMount(composeYaml: string): boolean {
     }
   }
   return false;
+}
+
+/**
+ * The DNS names Deplo's own infrastructure answers to on the shared `deplo`
+ * network. A container joining that network registers its SERVICE NAME as an
+ * alias there, and Docker round-robins a name two containers both claim — so a
+ * stack with one of these on that network takes over traffic meant for the
+ * platform:
+ *
+ *  - `deplo` is where Traefik sends the PANEL (`DEFAULT_PANEL_TARGET` is
+ *    `http://deplo:3000`), so claiming it collects admin session cookies;
+ *  - `postgres` is the control plane's database on an install created before it
+ *    moved to its own internal network, and what arrives on the first packet is
+ *    the password in the connection string;
+ *  - `traefik` / `deplo-traefik` are the proxy itself.
+ *
+ * The list is deliberately TINY, and the check only fires for a service that
+ * actually joins the shared network: a stack with its own `postgres` service on
+ * its own network is the most ordinary compose file there is, and refusing it
+ * would be absurd.
+ */
+export const RESERVED_SHARED_NETWORK_NAMES = new Set([
+  "deplo",
+  "postgres",
+  "traefik",
+  "deplo-traefik",
+]);
+
+/** The shared network's name, as `compose-stack.ts` declares it. */
+const SHARED_NETWORK = "deplo";
+
+/**
+ * Every top-level network KEY in this compose that resolves to the shared
+ * network — which is not only the key `deplo`.
+ *
+ * Compose lets a network be referenced under any key while pointing at another
+ * network by `name:`, so
+ *
+ *     networks: { sneaky: { external: true, name: deplo } }
+ *
+ * is the shared network under an alias of the author's choosing. Checking the
+ * key alone is the same mistake as trusting an identifier that names itself:
+ * every rule about the shared network has to resolve it by NAME first, or the
+ * rule is one rename away from being decorative.
+ *
+ * Exported so the renderer and the editor agree on what "on the shared network"
+ * means.
+ */
+export function sharedNetworkKeys(doc: {
+  networks?: unknown;
+}): Set<string> {
+  const keys = new Set<string>([SHARED_NETWORK]);
+  const declared = doc.networks;
+  if (!declared || typeof declared !== "object" || Array.isArray(declared))
+    return keys;
+  for (const [key, raw] of Object.entries(declared as Record<string, unknown>)) {
+    if (!raw || typeof raw !== "object" || Array.isArray(raw)) continue;
+    const n = raw as Record<string, unknown>;
+    const named =
+      (typeof n.name === "string" && n.name.trim() === SHARED_NETWORK) ||
+      (n.external != null &&
+        typeof n.external === "object" &&
+        !Array.isArray(n.external) &&
+        (n.external as Record<string, unknown>).name === SHARED_NETWORK);
+    if (named) keys.add(key);
+  }
+  return keys;
+}
+
+/** True when a service's `networks:` (either shape) joins the shared network,
+ *  under whatever key it is referenced by. */
+function joinsSharedNetwork(
+  svc: Record<string, unknown>,
+  shared: Set<string>,
+): boolean {
+  const n = svc.networks;
+  if (Array.isArray(n)) return n.map(String).some((k) => shared.has(k));
+  if (n && typeof n === "object")
+    return Object.keys(n as object).some((k) => shared.has(k));
+  return false;
+}
+
+/**
+ * The first service in this compose that would claim a reserved infrastructure
+ * name on the shared network, or null. See {@link RESERVED_SHARED_NETWORK_NAMES}.
+ *
+ * Only an EXPLICIT join is visible here (the authored compose has no routing
+ * yet); a service that ends up on the shared network because a domain routes to
+ * it is caught by the same rule in `buildComposeStack`, which sees the final
+ * wiring. Two checks, one list.
+ */
+export function composeClaimsReservedName(composeYaml: string): string | null {
+  let doc: { services?: Record<string, unknown>; networks?: unknown } | null;
+  try {
+    doc = yaml.load(composeYaml) as {
+      services?: Record<string, unknown>;
+      networks?: unknown;
+    } | null;
+  } catch {
+    return null;
+  }
+  const services = doc?.services;
+  if (!services || typeof services !== "object" || Array.isArray(services)) return null;
+  const shared = sharedNetworkKeys(doc ?? {});
+  for (const [name, raw] of Object.entries(services)) {
+    if (!raw || typeof raw !== "object" || Array.isArray(raw)) continue;
+    if (
+      RESERVED_SHARED_NETWORK_NAMES.has(name) &&
+      joinsSharedNetwork(raw as Record<string, unknown>, shared)
+    )
+      return name;
+  }
+  return null;
+}
+
+/** The message both checks use, so the editor and the deploy say the same thing. */
+export function reservedNameMessage(service: string): string {
+  return (
+    `The service \`${service}\` can't be on Deplo's shared network under that name — ` +
+    `it is the name the platform itself answers to there, and two containers ` +
+    `claiming one name split the traffic between them. Rename the service, or ` +
+    `take it off the \`deplo\` network.`
+  );
+}
+
+/**
+ * Whether a TOP-LEVEL `volumes:` entry points at storage Deplo did not create
+ * for this app — the other half of the host-volume permission, and the half no
+ * check used to look at.
+ *
+ * `composeHasHostBindMount` reads the SERVICE mount list and calls a source a
+ * host bind when it starts with `/` or climbs with `..`. Neither is true of a
+ * NAMED volume, so the whole of this block was ungated, and it carries two ways
+ * out of the app's own storage:
+ *
+ *  - `external: true` (or a pinned `name:`) attaches an EXISTING docker volume
+ *    by its host name. The names are deterministic (`deplo-<slug>-<volume>`, and
+ *    the control plane's own `…_deplo-postgres`), so this reached another team's
+ *    data and the control-plane DATABASE at rest - every ciphertext, every
+ *    session row, and write access to `users.is_instance_admin`.
+ *  - `driver_opts: {type: none, device: /, o: bind}` is a bind mount of any host
+ *    path, declared one level up from where the bind check was looking.
+ *
+ * Both are legitimate operator things to do - `appMoveVolumeNames` already
+ * treats an `external:` volume as "storage the operator owns, not ours" - which
+ * is exactly why they belong behind `canMountHostVolumes` rather than being
+ * refused outright.
+ *
+ * Read on the AUTHORED compose, never the rendered one: Deplo injects its own
+ * `{ name: deplo-<deployKey>-<volume> }` entries at render time, well after this
+ * runs, so a plain `volumes: { data: {} }` (an ordinary per-app volume) stays
+ * free and only a user-pinned target counts.
+ */
+function foreignVolumeKeys(volumes: Record<string, unknown>): string[] {
+  const out: string[] = [];
+  for (const [key, raw] of Object.entries(volumes)) {
+    if (!raw || typeof raw !== "object" || Array.isArray(raw)) continue;
+    const v = raw as Record<string, unknown>;
+    const external = v.external;
+    const pinned =
+      (external != null && external !== false) ||
+      (typeof v.name === "string" && v.name.trim() !== "") ||
+      (v.driver_opts != null &&
+        typeof v.driver_opts === "object" &&
+        Object.keys(v.driver_opts as object).length > 0);
+    if (pinned) out.push(key);
+  }
+  return out;
+}
+
+/**
+ * Parse a compose YAML string and report whether ANY top-level volume points at
+ * storage this app does not own (see {@link foreignVolumeKeys}). Gated
+ * server-side behind `canMountHostVolumes`, beside its two siblings.
+ *
+ * Tolerant of malformed input, like the others: the deploy-time parse is the
+ * authoritative one.
+ */
+export function composeMountsForeignStorage(composeYaml: string): boolean {
+  let doc: { volumes?: Record<string, unknown> } | null;
+  try {
+    doc = yaml.load(composeYaml) as { volumes?: Record<string, unknown> } | null;
+  } catch {
+    return false;
+  }
+  const volumes = doc?.volumes;
+  if (!volumes || typeof volumes !== "object" || Array.isArray(volumes)) return false;
+  return foreignVolumeKeys(volumes).length > 0;
 }
 
 /**

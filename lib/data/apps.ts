@@ -36,9 +36,12 @@ import {
   requireTeamWide,
 } from "../membership";
 import {
+  composeClaimsReservedName,
   composeHasHostBindMount,
+  composeMountsForeignStorage,
   composeNeedsHostPrivileges,
   composePublishesPorts,
+  reservedNameMessage,
 } from "../deploy/compose-lint";
 import { composeServiceNames } from "../deploy/compose-stack";
 import {
@@ -682,9 +685,17 @@ export async function createApp(
   if (
     input.compose != null &&
     (composeHasHostBindMount(input.compose) ||
-      composeNeedsHostPrivileges(input.compose))
+      composeNeedsHostPrivileges(input.compose) ||
+      composeMountsForeignStorage(input.compose))
   ) {
     await requireMountHostVolumes();
+  }
+  // A service that would claim one of Deplo's own DNS names on the shared
+  // network. Refused early so the editor says it, rather than at deploy time
+  // where `buildComposeStack` makes the same check against the final wiring.
+  if (input.compose != null) {
+    const claimed = composeClaimsReservedName(input.compose);
+    if (claimed) throw new Error(reservedNameMessage(claimed));
   }
   // Where the app is filed (folder / project environment / top level) — resolved
   // and authorized BEFORE anything is written, so an unusable destination fails
@@ -1175,9 +1186,17 @@ export async function updateAppSource(
   if (
     input.compose != null &&
     (composeHasHostBindMount(input.compose) ||
-      composeNeedsHostPrivileges(input.compose))
+      composeNeedsHostPrivileges(input.compose) ||
+      composeMountsForeignStorage(input.compose))
   ) {
     await requireMountHostVolumes();
+  }
+  // A service that would claim one of Deplo's own DNS names on the shared
+  // network. Refused early so the editor says it, rather than at deploy time
+  // where `buildComposeStack` makes the same check against the final wiring.
+  if (input.compose != null) {
+    const claimed = composeClaimsReservedName(input.compose);
+    if (claimed) throw new Error(reservedNameMessage(claimed));
   }
   const user = (await getCurrentUser())!;
   const repo = await scopeRepoCredentials(input.repo, membership.teamId);
