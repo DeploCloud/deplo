@@ -1061,6 +1061,90 @@
   }
 }
 
+/* The panel-address confirm draws the move it is asking about: a packet leaves
+   the window on the old address, crosses the wire, and the window on the new
+   address answers with a ring. Then it goes again - after the move this is the
+   standing state of the world, not a one-off event.
+
+   The wire's dashes drift on their own short clock (ambient - the link exists
+   whether or not a packet is in flight); the packet and the ring share one
+   3.2s timeline, so the ring can only ever fire on an arrival. Transform,
+   opacity and stroke-dashoffset only, so the whole thing stays on the
+   compositor while the dialog holds the user's decision. */
+@keyframes deplo-move-flow {
+  from {
+    stroke-dashoffset: 20;
+  }
+  to {
+    stroke-dashoffset: 0;
+  }
+}
+
+@keyframes deplo-move-packet {
+  0% {
+    transform: translateX(0);
+    opacity: 0;
+  }
+  10% {
+    opacity: 1;
+  }
+  55% {
+    transform: translateX(52px);
+    opacity: 1;
+  }
+  63%,
+  100% {
+    transform: translateX(52px);
+    opacity: 0;
+  }
+}
+
+@keyframes deplo-move-ring {
+  0%,
+  54% {
+    transform: scale(0.55);
+    opacity: 0;
+  }
+  62% {
+    opacity: 0.45;
+  }
+  90%,
+  100% {
+    transform: scale(1);
+    opacity: 0;
+  }
+}
+
+.deplo-move-wire {
+  /* Dash period is 10 (6 + 4); the offset travels two periods per cycle, so
+     the loop point is invisible. */
+  stroke-dasharray: 6 4;
+  animation: deplo-move-flow 1.4s linear infinite;
+}
+
+.deplo-move-packet {
+  animation: deplo-move-packet 3.2s ease-in-out infinite;
+  opacity: 0;
+}
+
+.deplo-move-ring {
+  transform-box: fill-box;
+  transform-origin: center;
+  animation: deplo-move-ring 3.2s ease-out infinite;
+  opacity: 0;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  /* Hold the told story: both windows and the wire between them. The packet
+     and the ring are pure motion - parked anywhere they would read as a
+     smudge, so they simply do not appear. */
+  .deplo-move-wire,
+  .deplo-move-packet,
+  .deplo-move-ring {
+    animation: none;
+  }
+}
+
 /* The "app is not running" empty state hangs a plug out of its socket: a slow
    pendulum swing, and once per turn it dips towards the socket, holds a beat just
    short of it, and comes back up.
