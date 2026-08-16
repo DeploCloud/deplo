@@ -424,7 +424,7 @@ function WizardRun({
           {step === "permissions" && agent && (
             <StepShell
               title={`What may ${agent.label} do?`}
-              lead="deplo mints an API token for it, here. You can change or revoke it later without touching the agent."
+              lead="deplo mints an API token here. You can change or revoke it later without touching the agent."
             >
               <div className="w-full space-y-4 text-left">
                 <div className="grid gap-2">
