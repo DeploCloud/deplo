@@ -427,12 +427,21 @@ function PanelHttpsRow() {
               ? "The panel is now served over https"
               : "The panel is now served over http"
           }
-          note={
-            (confirming
-              ? "The address has to reach this server from the internet for the certificate to be issued."
-              : "Anyone signing in sends their password unencrypted.") +
-            " The proxy restarts, so sites on this server are unreachable for a few seconds."
-          }
+          notes={[
+            confirming
+              ? {
+                  severity: "manual" as const,
+                  text: "The address has to reach this server from the internet for the certificate to be issued",
+                }
+              : {
+                  severity: "critical" as const,
+                  text: "Anyone signing in sends their password unencrypted",
+                },
+            {
+              severity: "minor" as const,
+              text: "The proxy restarts: sites on this server are unreachable for a few seconds",
+            },
+          ]}
           onConfirm={() => toggle(confirming)}
         />
       )}
