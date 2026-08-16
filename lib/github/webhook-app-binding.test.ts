@@ -23,6 +23,8 @@ import {
   __setRunnerForTest,
 } from "../deploy/deploy-queue";
 import { POST } from "../../app/api/github/webhook/route";
+import { runWithIdentity } from "../auth/request-context";
+import { listInstallationRepos, listRepoBranches } from "./app";
 
 /**
  * A delivery may only act on an installation of the App whose secret signed it.
@@ -141,6 +143,33 @@ test("the App's OWN installation still deploys", async () => {
   const rows = await deployments();
   assert.equal(rows.length, 1);
   assert.equal(rows[0].appId, "prj_victim");
+});
+
+/**
+ * `githubRepos`/`githubBranches` are `loggedIn`-only (a member picks a repo with
+ * no capability), so the team check has to live in the data layer. The victim's
+ * `ghi_victim` installation is in TEAM_A; the attacker in TEAM_B must not be able
+ * to enumerate its private repos/branches by passing its (random) id.
+ */
+test("listing repos/branches refuses another team's installation id (IDOR)", async () => {
+  await runWithIdentity({ userId: "u_attacker", teamId: TEAM_B }, async () => {
+    await assert.rejects(
+      () => listInstallationRepos("ghi_victim"),
+      /installation not found/i,
+    );
+    await assert.rejects(
+      () => listRepoBranches("ghi_victim", "victimorg/private-app"),
+      /installation not found/i,
+    );
+  });
+  // The owning team gets PAST the team check — it fails later on the real GitHub
+  // call (an invalid test private key), NOT with "installation not found".
+  await runWithIdentity({ userId: "u_victim", teamId: TEAM_A }, async () => {
+    await assert.rejects(
+      () => listInstallationRepos("ghi_victim"),
+      (e: Error) => !/installation not found/i.test(e.message),
+    );
+  });
 });
 
 test("a body signed with the wrong secret is still a 401", async () => {

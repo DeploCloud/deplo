@@ -1,7 +1,7 @@
 import "server-only";
 
 import { createSign } from "node:crypto";
-import { eq } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 
 import { getDb } from "../db/client";
 import {
@@ -10,6 +10,7 @@ import {
 } from "../db/schema/control-plane";
 import { assembleGithubApp, assembleGithubInstallation } from "../data/infra-rows";
 import { decryptSecret } from "../crypto";
+import { requireActiveTeamId } from "../membership";
 import type { GithubApp, GithubInstallation } from "../types";
 
 /**
@@ -203,9 +204,41 @@ export interface GithubRepoSummary {
 }
 
 /** Repositories the installation can access (paginated, capped). */
+/**
+ * Refuse an installation id that is not the active team's. `githubRepos` /
+ * `githubBranches` are `loggedIn`-only (they need no capability — a member picks
+ * a repo when creating an app), so without this any member could pass another
+ * team's random `ghi_…` id and enumerate that team's private repositories and
+ * branch names through its installation token. Scoped via `github_apps.teamId`,
+ * the same join `listGithubInstallations` uses.
+ */
+async function assertInstallationInActiveTeam(
+  installationId: string,
+): Promise<void> {
+  const teamId = await requireActiveTeamId();
+  const row = (
+    await getDb()
+      .select({ id: githubInstallationTable.id })
+      .from(githubInstallationTable)
+      .innerJoin(
+        githubAppsTable,
+        eq(githubAppsTable.id, githubInstallationTable.appId),
+      )
+      .where(
+        and(
+          eq(githubInstallationTable.id, installationId),
+          eq(githubAppsTable.teamId, teamId),
+        ),
+      )
+      .limit(1)
+  )[0];
+  if (!row) throw new Error("GitHub installation not found");
+}
+
 export async function listInstallationRepos(
   installationId: string,
 ): Promise<GithubRepoSummary[]> {
+  await assertInstallationInActiveTeam(installationId);
   const token = await getInstallationToken(installationId);
   const out: GithubRepoSummary[] = [];
   for (let page = 1; page <= 10; page++) {
@@ -247,6 +280,7 @@ export async function listRepoBranches(
   fullName: string,
 ): Promise<string[]> {
   if (!OWNER_REPO_RE.test(fullName)) throw new Error("Invalid repository");
+  await assertInstallationInActiveTeam(installationId);
   const token = await getInstallationToken(installationId);
   const res = await githubFetch(
     `/repos/${fullName}/branches?per_page=100`,
