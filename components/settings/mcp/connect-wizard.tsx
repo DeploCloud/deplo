@@ -30,7 +30,6 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { FieldLabel } from "@/components/ui/info-tip";
-import { Card, CardContent } from "@/components/ui/card";
 import { CodeBlock, CommandLine } from "@/components/shared/code-block";
 import { WizardStepper } from "@/components/shared/wizard-stepper";
 import { PermissionPicker } from "@/components/settings/permission-picker";
@@ -227,6 +226,9 @@ function WizardRun({
 
   const [secret, setSecret] = React.useState<string | null>(null);
   const [tokenId, setTokenId] = React.useState<string | null>(null);
+  // Lifted out of the last step, because the illustration that reacts to it now
+  // lives in the other column. `DoneStep` still owns the polling.
+  const [connected, setConnected] = React.useState(false);
 
   const agent = agentId ? AGENTS.find((a) => a.id === agentId)! : null;
   const web = agent?.kind === "web";
@@ -330,35 +332,48 @@ function WizardRun({
     onRefresh();
   }
 
-  const robot: RobotState =
-    step === "done"
-      ? "connected"
-      : step === "connect"
-        ? "reaching"
-        : step === "permissions"
-          ? "key"
-          : "idle";
+  const robot: RobotState = connected
+    ? "connected"
+    : step === "done" || step === "connect"
+      ? "reaching"
+      : step === "permissions"
+        ? "key"
+        : "idle";
 
   return (
-    <div className="space-y-6">
-      <WizardStepper
-        steps={steps.map((id) => ({ id, label: STEP_LABEL[id] }))}
-        current={step}
-        // Once the secret exists there is nothing left to edit: revisiting the
-        // permissions step could only mint a second token for the same agent.
-        reachable={(s) =>
-          minted
-            ? s === "connect" || s === "done"
-            : steps.slice(0, steps.indexOf(s)).every((p) => valid[p])
-        }
-        onSelect={setStep}
-      />
+    // Illustration left, everything else right. The drawing is the one element
+    // that never changes place, so it anchors the page while the column beside
+    // it swaps between a switch, a grid, a form and a snippet — and putting the
+    // rail with the content means "where am I" and "what do I do" are read in
+    // one glance instead of two.
+    //
+    // Borderless on purpose: this IS the tab, and a card drawn around the whole
+    // of a tab is a box around a box.
+    <div className="grid gap-8 lg:grid-cols-[18rem_minmax(0,40rem)] lg:gap-12">
+      <div className="relative flex justify-center lg:sticky lg:top-24 lg:self-start lg:justify-start">
+        <RobotGraphic state={robot} className="h-auto w-44 lg:w-full" />
+        {/* Mounted only on success, so it plays once and replays whenever a new
+            run reaches the end. */}
+        {connected && <ConfettiBurst className="top-24" />}
+      </div>
 
-      <Card>
-        <CardContent className="p-6">
+      <div className="min-w-0 space-y-6">
+        <WizardStepper
+          steps={steps.map((id) => ({ id, label: STEP_LABEL[id] }))}
+          current={step}
+          // Once the secret exists there is nothing left to edit: revisiting the
+          // permissions step could only mint a second token for the same agent.
+          reachable={(s) =>
+            minted
+              ? s === "connect" || s === "done"
+              : steps.slice(0, steps.indexOf(s)).every((p) => valid[p])
+          }
+          onSelect={setStep}
+        />
+
+        <div>
           {step === "enable" && (
             <StepShell
-              robot={robot}
               title="AI agents are switched off for this team"
               lead="Turning it on lets an agent act here with an API token you control. What it may actually do is that token's permissions, and nothing else."
             >
@@ -377,7 +392,6 @@ function WizardRun({
 
           {step === "agent" && (
             <StepShell
-              robot={robot}
               title="Which agent are you connecting?"
               lead="Each one wants its configuration in a different place, so deplo writes the right one for you."
             >
@@ -409,7 +423,6 @@ function WizardRun({
 
           {step === "permissions" && agent && (
             <StepShell
-              robot={robot}
               title={`What may ${agent.label} do?`}
               lead="deplo mints an API token for it, here. You can change or revoke it later without touching the agent."
             >
@@ -498,7 +511,6 @@ function WizardRun({
 
           {step === "connect" && agent && (
             <StepShell
-              robot={robot}
               title={web ? `Paste this into ${agent.label}` : "Add this to your agent"}
               lead={
                 web
@@ -568,12 +580,17 @@ function WizardRun({
               agent={agent}
               tokenId={tokenId}
               baselineConnections={connectionCount}
+              connected={connected}
+              onConnected={() => {
+                setConnected(true);
+                // The Manage tab reads from the server, so it has to be told.
+                onRefresh();
+              }}
               onGoToManage={onGoToManage}
-              onRefresh={onRefresh}
             />
           )}
-        </CardContent>
-      </Card>
+        </div>
+      </div>
 
       {/* Advanced, on demand: two dialogs rather than one, because narrowing
           the reach and choosing what may be done there are two decisions, and
@@ -684,29 +701,28 @@ function WizardRun({
 /* ------------------------------------------------------------------ */
 
 /**
- * Every step is the same shape: the robot, a question, one line under it, the
- * controls, then one primary button. Holding that shape is what makes the four
- * steps feel like one flow rather than four screens someone bolted together.
+ * Every step is the same shape: a question, one line under it, the controls,
+ * then one primary button. Holding that shape is what makes the four steps feel
+ * like one flow rather than four screens someone bolted together.
+ *
+ * Left-aligned, because the illustration is on the left: a centred column of
+ * text beside a picture has no edge for the eye to come back to, and every line
+ * starts somewhere different.
  */
 function StepShell({
-  robot,
   title,
   lead,
   children,
 }: {
-  robot: RobotState;
   title: string;
   lead: string;
   children: React.ReactNode;
 }) {
   return (
-    <div className="mx-auto flex max-w-xl flex-col items-center gap-5 text-center">
-      <RobotGraphic state={robot} className="h-24" />
+    <div className="flex flex-col items-start gap-5">
       <div>
         <h2 className="text-base font-semibold">{title}</h2>
-        <p className="mt-1 text-sm text-balance text-muted-foreground">
-          {lead}
-        </p>
+        <p className="mt-1 max-w-prose text-sm text-muted-foreground">{lead}</p>
       </div>
       {children}
     </div>
@@ -753,13 +769,21 @@ function AgentCard({
           : "border-border hover:border-foreground/20 hover:bg-muted/40",
       )}
     >
+      {/* The agent's own colours, always — not only when selected. The tile is
+          what you scan for, and a grid that only colours the card you already
+          picked has helped you exactly once you no longer need it. The ring is
+          a token, so a near-black brand still has an edge on a dark background;
+          the fill and the glyph are the brand's and stay put in both themes. */}
       <span
         className={cn(
-          "flex size-8 shrink-0 items-center justify-center rounded-md border transition-colors",
-          selected
-            ? "border-primary/40 bg-background text-primary"
-            : "border-border bg-muted/50 text-muted-foreground",
+          "flex size-8 shrink-0 items-center justify-center rounded-md ring-1 ring-border",
+          !agent.brand && "bg-muted/50 text-muted-foreground",
         )}
+        style={
+          agent.brand
+            ? { backgroundColor: agent.brand.bg, color: agent.brand.fg }
+            : undefined
+        }
       >
         <Icon className="size-4" />
       </span>
@@ -788,16 +812,18 @@ function DoneStep({
   agent,
   tokenId,
   baselineConnections,
+  connected,
+  onConnected,
   onGoToManage,
-  onRefresh,
 }: {
   agent: AgentDef;
   tokenId: string | null;
   baselineConnections: number;
+  /** Owned by the run, because the illustration in the other column reads it. */
+  connected: boolean;
+  onConnected: () => void;
   onGoToManage: () => void;
-  onRefresh: () => void;
 }) {
-  const [connected, setConnected] = React.useState(false);
   const [round, setRound] = React.useState(0);
   const [attempt, setAttempt] = React.useState(0);
   // Frozen on mount, via the lazy initialiser. The web branch detects success
@@ -812,63 +838,52 @@ function DoneStep({
     const timer = setTimeout(async () => {
       const hit = await probe(agent.kind, tokenId, baseline);
       if (cancelled) return;
-      if (hit) {
-        setConnected(true);
-        // The Manage tab reads from the server, so it has to be told.
-        onRefresh();
-      } else {
-        setAttempt((n) => n + 1);
-      }
+      if (hit) onConnected();
+      else setAttempt((n) => n + 1);
     }, POLL_MS);
     return () => {
       cancelled = true;
       clearTimeout(timer);
     };
-  }, [agent.kind, tokenId, baseline, connected, attempt, round, onRefresh]);
+  }, [agent.kind, tokenId, baseline, connected, attempt, round, onConnected]);
 
   const gaveUp = !connected && attempt >= POLL_LIMIT;
 
   return (
-    <div className="relative">
-      <StepShell
-        robot={connected ? "connected" : "reaching"}
-        title={
-          connected
-            ? `${agent.label} is connected`
-            : `Waiting for ${agent.label}`
-        }
-        lead={
-          connected
-            ? "It made its first call to deplo. You can revoke its access at any time under Manage."
-            : gaveUp
-              ? "deplo has not heard from it yet. Start the agent, or ask it to list its tools, then check again."
-              : "This lights up the moment the agent actually calls deplo, not when the configuration is saved."
-        }
-      >
-        {connected ? (
-          <Button onClick={onGoToManage}>
-            <Check className="size-4" />
-            Done
-          </Button>
-        ) : gaveUp ? (
-          <Button
-            variant="outline"
-            onClick={() => {
-              setAttempt(0);
-              setRound((n) => n + 1);
-            }}
-          >
-            Check again
-          </Button>
-        ) : (
-          <p className="flex items-center gap-2 text-sm text-muted-foreground">
-            <Loader2 className="size-4 animate-spin" />
-            Listening
-          </p>
-        )}
-      </StepShell>
-      {connected && <ConfettiBurst className="top-16" />}
-    </div>
+    <StepShell
+      title={
+        connected ? `${agent.label} is connected` : `Waiting for ${agent.label}`
+      }
+      lead={
+        connected
+          ? "It made its first call to deplo. You can revoke its access at any time under Manage."
+          : gaveUp
+            ? "deplo has not heard from it yet. Start the agent, or ask it to list its tools, then check again."
+            : "This lights up the moment the agent actually calls deplo, not when the configuration is saved."
+      }
+    >
+      {connected ? (
+        <Button onClick={onGoToManage}>
+          <Check className="size-4" />
+          Done
+        </Button>
+      ) : gaveUp ? (
+        <Button
+          variant="outline"
+          onClick={() => {
+            setAttempt(0);
+            setRound((n) => n + 1);
+          }}
+        >
+          Check again
+        </Button>
+      ) : (
+        <p className="flex items-center gap-2 text-sm text-muted-foreground">
+          <Loader2 className="size-4 animate-spin" />
+          Listening
+        </p>
+      )}
+    </StepShell>
   );
 }
 
@@ -919,30 +934,32 @@ function ConnectedSummary({
   onStart: () => void;
 }) {
   return (
-    <Card>
-      <CardContent className="p-6">
-        <div className="mx-auto flex max-w-xl flex-col items-center gap-5 text-center">
-          <RobotGraphic state="connected" className="h-24" />
-          <div>
-            <h2 className="text-base font-semibold">
-              {count} {count === 1 ? "agent is" : "agents are"} connected to this
-              team
-            </h2>
-            <p className="mt-1 text-sm text-balance text-muted-foreground">
-              This is the address they all use. Take an agent&apos;s access away
-              under Manage.
-            </p>
-          </div>
-          <div className="w-full text-left">
-            <CodeBlock code={url} />
-          </div>
-          <Button onClick={onStart}>
-            <Plug className="size-4" />
-            Connect another
-          </Button>
+    // Same two columns as a run, so pressing "Connect another" does not move
+    // the picture or reflow the text under it.
+    <div className="grid gap-8 lg:grid-cols-[18rem_minmax(0,40rem)] lg:gap-12">
+      <div className="flex justify-center lg:justify-start">
+        <RobotGraphic state="connected" className="h-auto w-44 lg:w-full" />
+      </div>
+      <div className="flex min-w-0 flex-col items-start gap-5">
+        <div>
+          <h2 className="text-base font-semibold">
+            {count} {count === 1 ? "agent is" : "agents are"} connected to this
+            team
+          </h2>
+          <p className="mt-1 max-w-prose text-sm text-muted-foreground">
+            This is the address they all use. Take an agent&apos;s access away
+            under Manage.
+          </p>
         </div>
-      </CardContent>
-    </Card>
+        <div className="w-full">
+          <CodeBlock code={url} />
+        </div>
+        <Button onClick={onStart}>
+          <Plug className="size-4" />
+          Connect another
+        </Button>
+      </div>
+    </div>
   );
 }
 

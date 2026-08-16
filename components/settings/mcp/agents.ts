@@ -57,6 +57,18 @@ export interface AgentDef {
   blurb: string;
   icon: React.ComponentType<{ className?: string }>;
   /**
+   * The agent's own colours, as a tile behind its mark.
+   *
+   * The same reasoning `CHANNEL_BRAND` spells out: ten identical grey tiles are
+   * ten things you have to READ to tell apart, and the point of this grid is
+   * that you spot yours without reading. Literal hexes and not tokens, because
+   * a brand colour is not themeable — the tile carries its own foreground so it
+   * is legible on either theme's background.
+   *
+   * Absent on "Something else", which is not a brand and gets the neutral tile.
+   */
+  brand?: { bg: string; fg: string };
+  /**
    * `web` connects over OAuth and is minted by the consent screen; `token`
    * carries a `deplo_` bearer the wizard creates.
    */
@@ -89,6 +101,7 @@ export const AGENTS: AgentDef[] = [
     label: "Claude",
     blurb: "In the browser, at claude.ai.",
     icon: ClaudeIcon,
+    brand: { bg: "#D97757", fg: "#FFFFFF" },
     kind: "web",
     form: "file",
     hint: "Settings → Connectors → Add custom connector, then paste this and approve when deplo asks.",
@@ -101,6 +114,7 @@ export const AGENTS: AgentDef[] = [
     label: "ChatGPT",
     blurb: "In the browser. Needs developer mode turned on first.",
     icon: OpenAiIcon,
+    brand: { bg: "#000000", fg: "#FFFFFF" },
     kind: "web",
     form: "file",
     hint: "Settings → Connectors → Advanced settings → Developer mode, then Create and paste this.",
@@ -113,6 +127,7 @@ export const AGENTS: AgentDef[] = [
     label: "Claude Desktop",
     blurb: "The Claude app for Mac and Windows.",
     icon: ClaudeIcon,
+    brand: { bg: "#D97757", fg: "#FFFFFF" },
     kind: "web",
     form: "file",
     hint: "Settings → Connectors → Add custom connector, then paste this and approve when deplo asks.",
@@ -125,6 +140,7 @@ export const AGENTS: AgentDef[] = [
     label: "Claude Code",
     blurb: "The terminal agent. One command and it is registered.",
     icon: ClaudeIcon,
+    brand: { bg: "#D97757", fg: "#FFFFFF" },
     kind: "token",
     form: "command",
     hint: "Run it once in your terminal. Add --scope user to reuse it in every project.",
@@ -137,6 +153,7 @@ export const AGENTS: AgentDef[] = [
     label: "Cursor",
     blurb: "The editor. Its config lives in your repo.",
     icon: CursorIcon,
+    brand: { bg: "#000000", fg: "#FFFFFF" },
     kind: "token",
     file: ".cursor/mcp.json",
     form: "file",
@@ -162,6 +179,7 @@ export const AGENTS: AgentDef[] = [
     label: "VS Code",
     blurb: "Copilot's agent mode, configured per repo.",
     icon: VsCodeIcon,
+    brand: { bg: "#007ACC", fg: "#FFFFFF" },
     kind: "token",
     file: ".vscode/mcp.json",
     form: "file",
@@ -189,6 +207,7 @@ export const AGENTS: AgentDef[] = [
     label: "Windsurf",
     blurb: "Cascade, configured once for your machine.",
     icon: WindsurfIcon,
+    brand: { bg: "#0B100F", fg: "#FFFFFF" },
     kind: "token",
     file: "~/.codeium/windsurf/mcp_config.json",
     form: "file",
@@ -214,6 +233,7 @@ export const AGENTS: AgentDef[] = [
     label: "Gemini CLI",
     blurb: "Google's terminal agent.",
     icon: GeminiIcon,
+    brand: { bg: "#8E75B2", fg: "#FFFFFF" },
     kind: "token",
     file: "~/.gemini/settings.json",
     form: "file",
@@ -240,6 +260,7 @@ export const AGENTS: AgentDef[] = [
     label: "Codex CLI",
     blurb: "OpenAI's terminal agent.",
     icon: OpenAiIcon,
+    brand: { bg: "#000000", fg: "#FFFFFF" },
     kind: "token",
     file: "~/.codex/config.toml",
     form: "file",
