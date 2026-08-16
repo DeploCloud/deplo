@@ -318,3 +318,82 @@ networks:
     image: postgres:16`;
   assert.equal(composeClaimsReservedName(ordinary), null);
 });
+
+/**
+ * Host-file / foreign-container escapes that trip NO other detector (no
+ * `privileged`, no host bind, no top-level pinned volume) and so were ungated:
+ * `env_file` reads a host file into env; `secrets`/`configs` with a `file:`
+ * source mount a host file; `volumes_from: container:` mounts a foreign
+ * container's volumes; `cgroup: host` shares the host cgroup namespace. All
+ * resolve/reference against the SHARED host layout, so a co-tenant can reach
+ * another tenant's rendered env-file (`/data/stacks/<slug>.env`) or data volume
+ * with only a plain team capability. Gated behind `canMountHostVolumes` now.
+ */
+test("composeNeedsHostPrivileges: env_file reads a host file (abs or bare name)", () => {
+  for (const ef of ["/data/stacks/victim.env", "victim.env"]) {
+    const yaml = `services:\n  a:\n    image: x\n    env_file:\n      - ${ef}`;
+    assert.equal(composeNeedsHostPrivileges(yaml), true, `env_file ${ef}`);
+  }
+  // The object form `{path, required}` counts too.
+  assert.equal(
+    composeNeedsHostPrivileges(
+      `services:\n  a:\n    image: x\n    env_file:\n      - path: /etc/secret\n        required: false`,
+    ),
+    true,
+  );
+});
+
+test("composeNeedsHostPrivileges: volumes_from container: escapes; a bare service is same-stack", () => {
+  assert.equal(
+    composeNeedsHostPrivileges(
+      `services:\n  a:\n    image: x\n    volumes_from:\n      - "container:deplo-victim-web-1"`,
+    ),
+    true,
+  );
+  // A bare service name shares only THIS stack's volumes — left alone.
+  assert.equal(
+    composeNeedsHostPrivileges(
+      `services:\n  a:\n    image: x\n    volumes_from:\n      - db`,
+    ),
+    false,
+  );
+});
+
+test("composeNeedsHostPrivileges: cgroup host escapes; cgroup private does not", () => {
+  assert.equal(
+    composeNeedsHostPrivileges(`services:\n  a:\n    image: x\n    cgroup: host`),
+    true,
+  );
+  assert.equal(
+    composeNeedsHostPrivileges(`services:\n  a:\n    image: x\n    cgroup: private`),
+    false,
+  );
+});
+
+test("composeMountsForeignStorage: a top-level secrets/configs file: source is a host-file read", () => {
+  assert.equal(
+    composeMountsForeignStorage(
+      `services:\n  a:\n    image: x\n    secrets: [s]\nsecrets:\n  s:\n    file: /root/projects/deplo/.env`,
+    ),
+    true,
+  );
+  assert.equal(
+    composeMountsForeignStorage(
+      `services:\n  a:\n    image: x\nconfigs:\n  c:\n    file: victim.env`,
+    ),
+    true,
+  );
+  // An `environment:`-sourced secret carries no host path — left alone.
+  assert.equal(
+    composeMountsForeignStorage(
+      `services:\n  a:\n    image: x\nsecrets:\n  s:\n    environment: FOO`,
+    ),
+    false,
+  );
+});
+
+test("the five ungated escapes leave an ordinary compose free (no over-gating)", () => {
+  const plain = `services:\n  web:\n    image: nginx:1.27\n    ports:\n      - "8080:80"\nvolumes:\n  data: {}`;
+  assert.equal(composeNeedsHostPrivileges(plain), false);
+  assert.equal(composeMountsForeignStorage(plain), false);
+});

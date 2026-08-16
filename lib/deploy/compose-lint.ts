@@ -411,6 +411,25 @@ export function lintCompose(source: string): LintDiagnostic[] {
     });
   }
 
+  // Top-level `secrets:`/`configs:` sourced from a host `file:` read that file
+  // into the container — same host-file access as a service `env_file`, gated on
+  // the same permission.
+  for (const block of ["secrets", "configs"] as const) {
+    const raw = doc[block];
+    const map =
+      raw && typeof raw === "object" && !Array.isArray(raw)
+        ? (raw as Record<string, unknown>)
+        : {};
+    for (const key of fileSourcedKeys(map)) {
+      diags.push({
+        severity: "warning",
+        rule: "host-file-source",
+        message: `\`${block}.${key}\` reads a file from the server into the container. This needs the host-volume permission.`,
+        line: lineOfTopKey(lines, block),
+      });
+    }
+  }
+
   return sortDiags(diags);
 }
 
@@ -710,23 +729,55 @@ function foreignVolumeKeys(volumes: Record<string, unknown>): string[] {
 }
 
 /**
- * Parse a compose YAML string and report whether ANY top-level volume points at
- * storage this app does not own (see {@link foreignVolumeKeys}). Gated
- * server-side behind `canMountHostVolumes`, beside its two siblings.
+ * Top-level `secrets:`/`configs:` keys whose source is a host FILE (`file: …`).
+ * Docker mounts that file into the container (at `/run/secrets|configs/<key>`);
+ * the path resolves against the SHARED stack directory on the host, so even a
+ * relative name reaches another tenant's rendered env-file — the same host-file
+ * read as a service `env_file`, one level up. Gated the same way. An
+ * `environment:`-sourced secret carries no host path and is left alone.
+ */
+function fileSourcedKeys(entries: Record<string, unknown>): string[] {
+  const out: string[] = [];
+  for (const [key, raw] of Object.entries(entries)) {
+    if (!raw || typeof raw !== "object" || Array.isArray(raw)) continue;
+    const v = raw as Record<string, unknown>;
+    if (typeof v.file === "string" && v.file.trim() !== "") out.push(key);
+  }
+  return out;
+}
+
+/**
+ * Parse a compose YAML string and report whether it points at storage or host
+ * FILES this app does not own: a top-level `volumes:` entry pinned to a foreign
+ * volume/host path ({@link foreignVolumeKeys}), OR a top-level `secrets:`/
+ * `configs:` entry sourced from a host `file:` ({@link fileSourcedKeys}). Gated
+ * server-side behind `canMountHostVolumes`, beside its siblings.
  *
  * Tolerant of malformed input, like the others: the deploy-time parse is the
  * authoritative one.
  */
 export function composeMountsForeignStorage(composeYaml: string): boolean {
-  let doc: { volumes?: Record<string, unknown> } | null;
+  let doc:
+    | {
+        volumes?: Record<string, unknown>;
+        secrets?: Record<string, unknown>;
+        configs?: Record<string, unknown>;
+      }
+    | null;
   try {
-    doc = yaml.load(composeYaml) as { volumes?: Record<string, unknown> } | null;
+    doc = yaml.load(composeYaml) as typeof doc;
   } catch {
     return false;
   }
-  const volumes = doc?.volumes;
-  if (!volumes || typeof volumes !== "object" || Array.isArray(volumes)) return false;
-  return foreignVolumeKeys(volumes).length > 0;
+  const asMap = (v: unknown): Record<string, unknown> =>
+    v && typeof v === "object" && !Array.isArray(v)
+      ? (v as Record<string, unknown>)
+      : {};
+  return (
+    foreignVolumeKeys(asMap(doc?.volumes)).length > 0 ||
+    fileSourcedKeys(asMap(doc?.secrets)).length > 0 ||
+    fileSourcedKeys(asMap(doc?.configs)).length > 0
+  );
 }
 
 /**
@@ -745,6 +796,17 @@ export function composeMountsForeignStorage(composeYaml: string): boolean {
  * the rest. `network_mode: container:<name>` joins another container's namespace
  * the same way. It ALSO costs the container its Traefik routing — the linter's
  * separate `network-mode-host` warning still says so; both fire.
+ *
+ * `cgroup: host` shares the host's cgroup namespace (like `pid`/`ipc`).
+ * `volumes_from: "container:<name>"` mounts ANOTHER container's volumes on the
+ * same daemon — the reference is by container NAME, so it ignores the network
+ * split and reaches another tenant's data (and the control-plane database volume
+ * at rest); a bare service name is same-stack and left alone. `env_file` reads a
+ * host file into the container's environment, and its paths resolve against the
+ * SHARED stack directory on the host (`/data/stacks`), so even a relative name
+ * reaches another tenant's rendered env-file — any non-empty value is gated. The
+ * `file:`-sourced half of the top-level `secrets:`/`configs:` blocks is the same
+ * host-file read one level up, handled in {@link composeMountsForeignStorage}.
  */
 const HOST_PRIVILEGE_KEYS = [
   "privileged",
@@ -757,6 +819,9 @@ const HOST_PRIVILEGE_KEYS = [
   "ipc",
   "uts",
   "network_mode",
+  "cgroup",
+  "volumes_from",
+  "env_file",
   "userns_mode",
 ] as const;
 
@@ -780,11 +845,13 @@ const SAFE_SECURITY_OPTS = /^no-new-privileges\b/i;
  *
  * A key present but empty (`cap_add: []`, `privileged: false`) declares nothing
  * and does not count - the same rule `composePublishesPorts` applies to `ports`.
- * `pid`/`ipc`/`uts`/`network_mode` are namespace SELECTORS rather than switches:
- * `host` shares the host namespace, and `container:<name>`/`service:<name>` join
- * ANOTHER container's namespace on the same daemon (not limited to this stack) —
- * both escape, so both are flagged. An ordinary value (a bridge network name, a
- * real hostname for uts) is left alone.
+ * `pid`/`ipc`/`uts`/`network_mode`/`cgroup` are namespace SELECTORS rather than
+ * switches: `host` shares the host namespace, and `container:<name>`/
+ * `service:<name>` join ANOTHER container's namespace on the same daemon (not
+ * limited to this stack) — both escape, so both are flagged. An ordinary value (a
+ * bridge network name, a real hostname for uts, `cgroup: private`) is left alone.
+ * `volumes_from` flags only the `container:<name>` form (a foreign container's
+ * volumes); `env_file` flags any non-empty value (it reads a host file).
  */
 function hostPrivilegeKeys(svc: Record<string, unknown>): string[] {
   const out: string[] = [];
@@ -795,7 +862,13 @@ function hostPrivilegeKeys(svc: Record<string, unknown>): string[] {
       if (v === true) out.push(key);
       continue;
     }
-    if (key === "pid" || key === "ipc" || key === "uts" || key === "network_mode") {
+    if (
+      key === "pid" ||
+      key === "ipc" ||
+      key === "uts" ||
+      key === "network_mode" ||
+      key === "cgroup"
+    ) {
       if (typeof v === "string") {
         const val = v.trim().toLowerCase();
         // `host` shares the host namespace; `container:`/`service:` joins ANOTHER
@@ -803,6 +876,33 @@ function hostPrivilegeKeys(svc: Record<string, unknown>): string[] {
         if (val === "host" || val.startsWith("container:") || val.startsWith("service:"))
           out.push(key);
       }
+      continue;
+    }
+    if (key === "volumes_from") {
+      // Mounts another container's volumes. `container:<name>` names a container
+      // OUTSIDE this stack (another tenant's, or the platform's) — the escape;
+      // a bare service name is same-stack and left alone.
+      const list = Array.isArray(v) ? v : [v];
+      if (
+        list.some(
+          (e) =>
+            typeof e === "string" &&
+            e.trim().toLowerCase().startsWith("container:"),
+        )
+      )
+        out.push(key);
+      continue;
+    }
+    if (key === "env_file") {
+      // Any non-empty value reads a host file into the container's env; the path
+      // resolves against the shared stack dir, so a bare name is cross-tenant.
+      const list = Array.isArray(v) ? v : [v];
+      const names = list.map((e) =>
+        e && typeof e === "object"
+          ? String((e as Record<string, unknown>).path ?? "")
+          : String(e),
+      );
+      if (names.some((n) => n.trim() !== "")) out.push(key);
       continue;
     }
     if (key === "security_opt") {
