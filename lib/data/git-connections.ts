@@ -14,6 +14,7 @@ import {
   requireActiveTeamId,
   requireCapability,
   requireInstanceAdmin,
+  requireTeamWide,
 } from "../membership";
 import { assertSafeOutboundUrl } from "../outbound-url";
 import { PUBLIC_URL_PLACEHOLDER, resolveManifestBaseUrl } from "../public-url";
@@ -487,6 +488,10 @@ export async function probeCredential(
 export async function listGitRepos(
   connectionId: string,
 ): Promise<RepoSummary[]> {
+  // A narrowed API token (scoped to specific projects) must not enumerate the
+  // whole team's git host through the connection's PAT — this is a team-level
+  // browse, and a token minting an app passes its repo URL directly instead.
+  await requireTeamWide("the team's git repositories");
   const cred = await requireOwnCredential(connectionId);
   const api = providerFor(cred.provider).api;
   if (!api) return [];
@@ -497,6 +502,7 @@ export async function listGitBranches(
   connectionId: string,
   fullName: string,
 ): Promise<string[]> {
+  await requireTeamWide("the team's git repositories");
   const cred = await requireOwnCredential(connectionId);
   const api = providerFor(cred.provider).api;
   if (!api) return [];

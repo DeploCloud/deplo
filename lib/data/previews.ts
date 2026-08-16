@@ -32,7 +32,7 @@ import { recordActivity } from "./activity";
 import { loadAppGraph } from "./app-graph-load";
 import { requireFolderCapabilityForApp } from "./folder-access";
 import { assertPreviewBaseNotAnotherTeams } from "./domains";
-import { getServerById } from "./servers";
+import { listServersForTeam } from "./servers";
 import { requireAppCapability } from "./node-access";
 
 /**
@@ -445,10 +445,15 @@ export async function setAppPreviewSettings(
   }
   if (input.serverId !== undefined) {
     const wanted = (input.serverId ?? "").trim();
-    // Servers are the one cross-team resource, so membership is not the check —
-    // existence is. An unknown id would deploy previews nowhere.
-    if (wanted && !(await getServerById(wanted))) {
-      throw new Error("That server is not connected to this instance");
+    // Servers are cross-team-SHARED but still access-controlled (`all_teams` +
+    // per-team grants), so the check is ACCESSIBILITY, not mere existence: a
+    // member must not point previews at a server their team can't use (the
+    // preview then deploys there unguarded). Same team-scoped picklist
+    // `createApp` validates an explicit pick against.
+    if (wanted) {
+      const usable = await listServersForTeam(membership.teamId);
+      if (!usable.some((s) => s.id === wanted))
+        throw new Error("That server is not available to this team");
     }
     // The app's own server IS the default, so storing it explicitly would only
     // pin what is already true and survive a later app move.
