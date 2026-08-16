@@ -941,7 +941,10 @@ function ChangeAddress({ server }: { server: ServerSummary }) {
     <>
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div className="min-w-0">
-          <div className="text-sm font-medium">Change address</div>
+          <div className="flex items-center gap-2 text-sm font-medium">
+            Change address
+            <BetaChip />
+          </div>
           <p className="mt-1 text-sm text-muted-foreground">
             Where Deplo reaches this server&rsquo;s agent. Change it when the host
             got a new IP or you moved it.
