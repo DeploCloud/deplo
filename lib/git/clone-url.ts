@@ -40,6 +40,23 @@ export async function resolveCloneUrl(repo: GitRepo): Promise<string> {
   if (parsed.protocol !== "https:" && parsed.protocol !== "http:") {
     return repo.url;
   }
+  // Bind the credential to the connection's OWN host. `repo.url` and the
+  // `connectionId` are chosen independently by a member who needs neither
+  // `manage_git` nor any secret-reveal capability (`scopeRepoCredentials` checks
+  // only that the connection is in their team), so without this a repo URL
+  // pointing at an attacker's host would carry the connection's PAT there — the
+  // agent lifts userinfo into an `Authorization: Basic` header. `baseUrl` is the
+  // host repositories are served from (distinct from `apiBaseUrl`), so a clone
+  // host that isn't it is not this connection's repo. Mismatch ⇒ clone
+  // anonymously, exactly as the GitHub-App (`hostname !== "github.com"`) and fork
+  // (`head.host !== base.host`) paths already do.
+  let connHost: string;
+  try {
+    connHost = new URL(cred.baseUrl).host.toLowerCase();
+  } catch {
+    return repo.url; // a connection with no parseable base URL earns no token
+  }
+  if (parsed.host.toLowerCase() !== connHost) return repo.url;
   // The WHATWG URL serializer percent-encodes userinfo, so a token containing
   // "@", ":" or "/" survives the round trip.
   parsed.username = cred.username;

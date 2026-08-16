@@ -219,6 +219,27 @@ test("a connection-backed clone carries its credentials in the userinfo", async 
   );
 });
 
+test("a repo URL on a FOREIGN host does NOT carry the connection's token", async () => {
+  // `repo.url` and `connectionId` are set independently by a member who needs no
+  // manage_git and no reveal capability. A URL pointing off the connection's own
+  // host must clone anonymously, or the PAT is exfiltrated to the chosen host
+  // (the agent lifts userinfo into an Authorization: Basic header).
+  const created = await asTeamA(() => connect()); // baseUrl https://git.acme.com
+  const attackerUrl = "https://collector.attacker.test/acme/site.git";
+  const url = await resolveCloneUrl({
+    provider: "git",
+    url: attackerUrl,
+    repo: "acme/site",
+    branch: "main",
+    connectionId: created.id,
+  });
+  // Unchanged, anonymous — no username/password embedded.
+  assert.equal(url, attackerUrl);
+  const parsed = new URL(url);
+  assert.equal(parsed.username, "");
+  assert.equal(parsed.password, "");
+});
+
 test("a token full of URL metacharacters survives the round trip", async () => {
   const created = await asTeamA(() =>
     connectGitProvider({
