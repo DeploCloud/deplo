@@ -33,6 +33,13 @@ const T0 = "2026-01-01T00:00:00.000Z";
 interface SeedTeam {
   id: string;
   slug: string;
+  /**
+   * Whether this team allows AI agents over MCP. Defaults to TRUE here and
+   * FALSE in production (migration 0106): a suite that exercises the MCP door
+   * is not a suite about the kill switch, and every one of those tests would
+   * otherwise open by turning the same switch on.
+   */
+  mcpEnabled?: boolean;
 }
 interface SeedUser {
   id: string;
@@ -67,6 +74,7 @@ export async function seedIdentity(
       name: t.slug,
       slug: t.slug,
       plan: "pro" as const,
+      mcpEnabled: t.mcpEnabled ?? true,
       createdAt: T0,
     })),
   );

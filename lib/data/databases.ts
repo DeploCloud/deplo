@@ -47,6 +47,7 @@ import { isDockerLevelStderr } from "../infra/docker";
 import { isValidLogoValue } from "../apps/logo-shared";
 import { withKeyedLock } from "./keyed-mutex";
 import { assertPasswordNotPwned } from "../pwned-password";
+import { assertPasswordPolicy } from "../password-policy";
 import { publishDatabaseChanged } from "../graphql/pubsub";
 import type { Database, DatabaseType } from "../types";
 
@@ -493,6 +494,7 @@ export async function createDatabase(input: {
   // rather than surfacing it only after slower checks.
   if (input.password) {
     assertPasswordSafe(input.password);
+    assertPasswordPolicy(input.password);
     await assertPasswordNotPwned(input.password);
   }
 
@@ -1615,38 +1617,79 @@ export async function rebuildDatabase(id: string): Promise<void> {
  * connection-string password is load-bearing for backups (`dumpUserFor` dumps
  * as root with that password). `IF EXISTS` keeps the statement idempotent
  * across the images' root@'%'/root@localhost variants.
+ *
+ * Exported for its unit test: the passwords land in a command line the agent may
+ * hand to a shell, so "does a quote/`$(…)`/backtick stay a literal" is the part
+ * worth pinning, and it is testable with no database and no agent.
  */
-function rotationExecCommand(
+export function rotationExecCommand(
   db: Database,
   oldPassword: string,
   newPassword: string,
 ): string | null {
+  const old = shellQuote(oldPassword);
   switch (db.type) {
     case "postgres":
       // Unix-socket auth inside the official image is `trust` — no old password
       // needed; the POSTGRES_USER login is a superuser.
-      return `psql -U ${db.username} -d ${db.dbName} -c "ALTER USER \\"${db.username}\\" WITH PASSWORD '${newPassword}'"`;
+      return `psql -U ${db.username} -d ${db.dbName} -c ${shellQuote(
+        `ALTER USER "${db.username}" WITH PASSWORD ${sqlQuote(newPassword)}`,
+      )}`;
     case "mysql":
     case "mariadb": {
       const stmts = [
-        `ALTER USER IF EXISTS 'root'@'%' IDENTIFIED BY '${newPassword}';`,
-        `ALTER USER IF EXISTS 'root'@'localhost' IDENTIFIED BY '${newPassword}';`,
+        `ALTER USER IF EXISTS 'root'@'%' IDENTIFIED BY ${sqlQuote(newPassword)};`,
+        `ALTER USER IF EXISTS 'root'@'localhost' IDENTIFIED BY ${sqlQuote(newPassword)};`,
         ...(db.username !== "root"
-          ? [`ALTER USER IF EXISTS '${db.username}'@'%' IDENTIFIED BY '${newPassword}';`]
+          ? [
+              `ALTER USER IF EXISTS '${db.username}'@'%' IDENTIFIED BY ${sqlQuote(newPassword)};`,
+            ]
           : []),
         "FLUSH PRIVILEGES;",
       ].join(" ");
-      return `mysql -uroot -p'${oldPassword}' -e "${stmts}"`;
+      return `mysql -uroot -p${old} -e ${shellQuote(stmts)}`;
     }
     case "mongodb":
       return (
-        `mongosh -u ${db.username} -p '${oldPassword}' --authenticationDatabase admin --quiet ` +
-        `--eval "db.getSiblingDB('admin').changeUserPassword('${db.username}', '${newPassword}')"`
+        `mongosh -u ${db.username} -p ${old} --authenticationDatabase admin --quiet ` +
+        `--eval ${shellQuote(
+          `db.getSiblingDB('admin').changeUserPassword(${jsQuote(db.username)}, ${jsQuote(newPassword)})`,
+        )}`
       );
     case "redis":
     case "clickhouse":
       return null; // compose re-render alone rotates
   }
+}
+
+/**
+ * Wrap a value so a POSIX shell reads it as one literal argument.
+ *
+ * These commands are handed to the agent as a raw command LINE, which it may
+ * run through a shell (`ExecRequest.command`: "shell-interpreted or argv"), so
+ * every value interpolated into one is a shell injection waiting for a
+ * character. `assertPasswordSafe` blocks the ones that would land today
+ * (`$ \` \\ [ ] whitespace`) and `rotateDatabasePassword` rejects quotes on top
+ * — but that is a BLOCKLIST, and a blocklist is one forgotten character away
+ * from `configure_databases` becoming arbitrary code execution inside the
+ * database container. Quoting is safe by construction instead, so the blocklist
+ * goes back to being what it should be: defence in depth.
+ *
+ * Single quotes, with the only escape a POSIX shell has for them: end the
+ * string, emit an escaped quote, start it again.
+ */
+function shellQuote(value: string): string {
+  return `'${value.replace(/'/g, `'\\''`)}'`;
+}
+
+/** A SQL string literal: the standard doubles its own quote. */
+function sqlQuote(value: string): string {
+  return `'${value.replace(/'/g, "''")}'`;
+}
+
+/** A JavaScript string literal, for the one engine whose client speaks JS. */
+function jsQuote(value: string): string {
+  return JSON.stringify(value);
 }
 
 /**
@@ -1674,10 +1717,16 @@ export async function rotateDatabasePassword(
 
   const newPassword = input.password?.trim() || randomToken(24);
   assertPasswordSafe(newPassword);
-  // Rotation embeds the password in an exec'd shell command (quoted with ' and
-  // "), which create never does — reject quotes on top of the create rules.
-  if (/['"]/.test(newPassword))
-    throw new Error("Password may not contain quotes");
+  // The POLICY only bounds a password a person CHOSE. `randomToken(24)` is 32
+  // characters of base64url and carries no punctuation at all, so asking it for
+  // "at least 1 special character" would refuse deplo's own generated default
+  // about a third of the time.
+  if (input.password?.trim()) assertPasswordPolicy(newPassword);
+  // No extra quote rule any more. It existed because `rotationExecCommand`
+  // pasted the password straight into a shell string, and it made rotation
+  // stricter than creation for no reason a user could see (create has always
+  // accepted a quote). The command is now built with `shellQuote`/`sqlQuote`,
+  // which carry any byte, so the two paths accept the same passwords again.
 
   let newConn = "";
   await withKeyedLock(id, async () => {
@@ -1687,13 +1736,10 @@ export async function rotateDatabasePassword(
       throw new Error("Start the database before rotating its password.");
 
     const oldPassword = parseConnectionPassword(decryptSecret(cur.connectionStringEnc));
-    // Old quotes would break the exec quoting below the same way; created
-    // passwords can legitimately contain them (create never rejected quotes).
+    // No refusal for a quote in the CURRENT password any more: the command is
+    // built with `shellQuote`, which carries any byte, so a database created
+    // with one is rotatable like every other. It used to be a dead end.
     const execCmd = rotationExecCommand(cur, oldPassword, newPassword);
-    if (execCmd && /['"]/.test(oldPassword))
-      throw new Error(
-        "This database's current password contains quotes, which the in-engine rotation step can't carry safely.",
-      );
 
     // Phase 1 — tell the engine (postgres/mysql/mariadb/mongodb). Abort on any
     // failure: nothing has been written yet, the old password stays valid. Never

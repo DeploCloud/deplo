@@ -25,8 +25,9 @@ import { getMcpSettings, setMcpSettings } from "../data/mcp-settings";
  *
  * The switch is the one thing standing between "this team's tokens may be
  * spoken to by an agent" and "they may not", so the two questions worth pinning
- * are: does a new team start ON (the answer the migration's DEFAULT gives), and
- * is changing it actually gated on `manage_mcp` rather than on being logged in.
+ * are: does a new team start OFF (the answer the migration's DEFAULT gives -
+ * it shipped ON and moved in 0106), and is changing it actually gated on
+ * `manage_mcp` rather than on being logged in.
  */
 
 let db: TestDb;
@@ -75,9 +76,29 @@ async function revoke(capability: string) {
   );
 }
 
-test("a team starts with MCP on", async () => {
-  const settings = await asUser1(() => getMcpSettings());
-  assert.deepEqual(settings, { enabled: true });
+test("a NEW team starts with MCP off — the kill switch ships closed", async () => {
+  // The COLUMN default is the whole test: no creation path writes this field,
+  // so what the migration says is what a team created today gets. A token is
+  // required either way; what changed is that allowing AI agents into a
+  // company's infrastructure is now a decision somebody makes rather than one
+  // they inherit.
+  await db.insert(teamsTable).values({
+    id: "team_fresh",
+    name: "Fresh",
+    slug: "fresh",
+    plan: "pro",
+    createdAt: "2026-01-01T00:00:00.000Z",
+  });
+  const [fresh] = await db
+    .select({ enabled: teamsTable.mcpEnabled })
+    .from(teamsTable)
+    .where(eq(teamsTable.id, "team_fresh"));
+  assert.equal(fresh.enabled, false);
+
+  // And the read path answers what the ROW says, not what the default is:
+  // the seeded team has it on (see identity-test-helpers), like every team
+  // that already had it before the default moved.
+  assert.deepEqual(await asUser1(() => getMcpSettings()), { enabled: true });
 });
 
 test("setMcpSettings turns it off and back on", async () => {

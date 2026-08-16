@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 
 import {
   composeHasHostBindMount,
+  composeNeedsHostPrivileges,
   isEscapingSource,
   isFilesConventionSource,
   isHostBindSource,
@@ -130,4 +131,78 @@ test("composeHasHostBindMount: detects a bind in any of several services", () =>
     volumes:
       - /var/lib/host-pg:/var/lib/postgresql/data`;
   assert.equal(composeHasHostBindMount(yaml), true);
+});
+
+/* ------------------------------------------------------------------ */
+/* Host PRIVILEGES: the other way out of the sandbox                   */
+/* ------------------------------------------------------------------ */
+
+/**
+ * A bind mount names a path, so the check above could see it. These do not:
+ * `privileged: true` alone is enough to mount the host's disk and chroot into
+ * it, `pid: host` puts `nsenter -t 1` one command away, and a raw `devices:`
+ * entry hands over a disk. They were gated by nothing at all — a member holding
+ * the default Member role could deploy one and own the server — so they are the
+ * same permission as a host bind, and this is what keeps the list honest.
+ */
+test("composeNeedsHostPrivileges: every escape shape is caught", () => {
+  const shapes = [
+    "    privileged: true",
+    '    cap_add: ["SYS_ADMIN"]',
+    "    pid: host",
+    "    ipc: host",
+    "    userns_mode: host",
+    '    devices: ["/dev/sda:/dev/sda"]',
+    '    security_opt: ["apparmor:unconfined"]',
+    "    cgroup_parent: /custom",
+    '    device_cgroup_rules: ["c 1:3 mr"]',
+  ];
+  for (const line of shapes) {
+    const yaml = `services:\n  app:\n    image: nginx\n${line}`;
+    assert.equal(
+      composeNeedsHostPrivileges(yaml),
+      true,
+      `not caught: ${line.trim()}`,
+    );
+  }
+});
+
+test("composeNeedsHostPrivileges: hardening is never gated", () => {
+  // Asking for the host permission in order to make a container SAFER would
+  // teach people to skip the safer thing.
+  const yaml = `services:\n  app:\n    image: nginx\n    security_opt: ["no-new-privileges:true"]\n    cap_drop: ["ALL"]\n    read_only: true`;
+  assert.equal(composeNeedsHostPrivileges(yaml), false);
+});
+
+test("composeNeedsHostPrivileges: an unconfining security_opt IS gated", () => {
+  const yaml = `services:\n  app:\n    image: nginx\n    security_opt: ["no-new-privileges:true", "seccomp:unconfined"]`;
+  assert.equal(composeNeedsHostPrivileges(yaml), true);
+});
+
+test("composeNeedsHostPrivileges: an ordinary stack asks for nothing", () => {
+  const yaml = `services:
+  web:
+    image: nginx:1.27
+    privileged: false
+    cap_add: []
+    pid: service:worker
+    volumes:
+      - ./conf:/etc/nginx
+    ports:
+      - "8080:80"
+  worker:
+    image: redis:7`;
+  assert.equal(composeNeedsHostPrivileges(yaml), false);
+});
+
+test("composeNeedsHostPrivileges: network_mode host is NOT a privilege", () => {
+  // It costs the container its Traefik routing (the linter says so) and grants
+  // nothing on the host, so gating it would refuse a legitimate network tool.
+  const yaml = `services:\n  app:\n    image: nginx\n    network_mode: host`;
+  assert.equal(composeNeedsHostPrivileges(yaml), false);
+});
+
+test("composeNeedsHostPrivileges: unparseable YAML is not a detection", () => {
+  assert.equal(composeNeedsHostPrivileges("services: [oops"), false);
+  assert.equal(composeNeedsHostPrivileges(""), false);
 });

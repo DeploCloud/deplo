@@ -153,11 +153,16 @@ export const teams = pgTable(
     // (lib/membership.ts). Off by default; enabling it is refused unless the actor
     // has 2FA themselves, so it can never lock its own author out.
     requireTwoFactor: boolean("require_two_factor").notNull().default(false),
-    // Whether this team's API tokens may drive it over MCP (`/api/mcp`). ON by
-    // default: a token is required anyway, so the switch is a policy lever for a
-    // company that wants AI access off, not the thing that makes the endpoint
-    // safe. Off ⇒ the endpoint refuses the whole request, before any tool runs.
-    mcpEnabled: boolean("mcp_enabled").notNull().default(true),
+    // Whether this team's API tokens may drive it over MCP (`/api/mcp`). Off ⇒
+    // the endpoint refuses the whole request, before any tool runs.
+    //
+    // OFF by default for a NEW team, on for every team that already had it: a
+    // token is required either way, so this was never the thing making the
+    // endpoint safe — but "may an AI agent act in this company's infrastructure"
+    // is a decision somebody should make rather than inherit, and a kill switch
+    // that ships open is one nobody knows they have. Turning it on is one click
+    // in Settings → MCP Server, on the same screen that explains it.
+    mcpEnabled: boolean("mcp_enabled").notNull().default(false),
     // When the team's default backup destination was seeded (lib/data/destinations.ts
     // `ensureDefaultDestination`). A ONE-SHOT marker, not a timestamp anyone reads:
     // seeding on "the team has no destinations" instead made the default
@@ -2417,6 +2422,11 @@ export const apiTokens = pgTable(
     // not here: `schema/auth.ts` already imports `users` from this module, and
     // declaring the reference in Drizzle would close that import cycle.
     oauthClientId: text("oauth_client_id"),
+    // When this credential stops working. NULL is "never", which is what every
+    // token minted before this column existed keeps. Enforced in
+    // `identityForTokenRow` (lib/data/tokens.ts) rather than swept: an expired
+    // row stays visible so the tokens page can say WHY it stopped.
+    expiresAt: isoTimestamptz("expires_at"),
     lastUsedAt: isoTimestamptz("last_used_at"),
     createdAt: isoTimestamptz("created_at").notNull(),
   },

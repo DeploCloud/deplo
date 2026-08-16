@@ -52,7 +52,7 @@ const USER_M = "user_reader";
 // Distinctive on purpose: a substring match on the response has to be unambiguous.
 const ENV_SECRET = "zzz-env-plaintext-2f8a1c";
 const SHARED_SECRET = "zzz-shared-plaintext-91bd47";
-const BASIC_PASSWORD = "zzz-basic-plaintext-6c30de";
+const BASIC_PASSWORD = "Zzz-basic-plaintext-6c30de!";
 const PLANTED = [ENV_SECRET, SHARED_SECRET, BASIC_PASSWORD];
 
 before(async () => {

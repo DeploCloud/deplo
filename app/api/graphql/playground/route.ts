@@ -18,6 +18,29 @@ export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 export async function POST(request: Request): Promise<Response> {
+  // Same content-type refusal `/api/graphql` makes, and for the same reason:
+  // `application/json` is not a CORS-simple type, so it cannot be sent
+  // cross-origin without a preflight nothing here answers. The alternatives a
+  // browser CAN post blind (form-urlencoded, multipart, text/plain) would ride
+  // the session cookie, and this endpoint executes real read-only queries
+  // against it. `SameSite=Lax` stops that today; a defence that lives in
+  // somebody else's default is one nobody notices losing.
+  const type = request.headers.get("content-type") ?? "";
+  if (type.split(";")[0].trim().toLowerCase() !== "application/json") {
+    return Response.json(
+      {
+        kind: "error",
+        errors: [
+          {
+            message:
+              "A playground request must be sent as application/json. Set `Content-Type: application/json`.",
+          },
+        ],
+      },
+      { status: 415 },
+    );
+  }
+
   let body: {
     query?: unknown;
     variables?: unknown;

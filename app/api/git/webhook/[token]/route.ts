@@ -44,7 +44,13 @@ export async function POST(
   if (!api) return new Response("not found", { status: 404 });
 
   const secret = decryptSecret(conn.webhookSecretEnc);
-  const verdict = api.verify(secret, request.headers, raw);
+  // An unreadable secret is NOT an unsigned delivery. `decryptSecret` fails
+  // closed to `""`, and every verifier below would then compare against
+  // something an attacker can produce themselves: an empty token for GitLab, an
+  // HMAC under an empty key for Gitea and Bitbucket. A connection is always
+  // minted WITH a secret, so empty here means the ciphertext stopped opening -
+  // refuse, exactly as the GitHub route does on the same condition.
+  const verdict = secret ? api.verify(secret, request.headers, raw) : "bad";
   if (verdict === "bad") {
     // Same trap GitHub's route names: a rotated DEPLO_SECRET leaves a webhook
     // secret that no longer decrypts, and then every delivery 401s forever.

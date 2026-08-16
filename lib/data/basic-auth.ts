@@ -11,6 +11,7 @@ import { newId, nowIso } from "../ids";
 import { recordActivity } from "./activity";
 import { encryptSecret, decryptSecret, htpasswdLine } from "../crypto";
 import { assertPasswordNotPwned } from "../pwned-password";
+import { assertPasswordPolicy } from "../password-policy";
 import { appInTeam } from "./app-graph-load";
 import { hasAppCapability, requireAppCapability } from "./node-access";
 import { authorOf, loadUserIdentities } from "./user-identity";
@@ -157,7 +158,17 @@ export async function revealBasicAuthPassword(id: string): Promise<string> {
     .where(eq(basicAuthTable.id, id))
     .limit(1);
   if (!row) throw new Error("Not found");
-  await requireAppCapability(row.appId, "manage_basic_auth");
+  // A credential in ANOTHER team answers exactly like one that does not exist:
+  // the gate's own "App not found" would otherwise tell a caller holding a
+  // stranger's id that it is real. A member of THIS team who simply lacks the
+  // capability still gets that message verbatim - they are allowed to know the
+  // thing exists, and a pretend "not found" would send them hunting.
+  try {
+    await requireAppCapability(row.appId, "manage_basic_auth");
+  } catch (e) {
+    if ((e as Error).message === "App not found") throw new Error("Not found");
+    throw e;
+  }
   const password = decryptSecret(row.passwordEnc);
   if (password === "")
     throw new Error(
@@ -194,6 +205,10 @@ export async function addBasicAuthUser(
     )
     .limit(1);
   if (dup.length > 0) throw new Error("A user with that name already exists");
+  // A basic-auth credential is a password a PERSON chooses and is handed to
+  // another person, on an internet-facing URL: same two gates as an account
+  // password, in the same order (the local rules before the network call).
+  assertPasswordPolicy(password);
   await assertPasswordNotPwned(password);
 
   const now = nowIso();
@@ -240,6 +255,10 @@ export async function updateBasicAuthUserPassword(
   );
   if (!(await appInTeam(existing.appId, membership.teamId)))
     throw new Error("Not found");
+  // A basic-auth credential is a password a PERSON chooses and is handed to
+  // another person, on an internet-facing URL: same two gates as an account
+  // password, in the same order (the local rules before the network call).
+  assertPasswordPolicy(password);
   await assertPasswordNotPwned(password);
   const updated = {
     ...existing,
@@ -290,7 +309,7 @@ export async function removeBasicAuthUser(id: string): Promise<string> {
 
 /**
  * The Traefik `basicauth.users` value for a project — a comma-separated list of
- * `user:apr1-hash` htpasswd lines, freshly hashed from the stored (decrypted)
+ * `user:bcrypt-hash` htpasswd lines, freshly hashed from the stored (decrypted)
  * passwords on every call. Empty string when the project has no basic-auth users
  * (the renderers then emit NO middleware, keeping the stack byte-identical to a
  * project that never had basic auth). Store-direct (no auth) so the deploy engine
@@ -308,12 +327,14 @@ export async function basicAuthUsersValue(appId: string): Promise<string> {
     .where(eq(basicAuthTable.appId, appId))
     .orderBy(asc(basicAuthTable.username));
   if (rows.length === 0) return "";
-  return rows
-    .map((r) => {
+  // `htpasswdLine` is async (bcrypt), so the map is awaited rather than joined
+  // directly. Parallel: the hashes are independent and each is ~60ms.
+  const lines = await Promise.all(
+    rows.map((r) => {
       const password = decryptSecret(r.passwordEnc);
       // decryptSecret fails CLOSED to "" (wrong/rotated key, restored DB, corrupt
       // ciphertext). For a normal secret that is fine, but here an empty password
-      // would be hashed into a VALID apr1 hash of the empty string — the basic-auth
+      // would be hashed into a VALID hash of the empty string — the basic-auth
       // middleware would stay active and accept an empty password (fail OPEN). A
       // credential we cannot decrypt must REMOVE access, never grant it, so fail
       // the render loudly instead. (Empty passwords can't be stored — addBasicAuthUser
@@ -324,8 +345,9 @@ export async function basicAuthUsersValue(appId: string): Promise<string> {
             `Re-set the basic-auth credentials for this app.`,
         );
       return htpasswdLine(r.username, password);
-    })
-    .join(",");
+    }),
+  );
+  return lines.join(",");
 }
 
 /** Whether a project has any basic-auth users (a cheap existence check for the

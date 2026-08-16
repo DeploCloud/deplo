@@ -857,7 +857,7 @@ export function renderCompose(opts: {
    */
   injectPort?: boolean;
   /**
-   * App-wide HTTP Basic Auth htpasswd users (`user:$apr1$…,user2:…`, raw
+   * App-wide HTTP Basic Auth htpasswd users (`user:$2b$…,user2:…`, raw
    * single-`$`). When non-empty, a generated `basicauth` middleware is defined
    * and prepended to every router's chain so ALL hostnames are gated. Empty/
    * absent ⇒ no middleware (byte-identical to a project without basic auth). The

@@ -380,13 +380,15 @@ export function lintCompose(source: string): LintDiagnostic[] {
       });
     }
 
-    // privileged is a security smell.
-    if (svc.privileged === true) {
+    // Anything that takes a container out of its sandbox. Gated server-side
+    // behind the host-volume grant (see composeNeedsHostPrivileges), so the
+    // message names the permission rather than pretending it is only a smell.
+    for (const key of hostPrivilegeKeys(svc)) {
       diags.push({
         severity: "warning",
-        rule: "privileged",
-        message: `\`${name}\` runs \`privileged: true\` — it gains full host access. Avoid unless strictly required.`,
-        line: lineOfServiceField(lines, svcLine, "privileged"),
+        rule: "host-privileges",
+        message: `\`${name}\` sets \`${key}\`, which takes the container out of its sandbox and gives it access to the server itself. This needs the host-volume permission.`,
+        line: lineOfServiceField(lines, svcLine, key),
       });
     }
   }
@@ -517,6 +519,109 @@ export function composeHasHostBindMount(composeYaml: string): boolean {
     for (const v of vols) {
       if (isHostBindSource(volumeSource(v))) return true;
     }
+  }
+  return false;
+}
+
+/**
+ * Compose keys that hand a container the host, and how to tell they are ON.
+ *
+ * A bind mount of `/var/run/docker.sock` was already gated ({@link isHostBindSource});
+ * every key here is another way to the same place, and none of them is a volume:
+ * `privileged` alone is enough to mount the host's disk and chroot into it,
+ * `pid: host` puts `nsenter -t 1` one command away, `devices` hands over a raw
+ * disk, and `cap_add`/`security_opt`/`userns_mode` remove the boundary a step at
+ * a time. They are therefore the same permission ({@link composeNeedsHostPrivileges}).
+ *
+ * `network_mode: host` is deliberately ABSENT: it costs the container its Traefik
+ * routing (the linter says so) but grants nothing on the host, and gating it
+ * would refuse a legitimate, common way to run a network tool.
+ */
+const HOST_PRIVILEGE_KEYS = [
+  "privileged",
+  "cap_add",
+  "devices",
+  "device_cgroup_rules",
+  "security_opt",
+  "cgroup_parent",
+  "pid",
+  "ipc",
+  "uts",
+  "userns_mode",
+] as const;
+
+/**
+ * `security_opt` entries that only ever make a container SAFER, and so are not
+ * gated. Everything else there (`apparmor:unconfined`, `seccomp:unconfined`,
+ * `label:disable`, a hand-written seccomp profile) removes a boundary.
+ *
+ * `no-new-privileges` is the one people actually write, and refusing it would
+ * mean asking an admin for the host permission in order to HARDEN a container —
+ * a gate that punishes the right thing teaches people to skip it.
+ *
+ * `cap_drop` and `read_only` are not on the list at all, for the same reason.
+ */
+const SAFE_SECURITY_OPTS = /^no-new-privileges\b/i;
+
+/**
+ * The keys of {@link HOST_PRIVILEGE_KEYS} this service actually sets, in
+ * declaration order. Shared by the editor lint and the server-side gate so the
+ * two can never disagree about what counts.
+ *
+ * A key present but empty (`cap_add: []`, `privileged: false`) declares nothing
+ * and does not count - the same rule `composePublishesPorts` applies to `ports`.
+ * `pid`/`ipc`/`uts` are namespace SELECTORS rather than switches: only `host`
+ * (and, for pid/ipc, another `container:` in the same stack) escapes, so an
+ * ordinary value is left alone.
+ */
+function hostPrivilegeKeys(svc: Record<string, unknown>): string[] {
+  const out: string[] = [];
+  for (const key of HOST_PRIVILEGE_KEYS) {
+    const v = svc[key];
+    if (v == null) continue;
+    if (key === "privileged") {
+      if (v === true) out.push(key);
+      continue;
+    }
+    if (key === "pid" || key === "ipc" || key === "uts") {
+      if (typeof v === "string" && v.trim().toLowerCase() === "host") out.push(key);
+      continue;
+    }
+    if (key === "security_opt") {
+      const weakening = Array.isArray(v)
+        ? v.filter((o) => !SAFE_SECURITY_OPTS.test(String(o).trim()))
+        : [v];
+      if (weakening.length > 0) out.push(key);
+      continue;
+    }
+    if (Array.isArray(v) ? v.length > 0 : typeof v === "object" || String(v).trim() !== "")
+      out.push(key);
+  }
+  return out;
+}
+
+/**
+ * Parse a compose YAML string and report whether ANY service asks for host
+ * privileges (see {@link HOST_PRIVILEGE_KEYS}). Used server-side to gate compose
+ * edits behind `canMountHostVolumes`, exactly like {@link composeHasHostBindMount}
+ * — and for the same reason: both are a container reaching past its own boundary,
+ * and a permission that stops one while allowing the other stops nothing.
+ *
+ * Tolerant of malformed input, like its two siblings: the deploy-time parse is
+ * the authoritative one.
+ */
+export function composeNeedsHostPrivileges(composeYaml: string): boolean {
+  let doc: { services?: Record<string, unknown> } | null;
+  try {
+    doc = yaml.load(composeYaml) as { services?: Record<string, unknown> } | null;
+  } catch {
+    return false;
+  }
+  const services = doc?.services;
+  if (!services || typeof services !== "object") return false;
+  for (const svc of Object.values(services)) {
+    if (!svc || typeof svc !== "object" || Array.isArray(svc)) continue;
+    if (hostPrivilegeKeys(svc as Record<string, unknown>).length > 0) return true;
   }
   return false;
 }

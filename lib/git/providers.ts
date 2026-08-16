@@ -161,9 +161,30 @@ function assertFullName(fullName: string): string {
  */
 const REQUEST_TIMEOUT_MS = 15_000;
 
-/** A fetch that gives up rather than hanging on an unreachable host. */
+/**
+ * A fetch that gives up rather than hanging on an unreachable host, and that
+ * NEVER follows a redirect.
+ *
+ * The base URL is checked for SSRF once, when the connection is saved
+ * (`assertSafeOutboundUrl` in lib/data/git-connections.ts). A 302 is the way out
+ * of that check: the host passes as a public address and then answers every
+ * subsequent call with `Location: http://169.254.169.254/…`, which this module
+ * would dial and — worse than the usual blind case — hand back in `call`'s error
+ * message. `redirect: "manual"` closes it in one line, and is what
+ * `lib/outbound-url.ts` documents every dialer as doing (the notification
+ * channels already did).
+ *
+ * ponytail: a redirect is refused, not re-validated. Every provider API here
+ * answers 200 directly; if a host is ever found that legitimately redirects
+ * (a raw-file CDN hop), follow it manually and put each `Location` through the
+ * outbound guard rather than turning this back on.
+ */
 function timedFetch(target: string, init: RequestInit): Promise<Response> {
-  return fetch(target, { ...init, signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS) });
+  return fetch(target, {
+    ...init,
+    redirect: "manual",
+    signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
+  });
 }
 
 /**
@@ -188,6 +209,18 @@ async function call(
       ...(rest.headers as Record<string, string> | undefined),
     },
   });
+  // A redirect is refused rather than followed (see timedFetch), and the
+  // everyday cause is not an attack: an `http://` address in front of a proxy
+  // that sends everything to https. Say that, with the address to use, instead
+  // of a bare "failed (301)" nobody can act on.
+  if (res.status >= 300 && res.status < 400) {
+    const to = res.headers.get("location") ?? "";
+    throw new Error(
+      `${PROVIDERS[c.provider].label} answered with a redirect (${res.status})` +
+        (to ? ` to ${to.slice(0, 200)}` : "") +
+        ". Deplo does not follow redirects here. Point this connection at the address that answers directly.",
+    );
+  }
   if (!res.ok) {
     const detail = (await res.text().catch(() => "")).slice(0, 300).trim();
     throw new Error(
@@ -210,8 +243,18 @@ async function json<T>(
 /* Signature verification                                              */
 /* ------------------------------------------------------------------ */
 
-/** Constant-time compare of two same-purpose strings. */
+/**
+ * Constant-time compare of two same-purpose strings.
+ *
+ * An EMPTY expectation never matches, whatever arrives. `decryptSecret` answers
+ * `""` both for "no secret" and for "this ciphertext will not open" (a rotated
+ * `DEPLO_SECRET`), and without this line the degraded case VERIFIES: two empty
+ * buffers are equal, and an HMAC taken under an empty key is one anybody can
+ * compute. GitHub's own route already refuses on `!secret`; this is the same
+ * refusal, for the providers that share this helper.
+ */
 function sameSecret(a: string, b: string): boolean {
+  if (!a || !b) return false;
   const x = Buffer.from(a);
   const y = Buffer.from(b);
   // timingSafeEqual throws on a length mismatch, so the length is checked first

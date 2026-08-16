@@ -94,7 +94,7 @@ export interface RouterLabelOptions {
    * middleware named `<name>` is DEFINED once (`traefik.http.middlewares.<name>.
    * basicauth.users=<users>`) and PREPENDED to every route's middleware chain, so
    * the credential gates ALL of the project's hostnames. `users` is the raw
-   * htpasswd list (`user:$apr1$…,user2:$apr1$…`) with single `$` — the caller is
+   * htpasswd list (`user:$2b$…,user2:$2b$…`) with single `$` — the caller is
    * responsible for any docker-compose `$`→`$$` escaping of the EMITTED labels (a
    * single-image stack embeds them in a YAML label; a compose stack does too).
    * Absent ⇒ no middleware label and no chain change (byte-identical output).

@@ -127,8 +127,8 @@ test("the dashboard route is published with mandatory basic auth", () => {
   assert.ok(auth, "a basicauth middleware must be defined");
 });
 
-test("the htpasswd hash is escaped for compose interpolation", () => {
-  const users = htpasswdLine("admin", "correct horse battery staple");
+test("the htpasswd hash is escaped for compose interpolation", async () => {
+  const users = await htpasswdLine("admin", "correct horse battery staple");
   const out = withTraefikDashboard(INSTALLED, { domain: "t.example.com", htpasswdUsers: users });
   const auth = labelsOf(out).find((l) => l.includes(".basicauth.users="))!;
 

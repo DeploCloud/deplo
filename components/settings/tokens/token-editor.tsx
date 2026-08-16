@@ -27,6 +27,13 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Switch } from "@/components/ui/switch";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { FieldLabel, InfoTip } from "@/components/ui/info-tip";
 import { ConfirmAction } from "@/components/shared/confirm-action";
 import { PermissionPicker } from "@/components/settings/permission-picker";
@@ -108,6 +115,11 @@ export function TokenEditor({
         appIds: token?.appIds ?? [],
       } as ScopeSelection,
       instanceAdmin: token?.instanceAdmin ?? false,
+      // A token that already has one keeps it unless the picker is touched;
+      // a new one defaults to 90 days rather than forever, because the
+      // credential nobody ever revokes is the one nobody ever chose an end
+      // for. "Never" stays one click away.
+      expiry: token ? "keep" : "90",
     }),
     [token, preset],
   );
@@ -118,6 +130,7 @@ export function TokenEditor({
   const [instanceAdmin, setInstanceAdmin] = React.useState(
     initial.instanceAdmin,
   );
+  const [expiry, setExpiry] = React.useState<string>(initial.expiry);
 
   const readOnly = !canEdit;
   const revokeCopy = {
@@ -135,6 +148,7 @@ export function TokenEditor({
   const sensitive = caps.filter((c) => CAPABILITY_META[c].sensitive).length;
   const dirty =
     name !== initial.name ||
+    expiry !== initial.expiry ||
     instanceAdmin !== initial.instanceAdmin ||
     !sameScope(scope, initial.scope) ||
     !sameCapabilities(caps, initial.capabilities);
@@ -167,6 +181,10 @@ export function TokenEditor({
       folderIds: scope.folderIds,
       appIds: scope.appIds,
       instanceAdmin,
+      // `undefined` (omitted) means "leave it as it is", which is the only
+      // thing "keep" can mean; `null` clears it. The server refuses a date in
+      // the past, so the instant is computed at submit and not at render.
+      expiresAt: expiresAtFor(expiry),
     };
     startTransition(async () => {
       if (mode === "create") {
@@ -238,6 +256,33 @@ export function TokenEditor({
                 autoFocus={mode === "create"}
                 disabled={readOnly}
               />
+            </div>
+
+            <div className="space-y-2">
+              <FieldLabel
+                htmlFor="token-expiry"
+                info="After this, the token stops working everywhere and whatever uses it starts failing. Pick the shortest span the job actually needs."
+              >
+                Expires
+              </FieldLabel>
+              <Select value={expiry} onValueChange={setExpiry} disabled={readOnly}>
+                <SelectTrigger id="token-expiry" className="w-full">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {mode === "edit" && (
+                    <SelectItem value="keep">
+                      {token?.expiresAt
+                        ? `Keep ${new Date(token.expiresAt).toLocaleDateString()}`
+                        : "Keep no expiry"}
+                    </SelectItem>
+                  )}
+                  <SelectItem value="30">In 30 days</SelectItem>
+                  <SelectItem value="90">In 90 days</SelectItem>
+                  <SelectItem value="365">In a year</SelectItem>
+                  <SelectItem value="never">Never</SelectItem>
+                </SelectContent>
+              </Select>
             </div>
 
             {mode === "edit" && (
@@ -544,4 +589,20 @@ function nameOf(tree: ScopeTreeTeam[], id: string): string | null {
     if (inTeam) return inTeam;
   }
   return null;
+}
+
+/**
+ * The instant a picked span lands on, in the shape the API takes.
+ *
+ * `undefined` (the "keep" option) is OMITTED from the mutation, which is what
+ * leaves an existing expiry alone; `null` clears it. Computed at submit rather
+ * than at render so a form left open overnight cannot post a date the server has
+ * already decided is in the past.
+ */
+function expiresAtFor(choice: string): string | null | undefined {
+  if (choice === "keep") return undefined;
+  if (choice === "never") return null;
+  const days = Number(choice);
+  if (!Number.isFinite(days) || days <= 0) return null;
+  return new Date(Date.now() + days * 86_400_000).toISOString();
 }

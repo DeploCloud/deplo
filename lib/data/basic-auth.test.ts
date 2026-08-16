@@ -72,8 +72,8 @@ const APP_B = "app_b";
 const as = <T>(userId: string, teamId: string, fn: () => Promise<T>): Promise<T> =>
   runWithIdentity({ userId, teamId }, fn);
 
-/** `user:$apr1$<8-char salt>$<22-char digest>` — the htpasswd line Traefik parses. */
-const HTPASSWD_LINE = /^[^\s:,]+:\$apr1\$[./0-9A-Za-z]{8}\$[./0-9A-Za-z]{22}$/;
+/** `user:$2b$<cost>$<salt+digest>` — the bcrypt htpasswd line Traefik parses. */
+const HTPASSWD_LINE = /^[^\s:,]+:\$2[aby]\$\d{2}\$[./A-Za-z0-9]{53}$/;
 
 before(async () => {
   ({ db, pg } = await makeTestDb());
@@ -107,10 +107,10 @@ beforeEach(async () => {
 
 test("every mutation returns the owning app, so the edge can re-apply routing", async () => {
   await as(OWNER_A, TEAM_A, async () => {
-    const added = await addBasicAuthUser(APP_A, "alice", "hunter2");
+    const added = await addBasicAuthUser(APP_A, "alice", "Hunter2!x");
     assert.equal(added.appId, APP_A, "add must name the app to reroute");
 
-    const updated = await updateBasicAuthUserPassword(added.id, "hunter3");
+    const updated = await updateBasicAuthUserPassword(added.id, "Hunter3!x");
     assert.equal(
       updated.appId,
       APP_A,
@@ -127,8 +127,8 @@ test("the rendered value is one htpasswd line per user, alphabetical, comma-join
     assert.equal(await basicAuthUsersValue(APP_A), "", "no users ⇒ no middleware");
     assert.equal(await appHasBasicAuth(APP_A), false);
 
-    await addBasicAuthUser(APP_A, "zoe", "pw-zoe");
-    await addBasicAuthUser(APP_A, "alice", "pw-alice");
+    await addBasicAuthUser(APP_A, "zoe", "Pw-Zoe1!x");
+    await addBasicAuthUser(APP_A, "alice", "Pw-Alice1!");
 
     const value = await basicAuthUsersValue(APP_A);
     const lines = value.split(",");
@@ -141,8 +141,8 @@ test("the rendered value is one htpasswd line per user, alphabetical, comma-join
 });
 
 test("only this app's credentials are rendered — never another app's", async () => {
-  await as(OWNER_A, TEAM_A, () => addBasicAuthUser(APP_A, "alice", "pw"));
-  await as(OWNER_B, TEAM_B, () => addBasicAuthUser(APP_B, "bob", "pw"));
+  await as(OWNER_A, TEAM_A, () => addBasicAuthUser(APP_A, "alice", "Pw1!xxxxx"));
+  await as(OWNER_B, TEAM_B, () => addBasicAuthUser(APP_B, "bob", "Pw1!xxxxx"));
 
   const a = await as(OWNER_A, TEAM_A, () => basicAuthUsersValue(APP_A));
   const b = await as(OWNER_B, TEAM_B, () => basicAuthUsersValue(APP_B));
@@ -152,12 +152,12 @@ test("only this app's credentials are rendered — never another app's", async (
 
 test("a password that cannot be decrypted fails the render (never fails open)", async () => {
   const id = await as(OWNER_A, TEAM_A, async () => {
-    const u = await addBasicAuthUser(APP_A, "alice", "hunter2");
+    const u = await addBasicAuthUser(APP_A, "alice", "Hunter2!x");
     return u.id;
   });
   // Simulate a rotated DEPLO_SECRET / restored dump: the ciphertext no longer
   // decrypts. decryptSecret fails closed to "", which would otherwise hash into a
-  // perfectly valid apr1 hash OF THE EMPTY STRING — a middleware that lets anyone
+  // perfectly valid hash OF THE EMPTY STRING — a middleware that lets anyone
   // in with a blank password. The render must abort instead.
   await db
     .update(appBasicAuthUsers)
@@ -172,9 +172,9 @@ test("a password that cannot be decrypted fails the render (never fails open)", 
 
 test("changing a password replaces the rendered credential", async () => {
   await as(OWNER_A, TEAM_A, async () => {
-    const u = await addBasicAuthUser(APP_A, "alice", "hunter2");
+    const u = await addBasicAuthUser(APP_A, "alice", "Hunter2!x");
     const before = await basicAuthUsersValue(APP_A);
-    await updateBasicAuthUserPassword(u.id, "hunter3");
+    await updateBasicAuthUserPassword(u.id, "Hunter3!x");
     const after = await basicAuthUsersValue(APP_A);
     assert.notEqual(before, after, "the htpasswd hash must change with the password");
     assert.match(after, HTPASSWD_LINE);
@@ -183,7 +183,7 @@ test("changing a password replaces the rendered credential", async () => {
 
 test("removing the last user renders nothing — the login prompt disappears", async () => {
   await as(OWNER_A, TEAM_A, async () => {
-    const u = await addBasicAuthUser(APP_A, "alice", "hunter2");
+    const u = await addBasicAuthUser(APP_A, "alice", "Hunter2!x");
     await removeBasicAuthUser(u.id);
     assert.equal(await basicAuthUsersValue(APP_A), "");
     assert.equal(await appHasBasicAuth(APP_A), false);
@@ -194,7 +194,7 @@ test("usernames that would corrupt the label or the users= list are rejected", a
   await as(OWNER_A, TEAM_A, async () => {
     for (const bad of ["ali ce", "ali:ce", "ali,ce", 'ali"ce', "ali`ce", ""]) {
       await assert.rejects(
-        () => addBasicAuthUser(APP_A, bad, "pw"),
+        () => addBasicAuthUser(APP_A, bad, "Pw1!xxxxx"),
         /username/i,
         `"${bad}" must be rejected`,
       );
@@ -203,9 +203,9 @@ test("usernames that would corrupt the label or the users= list are rejected", a
       () => addBasicAuthUser(APP_A, "alice", ""),
       /password is required/i,
     );
-    await addBasicAuthUser(APP_A, "alice", "pw");
+    await addBasicAuthUser(APP_A, "alice", "Pw1!xxxxx");
     await assert.rejects(
-      () => addBasicAuthUser(APP_A, "alice", "other"),
+      () => addBasicAuthUser(APP_A, "alice", "Other1!xx"),
       /already exists/i,
     );
   });
@@ -213,7 +213,7 @@ test("usernames that would corrupt the label or the users= list are rejected", a
 
 test("another team's credentials are invisible and untouchable", async () => {
   const foreign = await as(OWNER_A, TEAM_A, () =>
-    addBasicAuthUser(APP_A, "alice", "hunter2"),
+    addBasicAuthUser(APP_A, "alice", "Hunter2!x"),
   );
 
   await as(OWNER_B, TEAM_B, async () => {
@@ -223,11 +223,11 @@ test("another team's credentials are invisible and untouchable", async () => {
       "an out-of-team app lists nothing (the tab is hidden)",
     );
     await assert.rejects(
-      () => addBasicAuthUser(APP_A, "mallory", "pw"),
+      () => addBasicAuthUser(APP_A, "mallory", "Pw1!xxxxx"),
       /not found/i,
     );
     await assert.rejects(
-      () => updateBasicAuthUserPassword(foreign.id, "pw"),
+      () => updateBasicAuthUserPassword(foreign.id, "Pw1!xxxxx"),
       /not found/i,
     );
     await assert.rejects(() => removeBasicAuthUser(foreign.id), /not found/i);
@@ -245,7 +245,7 @@ test("another team's credentials are invisible and untouchable", async () => {
 
 test("add names the creator; a password change moves only “modified by”", async () => {
   const added = await as(OWNER_A, TEAM_A, () =>
-    addBasicAuthUser(APP_A, "alice", "hunter2"),
+    addBasicAuthUser(APP_A, "alice", "Hunter2!x"),
   );
   assert.equal(added.createdBy?.id, OWNER_A);
   assert.equal(
@@ -258,7 +258,7 @@ test("add names the creator; a password change moves only “modified by”", as
   assert.equal(added.createdBy?.avatarColor, "#abc");
 
   const rotated = await as(MATE_A, TEAM_A, () =>
-    updateBasicAuthUserPassword(added.id, "hunter3"),
+    updateBasicAuthUserPassword(added.id, "Hunter3!x"),
   );
   assert.equal(
     rotated.createdBy?.id,
@@ -275,7 +275,7 @@ test("add names the creator; a password change moves only “modified by”", as
 
 test("a credential from before authorship tracking is never attributed to anyone", async () => {
   const added = await as(OWNER_A, TEAM_A, () =>
-    addBasicAuthUser(APP_A, "alice", "hunter2"),
+    addBasicAuthUser(APP_A, "alice", "Hunter2!x"),
   );
   // Exactly what migration 0045 leaves behind: it does NOT backfill, because
   // naming someone as the author of a credential they may never have touched is
@@ -296,7 +296,7 @@ test("a credential from before authorship tracking is never attributed to anyone
 
 test("no DTO ever carries the password — the reveal is the only way to it", async () => {
   const u = await as(OWNER_A, TEAM_A, () =>
-    addBasicAuthUser(APP_A, "alice", "hunter2"),
+    addBasicAuthUser(APP_A, "alice", "Hunter2!x"),
   );
   const [listed] = await as(OWNER_A, TEAM_A, () => listBasicAuthUsers(APP_A));
   // A field-by-field assertion, not a substring scan: this is the contract the
@@ -316,12 +316,12 @@ test("no DTO ever carries the password — the reveal is the only way to it", as
 
 test("the reveal returns the current password, and follows a rotation", async () => {
   await as(OWNER_A, TEAM_A, async () => {
-    const u = await addBasicAuthUser(APP_A, "alice", "hunter2");
-    assert.equal(await revealBasicAuthPassword(u.id), "hunter2");
-    await updateBasicAuthUserPassword(u.id, "hunter3");
+    const u = await addBasicAuthUser(APP_A, "alice", "Hunter2!x");
+    assert.equal(await revealBasicAuthPassword(u.id), "Hunter2!x");
+    await updateBasicAuthUserPassword(u.id, "Hunter3!x");
     assert.equal(
       await revealBasicAuthPassword(u.id),
-      "hunter3",
+      "Hunter3!x",
       "the reveal reads the stored credential, never a cached one",
     );
   });
@@ -329,7 +329,7 @@ test("the reveal returns the current password, and follows a rotation", async ()
 
 test("the reveal refuses another team, and a member without manage_domains", async () => {
   const u = await as(OWNER_A, TEAM_A, () =>
-    addBasicAuthUser(APP_A, "alice", "hunter2"),
+    addBasicAuthUser(APP_A, "alice", "Hunter2!x"),
   );
   await assert.rejects(
     () => as(OWNER_B, TEAM_B, () => revealBasicAuthPassword(u.id)),
@@ -345,7 +345,7 @@ test("the reveal refuses another team, and a member without manage_domains", asy
 
 test("a password that cannot be decrypted fails the reveal (never returns empty)", async () => {
   const u = await as(OWNER_A, TEAM_A, () =>
-    addBasicAuthUser(APP_A, "alice", "hunter2"),
+    addBasicAuthUser(APP_A, "alice", "Hunter2!x"),
   );
   // Rotated DEPLO_SECRET / restored dump. decryptSecret fails closed to "" —
   // showing that as "the password" would send someone off to try a login that

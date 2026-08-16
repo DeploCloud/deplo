@@ -37,6 +37,7 @@ import {
 } from "../membership";
 import {
   composeHasHostBindMount,
+  composeNeedsHostPrivileges,
   composePublishesPorts,
 } from "../deploy/compose-lint";
 import { composeServiceNames } from "../deploy/compose-stack";
@@ -675,7 +676,14 @@ export async function createApp(
     await requireExposePorts();
   }
   // A host bind mount baked into the initial compose needs the host-volume grant.
-  if (input.compose != null && composeHasHostBindMount(input.compose)) {
+  // So does anything else that takes a service out of its sandbox (`privileged`,
+  // `cap_add`, `devices`, `pid: host`, …): they reach the host WITHOUT naming a
+  // path, so the bind-mount check alone let the same grant be walked around.
+  if (
+    input.compose != null &&
+    (composeHasHostBindMount(input.compose) ||
+      composeNeedsHostPrivileges(input.compose))
+  ) {
     await requireMountHostVolumes();
   }
   // Where the app is filed (folder / project environment / top level) — resolved
@@ -1161,8 +1169,14 @@ export async function updateAppSource(
   if (input.compose != null && composePublishesPorts(input.compose)) {
     await requireExposePorts();
   }
-  // Saving compose YAML that bind-mounts a host path requires the host grant.
-  if (input.compose != null && composeHasHostBindMount(input.compose)) {
+  // Saving compose YAML that bind-mounts a host path requires the host grant —
+  // and so does asking for host privileges (`privileged`, `cap_add`, `devices`,
+  // `pid: host`, …), which reach the host without naming a path at all.
+  if (
+    input.compose != null &&
+    (composeHasHostBindMount(input.compose) ||
+      composeNeedsHostPrivileges(input.compose))
+  ) {
     await requireMountHostVolumes();
   }
   const user = (await getCurrentUser())!;

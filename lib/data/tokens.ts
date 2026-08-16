@@ -121,6 +121,22 @@ export interface ApiTokenDTO {
    * not kept in a separate world.
    */
   oauthClientName: string | null;
+  /**
+   * When this credential stops working, or null for "never" — which is what
+   * every token minted before expiry existed still is.
+   *
+   * Projected so the list can say so BEFORE it stops: a CI job that starts
+   * failing at 3am is a much worse way to learn a token expired than a row that
+   * has been saying "expires in 6 days" for a week.
+   */
+  expiresAt: string | null;
+  /**
+   * Whether that moment has passed. Computed HERE and not in the browser, the
+   * same rule a certificate's countdown follows: whether a credential still
+   * works is the server's answer, and a viewer whose clock is wrong must not
+   * see a different one.
+   */
+  expired: boolean;
   lastUsedAt: string | null;
   createdAt: string;
 }
@@ -134,6 +150,7 @@ const DTO_COLUMNS = {
   instanceAdmin: apiTokens.instanceAdmin,
   homeTeamId: apiTokens.teamId,
   createdByUserId: apiTokens.userId,
+  expiresAt: apiTokens.expiresAt,
   lastUsedAt: apiTokens.lastUsedAt,
   createdAt: apiTokens.createdAt,
 } as const;
@@ -354,8 +371,10 @@ export async function listTokens(): Promise<ApiTokenDTO[]> {
   const foldersById = group(folderRows);
   const appsById = group(appRows);
 
+  const now = Date.now();
   return rows.map((r) => ({
     ...r,
+    expired: r.expiresAt != null && Date.parse(r.expiresAt) <= now,
     homeTeamName: r.homeTeamName ?? "",
     // Chosen by the app at registration: free text, any length, shown in a badge.
     oauthClientName: r.oauthClientName?.slice(0, 80) ?? null,
@@ -685,13 +704,19 @@ export interface TokenScopeInput {
 
 /** Returns the raw token ONCE; only the hash is persisted. */
 export async function createToken(
-  input: { name: string; capabilities?: Capability[]; instanceAdmin?: boolean } &
-    TokenScopeInput,
+  input: {
+    name: string;
+    capabilities?: Capability[];
+    instanceAdmin?: boolean;
+    /** ISO instant this token stops working. Absent/null ⇒ never. */
+    expiresAt?: string | null;
+  } & TokenScopeInput,
 ): Promise<{ raw: string; token: ApiTokenDTO }> {
   const { teamId, userId, membership } = await requireCapability("manage_tokens");
   const name = cleanTokenName(input.name);
   const capabilities = withinActor(input.capabilities, membership, "token");
   const { scoped, instanceAdmin } = await validateScope(input);
+  const expiresAt = cleanExpiry(input.expiresAt);
   const scope = await resolveScopeInput(input, userId);
 
   const raw = `deplo_${randomToken(24)}`;
@@ -712,6 +737,7 @@ export async function createToken(
       tokenHash: sha256Hex(raw),
       instanceAdmin,
       scoped,
+      expiresAt,
       lastUsedAt: null,
       createdAt,
     });
@@ -751,10 +777,32 @@ export async function createToken(
       // Set by `mintMcpConnection` right after this, in the same flow, when the
       // mint came from an OAuth consent rather than from the tokens page.
       oauthClientName: null,
+      expiresAt,
+      // Refused if it were not (see cleanExpiry).
+      expired: false,
       lastUsedAt: null,
       createdAt,
     },
   };
+}
+
+/**
+ * Validate a requested expiry: an ISO instant in the future, or null for never.
+ *
+ * Refuses a date already past rather than storing it, because a token that is
+ * born dead is indistinguishable from one that was revoked, and the person who
+ * just copied the secret would have no idea which. There is no upper bound: a
+ * five-year token is a decision, and refusing it would only push people back to
+ * "never".
+ */
+function cleanExpiry(raw: string | null | undefined): string | null {
+  const value = (raw ?? "").trim();
+  if (!value) return null;
+  const at = Date.parse(value);
+  if (Number.isNaN(at)) throw new Error("That expiry date is not a date");
+  if (at <= Date.now())
+    throw new Error("Pick an expiry date in the future, or no expiry at all");
+  return new Date(at).toISOString();
 }
 
 /**
@@ -779,12 +827,24 @@ export async function createToken(
  * Any team it reaches can still REVOKE it, which is the lever that matters.
  */
 export async function updateToken(
-  input: { id: string; name: string; capabilities?: Capability[]; instanceAdmin?: boolean } &
-    TokenScopeInput,
+  input: {
+    id: string;
+    name: string;
+    capabilities?: Capability[];
+    instanceAdmin?: boolean;
+    /**
+     * ABSENT leaves the expiry alone; `null` clears it (back to never). Same
+     * rule `scope` follows, and for the same reason: an older client that sends
+     * `{ id, name }` to rename a token must not silently un-expire it.
+     */
+    expiresAt?: string | null;
+  } & TokenScopeInput,
 ): Promise<void> {
   const { teamId, userId, membership } = await requireCapability("manage_tokens");
   const name = cleanTokenName(input.name);
   const { scoped, instanceAdmin } = await validateScope(input);
+  const expiresAt =
+    input.expiresAt === undefined ? undefined : cleanExpiry(input.expiresAt);
   const scope = await resolveScopeInput(input, userId);
 
   const db = getDb();
@@ -841,7 +901,12 @@ export async function updateToken(
   await db.transaction(async (tx) => {
     await tx
       .update(apiTokens)
-      .set({ name, instanceAdmin, scoped })
+      .set({
+        name,
+        instanceAdmin,
+        scoped,
+        ...(expiresAt === undefined ? {} : { expiresAt }),
+      })
       .where(
         and(
           eq(apiTokens.id, input.id),
@@ -886,6 +951,8 @@ interface TokenRow {
   teamId: string;
   instanceAdmin: boolean;
   scoped: boolean;
+  /** When it stops working. Null ⇒ never. */
+  expiresAt: string | null;
 }
 
 const TOKEN_ROW_COLUMNS = {
@@ -894,6 +961,7 @@ const TOKEN_ROW_COLUMNS = {
   teamId: apiTokens.teamId,
   instanceAdmin: apiTokens.instanceAdmin,
   scoped: apiTokens.scoped,
+  expiresAt: apiTokens.expiresAt,
 } as const;
 
 /**
@@ -988,6 +1056,11 @@ async function identityForTokenRow(
   match: TokenRow,
   teamHint?: string | null,
 ): Promise<RequestIdentity | null> {
+  // Expiry first, and it is a plain "this token is not valid": before any team
+  // is resolved, before the membership read, before `lastUsedAt` is stamped. One
+  // check here covers every credential shape and every entry point - GraphQL,
+  // MCP, the deploy hook - because they all resolve through this function.
+  if (match.expiresAt && Date.parse(match.expiresAt) <= Date.now()) return null;
   const scope = match.scoped ? await loadScope(match.id) : null;
 
   // Fail CLOSED: the token acts only in teams its creator is STILL a member of,

@@ -222,20 +222,35 @@ builder.mutationFields((t) => ({
     resolve: async (_r, args) => {
       const code = args.code.trim();
       if (!code) throw new Error("Enter the code from your authenticator app");
+      // The ACCOUNT this challenge belongs to, resolved once: it is both the
+      // limiter bucket below and the address the failure notice goes to.
+      const who = await pendingLoginEmail();
       // Tighter than the password limiter: a 6-digit code is guessable in a way
       // a password is not, so cap attempts hard.
       //
-      // TWO buckets, for the reason `login` above gives: an address-only limit
-      // is no limit at all against an attacker who rotates addresses, and the
-      // twoFactor plugin is configured with its defaults — it does NOT lock an
-      // account out after repeated failures, so nothing else here counts. The
-      // second bucket is the PENDING LOGIN itself, keyed on the cookie Better
-      // Auth set when the password was accepted: it caps the attempts against
-      // one challenge no matter how many addresses they arrive from, without
-      // this resolver having to learn which account is behind it.
+      // THREE buckets, and only the third actually bounds the search. The
+      // address is spoofable (see clientKey). The pending LOGIN is keyed on the
+      // cookie Better Auth set when the password was accepted, so it resets the
+      // moment the attacker throws the cookie away and re-sends the password —
+      // at 8 logins per minute per email that is 40 codes a minute, ~57,600 a
+      // day against a space of a million, which is a few percent per day for
+      // anyone who already has the password. The twoFactor plugin is configured
+      // with its defaults and does NOT lock an account out, so nothing else
+      // counts. The ACCOUNT bucket is what survives a re-issued challenge: ten
+      // wrong codes an hour is far past a fat-fingered authenticator (or a clock
+      // that has drifted) and far below anything that gets anywhere.
       const limited = await checkLimits([
         { key: await clientKey("2fa"), limit: 5, windowMs: 15 * 60_000 },
         ...(await pendingLoginKey()),
+        ...(who
+          ? [
+              {
+                key: `2fa-account:${sha256Hex(who)}`,
+                limit: 10,
+                windowMs: 60 * 60_000,
+              },
+            ]
+          : []),
       ]);
       if (limited) throw new Error(limited);
       const res = await verifyTwoFactorCode(
@@ -247,7 +262,6 @@ builder.mutationFields((t) => ({
         // wrong codes lands in the same bucket as a burst of wrong passwords and
         // reaches that account's teams. A challenge whose cookie no longer
         // resolves has nobody to warn.
-        const who = await pendingLoginEmail();
         if (who) void noteFailedLogin(who);
         throw new Error(res.error ?? "That code is not valid");
       }

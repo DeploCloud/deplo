@@ -938,17 +938,13 @@ export async function cancelAllDeployments(
 }
 
 
-/**
- * A project's deployments, newest-first. Thin wrapper over the loader's SQL
- * push-down so the GraphQL `App.deployments` resolver doesn't load the whole
- * history into memory.
- */
-export async function listAppDeployments(
-  appId: string,
-  opts: { limit?: number } = {},
-): Promise<Deployment[]> {
-  return loadDeploymentsForApp(appId, opts);
-}
+// `listAppDeployments` lived here: an EXPORTED, ungated pass-through to
+// `loadDeploymentsForApp` that took an app id from anywhere and answered with
+// that app's whole history, whatever team it belonged to. It had no callers -
+// the `App.deployments` resolver reads through the gated app - so it was a
+// loaded gun waiting for one. The loader is still there for the paths that have
+// already proved the app is theirs; anything user-facing goes through
+// `requireAppCapability` first.
 
 /**
  * Tear down a project's running stack (used when deleting the project). Returns

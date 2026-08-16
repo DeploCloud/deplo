@@ -59,7 +59,7 @@ export type TraefikDashboard = {
   /** The host the dashboard answers on. */
   domain: string;
   /**
-   * htpasswd lines (`user:$apr1$…`) with SINGLE `$`, as {@link htpasswdLine}
+   * htpasswd lines (`user:$2b$…`) with SINGLE `$`, as {@link htpasswdLine}
    * produces them. The compose escaping is applied here.
    */
   htpasswdUsers: string;
@@ -105,8 +105,10 @@ export function withTraefikDashboard(
     return dump(doc);
   }
 
-  const domain = dashboard.domain.trim().toLowerCase();
-  if (!domain) throw new Error("A domain is required to publish the Traefik dashboard");
+  const domain = assertRoutableHost(
+    dashboard.domain,
+    "A domain is required to publish the Traefik dashboard",
+  );
   if (!dashboard.htpasswdUsers.trim())
     throw new Error("Credentials are required to publish the Traefik dashboard");
 
@@ -286,6 +288,15 @@ export function traefikCertificates(currentYaml: string): CustomCertificate[] {
  *
  * The file is mounted 0400 rather than compose's default 0444, because it holds
  * private keys and every process in that container can read a 0444 file.
+ *
+ * ponytail: the KEY still sits in the host's compose file in cleartext, and
+ * comes back into the control plane with the rest of the stack on every
+ * `fetchHostInfo`. That is inherent to the shape available today - Traefik reads
+ * certificates only from its file provider, and the agent exposes no RPC that
+ * writes an arbitrary path (ADR-0006) - so the exposure is "whoever can read the
+ * proxy's compose file", which is root on that host. Closing it properly needs
+ * an agent RPC that writes a secret file directly, at which point the stack file
+ * would carry a path instead of a PEM.
  */
 export function withTraefikCertificates(
   currentYaml: string,
@@ -670,8 +681,10 @@ export function withPanelRoute(currentYaml: string, route: PanelRoute | null): s
     return dump(doc);
   }
 
-  const domain = route.domain.trim().toLowerCase();
-  if (!domain) throw new Error("A domain is required to publish the Deplo panel");
+  const domain = assertRoutableHost(
+    route.domain,
+    "A domain is required to publish the Deplo panel",
+  );
   const target = route.target.trim();
   if (!target)
     throw new Error("Deplo does not know where its proxy should send the panel on this server");
@@ -794,6 +807,29 @@ export function traefikDashboardDomain(currentYaml: string): string | null {
 /* ------------------------------------------------------------------ */
 /* Internals                                                           */
 /* ------------------------------------------------------------------ */
+
+/**
+ * A hostname, lower-cased and proven to be one, for the two rules this module
+ * writes: ``Host(`<domain>`)``.
+ *
+ * The value is interpolated into Traefik's rule grammar between BACKTICKS, so a
+ * backtick in it does not corrupt the file - it ends the matcher and starts
+ * whatever comes next. `evil.test\`) || Host(\`victim.test` is one router
+ * answering for someone else's hostname. An app's domains have been through
+ * `DOMAIN_RE` since they were added (lib/data/domains.ts); the panel's own
+ * address and the dashboard's arrive from a form and had nothing.
+ *
+ * Deliberately the same shape `lib/public-url.ts` accepts, minus the port: a
+ * Traefik `Host()` matcher takes no port, and everything that is not a letter,
+ * a digit, a dot or a hyphen has no business in a hostname.
+ */
+function assertRoutableHost(raw: string, missingMessage: string): string {
+  const domain = raw.trim().toLowerCase();
+  if (!domain) throw new Error(missingMessage);
+  if (!/^[a-z0-9.-]+$/.test(domain))
+    throw new Error(`"${raw.trim()}" is not a valid hostname`);
+  return domain;
+}
 
 /**
  * The host's stack, parsed as a YAML document and edited in place.

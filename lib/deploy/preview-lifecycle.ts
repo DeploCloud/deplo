@@ -143,8 +143,19 @@ export async function openOrSyncPreview(
     if (pr.isFork && policy === "deny" && !opts.approve) {
       return { previewId: null, deploymentId: null, refusal: { kind: "fork-denied" } };
     }
+    // Per COMMIT, not per pull request. A maintainer approving what they read
+    // must not also be approving every commit pushed to that branch afterwards:
+    // "open something harmless, get it approved, then push the payload" is the
+    // whole shape of the attack, and the fork's code runs on the operator's host
+    // on the shared `deplo` network. The stored `approved_sha` is what says WHAT
+    // was reviewed, so it is what the question is asked against. `allow` is the
+    // opt-out for a team that has decided its forks are trusted, and a manual
+    // deploy (`opts.approve`) is a person approving THIS head as they click.
     const approved =
-      !pr.isFork || policy === "allow" || opts.approve || Boolean(existing?.approvedAt);
+      !pr.isFork ||
+      policy === "allow" ||
+      opts.approve ||
+      (Boolean(existing?.approvedSha) && existing?.approvedSha === pr.headSha);
 
     const now = nowIso();
     let previewId = existing?.id ?? null;
@@ -172,10 +183,14 @@ export async function openOrSyncPreview(
           state: "open",
           closedAt: null,
           tornDownAt: null,
-          ...(approved && !existing.approvedAt
-            ? { approvedAt: now, approvedSha: pr.headSha }
-            : {}),
-          ...(approved ? {} : { status: "blocked" }),
+          // Re-stamped whenever a NEW head is approved, not only the first time:
+          // with a per-commit rule a stale `approved_sha` would refuse the very
+          // build the caller just approved, and then refuse every one after it.
+          ...(approved
+            ? existing.approvedSha === pr.headSha
+              ? {}
+              : { approvedAt: now, approvedSha: pr.headSha }
+            : { status: "blocked" }),
           lastActivityAt: now,
           updatedAt: now,
         })

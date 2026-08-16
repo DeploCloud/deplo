@@ -300,12 +300,31 @@ Single endpoint `app/api/graphql/route.ts` (thin) → `lib/graphql/yoga.ts`. One
   The eight coarse names (`deploy`, `manage_infra`, …) are RETIRED — migration 0056 expanded
   every stored row via `LEGACY_CAPABILITY_EXPANSION` (which is also what still translates an
   old name arriving from an API client). Never reintroduce one.
+- **`canMountHostVolumes` gates EVERY way out of the container, not only a path.** A compose
+  stack is user-written YAML shipped to the agent almost verbatim, so `privileged`, `cap_add`,
+  `devices`, `pid|ipc|uts: host`, `userns_mode`, an unconfining `security_opt`, `cgroup_parent`
+  and `device_cgroup_rules` reach the host exactly like a bind mount of `/` does — and for a while
+  only the bind mount was gated, which made a plain **Member** one YAML key away from root on the
+  server. `composeNeedsHostPrivileges` (lib/deploy/compose-lint.ts) is the detector, and both
+  compose write paths (`createApp`, `updateAppSource`) put it behind the same grant as
+  `composeHasHostBindMount`. Adding a compose key that escapes the sandbox means adding it to
+  that list — and HARDENING is never gated (`no-new-privileges`, `cap_drop`, `read_only`), because
+  a permission prompt in front of the safer choice is one people learn to route around.
 - **Roles are per-team ROWS** (`team_roles`, `lib/data/roles.ts`), not TS presets: three
   editable/resettable defaults (Owner locked at full access) plus the team's own. A role edit
   re-writes `membership_capabilities` for its members in the same transaction, so **every
   authorization check stays a read of the member's effective capabilities** — never resolve a
   role at check time. `memberships.role` is the RANK (`owner` outranks); `role_id` NULL =
   hand-picked "Custom" set. New teams need no seeding call: `ensureTeamRoles` is lazy.
+- **An API token may EXPIRE** (`api_tokens.expires_at`, NULL = never, which is what every token
+  minted before it existed still is). Enforced in `identityForTokenRow` — before the team is
+  picked, before the membership read, before the usage stamp — so one comparison covers GraphQL,
+  MCP and the deploy hook at once. A new token defaults to 90 days in the editor; nothing sweeps
+  an expired row, because the list has to be able to say *why* a credential stopped.
+- **`teams.mcp_enabled` defaults to FALSE for a new team** (migration 0106; existing teams keep
+  whatever they have). A token is required either way, so this was never what made `/api/mcp`
+  safe — but "may an AI agent act in this company's infrastructure" is a decision to make, not
+  one to inherit from a default.
 - **id prefixes not to confuse:** `prc_` = Project *container*, `prj_` = **App** (the deployable
   app, legacy mint); `environ_` = Environment, `env_` = env-**var** row; `role_` = a team Role;
   `deplo_` = raw bearer secret (sha256 at rest).
@@ -337,10 +356,18 @@ Single endpoint `app/api/graphql/route.ts` (thin) → `lib/graphql/yoga.ts`. One
   the strength meter) and `await assertPasswordNotPwned` (`lib/pwned-password.ts`, the Have I Been
   Pwned range API, k-anonymous and **failing open** so no-egress instances still work). Both run on
   account creation, change-password, the admin reset, basic auth, the Traefik panel and a
-  database's engine password. Better Auth's own `/api/auth/*` endpoints are covered by the
+  database's engine password - the last three only since the audit that found the doc claiming it
+  and the code doing only half. The one carve-out is a GENERATED credential: a database password
+  deplo mints itself is `randomToken(24)`, which is base64url and would fail "at least 1 special
+  character" about a third of the time, so the policy bounds only a password a person typed.
+  Better Auth's own `/api/auth/*` endpoints are covered by the
   `haveIBeenPwned` plugin instead - deplo's writes never reach them. External credentials
   (registry, SMTP, S3, git tokens) are deliberately NOT checked: deplo cannot rotate them, so a hit
   would only break a working integration.
+- **htpasswd credentials are bcrypt** (`htpasswdLine`, async like `hashPassword` and for the same
+  reason). Traefik's `go-htpasswd` also reads the Apache MD5 (`$apr1$`) this used to emit; the hash
+  lands in the proxy's compose file ON THE HOST, so 1000 rounds of MD5 was the wrong thing to leave
+  there. Nothing on this side verifies these hashes, so there is no legacy format to keep reading.
 - **Every user-supplied outbound address goes through `lib/outbound-url.ts` first**
   (`assertSafeOutboundUrl` / `assertSafeOutboundHost` for a bare SMTP host). S3 endpoints,
   notification webhooks, push endpoints and git base URLs are all on it; reaching inside the

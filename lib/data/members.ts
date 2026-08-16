@@ -41,12 +41,13 @@ import {
   passkey as passkeyTable,
   twoFactor as twoFactorTable,
 } from "../db/schema/auth";
-import { getCurrentUser, revokeAllSessions, setUserPassword } from "../auth";
+import { assertUser, getCurrentUser, revokeAllSessions, setUserPassword } from "../auth";
 import { assertPasswordPolicy } from "../password-policy";
 import { assertPasswordNotPwned } from "../pwned-password";
 import { recordActivity } from "./activity";
 import { instanceOwnerUserId } from "./instance-owner";
 import {
+  isInstanceAdmin,
   requireCapability,
   requireActiveTeamId,
   requireInstanceAdmin,
@@ -465,16 +466,30 @@ export async function teamFounderUserId(
 /**
  * List registered users available to add to the active team, matching on
  * USERNAME (and display name) only — emails are never searched or returned.
- * Excludes users already in the team. An empty query returns every available
- * user so the picker is populated from the start; a non-empty query filters
- * that roster. Each result carries the user's home-team name so two identical
- * display names stay distinguishable without exposing an email.
+ * Excludes users already in the team. Each result carries the user's home-team
+ * name so two identical display names stay distinguishable without exposing an
+ * email.
+ *
+ * WHO IS OFFERED is bounded, because this is the one read in the data layer that
+ * would otherwise cross tenants: `manage_members` is a TEAM capability, and one
+ * team's admin has no business enumerating the whole instance's roster — on a
+ * shared install that is every other customer's staff list, and it is the
+ * assumption "the operator and the end user are the same person" that the
+ * managed-service rule forbids.
+ *
+ * So the picker offers the people the actor ALREADY works with — anyone in
+ * another of their own teams — which is who "add a colleague" means in practice,
+ * and keeps it populated with no query at all. Anyone else is reachable only by
+ * typing their EXACT username, which you can only do if you already know it.
+ * An instance admin keeps the full roster: they administer every account from
+ * Settings → Users regardless, so hiding it here would buy nothing.
  */
 export async function searchUsers(query: string): Promise<UserSearchResult[]> {
   const teamId = await requireActiveTeamId();
   await requireCapability("manage_members");
   const q = query.trim().toLowerCase();
   const db = getDb();
+  const admin = await isInstanceAdmin();
 
   // Users NOT already in the team.
   const inTeam = db
@@ -494,11 +509,35 @@ export async function searchUsers(query: string): Promise<UserSearchResult[]> {
     // (the add-member dialog shows ~3 and scrolls for the rest).
     .orderBy(desc(usersTable.createdAt));
 
+  // The actor's own reach: everyone sharing a team with them. One query, and
+  // skipped entirely for an admin, who is offered the whole roster.
+  let known: Set<string> | null = null;
+  if (!admin) {
+    const me = await assertUser();
+    const myTeams = db
+      .select({ teamId: membershipsTable.teamId })
+      .from(membershipsTable)
+      .where(eq(membershipsTable.userId, me.id));
+    known = new Set(
+      (
+        await db
+          .selectDistinct({ userId: membershipsTable.userId })
+          .from(membershipsTable)
+          .where(inArray(membershipsTable.teamId, myTeams))
+      ).map((r) => r.userId),
+    );
+  }
+
   const filtered = candidates.filter(
     (u) =>
-      !q ||
-      u.username.toLowerCase().includes(q) ||
-      u.name.toLowerCase().includes(q),
+      // Reachable at all: a colleague, or named exactly. A substring match on a
+      // stranger is what turns this into a directory.
+      (known === null ||
+        known.has(u.id) ||
+        (q !== "" && u.username.toLowerCase() === q)) &&
+      (!q ||
+        u.username.toLowerCase().includes(q) ||
+        u.name.toLowerCase().includes(q)),
   );
   if (filtered.length === 0) return [];
 

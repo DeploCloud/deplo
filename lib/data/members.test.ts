@@ -18,10 +18,12 @@ import {
   seedIdentity,
   TRUNCATE_IDENTITY,
   TEAM_A,
+  TEAM_B,
   USER_1,
 } from "./identity-test-helpers";
 import {
   addExistingMember,
+  searchUsers,
   consumeRegistrationLink,
   getRegistrationLinkInfo,
   listMembers,
@@ -520,4 +522,62 @@ test("updateUserAdmin can promote a non-admin even when they aren't yet in the a
     await db.select().from(usersTable).where(eq(usersTable.id, "plain"))
   )[0]!;
   assert.equal(promoted.isInstanceAdmin, true);
+});
+
+/* ------------------------------------------------------------------ */
+/* The add-member picker is not a directory                            */
+/* ------------------------------------------------------------------ */
+
+/**
+ * `manage_members` is a TEAM capability, so the people it offers have to be
+ * bounded by the actor's own reach. It used to return EVERY account on the
+ * instance that was not already in the team — on a shared install, one team
+ * admin reading every other customer's staff list, which is exactly the
+ * "operator == end user" assumption a managed deplo cannot make.
+ *
+ * A colleague (someone in another of the actor's own teams) is still offered
+ * with no query at all; a stranger only by their exact username.
+ */
+test("searchUsers offers colleagues, and a stranger only by exact username", async () => {
+  await seedIdentity(db, {
+    teams: [
+      { id: TEAM_A, slug: "alpha" },
+      { id: TEAM_B, slug: "beta" },
+      { id: "team_c", slug: "gamma" },
+    ],
+    users: [
+      // The actor: owner of A, and also in B. NOT an instance admin, which is
+      // the whole point — an admin keeps the full roster on purpose.
+      { id: USER_1, teamId: TEAM_A, role: "owner", isInstanceAdmin: false },
+      { id: "u_colleague", teamId: TEAM_B, role: "member", isInstanceAdmin: false },
+      { id: "u_stranger", teamId: "team_c", role: "owner", isInstanceAdmin: false },
+    ],
+  });
+  // Put the actor in B too, so `u_colleague` shares a team with them.
+  await db.insert(membershipsTable).values({
+    id: "mem_user_1_b",
+    userId: USER_1,
+    teamId: TEAM_B,
+    role: "member",
+    createdAt: "2026-01-01T00:00:00.000Z",
+  });
+
+  const names = async (q: string) =>
+    (await asOwner(() => searchUsers(q))).map((u) => u.username).sort();
+
+  assert.deepEqual(
+    await names(""),
+    ["u_colleague"],
+    "the empty picker shows the people the actor already works with",
+  );
+  assert.deepEqual(
+    await names("u_"),
+    ["u_colleague"],
+    "a substring must not sweep in somebody from another tenant",
+  );
+  assert.deepEqual(
+    await names("u_stranger"),
+    ["u_stranger"],
+    "naming an account exactly is still how you add somebody you know of",
+  );
 });

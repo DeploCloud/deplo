@@ -17,6 +17,7 @@ import { encryptSecret, decryptSecret, htpasswdLine } from "../crypto";
 import { isDeploHostServer } from "../deploy/domains";
 import { withTraefikDashboard, traefikDashboardDomain } from "../deploy/traefik-stack";
 import { assertPasswordNotPwned } from "../pwned-password";
+import { assertPasswordPolicy } from "../password-policy";
 import { recordActivity } from "./activity";
 import { getServerById } from "./servers";
 import { stopStackOn, startStackOn } from "./volume-migration";
@@ -444,8 +445,14 @@ export async function setServerTraefikDashboard(
     // different account than the one the operator typed.
     if (username.includes(":")) throw new Error("A username cannot contain a colon");
     // Only a freshly typed one: an edit that keeps the stored password must not
-    // be refused for a credential that is already published.
-    if (input.password) await assertPasswordNotPwned(input.password);
+    // be refused for a credential that is already published. Both gates, in the
+    // same order every other chosen password gets them — the panel lists every
+    // router, service and certificate on the host, so it is not the one credential
+    // that may be `abc`.
+    if (input.password) {
+      assertPasswordPolicy(input.password);
+      await assertPasswordNotPwned(input.password);
+    }
 
     // An empty password means "keep the stored one" — an edit that only moves the
     // domain must not require retyping it. Empty with nothing stored is the
@@ -483,9 +490,12 @@ export async function setServerTraefikDashboard(
     const composeYaml = credentials
       ? withTraefikDashboard(current.traefikComposeYaml, {
           domain: credentials.domain,
-          // Re-hashed on every write: the apr1 salt is random, so the stack file
-          // never carries a hash we could have reused from somewhere else.
-          htpasswdUsers: htpasswdLine(credentials.username, credentials.password),
+          // Re-hashed on every write: the bcrypt salt is random, so the stack
+          // file never carries a hash we could have reused from somewhere else.
+          htpasswdUsers: await htpasswdLine(
+            credentials.username,
+            credentials.password,
+          ),
         })
       : withTraefikDashboard(current.traefikComposeYaml, null);
 

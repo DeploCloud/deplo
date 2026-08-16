@@ -170,6 +170,18 @@ export function TokensList({
                 </TableCell>
                 <TableCell className="text-muted-foreground">
                   {t.lastUsedAt ? timeAgo(t.lastUsedAt) : "Never used"}
+                  {t.expiresAt &&
+                    (t.expired ? (
+                      <SimpleTooltip content="This token has expired and no longer authenticates anywhere. Edit it to move the date, or revoke it.">
+                        <span className="mt-1 block w-fit text-xs text-amber-500">
+                          Expired {timeAgo(t.expiresAt)}
+                        </span>
+                      </SimpleTooltip>
+                    ) : (
+                      <span className="mt-1 block text-xs">
+                        Expires {new Date(t.expiresAt).toLocaleDateString()}
+                      </span>
+                    ))}
                 </TableCell>
                 <TableCell className="text-muted-foreground">
                   {t.createdByUsername ?? "—"}

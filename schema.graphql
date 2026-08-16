@@ -96,6 +96,16 @@ type ApiToken {
   createdByUsername: String
 
   """
+  Whether the expiry above has passed. Answered by the server, so a client with a wrong clock cannot disagree about whether a credential still works.
+  """
+  expired: Boolean
+
+  """
+  When this token stops working. Null means never, which is what a token minted before expiries existed still is. An expired token resolves to nothing everywhere - the API, MCP and deploy hooks alike.
+  """
+  expiresAt: String
+
+  """
   Whole folders in the scope: every app in them and in the folders nested under them. Most apps live in a folder, so this is usually the level a scope is drawn at.
   """
   folderIds: [String!]
@@ -904,6 +914,7 @@ input CreateRoleInput {
 input CreateTokenInput {
   appIds: [String!]
   capabilities: [Capability!]
+  expiresAt: String
   folderIds: [String!]
   instanceAdmin: Boolean
   name: String!
@@ -4322,6 +4333,7 @@ input UpdateTeamInput {
 input UpdateTokenInput {
   appIds: [String!]
   capabilities: [Capability!]
+  expiresAt: String
   folderIds: [String!]
   id: String!
   instanceAdmin: Boolean

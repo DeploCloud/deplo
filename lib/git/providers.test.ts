@@ -219,3 +219,28 @@ test("the token help link resolves against a self-hosted base URL", () => {
   );
   assert.equal(tokenHelpUrl("git", "https://git.acme.com"), "");
 });
+
+/**
+ * A secret that no longer decrypts (`decryptSecret` fails closed to `""` after a
+ * `DEPLO_SECRET` rotation) must never verify. GitLab compares the header against
+ * the secret directly, so two empty strings used to MATCH; Gitea and Bitbucket
+ * take an HMAC, and one keyed on nothing is one anybody can compute. The route
+ * refuses on an empty secret before any of them is called, and this is the
+ * second lock on the same door.
+ */
+test("an empty secret never verifies, whatever arrives", () => {
+  const headers = (h: Record<string, string>) => new Headers(h);
+  assert.equal(
+    PROVIDERS.gitlab.api!.verify("", headers({ "x-gitlab-token": "" }), ""),
+    "bad",
+  );
+  assert.equal(
+    PROVIDERS.gitlab.api!.verify("", headers({ "x-gitlab-token": "guess" }), ""),
+    "bad",
+  );
+  // A real secret still matches, so the guard did not simply break verification.
+  assert.equal(
+    PROVIDERS.gitlab.api!.verify("s3cret", headers({ "x-gitlab-token": "s3cret" }), ""),
+    "ok",
+  );
+});

@@ -135,7 +135,12 @@ function toDTO(r: typeof appPreviewsTable.$inferSelect): AppPreviewDTO {
     baseBranch: r.baseBranch,
     headRepo: r.headRepo,
     isFork: r.isFork,
-    approved: Boolean(r.approvedAt),
+    // Approval is per COMMIT for a fork (see `approvePreview`), so "approved"
+    // has to mean "this head was approved" and not "something once was" — a
+    // stale true is a button the UI hides on the exact push that needs it.
+    approved: r.isFork
+      ? Boolean(r.approvedSha) && r.approvedSha === r.headSha
+      : Boolean(r.approvedAt),
     approvedSha: r.approvedSha,
     status: (r.state === "closed" ? "idle" : r.status) as PreviewState,
     url: r.url,
@@ -312,7 +317,10 @@ export async function redeployPreview(previewId: string): Promise<AppPreviewDTO>
   await requireCapability("manage_previews");
   const p = await ownedPreview(previewId);
   await requireFolderCapabilityForApp(p.appId, "manage_previews");
-  if (!p.approvedAt) {
+  // Per COMMIT for a fork: a preview approved three pushes ago is not an
+  // approval of what Redeploy would build now. Same rule `openOrSyncPreview`
+  // applies to a webhook, so the button and the push cannot disagree.
+  if (p.isFork ? p.approvedSha !== p.headSha : !p.approvedAt) {
     throw new Error("Approve this fork pull request before building it");
   }
   const user = await getCurrentUser();

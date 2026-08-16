@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 
 import type { PGlite } from "@electric-sql/pglite";
 import { eq } from "drizzle-orm";
+import { execFileSync } from "node:child_process";
 
 import { makeTestDb, type TestDb } from "../db/test-harness";
 import { __setTestDb, __resetTestDb } from "../db/client";
@@ -28,6 +29,7 @@ import {
   redeployDatabase,
   rebuildDatabase,
   rotateDatabasePassword,
+  rotationExecCommand,
   reorderDatabases,
   renameDatabase,
   updateDatabaseLogo,
@@ -303,16 +305,26 @@ test("rebuildDatabase: unreachable agent fails clearly and leaves the row intact
   });
 });
 
-test("rotateDatabasePassword: requires a running database and a quote-free password", async () => {
+test("rotateDatabasePassword: requires a running database and a policy-clean password", async () => {
   await seedDatabase(db, { id: "db_rot", name: "rot", status: "stopped" });
   await asUser1(async () => {
     await assert.rejects(
       rotateDatabasePassword("db_rot"),
       /Start the database/,
     );
+    // A password the PERSON chose gets the account policy, like every other
+    // chosen credential. The generated default (no argument) does not — it is
+    // base64url and would fail "at least 1 special character" a third of the time.
     await assert.rejects(
-      rotateDatabasePassword("db_rot", { password: "with'quote" }),
-      /quotes/,
+      rotateDatabasePassword("db_rot", { password: "weakpass" }),
+      /at least/i,
+    );
+    // A quote is no longer refused for its own sake: `rotationExecCommand`
+    // quotes the value instead of pasting it into a shell string, so this gets
+    // as far as the status check like any other valid password.
+    await assert.rejects(
+      rotateDatabasePassword("db_rot", { password: "With'Quote1!" }),
+      /Start the database/,
     );
   });
 });
@@ -480,4 +492,54 @@ test("updateDatabaseLogo: set, clear, validate, and stay team-scoped", async () 
   await asUser1(async () => {
     await assert.rejects(updateDatabaseLogo("db_lf", png), /Not found/);
   });
+});
+
+/* ------------------------------------------------------------------ */
+/* The rotation command: hostile passwords stay literals               */
+/* ------------------------------------------------------------------ */
+
+/**
+ * The password lands in a command line the agent may run through a shell
+ * (`ExecRequest.command` is documented as "shell-interpreted or argv"), so a
+ * value that closes a quote used to be arbitrary code execution inside the
+ * database container for anyone holding `configure_databases` — which does NOT
+ * include `open_database_console`.
+ *
+ * The command is now assembled with shell/SQL quoting instead of a character
+ * blocklist, and this proves it by running the result through a REAL shell: what
+ * comes out has to be the statement, byte for byte, and nothing else may run.
+ */
+test("rotationExecCommand: a hostile password never escapes its quotes", () => {
+  const db = {
+    type: "postgres",
+    username: "app",
+    dbName: "db_x",
+  } as unknown as Parameters<typeof rotationExecCommand>[0];
+
+  for (const pw of [
+    `a'; id; echo '`,
+    `x" ; id ; echo "`,
+    "$(id)",
+    "`id`",
+    `a'\\''b`,
+    "; rm -rf /nope ;",
+    "plain-P4ss!",
+  ]) {
+    const cmd = rotationExecCommand(db, "old-pw", pw)!;
+    // What a POSIX shell would hand psql as its `-c` argument.
+    const argv = execFileSync(
+      "sh",
+      ["-c", `${cmd.replace(/^psql /, "printf '%s' ")}`],
+      { encoding: "utf8" },
+    );
+    assert.equal(
+      argv.includes("uid="),
+      false,
+      `command substitution ran for ${JSON.stringify(pw)}`,
+    );
+    assert.ok(
+      argv.endsWith(`WITH PASSWORD '${pw.replace(/'/g, "''")}'`),
+      `unexpected statement for ${JSON.stringify(pw)}: ${argv}`,
+    );
+  }
 });

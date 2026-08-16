@@ -724,3 +724,60 @@ test("the creator edits their own token from any team, not only the one it was m
   assert.equal(row?.name, "agent renamed");
   assert.equal(row?.teamId, TEAM_A, "the home team stays where it was minted");
 });
+
+/* ------------------------------------------------------------------ */
+/* Expiry                                                              */
+/* ------------------------------------------------------------------ */
+
+/**
+ * A token used to live until somebody revoked it, and nothing ever made anybody.
+ * The expiry is enforced in `identityForTokenRow` — the one place both credential
+ * shapes and every entry point (GraphQL, MCP, the deploy hook) resolve through —
+ * so it cannot be true in one of them and not another.
+ */
+test("an expired token authenticates as nothing", async () => {
+  const raw = await asUser1(
+    async () =>
+      (
+        await createToken({
+          name: "Short-lived",
+          capabilities: ["deploy_apps"],
+          expiresAt: new Date(Date.now() + 60_000).toISOString(),
+        })
+      ).raw,
+  );
+  assert.ok(await authenticateToken(raw), "valid while it lasts");
+
+  // Move the expiry into the past rather than sleeping.
+  await db
+    .update(apiTokens)
+    .set({ expiresAt: new Date(Date.now() - 1000).toISOString() })
+    .where(eq(apiTokens.name, "Short-lived"));
+  assert.equal(await authenticateToken(raw), null, "refused once past");
+});
+
+test("createToken refuses an expiry that has already passed", async () => {
+  await asUser1(async () => {
+    await assert.rejects(
+      createToken({
+        name: "Born dead",
+        expiresAt: new Date(Date.now() - 1000).toISOString(),
+      }),
+      /future/,
+    );
+    await assert.rejects(
+      createToken({ name: "Nonsense", expiresAt: "not-a-date" }),
+      /not a date/,
+    );
+  });
+});
+
+test("no expiry is the default, and it stays null", async () => {
+  const { token } = await asUser1(() => createToken({ name: "Forever" }));
+  assert.equal(token.expiresAt, null);
+  const rows = await db
+    .select()
+    .from(apiTokens)
+    .where(eq(apiTokens.name, "Forever"));
+  assert.equal(rows[0]!.expiresAt, null);
+});

@@ -559,3 +559,52 @@ test("a preview's certificate counts against the team's Let's Encrypt quota", as
     }),
   );
 });
+
+/**
+ * Approval is per COMMIT, and this is the attack it closes: open something
+ * harmless from a fork, get a maintainer to approve the preview, then push the
+ * payload. The fork's code runs on the operator's host, on the shared `deplo`
+ * network, so "they approved this pull request once" cannot be the same
+ * statement as "they approved everything ever pushed to it".
+ */
+test("a fork approved at one commit is blocked again by the next push", async () => {
+  await seedPreviewApp("prj_1", { slug: "blog" });
+  const fork = { ...PR, isFork: true, headRepo: "mallory/blog" };
+
+  const first = await openOrSyncPreview("prj_1", fork, { actor: "mallory" });
+  assert.deepEqual(first.refusal, { kind: "awaiting-approval" });
+
+  // The maintainer approves what they read: `opts.approve` is the click.
+  const approved = await openOrSyncPreview("prj_1", fork, {
+    actor: "maintainer",
+    approve: true,
+    manual: true,
+  });
+  assert.equal(approved.refusal, undefined, "the reviewed commit builds");
+
+  // …and then the author pushes something else.
+  const pushed = await openOrSyncPreview(
+    "prj_1",
+    { ...fork, headSha: "deadbeefdeadbeefdeadbeefdeadbeefdeadbeef" },
+    { actor: "mallory" },
+  );
+  assert.deepEqual(
+    pushed.refusal,
+    { kind: "awaiting-approval" },
+    "a commit nobody reviewed must not inherit the approval",
+  );
+  assert.equal(pushed.deploymentId, null, "and must not build");
+
+  const row = (
+    await db
+      .select()
+      .from(appPreviewsTable)
+      .where(eq(appPreviewsTable.id, first.previewId!))
+  )[0]!;
+  assert.equal(row.status, "blocked");
+  assert.equal(
+    row.approvedSha,
+    PR.headSha,
+    "the approval still names the commit it was given for",
+  );
+});

@@ -81,6 +81,19 @@ export const ApiTokenRef = builder
           "OAuth rather than from the tokens page. Such a token is managed " +
           "under Settings → MCP Server and is not edited by hand.",
       }),
+      expiresAt: t.exposeString("expiresAt", {
+        nullable: true,
+        description:
+          "When this token stops working. Null means never, which is what a " +
+          "token minted before expiries existed still is. An expired token " +
+          "resolves to nothing everywhere - the API, MCP and deploy hooks alike.",
+      }),
+      expired: t.exposeBoolean("expired", {
+        description:
+          "Whether the expiry above has passed. Answered by the server, so a " +
+          "client with a wrong clock cannot disagree about whether a credential " +
+          "still works.",
+      }),
       lastUsedAt: t.exposeString("lastUsedAt", { nullable: true }),
       createdAt: t.exposeString("createdAt"),
     }),
@@ -126,6 +139,9 @@ const CreateTokenInputType = builder.inputType("CreateTokenInput", {
     folderIds: t.stringList({ required: false }),
     appIds: t.stringList({ required: false }),
     instanceAdmin: t.boolean({ required: false }),
+    // ISO instant. Omitted ⇒ the token never expires, which is what every
+    // token was before this field existed.
+    expiresAt: t.string({ required: false }),
   }),
 });
 
@@ -139,6 +155,9 @@ const UpdateTokenInputType = builder.inputType("UpdateTokenInput", {
     folderIds: t.stringList({ required: false }),
     appIds: t.stringList({ required: false }),
     instanceAdmin: t.boolean({ required: false }),
+    // ISO instant, or null to clear the expiry. OMITTED leaves it alone, so a
+    // client that renames a token cannot silently un-expire it.
+    expiresAt: t.string({ required: false }),
   }),
 });
 
@@ -181,6 +200,7 @@ builder.mutationFields((t) => ({
         folderIds: input.folderIds ?? undefined,
         appIds: input.appIds ?? undefined,
         instanceAdmin: input.instanceAdmin ?? undefined,
+        expiresAt: input.expiresAt ?? undefined,
       }),
   }),
   updateToken: t.field({
@@ -202,6 +222,8 @@ builder.mutationFields((t) => ({
         folderIds: input.folderIds ?? undefined,
         appIds: input.appIds ?? undefined,
         instanceAdmin: input.instanceAdmin ?? undefined,
+        // `null` from a client CLEARS the expiry; absent leaves it.
+        expiresAt: input.expiresAt,
       });
       return true;
     },

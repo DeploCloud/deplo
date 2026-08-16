@@ -62,6 +62,14 @@ export interface SeedTeam {
    * "owner is immutable" tests keep seeing USER_1 as TEAM_A's protected founder.
    */
   founderUserId?: string | null;
+  /**
+   * Whether this team allows AI agents over MCP. Defaults to TRUE here and
+   * FALSE in production (migration 0106): a suite that exercises the MCP door
+   * is not a suite about the kill switch, and every one of those tests would
+   * otherwise open by turning the same switch on. The switch has its own
+   * tests, which set it explicitly.
+   */
+  mcpEnabled?: boolean;
 }
 export interface SeedUser {
   id: string;
@@ -146,6 +154,7 @@ export async function seedIdentity(
       name: t.slug,
       slug: t.slug,
       plan: "pro" as const,
+      mcpEnabled: t.mcpEnabled ?? true,
       // Explicit override, else the first seeded owner of the team (the backfill
       // rule); null when the team has no owner user seeded.
       founderUserId:
