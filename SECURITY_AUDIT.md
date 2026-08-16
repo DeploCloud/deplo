@@ -336,3 +336,77 @@ The concentrated risk is the **compose rendering path**, where a permissive "bri
 None of the findings required modifying the project, and none were exploited against live data. The recommended fixes are specific, mostly small, and do not conflict with deplo's mission of keeping the non-expert happy path free of Docker/SSH knowledge — they harden the *expert* escape hatch (raw compose) that a non-expert never touches.
 
 *End of report.*
+
+---
+---
+
+# Part II — Second Independent Re-Audit + Remediation
+
+**Date:** 2026-08-16 · **Type:** authorized, second independent pass over the CURRENT tree (Part I's fixes already committed), followed by **implementation of every finding**.
+**Method:** (1) hand review of the compose/deploy and SSRF surfaces; (2) six parallel domain auditors; (3) a **real-time re-hunt** (five parallel hunters) for what pass 1–2 missed; (4) every Critical/High/Medium re-verified from source and reproduced read-only (`docker compose config`, `js-yaml`, `net.isIP`); (5) **fixes written, tested, and pushed to `main`.**
+
+## 1. Executive summary
+
+This pass found that Part I's residual-risk surface — "the compose path is a write-time denylist shipped verbatim to the agent" — was **materially wider than Part I concluded**, and that the same *incomplete-severance* / *unbounded-reach* classes existed elsewhere. **13 new findings** (2 Critical, 4 High, 3 Medium, plus Lows), **all now fixed and pushed**. The write-time-denylist root is unchanged as an architecture, but every enumerated gap it left is closed.
+
+**Every finding below is FIXED on `main`.** Fix ledger:
+
+| # | Finding | Sev | Fix commit |
+|---|---|---|---|
+| N-C1 | Compose `env_file:` / `secrets.file:` / `configs.file:` read arbitrary HOST files into a tenant container | **Critical** | `6efd193` |
+| N-C2 | Compose `volumes_from: "container:<name>"` mounts another tenant's / the control-plane DB volume | **Critical** | `6efd193` |
+| N-H1 | `build:` (context/dockerfile/additional_contexts/ssh/privileged) reaches host paths at build time | **High** | `30fb2be` |
+| N-H2 | `extends:{file:}` / top-level `include:` / `label_file:` smuggle privileged/host-bind/ports/traefik-labels past every gate | **High** | `30fb2be` |
+| N-H3 | Git-connection **PAT exfiltrated** to an attacker-chosen host (clone URL host not bound to the connection) | **High** | `5a2a575` |
+| N-H4 | `transferAppToTeam` leaves **cron jobs executing cross-tenant** in the destination team's container | **High** | `b87bf89` |
+| N-H5 | Cross-tenant **GitHub installation repo/branch enumeration** (IDOR, `loggedIn`-only) | **High** | `cc18709` |
+| N-M1 | H-1 fix was **IPv4-only**; non-canonical IPv6 loopback still bypassed the SMTP SSRF guard | **Medium** | `b038c1c` |
+| N-M2 | `createToken`/`updateToken` didn't contain a scoped token's **reach** (M-1 class, un-fixed instance) | **Medium** | `94f1e0b` |
+| N-M3 | MCP kill-switch (`teams.mcp_enabled`) not re-checked on **team switch** via a tool's `team` arg | **Medium** | `94f1e0b` |
+| N-L1 | `cgroup: host` / `oom_kill_disable: true` ungated | Low | `6efd193`,`30fb2be` |
+| N-L2 | `teardownDatabaseStack` rendered from a best-effort decrypt (missed 4th L-3 site) | Low | `c99fe05` |
+| N-L3 | Suspended-account **login enumeration** (message + timing oracle) | Low | `c99fe05` |
+| N-L4 | Account-settings password re-auth **un-throttled** (vs the rate-limited 2FA step-up) | Low | `8e78952` |
+| N-L5 | CSRF Origin check missing on the DB-SSE + backup routes | Low | `4072d3e` |
+| N-L6 | web-push endpoint **not re-validated** at send | Low | `8e78952` |
+| N-L7 | `revokeToken` missing the `requireInstanceAdmin` guard create/update enforce | Low | `94f1e0b` |
+| N-L8 | Scoped-role read oracles (`getQueuePosition`, `projectContents`) | Low | `02a8275` |
+| N-L9 | Git-connection repo browse not `requireTeamWide` (narrowed-token enumeration) | Low | `28fe2ac` |
+| N-L10 | Preview server override gated **existence, not accessibility** (per-team server grants) | Low/Med | `28fe2ac` |
+
+## 2. The two Critical findings (compose host-file / cross-container escapes)
+
+**N-C1 — `env_file:` / top-level `secrets:`/`configs:` with a `file:` source read arbitrary host files.** Docker resolves these on the agent host against the **shared** stack directory (`/data/stacks`), so `env_file: [/data/stacks/<victim-slug>.env]` — the deterministic path deplo writes each tenant's *decrypted* secrets to — hands another tenant's secrets to the attacker's container, whose image + command echo them to the Logs the attacker can read. An absolute path (`/root/projects/deplo/.env`) reaches the control plane's own `DEPLO_SECRET` on the reference install. Confirmed read-only: `docker compose config` reads a file outside the compose dir and injects it; the `js-yaml` load→dump round-trip shows the keys survive to the agent while every write-time detector reports nothing.
+**Fix (`6efd193`):** folded `env_file` and top-level `secrets`/`configs` file sources into `composeNeedsHostPrivileges` / `composeMountsForeignStorage`, so both compose write paths gate them behind `canMountHostVolumes` like any bind mount. No over-gating (a same-stack service reference, `cgroup: private`, an ordinary volume stay free). Regression tests added.
+
+**N-C2 — `volumes_from: "container:<name>"` mounts a foreign container's volumes.** The `container:` form references a container *outside* this stack; it ignores the network split (it names a container, not a service), so it reaches a co-located tenant's data volume and the control-plane `deplo-postgres` volume at rest (every `*_enc`, every session, write access to `users.is_instance_admin`). Ungated, unread by every detector. **Fix (`6efd193`):** flag the `container:` form in the host-privilege detector.
+
+## 3. The four High findings
+
+- **N-H1 / N-H2 (compose, `30fb2be`)** — the real-time re-hunt found two more gate bypasses, neither an enumerated key: `build.context`/`dockerfile`/`additional_contexts` pointing at an absolute or `..`-escaping host path, `build.ssh`, and a privileged BuildKit build reach the host at build time; and `extends:{file:}` / top-level `include:` / `label_file:` **merge config from a file docker resolves on the host**, so `privileged`, host binds, published ports, and even `traefik.*` labels (past the H-2 label strip) never appear in the authored YAML the gate — or a deploy-time re-lint — parses. Fixed by gating `build:` host-reach behind `canMountHostVolumes` and **refusing** the external-merge keys outright (deplo owns the render; they can be inlined). All confirmed with `docker compose config`.
+- **N-H3 (git PAT, `5a2a575`)** — `resolveCloneUrl` embedded the connection's PAT into whatever host `repo.url` named, and `scopeRepoCredentials` checked only team membership (not `manage_git`, not host match). A member could exfiltrate the PAT to an attacker host (the agent lifts userinfo into `Authorization: Basic`; `redactCloneUrl` hides it from the deploy log). Fixed by binding the clone host to the connection's `baseUrl` host, mirroring the GitHub-App and fork paths.
+- **N-H4 (cron transfer, `b87bf89`)** — `transferAppToTeam` severed every team-bound child except `cron_jobs`, which then ran the source team's command in the destination team's container every tick, unmanageable from either UI. Fixed by deleting the jobs in the transfer transaction (runs/env cascade) plus a `teamId`-matched scheduler join as defense in depth.
+- **N-H5 (GitHub IDOR, `cc18709`)** — `githubRepos`/`githubBranches` were `loggedIn`-only and took the installation id from the args with no team check, so any member could enumerate another team's private repositories/branches through its installation token. Fixed with a data-layer team-scope check.
+
+## 4. Medium / Low
+
+The three Mediums (N-M1 IPv6 SSRF, N-M2 token-mint scope reach, N-M3 MCP kill-switch on team switch) and every Low in the ledger are fixed as summarized above, each with a targeted regression test where the harness allowed one. The two that were **assessed and left as-is by design**: N-L1's `listProjects` tile *counts* (count-only, matching the documented `listFolders` team-scoped-count choice), and Part I's L-2 (fleet-scoped monitoring) already documented as by-design.
+
+## 5. Deferred (informational, not a live vulnerability)
+
+- **Deploy-time compose re-lint (Part II NEW-INFO-1).** The write-time gate is now complete for the current writers (the only two paths that store compose), so the two Criticals are closed. A *deploy-time* re-lint of the whole host-privilege class remains a defense-in-depth improvement that needs a schema change (recording write-time authorization) to be enforced without an actor context — deferred, not required to close any specific finding, and note that N-H2 (`extends:{file:}`) is refused precisely because a deploy-time re-lint of the authored string could not see the merged file.
+- **`deploOwnedGate` negative-allowlist test (NEW-INFO-2)** and **`resolvePublicBaseUrl` `x-forwarded-host` fallback / `github/setup` state param (NEW-INFO-3).** Both latent/mitigated (no social-login configured; `DEPLO_PUBLIC_URL` is required-to-boot so the header is normally never consulted, and `HOST_RE` forbids CR/LF). Left as documented hardening.
+
+## 6. Verification
+
+- **`tsc --noEmit`: clean** after every batch (`bunx next typegen` first).
+- **`eslint`: clean** on every changed file.
+- **Targeted `node --test` per touched area: green** — compose-host-bind, outbound/destinations, git-connections, app-transfer + cron scheduler, databases, auth, tokens + token-scope, all MCP suites, projects, deployments, previews, github webhook-binding — plus the new regression tests (host-file/volumes_from/build/external-merge/cgroup/oom detectors, IPv6 SSRF, git clone-host, cross-tenant cron drop, GitHub-IDOR refusal, suspended-login generic error, scoped-token mint refusal).
+- **Full suite** (`bun run test`, `node --test` over `lib/**` + `components/**`, `DEPLO_DATABASE_URL` unset) run as the final gate.
+- No new dependency, no schema/migration change, no DB column added (so the inventory tests are untouched).
+
+## 7. Conclusions (Part II)
+
+Part I's verdict holds and is sharpened on the compose path: the write-time enumerated denylist was missing **five** host-escape keys (`env_file`, `secrets.file`, `configs.file`, `volumes_from`, `cgroup`/`oom_kill_disable`) and **three** file-merge keys (`build:` host reach, `extends:{file:}`, `include:`, `label_file:`) — two of them cross-tenant-Critical from an ordinary team capability. Those are closed, along with a git-PAT exfiltration, a cross-tenant cron persistence hole in the just-hardened transfer path, a GitHub-installation IDOR, the IPv4-only half of the SSRF fix, and the token-mint / MCP-kill-switch reach gaps. The structural recommendation stands and is now the load-bearing follow-up: **prefer an allowlist for the privileged/file/merge/routing keys and re-lint at deploy**, so the next un-enumerated key is not the next bypass.
+
+*End of Part II.*
