@@ -67,6 +67,12 @@
      a larger step to read as the same subtle sweep. */
   --skeleton-shimmer: 10%;
 
+  /* Template store veil: the lightness and alpha of the monochrome wash a
+     template card wears in its logo's hue. Per-theme for the same reason the
+     shimmer is — a wash that reads as a hint on white is invisible on black. */
+  --tpl-veil-l: 0.62;
+  --tpl-veil-a: 0.16;
+
   @apply selection:bg-white/10;
 }
 
@@ -116,6 +122,9 @@
   --sidebar-accent: #161616;
 
   --skeleton-shimmer: 18%;
+
+  --tpl-veil-l: 0.68;
+  --tpl-veil-a: 0.22;
 }
 
 @theme inline {
@@ -240,6 +249,18 @@
   scroll-padding-block: 0.25rem;
 }
 
+/* A horizontal rail that scrolls without showing a scrollbar. The rail is
+   driven by its own arrow buttons and by trackpad/touch swipe; a permanent
+   bar under every row would be four of them stacked down the store page.
+   Keyboard reaches every card through the links inside it, so nothing is
+   trapped behind the hidden bar. */
+@utility scrollbar-none {
+  scrollbar-width: none;
+  &::-webkit-scrollbar {
+    display: none;
+  }
+}
+
 /* Subtle grid / shimmer helpers reused across pages */
 .deplo-grid-bg {
   background-image: radial-gradient(
@@ -248,6 +269,51 @@
     transparent 0
   );
   background-size: 28px 28px;
+}
+
+/* ------------------------------------------------------------------ */
+/* Template store: the monochrome veil a card wears in its logo's hue. */
+/* ------------------------------------------------------------------ */
+
+/* The server sends ONE number, `--tpl-hue` (0-359, the dominant hue of the
+   template's logo). Lightness, chroma and alpha are fixed here, so the wash can
+   never come out as two tints and a garish logo cannot produce a garish card.
+   Both gradient stops carry the hue — the far one at zero alpha — because
+   fading to `transparent` interpolates through grey and dirties the wash.
+   `isolation: isolate` is load-bearing: it makes the element a stacking context
+   so the `z-index: -1` pseudo paints above the card's own background and below
+   its content, without a wrapper and without touching a single child. */
+.tpl-veil {
+  position: relative;
+  isolation: isolate;
+}
+
+.tpl-veil::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  border-radius: inherit;
+  opacity: 0;
+  transition: opacity 200ms ease-out;
+  background-image: linear-gradient(
+    to top,
+    oklch(var(--tpl-veil-l) 0.16 var(--tpl-hue) / var(--tpl-veil-a)) 0%,
+    oklch(var(--tpl-veil-l) 0.16 var(--tpl-hue) / 0) 72%
+  );
+}
+
+/* Only on the cards, which are links: keyboard focus must light the same veil
+   the pointer does. A logo with no usable hue never gets the class, so ~20% of
+   the catalogue keeps the plain card instead of wearing an invented colour. */
+.tpl-veil-hover:hover::before,
+.tpl-veil-hover:focus-visible::before {
+  opacity: 1;
+}
+
+/* The detail page's header wash: same single hue, always lit. */
+.tpl-veil-on::before {
+  opacity: 1;
 }
 
 /* ------------------------------------------------------------------ */

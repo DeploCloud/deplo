@@ -1,39 +1,29 @@
-import Link from "next/link";
-import { Lock, CloudOff } from "lucide-react";
+import { CloudOff } from "lucide-react";
 import { PageHeader } from "@/components/shared/page-header";
 import { EmptyState } from "@/components/shared/empty-state";
-import { Button } from "@/components/ui/button";
-import { TemplatesBrowser } from "@/components/templates/templates-browser";
-import { hasCapability } from "@/lib/membership";
+import { toStoreTemplate } from "@/components/templates/template-card";
+import { TemplateStore } from "@/components/templates/template-store";
 import { resolveOverviewPlacement } from "@/lib/data/placement";
 import { placementFromSearchParams } from "@/lib/overview-links";
+import { templateAccents } from "@/lib/templates/logo-color";
 import { listCatalog } from "@/templates/catalog";
 
 export const metadata = { title: "Templates" };
 
-export default async function TemplatesPage(props: PageProps<"/templates">) {
-  // Every card here deploys a new app, so without that permission the whole
-  // catalogue is a dead end. Say so up front, exactly as /new does, instead of
-  // letting someone pick a template and be refused by the wizard.
-  if (!(await hasCapability("create_apps")))
-    return (
-      <EmptyState
-        icon={Lock}
-        title="You can't create apps"
-        description="Ask a team admin for permission to create apps, or pick an app you already have from the overview."
-        action={
-          <Button asChild size="sm">
-            <Link href="/">Back to overview</Link>
-          </Button>
-        }
-      />
-    );
+/** `?q=` / `?category=` arrive as strings or repeated params. */
+function one(value: string | string[] | undefined): string {
+  return (Array.isArray(value) ? value[0] : value) ?? "";
+}
 
-  // The catalogue can be opened from an Overview drill-in ("Add New → From
-  // Template" inside a folder). Carry that context on to the wizard so the
-  // deployed template is created IN the folder/environment it was started from.
+export default async function TemplatesPage(props: PageProps<"/templates">) {
+  const searchParams = await props.searchParams;
+
+  // The catalogue is a catalogue: anyone on the team may read it. Deploying is
+  // the gated action, and its gate lives on the template's own page (and, for
+  // real, in `createApp`) — locking the whole store only makes a member ask an
+  // admin what is inside it.
   const placement = await resolveOverviewPlacement(
-    placementFromSearchParams(await props.searchParams),
+    placementFromSearchParams(searchParams),
   );
 
   // The catalogue lives on a remote service. An instance with no egress (or a
@@ -52,16 +42,15 @@ export default async function TemplatesPage(props: PageProps<"/templates">) {
       </div>
     );
 
+  const accents = await templateAccents(templates);
+
   return (
-    <div className="space-y-6">
-      <PageHeader
-        title="Templates"
-        description={
-          `Deploy ${templates.length} popular apps, databases and services to your servers in one click.` +
-          (placement ? ` Deploys land in ${placement.label}.` : "")
-        }
-      />
-      <TemplatesBrowser templates={templates} placement={placement} />
-    </div>
+    <TemplateStore
+      templates={templates.map(toStoreTemplate)}
+      accents={accents}
+      placement={placement}
+      initialQuery={one(searchParams.q)}
+      initialCategory={one(searchParams.category)}
+    />
   );
 }

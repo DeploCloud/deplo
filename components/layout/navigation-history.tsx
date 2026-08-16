@@ -110,6 +110,13 @@ function isUnder(path: string, prefix: string): boolean {
   return path === prefix || path.startsWith(prefix + "/");
 }
 
+// The app-creation funnel — pages a back link must never land on, because by
+// then the app they exist to create already exists. Coming out of a brand-new
+// app, "Back to apps" would otherwise return to the wizard that made it
+// (refilled, one click from creating it twice) or to the template you deployed;
+// the scan walks straight past them to the page you opened the funnel from.
+const TRANSIENT_PREFIXES = ["/new", "/templates"];
+
 /**
  * Exit the section identified by `prefix` (e.g. "/settings" or "/apps/abc"):
  * jump to the nearest earlier in-app entry whose pathname is outside that
@@ -131,6 +138,7 @@ export function backOutOf(prefix: string): "jumped" | "busy" | "none" {
   for (let i = current - 1; i >= 0; i--) {
     const p = stack[i];
     if (p == null) return "none"; // unknown (post-reload) → fall back to the href
+    if (TRANSIENT_PREFIXES.some((t) => isUnder(p, t))) continue;
     if (!isUnder(p, prefix)) {
       navigating = true;
       // Failsafe: release the lock even if the expected popstate never records.

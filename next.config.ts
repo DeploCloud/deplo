@@ -64,7 +64,23 @@ const nextConfig: NextConfig = {
     // Alert delivery: both reach for node crypto/net and must not be bundled.
     "nodemailer",
     "web-push",
+    // sharp is NOT listed here on purpose: Next already carries it in its own
+    // built-in external list (next/dist/lib/server-external-packages.jsonc).
   ],
+  // sharp (lib/templates/logo-color.ts) resolves its own `.node` from a literal
+  // require the tracer can follow — but that binary then dlopens libvips from a
+  // SIBLING package, and a dlopen is invisible to file tracing. The Dockerfile
+  // already documents this exact failure for node-pty. Name the musl artefacts
+  // explicitly or the standalone image ships a sharp that cannot load: the
+  // runner is node:22-alpine, and the builder (glibc) installs both libc
+  // variants, so they are present at trace time. Loading is guarded anyway —
+  // a sharp that will not open costs the template tints and nothing else.
+  outputFileTracingIncludes: {
+    "/templates": [
+      "./node_modules/@img/sharp-linuxmusl-x64/**",
+      "./node_modules/@img/sharp-libvips-linuxmusl-x64/lib/*.so*",
+    ],
+  },
   async headers() {
     return [
       {

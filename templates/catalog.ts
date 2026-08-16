@@ -127,6 +127,25 @@ export async function getTemplate(slug: string) {
 }
 
 /**
+ * The raw bytes of a catalog image, from the same hour-long cache every other
+ * request uses. `url` is an absolute URL this module already built through
+ * `templateAssetUrl`, so it is not re-validated here. `null` on any failure —
+ * an image is decoration, and none of its callers has anything to say about a
+ * catalog that did not answer.
+ */
+export async function templateImageBytes(url: string): Promise<Buffer | null> {
+  try {
+    const response = await get(url, "image/webp");
+    if (!response.ok) return null;
+    const bytes = Buffer.from(await response.arrayBuffer());
+    if (!bytes.byteLength || bytes.byteLength > MAX_LOGO_BYTES) return null;
+    return bytes;
+  } catch {
+    return null;
+  }
+}
+
+/**
  * A template's logo inlined as a data URI. Apps store their logo inline (see
  * `isStorableLogo`), so a template's icon has to be fetched once here rather
  * than left as a catalog URL: the icon then survives the catalog being
@@ -137,13 +156,6 @@ export async function templateLogoDataUri(
   path: string | null,
 ): Promise<string | null> {
   if (!path) return null;
-  try {
-    const response = await get(templateAssetUrl(path), "image/webp");
-    if (!response.ok) return null;
-    const bytes = Buffer.from(await response.arrayBuffer());
-    if (!bytes.byteLength || bytes.byteLength > MAX_LOGO_BYTES) return null;
-    return `data:image/webp;base64,${bytes.toString("base64")}`;
-  } catch {
-    return null;
-  }
+  const bytes = await templateImageBytes(templateAssetUrl(path));
+  return bytes ? `data:image/webp;base64,${bytes.toString("base64")}` : null;
 }
