@@ -1,6 +1,8 @@
 # ADR-0018 - Cron jobs are agent-tracked container execs, polled by the control plane
 
-**Status:** Accepted (2026-08-07).
+**Status:** Accepted (2026-08-07). §8 and §9 added 2026-08-16, after the first
+operator report: everything below was true and the feature still read as broken, because
+one poll a minute is not the same thing as an outcome.
 
 Extends the agent contract of [ADR-0006](./0006-server-agent-is-a-per-host-go-binary.md) with
 three additive RPCs. Reuses the capability model of
@@ -122,6 +124,35 @@ says "last of N attempts" instead.
 difference is not an inconsistency: a backup run points at an **artifact in S3** that outlives
 its schedule and is the thing you restore from, while a cron run describes only itself. When
 the job is gone there is nothing left for its history to be about.
+
+### 8. Reaping runs at 5s, firing at 60s - they are not the same clock
+
+The scheduler is one loop, and it used to do both phases once a minute. Firing has to be
+minute-grained (a cron expression has no finer resolution); reaping does not, and tying it to
+the same tick meant a command that ended in 200ms stayed `running` in the store for up to 59
+more seconds. Everything downstream reads that row, so the delay was not cosmetic: the page
+showed "Running" for a minute, a hand-started run looked queued behind the last one, and each
+extra `running` row was another fire skipped under overlap=skip.
+
+The tick is therefore 5 seconds and only the FIRE phase is gated to one per wall-clock minute
+(`shouldFire`). The cost is one agent connection per server per tick while something is in
+flight - and none at all when nothing is, which is the normal state.
+
+Rejected: polling ONCE right after a start (fixes the button press, leaves every scheduled run
+on the old clock), and pushing the result from the agent (a new streaming RPC and its
+reconnection machinery, for a poll that costs a millisecond).
+
+### 9. `Run now` honours `overlap`, and says so as a `skipped` run
+
+The manual path used to ignore it, on the reasoning that somebody had just pressed a button.
+That reads the setting as being about the SCHEDULER. It is not: "skip this run if it is still
+running" is a statement about the command - that two copies of it must not run at once - and
+the button is the one caller that would have been allowed to break it, on the job whose author
+had already said not to.
+
+It is recorded as a `skipped` run rather than refused, so the reason lands where every other
+outcome does: in the history, on the row, in the toast. Stopping the run in flight, or
+choosing "Run it anyway", is what makes it start.
 
 ## Consequences
 

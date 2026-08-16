@@ -63,6 +63,13 @@ export const RETRY_BACKOFF_MS = 60_000;
 export const REAP_GRACE_MS = 120_000;
 
 /**
+ * How long a run may sit claimed-but-never-launched before the reaper writes it
+ * off instead of launching it. Only reachable when the control plane stopped
+ * between the INSERT and `StartJob`; a launch that merely failed settles itself.
+ */
+export const STALE_CLAIM_MS = 120_000;
+
+/**
  * How the runner reaches an agent. Overridable because every interesting path
  * here - a poll that says `found: false`, a retry ladder, a run outliving its
  * deadline - is a conversation with an agent, and there is no way to have that
@@ -537,9 +544,23 @@ export async function reapInFlightRuns(
 }
 
 async function reapOne(conn: AgentConnection, r: InFlightRun, now: Date): Promise<void> {
-  // No agent handle: this is a retry waiting out its backoff. Nothing to poll.
+  // No agent handle: either a retry waiting out its backoff, or a claim whose
+  // launch never happened. Nothing to poll in either case.
   if (!r.run.agentJobId) {
-    if (r.run.nextAttemptAt && now < new Date(r.run.nextAttemptAt)) return;
+    if (r.run.nextAttemptAt) {
+      if (now < new Date(r.run.nextAttemptAt)) return;
+    } else if (now.getTime() - Date.parse(r.run.startedAt) > STALE_CLAIM_MS) {
+      // Claimed, never launched: the control plane stopped between the two.
+      // Launching it now would be the catch-up ADR-0018 rules out - the user
+      // picked a wall-clock time, and this is no longer that time.
+      await settle(
+        r,
+        "skipped",
+        { error: "Deplo stopped before this run could start." },
+        now,
+      );
+      return;
+    }
     await startAttempt(conn, r, now);
     return;
   }
@@ -764,9 +785,13 @@ export async function loadSchedulableJob(jobId: string): Promise<SchedulableJob 
 /**
  * Run a job now, outside its schedule.
  *
- * Deliberately ignores `overlap`: somebody just pressed a button, and answering
- * "no, something else is running" to an explicit request is the wrong side of
- * that trade. The scheduled path still honours it.
+ * Honours `overlap` exactly as a scheduled fire does. "Skip this run" is a
+ * statement about the COMMAND - that two copies of it must not run at once -
+ * not about the scheduler, so a button press cannot be the one caller allowed
+ * to start the second copy. It is recorded as a `skipped` run rather than
+ * refused outright, which is what puts the reason on the page: "the previous
+ * run was still in progress". Stopping that run, or choosing "Run it anyway",
+ * is what makes this start.
  */
 export async function runJobNow(
   schedulable: SchedulableJob,
@@ -780,9 +805,27 @@ export async function runJobNow(
   });
   if (!r) throw new Error("A run for this job is already starting");
 
-  const conn = await connectFn(schedulable.target.serverId);
+  if (
+    schedulable.job.overlap === "skip" &&
+    (await hasOtherRunningRun(schedulable.job.id, r.run.id))
+  ) {
+    await settle(r, "skipped", { error: "The previous run was still in progress." }, at);
+    return r;
+  }
+
+  let conn: AgentConnection;
   try {
-    await startAttempt(conn, r);
+    conn = await connectFn(schedulable.target.serverId);
+  } catch (e) {
+    // Settle before rethrowing. A `running` row nobody is running is the worst
+    // of both worlds: it starves every later fire under overlap=skip, and the
+    // next reap would LAUNCH the command - minutes after a button press that
+    // answered with an error. No retry ladder either: the person is right there.
+    await settle(r, "failed", { error: agentMessage(e) }, at);
+    throw new Error(agentMessage(e));
+  }
+  try {
+    await startAttempt(conn, r, at);
   } finally {
     conn.close();
   }

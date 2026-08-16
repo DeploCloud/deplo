@@ -14,17 +14,26 @@ import { fireDueJobs, reapInFlightRuns } from "./runner";
 /**
  * The cron scheduler - the fourth lease-based tick loop, alongside backups,
  * docker cleanup and the preview reaper. Started once per boot from
- * `instrumentation-node.ts`. Every minute it:
+ * `instrumentation-node.ts`. Every tick it:
  *
  *  1. claims the cross-process {@link CRON_SCHEDULER_LEASE}, so a
  *     horizontally-scaled deploy runs each job once rather than N times,
  *  2. REAPS: polls every in-flight run and settles what ended,
- *  3. FIRES: starts every job this minute calls for.
+ *  3. FIRES: starts every job this minute calls for - at most once per minute,
+ *     whichever tick lands in it first.
  *
  * The order of 2 and 3 is load-bearing. The overlap rule reads the `running`
  * rows, so a fire phase that went first would treat a run the agent finished ten
  * seconds ago as still in flight and skip a legitimate execution - once a minute,
  * for every job whose runtime is close to its interval.
+ *
+ * The two phases run at DIFFERENT cadences, and that is the whole point of
+ * {@link TICK_MS}. Firing is minute-grained because a cron expression has no
+ * finer resolution. Reaping is not: a run stays `running` in the store until
+ * somebody polls the agent, so a command that ended in 200ms read as "Running"
+ * for up to a minute - long enough for the next fire to skip under overlap=skip,
+ * for a hand-started run to look queued behind it, and for a page showing it to
+ * look frozen.
  *
  * Two things the backup scheduler needs and this one does not:
  *
@@ -42,7 +51,28 @@ import { fireDueJobs, reapInFlightRuns } from "./runner";
  * graphs, so a module-level flag could start two intervals.
  */
 
-const TICK_MS = 60_000;
+/** How often the reaper asks the agents what has ended. One agent connection
+ *  per server per tick WHILE something is in flight, and none at all otherwise -
+ *  an idle instance still costs one `cron_runs` query every five seconds. */
+const TICK_MS = 5_000;
+
+/** How often the fire phase runs, and the resolution a cron expression has. */
+const FIRE_EVERY_MS = 60_000;
+
+/** The wall-clock minute an instant falls in. */
+const minuteOf = (d: Date): number => Math.floor(d.getTime() / FIRE_EVERY_MS);
+
+/**
+ * Does this tick own its minute's fire? Pure, and exported for the test that
+ * pins the cadence: everything else here needs a lease and an agent.
+ *
+ * At most one fire per wall-clock minute, on whichever tick lands in it first.
+ * The unique index would make an extra fire harmless anyway - this keeps the
+ * other 11 ticks from asking the question at all.
+ */
+export function shouldFire(now: Date, lastFireAt: Date | null): boolean {
+  return lastFireAt === null || minuteOf(now) !== minuteOf(lastFireAt);
+}
 
 /** A label identifying THIS process as the lease owner across restarts. */
 function makeOwner(): string {
@@ -55,9 +85,9 @@ interface SchedulerState {
   owner: string;
   /** True while a tick is in flight, so a slow tick never overlaps the next. */
   ticking: boolean;
-  /** The `now` of the last tick that reached the lease check (held or not), so a
-   *  tick after a long drain can replay the minutes the drain stepped over. */
-  lastTickAt: Date | null;
+  /** The `now` of the last tick that owned a minute's fire (lease held or not),
+   *  so a tick after a long drain can replay the minutes it stepped over. */
+  lastFireAt: Date | null;
 }
 
 const STATE_KEY = Symbol.for("deplo.cron.scheduler");
@@ -67,26 +97,26 @@ const state: SchedulerState = (g[STATE_KEY] ??= {
   timer: null,
   owner: makeOwner(),
   ticking: false,
-  lastTickAt: null,
+  lastFireAt: null,
 });
 
 /**
  * The minutes this tick is answering for: its own, plus every whole minute since
- * the last tick that reached the lease check.
+ * the last tick that fired.
  *
- * Reaping a fleet can outrun 60 seconds, and `state.ticking` skips the interval
+ * Reaping a fleet can outrun a minute, and `state.ticking` skips the interval
  * ticks underneath, which would step straight past a schedule whose exact minute
  * fell inside the drain. Bounded by the staleness window, past which another
  * instance may legitimately have been driving.
  */
 function replayWindow(now: Date): Date[] {
   const minutes: Date[] = [];
-  if (state.lastTickAt) {
+  if (state.lastFireAt) {
     const floor = Math.max(
-      state.lastTickAt.getTime() + TICK_MS,
+      state.lastFireAt.getTime() + FIRE_EVERY_MS,
       now.getTime() - LEASE_STALE_MS,
     );
-    for (let t = floor; t < now.getTime(); t += TICK_MS) minutes.push(new Date(t));
+    for (let t = floor; t < now.getTime(); t += FIRE_EVERY_MS) minutes.push(new Date(t));
   }
   minutes.push(now);
   return minutes;
@@ -100,6 +130,7 @@ function replayWindow(now: Date): Date[] {
 export async function runCronSchedulerTick(now: Date = new Date()): Promise<void> {
   if (state.ticking) return;
   state.ticking = true;
+  const fire = shouldFire(now, state.lastFireAt);
   try {
     if (!(await acquireLease(CRON_SCHEDULER_LEASE, state.owner, now))) return;
     // Renewing per server / per job is the heartbeat: a cron job can outlive
@@ -108,7 +139,7 @@ export async function runCronSchedulerTick(now: Date = new Date()): Promise<void
     // stolen, so stop rather than race the new owner.
     const heartbeat = () => acquireLease(CRON_SCHEDULER_LEASE, state.owner);
     await reapInFlightRuns(now, heartbeat);
-    await fireDueJobs(replayWindow(now), heartbeat);
+    if (fire) await fireDueJobs(replayWindow(now), heartbeat);
   } catch (e) {
     console.error(
       `[crons] scheduler tick failed: ${e instanceof Error ? e.message : String(e)}`,
@@ -116,7 +147,7 @@ export async function runCronSchedulerTick(now: Date = new Date()): Promise<void
   } finally {
     // Advance even when the lease was denied: those minutes were the OTHER
     // instance's to fire, so they must never enter OUR replay window.
-    state.lastTickAt = now;
+    if (fire) state.lastFireAt = now;
     state.ticking = false;
   }
 }
@@ -152,6 +183,6 @@ export async function __stopCronScheduler(): Promise<void> {
   state.timer = null;
   state.started = false;
   state.ticking = false;
-  state.lastTickAt = null;
+  state.lastFireAt = null;
   await releaseLease(CRON_SCHEDULER_LEASE, state.owner);
 }

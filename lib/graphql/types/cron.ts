@@ -69,7 +69,15 @@ export const CronJobRef = builder.objectRef<CronJobDTO>("CronJob").implement({
     }),
     nextRunAt: t.exposeString("nextRunAt", {
       nullable: true,
-      description: "Computed, never stored. Null while the job is disabled.",
+      description:
+        "Computed, never stored, from the clock of whoever asked. Null while " +
+        "the job is disabled. It is a snapshot, not a countdown: re-read it " +
+        "rather than letting an old answer age into the past.",
+    }),
+    running: t.exposeBoolean("running", {
+      description:
+        "A run of this job is in flight. Not the same as lastStatus, which is " +
+        "written when a run SETTLES and so never says `running`.",
     }),
     envKeys: t.exposeStringList("envKeys", {
       description:

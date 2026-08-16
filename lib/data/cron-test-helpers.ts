@@ -67,6 +67,43 @@ export async function seedCronJob(db: TestDb, opts: SeedCronJobOpts): Promise<st
   return opts.id;
 }
 
+/**
+ * A run row. For the reads and gates that need one IN FLIGHT without an agent -
+ * the overlap rule and the "is it running right now" flag both read the store,
+ * not the host.
+ */
+export async function seedCronRun(
+  db: TestDb,
+  opts: {
+    id: string;
+    jobId: string;
+    status?: string;
+    trigger?: string;
+    startedAt?: string;
+    agentJobId?: string | null;
+    teamId?: string;
+  },
+): Promise<string> {
+  const startedAt = opts.startedAt ?? T0;
+  await db.insert(cronRunsTable).values({
+    id: opts.id,
+    teamId: opts.teamId ?? TEAM_A,
+    jobId: opts.jobId,
+    status: opts.status ?? "running",
+    trigger: opts.trigger ?? "schedule",
+    actor: "Scheduler",
+    scheduledFor: startedAt,
+    dedupeKey: opts.id,
+    startedAt,
+    attempt: 0,
+    agentJobId: opts.agentJobId ?? "agentjob_seeded",
+    command: "echo hi",
+    timeoutSeconds: 3600,
+    maxAttempts: 1,
+  });
+  return opts.id;
+}
+
 /** Flip a target's master switch (both start off, like production). */
 export async function enableCrons(
   db: TestDb,

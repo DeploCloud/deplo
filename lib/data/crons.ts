@@ -83,6 +83,10 @@ export interface CronJobDTO {
   lastRunAt: string | null;
   lastStatus: CronRunStatus | null;
   lastSuccessAt: string | null;
+  /** True while a run of this job is in flight. `lastStatus` cannot say so - it
+   *  is written when a run SETTLES - and "is it running right now" is the first
+   *  question this page has to answer. */
+  running: boolean;
   /** Computed, never stored: the next instant this fires, in the job's zone. */
   nextRunAt: string | null;
   /** The keys of the job's extra environment. NEVER the values (ADR: secrets are
@@ -128,7 +132,7 @@ export interface CronJobsView {
 
 type JobRow = typeof cronJobsTable.$inferSelect;
 
-function toJobDTO(r: JobRow, envKeys: string[]): CronJobDTO {
+function toJobDTO(r: JobRow, envKeys: string[], running: boolean): CronJobDTO {
   return {
     id: r.id,
     targetKind: r.targetKind as CronTargetKind,
@@ -151,6 +155,7 @@ function toJobDTO(r: JobRow, envKeys: string[]): CronJobDTO {
     lastRunAt: r.lastRunAt,
     lastStatus: (r.lastStatus as CronRunStatus | null) ?? null,
     lastSuccessAt: r.lastSuccessAt,
+    running,
     nextRunAt: r.enabled
       ? (nextCronRunInZone(r.schedule, new Date(), r.timezone)?.toISOString() ?? null)
       : null,
@@ -178,7 +183,10 @@ function toRunDTO(r: typeof cronRunsTable.$inferSelect): CronRunDTO {
     error: r.error,
     container: r.container,
     command: r.command,
-    retrying: r.status === "running" && r.agentJobId === null,
+    // `attempt > 0` is what separates a retry waiting out its backoff from a run
+    // in the split second between its INSERT and its StartJob - both have no
+    // agent handle, and only one of them has anything to retry.
+    retrying: r.status === "running" && r.agentJobId === null && r.attempt > 0,
   };
 }
 
@@ -426,8 +434,21 @@ async function jobsFor(where: SQL): Promise<CronJobDTO[]> {
     .from(cronJobsTable)
     .where(where)
     .orderBy(cronJobsTable.name);
-  const keys = await envKeysFor(rows.map((r) => r.id));
-  return rows.map((r) => toJobDTO(r, keys.get(r.id) ?? []));
+  const ids = rows.map((r) => r.id);
+  const [keys, running] = await Promise.all([envKeysFor(ids), inFlightJobIds(ids)]);
+  return rows.map((r) => toJobDTO(r, keys.get(r.id) ?? [], running.has(r.id)));
+}
+
+/** Which of these jobs have a run in flight right now. */
+async function inFlightJobIds(jobIds: string[]): Promise<Set<string>> {
+  if (jobIds.length === 0) return new Set();
+  const rows = await getDb()
+    .selectDistinct({ jobId: cronRunsTable.jobId })
+    .from(cronRunsTable)
+    .where(
+      and(inArray(cronRunsTable.jobId, jobIds), eq(cronRunsTable.status, "running")),
+    );
+  return new Set(rows.map((r) => r.jobId));
 }
 
 /** An app's cron jobs, plus the switch and the services a job can target. */
@@ -623,8 +644,8 @@ function errorChainText(e: unknown): string {
 async function oneJob(id: string): Promise<CronJobDTO | null> {
   const rows = await getDb().select().from(cronJobsTable).where(eq(cronJobsTable.id, id)).limit(1);
   if (rows.length === 0) return null;
-  const keys = await envKeysFor([id]);
-  return toJobDTO(rows[0], keys.get(id) ?? []);
+  const [keys, running] = await Promise.all([envKeysFor([id]), inFlightJobIds([id])]);
+  return toJobDTO(rows[0], keys.get(id) ?? [], running.has(id));
 }
 
 export async function updateCronJob(
@@ -674,10 +695,10 @@ export async function deleteCronJob(jobId: string): Promise<void> {
 /**
  * Run a job now, outside its schedule.
  *
- * Honours the target's master switch and nothing else: overlap is deliberately
- * ignored (somebody just pressed a button), but the switch means "no cron job
- * runs here", and the UI hides this page when it is off - so an API caller must
- * not be the one exception.
+ * Honours the target's master switch: it means "no cron job runs here", and the
+ * UI hides this page when it is off - so an API caller must not be the one
+ * exception. The job's own `overlap` is honoured too, one layer down in
+ * {@link runJobNow}, which answers with a `skipped` run rather than an error.
  */
 export async function runCronJobNow(jobId: string): Promise<CronRunDTO> {
   const { job, teamId, targetEnabled } = await gateJob(jobId);

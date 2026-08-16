@@ -13,7 +13,8 @@ import { timeAgo } from "@/lib/utils";
 import type { CronRunDTO } from "@/lib/data/crons";
 
 /**
- * One job's run history, fetched when its row is expanded.
+ * One job's run history, fetched when its row is expanded and re-read every few
+ * seconds for as long as it stays open.
  *
  * Client-fetched rather than server-rendered with the list: a job's history is
  * the detail behind a row nobody has opened yet, and loading every job's runs to
@@ -25,6 +26,9 @@ import type { CronRunDTO } from "@/lib/data/crons";
  * - so neither is painted red, and each says which in a sentence rather than
  * leaving the reader to infer it from a colour.
  */
+
+/** How often an open history re-reads itself. */
+const POLL_MS = 5_000;
 
 const RUNS = /* GraphQL */ `
   query ($jobId: ID!) {
@@ -170,22 +174,37 @@ export function CronRunHistory({
 }) {
   const [runs, setRuns] = React.useState<CronRunDTO[] | null>(null);
   const [error, setError] = React.useState<string | null>(null);
+  const alive = React.useRef(true);
 
   const load = React.useCallback(() => {
-    let cancelled = false;
     gql<{ cronRuns: CronRunDTO[] }>(RUNS, { jobId })
       .then((d) => {
-        if (!cancelled) setRuns(d.cronRuns);
+        if (!alive.current) return;
+        setRuns(d.cronRuns);
+        setError(null);
       })
       .catch((e: unknown) => {
-        if (!cancelled) setError(e instanceof Error ? e.message : "Could not load runs");
+        if (alive.current) {
+          setError(e instanceof Error ? e.message : "Could not load runs");
+        }
       });
-    return () => {
-      cancelled = true;
-    };
   }, [jobId]);
 
-  React.useEffect(load, [load]);
+  // This history is mounted only while its row is expanded - that is, while
+  // somebody is watching a run they just started, or waiting for the next one.
+  // Polling it is what turns "Running" into an outcome without a page reload;
+  // a hidden tab has nobody to show a fresher row to.
+  React.useEffect(() => {
+    alive.current = true;
+    load();
+    const timer = setInterval(() => {
+      if (!document.hidden) load();
+    }, POLL_MS);
+    return () => {
+      alive.current = false;
+      clearInterval(timer);
+    };
+  }, [load]);
 
   if (error) return <p className="text-xs text-destructive">{error}</p>;
   if (!runs) {

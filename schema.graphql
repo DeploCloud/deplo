@@ -949,11 +949,18 @@ type CronJob {
   maxAttempts: Int
   name: String
 
-  """Computed, never stored. Null while the job is disabled."""
+  """
+  Computed, never stored, from the clock of whoever asked. Null while the job is disabled. It is a snapshot, not a countdown: re-read it rather than letting an old answer age into the past.
+  """
   nextRunAt: String
 
   """skip | allow - what happens when the previous run is still going."""
   overlap: String
+
+  """
+  A run of this job is in flight. Not the same as lastStatus, which is written when a run SETTLES and so never says `running`.
+  """
+  running: Boolean
 
   """5-field cron."""
   schedule: String

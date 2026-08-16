@@ -6,12 +6,21 @@ import { eq } from "drizzle-orm";
 
 import { makeTestDb, type TestDb } from "../db/test-harness";
 import { __setTestDb, __resetTestDb } from "../db/client";
-import { cronJobEnv, cronJobs as cronJobsTable } from "../db/schema/control-plane";
+import {
+  cronJobEnv,
+  cronJobs as cronJobsTable,
+  cronRuns as cronRunsTable,
+} from "../db/schema/control-plane";
 import { runWithIdentity } from "../auth/request-context";
 import { seedIdentity, TEAM_A, TEAM_B, USER_1 } from "./identity-test-helpers";
 import { seedApp, seedServer } from "./app-graph-test-helpers";
 import { seedDatabase, TRUNCATE_BACKUPS } from "./backup-test-helpers";
-import { enableCrons, seedCronJob, TRUNCATE_CRONS } from "./cron-test-helpers";
+import {
+  enableCrons,
+  seedCronJob,
+  seedCronRun,
+  TRUNCATE_CRONS,
+} from "./cron-test-helpers";
 import * as crons from "./crons";
 
 /**
@@ -289,6 +298,49 @@ test("a deleted job takes its history with it", async () => {
   await seedCronJob(db, { id: "cron_x", appId: "prj_1", name: "seeded" });
   await asOwner(() => crons.deleteCronJob("cron_x"));
   assert.equal((await db.select().from(cronJobsTable)).length, 0);
+});
+
+test("a job says whether a run is in flight right now", async () => {
+  const job = await asOwner(() => crons.createCronJob("app", "prj_1", validJob));
+  assert.equal(
+    (await asOwner(() => crons.listAppCronJobs("prj_1"))).jobs[0].running,
+    false,
+  );
+
+  await seedCronRun(db, { id: "cronrun_1", jobId: job.id });
+  const view = await asOwner(() => crons.listAppCronJobs("prj_1"));
+  // `lastStatus` cannot answer this - it is written when a run SETTLES, so it
+  // never says `running` and a job mid-flight still reads as its last outcome.
+  assert.equal(view.jobs[0].running, true);
+  assert.equal(view.jobs[0].lastStatus, null);
+
+  await db
+    .update(cronRunsTable)
+    .set({ status: "succeeded" })
+    .where(eq(cronRunsTable.id, "cronrun_1"));
+  assert.equal(
+    (await asOwner(() => crons.listAppCronJobs("prj_1"))).jobs[0].running,
+    false,
+  );
+});
+
+test("Run now answers with a skipped run while one is in flight", async () => {
+  // The setting says "if it is still running, skip this run" - a button press is
+  // not the one caller allowed to start a second copy. Nothing reaches a host:
+  // the overlap rule is decided in the store, before any agent is dialled.
+  const job = await asOwner(() =>
+    crons.createCronJob("app", "prj_1", { ...validJob, overlap: "skip" }),
+  );
+  await seedCronRun(db, { id: "cronrun_1", jobId: job.id });
+
+  const run = await asOwner(() => crons.runCronJobNow(job.id));
+  assert.equal(run.status, "skipped");
+  assert.equal(run.trigger, "manual");
+  assert.match(run.error ?? "", /still in progress/);
+
+  const runs = await asOwner(() => crons.listCronRuns(job.id));
+  assert.equal(runs.length, 2, "and it is in the history, saying why");
+  assert.equal(runs.filter((r) => r.status === "running").length, 1);
 });
 
 test("Run now refuses while the master switch is off", async () => {

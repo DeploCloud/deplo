@@ -22,6 +22,7 @@ import {
   fireDueJobs,
   reapInFlightRuns,
   RETRY_BACKOFF_MS,
+  STALE_CLAIM_MS,
 } from "./runner";
 import { AgentUnreachableError } from "../infra/agent-client";
 
@@ -364,7 +365,22 @@ test("the reaper heartbeat can stop a drain mid-flight", async () => {
   assert.equal((await runsOf(db, "cron_1")).length, 0);
 });
 
-test("a manual run ignores overlap and is tagged as manual", async () => {
+test("a manual run is tagged as manual and starts on the agent", async () => {
+  const { loadSchedulableJob, runJobNow } = await import("./runner");
+  await seedCronJob(db, { id: "cron_1" });
+
+  const schedulable = await loadSchedulableJob("cron_1");
+  assert.ok(schedulable);
+  await runJobNow(schedulable, "Ada");
+
+  const run = await oneRun("cron_1");
+  assert.equal(run.status, "running");
+  assert.equal(run.trigger, "manual");
+  assert.equal(run.actor, "Ada");
+  assert.equal(agent.started.length, 1);
+});
+
+test("a manual run honours overlap=skip instead of starting a second copy", async () => {
   const { loadSchedulableJob, runJobNow } = await import("./runner");
   await seedCronJob(db, { id: "cron_1", overlap: "skip" });
   await fireDueJobs([MINUTE]);
@@ -376,8 +392,74 @@ test("a manual run ignores overlap and is tagged as manual", async () => {
   const runs = await runsOf(db, "cron_1");
   assert.equal(runs.length, 2);
   const manual = runs.find((r) => r.trigger === "manual")!;
-  assert.equal(manual.status, "running", "a button press is not skipped");
-  assert.equal(manual.actor, "Ada");
+  // "Skip this run" is a statement about the COMMAND, so a button press cannot
+  // be the one caller allowed to run two copies at once. The row says why.
+  assert.equal(manual.status, "skipped");
+  assert.match(manual.error ?? "", /still in progress/);
+  assert.equal(agent.started.length, 1, "and nothing new went to the agent");
+});
+
+test("a manual run under overlap=allow starts alongside the running one", async () => {
+  const { loadSchedulableJob, runJobNow } = await import("./runner");
+  await seedCronJob(db, { id: "cron_1", overlap: "allow" });
+  await fireDueJobs([MINUTE]);
+
+  const schedulable = await loadSchedulableJob("cron_1");
+  assert.ok(schedulable);
+  await runJobNow(schedulable, "Ada");
+
+  const runs = await runsOf(db, "cron_1");
+  assert.equal(runs.filter((r) => r.status === "running").length, 2);
+  assert.equal(agent.started.length, 2);
+});
+
+test("a manual run whose server cannot be reached settles, and never fires later", async () => {
+  const { loadSchedulableJob, runJobNow } = await import("./runner");
+  await seedCronJob(db, { id: "cron_1" });
+  const schedulable = await loadSchedulableJob("cron_1");
+  assert.ok(schedulable);
+  agent.connectError = new AgentUnreachableError("host down");
+
+  await assert.rejects(() => runJobNow(schedulable, "Ada"), /host down/);
+
+  // A `running` row nobody is running starves every later fire under
+  // overlap=skip, and the reaper would launch the command minutes after the
+  // button press that answered with an error.
+  const run = await oneRun("cron_1");
+  assert.equal(run.status, "failed");
+  assert.match(run.error ?? "", /host down/);
+
+  agent.connectError = null;
+  await reapInFlightRuns(new Date(MINUTE.getTime() + 60_000));
+  assert.equal(agent.started.length, 0, "and no command appears out of nowhere");
+});
+
+test("a claim the control plane never launched is skipped, not run late", async () => {
+  await seedCronJob(db, { id: "cron_1" });
+  await fireDueJobs([MINUTE]);
+  // Deplo stopped between the INSERT and StartJob: the row is `running` with no
+  // handle and nothing to poll. ADR-0018 rules out catch-up - the user picked a
+  // wall-clock time, and two minutes later is no longer that time.
+  await db
+    .update(cronRunsTable)
+    .set({ agentJobId: null })
+    .where(eq(cronRunsTable.jobId, "cron_1"));
+  agent.started.length = 0;
+
+  // Still fresh: it is launched, which is what makes a restart mid-fire harmless.
+  await reapInFlightRuns(new Date(MINUTE.getTime() + 30_000));
+  assert.equal(agent.started.length, 1);
+
+  await db
+    .update(cronRunsTable)
+    .set({ agentJobId: null })
+    .where(eq(cronRunsTable.jobId, "cron_1"));
+  await reapInFlightRuns(new Date(MINUTE.getTime() + STALE_CLAIM_MS + 30_000));
+
+  const run = await oneRun("cron_1");
+  assert.equal(run.status, "skipped");
+  assert.match(run.error ?? "", /stopped before this run could start/i);
+  assert.equal(agent.started.length, 1, "no late launch");
 });
 
 test("cancelling settles the row even when the agent cannot be reached", async () => {

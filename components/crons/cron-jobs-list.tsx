@@ -26,11 +26,13 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { SimpleTooltip } from "@/components/ui/tooltip";
+import { AutoRefresh } from "@/components/shared/auto-refresh";
 import { EmptyState } from "@/components/shared/empty-state";
 import { ScheduleLabel } from "@/components/shared/schedule-picker";
 import { CronGraphic } from "@/components/crons/cron-graphic";
 import { CronJobDialog } from "@/components/crons/cron-job-dialog";
 import { CronRunHistory } from "@/components/crons/cron-run-history";
+import { nextCronRunInZone } from "@/lib/crons/cron-tz";
 import { gqlAction } from "@/lib/graphql-client";
 import { timeAgo } from "@/lib/utils";
 import type { CronJobDTO } from "@/lib/data/crons";
@@ -43,13 +45,25 @@ import type { CronJobDTO } from "@/lib/data/crons";
  * Deployments list uses, because "what is scheduled" and "what happened" are the
  * same question asked at two zoom levels, and a separate page for the second one
  * would mean navigating away from the thing you are debugging.
+ *
+ * Everything with a clock in it is LIVE, and none of it is free-running: the
+ * countdown is recomputed from the READER's clock every second (a "next run"
+ * rendered on the server minutes ago ages into the past, which is how this page
+ * came to say "next 45 seconds ago"), the row re-reads itself while a run is in
+ * flight, and one re-read follows the soonest fire - the only change a page
+ * rendered from job rows cannot otherwise see, because firing writes a run.
  */
+
+/** How long after a fire the page re-reads to pick up the run it started: one
+ *  scheduler tick to launch it, plus the reap that settles a quick command. */
+const AFTER_FIRE_MS = 8_000;
 
 const RUN_NOW = /* GraphQL */ `
   mutation ($id: ID!) {
     runCronJobNow(id: $id) {
       id
       status
+      error
     }
   }
 `;
@@ -62,6 +76,17 @@ const DELETE = /* GraphQL */ `
 
 /** The badge a job's last outcome gets. Grey for "nothing wrong happened". */
 function LastStatus({ job }: { job: CronJobDTO }) {
+  // What it is doing NOW outranks how it went last time - and `lastStatus` can
+  // never answer this, since it is written when a run settles.
+  if (job.running) {
+    return (
+      <SimpleTooltip content="A run is in flight">
+        <Badge variant="warning" className="text-[10px] font-normal">
+          Running
+        </Badge>
+      </SimpleTooltip>
+    );
+  }
   if (!job.lastStatus) {
     return <span className="text-xs text-muted-foreground">Never run</span>;
   }
@@ -86,12 +111,15 @@ function LastStatus({ job }: { job: CronJobDTO }) {
 
 function CronJobRow({
   job,
+  nextRunAt,
   targetKind,
   targetId,
   services,
   canManage,
 }: {
   job: CronJobDTO;
+  /** The next fire, on the reader's clock. Null when the job is disabled. */
+  nextRunAt: number | null;
   targetKind: "app" | "database";
   targetId: string;
   services: string[];
@@ -105,20 +133,23 @@ function CronJobRow({
 
   function runNow() {
     startTransition(async () => {
-      const res = await gqlAction<{ runCronJobNow: { status: string } }>(RUN_NOW, {
-        id: job.id,
-      });
+      const res = await gqlAction<{
+        runCronJobNow: { status: string; error: string | null };
+      }>(RUN_NOW, { id: job.id });
       if (!res.ok) {
         toast.error(res.error);
         return;
       }
       // The run can already be over by the time this returns - a stopped
-      // container settles as `skipped` before the mutation answers - so report
-      // what actually happened rather than "started".
-      const status = res.data?.runCronJobNow.status;
-      toast.success(
-        status === "running" ? "Started" : status === "skipped" ? "Skipped" : "Finished",
-      );
+      // container, or one the overlap rule skipped, settles before the mutation
+      // answers - so report what actually happened rather than "started", and
+      // for a skip say WHICH of the two it was, in the server's own words.
+      const run = res.data?.runCronJobNow;
+      if (run?.status === "skipped") {
+        toast.warning(run.error ?? "Skipped");
+      } else {
+        toast.success(run?.status === "running" ? "Started" : "Finished");
+      }
       setOpen(true);
       router.refresh();
     });
@@ -160,8 +191,12 @@ function CronJobRow({
               </div>
               <p className="mt-1 flex items-center gap-2 text-xs text-muted-foreground">
                 <ScheduleLabel cron={job.schedule} timezone={job.timezone} />
-                {job.enabled && job.nextRunAt && (
-                  <span>· next {timeAgo(job.nextRunAt)}</span>
+                {/* The reader's clock, ticking - see the module header. The
+                    server's first paint and the browser's can disagree by a
+                    second at hydration, which is all `suppressHydrationWarning`
+                    covers here. */}
+                {nextRunAt !== null && (
+                  <span suppressHydrationWarning>· next {timeAgo(nextRunAt)}</span>
                 )}
                 {job.service && <span className="font-mono">· {job.service}</span>}
               </p>
@@ -273,7 +308,35 @@ export function CronJobsList({
   /** Where the master switch lives, for the "it is off" empty state. */
   settingsHref: string;
 }) {
+  const router = useRouter();
   const [creating, setCreating] = React.useState(false);
+
+  // One ticker for the whole list: every time on this page is rendered from an
+  // absolute instant, so a re-render is all it takes to keep them all honest.
+  const [now, setNow] = React.useState(() => Date.now());
+  React.useEffect(() => {
+    const timer = setInterval(() => setNow(Date.now()), 1000);
+    return () => clearInterval(timer);
+  }, []);
+
+  const nextRuns = jobs.map((j) =>
+    j.enabled
+      ? (nextCronRunInZone(j.schedule, new Date(now), j.timezone)?.getTime() ?? null)
+      : null,
+  );
+
+  // The soonest fire ahead. When it rolls over, one has just happened - the one
+  // change this page cannot see on its own, since firing writes a run row and
+  // touches nothing a list of jobs is rendered from.
+  const soonest = Math.min(...nextRuns.filter((n): n is number => n !== null));
+  const lastSoonest = React.useRef(soonest);
+  React.useEffect(() => {
+    const rolledOver = Number.isFinite(soonest) && lastSoonest.current !== soonest;
+    lastSoonest.current = soonest;
+    if (!rolledOver) return;
+    const timer = setTimeout(() => router.refresh(), AFTER_FIRE_MS);
+    return () => clearTimeout(timer);
+  }, [soonest, router]);
 
   if (!enabled) {
     return (
@@ -324,10 +387,11 @@ export function CronJobsList({
       ) : (
         <Card>
           <CardContent className="space-y-2 pt-6">
-            {jobs.map((job) => (
+            {jobs.map((job, i) => (
               <CronJobRow
                 key={job.id}
                 job={job}
+                nextRunAt={nextRuns[i]}
                 targetKind={targetKind}
                 targetId={targetId}
                 services={services}
@@ -337,6 +401,12 @@ export function CronJobsList({
           </CardContent>
         </Card>
       )}
+
+      {/* Follow a run until it settles, then stop - an idle list costs nothing.
+          Slower than the 5s default on purpose: a re-read here re-renders the
+          whole app section, and its sidebar asks the owning agent whether this
+          app has a files dir. The open row's own history polls faster. */}
+      <AutoRefresh active={jobs.some((j) => j.running)} intervalMs={10_000} />
 
       {creating && (
         <CronJobDialog
