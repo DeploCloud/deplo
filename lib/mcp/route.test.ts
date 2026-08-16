@@ -387,6 +387,60 @@ test("the team kill switch refuses with the sentence that names the setting", as
   assert.match(String(res.body.error), /Settings → MCP Server/);
 });
 
+/* ------------------------------------------------------------------ */
+/* 1b. The MCP usage stamp                                             */
+/* ------------------------------------------------------------------ */
+
+/**
+ * `mcp_last_used_at` is what makes a `deplo_` token visible on Settings → MCP
+ * Server at all, and what the connect wizard's last step waits on. It is
+ * deliberately NOT `last_used_at`, which rises on GraphQL and the deploy hook
+ * too and so cannot tell an AI agent from a nightly CI job.
+ */
+
+/** The write is fire-and-forget, so poll rather than assume it landed. */
+async function mcpStampOf(tokenId: string, tries = 40) {
+  for (let i = 0; i < tries; i++) {
+    const { rows } = await pg.query<{ mcp_last_used_at: string | null }>(
+      `select mcp_last_used_at from api_tokens where id = $1`,
+      [tokenId],
+    );
+    if (rows[0]?.mcp_last_used_at) return rows[0].mcp_last_used_at;
+    await new Promise((r) => setTimeout(r, 25));
+  }
+  return null;
+}
+
+test("a served MCP call stamps the token as having spoken MCP", async () => {
+  const { raw, token } = await mintToken(["view"]);
+  const before = await pg.query<{ mcp_last_used_at: string | null }>(
+    `select mcp_last_used_at from api_tokens where id = $1`,
+    [token.id],
+  );
+  assert.equal(before.rows[0].mcp_last_used_at, null, "starts unstamped");
+
+  assert.equal((await mcp(raw)).status, 200);
+  assert.ok(
+    await mcpStampOf(token.id),
+    "a served MCP call left no mcp_last_used_at",
+  );
+});
+
+test("a call the kill switch refuses does not stamp it", async () => {
+  // A token the team just turned away is not a connected client, and listing it
+  // as one would put an agent on that screen the moment MCP was switched off.
+  const { raw, token } = await mintToken(["view"]);
+  await pg.query(`update teams set mcp_enabled = false where id = $1`, [TEAM_A]);
+  assert.equal((await mcp(raw)).status, 403);
+  // Long enough that a stamp taken before the gate would have landed by now.
+  await new Promise((r) => setTimeout(r, 150));
+  const { rows } = await pg.query<{ mcp_last_used_at: string | null }>(
+    `select mcp_last_used_at from api_tokens where id = $1`,
+    [token.id],
+  );
+  assert.equal(rows[0].mcp_last_used_at, null);
+});
+
 test("an unmet two-factor policy answers 401 with a sentence, not a 500", async () => {
   const { raw } = await mintToken(["view"]);
   await pg.query(`update teams set require_two_factor = true where id = $1`, [

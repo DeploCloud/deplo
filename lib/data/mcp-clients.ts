@@ -1,6 +1,6 @@
 import "server-only";
 
-import { and, desc, eq, inArray, isNotNull } from "drizzle-orm";
+import { and, desc, eq, inArray, isNotNull, or } from "drizzle-orm";
 import { getDb } from "../db/client";
 import {
   apiTokenCapabilities,
@@ -76,6 +76,17 @@ export interface McpConnectionDTO {
    * lets go).
    */
   id: string;
+  /**
+   * How it got in. `web` is an OAuth connector (claude.ai, ChatGPT) that came
+   * through the consent screen and carries a registered client's own name;
+   * `token` is a `deplo_` bearer somebody pasted into a terminal or IDE agent,
+   * and the only name it has is the one they gave the token.
+   *
+   * Two shapes, ONE list, because the question the screen answers is "what can
+   * act in this team over MCP" and a split would answer it twice. Revoke is the
+   * same call for both, which is the point of ADR-0022 §1.
+   */
+  kind: "web" | "token";
   clientName: string;
   clientUri: string | null;
   clientIcon: string | null;
@@ -85,7 +96,12 @@ export interface McpConnectionDTO {
   teamId: string;
   teamName: string;
   capabilities: Capability[];
+  /** Any authenticated use — GraphQL and the deploy hook included. */
   lastUsedAt: string | null;
+  /** The last MCP call specifically. What makes a `token` row appear at all. */
+  mcpLastUsedAt: string | null;
+  /** Past its expiry: still listed, so the screen can say WHY it stopped. */
+  expired: boolean;
   createdAt: string;
 }
 
@@ -445,6 +461,14 @@ export async function mintMcpConnection(
  * other credentials. Every connection that can ACT here is listed, whoever
  * approved it - the same row is also visible in Settings → API tokens, marked,
  * so one screen still answers "who can act in this team".
+ *
+ * TWO shapes, one list. An OAuth connector has an `oauth_client_id` from the
+ * moment it is approved, so it is listed before it has ever called anything -
+ * approving it IS the connection. A `deplo_` bearer has no such moment: it is
+ * an ordinary token until somebody pastes it into Claude Code, and the only
+ * evidence that happened is `mcp_last_used_at`. Listing every token that COULD
+ * speak MCP instead would fill this screen with CI credentials and call them
+ * connected agents, which is the opposite of what a company comes here to ask.
  */
 export async function listMcpConnections(): Promise<McpConnectionDTO[]> {
   const teamId = await requireActiveTeamId();
@@ -464,7 +488,11 @@ export async function listMcpConnections(): Promise<McpConnectionDTO[]> {
       teamId: apiTokens.teamId,
       teamName: teamsTable.name,
       username: usersTable.username,
+      tokenName: apiTokens.name,
+      oauthClientId: apiTokens.oauthClientId,
       lastUsedAt: apiTokens.lastUsedAt,
+      mcpLastUsedAt: apiTokens.mcpLastUsedAt,
+      expiresAt: apiTokens.expiresAt,
       createdAt: apiTokens.createdAt,
       clientName: oauthClient.name,
       clientUri: oauthClient.uri,
@@ -472,13 +500,19 @@ export async function listMcpConnections(): Promise<McpConnectionDTO[]> {
       redirectUris: oauthClient.redirectUris,
     })
     .from(apiTokens)
-    .innerJoin(oauthClient, eq(oauthClient.clientId, apiTokens.oauthClientId))
+    // LEFT, not inner: a bearer token driving Claude Code has no registered
+    // client row and used to be dropped by the join before the WHERE could
+    // even consider it.
+    .leftJoin(oauthClient, eq(oauthClient.clientId, apiTokens.oauthClientId))
     .leftJoin(usersTable, eq(usersTable.id, apiTokens.userId))
     .leftJoin(teamsTable, eq(teamsTable.id, apiTokens.teamId))
     .where(
       and(
         inArray(apiTokens.id, [...reaching]),
-        isNotNull(apiTokens.oauthClientId),
+        or(
+          isNotNull(apiTokens.oauthClientId),
+          isNotNull(apiTokens.mcpLastUsedAt),
+        ),
       ),
     )
     .orderBy(desc(apiTokens.createdAt));
@@ -502,21 +536,62 @@ export async function listMcpConnections(): Promise<McpConnectionDTO[]> {
   );
   for (const c of caps) byToken.get(c.tokenId)?.add(c.capability);
 
-  return rows.map((r) => ({
-    id: r.id,
-    // Attacker-chosen free text of any length; bounded before it reaches a screen.
-    clientName: (r.clientName ?? "Unknown app").slice(0, 80),
-    clientUri: r.clientUri ?? null,
-    clientIcon: r.clientIcon ?? null,
-    redirectOrigin: originOf(r.redirectUris?.[0]),
-    username: r.username ?? null,
-    teamId: r.teamId,
-    teamName: r.teamName ?? "",
-    // Read live from the junction, never a copy taken at approval time: if the
-    // token is edited, this list must show what it can do NOW or the revocation
-    // screen is lying about what it is revoking.
-    capabilities: ALL_CAPABILITIES.filter((c) => byToken.get(r.id)?.has(c)),
-    lastUsedAt: r.lastUsedAt,
-    createdAt: r.createdAt,
-  }));
+  const now = Date.now();
+  return rows.map((r) => {
+    const web = r.oauthClientId !== null;
+    return {
+      id: r.id,
+      kind: web ? ("web" as const) : ("token" as const),
+      // A web client's name is attacker-chosen free text of any length, so it is
+      // bounded before it reaches a screen. A bearer token's name is the one its
+      // minter typed, already capped at 40 by `createToken`.
+      clientName: web
+        ? (r.clientName ?? "Unknown app").slice(0, 80)
+        : r.tokenName,
+      clientUri: r.clientUri ?? null,
+      clientIcon: r.clientIcon ?? null,
+      redirectOrigin: originOf(r.redirectUris?.[0]),
+      username: r.username ?? null,
+      teamId: r.teamId,
+      teamName: r.teamName ?? "",
+      // Read live from the junction, never a copy taken at approval time: if the
+      // token is edited, this list must show what it can do NOW or the revocation
+      // screen is lying about what it is revoking.
+      capabilities: ALL_CAPABILITIES.filter((c) => byToken.get(r.id)?.has(c)),
+      lastUsedAt: r.lastUsedAt,
+      mcpLastUsedAt: r.mcpLastUsedAt,
+      // Same comparison `identityForTokenRow` fails closed on, so the badge and
+      // the refusal can never disagree.
+      expired: !!r.expiresAt && Date.parse(r.expiresAt) <= now,
+      createdAt: r.createdAt,
+    };
+  });
+}
+
+/**
+ * Has this token spoken MCP yet?
+ *
+ * The connect wizard's last step waits on this rather than declaring success
+ * when the snippet is copied: "you pasted a config" and "your agent is talking
+ * to deplo" are different claims, and only the second one is worth showing
+ * somebody. It is deliberately a boolean and not a timestamp — the caller is
+ * asking one question, and an id from another team must answer it with `false`
+ * rather than with an error that confirms the row exists.
+ *
+ * Gated exactly like `listMcpConnections`, because it is a one-row read of the
+ * same list.
+ */
+export async function mcpTokenConnected(tokenId: string): Promise<boolean> {
+  const teamId = await requireActiveTeamId();
+  await requireTeamWide("connected MCP clients");
+
+  const reaching = await tokenIdsReaching(teamId);
+  if (!reaching.has(tokenId)) return false;
+
+  const rows = await getDb()
+    .select({ mcpLastUsedAt: apiTokens.mcpLastUsedAt })
+    .from(apiTokens)
+    .where(eq(apiTokens.id, tokenId))
+    .limit(1);
+  return !!rows[0]?.mcpLastUsedAt;
 }

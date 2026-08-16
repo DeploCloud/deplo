@@ -17,7 +17,7 @@ import { runGraphql } from "./execute";
  * is stateless: no session, no handshake, nothing to keep between calls), and it
  * is also what lets `tools/list` be filtered to the tools this particular token
  * can actually call. A token minted from the "MCP & AI agents" preset sees 34 of
- * the 76, rather than 42 it would only fail on — which is both a kindness to the
+ * the 78, rather than 44 it would only fail on — which is both a kindness to the
  * model's context window and the honest answer to "what can I do here?".
  *
  * The filter is COSMETIC, exactly like `hasCapability` in the dashboard. The

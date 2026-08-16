@@ -2428,6 +2428,13 @@ export const apiTokens = pgTable(
     // row stays visible so the tokens page can say WHY it stopped.
     expiresAt: isoTimestamptz("expires_at"),
     lastUsedAt: isoTimestamptz("last_used_at"),
+    // When this token last spoke MCP, as opposed to `last_used_at`, which rises
+    // on any authenticated request (GraphQL, a deploy hook, a tool call alike).
+    // The distinction is the whole point: "this credential is alive" is not
+    // "this credential is driving an AI agent", and only the second one can
+    // honestly put a row on Settings -> MCP Server. NULL is "never spoke MCP",
+    // which is where every token starts and where a CI token stays forever.
+    mcpLastUsedAt: isoTimestamptz("mcp_last_used_at"),
     createdAt: isoTimestamptz("created_at").notNull(),
   },
   (t) => [

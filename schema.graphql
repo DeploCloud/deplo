@@ -1903,7 +1903,7 @@ type LogsInfo {
 }
 
 """
-An AI client connected to this team over OAuth. It holds an ordinary API token, minted when someone approved the consent screen — so `id` is that token's id, and revoking it is `revokeToken`, which takes away the active team's access and deletes the connection with the last team.
+An AI client that can act in this team over MCP. Either a web connector approved on the consent screen, or an API token somebody pasted into a terminal or IDE agent — both are ordinary API tokens, so `id` is that token's id and revoking it is `revokeToken`, which takes away the active team's access and deletes the connection with the last team.
 """
 type McpConnection {
   capabilities: [String!]
@@ -1911,8 +1911,19 @@ type McpConnection {
   clientName: String
   clientUri: String
   createdAt: String
+  expired: Boolean
   id: ID
+
+  """
+  `web` for an OAuth connector, listed from the moment it is approved. `token` for a bearer credential, listed once it has actually called `/api/mcp` — a token that merely could is not a connected client.
+  """
+  kind: String
   lastUsedAt: String
+
+  """
+  The last MCP call specifically. `lastUsedAt` also rises on GraphQL and the deploy hook, so it cannot tell an agent from a CI job.
+  """
+  mcpLastUsedAt: String
 
   """
   Where this client may be redirected back to. The one thing about itself it cannot choose freely, unlike its name.
@@ -3314,7 +3325,14 @@ type Query {
   """Lighter instance list for the logs viewer."""
   logsInfo(appId: String!): LogsInfo
 
-  """AI clients connected to this team over OAuth."""
+  """
+  Has this API token spoken MCP yet? What the connect wizard waits on before saying an agent is really connected.
+  """
+  mcpConnected(tokenId: String!): Boolean
+
+  """
+  AI clients that can act in this team over MCP: the web connectors approved here, plus every API token that has actually called `/api/mcp`.
+  """
   mcpConnections: [McpConnection!]
 
   """The active team's MCP policy."""

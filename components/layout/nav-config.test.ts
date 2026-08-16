@@ -6,6 +6,7 @@ import {
   appSettingsNav,
   databaseNav,
   databaseSettingsNav,
+  SETTINGS_NAV,
   type AppNavFlags,
 } from "./nav-config";
 
@@ -141,4 +142,21 @@ test("a database gets Cron jobs on the same rule", () => {
       .flatMap((s) => s.items)
       .some((i) => i.label === "Cron jobs"),
   );
+});
+
+test("MCP Server is offered to either capability that opens half of it", () => {
+  // Two different people have work to do there: `manage_mcp` owns the team
+  // switch and approving a web connector, `manage_tokens` owns minting the
+  // credential a terminal agent connects with. Naming only one of them hid the
+  // page from the other, who would then be told to "create a token for this"
+  // by a page they cannot reach.
+  const mcp = SETTINGS_NAV.flatMap((s) => s.items).find(
+    (i) => i.href === "/settings/mcp",
+  );
+  assert.ok(mcp, "the MCP Server entry disappeared");
+  assert.equal(mcp.requires, undefined, "a single `requires` locks one of them out");
+  assert.deepEqual(mcp.requiresAny?.slice().sort(), [
+    "manage_mcp",
+    "manage_tokens",
+  ]);
 });

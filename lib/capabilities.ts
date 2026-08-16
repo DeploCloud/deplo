@@ -260,9 +260,14 @@ export const CAPABILITY_META: Record<Capability, CapabilityMeta> = {
   },
   manage_mcp: {
     label: "Manage MCP access",
+    // The old wording promised a second half — "and whether they must ask
+    // before destructive actions" — that migration 0100 removed: that switch
+    // was a second permission system beside Capabilities, and a permission
+    // description naming a control that no longer exists is worse than a short
+    // one. What an agent may DO is its token's Capabilities and nothing here.
     description:
-      "Decide whether AI agents may drive this team, and whether they must ask before destructive actions.",
-    keywords: "mcp ai agent assistant llm claude cursor copilot",
+      "Decide whether AI agents may drive this team, and approve the web apps that connect to it.",
+    keywords: "mcp ai agent assistant llm claude cursor copilot chatgpt gemini",
     sensitive: true,
   },
   manage_notifications: {

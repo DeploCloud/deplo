@@ -2425,3 +2425,197 @@
     opacity: 0;
   }
 }
+
+/* The MCP connect wizard's robot (components/settings/mcp/robot-graphic.tsx).
+   One drawing in four poses, and each pose animates exactly one idea so the
+   picture stays readable at 8rem: the antenna looks around, the antenna blips
+   while a credential is chosen, the cable reaches and falls short, the port
+   glows once it has landed. Everything is transform/opacity/stroke-dashoffset,
+   so it stays on the compositor and costs nothing while the tab sits open on a
+   step nobody is reading. */
+
+/* Idle: the head's antenna ball drifts, and the eyes track with it. Two
+   elements on ONE timeline on purpose — a robot whose eyes and antenna move
+   independently reads as broken rather than as looking around. */
+@keyframes deplo-robot-antenna {
+  0%,
+  100% {
+    transform: translateX(-1.5px);
+  }
+  50% {
+    transform: translateX(1.5px);
+  }
+}
+
+@keyframes deplo-robot-eyes {
+  0%,
+  100% {
+    transform: translateX(-1.2px);
+  }
+  50% {
+    transform: translateX(1.2px);
+  }
+}
+
+.deplo-robot-antenna {
+  /* Without `fill-box` an SVG transform pivots on the viewBox origin, which
+     sends the ball off the canvas instead of nudging it. */
+  transform-box: fill-box;
+  transform-origin: center;
+  animation: deplo-robot-antenna 3.2s ease-in-out infinite;
+}
+
+.deplo-robot-eyes {
+  transform-box: fill-box;
+  transform-origin: center;
+  animation: deplo-robot-eyes 3.2s ease-in-out infinite;
+}
+
+/* Permissions: the antenna blips like something is being decided. Scale only,
+   so it never moves and never competes with the form beside it. */
+@keyframes deplo-robot-blip {
+  0%,
+  70%,
+  100% {
+    transform: scale(1);
+    opacity: 1;
+  }
+  35% {
+    transform: scale(1.45);
+    opacity: 0.65;
+  }
+}
+
+.deplo-robot-blip {
+  transform-box: fill-box;
+  transform-origin: center;
+  animation: deplo-robot-blip 1.8s ease-in-out infinite;
+}
+
+/* The key the robot holds while permissions are being chosen: a slow tilt, so
+   it reads as held rather than pasted on. */
+@keyframes deplo-robot-key {
+  0%,
+  100% {
+    transform: rotate(-7deg);
+  }
+  50% {
+    transform: rotate(7deg);
+  }
+}
+
+.deplo-robot-key {
+  transform-box: fill-box;
+  transform-origin: 8% 50%;
+  animation: deplo-robot-key 2.6s ease-in-out infinite;
+}
+
+/* Reaching: the cable draws most of the way to the port, stops short, and
+   retreats. Stopping SHORT is the whole message — the config is copied and
+   deplo has not heard from the agent yet, and a cable that completed the trip
+   would say the opposite of what the step is waiting for. 44 is the path's
+   length; 12 is the gap it never closes. */
+@keyframes deplo-robot-cable {
+  0% {
+    stroke-dashoffset: 44;
+  }
+  45%,
+  62% {
+    stroke-dashoffset: 12;
+  }
+  100% {
+    stroke-dashoffset: 44;
+  }
+}
+
+.deplo-robot-cable {
+  stroke-dasharray: 44;
+  animation: deplo-robot-cable 2.8s ease-in-out infinite;
+}
+
+/* Connected: one slow halo out of the port. Slow and single because it marks a
+   state, not an event — the burst that marks the event is the confetti. */
+@keyframes deplo-robot-halo {
+  0%,
+  100% {
+    transform: scale(0.75);
+    opacity: 0.28;
+  }
+  50% {
+    transform: scale(1.15);
+    opacity: 0.1;
+  }
+}
+
+.deplo-robot-halo {
+  transform-box: fill-box;
+  transform-origin: center;
+  animation: deplo-robot-halo 2.4s ease-in-out infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  /* Every pose holds a frame that still carries its meaning. The cable rests
+     FULLY drawn rather than at its short frame: without motion, a gap reads as
+     a broken drawing instead of as a cable still trying. */
+  .deplo-robot-antenna,
+  .deplo-robot-eyes,
+  .deplo-robot-blip,
+  .deplo-robot-key,
+  .deplo-robot-halo {
+    animation: none;
+    transform: none;
+  }
+  .deplo-robot-cable {
+    animation: none;
+    stroke-dasharray: none;
+  }
+}
+
+/* The confetti burst for a connection that really arrived. Twelve spans, one
+   keyframe, and every per-piece difference derived from `--i`: the angle fans
+   the pieces evenly, the delay staggers them, the distance and hue alternate so
+   no two neighbours land together. `--deplo-confetti-a` is in TURNS, which is
+   what lets one multiplication spread twelve pieces over a full circle. */
+@keyframes deplo-confetti-piece {
+  0% {
+    opacity: 0;
+    transform: translate(0, 0) scale(0.4) rotate(0deg);
+  }
+  12% {
+    opacity: 1;
+  }
+  100% {
+    opacity: 0;
+    transform: translate(
+        calc(cos(var(--deplo-confetti-a)) * var(--deplo-confetti-d)),
+        calc(sin(var(--deplo-confetti-a)) * var(--deplo-confetti-d) + 26px)
+      )
+      scale(1) rotate(var(--deplo-confetti-r));
+  }
+}
+
+.deplo-confetti-piece {
+  --deplo-confetti-a: calc(var(--i) * 0.0833turn + 0.02turn);
+  --deplo-confetti-d: calc(46px + mod(var(--i), 3) * 16px);
+  --deplo-confetti-r: calc(var(--i) * 47deg + 180deg);
+  position: absolute;
+  display: block;
+  width: 6px;
+  height: 10px;
+  border-radius: 1px;
+  /* Three tokens in rotation: two brand-ish, one success. Confetti in one
+     colour reads as an error state, and hardcoded hex would be wrong in one of
+     the two themes. */
+  background: var(--primary);
+  opacity: 0;
+  animation: deplo-confetti-piece 1.1s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+  animation-delay: calc(var(--i) * 22ms);
+}
+
+.deplo-confetti-piece:nth-child(3n + 2) {
+  background: var(--success);
+}
+
+.deplo-confetti-piece:nth-child(3n + 3) {
+  background: var(--warning);
+}

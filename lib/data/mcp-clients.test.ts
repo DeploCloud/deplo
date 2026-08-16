@@ -11,9 +11,10 @@ import { runWithIdentity } from "../auth/request-context";
 import {
   listConnectableTeamIds,
   listMcpConnections,
+  mcpTokenConnected,
   mintMcpConnection,
 } from "./mcp-clients";
-import { listTokens, revokeToken } from "./tokens";
+import { createToken, listTokens, revokeToken } from "./tokens";
 import { listActivity } from "./activity";
 import type { Capability } from "../types";
 
@@ -747,4 +748,130 @@ test("the connection appears in the API tokens list, marked", async () => {
   const tokens = await as(OWNER, () => listTokens());
   assert.equal(tokens.length, 1);
   assert.equal(tokens[0].oauthClientName, "Claude");
+});
+
+/* ------------------------------------------------------------------ */
+/* Bearer connections — the half this list used to be blind to          */
+/* ------------------------------------------------------------------ */
+
+/**
+ * The gap these cover: before `mcp_last_used_at`, `listMcpConnections` joined
+ * `oauth_client` and so could only ever see web connectors. A `deplo_` token
+ * pasted into Claude Code drove the whole team through `/api/mcp` and appeared
+ * on this screen nowhere, which made "who let an agent in, and how do I take it
+ * away" answerable for half the clients and unanswerable for the other half.
+ */
+
+/** Mint an ordinary bearer token, the way the connect wizard does. */
+async function bearer(name: string, userId = OWNER) {
+  const { token } = await as(userId, () =>
+    createToken({ name, capabilities: ["view", "deploy_apps"] }),
+  );
+  return token.id;
+}
+
+/** The stamp `/api/mcp` takes once a token really speaks the protocol. */
+async function markSpokeMcp(tokenId: string) {
+  await pg.query(`update api_tokens set mcp_last_used_at = now() where id = $1`, [
+    tokenId,
+  ]);
+}
+
+test("a bearer token that has spoken MCP is listed as a connection", async () => {
+  const id = await bearer("Claude Code");
+  await markSpokeMcp(id);
+
+  const list = await as(OWNER, () => listMcpConnections());
+  assert.equal(list.length, 1);
+  assert.equal(list[0].id, id);
+  assert.equal(list[0].kind, "token");
+  // Its name is the one the person typed: there is no registered client row to
+  // take a name from, and the protocol revision carries no `clientInfo`.
+  assert.equal(list[0].clientName, "Claude Code");
+  assert.equal(list[0].redirectOrigin, null);
+  assert.ok(list[0].mcpLastUsedAt, "the MCP stamp did not reach the DTO");
+});
+
+test("a token that has never spoken MCP is not a connection", async () => {
+  // The whole reason for a second column. This is a CI credential, and listing
+  // it here would tell a company an AI agent is in their infrastructure when
+  // none is.
+  await bearer("Nightly CI");
+  assert.deepEqual(await as(OWNER, () => listMcpConnections()), []);
+});
+
+test("an OAuth connector is still listed, and marked as a web app", async () => {
+  await as(OWNER, () =>
+    mintMcpConnection({ clientId: CLIENT, capabilities: ["view"] }),
+  );
+  const list = await as(OWNER, () => listMcpConnections());
+  assert.equal(list.length, 1);
+  assert.equal(list[0].kind, "web");
+  assert.equal(list[0].clientName, "Claude");
+  // Listed from the moment it is approved: approving IS the connection, and it
+  // has made no call yet.
+  assert.equal(list[0].mcpLastUsedAt, null);
+});
+
+test("both kinds share one list", async () => {
+  const id = await bearer("Cursor");
+  await markSpokeMcp(id);
+  await as(OWNER, () =>
+    mintMcpConnection({ clientId: CLIENT, capabilities: ["view"] }),
+  );
+  const list = await as(OWNER, () => listMcpConnections());
+  assert.deepEqual(list.map((c) => c.kind).sort(), ["token", "web"]);
+});
+
+test("an expired token says so rather than vanishing", async () => {
+  const id = await bearer("Old laptop");
+  await markSpokeMcp(id);
+  await pg.query(
+    `update api_tokens set expires_at = now() - interval '1 day' where id = $1`,
+    [id],
+  );
+  const list = await as(OWNER, () => listMcpConnections());
+  assert.equal(list.length, 1, "an expired connection must stay visible");
+  assert.equal(list[0].expired, true);
+});
+
+test("mcpTokenConnected answers only for a token that reaches this team", async () => {
+  const id = await bearer("Claude Code");
+  assert.equal(
+    await as(OWNER, () => mcpTokenConnected(id)),
+    false,
+    "a token that has not called yet is not connected",
+  );
+  await markSpokeMcp(id);
+  assert.equal(await as(OWNER, () => mcpTokenConnected(id)), true);
+
+  // A token that does NOT reach the reading team answers FALSE, not an error:
+  // an error would confirm the row exists to somebody with no business knowing
+  // it does. MEMBER belongs only to TEAM_A, so a token they minted reaches only
+  // TEAM_A — OWNER's own unscoped token would legitimately reach both teams
+  // once they joined the second, which is a different (and correct) answer.
+  const theirs = await bearer("Their Cursor", MEMBER);
+  await markSpokeMcp(theirs);
+  await grantOwnerIn(TEAM_B);
+  assert.equal(
+    await as(OWNER, () => mcpTokenConnected(theirs), TEAM_B),
+    false,
+    "a token that reaches only another team must not be visible here",
+  );
+  assert.equal(
+    await as(OWNER, () => mcpTokenConnected(theirs)),
+    true,
+    "and it IS visible in the team it actually reaches",
+  );
+});
+
+test("a bearer connection carries no other team's name or id", async () => {
+  // The same leak check the OAuth rows get, for the shape that skips the
+  // `oauth_client` join entirely.
+  await grantOwnerIn(TEAM_B);
+  const id = await bearer("Claude Code");
+  await markSpokeMcp(id);
+  const dump = JSON.stringify(await as(OWNER, () => listMcpConnections()));
+  assert.ok(!dump.includes(TEAM_B), dump);
+  assert.ok(!dump.includes("beta"), dump);
 });

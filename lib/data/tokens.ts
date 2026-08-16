@@ -1112,6 +1112,33 @@ async function identityForTokenRow(
 }
 
 /**
+ * Record that this token just drove an AI agent, rather than merely that it was
+ * used.
+ *
+ * `lastUsedAt` above rises on every authenticated request and answers "is this
+ * credential alive". It cannot answer "which clients are connected to this
+ * team", because a CI job and Claude Code look identical through it. This one
+ * only ever rises from `/api/mcp`, which is what lets Settings -> MCP Server
+ * list a `deplo_` token pasted into a terminal agent beside an OAuth web
+ * connector - and what lets the connect wizard wait for a REAL first call
+ * instead of promising the config was probably right.
+ *
+ * Fire-and-forget and deliberately not `async`: it is called from the MCP route
+ * on a path where a failed usage write must never fail the tool call, and an
+ * awaited promise there would add a round trip to every request for a column
+ * nothing reads synchronously.
+ */
+export function stampMcpUse(tokenId: string): void {
+  void getDb()
+    .update(apiTokens)
+    .set({ mcpLastUsedAt: nowIso() })
+    .where(eq(apiTokens.id, tokenId))
+    .catch(() => {
+      /* usage tracking is best-effort */
+    });
+}
+
+/**
  * Revoke = "this team is done with this credential", not "delete the row".
  *
  * A token's scope can span several teams, and every one of them lists it (a team

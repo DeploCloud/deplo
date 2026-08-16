@@ -2,23 +2,29 @@
 
 import * as React from "react";
 import { useRouter } from "next/navigation";
-import { Plug } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
 import { InfoTip } from "@/components/ui/info-tip";
 import { EmptyState } from "@/components/shared/empty-state";
 import { ConfirmAction } from "@/components/shared/confirm-action";
+import { RobotGraphic } from "./robot-graphic";
 import { gqlAction } from "@/lib/graphql-client";
 import { timeAgo } from "@/lib/utils";
 import type { McpConnectionDTO } from "@/lib/data/mcp-clients";
 
 /**
- * The AI clients connected to this team.
+ * Everything that can act in this team over MCP.
  *
- * Each row is an API token someone approved on the consent screen, so Revoke is
- * the same `revokeToken` the tokens page calls — one lever over a credential,
- * not two that can drift. The same row also appears in Settings → API tokens,
- * marked, so one screen still answers "who can act in this team".
+ * Two kinds in one list, because "who can drive our infrastructure" is one
+ * question. A `web` row is an OAuth connector approved on deplo's consent
+ * screen; a `token` row is an API token somebody pasted into a terminal or IDE
+ * agent, and it appears here once it has actually called `/api/mcp` — a token
+ * that merely could is a credential, not a connection, and lives on the API
+ * tokens page.
+ *
+ * Revoke is `revokeToken` for both, because both ARE API tokens (ADR-0022 §1).
+ * One lever over a credential, never two that can drift.
  *
  * This screen speaks about THIS team and nothing else. One consent can approve
  * several teams and Revoke removes only the active one's access - but the other
@@ -26,7 +32,8 @@ import type { McpConnectionDTO } from "@/lib/data/mcp-clients";
  * not belong to them), so neither the row nor the dialog names them. The copy
  * stays true by saying what happens here rather than what survives elsewhere.
  *
- * No action on the empty state: connecting happens in the card above.
+ * No action on the empty state: connecting happens in the Connect tab, which is
+ * one click away and already carries that button.
  */
 export function ConnectedClients({
   connections,
@@ -46,16 +53,16 @@ export function ConnectedClients({
           <InfoTip content="Revoking one takes away this team's access from its next request." />
         </CardTitle>
         <p className="mt-1 text-sm text-muted-foreground">
-          Apps connected to this team, each holding the permissions it was
-          approved with.
+          Every AI agent that can act in this team, and what each one is allowed
+          to do.
         </p>
       </CardHeader>
       <CardContent>
         {connections.length === 0 ? (
           <EmptyState
-            icon={Plug}
-            title="No apps connected"
-            description="Paste the server URL above into Claude or ChatGPT to connect one."
+            graphic={<RobotGraphic state="idle" className="h-28" />}
+            title="No agents connected"
+            description="Anything you connect from the Connect tab shows up here, with a way to take its access away."
           />
         ) : (
           <div className="divide-y divide-border rounded-lg border border-border">
@@ -65,13 +72,22 @@ export function ConnectedClients({
                 className="flex items-center justify-between gap-4 p-3"
               >
                 <div className="min-w-0 space-y-1">
-                  <p className="truncate text-sm font-medium">{c.clientName}</p>
+                  <p className="flex items-center gap-2 truncate text-sm font-medium">
+                    {c.clientName}
+                    <Badge variant="outline" className="shrink-0 font-normal">
+                      {c.kind === "web" ? "Web app" : "Token"}
+                    </Badge>
+                    {c.expired && (
+                      <Badge
+                        variant="outline"
+                        className="shrink-0 border-[var(--warning)]/40 font-normal text-[var(--warning)]"
+                      >
+                        Expired
+                      </Badge>
+                    )}
+                  </p>
                   <p className="truncate text-xs text-muted-foreground">
-                    {c.username ? `Approved by ${c.username}` : "Approved"}
-                    {c.redirectOrigin ? ` · ${c.redirectOrigin}` : ""} ·{" "}
-                    {c.capabilities.length} permission
-                    {c.capabilities.length === 1 ? "" : "s"} ·{" "}
-                    {c.lastUsedAt ? `used ${timeAgo(c.lastUsedAt)}` : "never used"}
+                    {describe(c)}
                   </p>
                 </div>
                 {canManage ? (
@@ -93,10 +109,10 @@ export function ConnectedClients({
         open={revoke !== null}
         onOpenChange={(v) => !v && setRevoke(null)}
         title={revoke ? `Revoke ${revoke.clientName}?` : "Revoke this client?"}
-        // True whether or not the same consent reaches anywhere else, and it
+        // True whether or not the same credential reaches anywhere else, and it
         // never has to name where: from here, the client is gone until someone
-        // approves it again.
-        description="It loses this team's access immediately and has to be approved again to come back. This can't be undone."
+        // connects it again.
+        description="It loses this team's access immediately and has to be connected again to come back. This can't be undone."
         confirmLabel="Revoke"
         successMessage="Access removed"
         onConfirm={async () => {
@@ -110,4 +126,22 @@ export function ConnectedClients({
       />
     </Card>
   );
+}
+
+/**
+ * The second line: who let it in, where it came from, what it can do, when it
+ * last spoke.
+ *
+ * `mcpLastUsedAt` and not `lastUsedAt`: this list is about agents, and a token
+ * that ran a CI job an hour ago has not been an agent since Tuesday. A web
+ * connector approved thirty seconds ago has neither, and says so.
+ */
+function describe(c: McpConnectionDTO): string {
+  const parts = [
+    c.username ? `Connected by ${c.username}` : "Connected",
+    ...(c.kind === "web" && c.redirectOrigin ? [c.redirectOrigin] : []),
+    `${c.capabilities.length} permission${c.capabilities.length === 1 ? "" : "s"}`,
+    c.mcpLastUsedAt ? `active ${timeAgo(c.mcpLastUsedAt)}` : "not used yet",
+  ];
+  return parts.join(" · ");
 }

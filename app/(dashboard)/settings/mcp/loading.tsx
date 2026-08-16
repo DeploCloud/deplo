@@ -1,9 +1,10 @@
 import { Skeleton } from "@/components/ui/skeleton";
 
 /**
- * Mirrors the page: header, the two-switch card, the connect card, then the
- * tool table. The table stands in with rows rather than an empty block — it is
- * always long, and a fallback that draws "almost nothing is coming" is a lie.
+ * Mirrors the page: header, the tab bar, then the one card the Connect tab
+ * opens on. Deliberately ONE card and not a stack — the page no longer is one,
+ * and a skeleton that draws more than arrives makes the load feel like a stall
+ * at the moment the real thing appears.
  */
 export default function Loading() {
   return (
@@ -21,20 +22,18 @@ export default function Loading() {
         <Skeleton className="h-4 w-96" />
       </div>
 
-      {/* Access: two switch rows. */}
-      <Skeleton className="h-48 w-full rounded-xl" />
-      {/* Connect an agent: client picker + snippet. */}
-      <Skeleton className="h-52 w-full rounded-xl" />
-
-      <div className="space-y-2 rounded-xl border border-border p-6">
-        <Skeleton className="h-5 w-28" />
-        <Skeleton className="h-4 w-80" />
-        <div className="space-y-2 pt-3">
-          {Array.from({ length: 8 }).map((_, i) => (
-            <Skeleton key={i} className="h-6 w-full" />
-          ))}
+      {/* The tab bar: two triggers on the left, the tool link on the right. */}
+      <div className="flex items-center justify-between border-b border-border pb-3">
+        <div className="flex gap-6">
+          <Skeleton className="h-5 w-20" />
+          <Skeleton className="h-5 w-20" />
         </div>
+        <Skeleton className="h-4 w-56" />
       </div>
+
+      {/* Connect: the stepper, then the wizard's first step. */}
+      <Skeleton className="h-6 w-64" />
+      <Skeleton className="h-96 w-full rounded-xl" />
     </div>
   );
 }

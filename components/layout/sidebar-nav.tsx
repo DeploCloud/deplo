@@ -164,6 +164,8 @@ export function SidebarNav({
       items: section.items.filter(
         (item) =>
           (!item.requires || (appSlug ? appCaps : caps).has(item.requires)) &&
+          (!item.requiresAny ||
+            item.requiresAny.some((c) => (appSlug ? appCaps : caps).has(c))) &&
           (!item.requiresAdmin || isAdmin),
       ),
     }))

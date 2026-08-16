@@ -1,0 +1,29 @@
+-- Record when a token last spoke MCP, separately from when it was last used.
+--
+-- "Which AI clients are connected to this team" had one honest answer and one
+-- convenient one, and deplo was giving the convenient one. Settings -> MCP
+-- listed rows joined to `oauth_client`, so it saw the web connectors (claude.ai,
+-- ChatGPT) and nothing else: a `deplo_` token pasted into Claude Code or Cursor
+-- drove the whole team through /api/mcp and appeared on that screen nowhere. The
+-- question a company asks - who let an agent in, and how do I take it away -
+-- was answerable for half the clients.
+--
+-- `last_used_at` cannot answer it either, because it answers a different
+-- question. It rises on every authenticated request: GraphQL from a CI job, a
+-- deploy hook fired by a webhook, an MCP tool call. It means "this credential is
+-- alive". This column means "this credential is driving an agent", which is the
+-- only definition of a connected client that does not lie, and it is also the
+-- signal the connect wizard waits on before it can say the agent is really
+-- talking to deplo rather than that the config was copied.
+--
+-- NULL is "never spoke MCP", which is what every existing token starts as -
+-- including the OAuth-minted ones, which stay listed on their `oauth_client_id`
+-- and simply have no MCP timestamp until their next call. Nothing is
+-- backfilled: inventing a date for a call nobody observed would put a row on
+-- that screen claiming a connection deplo never saw.
+--
+-- The write is fire-and-forget in `stampMcpUse` (lib/data/tokens.ts), next to
+-- the `last_used_at` bump and for the same reason: usage tracking must never be
+-- what fails a request.
+
+ALTER TABLE "api_tokens" ADD COLUMN IF NOT EXISTS "mcp_last_used_at" timestamptz;

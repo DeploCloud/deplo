@@ -54,6 +54,14 @@ export interface NavItem {
    * also guards server-side). Matches the Capability strings in lib/types.ts.
    */
   requires?: string;
+  /**
+   * Visible when the member holds ANY ONE of these. For the rare page that two
+   * different capabilities each open a real half of — MCP Server, where
+   * `manage_mcp` owns the switch and `manage_tokens` owns minting the
+   * credential — and where naming only one hides it from somebody who has work
+   * to do there. Combined with `requires` if both are given.
+   */
+  requiresAny?: string[];
   /** Visible only to instance admins (orthogonal to team capabilities). */
   requiresAdmin?: boolean;
   /**
@@ -233,10 +241,13 @@ export const SETTINGS_NAV: NavSection[] = [
         href: "/settings/mcp",
         icon: Bot,
         tooltip: "AI agents that can drive this team",
-        // Same reasoning as Registries and Notifications: without the
-        // capability every switch on the page is refused server-side, so the
-        // page is a dead end rather than a read-only view.
-        requires: "manage_mcp",
+        // TWO capabilities open a real half of this page, so naming one hid it
+        // from people with work to do there. `manage_mcp` owns the team switch
+        // and approving a web connector; `manage_tokens` owns minting the
+        // credential a terminal or IDE agent connects with. Holding either is a
+        // reason to be here; the wizard then disables the branch the viewer
+        // cannot finish, saying why, rather than failing at the last click.
+        requiresAny: ["manage_mcp", "manage_tokens"],
       },
     ],
   },

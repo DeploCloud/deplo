@@ -750,6 +750,13 @@
       "when": 1784682400000,
       "tag": "0106_mcp_default_off",
       "breakpoints": true
+    },
+    {
+      "idx": 107,
+      "version": "7",
+      "when": 1784682600000,
+      "tag": "0107_mcp_last_used",
+      "breakpoints": true
     }
   ]
 }

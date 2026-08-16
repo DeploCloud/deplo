@@ -1,5 +1,5 @@
 import { createMcpHandler } from "@modelcontextprotocol/server";
-import { authenticateToken } from "@/lib/data/tokens";
+import { authenticateToken, stampMcpUse } from "@/lib/data/tokens";
 import {
   runWithIdentity,
   type RequestIdentity,
@@ -250,6 +250,16 @@ export async function POST(request: Request) {
         },
       },
     );
+
+  // Past every gate, so this request is genuinely being served: the token is
+  // driving an agent right now. Settings → MCP Server lists a connection off
+  // this stamp, and the connect wizard waits on it, which is why it is taken
+  // here and not beside `authenticateToken` — a token the team's kill switch
+  // just refused is not a connected client, and neither is one being rate
+  // limited into a wall. Not an authorization check of any kind: it writes a
+  // timestamp and decides nothing (ADR-0021 §2, and the static test that keeps
+  // this file honest).
+  stampMcpUse(identity.token!.id);
 
   return handler.fetch(request, {
     authInfo: {

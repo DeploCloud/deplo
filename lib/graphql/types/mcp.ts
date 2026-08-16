@@ -6,6 +6,7 @@ import {
 } from "@/lib/data/mcp-settings";
 import {
   listMcpConnections,
+  mcpTokenConnected,
   mintMcpConnection,
   type McpConnectionDTO,
 } from "@/lib/data/mcp-clients";
@@ -30,12 +31,19 @@ export const McpConnectionRef = builder
   .objectRef<McpConnectionDTO>("McpConnection")
   .implement({
     description:
-      "An AI client connected to this team over OAuth. It holds an ordinary " +
-      "API token, minted when someone approved the consent screen — so `id` is " +
-      "that token's id, and revoking it is `revokeToken`, which takes away the " +
-      "active team's access and deletes the connection with the last team.",
+      "An AI client that can act in this team over MCP. Either a web connector " +
+      "approved on the consent screen, or an API token somebody pasted into a " +
+      "terminal or IDE agent — both are ordinary API tokens, so `id` is that " +
+      "token's id and revoking it is `revokeToken`, which takes away the active " +
+      "team's access and deletes the connection with the last team.",
     fields: (t) => ({
       id: t.exposeID("id"),
+      kind: t.exposeString("kind", {
+        description:
+          "`web` for an OAuth connector, listed from the moment it is approved. " +
+          "`token` for a bearer credential, listed once it has actually called " +
+          "`/api/mcp` — a token that merely could is not a connected client.",
+      }),
       clientName: t.exposeString("clientName"),
       clientUri: t.exposeString("clientUri", { nullable: true }),
       clientIcon: t.exposeString("clientIcon", { nullable: true }),
@@ -50,6 +58,13 @@ export const McpConnectionRef = builder
       teamName: t.exposeString("teamName"),
       capabilities: t.exposeStringList("capabilities"),
       lastUsedAt: t.exposeString("lastUsedAt", { nullable: true }),
+      mcpLastUsedAt: t.exposeString("mcpLastUsedAt", {
+        nullable: true,
+        description:
+          "The last MCP call specifically. `lastUsedAt` also rises on GraphQL " +
+          "and the deploy hook, so it cannot tell an agent from a CI job.",
+      }),
+      expired: t.exposeBoolean("expired"),
       createdAt: t.exposeString("createdAt"),
     }),
   });
@@ -68,8 +83,23 @@ builder.queryFields((t) => ({
   mcpConnections: t.field({
     type: [McpConnectionRef],
     authScopes: { capability: "manage_mcp" },
-    description: "AI clients connected to this team over OAuth.",
+    description:
+      "AI clients that can act in this team over MCP: the web connectors " +
+      "approved here, plus every API token that has actually called `/api/mcp`.",
     resolve: () => listMcpConnections(),
+  }),
+  mcpConnected: t.boolean({
+    // `loggedIn`, not `manage_mcp`: this answers one yes/no about a token the
+    // caller has just minted, and the person who mints a token holds
+    // `manage_tokens` — which is not `manage_mcp`. The real gate is inside
+    // `mcpTokenConnected`, as always, and an id outside the caller's reach
+    // reads `false` rather than erroring.
+    authScopes: { loggedIn: true },
+    description:
+      "Has this API token spoken MCP yet? What the connect wizard waits on " +
+      "before saying an agent is really connected.",
+    args: { tokenId: t.arg.string({ required: true }) },
+    resolve: (_p, a) => mcpTokenConnected(a.tokenId),
   }),
 }));
 
