@@ -33,8 +33,19 @@ import { parseRequiredLabels } from "../deploy/preview-lifecycle";
  * Always answers 200. A delivery Deplo cannot act on is acknowledged, and the
  * reason is logged — that log line is the only debugging surface an operator
  * gets when previews "just don't happen".
+ *
+ * `appId` is the `github_apps` row whose webhook secret VERIFIED this body, and
+ * it bounds which installation the delivery may act on. See the same clause in
+ * the push arm: the signature names an App, the installation id is a field in
+ * the signed body, and resolving the second without the first let a delivery
+ * signed by one team's App open, rebuild and tear down previews on another
+ * team's app - with the pull request's own `head.repo.clone_url` deciding what
+ * gets cloned.
  */
-export async function handlePullRequestDelivery(raw: string): Promise<Response> {
+export async function handlePullRequestDelivery(
+  raw: string,
+  appId: string,
+): Promise<Response> {
   let payload: RawPullRequestPayload;
   try {
     payload = JSON.parse(raw) as RawPullRequestPayload;
@@ -55,12 +66,17 @@ export async function handlePullRequestDelivery(raw: string): Promise<Response> 
   const installRows = await getDb()
     .select()
     .from(githubInstallationTable)
-    .where(eq(githubInstallationTable.installationId, numericInstall))
+    .where(
+      and(
+        eq(githubInstallationTable.installationId, numericInstall),
+        eq(githubInstallationTable.appId, appId),
+      ),
+    )
     .limit(1);
   const install = installRows[0];
   if (!install) {
     console.warn(
-      `[github-webhook] no installation row for numeric id ${numericInstall} (repo=${ev.baseRepo})`,
+      `[github-webhook] no installation row for numeric id ${numericInstall} on app=${appId} (repo=${ev.baseRepo})`,
     );
     return new Response("ok", { status: 200 });
   }

@@ -75,13 +75,26 @@ export async function registerClient(
   return { status: res.status, body };
 }
 
-/** Sign in over HTTP and return the cookie string a browser would then send. */
+/**
+ * Mint the session cookie a signed-in browser would then send.
+ *
+ * IN-PROCESS, not over HTTP, because that is what deplo itself does: the browser
+ * signs in through the GraphQL `login` mutation, which calls `signInEmail`
+ * exactly like this. `/sign-in/email` is closed to the network on purpose
+ * (`deploOwnedGate` in ./better-auth.ts) - the plugin's endpoint skips the
+ * per-account rate limit, the `failed_logins` alert and the suspension check -
+ * so a helper that POSTed to it was testing a door that is now shut, and would
+ * have been the only thing keeping it open.
+ *
+ * The rest of the flow below stays over HTTP: authorize, consent and the token
+ * exchange are genuinely browser and client traffic, and that is the point of
+ * this file.
+ */
 export async function signIn(email: string, password: string): Promise<string> {
-  const res = await call("/sign-in/email", {
-    method: "POST",
-    headers: { "content-type": "application/json" },
-    body: JSON.stringify({ email, password }),
-  });
+  const res = (await requireAuth().api.signInEmail({
+    body: { email, password },
+    asResponse: true,
+  })) as Response;
   const cookies = res.headers
     .getSetCookie()
     .map((c) => c.split(";")[0])

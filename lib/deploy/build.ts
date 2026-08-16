@@ -19,7 +19,11 @@ import {
 } from "../db/schema/control-plane";
 import { newId, nowIso } from "../ids";
 import { decryptSecretOrThrow } from "../crypto";
-import { resolveEnvEntries } from "./env-resolve";
+import {
+  resolveEnvEntries,
+  type EnvEntryType,
+  type PreviewOverrideEntry,
+} from "./env-resolve";
 import { loadInstanceEnv } from "../data/global-env";
 import { loadSharedVarsForApp } from "../data/shared-vars";
 import { recordActivity } from "../data/activity";
@@ -74,7 +78,7 @@ import {
   type RoutableDomain,
 } from "../data/domains";
 import { basicAuthUsersValue } from "../data/basic-auth";
-import { resolveCloneUrl } from "../git/clone-url";
+import { forkCloneUrl, resolveCloneUrl } from "../git/clone-url";
 import { publishAppChanged } from "../graphql/pubsub";
 import {
   agentCapabilityForMethod,
@@ -712,10 +716,11 @@ async function appEnv(
     target === "preview" ? loadPreviewEnvOverrides(appId) : Promise.resolve([]),
   ]);
   const dropSecrets = Boolean(preview?.isFork);
-  const keep = <T,>(list: T[]): T[] =>
-    dropSecrets
-      ? list.filter((e) => (e as { type?: string }).type !== "secret")
-      : list;
+  // `T extends { type: EnvEntryType }` rather than a cast: the cast is what let
+  // two of the four layers arrive with no `type` at all and be kept as if they
+  // were plain. Every loader below now has to carry it, and the compiler says so.
+  const keep = <T extends { type: EnvEntryType }>(list: T[]): T[] =>
+    dropSecrets ? list.filter((e) => e.type !== "secret") : list;
   const out: Record<string, string> = preview ? previewEnvExtras(preview) : {};
   for (const e of resolveEnvEntries(
     target,
@@ -739,8 +744,8 @@ async function appEnv(
 /** The app's preview-only variable overrides, still encrypted. Store-direct. */
 async function loadPreviewEnvOverrides(
   appId: string,
-): Promise<{ key: string; valueEnc: string; type: string }[]> {
-  return getDb()
+): Promise<PreviewOverrideEntry[]> {
+  const rows = await getDb()
     .select({
       key: appPreviewEnvVarsTable.key,
       valueEnc: appPreviewEnvVarsTable.valueEnc,
@@ -749,6 +754,11 @@ async function loadPreviewEnvOverrides(
     .from(appPreviewEnvVarsTable)
     .where(eq(appPreviewEnvVarsTable.appId, appId))
     .orderBy(appPreviewEnvVarsTable.key);
+  return rows.map((r) => ({
+    key: r.key,
+    valueEnc: r.valueEnc,
+    type: r.type === "secret" ? ("secret" as const) : ("plain" as const),
+  }));
 }
 
 /**
@@ -775,10 +785,11 @@ async function appEnvKeys(
     target === "preview" ? loadPreviewEnvOverrides(appId) : Promise.resolve([]),
   ]);
   const dropSecrets = Boolean(preview?.isFork);
-  const keep = <T,>(list: T[]): T[] =>
-    dropSecrets
-      ? list.filter((e) => (e as { type?: string }).type !== "secret")
-      : list;
+  // `T extends { type: EnvEntryType }` rather than a cast: the cast is what let
+  // two of the four layers arrive with no `type` at all and be kept as if they
+  // were plain. Every loader below now has to carry it, and the compiler says so.
+  const keep = <T extends { type: EnvEntryType }>(list: T[]): T[] =>
+    dropSecrets ? list.filter((e) => e.type !== "secret") : list;
   // De-dupe on key (the resolver emits lowest-precedence first; a later entry
   // wins on value, but for NAMES we just need the distinct set). The `DEPLO_*`
   // preview context rides the same env-file, so its keys belong here too.
@@ -2124,7 +2135,15 @@ async function runDeployment(depId: string): Promise<void> {
         // field on the GitSource proto the agent decodes. Until the agent carries
         // it, the stored preference is a no-op here (the clone descriptor below has
         // no submodules flag to forward).
-        const cloneUrl = await resolveCloneUrl(repo);
+        //
+        // A pull request preview from a FORK clones the FORK, from its own
+        // address and with no credential of ours (see `forkCloneUrl`). Every
+        // other deploy - production, and a preview of a branch in the app's own
+        // repository - is unchanged and still clones the app's repo.
+        const forkUrl = preview?.isFork
+          ? forkCloneUrl(repo.url, preview.headCloneUrl)
+          : null;
+        const cloneUrl = forkUrl ?? (await resolveCloneUrl(repo));
         // One tag per deployment, and the agent builds under exactly this string -
         // it resolves the commit sha but never retags with it. Recorded on the row
         // so a later ROLLBACK can re-run this image without deriving the convention
@@ -2132,7 +2151,14 @@ async function runDeployment(depId: string): Promise<void> {
         imageRef = deployImageRef(deployKey, depId);
         await setDep(depId, { imageRef });
         const { composeYaml, env } = await renderStack(imageRef);
-        log(depId, "command", `git clone ${repo.url} (${dep.branch}) [on agent]`);
+        // The credential-free address, as it has always been logged: `cloneUrl`
+        // carries an installation token for a private repo, and a deploy log is
+        // readable by anyone with `view_logs`.
+        log(
+          depId,
+          "command",
+          `git clone ${forkUrl ?? repo.url} (${dep.branch}) [on agent]`,
+        );
         const attempt = await tryAgent({
           depId,
           serverId,

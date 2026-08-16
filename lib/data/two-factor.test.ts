@@ -109,11 +109,15 @@ for (const path of [
 test("the gate leaves the rest of Better Auth alone", async () => {
   // A neighbouring endpoint proves the matcher is scoped to /two-factor/ and
   // has not quietly closed the whole auth surface.
-  const res = await overHttp("/sign-in/email", {
-    email: "nobody@example.com",
-    password: "whatever",
-  });
-  assert.notEqual(res.status, 403, "sign-in still reaches its own handler");
+  //
+  // It used to probe `/sign-in/email`, which `deploOwnedGate` now closes for its
+  // own reasons (deplo's sign-in is the only one that limits per account and
+  // alerts) - so a 403 there would no longer say anything about THIS matcher.
+  // `/get-session` is the neighbour that stays open, and it has no side effect.
+  const res = await requireAuth().handler(
+    new Request("http://localhost/api/auth/get-session", { method: "GET" }),
+  );
+  assert.notEqual(res.status, 403, "get-session still reaches its own handler");
 });
 
 /* ------------------------------------------------------------------ */

@@ -110,6 +110,14 @@ export interface GlobalEnvEntry {
   key: string;
   valueEnc: string;
   targets: EnvTarget[];
+  /**
+   * `plain` | `secret`. Projected because the fork-preview drop in
+   * `lib/deploy/build.ts` reads it: an instance-global secret reaches EVERY app
+   * of EVERY team, so it is the last value that should ride into a container
+   * running a stranger's pull request. Leaving it off the entry made that filter
+   * a no-op for this whole layer.
+   */
+  type: "plain" | "secret";
 }
 
 /**
@@ -124,6 +132,7 @@ export async function loadInstanceEnv(): Promise<GlobalEnvEntry[]> {
     key: e.key,
     valueEnc: e.valueEnc,
     targets: e.targets,
+    type: e.type,
   }));
 }
 

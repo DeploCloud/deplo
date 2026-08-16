@@ -13,12 +13,29 @@
 
 import type { EnvTarget } from "../types";
 
+/**
+ * `plain` or `secret`, carried by EVERY layer below and REQUIRED on all of them.
+ *
+ * The selection here is target-based and ignores it; the one caller that reads it
+ * is the fork-preview drop in `lib/deploy/build.ts`, which refuses to hand a
+ * pull request's attacker-authored code any `secret`-typed value. It used to be
+ * optional, and two of the four loaders simply did not project the column -
+ * `undefined !== "secret"` is true, so a team's shared secrets and every
+ * instance-global secret sailed straight through a filter whose whole job was to
+ * stop them, while the schema and three comments promised otherwise.
+ *
+ * Required, so the compiler is what catches the next loader that forgets. A
+ * value's TYPE is part of what an entry IS, not an optional annotation.
+ */
+export type EnvEntryType = "plain" | "secret";
+
 /** The fields this module reads from an app's own var (an `EnvVar` satisfies it). */
 export interface TargetedEnvEntry {
   appId: string;
   key: string;
   valueEnc: string;
   targets: EnvTarget[];
+  type: EnvEntryType;
 }
 
 /**
@@ -31,6 +48,7 @@ export interface GlobalEnvEntryLike {
   key: string;
   valueEnc: string;
   targets: EnvTarget[];
+  type: EnvEntryType;
 }
 
 /**
@@ -43,9 +61,7 @@ export interface SharedVarEntry {
   valueEnc: string;
   /** Orthogonal runtime axis; the loader defaults an empty set to every target. */
   targets: EnvTarget[];
-  /** `plain` | `secret`. Read only by the caller that drops secrets from a fork
-   *  preview's env — the selection here is target-based and ignores it. */
-  type?: string;
+  type: EnvEntryType;
 }
 
 /**
@@ -56,6 +72,7 @@ export interface SharedVarEntry {
 export interface PreviewOverrideEntry {
   key: string;
   valueEnc: string;
+  type: EnvEntryType;
 }
 
 /**

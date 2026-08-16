@@ -310,6 +310,14 @@ Single endpoint `app/api/graphql/route.ts` (thin) → `lib/graphql/yoga.ts`. One
   `composeHasHostBindMount`. Adding a compose key that escapes the sandbox means adding it to
   that list — and HARDENING is never gated (`no-new-privileges`, `cap_drop`, `read_only`), because
   a permission prompt in front of the safer choice is one people learn to route around.
+- **A HOSTNAME belongs to one team.** `domains` is unique on `(name, coalesce(path_prefix,''))`,
+  not on `name`, so one team can serve `app.com` on `/` and `app.com` on `/api` from two apps -
+  that is a feature and it stays. Across teams it was a takeover: `servers.all_teams` defaults to
+  true (so the attacker picks the victim's host), the victim's DNS already points there (so the row
+  is born `valid`), and `traefikRouterLabels` pins a path router ABOVE the whole-host one on
+  purpose - same-origin content under someone else's name. `assertHostnameNotAnotherTeams`
+  (lib/data/domains.ts) is the refusal, on `addDomain` AND on the rename in `updateDomain`. Any new
+  writer of `domains.name` needs it too.
 - **Roles are per-team ROWS** (`team_roles`, `lib/data/roles.ts`), not TS presets: three
   editable/resettable defaults (Owner locked at full access) plus the team's own. A role edit
   re-writes `membership_capabilities` for its members in the same transaction, so **every
@@ -346,7 +354,16 @@ Single endpoint `app/api/graphql/route.ts` (thin) → `lib/graphql/yoga.ts`. One
   a git token), and `tryDecryptSecret` when you need to branch on the difference yourself.
 - **Secrets are write-only / masked with no reveal path for the client.** `*_enc` ciphertext is
   never projected into DTOs; masked values decrypt only via `manage_env`-gated `reveal*` calls or
-  at the deploy edge. **Never add a "show secret" affordance.**
+  at the deploy edge. **Never add a "show secret" affordance.** Anything RESOLVED into a rendered
+  stack is masked on the way out by `redactComposeForDisplay` (`lib/deploy/compose-redact.ts`) -
+  env values AND the basic-auth htpasswd label, which rides a Traefik label rather than
+  `environment:` and so was readable at the `view` floor for as long as only the env pass existed.
+- **Every env layer carries its `plain`/`secret` type, and the type is REQUIRED**
+  (`EnvEntryType` in `lib/deploy/env-resolve.ts`). A preview of a FORK drops every secret-typed
+  value, because the pull request's code is a stranger's; the filter reads `type`, and the two
+  loaders that did not project the column (`loadSharedVarsForApp`, `loadInstanceEnv`) silently
+  passed a whole team's shared secrets and every instance-global secret through it. Requiredness is
+  the guard: a new loader that forgets does not compile.
 - **Passwords are `scrypt$<N>$<r>$<p>$<salt>$<hash>`, async, with the cost as a stored parameter.**
   Raising `SCRYPT_PARAMS` in `lib/crypto.ts` is a one-line change: `verifyPassword` reads each
   hash's own parameters, the pre-parameter 3-field form still verifies, and `login()` re-hashes a
@@ -373,6 +390,9 @@ Single endpoint `app/api/graphql/route.ts` (thin) → `lib/graphql/yoga.ts`. One
   notification webhooks, push endpoints and git base URLs are all on it; reaching inside the
   deployment is an `allowPrivateEndpoint` flag gated on `requireInstanceAdmin`, never on a team
   capability. A new `fetch` to an address a user typed is a hole until it is on this list.
+  **Exactly one exemption**, named in that file: `probePanel` (`lib/data/instance-settings.ts`)
+  dials the panel's OWN address, which is legitimately private on plenty of installs, so it asserts
+  `requireInstanceAdmin` at the dialer instead. There is no second exemption.
 - **The rate limiter (`lib/security.ts`) is Postgres-backed and `async`.** One UPSERT per attempt,
   so it survives a restart and works across instances; it **fails open** when the database is
   unreachable (a limiter that locks everyone out on a DB blip is worse than one that stops
@@ -386,6 +406,16 @@ Single endpoint `app/api/graphql/route.ts` (thin) → `lib/graphql/yoga.ts`. One
   INSERT into `users`, which has NOT NULL columns it knows nothing about). The credential lives on
   `account.password`; `users.password_hash` is GONE and `token_version` is dead — revoking sessions
   is `revokeAllSessions(userId)`. `lib/auth.ts` keeps its exported surface; only its internals moved.
+- **The Better Auth route is mounted WHOLE, so its account surface is gated shut.** `/api/auth/*`
+  has to exist for OAuth, and that also publishes a complete second account API. Three middlewares
+  in `lib/auth/better-auth.ts` close what deplo drives itself - `twoFactorGate`, `passkeyGate` and
+  `deploOwnedGate` (`isDeploOwnedAuthPath`: sign-in/sign-up, change/set password, change email,
+  update/delete user, the session list and the password-reset pair). All three discriminate on
+  `ctx.request`, which exists only for a real HTTP call, so `auth.api.*({ body, headers })` from
+  `lib/auth.ts` and `lib/data/*` is untouched. The reason is always the same: deplo's own sign-in is
+  the ONLY path that limits per ACCOUNT, raises `failed_logins` and refuses a suspended account -
+  the plugin's endpoint has an in-memory limiter keyed on a caller-writable IP header and nothing
+  else. **Adding a Better Auth endpoint means deciding which side of that list it is on.**
 - **2FA is a POLICY, not a ninth capability.** `teams.require_two_factor` /
   `team_roles.require_two_factor`, both default false. Unmet ⇒ the member resolves NOTHING in that
   team, UI and bearer API alike. The gate is exactly two calls in `lib/membership.ts` —

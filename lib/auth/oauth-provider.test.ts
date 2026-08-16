@@ -553,6 +553,28 @@ test("a freshly registered client reaches nothing until someone approves it", as
 /* Better Auth is not weakened                                         */
 /* ------------------------------------------------------------------ */
 
+test("/sign-in/email is refused over HTTP, and the session it would mint never exists", async () => {
+  // The plugin's own sign-in skips every lock deplo's does: the per-ACCOUNT rate
+  // limit, the `failed_logins` alert, and the suspended-account refusal. Mounting
+  // `/api/auth/*` whole for OAuth published it anyway, so `deploOwnedGate` shuts
+  // it - and this is the test that notices if the OAuth plugin ever reopens it.
+  const before = (await pg.query(`select id from session`)).rows.length;
+  const res = await requireAuth().handler(
+    new Request("http://localhost/api/auth/sign-in/email", {
+      method: "POST",
+      headers: { "content-type": "application/json", origin: "http://localhost" },
+      body: JSON.stringify({ email: EMAIL, password: PASSWORD }),
+    }),
+  );
+  assert.equal(res.status, 403);
+  assert.equal(res.headers.getSetCookie().length, 0, "it set a session cookie");
+  assert.equal(
+    (await pg.query(`select id from session`)).rows.length,
+    before,
+    "it wrote a session row",
+  );
+});
+
 test("sign-up is still refused over HTTP with the OAuth plugin loaded", async () => {
   // `disableSignUp` is one of the three settings better-auth.ts calls
   // load-bearing, and until now nothing asserted it.

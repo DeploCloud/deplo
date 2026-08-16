@@ -804,6 +804,11 @@ export async function loadSharedVarsForApp(
       id: varsTable.id,
       key: varsTable.key,
       valueEnc: varsTable.valueEnc,
+      // `plain` | `secret`, and it has to travel with the entry: the fork-preview
+      // drop in lib/deploy/build.ts asks every layer the same question, and a
+      // column left out of this projection answered "not a secret" for a team's
+      // whole shared-variable set.
+      type: varsTable.type,
       createdAt: varsTable.createdAt,
     })
     .from(varsTable)
@@ -830,6 +835,7 @@ export async function loadSharedVarsForApp(
         key: r.key,
         valueEnc: r.valueEnc,
         targets: targets && targets.length ? targets : ALL_ENV_TARGETS,
+        type: r.type === "secret" ? ("secret" as const) : ("plain" as const),
       };
     });
 }

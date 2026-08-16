@@ -70,6 +70,7 @@ import {
   deleteAllDeployments,
 } from "@/lib/data/deployments";
 import { renderAppStack } from "@/lib/deploy/build";
+import { redactComposeForDisplay } from "@/lib/deploy/compose-redact";
 import { MOUNT_PROPAGATIONS } from "@/lib/types";
 import type {
   BuildMethod,
@@ -696,43 +697,6 @@ builder.queryFields((t) => ({
   }),
 }));
 
-/**
- * Redact every value under an `environment:` block of a rendered stack. The
- * single-image stack file inlines the RESOLVED env values (app secrets, linked
- * shared vars, instance globals) in plaintext, and the preview is served at the
- * `view` floor — the values must never reach the client (secrets are write-only,
- * no reveal path). Variables stay listed by NAME so the preview still shows what
- * the deploy injects. Compose stacks already carry names only (bare `- KEY`
- * pass-throughs; values ride the env-file), so their lines pass through
- * unchanged.
- */
-function redactComposeEnvValues(yaml: string): string {
-  const MASKED = "••••••••";
-  let envIndent: number | null = null;
-  return yaml
-    .split("\n")
-    .map((line) => {
-      const trimmed = line.trim();
-      const indent = line.length - line.trimStart().length;
-      if (envIndent !== null) {
-        if (trimmed !== "" && indent <= envIndent) {
-          envIndent = null; // left the environment: block
-        } else if (trimmed !== "") {
-          // Map form (`KEY: value`) and list form (`- KEY=value`) both hide
-          // the value; a bare `- KEY` pass-through has none to hide.
-          const map = /^(\s+[^\s:]+:)\s+\S.*$/.exec(line);
-          if (map) return `${map[1]} ${JSON.stringify(MASKED)}`;
-          const list = /^(\s+-\s+)(["']?)([^=\s"']+)=.*$/.exec(line);
-          if (list) return `${list[1]}${list[3]}=${MASKED}`;
-          return line;
-        }
-      }
-      if (envIndent === null && trimmed === "environment:") envIndent = indent;
-      return line;
-    })
-    .join("\n");
-}
-
 /** What a folder's or a project's ⋯ menu can run over all of its apps at once.
  *  Redeploy is its own mutation: it is a different permission (`deploy_apps`). */
 const BulkAppActionEnum = builder.enumType("BulkAppAction", {
@@ -1164,8 +1128,10 @@ builder.mutationFields((t) => ({
       if (!project) throw new Error("App not found");
       const yaml = await renderAppStack(project.id);
       // The preview is served at the `view` floor: mask every env VALUE
-      // (single-image stacks inline the resolved plaintext) before it leaves.
-      return yaml === null ? null : redactComposeEnvValues(yaml);
+      // (single-image stacks inline the resolved plaintext) AND the basic-auth
+      // htpasswd label, which rides a Traefik label rather than `environment:`
+      // and so was readable by anyone who could open the app at all.
+      return yaml === null ? null : redactComposeForDisplay(yaml);
     },
   }),
   redeploy: t.field({

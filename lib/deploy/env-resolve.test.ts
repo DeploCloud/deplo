@@ -16,7 +16,7 @@ function envVar(
   targets: TargetedEnvEntry["targets"],
   appId = APP,
 ): TargetedEnvEntry {
-  return { appId, key, valueEnc: `enc(${key})`, targets };
+  return { appId, key, valueEnc: `enc(${key})`, targets, type: "plain" };
 }
 
 function shared(
@@ -24,7 +24,7 @@ function shared(
   targets: SharedVarEntry["targets"] = [...ALL],
   tag = key,
 ): SharedVarEntry {
-  return { key, valueEnc: `enc(${tag})`, targets };
+  return { key, valueEnc: `enc(${tag})`, targets, type: "plain" };
 }
 
 function globalEntry(
@@ -32,7 +32,7 @@ function globalEntry(
   targets: GlobalEnvEntryLike["targets"],
   tag = key,
 ): GlobalEnvEntryLike {
-  return { key, valueEnc: `enc(${tag})`, targets };
+  return { key, valueEnc: `enc(${tag})`, targets, type: "plain" };
 }
 
 const keys = (es: { key: string }[]) => es.map((e) => e.key);
@@ -148,7 +148,7 @@ test("a preview override beats the app's own var AND a linked shared var", () =>
     [envVar("DATABASE_URL", ["production", "preview"])],
     [shared("DATABASE_URL", ["production", "preview"], "team-default")],
     [globalEntry("DATABASE_URL", ["production", "preview"], "instance")],
-    [{ key: "DATABASE_URL", valueEnc: "enc(scratch)" }],
+    [{ key: "DATABASE_URL", valueEnc: "enc(scratch)", type: "plain" as const }],
   );
   assert.equal(fold(out)["DATABASE_URL"], "enc(scratch)");
   // Lowest precedence first, override last.
@@ -160,7 +160,7 @@ test("a preview override beats the app's own var AND a linked shared var", () =>
 
 test("an override can introduce a key that exists nowhere else", () => {
   const out = resolveEnvEntries("preview", APP, [], [], [], [
-    { key: "PREVIEW_ONLY", valueEnc: "enc(v)" },
+    { key: "PREVIEW_ONLY", valueEnc: "enc(v)", type: "plain" as const },
   ]);
   assert.deepEqual(keys(out), ["PREVIEW_ONLY"]);
 });
@@ -172,7 +172,7 @@ test("overrides NEVER reach production, even when supplied", () => {
     [envVar("DATABASE_URL", ["production", "preview"])],
     [],
     [],
-    [{ key: "DATABASE_URL", valueEnc: "enc(scratch)" }],
+    [{ key: "DATABASE_URL", valueEnc: "enc(scratch)", type: "plain" as const }],
   );
   assert.equal(fold(out)["DATABASE_URL"], "enc(DATABASE_URL)");
 });

@@ -227,14 +227,12 @@ for (const [path, method] of [
 test("the passkey gate leaves the rest of Better Auth alone", async () => {
   // Proves the matcher is scoped to /passkey/ rather than having quietly closed
   // the whole auth surface.
-  const res = await requireAuth().handler(
-    new Request("http://localhost/api/auth/sign-in/email", {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({ email: "nobody@example.com", password: "nope" }),
-    }),
-  );
-  assert.notEqual(res.status, 403, "sign-in still reaches its own handler");
+  //
+  // Not `/sign-in/email` any more: `deploOwnedGate` closes that one on its own
+  // merits, so a 403 there would say nothing about THIS matcher. `/get-session`
+  // is the neighbour that stays open, and it changes nothing.
+  const res = await overHttp("/get-session", "GET");
+  assert.notEqual(res.status, 403, "get-session still reaches its own handler");
 });
 
 /* ------------------------------------------------------------------ */

@@ -48,6 +48,60 @@ export async function resolveCloneUrl(repo: GitRepo): Promise<string> {
 }
 
 /**
+ * The URL a pull request preview clones when the head lives in a FORK.
+ *
+ * Two things this exists to get right, and both were wrong while
+ * `app_previews.head_clone_url` was recorded and then never read:
+ *
+ *  1. **The fork's code is what builds.** The deploy used to clone the app's own
+ *     repository at the fork's branch NAME, so a fork preview either failed
+ *     outright or quietly built the BASE repo's branch of the same name. The
+ *     approve button therefore promised a maintainer they had reviewed a diff
+ *     that was never what ran - a security control that protected nothing.
+ *  2. **No credential goes to it.** {@link resolveCloneUrl} embeds an
+ *     installation token or a connection's PAT; a fork belongs to a stranger, so
+ *     it is cloned ANONYMOUSLY. A private fork simply fails to clone, which is
+ *     the correct outcome.
+ *
+ * The URL arrives inside a webhook body, so it is checked rather than trusted:
+ * https only, no userinfo, and the same host as the app's own repository. Deplo
+ * must not be talked into cloning `https://evil.test/x.git` by a `pull_request`
+ * payload. Rebuilt from its parts so a query string or fragment cannot ride along.
+ *
+ * Pure, and it THROWS with the sentence the deploy log shows: a preview that
+ * cannot say which code it would run must not run any.
+ */
+export function forkCloneUrl(baseRepoUrl: string, headCloneUrl: string): string {
+  const fail = (why: string): never => {
+    throw new Error(
+      `This pull request comes from a fork and Deplo will not clone it: ${why}.`,
+    );
+  };
+  let head: URL;
+  try {
+    head = new URL(headCloneUrl);
+  } catch {
+    return fail(
+      headCloneUrl
+        ? "its clone address is not a URL"
+        : "no clone address was recorded for it. Close and reopen the pull request",
+    );
+  }
+  if (head.protocol !== "https:") return fail("its clone address is not https");
+  if (head.username || head.password)
+    return fail("its clone address carries a credential");
+  let base: URL | null = null;
+  try {
+    base = new URL(baseRepoUrl);
+  } catch {
+    base = null;
+  }
+  if (base && head.host !== base.host)
+    return fail(`it is hosted on ${head.host}, not on ${base.host}`);
+  return `${head.protocol}//${head.host}${head.pathname}`;
+}
+
+/**
  * A repo URL with any credential stripped, safe to print in a deploy log or a
  * DTO. Deploy logs are readable by anyone with `view_logs`, which is a much
  * wider set than the people allowed to manage the connection.

@@ -52,7 +52,9 @@ export async function POST(request: Request) {
   const event = request.headers.get("x-github-event");
   // Pull request deliveries drive preview deployments; the push arm below is
   // untouched. Everything else GitHub sends is acknowledged and dropped.
-  if (event === "pull_request") return handlePullRequestDelivery(raw);
+  // `app.id` rides along for the same reason it is used below: the delivery may
+  // only act on installations of the App whose secret just verified it.
+  if (event === "pull_request") return handlePullRequestDelivery(raw, app.id);
   if (event !== "push") return new Response("ok", { status: 200 });
 
   let payload: PushPayload;
@@ -76,15 +78,27 @@ export async function POST(request: Request) {
     return new Response("ok", { status: 200 });
   }
 
+  // The installation MUST belong to the App the signature was verified against.
+  // The signature proves one thing - which App's webhook secret signed this body
+  // - and the installation id is a field IN that body, so resolving it on its own
+  // let a delivery signed by App A act on App B's installation. Anyone holding
+  // `manage_git` can connect their own GitHub App, read its webhook secret on
+  // github.com and sign whatever they like; without this clause that was a
+  // production deploy of another team's app.
   const installRows = await getDb()
     .select()
     .from(githubInstallationTable)
-    .where(eq(githubInstallationTable.installationId, numericInstall))
+    .where(
+      and(
+        eq(githubInstallationTable.installationId, numericInstall),
+        eq(githubInstallationTable.appId, app.id),
+      ),
+    )
     .limit(1);
   const install = installRows[0];
   if (!install) {
     console.warn(
-      `[github-webhook] no installation row for numeric id ${numericInstall} (repo=${fullName})`,
+      `[github-webhook] no installation row for numeric id ${numericInstall} on app=${app.slug} (repo=${fullName})`,
     );
     return new Response("ok", { status: 200 });
   }

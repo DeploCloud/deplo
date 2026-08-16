@@ -85,9 +85,52 @@ export function __resetDnsResolve4ForTest(): void {
 const SERVICE_UNSUPPORTED =
   "Picking a container is only available for compose stacks — a single-image app has exactly one, so use the container port field.";
 
+/**
+ * Refuse a hostname an app in ANOTHER TEAM already routes.
+ *
+ * The stored uniqueness is `(name, coalesce(path_prefix,''))`, not `name`, so
+ * that one team can serve `app.com` on `/` and `app.com` on `/api` from two
+ * apps. That is a real feature and it stays. What it also allowed, until this
+ * check, was a DIFFERENT team attaching `victim.com` on a path of their choosing
+ * to an app of their own - and every step after that lands by itself:
+ *
+ *  - `servers.all_teams` defaults to true, so the attacker can put their app on
+ *    the very host the victim's app runs on;
+ *  - the victim's DNS already points there (it has to, for their own app), so
+ *    {@link checkDomainDns} answers `valid` and the row is routable at once;
+ *  - `traefikRouterLabels` pins a path router ABOVE the whole-host router on
+ *    purpose (see PATH_PRIORITY_BASE), so the new route WINS for that path.
+ *
+ * The result is same-origin content under someone else's hostname: cookies,
+ * phishing, a service worker, and a certificate order for a name that is not
+ * theirs. The team boundary is therefore the cut, not the app: inside one team a
+ * shared hostname is collaboration, across two it is a takeover.
+ *
+ * Says "another team" and nothing more. Which team, which app and which path are
+ * none of the caller's business, and the hostname's existence is already public
+ * in DNS.
+ */
+async function assertHostnameNotAnotherTeams(
+  name: string,
+  teamId: string,
+  exceptDomainId: string | null,
+): Promise<void> {
+  const rows = await getDb()
+    .select({ id: domainsTable.id, teamId: appsTable.teamId })
+    .from(domainsTable)
+    .innerJoin(appsTable, eq(appsTable.id, domainsTable.appId))
+    .where(eq(domainsTable.name, name));
+  if (rows.some((r) => r.id !== exceptDomainId && r.teamId !== teamId))
+    throw new Error(
+      `${name} is already routed by another team on this Deplo. A hostname belongs to one team.`,
+    );
+}
+
 /** True if any project already owns this exact hostname (global uniqueness —
- * the `domains.name` unique index is the hard backstop; this is the friendly
- * pre-check that lets generation regenerate instead of hitting the violation). */
+ * the `domains_name_pathprefix_uq` index is on (name, path) rather than on name
+ * alone, so this is the stricter, hostname-only pre-check the generators use to
+ * regenerate instead of colliding. Cross-team refusal for a hostname a USER
+ * typed lives in {@link assertHostnameNotAnotherTeams}). */
 async function domainNameExists(name: string): Promise<boolean> {
   const hit = await getDb()
     .select({ id: domainsTable.id })
@@ -450,6 +493,8 @@ export async function addDomain(
     throw new Error(
       pathPrefix ? "Domain + path already added" : "Domain already added",
     );
+  // The hostname must also not already belong to another team, whatever the path.
+  await assertHostnameNotAnotherTeams(clean, membership.teamId, null);
 
   await assertTeamLetsencryptQuota(membership.teamId, config.certProvider ?? "none");
 
@@ -766,6 +811,10 @@ export async function updateDomain(
     throw new Error(
       nextPath ? "Domain + path already added" : "Domain already added",
     );
+  // A RENAME is the other way onto someone else's hostname, so it gets the same
+  // refusal `addDomain` does. This row is excluded from the comparison - an edit
+  // that only moves a port must not trip over itself.
+  await assertHostnameNotAnotherTeams(nextName, membership.teamId, id);
 
   // Build the next domain object from `current` + the patch (delete-when-empty →
   // a NULL column), then write the flat row + replace the middleware child rows.

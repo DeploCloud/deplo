@@ -14,6 +14,14 @@ import { lookup } from "node:dns/promises";
  * blind case. Before adding an outbound `fetch` anywhere, put its address
  * through here first.
  *
+ * THE ONE EXEMPTION, named so the list stays honest: `probePanel` in
+ * `lib/data/instance-settings.ts` dials the panel's OWN address to prove a new
+ * one answers before the old one is given up. That address is legitimately
+ * private on plenty of installs, so this guard would refuse the very operator it
+ * exists for. It is instance-admin gated at the dialer instead - the same
+ * trade `allowPrivateEndpoint` makes for an S3 endpoint and a git base URL.
+ * Anything else that is not on this list is a hole, not a second exemption.
+ *
  * A LEAF module on purpose. It used to live in `lib/data/s3.ts`, which records
  * activity - and once the activity log started raising alerts, every alert
  * channel importing the guard closed a require cycle

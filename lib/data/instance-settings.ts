@@ -564,8 +564,23 @@ async function passkeysBoundToThisAddress(): Promise<number> {
 }
 
 /**
- * The probe, ungated: its callers are the route move and the adoption check,
- * both already inside a gated mutation.
+ * Ask an address whether this instance answers on it.
+ *
+ * THE ONE OUTBOUND DIALER NOT ON `lib/outbound-url.ts`, and deliberately so: the
+ * panel's own address is legitimately private on plenty of installs (an internal
+ * network, a box with no public name yet, `http://<ip>:3000` before a domain
+ * exists), so the SSRF guard would refuse exactly the operator this feature is
+ * for. That makes it the same call `allowPrivateEndpoint` already grants on a
+ * backup destination and a git connection - and, like that flag, it is
+ * INSTANCE-ADMIN ONLY.
+ *
+ * The gate is asserted here rather than inherited from the callers. Both of them
+ * are inside `requireInstanceAdmin()` mutations today; asserting it at the
+ * dialer is what keeps that true when the third caller arrives, because this
+ * function is the one that reaches an address of someone's choosing and reports
+ * back whether something answered.
+ *
+ * Its callers are the route move and the adoption check.
  *
  * There is deliberately NO "check this address" button in front of it any more.
  * A button that answers "not yet" while DNS propagates taught nobody anything
@@ -575,6 +590,7 @@ async function passkeysBoundToThisAddress(): Promise<number> {
  * the question an operator actually has at that moment.
  */
 async function probePanel(url: string): Promise<PanelReachability> {
+  await requireInstanceAdmin();
   try {
     const res = await fetch(`${url}/api/health`, {
       // Redirects are FOLLOWED: an http address in front of a proxy that sends

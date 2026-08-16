@@ -148,6 +148,72 @@ const passkeyGate = createAuthMiddleware(async (ctx) => {
 });
 
 /**
+ * Endpoints Better Auth exposes that deplo drives ITSELF, and that must not be a
+ * second way in off the network.
+ *
+ * `app/api/auth/[...all]/route.ts` mounts the plugin whole, because the OAuth
+ * surface has to be reachable. That also published a complete parallel account
+ * API, and `/sign-in/email` was the one that mattered: deplo's own sign-in lives
+ * in `lib/graphql/types/auth.ts`, and it is the only place that
+ *
+ *  - counts an attempt against `login:email:<address>` (8/min, Postgres-backed,
+ *    survives a restart, and keyed on the ACCOUNT so it cannot be spoofed);
+ *  - raises `failed_logins` through `noteFailedLogin`, which is how a team hears
+ *    that someone is grinding one of their accounts;
+ *  - refuses a suspended account before a session row is ever written.
+ *
+ * None of that runs on the plugin's own endpoint. What was left in front of it
+ * is Better Auth's built-in limiter: 3 requests per 10 seconds, IN MEMORY (gone
+ * on every restart, counted per process), keyed on an address read from
+ * `cf-connecting-ip` / `x-real-ip` / `x-forwarded-for` - all of which the caller
+ * writes, since deplo also answers on `http://<ip>:3000` by design and Traefik
+ * does not strip the first of them. Rotating one header is unlimited password
+ * guessing with no alert.
+ *
+ * `/list-sessions` is here for a narrower reason: it answers with raw session
+ * TOKENS. It is behind the plugin's 24-hour freshness middleware today, which is
+ * a window rather than a door being shut.
+ *
+ * Same mechanism and same reasoning as {@link twoFactorGate} and
+ * {@link passkeyGate}: `ctx.request` exists only for a real HTTP call, so
+ * everything deplo calls as `auth.api.*({ body, headers })` is untouched. Adding
+ * an endpoint here costs nothing; forgetting to is how the next parallel
+ * account API ships.
+ */
+const DEPLO_OWNED_AUTH_PATHS = [
+  "/sign-in/",
+  "/sign-up/",
+  "/change-password",
+  "/set-password",
+  "/change-email",
+  "/update-user",
+  "/delete-user",
+  "/list-sessions",
+  "/revoke-session",
+  "/revoke-sessions",
+  "/revoke-other-sessions",
+  "/forget-password",
+  "/reset-password",
+  "/request-password-reset",
+] as const;
+
+/** Whether Better Auth's own endpoint at `path` is one deplo drives itself.
+ *  Exported so the list is exercised without standing up an auth instance. */
+export function isDeploOwnedAuthPath(path: string): boolean {
+  return DEPLO_OWNED_AUTH_PATHS.some((p) => path.startsWith(p));
+}
+
+const deploOwnedGate = createAuthMiddleware(async (ctx) => {
+  if (!ctx.request) return;
+  if (!isDeploOwnedAuthPath(ctx.path)) return;
+  throw new APIError("FORBIDDEN", {
+    message:
+      "Accounts are managed through deplo, which rate-limits sign-ins per account and records failed attempts. Use the dashboard.",
+    code: "DEPLO_OWNED_ENDPOINT",
+  });
+});
+
+/**
  * Refuse a ceremony the authenticator did not verify was a PERSON.
  *
  * The plugin hardcodes `requireUserVerification: false` in both verifiers, and
@@ -208,6 +274,7 @@ const silentAuthorizeGate = createAuthMiddleware(async (ctx) => {
 const authorizeGates = createAuthMiddleware(async (ctx) => {
   await twoFactorGate(ctx);
   await passkeyGate(ctx);
+  await deploOwnedGate(ctx);
   await silentAuthorizeGate(ctx);
 });
 
