@@ -100,7 +100,7 @@ function ServerCard({
   return (
     <Card className="transition-colors hover:border-foreground/20">
       <CardHeader className="space-y-3">
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
           {/* The chip owns BOTH the dot and the label: the status and its age are one
               fact, and splitting them across two elements is how a page ends up
               rendering a confident green dot next to a status nobody has verified. */}

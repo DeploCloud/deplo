@@ -111,7 +111,7 @@ export default async function AppLayout(props: LayoutProps<"/apps/[slug]">) {
               )}
             </div>
           </div>
-          <div className="flex items-center gap-2">
+          <div className="flex flex-wrap items-center gap-2">
             {project.productionUrl && (
               <SimpleTooltip content="Open the live site in a new tab">
                 <Button variant="default" size="sm" asChild>

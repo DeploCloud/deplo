@@ -533,7 +533,7 @@ export function NewAppWizard({
   // Card order: configure the app first, then pick the source, then choose
   // which server runs it (3rd). Template-only compose/env follow afterwards.
   return (
-    <div className="grid items-start gap-6 lg:grid-cols-[1fr_320px]">
+    <div className="grid items-start gap-6 lg:grid-cols-[minmax(0,1fr)_320px]">
       {/* Left column: the configuration cards, in creation order. */}
       <div className="min-w-0 space-y-6">
         {/* 1. Configure */}

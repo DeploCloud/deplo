@@ -22,7 +22,10 @@ const CardHeader = React.forwardRef<
 >(({ className, ...props }, ref) => (
   <div
     ref={ref}
-    className={cn("flex flex-col space-y-1.5 p-6", className)}
+    // `flex-wrap` is inert in the default column direction and load-bearing in
+    // the other one: two dozen headers flip to `flex-row` to put an action next
+    // to the title, and on a phone that pair is wider than the screen.
+    className={cn("flex flex-col flex-wrap space-y-1.5 p-6", className)}
     {...props}
   />
 ));

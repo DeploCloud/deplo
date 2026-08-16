@@ -84,7 +84,11 @@ function UnderlineTabsList({
     <TabsPrimitive.List
       ref={listRef}
       className={cn(
-        "relative flex h-12 items-center gap-1 border-b border-border bg-transparent p-0",
+        // Scrolls sideways instead of widening the page: a tab strip is the one
+        // row that must keep every label on one line, and on a phone three of
+        // them already outgrow the viewport. Bar hidden - swiping is the gesture,
+        // and the labels themselves show there is more to reach.
+        "relative flex h-12 items-center gap-1 overflow-x-auto border-b border-border bg-transparent p-0 scrollbar-none",
         className
       )}
       {...props}

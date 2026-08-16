@@ -133,7 +133,7 @@ export function BuildServerPanel({
 
   return (
     <div className="rounded-lg border border-border p-3">
-      <div className="flex items-center justify-between gap-3">
+      <div className="flex flex-wrap items-center justify-between gap-3">
         <div className="space-y-0.5">
           <p className="flex items-center gap-1.5 text-sm font-medium">
             Build on
@@ -160,7 +160,7 @@ export function BuildServerPanel({
           </p>
         </div>
         <Select value={value} onValueChange={pick} disabled={saving}>
-          <SelectTrigger className="w-56 shrink-0">
+          <SelectTrigger className="w-full shrink-0 sm:w-56">
             <SelectValue />
           </SelectTrigger>
           <SelectContent>

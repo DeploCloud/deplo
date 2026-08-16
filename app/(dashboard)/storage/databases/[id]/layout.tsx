@@ -66,7 +66,7 @@ export default async function DatabaseLayout(
               </p>
             </div>
           </div>
-          <div className="flex items-center gap-2">
+          <div className="flex flex-wrap items-center gap-2">
             <DatabaseControls id={db.id} status={db.status} />
             <DatabaseRedeployButton id={db.id} />
           </div>

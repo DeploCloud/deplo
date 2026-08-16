@@ -18,7 +18,7 @@ const ROW_FILL = [
 export default function Loading() {
   return (
     <div
-      className="grid gap-6 lg:grid-cols-[1fr_300px]"
+      className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_300px]"
       role="status"
       aria-busy
       aria-label="Loading dashboard"

@@ -253,7 +253,7 @@ export default async function OverviewPage(props: PageProps<"/">) {
   ].join("|");
 
   return (
-    <div className="grid gap-6 lg:grid-cols-[1fr_300px]">
+    <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_300px]">
       {/* Right rail */}
       <div className="order-2 space-y-6 lg:order-2">
         <Card>

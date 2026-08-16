@@ -181,12 +181,29 @@
   html {
     -webkit-text-size-adjust: 100%;
   }
+  /* A grid with no `grid-cols-*` at the current breakpoint lays its items out in
+     IMPLICIT tracks, and an implicit track is `auto`, which can never shrink
+     below its widest item's min-content. One unbreakable string (a nip.io host,
+     a webhook URL, a row of badges) therefore pushed the track past the phone's
+     width and the whole page scrolled sideways. `grid-cols-*` already expands to
+     `repeat(N, minmax(0, 1fr))`; this gives the implicit track the same floor, so
+     "one column on mobile" behaves like every other column count and `truncate`
+     does its job. `auto-cols-*` (utilities layer) still wins over it. */
+  .grid {
+    grid-auto-columns: minmax(0, 1fr);
+  }
   body {
     background-color: var(--background);
     color: var(--foreground);
     font-family: var(--font-sans);
     -webkit-font-smoothing: antialiased;
     text-rendering: optimizeLegibility;
+    /* Half the strings on screen are not prose: an error from Docker, a
+       nip.io host, a container id - and one of them longer than a phone's
+       width used to paint straight past the page edge. Only ever breaks a word
+       that has no other way to fit; `truncate` and `whitespace-pre` still win
+       where they are set. */
+    overflow-wrap: break-word;
   }
   /* Vercel-like thin scrollbars */
   * {

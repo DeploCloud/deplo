@@ -24,7 +24,12 @@ export function PageHeader({
           <p className="text-sm text-muted-foreground">{description}</p>
         )}
       </div>
-      {actions && <div className="flex items-center gap-2">{actions}</div>}
+      {/* Wraps: a header can carry three buttons, which is already wider than a
+          phone, and a toolbar that grows past the screen takes the whole page
+          with it. */}
+      {actions && (
+        <div className="flex flex-wrap items-center gap-2">{actions}</div>
+      )}
     </div>
   );
 }

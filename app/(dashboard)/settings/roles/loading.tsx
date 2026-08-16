@@ -26,7 +26,7 @@ export default function Loading() {
     <div
       // The editor's own grid, so the real thing lands exactly where its
       // skeleton was instead of stepping sideways as it arrives.
-      className="grid items-start gap-6 xl:grid-cols-[1fr_320px]"
+      className="grid items-start gap-6 xl:grid-cols-[minmax(0,1fr)_320px]"
       role="status"
       aria-busy
       aria-label="Loading role"

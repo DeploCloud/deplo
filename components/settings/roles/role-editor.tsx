@@ -184,7 +184,7 @@ export function RoleEditor({
   }
 
   return (
-    <form className="grid items-start gap-6 xl:grid-cols-[1fr_320px]" onSubmit={submit}>
+    <form className="grid items-start gap-6 xl:grid-cols-[minmax(0,1fr)_320px]" onSubmit={submit}>
       <div className="space-y-4">
         {locked && (
           <div className="flex items-start gap-2.5 rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 py-2.5 text-sm text-amber-600 dark:text-amber-400">
