@@ -20,6 +20,7 @@ import {
   veilProps,
 } from "@/components/templates/template-card";
 import { TemplateMarkdown } from "@/components/templates/template-markdown";
+import { TemplateRail } from "@/components/templates/template-rail";
 import { TemplateSearchLink } from "@/components/templates/template-search";
 import { TemplateScreenshots } from "@/components/templates/template-screenshots";
 import { hasCapability } from "@/lib/membership";
@@ -34,8 +35,8 @@ import {
 import { templateAccent, templateAccents } from "@/lib/templates/logo-color";
 import { getTemplate, listCatalog, templateAssetUrl } from "@/templates/catalog";
 
-/** How many siblings the Related row shows. */
-const RELATED = 6;
+/** How many siblings the Related rail carries. */
+const RELATED = 12;
 
 export async function generateMetadata(props: PageProps<"/templates/[slug]">) {
   const { slug } = await props.params;
@@ -182,19 +183,19 @@ export default async function TemplatePage(props: PageProps<"/templates/[slug]">
       </dl>
 
       {related.length > 0 && (
-        <section className="space-y-3 border-t border-border pt-6">
-          <h2 className="text-base font-semibold tracking-tight">Related</h2>
-          <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6">
+        <div className="border-t border-border pt-6">
+          <TemplateRail title="Related">
             {related.map((t) => (
               <TemplateCard
                 key={t.slug}
                 template={toStoreTemplate(t)}
                 accent={relatedAccents[t.slug]}
                 href={`/templates/${t.slug}`}
+                className="w-72 shrink-0 snap-start"
               />
             ))}
-          </div>
-        </section>
+          </TemplateRail>
+        </div>
       )}
     </div>
   );
