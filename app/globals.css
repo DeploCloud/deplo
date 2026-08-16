@@ -354,33 +354,6 @@
   border-radius: var(--radius-lg);
 }
 
-/* Search feedback: the results blur out and settle back as the set changes, so
-   a filter that returns a different grid is visibly a NEW grid and not a
-   redraw you missed. Short on purpose - it runs on every keystroke. */
-@keyframes deplo-results-in {
-  from {
-    opacity: 0;
-    filter: blur(8px);
-    transform: translateY(6px) scale(0.99);
-  }
-  to {
-    opacity: 1;
-    filter: blur(0);
-    transform: none;
-  }
-}
-.animate-results-in {
-  animation: deplo-results-in 240ms cubic-bezier(0.22, 1, 0.36, 1) both;
-}
-
-@media (prefers-reduced-motion: reduce) {
-  /* The results still arrive, they just don't travel. Not `animation: none` —
-     `both` would otherwise leave the grid held on the blurred FIRST frame. */
-  .animate-results-in {
-    animation: none;
-  }
-}
-
 /* ------------------------------------------------------------------ */
 /* "No templates match": a lens sweeping a row that goes out under it. */
 /* ------------------------------------------------------------------ */

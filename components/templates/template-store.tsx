@@ -167,71 +167,64 @@ export function TemplateStore({
         onSelect={selectCategory}
       />
 
-      {/* The results re-enter on every change of filter. Keyed on the filter,
-          so React remounts this subtree and the animation replays — which is
-          also why the key is here and not on the card grid: a phone-sized
-          result set remounts cheaply, and the unfiltered view (388 cards plus
-          twenty rails) is only ever rebuilt when you come back to it. */}
-      <div key={`${query}|${category}`} className="animate-results-in">
-        {browsing ? (
-          <div className="space-y-10">
-            {COLLECTIONS.map((collection) => {
-              const picks = collection.slugs
-                .map((slug) => bySlug.get(slug))
-                .filter((t): t is StoreTemplate => Boolean(t));
-              if (picks.length < MIN_COLLECTION_SIZE) return null;
-              return (
-                <TemplateRail
-                  key={collection.title}
-                  title={collection.title}
-                  subtitle={collection.subtitle}
-                >
-                  {picks.map((t) => card(t, "w-56 shrink-0 snap-start"))}
-                </TemplateRail>
-              );
-            })}
+      {browsing ? (
+        <div className="space-y-10">
+          {COLLECTIONS.map((collection) => {
+            const picks = collection.slugs
+              .map((slug) => bySlug.get(slug))
+              .filter((t): t is StoreTemplate => Boolean(t));
+            if (picks.length < MIN_COLLECTION_SIZE) return null;
+            return (
+              <TemplateRail
+                key={collection.title}
+                title={collection.title}
+                subtitle={collection.subtitle}
+              >
+                {picks.map((t) => card(t, "w-56 shrink-0 snap-start"))}
+              </TemplateRail>
+            );
+          })}
 
-            {categories.map((c) => {
-              const picks = templates
-                .filter((t) => t.category.slug === c.slug)
-                .slice(0, RAIL_LIMIT);
-              if (picks.length < MIN_RAIL_SIZE) return null;
-              return (
-                <TemplateRail key={c.slug} title={c.name}>
-                  {picks.map((t) => card(t, "w-56 shrink-0 snap-start"))}
-                </TemplateRail>
-              );
-            })}
+          {categories.map((c) => {
+            const picks = templates
+              .filter((t) => t.category.slug === c.slug)
+              .slice(0, RAIL_LIMIT);
+            if (picks.length < MIN_RAIL_SIZE) return null;
+            return (
+              <TemplateRail key={c.slug} title={c.name}>
+                {picks.map((t) => card(t, "w-56 shrink-0 snap-start"))}
+              </TemplateRail>
+            );
+          })}
 
-            <section className="space-y-3">
-              <div>
-                <h2 className="text-base font-semibold tracking-tight">
-                  All templates
-                </h2>
-                <p className="mt-1 text-sm text-muted-foreground">
-                  Everything in the catalogue, A to Z.
-                </p>
-              </div>
-              <Grid>{[...templates].sort(byName).map((t) => card(t))}</Grid>
-            </section>
-          </div>
-        ) : (
           <section className="space-y-3">
-            <p className="text-sm text-muted-foreground">
-              {filtered.length} {filtered.length === 1 ? "template" : "templates"}
-            </p>
-            {filtered.length ? (
-              <Grid>{[...filtered].sort(byName).map((t) => card(t))}</Grid>
-            ) : (
-              <EmptyState
-                graphic={<NoResultsGraphic />}
-                title="No templates match"
-                description="Try a different word, or pick another category."
-              />
-            )}
+            <div>
+              <h2 className="text-base font-semibold tracking-tight">
+                All templates
+              </h2>
+              <p className="mt-1 text-sm text-muted-foreground">
+                Everything in the catalogue, A to Z.
+              </p>
+            </div>
+            <Grid>{[...templates].sort(byName).map((t) => card(t))}</Grid>
           </section>
-        )}
-      </div>
+        </div>
+      ) : (
+        <section className="space-y-3">
+          <p className="text-sm text-muted-foreground">
+            {filtered.length} {filtered.length === 1 ? "template" : "templates"}
+          </p>
+          {filtered.length ? (
+            <Grid>{[...filtered].sort(byName).map((t) => card(t))}</Grid>
+          ) : (
+            <EmptyState
+              graphic={<NoResultsGraphic />}
+              title="No templates match"
+              description="Try a different word, or pick another category."
+            />
+          )}
+        </section>
+      )}
     </div>
   );
 }
