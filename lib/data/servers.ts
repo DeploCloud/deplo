@@ -710,7 +710,7 @@ export async function updateServerAddress(
     }
   }
 
-  await getDb()
+  const updated = await getDb()
     .update(serversTable)
     .set({
       host: address,
@@ -718,7 +718,11 @@ export async function updateServerAddress(
       // Meaningless before an agent exists - bootstrap sets it when one calls home.
       ...(server.agent && input.agentPort != null ? { agentPort: input.agentPort } : {}),
     })
-    .where(eq(serversTable.id, input.id));
+    .where(eq(serversTable.id, input.id))
+    .returning({ id: serversTable.id });
+  // The probe window is real: a concurrent removeServer between the read above
+  // and this write must surface as a refusal, not as success + phantom activity.
+  if (updated.length === 0) throw new Error("Server not found");
   await recordActivity(
     "member",
     `Changed server ${server.name} address to ${address}:${port}`,
