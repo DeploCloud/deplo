@@ -328,6 +328,10 @@ export function CronJobsList({
   // The soonest fire ahead. When it rolls over, one has just happened - the one
   // change this page cannot see on its own, since firing writes a run row and
   // touches nothing a list of jobs is rendered from.
+  //
+  // ponytail: a fire is the only trigger, so a run somebody ELSE starts by hand
+  //   on a page whose next fire is hours away waits for a reload. Upgrade: poll
+  //   `appCronJobs` on a slow interval, which costs no RSC re-render.
   const soonest = Math.min(...nextRuns.filter((n): n is number => n !== null));
   const lastSoonest = React.useRef(soonest);
   React.useEffect(() => {
