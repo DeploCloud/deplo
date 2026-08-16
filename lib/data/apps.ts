@@ -36,11 +36,14 @@ import {
   requireTeamWide,
 } from "../membership";
 import {
+  composeBuildReachesHost,
   composeClaimsReservedName,
   composeHasHostBindMount,
   composeMountsForeignStorage,
   composeNeedsHostPrivileges,
   composePublishesPorts,
+  composeUsesExternalMerge,
+  externalMergeMessage,
   reservedNameMessage,
 } from "../deploy/compose-lint";
 import { composeServiceNames } from "../deploy/compose-stack";
@@ -686,7 +689,8 @@ export async function createApp(
     input.compose != null &&
     (composeHasHostBindMount(input.compose) ||
       composeNeedsHostPrivileges(input.compose) ||
-      composeMountsForeignStorage(input.compose))
+      composeMountsForeignStorage(input.compose) ||
+      composeBuildReachesHost(input.compose))
   ) {
     await requireMountHostVolumes();
   }
@@ -694,6 +698,11 @@ export async function createApp(
   // network. Refused early so the editor says it, rather than at deploy time
   // where `buildComposeStack` makes the same check against the final wiring.
   if (input.compose != null) {
+    // Keys that merge config from a file Deplo can't inspect (`extends: {file}`,
+    // top-level `include:`, `label_file:`) are refused outright: they smuggle host
+    // access, ports, or another team's `traefik.*` labels past every check here.
+    const merge = composeUsesExternalMerge(input.compose);
+    if (merge) throw new Error(externalMergeMessage(merge));
     const claimed = composeClaimsReservedName(input.compose);
     if (claimed) throw new Error(reservedNameMessage(claimed));
   }
@@ -1187,7 +1196,8 @@ export async function updateAppSource(
     input.compose != null &&
     (composeHasHostBindMount(input.compose) ||
       composeNeedsHostPrivileges(input.compose) ||
-      composeMountsForeignStorage(input.compose))
+      composeMountsForeignStorage(input.compose) ||
+      composeBuildReachesHost(input.compose))
   ) {
     await requireMountHostVolumes();
   }
@@ -1195,6 +1205,11 @@ export async function updateAppSource(
   // network. Refused early so the editor says it, rather than at deploy time
   // where `buildComposeStack` makes the same check against the final wiring.
   if (input.compose != null) {
+    // Keys that merge config from a file Deplo can't inspect (`extends: {file}`,
+    // top-level `include:`, `label_file:`) are refused outright: they smuggle host
+    // access, ports, or another team's `traefik.*` labels past every check here.
+    const merge = composeUsesExternalMerge(input.compose);
+    if (merge) throw new Error(externalMergeMessage(merge));
     const claimed = composeClaimsReservedName(input.compose);
     if (claimed) throw new Error(reservedNameMessage(claimed));
   }

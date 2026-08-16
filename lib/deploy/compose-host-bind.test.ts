@@ -2,10 +2,12 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 
 import {
+  composeBuildReachesHost,
   composeClaimsReservedName,
   composeHasHostBindMount,
   composeMountsForeignStorage,
   composeNeedsHostPrivileges,
+  composeUsesExternalMerge,
   isEscapingSource,
   isFilesConventionSource,
   isHostBindSource,
@@ -396,4 +398,75 @@ test("the five ungated escapes leave an ordinary compose free (no over-gating)",
   const plain = `services:\n  web:\n    image: nginx:1.27\n    ports:\n      - "8080:80"\nvolumes:\n  data: {}`;
   assert.equal(composeNeedsHostPrivileges(plain), false);
   assert.equal(composeMountsForeignStorage(plain), false);
+});
+
+test("oom_kill_disable is a cross-tenant DoS and needs the grant; false does not", () => {
+  assert.equal(
+    composeNeedsHostPrivileges(`services:\n  a:\n    image: x\n    oom_kill_disable: true`),
+    true,
+  );
+  assert.equal(
+    composeNeedsHostPrivileges(`services:\n  a:\n    image: x\n    oom_kill_disable: false`),
+    false,
+  );
+});
+
+/**
+ * `build:` reaching a host path bakes host bytes into the image (or escapes at
+ * build time), the same host reach a bind mount has — gated the same. A
+ * project-relative `./`-context (the normal case) stays free.
+ */
+test("composeBuildReachesHost: absolute/ssh/privileged build reaches the host; a relative build is free", () => {
+  for (const b of [
+    `build:\n      context: /etc`,
+    `build: /etc`,
+    `build:\n      context: ./app\n      additional_contexts:\n        - h=/root`,
+    `build:\n      context: ./app\n      ssh:\n        - default`,
+    `build:\n      context: ./app\n      privileged: true`,
+  ]) {
+    assert.equal(
+      composeBuildReachesHost(`services:\n  a:\n    ${b}`),
+      true,
+      `should flag: ${b}`,
+    );
+  }
+  // The everyday case: a project-relative build context.
+  assert.equal(
+    composeBuildReachesHost(`services:\n  a:\n    build: ./app`),
+    false,
+  );
+  assert.equal(
+    composeBuildReachesHost(
+      `services:\n  a:\n    build:\n      context: ./app\n      dockerfile: Dockerfile`,
+    ),
+    false,
+  );
+});
+
+/**
+ * Keys that merge config from a file the gate can't inspect are refused outright:
+ * they smuggle privileged/host binds/ports and even traefik.* labels (label_file)
+ * past every check. A same-file `extends: {service}` is fine — that service IS
+ * linted.
+ */
+test("composeUsesExternalMerge: extends-file, include, label_file are refused; same-file extends is not", () => {
+  assert.equal(
+    composeUsesExternalMerge(
+      `services:\n  a:\n    image: x\n    extends:\n      file: base.yml\n      service: b`,
+    ),
+    "extends",
+  );
+  assert.equal(
+    composeUsesExternalMerge(`include:\n  - extra.yml\nservices:\n  a:\n    image: x`),
+    "include",
+  );
+  assert.equal(
+    composeUsesExternalMerge(`services:\n  a:\n    image: x\n    label_file: ./evil.labels`),
+    "label_file",
+  );
+  assert.equal(
+    composeUsesExternalMerge(`services:\n  a:\n    image: x\n    extends:\n      service: b`),
+    null,
+  );
+  assert.equal(composeUsesExternalMerge(`services:\n  a:\n    image: x`), null);
 });

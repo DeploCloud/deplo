@@ -430,6 +430,28 @@ export function lintCompose(source: string): LintDiagnostic[] {
     }
   }
 
+  // Keys that merge config from another file are REFUSED server-side (the gate
+  // can't inspect what they pull in), so the editor shows an error, not a warning.
+  const merge = composeUsesExternalMerge(source);
+  if (merge) {
+    diags.push({
+      severity: "error",
+      rule: "external-merge",
+      message: externalMergeMessage(merge),
+      line: merge === "include" ? lineOfTopKey(lines, "include") : 1,
+    });
+  }
+  // A `build:` reaching a host path needs the same permission as a host bind.
+  if (composeBuildReachesHost(source)) {
+    diags.push({
+      severity: "warning",
+      rule: "build-host-context",
+      message:
+        "A `build:` here reaches a path on the server (an absolute or `..` context/dockerfile, an SSH key, or a privileged build). This needs the host-volume permission.",
+      line: 1,
+    });
+  }
+
   return sortDiags(diags);
 }
 
@@ -781,6 +803,110 @@ export function composeMountsForeignStorage(composeYaml: string): boolean {
 }
 
 /**
+ * Parse a compose YAML string and report whether any service's `build:` reaches
+ * a host path the app does not own — an absolute or `..`-escaping build
+ * `context`/`dockerfile`, an `additional_contexts` source that does the same, an
+ * `ssh:` key (loads host SSH keys/agents into the build), or `privileged: true`
+ * (a privileged BuildKit build runs on the host). Each bakes host bytes into the
+ * image the tenant then runs, or escapes at build time — the same host reach a
+ * bind mount has, so the same `canMountHostVolumes` grant. A project-relative
+ * `./`-context (the normal case, rewritten to the isolated files dir) stays free.
+ *
+ * Tolerant of malformed input, like its siblings.
+ */
+export function composeBuildReachesHost(composeYaml: string): boolean {
+  let doc: { services?: Record<string, unknown> } | null;
+  try {
+    doc = yaml.load(composeYaml) as { services?: Record<string, unknown> } | null;
+  } catch {
+    return false;
+  }
+  const services = doc?.services;
+  if (!services || typeof services !== "object") return false;
+  for (const raw of Object.values(services)) {
+    if (!raw || typeof raw !== "object" || Array.isArray(raw)) continue;
+    const b = (raw as Record<string, unknown>).build;
+    if (b == null) continue;
+    if (typeof b === "string") {
+      if (isHostBindSource(b)) return true; // `build: /abs` (context shorthand)
+      continue;
+    }
+    if (typeof b !== "object" || Array.isArray(b)) continue;
+    const rec = b as Record<string, unknown>;
+    if (typeof rec.context === "string" && isHostBindSource(rec.context)) return true;
+    if (typeof rec.dockerfile === "string" && isHostBindSource(rec.dockerfile))
+      return true;
+    const ac = rec.additional_contexts;
+    const acSources = Array.isArray(ac)
+      ? ac.map((e) => (typeof e === "string" ? e.slice(e.indexOf("=") + 1) : ""))
+      : ac && typeof ac === "object"
+        ? Object.values(ac as Record<string, unknown>).map((v) => String(v))
+        : [];
+    if (acSources.some((s) => isHostBindSource(s))) return true;
+    if (rec.ssh != null && (Array.isArray(rec.ssh) ? rec.ssh.length > 0 : true))
+      return true;
+    if (rec.privileged === true) return true;
+  }
+  return false;
+}
+
+/**
+ * The first compose key that MERGES configuration from a file the save-time
+ * detectors cannot see, or null. `docker compose` resolves these on the host, so
+ * the dangerous keys they pull in (`privileged`, host binds, published ports,
+ * even `traefik.*` labels via `label_file`, past {@link buildComposeStack}'s
+ * label strip) never appear in the authored YAML the gate — or a deploy-time
+ * re-lint of it — parses. They cannot be denylisted key-by-key, so deplo refuses
+ * them: it owns the render, and an author who needs the merged config inlines it.
+ *
+ *  - a service `extends:` with a `file:` (a same-file `extends: {service: x}` is
+ *    fine — x's own keys ARE linted);
+ *  - a top-level `include:` (pulls whole other compose files);
+ *  - a service `label_file:` (loads labels from a file, past the traefik strip).
+ */
+export function composeUsesExternalMerge(composeYaml: string): string | null {
+  let doc: { services?: Record<string, unknown>; include?: unknown } | null;
+  try {
+    doc = yaml.load(composeYaml) as {
+      services?: Record<string, unknown>;
+      include?: unknown;
+    } | null;
+  } catch {
+    return null;
+  }
+  const inc = doc?.include;
+  if (inc != null && (Array.isArray(inc) ? inc.length > 0 : true)) return "include";
+  const services = doc?.services;
+  if (!services || typeof services !== "object") return null;
+  for (const raw of Object.values(services)) {
+    if (!raw || typeof raw !== "object" || Array.isArray(raw)) continue;
+    const svc = raw as Record<string, unknown>;
+    const ex = svc.extends;
+    if (
+      ex &&
+      typeof ex === "object" &&
+      !Array.isArray(ex) &&
+      typeof (ex as Record<string, unknown>).file === "string" &&
+      String((ex as Record<string, unknown>).file).trim() !== ""
+    )
+      return "extends";
+    const lf = svc.label_file;
+    if (lf != null && (Array.isArray(lf) ? lf.length > 0 : String(lf).trim() !== ""))
+      return "label_file";
+  }
+  return null;
+}
+
+/** The message the editor and the save both use for an external-merge key. */
+export function externalMergeMessage(key: string): string {
+  return (
+    `\`${key}\` merges configuration from another file, which Deplo can't inspect ` +
+    `before it deploys — it could pull in host access or another team's hostname ` +
+    `past the checks here. Inline what you need into this compose file instead.`
+  );
+}
+
+/**
  * Compose keys that hand a container the host, and how to tell they are ON.
  *
  * A bind mount of `/var/run/docker.sock` was already gated ({@link isHostBindSource});
@@ -822,6 +948,7 @@ const HOST_PRIVILEGE_KEYS = [
   "cgroup",
   "volumes_from",
   "env_file",
+  "oom_kill_disable",
   "userns_mode",
 ] as const;
 
@@ -858,7 +985,10 @@ function hostPrivilegeKeys(svc: Record<string, unknown>): string[] {
   for (const key of HOST_PRIVILEGE_KEYS) {
     const v = svc[key];
     if (v == null) continue;
-    if (key === "privileged") {
+    if (key === "privileged" || key === "oom_kill_disable") {
+      // `oom_kill_disable: true` means the kernel kills OTHER tenants' containers
+      // under memory pressure instead of this one — a cross-tenant availability
+      // hit, so it takes the same grant.
       if (v === true) out.push(key);
       continue;
     }
