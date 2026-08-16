@@ -168,6 +168,12 @@ async function contextForTeam(
   if (!identity) throw refusal;
 
   return runWithIdentity(identity, async () => {
+    // The per-team MCP kill switch (`teams.mcp_enabled`) is checked at the door
+    // for the INITIAL team; re-check it here so a tool switching team via its
+    // `team` argument can't keep operating in a team that turned MCP off.
+    const settings = await getMcpSettings();
+    if (!settings.enabled)
+      throw new Error(`The team "${team}" has the MCP server turned off.`);
     const [viewer, teamId, capabilities] = await Promise.all([
       getCurrentUser(),
       getActiveTeamId(),

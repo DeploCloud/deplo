@@ -702,6 +702,33 @@ export interface TokenScopeInput {
   appIds?: string[];
 }
 
+/**
+ * A SCOPED API token must not mint (or widen a token to reach) a team OUTSIDE its
+ * own scope. `resolveScopeInput` validates ticked nodes against the human
+ * creator's memberships, not the acting token's scope, and `withinActor` bounds
+ * capabilities, not reach — so without this a token scoped to team A could mint a
+ * token reaching team B (or an unscoped token reaching every team the creator
+ * belongs to), defeating the containment a scoped token exists for. A cookie
+ * session (no token) and an unrestricted token (scope null) are unaffected — this
+ * mirrors the check `transferAppToTeam` makes.
+ */
+function assertScopeWithinActingToken(
+  scope: ResolvedScope,
+  scoped: boolean,
+): void {
+  const actingScope = currentIdentity()?.token?.scope;
+  if (!actingScope) return;
+  if (!scoped)
+    throw new Error("This API token is scoped, so it can't mint an unscoped token.");
+  const outside = scope.teamsReached.filter(
+    (t) => !actingScope.teamIds.includes(t),
+  );
+  if (outside.length > 0)
+    throw new Error(
+      "This API token can't create a token that reaches a team outside its own scope.",
+    );
+}
+
 /** Returns the raw token ONCE; only the hash is persisted. */
 export async function createToken(
   input: {
@@ -718,6 +745,7 @@ export async function createToken(
   const { scoped, instanceAdmin } = await validateScope(input);
   const expiresAt = cleanExpiry(input.expiresAt);
   const scope = await resolveScopeInput(input, userId);
+  assertScopeWithinActingToken(scope, scoped);
 
   const raw = `deplo_${randomToken(24)}`;
   const id = newId("tok");
@@ -846,6 +874,7 @@ export async function updateToken(
   const expiresAt =
     input.expiresAt === undefined ? undefined : cleanExpiry(input.expiresAt);
   const scope = await resolveScopeInput(input, userId);
+  assertScopeWithinActingToken(scope, scoped);
 
   const db = getDb();
   // Read and gate BEFORE opening the transaction: these helpers query on their
@@ -1168,6 +1197,7 @@ export async function revokeToken(id: string): Promise<void> {
         name: apiTokens.name,
         userId: apiTokens.userId,
         scoped: apiTokens.scoped,
+        instanceAdmin: apiTokens.instanceAdmin,
         homeTeamId: apiTokens.teamId,
         oauthClientId: apiTokens.oauthClientId,
       })
@@ -1176,6 +1206,13 @@ export async function revokeToken(id: string): Promise<void> {
       .limit(1)
   )[0];
   if (!row) throw new Error("Token not found");
+
+  // An INSTANCE-ADMIN token is unscoped and reaches every team its creator
+  // belongs to, so "any reaching team may revoke" (below) would let a plain
+  // manage_tokens holder in any of those teams kill the admin's global
+  // credential. Minting and editing one already require instance admin; revoking
+  // it does too.
+  if (row.instanceAdmin) await requireInstanceAdmin();
 
   // Any team the token can act in may cut it off: that is the lever a team has
   // over a credential someone else minted into it. Its CREATOR may cut it from

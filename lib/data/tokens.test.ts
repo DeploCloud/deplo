@@ -91,6 +91,59 @@ async function seedProject(id: string, teamId: string, name = id) {
   });
 }
 
+test("a scoped API token can't mint a token reaching a team outside its scope (M-2)", async () => {
+  await alsoMemberOfB(); // USER_1 owns both TEAM_A and TEAM_B
+  const asScopedToken = <T>(scopeTeamIds: string[], fn: () => Promise<T>): Promise<T> =>
+    runWithIdentity(
+      {
+        userId: USER_1,
+        teamId: TEAM_A,
+        token: {
+          id: "tok_actor",
+          capabilities: ["view", "manage_tokens"] as Capability[],
+          instanceAdmin: false,
+          scope: {
+            teamIds: scopeTeamIds,
+            wholeTeamIds: scopeTeamIds,
+            projectIds: [],
+            folderIds: [],
+            appIds: [],
+            appProjectIds: [],
+          },
+        },
+      },
+      fn,
+    );
+
+  await asScopedToken([TEAM_A], async () => {
+    // Reaching TEAM_B is outside the token's own scope, even though its human is
+    // an owner there — the clamp bounds capabilities, this bounds reach.
+    await assert.rejects(
+      () => createToken({ name: "into-B", capabilities: ["view"], teamIds: [TEAM_B] }),
+      /outside its own scope/i,
+    );
+    // An UNSCOPED token would reach every team the human belongs to.
+    await assert.rejects(
+      () => createToken({ name: "unscoped", capabilities: ["view"] }),
+      /can't mint an unscoped token/i,
+    );
+  });
+
+  // A cookie session mints freely, and a token scoped to BOTH teams still can.
+  const cookie = await asUser1(() =>
+    createToken({ name: "cookie", capabilities: ["view"], teamIds: [TEAM_B] }),
+  );
+  assert.ok(cookie.raw.startsWith("deplo_"));
+  await asScopedToken([TEAM_A, TEAM_B], async () => {
+    const ok = await createToken({
+      name: "both",
+      capabilities: ["view"],
+      teamIds: [TEAM_B],
+    });
+    assert.ok(ok.raw.startsWith("deplo_"));
+  });
+});
+
 test("createToken persists its own capability set, in catalog order, with the view floor", async () => {
   await asUser1(async () => {
     const { raw, token } = await createToken({
