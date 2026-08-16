@@ -442,9 +442,9 @@ export async function mintMcpConnection(
  * The AI clients connected to the active team.
  *
  * Scoped like `listTokens`: a narrowed token has no business enumerating a team's
- * other credentials. Only connections whose token is MANAGED from this team are
- * listed — the same row is also visible in Settings → API tokens, marked, so one
- * screen still answers "who can act in this team".
+ * other credentials. Every connection that can ACT here is listed, whoever
+ * approved it - the same row is also visible in Settings → API tokens, marked,
+ * so one screen still answers "who can act in this team".
  */
 export async function listMcpConnections(): Promise<McpConnectionDTO[]> {
   const teamId = await requireActiveTeamId();
