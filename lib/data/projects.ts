@@ -27,7 +27,7 @@ import { requireAppCapability } from "./node-access";
 import { mergeOrder } from "./folders";
 import { normalizeHexColor } from "../utils";
 import { inProjectScope } from "../auth/request-context";
-import { appInScope, projectInScope } from "./node-scope";
+import { appInScope, folderInScope, projectInScope } from "./node-scope";
 import { appScopeWhere } from "./app-graph-load";
 import type { Project, AppStatus } from "../types";
 
@@ -222,25 +222,31 @@ export const listProjects = cache(async function listProjects(): Promise<
     });
 });
 
-/** A container's directly-contained folders and apps (for the detail page). */
+/**
+ * A container's directly-contained folders and apps (for the detail page).
+ * Per-ROW scope filtered, not only at the project level: a member on a limited
+ * role, or a narrowed token, sees only the folders/apps it reaches — so a
+ * principal scoped to a single app in the project can't enumerate its siblings
+ * or read a private folder's name.
+ */
 export async function projectContents(projectId: string): Promise<{
   folders: { id: string; name: string; color: string | null }[];
   apps: { id: string; name: string; slug: string; status: AppStatus }[];
 }> {
   const teamId = await requireActiveTeamId();
+  const scope = await currentMemberScope();
   // Out of scope reads exactly like a container that isn't there — never a
   // different answer that would confirm it exists.
   if (!inProjectScope(projectId)) return { folders: [], apps: [] };
-  // Same answer for a member whose role doesn't reach it: a container out of
-  // reach reads exactly like one that isn't there.
-  if (!projectInScope(await currentMemberScope(), projectId))
-    return { folders: [], apps: [] };
+  if (!projectInScope(scope, projectId)) return { folders: [], apps: [] };
   const folders = (
     await getDb()
       .select({ id: foldersTable.id, name: foldersTable.name, color: foldersTable.color })
       .from(foldersTable)
       .where(and(eq(foldersTable.teamId, teamId), eq(foldersTable.projectId, projectId)))
-  ).map((f) => ({ id: f.id, name: f.name, color: f.color ?? null }));
+  )
+    .filter((f) => folderInScope(scope, f.id))
+    .map((f) => ({ id: f.id, name: f.name, color: f.color ?? null }));
   const apps = (
     await getDb()
       .select({
@@ -248,15 +254,27 @@ export async function projectContents(projectId: string): Promise<{
         name: appsTable.name,
         slug: appsTable.slug,
         status: appsTable.status,
+        folderId: appsTable.folderId,
+        projectId: appsTable.projectId,
+        environmentId: appsTable.environmentId,
       })
       .from(appsTable)
       .where(and(eq(appsTable.teamId, teamId), eq(appsTable.projectId, projectId)))
-  ).map((s) => ({
-    id: s.id,
-    name: s.name,
-    slug: s.slug,
-    status: s.status as AppStatus,
-  }));
+  )
+    .filter((s) =>
+      appInScope(scope, {
+        id: s.id,
+        folderId: s.folderId,
+        projectId: s.projectId,
+        environmentId: s.environmentId,
+      }),
+    )
+    .map((s) => ({
+      id: s.id,
+      name: s.name,
+      slug: s.slug,
+      status: s.status as AppStatus,
+    }));
   return { folders, apps };
 }
 

@@ -321,7 +321,10 @@ export async function getLogs(deploymentId: string): Promise<LogLine[]> {
 export async function getQueuePosition(
   deploymentId: string,
 ): Promise<number | null> {
-  const teamId = await requireActiveTeamId();
+  // Establish the active team (and its 2FA gate); the reach check below is
+  // per-app — folder and role scope included — not the token-only clamp
+  // `appInTeam` gives, so a scoped-role member can't probe a deployment id.
+  await requireActiveTeamId();
   const [target] = await getDb()
     .select({
       appId: deploymentsTable.appId,
@@ -336,7 +339,7 @@ export async function getQueuePosition(
     .where(eq(deploymentsTable.id, deploymentId))
     .limit(1);
   if (!target) return null;
-  if (!(await appInTeam(target.appId, teamId))) return null;
+  if (!(await hasAppCapability(target.appId, "view_logs"))) return null;
   if (target.status !== "queued" || !target.serverId) return null;
 
   // The queued backlog for this server, oldest-first — the SAME rows and order
