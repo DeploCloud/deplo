@@ -179,8 +179,25 @@ export async function listSchedulableJobs(): Promise<SchedulableJob[]> {
   const rows = await getDb()
     .select(targetColumns)
     .from(cronJobsTable)
-    .leftJoin(appsTable, eq(appsTable.id, cronJobsTable.appId))
-    .leftJoin(databasesTable, eq(databasesTable.id, cronJobsTable.databaseId))
+    // Defense in depth: a cron_job only resolves a target in the SAME team as the
+    // job. If a job's team_id ever falls out of sync with its app/db's (a
+    // transfer/move that forgot to clear it), the team-matched join yields NULL →
+    // cronEnabled is null → the row is excluded, so a dangling job can never
+    // execute in another tenant's container.
+    .leftJoin(
+      appsTable,
+      and(
+        eq(appsTable.id, cronJobsTable.appId),
+        eq(appsTable.teamId, cronJobsTable.teamId),
+      ),
+    )
+    .leftJoin(
+      databasesTable,
+      and(
+        eq(databasesTable.id, cronJobsTable.databaseId),
+        eq(databasesTable.teamId, cronJobsTable.teamId),
+      ),
+    )
     .where(
       and(
         eq(cronJobsTable.enabled, true),
@@ -772,8 +789,25 @@ export async function loadSchedulableJob(jobId: string): Promise<SchedulableJob 
   const rows = await getDb()
     .select(targetColumns)
     .from(cronJobsTable)
-    .leftJoin(appsTable, eq(appsTable.id, cronJobsTable.appId))
-    .leftJoin(databasesTable, eq(databasesTable.id, cronJobsTable.databaseId))
+    // Defense in depth: a cron_job only resolves a target in the SAME team as the
+    // job. If a job's team_id ever falls out of sync with its app/db's (a
+    // transfer/move that forgot to clear it), the team-matched join yields NULL →
+    // cronEnabled is null → the row is excluded, so a dangling job can never
+    // execute in another tenant's container.
+    .leftJoin(
+      appsTable,
+      and(
+        eq(appsTable.id, cronJobsTable.appId),
+        eq(appsTable.teamId, cronJobsTable.teamId),
+      ),
+    )
+    .leftJoin(
+      databasesTable,
+      and(
+        eq(databasesTable.id, cronJobsTable.databaseId),
+        eq(databasesTable.teamId, cronJobsTable.teamId),
+      ),
+    )
     .where(eq(cronJobsTable.id, jobId))
     .limit(1);
   const r = rows[0];

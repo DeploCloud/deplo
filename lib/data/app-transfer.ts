@@ -10,6 +10,7 @@ import {
   apps as appsTable,
   backups as backupsTable,
   backupRuns as backupRunsTable,
+  cronJobs as cronJobsTable,
   environments as environmentsTable,
   folders as foldersTable,
   gitConnections as gitConnectionsTable,
@@ -468,6 +469,17 @@ export async function transferAppToTeam(
       await tx
         .delete(backupsTable)
         .where(and(eq(backupsTable.appId, appId), eq(backupsTable.teamId, teamId)));
+      // Cron jobs carry BOTH team_id and app_id, like backups — and, like them,
+      // point at the SOURCE team and run the SOURCE team's command in the
+      // container. But a transfer REWRITES app.teamId rather than deleting the
+      // app, so the app_id cascade never fires: a surviving row would be
+      // {source team, app now in dest}, and the scheduler (which joins by app_id)
+      // would keep executing it in the DESTINATION team's container every tick —
+      // cross-tenant scheduled code execution, unmanageable from either UI. Drop
+      // them here; cron_runs and cron_job_env cascade off the job.
+      await tx
+        .delete(cronJobsTable)
+        .where(and(eq(cronJobsTable.appId, appId), eq(cronJobsTable.teamId, teamId)));
       // Their POINTER to the app goes, though, and that is not bookkeeping. The
       // app now belongs to another team, so a run row keeping `app_id` would be a
       // cross-team reference — and a practical dead end: the source team can no
