@@ -1115,8 +1115,8 @@ export interface App {
    * disappearing, so it is the one flag that says "this app is gone, the host
    * just hasn't caught up yet".
    *
-   * Treat it as gone: every gate refuses a stamped app, its pages 404, and the
-   * Overview keeps its card on screen dimmed and pulsing until the row goes.
+   * Treat it as gone: every gate refuses a stamped app, its pages 404, and no
+   * user-facing list returns it (`listApps` filters on this).
    */
   deletingAt?: string | null;
   createdAt: string;

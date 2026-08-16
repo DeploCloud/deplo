@@ -304,7 +304,12 @@ export async function listApps(query?: string): Promise<AppSummary[]> {
   // `loadAppsByTeam` is an engine primitive (the deploy queue and team teardown
   // read through it too) and must never filter itself — the project scope of an
   // API token is applied HERE, where the answer is a user-facing list.
-  const scoped = all.filter((p) => inAppScope(p));
+  // A stamped app (`deleting_at`) is GONE as far as the product is concerned —
+  // every gate refuses it and its pages 404 — so it is not listed either. It
+  // used to be, dimmed and pulsing until the teardown finished, but nothing
+  // refreshes the Overview when the host is done: the card sat there pulsing
+  // for good, and the next delete was the only thing that ever cleared it.
+  const scoped = all.filter((p) => inAppScope(p) && !p.deletingAt);
   // …and so is per-app access: an app the caller holds nothing on (one inside a
   // folder they can't see) is not theirs to list. One batched resolution for the
   // whole team, not one per app.

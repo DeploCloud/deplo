@@ -145,7 +145,7 @@ test("deleteApp cascades every child + shared-var link (no orphans)", async () =
 /* deleting_at — the delete is irreversible before the host catches up */
 /* ------------------------------------------------------------------ */
 
-test("an app being deleted is locked, still listed, and finished at boot", async () => {
+test("an app being deleted is locked, unlisted, and finished at boot", async () => {
   await seedApp(db, { id: "prj_1", status: "active" });
   await seedApp(db, { id: "prj_2", status: "active" });
   // What `startAppDelete` leaves behind the instant someone confirms — stamped,
@@ -168,13 +168,10 @@ test("an app being deleted is locked, still listed, and finished at boot", async
       /being deleted/,
       "including a second delete",
     );
-    // The READ side still serves it: the card stays on the grid (dimmed and
-    // pulsing) until the row actually goes.
+    // The READ side drops it too: a card nobody can use, that only the next
+    // navigation would ever clear, is worse than one that leaves at once.
     const listed = await listApps();
-    assert.deepEqual(
-      listed.map((p) => [p.id, p.deletingAt != null]).sort(),
-      [["prj_1", true], ["prj_2", false]],
-    );
+    assert.deepEqual(listed.map((p) => p.id), ["prj_2"]);
     // A multi-select that happens to include it deletes the others anyway.
     assert.equal(await deleteApps(["prj_1", "prj_2"]), 1);
   });

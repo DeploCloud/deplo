@@ -295,9 +295,33 @@ export interface AppsGridProps {
  * flight and settle the instant the pointer is released (onDragEnd/onDragCancel).
  */
 export function AppsGrid(props: AppsGridProps) {
-  if (!props.canReorder && !props.canMoveApps) return <StaticGrid {...props} />;
-  return <SortableGrid {...props} />;
+  // Deleting is OPTIMISTIC: an app's delete is recorded server-side before its
+  // stack comes down, so by the time the mutation answers the app is gone from
+  // the product and the card has no reason to still be there. It used to stay,
+  // dimmed and pulsing, until the teardown finished — except nothing tells the
+  // Overview when that happens, so it pulsed until the next navigation. The
+  // card goes now; the teardown runs on the host behind it.
+  const [deleted, setDeleted] = React.useState<ReadonlySet<string>>(new Set());
+  const hide = React.useCallback(
+    (ids: string[]) => setDeleted((prev) => new Set([...prev, ...ids])),
+    [],
+  );
+  // The parent re-keys the grid whenever the server's answer stops listing them
+  // (see `gridKey`), so this set never has to be cleaned up.
+  const grid: GridProps = {
+    ...props,
+    services: props.services.filter((p) => !deleted.has(p.id)),
+    folders: props.folders.filter((f) => !deleted.has(f.id)),
+    projects: props.projects.filter((p) => !deleted.has(p.id)),
+    onDeleted: hide,
+  };
+  if (!props.canReorder && !props.canMoveApps) return <StaticGrid {...grid} />;
+  return <SortableGrid {...grid} />;
 }
+
+/** What both grids get: the props minus whatever the user just deleted, plus
+ *  the callback that hides the next one. */
+type GridProps = AppsGridProps & { onDeleted: (ids: string[]) => void };
 
 /* ------------------------------------------------------------------ */
 /* Static (no reorder): search results, or no permission              */
@@ -316,7 +340,8 @@ function StaticGrid({
   canManageAllFolders,
   canManageProjects,
   environments,
-}: AppsGridProps) {
+  onDeleted,
+}: GridProps) {
   return (
     <div className="relative min-h-[40vh] space-y-6">
       {/* px-1 py-1 mirrors the DroppableBreadcrumb padding so the trail sits
@@ -360,6 +385,7 @@ function StaticGrid({
               folders={allFolders}
               canMoveApps={canMoveApps}
               environments={canMoveApps ? environments : undefined}
+              onDeleted={() => onDeleted([p.id])}
             />
           ))}
         </div>
@@ -435,7 +461,8 @@ function SortableGrid({
   canManageAllFolders,
   canManageProjects,
   environments,
-}: AppsGridProps) {
+  onDeleted,
+}: GridProps) {
   const router = useRouter();
   const [, startTransition] = React.useTransition();
 
@@ -678,8 +705,12 @@ function SortableGrid({
     router.refresh();
     const failed = results.find((r) => !r.ok);
     // Clear only on FULL success: a partial failure keeps the still-selected
-    // items so re-confirming retries them and the error stays meaningful.
-    if (!failed) clearSelection();
+    // items so re-confirming retries them and the error stays meaningful — and
+    // keeps their cards, for the same reason.
+    if (!failed) {
+      onDeleted([...appIds, ...folderIds, ...projectIds]);
+      clearSelection();
+    }
     return failed ?? { ok: true as const, data: undefined };
   }
 
@@ -1186,6 +1217,7 @@ function SortableGrid({
                       environments={
                         canMoveApps ? environments : undefined
                       }
+                      onDeleted={() => onDeleted([p.id])}
                     />
                   )}
                 </SortableItem>
