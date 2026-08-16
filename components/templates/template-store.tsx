@@ -2,9 +2,9 @@
 
 import * as React from "react";
 import { useRouter } from "next/navigation";
-import { Search, LayoutGrid } from "lucide-react";
 import { EmptyState } from "@/components/shared/empty-state";
-import { CategoryIcon } from "@/components/templates/category-icon";
+import { CategoryChips } from "@/components/templates/category-chips";
+import { NoResultsGraphic } from "@/components/templates/no-results-graphic";
 import { TemplateSearchField } from "@/components/templates/template-search";
 import {
   TemplateCard,
@@ -16,6 +16,7 @@ import {
   MIN_COLLECTION_SIZE,
 } from "@/components/templates/collections";
 import { templatesHref, type OverviewPlacement } from "@/lib/overview-links";
+import type { LogoAccent } from "@/lib/templates/logo-color";
 import { cn } from "@/lib/utils";
 
 /** A row needs enough cards to be worth scrolling. */
@@ -33,8 +34,9 @@ export function TemplateStore({
   /** The catalogue trimmed to what a card draws (see `StoreTemplate`),
    *  asset URLs resolved server-side. */
   templates: StoreTemplate[];
-  /** slug → dominant logo hue. Absent for a logo with no usable colour. */
-  accents: Record<string, number>;
+  /** slug → what its logo needs: a hue to wash the card in, a plate to be
+   *  visible at all, or nothing. Absent when the logo asked for neither. */
+  accents: Record<string, LogoAccent>;
   /** The Overview drill-in the store was opened from, carried on to the wizard
    *  so a template deployed from inside a folder is created IN that folder. */
   placement?: OverviewPlacement | null;
@@ -132,7 +134,7 @@ export function TemplateStore({
     <TemplateCard
       key={t.slug}
       template={t}
-      hue={accents[t.slug]}
+      accent={accents[t.slug]}
       href={cardHref(t.slug)}
       className={className}
     />
@@ -159,82 +161,77 @@ export function TemplateStore({
         </div>
       </div>
 
-      {/* Category chips. "All" first so clearing the filter is one click. */}
-      <div className="scrollbar-none -mx-1 flex gap-2 overflow-x-auto px-1 pb-1">
-        <Chip active={!category} onClick={() => selectCategory("")}>
-          <LayoutGrid className="size-3.5 shrink-0" />
-          All
-        </Chip>
-        {categories.map((c) => (
-          <Chip
-            key={c.slug}
-            active={category === c.slug}
-            onClick={() => selectCategory(category === c.slug ? "" : c.slug)}
-          >
-            <CategoryIcon icon={c.icon} className="size-3.5 shrink-0" />
-            {c.name}
-          </Chip>
-        ))}
-      </div>
+      <CategoryChips
+        categories={categories}
+        active={category}
+        onSelect={selectCategory}
+      />
 
-      {browsing ? (
-        <div className="space-y-10">
-          {COLLECTIONS.map((collection) => {
-            const picks = collection.slugs
-              .map((slug) => bySlug.get(slug))
-              .filter((t): t is StoreTemplate => Boolean(t));
-            if (picks.length < MIN_COLLECTION_SIZE) return null;
-            return (
-              <TemplateRail
-                key={collection.title}
-                title={collection.title}
-                subtitle={collection.subtitle}
-              >
-                {picks.map((t) => card(t, "w-56 shrink-0 snap-start"))}
-              </TemplateRail>
-            );
-          })}
+      {/* The results re-enter on every change of filter. Keyed on the filter,
+          so React remounts this subtree and the animation replays — which is
+          also why the key is here and not on the card grid: a phone-sized
+          result set remounts cheaply, and the unfiltered view (388 cards plus
+          twenty rails) is only ever rebuilt when you come back to it. */}
+      <div key={`${query}|${category}`} className="animate-results-in">
+        {browsing ? (
+          <div className="space-y-10">
+            {COLLECTIONS.map((collection) => {
+              const picks = collection.slugs
+                .map((slug) => bySlug.get(slug))
+                .filter((t): t is StoreTemplate => Boolean(t));
+              if (picks.length < MIN_COLLECTION_SIZE) return null;
+              return (
+                <TemplateRail
+                  key={collection.title}
+                  title={collection.title}
+                  subtitle={collection.subtitle}
+                >
+                  {picks.map((t) => card(t, "w-56 shrink-0 snap-start"))}
+                </TemplateRail>
+              );
+            })}
 
-          {categories.map((c) => {
-            const picks = templates
-              .filter((t) => t.category.slug === c.slug)
-              .slice(0, RAIL_LIMIT);
-            if (picks.length < MIN_RAIL_SIZE) return null;
-            return (
-              <TemplateRail key={c.slug} title={c.name}>
-                {picks.map((t) => card(t, "w-56 shrink-0 snap-start"))}
-              </TemplateRail>
-            );
-          })}
+            {categories.map((c) => {
+              const picks = templates
+                .filter((t) => t.category.slug === c.slug)
+                .slice(0, RAIL_LIMIT);
+              if (picks.length < MIN_RAIL_SIZE) return null;
+              return (
+                <TemplateRail key={c.slug} title={c.name}>
+                  {picks.map((t) => card(t, "w-56 shrink-0 snap-start"))}
+                </TemplateRail>
+              );
+            })}
 
+            <section className="space-y-3">
+              <div>
+                <h2 className="text-base font-semibold tracking-tight">
+                  All templates
+                </h2>
+                <p className="mt-1 text-sm text-muted-foreground">
+                  Everything in the catalogue, A to Z.
+                </p>
+              </div>
+              <Grid>{[...templates].sort(byName).map((t) => card(t))}</Grid>
+            </section>
+          </div>
+        ) : (
           <section className="space-y-3">
-            <div>
-              <h2 className="text-base font-semibold tracking-tight">
-                All templates
-              </h2>
-              <p className="mt-1 text-sm text-muted-foreground">
-                Everything in the catalogue, A to Z.
-              </p>
-            </div>
-            <Grid>{[...templates].sort(byName).map((t) => card(t))}</Grid>
+            <p className="text-sm text-muted-foreground">
+              {filtered.length} {filtered.length === 1 ? "template" : "templates"}
+            </p>
+            {filtered.length ? (
+              <Grid>{[...filtered].sort(byName).map((t) => card(t))}</Grid>
+            ) : (
+              <EmptyState
+                graphic={<NoResultsGraphic />}
+                title="No templates match"
+                description="Try a different word, or pick another category."
+              />
+            )}
           </section>
-        </div>
-      ) : (
-        <section className="space-y-3">
-          <p className="text-sm text-muted-foreground">
-            {filtered.length} {filtered.length === 1 ? "template" : "templates"}
-          </p>
-          {filtered.length ? (
-            <Grid>{[...filtered].sort(byName).map((t) => card(t))}</Grid>
-          ) : (
-            <EmptyState
-              icon={Search}
-              title="No templates match"
-              description="Try a different word, or pick another category."
-            />
-          )}
-        </section>
-      )}
+        )}
+      </div>
     </div>
   );
 }
@@ -248,31 +245,5 @@ function Grid({ children }: { children: React.ReactNode }) {
     <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6">
       {children}
     </div>
-  );
-}
-
-function Chip({
-  active,
-  onClick,
-  children,
-}: {
-  active: boolean;
-  onClick: () => void;
-  children: React.ReactNode;
-}) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      aria-pressed={active}
-      className={cn(
-        "flex h-8 shrink-0 cursor-pointer items-center gap-1.5 rounded-full border px-3 text-xs transition-colors",
-        active
-          ? "border-primary/60 bg-primary/[0.06] text-foreground"
-          : "border-border text-muted-foreground hover:text-foreground",
-      )}
-    >
-      {children}
-    </button>
   );
 }

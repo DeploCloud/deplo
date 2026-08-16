@@ -1,12 +1,14 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import sharp from "sharp";
-import { dominantHue } from "./logo-color";
+import { analyseLogo } from "./logo-color";
 
 /**
- * The veil a template card wears is built from one number, and the two ways it
- * can go wrong are both invisible until someone looks at 388 cards: a hue that
- * isn't the logo's colour, and a hue for a logo that has no colour at all.
+ * A card is drawn from what this function says about a logo, and every way it
+ * can be wrong is invisible until someone looks at 388 cards at once: a hue
+ * that isn't the logo's colour, a hue for a logo that has none, and — the one
+ * that actually makes a card unreadable — failing to notice that a logo drawn
+ * only in black will vanish into the dark theme's card.
  *
  * Fixtures are painted here rather than committed: the check needs no network,
  * no catalogue and no binary in the repo. Lossless is load-bearing — lossy webp
@@ -30,50 +32,58 @@ function apart(a: number, b: number): number {
 }
 
 test("a solid logo answers its own hue", async () => {
-  const blue = await dominantHue(await logo([59, 130, 246, 255])); // #3b82f6
-  assert.notEqual(blue, null);
-  assert.ok(
-    apart(blue!, 264) <= 12,
-    `expected a blue hue near 264, got ${blue}`,
-  );
+  const { hue } = await analyseLogo(await logo([59, 130, 246, 255])); // #3b82f6
+  assert.notEqual(hue, undefined);
+  assert.ok(apart(hue!, 264) <= 12, `expected a blue hue near 264, got ${hue}`);
 });
 
 test("a small saturated mark outvotes the field it sits on", async () => {
   // Why the histogram is weighted by chroma: 6% of the pixels carry the colour
   // and the black around them must contribute nothing at all.
-  const orange = await dominantHue(
+  const { hue } = await analyseLogo(
     await logo([0, 0, 0, 255], [249, 115, 22, 255]), // #f97316 on black
   );
-  assert.notEqual(orange, null);
-  assert.ok(
-    apart(orange!, 51) <= 15,
-    `expected an orange hue near 51, got ${orange}`,
-  );
-});
-
-test("a colourless logo has no hue at all", async () => {
-  // ~20% of the live catalogue is exactly this: black or white wordmarks. Each
-  // one must answer null, not the numerically unstable hue of a grey.
-  assert.equal(await dominantHue(await logo([0, 0, 0, 255])), null);
-  assert.equal(await dominantHue(await logo([255, 255, 255, 255])), null);
-  assert.equal(await dominantHue(await logo([120, 120, 120, 255])), null);
+  assert.notEqual(hue, undefined);
+  assert.ok(apart(hue!, 51) <= 15, `expected an orange hue near 51, got ${hue}`);
 });
 
 test("transparent pixels do not vote", async () => {
   // A fully transparent logo is not "red": with alpha ignored, the zeroed RGB
   // underneath would be read as a real colour.
-  assert.equal(await dominantHue(await logo([0, 0, 0, 0])), null);
+  assert.deepEqual(await analyseLogo(await logo([0, 0, 0, 0])), {});
   // And a mark on transparent padding still reads as the mark's colour.
-  const green = await dominantHue(await logo([0, 0, 0, 0], [34, 197, 94, 255]));
-  assert.notEqual(green, null);
-  assert.ok(
-    apart(green!, 149) <= 15,
-    `expected a green hue near 149, got ${green}`,
-  );
+  const { hue } = await analyseLogo(await logo([0, 0, 0, 0], [34, 197, 94, 255]));
+  assert.notEqual(hue, undefined);
+  assert.ok(apart(hue!, 149) <= 15, `expected a green hue near 149, got ${hue}`);
+});
+
+test("a black wordmark asks for a plate on the dark theme", async () => {
+  // The whole reason `tone` exists: this logo is invisible on a #0a0a0a card.
+  const black = await analyseLogo(await logo([0, 0, 0, 255]));
+  assert.equal(black.hue, undefined, "black is not a hue");
+  assert.equal(black.tone, "dark");
+
+  // Mostly transparent with black ink — the common shape in the catalogue.
+  const ink = await analyseLogo(await logo([0, 0, 0, 0], [12, 12, 12, 255]));
+  assert.equal(ink.tone, "dark");
+});
+
+test("a white wordmark asks for a plate on the light theme instead", async () => {
+  const white = await analyseLogo(await logo([255, 255, 255, 255]));
+  assert.equal(white.hue, undefined);
+  assert.equal(white.tone, "light");
+});
+
+test("a coloured logo never asks for a plate", async () => {
+  // A dark navy mark sits near the dark card's lightness and would be plated by
+  // any lightness-only rule — but chroma carries it, so it must not be.
+  const navy = await analyseLogo(await logo([0, 0, 0, 0], [24, 40, 120, 255]));
+  assert.notEqual(navy.hue, undefined);
+  assert.equal(navy.tone, undefined, "colour is visible on both surfaces");
 });
 
 test("bytes that are not an image degrade instead of throwing", async () => {
   // The catalogue is remote input; a page must not 500 because it served HTML.
-  assert.equal(await dominantHue(Buffer.from("<!doctype html>")), null);
-  assert.equal(await dominantHue(Buffer.alloc(0)), null);
+  assert.deepEqual(await analyseLogo(Buffer.from("<!doctype html>")), {});
+  assert.deepEqual(await analyseLogo(Buffer.alloc(0)), {});
 });

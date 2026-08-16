@@ -2,6 +2,7 @@ import Link from "next/link";
 import { Package } from "lucide-react";
 import { LogoImage } from "@/components/shared/project-logo";
 import { cn } from "@/lib/utils";
+import type { LogoAccent } from "@/lib/templates/logo-color";
 import type { CatalogTemplate } from "@/templates/types";
 
 /**
@@ -40,21 +41,23 @@ export function toStoreTemplate(t: CatalogTemplate): StoreTemplate {
  * button here, because deploying is a decision made on the template's own page,
  * not from a tile that shows two lines about it.
  *
- * `hue` is the dominant hue of the logo (see `lib/templates/logo-color.ts`).
- * When there isn't one the veil classes are left off entirely and the card
- * renders plain, rather than wearing a colour its logo does not have.
+ * `accent` is what its logo's pixels said (see `lib/templates/logo-color.ts`):
+ * a hue to wash the card in, or the theme the logo would vanish into. A logo
+ * that said neither renders plain, rather than wearing a colour it does not
+ * have or a plate it does not need.
  */
 export function TemplateCard({
   template,
-  hue,
+  accent,
   href,
   className,
 }: {
   template: StoreTemplate;
-  hue?: number;
+  accent?: LogoAccent;
   href: string;
   className?: string;
 }) {
+  const hue = accent?.hue;
   return (
     <Link
       href={href}
@@ -69,6 +72,7 @@ export function TemplateCard({
       <LogoImage
         src={template.logo}
         size={56}
+        className={cn("tpl-logo", plateClass(accent))}
         fallback={<Package className="size-6 text-muted-foreground" />}
       />
       <div className="min-w-0">
@@ -79,4 +83,13 @@ export function TemplateCard({
       </div>
     </Link>
   );
+}
+
+/** The plate a logo needs, if any: black-only ink gets one on the dark theme,
+ *  white-only ink gets one on the light theme, and the CSS scopes each to its
+ *  own theme so the other surface is left alone. */
+export function plateClass(accent?: LogoAccent): string | undefined {
+  if (accent?.tone === "dark") return "tpl-plate-dark";
+  if (accent?.tone === "light") return "tpl-plate-light";
+  return undefined;
 }

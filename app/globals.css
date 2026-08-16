@@ -333,6 +333,120 @@
   opacity: 1;
 }
 
+/* A logo drawn only in black vanishes on the dark theme's near-black card, and
+   one drawn only in white vanishes on the light theme's white one. Give it the
+   plate it would have had on paper — and only in the theme where it needs one,
+   because on the other surface the same logo is already perfect.
+
+   The plate is `--card-foreground`: by construction the colour that contrasts
+   with the card it sits on, so this needs no new token and follows the theme
+   for free. A logo that has any COLOUR never gets one — chroma carries it even
+   when its lightness sits near the card's. */
+.dark .tpl-plate-dark,
+:root:not(.dark) .tpl-plate-light {
+  background-color: var(--card-foreground);
+}
+
+/* The catalogue's logos are a mix of transparent marks and flat opaque squares.
+   Rounding every one of them is what makes a grid of both read as one set. */
+.tpl-logo,
+.tpl-logo img {
+  border-radius: var(--radius-lg);
+}
+
+/* Search feedback: the results blur out and settle back as the set changes, so
+   a filter that returns a different grid is visibly a NEW grid and not a
+   redraw you missed. Short on purpose - it runs on every keystroke. */
+@keyframes deplo-results-in {
+  from {
+    opacity: 0;
+    filter: blur(8px);
+    transform: translateY(6px) scale(0.99);
+  }
+  to {
+    opacity: 1;
+    filter: blur(0);
+    transform: none;
+  }
+}
+.animate-results-in {
+  animation: deplo-results-in 240ms cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  /* The results still arrive, they just don't travel. Not `animation: none` —
+     `both` would otherwise leave the grid held on the blurred FIRST frame. */
+  .animate-results-in {
+    animation: none;
+  }
+}
+
+/* ------------------------------------------------------------------ */
+/* "No templates match": a lens sweeping a row that goes out under it. */
+/* ------------------------------------------------------------------ */
+
+/* The lens crosses the whole row, fading in at one edge and out at the other so
+   the loop has no snap-back seam. */
+@keyframes deplo-find-lens {
+  0% {
+    transform: translateX(-38px);
+    opacity: 0;
+  }
+  14%,
+  86% {
+    opacity: 1;
+  }
+  100% {
+    transform: translateX(38px);
+    opacity: 0;
+  }
+}
+
+/* One dot's life: lit, out as the lens reaches it, lit again as the sweep
+   restarts. Every dot shares this and differs only by `animation-delay`, which
+   for an infinite animation is a permanent phase offset — so the delay is
+   literally the lens's position over that dot. */
+@keyframes deplo-find-dot {
+  0%,
+  10% {
+    opacity: 1;
+    transform: scale(1);
+  }
+  20%,
+  80% {
+    opacity: 0.16;
+    transform: scale(0.68);
+  }
+  92%,
+  100% {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+.deplo-find-lens {
+  animation: deplo-find-lens 3.6s ease-in-out infinite;
+}
+
+.deplo-find-dot {
+  /* Without `fill-box` an SVG scale pivots on the viewBox origin and the dot
+     flies to the corner instead of shrinking in place. */
+  transform-box: fill-box;
+  transform-origin: center;
+  animation: deplo-find-dot 3.6s ease-in-out infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  /* Hold the frame the drawing exists to show: the lens over an empty row. */
+  .deplo-find-lens {
+    animation: none;
+  }
+  .deplo-find-dot {
+    animation: none;
+    opacity: 0.16;
+  }
+}
+
 /* ------------------------------------------------------------------ */
 /* Page + element transitions  the "single-page app" feel.            */
 /* Page and skeleton entrances are intentionally NOT animated (no fade-in-up). */

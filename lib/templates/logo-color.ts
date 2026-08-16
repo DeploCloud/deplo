@@ -4,16 +4,24 @@ import { templateImageBytes } from "@/templates/catalog";
 import type { CatalogTemplate } from "@/templates/types";
 
 /**
- * The one accent a template gets: the dominant HUE of its logo, in degrees.
+ * What the store needs to know about a template's logo, read once from its
+ * pixels: the hue to wash the card in, and whether the logo needs a plate to be
+ * visible at all.
  *
- * The store paints a monochrome veil behind every card and behind the logo on a
- * template's page. Only a hue crosses to the browser — lightness and chroma are
- * fixed in CSS — so a veil can never come out as two tints, and a garish logo
- * cannot produce a garish card.
+ * **Hue.** Only a hue crosses to the browser — lightness and chroma are fixed in
+ * CSS — so a veil can never come out as two tints, and a garish logo cannot
+ * produce a garish card. A logo with no usable hue gets none rather than a hue
+ * nobody would call that logo's colour: a black wordmark is not "red".
  *
- * A logo with no usable hue answers `null` rather than a hue nobody would call
- * that logo's colour: a black wordmark on transparent is not "red", and the
- * card falls back to a neutral veil built from the theme's own tokens.
+ * **Tone.** A logo drawn only in black vanishes on the dark theme's near-black
+ * card, and one drawn only in white vanishes on the light theme's white one.
+ * Those get `tone`, and the card puts them on a plate in that theme only.
+ * Measured over the live catalogue: 308 of 386 logos carry a hue and need
+ * nothing, 38 are black-only, 35 are white-only.
+ *
+ * A logo that HAS a hue never gets a plate, and that distinction is the whole
+ * point: a dark navy mark reads loud on black because of its chroma, so judging
+ * on lightness alone would plate logos that are perfectly visible.
  */
 
 /** Below this OKLCH chroma a pixel is grey, white or black — it has no colour. */
@@ -23,6 +31,8 @@ const BUCKETS = 24;
 /** A hue nobody would name: too few coloured pixels to be the logo's colour. */
 const MIN_SHARE = 0.15;
 const MIN_COLOURED_PIXELS = 4;
+/** Neutral ink below this OKLab lightness is "black", above it is "white". */
+const MID_LIGHTNESS = 0.5;
 
 /** Concurrent logo fetches. The catalog answers `ratelimit-limit: 600`/min and
  *  a cold cache needs one request per template; 386 sockets opened at once on
@@ -61,20 +71,34 @@ function oklab(r8: number, g8: number, b8: number) {
   const s = Math.cbrt(0.0883024619 * r + 0.2817188376 * g + 0.6299787005 * b);
 
   return {
+    L: 0.2104542553 * l + 0.793617785 * m - 0.0040720468 * s,
     a: 1.9779984951 * l - 2.428592205 * m + 0.4505937099 * s,
     b: 0.0259040371 * l + 0.7827717662 * m - 0.808675766 * s,
   };
 }
 
 /**
- * The dominant hue of an encoded image, or `null`.
+ * What a card needs to draw a logo well.
+ *
+ * `hue` — the wash behind the card, absent when the logo has no colour.
+ * `tone` — the theme the logo would vanish into, absent when it vanishes into
+ * neither. `"dark"` means the logo is drawn in black and needs a plate on the
+ * dark theme; `"light"` means the opposite.
+ */
+export interface LogoAccent {
+  hue?: number;
+  tone?: "dark" | "light";
+}
+
+/**
+ * Read an encoded image once and answer both.
  *
  * Exported for its own test: it is pure over bytes, so the check needs no
  * network and no catalogue.
  */
-export async function dominantHue(bytes: Buffer): Promise<number | null> {
+export async function analyseLogo(bytes: Buffer): Promise<LogoAccent> {
   const sharp = await loadSharp();
-  if (!sharp) return null;
+  if (!sharp) return {};
 
   let pixels: Buffer;
   try {
@@ -86,7 +110,7 @@ export async function dominantHue(bytes: Buffer): Promise<number | null> {
       .toBuffer({ resolveWithObject: true });
     pixels = out.data;
   } catch {
-    return null;
+    return {};
   }
 
   // Chroma-weighted histogram: one saturated pixel says more about a logo's
@@ -97,12 +121,21 @@ export async function dominantHue(bytes: Buffer): Promise<number | null> {
   const cosSum = new Array<number>(BUCKETS).fill(0);
   let total = 0;
   let coloured = 0;
+  // Neutral ink, split by which surface it would disappear into.
+  let black = 0;
+  let white = 0;
 
   for (let i = 0; i + 3 < pixels.length; i += 4) {
     if (pixels[i + 3] < 128) continue; // transparent — the logo isn't there
-    const { a, b } = oklab(pixels[i], pixels[i + 1], pixels[i + 2]);
+    const { L, a, b } = oklab(pixels[i], pixels[i + 1], pixels[i + 2]);
     const chroma = Math.hypot(a, b);
-    if (chroma < MIN_CHROMA) continue; // grey, white or black — no colour
+    if (chroma < MIN_CHROMA) {
+      // Grey, white or black: no colour to contribute, but it is the ink that
+      // decides whether this logo can be seen at all.
+      if (L < MID_LIGHTNESS) black += 1;
+      else white += 1;
+      continue;
+    }
 
     const radians = Math.atan2(b, a);
     const bucket =
@@ -115,55 +148,65 @@ export async function dominantHue(bytes: Buffer): Promise<number | null> {
     coloured += 1;
   }
 
-  if (coloured < MIN_COLOURED_PIXELS || total <= 0) return null;
-
   let winner = 0;
   for (let i = 1; i < BUCKETS; i += 1) if (weights[i] > weights[winner]) winner = i;
-  if (weights[winner] / total < MIN_SHARE) return null;
+  const hasHue =
+    coloured >= MIN_COLOURED_PIXELS &&
+    total > 0 &&
+    weights[winner] / total >= MIN_SHARE;
 
-  const hue =
-    (Math.atan2(sinSum[winner], cosSum[winner]) * 180) / Math.PI;
-  return Math.round((hue + 360) % 360);
+  if (hasHue) {
+    const hue = (Math.atan2(sinSum[winner], cosSum[winner]) * 180) / Math.PI;
+    // A logo with colour is visible on both surfaces — chroma carries it even
+    // when its lightness sits near the card's. It never needs a plate.
+    return { hue: Math.round((hue + 360) % 360) };
+  }
+
+  // No colour at all: this is a wordmark drawn in one neutral, and the side it
+  // is drawn on is the side it disappears into.
+  if (black > white) return { tone: "dark" };
+  if (white > black) return { tone: "light" };
+  return {};
 }
 
 /**
- * slug → hue, or `null` for "looked, there isn't one". A logo never changes
- * under its slug, so this is computed at most once per process.
+ * slug → what its logo needs. A logo never changes under its slug, so this is
+ * computed at most once per process.
  *
- * The value is the in-flight PROMISE, not the number: two concurrent first
+ * The value is the in-flight PROMISE, not the result: two concurrent first
  * renders would otherwise fetch and decode the same 386 logos twice.
  */
-const memo = new Map<string, Promise<number | null>>();
+const memo = new Map<string, Promise<LogoAccent>>();
 
-/** The dominant hue of one template's logo. `logoUrl` is the absolute URL the
- *  catalog client already resolved. */
+/** One template's logo, read. `logoUrl` is the absolute URL the catalog client
+ *  already resolved. */
 export function templateAccent(
   slug: string,
   logoUrl: string | null,
-): Promise<number | null> {
+): Promise<LogoAccent> {
   const cached = memo.get(slug);
   if (cached) return cached;
   if (!logoUrl) {
-    const none = Promise.resolve(null);
+    const none = Promise.resolve({});
     memo.set(slug, none);
     return none;
   }
 
   const pending = templateImageBytes(logoUrl)
-    .then((bytes) => (bytes ? dominantHue(bytes) : null))
+    .then((bytes) => (bytes ? analyseLogo(bytes) : {}))
     .catch(() => {
       // One bad minute on the catalog must not pin a template to "no colour"
       // for the life of the process.
       memo.delete(slug);
-      return null;
+      return {};
     });
   memo.set(slug, pending);
   return pending;
 }
 
 /**
- * Accents for a whole catalogue, keyed by slug. Templates with no usable hue
- * are simply absent, so a caller spreads the map and reads `accents[slug]`.
+ * Accents for a whole catalogue, keyed by slug. A logo that needs nothing is
+ * simply absent, so a caller reads `accents[slug]` and gets `undefined`.
  *
  * Bounded concurrency, and a wall-clock budget: whatever is not resolved in
  * time is left out of this pass and picked up by the next one, rather than
@@ -171,8 +214,8 @@ export function templateAccent(
  */
 export async function templateAccents(
   templates: CatalogTemplate[],
-): Promise<Record<string, number>> {
-  const settled = new Map<string, number | null>();
+): Promise<Record<string, LogoAccent>> {
+  const settled = new Map<string, LogoAccent>();
   const deadline = Date.now() + BUDGET_MS;
   let next = 0;
 
@@ -187,12 +230,13 @@ export async function templateAccents(
     Array.from({ length: Math.min(CONCURRENCY, templates.length) }, worker),
   );
 
-  const accents: Record<string, number> = {};
+  const accents: Record<string, LogoAccent> = {};
   for (const t of templates) {
     // Only what already resolved: a slug the budget cut short is left out of
     // this pass and picked up by the next render.
-    const hue = settled.get(t.slug);
-    if (typeof hue === "number") accents[t.slug] = hue;
+    const accent = settled.get(t.slug);
+    if (accent && (accent.hue !== undefined || accent.tone !== undefined))
+      accents[t.slug] = accent;
   }
   return accents;
 }

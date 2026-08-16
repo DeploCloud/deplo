@@ -14,6 +14,7 @@ import { GitHubIcon } from "@/components/shared/brand-icons";
 import { LogoImage } from "@/components/shared/project-logo";
 import { CategoryIcon } from "@/components/templates/category-icon";
 import {
+  plateClass,
   TemplateCard,
   toStoreTemplate,
 } from "@/components/templates/template-card";
@@ -21,6 +22,7 @@ import { TemplateMarkdown } from "@/components/templates/template-markdown";
 import { TemplateSearchLink } from "@/components/templates/template-search";
 import { TemplateScreenshots } from "@/components/templates/template-screenshots";
 import { hasCapability } from "@/lib/membership";
+import { cn } from "@/lib/utils";
 import { resolveOverviewPlacement } from "@/lib/data/placement";
 import {
   newAppHref,
@@ -75,7 +77,7 @@ export default async function TemplatePage(props: PageProps<"/templates/[slug]">
   // resolve asset paths, so the URLs are built here.
   const logo = template.logo ? templateAssetUrl(template.logo) : null;
   const images = template.images.map(templateAssetUrl);
-  const hue = await templateAccent(template.slug, logo);
+  const accent = await templateAccent(template.slug, logo);
 
   const catalog = await listCatalog().catch(() => []);
   const related = catalog
@@ -93,16 +95,20 @@ export default async function TemplatePage(props: PageProps<"/templates/[slug]">
       <div className="flex flex-col gap-5 sm:flex-row sm:items-center sm:justify-between">
         <div className="flex min-w-0 items-center gap-4">
           <div
-            style={hue === null ? undefined : ({ "--tpl-hue": hue } as React.CSSProperties)}
-            className={
-              hue === null
-                ? "flex size-18 shrink-0 items-center justify-center rounded-2xl border border-border"
-                : "tpl-veil tpl-veil-on flex size-18 shrink-0 items-center justify-center rounded-2xl border border-border"
+            style={
+              accent.hue === undefined
+                ? undefined
+                : ({ "--tpl-hue": accent.hue } as React.CSSProperties)
             }
+            className={cn(
+              "flex size-18 shrink-0 items-center justify-center rounded-2xl border border-border",
+              accent.hue !== undefined && "tpl-veil tpl-veil-on",
+            )}
           >
             <LogoImage
               src={logo}
               size={48}
+              className={cn("tpl-logo", plateClass(accent))}
               fallback={<Package className="size-6 text-muted-foreground" />}
             />
           </div>
@@ -185,7 +191,7 @@ export default async function TemplatePage(props: PageProps<"/templates/[slug]">
               <TemplateCard
                 key={t.slug}
                 template={toStoreTemplate(t)}
-                hue={relatedAccents[t.slug]}
+                accent={relatedAccents[t.slug]}
                 href={`/templates/${t.slug}`}
               />
             ))}
