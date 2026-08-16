@@ -1,6 +1,7 @@
 import { type NextRequest } from "next/server";
 import { StringDecoder } from "node:string_decoder";
 import { getCurrentUser } from "@/lib/auth";
+import { isCrossSite, crossSiteRefused } from "@/lib/http/same-origin";
 import { requireActiveTeamId, requireCapability } from "@/lib/membership";
 import { resolveDatabaseAttachTarget } from "@/lib/data/database-console";
 import * as attach from "@/lib/attach/session";
@@ -33,6 +34,7 @@ export async function GET(
   request: NextRequest,
   ctx: RouteContext<"/api/databases/[id]/attach">,
 ) {
+  if (isCrossSite(request)) return crossSiteRefused();
   const user = await getCurrentUser();
   if (!user) return Response.json({ error: "Unauthorized" }, { status: 401 });
 
@@ -145,6 +147,7 @@ export async function POST(
   request: NextRequest,
   ctx: RouteContext<"/api/databases/[id]/attach">,
 ) {
+  if (isCrossSite(request)) return crossSiteRefused();
   const user = await getCurrentUser();
   if (!user) return Response.json({ error: "Unauthorized" }, { status: 401 });
 
@@ -222,6 +225,7 @@ export async function DELETE(
   request: NextRequest,
   ctx: RouteContext<"/api/databases/[id]/attach">,
 ) {
+  if (isCrossSite(request)) return crossSiteRefused();
   const user = await getCurrentUser();
   if (!user) return Response.json({ error: "Unauthorized" }, { status: 401 });
 

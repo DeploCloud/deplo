@@ -1,6 +1,7 @@
 import { type NextRequest } from "next/server";
 
 import { getCurrentUser } from "@/lib/auth";
+import { isCrossSite, crossSiteRefused } from "@/lib/http/same-origin";
 import { downloadBackupArtifact } from "@/lib/data/backups";
 import { statusForBackupError } from "@/lib/backups/http-status";
 
@@ -41,9 +42,10 @@ export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
 
 export async function GET(
-  _request: NextRequest,
+  request: NextRequest,
   ctx: RouteContext<"/api/backups/[runId]/download">,
 ) {
+  if (isCrossSite(request)) return crossSiteRefused();
   const user = await getCurrentUser();
   if (!user) return Response.json({ error: "Unauthorized" }, { status: 401 });
 

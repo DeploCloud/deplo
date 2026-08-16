@@ -1,6 +1,7 @@
 import { type NextRequest } from "next/server";
 import { StringDecoder } from "node:string_decoder";
 import { getCurrentUser } from "@/lib/auth";
+import { isCrossSite, crossSiteRefused } from "@/lib/http/same-origin";
 import { resolveDatabaseLogsTarget } from "@/lib/data/database-console";
 import * as logs from "@/lib/logs/session";
 import { connectAgent } from "@/lib/infra/agent-client";
@@ -33,6 +34,7 @@ export async function GET(
   request: NextRequest,
   ctx: RouteContext<"/api/databases/[id]/logs">,
 ) {
+  if (isCrossSite(request)) return crossSiteRefused();
   const user = await getCurrentUser();
   if (!user) return Response.json({ error: "Unauthorized" }, { status: 401 });
 
@@ -153,6 +155,7 @@ export async function DELETE(
   request: NextRequest,
   ctx: RouteContext<"/api/databases/[id]/logs">,
 ) {
+  if (isCrossSite(request)) return crossSiteRefused();
   const user = await getCurrentUser();
   if (!user) return Response.json({ error: "Unauthorized" }, { status: 401 });
 
