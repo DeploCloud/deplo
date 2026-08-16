@@ -36,7 +36,6 @@ import {
   GripVertical,
   Layers,
   SearchX,
-  Variable,
 } from "lucide-react";
 import { AppLogo } from "@/components/shared/project-logo";
 import {
@@ -59,6 +58,8 @@ import { SimpleTooltip } from "@/components/ui/tooltip";
 import { EmptyState } from "@/components/shared/empty-state";
 import { ConfirmAction } from "@/components/shared/confirm-action";
 import { useOptimisticRemove } from "@/components/shared/use-optimistic-remove";
+import { AppsGraphic } from "@/components/apps/apps-graphic";
+import { AppVarsGraphic } from "@/components/env/app-vars-graphic";
 import { EnvValueCell } from "@/components/env/env-value-cell";
 import { EnvVarDialog } from "@/components/env/env-var-dialog";
 import { EnvAuthorCell } from "@/components/env/env-author-cell";
@@ -484,7 +485,7 @@ export function AllAppsEnvManager({
   if (groups.length === 0) {
     return (
       <EmptyState
-        icon={Plus}
+        graphic={<AppsGraphic />}
         title="No apps yet"
         description="Create an app to start adding environment variables."
       />
@@ -494,7 +495,7 @@ export function AllAppsEnvManager({
   if (rows.length === 0) {
     return (
       <EmptyState
-        icon={Variable}
+        graphic={<AppVarsGraphic />}
         title="No variables yet"
         description="None of your apps has an environment variable. Open an app to add its first one, or create a shared variable."
         action={

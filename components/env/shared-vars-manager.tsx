@@ -25,6 +25,7 @@ import { SimpleTooltip } from "@/components/ui/tooltip";
 import { EmptyState } from "@/components/shared/empty-state";
 import { ConfirmAction } from "@/components/shared/confirm-action";
 import { useOptimisticRemove } from "@/components/shared/use-optimistic-remove";
+import { SharedVarsGraphic } from "@/components/env/shared-vars-graphic";
 import { EnvValueCell } from "@/components/env/env-value-cell";
 import { EnvAuthorCell } from "@/components/env/env-author-cell";
 import { SharedVarEditDialog } from "@/components/env/shared-var-edit-dialog";
@@ -231,7 +232,7 @@ export function SharedVarsManager({
 
       {rows.length === 0 ? (
         <EmptyState
-          icon={Share2}
+          graphic={<SharedVarsGraphic />}
           title="No shared variables yet"
           description="Create a shared variable to reuse it across projects, apps, or the whole team."
         />

@@ -28,7 +28,7 @@ import { SimpleTooltip } from "@/components/ui/tooltip";
 import { EmptyState } from "@/components/shared/empty-state";
 import { ConfirmAction } from "@/components/shared/confirm-action";
 import { useOptimisticRemove } from "@/components/shared/use-optimistic-remove";
-import { EnvGraphic } from "@/components/env/env-graphic";
+import { GlobalVarsGraphic } from "@/components/env/global-vars-graphic";
 import { EnvValueCell } from "@/components/env/env-value-cell";
 import { EnvAuthorCell } from "@/components/env/env-author-cell";
 import {
@@ -132,7 +132,7 @@ export function GlobalEnvManager({
 
       {rows.length === 0 ? (
         <EmptyState
-          graphic={<EnvGraphic />}
+          graphic={<GlobalVarsGraphic />}
           title="No variables yet"
           description="Add a variable to inject it into every app of every team."
         />

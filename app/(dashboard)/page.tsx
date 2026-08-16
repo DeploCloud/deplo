@@ -27,6 +27,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { EmptyState } from "@/components/shared/empty-state";
 import { AppsGrid, FolderTrail } from "@/components/apps/apps-grid";
+import { AppsGraphic } from "@/components/apps/apps-graphic";
 import { AppSearch } from "@/components/apps/app-search";
 import { EnvironmentSwitcher } from "@/components/apps/environment-switcher";
 import {
@@ -423,7 +424,7 @@ export default async function OverviewPage(props: PageProps<"/">) {
             </div>
           ) : (
             <EmptyState
-              icon={Rocket}
+              graphic={<AppsGraphic />}
               title="No apps yet"
               description={
                 canDeploy
