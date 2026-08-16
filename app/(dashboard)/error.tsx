@@ -7,10 +7,14 @@ import { isStaleBuildError, reloadOnce } from "@/lib/stale-build";
 
 export default function DashboardError({
   error,
-  reset,
+  retry,
 }: {
   error: Error & { digest?: string };
-  reset: () => void;
+  // `retry` re-fetches and re-renders the children — including the Server
+  // Components that failed. `reset`, which this used to take, only clears the
+  // boundary and replays the same broken payload, so a transient failure (a
+  // database blip, an agent that timed out) stayed broken until a full reload.
+  retry: () => void;
 }) {
   // A tab left open across a deplo update asks for chunk files that build
   // replaced. Nothing is wrong with the page — reloading renders it.
@@ -55,7 +59,7 @@ export default function DashboardError({
           An unexpected error occurred while rendering this page.
         </p>
       </div>
-      <Button onClick={reset}>Try again</Button>
+      <Button onClick={() => retry()}>Try again</Button>
     </div>
   );
 }

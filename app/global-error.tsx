@@ -11,10 +11,12 @@ import { isStaleBuildError, reloadOnce } from "@/lib/stale-build";
  */
 export default function GlobalError({
   error,
-  reset,
+  retry,
 }: {
   error: Error & { digest?: string };
-  reset: () => void;
+  // Re-fetches and re-renders the children, Server Components included; see
+  // the note in app/(dashboard)/error.tsx.
+  retry: () => void;
 }) {
   // Same recovery as the dashboard boundary: a tab that outlived the build it
   // was loaded from is one reload away from working. See lib/stale-build.ts.
@@ -64,7 +66,7 @@ export default function GlobalError({
           </p>
           <button
             type="button"
-            onClick={stale ? () => window.location.reload() : reset}
+            onClick={stale ? () => window.location.reload() : () => retry()}
             style={{
               marginTop: "1.5rem",
               cursor: "pointer",
