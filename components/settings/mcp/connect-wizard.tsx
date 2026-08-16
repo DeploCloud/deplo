@@ -399,7 +399,7 @@ function WizardRun({
           {step === "agent" && (
             <StepShell
               title="Which agent are you connecting?"
-              lead="Each one wants its configuration in a different place, so deplo writes the right one for you."
+              lead="Each one wants its configuration in a different place, so Deplo writes the right one for you."
             >
               <div
                 role="radiogroup"
@@ -430,7 +430,7 @@ function WizardRun({
           {step === "permissions" && agent && (
             <StepShell
               title={`What may ${agent.label} do?`}
-              lead="deplo mints an API token here. You can change or revoke it later without touching the agent."
+              lead="Deplo mints an API token here. You can change or revoke it later without touching the agent."
             >
               <div className="w-full space-y-4 text-left">
                 <div className="grid gap-2">
@@ -525,13 +525,13 @@ function WizardRun({
               mark={<AgentMark agent={agent} size="lg" />}
               title={
                 web
-                  ? `Add deplo as a connector in ${agent.label}`
+                  ? `Add Deplo as a connector in ${agent.label}`
                   : "Add this to your agent"
               }
               lead={
                 web
                   ? agent.hint
-                  : "The token is already in it. This is the only time deplo can show that secret."
+                  : "The token is already in it. This is the only time Deplo can show that secret."
               }
             >
               <div className="w-full space-y-3 text-left">
@@ -556,7 +556,7 @@ function WizardRun({
                     left to say there is what happens after the paste. */}
                 <p className="text-xs text-muted-foreground">
                   {web
-                    ? "deplo then asks you to sign in and choose what it may do. Nothing is shared until you approve it."
+                    ? "Deplo then asks you to sign in and choose what it may do. Nothing is shared until you approve it."
                     : agent.hint}
                 </p>
 
@@ -924,10 +924,10 @@ function DoneStep({
       }
       lead={
         connected
-          ? "It made its first call to deplo. You can revoke its access at any time under Manage."
+          ? "It made its first call to Deplo. You can revoke its access at any time under Manage."
           : gaveUp
-            ? "deplo has not heard from it yet. Start the agent, or ask it to list its tools, then check again."
-            : "This lights up the moment the agent actually calls deplo, not when the configuration is saved."
+            ? "Deplo has not heard from it yet. Start the agent, or ask it to list its tools, then check again."
+            : "This lights up the moment the agent actually calls Deplo, not when the configuration is saved."
       }
     >
       {connected ? (

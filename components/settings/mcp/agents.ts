@@ -283,7 +283,7 @@ export const AGENTS: AgentDef[] = [
     file: "~/.gemini/settings.json",
     form: "file",
     language: "json",
-    hint: "Merge it into the file, then run /mcp in the CLI to check deplo is listed.",
+    hint: "Merge it into the file, then run /mcp in the CLI to check Deplo is listed.",
     docsUrl:
       "https://google-gemini.github.io/gemini-cli/docs/tools/mcp-server.html",
     snippet: ({ url, token }) =>
@@ -311,7 +311,7 @@ export const AGENTS: AgentDef[] = [
     file: "~/.codex/config.toml",
     form: "file",
     language: "toml",
-    hint: "Append it to the file, then run /mcp in a Codex session to check deplo is connected.",
+    hint: "Append it to the file, then run /mcp in a Codex session to check Deplo is connected.",
     docsUrl: "https://learn.chatgpt.com/docs/extend/mcp?surface=cli",
     snippet: ({ url, token }) =>
       [
@@ -332,7 +332,7 @@ export const AGENTS: AgentDef[] = [
     // carrying the protocol version, which is three lines of ceremony nobody
     // types by hand and every real client sends for you. What a person actually
     // has to know is the address and the header.
-    hint: "Two lines every MCP client asks for. deplo speaks Streamable HTTP, protocol revision 2026-07-28.",
+    hint: "Two lines every MCP client asks for. Deplo speaks Streamable HTTP, protocol revision 2026-07-28.",
     docsUrl: "https://modelcontextprotocol.io/docs/concepts/transports",
     snippet: ({ url, token }) =>
       `URL:    ${url}\nHeader: Authorization: Bearer ${token}`,

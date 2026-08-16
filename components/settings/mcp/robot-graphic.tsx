@@ -81,10 +81,10 @@ export function RobotMark({ className }: { className?: string }) {
 }
 
 const LABEL: Record<RobotState, string> = {
-  idle: "A robot waiting to be connected to deplo",
+  idle: "A robot waiting to be connected to Deplo",
   key: "A robot holding a key, ready to be given permissions",
-  reaching: "A robot reaching a cable toward deplo",
-  connected: "A robot plugged into deplo",
+  reaching: "A robot reaching a cable toward Deplo",
+  connected: "A robot plugged into Deplo",
 };
 
 export type RobotState = "idle" | "key" | "reaching" | "connected";

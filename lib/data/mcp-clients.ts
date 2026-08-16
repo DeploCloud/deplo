@@ -383,7 +383,7 @@ export async function mintMcpConnection(
     );
 
   const client = await getOAuthClientForConsent(input.clientId);
-  if (!client) throw new Error("That app is not registered with deplo");
+  if (!client) throw new Error("That app is not registered with Deplo");
 
   await assertFreshConsent(input.clientId, userId);
 
