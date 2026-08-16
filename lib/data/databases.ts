@@ -1127,7 +1127,20 @@ async function teardownDatabaseStack(db: Database): Promise<string | null> {
       // brings the stack up in the process — harmless for something we are about
       // to destroy, and it is what makes the volume reclaimable at all (only a
       // `down -v` with a compose file can drop a named volume).
-      const password = parseConnectionPassword(decryptSecret(db.connectionStringEnc));
+      // `reroute` brings the stack UP before the `down -v`, so an EMPTY password
+      // (an undecryptable ciphertext under a rotated DEPLO_SECRET) would boot an
+      // auth-less engine on the shared network for that window — the missed 4th
+      // call site of the same "never render an empty credential" rule. The volume
+      // is about to be dropped, so the value is irrelevant: fall back to a
+      // throwaway rather than throw (which would block reclaiming the volume).
+      let password: string;
+      try {
+        password = parseConnectionPassword(
+          decryptSecretOrThrow(db.connectionStringEnc, "The database password"),
+        );
+      } catch {
+        password = randomToken(24);
+      }
       const healed = await conn.reroute({
         slug: db.host,
         composeYaml: renderDatabaseStackYaml(db, password),

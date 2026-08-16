@@ -664,16 +664,6 @@ export async function login(
   password: string,
 ): Promise<LoginResult> {
   const normalized = email.toLowerCase().trim();
-  // Suspension is deplo's own concept: check it BEFORE handing Better Auth a
-  // valid credential, so a suspended account never gets a session row at all.
-  const rows = await getDb()
-    .select({ suspended: usersTable.suspended })
-    .from(usersTable)
-    .where(eq(sql`lower(${usersTable.email})`, normalized))
-    .limit(1);
-  if (rows[0]?.suspended)
-    return { ok: false, error: "This account has been suspended" };
-
   try {
     const res = await requireAuth().api.signInEmail({
       body: { email: normalized, password },
@@ -684,6 +674,25 @@ export async function login(
     // either the session cookie or the challenge cookie, and on the IP
     // address both need declassifying for the browser to keep them.
     await keepAuthCookiesUsableOverHttp();
+    // Suspension is enforced only NOW, after the password verified — so "this
+    // account has been suspended" is revealed only to someone who proved the
+    // credential, never as a pre-auth existence oracle. A wrong password lands in
+    // the catch below with the same generic message and the same scrypt work as
+    // an unknown email, so the suspended and non-existent cases are now
+    // indistinguishable to an attacker. getCurrentUser blocks a suspended session
+    // on every request regardless; revoke the row Better Auth just minted so a
+    // suspended account is never left holding a usable one.
+    const account = (
+      await getDb()
+        .select({ id: usersTable.id, suspended: usersTable.suspended })
+        .from(usersTable)
+        .where(eq(sql`lower(${usersTable.email})`, normalized))
+        .limit(1)
+    )[0];
+    if (account?.suspended) {
+      await revokeAllSessions(account.id).catch(() => {});
+      return { ok: false, error: "This account has been suspended" };
+    }
     // The credential was just proven, so this is the one moment the plaintext
     // and the identity are both in hand - the only place a hash written at an
     // older, weaker cost can be replaced without asking anyone to reset

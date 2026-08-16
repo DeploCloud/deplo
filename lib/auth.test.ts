@@ -308,6 +308,21 @@ test("login refuses a suspended account", async () => {
   assert.match(res.error ?? "", /suspended/);
 });
 
+test("a WRONG password on a suspended account is the GENERIC error, not an enumeration oracle", async () => {
+  await seedIdentity(db, {
+    users: [
+      { id: USER_1, teamId: TEAM_A, role: "owner", password: "Passw0rd!1", suspended: true },
+    ],
+  });
+  // The "suspended" message is revealed only to someone who proves the password;
+  // without it, a suspended account is indistinguishable from a wrong password or
+  // an unknown email (same message, same scrypt work) — no pre-auth existence leak.
+  const res = await login(`${USER_1}@example.io`, "not-the-password");
+  assert.equal(res.ok, false);
+  assert.match(res.error ?? "", /Invalid email or password/);
+  assert.doesNotMatch(res.error ?? "", /suspended/i);
+});
+
 /**
  * A successful `login` writes the session cookie via `cookies()`, which throws
  * "outside a request scope" under `node --test`. So "password accepted" is proven
