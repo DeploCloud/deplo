@@ -57,12 +57,12 @@ export interface AgentDef {
   /**
    * The line under the name. **Two lines' worth, every time.**
    *
-   * That means 40-48 characters, and the band is narrow for a reason: the
-   * column these cards live in is ~36 characters wide at its widest and ~29 at
-   * its narrowest, so anything under 36 collapses to one line on a big screen
-   * and anything over 58 spills to three on a laptop. Sixty-character blurbs
-   * did exactly that — one card grew and took its whole row with it, which is a
-   * grid you have to re-scan on every glance.
+   * That means 52-60 characters, and the band is narrow for a reason: the
+   * tightest this column ever gets is ~38 characters a line, so anything under
+   * 38 collapses to ONE line on a wide screen and anything past ~70 spills to
+   * three on a narrow one. Blurbs that ranged 24-62 did exactly that — one card
+   * grew and took its whole row with it, which is a grid you have to re-scan on
+   * every glance. Measured at eleven widths, not guessed.
    *
    * What the reader needs in order to recognise theirs and know the one thing
    * that will surprise them, not a pitch.
@@ -102,7 +102,21 @@ export interface AgentDef {
   form: "command" | "file";
   /** Language hint for the code block. */
   language?: string;
-  /** Where to paste it, in one sentence. Rendered under the snippet. */
+  /**
+   * How to get there, in one sentence — the exact path through that client's
+   * own UI, in that client's own words.
+   *
+   * For a **web** client this IS the instruction, and it renders as the step's
+   * lead, above the address. It used to sit under the code block as a muted
+   * footnote while the heading said "Paste this into Claude" — which is the one
+   * thing nobody needs telling. What they do not know is that the field is
+   * behind Customize → Connectors. For a token client the config file is the
+   * instruction, so this stays a note beneath it.
+   *
+   * Every path was read off the vendor's own documentation rather than
+   * remembered, and two of them were wrong before that check: Claude's menu is
+   * Customize, not Settings, and ChatGPT's section is Apps & Connectors.
+   */
   hint: string;
   docsUrl: string;
   /**
@@ -122,13 +136,13 @@ export const AGENTS: AgentDef[] = [
   {
     id: "claude-web",
     label: "Claude",
-    blurb: "The assistant at claude.ai. Approve it once.",
+    blurb: "The assistant at claude.ai. Sign in and approve it once.",
     icon: ClaudeIcon,
     brand: { bg: "#D97757", fg: "#FFFFFF" },
     veil: { hue: 39 },
     kind: "web",
     form: "file",
-    hint: "Settings → Connectors → Add custom connector, then paste this and approve when deplo asks.",
+    hint: "In Claude, open Customize → Connectors, press + and choose Add custom connector.",
     docsUrl:
       "https://support.claude.com/en/articles/11175166-about-custom-connectors-via-remote-mcp-servers",
     snippet: webSnippet,
@@ -136,13 +150,13 @@ export const AGENTS: AgentDef[] = [
   {
     id: "chatgpt",
     label: "ChatGPT",
-    blurb: "At chatgpt.com. Needs developer mode on.",
+    blurb: "The assistant at chatgpt.com. Needs developer mode on.",
     icon: OpenAiIcon,
     brand: { bg: "#000000", fg: "#FFFFFF" },
     veil: { tone: "dark" },
     kind: "web",
     form: "file",
-    hint: "Settings → Connectors → Advanced settings → Developer mode, then Create and paste this.",
+    hint: "In ChatGPT, open Settings → Apps & Connectors → Advanced settings, turn on Developer mode, then press Create.",
     docsUrl:
       "https://help.openai.com/en/articles/12584461-developer-mode-and-mcp-apps-in-chatgpt",
     snippet: webSnippet,
@@ -150,13 +164,13 @@ export const AGENTS: AgentDef[] = [
   {
     id: "claude-desktop",
     label: "Claude Desktop",
-    blurb: "The Claude app for Mac and Windows. Same flow.",
+    blurb: "The Claude app for Mac and Windows. Same flow, no token.",
     icon: ClaudeIcon,
     brand: { bg: "#D97757", fg: "#FFFFFF" },
     veil: { hue: 39 },
     kind: "web",
     form: "file",
-    hint: "Settings → Connectors → Add custom connector, then paste this and approve when deplo asks.",
+    hint: "In Claude, open Customize → Connectors, press + and choose Add custom connector.",
     docsUrl:
       "https://support.claude.com/en/articles/11175166-about-custom-connectors-via-remote-mcp-servers",
     snippet: webSnippet,
@@ -164,7 +178,7 @@ export const AGENTS: AgentDef[] = [
   {
     id: "claude-code",
     label: "Claude Code",
-    blurb: "The terminal agent. One command and done.",
+    blurb: "The terminal agent. One command in your shell and done.",
     icon: ClaudeIcon,
     brand: { bg: "#D97757", fg: "#FFFFFF" },
     veil: { hue: 39 },
@@ -178,7 +192,7 @@ export const AGENTS: AgentDef[] = [
   {
     id: "cursor",
     label: "Cursor",
-    blurb: "The editor. Its config file lives in the repo.",
+    blurb: "The AI editor. Its config file lives in your own repo.",
     icon: CursorIcon,
     brand: { bg: "#000000", fg: "#FFFFFF" },
     veil: { tone: "dark" },
@@ -205,7 +219,7 @@ export const AGENTS: AgentDef[] = [
   {
     id: "vscode",
     label: "VS Code",
-    blurb: "Copilot's agent mode. Configured per repo.",
+    blurb: "GitHub Copilot's agent mode. Configured once per repo.",
     icon: VsCodeIcon,
     brand: { bg: "#007ACC", fg: "#FFFFFF" },
     veil: { hue: 249 },
@@ -213,7 +227,7 @@ export const AGENTS: AgentDef[] = [
     file: ".vscode/mcp.json",
     form: "file",
     language: "json",
-    hint: "Save it in your repo, then start the server from the Play button VS Code shows above it.",
+    hint: "Save it in your repo, then run MCP: List Servers from the Command Palette to start it.",
     docsUrl:
       "https://code.visualstudio.com/docs/copilot/customization/mcp-servers",
     snippet: ({ url, token }) =>
@@ -234,7 +248,7 @@ export const AGENTS: AgentDef[] = [
   {
     id: "windsurf",
     label: "Windsurf",
-    blurb: "Cascade. Configured once for your machine.",
+    blurb: "Cascade's agent. Configured once for your whole machine.",
     icon: WindsurfIcon,
     brand: { bg: "#0B100F", fg: "#FFFFFF" },
     veil: { tone: "dark" },
@@ -242,7 +256,7 @@ export const AGENTS: AgentDef[] = [
     file: "~/.codeium/windsurf/mcp_config.json",
     form: "file",
     language: "json",
-    hint: "Save it, then press Refresh in Cascade's MCP panel.",
+    hint: "Save it, then open the MCPs icon in Cascade's top-right menu.",
     docsUrl: "https://docs.windsurf.com/windsurf/cascade/mcp",
     snippet: ({ url, token }) =>
       JSON.stringify(
@@ -261,7 +275,7 @@ export const AGENTS: AgentDef[] = [
   {
     id: "gemini-cli",
     label: "Gemini CLI",
-    blurb: "Google's terminal agent. One settings entry.",
+    blurb: "Google's terminal agent. One entry in its settings file.",
     icon: GeminiIcon,
     brand: { bg: "#8E75B2", fg: "#FFFFFF" },
     veil: { hue: 303 },
@@ -289,7 +303,7 @@ export const AGENTS: AgentDef[] = [
   {
     id: "codex-cli",
     label: "Codex CLI",
-    blurb: "OpenAI's terminal agent. Its config is TOML.",
+    blurb: "OpenAI's terminal agent. Its config file is TOML, not JSON.",
     icon: OpenAiIcon,
     brand: { bg: "#000000", fg: "#FFFFFF" },
     veil: { tone: "dark" },
@@ -309,7 +323,7 @@ export const AGENTS: AgentDef[] = [
   {
     id: "other",
     label: "Something else",
-    blurb: "Any client on Streamable HTTP with a header.",
+    blurb: "Any other client that speaks Streamable HTTP with a header.",
     icon: Bot,
     kind: "token",
     form: "file",

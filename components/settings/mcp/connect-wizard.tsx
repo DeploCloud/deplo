@@ -511,10 +511,19 @@ function WizardRun({
 
           {step === "connect" && agent && (
             <StepShell
-              title={web ? `Paste this into ${agent.label}` : "Add this to your agent"}
+              // For a web client the heading is the ACTION and the lead is the
+              // path through its menus. "Paste this into Claude" was the one
+              // thing nobody needed telling — what they do not know is that
+              // the field lives behind Customize → Connectors, and that was in
+              // small muted type under the code block, which is not a tutorial.
+              title={
+                web
+                  ? `Add deplo as a connector in ${agent.label}`
+                  : "Add this to your agent"
+              }
               lead={
                 web
-                  ? "You will be asked to sign in to deplo and approve what the app may do. Nothing is shared until you approve it."
+                  ? agent.hint
                   : "The token is already in it. This is the only time deplo can show that secret."
               }
             >
@@ -536,7 +545,13 @@ function WizardRun({
                     language={agent.language}
                   />
                 )}
-                <p className="text-xs text-muted-foreground">{agent.hint}</p>
+                {/* The path already ran as the lead for a web client; what is
+                    left to say there is what happens after the paste. */}
+                <p className="text-xs text-muted-foreground">
+                  {web
+                    ? "deplo then asks you to sign in and choose what it may do. Nothing is shared until you approve it."
+                    : agent.hint}
+                </p>
 
                 {web && !https && (
                   <p className="flex items-start gap-2 text-xs text-muted-foreground">
