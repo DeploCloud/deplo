@@ -54,7 +54,19 @@ export type AgentId =
 export interface AgentDef {
   id: AgentId;
   label: string;
-  /** One line, in the card. What the reader needs to recognise it, not a pitch. */
+  /**
+   * The line under the name. **Two lines' worth, every time.**
+   *
+   * That means 40-48 characters, and the band is narrow for a reason: the
+   * column these cards live in is ~36 characters wide at its widest and ~29 at
+   * its narrowest, so anything under 36 collapses to one line on a big screen
+   * and anything over 58 spills to three on a laptop. Sixty-character blurbs
+   * did exactly that — one card grew and took its whole row with it, which is a
+   * grid you have to re-scan on every glance.
+   *
+   * What the reader needs in order to recognise theirs and know the one thing
+   * that will surprise them, not a pitch.
+   */
   blurb: string;
   icon: React.ComponentType<{ className?: string }>;
   /**
@@ -110,7 +122,7 @@ export const AGENTS: AgentDef[] = [
   {
     id: "claude-web",
     label: "Claude",
-    blurb: "In the browser, at claude.ai.",
+    blurb: "The assistant at claude.ai. Approve it once.",
     icon: ClaudeIcon,
     brand: { bg: "#D97757", fg: "#FFFFFF" },
     veil: { hue: 39 },
@@ -124,7 +136,7 @@ export const AGENTS: AgentDef[] = [
   {
     id: "chatgpt",
     label: "ChatGPT",
-    blurb: "In the browser. Needs developer mode turned on first.",
+    blurb: "At chatgpt.com. Needs developer mode on.",
     icon: OpenAiIcon,
     brand: { bg: "#000000", fg: "#FFFFFF" },
     veil: { tone: "dark" },
@@ -138,7 +150,7 @@ export const AGENTS: AgentDef[] = [
   {
     id: "claude-desktop",
     label: "Claude Desktop",
-    blurb: "The Claude app for Mac and Windows.",
+    blurb: "The Claude app for Mac and Windows. Same flow.",
     icon: ClaudeIcon,
     brand: { bg: "#D97757", fg: "#FFFFFF" },
     veil: { hue: 39 },
@@ -152,7 +164,7 @@ export const AGENTS: AgentDef[] = [
   {
     id: "claude-code",
     label: "Claude Code",
-    blurb: "The terminal agent. One command and it is registered.",
+    blurb: "The terminal agent. One command and done.",
     icon: ClaudeIcon,
     brand: { bg: "#D97757", fg: "#FFFFFF" },
     veil: { hue: 39 },
@@ -166,7 +178,7 @@ export const AGENTS: AgentDef[] = [
   {
     id: "cursor",
     label: "Cursor",
-    blurb: "The editor. Its config lives in your repo.",
+    blurb: "The editor. Its config file lives in the repo.",
     icon: CursorIcon,
     brand: { bg: "#000000", fg: "#FFFFFF" },
     veil: { tone: "dark" },
@@ -193,7 +205,7 @@ export const AGENTS: AgentDef[] = [
   {
     id: "vscode",
     label: "VS Code",
-    blurb: "Copilot's agent mode, configured per repo.",
+    blurb: "Copilot's agent mode. Configured per repo.",
     icon: VsCodeIcon,
     brand: { bg: "#007ACC", fg: "#FFFFFF" },
     veil: { hue: 249 },
@@ -222,7 +234,7 @@ export const AGENTS: AgentDef[] = [
   {
     id: "windsurf",
     label: "Windsurf",
-    blurb: "Cascade, configured once for your machine.",
+    blurb: "Cascade. Configured once for your machine.",
     icon: WindsurfIcon,
     brand: { bg: "#0B100F", fg: "#FFFFFF" },
     veil: { tone: "dark" },
@@ -249,7 +261,7 @@ export const AGENTS: AgentDef[] = [
   {
     id: "gemini-cli",
     label: "Gemini CLI",
-    blurb: "Google's terminal agent.",
+    blurb: "Google's terminal agent. One settings entry.",
     icon: GeminiIcon,
     brand: { bg: "#8E75B2", fg: "#FFFFFF" },
     veil: { hue: 303 },
@@ -277,7 +289,7 @@ export const AGENTS: AgentDef[] = [
   {
     id: "codex-cli",
     label: "Codex CLI",
-    blurb: "OpenAI's terminal agent.",
+    blurb: "OpenAI's terminal agent. Its config is TOML.",
     icon: OpenAiIcon,
     brand: { bg: "#000000", fg: "#FFFFFF" },
     veil: { tone: "dark" },
@@ -297,7 +309,7 @@ export const AGENTS: AgentDef[] = [
   {
     id: "other",
     label: "Something else",
-    blurb: "Any client that speaks Streamable HTTP and can send a header.",
+    blurb: "Any client on Streamable HTTP with a header.",
     icon: Bot,
     kind: "token",
     form: "file",

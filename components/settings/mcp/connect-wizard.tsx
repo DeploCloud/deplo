@@ -333,6 +333,12 @@ function WizardRun({
         : "idle";
 
   return (
+    // Two columns only from `xl`, not `lg`. Between 1024 and ~1150px the window
+    // cannot afford a 24rem illustration AND a readable column: the agent grid
+    // got squeezed to ~180px of text per card, which clipped every blurb and
+    // pushed two cards taller than their neighbours. Below that the picture
+    // stacks on top and the content takes the full width.
+    //
     // Everything you act on down the left, the illustration large on the right.
     // The rail travels with the content, so "where am I" and "what do I do" are
     // one glance rather than two, and the drawing is the one element that never
@@ -341,11 +347,11 @@ function WizardRun({
     //
     // Borderless on purpose: this IS the tab, and a card drawn around the whole
     // of a tab is a box around a box.
-    <div className="mx-auto grid max-w-5xl gap-8 lg:grid-cols-[minmax(0,1fr)_24rem] lg:gap-12">
+    <div className="mx-auto grid max-w-5xl gap-8 xl:grid-cols-[minmax(0,1fr)_24rem] xl:gap-12">
       {/* First in the DOM on a phone, where the picture on top reads as a
           heading; last on a wide screen, where it belongs on the right. */}
-      <div className="relative order-first flex justify-center lg:order-last lg:sticky lg:top-24 lg:self-start">
-        <RobotGraphic state={robot} className="h-auto w-52 lg:w-full" />
+      <div className="relative order-first flex justify-center xl:order-last xl:sticky xl:top-24 xl:self-start">
+        <RobotGraphic state={robot} className="h-auto w-52 xl:w-full" />
         {/* Mounted only on success, so it plays once and replays whenever a new
             run reaches the end. */}
         {connected && <ConfettiBurst className="top-28" />}
@@ -793,7 +799,15 @@ function AgentCard({
       </span>
       <span className="min-w-0 flex-1">
         <span className="block text-sm font-medium">{agent.label}</span>
-        <span className="mt-0.5 block text-xs leading-snug text-muted-foreground">
+        {/* Exactly two lines, reserved AND capped. The blurbs are written to
+            that length, but the width they wrap at is the viewport's, so the
+            box holds its two lines whatever happens and a copy edit can never
+            grow one card and its whole row with it.
+
+            No `block` here: `line-clamp-2` sets `display: -webkit-box`, and a
+            `block` beside it wins the cascade and silently turns the clamp off
+            — which is how a four-line ChatGPT card got through. */}
+        <span className="mt-0.5 line-clamp-2 min-h-[2lh] text-xs leading-snug text-muted-foreground">
           {blocked ? note : agent.blurb}
         </span>
       </span>
