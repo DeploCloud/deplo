@@ -35,6 +35,21 @@ export function retainRemoved(
 }
 
 /**
+ * The key of an element as `React.Children.toArray` hands it back: that helper
+ * namespaces every explicit key with `.$`, so a row rendered as `key={d.id}`
+ * arrives as `.$dom_123`.
+ *
+ * Used by `components/shared/optimistic-list.tsx` to match a child against the
+ * id its own row asks to hide — the two must agree, and doing the stripping in
+ * one named place is what keeps that agreement checkable. An element with no
+ * key (a pending-create placeholder, say) matches nothing and is never hidden.
+ */
+export function childKey(child: { key?: string | null }): string {
+  const key = child.key;
+  return key == null ? "" : key.replace(/^\.\$/, "");
+}
+
+/**
  * The list without the hidden keys — and the list ITSELF when nothing is hidden,
  * so the steady state never hands the memos downstream (facets, filter counts) a
  * freshly allocated copy of an unchanged list.

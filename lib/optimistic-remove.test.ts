@@ -1,6 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import {
+  childKey,
   NOTHING_REMOVED,
   retainRemoved,
   withoutRemoved,
@@ -59,6 +60,14 @@ test("hidden rows drop out of the list, the rest keep their order", () => {
   const rows = [{ id: "a" }, { id: "b" }, { id: "c" }];
   const visible = withoutRemoved(rows, new Set(["b"]), (r) => r.id);
   assert.deepEqual(visible.map((r) => r.id), ["a", "c"]);
+});
+
+test("a child's key is matched against the id its row hides", () => {
+  // What React.Children.toArray hands back for `key={d.id}`.
+  assert.equal(childKey({ key: ".$dom_123" }), "dom_123");
+  // A placeholder with no key of its own can never be hidden by an id.
+  assert.equal(childKey({ key: null }), "");
+  assert.equal(childKey({ key: "dom_123" }), "dom_123", "already bare, left alone");
 });
 
 test("hiding every row leaves an empty list — the table's empty state", () => {
