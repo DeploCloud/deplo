@@ -194,13 +194,17 @@ export function FileExplorer({ appId }: { appId: string }) {
     ) {
       return;
     }
+    // The entry goes now; the agent's answer only decides whether the toast is
+    // green or red, and `loadDir` below settles the listing either way.
+    setEntries((prev) => prev.filter((e) => e.path !== entry.path));
+    if (open?.path === entry.path) setOpen(null);
     try {
       await gql(DELETE, { appId, path: entry.path });
-      if (open?.path === entry.path) setOpen(null);
       toast.success("Deleted");
-      loadDir(dir);
     } catch (e) {
       toast.error(errMessage(e));
+    } finally {
+      loadDir(dir);
     }
   }
 

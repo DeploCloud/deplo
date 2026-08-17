@@ -37,6 +37,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { ConfirmAction } from "@/components/shared/confirm-action";
+import { useOptimisticRemove } from "@/components/shared/use-optimistic-remove";
 import { StatusBadge } from "@/components/shared/status-badge";
 import { CommitLink } from "@/components/apps/commit-link";
 import { DeploymentActions } from "@/components/apps/deployment-actions";
@@ -266,6 +267,14 @@ export function DeploymentsTable({
 }) {
   const router = useRouter();
   const [selected, setSelected] = React.useState<Set<string>>(() => new Set());
+  // Deleted deployments leave the table on the click — one row, the selection,
+  // or a whole filtered sweep. The rows the FILTERS see are the ones still
+  // present; the dropdown options keep reading the full set so an option never
+  // vanishes mid-interaction.
+  const { visible: remaining, remove, restore } = useOptimisticRemove(
+    deployments,
+    (d) => d.id,
+  );
   const [deleteSelectedOpen, setDeleteSelectedOpen] = React.useState(false);
   const [deleteAllOpen, setDeleteAllOpen] = React.useState(false);
   const [cancelAllOpen, setCancelAllOpen] = React.useState(false);
@@ -338,7 +347,7 @@ export function DeploymentsTable({
   // scope) keys off this so the buttons act on exactly what's in scope.
   const visible = React.useMemo(
     () =>
-      deployments.filter(
+      remaining.filter(
         (d) =>
           (!effectiveServerFilter || d.serverId === effectiveServerFilter) &&
           (!effectiveAppFilter || d.appId === effectiveAppFilter) &&
@@ -346,7 +355,7 @@ export function DeploymentsTable({
           (!effectiveEnvFilter || d.environment === effectiveEnvFilter),
       ),
     [
-      deployments,
+      remaining,
       effectiveServerFilter,
       effectiveAppFilter,
       effectiveStatusFilter,
@@ -503,6 +512,8 @@ export function DeploymentsTable({
 
   async function deleteSelected() {
     const ids = effectiveSelected;
+    ids.forEach(remove);
+    setSelected(new Set());
     const res = await gqlAction<{ deleteDeployments: number }, number>(
       DELETE_DEPLOYMENTS,
       { ids },
@@ -510,13 +521,19 @@ export function DeploymentsTable({
     );
     if (res.ok) {
       toast.success(`Deleted ${res.data} deployment${res.data === 1 ? "" : "s"}`);
-      setSelected(new Set());
-      router.refresh();
+    } else {
+      ids.forEach(restore);
     }
+    router.refresh();
     return res;
   }
 
   async function deleteAll() {
+    // The sweep's scope IS the selectable rows in view, so they all go now; a
+    // refusal puts them back and the refresh settles anything in between.
+    const swept = selectableIds;
+    swept.forEach(remove);
+    setSelected(new Set());
     const res = await gqlAction<{ deleteAllDeployments: number }, number>(
       DELETE_ALL,
       {
@@ -529,9 +546,10 @@ export function DeploymentsTable({
     );
     if (res.ok) {
       toast.success(`Deleted ${res.data} deployment${res.data === 1 ? "" : "s"}`);
-      setSelected(new Set());
-      router.refresh();
+    } else {
+      swept.forEach(restore);
     }
+    router.refresh();
     return res;
   }
 
@@ -944,6 +962,8 @@ export function DeploymentsTable({
                         canRollbackApps={canRollbackApps}
                         commitSha={d.commitSha}
                         commitMessage={d.commitMessage}
+                        onRemoved={() => remove(d.id)}
+                        onRestored={() => restore(d.id)}
                       />
                     </TableCell>
                   </TableRow>
@@ -1026,6 +1046,7 @@ export function DeploymentsTable({
         title={`Delete ${selectedCount} deployment${selectedCount === 1 ? "" : "s"}?`}
         description="The selected deployments and their build logs are permanently removed. Running apps are unaffected, but this can't be undone."
         confirmLabel="Delete"
+        optimistic
         onConfirm={deleteSelected}
       />
       <ConfirmAction
@@ -1034,6 +1055,7 @@ export function DeploymentsTable({
         title={`Delete ${selectableIds.length} finished deployment${selectableIds.length === 1 ? "" : "s"}?`}
         description={`Every finished deployment for ${scopeText} (and its build logs) is permanently removed. In-progress builds are left. Running apps are unaffected, but this can't be undone.`}
         confirmLabel="Delete all"
+        optimistic
         onConfirm={deleteAll}
       />
       <ConfirmAction

@@ -36,6 +36,7 @@ import { EmptyState } from "@/components/shared/empty-state";
 import { RegistryMark } from "@/components/shared/brand-icons";
 import { RegistryGraphic } from "@/components/settings/registry-graphic";
 import { ConfirmAction } from "@/components/shared/confirm-action";
+import { useOptimisticRemove } from "@/components/shared/use-optimistic-remove";
 import { gqlAction } from "@/lib/graphql-client";
 import type { RegistryDTO } from "@/lib/data/registries";
 import type { RegistryType } from "@/lib/types";
@@ -63,6 +64,12 @@ export function RegistriesPanel({ registries }: { registries: RegistryDTO[] }) {
   const router = useRouter();
   const [addOpen, setAddOpen] = React.useState(false);
   const [deleting, setDeleting] = React.useState<RegistryDTO | null>(null);
+  // The card leaves the grid on the click and comes back only if the server
+  // refuses; nothing here is worth a spinner in front of a confirm dialog.
+  const { visible: rows, remove, restore } = useOptimisticRemove(
+    registries,
+    (r) => r.id,
+  );
 
   return (
     <div className="space-y-6">
@@ -84,7 +91,7 @@ export function RegistriesPanel({ registries }: { registries: RegistryDTO[] }) {
         }
       />
 
-      {registries.length === 0 ? (
+      {rows.length === 0 ? (
         <EmptyState
           graphic={<RegistryGraphic />}
           title="No registry connected"
@@ -92,7 +99,7 @@ export function RegistriesPanel({ registries }: { registries: RegistryDTO[] }) {
         />
       ) : (
         <div className="grid items-start gap-4 sm:grid-cols-2 3xl:grid-cols-3">
-          {registries.map((r) => (
+          {rows.map((r) => (
             <RegistryCard
               key={r.id}
               registry={r}
@@ -113,12 +120,16 @@ export function RegistriesPanel({ registries }: { registries: RegistryDTO[] }) {
         description="Deployments using private images from this registry will no longer authenticate."
         confirmLabel="Remove"
         successMessage="Registry removed"
+        optimistic
         onConfirm={async () => {
+          const id = deleting!.id;
+          remove(id);
           const res = await gqlAction(
             `mutation($id: String!) { deleteRegistry(id: $id) }`,
-            { id: deleting!.id },
+            { id },
           );
-          if (res.ok) router.refresh();
+          if (!res.ok) restore(id);
+          router.refresh();
           return res;
         }}
       />

@@ -24,6 +24,7 @@ import { Button } from "@/components/ui/button";
 import { InfoTip } from "@/components/ui/info-tip";
 import { SimpleTooltip } from "@/components/ui/tooltip";
 import { ConfirmAction } from "@/components/shared/confirm-action";
+import { useOptimisticRemove } from "@/components/shared/use-optimistic-remove";
 import { EmptyState } from "@/components/shared/empty-state";
 import { gqlAction } from "@/lib/graphql-client";
 import { timeAgo } from "@/lib/utils";
@@ -48,15 +49,26 @@ const DEVICE_ICON: Record<DeviceKind, React.ComponentType<{ className?: string }
  */
 export function SessionsCard({ sessions }: { sessions: UserSessionDTO[] }) {
   const router = useRouter();
-  const others = sessions.filter((s) => !s.current).length;
+  // A signed-out device leaves the table on the click. The session row is gone
+  // server-side by the time the mutation answers, so leaving it on screen with
+  // a live "Sign out" under the cursor only invites a second, doomed click.
+  const { visible: rows, remove, restore } = useOptimisticRemove(
+    sessions,
+    (s) => s.id,
+  );
+  const others = rows.filter((s) => !s.current).length;
 
   async function revoke(
     id: string,
   ): Promise<{ ok: true } | { ok: false; error: string }> {
+    remove(id);
     const res = await gqlAction(`mutation ($id: String!) { revokeSession(id: $id) }`, {
       id,
     });
-    if (!res.ok) return res;
+    if (!res.ok) {
+      restore(id);
+      return res;
+    }
     toast.success("Device signed out");
     router.refresh();
     return { ok: true };
@@ -65,12 +77,19 @@ export function SessionsCard({ sessions }: { sessions: UserSessionDTO[] }) {
   async function revokeOthers(): Promise<
     { ok: true } | { ok: false; error: string }
   > {
+    // Every other device goes at once; a refusal puts all of them back, and the
+    // refresh below is what settles which ones actually ended.
+    const ids = rows.filter((s) => !s.current).map((s) => s.id);
+    ids.forEach(remove);
     const res = await gqlAction<{ revokeOtherSessions: number }, number>(
       `mutation { revokeOtherSessions }`,
       {},
       (d) => d.revokeOtherSessions,
     );
-    if (!res.ok) return res;
+    if (!res.ok) {
+      ids.forEach(restore);
+      return res;
+    }
     const n = res.data ?? 0;
     toast.success(
       n === 0
@@ -108,6 +127,7 @@ export function SessionsCard({ sessions }: { sessions: UserSessionDTO[] }) {
           confirmLabel="Sign them out"
           variant="destructive"
           confirmDisabled={others === 0}
+          optimistic
           onConfirm={revokeOthers}
         />
       </CardHeader>
@@ -116,7 +136,7 @@ export function SessionsCard({ sessions }: { sessions: UserSessionDTO[] }) {
             at least its own session, so an empty list means the row was swept
             between the read and the render. A bare table header is a worse way
             to say that than nothing at all. */}
-        {sessions.length === 0 ? (
+        {rows.length === 0 ? (
           <EmptyState
             icon={Monitor}
             title="No signed-in devices"
@@ -139,7 +159,7 @@ export function SessionsCard({ sessions }: { sessions: UserSessionDTO[] }) {
             </TableRow>
           </TableHeader>
           <TableBody>
-            {sessions.map((s) => {
+            {rows.map((s) => {
               const Icon = DEVICE_ICON[s.device];
               return (
                 <TableRow key={s.id}>
@@ -181,6 +201,7 @@ export function SessionsCard({ sessions }: { sessions: UserSessionDTO[] }) {
                         description="That device will have to sign in again. If you do not recognise it, change your password too."
                         confirmLabel="Sign it out"
                         variant="destructive"
+                        optimistic
                         onConfirm={() => revoke(s.id)}
                       />
                     )}

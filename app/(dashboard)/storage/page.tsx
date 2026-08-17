@@ -45,6 +45,7 @@ import {
   PendingCreateProvider,
   PendingList,
 } from "@/components/shared/pending-create";
+import { OptimisticList } from "@/components/shared/optimistic-list";
 
 export const metadata = { title: "Storage" };
 
@@ -260,7 +261,10 @@ export default async function StoragePage(props: PageProps<"/storage">) {
               }
             >
               <div className="grid gap-4 md:grid-cols-2">
-                {destinations.map((dest) => (
+                {/* Removing one takes its card off the grid on the click; the
+                    row is dropped server-side before the artifacts are swept. */}
+                <OptimisticList>
+                  {destinations.map((dest) => (
                   <DestinationCard
                     key={dest.id}
                     dest={{
@@ -272,7 +276,8 @@ export default async function StoragePage(props: PageProps<"/storage">) {
                     }}
                     canManage={canManageDestinations}
                   />
-                ))}
+                  ))}
+                </OptimisticList>
                 <PendingCards />
               </div>
             </PendingList>
@@ -335,16 +340,18 @@ export default async function StoragePage(props: PageProps<"/storage">) {
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {backups.map((b) => (
-                    <BackupRow
-                      key={b.id}
-                      backup={b}
-                      destinations={destinations.map(toDestinationOption)}
-                      canManage={canManageBackups}
-                      canRestore={canRestoreBackups}
-                      canTestDestinations={canManageDestinations}
-                    />
-                  ))}
+                  <OptimisticList>
+                    {backups.map((b) => (
+                      <BackupRow
+                        key={b.id}
+                        backup={b}
+                        destinations={destinations.map(toDestinationOption)}
+                        canManage={canManageBackups}
+                        canRestore={canRestoreBackups}
+                        canTestDestinations={canManageDestinations}
+                      />
+                    ))}
+                  </OptimisticList>
                 </TableBody>
               </Table>
             </div>

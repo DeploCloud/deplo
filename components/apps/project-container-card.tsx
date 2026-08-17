@@ -72,6 +72,8 @@ export function ProjectContainerCard({
   dragHandle,
   dragActive = false,
   dropActive = false,
+  onDeleted,
+  onRestored,
 }: {
   project: ProjectCardData;
   view?: "grid" | "list";
@@ -80,6 +82,10 @@ export function ProjectContainerCard({
   dragHandle?: React.ReactNode;
   dragActive?: boolean;
   dropActive?: boolean;
+  /** Deleting takes the card off the grid on the CLICK and puts it back if the
+   *  mutation is refused. Owned by the grid, which holds the cards. */
+  onDeleted?: () => void;
+  onRestored?: () => void;
 }) {
   const router = useRouter();
   const [pending, startTransition] = React.useTransition();
@@ -330,12 +336,15 @@ export function ProjectContainerCard({
         description="The project is removed, but its apps are kept — they move back to the Overview top level. This cannot be undone."
         confirmLabel="Delete project"
         successMessage="Project deleted"
+        optimistic
         onConfirm={async () => {
+          onDeleted?.();
           const res = await gqlAction(
             `mutation($id: ID!) { deleteProject(id: $id) }`,
             { id: project.id },
           );
-          if (res.ok) router.refresh();
+          if (!res.ok) onRestored?.();
+          router.refresh();
           return res;
         }}
       />

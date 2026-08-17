@@ -41,6 +41,8 @@ export function DeploymentActions({
   canRollbackApps = false,
   commitSha = "",
   commitMessage = "",
+  onRemoved,
+  onRestored,
 }: {
   id: string;
   appId: string;
@@ -78,6 +80,11 @@ export function DeploymentActions({
    *  app built from an uploaded archive, nothing (the date carries it). */
   commitSha?: string;
   commitMessage?: string;
+  /** Deleting takes this row off the table on the CLICK rather than leaving it
+   *  clickable until the refresh lands — and puts it back if the mutation is
+   *  refused. Owned by the table, which holds the rows. */
+  onRemoved?: () => void;
+  onRestored?: () => void;
 }) {
   const router = useRouter();
   const [pending, startTransition] = React.useTransition();
@@ -134,12 +141,14 @@ export function DeploymentActions({
   // Delete this one finished deployment. Returns the ActionResult so ConfirmAction
   // owns the toast + dialog close; we refresh the RSC reads on success.
   async function deleteThis() {
+    onRemoved?.();
     const res = await gqlAction<{ deleteDeployments: number }, number>(
       `mutation ($ids: [ID!]!) { deleteDeployments(ids: $ids) }`,
       { ids: [id] },
       (d) => d.deleteDeployments,
     );
-    if (res.ok) router.refresh();
+    if (!res.ok) onRestored?.();
+    router.refresh();
     return res;
   }
 
@@ -251,6 +260,7 @@ export function DeploymentActions({
         description="This removes the deployment and its build logs. The running app is unaffected, but this can't be undone."
         confirmLabel="Delete deployment"
         successMessage="Deployment deleted"
+        optimistic
         onConfirm={deleteThis}
       />
     </>

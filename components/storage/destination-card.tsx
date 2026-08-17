@@ -38,6 +38,7 @@ import {
   RecoveryKeyNudge,
 } from "@/components/storage/recovery-key";
 import { formatBytes, timeAgo } from "@/lib/utils";
+import { useOptimisticRow } from "@/components/shared/optimistic-list";
 import { gql, gqlAction } from "@/lib/graphql-client";
 
 /** What removing a destination destroys, so the dialog can name it. */
@@ -107,6 +108,10 @@ export function DestinationCard({
   const router = useRouter();
   const [pending, startTransition] = React.useTransition();
   const [confirmOpen, setConfirmOpen] = React.useState(false);
+  // The card leaves the grid on the click: the destination row is dropped
+  // server-side before any artifact sweeping starts, and that sweep can run for
+  // as long as the bucket is big.
+  const { hide, restore } = useOptimisticRow(dest.id);
   // What the removal takes with it, fetched when the dialog opens. Null while
   // unknown, so the copy never asserts a count it does not have.
   const [impact, setImpact] = React.useState<RemovalImpact | null>(null);
@@ -497,14 +502,17 @@ export function DestinationCard({
         confirmText={dest.name}
         confirmLabel="Remove destination"
         successMessage="Destination removed"
+        optimistic
         onConfirm={async () => {
+          hide();
           const res = await gqlAction(
             `mutation ($id: String!, $deleteArtifacts: Boolean) {
               deleteDestination(id: $id, deleteArtifacts: $deleteArtifacts)
             }`,
             { id: dest.id, deleteArtifacts: alsoDeleteFiles },
           );
-          if (res.ok) router.refresh();
+          if (!res.ok) restore();
+          router.refresh();
           return res;
         }}
       />

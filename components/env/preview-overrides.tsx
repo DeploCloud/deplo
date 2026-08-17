@@ -40,6 +40,7 @@ import {
   type EnvRow,
 } from "@/components/env/env-rows-editor";
 import { SecretRow } from "@/components/env/secret-row";
+import { useOptimisticRemove } from "@/components/shared/use-optimistic-remove";
 import { gqlAction } from "@/lib/graphql-client";
 import { cn, timeAgo } from "@/lib/utils";
 
@@ -73,6 +74,13 @@ export function PreviewOverrides({
 }) {
   const router = useRouter();
   const [open, setOpen] = React.useState(overrides.length > 0);
+  // A removed override leaves the table on the click, like every other variable
+  // row on this page (see `useOptimisticRemove` in the env manager).
+  const {
+    visible: visibleOverrides,
+    remove: hideOverride,
+    restore: restoreOverride,
+  } = useOptimisticRemove(overrides, (o) => o.key);
   const [pending, startTransition] = React.useTransition();
   const [addOpen, setAddOpen] = React.useState(false);
   const [rows, setRows] = React.useState<EnvRow[]>([{ key: "", value: "" }]);
@@ -125,6 +133,7 @@ export function PreviewOverrides({
   }
 
   function remove(k: string) {
+    hideOverride(k);
     startTransition(async () => {
       const res = await gqlAction(
         `mutation ($appId: ID!, $key: String!) {
@@ -132,10 +141,12 @@ export function PreviewOverrides({
         }`,
         { appId, key: k },
       );
-      if (res.ok) {
-        toast.success("Preview override removed");
-        router.refresh();
-      } else toast.error(res.error);
+      if (res.ok) toast.success("Preview override removed");
+      else {
+        restoreOverride(k);
+        toast.error(res.error);
+      }
+      router.refresh();
     });
   }
 
@@ -165,9 +176,9 @@ export function PreviewOverrides({
         <div>
           <h3 className="flex items-center gap-2 text-sm font-medium">
             Preview overrides
-            {overrides.length > 0 && (
+            {visibleOverrides.length > 0 && (
               <Badge variant="muted" className="text-[10px] font-normal">
-                {overrides.length}
+                {visibleOverrides.length}
               </Badge>
             )}
             <InfoTip content="A pull request preview inherits every variable above. An override replaces one of them in previews only - the usual reason is pointing previews at a scratch database instead of the production one. It outranks the app's own value and any shared variable." />
@@ -179,7 +190,7 @@ export function PreviewOverrides({
       </button>
 
       {open &&
-        (overrides.length === 0 ? (
+        (visibleOverrides.length === 0 ? (
           // Not an EmptyState card: this sits INSIDE a disclosure the reader just
           // opened, and a second dashed box under the variables table would read
           // as a second empty product rather than a note.
@@ -206,7 +217,7 @@ export function PreviewOverrides({
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {overrides.map((o) => (
+                  {visibleOverrides.map((o) => (
                     <TableRow key={o.key}>
                       <TableCell className="font-mono text-xs font-medium">
                         <div className="flex items-center gap-2">

@@ -235,6 +235,10 @@ export function ShareFolderDialog({
   }
 
   function removeGrant(g: FolderGrant) {
+    // The grantee leaves the list on the click; the server's own answer (the
+    // grants that remain) lands a moment later and replaces it either way.
+    const before = grants;
+    setGrants((prev) => prev.filter((x) => x.userId !== g.userId));
     startTransition(async () => {
       const res = await gqlAction<
         { removeFolderGrant: FolderGrant[] },
@@ -260,6 +264,7 @@ export function ShareFolderDialog({
         reload();
         router.refresh();
       } else {
+        setGrants(before);
         toast.error(res.error);
       }
     });

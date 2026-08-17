@@ -32,7 +32,17 @@ const REVEAL = /* GraphQL */ `
  * tomorrow, and "expires in 24 hours" printed once at mint time stops being true
  * the moment the dialog closes.
  */
-export function RegistrationLinkRow({ link }: { link: RegistrationLinkDTO }) {
+export function RegistrationLinkRow({
+  link,
+  onRemoved,
+  onRestored,
+}: {
+  link: RegistrationLinkDTO;
+  /** Revoking takes the row off the list on the click and puts it back if the
+   *  mutation is refused. Owned by the panel, which holds the links. */
+  onRemoved?: () => void;
+  onRestored?: () => void;
+}) {
   const router = useRouter();
   const [revealed, setRevealed] = React.useState(false);
   const [value, setValue] = React.useState<string | null>(null);
@@ -87,17 +97,18 @@ export function RegistrationLinkRow({ link }: { link: RegistrationLinkDTO }) {
   }
 
   function revoke() {
+    onRemoved?.();
     startRevoke(async () => {
       const res = await gqlAction(
         `mutation ($id: String!) { revokeRegistrationLink(id: $id) }`,
         { id: link.id },
       );
-      if (res.ok) {
-        toast.success("Link revoked");
-        router.refresh();
-      } else {
+      if (res.ok) toast.success("Link revoked");
+      else {
+        onRestored?.();
         toast.error(res.error);
       }
+      router.refresh();
     });
   }
 

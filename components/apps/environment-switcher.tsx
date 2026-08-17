@@ -34,6 +34,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { ConfirmAction } from "@/components/shared/confirm-action";
+import { useOptimisticRemove } from "@/components/shared/use-optimistic-remove";
 import { gqlAction } from "@/lib/graphql-client";
 import { cn } from "@/lib/utils";
 
@@ -79,7 +80,14 @@ export function EnvironmentSwitcher({
     null,
   );
 
-  const selected = environments.find((e) => e.id === selectedId);
+  // A deleted environment leaves the switcher on the click, so the menu never
+  // offers one that is already gone.
+  const { visible: envs, remove, restore } = useOptimisticRemove(
+    environments,
+    (e) => e.id,
+  );
+
+  const selected = envs.find((e) => e.id === selectedId);
 
   function select(envId: string) {
     if (envId === selectedId) return;
@@ -157,7 +165,7 @@ export function EnvironmentSwitcher({
           </Button>
         </DropdownMenuTrigger>
         <DropdownMenuContent align="end" className="w-60">
-          {environments.map((e) => {
+          {envs.map((e) => {
             const isSelected = e.id === selectedId;
             return (
               <div key={e.id} className="flex items-center gap-0.5">
@@ -318,12 +326,16 @@ export function EnvironmentSwitcher({
         description="This removes the environment. Its future isolated deploy target and variables go with it. This cannot be undone."
         confirmLabel="Delete environment"
         successMessage="Environment deleted"
+        optimistic
         onConfirm={async () => {
+          const id = deleteFor!.id;
+          remove(id);
           const res = await gqlAction(
             `mutation($id: ID!) { deleteEnvironment(id: $id) }`,
-            { id: deleteFor!.id },
+            { id },
           );
-          if (res.ok) router.refresh();
+          if (!res.ok) restore(id);
+          router.refresh();
           return res;
         }}
       />

@@ -320,6 +320,9 @@ export function UserAccountSettings({
 
   /** Clear the user's enrolment. Applies on confirm, like the danger zone. */
   async function resetTwoFactor() {
+    // The card reads "no second factor" straight away; a refusal puts the badge
+    // back with the server's reason.
+    setTwoFactorEnabled(false);
     const res = await gqlAction<
       { resetUserTwoFactor: { userId: string } },
       { userId: string }
@@ -330,22 +333,30 @@ export function UserAccountSettings({
       { userId: user.userId },
       (d) => d.resetUserTwoFactor,
     );
-    if (!res.ok) return { ok: false as const, error: res.error };
-    setTwoFactorEnabled(false);
+    if (!res.ok) {
+      setTwoFactorEnabled(true);
+      router.refresh();
+      return { ok: false as const, error: res.error };
+    }
     router.refresh();
     return { ok: true as const };
   }
 
   /** Clear every passkey. Same shape, same moment, separate control. */
   async function resetPasskeys() {
+    const before = passkeyCount;
+    setPasskeyCount(0);
     const res = await gqlAction(
       `mutation ($userId: String!) {
         resetUserPasskeys(userId: $userId) { userId }
       }`,
       { userId: user.userId },
     );
-    if (!res.ok) return { ok: false as const, error: res.error };
-    setPasskeyCount(0);
+    if (!res.ok) {
+      setPasskeyCount(before);
+      router.refresh();
+      return { ok: false as const, error: res.error };
+    }
     router.refresh();
     return { ok: true as const };
   }
@@ -716,6 +727,7 @@ export function UserAccountSettings({
         confirmLabel="Reset two-factor"
         variant="default"
         successMessage="Two-factor reset"
+        optimistic
         onConfirm={resetTwoFactor}
       />
       <ConfirmAction
@@ -730,6 +742,7 @@ export function UserAccountSettings({
         confirmLabel="Remove passkeys"
         variant="default"
         successMessage="Passkeys removed"
+        optimistic
         onConfirm={resetPasskeys}
       />
       {confirmDelete && (

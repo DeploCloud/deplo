@@ -65,6 +65,7 @@ import {
 import { DestinationCombobox } from "@/components/storage/destination-combobox";
 import { RecoveryKeyNudge } from "@/components/storage/recovery-key";
 import { RestoreFromFile } from "@/components/storage/restore-from-file";
+import { OptimisticList, useOptimisticRow } from "@/components/shared/optimistic-list";
 import { gqlAction } from "@/lib/graphql-client";
 import { DEFAULT_SCHEDULE, isValidSchedule } from "@/lib/schedule";
 import type { BackupDTO } from "@/lib/data/backups";
@@ -267,17 +268,21 @@ export function BackupsPanel({
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {schedules.map((s) => (
-                  <ScheduleRow
-                    key={s.id}
-                    schedule={s}
-                    target={target}
-                    destinations={destinations}
-                    canManage={canManage}
-                    canTestDestinations={canTestDestinations}
-                    onStart={startRun}
-                  />
-                ))}
+                {/* A deleted schedule leaves the table on the click — see
+                    `OptimisticList`; the rows ask to be hidden themselves. */}
+                <OptimisticList>
+                  {schedules.map((s) => (
+                    <ScheduleRow
+                      key={s.id}
+                      schedule={s}
+                      target={target}
+                      destinations={destinations}
+                      canManage={canManage}
+                      canTestDestinations={canTestDestinations}
+                      onStart={startRun}
+                    />
+                  ))}
+                </OptimisticList>
               </TableBody>
             </Table>
           </div>
@@ -337,19 +342,21 @@ export function BackupsPanel({
                     canRestore={canRestore}
                   />
                 ))}
-                {runs.map((run) => (
-                  <RunRow
-                    key={run.id}
-                    run={run}
-                    target={target}
-                    canRestore={canRestore}
-                    canDelete={canDelete}
-                    canManage={canManage}
-                    destinationName={
-                      destName.get(run.destinationId) ?? "Unknown destination"
-                    }
-                  />
-                ))}
+                <OptimisticList>
+                  {runs.map((run) => (
+                    <RunRow
+                      key={run.id}
+                      run={run}
+                      target={target}
+                      canRestore={canRestore}
+                      canDelete={canDelete}
+                      canManage={canManage}
+                      destinationName={
+                        destName.get(run.destinationId) ?? "Unknown destination"
+                      }
+                    />
+                  ))}
+                </OptimisticList>
               </TableBody>
             </Table>
           </div>
@@ -943,6 +950,7 @@ function ScheduleRow({
   const router = useRouter();
   const [pending, startTransition] = React.useTransition();
   const [confirmOpen, setConfirmOpen] = React.useState(false);
+  const { hide, restore } = useOptimisticRow(schedule.id);
   const [editOpen, setEditOpen] = React.useState(false);
   // Locally in flight: the mutation resolves at the END of the dump, and the
   // stored `lastStatus` only says `running` after the next refresh — so without
@@ -1071,12 +1079,15 @@ function ScheduleRow({
           description="This removes the schedule. Backups it already made are kept."
           confirmLabel="Delete schedule"
           successMessage="Backup schedule deleted"
+          optimistic
           onConfirm={async () => {
+            hide();
             const res = await gqlAction(
               `mutation($id: String!) { deleteBackup(id: $id) }`,
               { id: schedule.id },
             );
-            if (res.ok) router.refresh();
+            if (!res.ok) restore();
+            router.refresh();
             return res;
           }}
         />
@@ -1316,6 +1327,7 @@ function RunRow({
   const router = useRouter();
   const [restoreOpen, setRestoreOpen] = React.useState(false);
   const [deleteOpen, setDeleteOpen] = React.useState(false);
+  const { hide, restore } = useOptimisticRow(run.id);
   const [cancelOpen, setCancelOpen] = React.useState(false);
   const ok = run.status === "success";
 
@@ -1430,12 +1442,15 @@ function RunRow({
               ? `The ${formatBytes(run.sizeBytes)} file from ${timeAgo(run.startedAt)} is deleted from ${destinationName}. You can't restore ${target.name} from it afterwards.`
               : `This run failed and left no file, so only its record is removed.`
           }
+          optimistic
           onConfirm={async () => {
+            hide();
             const res = await gqlAction(
               `mutation($runId: String!) { deleteBackupRun(runId: $runId) }`,
               { runId: run.id },
             );
-            if (res.ok) router.refresh();
+            if (!res.ok) restore();
+            router.refresh();
             return res;
           }}
         />

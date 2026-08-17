@@ -110,6 +110,8 @@ export function FolderCard({
   dragActive = false,
   dropActive = false,
   folders,
+  onDeleted,
+  onRestored,
 }: {
   folder: FolderCardData;
   view?: "grid" | "list";
@@ -122,6 +124,10 @@ export function FolderCard({
   /** Every team folder (id + name) for the "Move to folder" menu (nesting).
    *  This folder itself is excluded; the server also rejects descendant moves. */
   folders?: { id: string; name: string }[];
+  /** Deleting takes the card off the grid on the CLICK and puts it back if the
+   *  mutation is refused. Owned by the grid, which holds the cards. */
+  onDeleted?: () => void;
+  onRestored?: () => void;
 }) {
   const router = useRouter();
   const [pending, startTransition] = React.useTransition();
@@ -478,12 +484,15 @@ export function FolderCard({
         description="The folder is removed, but its apps are kept — they move back to the top level. This cannot be undone."
         confirmLabel="Delete folder"
         successMessage="Folder deleted"
+        optimistic
         onConfirm={async () => {
+          onDeleted?.();
           const res = await gqlAction(
             `mutation($id: ID!) { deleteFolder(id: $id) }`,
             { id: folder.id },
           );
-          if (res.ok) router.refresh();
+          if (!res.ok) onRestored?.();
+          router.refresh();
           return res;
         }}
       />

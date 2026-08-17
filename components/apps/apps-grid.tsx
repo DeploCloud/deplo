@@ -306,22 +306,37 @@ export function AppsGrid(props: AppsGridProps) {
     (ids: string[]) => setDeleted((prev) => new Set([...prev, ...ids])),
     [],
   );
+  // The other half of hiding on the CLICK: a folder or project the server
+  // refuses to delete (and a bulk delete that fails) has to come back, or the
+  // card is gone until the next navigation for a delete that never happened.
+  const unhide = React.useCallback((ids: string[]) => {
+    setDeleted((prev) => {
+      if (!ids.some((id) => prev.has(id))) return prev;
+      const next = new Set(prev);
+      ids.forEach((id) => next.delete(id));
+      return next;
+    });
+  }, []);
   // The parent re-keys the grid whenever the server's answer stops listing them
-  // (see `gridKey`), so this set never has to be cleaned up.
+  // (see `gridKey`), so a successful hide never has to be cleaned up.
   const grid: GridProps = {
     ...props,
     services: props.services.filter((p) => !deleted.has(p.id)),
     folders: props.folders.filter((f) => !deleted.has(f.id)),
     projects: props.projects.filter((p) => !deleted.has(p.id)),
     onDeleted: hide,
+    onRestored: unhide,
   };
   if (!props.canReorder && !props.canMoveApps) return <StaticGrid {...grid} />;
   return <SortableGrid {...grid} />;
 }
 
 /** What both grids get: the props minus whatever the user just deleted, plus
- *  the callback that hides the next one. */
-type GridProps = AppsGridProps & { onDeleted: (ids: string[]) => void };
+ *  the callbacks that hide the next one and put back a refused delete. */
+type GridProps = AppsGridProps & {
+  onDeleted: (ids: string[]) => void;
+  onRestored: (ids: string[]) => void;
+};
 
 /* ------------------------------------------------------------------ */
 /* Static (no reorder): search results, or no permission              */
@@ -341,6 +356,7 @@ function StaticGrid({
   canManageProjects,
   environments,
   onDeleted,
+  onRestored,
 }: GridProps) {
   return (
     <div className="relative min-h-[40vh] space-y-6">
@@ -361,6 +377,8 @@ function StaticGrid({
               project={p}
               view={view}
               canManage={canManageProjects}
+              onDeleted={() => onDeleted([p.id])}
+              onRestored={() => onRestored([p.id])}
             />
           ))}
           {folders.map((f) => (
@@ -370,6 +388,8 @@ function StaticGrid({
               view={view}
               isAdminOverride={canManageAllFolders}
               folders={allFolders}
+              onDeleted={() => onDeleted([f.id])}
+              onRestored={() => onRestored([f.id])}
             />
           ))}
         </div>
@@ -462,6 +482,7 @@ function SortableGrid({
   canManageProjects,
   environments,
   onDeleted,
+  onRestored,
 }: GridProps) {
   const router = useRouter();
   const [, startTransition] = React.useTransition();
@@ -695,6 +716,11 @@ function SortableGrid({
     const appIds = selectedAppIds;
     const folderIds = selectedFolderIds;
     const projectIds = selectedProjectIds;
+    const all = [...appIds, ...folderIds, ...projectIds];
+    // Every card goes on the CLICK, like a single delete does. A partial
+    // failure puts them all back and the refresh below re-hides whatever really
+    // went — the same contract `moveAppsToProject` uses for a batch.
+    onDeleted(all);
     // Apps go through ONE bulk mutation (one server write, bounded-
     // concurrency teardown); folders and projects (usually few) delete per id.
     const results = await Promise.all([
@@ -707,10 +733,8 @@ function SortableGrid({
     // Clear only on FULL success: a partial failure keeps the still-selected
     // items so re-confirming retries them and the error stays meaningful — and
     // keeps their cards, for the same reason.
-    if (!failed) {
-      onDeleted([...appIds, ...folderIds, ...projectIds]);
-      clearSelection();
-    }
+    if (!failed) clearSelection();
+    else onRestored(all);
     return failed ?? { ok: true as const, data: undefined };
   }
 
@@ -1150,6 +1174,8 @@ function SortableGrid({
                           dragHandle={handle}
                           dragActive={dragActive}
                           dropActive={isOver && activeIsApp}
+                          onDeleted={() => onDeleted([p.id])}
+                          onRestored={() => onRestored([p.id])}
                         />
                       )}
                     </SortableItem>
@@ -1179,6 +1205,8 @@ function SortableGrid({
                           dragHandle={handle}
                           dragActive={dragActive}
                           dropActive={isOver && activeIsApp}
+                          onDeleted={() => onDeleted([f.id])}
+                          onRestored={() => onRestored([f.id])}
                         />
                       )}
                     </SortableItem>
@@ -1299,6 +1327,7 @@ function SortableGrid({
         description={bulkDeleteDescription}
         confirmLabel="Delete selection"
         successMessage="Selection deleted"
+        optimistic
         onConfirm={bulkDelete}
       />
     </DndContext>

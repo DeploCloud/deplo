@@ -63,10 +63,14 @@ test("hidden rows drop out of the list, the rest keep their order", () => {
 });
 
 test("a child's key is matched against the id its row hides", () => {
-  // What React.Children.toArray hands back for `key={d.id}`.
+  // What React.Children.toArray hands back for a bare `list.map(…)`.
   assert.equal(childKey({ key: ".$dom_123" }), "dom_123");
+  // …and for the same map rendered NEXT TO a sibling (the placeholder rows),
+  // where the map is one nested array among several. Measured, not guessed.
+  assert.equal(childKey({ key: ".0:$dom_123" }), "dom_123");
   // A placeholder with no key of its own can never be hidden by an id.
   assert.equal(childKey({ key: null }), "");
+  assert.equal(childKey({ key: ".1" }), ".1", "no key of its own, matches no id");
   assert.equal(childKey({ key: "dom_123" }), "dom_123", "already bare, left alone");
 });
 

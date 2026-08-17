@@ -24,6 +24,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { SimpleTooltip } from "@/components/ui/tooltip";
 import { ConfirmAction } from "@/components/shared/confirm-action";
+import { useOptimisticRemove } from "@/components/shared/use-optimistic-remove";
 import {
   TOKEN_PRESET_ICON,
   CUSTOM_TOKEN_ICON,
@@ -61,6 +62,13 @@ export function TokensList({
 }) {
   const router = useRouter();
   const [revoke, setRevoke] = React.useState<ApiTokenDTO | null>(null);
+  // A revoked token leaves the table on the click: the row is gone server-side
+  // by the time the mutation answers, and a live Revoke button under the cursor
+  // is one stray second click away from a red "Not found".
+  const { visible: rows, remove, restore } = useOptimisticRemove(
+    tokens,
+    (t) => t.id,
+  );
   const copyFor = (t: ApiTokenDTO) => ({
     teams: t.teamsReached,
     activeTeamId,
@@ -82,7 +90,7 @@ export function TokensList({
           </TableRow>
         </TableHeader>
         <TableBody>
-          {tokens.map((t) => {
+          {rows.map((t) => {
             const presetId = presetIdFor(t.capabilities);
             const preset = TOKEN_PRESETS.find((p) => p.id === presetId);
             const Icon = presetId ? TOKEN_PRESET_ICON[presetId] : CUSTOM_TOKEN_ICON;
@@ -231,12 +239,18 @@ export function TokensList({
         }
         confirmLabel="Revoke token"
         successMessage="Token revoked"
+        optimistic
         onConfirm={async () => {
+          // `revoke` is this render's value: the dialog has already closed
+          // itself (and cleared it) by the time this runs.
+          const id = revoke!.id;
+          remove(id);
           const res = await gqlAction(
             `mutation($id: String!) { revokeToken(id: $id) }`,
-            { id: revoke!.id },
+            { id },
           );
-          if (res.ok) router.refresh();
+          if (!res.ok) restore(id);
+          router.refresh();
           return res;
         }}
       />

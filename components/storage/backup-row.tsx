@@ -43,6 +43,7 @@ import { DestinationCombobox } from "@/components/storage/destination-combobox";
 import { ScheduleLabel } from "@/components/shared/schedule-picker";
 import { BackupScheduleFields } from "@/components/storage/backup-schedule-fields";
 import { timeAgo } from "@/lib/utils";
+import { useOptimisticRow } from "@/components/shared/optimistic-list";
 import { gqlAction } from "@/lib/graphql-client";
 import { isValidSchedule } from "@/lib/schedule";
 import type { BackupDTO } from "@/lib/data/backups";
@@ -69,6 +70,9 @@ export function BackupRow({
   const router = useRouter();
   const [pending, startTransition] = React.useTransition();
   const [confirmOpen, setConfirmOpen] = React.useState(false);
+  // The schedule row leaves the table on the click; deleting one is a single
+  // control-plane write with nothing on a host to wait for.
+  const { hide, restore } = useOptimisticRow(backup.id);
   const [restoreOpen, setRestoreOpen] = React.useState(false);
   const [editOpen, setEditOpen] = React.useState(false);
 
@@ -248,12 +252,15 @@ export function BackupRow({
           description="This removes the backup schedule. Backups it already made are not deleted."
           confirmLabel="Delete schedule"
           successMessage="Backup schedule deleted"
+          optimistic
           onConfirm={async () => {
+            hide();
             const res = await gqlAction(
               `mutation($id: String!) { deleteBackup(id: $id) }`,
               { id: backup.id }
             );
-            if (res.ok) router.refresh();
+            if (!res.ok) restore();
+            router.refresh();
             return res;
           }}
         />

@@ -20,6 +20,7 @@ import {
 import { NotificationIllustration } from "@/components/settings/notification-illustration";
 import { PageHeader } from "@/components/shared/page-header";
 import { ConfirmAction } from "@/components/shared/confirm-action";
+import { useOptimisticRemove } from "@/components/shared/use-optimistic-remove";
 import { EmptyState } from "@/components/shared/empty-state";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -87,8 +88,14 @@ export function NotificationsPanel({
   const [testing, setTesting] = React.useState(false);
   const [deleting, setDeleting] =
     React.useState<NotificationChannelInstance | null>(null);
+  // A removed channel leaves the grid on the click; the count above it follows,
+  // because a list that shed a row and a badge that still counts it disagree.
+  const { visible: channels, remove, restore } = useOptimisticRemove(
+    initial,
+    (c) => c.id,
+  );
 
-  const onCount = initial.filter((c) => c.enabled).length;
+  const onCount = channels.filter((c) => c.enabled).length;
   const dirty = JSON.stringify({ draft, secrets }) !== snapshot;
 
   function openChannel(instance: NotificationChannelInstance) {
@@ -245,7 +252,7 @@ export function NotificationsPanel({
 
       <div className="grid items-start gap-6 xl:grid-cols-[minmax(0,1fr)_260px]">
         <div className="min-w-0 space-y-4">
-          {initial.length === 0 ? (
+          {channels.length === 0 ? (
             // Deliberately NOT wrapped in the card: a dashed box inside a card
             // inside the page is three surfaces for one message. The card is
             // what holds the LIST, so it arrives with the list.
@@ -272,7 +279,7 @@ export function NotificationsPanel({
                 </Badge>
               </div>
               <div className="grid items-start gap-3 sm:grid-cols-2">
-                {initial.map((instance) => (
+                {channels.map((instance) => (
                   <ChannelRow
                     key={instance.id}
                     instance={instance}
@@ -475,12 +482,16 @@ export function NotificationsPanel({
         description="It stops receiving alerts, and what it was subscribed to is forgotten."
         confirmLabel="Remove"
         successMessage="Channel removed"
+        optimistic
         onConfirm={async () => {
+          const id = deleting!.id;
+          remove(id);
           const res = await gqlAction(
             `mutation($id: ID!) { deleteNotificationChannel(id: $id) }`,
-            { id: deleting!.id },
+            { id },
           );
-          if (res.ok) router.refresh();
+          if (!res.ok) restore(id);
+          router.refresh();
           return res;
         }}
       />

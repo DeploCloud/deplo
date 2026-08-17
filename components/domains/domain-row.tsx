@@ -50,6 +50,7 @@ import {
   resolveDomainConfig,
   type DomainConfigState,
 } from "@/components/domains/domain-config-fields";
+import { useOptimisticRow } from "@/components/shared/optimistic-list";
 import { gqlAction } from "@/lib/graphql-client";
 import { useAppCan } from "@/components/apps/app-capabilities";
 import { deriveWwwRedirect } from "@/lib/www-redirect";
@@ -116,6 +117,9 @@ export function DomainRow({
   const canManage = useAppCan("manage_domains");
   const [pending, startTransition] = React.useTransition();
   const [confirmOpen, setConfirmOpen] = React.useState(false);
+  // Removing takes the row off the table on the click; the domain is gone from
+  // the app the moment the mutation is sent and the routing reload follows it.
+  const { hide, restore } = useOptimisticRow(domain.id);
   const [editOpen, setEditOpen] = React.useState(false);
   const services = React.useMemo(() => composeServices(compose), [compose]);
 
@@ -589,14 +593,17 @@ export function DomainRow({
           description="The domain will stop routing to this app. You can re-add it later."
           confirmLabel="Remove domain"
           successMessage="Domain removed"
+          optimistic
           onConfirm={async () => {
+            hide();
             const res = await gqlAction<{ removeDomain: boolean }>(
               `mutation($id: String!) { removeDomain(id: $id) }`,
               { id: domain.id },
             );
-            // No revalidatePath on the GraphQL API — refresh so the removed row
-            // disappears from the RSC-rendered list.
-            if (res.ok) router.refresh();
+            if (!res.ok) restore();
+            // No revalidatePath on the GraphQL API — refresh so the row list
+            // settles on what the server actually serves.
+            router.refresh();
             return res;
           }}
         />

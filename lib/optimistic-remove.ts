@@ -35,18 +35,25 @@ export function retainRemoved(
 }
 
 /**
- * The key of an element as `React.Children.toArray` hands it back: that helper
- * namespaces every explicit key with `.$`, so a row rendered as `key={d.id}`
- * arrives as `.$dom_123`.
+ * The key of an element as `React.Children.toArray` hands it back.
+ *
+ * That helper namespaces keys, and the namespace depends on the SHAPE of the
+ * children: a bare `list.map(…)` yields `.$dom_123`, while the same map next to
+ * a sibling (a `<PendingRows />` after it) is one nested array among several and
+ * yields `.0:$dom_123`. Reading the part after the last `$` covers both, and any
+ * deeper nesting the same way.
  *
  * Used by `components/shared/optimistic-list.tsx` to match a child against the
  * id its own row asks to hide — the two must agree, and doing the stripping in
- * one named place is what keeps that agreement checkable. An element with no
- * key (a pending-create placeholder, say) matches nothing and is never hidden.
+ * one named place is what keeps that agreement checkable. An element with no key
+ * of its own (a pending-create placeholder) has no `$` at all, matches no id,
+ * and is therefore never hidden.
  */
 export function childKey(child: { key?: string | null }): string {
   const key = child.key;
-  return key == null ? "" : key.replace(/^\.\$/, "");
+  if (key == null) return "";
+  const marker = key.lastIndexOf("$");
+  return marker < 0 ? key : key.slice(marker + 1);
 }
 
 /**

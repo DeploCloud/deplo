@@ -30,6 +30,10 @@ import { AutoRefresh } from "@/components/shared/auto-refresh";
 import { EmptyState } from "@/components/shared/empty-state";
 import { ScheduleLabel } from "@/components/shared/schedule-picker";
 import { CronGraphic } from "@/components/crons/cron-graphic";
+import {
+  OptimisticList,
+  useOptimisticRow,
+} from "@/components/shared/optimistic-list";
 import { CronJobDialog } from "@/components/crons/cron-job-dialog";
 import { CronRunHistory } from "@/components/crons/cron-run-history";
 import { nextCronRunInZone } from "@/lib/crons/cron-tz";
@@ -129,6 +133,7 @@ function CronJobRow({
   const [open, setOpen] = React.useState(false);
   const [editing, setEditing] = React.useState(false);
   const [confirmDelete, setConfirmDelete] = React.useState(false);
+  const { hide, restore } = useOptimisticRow(job.id);
   const [pending, startTransition] = React.useTransition();
   // Bumped after a run starts: remounting the history is the immediate re-read
   // of a panel that is ALREADY open, which otherwise waits out its own poll
@@ -161,13 +166,18 @@ function CronJobRow({
   }
 
   function remove() {
+    // The row goes now and the delete settles behind it; the dialog closes in
+    // the same commit rather than holding a spinner for a control-plane write.
+    setConfirmDelete(false);
+    hide();
     startTransition(async () => {
       const res = await gqlAction(DELETE, { id: job.id });
-      if (res.ok) {
-        toast.success("Cron job deleted");
-        setConfirmDelete(false);
-        router.refresh();
-      } else toast.error(res.error);
+      if (res.ok) toast.success("Cron job deleted");
+      else {
+        restore();
+        toast.error(res.error);
+      }
+      router.refresh();
     });
   }
 
@@ -396,17 +406,21 @@ export function CronJobsList({
       ) : (
         <Card>
           <CardContent className="space-y-2 pt-6">
-            {jobs.map((job, i) => (
-              <CronJobRow
-                key={job.id}
-                job={job}
-                nextRunAt={nextRuns[i]}
-                targetKind={targetKind}
-                targetId={targetId}
-                services={services}
-                canManage={canManage}
-              />
-            ))}
+            {/* A deleted job leaves the list on the click — the rows ask to be
+                hidden themselves (see `OptimisticList`). */}
+            <OptimisticList>
+              {jobs.map((job, i) => (
+                <CronJobRow
+                  key={job.id}
+                  job={job}
+                  nextRunAt={nextRuns[i]}
+                  targetKind={targetKind}
+                  targetId={targetId}
+                  services={services}
+                  canManage={canManage}
+                />
+              ))}
+            </OptimisticList>
           </CardContent>
         </Card>
       )}

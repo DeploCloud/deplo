@@ -39,6 +39,7 @@ import {
 import { ConfirmAction } from "@/components/shared/confirm-action";
 import { StatusBadge } from "@/components/shared/status-badge";
 import { useLiveApp } from "@/components/apps/app-live-status";
+import { useOptimisticRemove } from "@/components/shared/use-optimistic-remove";
 import { gqlAction } from "@/lib/graphql-client";
 import type { AppPreviewDTO } from "@/lib/data/previews";
 import { timeAgo } from "@/lib/utils";
@@ -64,11 +65,18 @@ export function PreviewsTable({
   const router = useRouter();
   const [pending, startTransition] = React.useTransition();
   const live = useLiveApp();
+  // A destroyed preview leaves the table on the click: the row is dropped
+  // server-side before its stack comes down, so waiting out the teardown only
+  // leaves a dead row with a live Destroy under the cursor.
+  const { visible: rows, remove, restore } = useOptimisticRemove(
+    previews,
+    (p) => p.id,
+  );
 
   // Any change to the owning app (a preview build starting, finishing, failing)
   // arrives on the same stream the header uses — re-read the rows when one lands
   // while something is in flight.
-  const inFlight = previews.some(
+  const inFlight = rows.some(
     (p) => p.status === "queued" || p.status === "building",
   );
   const lastSeen = React.useRef<string | null>(null);
@@ -84,20 +92,24 @@ export function PreviewsTable({
     query: string,
     variables: Record<string, unknown>,
     success: string,
+    /** Undo whatever the caller took off the table when the server refuses. */
+    onError?: () => void,
   ) {
     startTransition(async () => {
       const res = await gqlAction(query, variables);
-      if (res.ok) {
-        toast.success(success);
-        router.refresh();
-      } else toast.error(res.error);
+      if (res.ok) toast.success(success);
+      else {
+        onError?.();
+        toast.error(res.error);
+      }
+      router.refresh();
     });
   }
 
   // What the cap actually counts: previews with a stack up. A closed pull
   // request has none, and neither has an `evicted` or `blocked` one — counting
   // those would show "at its limit" while slots were free.
-  const liveCount = previews.filter(
+  const liveCount = rows.filter(
     (p) => !p.closed && p.status !== "evicted" && p.status !== "blocked",
   ).length;
 
@@ -115,7 +127,7 @@ export function PreviewsTable({
             </TableRow>
           </TableHeader>
           <TableBody>
-            {previews.map((p) => {
+            {rows.map((p) => {
               const blocked = p.isFork && !p.approved;
               return (
                 <TableRow key={p.id}>
@@ -286,13 +298,15 @@ export function PreviewsTable({
                             <DropdownMenuItem
                               variant="destructive"
                               disabled={pending}
-                              onClick={() =>
+                              onClick={() => {
+                                remove(p.id);
                                 run(
                                   `mutation ($id: ID!) { destroyPreview(id: $id) }`,
                                   { id: p.id },
                                   "Preview destroyed",
-                                )
-                              }
+                                  () => restore(p.id),
+                                );
+                              }}
                             >
                               <Trash2 className="size-4" />
                               Destroy preview

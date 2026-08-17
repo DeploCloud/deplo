@@ -43,6 +43,7 @@ import {
   PendingCards,
   usePendingCreate,
 } from "@/components/shared/pending-create";
+import { useOptimisticRemove } from "@/components/shared/use-optimistic-remove";
 import { gqlAction } from "@/lib/graphql-client";
 import { timeAgo } from "@/lib/utils";
 import type { BasicAuthUserDTO } from "@/lib/data/basic-auth";
@@ -86,9 +87,18 @@ export function BasicAuthManager({
   // one holds its place in the grid as a pulsing card until the routing is live.
   const { pending } = usePendingCreate();
 
+  // A deleted credential leaves the grid on the click: the row is written away
+  // BEFORE the routing is re-applied, so waiting out the reroute only keeps a
+  // dead card on screen with a live Delete under the cursor.
+  const {
+    visible: liveUsers,
+    remove,
+    restore,
+  } = useOptimisticRemove(users, (u) => u.id);
+
   const rows = React.useMemo<CredentialRow[]>(
-    () => users.map((u) => ({ ...u, key: u.username })),
-    [users],
+    () => liveUsers.map((u) => ({ ...u, key: u.username })),
+    [liveUsers],
   );
 
   // One app's credentials: what/when/who is all there is to slice by — a Project
@@ -210,11 +220,15 @@ export function BasicAuthManager({
         }
         confirmLabel="Delete"
         successMessage="Credential deleted — that login no longer works"
+        optimistic
         onConfirm={async () => {
+          const id = deleting!.id;
+          remove(id);
           const res = await gqlAction<{ removeBasicAuthUser: boolean }>(
             `mutation($id: String!) { removeBasicAuthUser(id: $id) }`,
-            { id: deleting!.id },
+            { id },
           );
+          if (!res.ok) restore(id);
           // Refresh either way: the delete commits BEFORE the routing is
           // re-applied, so an error can still mean the row is gone. Re-reading
           // is the only way the list stays honest about what exists.

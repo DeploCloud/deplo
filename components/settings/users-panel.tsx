@@ -37,6 +37,7 @@ import { RegisterUserWizard } from "@/components/settings/users/register-user-wi
 import { EditUserDialog } from "@/components/settings/user-account-settings";
 import { DeleteUserDialog } from "@/components/settings/delete-user-dialog";
 import { RegistrationLinkRow } from "@/components/settings/registration-link-row";
+import { useOptimisticRemove } from "@/components/shared/use-optimistic-remove";
 import { ConfirmAction } from "@/components/shared/confirm-action";
 import { gqlAction } from "@/lib/graphql-client";
 import { cn, timeAgo } from "@/lib/utils";
@@ -52,7 +53,14 @@ export function UsersPanel({
   currentUserId: string;
 }) {
   const [registerOpen, setRegisterOpen] = React.useState(false);
-  const pendingLinks = links.filter((l) => l.status === "pending");
+  // A revoked link leaves the list on the click — the row is dead server-side
+  // the moment the mutation is sent, and a live Revoke on a dead link is only
+  // good for a red "Not found".
+  const { visible: liveLinks, remove, restore } = useOptimisticRemove(
+    links,
+    (l) => l.id,
+  );
+  const pendingLinks = liveLinks.filter((l) => l.status === "pending");
   // `?user=<id>` opens that account's editor on arrival — the deep link a
   // member's page uses, since accounts are instance-wide and edited here.
   const focusUserId = useSearchParams().get("user");
@@ -100,7 +108,12 @@ export function UsersPanel({
           </CardHeader>
           <CardContent className="space-y-3">
             {pendingLinks.map((l) => (
-              <RegistrationLinkRow key={l.id} link={l} />
+              <RegistrationLinkRow
+                key={l.id}
+                link={l}
+                onRemoved={() => remove(l.id)}
+                onRestored={() => restore(l.id)}
+              />
             ))}
           </CardContent>
         </Card>

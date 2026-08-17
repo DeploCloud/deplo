@@ -22,6 +22,7 @@ import {
   PendingList,
   PendingRows,
 } from "@/components/shared/pending-create";
+import { OptimisticList } from "@/components/shared/optimistic-list";
 
 export const metadata = { title: "App Domains" };
 
@@ -150,7 +151,10 @@ export default async function AppDomainsPage(
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {domains.map((d) => (
+                {/* A removed domain leaves the table on the click; the row is
+                    dropped server-side before the routing is re-applied. */}
+                <OptimisticList>
+                  {domains.map((d) => (
                   <DomainRow
                     key={d.id}
                     domain={d}
@@ -162,7 +166,8 @@ export default async function AppDomainsPage(
                     // hostname's www pairing from the rows that exist.
                     siblings={domains}
                   />
-                ))}
+                  ))}
+                </OptimisticList>
                 <PendingRows columns={showContainer ? 4 : 3} />
               </TableBody>
             </Table>

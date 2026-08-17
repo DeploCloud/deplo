@@ -44,6 +44,7 @@ import { FieldLabel } from "@/components/ui/info-tip";
 import { PageHeader } from "@/components/shared/page-header";
 import { EmptyState } from "@/components/shared/empty-state";
 import { ConfirmAction } from "@/components/shared/confirm-action";
+import { useOptimisticRemove } from "@/components/shared/use-optimistic-remove";
 import { GitProviderMark } from "@/components/shared/brand-icons";
 import { useGithubConnect } from "@/components/apps/github-connect-button";
 import { GitGraphic } from "@/components/settings/git-graphic";
@@ -140,7 +141,20 @@ export function GitPanel({
     router.refresh();
   }
 
-  const empty = githubApps.length === 0 && connections.length === 0;
+  // Both kinds of card leave the page on the click and come back only if the
+  // server refuses.
+  const {
+    visible: apps,
+    remove: hideApp,
+    restore: restoreApp,
+  } = useOptimisticRemove(githubApps, (a) => a.id);
+  const {
+    visible: conns,
+    remove: hideConn,
+    restore: restoreConn,
+  } = useOptimisticRemove(connections, (c) => c.id);
+
+  const empty = apps.length === 0 && conns.length === 0;
   const connectProvider =
     providers.find((p) => p.id === connectProviderId) ?? null;
 
@@ -168,7 +182,7 @@ export function GitPanel({
         // taller than one that is fine, and the grid's default stretch would
         // pad the healthy card with an empty void to match it.
         <div className="grid items-start gap-4 sm:grid-cols-2 3xl:grid-cols-3">
-          {githubApps.map((app) => (
+          {apps.map((app) => (
             <GithubAppCard
               key={app.id}
               app={app}
@@ -176,7 +190,7 @@ export function GitPanel({
               onRemove={() => setDeletingApp(app)}
             />
           ))}
-          {connections.map((conn) => (
+          {conns.map((conn) => (
             <ConnectionCard
               key={conn.id}
               conn={conn}
@@ -209,12 +223,16 @@ export function GitPanel({
         description="Apps importing from this App will stop auto-deploying and private clones will fail until you reconnect."
         confirmLabel="Remove"
         successMessage="GitHub App removed"
+        optimistic
         onConfirm={async () => {
+          const id = deletingApp!.id;
+          hideApp(id);
           const res = await gqlAction(
             `mutation ($id: String!) { removeGithubApp(id: $id) }`,
-            { id: deletingApp!.id },
+            { id },
           );
-          if (res.ok) router.refresh();
+          if (!res.ok) restoreApp(id);
+          router.refresh();
           return res;
         }}
       />
@@ -229,12 +247,16 @@ export function GitPanel({
         }
         confirmLabel="Remove"
         successMessage="Connection removed"
+        optimistic
         onConfirm={async () => {
+          const id = deleting!.id;
+          hideConn(id);
           const res = await gqlAction(
             `mutation ($id: String!) { removeGitConnection(id: $id) }`,
-            { id: deleting!.id },
+            { id },
           );
-          if (res.ok) router.refresh();
+          if (!res.ok) restoreConn(id);
+          router.refresh();
           return res;
         }}
       />

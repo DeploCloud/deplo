@@ -8,6 +8,7 @@ import { Badge } from "@/components/ui/badge";
 import { InfoTip } from "@/components/ui/info-tip";
 import { EmptyState } from "@/components/shared/empty-state";
 import { ConfirmAction } from "@/components/shared/confirm-action";
+import { useOptimisticRemove } from "@/components/shared/use-optimistic-remove";
 import { RobotGraphic } from "./robot-graphic";
 import { gqlAction } from "@/lib/graphql-client";
 import { timeAgo } from "@/lib/utils";
@@ -44,6 +45,12 @@ export function ConnectedClients({
 }) {
   const router = useRouter();
   const [revoke, setRevoke] = React.useState<McpConnectionDTO | null>(null);
+  // The client leaves the list on the click — its credential is already gone by
+  // the time the mutation answers.
+  const { visible: rows, remove, restore } = useOptimisticRemove(
+    connections,
+    (c) => c.id,
+  );
 
   return (
     <Card>
@@ -58,7 +65,7 @@ export function ConnectedClients({
         </p>
       </CardHeader>
       <CardContent>
-        {connections.length === 0 ? (
+        {rows.length === 0 ? (
           <EmptyState
             graphic={<RobotGraphic state="idle" className="h-28" />}
             title="No agents connected"
@@ -66,7 +73,7 @@ export function ConnectedClients({
           />
         ) : (
           <div className="divide-y divide-border rounded-lg border border-border">
-            {connections.map((c) => (
+            {rows.map((c) => (
               <div
                 key={c.id}
                 className="flex items-center justify-between gap-4 p-3"
@@ -115,12 +122,16 @@ export function ConnectedClients({
         description="The credential is deleted: the client loses access immediately, in every team it was connected to, and has to be connected again to come back."
         confirmLabel="Revoke"
         successMessage="Access revoked"
+        optimistic
         onConfirm={async () => {
+          const id = revoke!.id;
+          remove(id);
           const res = await gqlAction(
             `mutation($id: String!) { revokeToken(id: $id) }`,
-            { id: revoke!.id },
+            { id },
           );
-          if (res.ok) router.refresh();
+          if (!res.ok) restore(id);
+          router.refresh();
           return res;
         }}
       />
