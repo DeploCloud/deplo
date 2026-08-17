@@ -1,5 +1,3 @@
-import Link from "next/link";
-import { KeyRound, BookOpen, ArrowRight } from "lucide-react";
 import {
   hasCapability,
   reachesWholeTeam,
@@ -15,6 +13,7 @@ import { EmptyState } from "@/components/shared/empty-state";
 import { OutsideYourAccess } from "@/components/shared/outside-your-access";
 import { NewTokenMenu } from "@/components/settings/tokens/new-token-menu";
 import { TokensList } from "@/components/settings/tokens/tokens-list";
+import { TokenGraphic } from "@/components/settings/tokens/token-graphic";
 
 export const metadata = { title: "Settings · API tokens" };
 
@@ -55,26 +54,9 @@ export default async function TokensPage() {
         actions={canManage ? <NewTokenMenu /> : undefined}
       />
 
-      <Link
-        href="/api-docs"
-        className="group flex items-center gap-3 rounded-xl border border-border bg-card px-4 py-3 transition-colors hover:border-primary/40 hover:bg-secondary/40"
-      >
-        <div className="flex size-9 shrink-0 items-center justify-center rounded-lg border border-border bg-secondary">
-          <BookOpen className="size-4 text-muted-foreground" />
-        </div>
-        <div className="min-w-0 flex-1">
-          <p className="text-sm font-medium">API reference & playground</p>
-          <p className="mt-1 text-xs text-muted-foreground">
-            Browse every GraphQL query and mutation, and try read-only calls
-            live — mutations run as a safe dry run.
-          </p>
-        </div>
-        <ArrowRight className="size-4 shrink-0 text-muted-foreground transition-transform group-hover:translate-x-0.5" />
-      </Link>
-
       {tokens.length === 0 ? (
         <EmptyState
-          icon={KeyRound}
+          graphic={<TokenGraphic />}
           title="No API tokens yet"
           description={
             canManage

@@ -2658,3 +2658,102 @@
   --deplo-robot-l: 0.78;
   --deplo-robot-c: 0.14;
 }
+
+/* The API tokens empty state cuts a key (components/settings/tokens/token-graphic.tsx):
+   the bow draws, the shaft follows, the teeth stamp in one after the other, and
+   the whole key fades before it goes again - no token exists, so nothing is
+   allowed to settle.
+
+   One 5s timeline, and the FADE rides the group rather than each element: with
+   the stagger done by `animation-delay`, per-element fades leave at different
+   times and the key dissolves in pieces. The group is also what makes the
+   delays safe - it stays blank until 0.25s, which is when the last delayed
+   child wraps back to its own first frame. */
+@keyframes deplo-token-key {
+  0%,
+  5% {
+    opacity: 0;
+  }
+  9%,
+  86% {
+    opacity: 1;
+  }
+  96%,
+  100% {
+    opacity: 0;
+  }
+}
+
+/* Both draws share this one because the SVG declares `pathLength="1"`, which
+   makes the dash arithmetic identical for a circle and a line. */
+@keyframes deplo-token-draw {
+  0%,
+  7% {
+    stroke-dashoffset: 1;
+  }
+  38%,
+  100% {
+    stroke-dashoffset: 0;
+  }
+}
+
+/* The teeth land slightly over-size and settle: the beat a stamped cut has,
+   without a bounce that would read as cartoonish. `scaleY` only, so they grow
+   out of the shaft instead of swelling around their own middle. */
+@keyframes deplo-token-tooth {
+  0%,
+  48% {
+    transform: scaleY(0);
+  }
+  56% {
+    transform: scaleY(1.18);
+  }
+  62%,
+  100% {
+    transform: scaleY(1);
+  }
+}
+
+.deplo-token-key {
+  animation: deplo-token-key 5s ease-in-out infinite;
+}
+
+.deplo-token-draw {
+  stroke-dasharray: 1;
+  animation: deplo-token-draw 5s ease-in-out infinite;
+}
+
+.deplo-token-shaft {
+  /* `backwards`, or the shaft sits fully drawn for its first quarter second. */
+  animation-delay: 0.25s;
+  animation-fill-mode: backwards;
+}
+
+.deplo-token-tooth {
+  /* Without `fill-box` the scale pivots on the viewBox origin, which slides the
+     tooth across the drawing instead of growing it in place. */
+  transform-box: fill-box;
+  transform-origin: top;
+  transform: scaleY(0);
+  animation: deplo-token-tooth 5s ease-out infinite;
+  animation-fill-mode: backwards;
+}
+
+.deplo-token-tooth:nth-child(2) {
+  animation-delay: 0.2s;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  /* Holds the cut key: both strokes drawn, both teeth in place. */
+  .deplo-token-key {
+    animation: none;
+  }
+  .deplo-token-draw {
+    animation: none;
+    stroke-dasharray: none;
+  }
+  .deplo-token-tooth {
+    animation: none;
+    transform: none;
+  }
+}
