@@ -118,6 +118,8 @@ export function AppCard({
   canMoveApps = false,
   environments,
   onDeleted,
+  onMoved,
+  onMoveFailed,
 }: {
   project: AppSummary;
   view?: "grid" | "list";
@@ -144,6 +146,11 @@ export function AppCard({
   /** The delete was RECORDED — the grid drops the card now and the host tears
    *  the stack down behind it. */
   onDeleted?: () => void;
+  /** A move from the card's own menu: the grid hides the card straight away
+   *  (`onMoved`) and reveals it again if the server refuses (`onMoveFailed`) —
+   *  the same contract dragging it onto a folder already had. */
+  onMoved?: () => void;
+  onMoveFailed?: () => void;
 }) {
   const router = useRouter();
   const [pending, startTransition] = React.useTransition();
@@ -234,21 +241,27 @@ export function AppCard({
   // The grid also supports dragging a card onto a folder; this menu is the
   // keyboard-friendly, always-available counterpart.
   function moveTo(folderId: string | null) {
+    // The card leaves the view it is in NOW — the grid hides it and puts it back
+    // if the move is refused, the same contract a drag-and-drop move gets.
+    onMoved?.();
     startTransition(async () => {
       const res = await gqlAction(
         `mutation($appId: ID!, $folderId: ID) { moveAppToFolder(appId: $appId, folderId: $folderId) }`,
         { appId: project.id, folderId },
       );
-      if (res.ok) {
-        toast.success(folderId ? "Moved to folder" : "Moved out of folder");
-        router.refresh();
-      } else toast.error(res.error);
+      if (res.ok) toast.success(folderId ? "Moved to folder" : "Moved out of folder");
+      else {
+        onMoveFailed?.();
+        toast.error(res.error);
+      }
+      router.refresh();
     });
   }
 
   // Move this app to another environment of its project (ADR-0009: each
   // environment holds its own apps), or out of the project entirely.
   function moveToEnvironment(environmentId: string | null) {
+    onMoved?.();
     startTransition(async () => {
       const res = environmentId
         ? await gqlAction(
@@ -263,8 +276,11 @@ export function AppCard({
         toast.success(
           environmentId ? "Moved to environment" : "Moved out of project",
         );
-        router.refresh();
-      } else toast.error(res.error);
+      } else {
+        onMoveFailed?.();
+        toast.error(res.error);
+      }
+      router.refresh();
     });
   }
 

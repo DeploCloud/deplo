@@ -853,6 +853,8 @@ function EditScheduleDialog({
   }
 
   function submit() {
+    // Closes on the click; a refusal reopens it with the fields as typed.
+    onOpenChange(false);
     startTransition(async () => {
       const res = await gqlAction(
         `mutation($id: String!, $input: UpdateBackupInput!) { updateBackup(id: $id, input: $input) }`,
@@ -867,13 +869,12 @@ function EditScheduleDialog({
           },
         },
       );
-      if (res.ok) {
-        toast.success("Backup schedule updated");
-        onOpenChange(false);
-        router.refresh();
-      } else {
+      if (res.ok) toast.success("Backup schedule updated");
+      else {
+        onOpenChange(true);
         toast.error(res.error);
       }
+      router.refresh();
     });
   }
 

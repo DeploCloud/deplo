@@ -439,7 +439,7 @@ function AccessTab({
               disabled={pending}
             />
             <Button type="submit" disabled={pending || !accessDirty}>
-              {pending ? "Saving" : "Save access"}
+              Save access
             </Button>
           </form>
         </CardContent>

@@ -46,31 +46,39 @@ export function DatabaseGeneralSettings({ db }: { db: DatabaseDTO }) {
   const nameDirty = name.trim() !== savedName;
 
   function saveName() {
+    // Saved on the click — the field already shows the new name.
+    const previous = savedName;
+    const next = name.trim();
+    setSavedName(next);
+    setName(next);
     startTransition(async () => {
       const res = await gqlAction(
         `mutation($id: String!, $name: String!) { renameDatabase(id: $id, name: $name) { id name } }`,
-        { id: db.id, name: name.trim() },
+        { id: db.id, name: next },
       );
-      if (res.ok) {
-        setSavedName(name.trim());
-        setName(name.trim());
-        router.refresh();
-        toast.success("Database renamed");
-      } else toast.error(res.error);
+      if (res.ok) toast.success("Database renamed");
+      else {
+        setSavedName(previous);
+        toast.error(res.error);
+      }
+      router.refresh();
     });
   }
 
   function saveLogo(next: string | null) {
+    const previous = logo;
     setLogo(next);
     startTransition(async () => {
       const res = await gqlAction(
         `mutation($id: String!, $logo: String) { updateDatabaseLogo(id: $id, logo: $logo) { id } }`,
         { id: db.id, logo: next },
       );
-      if (res.ok) {
-        router.refresh();
-        toast.success(next ? "Logo updated" : "Logo cleared");
-      } else toast.error(res.error);
+      if (res.ok) toast.success(next ? "Logo updated" : "Logo cleared");
+      else {
+        setLogo(previous);
+        toast.error(res.error);
+      }
+      router.refresh();
     });
   }
 

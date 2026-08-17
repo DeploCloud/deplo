@@ -395,7 +395,7 @@ function ServerClock({
             />
           </div>
           <Button type="submit" disabled={pending || !info || !zone || zone === info?.timezone}>
-            {pending ? "Saving" : "Save timezone"}
+            Save timezone
           </Button>
         </form>
       </CardContent>

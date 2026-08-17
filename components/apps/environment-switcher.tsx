@@ -132,16 +132,23 @@ export function EnvironmentSwitcher({
 
   function rename() {
     if (!renameFor || !renameName.trim()) return;
+    // The dialog closes on the click; the name it typed reaches the switcher
+    // with the refresh, and a refusal says why with nothing lost.
+    const target = renameFor;
+    const next = renameName.trim();
+    setRenameFor(null);
     startTransition(async () => {
       const res = await gqlAction(
         `mutation($id: ID!, $name: String!) { renameEnvironment(id: $id, name: $name) }`,
-        { id: renameFor.id, name: renameName.trim() },
+        { id: target.id, name: next },
       );
-      if (res.ok) {
-        toast.success("Environment renamed");
-        setRenameFor(null);
-        router.refresh();
-      } else toast.error(res.error);
+      if (res.ok) toast.success("Environment renamed");
+      else {
+        setRenameName(next);
+        setRenameFor(target);
+        toast.error(res.error);
+      }
+      router.refresh();
     });
   }
 

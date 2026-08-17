@@ -132,7 +132,7 @@ export function DatabaseImageSettings({ db }: { db: DatabaseDTO }) {
       <CardFooter className="justify-between">
         <DirtyHint dirty={dirty} />
         <Button onClick={save} disabled={pending || !dirty}>
-          {pending ? "Saving…" : "Save changes"}
+          Save changes
         </Button>
       </CardFooter>
     </Card>

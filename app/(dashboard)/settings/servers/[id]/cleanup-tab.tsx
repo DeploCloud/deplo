@@ -444,7 +444,7 @@ export function ServerCleanupTab({
                 <InfoTip content="Deplo keeps one cleanup schedule for the whole instance, so a server you add later is swept without anyone remembering to enable it. Saving here changes it everywhere." />
               </span>
               <Button type="submit" disabled={saving || !dirty}>
-                {saving ? "Saving" : "Save schedule"}
+                Save schedule
               </Button>
             </div>
           </form>

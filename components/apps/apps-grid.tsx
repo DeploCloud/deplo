@@ -506,6 +506,20 @@ function SortableGrid({
   const [movedIds, setMovedIds] = React.useState<Set<string>>(
     () => new Set(),
   );
+  // The card's own move menu drives the same optimistic hide the drag does.
+  const hideMoved = React.useCallback(
+    (id: string) => setMovedIds((prev) => new Set(prev).add(id)),
+    [],
+  );
+  const revealMoved = React.useCallback((id: string) => {
+    setMovedIds((prev) => {
+      if (!prev.has(id)) return prev;
+      const next = new Set(prev);
+      next.delete(id);
+      return next;
+    });
+  }, []);
+
   // The id being dragged (null when idle). Drives the drag-bound jiggle and the
   // folder drop-target highlight; cleared on release so nothing lingers.
   const [activeId, setActiveId] = React.useState<string | null>(null);
@@ -1246,6 +1260,8 @@ function SortableGrid({
                         canMoveApps ? environments : undefined
                       }
                       onDeleted={() => onDeleted([p.id])}
+                      onMoved={() => hideMoved(p.id)}
+                      onMoveFailed={() => revealMoved(p.id)}
                     />
                   )}
                 </SortableItem>

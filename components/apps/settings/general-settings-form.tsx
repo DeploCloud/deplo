@@ -51,16 +51,22 @@ export function GeneralSettingsForm({
   const nameDirty = name !== savedName;
 
   function saveName() {
+    // Saved on the click: the field already shows the new name, so holding the
+    // button in a spinner only delays the moment the form stops looking dirty.
+    const previous = savedName;
+    const next = name;
+    setSavedName(next);
     startTransition(async () => {
       const res = await gqlAction(
         `mutation($id: String!, $name: String!) { renameApp(id: $id, name: $name) { id } }`,
-        { id: appId, name },
+        { id: appId, name: next },
       );
-      if (res.ok) {
-        setSavedName(name);
-        router.refresh();
-        toast.success("App renamed");
-      } else toast.error(res.error);
+      if (res.ok) toast.success("App renamed");
+      else {
+        setSavedName(previous);
+        toast.error(res.error);
+      }
+      router.refresh();
     });
   }
 
@@ -83,16 +89,19 @@ export function GeneralSettingsForm({
         toast.error("Could not read image");
         return;
       }
+      const previous = logo;
       setLogo(dataUri);
       startTransition(async () => {
         const res = await gqlAction(
           `mutation($id: String!, $logo: String) { updateAppLogo(id: $id, logo: $logo) { id } }`,
           { id: appId, logo: dataUri },
         );
-        if (res.ok) {
-          router.refresh();
-          toast.success("Logo updated");
-        } else toast.error(res.error);
+        if (res.ok) toast.success("Logo updated");
+        else {
+          setLogo(previous);
+          toast.error(res.error);
+        }
+        router.refresh();
       });
     };
     reader.onerror = () => toast.error("Could not read image");
@@ -100,16 +109,19 @@ export function GeneralSettingsForm({
   }
 
   function clearLogo() {
+    const previous = logo;
     setLogo(null);
     startTransition(async () => {
       const res = await gqlAction(
         `mutation($id: String!, $logo: String) { updateAppLogo(id: $id, logo: $logo) { id } }`,
         { id: appId, logo: null },
       );
-      if (res.ok) {
-        router.refresh();
-        toast.success("Logo cleared");
-      } else toast.error(res.error);
+      if (res.ok) toast.success("Logo cleared");
+      else {
+        setLogo(previous);
+        toast.error(res.error);
+      }
+      router.refresh();
     });
   }
 

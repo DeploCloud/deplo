@@ -1,7 +1,6 @@
 "use client";
 
 import * as React from "react";
-import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { toast } from "sonner";
 import { Check, Copy, Loader2, RefreshCw, ShieldCheck } from "lucide-react";
@@ -12,6 +11,7 @@ import { SimpleTooltip } from "@/components/ui/tooltip";
 import { RevealChip } from "@/components/shared/reveal-chip";
 import { CommandLine } from "@/components/shared/code-block";
 import { ConfirmAction } from "@/components/shared/confirm-action";
+import { useOptimisticValue } from "@/components/shared/use-optimistic-value";
 import { gqlAction } from "@/lib/graphql-client";
 
 /**
@@ -46,12 +46,10 @@ export function DeployHookPanel({
    * shows, so the shape of the link is legible without revealing it. */
   maskedUrl: string;
 }) {
-  const router = useRouter();
-  const [enabled, setEnabled] = React.useState(initialEnabled);
+  const [enabled, applyEnabled] = useOptimisticValue(initialEnabled);
   const [url, setUrl] = React.useState<string | null>(null);
   const [revealed, setRevealed] = React.useState(false);
   const [pending, setPending] = React.useState(false);
-  const [saving, startTransition] = React.useTransition();
 
   /** The real URL, fetched once and kept for the life of the panel. */
   const resolve = React.useCallback(async () => {
@@ -72,20 +70,15 @@ export function DeployHookPanel({
   }, [appId, url]);
 
   function toggle(value: boolean) {
-    setEnabled(value);
-    startTransition(async () => {
-      const res = await gqlAction(
-        `mutation($id: String!, $value: Boolean!) { setAppDeployHookEnabled(id: $id, value: $value) { id } }`,
-        { id: appId, value },
-      );
-      if (res.ok) {
-        toast.success(value ? "Deploy hook enabled" : "Deploy hook disabled");
-        router.refresh();
-      } else {
-        setEnabled(!value); // the server refused — don't show a state it doesn't have
-        toast.error(res.error);
-      }
-    });
+    applyEnabled(
+      value,
+      () =>
+        gqlAction(
+          `mutation($id: String!, $value: Boolean!) { setAppDeployHookEnabled(id: $id, value: $value) { id } }`,
+          { id: appId, value },
+        ),
+      { success: value ? "Deploy hook enabled" : "Deploy hook disabled" },
+    );
   }
 
   async function rotate() {
@@ -128,7 +121,6 @@ export function DeployHookPanel({
         <Switch
           checked={enabled}
           onCheckedChange={toggle}
-          disabled={saving}
           aria-label="Deploy hook"
         />
       </div>

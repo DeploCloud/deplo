@@ -1,11 +1,10 @@
 "use client";
 
 import * as React from "react";
-import { useRouter } from "next/navigation";
-import { toast } from "sonner";
 import { Switch } from "@/components/ui/switch";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { InfoTip } from "@/components/ui/info-tip";
+import { useOptimisticValue } from "@/components/shared/use-optimistic-value";
 import { gqlAction } from "@/lib/graphql-client";
 
 /**
@@ -25,36 +24,29 @@ export function McpPanel({
   enabled: boolean;
   canManage: boolean;
 }) {
-  const router = useRouter();
-  const [pending, startTransition] = React.useTransition();
-  const [enabled, setEnabled] = React.useState(initialEnabled);
+  const [enabled, applyEnabled] = useOptimisticValue(initialEnabled);
 
   function toggle(next: boolean) {
-    setEnabled(next);
-    startTransition(async () => {
-      const res = await gqlAction<{ setMcpSettings: unknown }, unknown>(
-        /* GraphQL */ `
-          mutation SetMcpSettings($enabled: Boolean!) {
-            setMcpSettings(enabled: $enabled) {
-              enabled
+    applyEnabled(
+      next,
+      () =>
+        gqlAction<{ setMcpSettings: unknown }, unknown>(
+          /* GraphQL */ `
+            mutation SetMcpSettings($enabled: Boolean!) {
+              setMcpSettings(enabled: $enabled) {
+                enabled
+              }
             }
-          }
-        `,
-        { enabled: next },
-        (d) => d.setMcpSettings,
-      );
-      if (res.ok) {
-        toast.success(
-          next
-            ? "AI agents can now drive this team"
-            : "MCP access is off for this team",
-        );
-        router.refresh();
-      } else {
-        setEnabled(!next);
-        toast.error(res.error);
-      }
-    });
+          `,
+          { enabled: next },
+          (d) => d.setMcpSettings,
+        ),
+      {
+        success: next
+          ? "AI agents can now drive this team"
+          : "MCP access is off for this team",
+      },
+    );
   }
 
   return (
@@ -77,7 +69,7 @@ export function McpPanel({
           <Switch
             checked={enabled}
             onCheckedChange={toggle}
-            disabled={!canManage || pending}
+            disabled={!canManage}
             aria-label="Allow AI agents"
           />
         </div>

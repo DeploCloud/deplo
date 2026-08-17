@@ -28,7 +28,7 @@ export function AccountPanel({ user }: { user: PublicUser }) {
 
 function ProfileCard({ user }: { user: PublicUser }) {
   const router = useRouter();
-  const [pending, startTransition] = React.useTransition();
+  const [, startTransition] = React.useTransition();
   const [name, setName] = React.useState(user.name);
   const dirty = name.trim() !== user.name;
 
@@ -77,9 +77,9 @@ function ProfileCard({ user }: { user: PublicUser }) {
           <Button
             size="sm"
             onClick={save}
-            disabled={pending || !dirty || !name.trim()}
+            disabled={!dirty || !name.trim()}
           >
-            {pending ? "Saving…" : "Save"}
+            Save
           </Button>
         </div>
       </CardContent>

@@ -123,6 +123,8 @@ function EditForm({
   }
 
   function submit() {
+    // Closes on the click; a rename that clashes reopens it on what was typed.
+    onOpenChange(false);
     startTransition(async () => {
       // A rename moves the row to its new key FIRST — it's keyed by id, so it can't
       // clash with the value upsert below (which finds the row by (appId, key), and
@@ -136,6 +138,7 @@ function EditForm({
           { id: editing.id, newKey: trimmedKey },
         );
         if (!r.ok) {
+          onOpenChange(true);
           toast.error(r.error);
           return;
         }
@@ -153,13 +156,12 @@ function EditForm({
           },
         },
       );
-      if (res.ok) {
-        toast.success("Variable updated");
-        onOpenChange(false);
-        router.refresh();
-      } else {
+      if (res.ok) toast.success("Variable updated");
+      else {
+        onOpenChange(true);
         toast.error(res.error);
       }
+      router.refresh();
     });
   }
 

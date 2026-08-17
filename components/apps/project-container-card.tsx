@@ -3,7 +3,6 @@
 import * as React from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { toast } from "sonner";
 import { Boxes, FolderOpen, MoreHorizontal, Palette, Pencil, Trash2 } from "lucide-react";
 import { Card } from "@/components/ui/card";
 import {
@@ -30,6 +29,7 @@ import { ConfirmAction } from "@/components/shared/confirm-action";
 import { FolderColorPicker } from "@/components/apps/folder-color-picker";
 import { useBulkAppActions } from "@/components/apps/bulk-app-actions";
 import { cn, readableTextColor } from "@/lib/utils";
+import { useOptimisticValue } from "@/components/shared/use-optimistic-value";
 import { gqlAction } from "@/lib/graphql-client";
 // Shared with the Overview SERVER component — must stay in a plain module (an
 // RSC cannot call a function exported from a "use client" file).
@@ -88,11 +88,16 @@ export function ProjectContainerCard({
   onRestored?: () => void;
 }) {
   const router = useRouter();
-  const [pending, startTransition] = React.useTransition();
   const [renameOpen, setRenameOpen] = React.useState(false);
   const [colorOpen, setColorOpen] = React.useState(false);
   const [deleteOpen, setDeleteOpen] = React.useState(false);
   const [name, setName] = React.useState(project.name);
+  // What the card SHOWS: a rename or a recolour lands here on the click and the
+  // server's own value takes over when the refresh brings it.
+  const [shownName, applyName] = useOptimisticValue(project.name);
+  const [shownColor, applyColor] = useOptimisticValue<string | null>(
+    project.color ?? null,
+  );
   const [draftColor, setDraftColor] = React.useState<string | null>(
     project.color ?? null,
   );
@@ -115,11 +120,11 @@ export function ProjectContainerCard({
   const countLabel =
     `${s} ${s === 1 ? "app" : "apps"} · ${e} ${e === 1 ? "environment" : "environments"}`;
 
-  const tileStyle = project.color
-    ? { backgroundColor: project.color, color: readableTextColor(project.color) }
+  const tileStyle = shownColor
+    ? { backgroundColor: shownColor, color: readableTextColor(shownColor) }
     : undefined;
-  const cardStyle = project.color
-    ? { backgroundColor: `${project.color}1a`, borderColor: `${project.color}40` }
+  const cardStyle = shownColor
+    ? { backgroundColor: `${shownColor}1a`, borderColor: `${shownColor}40` }
     : undefined;
 
   function onRenameSubmit(e: React.FormEvent) {
@@ -133,17 +138,16 @@ export function ProjectContainerCard({
       setRenameOpen(false);
       return;
     }
-    startTransition(async () => {
-      const res = await gqlAction(
-        `mutation($id: ID!, $name: String!) { renameProject(id: $id, name: $name) }`,
-        { id: project.id, name: next },
-      );
-      if (res.ok) {
-        toast.success("Project renamed");
-        setRenameOpen(false);
-        router.refresh();
-      } else toast.error(res.error);
-    });
+    setRenameOpen(false);
+    applyName(
+      next,
+      () =>
+        gqlAction(
+          `mutation($id: ID!, $name: String!) { renameProject(id: $id, name: $name) }`,
+          { id: project.id, name: next },
+        ),
+      { success: "Project renamed" },
+    );
   }
 
   function onColorSubmit(e: React.FormEvent) {
@@ -152,17 +156,17 @@ export function ProjectContainerCard({
   }
 
   function changeColor() {
-    startTransition(async () => {
-      const res = await gqlAction(
-        `mutation($id: ID!, $color: String) { setProjectColor(id: $id, color: $color) }`,
-        { id: project.id, color: draftColor },
-      );
-      if (res.ok) {
-        toast.success("Project colour updated");
-        setColorOpen(false);
-        router.refresh();
-      } else toast.error(res.error);
-    });
+    const picked = draftColor;
+    setColorOpen(false);
+    applyColor(
+      picked,
+      () =>
+        gqlAction(
+          `mutation($id: ID!, $color: String) { setProjectColor(id: $id, color: $color) }`,
+          { id: project.id, color: picked },
+        ),
+      { success: "Project colour updated" },
+    );
   }
 
   // Project actions for the ⋯ dropdown (open / rename / colour / delete).
@@ -243,7 +247,7 @@ export function ProjectContainerCard({
   const overlayLink = (
     <Link
       href={href}
-      aria-label={`Open project ${project.name}`}
+      aria-label={`Open project ${shownName}`}
       tabIndex={dragActive ? -1 : undefined}
       aria-hidden={dragActive || undefined}
       className={cn(
@@ -257,7 +261,7 @@ export function ProjectContainerCard({
     <div
       className={cn(
         "flex size-9 shrink-0 items-center justify-center rounded-md",
-        project.color ? "" : "bg-secondary text-muted-foreground",
+        shownColor ? "" : "bg-secondary text-muted-foreground",
       )}
       style={tileStyle}
     >
@@ -289,11 +293,11 @@ export function ProjectContainerCard({
               />
             </div>
             <DialogFooter>
-              <Button variant="outline" onClick={() => setRenameOpen(false)} disabled={pending}>
+              <Button variant="outline" onClick={() => setRenameOpen(false)}>
                 Cancel
               </Button>
-              <Button type="submit" disabled={pending || !name.trim()}>
-                {pending ? "Saving…" : "Save"}
+              <Button type="submit" disabled={!name.trim()}>
+                Save
               </Button>
             </DialogFooter>
           </form>
@@ -318,12 +322,10 @@ export function ProjectContainerCard({
               idPrefix={`project-${project.id}`}
             />
             <DialogFooter>
-              <Button variant="outline" onClick={() => setColorOpen(false)} disabled={pending}>
+              <Button variant="outline" onClick={() => setColorOpen(false)}>
                 Cancel
               </Button>
-              <Button type="submit" disabled={pending}>
-                {pending ? "Saving…" : "Save"}
-              </Button>
+              <Button type="submit">Save</Button>
             </DialogFooter>
           </form>
         </DialogContent>
@@ -364,7 +366,7 @@ export function ProjectContainerCard({
         <div className="pointer-events-none relative z-[1] flex min-w-0 flex-1 items-center gap-4">
           {tile}
           <div className="min-w-0 flex-1">
-            <span className="truncate font-medium">{project.name}</span>
+            <span className="truncate font-medium">{shownName}</span>
             <p className="mt-1 text-xs text-muted-foreground">{countLabel}</p>
           </div>
         </div>
@@ -384,7 +386,7 @@ export function ProjectContainerCard({
           <div className="flex min-w-0 items-center gap-3">
             {tile}
             <div className="min-w-0">
-              <span className="block truncate font-medium">{project.name}</span>
+              <span className="block truncate font-medium">{shownName}</span>
               <p className="mt-1 text-xs text-muted-foreground">{countLabel}</p>
             </div>
           </div>

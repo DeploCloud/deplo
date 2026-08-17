@@ -64,6 +64,7 @@ import type {
 import type { BuildConfig, DeploySource, GitRepo } from "@/lib/types";
 import { deploySourceEnumName } from "@/lib/types";
 import { cn, serverLabel, usesComposeStack } from "@/lib/utils";
+import { useOptimisticValue } from "@/components/shared/use-optimistic-value";
 import { gqlAction } from "@/lib/graphql-client";
 
 const SOURCE_TABS: {
@@ -217,7 +218,9 @@ export function DeploymentSettingsForm({
   const [frameworkOverride, setFrameworkOverride] = React.useState(
     initialFrameworkOverride,
   );
-  const [autoDeploy, setAutoDeploy] = React.useState(initialAutoDeploy);
+  // The switch answers on the click and snaps back with the server's message if
+  // it is refused — a switch that waits out a round trip reads as a broken one.
+  const [autoDeploy, applyAutoDeploy] = useOptimisticValue(initialAutoDeploy);
   const [pending, startTransition] = React.useTransition();
   // The git deploy-trigger options are advanced and rarely changed, so the whole
   // section is collapsed by default (a summary of the active trigger shows in the
@@ -659,15 +662,12 @@ export function DeploymentSettingsForm({
   }
 
   function toggleAuto(v: boolean) {
-    setAutoDeploy(v);
-    startTransition(async () => {
-      const res = await gqlAction(
+    applyAutoDeploy(v, () =>
+      gqlAction(
         `mutation($id: String!, $value: Boolean!) { setAppAutoDeploy(id: $id, value: $value) { id } }`,
         { id: appId, value: v },
-      );
-      if (res.ok) router.refresh();
-      else toast.error(res.error);
-    });
+      ),
+    );
   }
 
   return (

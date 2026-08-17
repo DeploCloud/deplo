@@ -19,7 +19,7 @@ export function TeamForm({
   canManage?: boolean;
 }) {
   const router = useRouter();
-  const [pending, startTransition] = React.useTransition();
+  const [, startTransition] = React.useTransition();
   const [name, setName] = React.useState(initialName);
   const [slug, setSlug] = React.useState(initialSlug);
 
@@ -72,9 +72,9 @@ export function TeamForm({
           <Button
             size="sm"
             onClick={save}
-            disabled={pending || !dirty || !name.trim() || !slug.trim()}
+            disabled={!dirty || !name.trim() || !slug.trim()}
           >
-            {pending ? "Saving…" : "Save changes"}
+            Save changes
           </Button>
         </div>
       )}

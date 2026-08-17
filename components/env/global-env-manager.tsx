@@ -272,6 +272,9 @@ function GlobalEnvDialog({
   }
 
   function submit() {
+    // Closes on the click and writes behind it; a refusal reopens it with the
+    // key and value still in the fields.
+    onOpenChange(false);
     startTransition(async () => {
       const res = await gqlAction<Record<string, { id: string }>>(
         `mutation($input: ${inputType}!) { ${upsertField}(input: $input) { id } }`,
@@ -283,8 +286,7 @@ function GlobalEnvDialog({
           },
         },
       );
-      if (!res.ok) return;
-      onOpenChange(false);
+      if (!res.ok) onOpenChange(true);
       router.refresh();
     });
   }

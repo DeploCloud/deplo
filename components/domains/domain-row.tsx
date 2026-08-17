@@ -203,6 +203,10 @@ export function DomainRow({
       toast.error(resolved.error);
       return;
     }
+    // The dialog closes on the click. The routing write and the DNS re-check
+    // behind it decide only which toast lands; a refusal reopens the dialog on
+    // exactly what was typed.
+    setEditOpen(false);
     startTransition(async () => {
       const res = await gqlAction<{
         updateDomain: { id: string; status: string };
@@ -247,13 +251,13 @@ export function DomainRow({
           toast.warning(
             "Domain updated - point its DNS at the server and it verifies automatically",
           );
-        setEditOpen(false);
-        // No revalidatePath on the GraphQL API — refresh so the edited row
-        // reflects the new routing config.
-        router.refresh();
       } else {
+        setEditOpen(true);
         toast.error(res.error);
       }
+      // No revalidatePath on the GraphQL API — refresh so the edited row
+      // reflects the new routing config.
+      router.refresh();
     });
   }
 

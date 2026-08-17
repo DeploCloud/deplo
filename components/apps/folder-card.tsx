@@ -41,6 +41,7 @@ import { FolderColorPicker } from "@/components/apps/folder-color-picker";
 import { ShareFolderDialog } from "@/components/apps/share-folder-dialog";
 import { useBulkAppActions } from "@/components/apps/bulk-app-actions";
 import { cn, readableTextColor } from "@/lib/utils";
+import { useOptimisticValue } from "@/components/shared/use-optimistic-value";
 import { gqlAction } from "@/lib/graphql-client";
 import { folderHref } from "@/lib/overview-links";
 
@@ -136,6 +137,12 @@ export function FolderCard({
   const [colorOpen, setColorOpen] = React.useState(false);
   const [shareOpen, setShareOpen] = React.useState(false);
   const [name, setName] = React.useState(folder.name);
+  // What the card SHOWS: the rename/recolour lands here on the click and the
+  // server's own value takes over as soon as the refresh brings it.
+  const [shownName, applyName] = useOptimisticValue(folder.name);
+  const [shownColor, applyColor] = useOptimisticValue<string | null>(
+    folder.color ?? null,
+  );
 
   // Per-folder gating, derived from the folder's own data (see the doc comment).
   // A super-user override wins outright; otherwise `deploy` gates the mutating
@@ -172,11 +179,11 @@ export function FolderCard({
   // The folder's icon tile: its chosen colour with an auto-contrast icon, or the
   // default neutral tile when no colour is set. One definition drives both
   // layouts so the list and grid cards always match.
-  const tileColored = Boolean(folder.color);
-  const tileStyle = folder.color
+  const tileColored = Boolean(shownColor);
+  const tileStyle = shownColor
     ? {
-        backgroundColor: folder.color,
-        color: readableTextColor(folder.color),
+        backgroundColor: shownColor,
+        color: readableTextColor(shownColor),
       }
     : undefined;
   const tileClass = tileColored ? "" : "bg-secondary text-muted-foreground";
@@ -185,8 +192,8 @@ export function FolderCard({
   // slightly stronger edge, so it reads as that colour at a glance while keeping
   // the text legible. `dropActive`'s primary ring still draws on top. Hex alpha
   // suffixes: `1a` ≈ 10%, `40` ≈ 25%.
-  const cardStyle = folder.color
-    ? { backgroundColor: `${folder.color}1a`, borderColor: `${folder.color}40` }
+  const cardStyle = shownColor
+    ? { backgroundColor: `${shownColor}1a`, borderColor: `${shownColor}40` }
     : undefined;
 
   function onColorSubmit(e: React.FormEvent) {
@@ -195,17 +202,17 @@ export function FolderCard({
   }
 
   function changeColor() {
-    startTransition(async () => {
-      const res = await gqlAction(
-        `mutation($id: ID!, $color: String) { setFolderColor(id: $id, color: $color) }`,
-        { id: folder.id, color: draftColor },
-      );
-      if (res.ok) {
-        toast.success("Folder colour updated");
-        setColorOpen(false);
-        router.refresh();
-      } else toast.error(res.error);
-    });
+    const picked = draftColor;
+    setColorOpen(false);
+    applyColor(
+      picked,
+      () =>
+        gqlAction(
+          `mutation($id: ID!, $color: String) { setFolderColor(id: $id, color: $color) }`,
+          { id: folder.id, color: picked },
+        ),
+      { success: "Folder colour updated" },
+    );
   }
 
   // Move (re-parent) this folder under another folder, or to the top level.
@@ -234,17 +241,16 @@ export function FolderCard({
       setRenameOpen(false);
       return;
     }
-    startTransition(async () => {
-      const res = await gqlAction(
-        `mutation($id: ID!, $name: String!) { renameFolder(id: $id, name: $name) }`,
-        { id: folder.id, name: next },
-      );
-      if (res.ok) {
-        toast.success("Folder renamed");
-        setRenameOpen(false);
-        router.refresh();
-      } else toast.error(res.error);
-    });
+    setRenameOpen(false);
+    applyName(
+      next,
+      () =>
+        gqlAction(
+          `mutation($id: ID!, $name: String!) { renameFolder(id: $id, name: $name) }`,
+          { id: folder.id, name: next },
+        ),
+      { success: "Folder renamed" },
+    );
   }
 
   // Folder actions, rendered once for whichever menu primitive is passed. Each
@@ -393,7 +399,7 @@ export function FolderCard({
   const overlayLink = (
     <Link
       href={href}
-      aria-label={`Open folder ${folder.name}`}
+      aria-label={`Open folder ${shownName}`}
       tabIndex={dragActive ? -1 : undefined}
       aria-hidden={dragActive || undefined}
       className={cn(
@@ -432,12 +438,11 @@ export function FolderCard({
               <Button
                 variant="outline"
                 onClick={() => setRenameOpen(false)}
-                disabled={pending}
               >
                 Cancel
               </Button>
-              <Button type="submit" disabled={pending || !name.trim()}>
-                {pending ? "Saving…" : "Save"}
+              <Button type="submit" disabled={!name.trim()}>
+                Save
               </Button>
             </DialogFooter>
           </form>
@@ -465,12 +470,11 @@ export function FolderCard({
               <Button
                 variant="outline"
                 onClick={() => setColorOpen(false)}
-                disabled={pending}
               >
                 Cancel
               </Button>
-              <Button type="submit" disabled={pending}>
-                {pending ? "Saving…" : "Save"}
+              <Button type="submit">
+                Save
               </Button>
             </DialogFooter>
           </form>
@@ -530,7 +534,7 @@ export function FolderCard({
             <Folder className="size-4.5" />
           </div>
           <div className="min-w-0 flex-1">
-            <span className="truncate font-medium">{folder.name}</span>
+            <span className="truncate font-medium">{shownName}</span>
             <p className="mt-1 text-xs text-muted-foreground">{countLabel}</p>
           </div>
         </div>
@@ -557,7 +561,7 @@ export function FolderCard({
               <Folder className="size-4.5" />
             </div>
             <div className="min-w-0">
-              <span className="truncate font-medium">{folder.name}</span>
+              <span className="truncate font-medium">{shownName}</span>
               <p className="mt-1 text-xs text-muted-foreground">{countLabel}</p>
             </div>
           </div>
