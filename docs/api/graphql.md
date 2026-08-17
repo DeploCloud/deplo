@@ -222,6 +222,19 @@ therefore not capped per team.
   `capabilities` pair still works and lands on the matching role when there is
   one — never a role limited to part of the team, since that shape says nothing
   about reach.
+- **Importing from Dokploy** is five mutations plus two queries, all gated on
+  `create_projects` and refused to a narrowed principal (an import writes across
+  the whole team): `scanDokploy(input)` reads the source instance and returns the
+  plan without writing anything, `beginDokployImport(url, orgName)` opens a run,
+  `importDokployProject(input, runId, projectId, …)` imports **one project per
+  call** — that is the unit on purpose, so progress is real and a re-run resumes
+  instead of duplicating — `finishDokployImport(runId)` closes it, and
+  `importDokployMembers(input, runId)` (instance admin) turns the other
+  platform's members into registration links. `dokployImports` /
+  `dokployImport(id)` read the kept report. Nothing is deployed by an import, and
+  the API key is never stored: it rides each call. `input.allowPrivate` reaches a
+  private address (the same-machine case) and is instance-admin only, like
+  `allowPrivateEndpoint` on a git connection.
 - **Subscriptions** (SSE via graphql-yoga): `appStatus(slug)` and
   `databaseStatus(id)` — each emits the entity on every state change (initial
   snapshot, then live), so a client tracks provisioning/start/stop/deploy with

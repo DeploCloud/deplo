@@ -457,8 +457,12 @@ export function ImportWizard({
           STEPS.slice(0, STEPS.findIndex((x) => x.id === s)).every((p) => done[p.id])
         }
         onSelect={(s) => {
-          // The import is not a step you can walk back into while it runs.
+          // The import is not a step you can walk back into while it runs, and
+          // the last two are not steps you can walk FORWARD into: they are what
+          // the Import button produces, and an empty progress bar with nothing
+          // behind it is worse than a chip that does not respond.
           if (step === "import" && progress.done < progress.total) return;
+          if ((s === "import" || s === "done") && items.length === 0) return;
           setStep(s);
         }}
       />
@@ -905,6 +909,13 @@ function ReviewStep({
           </Button>
         </CardHeader>
         <CardContent className="space-y-3">
+          {plan.projects.length === 0 && (
+            <EmptyState
+              icon={Layers}
+              title="Nothing to import"
+              description="That Dokploy organization has no projects, or the key cannot see them."
+            />
+          )}
           {plan.projects.map((p) => (
             <div key={p.sourceId} className="rounded-lg border">
               <div className="flex items-center gap-3 border-b p-3">

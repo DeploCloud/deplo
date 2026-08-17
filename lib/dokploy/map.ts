@@ -455,7 +455,7 @@ export function mapSource(app: DokployApplication): Mapped<MappedSource> {
     );
   else
     notes.push(
-      `Repository ${repo.repo} carries no credential (Dokploy's API never exposes them). A private repo needs a git connection before it can deploy.`,
+      `Repository ${repo.repo} arrives with no credential - Dokploy's API never exposes one. Attach a git connection when you are ready to deploy it: doing that is also what starts auto-deploying on every push, which you do not want while the old platform is still serving this app.`,
     );
 
   return {
