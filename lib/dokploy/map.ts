@@ -723,6 +723,19 @@ const DB_ENGINE: Partial<Record<DokployDbKind, DatabaseType>> = {
   redis: "redis",
 };
 
+/**
+ * The deplo engine for one of Dokploy's database tables, or null when there is
+ * none (libsql).
+ *
+ * Exported so the decision is made BEFORE the detail call: asking Dokploy for a
+ * libsql row we can do nothing with produces a 404 and a report line about HTTP,
+ * when the honest answer - "Deplo has no libsql engine" - was knowable without
+ * leaving the building.
+ */
+export function deploEngineFor(kind: DokployDbKind): DatabaseType | null {
+  return DB_ENGINE[kind] ?? null;
+}
+
 export interface MappedDatabase {
   type: DatabaseType;
   name: string;

@@ -57,6 +57,7 @@ import {
   type DokployProject,
 } from "../dokploy/client";
 import {
+  deploEngineFor,
   envNeedsInterpolation,
   mapBuildSettings,
   mapDatabase,
@@ -76,7 +77,7 @@ import { addExistingMember, mintRegistrationLink } from "./members";
 import { createApp, isSecretKey, setAppVolumes, updateAppResources } from "./apps";
 import { createCronJob } from "./crons";
 import { createDatabase, updateDatabaseImage } from "./databases";
-import { addDomain } from "./domains";
+import { addDomain, updateDomain } from "./domains";
 import { createEnvironment, listEnvironmentsForProject } from "./environments";
 import { createProject, defaultEnvironmentFor, listProjects } from "./projects";
 import { listServersForTeam } from "./servers";
@@ -372,15 +373,23 @@ export async function scanDokploy(input: ConnectInput): Promise<DokployPlan> {
           sourceId: svc.id,
           kind: svc.kind,
           name: svc.name,
-          targetKind: svc.kind === "libsql" ? null : svc.kind === "compose" || svc.kind === "application" ? "app" : "database",
+          targetKind:
+            svc.kind === "compose" || svc.kind === "application"
+              ? "app"
+              : deploEngineFor(svc.kind)
+                ? "database"
+                : null,
           status: "new",
           sourceServerId: svc.serverId,
           domains: [],
           notes: [],
         };
-        if (svc.kind === "libsql") {
+        // An engine Deplo does not have is settled here, without a detail call:
+        // asking about a libsql row we can do nothing with would turn a plain
+        // fact into an HTTP 404 in the report.
+        if (line.targetKind === null) {
           line.status = "unsupported";
-          line.notes.push("Deplo has no libsql engine.");
+          line.notes.push(`Deplo has no ${svc.kind} engine.`);
           services[index] = line;
           return;
         }
@@ -1223,19 +1232,28 @@ async function importAppService(
   // point: the app is up, but not on the name it used to answer.
   if (primary) {
     const landed = await getDb()
-      .select({ name: domainsTable.name })
+      .select({ id: domainsTable.id, name: domainsTable.name, certProvider: domainsTable.certProvider })
       .from(domainsTable)
       .where(and(eq(domainsTable.appId, created.id), eq(domainsTable.isPrimary, true)));
     if (landed[0] && landed[0].name.toLowerCase() !== primary.host)
       notes.push(
         `${primary.host} could not be taken (another team routes it, or it is not a name Deplo accepts) - the app answers on ${landed[0].name} instead.`,
       );
-    else if (primary.certProvider !== "none")
-      // certProvider is decided inside createApp from the blueprint, so a
-      // letsencrypt domain may land as "none" until DNS points here.
-      notes.push(
-        `${primary.host} used Let's Encrypt on Dokploy. Check the certificate under Domains once DNS points at this server.`,
-      );
+    else if (landed[0] && landed[0].certProvider !== primary.certProvider) {
+      // createApp mints the primary domain itself and decides its certificate the
+      // way a template would (`blueprintWantsTls`), so the choice made on Dokploy
+      // has to be applied afterwards. It IS explicit intent - certificates are
+      // opt-in here, and someone who had one over there asked for it - and doing
+      // it now is the difference between an import and a to-do list of boxes to
+      // re-tick on every app.
+      try {
+        await updateDomain(landed[0].id, { certProvider: primary.certProvider });
+      } catch (e) {
+        notes.push(
+          `${primary.host} kept no certificate: ${e instanceof Error ? e.message : "refused"}. Pick one under Domains.`,
+        );
+      }
+    }
   }
 
   for (const d of domains.value.slice(1)) await addExtraDomain(created.id, d, notes);
@@ -1351,6 +1369,19 @@ async function importDatabaseService(
   serverId: string | undefined,
   report: Report,
 ): Promise<void> {
+  // Decided before the detail call, exactly like the scan does it: an engine deplo
+  // does not have is not a request worth making, and a 404 would report itself as
+  // an HTTP problem rather than as the plain fact that there is no such engine.
+  if (!deploEngineFor(svc.kind as DokployDbKind)) {
+    await report.add({
+      sourceKind: svc.kind,
+      sourceName: svc.name,
+      outcome: "unsupported",
+      targetKind: "database",
+      message: `Deplo has no ${svc.kind} engine.`,
+    });
+    return;
+  }
   const row = (await loadService(c, svc)) as DokployDatabase;
   const mapped = mapDatabase(svc.kind as DokployDbKind, row);
   const notes = [...mapped.notes];

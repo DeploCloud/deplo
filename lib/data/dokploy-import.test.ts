@@ -425,6 +425,9 @@ test("the primary domain is the real hostname, not Dokploy's throwaway one", asy
     .where(eq(domainsTable.appId, web.id));
   const primary = doms.find((d) => d.isPrimary)!;
   assert.equal(primary.name, "blink.acme.test");
+  // The certificate Dokploy had is explicit intent, so it is carried over rather
+  // than left for someone to re-tick on every imported app.
+  assert.equal(primary.certProvider, "letsencrypt");
   assert.equal(doms.some((d) => d.name.endsWith(".traefik.me")), false);
 });
 
@@ -442,6 +445,19 @@ test("the compose file arrives with Dokploy's network taken out", async () => {
   assert.equal(doc.networks, undefined);
   assert.equal("networks" in doc.services.web, false);
   assert.match(doc.services.web.image ?? "", /nginx/);
+
+  // Nothing in this stack's variables mentions https, so Deplo's own blueprint
+  // rule would have left the domain without a certificate - the letsencrypt here
+  // can only have come from Dokploy's own setting.
+  const doms = await db
+    .select()
+    .from(domainsTable)
+    .where(eq(domainsTable.appId, stack.id));
+  const primary = doms.find((d) => d.isPrimary)!;
+  assert.equal(primary.name, "stack.acme.test");
+  assert.equal(primary.certProvider, "letsencrypt");
+  assert.equal(primary.service, "web");
+  assert.equal(primary.port, 80);
 });
 
 test("a project's and an environment's own variables become linked shared variables", async () => {
@@ -500,6 +516,18 @@ test("one service Dokploy will not return does not stop the others", async () =>
   // The app before it, and the database after it, were both still attempted.
   assert.ok(result.created >= 3, `created ${result.created}`);
   assert.ok(result.items.some((i) => i.sourceKind === "postgres"));
+});
+
+test("an engine Deplo does not have is settled without asking Dokploy about it", async () => {
+  const runId = await asOwner(() => beginDokployImport({ url: URL_BASE }));
+  calls = [];
+  const result = await importProject(runId, "dok-prj-other");
+
+  const row = result.items.find((i) => i.sourceKind === "libsql")!;
+  assert.equal(row.outcome, "unsupported");
+  assert.match(row.message!, /no libsql engine/);
+  // Not a 404 dressed up as a finding: the detail call is never made.
+  assert.equal(calls.includes("libsql.one"), false);
 });
 
 test("databases can be left out entirely", async () => {

@@ -32,6 +32,7 @@ import {
   SlidersHorizontal,
   Cpu,
   Bot,
+  DownloadCloud,
   type LucideIcon,
 } from "lucide-react";
 
@@ -248,6 +249,17 @@ export const SETTINGS_NAV: NavSection[] = [
         // reason to be here; the wizard then disables the branch the viewer
         // cannot finish, saying why, rather than failing at the last click.
         requiresAny: ["manage_mcp", "manage_tokens"],
+      },
+      {
+        label: "Import",
+        href: "/settings/import",
+        icon: DownloadCloud,
+        tooltip: "Bring projects over from Dokploy",
+        // The smallest capability that can produce what an import produces. Every
+        // object it creates then re-checks its own permission, so someone who can
+        // make projects but not databases still has a use for this page - the
+        // databases land in the report instead of being created.
+        requires: "create_projects",
       },
     ],
   },
