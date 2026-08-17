@@ -15,6 +15,7 @@ import "./types/console";
 import "./types/cron";
 import "./types/database";
 import "./types/destination";
+import "./types/dokploy";
 import "./types/domain";
 import "./types/enums";
 import "./types/env";

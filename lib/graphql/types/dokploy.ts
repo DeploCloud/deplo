@@ -1,0 +1,380 @@
+import { builder } from "../builder";
+import {
+  beginDokployImport,
+  finishDokployImport,
+  getDokployImport,
+  importDokployMembers,
+  importDokployProject,
+  listDokployImports,
+  scanDokploy,
+  type DokployInvite,
+  type DokployPlan,
+  type ImportItemDTO,
+  type ImportProjectResult,
+  type ImportRunDTO,
+  type PlanEnvironment,
+  type PlanMember,
+  type PlanProject,
+  type PlanServer,
+  type PlanService,
+} from "@/lib/data/dokploy-import";
+
+/**
+ * Import from Dokploy — read a Dokploy instance over its API and create the deplo
+ * equivalents in the ACTIVE team.
+ *
+ * Every resolver is one line into `lib/data/dokploy-import.ts`, which is where the
+ * gates live. `create_projects` is the entry capability on all of them (and the
+ * data layer additionally refuses a narrowed principal, since an import writes
+ * across the whole team); each object created then re-checks its own capability
+ * inside the same `lib/data` function the UI calls, so a caller who cannot create
+ * databases gets them in the report instead of a privileged shortcut.
+ *
+ * The import is driven one PROJECT per call. That is deliberate: progress is real,
+ * each request is short, and re-running resumes rather than duplicating.
+ */
+
+/* ------------------------------------------------------------------ */
+/* Enums                                                              */
+/* ------------------------------------------------------------------ */
+
+const DokployPlanStatusEnum = builder.enumType("DokployPlanStatus", {
+  description:
+    "What the preview thinks will happen to one Dokploy service. new = it will be created. exists = something with that name is already here, so it is left alone. unsupported = Deplo has no such thing (a libsql database, a service Dokploy would not return). needs_grant = it can only be created by someone holding the host-volumes or expose-ports grant.",
+  values: ["new", "exists", "unsupported", "needs_grant"] as const,
+});
+
+const DokployOutcomeEnum = builder.enumType("DokployImportOutcome", {
+  description:
+    "One line of the report. created = it is in Deplo now. skipped = already here, or left out on purpose. failed = refused, with the server's own message. manual = it came across, but something needs a person (a private repo with no credential, a database whose host name changed, a compose file that was rewritten). unsupported = there is no Deplo equivalent.",
+  values: ["created", "skipped", "failed", "manual", "unsupported"] as const,
+});
+
+/* ------------------------------------------------------------------ */
+/* The plan                                                           */
+/* ------------------------------------------------------------------ */
+
+const PlanServiceRef = builder
+  .objectRef<PlanService>("DokployPlanService")
+  .implement({
+    description:
+      "One Dokploy service (an application, a compose stack, or a database) as it would land here.",
+    fields: (t) => ({
+      sourceId: t.exposeString("sourceId"),
+      kind: t.exposeString("kind", {
+        description:
+          "What it is on Dokploy: application, compose, or one of postgres/mysql/mariadb/mongo/redis/libsql.",
+      }),
+      name: t.exposeString("name"),
+      targetKind: t.exposeString("targetKind", {
+        nullable: true,
+        description: "app or database, or null when Deplo has no equivalent.",
+      }),
+      status: t.field({ type: DokployPlanStatusEnum, resolve: (s) => s.status }),
+      sourceServerId: t.exposeString("sourceServerId", {
+        description:
+          "The Dokploy server it runs on. Empty string means Dokploy's own host, which has no server row over there.",
+      }),
+      domains: t.exposeStringList("domains", {
+        description:
+          "The hostnames that would come across. Dokploy's generated throwaway hosts (traefik.me, sslip.io, nip.io) are already dropped — Deplo mints its own.",
+      }),
+      notes: t.exposeStringList("notes", {
+        description: "What will not come across, or will need a look afterwards.",
+      }),
+    }),
+  });
+
+const PlanEnvironmentRef = builder
+  .objectRef<PlanEnvironment>("DokployPlanEnvironment")
+  .implement({
+    fields: (t) => ({
+      sourceId: t.exposeString("sourceId"),
+      name: t.exposeString("name"),
+      exists: t.exposeBoolean("exists", {
+        description:
+          "An environment of that name is already in the matching project — Dokploy's `production` maps onto the one every Deplo project starts with.",
+      }),
+      services: t.field({ type: [PlanServiceRef], resolve: (e) => e.services }),
+    }),
+  });
+
+const PlanProjectRef = builder
+  .objectRef<PlanProject>("DokployPlanProject")
+  .implement({
+    fields: (t) => ({
+      sourceId: t.exposeString("sourceId"),
+      name: t.exposeString("name"),
+      exists: t.exposeBoolean("exists"),
+      environments: t.field({
+        type: [PlanEnvironmentRef],
+        resolve: (p) => p.environments,
+      }),
+    }),
+  });
+
+const PlanServerRef = builder
+  .objectRef<PlanServer>("DokployPlanServer")
+  .implement({
+    description:
+      "A server the source instance deploys to, to be matched with one of ours. Dokploy's own host does not appear here; it is the empty `sourceServerId`.",
+    fields: (t) => ({
+      sourceId: t.exposeString("sourceId"),
+      name: t.exposeString("name"),
+      ipAddress: t.exposeString("ipAddress", { nullable: true }),
+    }),
+  });
+
+const PlanMemberRef = builder
+  .objectRef<PlanMember>("DokployPlanMember")
+  .implement({
+    description:
+      "Someone in the Dokploy organization the API key reads. Empty when the key belongs to a plain member, which cannot list the organization.",
+    fields: (t) => ({
+      email: t.exposeString("email"),
+      name: t.exposeString("name"),
+      sourceRole: t.exposeString("sourceRole", {
+        description:
+          "The role they held on Dokploy. Shown, never applied: everyone arrives as a plain member and is promoted on purpose.",
+      }),
+      hasAccount: t.exposeBoolean("hasAccount"),
+      inTeam: t.exposeBoolean("inTeam"),
+    }),
+  });
+
+const DokployPlanRef = builder.objectRef<DokployPlan>("DokployPlan").implement({
+  description:
+    "What an import would do, read from the source instance without writing anything.",
+  fields: (t) => ({
+    sourceUrl: t.exposeString("sourceUrl"),
+    orgName: t.exposeString("orgName", {
+      nullable: true,
+      description:
+        "The Dokploy organization this key reads. An API key belongs to one organization, so importing a second one means a second key.",
+    }),
+    projects: t.field({ type: [PlanProjectRef], resolve: (p) => p.projects }),
+    servers: t.field({ type: [PlanServerRef], resolve: (p) => p.servers }),
+    members: t.field({ type: [PlanMemberRef], resolve: (p) => p.members }),
+  }),
+});
+
+/* ------------------------------------------------------------------ */
+/* The report                                                         */
+/* ------------------------------------------------------------------ */
+
+const ImportItemRef = builder
+  .objectRef<ImportItemDTO>("DokployImportItem")
+  .implement({
+    fields: (t) => ({
+      path: t.exposeString("path", {
+        description: "Where it was on Dokploy: `Project / Environment / service`.",
+      }),
+      sourceKind: t.exposeString("sourceKind"),
+      sourceName: t.exposeString("sourceName"),
+      outcome: t.field({ type: DokployOutcomeEnum, resolve: (i) => i.outcome as never }),
+      targetKind: t.exposeString("targetKind", { nullable: true }),
+      targetId: t.exposeString("targetId", { nullable: true }),
+      message: t.exposeString("message", { nullable: true }),
+    }),
+  });
+
+const ImportRunRef = builder
+  .objectRef<ImportRunDTO & { items?: ImportItemDTO[] }>("DokployImport")
+  .implement({
+    description:
+      "One import, kept after the tab that started it is gone. The API key is never stored.",
+    fields: (t) => ({
+      id: t.exposeString("id"),
+      sourceUrl: t.exposeString("sourceUrl"),
+      orgName: t.exposeString("orgName", { nullable: true }),
+      actor: t.exposeString("actor"),
+      status: t.exposeString("status", {
+        description: "running | done | failed. A run left open by a closed tab is failed as `Interrupted` by the next one.",
+      }),
+      created: t.exposeInt("created"),
+      skipped: t.exposeInt("skipped"),
+      failed: t.exposeInt("failed"),
+      manual: t.exposeInt("manual"),
+      error: t.exposeString("error", { nullable: true }),
+      startedAt: t.exposeString("startedAt"),
+      finishedAt: t.exposeString("finishedAt", { nullable: true }),
+      items: t.field({
+        type: [ImportItemRef],
+        description: "The report. Only loaded by the single-run query.",
+        resolve: (r) => r.items ?? [],
+      }),
+    }),
+  });
+
+const ImportProjectResultRef = builder
+  .objectRef<ImportProjectResult>("DokployImportProjectResult")
+  .implement({
+    fields: (t) => ({
+      projectName: t.exposeString("projectName"),
+      created: t.exposeInt("created"),
+      skipped: t.exposeInt("skipped"),
+      failed: t.exposeInt("failed"),
+      manual: t.exposeInt("manual"),
+      items: t.field({ type: [ImportItemRef], resolve: (r) => r.items }),
+    }),
+  });
+
+const InviteRef = builder.objectRef<DokployInvite>("DokployInvite").implement({
+  description:
+    "One person from the Dokploy organization: either added to the team (they already had a Deplo account) or handed a single-use registration link.",
+  fields: (t) => ({
+    email: t.exposeString("email"),
+    name: t.exposeString("name"),
+    link: t.exposeString("link", {
+      nullable: true,
+      description:
+        "The single-use registration link to send them, or null when they were added directly.",
+    }),
+    outcome: t.field({ type: DokployOutcomeEnum, resolve: (i) => i.outcome as never }),
+    message: t.exposeString("message", { nullable: true }),
+  }),
+});
+
+/* ------------------------------------------------------------------ */
+/* Inputs                                                             */
+/* ------------------------------------------------------------------ */
+
+const ServerChoiceInput = builder.inputType("DokployServerChoiceInput", {
+  description:
+    "Map one Dokploy server onto one of ours. `from` is the Dokploy server id, or the empty string for Dokploy's own host.",
+  fields: (t) => ({
+    from: t.string({ required: true }),
+    to: t.string({ required: true }),
+  }),
+});
+
+const ConnectInputRef = builder.inputType("DokployConnectInput", {
+  fields: (t) => ({
+    url: t.string({
+      required: true,
+      description:
+        "The Dokploy instance's address. `/api` is added automatically, so paste the address you open in a browser.",
+    }),
+    apiKey: t.string({
+      required: true,
+      description:
+        "A Dokploy API key (Settings -> Profile -> API/CLI). Use an owner's or admin's key: a plain member's key answers 403 on the per-service calls. Never stored.",
+    }),
+    allowPrivate: t.boolean({
+      required: false,
+      description:
+        "Allow a private or loopback address — what the same-machine case needs (http://172.17.0.1:3000). Instance admin only, like a git connection's or an S3 endpoint's private-endpoint flag.",
+    }),
+  }),
+});
+
+/* ------------------------------------------------------------------ */
+/* Queries                                                            */
+/* ------------------------------------------------------------------ */
+
+builder.queryFields((t) => ({
+  dokployImports: t.field({
+    type: [ImportRunRef],
+    authScopes: { capability: "create_projects" },
+    description:
+      "This team's import history, newest first. Without the per-run report — read one run for that.",
+    resolve: () => listDokployImports(),
+  }),
+  dokployImport: t.field({
+    type: ImportRunRef,
+    nullable: true,
+    authScopes: { capability: "create_projects" },
+    description: "One import with its full report.",
+    args: { id: t.arg.string({ required: true }) },
+    resolve: (_r, { id }) => getDokployImport(id),
+  }),
+}));
+
+/* ------------------------------------------------------------------ */
+/* Mutations                                                          */
+/* ------------------------------------------------------------------ */
+
+builder.mutationFields((t) => ({
+  scanDokploy: t.field({
+    type: DokployPlanRef,
+    authScopes: { capability: "create_projects" },
+    description:
+      "Read a Dokploy instance and describe what an import would do. Writes NOTHING, here or there. The per-service detail calls happen now, not at import time, so the preview can already say which hostname belongs to another team, which compose file needs a grant you do not hold, and what has no equivalent here.",
+    args: { input: t.arg({ type: ConnectInputRef, required: true }) },
+    resolve: (_r, { input }) =>
+      scanDokploy({
+        url: input.url,
+        apiKey: input.apiKey,
+        allowPrivate: input.allowPrivate ?? false,
+      }),
+  }),
+  beginDokployImport: t.field({
+    type: "String",
+    authScopes: { capability: "create_projects" },
+    description:
+      "Open an import run and return its id. Any run this team left open (a closed tab) is closed as failed first, so the history never shows two live imports.",
+    args: {
+      url: t.arg.string({ required: true }),
+      orgName: t.arg.string({ required: false }),
+    },
+    resolve: (_r, { url, orgName }) => beginDokployImport({ url, orgName }),
+  }),
+  importDokployProject: t.field({
+    type: ImportProjectResultRef,
+    authScopes: { capability: "create_projects" },
+    description:
+      "Import ONE Dokploy project into the active team: its environments, apps, compose stacks, databases, variables, domains, config files, volumes, resource limits, basic-auth users and crons. Nothing is deployed — the source instance is still answering those hostnames. Anything already here is skipped by name, so running it again resumes an interrupted import instead of duplicating it. One object failing never stops the rest: it becomes a line in the report.",
+    args: {
+      input: t.arg({ type: ConnectInputRef, required: true }),
+      runId: t.arg.string({ required: true }),
+      projectId: t.arg.string({
+        required: true,
+        description: "The Dokploy `projectId` to import.",
+      }),
+      servers: t.arg({ type: [ServerChoiceInput], required: false }),
+      skipDatabases: t.arg.boolean({
+        required: false,
+        description:
+          "Leave the databases out. They are the one thing an import really starts: Deplo has no database that exists without a container, so each one comes up empty, ready for a dump.",
+      }),
+    },
+    resolve: (_r, { input, runId, projectId, servers, skipDatabases }) =>
+      importDokployProject({
+        url: input.url,
+        apiKey: input.apiKey,
+        allowPrivate: input.allowPrivate ?? false,
+        runId,
+        projectId,
+        servers: servers?.map((s) => ({ from: s.from, to: s.to })),
+        skipDatabases: skipDatabases ?? false,
+      }),
+  }),
+  importDokployMembers: t.field({
+    type: [InviteRef],
+    authScopes: { instanceAdmin: true },
+    description:
+      "Bring the Dokploy organization's people over. Someone who already has a Deplo account is added to this team; everyone else gets a single-use registration link to send them. Passwords cannot travel in either direction, and everyone arrives as a plain member whatever they were over there — the report says who was an owner or admin so it can be granted on purpose.",
+    args: {
+      input: t.arg({ type: ConnectInputRef, required: true }),
+      runId: t.arg.string({ required: true }),
+    },
+    resolve: (_r, { input, runId }) =>
+      importDokployMembers({
+        url: input.url,
+        apiKey: input.apiKey,
+        allowPrivate: input.allowPrivate ?? false,
+        runId,
+      }),
+  }),
+  finishDokployImport: t.field({
+    type: "Boolean",
+    authScopes: { capability: "create_projects" },
+    description:
+      "Close the run and settle its totals. Idempotent — a finished run is left alone.",
+    args: { runId: t.arg.string({ required: true }) },
+    resolve: async (_r, { runId }) => {
+      await finishDokployImport(runId);
+      return true;
+    },
+  }),
+}));

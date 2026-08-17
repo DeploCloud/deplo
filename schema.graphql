@@ -1425,6 +1425,198 @@ enum DockerCleanupTrigger {
   scheduled
 }
 
+input DokployConnectInput {
+  """
+  Allow a private or loopback address — what the same-machine case needs (http://172.17.0.1:3000). Instance admin only, like a git connection's or an S3 endpoint's private-endpoint flag.
+  """
+  allowPrivate: Boolean
+
+  """
+  A Dokploy API key (Settings -> Profile -> API/CLI). Use an owner's or admin's key: a plain member's key answers 403 on the per-service calls. Never stored.
+  """
+  apiKey: String!
+
+  """
+  The Dokploy instance's address. `/api` is added automatically, so paste the address you open in a browser.
+  """
+  url: String!
+}
+
+"""
+One import, kept after the tab that started it is gone. The API key is never stored.
+"""
+type DokployImport {
+  actor: String
+  created: Int
+  error: String
+  failed: Int
+  finishedAt: String
+  id: String
+
+  """The report. Only loaded by the single-run query."""
+  items: [DokployImportItem!]
+  manual: Int
+  orgName: String
+  skipped: Int
+  sourceUrl: String
+  startedAt: String
+
+  """
+  running | done | failed. A run left open by a closed tab is failed as `Interrupted` by the next one.
+  """
+  status: String
+}
+
+type DokployImportItem {
+  message: String
+  outcome: DokployImportOutcome
+
+  """Where it was on Dokploy: `Project / Environment / service`."""
+  path: String
+  sourceKind: String
+  sourceName: String
+  targetId: String
+  targetKind: String
+}
+
+"""
+One line of the report. created = it is in Deplo now. skipped = already here, or left out on purpose. failed = refused, with the server's own message. manual = it came across, but something needs a person (a private repo with no credential, a database whose host name changed, a compose file that was rewritten). unsupported = there is no Deplo equivalent.
+"""
+enum DokployImportOutcome {
+  created
+  failed
+  manual
+  skipped
+  unsupported
+}
+
+type DokployImportProjectResult {
+  created: Int
+  failed: Int
+  items: [DokployImportItem!]
+  manual: Int
+  projectName: String
+  skipped: Int
+}
+
+"""
+One person from the Dokploy organization: either added to the team (they already had a Deplo account) or handed a single-use registration link.
+"""
+type DokployInvite {
+  email: String
+
+  """
+  The single-use registration link to send them, or null when they were added directly.
+  """
+  link: String
+  message: String
+  name: String
+  outcome: DokployImportOutcome
+}
+
+"""
+What an import would do, read from the source instance without writing anything.
+"""
+type DokployPlan {
+  members: [DokployPlanMember!]
+
+  """
+  The Dokploy organization this key reads. An API key belongs to one organization, so importing a second one means a second key.
+  """
+  orgName: String
+  projects: [DokployPlanProject!]
+  servers: [DokployPlanServer!]
+  sourceUrl: String
+}
+
+type DokployPlanEnvironment {
+  """
+  An environment of that name is already in the matching project — Dokploy's `production` maps onto the one every Deplo project starts with.
+  """
+  exists: Boolean
+  name: String
+  services: [DokployPlanService!]
+  sourceId: String
+}
+
+"""
+Someone in the Dokploy organization the API key reads. Empty when the key belongs to a plain member, which cannot list the organization.
+"""
+type DokployPlanMember {
+  email: String
+  hasAccount: Boolean
+  inTeam: Boolean
+  name: String
+
+  """
+  The role they held on Dokploy. Shown, never applied: everyone arrives as a plain member and is promoted on purpose.
+  """
+  sourceRole: String
+}
+
+type DokployPlanProject {
+  environments: [DokployPlanEnvironment!]
+  exists: Boolean
+  name: String
+  sourceId: String
+}
+
+"""
+A server the source instance deploys to, to be matched with one of ours. Dokploy's own host does not appear here; it is the empty `sourceServerId`.
+"""
+type DokployPlanServer {
+  ipAddress: String
+  name: String
+  sourceId: String
+}
+
+"""
+One Dokploy service (an application, a compose stack, or a database) as it would land here.
+"""
+type DokployPlanService {
+  """
+  The hostnames that would come across. Dokploy's generated throwaway hosts (traefik.me, sslip.io, nip.io) are already dropped — Deplo mints its own.
+  """
+  domains: [String!]
+
+  """
+  What it is on Dokploy: application, compose, or one of postgres/mysql/mariadb/mongo/redis/libsql.
+  """
+  kind: String
+  name: String
+
+  """What will not come across, or will need a look afterwards."""
+  notes: [String!]
+  sourceId: String
+
+  """
+  The Dokploy server it runs on. Empty string means Dokploy's own host, which has no server row over there.
+  """
+  sourceServerId: String
+  status: DokployPlanStatus
+
+  """app or database, or null when Deplo has no equivalent."""
+  targetKind: String
+}
+
+"""
+What the preview thinks will happen to one Dokploy service. new = it will be created. exists = something with that name is already here, so it is left alone. unsupported = Deplo has no such thing (a libsql database, a service Dokploy would not return). needs_grant = it can only be created by someone holding the host-volumes or expose-ports grant.
+"""
+enum DokployPlanStatus {
+  exists
+  needs_grant
+  new
+  unsupported
+}
+
+"""
+Map one Dokploy server onto one of ours. `from` is the Dokploy server id, or the empty string for Dokploy's own host.
+"""
+input DokployServerChoiceInput {
+  from: String!
+  to: String!
+}
+
 """A routable hostname attached to an app (Traefik router)."""
 type Domain {
   appId: ID
@@ -2039,6 +2231,11 @@ type Mutation {
   ): Boolean
 
   """
+  Open an import run and return its id. Any run this team left open (a closed tab) is closed as failed first, so the history never shows two live imports.
+  """
+  beginDokployImport(orgName: String, url: String!): String
+
+  """
   Start, stop or restart EVERY app in one folder (its whole subtree) or one project (every environment). Gated again per app, so it only touches the ones the caller may control; one failure never stops the rest. Give exactly one of folderId / projectId.
   """
   bulkAppAction(action: BulkAppAction!, folderId: ID, projectId: ID): BulkAppActionResult
@@ -2298,6 +2495,11 @@ type Mutation {
   execDatabaseConsole(input: ExecDatabaseConsoleInput!): ExecResult
 
   """
+  Close the run and settle its totals. Idempotent — a finished run is left alone.
+  """
+  finishDokployImport(runId: String!): Boolean
+
+  """
   Register the credential the authenticator produced. No password: the challenge it answers was minted behind one.
   """
   finishPasskeyRegistration(name: String!, response: JSON!): Passkey
@@ -2306,6 +2508,28 @@ type Mutation {
   Suggest a host port that is currently free on the target server, for the database 'Expose publicly' flow. Requires the publish-ports grant.
   """
   generateAvailableDbPort(serverId: ID): Int
+
+  """
+  Bring the Dokploy organization's people over. Someone who already has a Deplo account is added to this team; everyone else gets a single-use registration link to send them. Passwords cannot travel in either direction, and everyone arrives as a plain member whatever they were over there — the report says who was an owner or admin so it can be granted on purpose.
+  """
+  importDokployMembers(input: DokployConnectInput!, runId: String!): [DokployInvite!]
+
+  """
+  Import ONE Dokploy project into the active team: its environments, apps, compose stacks, databases, variables, domains, config files, volumes, resource limits, basic-auth users and crons. Nothing is deployed — the source instance is still answering those hostnames. Anything already here is skipped by name, so running it again resumes an interrupted import instead of duplicating it. One object failing never stops the rest: it becomes a line in the report.
+  """
+  importDokployProject(
+    input: DokployConnectInput!
+
+    """The Dokploy `projectId` to import."""
+    projectId: String!
+    runId: String!
+    servers: [DokployServerChoiceInput!]
+
+    """
+    Leave the databases out. They are the one thing an import really starts: Deplo has no database that exists without a container, so each one comes up empty, ready for a dump.
+    """
+    skipDatabases: Boolean
+  ): DokployImportProjectResult
 
   """Bulk-import a .env-style blob; returns the number of vars imported."""
   importEnv(appId: String!, blob: String!, targets: [EnvTarget!]): Int
@@ -2603,6 +2827,11 @@ type Mutation {
 
   """Create or update a shared variable; returns the saved entity."""
   saveSharedVar(input: SaveSharedVarInput!): SharedVar
+
+  """
+  Read a Dokploy instance and describe what an import would do. Writes NOTHING, here or there. The per-service detail calls happen now, not at import time, so the preview can already say which hostname belongs to another team, which compose file needs a grant you do not hold, and what has no equivalent here.
+  """
+  scanDokploy(input: DokployConnectInput!): DokployPlan
 
   """
   Read the Let's Encrypt account email off every server's proxy, live. Per host, because the address is a flag in each host's own stack file and a fleet installed over time can genuinely disagree with itself. A host Deplo cannot manage reports why instead of an address.
@@ -3256,6 +3485,14 @@ type Query {
     """Only this server's runs. Omit for every server's."""
     serverId: String
   ): [DockerCleanupRun!]
+
+  """One import with its full report."""
+  dokployImport(id: String!): DokployImport
+
+  """
+  This team's import history, newest first. Without the per-run report — read one run for that.
+  """
+  dokployImports: [DokployImport!]
 
   """
   Domains in the active team, primary first. Optionally filtered to one project.

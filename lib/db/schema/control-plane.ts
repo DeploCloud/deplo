@@ -3312,3 +3312,95 @@ export const rateLimits = pgTable(
   },
   (t) => [index("rate_limits_reset_at_idx").on(t.resetAt)],
 );
+
+/* ================================================================== */
+/* Dokploy import                                                      */
+/* ================================================================== */
+
+/**
+ * One run of the Dokploy importer — the report, kept.
+ *
+ * Shaped like {@link dockerCleanupRuns} because it is the same kind of object: a
+ * long operation whose outcome outlives the tab that started it. It exists for
+ * one question a company has to be able to answer in the UI: *what came over from
+ * the old platform, and what did not*. A report that lives only in the wizard's
+ * last step is a report nobody can consult on the day an app turns out to be
+ * missing a mount.
+ *
+ * `source_url` and `org_name` are what the run pointed at. The API key is NEVER
+ * stored — it is passed per call and lives in the wizard's component state, so a
+ * stale credential cannot be replayed out of deplo's database later.
+ *
+ * `actor` is free text like `activities.actor`; the row is team-scoped and
+ * cascades, because an import belongs to the team it filled.
+ */
+export const dokployImports = pgTable(
+  "dokploy_imports",
+  {
+    id: text("id").primaryKey(),
+    seq: bigint("seq", { mode: "number" }).generatedAlwaysAsIdentity(),
+    teamId: text("team_id")
+      .notNull()
+      .references(() => teams.id, { onDelete: "cascade" }),
+    /** Origin of the source instance, no key, no path. */
+    sourceUrl: text("source_url").notNull(),
+    /** The Dokploy organization the key read, when it would say. */
+    orgName: text("org_name"),
+    actor: text("actor").notNull(),
+    /** `'running'` | `'done'` | `'failed'`. */
+    status: text("status").notNull(),
+    created: integer("created").notNull(),
+    skipped: integer("skipped").notNull(),
+    failed: integer("failed").notNull(),
+    manual: integer("manual").notNull(),
+    error: text("error"),
+    startedAt: isoTimestamptz("started_at").notNull(),
+    finishedAt: isoTimestamptz("finished_at"),
+  },
+  (t) => [
+    index("dokploy_imports_team_started_idx").on(
+      t.teamId,
+      t.startedAt.desc(),
+      t.seq.desc(),
+    ),
+  ],
+);
+
+/**
+ * One line of a run's report: a thing that was created, skipped, refused, or
+ * imported with something left to do by hand.
+ *
+ * `outcome` is four values and the fourth is the one that matters:
+ *  - `created` — it is in deplo now;
+ *  - `skipped` — it was already here (a re-run), or Deplo has no such concept;
+ *  - `failed` — a gate or a validation refused it, with the server's own message;
+ *  - `manual` — it came across, but something about it needs a human (a private
+ *    repo with no credential, a database whose host name changed, a compose file
+ *    Deplo had to rewrite).
+ *
+ * A LIST under a run, so a child table (never a JSONB column). `path` is the
+ * readable breadcrumb (`Blink / production / blink-web`) so the report reads the
+ * same after the source instance is gone.
+ */
+export const dokployImportItems = pgTable(
+  "dokploy_import_items",
+  {
+    id: text("id").primaryKey(),
+    runId: text("run_id")
+      .notNull()
+      .references(() => dokployImports.id, { onDelete: "cascade" }),
+    seq: bigint("seq", { mode: "number" }).generatedAlwaysAsIdentity(),
+    /** `Project / Environment / service`, as the user saw it on Dokploy. */
+    path: text("path").notNull(),
+    /** What it was on Dokploy: `application` | `compose` | `postgres` | `domain` | ... */
+    sourceKind: text("source_kind").notNull(),
+    sourceName: text("source_name").notNull(),
+    /** `'created'` | `'skipped'` | `'failed'` | `'manual'`. */
+    outcome: text("outcome").notNull(),
+    /** What it became here: `app` | `database` | `project` | `environment` | ... */
+    targetKind: text("target_kind"),
+    targetId: text("target_id"),
+    message: text("message"),
+  },
+  (t) => [index("dokploy_import_items_run_idx").on(t.runId, t.seq)],
+);

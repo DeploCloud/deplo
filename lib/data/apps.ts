@@ -157,8 +157,16 @@ import {
   requireAppCapability,
 } from "./node-access";
 
-/** Heuristic: treat secret-looking keys as masked secrets. */
-function isSecretKey(key: string): boolean {
+/**
+ * Heuristic: treat secret-looking keys as masked secrets.
+ *
+ * Exported because a bulk importer has to type the variables it creates outside
+ * `createApp` too (shared vars carrying a Dokploy project's env), and two copies
+ * of this regex would be two answers to "is this a secret" — the wrong kind of
+ * duplication. Wrong-way-safe by design: a plain value marked secret is only
+ * hidden, a secret marked plain is readable at the `view` floor.
+ */
+export function isSecretKey(key: string): boolean {
   return /pass|secret|token|key|api|private|credential|dsn|url/i.test(key);
 }
 
@@ -532,6 +540,20 @@ export interface CreateAppInput {
   folderId?: string | null;
   projectId?: string | null;
   environmentId?: string | null;
+  /**
+   * Start the first deployment. Default TRUE — creating an app is how you ship
+   * one, and every interactive path wants that.
+   *
+   * `false` is for a BULK import from another platform: the source is still
+   * serving those hostnames, so deploying thirty apps as they land would fight
+   * the live system for the same ports and ask Let's Encrypt for certificates on
+   * names another proxy is answering. The app is born `idle` — the same state a
+   * fileless upload is born in — for someone to deploy when they are ready.
+   *
+   * Not exposed over GraphQL: it is a property of the import, not a choice an
+   * API client makes about one app.
+   */
+  deploy?: boolean;
 }
 
 /**
@@ -990,7 +1012,8 @@ export async function createApp(
   // Asked ON THE NEW APP (a folder grant counts), and only after it exists.
   // Without it the app is born idle — exactly like a fileless upload — for
   // someone who can deploy to pick up.
-  if (!isUpload && (await hasAppCapability(project.id, "deploy_apps"))) {
+  const wantsDeploy = input.deploy !== false;
+  if (!isUpload && wantsDeploy && (await hasAppCapability(project.id, "deploy_apps"))) {
     await startDeployment(project.id, {
       environment: "production",
       creator: user.name,
