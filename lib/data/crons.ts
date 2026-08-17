@@ -338,8 +338,24 @@ function buildPatch(
     }
     patch.keepRuns = Math.trunc(input.keepRuns);
   }
-  if (input.workdir !== undefined) patch.workdir = (input.workdir ?? "").trim() || null;
-  if (input.user !== undefined) patch.user = (input.user ?? "").trim() || null;
+  // `workdir` and `user` ride to the agent as structured fields and end up as
+  // `docker exec --workdir/--user` arguments. Running a command in this container
+  // IS the feature, so neither is a privilege boundary — but the control plane is
+  // the only thing that validates what the agent is handed, so constrain them to
+  // the shapes docker accepts rather than forwarding whatever was typed.
+  if (input.workdir !== undefined) {
+    const workdir = (input.workdir ?? "").trim();
+    if (workdir && !/^\/[\w./@+-]*$/.test(workdir))
+      throw new Error("The working directory must be an absolute path inside the container");
+    patch.workdir = workdir || null;
+  }
+  if (input.user !== undefined) {
+    const user = (input.user ?? "").trim();
+    // `user`, `uid`, `user:group`, `uid:gid` — docker's own grammar.
+    if (user && !/^[\w.-]+(:[\w.-]+)?$/.test(user))
+      throw new Error("Run as must be a user or uid, optionally with :group");
+    patch.user = user || null;
+  }
 
   if (input.timeoutSeconds !== undefined) {
     if (input.timeoutSeconds < 1 || input.timeoutSeconds > MAX_TIMEOUT_SECONDS) {

@@ -511,6 +511,38 @@ test("the bare-host guard canonicalizes non-canonical IPv6 literals too", async 
   }
 });
 
+/**
+ * Two ways an IPv6 literal still reached inside after canonicalization was added:
+ * a ZONE ID (`::1%eth0`) makes `new URL()` throw, and a throw used to mean
+ * "allowed"; and NAT64 (`64:ff9b::<v4>`) carries an embedded IPv4 that a NAT64
+ * gateway translates back, which no IPv6 pattern reads.
+ */
+test("the bare-host guard refuses a zone-id literal and reads NAT64's embedded IPv4", async () => {
+  __setDnsLookupForTest(async (host) => {
+    if (host === "smtp.example.com") return [{ address: "93.184.216.34" }];
+    throw new Error("ENOTFOUND");
+  });
+  try {
+    for (const host of [
+      "::1%eth0",
+      "0:0:0:0:0:0:0:1%eth0",
+      "fe80::1%eth0",
+      "64:ff9b::7f00:1", // NAT64 → 127.0.0.1
+      "64:ff9b::a00:5", // NAT64 → 10.0.0.5
+    ]) {
+      await assert.rejects(
+        () => assertSafeOutboundHost(host, "SMTP host"),
+        /private or internal/,
+        `${host} must be refused`,
+      );
+    }
+    // NAT64 wrapping a PUBLIC address (93.184.216.34) is not over-blocked.
+    await assertSafeOutboundHost("64:ff9b::5db8:d822", "SMTP host");
+  } finally {
+    __resetDnsLookupForTest();
+  }
+});
+
 test("a name that doesn't resolve is left alone, not refused", async () => {
   __setDnsLookupForTest(async () => {
     throw new Error("ENOTFOUND");

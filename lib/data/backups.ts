@@ -27,6 +27,7 @@ import {
   requireMembership,
 } from "../membership";
 import { recordActivity } from "./activity";
+import { withKeyedLock } from "./keyed-mutex";
 import { dispatchAlert } from "../notify/dispatch";
 import {
   appCapabilities,
@@ -1175,6 +1176,17 @@ export async function restoreBackup(runId: string): Promise<void> {
   );
 
   let failure: string | null = null;
+  // A restore is stop → wipe → untar → reroute, so it must not interleave with a
+  // deploy, a delete, or a second restore of the same app: those all hold
+  // `app-lifecycle:<appId>` (see `deleteApp` and the deploy pipeline) and this did
+  // not, so a concurrent `compose up` could race the wipe on the same volumes.
+  // Database targets have no app-lifecycle key; they serialize on their own
+  // provisioning lock, so only the app arm needs it here.
+  const withLifecycleLock = async <T>(fn: () => Promise<T>): Promise<T> =>
+    run.targetKind === "app" && target.appId
+      ? withKeyedLock(`app-lifecycle:${target.appId}`, fn)
+      : fn();
+  await withLifecycleLock(async () => {
   try {
     // Say what is happening BEFORE it starts. The agent stops the stack, wipes it
     // and untars the snapshot, so for the whole restore the host honestly reports
@@ -1209,6 +1221,7 @@ export async function restoreBackup(runId: string): Promise<void> {
     if (run.targetKind === "app" && target.appId)
       await setAppStatus(target.appId, failure ? "error" : "active");
   }
+  });
 
   await recordActivity(
     "backup",

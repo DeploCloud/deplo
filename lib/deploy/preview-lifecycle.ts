@@ -250,6 +250,25 @@ export async function openOrSyncPreview(
       });
     }
 
+    // The cap has to be settled PER APP, not per pull request: the lock this
+    // function runs under is keyed `appId:prNumber`, so two PRs opened together
+    // took DIFFERENT locks, both read the same under-cap count above, neither
+    // evicted, and both took a slot — leaving the app over the limit it set (extra
+    // containers, and one Docker network each on a host that has ~31). Re-fit
+    // AFTER the insert, inside a per-app section: `evictToFit` drops oldest-first,
+    // so the racing newcomers survive and the count comes back to the cap. Cheap
+    // when nothing raced (a count that is already at the cap evicts nothing).
+    if (approved)
+      await withKeyedLock(`preview-cap:${appId}`, () =>
+        // `+ 1` because evictToFit makes room FOR a preview about to be inserted
+        // (it evicts `count - keep + 1`). Here the row already exists, so the
+        // budget it must fit into is `maxActive` rows INCLUDING it: passing
+        // `maxActive + 1` evicts exactly the overshoot — nothing in the common
+        // case, and oldest-first (so the racing newcomers survive) when two PRs
+        // both slipped through the pre-insert check under different PR locks.
+        evictToFit(appId, settings.maxActive + 1),
+      );
+
     publishAppChanged(appId);
     if (!approved) {
       return {
@@ -298,11 +317,15 @@ export async function deployPreviewRow(
   if ((SLOTLESS as readonly string[]).includes(p.status)) {
     const settings = await previewSettings(p.appId);
     const max = settings?.maxActive ?? PREVIEW_MAX_ACTIVE_DEFAULT;
-    if ((await countOpenPreviews(p.appId)) >= max) await evictToFit(p.appId, max);
-    await getDb()
-      .update(appPreviewsTable)
-      .set({ status: "queued", tornDownAt: null, updatedAt: nowIso() })
-      .where(eq(appPreviewsTable.id, previewId));
+    // Per-app section, like the create path: two revives racing would each read an
+    // under-cap count and both take a slot.
+    await withKeyedLock(`preview-cap:${p.appId}`, async () => {
+      if ((await countOpenPreviews(p.appId)) >= max) await evictToFit(p.appId, max);
+      await getDb()
+        .update(appPreviewsTable)
+        .set({ status: "queued", tornDownAt: null, updatedAt: nowIso() })
+        .where(eq(appPreviewsTable.id, previewId));
+    });
   }
   return startDeployment(p.appId, {
     environment: "preview",

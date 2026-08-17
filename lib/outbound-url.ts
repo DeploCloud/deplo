@@ -98,8 +98,10 @@ export async function assertSafeOutboundHost(
   // Strip IPv6 brackets: the URL path already does, but a bare SMTP host arrives
   // raw, so `[::1]` must be judged as `::1`, not sailed past as an opaque literal.
   const host = raw.trim().toLowerCase().replace(/^\[|\]$/g, "");
-  const refuse = () => {
-    throw new Error(`${label} must not point at a private or internal address`);
+  const refuseError = () =>
+    new Error(`${label} must not point at a private or internal address`);
+  const refuse = (): never => {
+    throw refuseError();
   };
   if (isInternalHost(host)) refuse();
   // An IPv6 LITERAL is its own answer (no DNS), but isInternalHost only reads the
@@ -107,13 +109,28 @@ export async function assertSafeOutboundHost(
   // loopback, an expanded v4-mapped address) sails past it. Canonicalize through
   // WHATWG URL — which compresses IPv6 — and re-check the result before trusting.
   if (isIP(host) === 6) {
+    // Strip a zone id (`::1%eth0`) before canonicalizing: WHATWG URL THROWS on
+    // one, and a throw used to fall through to "allowed" — an internal literal
+    // could dodge the guard just by naming an interface.
+    const bare = host.split("%")[0];
     let canon: string | null = null;
     try {
-      canon = new URL(`http://[${host}]/`).hostname.replace(/^\[|\]$/g, "").toLowerCase();
+      canon = new URL(`http://[${bare}]/`).hostname.replace(/^\[|\]$/g, "").toLowerCase();
     } catch {
       canon = null;
     }
-    if (canon && isInternalHost(canon)) refuse();
+    // A literal we cannot canonicalize is not a literal we can vouch for.
+    if (canon === null) throw refuseError();
+    if (isInternalHost(canon)) refuse();
+    // NAT64 (`64:ff9b::<v4>`) carries an embedded IPv4 that a NAT64 gateway
+    // translates back — read it out and judge the address it really reaches.
+    const nat64 = /^64:ff9b:(?::|.*:)([0-9a-f]{1,4}):([0-9a-f]{1,4})$/i.exec(canon);
+    if (nat64) {
+      const a = parseInt(nat64[1], 16);
+      const b = parseInt(nat64[2], 16);
+      const v4 = `${(a >> 8) & 0xff}.${a & 0xff}.${(b >> 8) & 0xff}.${b & 0xff}`;
+      if (isInternalHost(v4)) refuse();
+    }
     return;
   }
   // A canonical dotted-quad is its own answer (isInternalHost already ran). A
