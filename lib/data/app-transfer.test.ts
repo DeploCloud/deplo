@@ -188,7 +188,22 @@ test("transfers the app, and severs every tie to the team it came from", async (
       createdAt: "2026-01-01T00:00:00.000Z",
     });
     await db.insert(trsTable).values({ roleId: "role_src", appId: APP });
-    const { cronJobs: cronTable } = await import("../db/schema/control-plane");
+    const { cronJobs: cronTable, apiTokens: tokTable, apiTokenApps: tokAppsTable } =
+      await import("../db/schema/control-plane");
+    await db.insert(tokTable).values({
+      id: "tok_src",
+      teamId: TEAM_A,
+      userId: USER_1,
+      name: "src",
+      prefix: "deplo_srcxx",
+      tokenHash: "h",
+      instanceAdmin: false,
+      scoped: true,
+      expiresAt: null,
+      lastUsedAt: null,
+      createdAt: T0,
+    });
+    await db.insert(tokAppsTable).values({ tokenId: "tok_src", appId: APP });
     await db.insert(cronTable).values({
       id: "cron_1",
       teamId: TEAM_A,
@@ -216,7 +231,7 @@ test("transfers the app, and severs every tie to the team it came from", async (
   // travelled would hand a destination member capabilities their own team never
   // voted on, and a scope row would limit a source-team role to an app that is
   // no longer in it.
-  const { appGrants, teamRoleScopeApps, cronJobs } = await import(
+  const { appGrants, teamRoleScopeApps, cronJobs, apiTokenApps } = await import(
     "../db/schema/control-plane"
   );
   assert.equal(
@@ -243,6 +258,11 @@ test("transfers the app, and severs every tie to the team it came from", async (
     (await db.select().from(cronJobs).where(eq(cronJobs.appId, APP))).length,
     0,
     "cron jobs do not travel — a surviving one would run the source team's command in the destination container",
+  );
+  assert.equal(
+    (await db.select().from(apiTokenApps).where(eq(apiTokenApps.appId, APP))).length,
+    0,
+    "a source-team token's scope row does not follow the app into the destination team",
   );
   assert.equal(
     (

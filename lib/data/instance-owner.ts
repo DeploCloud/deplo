@@ -11,6 +11,7 @@ import { nowIso } from "../ids";
 import { assertUser, getCurrentUser } from "../auth";
 import { verifyPassword } from "../crypto";
 import { requireInstanceAdmin } from "../membership";
+import { rateLimit } from "../security";
 import { recordActivity } from "./activity";
 
 /**
@@ -119,6 +120,16 @@ export async function transferInstanceOwner(input: {
 }): Promise<void> {
   const { userId: actingUserId } = await requireInstanceAdmin();
   const actor = await assertUser();
+  // The password check below is a re-auth, and this is the highest-value one in
+  // the product: on success the instance changes hands. A stolen live session
+  // must not get unlimited guesses at it, exactly as the 2FA step-up and the
+  // account-settings re-auth are bounded. Same per-account key/budget as those.
+  const limit = await rateLimit(`account-reauth:${actingUserId}`, {
+    limit: 6,
+    windowMs: 5 * 60_000,
+  });
+  if (!limit.ok)
+    throw new Error(`Too many attempts. Try again in ${limit.retryAfterSec}s.`);
 
   const targetUsername = await getDb().transaction(async (tx) => {
     // Lock the singleton first: two concurrent transfers must serialize, or both

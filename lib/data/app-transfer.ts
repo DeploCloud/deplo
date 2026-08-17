@@ -10,6 +10,7 @@ import {
   apps as appsTable,
   backups as backupsTable,
   backupRuns as backupRunsTable,
+  apiTokenApps as apiTokenAppsTable,
   cronJobs as cronJobsTable,
   environments as environmentsTable,
   folders as foldersTable,
@@ -480,6 +481,15 @@ export async function transferAppToTeam(
       await tx
         .delete(cronJobsTable)
         .where(and(eq(cronJobsTable.appId, appId), eq(cronJobsTable.teamId, teamId)));
+      // An API token SCOPED to this app is the source team's credential, and its
+      // reach is derived live from `apps.teamId` — so a surviving row would follow
+      // the app into the destination team and show up in ITS "tokens reaching this
+      // team" list without that team ever authorizing it (the caps clamp to the
+      // creator's membership there, so this is containment, not escalation). Same
+      // reasoning as the appGrants/teamRoleScopeApps severs above.
+      await tx
+        .delete(apiTokenAppsTable)
+        .where(eq(apiTokenAppsTable.appId, appId));
       // Their POINTER to the app goes, though, and that is not bookkeeping. The
       // app now belongs to another team, so a run row keeping `app_id` would be a
       // cross-team reference — and a practical dead end: the source team can no

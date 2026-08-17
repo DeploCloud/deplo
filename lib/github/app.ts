@@ -10,7 +10,7 @@ import {
 } from "../db/schema/control-plane";
 import { assembleGithubApp, assembleGithubInstallation } from "../data/infra-rows";
 import { decryptSecret } from "../crypto";
-import { requireActiveTeamId } from "../membership";
+import { requireActiveTeamId, requireTeamWide } from "../membership";
 import type { GithubApp, GithubInstallation } from "../types";
 
 /**
@@ -215,6 +215,11 @@ export interface GithubRepoSummary {
 async function assertInstallationInActiveTeam(
   installationId: string,
 ): Promise<void> {
+  // A NARROWED API token (scoped to specific projects/apps) must not enumerate the
+  // whole team's git inventory through the installation token — this is a
+  // team-level browse, and a token creating an app passes its repo URL directly.
+  // Same rule the git-connection browse applies (`listGitRepos`).
+  await requireTeamWide("the team's git repositories");
   const teamId = await requireActiveTeamId();
   const row = (
     await getDb()
