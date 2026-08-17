@@ -130,6 +130,10 @@ function CronJobRow({
   const [editing, setEditing] = React.useState(false);
   const [confirmDelete, setConfirmDelete] = React.useState(false);
   const [pending, startTransition] = React.useTransition();
+  // Bumped after a run starts: remounting the history is the immediate re-read
+  // of a panel that is ALREADY open, which otherwise waits out its own poll
+  // before showing the run the button just started.
+  const [historyKey, setHistoryKey] = React.useState(0);
 
   function runNow() {
     startTransition(async () => {
@@ -151,6 +155,7 @@ function CronJobRow({
         toast.success(run?.status === "running" ? "Started" : "Finished");
       }
       setOpen(true);
+      setHistoryKey((k) => k + 1);
       router.refresh();
     });
   }
@@ -250,7 +255,7 @@ function CronJobRow({
             <pre className="mb-3 overflow-x-auto rounded-md bg-muted/40 p-2 font-mono text-xs">
               {job.command}
             </pre>
-            <CronRunHistory jobId={job.id} canManage={canManage} />
+            <CronRunHistory key={historyKey} jobId={job.id} canManage={canManage} />
           </div>
         )}
       </div>

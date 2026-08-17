@@ -92,6 +92,32 @@ export function __resetCronConnector(): void {
   connectFn = connectCronAgent;
 }
 
+/**
+ * The pauses a launch waits out before handing its run to the reaper, in ms.
+ *
+ * Most commands are over in well under a second - an `echo`, a cache flush, a
+ * curl - and without this pass every one of them reads as "Running" until the
+ * scheduler's next reap: the button that started it answers "Started" for
+ * something already finished, and the output lands on the page seconds later. The agent is milliseconds from the truth the whole time; nobody was
+ * asking. The connection is already open and the ladder stops the moment the run
+ * settles, so a quick command costs one extra poll.
+ *
+ * ponytail: serial in the fire phase - a job still going when the ladder runs out
+ *   pushes the next job's launch back by this much. Small against the ~250ms
+ *   handshake that loop already pays per job; if an instance ever fires dozens in
+ *   one minute, launch them concurrently rather than dropping this.
+ */
+let quickFinishPolls = [150, 250, 350, 500];
+
+/** Test-only: shorten the quick-finish ladder (`[]` disables the wait). Same
+ *  reason as the connector above - a real pause buys a test nothing. */
+export function __setQuickFinishPolls(ms: number[]): void {
+  quickFinishPolls = ms;
+}
+
+const sleep = (ms: number): Promise<void> =>
+  new Promise((resolve) => setTimeout(resolve, ms));
+
 /** Keep the END of the output: a job's value is its last lines - the error, the
  *  summary - while its head is startup boilerplate. */
 export function tailOutput(s: string): string {
@@ -438,7 +464,9 @@ async function resolveContainer(
 /**
  * Launch one attempt of a run: resolve the container, ask the agent to start the
  * command, and record the handle. Settles the run itself on every failure, so the
- * caller never has to.
+ * caller never has to - and on success too when the command finishes inside the
+ * quick-finish ladder, which is why the caller must re-read the row rather than
+ * assume the run it passed in is still going.
  *
  * `conn` is passed in because the reaper already has one open for that server.
  */
@@ -487,6 +515,26 @@ export async function startAttempt(
       .update(cronRunsTable)
       .set({ agentJobId, container: container.name, nextAttemptAt: null })
       .where(and(eq(cronRunsTable.id, r.run.id), eq(cronRunsTable.status, "running")));
+
+    // Wait out a command that is already over rather than leaving it "Running"
+    // until the next tick. See {@link quickFinishPolls}.
+    const started: InFlightRun = {
+      ...r,
+      run: { ...r.run, agentJobId, container: container.name, nextAttemptAt: null },
+    };
+    // On the run's own clock, not the wall clock: every timestamp in this module
+    // is stamped from `at`, and a deadline judged against a different one reads a
+    // run launched for a replayed minute as instantly timed out.
+    let elapsed = 0;
+    for (const ms of quickFinishPolls) {
+      await sleep(ms);
+      elapsed += ms;
+      // A poll that throws here changes nothing: the command is launched, and
+      // the reaper owns it from the next tick on.
+      const inFlight = await reapOne(conn, started, new Date(at.getTime() + elapsed))
+        .catch(() => false);
+      if (!inFlight) return;
+    }
   } catch (e) {
     await settleOrRetry(r, "failed", { error: agentMessage(e) }, at);
   }
@@ -560,12 +608,24 @@ export async function reapInFlightRuns(
   }
 }
 
-async function reapOne(conn: AgentConnection, r: InFlightRun, now: Date): Promise<void> {
+/**
+ * Poll one in-flight run and settle it if it ended.
+ *
+ * Answers whether the run is STILL in flight and polling it again could tell us
+ * more - which is what lets {@link startAttempt} wait out a quick command on the
+ * connection it already holds. A relaunch answers false: whatever it started is
+ * the next tick's business, not this poll's.
+ */
+async function reapOne(
+  conn: AgentConnection,
+  r: InFlightRun,
+  now: Date,
+): Promise<boolean> {
   // No agent handle: either a retry waiting out its backoff, or a claim whose
   // launch never happened. Nothing to poll in either case.
   if (!r.run.agentJobId) {
     if (r.run.nextAttemptAt) {
-      if (now < new Date(r.run.nextAttemptAt)) return;
+      if (now < new Date(r.run.nextAttemptAt)) return true;
     } else if (now.getTime() - Date.parse(r.run.startedAt) > STALE_CLAIM_MS) {
       // Claimed, never launched: the control plane stopped between the two.
       // Launching it now would be the catch-up ADR-0018 rules out - the user
@@ -576,10 +636,10 @@ async function reapOne(conn: AgentConnection, r: InFlightRun, now: Date): Promis
         { error: "Deplo stopped before this run could start." },
         now,
       );
-      return;
+      return false;
     }
     await startAttempt(conn, r, now);
-    return;
+    return false;
   }
 
   const poll = await conn.pollJob(r.run.agentJobId);
@@ -592,11 +652,11 @@ async function reapOne(conn: AgentConnection, r: InFlightRun, now: Date): Promis
       { error: "The server's agent restarted while this run was in flight." },
       now,
     );
-    return;
+    return false;
   }
 
   if (poll.running) {
-    if (now.getTime() <= deadlineOf(r.run)) return; // healthy: no write at all
+    if (now.getTime() <= deadlineOf(r.run)) return true; // healthy: no write at all
     // Past our own deadline while the agent still says running: its timer died.
     await conn.killJob(r.run.agentJobId).catch(() => {});
     await settleOrRetry(
@@ -607,7 +667,7 @@ async function reapOne(conn: AgentConnection, r: InFlightRun, now: Date): Promis
       },
       now,
     );
-    return;
+    return false;
   }
 
   const status: "succeeded" | "failed" | "timedout" = poll.timedOut
@@ -627,7 +687,7 @@ async function reapOne(conn: AgentConnection, r: InFlightRun, now: Date): Promis
       },
       now,
     );
-    return;
+    return false;
   }
   await settleOrRetry(
     r,
@@ -643,6 +703,7 @@ async function reapOne(conn: AgentConnection, r: InFlightRun, now: Date): Promis
     },
     now,
   );
+  return false;
 }
 
 /* ------------------------------------------------------------------ */

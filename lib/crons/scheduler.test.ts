@@ -19,6 +19,7 @@ import {
 import {
   __resetCronConnector,
   __setCronConnector,
+  __setQuickFinishPolls,
   fireDueJobs,
   reapInFlightRuns,
   RETRY_BACKOFF_MS,
@@ -62,6 +63,9 @@ beforeEach(async () => {
   await enableCrons(db, "app", "prj_1");
   agent = new FakeAgent();
   __setCronConnector(agent.connector);
+  // The fake's default job never ends, so the quick-finish ladder would sleep
+  // its way through every launch below. The one test that wants it turns it on.
+  __setQuickFinishPolls([]);
 });
 
 const oneRun = async (jobId: string) => {
@@ -82,6 +86,34 @@ test("a due job starts on the agent and records a running run", async () => {
   assert.equal(run.command, "php artisan schedule:run");
   assert.equal(agent.started.length, 1);
   assert.equal(agent.started[0].command, "php artisan schedule:run");
+});
+
+test("a command that ends at once settles inside the launch", async () => {
+  // The whole of "why does `echo Test` take so long": the command is over in
+  // milliseconds, and only the reaper's next tick used to notice. The launch
+  // polls it out on the connection it already has.
+  __setQuickFinishPolls([5]);
+  agent.nextState = { found: true, running: false, exitCode: 0, stdout: "Test\n" };
+  await seedCronJob(db, { id: "cron_1", command: 'echo "Test"' });
+  await fireDueJobs([MINUTE]);
+
+  // No reap ran: settling is the launch's own doing.
+  const run = await oneRun("cron_1");
+  assert.equal(run.status, "succeeded");
+  assert.equal(run.stdout, "Test\n");
+  assert.equal(run.exitCode, 0);
+  const [job] = await db.select().from(cronJobsTable).where(eq(cronJobsTable.id, "cron_1"));
+  assert.equal(job.lastStatus, "succeeded", "and the job row is current too");
+});
+
+test("a command still going when the ladder runs out is left to the reaper", async () => {
+  __setQuickFinishPolls([5, 5]);
+  await seedCronJob(db, { id: "cron_1" });
+  await fireDueJobs([MINUTE]);
+
+  const run = await oneRun("cron_1");
+  assert.equal(run.status, "running");
+  assert.equal(run.agentJobId, "agentjob_1", "still attached, for the next tick");
 });
 
 test("the same minute cannot fire twice, however many instances try", async () => {
