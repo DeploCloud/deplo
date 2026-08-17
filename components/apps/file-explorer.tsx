@@ -212,18 +212,27 @@ export function FileExplorer({ appId }: { appId: string }) {
     const name = newName.trim();
     if (!name) return;
     const path = joinPath(dir, name);
+    const kind = creating === "folder" ? "dir" : "file";
+    // The entry appears in the listing NOW, the form closes with it, and the
+    // agent's answer only decides the toast — `loadDir` settles the real
+    // listing (size, modified time, or the entry going away again) either way.
+    setEntries((prev) => [
+      ...prev,
+      { path, name, kind, size: 0, modifiedAt: new Date().toISOString() },
+    ]);
+    setCreating(null);
+    setNewName("");
     try {
-      if (creating === "folder") {
+      if (kind === "dir") {
         await gql(MKDIR, { appId, path });
       } else {
         await gql(WRITE, { appId, path, content: "" });
       }
-      toast.success(creating === "folder" ? "Folder created" : "File created");
-      setCreating(null);
-      setNewName("");
-      loadDir(dir);
+      toast.success(kind === "dir" ? "Folder created" : "File created");
     } catch (e) {
       toast.error(errMessage(e));
+    } finally {
+      loadDir(dir);
     }
   }
 

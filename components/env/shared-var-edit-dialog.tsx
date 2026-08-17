@@ -77,6 +77,9 @@ export function SharedVarEditDialog({
   }
 
   function submit() {
+    // Closes on the click; a refusal reopens it with what was typed still in
+    // the fields (the dialog is not unmounted while its save is in flight).
+    onOpenChange(false);
     startTransition(async () => {
       const res = await gqlAction<{ saveSharedVar: { id: string } }>(
         `mutation($input: SaveSharedVarInput!) { saveSharedVar(input: $input) { id } }`,
@@ -95,11 +98,11 @@ export function SharedVarEditDialog({
       );
       if (res.ok) {
         toast.success("Shared variable updated");
-        onOpenChange(false);
-        router.refresh();
       } else {
+        onOpenChange(true);
         toast.error(res.error);
       }
+      router.refresh();
     });
   }
 

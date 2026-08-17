@@ -147,16 +147,20 @@ export function NotificationsPanel({
 
   function save() {
     if (!draft) return;
+    // The modal closes on the click and the write settles behind it; the draft
+    // stays in state, so a refusal is one reopen away from being corrected.
+    setOpen(false);
     startSave(async () => {
       const res = await gqlAction(
         `mutation($id: ID, $input: JSON!) { saveNotificationChannel(id: $id, input: $input) }`,
         { id: editingId, input: { ...draft, secrets } },
       );
-      if (res.ok) {
-        toast.success(editingId ? "Channel saved" : "Channel added");
-        setOpen(false);
-        router.refresh();
-      } else toast.error(res.error);
+      if (res.ok) toast.success(editingId ? "Channel saved" : "Channel added");
+      else {
+        setOpen(true);
+        toast.error(res.error);
+      }
+      router.refresh();
     });
   }
 

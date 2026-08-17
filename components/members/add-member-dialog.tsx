@@ -158,21 +158,27 @@ export function AddMemberDialog({
 
   function add() {
     if (!picked || !roleId) return;
+    // The dialog closes on the click; the member list re-reads behind it. The
+    // pick is kept so a refusal can reopen on the same person.
+    const chosen = { picked, roleId };
+    onOpenChange(false);
     startTransition(async () => {
       const res = await gqlAction(
         `mutation($input: AddMemberInput!) {
           addExistingMember(input: $input) { userId }
         }`,
-        { input: { userId: picked.userId, roleId } },
+        { input: { userId: chosen.picked.userId, roleId: chosen.roleId } },
       );
       if (res.ok) {
-        toast.success(`Added @${picked.username} to the team`);
-        onOpenChange(false);
+        toast.success(`Added @${chosen.picked.username} to the team`);
         reset();
-        router.refresh();
       } else {
+        setPicked(chosen.picked);
+        setRoleId(chosen.roleId);
+        onOpenChange(true);
         toast.error(res.error);
       }
+      router.refresh();
     });
   }
 

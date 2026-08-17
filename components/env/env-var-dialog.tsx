@@ -403,7 +403,6 @@ const PANEL_BODY_MAX = "max-h-[calc(85vh-14rem)]";
 function StandaloneTab({ appId, onDone }: { appId: string; onDone: () => void }) {
   const [rows, setRows] = React.useState<EnvRow[]>([{ key: "", value: "" }]);
   const [secret, setSecret] = React.useState(false);
-  const [pending, startTransition] = React.useTransition();
   const router = useRouter();
 
   const filled = filledRows(rows);
@@ -415,7 +414,12 @@ function StandaloneTab({ appId, onDone }: { appId: string; onDone: () => void })
   }
 
   function save() {
-    startTransition(async () => {
+    // The panel closes on the click and the write settles behind it: what makes
+    // this slow is not the insert but the refresh that re-reads every variable
+    // of the app afterwards. A refusal reopens nothing — the toast carries the
+    // server's message and the rows are still typed in the closed panel.
+    onDone();
+    void (async () => {
       // No `targets` on either path: an App has no Environment of its own — it
       // inherits exactly one from its Project — so the server defaults every
       // variable to every runtime.
@@ -431,13 +435,9 @@ function StandaloneTab({ appId, onDone }: { appId: string; onDone: () => void })
             },
           },
         );
-        if (res.ok) {
-          toast.success("Variable added");
-          onDone();
-          router.refresh();
-        } else {
-          toast.error(res.error);
-        }
+        if (res.ok) toast.success("Variable added");
+        else toast.error(res.error);
+        router.refresh();
         return;
       }
       // Multiple rows → the additive importEnv path (all land as plain; flip to
@@ -452,12 +452,11 @@ function StandaloneTab({ appId, onDone }: { appId: string; onDone: () => void })
       );
       if (res.ok && res.data != null) {
         toast.success(`Added ${res.data} variable(s)`);
-        onDone();
-        router.refresh();
       } else if (!res.ok) {
         toast.error(res.error);
       }
-    });
+      router.refresh();
+    })();
   }
 
   return (
@@ -480,14 +479,13 @@ function StandaloneTab({ appId, onDone }: { appId: string; onDone: () => void })
       </div>
 
       <DialogFooter className="border-t border-border px-6 py-4">
-        <Button variant="outline" onClick={onDone} disabled={pending}>
+        <Button variant="outline" onClick={onDone}>
           Cancel
         </Button>
         <Button
           type="submit"
-          disabled={pending || filled.length === 0 || invalid.length > 0}
+          disabled={filled.length === 0 || invalid.length > 0}
         >
-          {pending && <Loader2 className="size-4 animate-spin" />}
           {filled.length > 1 ? `Add ${filled.length}` : "Add"}
         </Button>
       </DialogFooter>

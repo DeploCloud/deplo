@@ -204,6 +204,9 @@ export function CreateBackup({
   }
 
   function submit() {
+    // The wizard closes on the click and the schedule is written behind it; a
+    // refusal reopens it on the step it was left on, fields intact.
+    setOpen(false);
     startTransition(async () => {
       const res = await gqlAction(
         `mutation($input: CreateBackupInput!) { createBackup(input: $input) }`,
@@ -223,10 +226,11 @@ export function CreateBackup({
       if (res.ok) {
         toast.success("Backup schedule created");
         close();
-        router.refresh();
       } else {
+        setOpen(true);
         toast.error(res.error);
       }
+      router.refresh();
     });
   }
 

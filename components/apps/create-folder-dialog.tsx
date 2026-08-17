@@ -41,7 +41,6 @@ export function CreateFolderDialog({
   parentId?: string | null;
 }) {
   const router = useRouter();
-  const [pending, startTransition] = React.useTransition();
   const [name, setName] = React.useState("");
   const [color, setColor] = React.useState<string | null>(null);
 
@@ -57,25 +56,33 @@ export function CreateFolderDialog({
 
   function create() {
     if (!name.trim()) return;
-    startTransition(async () => {
+    // The dialog gets out of the way NOW and the folder is written behind it:
+    // this is one control-plane insert, and what takes the time is the refresh
+    // that re-reads the whole Overview afterwards. What was typed is kept aside
+    // so a refusal can put the form back exactly as it was.
+    const typed = { name, color };
+    onOpenChange(false);
+    reset();
+    void (async () => {
       const res = await gqlAction<
         { createFolder: { id: string } },
         { id: string }
       >(
         `mutation($name: String!, $color: String, $parentId: ID) { createFolder(name: $name, color: $color, parentId: $parentId) { id } }`,
-        { name, color, parentId },
+        { name: typed.name, color: typed.color, parentId },
         (d) => d.createFolder,
       );
       if (res.ok) {
         if (onCreated && res.data) await onCreated(res.data.id);
         toast.success("Folder created");
-        onOpenChange(false);
-        reset();
-        router.refresh();
       } else {
+        setName(typed.name);
+        setColor(typed.color);
+        onOpenChange(true);
         toast.error(res.error);
       }
-    });
+      router.refresh();
+    })();
   }
 
   return (
@@ -116,15 +123,11 @@ export function CreateFolderDialog({
             </div>
           </div>
           <DialogFooter>
-            <Button
-              variant="outline"
-              onClick={() => onOpenChange(false)}
-              disabled={pending}
-            >
+            <Button variant="outline" onClick={() => onOpenChange(false)}>
               Cancel
             </Button>
-            <Button type="submit" disabled={pending || !name.trim()}>
-              {pending ? "Creating…" : "Create folder"}
+            <Button type="submit" disabled={!name.trim()}>
+              Create folder
             </Button>
           </DialogFooter>
         </form>

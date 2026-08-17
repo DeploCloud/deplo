@@ -206,6 +206,23 @@ export function ShareFolderDialog({
     if (!picked) return;
     // `view` is always implied by the server; send the ticked caps as-is.
     const capabilities = togglableCaps.filter((c) => caps.has(c));
+    // The grantee joins the list NOW, with exactly the capabilities that were
+    // ticked; the server's own answer replaces the whole list a moment later.
+    const chosen = picked;
+    const before = grants;
+    setGrants((prev) => [
+      ...prev.filter((g) => g.userId !== chosen.userId),
+      {
+        folderId,
+        userId: chosen.userId,
+        username: chosen.username,
+        name: chosen.name,
+        avatarColor: chosen.avatarColor,
+        capabilities,
+        isOwner: false,
+      },
+    ]);
+    resetAddFlow();
     startTransition(async () => {
       const res = await gqlAction<{ setFolderGrant: FolderGrant[] }, FolderGrant[]>(
         `mutation($folderId: ID!, $userId: ID!, $capabilities: [String!]!) {
@@ -219,16 +236,16 @@ export function ShareFolderDialog({
             isOwner
           }
         }`,
-        { folderId, userId: picked.userId, capabilities },
+        { folderId, userId: chosen.userId, capabilities },
         (d) => d.setFolderGrant,
       );
       if (res.ok) {
-        toast.success(`Shared with @${picked.username}`);
+        toast.success(`Shared with @${chosen.username}`);
         if (res.data) setGrants(res.data);
-        resetAddFlow();
         reload();
         router.refresh();
       } else {
+        setGrants(before);
         toast.error(res.error);
       }
     });

@@ -2,8 +2,7 @@
 
 import * as React from "react";
 import { useRouter } from "next/navigation";
-import { toast } from "sonner";
-import { Loader2, MoreHorizontal, Plus, Trash2 } from "lucide-react";
+import { MoreHorizontal, Plus, Trash2 } from "lucide-react";
 import {
   Dialog,
   DialogContent,
@@ -37,6 +36,11 @@ import { RegistryMark } from "@/components/shared/brand-icons";
 import { RegistryGraphic } from "@/components/settings/registry-graphic";
 import { ConfirmAction } from "@/components/shared/confirm-action";
 import { useOptimisticRemove } from "@/components/shared/use-optimistic-remove";
+import {
+  PendingCards,
+  PendingCreateProvider,
+  usePendingCreate,
+} from "@/components/shared/pending-create";
 import { gqlAction } from "@/lib/graphql-client";
 import type { RegistryDTO } from "@/lib/data/registries";
 import type { RegistryType } from "@/lib/types";
@@ -61,8 +65,22 @@ const TYPE_META: Record<
  * dialog it opens are the same interaction.
  */
 export function RegistriesPanel({ registries }: { registries: RegistryDTO[] }) {
+  return (
+    // Adding closes the dialog at once and shows the registry pulsing in the
+    // grid until the real card lands.
+    <PendingCreateProvider count={registries.length}>
+      <RegistriesBody registries={registries} />
+    </PendingCreateProvider>
+  );
+}
+
+function RegistriesBody({ registries }: { registries: RegistryDTO[] }) {
   const router = useRouter();
   const [addOpen, setAddOpen] = React.useState(false);
+  // Bumped after a successful add so the next open starts from blank fields
+  // without an effect — the dialog stays MOUNTED while its creation is in
+  // flight, which is what lets a refusal put back what was typed.
+  const [addKey, setAddKey] = React.useState(0);
   const [deleting, setDeleting] = React.useState<RegistryDTO | null>(null);
   // The card leaves the grid on the click and comes back only if the server
   // refuses; nothing here is worth a spinner in front of a confirm dialog.
@@ -70,6 +88,7 @@ export function RegistriesPanel({ registries }: { registries: RegistryDTO[] }) {
     registries,
     (r) => r.id,
   );
+  const { pending } = usePendingCreate();
 
   return (
     <div className="space-y-6">
@@ -91,7 +110,7 @@ export function RegistriesPanel({ registries }: { registries: RegistryDTO[] }) {
         }
       />
 
-      {rows.length === 0 ? (
+      {rows.length === 0 && pending.length === 0 ? (
         <EmptyState
           graphic={<RegistryGraphic />}
           title="No registry connected"
@@ -106,12 +125,16 @@ export function RegistriesPanel({ registries }: { registries: RegistryDTO[] }) {
               onRemove={() => setDeleting(r)}
             />
           ))}
+          <PendingCards lines={1} />
         </div>
       )}
 
-      {/* Mounted only while open, so its fields seed from their initial state
-          instead of an effect that resets them. */}
-      {addOpen && <AddRegistryDialog onDone={() => setAddOpen(false)} />}
+      <AddRegistryDialog
+        key={addKey}
+        open={addOpen}
+        onOpenChange={setAddOpen}
+        onCreated={() => setAddKey((k) => k + 1)}
+      />
 
       <ConfirmAction
         open={deleting !== null}
@@ -182,14 +205,22 @@ function RegistryCard({
   );
 }
 
-function AddRegistryDialog({ onDone }: { onDone: () => void }) {
-  const router = useRouter();
+function AddRegistryDialog({
+  open,
+  onOpenChange,
+  onCreated,
+}: {
+  open: boolean;
+  onOpenChange: (o: boolean) => void;
+  /** Fired once the registry actually landed, so the panel can reset the form. */
+  onCreated: () => void;
+}) {
+  const { create } = usePendingCreate();
   const [name, setName] = React.useState("");
   const [type, setType] = React.useState<RegistryType>("ghcr");
   const [registryUrl, setRegistryUrl] = React.useState("");
   const [username, setUsername] = React.useState("");
   const [password, setPassword] = React.useState("");
-  const [pending, startTransition] = React.useTransition();
 
   const meta = TYPE_META[type];
 
@@ -199,31 +230,33 @@ function AddRegistryDialog({ onDone }: { onDone: () => void }) {
   }
 
   function submit() {
-    startTransition(async () => {
-      const res = await gqlAction(
-        `mutation($input: AddRegistryInput!) { addRegistry(input: $input) }`,
-        {
-          input: {
-            name,
-            type,
-            registryUrl: registryUrl.trim() || undefined,
-            username,
-            password,
-          },
-        },
-      );
-      if (res.ok) {
-        toast.success("Registry added");
-        router.refresh();
-        onDone();
-      } else {
-        toast.error(res.error);
-      }
-    });
+    const input = {
+      name,
+      type,
+      registryUrl: registryUrl.trim() || undefined,
+      username,
+      password,
+    };
+    onOpenChange(false);
+    create(
+      { label: name || meta.label, note: "Adding registry" },
+      () =>
+        gqlAction(
+          `mutation($input: AddRegistryInput!) { addRegistry(input: $input) }`,
+          { input },
+        ),
+      {
+        success: "Registry added",
+        onSuccess: onCreated,
+        // The dialog is still mounted with everything typed in it, so a refusal
+        // is one reopen away from being corrected.
+        onError: () => onOpenChange(true),
+      },
+    );
   }
 
   return (
-    <Dialog open onOpenChange={(o) => !o && onDone()}>
+    <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent>
       <DialogHeader>
         <DialogTitle>Add registry</DialogTitle>
@@ -308,14 +341,13 @@ function AddRegistryDialog({ onDone }: { onDone: () => void }) {
           </div>
         </div>
         <DialogFooter>
-          <Button variant="outline" onClick={onDone} disabled={pending}>
+          <Button variant="outline" onClick={() => onOpenChange(false)}>
             Cancel
           </Button>
           <Button
             type="submit"
-            disabled={pending || !name.trim() || !username.trim() || !password}
+            disabled={!name.trim() || !username.trim() || !password}
           >
-            {pending && <Loader2 className="size-4 animate-spin" />}
             Add registry
           </Button>
         </DialogFooter>

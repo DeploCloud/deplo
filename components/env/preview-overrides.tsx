@@ -91,6 +91,12 @@ export function PreviewOverrides({
 
   function submit(e: React.FormEvent) {
     e.preventDefault();
+    // The dialog closes on the click; what was typed is kept aside so a refusal
+    // can put the form back with the rows intact.
+    const typed = { rows, secret };
+    setAddOpen(false);
+    setRows([{ key: "", value: "" }]);
+    setSecret(false);
     startTransition(async () => {
       // No bulk mutation for overrides, and none is worth adding: setPreviewEnvVar
       // is an upsert, so firing them together costs one round trip and a retry
@@ -121,14 +127,13 @@ export function PreviewOverrides({
         router.refresh();
       }
       if (failed.length > 0) {
-        // Keep the dialog open on the rows as typed: the ones that landed are
-        // idempotent, so fixing the bad key and submitting again is safe.
+        // Reopen on the rows as typed: the ones that landed are idempotent, so
+        // fixing the bad key and submitting again is safe.
+        setRows(typed.rows);
+        setSecret(typed.secret);
+        setAddOpen(true);
         toast.error(failed[0].ok ? "Could not save" : failed[0].error);
-        return;
       }
-      setAddOpen(false);
-      setRows([{ key: "", value: "" }]);
-      setSecret(false);
     });
   }
 

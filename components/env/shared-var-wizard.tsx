@@ -265,6 +265,10 @@ export function SharedVarDialog({
   }
 
   function save() {
+    // The wizard closes on the click and the write settles behind it; the whole
+    // wait here is the refresh that re-reads every app's variables. A refusal
+    // reopens it with every step exactly as it was left.
+    onOpenChange(false);
     startTransition(async () => {
       const res = await gqlAction<{ saveSharedVar: { id: string } }>(
         `mutation($input: SaveSharedVarInput!) { saveSharedVar(input: $input) { id } }`,
@@ -280,11 +284,11 @@ export function SharedVarDialog({
       );
       if (res.ok) {
         toast.success(editing ? "Shared variable updated" : "Shared variable created");
-        onOpenChange(false);
-        router.refresh();
       } else {
+        onOpenChange(true);
         toast.error(res.error);
       }
+      router.refresh();
     });
   }
 

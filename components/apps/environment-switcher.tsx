@@ -104,19 +104,25 @@ export function EnvironmentSwitcher({
   }
 
   function add() {
-    if (!addName.trim()) return;
-    startTransition(async () => {
+    const typed = addName.trim();
+    if (!typed) return;
+    // The dialog closes on the click and the write settles behind it; a refusal
+    // reopens it with what was typed.
+    setAddOpen(false);
+    setAddName("");
+    void (async () => {
       const res = await gqlAction(
         `mutation($projectId: ID!, $name: String!) { createEnvironment(projectId: $projectId, name: $name) { id } }`,
-        { projectId, name: addName.trim() },
+        { projectId, name: typed },
       );
-      if (res.ok) {
-        toast.success("Environment added");
-        setAddOpen(false);
-        setAddName("");
-        router.refresh();
-      } else toast.error(res.error);
-    });
+      if (res.ok) toast.success("Environment added");
+      else {
+        setAddName(typed);
+        setAddOpen(true);
+        toast.error(res.error);
+      }
+      router.refresh();
+    })();
   }
 
   function onRenameSubmit(e: React.FormEvent) {
