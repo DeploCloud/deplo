@@ -156,6 +156,17 @@ export function AddServer({
                 hour. It is shown only now; if you lose it, re-mint one from the
                 server&rsquo;s menu.
               </p>
+              {/* Over plain http the installer AND its checksum travel on the same
+                  unauthenticated channel, so anyone on the network path between the
+                  two machines can replace what runs as root here. Nothing in the
+                  command can fix that — the operator has to know. */}
+              {command.includes("http://") ? (
+                <p className="text-warning text-xs">
+                  This panel is on an http address, so the installer is downloaded
+                  over an unencrypted connection. Give Deplo a domain with HTTPS
+                  before adding servers over an untrusted network.
+                </p>
+              ) : null}
             </div>
           ) : (
             <div className="space-y-4">
