@@ -24,11 +24,13 @@ export function DatabaseControls({
   status: DatabaseStatus;
 }) {
   const router = useRouter();
-  const [pending, startTransition] = React.useTransition();
+  const [, startTransition] = React.useTransition();
   const status = useLiveDatabaseStatus(serverStatus);
   const provisioning = status === "provisioning";
   const running = status === "running";
 
+  // Fire and let the live status answer — the subscription reports what the
+  // container is doing, so a spinner on the button only delays the click.
   function act(mutation: string, success: string) {
     startTransition(async () => {
       const res = await gqlAction(mutation, { id });
@@ -61,7 +63,6 @@ export function DatabaseControls({
                 "Database stopped",
               )
             }
-            disabled={pending}
           >
             <Square className="size-4" />
             Stop
@@ -78,7 +79,6 @@ export function DatabaseControls({
                 "Database started",
               )
             }
-            disabled={pending}
           >
             <Play className="size-4" />
             Start
@@ -95,7 +95,7 @@ export function DatabaseControls({
               "Database restarted",
             )
           }
-          disabled={pending || !running}
+          disabled={!running}
         >
           <RotateCw className="size-4" />
           Restart

@@ -19,7 +19,7 @@ export function AppControls({
   status: AppStatus;
 }) {
   const router = useRouter();
-  const [pending, startTransition] = React.useTransition();
+  const [, startTransition] = React.useTransition();
   // Live status (subscription) takes precedence over the server-rendered value
   // so the button reflects start/stop/deploy in real time — and the "Stopping"
   // label is driven by the persisted "stopping" status, so it survives reload
@@ -36,6 +36,9 @@ export function AppControls({
   // app has right now.
   const restoring = status === "restoring";
 
+  // Fire and let the STATUS answer: the persisted `stopping` / `restoring`
+  // states and the live subscription already say what the container is doing,
+  // so holding the button in a spinner adds nothing but a delay.
   function act(mutation: string, success: string) {
     startTransition(async () => {
       const res = await gqlAction(mutation, { id: appId });
@@ -115,7 +118,6 @@ export function AppControls({
                 "Container started",
               )
             }
-            disabled={pending}
           >
             <Play className="size-4" />
             Start
@@ -139,7 +141,6 @@ export function AppControls({
                 "Container stopped",
               )
             }
-            disabled={pending}
           >
             <Square className="size-4" />
             Stop
@@ -151,7 +152,7 @@ export function AppControls({
           variant="outline"
           size="sm"
           onClick={reload}
-          disabled={pending || restoring}
+          disabled={restoring}
         >
           <RefreshCw className="size-4" />
           Reload

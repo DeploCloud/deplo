@@ -63,7 +63,7 @@ export function PreviewsTable({
   maxActive: number;
 }) {
   const router = useRouter();
-  const [pending, startTransition] = React.useTransition();
+  const [, startTransition] = React.useTransition();
   const live = useLiveApp();
   // A destroyed preview leaves the table on the click: the row is dropped
   // server-side before its stack comes down, so waiting out the teardown only
@@ -231,6 +231,7 @@ export function PreviewsTable({
                           description={`Pull request #${p.prNumber} comes from ${p.headRepo || "a fork"}, a repository you don't control. Building it runs that code on your server. Deplo never gives a fork preview your secret variables, but everything else about it is the pull request author's code. Only approve pull requests from people you trust. New commits on this pull request will deploy automatically once you approve.`}
                           confirmLabel="Approve and deploy"
                           successMessage="Building the preview"
+                          optimistic
                           onConfirm={async () => {
                             const res = await gqlAction(
                               `mutation ($id: ID!) { approvePreview(id: $id) { id } }`,
@@ -272,7 +273,7 @@ export function PreviewsTable({
                           </DropdownMenuTrigger>
                           <DropdownMenuContent align="end" className="w-52">
                             <DropdownMenuItem
-                              disabled={pending || blocked}
+                              disabled={blocked}
                               onClick={() =>
                                 run(
                                   `mutation ($id: ID!) { redeployPreview(id: $id) { id } }`,
@@ -297,7 +298,6 @@ export function PreviewsTable({
                             <DropdownMenuSeparator />
                             <DropdownMenuItem
                               variant="destructive"
-                              disabled={pending}
                               onClick={() => {
                                 remove(p.id);
                                 run(

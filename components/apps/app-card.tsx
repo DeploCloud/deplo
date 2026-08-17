@@ -202,7 +202,8 @@ export function AppCard({
   }
 
   // Lifecycle verbs (start/stop) all take a single `id` argument and share the
-  // same optimistic-refresh shape.
+  // same optimistic-refresh shape: fire, and let the live status badge say what
+  // the container is doing rather than freezing the menu until it answers.
   function act(mutation: string, success: string) {
     startTransition(async () => {
       const res = await gqlAction(mutation, { id: project.id });
@@ -321,7 +322,7 @@ export function AppCard({
                 "Container started",
               )
             }
-            disabled={pending || !can("control_apps")}
+            disabled={!can("control_apps")}
           >
             <Play className="size-4" />
             Start
@@ -339,7 +340,7 @@ export function AppCard({
                 "Container stopped",
               )
             }
-            disabled={pending || !can("control_apps")}
+            disabled={!can("control_apps")}
           >
             <Square className="size-4" />
             Stop
@@ -350,7 +351,7 @@ export function AppCard({
         content="Re-apply domains and basic auth to the running container — no rebuild"
         side="left"
       >
-        <K.Item onSelect={reload} disabled={pending || !can("control_apps")}>
+        <K.Item onSelect={reload} disabled={!can("control_apps")}>
           <RefreshCw className="size-4" />
           Reload
         </K.Item>
@@ -406,7 +407,7 @@ export function AppCard({
               >
                 <K.Item
                   onSelect={() => moveTo(null)}
-                  disabled={pending || !can("move_apps")}
+                  disabled={!can("move_apps")}
                 >
                   Ungrouped
                 </K.Item>
@@ -423,7 +424,7 @@ export function AppCard({
               <K.Item
                 onSelect={() => moveTo(f.id)}
                 disabled={
-                  pending || !can("move_apps") || f.id === project.folderId
+                  !can("move_apps") || f.id === project.folderId
                 }
               >
                 {f.name}
@@ -455,7 +456,7 @@ export function AppCard({
               <K.Item
                 onSelect={() => moveToEnvironment(e.id)}
                 disabled={
-                  pending || !can("move_apps") || e.id === project.environmentId
+                  !can("move_apps") || e.id === project.environmentId
                 }
               >
                 {e.name}
@@ -471,7 +472,7 @@ export function AppCard({
               >
                 <K.Item
                   onSelect={() => moveToEnvironment(null)}
-                  disabled={pending || !can("move_apps")}
+                  disabled={!can("move_apps")}
                 >
                   Out of project
                 </K.Item>
