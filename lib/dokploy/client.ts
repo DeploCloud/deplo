@@ -89,8 +89,11 @@ export interface DokploySecurity {
 
 export interface DokployApplication {
   applicationId: string;
-  name: string;
-  appName: string;
+  /** OPTIONAL because `project.all` is a projection: its rows carry an id and
+   *  sometimes a name, and a database row carries only the id. Anything that needs
+   *  a real value reads the DETAIL row (`getService`). */
+  name?: string | null;
+  appName?: string | null;
   description?: string | null;
   env?: string | null;
   buildArgs?: string | null;
@@ -173,8 +176,9 @@ export interface DokployApplication {
 
 export interface DokployCompose {
   composeId: string;
-  name: string;
-  appName: string;
+  /** Optional for the same reason as {@link DokployApplication.name}. */
+  name?: string | null;
+  appName?: string | null;
   description?: string | null;
   env?: string | null;
   composeFile?: string | null;
@@ -213,8 +217,10 @@ export interface DokployCompose {
 
 /** The five database engines share one shape; only the id field's name differs. */
 export interface DokployDatabase {
-  name: string;
-  appName: string;
+  /** Optional for the same reason as {@link DokployApplication.name} — and a
+   *  database row from `project.all` really does carry NOTHING but its id. */
+  name?: string | null;
+  appName?: string | null;
   description?: string | null;
   dockerImage?: string | null;
   databaseName?: string | null;
@@ -519,6 +525,35 @@ export function getDatabase(
   id: string,
 ): Promise<DokployDatabase> {
   return get<DokployDatabase>(c, `${kind}.one`, { [`${kind}Id`]: id });
+}
+
+/**
+ * The detail call for any kind of service, picked by kind.
+ *
+ * Worth having in one place because **`project.all` is a projection, not the
+ * rows**: measured against a real instance it returns
+ * `{applicationId, name, applicationStatus}` for an application, and for a
+ * database only `{postgresId}` — no name, no `appName`, no `serverId`. Everything
+ * authoritative therefore comes from here, and anything that reads a field off the
+ * tree instead is reading a field that may simply not be there.
+ */
+export function getService(
+  c: DokployCredential,
+  kind: string,
+  id: string,
+): Promise<DokployApplication | DokployCompose | DokployDatabase> {
+  if (kind === "application") return getApplication(c, id);
+  if (kind === "compose") return getCompose(c, id);
+  return getDatabase(c, kind as DokployDbKind, id);
+}
+
+/** The display name of a service, from its detail row, however it is shaped. */
+export function serviceDisplayName(
+  detail: { name?: string | null } | null | undefined,
+  fallback: string,
+): string {
+  const name = detail?.name?.trim();
+  return name || fallback;
 }
 
 /**

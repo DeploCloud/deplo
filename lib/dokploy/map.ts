@@ -818,7 +818,10 @@ export function mapDatabase(
   return {
     value: {
       type,
-      name: row.name,
+      // The tree's row has no name for a database (only its id), so a caller that
+      // maps one straight from `project.all` would create "" here. The detail row
+      // always has it; the fallback keeps this pure function total either way.
+      name: row.name?.trim() || "database",
       version,
       username: row.databaseUser?.trim() || null,
       dbName: row.databaseName?.trim() || null,

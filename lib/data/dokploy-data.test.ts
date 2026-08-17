@@ -65,33 +65,45 @@ const PROJECT_TREE = [
         environmentId: "dok-env-prod",
         name: "production",
         isDefault: true,
+        // Exactly what a real instance returns: an application carries an id, a
+        // name and a status, and a DATABASE carries nothing but its id.
         applications: [
-          {
-            applicationId: "dok-app-web",
-            name: "blink-web",
-            appName: "blink-web-abc",
-            serverId: null,
-          },
+          { applicationId: "dok-app-web", name: "blink-web", applicationStatus: "done" },
           {
             applicationId: "dok-app-ghost",
             name: "never-imported",
-            appName: "ghost-xyz",
-            serverId: null,
+            applicationStatus: "done",
           },
         ],
         compose: [],
-        postgres: [
-          {
-            postgresId: "dok-pg-1",
-            name: "blink-db",
-            appName: "blink-db-abc",
-            serverId: null,
-          },
-        ],
+        postgres: [{ postgresId: "dok-pg-1" }],
       },
     ],
   },
 ];
+
+/** The detail rows - the only place `appName` and `serverId` exist. */
+const DETAILS: Record<string, unknown> = {
+  "dok-app-web": {
+    applicationId: "dok-app-web",
+    name: "blink-web",
+    appName: "blink-web-abc",
+    serverId: null,
+  },
+  "dok-app-ghost": {
+    applicationId: "dok-app-ghost",
+    name: "never-imported",
+    appName: "ghost-xyz",
+    serverId: null,
+  },
+  "dok-pg-1": {
+    postgresId: "dok-pg-1",
+    name: "blink-db",
+    appName: "blink-db-abc",
+    dockerImage: "postgres:16",
+    serverId: null,
+  },
+};
 
 /** `docker inspect` output per container, keyed by container id. */
 const INSPECT: Record<string, unknown> = {
@@ -141,6 +153,11 @@ function fakeDokploy() {
       });
 
     if (procedure === "project.all") return json(PROJECT_TREE);
+    if (procedure.endsWith(".one")) {
+      const id = [...url.searchParams.values()][0] ?? "";
+      const row = DETAILS[id];
+      return row ? json(row) : new Response("not found", { status: 404 });
+    }
     if (procedure === "docker.getContainersByAppLabel")
       return json(CONTAINERS[url.searchParams.get("appName") ?? ""] ?? []);
     if (procedure === "docker.getConfig")

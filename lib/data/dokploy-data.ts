@@ -19,9 +19,11 @@ import type { DatabaseType } from "../types";
 
 import {
   DOKPLOY_DB_KINDS,
+  getService,
   inspectContainer,
   listAppContainers,
   listProjects as listDokployProjects,
+  serviceDisplayName,
   stopService,
   type DokployCredential,
   type DokployDatabase,
@@ -142,43 +144,42 @@ interface SourceService {
  * (a helper per field) turned one call into three for the same answer.
  */
 async function sourceServices(c: DokployCredential): Promise<SourceService[]> {
-  const out: SourceService[] = [];
+  // `project.all` gives ids, not rows: an application arrives as
+  // {applicationId, name, applicationStatus} and a database as {postgresId} and
+  // nothing else. `appName` — the label every container of the service carries,
+  // and the whole basis of finding its volumes — is only ever on the detail row.
+  const stubs: { kind: string; id: string; projectName: string; environmentName: string }[] =
+    [];
   for (const p of await listDokployProjects(c))
     for (const env of p.environments ?? []) {
-      const where = { projectName: p.name, environmentName: env.name };
+      const where = { projectName: p.name ?? "", environmentName: env.name ?? "" };
       for (const a of env.applications ?? [])
-        out.push({
-          kind: "application",
-          id: a.applicationId,
-          name: a.name,
-          appName: a.appName,
-          serverId: a.serverId ?? "",
-          ...where,
-        });
+        stubs.push({ kind: "application", id: a.applicationId, ...where });
       for (const s of env.compose ?? [])
-        out.push({
-          kind: "compose",
-          id: s.composeId,
-          name: s.name,
-          appName: s.appName,
-          serverId: s.serverId ?? "",
-          ...where,
-        });
+        stubs.push({ kind: "compose", id: s.composeId, ...where });
       for (const kind of DOKPLOY_DB_KINDS)
         for (const row of (env[kind] ?? []) as DokployDatabase[]) {
           const id = row[`${kind}Id`];
-          if (typeof id !== "string") continue;
-          out.push({
-            kind,
-            id,
-            name: row.name,
-            appName: row.appName,
-            serverId: row.serverId ?? "",
-            ...where,
-          });
+          if (typeof id === "string") stubs.push({ kind, id, ...where });
         }
     }
-  return out;
+
+  const out: (SourceService | null)[] = new Array(stubs.length).fill(null);
+  await mapLimit(
+    stubs.map((stub, index) => ({ stub, index })),
+    5,
+    async ({ stub, index }) => {
+      const detail = await getService(c, stub.kind, stub.id).catch(() => null);
+      if (!detail) return;
+      out[index] = {
+        ...stub,
+        name: serviceDisplayName(detail, stub.id),
+        appName: detail.appName?.trim() ?? "",
+        serverId: detail.serverId ?? "",
+      };
+    },
+  );
+  return out.filter((s): s is SourceService => s != null);
 }
 
 /**

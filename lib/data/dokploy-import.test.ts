@@ -124,7 +124,9 @@ function defaultFixtures(): Fixtures {
               { applicationId: "dok-app-api", name: "blink-api", serverId: null },
             ],
             compose: [],
-            postgres: [{ postgresId: "dok-pg-1", name: "blink-db", serverId: null }],
+            // A real `project.all` gives a database NOTHING but its id - no name,
+            // no appName, no serverId. The name comes from `postgres.one`.
+            postgres: [{ postgresId: "dok-pg-1" }],
           },
         ],
       },
@@ -304,6 +306,18 @@ test("scan describes the whole tree without writing anything", async () => {
   // Nothing was created by a scan.
   assert.equal((await db.select().from(appsTable)).length, 0);
   assert.equal((await db.select().from(databasesTable)).length, 0);
+});
+
+test("a database the tree gives only an id for is still named, not a crash", async () => {
+  const plan = await asOwner(() => scanDokploy(CONNECT));
+  const db = plan.projects[0].environments[0].services.find(
+    (s) => s.kind === "postgres",
+  )!;
+  // `project.all` returns `{postgresId}` and nothing else for a database, which is
+  // how "Cannot read properties of undefined (reading 'trim')" happened: the name
+  // has to come from the detail row.
+  assert.equal(db.name, "blink-db");
+  assert.equal(db.targetKind, "database");
 });
 
 test("scan marks a libsql database unsupported and never asks for its detail", async () => {

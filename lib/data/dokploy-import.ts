@@ -39,15 +39,14 @@ import type { BuildConfig, VolumeMount } from "../types";
 import {
   DOKPLOY_DB_KINDS,
   activeOrganizationName,
-  getApplication,
-  getCompose,
   getConvertedCompose,
-  getDatabase,
+  getService,
   listMembers,
   listProjects as listDokployProjects,
   listSchedules,
   listServers,
   normalizeDokployBaseUrl,
+  serviceDisplayName,
   type DokployApplication,
   type DokployCompose,
   type DokployCredential,
@@ -276,10 +275,20 @@ export async function credentialFor(input: ConnectInput): Promise<DokployCredent
 /* Reading the source tree                                            */
 /* ------------------------------------------------------------------ */
 
-/** One Dokploy service, flattened out of the per-kind arrays on an environment. */
+/**
+ * One Dokploy service as `project.all` gives it: an id, a kind, and whatever else
+ * happened to be projected.
+ *
+ * `project.all` is NOT the rows. Measured against a real instance it returns
+ * `{applicationId, name, applicationStatus}` for an application and, for a
+ * database, `{postgresId}` and nothing else — no name, no `appName`, no
+ * `serverId`. So this carries an OPTIONAL name (a label for a service whose detail
+ * could not be read) and everything else comes from `getService`.
+ */
 interface SourceService {
   kind: "application" | "compose" | DokployDbKind;
   id: string;
+  /** From the tree when it was there; the authority is the detail row. */
   name: string;
   serverId: string;
 }
@@ -290,33 +299,44 @@ function servicesOf(env: DokployEnvironment): SourceService[] {
     out.push({
       kind: "application",
       id: a.applicationId,
-      name: a.name,
+      name: a.name?.trim() ?? "",
       serverId: a.serverId ?? "",
     });
   for (const c of env.compose ?? [])
     out.push({
       kind: "compose",
       id: c.composeId,
-      name: c.name,
+      name: c.name?.trim() ?? "",
       serverId: c.serverId ?? "",
     });
   for (const kind of DOKPLOY_DB_KINDS)
     for (const row of (env[kind] ?? []) as DokployDatabase[]) {
       const id = row[`${kind}Id`];
       if (typeof id !== "string") continue;
-      out.push({ kind, id, name: row.name, serverId: row.serverId ?? "" });
+      out.push({
+        kind,
+        id,
+        name: row.name?.trim() ?? "",
+        serverId: row.serverId ?? "",
+      });
     }
   return out;
 }
 
 /** The detail call for one service — the only shape difference between kinds. */
-async function loadService(
+function loadService(
   c: DokployCredential,
   svc: SourceService,
 ): Promise<DokployApplication | DokployCompose | DokployDatabase> {
-  if (svc.kind === "application") return getApplication(c, svc.id);
-  if (svc.kind === "compose") return getCompose(c, svc.id);
-  return getDatabase(c, svc.kind, svc.id);
+  return getService(c, svc.kind, svc.id);
+}
+
+/** What to call a service: its detail row's name, the tree's, or its id. */
+function nameOf(
+  detail: { name?: string | null } | null,
+  svc: SourceService,
+): string {
+  return serviceDisplayName(detail, svc.name || svc.id);
 }
 
 /* ------------------------------------------------------------------ */
@@ -372,7 +392,9 @@ export async function scanDokploy(input: ConnectInput): Promise<DokployPlan> {
         const line: PlanService = {
           sourceId: svc.id,
           kind: svc.kind,
-          name: svc.name,
+          // Replaced by the detail row's name below; the id is what a service whose
+          // detail cannot be read is called, since it is all Dokploy gave us.
+          name: svc.name || svc.id,
           targetKind:
             svc.kind === "compose" || svc.kind === "application"
               ? "app"
@@ -406,16 +428,26 @@ export async function scanDokploy(input: ConnectInput): Promise<DokployPlan> {
           return;
         }
 
+        // The detail row is the first place a name is guaranteed: `project.all`
+        // gives a database nothing but its id, so until now this line may have had
+        // no name at all.
+        line.name = nameOf(detail, svc);
+
         if (line.targetKind === "database") {
-          const key = svc.name.trim().toLowerCase();
+          const key = line.name.trim().toLowerCase();
           if (existing.databases.has(key)) line.status = "exists";
-          line.notes.push(...mapDatabase(svc.kind as DokployDbKind, detail as DokployDatabase).notes);
+          line.notes.push(
+            ...mapDatabase(svc.kind as DokployDbKind, {
+              ...(detail as DokployDatabase),
+              name: line.name,
+            }).notes,
+          );
           services[index] = line;
           return;
         }
 
         // Apps: name is unique per (project, environment) for our purposes.
-        const homeKey = existingEnv ? `${existingEnv}:${svc.name.trim().toLowerCase()}` : null;
+        const homeKey = existingEnv ? `${existingEnv}:${line.name.trim().toLowerCase()}` : null;
         if (homeKey && existing.apps.has(homeKey)) line.status = "exists";
 
         const isCompose = svc.kind === "compose";
@@ -870,38 +902,81 @@ export async function importDokployProject(
     const appIds: string[] = [];
 
     for (const svc of servicesOf(env)) {
-      const svcReport = envReport.at(svc.name);
+      const isApp = svc.kind === "application" || svc.kind === "compose";
+      const targetKind = isApp ? "app" : "database";
+
+      // An engine Deplo does not have is settled without asking about it.
+      if (!isApp && !deploEngineFor(svc.kind as DokployDbKind)) {
+        await envReport.at(svc.name || svc.id).add({
+          sourceKind: svc.kind,
+          sourceName: svc.name || svc.id,
+          outcome: "unsupported",
+          targetKind,
+          message: `Deplo has no ${svc.kind} engine.`,
+        });
+        continue;
+      }
+      // The DETAIL is loaded here rather than inside each importer, because it is
+      // also where the service's real name lives: `project.all` gives a database
+      // nothing but its id, so a report scoped before this call would have an
+      // empty breadcrumb for exactly the objects hardest to identify.
+      let detail: DokployApplication | DokployCompose | DokployDatabase;
       try {
-        if (svc.kind === "application" || svc.kind === "compose") {
+        detail = await loadService(c, svc);
+      } catch (e) {
+        await envReport.at(svc.name || svc.id).add({
+          sourceKind: svc.kind,
+          sourceName: svc.name || svc.id,
+          outcome: "failed",
+          targetKind,
+          message: e instanceof Error ? e.message : "Dokploy would not return it.",
+        });
+        continue;
+      }
+
+      const name = nameOf(detail, svc);
+      const svcReport = envReport.at(name);
+
+      // Left out on purpose. Reported AFTER the detail call, which costs one GET
+      // and is what lets this line name the database instead of printing its id -
+      // `project.all` does not carry a database's name.
+      if (!isApp && input.skipDatabases) {
+        await svcReport.add({
+          sourceKind: svc.kind,
+          sourceName: name,
+          outcome: "skipped",
+          targetKind,
+          message: "Databases were left out of this import.",
+        });
+        continue;
+      }
+
+      try {
+        if (isApp) {
           const appId = await importAppService(
             c,
             svc,
+            detail as DokployApplication & DokployCompose,
+            name,
             { projectId, environmentId, serverId: serverMap.get(svc.serverId) },
             svcReport,
           );
           if (appId) appIds.push(appId);
-        } else if (!input.skipDatabases) {
+        } else {
           await importDatabaseService(
-            c,
             svc,
+            detail as DokployDatabase,
+            name,
             serverMap.get(svc.serverId),
             svcReport,
           );
-        } else {
-          await svcReport.add({
-            sourceKind: svc.kind,
-            sourceName: svc.name,
-            outcome: "skipped",
-            targetKind: "database",
-            message: "Databases were left out of this import.",
-          });
         }
       } catch (e) {
         await svcReport.add({
           sourceKind: svc.kind,
-          sourceName: svc.name,
+          sourceName: name,
           outcome: "failed",
-          targetKind: svc.kind === "application" || svc.kind === "compose" ? "app" : "database",
+          targetKind,
           message: e instanceof Error ? e.message : "Import failed.",
         });
       }
@@ -1103,11 +1178,12 @@ async function appIdsInProject(teamId: string, projectId: string): Promise<strin
 async function importAppService(
   c: DokployCredential,
   svc: SourceService,
+  detail: DokployApplication & DokployCompose,
+  name: string,
   home: { projectId: string; environmentId: string; serverId: string | undefined },
   report: Report,
 ): Promise<string | null> {
   const isCompose = svc.kind === "compose";
-  const detail = (await loadService(c, svc)) as DokployApplication & DokployCompose;
 
   // Already here? Leave it completely alone — a second pass must not re-write
   // someone's configuration behind their back.
@@ -1116,12 +1192,12 @@ async function importAppService(
     .from(appsTable)
     .where(eq(appsTable.environmentId, home.environmentId));
   const match = existing.find(
-    (a) => a.name.trim().toLowerCase() === svc.name.trim().toLowerCase(),
+    (a) => a.name.trim().toLowerCase() === name.trim().toLowerCase(),
   );
   if (match) {
     await report.add({
       sourceKind: svc.kind,
-      sourceName: svc.name,
+      sourceName: name,
       outcome: "skipped",
       targetKind: "app",
       targetId: match.id,
@@ -1169,7 +1245,7 @@ async function importAppService(
     if (!yamlText.trim()) {
       await report.add({
         sourceKind: svc.kind,
-        sourceName: svc.name,
+        sourceName: name,
         outcome: "failed",
         targetKind: "app",
         message:
@@ -1221,7 +1297,7 @@ async function importAppService(
   if (primary?.port) build.port = primary.port;
 
   const created = await createApp({
-    name: svc.name,
+    name,
     source,
     repo,
     dockerImage,
@@ -1241,7 +1317,7 @@ async function importAppService(
 
   await report.add({
     sourceKind: svc.kind,
-    sourceName: svc.name,
+    sourceName: name,
     outcome: "created",
     targetKind: "app",
     targetId: created.id,
@@ -1317,7 +1393,7 @@ async function importAppService(
 
   await importCrons(c, isCompose ? "compose" : "application", svc.id, created.id, notes);
 
-  await report.notes(svc.kind, svc.name, notes, target);
+  await report.notes(svc.kind, name, notes, target);
   return created.id;
 }
 
@@ -1386,31 +1462,18 @@ async function importCrons(
  * not come with it.
  */
 async function importDatabaseService(
-  c: DokployCredential,
   svc: SourceService,
+  row: DokployDatabase,
+  name: string,
   serverId: string | undefined,
   report: Report,
 ): Promise<void> {
-  // Decided before the detail call, exactly like the scan does it: an engine deplo
-  // does not have is not a request worth making, and a 404 would report itself as
-  // an HTTP problem rather than as the plain fact that there is no such engine.
-  if (!deploEngineFor(svc.kind as DokployDbKind)) {
-    await report.add({
-      sourceKind: svc.kind,
-      sourceName: svc.name,
-      outcome: "unsupported",
-      targetKind: "database",
-      message: `Deplo has no ${svc.kind} engine.`,
-    });
-    return;
-  }
-  const row = (await loadService(c, svc)) as DokployDatabase;
-  const mapped = mapDatabase(svc.kind as DokployDbKind, row);
+  const mapped = mapDatabase(svc.kind as DokployDbKind, { ...row, name });
   const notes = [...mapped.notes];
   if (!mapped.value) {
     await report.add({
       sourceKind: svc.kind,
-      sourceName: svc.name,
+      sourceName: name,
       outcome: "unsupported",
       targetKind: "database",
       message: notes.join(" ") || "Deplo has no such engine.",
@@ -1431,7 +1494,7 @@ async function importDatabaseService(
   if (clash.length > 0) {
     await report.add({
       sourceKind: svc.kind,
-      sourceName: svc.name,
+      sourceName: name,
       outcome: "skipped",
       targetKind: "database",
       targetId: clash[0].id,
@@ -1477,7 +1540,7 @@ async function importDatabaseService(
     } catch (e2) {
       await report.add({
         sourceKind: svc.kind,
-        sourceName: svc.name,
+        sourceName: name,
         outcome: "failed",
         targetKind: "database",
         message: e2 instanceof Error ? e2.message : "Could not create the database.",
@@ -1488,7 +1551,7 @@ async function importDatabaseService(
 
   await report.add({
     sourceKind: svc.kind,
-    sourceName: svc.name,
+    sourceName: name,
     outcome: "created",
     targetKind: "database",
     targetId: created.id,
@@ -1507,7 +1570,7 @@ async function importDatabaseService(
   notes.push(
     `The database is empty and reachable inside Deplo as "${created.host}", not as "${row.appName}" - update the connection strings in the apps that use it, then restore your data.`,
   );
-  await report.notes(svc.kind, svc.name, notes, {
+  await report.notes(svc.kind, name, notes, {
     kind: "database",
     id: created.id,
   });
