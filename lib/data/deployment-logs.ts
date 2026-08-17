@@ -48,6 +48,46 @@ const MAX_BUFFER = 200;
  */
 const MAX_RETAINED = 2_000;
 
+/**
+ * The bounds on what ONE deployment may persist, because the build's output is
+ * the tenant's to write and `deployment_logs` lives in the CONTROL PLANE's
+ * database — shared by every team, the rate limiter and every session. A build
+ * that prints forever (`RUN yes`) would otherwise write rows until the disk
+ * filled, and nothing prunes them: `clearDeploymentLogs` only fires on a
+ * same-deployment rebuild or the app/deployment delete cascade.
+ *
+ * Cron output already has exactly this ceiling (`CRON_OUTPUT_TAIL_BYTES`, kept
+ * control-plane-side "because the ceiling is a contract an agent could regress
+ * on"); deploy logs had neither half.
+ *
+ * A line longer than the cap keeps its HEAD (where a compiler/stack-trace says
+ * what happened) and is marked; past the row ceiling the deployment keeps its
+ * first lines (the build's start, which is what a failure is read from) and one
+ * final marker line, then stops persisting. Nothing throws and no deploy fails —
+ * losing log tail is not worth a failed deployment.
+ */
+let MAX_LINE_CHARS = 4_000;
+let MAX_LINES_PER_DEPLOYMENT = 20_000;
+
+/** Shrink the caps so the suite can prove them without writing 20k rows. */
+export function __setLogCapsForTest(lines: number, chars: number): void {
+  MAX_LINES_PER_DEPLOYMENT = lines;
+  MAX_LINE_CHARS = chars;
+}
+export function __resetLogCapsForTest(): void {
+  MAX_LINES_PER_DEPLOYMENT = 20_000;
+  MAX_LINE_CHARS = 4_000;
+}
+/**
+ * How many deployments' budgets to remember. The counter can NOT live on the
+ * evictable buffer (`loadDeploymentLogs` → `finalizeDeploymentLogs` → `evictIfIdle`
+ * runs on any READ, so a reader opening the Logs page mid-build would hand the
+ * build a fresh budget), so it is kept beside it and pruned by AGE instead:
+ * `Map` iterates in insertion order, and a deployment old enough to fall off this
+ * window has long since stopped appending.
+ */
+const MAX_TRACKED_BUDGETS = 5_000;
+
 interface DeploymentBuffer {
   lines: LogLine[];
   /** Bumped by clearDeploymentLogs; a flush captured under an old epoch is dropped. */
@@ -60,12 +100,25 @@ interface DeploymentBuffer {
 
 interface LogState {
   buffers: Map<string, DeploymentBuffer>;
+  /**
+   * Lines ENQUEUED per deployment since its last clear — the budget the
+   * per-deployment ceiling spends.
+   *
+   * Deliberately NOT a field on DeploymentBuffer: a buffer is EVICTED whenever it
+   * falls idle (`evictIfIdle`, reached from `finalizeDeploymentLogs` — which
+   * `loadDeploymentLogs` calls, so ANY reader opening the Logs page mid-build
+   * evicts it). A counter living there would reset on every such read and the
+   * ceiling would be bypassable at will. Cleared explicitly by
+   * `clearDeploymentLogs` (a fresh build starts a fresh budget) and by
+   * `forgetDeploymentLogBudget` when the deployment's rows are deleted.
+   */
+  enqueued: Map<string, number>;
 }
 
 const LOGS_KEY = Symbol.for("deplo.deployment-logs.buffers");
 const g = globalThis as unknown as { [LOGS_KEY]?: LogState };
 function state(): LogState {
-  return (g[LOGS_KEY] ??= { buffers: new Map() });
+  return (g[LOGS_KEY] ??= { buffers: new Map(), enqueued: new Map() });
 }
 
 function bufferFor(depId: string): DeploymentBuffer {
@@ -86,7 +139,37 @@ function bufferFor(depId: string): DeploymentBuffer {
  */
 export function appendLog(depId: string, line: LogLine): void {
   const b = bufferFor(depId);
-  b.lines.push(line);
+  // Bound what one deployment may persist into the SHARED control-plane database
+  // (see MAX_LINE_CHARS / MAX_LINES_PER_DEPLOYMENT). Silent by design past the
+  // ceiling: one marker line, then nothing — a log line must never fail a deploy.
+  const s = state();
+  if (s.enqueued.size > MAX_TRACKED_BUDGETS && !s.enqueued.has(depId)) {
+    // Drop the oldest fifth in one pass, so this runs rarely rather than per line.
+    let drop = Math.floor(MAX_TRACKED_BUDGETS / 5);
+    for (const k of s.enqueued.keys()) {
+      if (drop-- <= 0) break;
+      s.enqueued.delete(k);
+    }
+  }
+  const seen = (s.enqueued.get(depId) ?? 0) + 1;
+  if (seen > MAX_LINES_PER_DEPLOYMENT) return;
+  s.enqueued.set(depId, seen);
+  if (seen === MAX_LINES_PER_DEPLOYMENT) {
+    b.lines.push({
+      ts: line.ts,
+      level: "info",
+      text: `[deplo] log truncated at ${MAX_LINES_PER_DEPLOYMENT} lines — the rest of this build's output is not stored`,
+    });
+  } else {
+    b.lines.push(
+      line.text.length > MAX_LINE_CHARS
+        ? {
+            ...line,
+            text: `${line.text.slice(0, MAX_LINE_CHARS)}… [deplo] line truncated`,
+          }
+        : line,
+    );
+  }
   if (b.lines.length >= MAX_BUFFER) {
     void scheduleFlush(depId, true);
   } else if (!b.timer) {
@@ -187,6 +270,7 @@ export async function clearDeploymentLogs(depId: string): Promise<void> {
   }
   // Drop any buffered-but-unflushed lines and invalidate in-flight flushes.
   b.lines = [];
+  state().enqueued.delete(depId);
   b.epoch++;
   // Wait for the prior chain to settle (it self-drops on the epoch mismatch),
   // then DELETE the persisted rows.

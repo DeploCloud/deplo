@@ -24,6 +24,8 @@ import {
   clearDeploymentLogs,
   finalizeDeploymentLogs,
   loadDeploymentLogs,
+  __setLogCapsForTest,
+  __resetLogCapsForTest,
   __resetDeploymentLogBuffers,
 } from "./deployment-logs";
 import type { LogLine } from "../types";
@@ -178,4 +180,40 @@ test("a failed flush retries IN ORDER (no inversion across two failed batches)",
     ...Array.from({ length: 200 }, (_, i) => `B${i}`),
   ];
   assert.deepEqual(rows.map((r) => r.text), expected, "enqueue order preserved across retries");
+});
+
+/**
+ * `deployment_logs` lives in the CONTROL PLANE's database, shared by every team —
+ * but the build's output is the tenant's to write, and nothing prunes these rows.
+ * A build that prints forever would fill the disk and take the instance down, so
+ * one deployment's contribution is bounded twice: per line, and per deployment.
+ * The caps are shrunk here so the proof costs a handful of rows, not 20k.
+ */
+test("the per-line and per-deployment log caps hold, and a read can't reset the budget", async () => {
+  await seedDeployment(db, { id: "dpl_cap", appId: "prj_1", status: "building" });
+  __setLogCapsForTest(5, 20);
+  try {
+    // Per line: the HEAD is kept (that's where a compiler error is) and marked.
+    appendLog("dpl_cap", line("y".repeat(100)));
+    for (let i = 0; i < 10; i++) appendLog("dpl_cap", line(`L${i}`));
+    let rows = await loadDeploymentLogs("dpl_cap");
+    assert.equal(rows.length, 5, "exactly the ceiling is stored");
+    assert.ok(rows[0].text.startsWith("yyyy") && rows[0].text.length < 100);
+    assert.match(rows[0].text, /line truncated/);
+    assert.match(rows[rows.length - 1].text, /log truncated at 5 lines/);
+
+    // A reader opening the Logs page mid-build finalizes + EVICTS the buffer. The
+    // budget must not live on that buffer, or the ceiling would reset per read.
+    for (let i = 0; i < 5; i++) appendLog("dpl_cap", line(`B${i}`));
+    rows = await loadDeploymentLogs("dpl_cap");
+    assert.equal(rows.length, 5, "the ceiling survived the read");
+    assert.ok(!rows.some((r) => r.text.startsWith("B")));
+
+    // Clearing (a rebuild of the same deployment) starts a fresh budget.
+    await clearDeploymentLogs("dpl_cap");
+    appendLog("dpl_cap", line("fresh"));
+    assert.deepEqual((await loadDeploymentLogs("dpl_cap")).map((r) => r.text), ["fresh"]);
+  } finally {
+    __resetLogCapsForTest();
+  }
 });
