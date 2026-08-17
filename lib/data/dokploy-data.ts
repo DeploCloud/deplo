@@ -196,10 +196,12 @@ async function sourceState(
   appName: string,
   kind: string,
 ): Promise<{ volumes: NamedVolume[]; running: boolean; notes: string[] }> {
+  // A compose stack's containers are plain ones named after the stack; an
+  // application or a database is a swarm service. Both orders end with the other
+  // value rather than assuming, because a Dokploy configured differently (a
+  // `composeType: stack`, an install not using swarm) still has to be found.
   const order: DokployRuntime[] =
-    kind === "compose"
-      ? ["docker-compose", "swarm", "standalone"]
-      : ["swarm", "standalone", "docker-compose"];
+    kind === "compose" ? ["standalone", "swarm"] : ["swarm", "standalone"];
 
   let containers: { containerId: string }[] = [];
   for (const type of order) {

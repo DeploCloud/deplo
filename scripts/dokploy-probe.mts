@@ -21,6 +21,7 @@ import {
 } from "../lib/deploy/compose-lint";
 import {
   deploEngineFor,
+  sourceVolumesFrom,
   envNeedsInterpolation,
   mapBuildSettings,
   mapDatabase,
@@ -43,11 +44,14 @@ import {
   DOKPLOY_DB_KINDS,
   activeOrganizationName,
   getService,
+  inspectContainer,
+  listAppContainers,
   listProjects,
   listServers,
   normalizeDokployBaseUrl,
   serviceDisplayName,
   type DokployCredential,
+  type DokployRuntime,
 } from "../lib/dokploy/client";
 
 const [url, apiKey] = process.argv.slice(2);
@@ -103,6 +107,7 @@ for (const p of await listProjects(c)) {
             `domains=${domains} mounts=${mounts}`,
         );
         if (process.env.PROBE_MAP) describe(stub.kind, detail, name);
+        if (process.env.PROBE_DATA) await describeVolumes(stub.kind, detail);
       } catch (e) {
         console.log(
           `    ${stub.kind.padEnd(11)} ${stub.id.padEnd(24)} FAILED: ${e instanceof Error ? e.message : e}`,
@@ -209,4 +214,42 @@ function describe(kind: string, row: Record<string, unknown>, name: string): voi
   }
 
   for (const n of notes) console.log(`        note         ${n}`);
+}
+
+/* ------------------------------------------------------------------ */
+/* PROBE_DATA=1: what the cutover would find                            */
+/* ------------------------------------------------------------------ */
+
+/**
+ * The containers of a service and the volumes they mount — the discovery half of
+ * a data cutover, run without moving anything.
+ */
+async function describeVolumes(
+  kind: string,
+  detail: Record<string, unknown>,
+): Promise<void> {
+  const appName = String(detail.appName ?? "");
+  if (!appName) return;
+  const order: DokployRuntime[] =
+    kind === "compose" ? ["standalone", "swarm"] : ["swarm", "standalone"];
+  let containers: { containerId: string; name: string; state: string }[] = [];
+  let found: DokployRuntime | null = null;
+  for (const type of order) {
+    containers = await listAppContainers(c, appName, type).catch(() => []);
+    if (containers.length > 0) {
+      found = type;
+      break;
+    }
+  }
+  if (containers.length === 0) {
+    console.log("        volumes      no container running - nothing to read");
+    return;
+  }
+  console.log(`        containers   ${containers.length} (${found})`);
+  for (const ct of containers) {
+    const info = await inspectContainer(c, ct.containerId).catch(() => null);
+    if (!info) continue;
+    for (const v of sourceVolumesFrom(info))
+      console.log(`        volume       ${v.name} @ ${v.mountPath}`);
+  }
 }

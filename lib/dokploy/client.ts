@@ -633,11 +633,19 @@ export interface DokployContainer {
 }
 
 /**
- * How a Dokploy service's containers are labelled, which is how they are found.
- * Applications and databases are SWARM services; a compose stack is a compose
- * project. Getting this wrong finds nothing rather than the wrong thing.
+ * How a Dokploy service's containers are found. Exactly two values: the endpoint
+ * REFUSES anything else (`Invalid option: expected one of "standalone"|"swarm"`),
+ * so a third would be a 400 rather than a miss.
+ *
+ *  - `swarm` filters on `com.docker.swarm.service.name` — an application or a
+ *    database, both of which Dokploy runs as swarm services;
+ *  - `standalone` filters on the container NAME — a compose stack, whose
+ *    containers are `<appName>-<service>-1`.
+ *
+ * Verified against a live instance: a compose stack answers on `standalone` and
+ * nothing on `swarm`, a database the other way round.
  */
-export type DokployRuntime = "swarm" | "docker-compose" | "standalone";
+export type DokployRuntime = "swarm" | "standalone";
 
 /** The containers of one service, by its `appName`. */
 export async function listAppContainers(
