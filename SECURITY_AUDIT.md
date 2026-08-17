@@ -410,3 +410,76 @@ The three Mediums (N-M1 IPv6 SSRF, N-M2 token-mint scope reach, N-M3 MCP kill-sw
 Part I's verdict holds and is sharpened on the compose path: the write-time enumerated denylist was missing **five** host-escape keys (`env_file`, `secrets.file`, `configs.file`, `volumes_from`, `cgroup`/`oom_kill_disable`) and **three** file-merge keys (`build:` host reach, `extends:{file:}`, `include:`, `label_file:`) — two of them cross-tenant-Critical from an ordinary team capability. Those are closed, along with a git-PAT exfiltration, a cross-tenant cron persistence hole in the just-hardened transfer path, a GitHub-installation IDOR, the IPv4-only half of the SSRF fix, and the token-mint / MCP-kill-switch reach gaps. The structural recommendation stands and is now the load-bearing follow-up: **prefer an allowlist for the privileged/file/merge/routing keys and re-lint at deploy**, so the next un-enumerated key is not the next bypass.
 
 *End of Part II.*
+
+---
+---
+
+# Part III — Fifth Pass: "the fix closed the instance, not the class"
+
+**Date:** 2026-08-16 · **Type:** authorized fifth pass over the tree Part II's fixes had just landed on, followed by **implementation of every finding**.
+**Method:** four parallel read-only auditors — (a) adversarial attempts to BYPASS each of Part II's 13 fixes and to find un-fixed siblings of their classes, (b) output-rendering / stored-XSS / agent-RPC-argument injection, (c) races / TOCTOU / business-logic / cross-tenant resource abuse, (d) the freshest code (the MCP page rebuild, the in-flight playground removal) plus the surfaces four passes had structurally skipped (boot, install scripts, PKI dial, the small REST routes) — then hand re-verification of every High/Medium from source, with read-only `docker compose config` / `js-yaml` / `net.isIP` reproductions.
+
+## 1. Executive summary
+
+**Part II's 13 fixes hold under attack** (see §5). What this pass found instead is a pattern, not a regression: **each fix closed its own instance while leaving a sibling of the same class open** — the storage gate got foreign volumes but not foreign *networks*, `oom_kill_disable` was gated but not `oom_score_adj`, the GitHub IDOR got the cross-team check but not the depth check its twin had, the re-auth limiter reached two of the three re-auth sites, the transfer severed `cron_jobs` but not `api_token_apps`. Nine new findings, **all fixed and pushed**:
+
+| # | Finding | Sev | Fix |
+|---|---|---|---|
+| P3-H1 | Compose join to a **FOREIGN network** (external / pinned `name:` / `driver_opts` / macvlan) — reaches another team's unpublished services at L3 and, via the service-name DNS alias, collects their internal lookups (DB credentials) | **High** | `000935b` |
+| P3-M1 | `oom_score_adj: -1000` ungated in compose **and** in the structured Resources form (apps + databases) — makes the kernel kill the NEIGHBOURS | **Medium** | `000935b` |
+| P3-M2 | Build/deploy log output **unbounded** into the shared control-plane Postgres → disk fill → instance-wide DoS | **Medium** | `de59636` |
+| P3-M3 | `transferInstanceOwner` password re-auth **un-throttled** (the highest-value re-auth there is) | **Medium** | `0592730` |
+| P3-M4 | `githubRepos`/`githubBranches` missing `requireTeamWide` — a narrowed token enumerates the team's private repos | **Medium** | `0592730` |
+| P3-M5 | `api_token_apps` not severed on app transfer — a source-team token follows the app into the destination team | **Med/Low** | `0592730` |
+| P3-L1 | Preview `maxActive` cap counted under a per-**PR** lock → concurrent PRs overshoot the cap (containers + Docker networks on a ~31-network host) | Low | `d796793` |
+| P3-L2 | `restoreBackup` took **no** `app-lifecycle` mutex → wipe/untar can race a concurrent deploy on the same volumes | Low | `d796793` |
+| P3-L3 | `outbound-url`: an IPv6 **zone id** made canonicalization throw → *allowed*; **NAT64** (`64:ff9b::<v4>`) embedded IPv4 unread | Low | `d796793` |
+| P3-L4 | cron `workdir`/`user` reached the agent on a bare `.trim()` | Low | `d796793` |
+| P3-L5 | `group_add` / non-default `logging` driver+options ungated (host groups; dockerd dials an author-chosen address) | Low | `30fb2be`→`000935b` |
+| P3-L6 | The agent installer is fetched over plain **http** in the bare-IP default, with its checksum on the same channel → on-path attacker gets root on the new host | Low (op) | `d9bff44` (warning; see §4) |
+
+## 2. The High: foreign-network join
+
+`composeMountsForeignStorage` gated a top-level `volumes:` entry pinned by `external` / `name:` / `driver_opts`; the parallel **`networks:` block was read by no detector at all**, and `buildComposeStack` only processes the shared `deplo` network — every other network passes through exactly as authored, alias-drop and reserved-name refusal included. Compose project names are deterministic (`deplo-<slug>`), so another team's default network is `deplo-<their-slug>_default`, guessable from any app name. Verified read-only: all six detectors answered "safe" for that compose and `docker compose config` accepted the join.
+
+Two consequences, the second worse than the first: every unpublished service of the victim's stack becomes reachable at L3; and because a container registers its **service name** as a DNS alias on each network it joins, a service called `postgres` or `redis` round-robins the victim's own internal lookups onto the attacker's container — the credential arrives on the first packet. That is the same round-robin the shared-network choke point exists to stop, on a network that choke point never looks at.
+
+**Fixed** with `composeJoinsForeignNetwork` (external, pinned `name:`, `driver_opts`, or a `macvlan`/`ipvlan`/`host` driver — and only when a service actually joins it), wired into both compose write paths' `canMountHostVolumes` gate, plus an editor warning. The shared `deplo` network stays free, by key *and* under an alias that points at it by name; a plain per-app network stays free; declaring-without-joining stays free.
+
+## 3. Notes on the rest
+
+- **P3-M1** also covers the structured Resources form for **databases** (same shared `cleanResourceLimits`), and gates only the NEGATIVE direction — a positive `oom_score_adj` volunteers this container first, which is safe and free. `cpu_shares` / `nofile` / `nproc` remain `configure_apps` (they bound this app; they do not tell the kernel to kill someone else's).
+- **P3-M2**: the budget deliberately does **not** live on the per-deployment buffer, because `loadDeploymentLogs` → `finalizeDeploymentLogs` → `evictIfIdle` runs on any READ — a reader opening the Logs page mid-build would otherwise hand the build a fresh budget. (That bug existed in the first draft of the fix and is what the regression test pins.)
+- **P3-L1**: the re-fit runs AFTER the insert with `maxActive + 1`, because `evictToFit(keep)` evicts `count - keep + 1` (it makes room *for* an incoming row). Passing `maxActive` post-insert evicts one too many — which is exactly what the existing eviction tests caught.
+
+## 4. Accepted / deferred, with the reason
+
+- **P3-L6 (installer over http) — mitigated by disclosure, not closable in-band.** On a plain-http panel the installer *and* the checksum it verifies travel the same unauthenticated channel; no value the control plane puts in the command can fix that (the attacker rewrites the verification code too). The `:3000` http address is a deliberate rescue path (see `install.sh`), so it is not removed. What shipped: the add-server screen now says the installer is being fetched over an unencrypted connection when the panel address is http. **Operational recommendation: give the panel a domain with HTTPS before enrolling servers across an untrusted network** — then the fingerprint is pinned and this class is gone.
+- **Bootstrap token in `sudo` argv** — not improved: `sudo` records its whole command line either way (an env-var prefix is part of that line), so there is no spelling that hides it. Bounded by single-use + ~1h TTL + near-instant consumption, and the script already keeps the token off the *agent's* argv and writes `bootstrap.env` 0600.
+- **Control-plane container runs as root** — left as the documented deferral: a `USER` line needs a `/data` ownership migration for existing installs, which is a release step, not a patch. No docker socket is mounted (verified), which is what bounds it.
+- **Third-party `curl | bash`** (Docker's installer, nixpacks) — unchanged; pinning would mean vendoring two upstream installers.
+- **Registry-client DNS rebinding** — the same accepted ceiling as `outbound-url` (I-11): closing it needs an IP-pinned dispatcher, a trade the first audit already declined. `redirect: "manual"` + all-addresses checking remain.
+- **No aggregate upload quota** (512 MiB per app, unbounded by app count) — a product decision about per-team disk quota, not a security patch; flagged, not invented.
+- **`listProjects` tile counts** (count-only across role scope) — matches the documented `listFolders` choice; assessed, left.
+
+## 5. What held under attack (Part II's fixes)
+
+- **Compose parse-differential is closed by construction**: `!override`/`!reset`/duplicate keys make js-yaml throw, and `buildComposeStack` re-parses with the *same* js-yaml and re-emits via `yaml.dump`, so nothing raw reaches compose-go — a throwing input only fails its own deploy.
+- **Clone-URL host binding**: userinfo, backslash, fragment, trailing dot, port, punycode and scp forms all either match the connection's real host or clone anonymously.
+- **Token-mint containment**: a project-narrowed token cannot reach `createToken` at all (the clamp strips `manage_tokens`); a whole-team token is bounded by `assertScopeWithinActingToken`; `mintMcpConnection` inherits it.
+- **`isCrossSite`**: malformed Origin fails closed, `x-forwarded-host` is proxy-set, every cookie-auth mutating/streaming route in `app/api` now calls it.
+- **Empty-decrypt**: every booting-stack site throws or falls back to a throwaway; every verifier refuses an empty secret.
+- **No HTML-injection sink exists anywhere** (`dangerouslySetInnerHTML`/`innerHTML`/`eval`/`new Function`: zero hits), log lines only linkify `http(s)`, markdown runs without `rehype-raw`, xterm has no link addon, OAuth redirects go through the library's `SafeUrlSchema`.
+- **Agent-RPC arguments** are structured fields and argv, never shell strings: `composeUpArgs` allowlist + agent-side mirror, backup object keys built from system ids, stack slug `[a-z0-9-]`, upload extraction via `spawn` with the user filename used only as a log label.
+- **The freshest code is clean**: `stampMcpUse` keys on the caller's own token; the reworked `listMcpConnections` OR-predicate is AND-nested inside `inArray(tokenIdsReaching(teamId))`; the `mask-error` change is comment-only.
+- **The running core**: server address + pinned fingerprint read atomically, deploy vs delete share `app-lifecycle`, deploy-queue `busyKeys`, server removal blocked on live workloads, folder/project deletion reparents children, backups/crons/uploads/SSE all bounded server-side.
+
+## 6. Verification
+
+`tsc --noEmit` clean and `eslint` clean after every batch; targeted `node --test` green on every touched area (compose detectors 34, outbound/destinations 34, previews 21, backups 30, crons 20, tokens 31, app-transfer 11, instance-owner 14, github binding 4, deployment-logs 7, pr-webhook 17), with new regression tests for: the foreign-network join (attack + no-over-gating), `oom_score_adj` sign sensitivity, `group_add`/`logging`, the log caps incl. the read-can't-reset-the-budget case, the zone-id/NAT64 refusals, and `api_token_apps` severance. Full suite run as the final gate. No schema change, no new dependency, no migration.
+
+## 7. Conclusion (Part III)
+
+The authorization core continues to hold; five passes have not found a cross-team read or write in the data layer. The recurring risk is **class incompleteness in the compose→agent path and in one-site fixes** — this pass's own header. The standing follow-up is unchanged and now twice-evidenced: **allowlist the privileged/file/merge/routing compose keys and re-lint at deploy**, and when fixing a class, grep every sibling of the pattern before closing the ticket.
+
+*End of Part III.*
