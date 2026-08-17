@@ -116,6 +116,12 @@ const CONTROL_PLANE = [
   // instance — singleton holding the instance-owner crown (the tier above
   // instance admin, immutable to every other admin).
   "instance_settings",
+  // import from Dokploy — one run per import plus its report lines, team-scoped
+  // and kept: "what came over from the old platform, and what did not" has to be
+  // answerable after the tab that started it is gone. The API key is never
+  // stored; it rides each call.
+  "dokploy_imports",
+  "dokploy_import_items",
   // rate limiting - durable fixed-window counters for login, the two-factor
   // challenge and the register link. Un-scoped by design: a bucket is about an
   // ATTEMPT, often against a subject that does not exist, so it has no team and
