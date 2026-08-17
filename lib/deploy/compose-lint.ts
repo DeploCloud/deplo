@@ -441,6 +441,17 @@ export function lintCompose(source: string): LintDiagnostic[] {
       line: merge === "include" ? lineOfTopKey(lines, "include") : 1,
     });
   }
+  // Joining a network this app doesn't own reaches another stack's private
+  // services (and can claim a DNS name there) — same permission as a host bind.
+  if (composeJoinsForeignNetwork(source)) {
+    diags.push({
+      severity: "warning",
+      rule: "foreign-network",
+      message:
+        "A service here joins a network this app doesn't own (an existing network by name, or one bridged onto the server). That reaches other stacks' private services. This needs the host-volume permission.",
+      line: lineOfTopKey(lines, "networks"),
+    });
+  }
   // A `build:` reaching a host path needs the same permission as a host bind.
   if (composeBuildReachesHost(source)) {
     diags.push({
@@ -803,6 +814,102 @@ export function composeMountsForeignStorage(composeYaml: string): boolean {
 }
 
 /**
+ * Top-level network KEYS this compose points at a network Deplo did not create
+ * for this app — the network twin of {@link foreignVolumeKeys}, and the half no
+ * check used to look at.
+ *
+ * A network is "foreign" on exactly the markers a volume is: `external: true`
+ * (attach an EXISTING docker network by host name), a pinned `name:` (the same
+ * thing spelled differently), or `driver_opts` / a host-reaching `driver`
+ * (`macvlan`/`ipvlan` put the container on the host's own L2 segment). Compose
+ * project names are deterministic (`deplo-<slug>`), so another team's default
+ * network is `deplo-<their-slug>_default` — guessable from any app name.
+ *
+ * Joining it is worse than reading their storage:
+ *
+ *  - every unpublished service of that stack becomes reachable at L3 (their
+ *    database, their redis, their internal HTTP), and
+ *  - a container on a network registers its SERVICE NAME as a DNS alias there,
+ *    and Docker round-robins a name two containers both claim — so a service
+ *    called `postgres` or `redis` collects the victim's own internal lookups,
+ *    password and all. The shared-network protections (`aliases:` drop,
+ *    RESERVED_SHARED_NETWORK_NAMES) only fire for the `deplo` network, and
+ *    `buildComposeStack` leaves every other network exactly as authored.
+ *
+ * The shared `deplo` network is NOT foreign here: joining it is what routing
+ * does, and its own choke point already governs it. A plain per-app network
+ * (`networks: {internal: {}}`) declares nothing pinned and stays free.
+ */
+function foreignNetworkKeys(networks: Record<string, unknown>): string[] {
+  const out: string[] = [];
+  for (const [key, raw] of Object.entries(networks)) {
+    if (!raw || typeof raw !== "object" || Array.isArray(raw)) continue;
+    const n = raw as Record<string, unknown>;
+    // The shared network is governed by its own choke point, not by this gate.
+    const pinnedName =
+      typeof n.name === "string" && n.name.trim() !== "" ? n.name.trim() : null;
+    const externalName =
+      n.external != null &&
+      typeof n.external === "object" &&
+      !Array.isArray(n.external)
+        ? String((n.external as Record<string, unknown>).name ?? "").trim()
+        : null;
+    const target = pinnedName ?? externalName ?? (key === SHARED_NETWORK ? SHARED_NETWORK : null);
+    if (target === SHARED_NETWORK) continue;
+    const pinned =
+      (n.external != null && n.external !== false) ||
+      pinnedName !== null ||
+      (n.driver_opts != null &&
+        typeof n.driver_opts === "object" &&
+        Object.keys(n.driver_opts as object).length > 0) ||
+      // A driver that bridges onto the host's own segment rather than a private
+      // docker bridge reaches past the app either way.
+      (typeof n.driver === "string" &&
+        /^(macvlan|ipvlan|host)$/i.test(n.driver.trim()));
+    if (pinned) out.push(key);
+  }
+  return out;
+}
+
+/**
+ * Parse a compose YAML string and report whether ANY service joins a network this
+ * app does not own (see {@link foreignNetworkKeys}) — another team's stack
+ * network, or the host's L2 segment. Gated server-side behind
+ * `canMountHostVolumes`, beside its storage sibling: both are a container
+ * reaching past its own boundary, and a permission that stops one while allowing
+ * the other stops nothing.
+ *
+ * Only a service that ACTUALLY joins one counts: declaring an external network
+ * and never attaching it deploys nothing. Tolerant of malformed input, like its
+ * siblings.
+ */
+export function composeJoinsForeignNetwork(composeYaml: string): boolean {
+  let doc: { services?: Record<string, unknown>; networks?: unknown } | null;
+  try {
+    doc = yaml.load(composeYaml) as {
+      services?: Record<string, unknown>;
+      networks?: unknown;
+    } | null;
+  } catch {
+    return false;
+  }
+  const declared =
+    doc?.networks && typeof doc.networks === "object" && !Array.isArray(doc.networks)
+      ? (doc.networks as Record<string, unknown>)
+      : {};
+  const foreign = new Set(foreignNetworkKeys(declared));
+  if (foreign.size === 0) return false;
+  const services = doc?.services;
+  if (!services || typeof services !== "object") return false;
+  for (const raw of Object.values(services)) {
+    if (!raw || typeof raw !== "object" || Array.isArray(raw)) continue;
+    // Same join-shape reader the shared-network rule uses (list OR map form).
+    if (joinsSharedNetwork(raw as Record<string, unknown>, foreign)) return true;
+  }
+  return false;
+}
+
+/**
  * Parse a compose YAML string and report whether any service's `build:` reaches
  * a host path the app does not own — an absolute or `..`-escaping build
  * `context`/`dockerfile`, an `additional_contexts` source that does the same, an
@@ -933,6 +1040,12 @@ export function externalMergeMessage(key: string): string {
  * reaches another tenant's rendered env-file — any non-empty value is gated. The
  * `file:`-sourced half of the top-level `secrets:`/`configs:` blocks is the same
  * host-file read one level up, handled in {@link composeMountsForeignStorage}.
+ *
+ * `oom_score_adj` is here for the same reason as `oom_kill_disable`, and only
+ * when NEGATIVE: it tells the kernel to kill the neighbours first.
+ * `group_add` adds supplementary HOST groups inside the container, and `logging`
+ * with a non-default driver/options makes DOCKERD dial an address or host socket
+ * the author chose — both reach outside the container without naming a path.
  */
 const HOST_PRIVILEGE_KEYS = [
   "privileged",
@@ -949,6 +1062,9 @@ const HOST_PRIVILEGE_KEYS = [
   "volumes_from",
   "env_file",
   "oom_kill_disable",
+  "oom_score_adj",
+  "group_add",
+  "logging",
   "userns_mode",
 ] as const;
 
@@ -990,6 +1106,39 @@ function hostPrivilegeKeys(svc: Record<string, unknown>): string[] {
       // under memory pressure instead of this one — a cross-tenant availability
       // hit, so it takes the same grant.
       if (v === true) out.push(key);
+      continue;
+    }
+    if (key === "oom_score_adj") {
+      // A NEGATIVE adjust is `oom_kill_disable` by degrees: it makes the kernel
+      // spare this container and kill its neighbours (other tenants, and the
+      // platform's own containers) when the host runs out of memory. A positive
+      // value only volunteers this container first, which is safe and free.
+      const n = typeof v === "number" ? v : Number(String(v).trim());
+      if (Number.isFinite(n) && n < 0) out.push(key);
+      continue;
+    }
+    if (key === "group_add") {
+      // Supplementary HOST groups (`docker`, `disk`) inside the container.
+      if (Array.isArray(v) ? v.length > 0 : String(v).trim() !== "") out.push(key);
+      continue;
+    }
+    if (key === "logging") {
+      // A non-default logging driver makes DOCKERD itself dial an address (or a
+      // host socket/path) the author chose, from outside the container's sandbox.
+      // `json-file`/`local` with no options is what deplo's own logs read from.
+      if (typeof v !== "object" || Array.isArray(v)) continue;
+      const log = v as Record<string, unknown>;
+      const driver = typeof log.driver === "string" ? log.driver.trim().toLowerCase() : "";
+      const opts =
+        log.options && typeof log.options === "object" && !Array.isArray(log.options)
+          ? (log.options as Record<string, unknown>)
+          : {};
+      const nonDefaultDriver = driver !== "" && driver !== "json-file" && driver !== "local";
+      // json-file's own size knobs are harmless; anything else is a driver option.
+      const risky = Object.keys(opts).some(
+        (k) => !/^max-(size|file)$/i.test(k.trim()),
+      );
+      if (nonDefaultDriver || risky) out.push(key);
       continue;
     }
     if (

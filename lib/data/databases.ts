@@ -23,6 +23,7 @@ import {
   reachesWholeTeam,
   requireActiveTeamId,
   requireCapability,
+  requireMountHostVolumes,
   canExposePorts,
   requireTeamWide,
 } from "../membership";
@@ -1378,6 +1379,12 @@ export async function updateDatabaseResources(
   const { membership } = await requireCapability("configure_databases");
   const user = (await getCurrentUser())!;
   const cleaned = cleanResourceLimits(input);
+  // Same rule as an App's limits: a NEGATIVE oom_score_adj makes the kernel kill
+  // the NEIGHBOURS (other tenants, the platform's own containers) instead of this
+  // container when the host runs out of memory, so it needs the host grant.
+  if (cleaned.oomScoreAdj != null && cleaned.oomScoreAdj < 0) {
+    await requireMountHostVolumes();
+  }
   const updated = await getDb()
     .update(databasesTable)
     .set(resourceLimitsToRow(cleaned))

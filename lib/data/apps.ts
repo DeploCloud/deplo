@@ -37,6 +37,7 @@ import {
 } from "../membership";
 import {
   composeBuildReachesHost,
+  composeJoinsForeignNetwork,
   composeClaimsReservedName,
   composeHasHostBindMount,
   composeMountsForeignStorage,
@@ -690,7 +691,8 @@ export async function createApp(
     (composeHasHostBindMount(input.compose) ||
       composeNeedsHostPrivileges(input.compose) ||
       composeMountsForeignStorage(input.compose) ||
-      composeBuildReachesHost(input.compose))
+      composeBuildReachesHost(input.compose) ||
+      composeJoinsForeignNetwork(input.compose))
   ) {
     await requireMountHostVolumes();
   }
@@ -1197,7 +1199,8 @@ export async function updateAppSource(
     (composeHasHostBindMount(input.compose) ||
       composeNeedsHostPrivileges(input.compose) ||
       composeMountsForeignStorage(input.compose) ||
-      composeBuildReachesHost(input.compose))
+      composeBuildReachesHost(input.compose) ||
+      composeJoinsForeignNetwork(input.compose))
   ) {
     await requireMountHostVolumes();
   }
@@ -1716,6 +1719,15 @@ export async function updateAppResources(
   const { membership } = await requireAppCapability(id, "configure_apps");
   const user = (await getCurrentUser())!;
   const cleaned = cleanResourceLimits(input);
+  // A NEGATIVE oom_score_adj is the structured twin of compose's
+  // `oom_kill_disable`: it tells the kernel to spare THIS container and kill its
+  // neighbours — other tenants, and the platform's own containers — when the host
+  // runs out of memory. Same cross-tenant reach, so the same grant. A positive
+  // value only volunteers this container first and stays free, as does every
+  // other cap here (they bound this app, they don't reach past it).
+  if (cleaned.oomScoreAdj != null && cleaned.oomScoreAdj < 0) {
+    await requireMountHostVolumes();
+  }
   await updateAppOwned(id, membership.teamId, {
     ...resourceLimitsToRow(cleaned),
     updatedAt: nowIso(),

