@@ -252,7 +252,7 @@ export interface ConnectInput {
  * a member on a project-scoped role: an import writes across the whole team, so a
  * principal that only reaches one corner of it must not start one.
  */
-async function assertImportGate(): Promise<{ teamId: string }> {
+export async function assertImportGate(): Promise<{ teamId: string }> {
   await requireTeamWide("import from Dokploy");
   const { teamId } = await requireCapability("create_projects");
   return { teamId };
@@ -263,7 +263,7 @@ async function assertImportGate(): Promise<{ teamId: string }> {
  * not dial. Same shape as `connectGitProvider`: the private-address escape hatch
  * asserts instance admin AT the decision, never inherits it from a caller.
  */
-async function credentialFor(input: ConnectInput): Promise<DokployCredential> {
+export async function credentialFor(input: ConnectInput): Promise<DokployCredential> {
   const baseUrl = normalizeDokployBaseUrl(input.url);
   if (input.allowPrivate) await requireInstanceAdmin();
   else await assertSafeOutboundUrl(baseUrl, "Dokploy address", { allowHttp: true });
@@ -702,8 +702,9 @@ export async function finishDokployImport(runId: string): Promise<void> {
     );
 }
 
-/** The open run of this team, as ids only — the writer's cheap ownership check. */
-async function ownRun(runId: string, teamId: string): Promise<boolean> {
+/** The open run of this team, as ids only — the writer's cheap ownership check.
+ *  Exported for the data cutover, which appends to a run the import opened. */
+export async function ownRun(runId: string, teamId: string): Promise<boolean> {
   const rows = await getDb()
     .select({ id: runsTable.id })
     .from(runsTable)
@@ -712,8 +713,9 @@ async function ownRun(runId: string, teamId: string): Promise<boolean> {
 }
 
 /** Recount the run's totals from its items, so the history is right even if the
- *  tab that started the import never came back. */
-async function refreshCounts(runId: string, teamId: string): Promise<void> {
+ *  tab that started the import never came back. Exported for the data cutover,
+ *  whose rows land in the same run. */
+export async function refreshCounts(runId: string, teamId: string): Promise<void> {
   const rows = await getDb()
     .select({ outcome: itemsTable.outcome })
     .from(itemsTable)
@@ -793,6 +795,26 @@ class Report {
         message,
       });
   }
+}
+
+/**
+ * Append ONE line to a run's report, for a caller that has no `Report` tree of its
+ * own (the data cutover writes a handful of rows, one volume at a time, across
+ * separate requests).
+ */
+export async function appendRunItem(
+  runId: string,
+  entry: {
+    path: string;
+    sourceKind: string;
+    sourceName: string;
+    outcome: "created" | "skipped" | "failed" | "manual" | "unsupported";
+    targetKind?: string | null;
+    targetId?: string | null;
+    message?: string | null;
+  },
+): Promise<void> {
+  await new Report(runId).add(entry);
 }
 
 /* ------------------------------------------------------------------ */

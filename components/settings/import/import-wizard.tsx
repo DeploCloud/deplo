@@ -10,6 +10,7 @@ import {
   Copy,
   Database,
   DownloadCloud,
+  HardDrive,
   Layers,
   Lock,
   Server as ServerIcon,
@@ -37,6 +38,7 @@ import { FieldLabel } from "@/components/ui/info-tip";
 import { PageHeader } from "@/components/shared/page-header";
 import { EmptyState } from "@/components/shared/empty-state";
 import { WizardStepper, type WizardStep } from "@/components/shared/wizard-stepper";
+import { DataStep, loadDataPlan, type DataService } from "./data-step";
 
 /**
  * Import from Dokploy, as one screen.
@@ -127,7 +129,7 @@ export interface ImportRun {
   finishedAt: string | null;
 }
 
-type StepId = "connect" | "destination" | "review" | "import" | "done";
+type StepId = "connect" | "destination" | "review" | "import" | "done" | "data";
 
 const STEPS: WizardStep<StepId>[] = [
   { id: "connect", label: "Connect" },
@@ -135,6 +137,11 @@ const STEPS: WizardStep<StepId>[] = [
   { id: "review", label: "Review" },
   { id: "import", label: "Import" },
   { id: "done", label: "Done" },
+  // The cutover, and the one step that is not part of the import's own sequence:
+  // it happens the night someone is ready for downtime, which is rarely the day
+  // the configuration lands. Reachable from any scan, including a scan made only
+  // to come back here months later.
+  { id: "data", label: "Data" },
 ];
 
 /** Dokploy's own host has no server row over there; it is the empty id. */
@@ -290,6 +297,9 @@ export function ImportWizard({
   const [invites, setInvites] = React.useState<Invite[] | null>(null);
   const [inviting, setInviting] = React.useState(false);
 
+  const [dataPlan, setDataPlan] = React.useState<DataService[] | null>(null);
+  const [dataLoading, setDataLoading] = React.useState(false);
+
   const connectInput = React.useMemo(
     () => ({ url, apiKey, allowPrivate: sameMachine }),
     [url, apiKey, sameMachine],
@@ -301,6 +311,7 @@ export function ImportWizard({
     review: chosen.size > 0,
     import: items.length > 0,
     done: false,
+    data: false,
   };
 
   /* ---- step 1: connect --------------------------------------------- */
@@ -441,6 +452,20 @@ export function ImportWizard({
     router.refresh();
   }
 
+  /**
+   * Open the cutover step, reading both sides on the way in. Loaded from the
+   * transition rather than from an effect inside the step: entering a step IS a
+   * click, and an effect that sets state on mount is a cascading render.
+   */
+  async function openData() {
+    setStep("data");
+    if (dataLoading) return;
+    setDataLoading(true);
+    const next = await loadDataPlan(connectInput);
+    setDataLoading(false);
+    if (next) setDataPlan(next);
+  }
+
   /* ---- render ------------------------------------------------------ */
 
   return (
@@ -454,7 +479,9 @@ export function ImportWizard({
         steps={STEPS}
         current={step}
         reachable={(s) =>
-          STEPS.slice(0, STEPS.findIndex((x) => x.id === s)).every((p) => done[p.id])
+          s === "data"
+            ? plan != null
+            : STEPS.slice(0, STEPS.findIndex((x) => x.id === s)).every((p) => done[p.id])
         }
         onSelect={(s) => {
           // The import is not a step you can walk back into while it runs, and
@@ -463,6 +490,13 @@ export function ImportWizard({
           // behind it is worse than a chip that does not respond.
           if (step === "import" && progress.done < progress.total) return;
           if ((s === "import" || s === "done") && items.length === 0) return;
+          // Data needs only a scan: it is the one step reachable without an
+          // import in this session, because the cutover is a separate evening.
+          if (s === "data" && plan == null) return;
+          if (s === "data") {
+            void openData();
+            return;
+          }
           setStep(s);
         }}
       />
@@ -479,6 +513,14 @@ export function ImportWizard({
           scanning={scanning}
           onSubmit={scan}
           runs={runs}
+          onPickRun={(run) => {
+            // Resume an old migration for its cutover: the address comes back,
+            // the key never does (it was never stored), and the copy's report
+            // lands on the run it belongs to.
+            setUrl(run.sourceUrl);
+            setRunId(run.id);
+            toast.info("Paste the API key again, then open the Data step");
+          }}
         />
       )}
 
@@ -516,6 +558,19 @@ export function ImportWizard({
         <ImportStep progress={progress} items={items} failure={failure} />
       )}
 
+      {step === "data" && (
+        <DataStep
+          connectInput={connectInput}
+          runId={runId}
+          servers={servers}
+          serverMap={serverMap}
+          setServerMap={setServerMap}
+          plan={dataPlan}
+          loading={dataLoading}
+          onReload={() => void openData()}
+        />
+      )}
+
       {step === "done" && (
         <DoneStep
           items={items}
@@ -524,6 +579,7 @@ export function ImportWizard({
           invites={invites}
           inviting={inviting}
           onInvite={inviteMembers}
+          onMoveData={() => void openData()}
         />
       )}
     </div>
@@ -545,6 +601,7 @@ function ConnectStep({
   scanning,
   onSubmit,
   runs,
+  onPickRun,
 }: {
   url: string;
   setUrl: (v: string) => void;
@@ -556,6 +613,7 @@ function ConnectStep({
   scanning: boolean;
   onSubmit: (e: React.FormEvent) => void;
   runs: ImportRun[];
+  onPickRun: (run: ImportRun) => void;
 }) {
   return (
     <div className="space-y-4">
@@ -632,12 +690,18 @@ function ConnectStep({
         </CardContent>
       </Card>
 
-      {runs.length > 0 && <PastRuns runs={runs} />}
+      {runs.length > 0 && <PastRuns runs={runs} onPick={onPickRun} />}
     </div>
   );
 }
 
-function PastRuns({ runs }: { runs: ImportRun[] }) {
+function PastRuns({
+  runs,
+  onPick,
+}: {
+  runs: ImportRun[];
+  onPick: (run: ImportRun) => void;
+}) {
   return (
     <Card>
       <CardHeader>
@@ -665,6 +729,9 @@ function PastRuns({ runs }: { runs: ImportRun[] }) {
               {r.manual > 0 && <Badge variant="outline">{r.manual} to check</Badge>}
               {r.failed > 0 && <Badge variant="destructive">{r.failed} failed</Badge>}
               {r.status !== "done" && <Badge variant="outline">{r.status}</Badge>}
+              <Button variant="outline" size="sm" onClick={() => onPick(r)}>
+                Move the data
+              </Button>
             </div>
           </div>
         ))}
@@ -1080,6 +1147,7 @@ function DoneStep({
   invites,
   inviting,
   onInvite,
+  onMoveData,
 }: {
   items: ReportItem[];
   plan: Plan | null;
@@ -1087,6 +1155,7 @@ function DoneStep({
   invites: Invite[] | null;
   inviting: boolean;
   onInvite: () => void;
+  onMoveData: () => void;
 }) {
   const groups = OUTCOME_ORDER.map((outcome) => ({
     outcome,
@@ -1124,10 +1193,16 @@ function DoneStep({
               move the traffic.
             </p>
           </div>
-          <Button variant="outline" size="sm" onClick={copyReport}>
-            <Copy className="size-4" />
-            Copy
-          </Button>
+          <div className="flex items-center gap-2">
+            <Button variant="outline" size="sm" onClick={copyReport}>
+              <Copy className="size-4" />
+              Copy
+            </Button>
+            <Button size="sm" onClick={onMoveData}>
+              <HardDrive className="size-4" />
+              Move the data
+            </Button>
+          </div>
         </CardHeader>
         <CardContent className="space-y-4">
           {groups.map((g) => (

@@ -1,5 +1,12 @@
 import { builder } from "../builder";
 import {
+  moveDokployServiceData,
+  planDokployDataMove,
+  type DataMoveResult,
+  type DataMoveService,
+  type DataMoveVolume,
+} from "@/lib/data/dokploy-data";
+import {
   beginDokployImport,
   finishDokployImport,
   getDokployImport,
@@ -236,6 +243,61 @@ const InviteRef = builder.objectRef<DokployInvite>("DokployInvite").implement({
 });
 
 /* ------------------------------------------------------------------ */
+/* The data cutover                                                    */
+/* ------------------------------------------------------------------ */
+
+const DataMoveVolumeRef = builder
+  .objectRef<DataMoveVolume>("DokployDataVolume")
+  .implement({
+    description:
+      "One source volume and the Deplo volume it would be copied into, paired by the path they are mounted at.",
+    fields: (t) => ({
+      sourceVolume: t.exposeString("sourceVolume"),
+      targetVolume: t.exposeString("targetVolume"),
+      mountPath: t.exposeString("mountPath"),
+      note: t.exposeString("note", {
+        nullable: true,
+        description:
+          "Set when the pairing rests on something weaker than an equal path - a database whose data directory moved between engine versions, for instance.",
+      }),
+    }),
+  });
+
+const DataMoveServiceRef = builder
+  .objectRef<DataMoveService>("DokployDataService")
+  .implement({
+    description:
+      "An already-imported service whose data can still be moved over from Dokploy.",
+    fields: (t) => ({
+      path: t.exposeString("path"),
+      sourceKind: t.exposeString("sourceKind"),
+      sourceId: t.exposeString("sourceId"),
+      sourceName: t.exposeString("sourceName"),
+      sourceServerId: t.exposeString("sourceServerId"),
+      targetKind: t.exposeString("targetKind"),
+      targetId: t.exposeString("targetId"),
+      targetName: t.exposeString("targetName"),
+      targetServerId: t.exposeString("targetServerId"),
+      running: t.exposeBoolean("running", {
+        description:
+          "Still up on Dokploy. Moving the data stops it, which is the point of a cutover.",
+      }),
+      volumes: t.field({ type: [DataMoveVolumeRef], resolve: (s) => s.volumes }),
+      notes: t.exposeStringList("notes"),
+    }),
+  });
+
+const DataMoveResultRef = builder
+  .objectRef<DataMoveResult>("DokployDataMoveResult")
+  .implement({
+    fields: (t) => ({
+      moved: t.exposeInt("moved"),
+      failed: t.exposeInt("failed"),
+      notes: t.exposeStringList("notes"),
+    }),
+  });
+
+/* ------------------------------------------------------------------ */
 /* Inputs                                                             */
 /* ------------------------------------------------------------------ */
 
@@ -364,6 +426,47 @@ builder.mutationFields((t) => ({
         apiKey: input.apiKey,
         allowPrivate: input.allowPrivate ?? false,
         runId,
+      }),
+  }),
+  planDokployDataMove: t.field({
+    type: [DataMoveServiceRef],
+    authScopes: { capability: "create_projects" },
+    description:
+      "The already-imported services whose DATA could still be moved, with each volume paired to the Deplo one that would receive it (paired by container path, the only identity the two platforms share). Reads both sides and writes nothing. A service renamed on either side since the import is simply not listed.",
+    args: { input: t.arg({ type: ConnectInputRef, required: true }) },
+    resolve: (_r, { input }) =>
+      planDokployDataMove({
+        url: input.url,
+        apiKey: input.apiKey,
+        allowPrivate: input.allowPrivate ?? false,
+      }),
+  }),
+  moveDokployServiceData: t.field({
+    type: DataMoveResultRef,
+    authScopes: { capability: "create_projects" },
+    description:
+      "Cut ONE service's data over: STOP it on Dokploy (and leave it stopped - a volume read while its container writes cannot be trusted), then copy every paired volume into the app or database imported from it. Additionally gated on `restore_backups` on the target, which is what overwriting a resource's data already requires. Nothing is deployed afterwards. The volumes are derived from the service and the app, never taken from the caller: naming both sides would be an instruction to copy any volume on the host into any other one.",
+    args: {
+      input: t.arg({ type: ConnectInputRef, required: true }),
+      runId: t.arg.string({ required: true }),
+      sourceKind: t.arg.string({ required: true }),
+      sourceId: t.arg.string({ required: true }),
+      servers: t.arg({
+        type: [ServerChoiceInput],
+        required: false,
+        description:
+          "The same Dokploy-host → Deplo-server mapping the import used. Required for the host the service runs on: that is where its volumes are, so Deplo has to know which of its own servers can read them.",
+      }),
+    },
+    resolve: (_r, { input, runId, sourceKind, sourceId, servers }) =>
+      moveDokployServiceData({
+        url: input.url,
+        apiKey: input.apiKey,
+        allowPrivate: input.allowPrivate ?? false,
+        runId,
+        sourceKind,
+        sourceId,
+        servers: servers?.map((s) => ({ from: s.from, to: s.to })),
       }),
   }),
   finishDokployImport: t.field({

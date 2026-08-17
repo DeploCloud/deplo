@@ -408,6 +408,38 @@ async function get<T>(
   return (await res.json()) as T;
 }
 
+/**
+ * One POST against Dokploy. The ONLY writes this client ever makes are the
+ * `*.stop` calls of a data cutover — deliberately, so "the source instance is
+ * only read" stays true of everything else and it keeps working as the rollback.
+ */
+async function post<T>(
+  c: DokployCredential,
+  procedure: string,
+  body: Record<string, unknown>,
+): Promise<T> {
+  const res = await doFetch(`${c.baseUrl}/api/${procedure}`, {
+    method: "POST",
+    headers: {
+      Accept: "application/json",
+      "Content-Type": "application/json",
+      "User-Agent": "deplo",
+      "x-api-key": c.apiKey,
+    },
+    body: JSON.stringify(body),
+    redirect: "manual",
+    signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
+  });
+  if (!res.ok) {
+    const detail = (await res.text().catch(() => "")).slice(0, 300).trim();
+    throw new Error(
+      `Dokploy request failed (${res.status}) on ${procedure}` +
+        (detail ? `: ${detail}` : ""),
+    );
+  }
+  return (await res.json().catch(() => null)) as T;
+}
+
 /* ------------------------------------------------------------------ */
 /* Reads                                                               */
 /* ------------------------------------------------------------------ */
@@ -552,6 +584,94 @@ export async function activeOrganizationName(
   } catch {
     return null;
   }
+}
+
+/* ------------------------------------------------------------------ */
+/* The data cutover                                                    */
+/* ------------------------------------------------------------------ */
+
+/** One running container of a service, as Dokploy's `docker ps` wrapper parses it. */
+export interface DokployContainer {
+  containerId: string;
+  name: string;
+  state: string;
+}
+
+/**
+ * How a Dokploy service's containers are labelled, which is how they are found.
+ * Applications and databases are SWARM services; a compose stack is a compose
+ * project. Getting this wrong finds nothing rather than the wrong thing.
+ */
+export type DokployRuntime = "swarm" | "docker-compose" | "standalone";
+
+/** The containers of one service, by its `appName`. */
+export async function listAppContainers(
+  c: DokployCredential,
+  appName: string,
+  type: DokployRuntime,
+): Promise<DokployContainer[]> {
+  const rows = await get<DokployContainer[] | null>(
+    c,
+    "docker.getContainersByAppLabel",
+    { appName, type },
+  );
+  return Array.isArray(rows) ? rows : [];
+}
+
+/** What `docker inspect` says, reduced to the two things a data move reads. */
+export interface DokployInspect {
+  Name?: string;
+  State?: { Running?: boolean; Status?: string };
+  Mounts?: {
+    Type?: string;
+    Name?: string;
+    Source?: string;
+    Destination?: string;
+  }[];
+}
+
+/**
+ * `docker inspect <id>` on the source host, through Dokploy's own API
+ * (`docker.getConfig` is literally that command).
+ *
+ * This is what makes the data move exact instead of a guess: the REAL volume
+ * names and the paths they are mounted at come from the container that is using
+ * them, so none of Dokploy's naming conventions have to be reproduced here.
+ */
+export function inspectContainer(
+  c: DokployCredential,
+  containerId: string,
+): Promise<DokployInspect> {
+  return get<DokployInspect>(c, "docker.getConfig", { containerId });
+}
+
+/** Which procedure stops one kind of service, and what it calls its id. */
+const STOP_PROCEDURE: Record<string, string> = {
+  application: "application.stop",
+  compose: "compose.stop",
+  postgres: "postgres.stop",
+  mysql: "mysql.stop",
+  mariadb: "mariadb.stop",
+  mongo: "mongo.stop",
+  redis: "redis.stop",
+};
+
+/**
+ * Stop a service on the SOURCE instance, and leave it stopped.
+ *
+ * The one write this client makes, and the point of no return of a cutover: a
+ * volume read while its container is writing produces an archive nothing can be
+ * trusted from (`ExportVolume`'s contract is that the caller has quiesced the
+ * source). The UI says so before the button is pressed.
+ */
+export async function stopService(
+  c: DokployCredential,
+  kind: string,
+  id: string,
+): Promise<void> {
+  const procedure = STOP_PROCEDURE[kind];
+  if (!procedure) throw new Error(`Deplo cannot stop a ${kind} on Dokploy.`);
+  await post(c, procedure, { [`${kind}Id`]: id });
 }
 
 /** The cron jobs attached to one service. Best-effort, same reasoning as above. */

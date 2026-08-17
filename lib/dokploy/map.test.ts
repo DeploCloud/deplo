@@ -5,6 +5,11 @@ import yaml from "js-yaml";
 
 import {
   cloneTarget,
+  composeVolumeMounts,
+  deploDatabaseVolumeName,
+  deploVolumeName,
+  pairVolumes,
+  sourceVolumesFrom,
   envNeedsInterpolation,
   imageTag,
   isThrowawayHost,
@@ -592,6 +597,111 @@ test("mapDatabase carries the external port and reports what a database cannot t
   assert.equal(value?.exposedPort, 5432);
   assert.match(notes.join(" "), /custom start command/);
   assert.match(notes.join(" "), /takes no others/);
+});
+
+/* ---- the data cutover ----------------------------------------------- */
+
+test("sourceVolumesFrom keeps named volumes and drops bind mounts", () => {
+  const volumes = sourceVolumesFrom({
+    Mounts: [
+      { Type: "volume", Name: "app_uploads", Destination: "/app/uploads/" },
+      { Type: "bind", Source: "/srv/etc", Destination: "/etc/thing" },
+      { Type: "volume", Name: "app_uploads", Destination: "/app/uploads" },
+      { Type: "volume", Destination: "/anonymous" },
+    ],
+  });
+  // Trailing slash normalised, the duplicate collapsed, the bind and the
+  // anonymous mount left out - neither is something a data move can pair.
+  assert.deepEqual(volumes, [{ name: "app_uploads", mountPath: "/app/uploads" }]);
+});
+
+test("pairVolumes matches on the container path, whatever either side calls them", () => {
+  const { value, notes } = pairVolumes(
+    [
+      { name: "dok_uploads", mountPath: "/app/uploads" },
+      { name: "dok_cache", mountPath: "/app/cache" },
+    ],
+    [
+      { name: "deplo-web-cache", mountPath: "/app/cache" },
+      { name: "deplo-web-uploads", mountPath: "/app/uploads" },
+    ],
+  );
+  assert.deepEqual(
+    value.map((p) => `${p.sourceVolume}->${p.targetVolume}@${p.mountPath}`),
+    ["dok_uploads->deplo-web-uploads@/app/uploads", "dok_cache->deplo-web-cache@/app/cache"],
+  );
+  assert.deepEqual(notes, []);
+});
+
+test("pairVolumes reports both kinds of leftover", () => {
+  const { value, notes } = pairVolumes(
+    [{ name: "dok_data", mountPath: "/var/data" }],
+    [{ name: "deplo-app-other", mountPath: "/srv/other" }],
+  );
+  assert.deepEqual(value, []);
+  assert.equal(notes.length, 2);
+  assert.match(notes[0], /has nowhere to go here/);
+  assert.match(notes[1], /stays empty/);
+});
+
+test("pairVolumes pairs a database 1:1 even when the data dir moved", () => {
+  const { value, notes } = pairVolumes(
+    [{ name: "dok_pg", mountPath: "/var/lib/postgresql/18/docker" }],
+    [{ name: "deplo-db-x_db-x-data", mountPath: "/var/lib/postgresql/data" }],
+    { singleData: true },
+  );
+  assert.equal(value.length, 1);
+  assert.equal(value[0].sourceVolume, "dok_pg");
+  assert.match(value[0].note!, /data directory moved/);
+  assert.match(value[0].note!, /PGDATA/);
+  assert.deepEqual(notes, []);
+});
+
+test("pairVolumes will not guess for an app, only for the single-data case", () => {
+  const source = [{ name: "a", mountPath: "/one" }];
+  const target = [{ name: "b", mountPath: "/two" }];
+  assert.equal(pairVolumes(source, target).value.length, 0);
+  assert.equal(pairVolumes(source, target, { singleData: true }).value.length, 1);
+});
+
+test("deploVolumeName knows which volumes carry an explicit name", () => {
+  // A volume Deplo manages is rendered with `name:`, so compose uses it verbatim.
+  assert.equal(deploVolumeName("web", "uploads", true), "deplo-web-uploads");
+  // One declared in the user's own compose is prefixed by the project instead.
+  assert.equal(deploVolumeName("web", "uploads", false), "deplo-web_uploads");
+  assert.equal(deploDatabaseVolumeName("db-main"), "deplo-db-main_db-main-data");
+});
+
+test("composeVolumeMounts reads the named volumes and where they mount", () => {
+  const compose = [
+    "services:",
+    "  web:",
+    "    image: nginx",
+    "    volumes:",
+    "      - config:/etc/app",
+    "      - /srv/host:/host",
+    "      - ./rel:/rel",
+    "  worker:",
+    "    volumes:",
+    "      - type: volume",
+    "        source: data",
+    "        target: /var/data/",
+    "      - type: bind",
+    "        source: /srv/x",
+    "        target: /x",
+    "volumes:",
+    "  config: {}",
+    "  data: {}",
+  ].join("\n");
+  assert.deepEqual(composeVolumeMounts(compose), [
+    { name: "config", mountPath: "/etc/app" },
+    { name: "data", mountPath: "/var/data" },
+  ]);
+});
+
+test("composeVolumeMounts ignores a compose it cannot read", () => {
+  assert.deepEqual(composeVolumeMounts("services:\n  web:\n   - : :"), []);
+  assert.deepEqual(composeVolumeMounts(""), []);
 });
 
 /* ---- the rest ------------------------------------------------------- */

@@ -831,6 +831,206 @@ export function mapDatabase(
 }
 
 /* ------------------------------------------------------------------ */
+/* The data cutover: pairing volumes                                   */
+/* ------------------------------------------------------------------ */
+
+/** One named volume a container is using, on either side. */
+export interface NamedVolume {
+  /** The volume's real name on the host. */
+  name: string;
+  /** Where it is mounted INSIDE the container - the only identity the two
+   *  platforms share, since neither's volume names mean anything to the other. */
+  mountPath: string;
+}
+
+/** A source volume matched to the deplo volume it should be copied into. */
+export interface VolumePair {
+  sourceVolume: string;
+  targetVolume: string;
+  /** The container path, when both sides agree on it. */
+  mountPath: string;
+  /** Set when the pairing was made on something weaker than an equal path. */
+  note: string | null;
+}
+
+/** Trailing slashes and a missing leading slash are not a difference. */
+function normalizePath(p: string): string {
+  const s = p.trim().replace(/\/+$/, "");
+  return s.startsWith("/") ? s : `/${s}`;
+}
+
+/**
+ * The named volumes a `docker inspect` says a container is using.
+ *
+ * Bind mounts are dropped: a host path is not a volume, deplo would have imported
+ * it as a bind mount pointing at the same place, and copying a host directory is
+ * a different operation with a different blast radius.
+ */
+export function sourceVolumesFrom(inspect: {
+  Mounts?: {
+    Type?: string;
+    Name?: string;
+    /** Present on a bind mount; ignored, but part of what docker sends. */
+    Source?: string;
+    Destination?: string;
+  }[];
+}): NamedVolume[] {
+  const out: NamedVolume[] = [];
+  const seen = new Set<string>();
+  for (const m of inspect.Mounts ?? []) {
+    if (m.Type !== "volume") continue;
+    const name = m.Name?.trim();
+    const dest = m.Destination?.trim();
+    if (!name || !dest || seen.has(name)) continue;
+    seen.add(name);
+    out.push({ name, mountPath: normalizePath(dest) });
+  }
+  return out;
+}
+
+/**
+ * Match every source volume to the deplo volume that should receive it.
+ *
+ * The container PATH is the identity: `/app/uploads` on one platform is
+ * `/app/uploads` on the other, whatever either called the volume.
+ *
+ * `singleData` is for a database, where each side has exactly one data volume and
+ * the paths routinely DISAGREE - postgres 18 defaults its data dir to
+ * `/var/lib/postgresql/18/docker` while Deplo mounts `/var/lib/postgresql/data`.
+ * One volume on each side has no ambiguity to resolve, so they are paired anyway
+ * and the note names both paths, because that mismatch is also the thing most
+ * likely to stop the imported database from starting.
+ */
+export function pairVolumes(
+  source: NamedVolume[],
+  target: NamedVolume[],
+  opts: { singleData?: boolean } = {},
+): Mapped<VolumePair[]> {
+  const notes: string[] = [];
+  const pairs: VolumePair[] = [];
+  const takenTarget = new Set<string>();
+
+  for (const s of source) {
+    const hit = target.find(
+      (t) => !takenTarget.has(t.name) && t.mountPath === s.mountPath,
+    );
+    if (hit) {
+      takenTarget.add(hit.name);
+      pairs.push({
+        sourceVolume: s.name,
+        targetVolume: hit.name,
+        mountPath: s.mountPath,
+        note: null,
+      });
+    }
+  }
+
+  if (
+    pairs.length === 0 &&
+    opts.singleData &&
+    source.length === 1 &&
+    target.length === 1
+  ) {
+    pairs.push({
+      sourceVolume: source[0].name,
+      targetVolume: target[0].name,
+      mountPath: target[0].mountPath,
+      note:
+        `The data directory moved: Dokploy mounted it at ${source[0].mountPath}, Deplo mounts ${target[0].mountPath}. ` +
+        "The copy is still the right one (one data volume on each side), but check the database starts - a newer Postgres refuses the older path unless PGDATA is set explicitly.",
+    });
+  }
+
+  for (const s of source)
+    if (!pairs.some((p) => p.sourceVolume === s.name))
+      notes.push(
+        `${s.name} (mounted at ${s.mountPath} on Dokploy) has nowhere to go here - no volume of this app mounts that path.`,
+      );
+  for (const t of target)
+    if (!pairs.some((p) => p.targetVolume === t.name))
+      notes.push(
+        `${t.name} (${t.mountPath}) stays empty - nothing on Dokploy was mounted there.`,
+      );
+
+  return { value: pairs, notes };
+}
+
+/**
+ * The on-disk name of one of an app's volumes. Two shapes, and the difference is
+ * whether Deplo wrote the volume into the stack itself:
+ *
+ *  - a volume Deplo manages (an `app_volumes` row) is rendered with an explicit
+ *    `name:`, which docker-compose uses verbatim: `deplo-<slug>-<alias>`;
+ *  - a volume declared in the user's OWN compose has no `name:`, so compose
+ *    prefixes it with the project: `deplo-<slug>_<alias>`.
+ *
+ * The project is always `deplo-<slug>` (the agent runs `docker compose -p
+ * deplo-<slug>`), which is also why a database's volume is
+ * `deplo-db-<slug>_db-<slug>-data`: its stack's slug IS `db-<slug>`.
+ */
+export function deploVolumeName(
+  slug: string,
+  alias: string,
+  managed: boolean,
+): string {
+  return managed ? `deplo-${slug}-${alias}` : `deplo-${slug}_${alias}`;
+}
+
+/** The data volume of a Deplo database, whose stack slug is its host name. */
+export function deploDatabaseVolumeName(host: string): string {
+  return `deplo-${host}_${host}-data`;
+}
+
+/**
+ * The volumes a compose file declares, with the path each is mounted at.
+ *
+ * Only top-level `volumes:` entries matter (a named volume); a bind mount or an
+ * anonymous mount is not something a data move can pair. The first service that
+ * mounts an alias wins the path — two services sharing one volume mount it at the
+ * same place in every stack worth migrating, and picking one is better than
+ * refusing to move it.
+ */
+export function composeVolumeMounts(compose: string): NamedVolume[] {
+  let doc: {
+    volumes?: unknown;
+    services?: Record<string, { volumes?: unknown }>;
+  } | null;
+  try {
+    doc = yaml.load(compose) as typeof doc;
+  } catch {
+    return [];
+  }
+  const declared = doc?.volumes;
+  if (!declared || typeof declared !== "object" || Array.isArray(declared)) return [];
+  const aliases = new Set(Object.keys(declared as Record<string, unknown>));
+  const out: NamedVolume[] = [];
+  const seen = new Set<string>();
+
+  for (const svc of Object.values(doc?.services ?? {})) {
+    const mounts = svc?.volumes;
+    if (!Array.isArray(mounts)) continue;
+    for (const raw of mounts) {
+      let alias: string | undefined;
+      let dest: string | undefined;
+      if (typeof raw === "string") {
+        const [src, target] = raw.split(":");
+        alias = src?.trim();
+        dest = target?.trim();
+      } else if (raw && typeof raw === "object") {
+        const m = raw as { type?: string; source?: string; target?: string };
+        if (m.type && m.type !== "volume") continue;
+        alias = m.source?.trim();
+        dest = m.target?.trim();
+      }
+      if (!alias || !dest || !aliases.has(alias) || seen.has(alias)) continue;
+      seen.add(alias);
+      out.push({ name: alias, mountPath: normalizePath(dest) });
+    }
+  }
+  return out;
+}
+
+/* ------------------------------------------------------------------ */
 /* Small shared helpers                                                */
 /* ------------------------------------------------------------------ */
 

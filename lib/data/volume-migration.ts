@@ -85,21 +85,27 @@ function attributeCopyError(e: unknown): Error {
  * Copy ONE named Docker volume from `source` to `dest` (both already-open agent
  * connections), overwriting the destination volume. Throws on any failure so the
  * caller can roll the move back.
+ *
+ * `targetName` defaults to the same name, which is what a server MOVE wants: the
+ * same stack, re-provisioned on another host, names its volumes identically. It is
+ * spelled out only when the two sides genuinely differ — importing a volume from
+ * ANOTHER platform, whose naming is not ours (lib/data/dokploy-data.ts).
  */
 export async function copyVolumeBetween(
   source: AgentConnection,
   dest: AgentConnection,
   volumeName: string,
+  targetName: string = volumeName,
 ): Promise<void> {
   let res: { ok: boolean; error: string };
   try {
-    res = await dest.importVolume(volumeName, true, source.exportVolume(volumeName));
+    res = await dest.importVolume(targetName, true, source.exportVolume(volumeName));
   } catch (e) {
     throw attributeCopyError(e);
   }
   if (!res.ok)
     throw new Error(
-      res.error || `agent failed to import the data volume "${volumeName}"`,
+      res.error || `agent failed to import the data volume "${targetName}"`,
     );
 }
 
