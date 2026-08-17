@@ -378,14 +378,26 @@ function ConfirmDialog({
               <DialogTitle>Move {service.sourceName}&apos;s data</DialogTitle>
             </DialogHeader>
 
-            <div className="flex items-start gap-2.5 rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 py-2.5 text-sm text-amber-600 dark:text-amber-400">
-              <AlertTriangle className="mt-0.5 size-4 shrink-0" />
-              <p>
-                This stops {service.sourceName} on Dokploy and does not start it
-                again. Deplo needs it stopped to copy a volume that is not changing
-                underneath.
+            {service.running ? (
+              <div className="flex items-start gap-2.5 rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 py-2.5 text-sm text-amber-600 dark:text-amber-400">
+                <AlertTriangle className="mt-0.5 size-4 shrink-0" />
+                <p>
+                  This stops {service.sourceName} on Dokploy and does not start it
+                  again. Deplo needs it stopped to copy a volume that is not changing
+                  underneath. Nothing else over there is touched: the volumes are read
+                  through a read-only mount, and Dokploy can start the service again.
+                </p>
+              </div>
+            ) : (
+              // Already stopped, usually because the user did it themselves. Warning
+              // about downtime that has already happened is how a dialog teaches
+              // people to click through without reading.
+              <p className="text-sm text-muted-foreground">
+                {service.sourceName} is already stopped on Dokploy, so nothing goes
+                down. Its volumes are read through a read-only mount and left exactly
+                as they are.
               </p>
-            </div>
+            )}
 
             <div className="space-y-1 text-sm">
               {service.volumes.map((v) => (
@@ -402,7 +414,9 @@ function ConfirmDialog({
               <Button type="button" variant="outline" onClick={onCancel}>
                 Cancel
               </Button>
-              <Button type="submit">Stop and copy</Button>
+              <Button type="submit">
+                {service.running ? "Stop and copy" : "Copy the data"}
+              </Button>
             </DialogFooter>
           </form>
         )}
