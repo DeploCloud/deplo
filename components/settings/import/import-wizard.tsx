@@ -332,6 +332,9 @@ export function ImportWizard({
     if (!res.data) return;
     const scanned = res.data;
     setPlan(scanned);
+    // The organization's own name is the team's name in every case anyone actually
+    // wants, so it arrives already typed rather than as a placeholder to copy.
+    if (scanned.orgName && !newTeam) setNewTeam(scanned.orgName);
     // Everything importable is picked by default; a project already here is not,
     // since re-importing it would only produce a page of "already here" rows.
     setChosen(
@@ -801,6 +804,12 @@ function DestinationStep({
     ...plan.servers,
   ];
   const ready = sources.every((s) => serverMap[s.sourceId]);
+  // Only an instance admin can mint a team, and there is nothing to offer when the
+  // team we are in is already the one this organization belongs in.
+  const offerNewTeam =
+    isInstanceAdmin &&
+    plan.orgName != null &&
+    plan.orgName.trim().toLowerCase() !== teamName.trim().toLowerCase();
 
   return (
     <div className="space-y-4">
@@ -808,30 +817,51 @@ function DestinationStep({
         <CardHeader>
           <CardTitle>Where it lands</CardTitle>
           <p className="mt-1 text-sm text-muted-foreground">
-            {plan.orgName
-              ? `The Dokploy organization ${plan.orgName} goes into the team ${teamName}.`
-              : `Everything goes into the team ${teamName}.`}
+            A Dokploy API key belongs to one organization, so one run brings over one
+            organization: its projects, its services and its people, into one team
+            here. Another organization means another key and another run.
           </p>
         </CardHeader>
-        <CardContent className="space-y-4">
-          <div className="rounded-lg border p-3 text-sm text-muted-foreground">
-            To import somewhere else, switch team in the topbar first.
-            {isInstanceAdmin && " Or start a new team for it:"}
-          </div>
-
-          {isInstanceAdmin && (
-            <form className="flex flex-wrap items-center gap-2" onSubmit={onCreateTeam}>
-              <Input
-                value={newTeam}
-                onChange={(e) => setNewTeam(e.target.value)}
-                placeholder={plan.orgName ?? "New team name"}
-                className="max-w-xs"
-              />
-              <Button type="submit" variant="outline" disabled={creatingTeam || !newTeam.trim()}>
-                Create team
+        <CardContent className="space-y-3">
+          {/* The organization IS the team, so its own name is offered first and
+              already filled in. Importing into the team you happen to be standing
+              in stays available underneath - it is the right answer when the team
+              already exists, which is the second run of the same migration. */}
+          {offerNewTeam && (
+            <form
+              className="flex flex-wrap items-end gap-2 rounded-lg border p-3"
+              onSubmit={onCreateTeam}
+            >
+              <div className="grid min-w-0 flex-1 gap-2">
+                <FieldLabel
+                  htmlFor="import-team-name"
+                  info="Creating it also switches you to it, because everything is imported into the team you are in."
+                >
+                  Create the team for {plan.orgName}
+                </FieldLabel>
+                <Input
+                  id="import-team-name"
+                  value={newTeam}
+                  onChange={(e) => setNewTeam(e.target.value)}
+                  placeholder="New team name"
+                />
+              </div>
+              <Button type="submit" disabled={creatingTeam || !newTeam.trim()}>
+                {creatingTeam ? "Creating" : "Create team"}
               </Button>
             </form>
           )}
+
+          <div className="rounded-lg border p-3">
+            <div className="text-sm font-medium">
+              {offerNewTeam ? `Or import into ${teamName}` : `Importing into ${teamName}`}
+            </div>
+            <p className="mt-1 text-sm text-muted-foreground">
+              {isInstanceAdmin
+                ? "The team you are in now. To use a different existing team, switch team in the topbar first."
+                : "The team you are in now. To import into another team, switch team in the topbar first."}
+            </p>
+          </div>
         </CardContent>
       </Card>
 
@@ -948,6 +978,9 @@ function ReviewStep({
   onStart: () => void;
 }) {
   const allChosen = chosen.size === plan.projects.length;
+  // Named here as well as on the last step: "the organization" means its people
+  // too, and finding that out only at the end reads like an afterthought.
+  const people = plan.members.filter((m) => !m.inTeam).length;
 
   function toggle(sourceId: string) {
     const next = new Set(chosen);
@@ -979,7 +1012,8 @@ function ReviewStep({
           <div className="min-w-0">
             <CardTitle>What will come over</CardTitle>
             <p className="mt-1 text-sm text-muted-foreground">
-              {counts.apps} app(s) and {counts.databases} database(s) into {teamName}.
+              {counts.apps} app(s) and {counts.databases} database(s) into {teamName}
+              {people > 0 ? `, plus ${people} person(s) to invite afterwards` : ""}.
               Nothing is deployed - Dokploy keeps serving until you say otherwise.
             </p>
           </div>
