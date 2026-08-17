@@ -51,14 +51,29 @@ const apiTemplateLinksSchema = z
   .strict()
   .refine((links) => Object.values(links).some(Boolean));
 
-const apiTemplateFilesSchema = z
+const apiTemplateVariantFilesSchema = z
   .object({
     config: z
       .string()
-      .regex(/^\/files\/[a-z0-9]+(?:-[a-z0-9]+)*\/template\.toml$/),
+      .regex(
+        /^\/files\/[a-z0-9]+(?:-[a-z0-9]+)*\/[a-z0-9]+(?:-[a-z0-9]+)*\/template\.toml$/,
+      ),
     compose: z
       .string()
-      .regex(/^\/files\/[a-z0-9]+(?:-[a-z0-9]+)*\/docker-compose\.yml$/),
+      .regex(
+        /^\/files\/[a-z0-9]+(?:-[a-z0-9]+)*\/[a-z0-9]+(?:-[a-z0-9]+)*\/docker-compose\.yml$/,
+      ),
+  })
+  .strict();
+
+export const apiTemplateVariantSchema = z
+  .object({
+    name: z.string().min(2).max(80),
+    shortDescription: z.string().min(20).max(240),
+    lastUpdate: z.iso.datetime(),
+    createdAt: z.iso.datetime(),
+    slug: slugSchema,
+    files: apiTemplateVariantFilesSchema,
   })
   .strict();
 
@@ -88,7 +103,7 @@ export const apiTemplateSchema = z
       z.string().regex(/^\/images\/[a-z0-9]+(?:-[a-z0-9]+)*\/[1-9]\d*\.webp$/),
     ),
 
-    files: apiTemplateFilesSchema,
+    variants: z.array(apiTemplateVariantSchema).min(1),
   })
   .strict();
 
@@ -115,6 +130,6 @@ export const templateAssetPathSchema = z.union([
   z
     .string()
     .regex(
-      /^\/files\/[a-z0-9]+(?:-[a-z0-9]+)*\/(?:template\.toml|docker-compose\.yml)$/,
+      /^\/files\/[a-z0-9]+(?:-[a-z0-9]+)*\/[a-z0-9]+(?:-[a-z0-9]+)*\/(?:template\.toml|docker-compose\.yml)$/,
     ),
 ]);

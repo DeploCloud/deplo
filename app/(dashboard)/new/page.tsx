@@ -16,7 +16,10 @@ import {
   placementHref,
   templatesHref,
 } from "@/lib/overview-links";
-import { getTemplate, templateLogoDataUri } from "@/templates/catalog";
+import {
+  getTemplateVariant,
+  templateLogoDataUri,
+} from "@/templates/catalog";
 
 export const metadata = { title: "New App" };
 
@@ -41,6 +44,7 @@ export default async function NewAppPage(props: PageProps<"/new">) {
 
   const params = await props.searchParams;
   const templateId = Array.isArray(params.template) ? params.template[0] : params.template;
+  const variantId = Array.isArray(params.variant) ? params.variant[0] : params.variant;
   const repoParam = Array.isArray(params.repo) ? params.repo[0] : params.repo;
 
   // The Overview drill-in this wizard was opened from (?folder= / ?project= &
@@ -52,10 +56,10 @@ export default async function NewAppPage(props: PageProps<"/new">) {
 
   // The catalogue is a remote service: an unknown slug, a stale link or a
   // service having a bad day must not take the whole wizard down.
-  const template = templateId
-    ? await getTemplate(templateId).catch(() => null)
+  const template = templateId && variantId
+    ? await getTemplateVariant(templateId, variantId).catch(() => null)
     : null;
-  if (templateId && !template)
+  if ((templateId || variantId) && !template)
     return (
       <EmptyState
         icon={CloudOff}
@@ -133,7 +137,7 @@ export default async function NewAppPage(props: PageProps<"/new">) {
             ? {
                 id: template.slug,
                 name: template.name,
-                description: template.shortDescription,
+                description: template.variant.shortDescription,
                 logo,
                 compose: blueprint?.compose ?? "",
                 env: blueprint?.env ?? [],

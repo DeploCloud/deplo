@@ -87,7 +87,12 @@ export default async function TemplatePage(props: PageProps<"/templates/[slug]">
     .slice(0, RELATED);
   const relatedAccents = await templateAccents(related);
 
-  const deployHref = newAppHref(placement, { template: template.slug });
+  // ponytail: the first variant is a temporary UI default; add a selector when
+  // variant UX enters scope, while the backend already requires an exact slug.
+  const deployHref = newAppHref(placement, {
+    template: template.slug,
+    variant: template.variants[0]!.slug,
+  });
 
   return (
     <div className="mx-auto w-full max-w-4xl space-y-8">
