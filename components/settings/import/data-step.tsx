@@ -133,7 +133,7 @@ export async function loadDataPlan(connectInput: {
 
 export function DataStep({
   connectInput,
-  runId,
+  ensureRun,
   servers,
   serverMap,
   setServerMap,
@@ -142,8 +142,10 @@ export function DataStep({
   onReload,
 }: {
   connectInput: { url: string; apiKey: string; allowPrivate: boolean };
-  /** The run the copy's report lines are appended to. */
-  runId: string | null;
+  /** Open (or reuse) the run the copy's report lines are appended to. A cutover
+   *  months after the import has no run in hand, and needing one is not a reason
+   *  to send someone back through the wizard. */
+  ensureRun: () => Promise<string | null>;
   servers: { id: string; name: string }[];
   /** Dokploy host id ("" for its own host) → Deplo server id. */
   serverMap: Record<string, string>;
@@ -157,12 +159,13 @@ export function DataStep({
   const [results, setResults] = React.useState<Record<string, MoveResult>>({});
 
   async function move(service: DataService) {
-    if (!runId) {
-      toast.error("Import something first: the copy is recorded against a run.");
-      return;
-    }
     setConfirming(null);
     setMoving(service.sourceId);
+    const runId = await ensureRun();
+    if (!runId) {
+      setMoving(null);
+      return;
+    }
     const res = await gqlAction<
       { moveDokployServiceData: MoveResult },
       MoveResult

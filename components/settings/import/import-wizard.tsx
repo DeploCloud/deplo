@@ -453,6 +453,26 @@ export function ImportWizard({
   }
 
   /**
+   * The run a report line belongs to, opening one if this session has none — a
+   * cutover months after the import arrives here with nothing in hand, and that is
+   * not a reason to send someone back through the import.
+   */
+  async function ensureRun(): Promise<string | null> {
+    if (runId) return runId;
+    const begun = await gqlAction<{ beginDokployImport: string }, string>(
+      BEGIN,
+      { url, orgName: plan?.orgName ?? null },
+      (d) => d.beginDokployImport,
+    );
+    if (!begun.ok) {
+      toast.error(begun.error);
+      return null;
+    }
+    if (begun.data) setRunId(begun.data);
+    return begun.data ?? null;
+  }
+
+  /**
    * Open the cutover step, reading both sides on the way in. Loaded from the
    * transition rather than from an effect inside the step: entering a step IS a
    * click, and an effect that sets state on mount is a cascading render.
@@ -561,7 +581,7 @@ export function ImportWizard({
       {step === "data" && (
         <DataStep
           connectInput={connectInput}
-          runId={runId}
+          ensureRun={ensureRun}
           servers={servers}
           serverMap={serverMap}
           setServerMap={setServerMap}

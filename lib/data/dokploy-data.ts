@@ -455,6 +455,16 @@ export interface MoveInput extends ConnectInput {
  * "may overwrite this resource's data". A restore and this have the same blast
  * radius, and minting a second permission for the same power would only make one
  * of them the weaker way in.
+ *
+ * OWNERSHIP is not a problem here, though it looks like one: Dokploy runs the
+ * Debian `postgres` image (uid 999) and Deplo renders `postgres:<v>-alpine`
+ * (uid 70), so the copied files arrive owned by a user that does not exist in the
+ * new container. Every one of these official images still STARTS AS ROOT and its
+ * entrypoint chowns the data directory before dropping privileges (verified on a
+ * live Deplo database: `Config.User` empty, pid 1 running as postgres), so the
+ * first start fixes it. An app's own volume has no such gap - the image on both
+ * sides is the same one, so the uid already matches. Do not add a chown step here
+ * expecting to need it.
  */
 export async function moveDokployServiceData(
   input: MoveInput,
@@ -575,6 +585,17 @@ export async function moveDokployServiceData(
     source.close();
     if (dest !== source) dest.close();
   }
+
+  // Both sides are stopped now, and the copy left them that way on purpose. Say
+  // which verb starts this one again: "Deploy" is the app's, and a database's page
+  // has a Start button - a user staring at a stopped database wondering whether the
+  // move broke it is a failure of the report, not of the move.
+  if (moved > 0)
+    notes.push(
+      landed.targetKind === "app"
+        ? `${landed.targetName} is stopped here and stopped on Dokploy. Press Deploy when you are ready for the traffic to follow the data.`
+        : `${landed.targetName} is stopped so the copy could land. Start it from its own page, then check it comes up with the data.`,
+    );
 
   for (const message of notes)
     await appendRunItem(input.runId, {
