@@ -24,7 +24,7 @@ import {
   parseMemoryMb,
   portNotes,
   repoNameFromUrl,
-  stripDokployNetwork,
+  adaptComposeForDeplo,
   volumeLabel,
 } from "./map";
 import type { DokployApplication, DokployDatabase } from "./client";
@@ -99,7 +99,7 @@ test("envNeedsInterpolation flags Dokploy's own template syntax", () => {
 
 /* ---- compose network rewrite ---------------------------------------- */
 
-test("stripDokployNetwork removes the declaration and every reference", () => {
+test("adaptComposeForDeplo removes Dokploy's network, declaration and every reference", () => {
   const source = [
     "services:",
     "  web:",
@@ -117,8 +117,8 @@ test("stripDokployNetwork removes the declaration and every reference", () => {
     "  internal: {}",
   ].join("\n");
 
-  const { compose, changed } = stripDokployNetwork(source);
-  assert.equal(changed, true);
+  const { compose, changes } = adaptComposeForDeplo(source);
+  assert.ok(changes.length > 0);
   const doc = yaml.load(compose) as {
     services: Record<string, { networks?: unknown }>;
     networks: Record<string, unknown>;
@@ -130,7 +130,7 @@ test("stripDokployNetwork removes the declaration and every reference", () => {
   assert.equal("networks" in doc.services.worker, false);
 });
 
-test("stripDokployNetwork resolves the network by name, not by key", () => {
+test("adaptComposeForDeplo resolves the network by name, not by key", () => {
   const source = [
     "services:",
     "  web:",
@@ -143,8 +143,8 @@ test("stripDokployNetwork resolves the network by name, not by key", () => {
     "    name: dokploy-network",
   ].join("\n");
 
-  const { compose, changed } = stripDokployNetwork(source);
-  assert.equal(changed, true);
+  const { compose, changes } = adaptComposeForDeplo(source);
+  assert.ok(changes.length > 0);
   const doc = yaml.load(compose) as {
     services: Record<string, { networks?: unknown }>;
     networks?: unknown;
@@ -153,7 +153,7 @@ test("stripDokployNetwork resolves the network by name, not by key", () => {
   assert.equal("networks" in doc.services.web, false);
 });
 
-test("stripDokployNetwork also reads the nested external.name form", () => {
+test("adaptComposeForDeplo also reads the nested external.name form", () => {
   const source = [
     "services:",
     "  web:",
@@ -163,24 +163,74 @@ test("stripDokployNetwork also reads the nested external.name form", () => {
     "    external:",
     "      name: dokploy-network",
   ].join("\n");
-  const { compose, changed } = stripDokployNetwork(source);
-  assert.equal(changed, true);
+  const { compose, changes } = adaptComposeForDeplo(source);
+  assert.ok(changes.length > 0);
   assert.equal((yaml.load(compose) as { networks?: unknown }).networks, undefined);
 });
 
-test("stripDokployNetwork leaves a clean compose byte-identical", () => {
+test("adaptComposeForDeplo leaves a clean compose byte-identical", () => {
   const source = "services:\n  web:\n    image: nginx # keep this comment\n";
-  const { compose, changed } = stripDokployNetwork(source);
-  assert.equal(changed, false);
+  const { compose, changes } = adaptComposeForDeplo(source);
+  assert.deepEqual(changes, []);
   assert.equal(compose, source);
 });
 
-test("stripDokployNetwork does not throw on YAML it cannot parse", () => {
+test("adaptComposeForDeplo does not throw on YAML it cannot parse", () => {
   const broken = "services:\n  web:\n   - : :";
-  assert.deepEqual(stripDokployNetwork(broken), {
+  assert.deepEqual(adaptComposeForDeplo(broken), {
     compose: broken,
-    changed: false,
+    changes: [],
   });
+});
+
+test("adaptComposeForDeplo maps Dokploy's file mounts onto Deplo's convention", () => {
+  // The single most common thing in a real Dokploy compose: the platform writes
+  // the service's config next to the stack and the file binds it back in.
+  const source = [
+    "services:",
+    "  ch:",
+    "    image: clickhouse/clickhouse-server:25.5",
+    "    volumes:",
+    "      - clickhouse_data:/var/lib/clickhouse",
+    "      - ../files/clickhouse_config:/etc/clickhouse-server/config.d",
+    "      - ../files:/everything",
+    "      - /srv/real-host-path:/host",
+    "      - ../../elsewhere:/nope",
+    "  long:",
+    "    image: busybox",
+    "    volumes:",
+    "      - type: bind",
+    "        source: ../files/one.conf",
+    "        target: /etc/one.conf",
+    "volumes:",
+    "  clickhouse_data: {}",
+  ].join("\n");
+
+  const { compose, changes } = adaptComposeForDeplo(source);
+  const doc = yaml.load(compose) as {
+    services: Record<string, { volumes: unknown[] }>;
+  };
+  assert.deepEqual(doc.services.ch.volumes, [
+    // A named volume is untouched.
+    "clickhouse_data:/var/lib/clickhouse",
+    // Dokploy's files dir becomes Deplo's, which is what makes the imported file
+    // mounts line up with the compose that reads them.
+    "./clickhouse_config:/etc/clickhouse-server/config.d",
+    ".:/everything",
+    // A real host path stays a real host path, and goes on needing the grant.
+    "/srv/real-host-path:/host",
+    // So does an escape to anywhere that is not the files dir.
+    "../../elsewhere:/nope",
+  ]);
+  assert.deepEqual(doc.services.long.volumes, [
+    { type: "bind", source: "./one.conf", target: "/etc/one.conf" },
+  ]);
+  assert.equal(changes.length, 3);
+});
+
+test("adaptComposeForDeplo leaves a stack that needs neither rewrite alone", () => {
+  const source = "services:\n  web:\n    image: nginx\n    volumes:\n      - data:/data\n";
+  assert.deepEqual(adaptComposeForDeplo(source), { compose: source, changes: [] });
 });
 
 /* ---- build settings ------------------------------------------------- */
@@ -237,6 +287,28 @@ test("mapBuildSettings sends publishDirectory to the field the builder reads", (
   ).value;
   assert.equal(asNixpacks.outputDirectory, undefined);
   assert.equal(asNixpacks.methodSettings?.nixpacksPublishDirectory, "public");
+});
+
+test("mapBuildSettings ignores the settings the chosen builder never reads", () => {
+  // What a real Nixpacks app on Dokploy looks like: every build column is filled
+  // in with that platform's defaults, and none of them are choices this app made.
+  const { value } = mapBuildSettings(
+    app({
+      buildType: "nixpacks",
+      dockerfile: "Dockerfile",
+      dockerContextPath: ".",
+      railpackVersion: "0.15.4",
+    }),
+  );
+  assert.equal(value.buildMethod, "nixpacks");
+  assert.equal(value.methodSettings, undefined);
+
+  // The same values DO come across when they are the ones that build the app.
+  assert.equal(
+    mapBuildSettings(app({ buildType: "railpack", railpackVersion: "0.15.4" })).value
+      .methodSettings?.railpackVersion,
+    "0.15.4",
+  );
 });
 
 test("mapBuildSettings notes replicas, which deplo does not scale", () => {
@@ -409,6 +481,20 @@ test("mapSource reports a private registry, whose password never leaves Dokploy"
     app({ sourceType: "docker", dockerImage: "reg.acme.com/api:1", registryId: "reg-1" }),
   );
   assert.match(notes.join(" "), /Registry passwords are not exposed/);
+});
+
+test("mapSource flags an image that only exists on the source machine", () => {
+  const { value, notes } = mapSource(
+    app({ sourceType: "docker", dockerImage: "localhost:5000/database-fdo:1.0" }),
+  );
+  // Still imported - the reference is what the app is - but it cannot be pulled
+  // from here, and "pull access denied" three days later points at the image
+  // rather than at the migration.
+  assert.deepEqual(value, {
+    kind: "docker-image",
+    image: "localhost:5000/database-fdo:1.0",
+  });
+  assert.match(notes.join(" "), /registry ON the Dokploy machine/);
 });
 
 test("mapSource cannot import an uploaded archive", () => {

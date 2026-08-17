@@ -66,7 +66,7 @@ import {
   mapSource,
   parseEnvBlob,
   portNotes,
-  stripDokployNetwork,
+  adaptComposeForDeplo,
   unsupportedNotes,
   type MappedDomain,
 } from "../dokploy/map";
@@ -465,8 +465,8 @@ export async function scanDokploy(input: ConnectInput): Promise<DokployPlan> {
 
         if (isCompose) {
           const yamlText = (detail as DokployCompose).composeFile ?? "";
-          const rewritten = stripDokployNetwork(yamlText);
-          const blocked = composeBlockers(rewritten.compose, {
+          const adapted = adaptComposeForDeplo(yamlText);
+          const blocked = composeBlockers(adapted.compose, {
             mayMountHost,
             mayExposePorts,
           });
@@ -474,8 +474,7 @@ export async function scanDokploy(input: ConnectInput): Promise<DokployPlan> {
             line.notes.push(
               "The compose file lives in a git repository - Deplo will try to fetch the resolved file at import time.",
             );
-          if (rewritten.changed)
-            line.notes.push("Dokploy's shared network will be removed from the compose file.");
+          line.notes.push(...adapted.changes);
           if (blocked.length > 0 && line.status === "new") {
             line.status = "needs_grant";
             line.notes.push(...blocked);
@@ -1257,12 +1256,9 @@ async function importAppService(
       notes.push(
         "The compose file came from Dokploy's resolved copy of the repository - Deplo keeps it inline from now on, so changes in the repo will not follow.",
       );
-    const rewritten = stripDokployNetwork(yamlText);
-    compose = rewritten.compose;
-    if (rewritten.changed)
-      notes.push(
-        "Dokploy's shared network was removed from the compose file - Deplo attaches the services to its own.",
-      );
+    const adapted = adaptComposeForDeplo(yamlText);
+    compose = adapted.compose;
+    notes.push(...adapted.changes);
     if (detail.isolatedDeployment)
       notes.push(
         "Ran as an isolated deployment on Dokploy (its own network and volume namespace). Deplo namespaces every stack anyway, but check the service names it talks to.",

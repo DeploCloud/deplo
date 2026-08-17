@@ -142,42 +142,58 @@ function dokployNetworkKeys(doc: { networks?: unknown }): Set<string> {
 }
 
 /**
- * Remove Dokploy's `dokploy-network` from a compose file, declaration and
- * references both.
+ * Turn a Dokploy compose file into a Deplo one. Two rewrites, both mechanical,
+ * both necessary, and nothing else is touched — Traefik labels a user wrote by
+ * hand included. They are configuration someone chose, and this is an import, not
+ * a rewrite.
  *
- * On deplo that network does not exist, and `composeJoinsForeignNetwork`
- * (correctly) treats an external network we do not own as a way out of the
- * sandbox — so importing verbatim would demand the `canMountHostVolumes` grant
- * for every stack, over a network that has no purpose here: `buildComposeStack`
- * attaches the services to deplo's shared network itself.
+ * **1. Drop `dokploy-network`.** It does not exist here, and
+ * `composeJoinsForeignNetwork` (correctly) treats an external network we do not
+ * own as a way out of the sandbox — so importing verbatim would demand the
+ * `canMountHostVolumes` grant for every stack, over a network with no purpose
+ * here: `buildComposeStack` attaches the services to Deplo's own.
  *
- * Nothing else is touched — Traefik labels a user wrote by hand included. They
- * are configuration someone chose, and this is an import, not a rewrite.
+ * **2. Rewrite `../files/x` to `./x`.** Both platforms materialise a service's
+ * config files next to the stack and bind them in; they just spell the path
+ * differently. Dokploy writes `<stack>/files/<path>` and binds `../files/<path>`;
+ * Deplo writes its own isolated files dir and binds `./<path>` (`rewriteMountSource`
+ * in compose-stack.ts). Left alone, a `../` source is not merely wrong — Deplo
+ * reads it as climbing OUT of the sandbox, so the stack would demand the
+ * host-volumes grant and then bind a path that holds nothing. Measured on a real
+ * instance, this is the single most common thing in a Dokploy compose file.
  *
- * The YAML is only re-serialized when there IS something to strip (a round trip
- * through js-yaml reflows the file and drops comments), so a stack that never
- * mentioned the network comes across byte-identical.
+ * A source that climbs anywhere ELSE with `..` is left exactly as it is: that one
+ * really is a host bind, and Deplo should go on asking for the grant.
+ *
+ * The YAML is only re-serialized when there IS something to change (a round trip
+ * through js-yaml reflows the file and drops comments), so a stack that needed
+ * neither rewrite comes across byte-identical.
  */
-export function stripDokployNetwork(source: string): {
+export function adaptComposeForDeplo(source: string): {
   compose: string;
-  changed: boolean;
+  changes: string[];
 } {
   let doc: Record<string, unknown> | null;
   try {
     doc = yaml.load(source) as Record<string, unknown> | null;
   } catch {
-    return { compose: source, changed: false };
+    return { compose: source, changes: [] };
   }
   if (!doc || typeof doc !== "object" || Array.isArray(doc))
-    return { compose: source, changed: false };
+    return { compose: source, changes: [] };
 
+  const changes: string[] = [];
   const keys = dokployNetworkKeys(doc);
-  if (keys.size === 0) return { compose: source, changed: false };
 
-  const networks = doc.networks as Record<string, unknown> | undefined;
-  if (networks) {
-    for (const k of keys) delete networks[k];
-    if (Object.keys(networks).length === 0) delete doc.networks;
+  if (keys.size > 0) {
+    const networks = doc.networks as Record<string, unknown> | undefined;
+    if (networks) {
+      for (const k of keys) delete networks[k];
+      if (Object.keys(networks).length === 0) delete doc.networks;
+    }
+    changes.push(
+      "Dokploy's shared network was removed - Deplo attaches the services to its own.",
+    );
   }
 
   const services = doc.services;
@@ -185,23 +201,63 @@ export function stripDokployNetwork(source: string): {
     for (const svc of Object.values(services as Record<string, unknown>)) {
       if (!svc || typeof svc !== "object" || Array.isArray(svc)) continue;
       const s = svc as Record<string, unknown>;
-      const n = s.networks;
-      if (Array.isArray(n)) {
-        const kept = n.filter((entry) => !keys.has(String(entry)));
-        if (kept.length === 0) delete s.networks;
-        else s.networks = kept;
-      } else if (n && typeof n === "object") {
-        const map = n as Record<string, unknown>;
-        for (const k of keys) delete map[k];
-        if (Object.keys(map).length === 0) delete s.networks;
+
+      // The network, off both shapes of a service's `networks:`.
+      if (keys.size > 0) {
+        const n = s.networks;
+        if (Array.isArray(n)) {
+          const kept = n.filter((entry) => !keys.has(String(entry)));
+          if (kept.length === 0) delete s.networks;
+          else s.networks = kept;
+        } else if (n && typeof n === "object") {
+          const map = n as Record<string, unknown>;
+          for (const k of keys) delete map[k];
+          if (Object.keys(map).length === 0) delete s.networks;
+        }
       }
+
+      // The file-mount paths, off both shapes of a volume entry.
+      const vols = s.volumes;
+      if (!Array.isArray(vols)) continue;
+      s.volumes = vols.map((v) => {
+        if (typeof v === "string") {
+          const idx = v.indexOf(":");
+          if (idx <= 0) return v;
+          const rewritten = deploFilesPath(v.slice(0, idx));
+          if (rewritten == null) return v;
+          changes.push(`${v.slice(0, idx)} now points at Deplo's files directory.`);
+          return `${rewritten}${v.slice(idx)}`;
+        }
+        if (v && typeof v === "object" && !Array.isArray(v)) {
+          const m = v as Record<string, unknown>;
+          if (typeof m.source !== "string") return v;
+          const rewritten = deploFilesPath(m.source);
+          if (rewritten == null) return v;
+          changes.push(`${m.source} now points at Deplo's files directory.`);
+          return { ...m, source: rewritten };
+        }
+        return v;
+      });
     }
   }
 
+  if (changes.length === 0) return { compose: source, changes: [] };
   return {
     compose: yaml.dump(doc, { lineWidth: -1, noRefs: true }),
-    changed: true,
+    changes,
   };
+}
+
+/**
+ * Dokploy's `../files/x` as Deplo spells it, or null when the source is not one
+ * of those (a named volume, a real host path, an escape to somewhere else).
+ */
+function deploFilesPath(source: string): string | null {
+  const s = source.trim();
+  const m = /^\.\.\/files(?:\/(.*))?$/.exec(s);
+  if (!m) return null;
+  const rest = (m[1] ?? "").replace(/^\/+/, "");
+  return rest ? `./${rest}` : ".";
 }
 
 /* ------------------------------------------------------------------ */
@@ -240,19 +296,28 @@ export function mapBuildSettings(
   const build: Partial<BuildConfig> = { buildMethod };
   const methodSettings: BuildConfig["methodSettings"] = {};
 
-  if (app.dockerfile?.trim()) methodSettings.dockerfilePath = app.dockerfile.trim();
-  if (app.dockerContextPath?.trim())
-    methodSettings.dockerContextPath = app.dockerContextPath.trim();
-  if (app.dockerBuildStage?.trim())
-    methodSettings.dockerBuildStage = app.dockerBuildStage.trim();
-  if (app.railpackVersion?.trim())
+  // ONLY the settings the chosen builder reads. Dokploy stores a value in every
+  // one of these columns whether or not the app uses that builder — measured on a
+  // real instance, a Nixpacks app carries `dockerfile: "Dockerfile"` and
+  // `railpackVersion: "0.15.4"` — and importing those would pin an unrelated
+  // builder to a version this app never asked for, out of what is really just the
+  // other platform's column default.
+  if (buildMethod === "dockerfile") {
+    if (app.dockerfile?.trim()) methodSettings.dockerfilePath = app.dockerfile.trim();
+    if (app.dockerContextPath?.trim())
+      methodSettings.dockerContextPath = app.dockerContextPath.trim();
+    if (app.dockerBuildStage?.trim())
+      methodSettings.dockerBuildStage = app.dockerBuildStage.trim();
+  }
+  if (buildMethod === "railpack" && app.railpackVersion?.trim())
     methodSettings.railpackVersion = app.railpackVersion.trim();
-  if (app.isStaticSpa) methodSettings.staticSinglePageApp = true;
 
   const publish = app.publishDirectory?.trim();
-  if (publish) {
-    if (buildMethod === "static") build.outputDirectory = publish;
-    else methodSettings.nixpacksPublishDirectory = publish;
+  if (buildMethod === "static") {
+    if (publish) build.outputDirectory = publish;
+    if (app.isStaticSpa) methodSettings.staticSinglePageApp = true;
+  } else if (buildMethod === "nixpacks" && publish) {
+    methodSettings.nixpacksPublishDirectory = publish;
   }
   if (Object.keys(methodSettings).length > 0) build.methodSettings = methodSettings;
 
@@ -432,6 +497,13 @@ export function mapSource(app: DokployApplication): Mapped<MappedSource> {
     if (app.registryId || app.registry)
       notes.push(
         "Pulled from a private registry. Registry passwords are not exposed by Dokploy's API - add the registry in Deplo and reselect it.",
+      );
+    // A registry running ON the source host. The reference is perfectly valid over
+    // there and means nothing here, and the failure it produces later ("pull
+    // access denied") points at the image rather than at the move.
+    if (/^(localhost|127\.0\.0\.1|::1|host\.docker\.internal)[:/]/i.test(image))
+      notes.push(
+        `${image} lives in a registry ON the Dokploy machine, so Deplo cannot pull it. Push it somewhere both can reach, or build the app from its source instead.`,
       );
     return { value: { kind: "docker-image", image }, notes };
   }

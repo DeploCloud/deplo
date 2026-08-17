@@ -13,6 +13,33 @@
  */
 
 import {
+  composeHasHostBindMount,
+  composeJoinsForeignNetwork,
+  composeNeedsHostPrivileges,
+  composePublishesPorts,
+  composeUsesExternalMerge,
+} from "../lib/deploy/compose-lint";
+import {
+  deploEngineFor,
+  envNeedsInterpolation,
+  mapBuildSettings,
+  mapDatabase,
+  mapDomains,
+  mapMounts,
+  mapResources,
+  mapSource,
+  parseEnvBlob,
+  portNotes,
+  adaptComposeForDeplo,
+  unsupportedNotes,
+} from "../lib/dokploy/map";
+import type {
+  DokployApplication,
+  DokployCompose,
+  DokployDatabase,
+  DokployDbKind,
+} from "../lib/dokploy/client";
+import {
   DOKPLOY_DB_KINDS,
   activeOrganizationName,
   getService,
@@ -75,6 +102,7 @@ for (const p of await listProjects(c)) {
             `appName=${detail.appName ?? "-"} server=${detail.serverId ?? "(dokploy host)"} ` +
             `domains=${domains} mounts=${mounts}`,
         );
+        if (process.env.PROBE_MAP) describe(stub.kind, detail, name);
       } catch (e) {
         console.log(
           `    ${stub.kind.padEnd(11)} ${stub.id.padEnd(24)} FAILED: ${e instanceof Error ? e.message : e}`,
@@ -82,4 +110,103 @@ for (const p of await listProjects(c)) {
       }
     }
   }
+}
+
+/* ------------------------------------------------------------------ */
+/* PROBE_MAP=1: run the real mappers over the real row                  */
+/* ------------------------------------------------------------------ */
+
+/** What the import would make of one service. Pure functions only - this writes
+ *  nothing anywhere and is the cheapest way to check a mapping against real data. */
+function describe(kind: string, row: Record<string, unknown>, name: string): void {
+  const say = (label: string, value: unknown) =>
+    console.log(`        ${label.padEnd(12)} ${value}`);
+  const notes: string[] = [];
+
+  if (kind === "application" || kind === "compose") {
+    const detail = row as unknown as DokployApplication & DokployCompose;
+    const env = parseEnvBlob(detail.env);
+    const args = parseEnvBlob(detail.buildArgs).filter(
+      (a) => !env.some((e) => e.key === a.key),
+    );
+    say("env", `${env.length} var(s)${args.length ? ` + ${args.length} build arg(s)` : ""}`);
+    const interpolated = envNeedsInterpolation([...env, ...args]);
+    if (interpolated.length) notes.push(`\${{...}} in ${interpolated.join(", ")}`);
+
+    const domains = mapDomains(detail.domains, { isCompose: kind === "compose" });
+    say(
+      "domains",
+      domains.value.length === 0
+        ? "none worth importing"
+        : domains.value
+            .map(
+              (d) =>
+                `${d.host}${d.pathPrefix}${d.port ? `:${d.port}` : ""} ${d.certProvider}${d.service ? ` -> ${d.service}` : ""}`,
+            )
+            .join(" | "),
+    );
+    notes.push(...domains.notes);
+
+    const mounts = mapMounts(detail.mounts);
+    say(
+      "mounts",
+      `${mounts.value.files.length} file(s), ${mounts.value.volumes.length} volume(s)` +
+        (mounts.value.volumes.length
+          ? ` [${mounts.value.volumes.map((v) => `${v.type}:${v.name}@${v.mountPath}`).join(", ")}]`
+          : ""),
+    );
+    notes.push(...mounts.notes);
+
+    const resources = mapResources(detail);
+    if (resources.value) say("resources", JSON.stringify(resources.value));
+    notes.push(...resources.notes);
+
+    if (kind === "compose") {
+      const yamlText = (detail.composeFile ?? "").trim();
+      say("compose", yamlText ? `${yamlText.length} bytes inline` : "IN A GIT REPO (fetched at import)");
+      if (yamlText) {
+        const adapted = adaptComposeForDeplo(yamlText);
+        say("rewrites", adapted.changes.length ? adapted.changes.join(" ") : "none needed");
+        const gates: string[] = [];
+        if (composeUsesExternalMerge(adapted.compose)) gates.push("extends/include (REFUSED)");
+        if (composePublishesPorts(adapted.compose)) gates.push("publishes ports (grant)");
+        if (composeHasHostBindMount(adapted.compose)) gates.push("host bind mount (grant)");
+        if (composeNeedsHostPrivileges(adapted.compose)) gates.push("host privileges (grant)");
+        if (composeJoinsForeignNetwork(adapted.compose)) gates.push("foreign network (grant)");
+        say("gates", gates.length ? gates.join(", ") : "clean");
+      }
+    } else {
+      const source = mapSource(detail);
+      say(
+        "source",
+        source.value.kind === "git"
+          ? `git ${source.value.repo.repo}@${source.value.repo.branch}`
+          : source.value.kind === "docker-image"
+            ? `image ${source.value.image}`
+            : "NOT IMPORTABLE (lands as an upload)",
+      );
+      notes.push(...source.notes);
+      const build = mapBuildSettings(detail);
+      say("build", JSON.stringify(build.value));
+      notes.push(...build.notes, ...portNotes(detail), ...unsupportedNotes(detail));
+    }
+  } else {
+    const engine = deploEngineFor(kind as DokployDbKind);
+    if (!engine) {
+      say("engine", `NO DEPLO EQUIVALENT (${kind})`);
+      return;
+    }
+    const mapped = mapDatabase(kind as DokployDbKind, {
+      ...(row as unknown as DokployDatabase),
+      name,
+    });
+    if (mapped.value)
+      say(
+        "database",
+        `${mapped.value.type}:${mapped.value.version ?? "(default)"} user=${mapped.value.username} db=${mapped.value.dbName} port=${mapped.value.exposedPort ?? "-"}${mapped.value.customImage ? ` image=${mapped.value.customImage}` : ""}`,
+      );
+    notes.push(...mapped.notes);
+  }
+
+  for (const n of notes) console.log(`        note         ${n}`);
 }

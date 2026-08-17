@@ -332,7 +332,7 @@ test("scan marks a libsql database unsupported and never asks for its detail", a
 test("scan reports the compose rewrite and the missing git credential up front", async () => {
   const plan = await asOwner(() => scanDokploy(CONNECT));
   const stack = plan.projects[1].environments[0].services[0];
-  assert.match(stack.notes.join(" "), /shared network will be removed/);
+  assert.match(stack.notes.join(" "), /shared network was removed/);
 
   const web = plan.projects[0].environments[0].services[0];
   assert.match(web.notes.join(" "), /no credential/);
