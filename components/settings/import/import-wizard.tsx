@@ -129,20 +129,35 @@ export interface ImportRun {
   finishedAt: string | null;
 }
 
-type StepId = "connect" | "destination" | "review" | "import" | "done" | "data";
+type StepId = "connect" | "servers" | "review" | "import" | "done" | "data";
 
-const STEPS: WizardStep<StepId>[] = [
-  { id: "connect", label: "Connect" },
-  { id: "destination", label: "Destination" },
-  { id: "review", label: "Review" },
-  { id: "import", label: "Import" },
-  { id: "done", label: "Done" },
-  // The cutover, and the one step that is not part of the import's own sequence:
-  // it happens the night someone is ready for downtime, which is rarely the day
-  // the configuration lands. Reachable from any scan, including a scan made only
-  // to come back here months later.
-  { id: "data", label: "Data" },
-];
+/**
+ * The steps, minus the ones with nothing to decide.
+ *
+ * `servers` only exists when there is a CHOICE to make: with exactly one server in
+ * the fleet every Dokploy host maps to it and the step is a page asking a question
+ * whose answer is already filled in. (Zero servers keeps it, because that page is
+ * where the "add a server first" empty state lives.)
+ *
+ * The team is deliberately NOT a step. Dokploy scopes an API key to one
+ * organization and Deplo scopes everything to the active team, so a run goes from
+ * the one to the other; making that a screen of its own gave a foregone conclusion
+ * the same weight as the work.
+ */
+function stepsFor(serverCount: number): WizardStep<StepId>[] {
+  return [
+    { id: "connect", label: "Connect" },
+    ...(serverCount === 1 ? [] : [{ id: "servers" as StepId, label: "Servers" }]),
+    { id: "review", label: "Review" },
+    { id: "import", label: "Import" },
+    { id: "done", label: "Done" },
+    // The cutover, and the one step that is not part of the import's own sequence:
+    // it happens the night someone is ready for downtime, which is rarely the day
+    // the configuration lands. Reachable from any scan, including a scan made only
+    // to come back here months later.
+    { id: "data", label: "Data" },
+  ];
+}
 
 /** Dokploy's own host has no server row over there; it is the empty id. */
 const OWN_HOST = "";
@@ -305,9 +320,12 @@ export function ImportWizard({
     [url, apiKey, sameMachine],
   );
 
+  const STEPS = React.useMemo(() => stepsFor(servers.length), [servers.length]);
+  const hasServerStep = STEPS.some((x) => x.id === "servers");
+
   const done: Record<StepId, boolean> = {
     connect: plan != null,
-    destination: plan != null,
+    servers: plan != null,
     review: chosen.size > 0,
     import: items.length > 0,
     done: false,
@@ -350,7 +368,7 @@ export function ImportWizard({
         ]),
       );
     }
-    setStep("destination");
+    setStep(hasServerStep ? "servers" : "review");
   }
 
   /* ---- step 2: destination ----------------------------------------- */
@@ -547,20 +565,12 @@ export function ImportWizard({
         />
       )}
 
-      {step === "destination" && plan && (
-        <DestinationStep
+      {step === "servers" && plan && (
+        <ServersStep
           plan={plan}
-          teamName={teamName}
           servers={servers}
           serverMap={serverMap}
           setServerMap={setServerMap}
-          skipDatabases={skipDatabases}
-          setSkipDatabases={setSkipDatabases}
-          isInstanceAdmin={isInstanceAdmin}
-          newTeam={newTeam}
-          setNewTeam={setNewTeam}
-          creatingTeam={creatingTeam}
-          onCreateTeam={createTeamAndSwitch}
           onBack={() => setStep("connect")}
           onNext={() => setStep("review")}
         />
@@ -572,7 +582,14 @@ export function ImportWizard({
           chosen={chosen}
           setChosen={setChosen}
           teamName={teamName}
-          onBack={() => setStep("destination")}
+          skipDatabases={skipDatabases}
+          setSkipDatabases={setSkipDatabases}
+          isInstanceAdmin={isInstanceAdmin}
+          newTeam={newTeam}
+          setNewTeam={setNewTeam}
+          creatingTeam={creatingTeam}
+          onCreateTeam={createTeamAndSwitch}
+          onBack={() => setStep(hasServerStep ? "servers" : "connect")}
           onStart={runImport}
         />
       )}
@@ -767,34 +784,23 @@ function PastRuns({
 /* Step 2 — destination                                               */
 /* ------------------------------------------------------------------ */
 
-function DestinationStep({
+/**
+ * Which of our servers takes each of Dokploy's. The step exists ONLY when that is
+ * a real question — with one server in the fleet everything maps to it and this
+ * page is skipped entirely (see `stepsFor`).
+ */
+function ServersStep({
   plan,
-  teamName,
   servers,
   serverMap,
   setServerMap,
-  skipDatabases,
-  setSkipDatabases,
-  isInstanceAdmin,
-  newTeam,
-  setNewTeam,
-  creatingTeam,
-  onCreateTeam,
   onBack,
   onNext,
 }: {
   plan: Plan;
-  teamName: string;
   servers: { id: string; name: string; type: string }[];
   serverMap: Record<string, string>;
   setServerMap: (v: Record<string, string>) => void;
-  skipDatabases: boolean;
-  setSkipDatabases: (v: boolean) => void;
-  isInstanceAdmin: boolean;
-  newTeam: string;
-  setNewTeam: (v: string) => void;
-  creatingTeam: boolean;
-  onCreateTeam: (e: React.FormEvent) => void;
   onBack: () => void;
   onNext: () => void;
 }) {
@@ -804,72 +810,16 @@ function DestinationStep({
     ...plan.servers,
   ];
   const ready = sources.every((s) => serverMap[s.sourceId]);
-  // Only an instance admin can mint a team, and there is nothing to offer when the
-  // team we are in is already the one this organization belongs in.
-  const offerNewTeam =
-    isInstanceAdmin &&
-    plan.orgName != null &&
-    plan.orgName.trim().toLowerCase() !== teamName.trim().toLowerCase();
 
   return (
     <div className="space-y-4">
       <Card>
         <CardHeader>
-          <CardTitle>Where it lands</CardTitle>
-          <p className="mt-1 text-sm text-muted-foreground">
-            A Dokploy API key belongs to one organization, so one run brings over one
-            organization: its projects, its services and its people, into one team
-            here. Another organization means another key and another run.
-          </p>
-        </CardHeader>
-        <CardContent className="space-y-3">
-          {/* The organization IS the team, so its own name is offered first and
-              already filled in. Importing into the team you happen to be standing
-              in stays available underneath - it is the right answer when the team
-              already exists, which is the second run of the same migration. */}
-          {offerNewTeam && (
-            <form
-              className="flex flex-wrap items-end gap-2 rounded-lg border p-3"
-              onSubmit={onCreateTeam}
-            >
-              <div className="grid min-w-0 flex-1 gap-2">
-                <FieldLabel
-                  htmlFor="import-team-name"
-                  info="Creating it also switches you to it, because everything is imported into the team you are in."
-                >
-                  Create the team for {plan.orgName}
-                </FieldLabel>
-                <Input
-                  id="import-team-name"
-                  value={newTeam}
-                  onChange={(e) => setNewTeam(e.target.value)}
-                  placeholder="New team name"
-                />
-              </div>
-              <Button type="submit" disabled={creatingTeam || !newTeam.trim()}>
-                {creatingTeam ? "Creating" : "Create team"}
-              </Button>
-            </form>
-          )}
-
-          <div className="rounded-lg border p-3">
-            <div className="text-sm font-medium">
-              {offerNewTeam ? `Or import into ${teamName}` : `Importing into ${teamName}`}
-            </div>
-            <p className="mt-1 text-sm text-muted-foreground">
-              {isInstanceAdmin
-                ? "The team you are in now. To use a different existing team, switch team in the topbar first."
-                : "The team you are in now. To import into another team, switch team in the topbar first."}
-            </p>
-          </div>
-        </CardContent>
-      </Card>
-
-      <Card>
-        <CardHeader>
           <CardTitle>Servers</CardTitle>
           <p className="mt-1 text-sm text-muted-foreground">
-            Pick which of your servers takes each of Dokploy&apos;s.
+            Pick which of your servers takes each of Dokploy&apos;s. This is also
+            where the data would be read from later, so it has to be a machine Deplo
+            manages.
           </p>
         </CardHeader>
         <CardContent className="space-y-3">
@@ -893,9 +843,7 @@ function DestinationStep({
                 </div>
                 <Select
                   value={serverMap[s.sourceId] ?? ""}
-                  onValueChange={(v) =>
-                    setServerMap({ ...serverMap, [s.sourceId]: v })
-                  }
+                  onValueChange={(v) => setServerMap({ ...serverMap, [s.sourceId]: v })}
                 >
                   <SelectTrigger className="w-64">
                     <SelectValue placeholder="Choose a server" />
@@ -914,31 +862,6 @@ function DestinationStep({
         </CardContent>
       </Card>
 
-      <Card>
-        <CardHeader>
-          <CardTitle>Databases</CardTitle>
-          <p className="mt-1 text-sm text-muted-foreground">
-            A database is the one thing an import really starts: Deplo brings the
-            container up empty, ready for your dump.
-          </p>
-        </CardHeader>
-        <CardContent>
-          <div className="flex items-start justify-between gap-4">
-            <div className="min-w-0">
-              <FieldLabel htmlFor="skip-databases">Leave the databases out</FieldLabel>
-              <p className="mt-1 text-sm text-muted-foreground">
-                They are listed in the report instead, to create when you are ready.
-              </p>
-            </div>
-            <Switch
-              id="skip-databases"
-              checked={skipDatabases}
-              onCheckedChange={setSkipDatabases}
-            />
-          </div>
-        </CardContent>
-      </Card>
-
       <div className="flex justify-between">
         <Button variant="outline" onClick={onBack}>
           Back
@@ -950,10 +873,6 @@ function DestinationStep({
     </div>
   );
 }
-
-/* ------------------------------------------------------------------ */
-/* Step 3 — review                                                    */
-/* ------------------------------------------------------------------ */
 
 const STATUS_LABEL: Record<PlanService["status"], string> = {
   new: "New",
@@ -967,6 +886,13 @@ function ReviewStep({
   chosen,
   setChosen,
   teamName,
+  skipDatabases,
+  setSkipDatabases,
+  isInstanceAdmin,
+  newTeam,
+  setNewTeam,
+  creatingTeam,
+  onCreateTeam,
   onBack,
   onStart,
 }: {
@@ -974,9 +900,17 @@ function ReviewStep({
   chosen: Set<string>;
   setChosen: (v: Set<string>) => void;
   teamName: string;
+  skipDatabases: boolean;
+  setSkipDatabases: (v: boolean) => void;
+  isInstanceAdmin: boolean;
+  newTeam: string;
+  setNewTeam: (v: string) => void;
+  creatingTeam: boolean;
+  onCreateTeam: (e: React.FormEvent) => void;
   onBack: () => void;
   onStart: () => void;
 }) {
+  const [showNewTeam, setShowNewTeam] = React.useState(false);
   const allChosen = chosen.size === plan.projects.length;
   // Named here as well as on the last step: "the organization" means its people
   // too, and finding that out only at the end reads like an afterthought.
@@ -1007,12 +941,61 @@ function ReviewStep({
 
   return (
     <div className="space-y-4">
+      {/* One line, not a step: an API key is scoped to one Dokploy organization and
+          everything here is scoped to the active team, so the destination is already
+          decided. The new-team CTA stays available and stays quiet. */}
+      <div className="flex flex-wrap items-center justify-between gap-2 rounded-lg border px-3 py-2 text-sm">
+        <span className="min-w-0">
+          {plan.orgName ? (
+            <>
+              <span className="font-medium">{plan.orgName}</span> goes into the team{" "}
+              <span className="font-medium">{teamName}</span>.
+            </>
+          ) : (
+            <>
+              Everything goes into the team{" "}
+              <span className="font-medium">{teamName}</span>.
+            </>
+          )}
+        </span>
+        {isInstanceAdmin && !showNewTeam && (
+          <Button variant="ghost" size="sm" onClick={() => setShowNewTeam(true)}>
+            Create a new team
+          </Button>
+        )}
+      </div>
+
+      {isInstanceAdmin && showNewTeam && (
+        <form
+          className="flex flex-wrap items-end gap-2 rounded-lg border p-3"
+          onSubmit={onCreateTeam}
+        >
+          <div className="grid min-w-0 flex-1 gap-2">
+            <FieldLabel
+              htmlFor="import-team-name"
+              info="Creating it also switches you to it, because everything is imported into the team you are in."
+            >
+              New team
+            </FieldLabel>
+            <Input
+              id="import-team-name"
+              value={newTeam}
+              onChange={(e) => setNewTeam(e.target.value)}
+              placeholder="Team name"
+            />
+          </div>
+          <Button type="submit" disabled={creatingTeam || !newTeam.trim()}>
+            {creatingTeam ? "Creating" : "Create team"}
+          </Button>
+        </form>
+      )}
+
       <Card>
         <CardHeader className="flex flex-row flex-wrap items-center justify-between gap-3">
           <div className="min-w-0">
             <CardTitle>What will come over</CardTitle>
             <p className="mt-1 text-sm text-muted-foreground">
-              {counts.apps} app(s) and {counts.databases} database(s) into {teamName}
+              {counts.apps} app(s) and {counts.databases} database(s)
               {people > 0 ? `, plus ${people} person(s) to invite afterwards` : ""}.
               Nothing is deployed - Dokploy keeps serving until you say otherwise.
             </p>
@@ -1075,6 +1058,24 @@ function ReviewStep({
           ))}
         </CardContent>
       </Card>
+
+      {counts.databases > 0 && (
+        <div className="flex items-start justify-between gap-4 rounded-lg border px-3 py-2">
+          <div className="min-w-0">
+            <FieldLabel htmlFor="skip-databases">Leave the databases out</FieldLabel>
+            <p className="mt-1 text-sm text-muted-foreground">
+              A database is the one thing an import really starts: Deplo brings the
+              container up empty, ready for your data. Left out, they are listed in
+              the report instead.
+            </p>
+          </div>
+          <Switch
+            id="skip-databases"
+            checked={skipDatabases}
+            onCheckedChange={setSkipDatabases}
+          />
+        </div>
+      )}
 
       {counts.attention > 0 && (
         <div className="flex items-start gap-2.5 rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 py-2.5 text-sm text-amber-600 dark:text-amber-400">
