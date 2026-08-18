@@ -925,7 +925,7 @@ function ReviewStep({
                 it is not worth a sentence. Creating a team to import into still
                 is, and this is the row that already holds the bulk actions. */}
             {isInstanceAdmin && !showNewTeam && (
-              <Button variant="ghost" size="sm" onClick={() => setShowNewTeam(true)}>
+              <Button variant="secondary" size="sm" onClick={() => setShowNewTeam(true)}>
                 Create a new team
               </Button>
             )}
