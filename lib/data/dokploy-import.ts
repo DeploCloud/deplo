@@ -173,10 +173,24 @@ export interface PlanProject {
   environments: PlanEnvironment[];
 }
 
+/**
+ * One MACHINE behind that Dokploy, and whether Deplo can reach its disk.
+ *
+ * Deplo copies a volume by asking the agent ON the host that holds it - there is
+ * no other way in (ADR-0006), and agents cannot dial each other. So a Dokploy
+ * machine with no Deplo agent is a machine whose data cannot move, and that is
+ * worth knowing BEFORE an import rather than at the moment of the cutover.
+ *
+ * The first entry is always the host Dokploy itself runs on, which has no server
+ * row over there and is the empty id here.
+ */
 export interface PlanServer {
   sourceId: string;
   name: string;
   ipAddress: string | null;
+  /** The Deplo server sitting at that address, when there is one. */
+  deploServerId: string | null;
+  deploServerName: string | null;
 }
 
 export interface PlanMember {
@@ -541,11 +555,7 @@ export async function scanDokploy(input: ConnectInput): Promise<DokployPlan> {
     sourceUrl: c.baseUrl,
     orgName,
     projects: planned,
-    servers: servers.map((s) => ({
-      sourceId: s.serverId,
-      name: s.name,
-      ipAddress: s.ipAddress ?? null,
-    })),
+    servers: await planMachines(c, teamId, servers),
     members: await planMembers(c, teamId),
   };
 }
@@ -644,6 +654,60 @@ async function hostnamesOwnedElsewhere(teamId: string): Promise<Set<string>> {
   for (const r of rows)
     if (r.teamId !== teamId) out.add(r.name.trim().toLowerCase());
   return out;
+}
+
+/**
+ * Every machine behind that Dokploy, each paired with the Deplo server at the
+ * same address - or nothing, when Deplo has no agent there.
+ *
+ * Matched on ADDRESS, because that is the only thing the two systems share: a
+ * Dokploy server row carries an IP, a Deplo server row carries the ip/host the
+ * agent was registered with, and one machine is one address. A storage-only host
+ * is not a match: it has no Docker to export a volume from.
+ *
+ * The Dokploy host itself comes first and is the empty id, the same key the
+ * server mapping and the cutover already use for it.
+ */
+async function planMachines(
+  c: DokployCredential,
+  teamId: string,
+  servers: { serverId: string; name: string; ipAddress?: string | null }[],
+): Promise<PlanServer[]> {
+  const mine = (await listServersForTeam(teamId)).filter((s) => !s.storageOnly);
+  const at = (address: string | null) => {
+    const a = address?.trim().toLowerCase();
+    if (!a) return null;
+    const hit = mine.find(
+      (s) => s.ip?.trim().toLowerCase() === a || s.host?.trim().toLowerCase() === a,
+    );
+    return hit ? { deploServerId: hit.id, deploServerName: hit.name } : null;
+  };
+
+  let ownAddress: string | null = null;
+  try {
+    ownAddress = new URL(c.baseUrl).hostname;
+  } catch {
+    /* the client already normalised this; a bad one just matches nothing */
+  }
+
+  return [
+    {
+      sourceId: "",
+      name: "The Dokploy host",
+      ipAddress: ownAddress,
+      deploServerId: null,
+      deploServerName: null,
+      ...(at(ownAddress) ?? {}),
+    },
+    ...servers.map((s) => ({
+      sourceId: s.serverId,
+      name: s.name,
+      ipAddress: s.ipAddress ?? null,
+      deploServerId: null,
+      deploServerName: null,
+      ...(at(s.ipAddress ?? null) ?? {}),
+    })),
+  ];
 }
 
 /** Dokploy's members, told apart by whether they already exist here. */

@@ -36,10 +36,14 @@ export interface PlanProject {
   environments: PlanEnvironment[];
 }
 
+/** One machine behind the source instance; the first is its own host (`""`). */
 export interface PlanServer {
   sourceId: string;
   name: string;
   ipAddress: string | null;
+  /** The Deplo server at that address, or null when Deplo has no agent there. */
+  deploServerId: string | null;
+  deploServerName: string | null;
 }
 
 export interface PlanMember {

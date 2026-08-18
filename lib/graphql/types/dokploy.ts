@@ -133,11 +133,17 @@ const PlanServerRef = builder
   .objectRef<PlanServer>("DokployPlanServer")
   .implement({
     description:
-      "A server the source instance deploys to, to be matched with one of ours. Dokploy's own host does not appear here; it is the empty `sourceServerId`.",
+      "One machine behind the source instance. The FIRST entry is always the host the source instance itself runs on, whose `sourceId` is the empty string - the same key the server mapping and the data cutover use for it.",
     fields: (t) => ({
       sourceId: t.exposeString("sourceId"),
       name: t.exposeString("name"),
       ipAddress: t.exposeString("ipAddress", { nullable: true }),
+      deploServerId: t.exposeString("deploServerId", {
+        nullable: true,
+        description:
+          "The Deplo server at that same address, or null when Deplo has no agent there. Data cannot be copied off a machine Deplo cannot reach: a volume is read by the agent ON its host, and agents cannot dial each other.",
+      }),
+      deploServerName: t.exposeString("deploServerName", { nullable: true }),
     }),
   });
 

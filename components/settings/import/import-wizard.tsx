@@ -9,6 +9,7 @@ import {
   Link2,
   RotateCcw,
   Server as ServerIcon,
+  TriangleAlert,
   Users,
 } from "lucide-react";
 
@@ -16,13 +17,21 @@ import { gqlAction } from "@/lib/graphql-client";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Switch } from "@/components/ui/switch";
 import { FieldLabel } from "@/components/ui/info-tip";
 import { PageHeader } from "@/components/shared/page-header";
 import { EmptyState } from "@/components/shared/empty-state";
 import { WizardStepper, type WizardStep } from "@/components/shared/wizard-stepper";
-import { DataStep, loadDataPlan, type DataService } from "./data-step";
+import { MachineGate } from "./machines";
 import { ImportTree } from "./import-tree";
 import {
   ImportProgressDialog,
@@ -54,27 +63,23 @@ import {
  * request) instead of handed to a background job.
  */
 
-type StepId = "connect" | "review" | "data" | "people" | "done";
+type StepId = "connect" | "review" | "people" | "done";
 
 /**
- * The steps that exist for THIS import.
+ * The steps, and there is no longer a separate one for the data.
  *
- * `data` only when the cutover has something to copy - either the plan read
- * after the import found volumes, or the user came in from an earlier run to do
- * exactly that. `people` only for an instance admin, because both of its actions
- * are instance-admin gated and the step would otherwise be a page of nothing.
+ * The cutover used to be its own screen at the end, reachable months later. It
+ * moved INTO the import: Connect now refuses to continue until Deplo has an
+ * agent on every machine behind that Dokploy, which is what makes copying the
+ * data possible at all - so by the time the import runs, it can always do it.
  *
- * The team is deliberately NOT a step. Dokploy scopes an API key to one
- * organization and Deplo scopes everything to the active team, so a run goes from
- * the one to the other; making that a screen of its own gave a foregone conclusion
- * the same weight as the work. Neither is the server mapping: it is a block at the
- * top of Review, where it belongs, and with one server it is not even a question.
+ * `people` only for an instance admin, because both of its actions are
+ * instance-admin gated and the step would otherwise be a page of nothing.
  */
-function stepsFor(hasData: boolean, canInvite: boolean): WizardStep<StepId>[] {
+function stepsFor(canInvite: boolean): WizardStep<StepId>[] {
   return [
     { id: "connect", label: "Connect" },
     { id: "review", label: "Review" },
-    ...(hasData ? [{ id: "data" as StepId, label: "Data" }] : []),
     ...(canInvite ? [{ id: "people" as StepId, label: "People" }] : []),
     { id: "done", label: "Done" },
   ];
@@ -96,6 +101,8 @@ const SCAN = /* GraphQL */ `
         sourceId
         name
         ipAddress
+        deploServerId
+        deploServerName
       }
       members {
         email
@@ -171,6 +178,47 @@ const IMPORT_PROJECT = /* GraphQL */ `
   }
 `;
 
+const PLAN_DATA = /* GraphQL */ `
+  mutation PlanDokployData($input: DokployConnectInput!) {
+    planDokployDataMove(input: $input) {
+      path
+      sourceKind
+      sourceId
+      sourceName
+      sourceServerId
+      targetKind
+      targetName
+      running
+      volumes {
+        sourceVolume
+      }
+      notes
+    }
+  }
+`;
+
+const MOVE_DATA = /* GraphQL */ `
+  mutation MoveDokployData(
+    $input: DokployConnectInput!
+    $runId: String!
+    $sourceKind: String!
+    $sourceId: String!
+    $servers: [DokployServerChoiceInput!]
+  ) {
+    moveDokployServiceData(
+      input: $input
+      runId: $runId
+      sourceKind: $sourceKind
+      sourceId: $sourceId
+      servers: $servers
+    ) {
+      moved
+      failed
+      notes
+    }
+  }
+`;
+
 const FINISH = /* GraphQL */ `
   mutation FinishDokployImport($runId: String!) {
     finishDokployImport(runId: $runId)
@@ -203,6 +251,39 @@ const MINT_LINK = /* GraphQL */ `
     mintRegistrationLink(input: $input)
   }
 `;
+
+/** What `planDokployDataMove` answers, trimmed to what the copy loop reads. */
+interface DataService {
+  sourceKind: string;
+  sourceId: string;
+  sourceName: string;
+  volumes: { sourceVolume: string }[];
+}
+
+interface MoveResult {
+  moved: number;
+  failed: number;
+  notes: string[];
+}
+
+/**
+ * A copy's line in the same report the rest of the import writes to.
+ *
+ * The server records its own row against the run; this is the LIVE echo of it,
+ * so the dialog shows the copy happening instead of going quiet for the minutes
+ * a volume takes.
+ */
+function dataNote(message: string, outcome: string = "manual"): ReportItem {
+  return {
+    path: "Data",
+    sourceKind: "volume",
+    sourceName: "data",
+    outcome,
+    targetKind: null,
+    targetId: null,
+    message,
+  };
+}
 
 /* ------------------------------------------------------------------ */
 /* Component                                                          */
@@ -255,25 +336,13 @@ export function ImportWizard({
   const [inviteLink, setInviteLink] = React.useState<string | null>(null);
   const [minting, setMinting] = React.useState(false);
 
-  const [dataPlan, setDataPlan] = React.useState<DataService[] | null>(null);
-  const [dataLoading, setDataLoading] = React.useState(false);
-  /**
-   * Set when someone came back for an old run's cutover. The Data step normally
-   * appears because the import just found volumes; this is the other way in, and
-   * without it the "months later" path the Connect screen offers goes nowhere.
-   */
-  const [resuming, setResuming] = React.useState(false);
 
   const connectInput = React.useMemo(
     () => ({ url, apiKey, allowPrivate: sameMachine }),
     [url, apiKey, sameMachine],
   );
 
-  const hasData = resuming || (dataPlan?.length ?? 0) > 0;
-  const STEPS = React.useMemo(
-    () => stepsFor(hasData, isInstanceAdmin),
-    [hasData, isInstanceAdmin],
-  );
+  const STEPS = React.useMemo(() => stepsFor(isInstanceAdmin), [isInstanceAdmin]);
 
   /* ---- step 1: connect --------------------------------------------- */
 
@@ -334,11 +403,9 @@ export function ImportWizard({
         ]),
       );
     }
-    if (resuming) {
-      void openData();
-      return;
-    }
-    setStep("review");
+    // Deliberately NOT advancing: Connect's second half is the machine list, and
+    // whether Deplo can reach every one of them is the question this step exists
+    // to answer. Continue there moves on.
   }
 
   /* ---- step 2: destination ----------------------------------------- */
@@ -435,7 +502,49 @@ export function ImportWizard({
         setItems((prev) => [...prev, ...(res.data?.items ?? [])]);
       }
 
-      setProgress({ done: targets.length, total: targets.length, current: "" });
+      // ---- the data ------------------------------------------------
+      // The configuration is here; now the bytes. Read both sides once, then
+      // copy every service that actually has a volume - the ones with none (a
+      // git-built app, usually) have nothing to do here.
+      setProgress({ done: targets.length, total: targets.length, current: "Reading the volumes" });
+      const dataPlan = await gqlAction<{ planDokployDataMove: DataService[] }, DataService[]>(
+        PLAN_DATA,
+        { input: connectInput },
+        (d) => d.planDokployDataMove,
+      );
+      const movable = (dataPlan.ok ? (dataPlan.data ?? []) : []).filter(
+        (d) => d.volumes.length > 0,
+      );
+      if (!dataPlan.ok) setItems((prev) => [...prev, dataNote("Could not read what data is on Dokploy: " + dataPlan.error)]);
+
+      for (const [i, d] of movable.entries()) {
+        setProgress({ done: i, total: movable.length, current: `Copying ${d.sourceName}` });
+        const res = await gqlAction<{ moveDokployServiceData: MoveResult }, MoveResult>(
+          MOVE_DATA,
+          {
+            input: connectInput,
+            runId: openRunId,
+            sourceKind: d.sourceKind,
+            sourceId: d.sourceId,
+            servers: serverChoices,
+          },
+          (d2) => d2.moveDokployServiceData,
+        );
+        // One failed copy never stops the rest: the others are already stopped on
+        // Dokploy, and leaving them half-moved is worse than finishing the list.
+        setItems((prev) => [
+          ...prev,
+          res.ok
+            ? dataNote(
+                `${d.sourceName}: ${res.data?.moved ?? 0} volume(s) copied` +
+                  ((res.data?.failed ?? 0) > 0 ? `, ${res.data!.failed} failed` : ""),
+                (res.data?.failed ?? 0) > 0 ? "failed" : "created",
+              )
+            : dataNote(`${d.sourceName}: ${res.error}`, "failed"),
+        ]);
+      }
+
+      setProgress({ done: movable.length, total: movable.length, current: "" });
       await gqlAction(FINISH, { runId: openRunId });
       router.refresh();
     } finally {
@@ -444,14 +553,8 @@ export function ImportWizard({
 
     // Only the happy path gets here: an early return above runs the `finally`
     // and leaves the dialog open on its error, which is where it belongs.
-    // What can still be moved is read now, because whether the cutover is even a
-    // step depends on the answer.
-    setDataLoading(true);
-    const next = await loadDataPlan(connectInput);
-    setDataLoading(false);
-    setDataPlan(next ?? []);
     setLogOpen(false);
-    setStep(next && next.length > 0 ? "data" : isInstanceAdmin ? "people" : "done");
+    setStep(isInstanceAdmin ? "people" : "done");
   }
 
   /* ---- step: people ------------------------------------------------ */
@@ -489,38 +592,23 @@ export function ImportWizard({
     router.refresh();
   }
 
-  /**
-   * The run a report line belongs to, opening one if this session has none - a
-   * cutover months after the import arrives here with nothing in hand, and that is
-   * not a reason to send someone back through the import.
-   */
-  async function ensureRun(): Promise<string | null> {
-    if (runId) return runId;
-    const begun = await gqlAction<{ beginDokployImport: string }, string>(
-      BEGIN,
-      { url, orgName: plan?.orgName ?? null },
-      (d) => d.beginDokployImport,
+  /** A machine's agent just came up: it is now one of ours. */
+  function machineResolved(sourceId: string, serverId: string, serverName: string) {
+    setPlan((prev) =>
+      prev
+        ? {
+            ...prev,
+            servers: prev.servers.map((m) =>
+              m.sourceId === sourceId
+                ? { ...m, deploServerId: serverId, deploServerName: serverName }
+                : m,
+            ),
+          }
+        : prev,
     );
-    if (!begun.ok) {
-      toast.error(begun.error);
-      return null;
-    }
-    if (begun.data) setRunId(begun.data);
-    return begun.data ?? null;
-  }
-
-  /**
-   * Open the cutover step, reading both sides on the way in. Loaded from the
-   * transition rather than from an effect inside the step: entering a step IS a
-   * click, and an effect that sets state on mount is a cascading render.
-   */
-  async function openData() {
-    setStep("data");
-    if (dataLoading) return;
-    setDataLoading(true);
-    const next = await loadDataPlan(connectInput);
-    setDataLoading(false);
-    if (next) setDataPlan(next);
+    // The cutover reads this mapping to know which of our hosts holds the
+    // source volumes, and it is the same answer.
+    setServerMap((prev) => ({ ...prev, [sourceId]: serverId }));
   }
 
   /** Back to a blank wizard, same page, nothing carried over but the address. */
@@ -540,13 +628,8 @@ export function ImportWizard({
     setFailure(null);
     setInvites(null);
     setInviteLink(null);
-    setDataPlan(null);
-    setResuming(false);
     router.refresh();
   }
-
-  /** The step after the cutover, which depends on whether People exists at all. */
-  const afterData: StepId = isInstanceAdmin ? "people" : "done";
 
   /* ---- render ------------------------------------------------------ */
 
@@ -562,7 +645,7 @@ export function ImportWizard({
         current={step}
         reachable={(s) => {
           if (s === "connect") return true;
-          if (s === "review" || s === "data") return plan != null;
+          if (s === "review") return plan != null;
           // People and the report are what the import produces: an empty one is
           // worse than a chip that does not respond.
           return items.length > 0;
@@ -571,10 +654,6 @@ export function ImportWizard({
           // Nothing moves while the loop is mid-flight: the log is the only thing
           // worth looking at, and the pill is how you get back to it.
           if (running) return;
-          if (s === "data") {
-            void openData();
-            return;
-          }
           setStep(s);
         }}
       />
@@ -589,17 +668,16 @@ export function ImportWizard({
           setSameMachine={setSameMachine}
           canUsePrivate={isInstanceAdmin}
           scanning={scanning}
-          resuming={resuming}
+          plan={plan}
+          onMachineResolved={machineResolved}
+          onContinue={() => setStep("review")}
           onSubmit={scan}
           runs={runs}
           onPickRun={(run) => {
-            // Resume an old migration for its cutover: the address comes back,
-            // the key never does (it was never stored), and the copy's report
-            // lands on the run it belongs to.
+            // The address back in the field, nothing more: the data now moves
+            // during the import, so there is no cutover to come back for. The
+            // key was never stored and never will be.
             setUrl(run.sourceUrl);
-            setRunId(run.id);
-            setResuming(true);
-            toast.info("Paste the API key again to pick up that migration");
           }}
         />
       )}
@@ -621,24 +699,6 @@ export function ImportWizard({
           onBack={() => setStep("connect")}
           onStart={() => void runImport()}
           running={running}
-        />
-      )}
-
-      {step === "data" && (
-        <DataStep
-          connectInput={connectInput}
-          ensureRun={ensureRun}
-          servers={servers}
-          serverMap={serverMap}
-          setServerMap={setServerMap}
-          plan={dataPlan}
-          loading={dataLoading}
-          onReload={() => void openData()}
-          onBack={() => setStep("review")}
-          // Someone who came back only for the cutover has no report to read and
-          // nobody to invite: for them this IS the last screen.
-          onNext={() => (items.length > 0 ? setStep(afterData) : router.push("/"))}
-          nextLabel={items.length > 0 ? "Continue" : "Finish"}
         />
       )}
 
@@ -668,7 +728,7 @@ export function ImportWizard({
         progress={progress}
         items={items}
         failure={failure}
-        running={running || dataLoading}
+        running={running}
       />
       {!logOpen && progress.total > 0 && step !== "done" && (
         <ImportProgressPill
@@ -695,7 +755,9 @@ function ConnectStep({
   setSameMachine,
   canUsePrivate,
   scanning,
-  resuming,
+  plan,
+  onMachineResolved,
+  onContinue,
   onSubmit,
   runs,
   onPickRun,
@@ -708,7 +770,10 @@ function ConnectStep({
   setSameMachine: (v: boolean) => void;
   canUsePrivate: boolean;
   scanning: boolean;
-  resuming: boolean;
+  /** Null until the address and key have been checked. */
+  plan: Plan | null;
+  onMachineResolved: (sourceId: string, serverId: string, serverName: string) => void;
+  onContinue: () => void;
   onSubmit: (e: React.FormEvent) => void;
   runs: ImportRun[];
   onPickRun: (run: ImportRun) => void;
@@ -781,16 +846,34 @@ function ConnectStep({
 
             <div className="flex justify-end">
               <Button type="submit" disabled={scanning || !url.trim() || !apiKey.trim()}>
-                {scanning
-                  ? "Reading Dokploy"
-                  : resuming
-                    ? "Open the data"
-                    : "Continue"}
+                {scanning ? "Reading Dokploy" : "Check this Dokploy"}
               </Button>
             </div>
           </form>
         </CardContent>
       </Card>
+
+      {/* The gate. Continue stays shut until Deplo has an agent on every machine
+          behind that Dokploy, because that is what makes the data movable at all
+          - and a database that arrives empty because nobody mentioned an agent is
+          the failure this whole screen exists to prevent. */}
+      {plan && (
+        <>
+          <MachineGate
+            machines={plan.servers}
+            canAddServers={canUsePrivate}
+            onResolved={onMachineResolved}
+          />
+          <div className="flex justify-end">
+            <Button
+              onClick={onContinue}
+              disabled={plan.servers.some((m) => !m.deploServerId)}
+            >
+              Continue
+            </Button>
+          </div>
+        </>
+      )}
 
       {runs.length > 0 && <PastRuns runs={runs} onPick={onPickRun} />}
     </div>
@@ -832,7 +915,7 @@ function PastRuns({
               {r.failed > 0 && <Badge variant="destructive">{r.failed} failed</Badge>}
               {r.status !== "done" && <Badge variant="outline">{r.status}</Badge>}
               <Button variant="outline" size="sm" onClick={() => onPick(r)}>
-                Move the data
+                Use this address
               </Button>
             </div>
           </div>
@@ -881,6 +964,7 @@ function ReviewStep({
   running: boolean;
 }) {
   const [showNewTeam, setShowNewTeam] = React.useState(false);
+  const [confirming, setConfirming] = React.useState(false);
   const pickable = plan.projects.flatMap((p) => importableOf(p));
   const allChosen = pickable.length > 0 && chosen.size === pickable.length;
   return (
@@ -980,12 +1064,57 @@ function ReviewStep({
           Back
         </Button>
         <Button
-          onClick={onStart}
+          onClick={() => setConfirming(true)}
           disabled={running || chosen.size === 0 || servers.length === 0}
         >
           {running ? "Importing" : "Import"}
         </Button>
       </div>
+
+      <Dialog open={confirming} onOpenChange={setConfirming}>
+        <DialogContent>
+          <form
+            className="grid gap-4"
+            onSubmit={(e) => {
+              e.preventDefault();
+              setConfirming(false);
+              onStart();
+            }}
+          >
+            <DialogHeader>
+              <DialogTitle>Move everything over?</DialogTitle>
+              <DialogDescription>
+                Deplo copies the data by reading it on the machine that holds it,
+                and it cannot read a volume something is writing to.
+              </DialogDescription>
+            </DialogHeader>
+
+            <div className="flex items-start gap-3 rounded-lg border border-warning/40 bg-warning/10 p-4 text-sm">
+              <TriangleAlert className="mt-0.5 size-5 shrink-0 text-warning" />
+              <div className="min-w-0">
+                <div className="font-medium text-warning">
+                  This stops {chosen.size} service(s) on Dokploy
+                </div>
+                <p className="mt-1 text-muted-foreground">
+                  They are not started again over there. Nothing starts here
+                  either: open each app and press Deploy when you have checked it.
+                </p>
+              </div>
+            </div>
+
+            <DialogFooter>
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => setConfirming(false)}
+              >
+                Cancel
+              </Button>
+              <Button type="submit">Stop and move</Button>
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

@@ -288,9 +288,17 @@ test("scan describes the whole tree without writing anything", async () => {
     plan.projects.map((p) => p.name),
     ["Blink", "Other"],
   );
+  // Every MACHINE behind that Dokploy, its own host first: whether Deplo has an
+  // agent on each is what decides if their data can move at all.
   assert.deepEqual(
     plan.servers.map((s) => s.name),
-    ["eu-1"],
+    ["The Dokploy host", "eu-1"],
+  );
+  assert.deepEqual(plan.servers[0].sourceId, "");
+  // Nothing in this fixture's fleet sits at the fake instance's address.
+  assert.deepEqual(
+    plan.servers.map((s) => s.deploServerId),
+    [null, null],
   );
   assert.deepEqual(
     plan.members.map((m) => m.email),
@@ -307,6 +315,23 @@ test("scan describes the whole tree without writing anything", async () => {
   // Nothing was created by a scan.
   assert.equal((await db.select().from(appsTable)).length, 0);
   assert.equal((await db.select().from(databasesTable)).length, 0);
+});
+
+test("a Dokploy machine Deplo already manages is recognised by its address", async () => {
+  const { servers: serversTable } = await import("../db/schema/control-plane");
+  const { eq } = await import("drizzle-orm");
+  // The seeded server IS the machine the fake Dokploy answers on.
+  await db
+    .update(serversTable)
+    .set({ ip: "dokploy.acme.test", host: "dokploy.acme.test" })
+    .where(eq(serversTable.id, SERVER_1));
+
+  const plan = await asOwner(() => scanDokploy(CONNECT));
+  const own = plan.servers.find((s) => s.sourceId === "")!;
+  assert.equal(own.ipAddress, "dokploy.acme.test");
+  assert.equal(own.deploServerId, SERVER_1);
+  // Its remote server is still a machine Deplo has never heard of.
+  assert.equal(plan.servers.find((s) => s.sourceId === "dok-srv-1")!.deploServerId, null);
 });
 
 test("a database the tree gives only an id for is still named, not a crash", async () => {
