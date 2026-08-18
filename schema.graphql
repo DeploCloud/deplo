@@ -2597,11 +2597,6 @@ type Mutation {
     Which of the project's services to import, by their Dokploy id (the `sourceId` a scan reports). Omit to import all of them. A service left out is left out silently - it is a choice, not an outcome, so it produces no report line. An environment nothing was picked from is not created.
     """
     serviceIds: [String!]
-
-    """
-    Leave the databases out. They are the one thing an import really starts: Deplo has no database that exists without a container, so each one comes up empty, ready for a dump.
-    """
-    skipDatabases: Boolean
   ): DokployImportProjectResult
 
   """Bulk-import a .env-style blob; returns the number of vars imported."""

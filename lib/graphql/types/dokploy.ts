@@ -413,11 +413,6 @@ builder.mutationFields((t) => ({
         description: "The Dokploy `projectId` to import.",
       }),
       servers: t.arg({ type: [ServerChoiceInput], required: false }),
-      skipDatabases: t.arg.boolean({
-        required: false,
-        description:
-          "Leave the databases out. They are the one thing an import really starts: Deplo has no database that exists without a container, so each one comes up empty, ready for a dump.",
-      }),
       serviceIds: t.arg.stringList({
         required: false,
         description:
@@ -432,7 +427,7 @@ builder.mutationFields((t) => ({
     },
     resolve: (
       _r,
-      { input, runId, projectId, servers, skipDatabases, serviceIds, placements },
+      { input, runId, projectId, servers, serviceIds, placements },
     ) =>
       importDokployProject({
         url: input.url,
@@ -441,7 +436,6 @@ builder.mutationFields((t) => ({
         runId,
         projectId,
         servers: servers?.map((s) => ({ from: s.from, to: s.to })),
-        skipDatabases: skipDatabases ?? false,
         serviceIds: serviceIds ?? undefined,
         placements: placements?.map((p) => ({
           serviceId: p.serviceId,

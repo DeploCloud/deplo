@@ -883,8 +883,6 @@ export interface ImportProjectInput extends ConnectInput {
   projectId: string;
   /** Dokploy server id (or "") → deplo server id. Unmapped falls back to default. */
   servers?: ServerChoice[];
-  /** Leave the databases alone (they provision containers as they are created). */
-  skipDatabases?: boolean;
   /**
    * The source service ids to import, out of the project's own. Absent imports
    * everything - a client that cannot express a selection still gets the whole
@@ -989,20 +987,6 @@ export async function importDokployProject(
 
       const name = nameOf(detail, svc);
       const svcReport = envReport.at(name);
-
-      // Left out on purpose. Reported AFTER the detail call, which costs one GET
-      // and is what lets this line name the database instead of printing its id -
-      // `project.all` does not carry a database's name.
-      if (!isApp && input.skipDatabases) {
-        await svcReport.add({
-          sourceKind: svc.kind,
-          sourceName: name,
-          outcome: "skipped",
-          targetKind,
-          message: "Databases were left out of this import.",
-        });
-        continue;
-      }
 
       try {
         if (isApp) {

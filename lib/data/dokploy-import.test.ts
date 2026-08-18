@@ -545,23 +545,6 @@ test("an engine Deplo does not have is settled without asking Dokploy about it",
   assert.equal(calls.includes("libsql.one"), false);
 });
 
-test("databases can be left out entirely", async () => {
-  const runId = await asOwner(() => beginDokployImport({ url: URL_BASE }));
-  const result = await asOwner(() =>
-    importDokployProject({
-      ...CONNECT,
-      runId,
-      projectId: "dok-prj-blink",
-      skipDatabases: true,
-    }),
-  );
-  assert.equal((await db.select().from(databasesTable)).length, 0);
-  assert.match(
-    result.items.find((i) => i.sourceKind === "postgres")!.message!,
-    /left out of this import/,
-  );
-});
-
 test("only the picked services come over, and the rest are not even read", async () => {
   const runId = await asOwner(() => beginDokployImport({ url: URL_BASE }));
   calls = [];

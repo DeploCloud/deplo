@@ -9,7 +9,6 @@ import {
   Link2,
   RotateCcw,
   Server as ServerIcon,
-  TriangleAlert,
   Users,
 } from "lucide-react";
 
@@ -143,7 +142,6 @@ const IMPORT_PROJECT = /* GraphQL */ `
     $runId: String!
     $projectId: String!
     $servers: [DokployServerChoiceInput!]
-    $skipDatabases: Boolean
     $serviceIds: [String!]
     $placements: [DokployPlacementInput!]
   ) {
@@ -152,7 +150,6 @@ const IMPORT_PROJECT = /* GraphQL */ `
       runId: $runId
       projectId: $projectId
       servers: $servers
-      skipDatabases: $skipDatabases
       serviceIds: $serviceIds
       placements: $placements
     ) {
@@ -238,7 +235,6 @@ export function ImportWizard({
   const [chosen, setChosen] = React.useState<Set<string>>(new Set());
   /** Source service id → where it lands. Filled for every importable service. */
   const [placements, setPlacements] = React.useState<Record<string, Placement>>({});
-  const [skipDatabases, setSkipDatabases] = React.useState(false);
 
   const [newTeam, setNewTeam] = React.useState("");
   const [creatingTeam, setCreatingTeam] = React.useState(false);
@@ -425,7 +421,6 @@ export function ImportWizard({
             runId: openRunId,
             projectId: target.project.sourceId,
             servers: serverChoices,
-            skipDatabases,
             serviceIds: target.serviceIds,
             placements: target.serviceIds
               .filter((id) => placements[id])
@@ -535,7 +530,6 @@ export function ImportWizard({
     setPlan(null);
     setChosen(new Set());
     setPlacements({});
-    setSkipDatabases(false);
     // Both belong to the instance that was just imported: the mapping keys are
     // ITS server ids, and the team name was ITS organization's.
     setServerMap({});
@@ -619,8 +613,6 @@ export function ImportWizard({
           buildServers={buildServers}
           placements={placements}
           setPlacements={setPlacements}
-          skipDatabases={skipDatabases}
-          setSkipDatabases={setSkipDatabases}
           isInstanceAdmin={isInstanceAdmin}
           newTeam={newTeam}
           setNewTeam={setNewTeam}
@@ -862,8 +854,6 @@ function ReviewStep({
   buildServers,
   placements,
   setPlacements,
-  skipDatabases,
-  setSkipDatabases,
   isInstanceAdmin,
   newTeam,
   setNewTeam,
@@ -880,8 +870,6 @@ function ReviewStep({
   buildServers: ServerChoice[];
   placements: Record<string, Placement>;
   setPlacements: (v: Record<string, Placement>) => void;
-  skipDatabases: boolean;
-  setSkipDatabases: (v: boolean) => void;
   isInstanceAdmin: boolean;
   newTeam: string;
   setNewTeam: (v: string) => void;
@@ -895,30 +883,6 @@ function ReviewStep({
   const [showNewTeam, setShowNewTeam] = React.useState(false);
   const pickable = plan.projects.flatMap((p) => importableOf(p));
   const allChosen = pickable.length > 0 && chosen.size === pickable.length;
-  // Named here as well as on the People step: "the organization" means its people
-  // too, and finding that out only at the end reads like an afterthought.
-  const people = plan.members.filter((m) => !m.inTeam).length;
-
-  const counts = React.useMemo(() => {
-    let apps = 0;
-    let databases = 0;
-    let attention = 0;
-    for (const p of plan.projects)
-      for (const e of p.environments)
-        for (const s of e.services) {
-          if (!chosen.has(s.sourceId)) continue;
-          if (s.targetKind === "app") apps++;
-          if (s.targetKind === "database") databases++;
-          if (s.notes.length > 0 || s.status === "needs_grant") attention++;
-        }
-    // Not selectable and not selected, but still the thing someone needs to know
-    // about before they walk away thinking everything came across.
-    for (const p of plan.projects)
-      for (const e of p.environments)
-        for (const s of e.services) if (s.status === "unsupported") attention++;
-    return { apps, databases, attention };
-  }, [plan, chosen]);
-
   return (
     <div className="space-y-4">
       {isInstanceAdmin && showNewTeam && (
@@ -951,9 +915,8 @@ function ReviewStep({
           <div className="min-w-0">
             <CardTitle>What will come over</CardTitle>
             <p className="mt-1 text-sm text-muted-foreground">
-              {counts.apps} app(s) and {counts.databases} database(s)
-              {people > 0 ? `, plus ${people} person(s) to invite afterwards` : ""}.
-              Nothing is deployed - Dokploy keeps serving until you say otherwise.
+              Pick what to bring and where it lands. Nothing is deployed - Dokploy
+              keeps serving until you say so.
             </p>
           </div>
           <div className="flex items-center gap-2">
@@ -1007,40 +970,6 @@ function ReviewStep({
           )}
         </CardContent>
       </Card>
-
-      {/* Above the toggle rather than above the tree: the tree is what it points
-          at, and a banner over the list is read before there is anything to read
-          it about. */}
-      {counts.attention > 0 && (
-        <div className="flex items-start gap-3 rounded-lg border border-warning/40 bg-warning/10 p-4">
-          <TriangleAlert className="mt-0.5 size-5 shrink-0 text-warning" />
-          <div className="min-w-0">
-            <div className="text-sm font-medium text-warning">
-              {counts.attention} thing(s) need a look
-            </div>
-            <p className="mt-1 text-sm text-muted-foreground">
-              They are marked in the tree above, and again in the report at the end.
-            </p>
-          </div>
-        </div>
-      )}
-
-      {counts.databases > 0 && (
-        <div className="flex items-start justify-between gap-4 rounded-lg border px-3 py-2">
-          <div className="min-w-0">
-            <FieldLabel htmlFor="skip-databases">Leave the databases out</FieldLabel>
-            <p className="mt-1 text-sm text-muted-foreground">
-              Kept, Deplo creates each one empty. Left out, they are only listed in
-              the report.
-            </p>
-          </div>
-          <Switch
-            id="skip-databases"
-            checked={skipDatabases}
-            onCheckedChange={setSkipDatabases}
-          />
-        </div>
-      )}
 
       <div className="flex justify-between">
         <Button variant="outline" onClick={onBack} disabled={running}>
