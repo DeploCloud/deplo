@@ -2090,6 +2090,7 @@ export type AlertKey =
   | "server_disk_low"
   | "agent_certificate_failed"
   | "cleanup_failed"
+  | "teardown_abandoned"
   // This Deplo instance
   | "deplo_update_available"
   // Security
@@ -2134,6 +2135,7 @@ export const ALL_ALERTS: AlertKey[] = [
   "server_disk_low",
   "agent_certificate_failed",
   "cleanup_failed",
+  "teardown_abandoned",
   "deplo_update_available",
   "member_joined",
   "member_removed",

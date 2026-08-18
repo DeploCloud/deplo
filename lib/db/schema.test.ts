@@ -139,6 +139,8 @@ const CONTROL_PLANE = [
   // advanced preview-only variable overrides.
   "app_previews",
   "app_preview_env_vars",
+  // stacks a host would not confirm are gone, retried until it does
+  "pending_teardowns",
   "env_vars",
   "env_var_targets",
   "instance_env_vars",

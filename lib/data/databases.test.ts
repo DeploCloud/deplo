@@ -12,6 +12,7 @@ import {
   backups as backupsTable,
   backupRuns as backupRunsTable,
   databases as databasesTable,
+  pendingTeardowns as pendingTeardownsTable,
 } from "../db/schema/control-plane";
 import { runWithIdentity } from "../auth/request-context";
 import { seedIdentity, TEAM_A, TEAM_B, USER_1 } from "./identity-test-helpers";
@@ -171,14 +172,20 @@ test("deleteDatabase cascades schedules and SET NULLs run history (no orphans)",
   assert.equal(run[0]!.databaseId, null, "run.databaseId SET NULL");
 
   // A forced delete leaves real leftovers on the host, so it must leave a durable
-  // trace of them — the activity log, not just a process warning.
+  // trace of them — the activity log, not just a process warning — and it must
+  // queue the teardown rather than hand the cleanup to a human.
+  const queuedRows = await db.select().from(pendingTeardownsTable);
+  assert.deepEqual(
+    queuedRows.map((r) => [r.deployKey, r.projectLabel]),
+    [["db-main", "db_1"]],
+    "the forced delete queued the leftover stack",
+  );
   const logged = await db.select().from(activitiesTable);
   assert.ok(
     logged.some(
       (a) =>
         a.message.includes("main") &&
-        a.message.includes("still on") &&
-        a.message.includes("must be removed"),
+        a.message.includes("will retry the teardown"),
     ),
     `forced delete records the leftovers, got: ${logged.map((a) => a.message).join(" | ")}`,
   );

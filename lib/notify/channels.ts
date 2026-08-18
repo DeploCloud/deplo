@@ -308,6 +308,7 @@ const WARN = new Set<AlertKey>([
   "server_disk_low",
   "certificate_expiring",
   "domain_dns_drift",
+  "teardown_abandoned",
 ]);
 
 function embedColor(key: AlertKey): number {

@@ -12,7 +12,11 @@ import {
 } from "../db/schema/control-plane";
 import { assembleServer, serverToRow } from "./infra-rows";
 import { appCapabilities } from "./node-access";
-import { isDeploHostServer, resolveServerIp } from "../deploy/domains";
+import {
+  deploHostSelfAddresses,
+  isDeploHostServer,
+  resolveServerIp,
+} from "../deploy/domains";
 import { getCurrentUser } from "../auth";
 import {
   reachesWholeTeam,
@@ -24,6 +28,7 @@ import { narrowedScope } from "../auth/request-context";
 import { newId, nowIso } from "../ids";
 import { instancePublicBaseUrl } from "./instance-settings";
 import { recordActivity } from "./activity";
+import { pendingTeardownsForServer } from "./teardown-queue";
 import {
   mintBootstrap,
   installCommand,
@@ -163,8 +168,8 @@ export async function listServersForCurrentTeam(): Promise<Server[]> {
  * The server PICKER: id, name and type, and nothing else.
  *
  * Deliberately not team-wide-gated, unlike the listing above. Creating an app is
- * a per-project act — `create_apps` is one of the capabilities that keeps its
- * meaning inside a scope — and it has to say where the app runs. A member
+ * a per-project act - `create_apps` is one of the capabilities that keeps its
+ * meaning inside a scope - and it has to say where the app runs. A member
  * limited to one project who could create an app but never choose a host would
  * hold a capability that does nothing, which is the opposite of what limiting a
  * role is for.
@@ -172,17 +177,27 @@ export async function listServersForCurrentTeam(): Promise<Server[]> {
  * What the gate protects is the fleet itself: names paired with addresses,
  * agent state and live metrics. A menu of hosts their own apps already run on is
  * not that.
+ *
+ * `isDeploHost` rides along so a picker can offer the obvious default without
+ * shipping the addresses it takes to work that out. It has to be computed here:
+ * there is no column for it, and `deploHostSelfAddresses` reads environment and
+ * network interfaces, neither of which a client component has. It legitimately
+ * comes back false for every row (the classifier fails open on an install whose
+ * address it cannot match), so a caller defaults to the first server instead.
  */
 export async function listServerChoices(): Promise<
-  { id: string; name: string; type: Server["type"] }[]
+  { id: string; name: string; type: Server["type"]; isDeploHost: boolean }[]
 > {
   const teamId = await requireActiveTeamId();
+  // Resolved once for the whole list: it walks the NICs.
+  const self = deploHostSelfAddresses();
   return (await listServersForTeam(teamId))
     .filter(canHostWorkloads)
     .map((s) => ({
       id: s.id,
       name: s.name,
       type: s.type,
+      isDeploHost: isDeploHostServer(s, self),
     }));
 }
 
@@ -597,6 +612,12 @@ export async function removeServer(id: string): Promise<ServerRemoval> {
     .from(appsTable)
     .where(eq(appsTable.migrateFromServerId, id));
 
+  // Queued teardowns go with the host: they name stacks on a machine Deplo is
+  // about to forget, so retrying them forever would be dialing an address that is
+  // no longer ours. The count is read BEFORE the delete (the FK CASCADE drops the
+  // rows) so the trail can say what was abandoned and where.
+  const abandoned = await pendingTeardownsForServer(id);
+
   // (b) Revoke trust before the delete: if anything below fails, the agent's
   // badge is already dead.
   const pinned = server.agent?.certFingerprint ?? "";
@@ -620,6 +641,15 @@ export async function removeServer(id: string): Promise<ServerRemoval> {
     );
   }
   await recordActivity("member", `Removed server ${server.name}`, user.name, null, teamId);
+  if (abandoned > 0)
+    await recordActivity(
+      "member",
+      `${abandoned} pending teardown${abandoned === 1 ? "" : "s"} on ${server.name} ` +
+        `${abandoned === 1 ? "was" : "were"} dropped with the server.`,
+      user.name,
+      null,
+      teamId,
+    );
 
   const warning =
     stranded.length > 0

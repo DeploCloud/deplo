@@ -14,6 +14,7 @@ import {
   previewsDueForReaping,
   teardownPreviewStack,
 } from "../deploy/preview-lifecycle";
+import { drainTeardowns } from "../data/teardown-queue";
 import { getPullRequestState } from "../github/app";
 
 /**
@@ -89,11 +90,18 @@ export async function runPreviewReaperTick(
   now: Date = new Date(),
 ): Promise<void> {
   if (state.ticking) return;
-  if (now.getTime() - state.lastSweepAt < SWEEP_INTERVAL_MS) return;
   state.ticking = true;
   try {
     // Lease first: no point reading if another instance owns the sweep.
     if (!(await acquireLease(PREVIEW_REAPER_LEASE, state.owner, now))) return;
+    // The teardown queue drains on EVERY tick, under this lease: its backoff
+    // ladder starts at a minute, and it is the same job as the retry loop below
+    // (finish a teardown that could not finish) for stacks whose row is gone.
+    // ponytail: one lease for two loops. If they ever contend, the drain takes a
+    // fifth `scheduler_lease` name (no migration) and a boot block of its own.
+    await drainTeardowns(now);
+    // The preview sweep stays hourly: nothing here changes minute to minute.
+    if (now.getTime() - state.lastSweepAt < SWEEP_INTERVAL_MS) return;
     state.lastSweepAt = now.getTime();
 
     const { retry, expired } = await previewsDueForReaping(now, REAP_BATCH);
@@ -136,8 +144,9 @@ export async function runPreviewReaperTick(
 }
 
 /**
- * Start the reaper (idempotent). Ticks every minute and does real work at most
- * once an hour; the interval is `unref()`'d so it never keeps the process alive.
+ * Start the reaper (idempotent). Ticks every minute: the teardown queue drains on
+ * every tick, the preview sweep does real work at most once an hour. The interval
+ * is `unref()`'d so it never keeps the process alive.
  * The boot tick runs immediately — an instance coming back from an outage
  * catches up straight away instead of waiting out the interval.
  */

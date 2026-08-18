@@ -7,6 +7,7 @@ import { loadAppGraph } from "../data/app-graph-load";
 import { teardownApp } from "../data/deployments";
 import { withKeyedLock } from "../data/keyed-mutex";
 import { getServerById } from "../data/servers";
+import { teardownOrQueue } from "../data/teardown-queue";
 import { getDb } from "../db/client";
 import {
   apps as appsTable,
@@ -19,6 +20,7 @@ import type { CertProvider } from "../types";
 import { startDeployment } from "./build";
 import { previewDeployKey } from "./deploy-key";
 import { previewHost, resolveServerIp } from "./domains";
+import { mapLimit } from "../utils";
 
 /**
  * The lifecycle of a **pull request preview** — open, sync, close, tear down.
@@ -437,13 +439,30 @@ export async function destroyPreviewsForApp(appId: string): Promise<void> {
     .select({
       id: appPreviewsTable.id,
       deployKey: appPreviewsTable.deployKey,
-      tornDownAt: appPreviewsTable.tornDownAt,
+      prNumber: appPreviewsTable.prNumber,
+      appName: appsTable.name,
+      teamId: appsTable.teamId,
+      // Previews may be pinned to their own machine (`preview_server_id`), which
+      // is where `startDeployment` sent this stack.
+      serverId: sql<string>`coalesce(${appsTable.previewServerId}, ${appsTable.serverId})`,
     })
     .from(appPreviewsTable)
+    .innerJoin(appsTable, eq(appsTable.id, appPreviewsTable.appId))
     .where(and(eq(appPreviewsTable.appId, appId), isNull(appPreviewsTable.tornDownAt)));
-  for (const r of rows) {
-    await teardownPreviewStack(r).catch(() => false);
-  }
+  // The queue, not `teardownPreviewStack`: these rows are about to CASCADE away
+  // with the app, so the stamp they retry on is gone in a moment and nothing
+  // would ever name these containers again. `deplo.project` on a preview carries
+  // the PREVIEW's own id (see build.ts `trackingId`), which is what lets a retry
+  // days later tell this stack apart from anything that took the key since.
+  await mapLimit(rows, 4, async (r) => {
+    await teardownOrQueue({
+      serverId: r.serverId,
+      deployKey: r.deployKey,
+      projectLabel: r.id,
+      label: `the preview for pull request #${r.prNumber} of ${r.appName}`,
+      teamId: r.teamId,
+    }).catch(() => false);
+  });
 }
 
 /** The effective preview settings for an app (NULL columns ⇒ the defaults). */

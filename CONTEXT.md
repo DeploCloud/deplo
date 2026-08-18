@@ -450,6 +450,18 @@ cloning the repo to a temp dir, building an image, then discarding the clone —
 source is not editable at runtime.
 _Avoid_: deployment (that is the build event, not the runtime), production container.
 
+**Pending teardown**:
+A stack Deplo has been told to destroy on a host that would not confirm it, kept in
+`pending_teardowns` until the host does. Written BEFORE the agent is dialed, so a control
+plane that dies mid-teardown still knows, and retried on a backoff ladder (1m to 24h, 8
+attempts) by the drain in the reaper tick; giving up writes the Activity line and the
+`teardown_abandoned` alert, and a host that comes back earns the row a new ladder.
+Removing the server from the fleet drops its pending teardowns with it - that is the only
+way one ends without the host agreeing. The identity is the doomed thing's
+`deplo.project` label, **never** the slug: a deleted slug can be taken by a new app on the
+same server, and a retry keyed on the name alone would tear that one down instead.
+_Avoid_: cleanup (that is the Docker disk **Cleanup**), orphan sweep, leftover.
+
 **Deployment**:
 A single build-and-release event that produces or updates the production stack (or a
 **pull request preview**). Always image-based; recorded as a `Deployment` row, which

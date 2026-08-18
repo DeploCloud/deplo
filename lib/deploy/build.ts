@@ -56,7 +56,12 @@ import {
   detectTreeFramework,
 } from "../apps/framework-source";
 import { supportsFrameworkDetection, type FrameworkId } from "../apps/framework-catalog";
-import { appSlugFromDeployKey, deployImageRef, stackName } from "./deploy-key";
+import {
+  appSlugFromDeployKey,
+  deployImageRef,
+  prNumberFromDeployKey,
+  stackName,
+} from "./deploy-key";
 import { syncPreviewComment } from "./preview-comment";
 import { planDeploySource, resolveBuildDir, type SourcePlan } from "./source";
 import { normalizeBuildConfig } from "../frameworks";
@@ -123,8 +128,22 @@ async function owningServerIdForDeployKey(
 ): Promise<string | null> {
   const p = await loadAppGraphBySlug(appSlugFromDeployKey(deployKey));
   if (!p) return null;
+  // A preview may be pinned to a machine of its own: `startDeployment` sends it
+  // to `preview_server_id ?? server_id`, so every lifecycle verb has to read the
+  // same column. Reading only `server_id` dialed the PRODUCTION host, where
+  // `compose down` on a project that isn't there succeeds, so the teardown
+  // stamped `torn_down_at` while the stack lived on forever on the preview host.
+  let serverId = p.serverId;
+  if (prNumberFromDeployKey(deployKey) !== null) {
+    const rows = await getDb()
+      .select({ previewServerId: appsTable.previewServerId })
+      .from(appsTable)
+      .where(eq(appsTable.id, p.id))
+      .limit(1);
+    serverId = rows[0]?.previewServerId ?? p.serverId;
+  }
   // Servers stay JSONB-authoritative; confirm the owning server still exists.
-  const server = await getServerById(p.serverId);
+  const server = await getServerById(serverId);
   return server ? server.id : null;
 }
 

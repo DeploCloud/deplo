@@ -5,6 +5,7 @@ import type { PGlite } from "@electric-sql/pglite";
 import { eq } from "drizzle-orm";
 
 import { makeTestDb, type TestDb } from "../db/test-harness";
+import { seedApp } from "./app-graph-test-helpers";
 import { __setTestDb, __resetTestDb } from "../db/client";
 import {
   memberships as membershipsTable,
@@ -263,5 +264,44 @@ test("canDeleteTeam reports the gate and the only-team guard", async () => {
       canDeleteTeam(),
     ),
     { allowed: false, onlyTeam: true },
+  );
+});
+
+test("a deleted team's stacks are queued for teardown, with no team left to name", async () => {
+  // The team row is gone before the fan-out starts, so the queue entries are the
+  // ONLY record left anywhere that these containers exist on that host.
+  await seedIdentity(db);
+  await addMembership(USER_1, TEAM_B);
+  const T0 = "2026-01-01T00:00:00.000Z";
+  await pg.exec(`delete from pending_teardowns;`);
+  await pg.exec(`
+    insert into servers (id, name, host, type, status, ip, docker_version, traefik_enabled, cpu_cores, memory_mb, disk_gb, cpu_usage, memory_usage, disk_usage, created_at)
+      values ('srv_1', 's', 'h', 'remote', 'online', '1.2.3.4', 'x', true, 1, 1, 1, 0, 0, 0, '${T0}')
+      on conflict do nothing;
+    insert into databases (id, team_id, name, type, version, username, db_name, status, server_id, host, port, connection_string_enc, exposed_publicly, size_mb, created_at)
+      values ('db_x', '${TEAM_A}', 'd', 'postgres', '16', 'app', 'app', 'running', 'srv_1', 'db-d', 5432, 'enc', false, 0, '${T0}');
+  `);
+  await seedApp(db, { id: "prj_1", teamId: TEAM_A, slug: "blink" });
+
+  await runWithIdentity({ userId: USER_1, teamId: TEAM_A }, () => deleteTeam(TEAM_A));
+
+  // The teardown runs behind the response; the enqueue is its first act.
+  let rows: { deploy_key: string; team_id: string | null }[] = [];
+  for (let i = 0; i < 100; i++) {
+    rows = (
+      await pg.query<{ deploy_key: string; team_id: string | null }>(
+        `select deploy_key, team_id from pending_teardowns order by deploy_key`,
+      )
+    ).rows;
+    if (rows.length >= 2) break;
+    await new Promise((r) => setTimeout(r, 25));
+  }
+  assert.deepEqual(
+    rows.map((r) => r.deploy_key),
+    ["blink", "db-d"],
+  );
+  assert.deepEqual(
+    rows.map((r) => r.team_id),
+    [null, null],
   );
 });

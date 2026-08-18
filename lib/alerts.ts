@@ -180,6 +180,12 @@ export const ALERT_META: Record<AlertKey, AlertMeta> = {
     keywords: "prune images disk space sweep",
     defaultOn: true,
   },
+  teardown_abandoned: {
+    label: "Leftover containers",
+    description: "Deplo stopped trying to remove the containers of something you deleted.",
+    keywords: "orphan teardown delete stack volumes leftover",
+    defaultOn: true,
+  },
 
   /* ---- This Deplo instance ---- */
   deplo_update_available: {
@@ -328,6 +334,7 @@ export const ALERT_CATEGORIES: {
       "server_disk_low",
       "agent_certificate_failed",
       "cleanup_failed",
+      "teardown_abandoned",
     ],
   },
   {

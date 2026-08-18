@@ -388,8 +388,8 @@ builder.mutationFields((t) => ({
       "verifiably succeed: if the server can't be reached — or something of the " +
       "stack survives it — nothing is deleted and the mutation errors, so a live " +
       "database is never silently forgotten. `force` deletes the record anyway " +
-      "(for a host that is never coming back), leaving that container and its " +
-      "data on the host. Returns true.",
+      "(for a host that is never coming back) and queues the teardown, which " +
+      "Deplo retries until the host confirms it. Returns true.",
     args: {
       id: t.arg.string({ required: true }),
       force: t.arg.boolean({ required: false }),

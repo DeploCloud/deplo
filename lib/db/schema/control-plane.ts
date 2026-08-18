@@ -1544,6 +1544,49 @@ export const appPreviews = pgTable(
 );
 
 /**
+ * A stack that must die on a host that would not confirm it, kept until it does.
+ *
+ * Deleting an App tore its stack down best-effort and dropped the row anyway, so
+ * an unreachable host kept the containers and the volumes and the only trace was
+ * an Activity line asking a human to go clean up. One row here IS the intent,
+ * written before the agent is dialed, and retried by the drain in
+ * `lib/data/teardown-queue.ts` until the host proves the stack is gone.
+ *
+ * {@link pendingTeardowns.projectLabel} is the `deplo.project` label value (an
+ * App id, a preview's own id, a database id) and it is what makes a LATE retry
+ * safe: `apps_slug_uq` is global, so a deleted slug can be taken by a new app on
+ * the same server, and a retry keyed on the deploy key alone would tear down that
+ * app instead. The identity is the id, never the slug.
+ */
+export const pendingTeardowns = pgTable(
+  "pending_teardowns",
+  {
+    id: text("id").primaryKey(),
+    /** The host that still holds it. Removing the server drops the row with it. */
+    serverId: text("server_id")
+      .notNull()
+      .references(() => servers.id, { onDelete: "cascade" }),
+    /** The compose project key: `<slug>`, `<slug>__pr-<n>`, or a database host. */
+    deployKey: text("deploy_key").notNull(),
+    /** The `deplo.project` label of what is being destroyed - the identity check. */
+    projectLabel: text("project_label").notNull(),
+    /** Human name for the Activity copy: by drain time the row it named is gone. */
+    label: text("label").notNull(),
+    /** NULL once the owning team is deleted, which is also "nowhere to report to". */
+    teamId: text("team_id").references(() => teams.id, { onDelete: "set null" }),
+    attempts: integer("attempts").notNull().default(0),
+    lastError: text("last_error").notNull().default(""),
+    nextAttemptAt: isoTimestamptz("next_attempt_at").notNull(),
+    /** Set when the ladder ran out. Cleared when that server comes back online. */
+    abandonedAt: isoTimestamptz("abandoned_at"),
+    createdAt: isoTimestamptz("created_at").notNull(),
+  },
+  (t) => [
+    uniqueIndex("pending_teardowns_server_key_uq").on(t.serverId, t.deployKey),
+  ],
+);
+
+/**
  * [EnvVar](../../types.ts). `value_enc` secret. `UNIQUE(project_id, key)` enables
  * `ON CONFLICT` upsert. `targets` → `env_var_targets` junction.
  *

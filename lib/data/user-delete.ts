@@ -1,6 +1,6 @@
 import "server-only";
 
-import { and, count, eq, inArray, isNull, or } from "drizzle-orm";
+import { and, count, eq, inArray, isNull, or, sql } from "drizzle-orm";
 import { getDb, type DbTx } from "../db/client";
 import {
   apiTokens as apiTokensTable,
@@ -563,8 +563,11 @@ export async function deleteUser(
       ? (
           await tx
             .select({
+              id: appPreviewsTable.id,
               deployKey: appPreviewsTable.deployKey,
-              serverId: appsTable.serverId,
+              // Previews may be pinned to their own machine: that is where the
+              // stack is, so that is the host that has to be dialed.
+              serverId: sql<string>`coalesce(${appsTable.previewServerId}, ${appsTable.serverId})`,
             })
             .from(appPreviewsTable)
             .innerJoin(appsTable, eq(appsTable.id, appPreviewsTable.appId))
@@ -574,7 +577,7 @@ export async function deleteUser(
                 isNull(appPreviewsTable.tornDownAt),
               ),
             )
-        ).map((r) => ({ deployKey: r.deployKey, serverId: r.serverId }))
+        ).map((r) => ({ id: r.id, deployKey: r.deployKey, serverId: r.serverId }))
       : [];
 
     // ---- the writes ----

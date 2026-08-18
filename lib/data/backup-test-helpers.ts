@@ -39,7 +39,7 @@ const T0 = "2026-01-01T00:00:00.000Z";
 
 /** Truncate every backups-cut-set table (call in `beforeEach` before seeding). */
 export const TRUNCATE_BACKUPS = `truncate table
-  backup_runs, backups, databases, backup_destination
+  pending_teardowns, backup_runs, backups, databases, backup_destination
   restart identity cascade;`;
 
 export interface SeedDatabaseOpts {

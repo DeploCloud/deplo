@@ -64,6 +64,7 @@ import {
 } from "../types";
 import { encryptSecret } from "../crypto";
 import { recordActivity } from "./activity";
+import { teardownOrQueue } from "./teardown-queue";
 import { matchesQuery } from "./match-query";
 import { buildConfigFor } from "../frameworks";
 import type {
@@ -98,7 +99,7 @@ import {
   nipEmbeddedIp,
   blueprintWantsTls,
 } from "../deploy/domains";
-import { teardownApp, redeploy } from "./deployments";
+import { redeploy } from "./deployments";
 import { descendantFolderIds } from "./folders";
 import { destroyPreviewsForApp } from "../deploy/preview-lifecycle";
 import { withKeyedLock } from "./keyed-mutex";
@@ -519,6 +520,16 @@ export interface CreateAppInput {
   compose?: string | null;
   env?: { key: string; value: string }[];
   serverId?: string;
+  /**
+   * Where the app COMPILES, when that is not where it runs. Omitted (or null) is
+   * Automatic - use a build-only server if the fleet has one - which is what the
+   * interactive create flow always wants and never asks about.
+   *
+   * It is here for a BULK IMPORT, where placing thirty apps is the whole screen
+   * and building them somewhere else is part of the same decision. Validated
+   * against the team's own servers below, exactly like `serverId`.
+   */
+  buildServerId?: string | null;
   build?: Partial<BuildConfig>;
   autoDeploy?: boolean;
   /** Compose/template deploys: which service + port the PRIMARY domain routes
@@ -784,8 +795,21 @@ export async function createApp(
     deployable[0];
   if (!server)
     throw new Error(
-      "No server available — add a server from Settings → Servers and run its install command first.",
+      "No server available - add a server from Settings, Servers and run its install command first.",
     );
+
+  // Where it COMPILES, on the same terms `setAppBuildServer` applies later: it has
+  // to be a host this team can reach, and a storage-only box has no Docker to
+  // build with. Validated here rather than trusted, because an import sends these
+  // ids from a browser and a build carries the app's source and decrypted env.
+  let buildServerId: string | null = null;
+  if (input.buildServerId) {
+    const picked = servers.find((b) => b.id === input.buildServerId);
+    if (!picked) throw new Error("That build server isn't available to this team.");
+    if (picked.storageOnly)
+      throw new Error("That server holds backups only - it has no Docker to build with.");
+    buildServerId = picked.id;
+  }
 
   // A template's generated nip.io hosts (the primary autoDomain + every
   // exposes[].host, and any env value that embedded ${domain}) are baked in the
@@ -823,10 +847,11 @@ export async function createApp(
     projectId: placement.projectId,
     environmentId: placement.environmentId,
     serverId: server.id,
-    // Born on Automatic: a new app uses a build server if the fleet has one and
-    // says nothing about it otherwise. Choosing a builder is an Advanced setting,
-    // and the create flow deliberately does not ask.
-    buildServerId: null,
+    // Born on Automatic unless a caller placed it deliberately: a new app uses a
+    // build server if the fleet has one and says nothing about it otherwise.
+    // Choosing a builder is an Advanced setting and the create flow does not ask;
+    // a bulk import does, because it is placing the whole fleet at once.
+    buildServerId,
     buildFallbackLocal: true,
     // Defaulted from a template's logo (a /templates path); ignore anything that
     // isn't a valid inline logo so a crafted create payload can't store a URL.
@@ -2236,8 +2261,10 @@ async function destroyApp(project: App, actor: string): Promise<void> {
   const id = project.id;
   // Tear down the running container/stack before dropping the records. A REMOTE
   // whose agent is unreachable can't be torn down now — proceed with the delete
-  // anyway (P6 spirit: never leave records pinned to a dead box) and warn so the
-  // operator cleans up the leftover containers by hand. The agent calls run
+  // anyway (P6 spirit: never leave records pinned to a dead box) and hand the
+  // stack to the TEARDOWN QUEUE, which keeps retrying until the host confirms it
+  // is gone. Nothing is ever left for the operator to remove by hand. The agent
+  // calls run
   // OUTSIDE any DB transaction (PLAN §1 rule (a): never wrap a gRPC dial in a tx).
   // Teardown + record delete run under the app's lifecycle lock (the SAME lock
   // tryAgent takes before `compose up`): a delete issued during an in-flight
@@ -2263,7 +2290,13 @@ async function destroyApp(project: App, actor: string): Promise<void> {
     // Compose never removes an `external:` volume, so a pre-existing host volume
     // the app merely referenced still survives, which is right: Deplo does not
     // own those.
-    const ok = await teardownApp(project.slug, { removeVolumes: true });
+    const ok = await teardownOrQueue({
+      serverId: project.serverId,
+      deployKey: project.slug,
+      projectLabel: project.id,
+      label: project.name,
+      teamId: project.teamId,
+    });
     // Drop any uploaded archive backing an "upload" source.
     await removeUploads(id).catch(() => {});
     // One DELETE — the FK CASCADEs do the rest: deployments (+ logs), env_vars
@@ -2276,11 +2309,11 @@ async function destroyApp(project: App, actor: string): Promise<void> {
     return ok;
   });
   const server = await getServerById(project.serverId);
-  if (!tornDown && server) {
+  if (!tornDown) {
     await recordActivity(
       "app",
-      `Deleted ${project.name} but its server (${server.name}) was unreachable — ` +
-        `leftover containers on that host must be removed manually.`,
+      `Deleted ${project.name}, but ${server?.name ?? "its server"} did not answer. ` +
+        `Deplo will retry the teardown until it succeeds.`,
       actor,
       null,
       project.teamId,
@@ -2316,8 +2349,10 @@ export async function deleteApp(id: string): Promise<void> {
  * of a spinner over a decision they have already confirmed and cannot undo.
  *
  * The teardown's failure is not the caller's to handle: by the time it can fail
- * the delete is already irreversible, so it is logged, the row keeps its stamp,
- * and {@link resumeAppDeletes} retries it at the next boot.
+ * the delete is already irreversible, so the stack goes to the teardown queue
+ * (`lib/data/teardown-queue.ts`), which retries it until the host confirms it is
+ * gone. {@link resumeAppDeletes} still covers the other half - a control plane
+ * that died between the stamp and the teardown.
  */
 export async function startAppDelete(id: string): Promise<void> {
   const { project, actor } = await beginAppDelete(id);
@@ -2398,16 +2433,20 @@ async function destroyApps(apps: App[], actor: string): Promise<void> {
       // Preview stacks first — see deleteApp.
       await destroyPreviewsForApp(project.id).catch(() => {});
       // Volumes go too - see deleteApp for why "keeping" them was not a kindness.
-      const ok = await teardownApp(project.slug, { removeVolumes: true }).catch(
-        () => false,
-      );
+      const ok = await teardownOrQueue({
+        serverId: project.serverId,
+        deployKey: project.slug,
+        projectLabel: project.id,
+        label: project.name,
+        teamId: project.teamId,
+      }).catch(() => false);
       await removeUploads(project.id).catch(() => {});
       await getDb().delete(appsTable).where(eq(appsTable.id, project.id));
       return ok;
     });
     if (!tornDown) {
       const server = serversById.get(project.serverId);
-      if (server) unreachable.push(`${project.name} (${server.name})`);
+      unreachable.push(`${project.name} (${server?.name ?? "its server"})`);
     }
   });
 
@@ -2421,8 +2460,8 @@ async function destroyApps(apps: App[], actor: string): Promise<void> {
   if (unreachable.length) {
     await recordActivity(
       "app",
-      `Some servers were unreachable during bulk delete — leftover containers may ` +
-        `remain and must be removed manually: ${unreachable.join(", ")}`,
+      `Some servers did not answer during the delete. Deplo will retry the ` +
+        `teardown of: ${unreachable.join(", ")}.`,
       actor,
       null,
       apps[0]!.teamId,

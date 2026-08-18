@@ -955,11 +955,15 @@ export async function cancelAllDeployments(
 // `requireAppCapability` first.
 
 /**
- * Tear down a project's running stack (used when deleting the project). Returns
- * `true` if the stack was destroyed, `false` if teardown failed — for a REMOTE
- * project that means an unreachable agent, in which case the delete proceeds
- * anyway (P6 spirit) and the caller warns that leftover containers on the remote
- * must be cleaned by hand. Never throws, so a dead remote never blocks a delete.
+ * Tear down a preview's stack. Returns `true` if it was destroyed, `false` if the
+ * teardown failed (an unreachable agent, mostly) and never throws, so a dead host
+ * never blocks the caller.
+ *
+ * The retry lives in the CALLER here: `teardownPreviewStack` only stamps
+ * `torn_down_at` on success, so the reaper picks the row up again. The app delete
+ * paths do NOT use this (their preview rows cascade away moments later, taking
+ * that stamp with them) - they queue the work in `lib/data/teardown-queue.ts`,
+ * which also verifies the host rather than trusting the agent's `ok`.
  */
 export async function teardownApp(
   deployKey: string,

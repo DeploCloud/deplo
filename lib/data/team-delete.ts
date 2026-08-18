@@ -1,6 +1,6 @@
 import "server-only";
 
-import { and, eq, isNull } from "drizzle-orm";
+import { and, eq, isNull, sql } from "drizzle-orm";
 import { getDb } from "../db/client";
 import {
   apps as appsTable,
@@ -17,7 +17,6 @@ import {
   setActiveTeam,
   teamsForUser,
 } from "../membership";
-import { connectAgent } from "../infra/agent-client";
 import { pluginSlug, destroyPluginContainer } from "../plugins/runtime";
 import { mapLimit } from "../utils";
 import { withKeyedLock } from "./keyed-mutex";
@@ -27,6 +26,11 @@ import {
   type DestinationWithSecrets,
 } from "./destinations";
 import { deleteFromDestination } from "./backup-transport";
+import {
+  enqueueTeardowns,
+  teardownOrQueue,
+  type TeardownEntry,
+} from "./teardown-queue";
 import { removeUploads } from "../deploy/upload";
 
 /**
@@ -113,8 +117,9 @@ export interface TeardownPlan {
   services: { id: string; slug: string; serverId: string }[];
   /** Live pull request preview stacks, snapshotted the same way: each is its own
    *  container + volume set under `deplo-<slug>__pr-<n>`, invisible to the app's
-   *  own teardown. Absent ⇒ nothing to sweep (a team with no previews). */
-  previewStacks?: { deployKey: string; serverId: string }[];
+   *  own teardown. Absent ⇒ nothing to sweep (a team with no previews). `id` is
+   *  the preview's own id, which is what its containers carry as `deplo.project`. */
+  previewStacks?: { id: string; deployKey: string; serverId: string }[];
   databases: { id: string; host: string; serverId: string }[];
   /** Frozen slugs of the team's installed plugins (containers on the Deplo host). */
   appSlugs: string[];
@@ -140,12 +145,15 @@ export interface TeardownPlan {
  * fan-out can run for minutes — one hung agent holds a 3-minute deadline — and
  * a synchronous teardown would blow past proxy timeouts, surfacing a false
  * failure for a delete that succeeded). Everything here works from the
- * pre-delete snapshot and never reads the cascaded tables; an unreachable host
- * leaves leftover containers to sweep by hand (warned, mirroring
- * deleteApp/deleteDatabase — there is no team activity feed left to record
- * on). Stacks are dialed directly by the snapshot's `serverId` because
- * `teardownApp()` re-resolves the owning server from rows that no longer
- * exist.
+ * pre-delete snapshot and never reads the cascaded tables.
+ *
+ * Every stack is written to the TEARDOWN QUEUE first, in one statement, before
+ * the first dial: the team's rows are already gone, so those entries are the only
+ * record left anywhere that these containers exist, and the fan-out can run for
+ * minutes at three minutes a head. An unreachable host therefore costs a retry,
+ * not a pile nobody can name. The queue also dials by the snapshot's `serverId`,
+ * which is what this path always needed - `teardownApp()` re-resolves the owning
+ * server from rows that no longer exist.
  */
 export function teardownTeamResources(plan: TeardownPlan, tag = "team-delete"): void {
   void (async () => {
@@ -170,67 +178,51 @@ export function teardownTeamResources(plan: TeardownPlan, tag = "team-delete"): 
       }
     });
 
-    // Preview stacks first: they own volumes, and their rows are already gone.
-    await mapLimit(plan.previewStacks ?? [], 4, async (preview) => {
-      try {
-        const conn = await connectAgent(preview.serverId);
-        try {
-          await conn.destroyStack(preview.deployKey, true);
-        } finally {
-          conn.close();
-        }
-      } catch (e) {
-        console.warn(
-          `[deplo-${tag}] could not destroy preview stack ${preview.deployKey}: ` +
-            (e instanceof Error ? e.message : String(e)),
-        );
-      }
+    // Volumes go with every one of these: deleting a team deletes the team, and
+    // leaving its apps' data behind meant an unreclaimable pile on every host it
+    // ever deployed to, with not a single row left that could name it. `teamId`
+    // is null throughout - the feed those lines would land in is gone too.
+    const previews: TeardownEntry[] = (plan.previewStacks ?? []).map((p) => ({
+      serverId: p.serverId,
+      deployKey: p.deployKey,
+      projectLabel: p.id,
+      label: `the preview stack ${p.deployKey}`,
+      teamId: null,
+    }));
+    const stacks: TeardownEntry[] = plan.services.map((service) => ({
+      serverId: service.serverId,
+      deployKey: service.slug,
+      projectLabel: service.id,
+      label: service.slug,
+      teamId: null,
+    }));
+    const dbs: TeardownEntry[] = plan.databases.map((d) => ({
+      serverId: d.serverId,
+      deployKey: d.host,
+      projectLabel: d.id,
+      label: d.host,
+      teamId: null,
+    }));
+    // Write-ahead, in one statement, before the first dial. The team row is
+    // gone: these entries are the only thing that can still name these stacks.
+    await enqueueTeardowns([...previews, ...stacks, ...dbs]);
+
+    // Previews first: they own volumes, and their rows are already gone.
+    await mapLimit(previews, 4, async (e) => {
+      await teardownOrQueue(e).catch(() => false);
+    });
+    await mapLimit(stacks, 4, async (e) => {
+      await teardownOrQueue(e).catch(() => false);
     });
     await mapLimit(plan.services, 4, async (service) => {
-      try {
-        const conn = await connectAgent(service.serverId);
-        try {
-          // Volumes included: deleting a team deletes the team. Leaving its
-          // apps' data behind meant an unreclaimable pile on every host the team
-          // ever deployed to, with not a single row left that could name it.
-          const r = await conn.destroyStack(service.slug, true);
-          if (!r.ok) throw new Error(r.error || "agent failed to destroy the stack");
-        } finally {
-          conn.close();
-        }
-      } catch (e) {
-        console.warn(
-          `[${tag}] could not tear down ${service.slug} ` +
-            `(${e instanceof Error ? e.message : String(e)}) — leftover ` +
-            `containers on its host must be removed manually`,
-        );
-      }
       await removeUploads(service.id).catch(() => {});
     });
-    await mapLimit(plan.databases, 4, async (d) => {
+    await mapLimit(dbs, 4, async (e) => {
       // Same per-database lifecycle lock as deleteDatabase: a teardown must
       // wait out an in-flight provision, or its `down -v` could interleave
       // with the provision's `up -d` and leave an untracked container behind.
-      await withKeyedLock(d.id, async () => {
-        try {
-          const conn = await connectAgent(d.serverId);
-          try {
-            const r = await conn.destroyStack(d.host, true);
-            if (!r.ok)
-              console.warn(
-                `[${tag}] agent did not cleanly tear down ${d.host} ` +
-                  `(${r.error || "unknown error"}) — its data volume may be orphaned`,
-              );
-          } finally {
-            conn.close();
-          }
-        } catch (e) {
-          console.warn(
-            `[${tag}] could not reach the agent for database ${d.host} ` +
-              `(${e instanceof Error ? e.message : String(e)}) — its ` +
-              `container/volume may need a manual cleanup`,
-          );
-        }
+      await withKeyedLock(e.projectLabel, async () => {
+        await teardownOrQueue(e).catch(() => false);
       });
     });
     for (const slug of plan.appSlugs) {
@@ -303,8 +295,11 @@ export async function deleteTeam(teamId: string): Promise<void> {
       const previewStacks = (
         await db
           .select({
+            id: appPreviewsTable.id,
             deployKey: appPreviewsTable.deployKey,
-            serverId: appsTable.serverId,
+            // Previews may be pinned to their own machine: that is where the
+            // stack is, so that is the host that has to be dialed.
+            serverId: sql<string>`coalesce(${appsTable.previewServerId}, ${appsTable.serverId})`,
           })
           .from(appPreviewsTable)
           .innerJoin(appsTable, eq(appsTable.id, appPreviewsTable.appId))
@@ -314,7 +309,7 @@ export async function deleteTeam(teamId: string): Promise<void> {
               isNull(appPreviewsTable.tornDownAt),
             ),
           )
-      ).map((r) => ({ deployKey: r.deployKey, serverId: r.serverId }));
+      ).map((r) => ({ id: r.id, deployKey: r.deployKey, serverId: r.serverId }));
       const databases = await db
         .select({
           id: databasesTable.id,

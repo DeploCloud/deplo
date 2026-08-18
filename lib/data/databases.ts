@@ -52,6 +52,7 @@ import {
 import { isDockerLevelStderr } from "../infra/docker";
 import { isValidLogoValue } from "../apps/logo-shared";
 import { withKeyedLock } from "./keyed-mutex";
+import { enqueueTeardowns } from "./teardown-queue";
 import { assertPasswordNotPwned } from "../pwned-password";
 import { assertPasswordPolicy } from "../password-policy";
 import { publishDatabaseChanged } from "../graphql/pubsub";
@@ -1236,9 +1237,21 @@ export async function deleteDatabase(
       if (!opts.force)
         throw new Error(
           `${db.name} was NOT deleted: ${failure.why}. Nothing has been removed ` +
-            `from Deplo. ${failure.retry}, or delete it anyway to drop it from ` +
-            `Deplo and leave its container and data on that host.`,
+            `from Deplo. ${failure.retry}, or delete it anyway and Deplo will ` +
+            `keep retrying the teardown on that host.`,
         );
+      // Forced: the row goes now, but the stack is not somebody's problem to
+      // remember. The queue keeps retrying it until the host confirms both the
+      // container and the volume are gone.
+      await enqueueTeardowns([
+        {
+          serverId: db.serverId,
+          deployKey: db.host,
+          projectLabel: db.id,
+          label: db.name,
+          teamId: db.teamId,
+        },
+      ]);
     }
     // One DELETE — the agent teardown above ran OUTSIDE any transaction (PLAN §1
     // rule (a)). The `backups.database_id` FK CASCADE removes dependent backup
@@ -1250,8 +1263,8 @@ export async function deleteDatabase(
     await recordActivity(
       "database",
       failure
-        ? `Deleted database ${db.name} from Deplo, but ${failure.why} — its ` +
-          `container and data volume are still on ${where} and must be removed there.`
+        ? `Deleted database ${db.name} from Deplo, but ${failure.why}. Deplo ` +
+          `will retry the teardown of its container and volume on ${where}.`
         : `Deleted database ${db.name}`,
       user.name,
       null,

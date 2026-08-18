@@ -44,9 +44,9 @@ export function DeleteDatabaseDialog({
       forceRetry={{
         label: "Delete it from Deplo anyway",
         description:
-          "The database disappears from Deplo, but its container and data volume stay on the server and keep running there.",
+          "The database disappears from Deplo now, and Deplo keeps retrying to remove its container and data volume from the server.",
         confirmLabel: "Delete anyway",
-        successMessage: "Removed from Deplo — its container is still on the server",
+        successMessage: "Removed from Deplo, its container will be cleaned up",
       }}
       deleteMutation={({ force }) =>
         gqlAction(
