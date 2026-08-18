@@ -321,6 +321,16 @@ unified `shared_env_vars` model.)
 _Avoid_: env target (the legacy fixed enum, now `Environment.kind`), stage, deployment
 environment (the two-valued build axis).
 
+**Template** / **Template variant**:
+A **Template** is a one-click entry in the remote catalog (ADR-0023) Deplo turns into an App:
+a family that owns the name, logo, screenshots, category, links and long description. Each
+family holds one or more **variants**: the actually deployable unit, one `docker-compose.yml`
++ `template.toml` with its own name and short description (`garage-s3` ships **Base** and
+**Web UI**). A single-variant family shows no chooser; the picked variant rides
+`?variant=<slug>` into `/new`. Nothing about either is stored on the created App.
+_Avoid_: edition, flavor, version, blueprint (that is the RESOLVED compose + env a variant
+produces, `lib/templates-blueprint.ts`), service (a compose service inside the stack).
+
 ### Runtimes
 
 **Server agent**:

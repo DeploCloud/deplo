@@ -22,12 +22,14 @@ import { TemplateMarkdown } from "@/components/templates/template-markdown";
 import { TemplateRail } from "@/components/templates/template-rail";
 import { TemplateSearchLink } from "@/components/templates/template-search";
 import { TemplateScreenshots } from "@/components/templates/template-screenshots";
+import { VariantPicker } from "@/components/templates/variant-picker";
 import { hasCapability } from "@/lib/membership";
 import { cn } from "@/lib/utils";
 import { resolveOverviewPlacement } from "@/lib/data/placement";
 import {
   newAppHref,
   placementFromSearchParams,
+  templateHref,
   templatesHref,
   type OverviewPlacement,
 } from "@/lib/overview-links";
@@ -87,11 +89,20 @@ export default async function TemplatePage(props: PageProps<"/templates/[slug]">
     .slice(0, RELATED);
   const relatedAccents = await templateAccents(related);
 
-  // ponytail: the first variant is a temporary UI default; add a selector when
-  // variant UX enters scope, while the backend already requires an exact slug.
+  // Which variant of the family this page is showing. A family with one variant
+  // never shows a picker, so the page looks exactly as it always did; a stale or
+  // renamed `?variant=` falls back to the first rather than losing a template
+  // that is perfectly available.
+  const wanted = Array.isArray(searchParams.variant)
+    ? searchParams.variant[0]
+    : searchParams.variant;
+  const variant =
+    template.variants.find((v) => v.slug === wanted) ?? template.variants[0]!;
+  const manyVariants = template.variants.length > 1;
+
   const deployHref = newAppHref(placement, {
     template: template.slug,
-    variant: template.variants[0]!.slug,
+    variant: variant.slug,
   });
 
   return (
@@ -120,11 +131,23 @@ export default async function TemplatePage(props: PageProps<"/templates/[slug]">
               {template.name}
             </h1>
             <p className="mt-1 text-sm text-muted-foreground">
-              {template.shortDescription}
+              {manyVariants ? variant.shortDescription : template.shortDescription}
             </p>
           </div>
         </div>
-        <DeployButton canDeploy={canDeploy} href={deployHref} />
+        <div className="flex shrink-0 flex-col gap-2 sm:flex-row sm:items-center">
+          {manyVariants && (
+            <VariantPicker
+              selected={variant.slug}
+              variants={template.variants.map((v) => ({
+                slug: v.slug,
+                name: v.name,
+                href: templateHref(template.slug, placement, v.slug),
+              }))}
+            />
+          )}
+          <DeployButton canDeploy={canDeploy} href={deployHref} />
+        </div>
       </div>
 
       {images.length > 0 && (

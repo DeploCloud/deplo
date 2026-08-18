@@ -116,7 +116,15 @@ export default async function NewAppPage(props: PageProps<"/new">) {
           </Link>
         </Button>
         <PageHeader
-          title={template ? `Deploy ${template.name}` : "Create a new App"}
+          // Name the variant when the family has more than one, so the last
+          // screen before deploying confirms which one the picker sent here.
+          title={
+            template
+              ? template.variants.length > 1
+                ? `Deploy ${template.name} - ${template.variant.name}`
+                : `Deploy ${template.name}`
+              : "Create a new App"
+          }
           description={
             (template
               ? "Choose a server, edit the docker-compose and environment variables, then deploy. Deplo configures Docker + Traefik automatically."

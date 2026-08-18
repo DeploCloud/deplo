@@ -74,6 +74,22 @@ export function newAppHref(
   return qs ? `/new?${qs}` : "/new";
 }
 
+/**
+ * Link to a template's page, carrying the drill-in and, optionally, which
+ * variant of the family to show. The variant rides the URL so the choice is
+ * shareable and the page stays a server component.
+ */
+export function templateHref(
+  slug: string,
+  p?: OverviewPlacement | null,
+  variant?: string,
+): string {
+  const params = placementParams(p);
+  if (variant) params.set("variant", variant);
+  const qs = params.toString();
+  return qs ? `/templates/${slug}?${qs}` : `/templates/${slug}`;
+}
+
 /** Link to the template catalogue, carrying the drill-in it was opened from. */
 export function templatesHref(p?: OverviewPlacement | null): string {
   const qs = placementParams(p).toString();
