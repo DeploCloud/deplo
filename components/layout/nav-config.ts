@@ -590,16 +590,6 @@ export function appSettingsNav(
               }),
         },
         {
-          label: "Cron jobs",
-          href: `${base}/cron-jobs`,
-          icon: Timer,
-          tooltip: "Scheduled commands, and everything that shapes them",
-          requires: "manage_crons",
-          // No `disabledReason` twin: every app can run a command in its own
-          // container, so there is nothing here that is structurally impossible
-          // the way pull requests are for a non-GitHub app.
-        },
-        {
           label: "Storage",
           href: `${base}/storage`,
           icon: HardDrive,
@@ -625,7 +615,7 @@ export function appSettingsNav(
           label: "Advanced",
           href: `${base}/advanced`,
           icon: SlidersHorizontal,
-          tooltip: "Console access & danger zone",
+          tooltip: "Console, cron jobs & danger zone",
         },
       ],
     },
@@ -775,17 +765,10 @@ export function databaseSettingsNav(id: string): NavSection[] {
           tooltip: "RAM, CPU & other limits",
         },
         {
-          label: "Cron jobs",
-          href: `${base}/cron-jobs`,
-          icon: Timer,
-          tooltip: "Scheduled commands, and everything that shapes them",
-          requires: "manage_crons",
-        },
-        {
           label: "Advanced",
           href: `${base}/advanced`,
           icon: SlidersHorizontal,
-          tooltip: "Image, command & danger zone",
+          tooltip: "Console, cron jobs, image & danger zone",
         },
       ],
     },

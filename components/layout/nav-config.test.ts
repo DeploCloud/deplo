@@ -87,11 +87,6 @@ test("the SETTINGS entry is always there, disabled when the app cannot use it", 
 
 /* ---- Cron jobs ---------------------------------------------------- */
 
-const cronItem = () =>
-  appSettingsNav("blog")
-    .flatMap((s) => s.items)
-    .find((i) => i.label === "Cron jobs");
-
 test("the app menu offers Cron jobs only when they are switched on", () => {
   assert.ok(labels(flags()).includes("Cron jobs"));
   assert.ok(!labels(flags({ cronsEnabled: false })).includes("Cron jobs"));
@@ -112,18 +107,21 @@ test("the Cron jobs entry survives while you are standing on it", () => {
   assert.ok(labels(f).includes("Cron jobs"));
 });
 
-test("the Cron jobs entries are gated on manage_crons", () => {
+test("the Cron jobs entry is gated on manage_crons", () => {
   const operational = appNav("blog", flags())
     .flatMap((s) => s.items)
     .find((i) => i.label === "Cron jobs");
   assert.equal(operational?.requires, "manage_crons");
-  assert.equal(cronItem()?.requires, "manage_crons");
 });
 
-test("the Cron jobs settings entry is always live", () => {
-  // No `disabledReason` twin: unlike previews, nothing makes an app incapable.
-  assert.ok(cronItem());
-  assert.equal(cronItem()?.disabledReason, undefined);
+test("Cron jobs has no settings entry of its own - the switch is under Advanced", () => {
+  // It is a row of Settings → Advanced → Advanced features now, next to the
+  // Console: an opt-in feature does not get a permanent seat in the settings
+  // menu of every app that will never turn it on.
+  for (const nav of [appSettingsNav("blog"), databaseSettingsNav("db_1")]) {
+    assert.ok(!nav.flatMap((s) => s.items).some((i) => i.label === "Cron jobs"));
+    assert.ok(nav.flatMap((s) => s.items).some((i) => i.label === "Advanced"));
+  }
 });
 
 test("a database gets Cron jobs on the same rule", () => {
@@ -136,12 +134,6 @@ test("a database gets Cron jobs on the same rule", () => {
   assert.ok(!dbLabels(false).includes("Cron jobs"));
   // And it survives while open, like the app's.
   assert.ok(dbLabels(false, "/storage/databases/db_1/cron-jobs").includes("Cron jobs"));
-  // The settings entry is unconditional there too.
-  assert.ok(
-    databaseSettingsNav("db_1")
-      .flatMap((s) => s.items)
-      .some((i) => i.label === "Cron jobs"),
-  );
 });
 
 test("MCP Server is offered to either capability that opens half of it", () => {

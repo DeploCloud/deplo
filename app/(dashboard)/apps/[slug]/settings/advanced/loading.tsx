@@ -1,8 +1,13 @@
 import { Skeleton } from "@/components/ui/skeleton";
-import { Card, CardFooter, CardHeader } from "@/components/ui/card";
+import {
+  Card,
+  CardContent,
+  CardFooter,
+  CardHeader,
+} from "@/components/ui/card";
 import { SectionLabel } from "@/components/apps/settings/settings-skeletons";
 
-/** Advanced settings: console access + danger zone. */
+/** Advanced settings: the two feature rows, rebuild, and the danger zone. */
 export default function Loading() {
   return (
     <section
@@ -13,7 +18,29 @@ export default function Loading() {
     >
       <SectionLabel width="w-20" />
 
-      {/* Console access card */}
+      {/* Advanced features: console + cron jobs, one row each */}
+      <Card>
+        <CardHeader>
+          <Skeleton className="h-5 w-40" />
+          <Skeleton className="h-4 w-full max-w-md" />
+        </CardHeader>
+        <CardContent className="space-y-3">
+          {[0, 1].map((i) => (
+            <div
+              key={i}
+              className="flex items-center justify-between gap-3 rounded-lg border p-4"
+            >
+              <div className="flex-1 space-y-1.5">
+                <Skeleton className="h-4 w-28" />
+                <Skeleton className="h-4 w-full max-w-sm" />
+              </div>
+              <Skeleton className="h-8 w-28 rounded-md" />
+            </div>
+          ))}
+        </CardContent>
+      </Card>
+
+      {/* Rebuild card */}
       <Card>
         <CardHeader>
           <Skeleton className="h-5 w-24" />

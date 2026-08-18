@@ -320,7 +320,8 @@ export function CronJobsList({
   jobs: CronJobDTO[];
   services: string[];
   canManage: boolean;
-  /** Where the master switch lives, for the "it is off" empty state. */
+  /** Where the master switch lives (Settings → Advanced), for the "it is off"
+   *  empty state. */
   settingsHref: string;
 }) {
   const router = useRouter();
@@ -362,10 +363,10 @@ export function CronJobsList({
       <EmptyState
         icon={Timer}
         title="Cron jobs are off"
-        description="Turn them on in Settings to schedule a command inside this container."
+        description="Turn them on under Settings → Advanced to schedule a command inside this container."
         action={
           <Button asChild size="sm">
-            <Link href={settingsHref}>Open settings</Link>
+            <Link href={settingsHref}>Open Advanced settings</Link>
           </Button>
         }
       />

@@ -3,14 +3,16 @@ import Link from "next/link";
 import { SlidersHorizontal, SquareTerminal } from "lucide-react";
 import { getDatabase } from "@/lib/data/databases";
 import { hasCapability } from "@/lib/membership";
+import { listDatabaseCronJobs } from "@/lib/data/crons";
 import { SettingsSection } from "@/components/apps/settings/settings-shared";
 import { DatabaseImageSettings } from "@/components/storage/database-image-settings";
 import { DatabaseDanger } from "@/components/storage/database-danger";
+import { CronSettingsForm } from "@/components/crons/cron-settings-form";
 import { Button } from "@/components/ui/button";
 import {
   Card,
+  CardContent,
   CardDescription,
-  CardFooter,
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
@@ -18,12 +20,13 @@ import {
 export const metadata = { title: "Advanced" };
 
 /**
- * Advanced: the powerful, less-everyday controls in one place — the entry point
- * into the container Console, expert image/command/version overrides (applied on
- * the next Redeploy) and the Danger Zone (rebuild from scratch, delete with
- * artifacts). The exact shape of an App's Advanced, including where the console
- * is found: its sidebar chip only appears once the warning here is accepted, so
- * this card is how a database console is discovered in the first place.
+ * Advanced: the powerful, less-everyday controls in one place — the Advanced
+ * features card (the container Console and Cron jobs), expert image/command/
+ * version overrides (applied on the next Redeploy) and the Danger Zone (rebuild
+ * from scratch, delete with artifacts). The exact shape of an App's Advanced,
+ * including where the console is found: its sidebar chip only appears once the
+ * warning here is accepted, so this card is how a database console is discovered
+ * in the first place.
  */
 export default async function DatabaseAdvancedSettingsPage(
   props: PageProps<"/storage/databases/[id]/settings/advanced">,
@@ -32,40 +35,61 @@ export default async function DatabaseAdvancedSettingsPage(
   const db = await getDatabase(id);
   if (!db) notFound();
   // A live shell into the container is infra-class — the console page itself
-  // gates on manage_infra, so don't advertise a door the viewer can't open.
-  const canConsole = await hasCapability("open_database_console");
+  // gates on it, so don't advertise a door the viewer can't open. A cron job
+  // runs commands in that same container, so it needs BOTH: the two together are
+  // what the old settings page spelled out before this card absorbed it.
+  const [canConsole, canCron] = await Promise.all([
+    hasCapability("open_database_console"),
+    hasCapability("manage_crons"),
+  ]);
+  const cron = canConsole && canCron ? await listDatabaseCronJobs(db.id) : null;
 
   return (
     <section className="space-y-6">
       <SettingsSection
         icon={SlidersHorizontal}
         title="Advanced"
-        info="Open the database console, override the engine image or command, rebuild the database from scratch, or delete it."
+        info="Turn on the advanced features, override the engine image or command, rebuild the database from scratch, or delete it."
       />
 
       {canConsole && (
         <Card>
           <CardHeader>
-            <CardTitle className="flex items-center gap-2 text-base">
-              <SquareTerminal className="size-4 text-muted-foreground" />
-              Console
-            </CardTitle>
+            <CardTitle className="text-base">Advanced features</CardTitle>
             <CardDescription>
-              Open an interactive terminal in the database&apos;s container — run{" "}
-              <span className="font-mono">psql</span>,{" "}
-              <span className="font-mono">redis-cli</span> or any other client
-              with <span className="font-mono">docker exec</span>. Available
-              whenever the database is running; no SSH needed.
+              Powerful extras, off the everyday path until you need them.
             </CardDescription>
           </CardHeader>
-          <CardFooter className="justify-end">
-            <Button asChild size="sm" variant="outline">
-              <Link href={`/storage/databases/${id}/console`}>
-                <SquareTerminal className="size-4" />
-                Open console
-              </Link>
-            </Button>
-          </CardFooter>
+          <CardContent className="space-y-3">
+            <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border p-4">
+              <div className="min-w-56 flex-1 space-y-1">
+                <p className="flex items-center gap-2 text-sm font-medium">
+                  <SquareTerminal className="size-4 text-muted-foreground" />
+                  Console
+                </p>
+                <p className="text-sm text-muted-foreground">
+                  Open a terminal in the database&apos;s container and run{" "}
+                  <span className="font-mono">psql</span>,{" "}
+                  <span className="font-mono">redis-cli</span> or any other
+                  client. No SSH needed.
+                </p>
+              </div>
+              <Button asChild size="sm" variant="outline">
+                <Link href={`/storage/databases/${id}/console`}>
+                  Open console
+                </Link>
+              </Button>
+            </div>
+
+            {cron && (
+              <CronSettingsForm
+                targetKind="database"
+                targetId={db.id}
+                enabled={cron.enabled}
+                jobCount={cron.jobs.length}
+              />
+            )}
+          </CardContent>
         </Card>
       )}
 
