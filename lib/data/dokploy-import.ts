@@ -144,6 +144,16 @@ export interface PlanService {
    * control with nothing behind it.
    */
   buildsFromSource: boolean;
+  /**
+   * Deplo's OWN engine id for a database (`mongo` over there is `mongodb`
+   * here), so a review screen can show the engine's real brand mark instead of
+   * a generic glyph. Null for anything that is not a database Deplo has.
+   *
+   * Resolved here rather than mapped in the browser: the translation already
+   * exists in `deploEngineFor`, and a second copy on the client is a table that
+   * drifts the first time an engine is added.
+   */
+  engine: string | null;
   /** Hostnames that would be imported (the throwaway ones already dropped). */
   domains: string[];
   notes: string[];
@@ -413,6 +423,7 @@ export async function scanDokploy(input: ConnectInput): Promise<DokployPlan> {
           // Only a repository source ever reaches the builder; every other kind
           // flips this below or leaves it false.
           buildsFromSource: false,
+          engine: deploEngineFor(svc.kind as DokployDbKind),
           domains: [],
           notes: [],
         };

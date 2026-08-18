@@ -121,6 +121,7 @@ const SCAN = /* GraphQL */ `
             status
             sourceServerId
             buildsFromSource
+            engine
             domains
             notes
           }
@@ -212,14 +213,12 @@ const MINT_LINK = /* GraphQL */ `
 
 export function ImportWizard({
   teamId,
-  teamName,
   servers,
   buildServers,
   runs,
   isInstanceAdmin,
 }: {
   teamId: string;
-  teamName: string;
   servers: ServerChoice[];
   buildServers: ServerChoice[];
   runs: ImportRun[];
@@ -616,7 +615,6 @@ export function ImportWizard({
           plan={plan}
           chosen={chosen}
           setChosen={setChosen}
-          teamName={teamName}
           servers={servers}
           buildServers={buildServers}
           placements={placements}
@@ -860,7 +858,6 @@ function ReviewStep({
   plan,
   chosen,
   setChosen,
-  teamName,
   servers,
   buildServers,
   placements,
@@ -879,7 +876,6 @@ function ReviewStep({
   plan: Plan;
   chosen: Set<string>;
   setChosen: (v: Set<string>) => void;
-  teamName: string;
   servers: ServerChoice[];
   buildServers: ServerChoice[];
   placements: Record<string, Placement>;
@@ -925,30 +921,6 @@ function ReviewStep({
 
   return (
     <div className="space-y-4">
-      {/* One line, not a step: an API key is scoped to one Dokploy organization and
-          everything here is scoped to the active team, so the destination is already
-          decided. The new-team CTA stays available and stays quiet. */}
-      <div className="flex flex-wrap items-center justify-between gap-2 rounded-lg border px-3 py-2 text-sm">
-        <span className="min-w-0">
-          {plan.orgName ? (
-            <>
-              <span className="font-medium">{plan.orgName}</span> goes into the team{" "}
-              <span className="font-medium">{teamName}</span>.
-            </>
-          ) : (
-            <>
-              Everything goes into the team{" "}
-              <span className="font-medium">{teamName}</span>.
-            </>
-          )}
-        </span>
-        {isInstanceAdmin && !showNewTeam && (
-          <Button variant="ghost" size="sm" onClick={() => setShowNewTeam(true)}>
-            Create a new team
-          </Button>
-        )}
-      </div>
-
       {isInstanceAdmin && showNewTeam && (
         <form
           className="flex flex-wrap items-end gap-2 rounded-lg border p-3"
@@ -974,20 +946,6 @@ function ReviewStep({
         </form>
       )}
 
-      {counts.attention > 0 && (
-        <div className="flex items-start gap-3 rounded-lg border border-warning/40 bg-warning/10 p-4">
-          <TriangleAlert className="mt-0.5 size-5 shrink-0 text-warning" />
-          <div className="min-w-0">
-            <div className="text-sm font-medium text-warning">
-              {counts.attention} thing(s) need a look
-            </div>
-            <p className="mt-1 text-sm text-muted-foreground">
-              They are marked in the tree below, and again in the report at the end.
-            </p>
-          </div>
-        </div>
-      )}
-
       <Card>
         <CardHeader className="flex flex-row flex-wrap items-center justify-between gap-3">
           <div className="min-w-0">
@@ -998,17 +956,28 @@ function ReviewStep({
               Nothing is deployed - Dokploy keeps serving until you say otherwise.
             </p>
           </div>
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={() =>
-              setChosen(
-                allChosen ? new Set() : new Set(pickable.map((s) => s.sourceId)),
-              )
-            }
-          >
-            {allChosen ? "Unselect all" : "Select all"}
-          </Button>
+          <div className="flex items-center gap-2">
+            {/* The destination is already decided - an API key is scoped to one
+                Dokploy organization and everything here to the active team - so
+                it is not worth a sentence. Creating a team to import into still
+                is, and this is the row that already holds the bulk actions. */}
+            {isInstanceAdmin && !showNewTeam && (
+              <Button variant="ghost" size="sm" onClick={() => setShowNewTeam(true)}>
+                Create a new team
+              </Button>
+            )}
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() =>
+                setChosen(
+                  allChosen ? new Set() : new Set(pickable.map((s) => s.sourceId)),
+                )
+              }
+            >
+              {allChosen ? "Unselect all" : "Select all"}
+            </Button>
+          </div>
         </CardHeader>
         <CardContent>
           {servers.length === 0 ? (
@@ -1039,13 +1008,30 @@ function ReviewStep({
         </CardContent>
       </Card>
 
+      {/* Above the toggle rather than above the tree: the tree is what it points
+          at, and a banner over the list is read before there is anything to read
+          it about. */}
+      {counts.attention > 0 && (
+        <div className="flex items-start gap-3 rounded-lg border border-warning/40 bg-warning/10 p-4">
+          <TriangleAlert className="mt-0.5 size-5 shrink-0 text-warning" />
+          <div className="min-w-0">
+            <div className="text-sm font-medium text-warning">
+              {counts.attention} thing(s) need a look
+            </div>
+            <p className="mt-1 text-sm text-muted-foreground">
+              They are marked in the tree above, and again in the report at the end.
+            </p>
+          </div>
+        </div>
+      )}
+
       {counts.databases > 0 && (
         <div className="flex items-start justify-between gap-4 rounded-lg border px-3 py-2">
           <div className="min-w-0">
             <FieldLabel htmlFor="skip-databases">Leave the databases out</FieldLabel>
             <p className="mt-1 text-sm text-muted-foreground">
-              Deplo brings each one up empty, ready for your data. Left out, they
-              only appear in the report.
+              Kept, Deplo creates each one empty. Left out, they are only listed in
+              the report.
             </p>
           </div>
           <Switch

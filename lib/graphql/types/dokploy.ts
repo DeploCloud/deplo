@@ -86,6 +86,11 @@ const PlanServiceRef = builder
         description:
           "Whether Deplo would ever compile this. False for a compose stack, a prebuilt image and a database - all of them deploy as they are, so a build server would have nothing to do for them.",
       }),
+      engine: t.exposeString("engine", {
+        nullable: true,
+        description:
+          "Deplo's own engine id for a database (`mongo` on Dokploy is `mongodb` here), so a client can show the engine's brand mark. Null for anything that is not a database Deplo has.",
+      }),
       domains: t.exposeStringList("domains", {
         description:
           "The hostnames that would come across. Dokploy's generated throwaway hosts (traefik.me, sslip.io, nip.io) are already dropped — Deplo mints its own.",

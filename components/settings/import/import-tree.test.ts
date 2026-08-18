@@ -4,7 +4,7 @@ import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 
 import { TooltipProvider } from "@/components/ui/tooltip";
-import { ImportTree } from "./import-tree";
+import { ImportTree, visible } from "./import-tree";
 import type { Placement, PlanProject, PlanService, ServerChoice } from "./types";
 
 /**
@@ -29,6 +29,7 @@ function service(over: Partial<PlanService> & { sourceId: string }): PlanService
     status: "new",
     sourceServerId: "",
     buildsFromSource: true,
+    engine: null,
     domains: [],
     notes: [],
     ...over,
@@ -46,13 +47,19 @@ const PROJECTS: PlanProject[] = [
         name: "production",
         exists: false,
         services: [
-          service({ sourceId: "s-web", notes: ["Published host ports on Dokploy."] }),
+          service({
+            sourceId: "s-web",
+            domains: ["blink.acme.com"],
+            notes: ["Published host ports on Dokploy."],
+          }),
           service({ sourceId: "s-api" }),
           service({
             sourceId: "s-db",
             targetKind: "database",
             kind: "postgres",
+            engine: "postgres",
             buildsFromSource: false,
+            domains: [],
           }),
         ],
       },
@@ -249,4 +256,65 @@ test("Set all reads Mixed only when the rows actually disagree", () => {
     }),
   );
   assert.match(split, /Mixed/);
+});
+
+/* ---- what a search leaves standing ---------------------------------- */
+
+/** `visible` is the whole search: the markup around it is an Input and an X. */
+function seen(query: string) {
+  const v = visible(PROJECTS, query.toLowerCase().split(/\s+/).filter(Boolean));
+  return {
+    projects: [...v.projects].sort(),
+    environments: [...v.environments].sort(),
+    services: [...v.services].sort(),
+  };
+}
+
+test("a hit keeps its ancestors, so nothing is stranded two levels down", () => {
+  const v = seen("s-stg");
+  assert.deepEqual(v.services, ["s-stg"]);
+  assert.deepEqual(v.environments, ["e-stg"]);
+  assert.deepEqual(v.projects, ["p1"]);
+});
+
+test("a project or environment that matches ITSELF keeps everything under it", () => {
+  // Ticking a node has to keep meaning "everything in here".
+  assert.deepEqual(seen("Blink").services, ["s-api", "s-db", "s-stg", "s-web"]);
+  assert.deepEqual(seen("staging").services, ["s-stg"]);
+});
+
+test("an app is findable by its hostname, not only by its name", () => {
+  // The name over there is often not the name you remember; the domain is.
+  assert.deepEqual(seen("acme.com").services, ["s-web"]);
+});
+
+test("a kind finds every service of that kind at once", () => {
+  assert.deepEqual(seen("postgres").services, ["s-db"]);
+  assert.deepEqual(seen("compose").services, ["s-stack"]);
+});
+
+test("every term has to match, and nothing matching is empty", () => {
+  // Two words describing a path: the project name plus the app's own.
+  assert.deepEqual(seen("blink api").services, ["s-api"]);
+  // Both terms against ONE service: "blink" is the project, "db" the app.
+  assert.deepEqual(seen("blink db").services, ["s-db"]);
+  assert.deepEqual(seen("nothing-like-this"), {
+    projects: [],
+    environments: [],
+    services: [],
+  });
+});
+
+/* ---- how a service is drawn ----------------------------------------- */
+
+test("a database wears its engine's own mark, not a generic glyph", () => {
+  const html = render([]);
+  assert.match(html, /\/engines\/postgres\.svg/);
+});
+
+test("a note is a tinted row, not just coloured text", () => {
+  const html = render([]);
+  const row = html.match(/<div[^>]*bg-warning[^>]*>/);
+  assert.ok(row, "the note row has no warning background");
+  assert.match(row[0], /text-warning/);
 });

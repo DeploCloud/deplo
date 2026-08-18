@@ -4,15 +4,17 @@ import * as React from "react";
 import {
   Boxes,
   ChevronRight,
-  Database,
   FolderTree,
   Layers,
+  Search,
   TriangleAlert,
+  X,
 } from "lucide-react";
 
 import { cn } from "@/lib/utils";
 import { Badge } from "@/components/ui/badge";
 import { Checkbox } from "@/components/ui/checkbox";
+import { Input } from "@/components/ui/input";
 import {
   Select,
   SelectContent,
@@ -22,6 +24,8 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { SimpleTooltip } from "@/components/ui/tooltip";
+import { DatabaseLogo } from "@/components/storage/database-logo";
+import type { DatabaseType } from "@/lib/types";
 import {
   importableOf,
   isImportable,
@@ -71,6 +75,61 @@ const COL = {
   run: "w-44",
 };
 
+/**
+ * Every field a search looks at, the service's own PATH included.
+ *
+ * The path is what makes a two-word search work: "blink api" is how people
+ * describe the api inside Blink, and matching each term against one name in
+ * isolation would answer that with nothing.
+ */
+function hit(service: PlanService, path: string, terms: string[]): boolean {
+  const hay = [path, service.name, service.kind, ...service.domains]
+    .join(" ")
+    .toLowerCase();
+  return terms.every((t) => hay.includes(t));
+}
+
+const nameHit = (name: string, terms: string[]) =>
+  terms.every((t) => name.toLowerCase().includes(t));
+
+/**
+ * What a search leaves on screen, as three id sets rather than a pruned copy.
+ *
+ * Two rules, both borrowed from the scope picker's filter because they have to
+ * hold or the control lies: a node survives when anything UNDER it matches, and
+ * a node that matches ITSELF keeps everything under it.
+ *
+ * Ids rather than rebuilt objects on purpose. The counters and the tri-state
+ * boxes are computed from a project's FULL child list, and a filtered copy would
+ * make "2 of 3 selected" describe the search instead of the import - a number
+ * that changes when you type is a number that cannot be trusted.
+ */
+export function visible(
+  projects: PlanProject[],
+  terms: string[],
+): { projects: Set<string>; environments: Set<string>; services: Set<string> } {
+  const out = {
+    projects: new Set<string>(),
+    environments: new Set<string>(),
+    services: new Set<string>(),
+  };
+  for (const p of projects) {
+    const wholeProject = nameHit(p.name, terms);
+    let anyEnv = false;
+    for (const e of p.environments) {
+      const wholeEnv = wholeProject || nameHit(e.name, terms);
+      const path = `${p.name} ${e.name}`;
+      const services = e.services.filter((s) => wholeEnv || hit(s, path, terms));
+      if (services.length === 0 && !wholeEnv) continue;
+      anyEnv = true;
+      out.environments.add(e.sourceId);
+      for (const s of services) out.services.add(s.sourceId);
+    }
+    if (anyEnv || wholeProject) out.projects.add(p.sourceId);
+  }
+  return out;
+}
+
 export function ImportTree({
   projects,
   chosen,
@@ -96,6 +155,18 @@ export function ImportTree({
   const [open, setOpen] = React.useState<Set<string>>(
     () => new Set(projects.flatMap((p) => [p.sourceId, ...p.environments.map((e) => e.sourceId)])),
   );
+
+  const [query, setQuery] = React.useState("");
+  const terms = query.trim().toLowerCase().split(/\s+/).filter(Boolean);
+  const searching = terms.length > 0;
+  const shown = React.useMemo(
+    () => (terms.length === 0 ? null : visible(projects, terms)),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [projects, query],
+  );
+  // While searching every surviving branch is open - a hit two levels down is
+  // useless if you still have to find and expand its ancestors.
+  const isOpen = (id: string) => searching || open.has(id);
 
   // No build-only host in the fleet means the column could only ever read
   // "Automatic" on every row, and a control with one possible answer is a tax on
@@ -131,65 +202,103 @@ export function ImportTree({
     onPlacementsChange(next);
   }
 
+  const rows = projects.filter((p) => !shown || shown.projects.has(p.sourceId));
+
   return (
-    <div className="overflow-x-auto rounded-lg border border-border">
-      <div className="min-w-[48rem]">
-        <SetAllHeader
-          showBuild={showBuild}
-          servers={servers}
-          buildServers={buildServers}
-          services={all}
-          placements={placements}
-          onPlace={place}
+    <div className="space-y-3">
+      <div className="relative">
+        <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
+        <Input
+          value={query}
+          onChange={(e) => setQuery(e.target.value)}
+          placeholder="Search apps, databases, hostnames"
+          aria-label="Search what will come over"
+          className="pl-9 pr-9"
         />
-        <div className="max-h-[28rem] divide-y divide-border/60 overflow-y-auto">
-          {projects.map((p) => {
-            const pickable = importableOf(p);
-            const on = pickable.filter((s) => chosen.has(s.sourceId)).length;
-            return (
-              <React.Fragment key={p.sourceId}>
-                <Row
-                  id={`imp-p-${p.sourceId}`}
-                  depth={0}
-                  label={p.name}
-                  mark={<FolderTree className="size-3.5 text-muted-foreground" />}
-                  meta={countLabel(on, pickable.length)}
-                  expandable
-                  expanded={open.has(p.sourceId)}
-                  onToggleExpand={() => toggleOpen(p.sourceId)}
-                  checked={tristate(on, pickable.length)}
-                  disabled={pickable.length === 0}
-                  onCheckedChange={(v) => set(pickable, v)}
-                  showBuild={showBuild}
-                  status={p.exists ? <Badge variant="outline">Already here</Badge> : null}
-                />
-                {open.has(p.sourceId) &&
-                  p.environments.map((e) => (
-                    <EnvironmentRows
-                      key={e.sourceId}
-                      environment={e}
-                      chosen={chosen}
-                      expanded={open.has(e.sourceId)}
-                      onToggleExpand={() => toggleOpen(e.sourceId)}
-                      onSet={set}
-                      showBuild={showBuild}
-                      servers={servers}
-                      buildServers={buildServers}
-                      placements={placements}
-                      onPlace={place}
-                    />
-                  ))}
-              </React.Fragment>
-            );
-          })}
-        </div>
+        {query && (
+          <button
+            type="button"
+            onClick={() => setQuery("")}
+            aria-label="Clear the search"
+            className="absolute right-2 top-1/2 -translate-y-1/2 rounded p-1 text-muted-foreground transition-colors hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+          >
+            <X className="size-3.5" />
+          </button>
+        )}
       </div>
+
+      {rows.length === 0 ? (
+        <div className="rounded-lg border border-dashed border-border px-3 py-6 text-center text-sm text-muted-foreground">
+          Nothing matches &ldquo;{query}&rdquo;.
+        </div>
+      ) : (
+        <div className="overflow-x-auto rounded-lg border border-border">
+          <div className="min-w-[48rem]">
+            {/* `all`, not the filtered rows: a search is a lens on the list, so
+                setting everything still means everything. */}
+            <SetAllHeader
+              showBuild={showBuild}
+              servers={servers}
+              buildServers={buildServers}
+              services={all}
+              placements={placements}
+              onPlace={place}
+            />
+            <div className="max-h-[28rem] divide-y divide-border/60 overflow-y-auto">
+              {rows.map((p) => {
+                // Counted over the WHOLE project, never the filtered slice.
+                const pickable = importableOf(p);
+                const on = pickable.filter((s) => chosen.has(s.sourceId)).length;
+                return (
+                  <React.Fragment key={p.sourceId}>
+                    <Row
+                      id={`imp-p-${p.sourceId}`}
+                      depth={0}
+                      label={p.name}
+                      mark={<FolderTree className="size-3.5 text-muted-foreground" />}
+                      meta={countLabel(on, pickable.length)}
+                      expandable
+                      expanded={isOpen(p.sourceId)}
+                      onToggleExpand={() => toggleOpen(p.sourceId)}
+                      checked={tristate(on, pickable.length)}
+                      disabled={pickable.length === 0}
+                      onCheckedChange={(v) => set(pickable, v)}
+                      showBuild={showBuild}
+                      status={p.exists ? <Badge variant="outline">Already here</Badge> : null}
+                    />
+                    {isOpen(p.sourceId) &&
+                      p.environments
+                        .filter((e) => !shown || shown.environments.has(e.sourceId))
+                        .map((e) => (
+                          <EnvironmentRows
+                            key={e.sourceId}
+                            environment={e}
+                            hidden={shown ? shown.services : null}
+                            chosen={chosen}
+                            expanded={isOpen(e.sourceId)}
+                            onToggleExpand={() => toggleOpen(e.sourceId)}
+                            onSet={set}
+                            showBuild={showBuild}
+                            servers={servers}
+                            buildServers={buildServers}
+                            placements={placements}
+                            onPlace={place}
+                          />
+                        ))}
+                  </React.Fragment>
+                );
+              })}
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
 
 function EnvironmentRows({
   environment,
+  hidden,
   chosen,
   expanded,
   onToggleExpand,
@@ -201,6 +310,8 @@ function EnvironmentRows({
   onPlace,
 }: {
   environment: PlanEnvironment;
+  /** The service ids a search left standing, or null when nothing is filtered. */
+  hidden: Set<string> | null;
   chosen: Set<string>;
   expanded: boolean;
   onToggleExpand: () => void;
@@ -211,6 +322,8 @@ function EnvironmentRows({
   placements: Record<string, Placement>;
   onPlace: (serviceIds: string[], patch: Partial<Placement>) => void;
 }) {
+  // Same rule as the project row: counted over every service in the environment,
+  // not over the ones a search happens to be showing.
   const pickable = environment.services.filter(isImportable);
   const on = pickable.filter((s) => chosen.has(s.sourceId)).length;
   return (
@@ -234,19 +347,21 @@ function EnvironmentRows({
         showBuild={showBuild}
       />
       {expanded &&
-        environment.services.map((s) => (
-          <ServiceRows
-            key={s.sourceId}
-            service={s}
-            checked={chosen.has(s.sourceId)}
-            onCheckedChange={(v) => onSet([s], v)}
-            showBuild={showBuild}
-            servers={servers}
-            buildServers={buildServers}
-            placement={placements[s.sourceId]}
-            onPlace={(patch) => onPlace([s.sourceId], patch)}
-          />
-        ))}
+        environment.services
+          .filter((s) => !hidden || hidden.has(s.sourceId))
+          .map((s) => (
+            <ServiceRows
+              key={s.sourceId}
+              service={s}
+              checked={chosen.has(s.sourceId)}
+              onCheckedChange={(v) => onSet([s], v)}
+              showBuild={showBuild}
+              servers={servers}
+              buildServers={buildServers}
+              placement={placements[s.sourceId]}
+              onPlace={(patch) => onPlace([s.sourceId], patch)}
+            />
+          ))}
     </>
   );
 }
@@ -270,7 +385,6 @@ function ServiceRows({
   placement: Placement | undefined;
   onPlace: (patch: Partial<Placement>) => void;
 }) {
-  const Icon = service.targetKind === "database" ? Database : Layers;
   const placeable = isImportable(service) && placement != null;
   return (
     <>
@@ -278,7 +392,7 @@ function ServiceRows({
         id={`imp-s-${service.sourceId}`}
         depth={2}
         label={service.name}
-        mark={<Icon className="size-3.5 text-muted-foreground" />}
+        mark={<ServiceMark service={service} />}
         meta={service.domains[0] ?? service.kind}
         expandable={false}
         expanded={false}
@@ -328,7 +442,7 @@ function ServiceRows({
       {service.notes.map((n, i) => (
         <div
           key={i}
-          className="flex items-start gap-2 py-1.5 pr-3 text-xs text-warning"
+          className="flex items-start gap-2 bg-warning/10 py-1.5 pr-3 text-xs text-warning"
           style={{ paddingLeft: `${0.75 + 3 * 1.25}rem` }}
         >
           <TriangleAlert className="mt-0.5 size-3.5 shrink-0" />
@@ -337,6 +451,27 @@ function ServiceRows({
       ))}
     </>
   );
+}
+
+/**
+ * What a service will BE here, drawn the way Deplo already draws it.
+ *
+ * A database gets its engine's real brand mark - the elephant, the dolphin, the
+ * leaf - through the same component the storage pages use, so a Postgres looks
+ * like a Postgres before it has been imported and not only after. `engine` is
+ * resolved server-side because Dokploy's `mongo` is Deplo's `mongodb`, and a
+ * second copy of that table in the browser is one that drifts.
+ */
+function ServiceMark({ service }: { service: PlanService }) {
+  if (service.targetKind === "database")
+    return (
+      <DatabaseLogo
+        type={service.engine as DatabaseType}
+        size={16}
+        className="rounded-sm bg-transparent"
+      />
+    );
+  return <Layers className="size-3.5 text-muted-foreground" />;
 }
 
 /* ------------------------------------------------------------------ */

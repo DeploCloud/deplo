@@ -16,6 +16,8 @@ export interface PlanService {
   status: "new" | "exists" | "unsupported" | "needs_grant";
   sourceServerId: string;
   buildsFromSource: boolean;
+  /** Deplo's engine id for a database, for its brand mark. Null otherwise. */
+  engine: string | null;
   domains: string[];
   notes: string[];
 }

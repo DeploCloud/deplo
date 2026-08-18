@@ -1636,6 +1636,11 @@ type DokployPlanService {
   domains: [String!]
 
   """
+  Deplo's own engine id for a database (`mongo` on Dokploy is `mongodb` here), so a client can show the engine's brand mark. Null for anything that is not a database Deplo has.
+  """
+  engine: String
+
+  """
   What it is on Dokploy: application, compose, or one of postgres/mysql/mariadb/mongo/redis/libsql.
   """
   kind: String
