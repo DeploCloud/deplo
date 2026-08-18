@@ -540,7 +540,11 @@ test("a scoped member can still pick where an app runs", async () => {
   assert.ok(choices.length > 0, "the server picker came back empty");
   assert.deepEqual(
     Object.keys(choices[0]).sort(),
-    ["id", "name", "type"],
+    // `isDeploHost` is a deliberate fourth: it says which row is the machine
+    // Deplo itself runs on, so a picker can default to it. That is a boolean
+    // about a host whose address every member already types into a browser -
+    // not an address, not agent state, not a metric.
+    ["id", "isDeploHost", "name", "type"],
     "the picker is a menu, not the fleet's inventory",
   );
 
