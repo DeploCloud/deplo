@@ -561,6 +561,33 @@ test("databases can be left out entirely", async () => {
   );
 });
 
+test("only the picked services come over, and the rest are not even read", async () => {
+  const runId = await asOwner(() => beginDokployImport({ url: URL_BASE }));
+  calls = [];
+  const result = await asOwner(() =>
+    importDokployProject({
+      ...CONNECT,
+      runId,
+      projectId: "dok-prj-blink",
+      serviceIds: ["dok-app-api"],
+    }),
+  );
+
+  const apps = await db.select().from(appsTable);
+  assert.deepEqual(
+    apps.map((a) => a.name),
+    ["blink-api"],
+  );
+  assert.equal((await db.select().from(databasesTable)).length, 0);
+  // Unpicked is not an outcome: nothing about them is in the report, and their
+  // detail is never fetched - the filter runs before the expensive call.
+  assert.equal(
+    result.items.some((i) => i.sourceName === "blink-web" || i.sourceKind === "postgres"),
+    false,
+  );
+  assert.equal(calls.includes("postgres.one"), false);
+});
+
 test("a project that is already here is reused, not duplicated", async () => {
   await asOwner(() => createProject("Blink"));
   const runId = await asOwner(() => beginDokployImport({ url: URL_BASE }));

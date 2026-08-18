@@ -2,7 +2,7 @@
 
 import * as React from "react";
 import { toast } from "sonner";
-import { AlertTriangle, Database, HardDrive, Layers } from "lucide-react";
+import { Database, HardDrive, Layers, TriangleAlert } from "lucide-react";
 
 import { gqlAction } from "@/lib/graphql-client";
 import { Badge } from "@/components/ui/badge";
@@ -22,6 +22,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { SimpleTooltip } from "@/components/ui/tooltip";
 import { EmptyState } from "@/components/shared/empty-state";
 import { Skeleton } from "@/components/ui/skeleton";
 
@@ -30,8 +31,8 @@ import { Skeleton } from "@/components/ui/skeleton";
  *
  * Separate from the import steps because it happens at a different TIME: the
  * configuration lands whenever, the data moves the night someone is ready for
- * downtime. It is also the only destructive thing in this feature — it stops the
- * service on the old platform and does not start it again — so it asks, with the
+ * downtime. It is also the only destructive thing in this feature - it stops the
+ * service on the old platform and does not start it again - so it asks, with the
  * volumes it is about to overwrite spelled out.
  */
 
@@ -140,6 +141,9 @@ export function DataStep({
   plan,
   loading,
   onReload,
+  onBack,
+  onNext,
+  nextLabel,
 }: {
   connectInput: { url: string; apiKey: string; allowPrivate: boolean };
   /** Open (or reuse) the run the copy's report lines are appended to. A cutover
@@ -153,6 +157,10 @@ export function DataStep({
   plan: DataService[] | null;
   loading: boolean;
   onReload: () => void;
+  onBack: () => void;
+  onNext: () => void;
+  /** "Continue" mid-wizard, "Finish" when the cutover is the whole visit. */
+  nextLabel: string;
 }) {
   const [confirming, setConfirming] = React.useState<DataService | null>(null);
   const [moving, setMoving] = React.useState<string | null>(null);
@@ -283,6 +291,15 @@ export function DataStep({
         onCancel={() => setConfirming(null)}
         onConfirm={move}
       />
+
+      <div className="flex justify-between">
+        <Button variant="outline" onClick={onBack}>
+          Back
+        </Button>
+        <Button onClick={onNext} disabled={moving != null}>
+          {nextLabel}
+        </Button>
+      </div>
     </div>
   );
 }
@@ -301,6 +318,36 @@ function ServiceRow({
   onMove: () => void;
 }) {
   const Icon = service.targetKind === "database" ? Database : Layers;
+  const nothingToMove = service.volumes.length === 0;
+
+  const button = (
+    <Button
+      size="sm"
+      variant="outline"
+      onClick={onMove}
+      disabled={disabled || moving || nothingToMove}
+    >
+      {moving ? "Copying" : "Move the data"}
+    </Button>
+  );
+  // A disabled button emits no pointer events, so the tooltip hangs off a span
+  // around it. The two reasons read the same in the data (`volumes: []`) and are
+  // told apart by whether Dokploy has the service up - which is the difference
+  // between "there is nothing here" and "we could not look".
+  const moveButton = nothingToMove ? (
+    <SimpleTooltip
+      content={
+        service.running
+          ? "This service has no named volumes on Dokploy."
+          : "Dokploy has no container running for this service, so its volumes cannot be read. Start it over there once, then refresh."
+      }
+    >
+      <span className="inline-flex cursor-not-allowed">{button}</span>
+    </SimpleTooltip>
+  ) : (
+    button
+  );
+
   return (
     <div className="rounded-lg border p-3">
       <div className="flex flex-wrap items-center justify-between gap-3">
@@ -320,14 +367,7 @@ function ServiceRow({
                 : `${result.moved} copied`}
             </Badge>
           ) : (
-            <Button
-              size="sm"
-              variant="outline"
-              onClick={onMove}
-              disabled={disabled || moving || service.volumes.length === 0}
-            >
-              {moving ? "Copying" : "Move the data"}
-            </Button>
+            moveButton
           )}
         </div>
       </div>
@@ -337,7 +377,7 @@ function ServiceRow({
           {service.volumes.map((v) => (
             <li key={v.sourceVolume} className="text-xs text-muted-foreground">
               <code>{v.mountPath}</code> {v.sourceVolume} into {v.targetVolume}
-              {v.note && <span className="ml-1 text-amber-600 dark:text-amber-400">{v.note}</span>}
+              {v.note && <span className="ml-1 text-warning">{v.note}</span>}
             </li>
           ))}
         </ul>
@@ -379,8 +419,8 @@ function ConfirmDialog({
             </DialogHeader>
 
             {service.running ? (
-              <div className="flex items-start gap-2.5 rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 py-2.5 text-sm text-amber-600 dark:text-amber-400">
-                <AlertTriangle className="mt-0.5 size-4 shrink-0" />
+              <div className="flex items-start gap-3 rounded-lg border border-warning/40 bg-warning/10 p-4 text-sm">
+                <TriangleAlert className="mt-0.5 size-5 shrink-0 text-warning" />
                 <p>
                   This stops {service.sourceName} on Dokploy and does not start it
                   again. Deplo needs it stopped to copy a volume that is not changing

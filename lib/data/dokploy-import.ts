@@ -860,6 +860,12 @@ export interface ImportProjectInput extends ConnectInput {
   servers?: ServerChoice[];
   /** Leave the databases alone (they provision containers as they are created). */
   skipDatabases?: boolean;
+  /**
+   * The source service ids to import, out of the project's own. Absent imports
+   * everything - a client that cannot express a selection still gets the whole
+   * project, which is what every caller did before the wizard grew a tree.
+   */
+  serviceIds?: string[];
 }
 
 /**
@@ -892,7 +898,16 @@ export async function importDokployProject(
   if (!projectId)
     return { projectName: source.name, ...tally(report.items), items: report.items };
 
+  // What the caller picked, or everything. A service left out is left out
+  // SILENTLY: it is a choice made on the review screen, not an event, and a
+  // report line per unticked box would bury the ones that need reading.
+  const wanted = input.serviceIds ? new Set(input.serviceIds) : null;
+
   for (const env of source.environments ?? []) {
+    const chosen = servicesOf(env).filter((s) => !wanted || wanted.has(s.id));
+    // An environment nobody picked anything from is not created empty.
+    if (chosen.length === 0) continue;
+
     const envReport = report.at(env.name);
     const environmentId = await ensureEnvironment(projectId, env, envReport);
     if (!environmentId) continue;
@@ -900,7 +915,7 @@ export async function importDokployProject(
     /** Apps landed in this environment — the link set for its shared vars. */
     const appIds: string[] = [];
 
-    for (const svc of servicesOf(env)) {
+    for (const svc of chosen) {
       const isApp = svc.kind === "application" || svc.kind === "compose";
       const targetKind = isApp ? "app" : "database";
 

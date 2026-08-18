@@ -228,7 +228,11 @@ therefore not capped per team.
   plan without writing anything, `beginDokployImport(url, orgName)` opens a run,
   `importDokployProject(input, runId, projectId, …)` imports **one project per
   call** — that is the unit on purpose, so progress is real and a re-run resumes
-  instead of duplicating — `finishDokployImport(runId)` closes it, and
+  instead of duplicating — and its optional `serviceIds` narrows that call to
+  named services (omit it for all of them); anything left out produces no report
+  line, because not picking something is a choice rather than an outcome, and an
+  environment nothing was picked from is not created empty.
+  `finishDokployImport(runId)` closes it, and
   `importDokployMembers(input, runId)` (instance admin) turns the other
   platform's members into registration links. `dokployImports` /
   `dokployImport(id)` read the kept report. Nothing is deployed by an import, and

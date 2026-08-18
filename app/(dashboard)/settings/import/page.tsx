@@ -38,6 +38,7 @@ export default async function SettingsImportPage() {
 
   return (
     <ImportWizard
+      teamId={team.id}
       teamName={team.name}
       servers={servers}
       runs={runs}

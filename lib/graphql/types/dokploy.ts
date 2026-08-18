@@ -399,8 +399,13 @@ builder.mutationFields((t) => ({
         description:
           "Leave the databases out. They are the one thing an import really starts: Deplo has no database that exists without a container, so each one comes up empty, ready for a dump.",
       }),
+      serviceIds: t.arg.stringList({
+        required: false,
+        description:
+          "Which of the project's services to import, by their Dokploy id (the `sourceId` a scan reports). Omit to import all of them. A service left out is left out silently - it is a choice, not an outcome, so it produces no report line. An environment nothing was picked from is not created.",
+      }),
     },
-    resolve: (_r, { input, runId, projectId, servers, skipDatabases }) =>
+    resolve: (_r, { input, runId, projectId, servers, skipDatabases, serviceIds }) =>
       importDokployProject({
         url: input.url,
         apiKey: input.apiKey,
@@ -409,6 +414,7 @@ builder.mutationFields((t) => ({
         projectId,
         servers: servers?.map((s) => ({ from: s.from, to: s.to })),
         skipDatabases: skipDatabases ?? false,
+        serviceIds: serviceIds ?? undefined,
       }),
   }),
   importDokployMembers: t.field({
