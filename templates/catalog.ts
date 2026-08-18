@@ -20,7 +20,7 @@ import type { ApiTemplate, CatalogTemplate, TemplateListQuery } from "./types";
  * its own schedule.
  *
  * Every response is validated against `./schema` before it is used: this is
- * remote input, and its `compose` / `template.toml` end up in a deploy.
+ * remote input, and its variant files end up in a deploy.
  */
 
 const cacheOptions = {
@@ -102,10 +102,7 @@ export async function listCatalog(): Promise<CatalogTemplate[]> {
   return [first, ...rest].flatMap((page) => page.data).map(withAssetUrls);
 }
 
-/**
- * A single template plus its blueprint files. `null` when the slug is unknown —
- * a stale `?template=` link degrades to "not available" instead of a 500.
- */
+/** `null` when the slug is unknown; this call never selects a variant. */
 export async function getTemplate(slug: string) {
   const safe = slugSchema.safeParse(slug);
   if (!safe.success) return null;
@@ -118,12 +115,33 @@ export async function getTemplate(slug: string) {
   if (!response.ok)
     throw new Error(`Template catalog returned ${response.status}.`);
 
-  const template = apiTemplateSchema.parse(await response.json());
+  return apiTemplateSchema.parse(await response.json());
+}
+
+/**
+ * A deployable template family plus exactly the requested variant's files.
+ * `null` means either slug is invalid, the family is unknown, or the variant
+ * is not part of that family.
+ */
+export async function getTemplateVariant(
+  templateSlug: string,
+  variantSlug: string,
+) {
+  const template = slugSchema.safeParse(templateSlug);
+  const variant = slugSchema.safeParse(variantSlug);
+  if (!template.success || !variant.success) return null;
+
+  const family = await getTemplate(template.data);
+  if (!family) return null;
+
+  const selected = family.variants.find(({ slug }) => slug === variant.data);
+  if (!selected) return null;
+
   const [compose, config] = await Promise.all([
-    fetchText(template.files.compose, safe.data),
-    fetchText(template.files.config, safe.data),
+    fetchText(selected.files.compose, template.data),
+    fetchText(selected.files.config, template.data),
   ]);
-  return { ...template, compose, config };
+  return { ...family, variant: selected, compose, config };
 }
 
 /**

@@ -65,10 +65,11 @@ function placementParams(p: OverviewPlacement | null | undefined): URLSearchPara
 /** Link to the new-app wizard, carrying the drill-in it was opened from. */
 export function newAppHref(
   p?: OverviewPlacement | null,
-  opts?: { template?: string },
+  opts?: { template?: string; variant?: string },
 ): string {
   const params = placementParams(p);
   if (opts?.template) params.set("template", opts.template);
+  if (opts?.variant) params.set("variant", opts.variant);
   const qs = params.toString();
   return qs ? `/new?${qs}` : "/new";
 }
