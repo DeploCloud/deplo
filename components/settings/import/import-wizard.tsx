@@ -929,17 +929,21 @@ function ReviewStep({
                 Create a new team
               </Button>
             )}
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() =>
-                setChosen(
-                  allChosen ? new Set() : new Set(pickable.map((s) => s.sourceId)),
-                )
-              }
-            >
-              {allChosen ? "Unselect all" : "Select all"}
-            </Button>
+            {/* Nothing to select is not a disabled button, it is no button:
+                the card below is already saying why. */}
+            {pickable.length > 0 && (
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() =>
+                  setChosen(
+                    allChosen ? new Set() : new Set(pickable.map((s) => s.sourceId)),
+                  )
+                }
+              >
+                {allChosen ? "Unselect all" : "Select all"}
+              </Button>
+            )}
           </div>
         </CardHeader>
         <CardContent>
