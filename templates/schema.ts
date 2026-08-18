@@ -17,7 +17,7 @@ export const templateListQuerySchema = z
     search: z.string().trim().max(200).default(""),
     order: z.enum(["asc", "desc"]).default("asc"),
     category: slugSchema.optional(),
-    sort: z.enum(["name", "category", "createdAt", "lastUpdate"]).default("name"),
+    sort: z.enum(["name"]).default("name"),
   })
   .strict();
 
@@ -46,7 +46,7 @@ const apiTemplateLinksSchema = z
   .object({
     github: httpsUrlSchema.optional(),
     website: httpsUrlSchema.optional(),
-    docs: httpsUrlSchema.optional(),
+    docs: z.array(httpsUrlSchema).optional(),
   })
   .strict()
   .refine((links) => Object.values(links).some(Boolean));
@@ -70,9 +70,18 @@ export const apiTemplateVariantSchema = z
   .object({
     name: z.string().min(2).max(80),
     shortDescription: z.string().min(20).max(240),
+    category: apiCategorySchema,
+    developedBy: apiLinkSchema,
+    submittedBy: apiLinkSchema,
+    links: apiTemplateLinksSchema,
     lastUpdate: z.iso.datetime(),
     createdAt: z.iso.datetime(),
+    description: z.string().min(20).max(20_000),
     slug: slugSchema,
+    logo: z.string().regex(/^\/images\/[a-z0-9]+(?:-[a-z0-9]+)*\/[a-z0-9]+(?:-[a-z0-9]+)*\/logo\.webp$/),
+    images: z.array(
+      z.string().regex(/^\/images\/[a-z0-9]+(?:-[a-z0-9]+)*\/[a-z0-9]+(?:-[a-z0-9]+)*\/[1-9]\d*\.webp$/),
+    ),
     files: apiTemplateVariantFilesSchema,
   })
   .strict();
@@ -80,32 +89,18 @@ export const apiTemplateVariantSchema = z
 export const apiTemplateSchema = z
   .object({
     name: z.string().min(2).max(80),
-    shortDescription: z.string().min(20).max(240),
-
-    category: apiCategorySchema,
-
-    developedBy: apiLinkSchema,
-    submittedBy: apiLinkSchema,
-    links: apiTemplateLinksSchema,
-
-    lastUpdate: z.iso.datetime(),
-    createdAt: z.iso.datetime(),
-
-    description: z.string().min(20).max(20_000),
     slug: slugSchema,
-
     logo: z
       .string()
       .regex(/^\/images\/[a-z0-9]+(?:-[a-z0-9]+)*\/logo\.webp$/)
       .nullable(),
-
-    images: z.array(
-      z.string().regex(/^\/images\/[a-z0-9]+(?:-[a-z0-9]+)*\/[1-9]\d*\.webp$/),
-    ),
-
     variants: z.array(apiTemplateVariantSchema).min(1),
   })
-  .strict();
+  .strict()
+  .refine(
+    ({ variants }) => variants.some(({ slug }) => slug === "default"),
+    "A default variant is required.",
+  );
 
 const paginationSchema = z
   .object({
@@ -126,7 +121,7 @@ export const templatesResponseSchema = z
 export const templateAssetPathSchema = z.union([
   z
     .string()
-    .regex(/^\/images\/[a-z0-9]+(?:-[a-z0-9]+)*\/(?:logo|[1-9]\d*)\.webp$/),
+    .regex(/^\/images\/[a-z0-9]+(?:-[a-z0-9]+)*\/(?:logo|[a-z0-9]+(?:-[a-z0-9]+)*\/logo|[a-z0-9]+(?:-[a-z0-9]+)*\/[1-9]\d*)\.webp$/),
   z
     .string()
     .regex(

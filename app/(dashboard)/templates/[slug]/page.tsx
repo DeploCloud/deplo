@@ -35,6 +35,7 @@ import {
 } from "@/lib/overview-links";
 import { templateAccent, templateAccents } from "@/lib/templates/logo-color";
 import { getTemplate, listCatalog, templateAssetUrl } from "@/templates/catalog";
+import { defaultVariant } from "@/templates/types";
 
 /** How many siblings the Related rail carries. */
 const RELATED = 12;
@@ -76,29 +77,27 @@ export default async function TemplatePage(props: PageProps<"/templates/[slug]">
       </div>
     );
 
-  // `getTemplate` hands back the raw entry: unlike `listCatalog` it does not
-  // resolve asset paths, so the URLs are built here.
-  const logo = template.logo ? templateAssetUrl(template.logo) : null;
-  const images = template.images.map(templateAssetUrl);
+  // `default` is the family default; an invalid or missing query selection
+  // returns to it rather than silently picking array order.
+  const fallbackVariant = defaultVariant(template);
+  const wanted = Array.isArray(searchParams.variant)
+    ? searchParams.variant[0]
+    : searchParams.variant;
+  const variant =
+    template.variants.find((v) => v.slug === wanted) ?? fallbackVariant;
+  const manyVariants = template.variants.length > 1;
+
+  // `getTemplate` hands back raw asset paths, unlike `listCatalog`.
+  const logo = templateAssetUrl(variant.logo);
+  const images = variant.images.map(templateAssetUrl);
   const accent = await templateAccent(template.slug, logo);
   const veil = veilProps(accent, "on");
 
   const catalog = await listCatalog().catch(() => []);
   const related = catalog
-    .filter((t) => t.slug !== template.slug && t.category.slug === template.category.slug)
+    .filter((t) => t.slug !== template.slug && defaultVariant(t).category.slug === variant.category.slug)
     .slice(0, RELATED);
   const relatedAccents = await templateAccents(related);
-
-  // Which variant of the family this page is showing. A family with one variant
-  // never shows a picker, so the page looks exactly as it always did; a stale or
-  // renamed `?variant=` falls back to the first rather than losing a template
-  // that is perfectly available.
-  const wanted = Array.isArray(searchParams.variant)
-    ? searchParams.variant[0]
-    : searchParams.variant;
-  const variant =
-    template.variants.find((v) => v.slug === wanted) ?? template.variants[0]!;
-  const manyVariants = template.variants.length > 1;
 
   const deployHref = newAppHref(placement, {
     template: template.slug,
@@ -131,7 +130,7 @@ export default async function TemplatePage(props: PageProps<"/templates/[slug]">
               {template.name}
             </h1>
             <p className="mt-1 text-sm text-muted-foreground">
-              {manyVariants ? variant.shortDescription : template.shortDescription}
+              {variant.shortDescription}
             </p>
           </div>
         </div>
@@ -154,7 +153,7 @@ export default async function TemplatePage(props: PageProps<"/templates/[slug]">
         <TemplateScreenshots images={images} name={template.name} />
       )}
 
-      <TemplateMarkdown source={template.description} />
+      <TemplateMarkdown source={variant.description} />
 
       {/* Metadata. Every row is a fact the catalogue carries; nothing is faked
           when it is missing, the row simply isn't there. */}
@@ -162,51 +161,51 @@ export default async function TemplatePage(props: PageProps<"/templates/[slug]">
         <Row label="Category">
           <span className="flex items-center gap-1.5">
             <CategoryIcon
-              icon={template.category.icon}
+              icon={variant.category.icon}
               className="size-4 text-muted-foreground"
             />
-            {template.category.name}
+            {variant.category.name}
           </span>
         </Row>
         <Row label="Developed by">
           <ExternalLink
-            href={template.developedBy.url}
-            label={template.developedBy.label}
+            href={variant.developedBy.url}
+            label={variant.developedBy.label}
           />
         </Row>
         <Row label="Submitted by">
           <ExternalLink
-            href={template.submittedBy.url}
-            label={template.submittedBy.label}
+            href={variant.submittedBy.url}
+            label={variant.submittedBy.label}
           />
         </Row>
-        {template.links.github && (
+        {variant.links.github && (
           <Row label="Source code">
             <ExternalLink
-              href={template.links.github}
+              href={variant.links.github}
               label="GitHub"
               icon={<GitHubIcon className="size-3.5" />}
             />
           </Row>
         )}
-        {template.links.website && (
+        {variant.links.website && (
           <Row label="Website">
             <ExternalLink
-              href={template.links.website}
-              label={hostOf(template.links.website)}
+              href={variant.links.website}
+              label={hostOf(variant.links.website)}
               icon={<Globe className="size-3.5" />}
             />
           </Row>
         )}
-        {template.links.docs && (
-          <Row label="Documentation">
+        {variant.links.docs?.map((url) => (
+          <Row key={url} label="Documentation">
             <ExternalLink
-              href={template.links.docs}
-              label={hostOf(template.links.docs)}
+              href={url}
+              label={hostOf(url)}
               icon={<BookOpen className="size-3.5" />}
             />
           </Row>
-        )}
+        ))}
       </dl>
 
       {related.length > 0 && (

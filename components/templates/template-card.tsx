@@ -4,7 +4,7 @@ import { LogoImage } from "@/components/shared/project-logo";
 import { cn } from "@/lib/utils";
 import { plateClass, veilProps } from "@/components/templates/veil";
 import type { LogoAccent } from "@/lib/templates/logo-color";
-import type { CatalogTemplate } from "@/templates/types";
+import { defaultVariant, type CatalogTemplate } from "@/templates/types";
 
 /**
  * What the browser needs to draw a template, and nothing else.
@@ -24,15 +24,16 @@ export interface StoreTemplate {
 }
 
 export function toStoreTemplate(t: CatalogTemplate): StoreTemplate {
+  const variant = defaultVariant(t);
   return {
     slug: t.slug,
     name: t.name,
-    shortDescription: t.shortDescription,
+    shortDescription: variant.shortDescription,
     logo: t.logo,
     category: {
-      slug: t.category.slug,
-      name: t.category.name,
-      icon: t.category.icon,
+      slug: variant.category.slug,
+      name: variant.category.name,
+      icon: variant.category.icon,
     },
   };
 }

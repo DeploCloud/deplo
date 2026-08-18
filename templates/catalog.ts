@@ -81,7 +81,11 @@ function withAssetUrls(t: ApiTemplate): CatalogTemplate {
   return {
     ...t,
     logo: t.logo ? templateAssetUrl(t.logo) : null,
-    images: t.images.map(templateAssetUrl),
+    variants: t.variants.map((variant) => ({
+      ...variant,
+      logo: templateAssetUrl(variant.logo),
+      images: variant.images.map(templateAssetUrl),
+    })),
   };
 }
 

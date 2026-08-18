@@ -77,6 +77,7 @@ export interface WizardServer {
 export interface WizardTemplate {
   id: string;
   name: string;
+  variantName?: string;
   description: string;
   logo: string | null;
   compose: string;
@@ -524,7 +525,9 @@ export function NewAppWizard({
   // Values surfaced in the sticky summary rail (right column) — the at-a-glance
   // recap of what will be created, next to the primary deploy action.
   const sourceLabel = isTemplate
-    ? template!.name
+    ? template!.variantName
+      ? `${template!.name} · ${template!.variantName}`
+      : template!.name
     : SOURCE_TABS.find((t) => t.id === source)?.label ?? source;
   const selectedServer = servers.find((s) => s.id === serverId);
   const serverSummary = selectedServer ? serverLabel(selectedServer) : "—";
@@ -657,7 +660,7 @@ export function NewAppWizard({
                   // eslint-disable-next-line @next/next/no-img-element
                   <img
                     src={template!.logo}
-                    alt={template!.name}
+                    alt={template!.variantName ? `${template!.name} · ${template!.variantName}` : template!.name}
                     className="size-full object-contain"
                   />
                 ) : (
@@ -665,7 +668,11 @@ export function NewAppWizard({
                 )}
               </div>
               <div>
-                <p className="font-medium">{template!.name}</p>
+                <p className="font-medium">
+                  {template!.variantName
+                    ? `${template!.name} · ${template!.variantName}`
+                    : template!.name}
+                </p>
                 <p className="mt-1 line-clamp-2 text-sm text-muted-foreground">
                   {template!.description}
                 </p>
@@ -679,7 +686,7 @@ export function NewAppWizard({
                 <CardTitle>Source</CardTitle>
                 <CardDescription>
                   {isTemplate
-                    ? `Customising ${template!.name}. Change the source or build before deploying.`
+                    ? `Customising ${template!.variantName ? `${template!.name} · ${template!.variantName}` : template!.name}. Change the source or build before deploying.`
                     : "Where your code or image comes from. Deplo builds and runs it in Docker."}
                 </CardDescription>
               </div>

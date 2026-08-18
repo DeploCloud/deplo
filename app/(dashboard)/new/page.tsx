@@ -86,7 +86,7 @@ export default async function NewAppPage(props: PageProps<"/new">) {
     : null;
   // Apps store their logo inline, so the catalog's remote image is fetched once
   // here: the icon then survives the catalog going away.
-  const logo = template ? await templateLogoDataUri(template.logo) : null;
+  const logo = template ? await templateLogoDataUri(template.variant.logo) : null;
   const servers = await listServerChoices();
   const installations = await listGithubInstallations();
   const connections = await listGitConnections();
@@ -145,6 +145,7 @@ export default async function NewAppPage(props: PageProps<"/new">) {
             ? {
                 id: template.slug,
                 name: template.name,
+                variantName: template.variant.name,
                 description: template.variant.shortDescription,
                 logo,
                 compose: blueprint?.compose ?? "",
