@@ -682,7 +682,7 @@ test("mapDatabase carries the external port and reports what a database cannot t
   );
   assert.equal(value?.exposedPort, 5432);
   assert.match(notes.join(" "), /start command/);
-  assert.match(notes.join(" "), /only its data volume/);
+  assert.match(notes.join(" "), /extra files mounted/);
 });
 
 /* ---- the data cutover ----------------------------------------------- */

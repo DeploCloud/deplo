@@ -1665,8 +1665,11 @@ async function importDatabaseService(
     }
   }
 
+  // Names the step that fills it. "Restore your data" read as "go find a dump
+  // and do it yourself", which is how someone concludes the import left them
+  // with an empty database and no way to move the old one.
   notes.push(
-    `Empty, and reachable here as "${created.host}" instead of "${row.appName}". Update the connection strings, then restore your data.`,
+    `Empty for now. The Data step copies its data over from Dokploy - and it will answer as "${created.host}", not "${row.appName}", so update the connection strings.`,
   );
   await report.notes(svc.kind, name, notes, {
     kind: "database",

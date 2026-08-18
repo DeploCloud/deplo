@@ -884,7 +884,7 @@ export function mapDatabase(
     );
   if ((row.mounts ?? []).length > 0)
     notes.push(
-      "Extra files and volumes are mounted on Dokploy. A Deplo database gets only its data volume, so they do not come across.",
+      "This database has extra files mounted on Dokploy. They are not imported - add them again here if you need them.",
     );
 
   return {
