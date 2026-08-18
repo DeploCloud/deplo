@@ -32,6 +32,7 @@ import {
 import {
   seedApp,
   seedServer,
+  SERVER_1,
   TRUNCATE_PROJECT_GRAPH,
 } from "./app-graph-test-helpers";
 import { __setDnsResolve4ForTest, __resetDnsResolve4ForTest } from "./domains";
@@ -586,6 +587,83 @@ test("only the picked services come over, and the rest are not even read", async
     false,
   );
   assert.equal(calls.includes("postgres.one"), false);
+});
+
+test("each app lands on the server it was placed on, and builds where it was told", async () => {
+  const SERVER_2 = "srv_2";
+  await seedServer(db, SERVER_2);
+  const runId = await asOwner(() => beginDokployImport({ url: URL_BASE }));
+  await asOwner(() =>
+    importDokployProject({
+      ...CONNECT,
+      runId,
+      projectId: "dok-prj-blink",
+      serviceIds: ["dok-app-web", "dok-app-api"],
+      placements: [
+        { serviceId: "dok-app-web", serverId: SERVER_1 },
+        { serviceId: "dok-app-api", serverId: SERVER_2, buildServerId: SERVER_1 },
+      ],
+    }),
+  );
+
+  const apps = await db.select().from(appsTable);
+  const byName = new Map(apps.map((a) => [a.name, a]));
+  assert.equal(byName.get("blink-web")?.serverId, SERVER_1);
+  assert.equal(byName.get("blink-api")?.serverId, SERVER_2);
+  // Automatic unless the caller said otherwise, which is what null means.
+  assert.equal(byName.get("blink-web")?.buildServerId, null);
+  assert.equal(byName.get("blink-api")?.buildServerId, SERVER_1);
+});
+
+test("a placement naming a server this team cannot reach is refused, not used", async () => {
+  const runId = await asOwner(() => beginDokployImport({ url: URL_BASE }));
+  const result = await asOwner(() =>
+    importDokployProject({
+      ...CONNECT,
+      runId,
+      projectId: "dok-prj-blink",
+      serviceIds: ["dok-app-web"],
+      placements: [{ serviceId: "dok-app-web", serverId: "srv_from_another_team" }],
+    }),
+  );
+
+  // It still lands - on the default - and the report says the pick was dropped,
+  // because silently deploying somewhere else is the surprise this guards.
+  const apps = await db.select().from(appsTable);
+  assert.deepEqual(
+    apps.map((a) => a.serverId),
+    [SERVER_1],
+  );
+  const line = result.items.find((i) => i.sourceKind === "server")!;
+  assert.equal(line.outcome, "manual");
+  assert.match(line.message!, /not one this team can deploy to/);
+});
+
+test("a build server this team cannot reach falls back to Automatic", async () => {
+  const runId = await asOwner(() => beginDokployImport({ url: URL_BASE }));
+  const result = await asOwner(() =>
+    importDokployProject({
+      ...CONNECT,
+      runId,
+      projectId: "dok-prj-blink",
+      serviceIds: ["dok-app-web"],
+      placements: [
+        {
+          serviceId: "dok-app-web",
+          serverId: SERVER_1,
+          buildServerId: "srv_from_another_team",
+        },
+      ],
+    }),
+  );
+
+  const apps = await db.select().from(appsTable);
+  assert.equal(apps[0].serverId, SERVER_1);
+  assert.equal(apps[0].buildServerId, null);
+  assert.match(
+    result.items.find((i) => i.sourceKind === "server")!.message!,
+    /not one this team can build on/,
+  );
 });
 
 test("a project that is already here is reused, not duplicated", async () => {

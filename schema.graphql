@@ -1557,6 +1557,15 @@ type DokployInvite {
 }
 
 """
+Where one service lands. `serviceId` is the `sourceId` a scan reports. Omit `buildServerId` (or send null) for Automatic - Deplo uses a build server if the fleet has one, and compiles where the app runs otherwise.
+"""
+input DokployPlacementInput {
+  buildServerId: String
+  serverId: String!
+  serviceId: String!
+}
+
+"""
 What an import would do, read from the source instance without writing anything.
 """
 type DokployPlan {
@@ -1616,6 +1625,11 @@ type DokployPlanServer {
 One Dokploy service (an application, a compose stack, or a database) as it would land here.
 """
 type DokployPlanService {
+  """
+  Whether Deplo would ever compile this. False for a compose stack, a prebuilt image and a database - all of them deploy as they are, so a build server would have nothing to do for them.
+  """
+  buildsFromSource: Boolean
+
   """
   The hostnames that would come across. Dokploy's generated throwaway hosts (traefik.me, sslip.io, nip.io) are already dropped — Deplo mints its own.
   """
@@ -2563,6 +2577,11 @@ type Mutation {
   """
   importDokployProject(
     input: DokployConnectInput!
+
+    """
+    Where each service lands, one entry per service. Wins over `servers`, which stays the fallback for anything not listed here and is what the data cutover reads. A server this team cannot deploy to is refused into a report line, never used.
+    """
+    placements: [DokployPlacementInput!]
 
     """The Dokploy `projectId` to import."""
     projectId: String!

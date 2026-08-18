@@ -79,7 +79,7 @@ import { createDatabase, updateDatabaseImage } from "./databases";
 import { addDomain, updateDomain } from "./domains";
 import { createEnvironment, listEnvironmentsForProject } from "./environments";
 import { createProject, defaultEnvironmentFor, listProjects } from "./projects";
-import { listServersForTeam } from "./servers";
+import { canHostWorkloads, listServersForTeam } from "./servers";
 import { saveSharedVar } from "./shared-vars";
 import { recordActivity } from "./activity";
 
@@ -137,6 +137,13 @@ export interface PlanService {
   status: PlanStatus;
   /** The Dokploy server it runs on; empty string means Dokploy's own host. */
   sourceServerId: string;
+  /**
+   * Whether Deplo would ever COMPILE this, which is what makes a build server
+   * mean anything for it. A compose stack, a prebuilt image and a database are
+   * all deployed as they are, so offering to choose where they build would be a
+   * control with nothing behind it.
+   */
+  buildsFromSource: boolean;
   /** Hostnames that would be imported (the throwaway ones already dropped). */
   domains: string[];
   notes: string[];
@@ -403,6 +410,9 @@ export async function scanDokploy(input: ConnectInput): Promise<DokployPlan> {
                 : null,
           status: "new",
           sourceServerId: svc.serverId,
+          // Only a repository source ever reaches the builder; every other kind
+          // flips this below or leaves it false.
+          buildsFromSource: false,
           domains: [],
           notes: [],
         };
@@ -481,7 +491,11 @@ export async function scanDokploy(input: ConnectInput): Promise<DokployPlan> {
           }
         } else {
           const app = detail as DokployApplication;
-          line.notes.push(...mapSource(app).notes);
+          // The same call the notes come from: a git source is the only one Deplo
+          // builds, so this costs nothing beyond keeping the result.
+          const src = mapSource(app);
+          line.buildsFromSource = src.value.kind === "git";
+          line.notes.push(...src.notes);
           line.notes.push(...mapBuildSettings(app).notes);
           line.notes.push(...portNotes(app));
           line.notes.push(...unsupportedNotes(app));
@@ -866,6 +880,12 @@ export interface ImportProjectInput extends ConnectInput {
    * project, which is what every caller did before the wizard grew a tree.
    */
   serviceIds?: string[];
+  /**
+   * Where each service lands, by its Dokploy id. A service with no entry falls
+   * back to `servers` - the per-HOST mapping - exactly as before, so a caller
+   * that cannot express a placement is unaffected.
+   */
+  placements?: ServicePlacement[];
 }
 
 /**
@@ -893,6 +913,14 @@ export async function importDokployProject(
 
   const report = new Report(input.runId).at(source.name);
   const serverMap = await resolveServers(teamId, input.servers ?? [], report, source.name);
+  // Per SERVICE, and it wins over the per-host mapping: the review screen places
+  // apps one by one, and the host mapping is what a caller falls back to.
+  const placed = await resolvePlacements(
+    teamId,
+    input.placements ?? [],
+    report,
+    source.name,
+  );
 
   const projectId = await ensureProject(source, report);
   if (!projectId)
@@ -972,7 +1000,12 @@ export async function importDokployProject(
             svc,
             detail as DokployApplication & DokployCompose,
             name,
-            { projectId, environmentId, serverId: serverMap.get(svc.serverId) },
+            {
+              projectId,
+              environmentId,
+              serverId: placed.get(svc.id)?.serverId ?? serverMap.get(svc.serverId),
+              buildServerId: placed.get(svc.id)?.buildServerId ?? null,
+            },
             svcReport,
           );
           if (appId) appIds.push(appId);
@@ -981,7 +1014,7 @@ export async function importDokployProject(
             svc,
             detail as DokployDatabase,
             name,
-            serverMap.get(svc.serverId),
+            placed.get(svc.id)?.serverId ?? serverMap.get(svc.serverId),
             svcReport,
           );
         }
@@ -1055,9 +1088,7 @@ async function resolveServers(
   projectName: string,
 ): Promise<Map<string, string | undefined>> {
   const usable = new Set(
-    (await listServersForTeam(teamId))
-      .filter((s) => !s.storageOnly && !s.buildOnly)
-      .map((s) => s.id),
+    (await listServersForTeam(teamId)).filter(canHostWorkloads).map((s) => s.id),
   );
   const out = new Map<string, string | undefined>();
   for (const { from, to } of choices) {
@@ -1071,6 +1102,61 @@ async function resolveServers(
         message:
           "The server picked for this Dokploy host is not one this team can deploy to - Deplo's default server was used instead.",
       });
+  }
+  return out;
+}
+
+/** Where ONE service was placed: the host it runs on, and the one it compiles on. */
+export interface ServicePlacement {
+  /** The Dokploy service id - the `sourceId` a scan reports. */
+  serviceId: string;
+  serverId: string;
+  /** Null (or absent) is Automatic: use a build server if the fleet has one. */
+  buildServerId?: string | null;
+}
+
+/** Dokploy service id → where it lands, for the services the caller placed. */
+async function resolvePlacements(
+  teamId: string,
+  placements: ServicePlacement[],
+  report: Report,
+  projectName: string,
+): Promise<Map<string, { serverId: string; buildServerId: string | null }>> {
+  const out = new Map<string, { serverId: string; buildServerId: string | null }>();
+  if (placements.length === 0) return out;
+
+  const servers = await listServersForTeam(teamId);
+  const canRun = new Set(servers.filter(canHostWorkloads).map((s) => s.id));
+  // Wider than `canRun` on purpose: a build-only host is a legal builder and an
+  // illegal target, which is the whole point of the two columns.
+  const canBuild = new Set(servers.filter((s) => !s.storageOnly).map((s) => s.id));
+
+  for (const p of placements) {
+    if (!canRun.has(p.serverId)) {
+      await report.add({
+        path: projectName,
+        sourceKind: "server",
+        sourceName: p.serviceId,
+        outcome: "manual",
+        message:
+          "The server picked for this app is not one this team can deploy to - Deplo's default server was used instead.",
+      });
+      continue;
+    }
+    let buildServerId: string | null = null;
+    if (p.buildServerId) {
+      if (canBuild.has(p.buildServerId)) buildServerId = p.buildServerId;
+      else
+        await report.add({
+          path: projectName,
+          sourceKind: "server",
+          sourceName: p.serviceId,
+          outcome: "manual",
+          message:
+            "The build server picked for this app is not one this team can build on - it builds automatically instead.",
+        });
+    }
+    out.set(p.serviceId, { serverId: p.serverId, buildServerId });
   }
   return out;
 }
@@ -1194,7 +1280,12 @@ async function importAppService(
   svc: SourceService,
   detail: DokployApplication & DokployCompose,
   name: string,
-  home: { projectId: string; environmentId: string; serverId: string | undefined },
+  home: {
+    projectId: string;
+    environmentId: string;
+    serverId: string | undefined;
+    buildServerId: string | null;
+  },
   report: Report,
 ): Promise<string | null> {
   const isCompose = svc.kind === "compose";
@@ -1315,6 +1406,7 @@ async function importAppService(
     compose,
     env,
     serverId: home.serverId,
+    buildServerId: home.buildServerId,
     projectId: home.projectId,
     environmentId: home.environmentId,
     build,

@@ -82,6 +82,10 @@ const PlanServiceRef = builder
         description:
           "The Dokploy server it runs on. Empty string means Dokploy's own host, which has no server row over there.",
       }),
+      buildsFromSource: t.exposeBoolean("buildsFromSource", {
+        description:
+          "Whether Deplo would ever compile this. False for a compose stack, a prebuilt image and a database - all of them deploy as they are, so a build server would have nothing to do for them.",
+      }),
       domains: t.exposeStringList("domains", {
         description:
           "The hostnames that would come across. Dokploy's generated throwaway hosts (traefik.me, sslip.io, nip.io) are already dropped — Deplo mints its own.",
@@ -310,6 +314,16 @@ const ServerChoiceInput = builder.inputType("DokployServerChoiceInput", {
   }),
 });
 
+const PlacementInput = builder.inputType("DokployPlacementInput", {
+  description:
+    "Where one service lands. `serviceId` is the `sourceId` a scan reports. Omit `buildServerId` (or send null) for Automatic - Deplo uses a build server if the fleet has one, and compiles where the app runs otherwise.",
+  fields: (t) => ({
+    serviceId: t.string({ required: true }),
+    serverId: t.string({ required: true }),
+    buildServerId: t.string({ required: false }),
+  }),
+});
+
 const ConnectInputRef = builder.inputType("DokployConnectInput", {
   fields: (t) => ({
     url: t.string({
@@ -404,8 +418,17 @@ builder.mutationFields((t) => ({
         description:
           "Which of the project's services to import, by their Dokploy id (the `sourceId` a scan reports). Omit to import all of them. A service left out is left out silently - it is a choice, not an outcome, so it produces no report line. An environment nothing was picked from is not created.",
       }),
+      placements: t.arg({
+        type: [PlacementInput],
+        required: false,
+        description:
+          "Where each service lands, one entry per service. Wins over `servers`, which stays the fallback for anything not listed here and is what the data cutover reads. A server this team cannot deploy to is refused into a report line, never used.",
+      }),
     },
-    resolve: (_r, { input, runId, projectId, servers, skipDatabases, serviceIds }) =>
+    resolve: (
+      _r,
+      { input, runId, projectId, servers, skipDatabases, serviceIds, placements },
+    ) =>
       importDokployProject({
         url: input.url,
         apiKey: input.apiKey,
@@ -415,6 +438,11 @@ builder.mutationFields((t) => ({
         servers: servers?.map((s) => ({ from: s.from, to: s.to })),
         skipDatabases: skipDatabases ?? false,
         serviceIds: serviceIds ?? undefined,
+        placements: placements?.map((p) => ({
+          serviceId: p.serviceId,
+          serverId: p.serverId,
+          buildServerId: p.buildServerId ?? null,
+        })),
       }),
   }),
   importDokployMembers: t.field({

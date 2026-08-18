@@ -1,6 +1,6 @@
 import { hasCapability, isInstanceAdmin, reachesWholeTeam } from "@/lib/membership";
 import { getTeamIdentity } from "@/lib/data/teams";
-import { listServerChoices } from "@/lib/data/servers";
+import { listBuildServerChoices, listServerChoices } from "@/lib/data/servers";
 import { listDokployImports } from "@/lib/data/dokploy-import";
 import { OutsideYourAccess } from "@/components/shared/outside-your-access";
 import { ImportWizard } from "@/components/settings/import/import-wizard";
@@ -29,9 +29,12 @@ export default async function SettingsImportPage() {
       />
     );
 
-  const [team, servers, runs, admin] = await Promise.all([
+  const [team, servers, buildServers, runs, admin] = await Promise.all([
     getTeamIdentity(),
     listServerChoices(),
+    // A second, wider list: a build-only host cannot RUN anything, which is
+    // exactly why it belongs in the other column.
+    listBuildServerChoices(),
     listDokployImports(),
     isInstanceAdmin(),
   ]);
@@ -41,6 +44,7 @@ export default async function SettingsImportPage() {
       teamId={team.id}
       teamName={team.name}
       servers={servers}
+      buildServers={buildServers}
       runs={runs}
       isInstanceAdmin={admin}
     />

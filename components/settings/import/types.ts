@@ -15,6 +15,7 @@ export interface PlanService {
   targetKind: string | null;
   status: "new" | "exists" | "unsupported" | "needs_grant";
   sourceServerId: string;
+  buildsFromSource: boolean;
   domains: string[];
   notes: string[];
 }
@@ -86,6 +87,21 @@ export interface ImportRun {
   error: string | null;
   startedAt: string;
   finishedAt: string | null;
+}
+
+/** A server a picker offers. `isDeploHost` marks the machine Deplo itself runs on. */
+export interface ServerChoice {
+  id: string;
+  name: string;
+  isDeploHost?: boolean;
+  /** Build pickers only: a host that compiles for others and runs nothing. */
+  buildOnly?: boolean;
+}
+
+/** Where one service lands. `buildServerId` null is Automatic. */
+export interface Placement {
+  serverId: string;
+  buildServerId: string | null;
 }
 
 /** A service Deplo has no equivalent for cannot be picked, so it never counts. */

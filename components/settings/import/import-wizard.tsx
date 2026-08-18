@@ -18,13 +18,6 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
 import { FieldLabel } from "@/components/ui/info-tip";
 import { PageHeader } from "@/components/shared/page-header";
@@ -42,9 +35,11 @@ import {
   importableOf,
   type ImportRun,
   type Invite,
+  type Placement,
   type Plan,
   type PlanMember,
   type ReportItem,
+  type ServerChoice,
 } from "./types";
 
 /**
@@ -125,6 +120,7 @@ const SCAN = /* GraphQL */ `
             targetKind
             status
             sourceServerId
+            buildsFromSource
             domains
             notes
           }
@@ -148,6 +144,7 @@ const IMPORT_PROJECT = /* GraphQL */ `
     $servers: [DokployServerChoiceInput!]
     $skipDatabases: Boolean
     $serviceIds: [String!]
+    $placements: [DokployPlacementInput!]
   ) {
     importDokployProject(
       input: $input
@@ -156,6 +153,7 @@ const IMPORT_PROJECT = /* GraphQL */ `
       servers: $servers
       skipDatabases: $skipDatabases
       serviceIds: $serviceIds
+      placements: $placements
     ) {
       projectName
       created
@@ -216,12 +214,14 @@ export function ImportWizard({
   teamId,
   teamName,
   servers,
+  buildServers,
   runs,
   isInstanceAdmin,
 }: {
   teamId: string;
   teamName: string;
-  servers: { id: string; name: string; type: string }[];
+  servers: ServerChoice[];
+  buildServers: ServerChoice[];
   runs: ImportRun[];
   isInstanceAdmin: boolean;
 }) {
@@ -237,6 +237,8 @@ export function ImportWizard({
   const [serverMap, setServerMap] = React.useState<Record<string, string>>({});
   /** Source SERVICE ids. The leaves are the selection; the tree derives the rest. */
   const [chosen, setChosen] = React.useState<Set<string>>(new Set());
+  /** Source service id → where it lands. Filled for every importable service. */
+  const [placements, setPlacements] = React.useState<Record<string, Placement>>({});
   const [skipDatabases, setSkipDatabases] = React.useState(false);
 
   const [newTeam, setNewTeam] = React.useState("");
@@ -310,13 +312,30 @@ export function ImportWizard({
         ),
       ),
     );
-    // One server in the fleet is the answer to every mapping question.
-    if (servers.length === 1) {
-      const only = servers[0].id;
+    // Everything lands on the machine Deplo itself runs on unless someone says
+    // otherwise: it is the one host every install has, and it is where an app
+    // that came over to be looked at should be. Automatic for the build, which
+    // is what "use a build server if the fleet has one" is called.
+    const home = (servers.find((s) => s.isDeploHost) ?? servers[0])?.id;
+    if (home) {
+      setPlacements(
+        Object.fromEntries(
+          scanned.projects.flatMap((p) =>
+            importableOf(p).map((svc) => [
+              svc.sourceId,
+              { serverId: home, buildServerId: null },
+            ]),
+          ),
+        ),
+      );
+      // The SAME default for the other direction: the cutover asks which of our
+      // servers can reach each Dokploy host, and the Data step is where that is
+      // edited. Pre-answering it here means the common case (Dokploy on this very
+      // machine) needs no answer at all.
       setServerMap(
         Object.fromEntries([
-          [OWN_HOST, only],
-          ...scanned.servers.map((s) => [s.sourceId, only]),
+          [OWN_HOST, home],
+          ...scanned.servers.map((s) => [s.sourceId, home]),
         ]),
       );
     }
@@ -409,6 +428,9 @@ export function ImportWizard({
             servers: serverChoices,
             skipDatabases,
             serviceIds: target.serviceIds,
+            placements: target.serviceIds
+              .filter((id) => placements[id])
+              .map((id) => ({ serviceId: id, ...placements[id] })),
           },
           (d) => d.importDokployProject,
         );
@@ -513,6 +535,7 @@ export function ImportWizard({
     setApiKey("");
     setPlan(null);
     setChosen(new Set());
+    setPlacements({});
     setSkipDatabases(false);
     // Both belong to the instance that was just imported: the mapping keys are
     // ITS server ids, and the team name was ITS organization's.
@@ -595,8 +618,9 @@ export function ImportWizard({
           setChosen={setChosen}
           teamName={teamName}
           servers={servers}
-          serverMap={serverMap}
-          setServerMap={setServerMap}
+          buildServers={buildServers}
+          placements={placements}
+          setPlacements={setPlacements}
           skipDatabases={skipDatabases}
           setSkipDatabases={setSkipDatabases}
           isInstanceAdmin={isInstanceAdmin}
@@ -838,8 +862,9 @@ function ReviewStep({
   setChosen,
   teamName,
   servers,
-  serverMap,
-  setServerMap,
+  buildServers,
+  placements,
+  setPlacements,
   skipDatabases,
   setSkipDatabases,
   isInstanceAdmin,
@@ -855,9 +880,10 @@ function ReviewStep({
   chosen: Set<string>;
   setChosen: (v: Set<string>) => void;
   teamName: string;
-  servers: { id: string; name: string; type: string }[];
-  serverMap: Record<string, string>;
-  setServerMap: (v: Record<string, string>) => void;
+  servers: ServerChoice[];
+  buildServers: ServerChoice[];
+  placements: Record<string, Placement>;
+  setPlacements: (v: Record<string, Placement>) => void;
   skipDatabases: boolean;
   setSkipDatabases: (v: boolean) => void;
   isInstanceAdmin: boolean;
@@ -876,16 +902,6 @@ function ReviewStep({
   // Named here as well as on the People step: "the organization" means its people
   // too, and finding that out only at the end reads like an afterthought.
   const people = plan.members.filter((m) => !m.inTeam).length;
-
-  // Dokploy's own host is always a source, whether or not it has a server row.
-  // With exactly one server of our own everything maps to it and there is no
-  // question to put on screen.
-  const sources = [
-    { sourceId: OWN_HOST, name: "The Dokploy host", ipAddress: null as string | null },
-    ...plan.servers,
-  ];
-  const needsServers = servers.length !== 1;
-  const serversReady = sources.every((s) => serverMap[s.sourceId]);
 
   const counts = React.useMemo(() => {
     let apps = 0;
@@ -958,56 +974,6 @@ function ReviewStep({
         </form>
       )}
 
-      {needsServers && (
-        <Card>
-          <CardHeader>
-            <CardTitle>Where things run</CardTitle>
-            <p className="mt-1 text-sm text-muted-foreground">
-              Pick which of your servers takes each of Dokploy&apos;s. It has to be a
-              machine Deplo manages.
-            </p>
-          </CardHeader>
-          <CardContent className="space-y-3">
-            {servers.length === 0 ? (
-              <EmptyState
-                icon={ServerIcon}
-                title="No server to deploy to"
-                description="Add a server under Settings, Servers before importing."
-              />
-            ) : (
-              sources.map((s) => (
-                <div
-                  key={s.sourceId || "own"}
-                  className="flex flex-wrap items-center justify-between gap-3"
-                >
-                  <div className="min-w-0">
-                    <div className="truncate text-sm font-medium">{s.name}</div>
-                    {s.ipAddress && (
-                      <p className="mt-1 text-xs text-muted-foreground">{s.ipAddress}</p>
-                    )}
-                  </div>
-                  <Select
-                    value={serverMap[s.sourceId] ?? ""}
-                    onValueChange={(v) => setServerMap({ ...serverMap, [s.sourceId]: v })}
-                  >
-                    <SelectTrigger className="w-64">
-                      <SelectValue placeholder="Choose a server" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {servers.map((t) => (
-                        <SelectItem key={t.id} value={t.id}>
-                          {t.name}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-              ))
-            )}
-          </CardContent>
-        </Card>
-      )}
-
       {counts.attention > 0 && (
         <div className="flex items-start gap-3 rounded-lg border border-warning/40 bg-warning/10 p-4">
           <TriangleAlert className="mt-0.5 size-5 shrink-0 text-warning" />
@@ -1045,7 +1011,15 @@ function ReviewStep({
           </Button>
         </CardHeader>
         <CardContent>
-          {plan.projects.length === 0 ? (
+          {servers.length === 0 ? (
+            // Without a host there is nothing to place anything on, so this
+            // replaces the tree rather than sitting beside it.
+            <EmptyState
+              icon={ServerIcon}
+              title="No server to deploy to"
+              description="Add a server under Settings, Servers before importing."
+            />
+          ) : plan.projects.length === 0 ? (
             <EmptyState
               icon={Layers}
               title="Nothing to import"
@@ -1056,6 +1030,10 @@ function ReviewStep({
               projects={plan.projects}
               chosen={chosen}
               onChange={setChosen}
+              servers={servers}
+              buildServers={buildServers}
+              placements={placements}
+              onPlacementsChange={setPlacements}
             />
           )}
         </CardContent>
@@ -1084,7 +1062,7 @@ function ReviewStep({
         </Button>
         <Button
           onClick={onStart}
-          disabled={running || chosen.size === 0 || !serversReady}
+          disabled={running || chosen.size === 0 || servers.length === 0}
         >
           {running ? "Importing" : "Import"}
         </Button>
