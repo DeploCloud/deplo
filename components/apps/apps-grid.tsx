@@ -49,6 +49,7 @@ import {
 import { CreateFolderDialog } from "./create-folder-dialog";
 import { useOverviewSelection } from "./use-overview-selection";
 import { ConfirmAction } from "@/components/shared/confirm-action";
+import { DeleteAppsOption } from "@/components/apps/delete-apps-option";
 import { Button } from "@/components/ui/button";
 import {
   DropdownMenu,
@@ -67,8 +68,8 @@ const REORDER_FOLDERS = `mutation($ids: [ID!]!) { reorderFolders(folderIds: $ids
 const REORDER_PROJECT_CONTAINERS = `mutation($ids: [ID!]!) { reorderProjects(projectIds: $ids) }`;
 const MOVE_TO_FOLDER = `mutation($appId: ID!, $folderId: ID) { moveAppToFolder(appId: $appId, folderId: $folderId) }`;
 const MOVE_SERVICE_TO_PROJECT = `mutation($appId: ID!, $projectId: ID) { moveAppToProject(appId: $appId, projectId: $projectId) }`;
-const DELETE_FOLDER = `mutation($id: ID!) { deleteFolder(id: $id) }`;
-const DELETE_PROJECT = `mutation($id: ID!) { deleteProject(id: $id) }`;
+const DELETE_FOLDER = `mutation($id: ID!, $deleteApps: Boolean) { deleteFolder(id: $id, deleteApps: $deleteApps) }`;
+const DELETE_PROJECT = `mutation($id: ID!, $deleteApps: Boolean) { deleteProject(id: $id, deleteApps: $deleteApps) }`;
 const MOVE_FOLDER = `mutation($id: ID!, $parentId: ID) { moveFolder(id: $id, parentId: $parentId) }`;
 // Bulk variants: each is ONE server round-trip + ONE store write for the whole
 // selection (instead of N fanned-out per-id mutations).
@@ -653,6 +654,9 @@ function SortableGrid({
 
   const [createFolderOpen, setCreateFolderOpen] = React.useState(false);
   const [bulkDeleteOpen, setBulkDeleteOpen] = React.useState(false);
+  // "Delete all apps" on the bulk-delete dialog: the same opt-in each folder and
+  // project card offers, for a selection of them. Resets on close.
+  const [bulkDeleteApps, setBulkDeleteApps] = React.useState(false);
   // When true, the create-folder dialog moves the current selection into the
   // freshly-created folder ("New folder with selection").
   const [folderTakesSelection, setFolderTakesSelection] = React.useState(false);
@@ -696,14 +700,23 @@ function SortableGrid({
     );
   if (selectedFolderIds.length)
     deleteParts.push(
-      `${count(selectedFolderIds.length, "folder is", "folders are")} removed — the apps inside move back to the top level.`,
+      bulkDeleteApps
+        ? `${count(selectedFolderIds.length, "folder is", "folders are")} removed with every app inside.`
+        : `${count(selectedFolderIds.length, "folder is", "folders are")} removed — the apps inside move back to the top level.`,
     );
   if (selectedProjectIds.length)
     deleteParts.push(
-      `${count(selectedProjectIds.length, "project is", "projects are")} removed — the apps inside move back to the top level.`,
+      bulkDeleteApps
+        ? `${count(selectedProjectIds.length, "project is", "projects are")} removed with every app inside.`
+        : `${count(selectedProjectIds.length, "project is", "projects are")} removed — the apps inside move back to the top level.`,
     );
   deleteParts.push("This can't be undone.");
   const bulkDeleteDescription = deleteParts.join(" ");
+  // Whether "Delete all apps" has anything to delete: a selected folder or
+  // project that actually holds apps (both counts cover their whole subtree).
+  const selectionHasNestedApps =
+    folderItems.some((f) => selectedFolderIds.includes(f.id) && f.appCount > 0) ||
+    projectItems.some((p) => selectedProjectIds.includes(p.id) && p.appCount > 0);
 
   function bulkMoveTo(folderId: string | null) {
     const ids = selectedAppIds;
@@ -739,8 +752,12 @@ function SortableGrid({
     // concurrency teardown); folders and projects (usually few) delete per id.
     const results = await Promise.all([
       ...(appIds.length ? [gqlAction(BULK_DELETE, { ids: appIds })] : []),
-      ...folderIds.map((id) => gqlAction(DELETE_FOLDER, { id })),
-      ...projectIds.map((id) => gqlAction(DELETE_PROJECT, { id })),
+      ...folderIds.map((id) =>
+        gqlAction(DELETE_FOLDER, { id, deleteApps: bulkDeleteApps }),
+      ),
+      ...projectIds.map((id) =>
+        gqlAction(DELETE_PROJECT, { id, deleteApps: bulkDeleteApps }),
+      ),
     ]);
     router.refresh();
     const failed = results.find((r) => !r.ok);
@@ -1338,12 +1355,26 @@ function SortableGrid({
       />
       <ConfirmAction
         open={bulkDeleteOpen}
-        onOpenChange={setBulkDeleteOpen}
+        onOpenChange={(o) => {
+          setBulkDeleteOpen(o);
+          if (!o) setBulkDeleteApps(false);
+        }}
         title={`Delete ${selectionCount} item${selectionCount === 1 ? "" : "s"}?`}
         description={bulkDeleteDescription}
         confirmLabel="Delete selection"
         successMessage="Selection deleted"
         optimistic
+        extra={
+          // Only when the selection holds a CONTAINER WITH APPS in it: for a
+          // selection of apps alone the delete already destroys them, and a
+          // checkbox offering it again would read like a second, different thing.
+          selectionHasNestedApps ? (
+            <DeleteAppsOption
+              checked={bulkDeleteApps}
+              onChange={setBulkDeleteApps}
+            />
+          ) : undefined
+        }
         onConfirm={bulkDelete}
       />
     </DndContext>

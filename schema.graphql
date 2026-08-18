@@ -2458,8 +2458,10 @@ type Mutation {
   """
   deleteEnvironment(id: ID!): Boolean
 
-  """Delete a folder; its apps fall back to the top level."""
-  deleteFolder(id: ID!): Boolean
+  """
+  Delete a folder; its apps fall back to the top level, or are stopped and deleted with it when deleteApps is true (which needs delete_apps on every one of them).
+  """
+  deleteFolder(deleteApps: Boolean, id: ID!): Boolean
 
   """Delete an instance-wide variable. Returns true."""
   deleteInstanceEnv(id: String!): Boolean
@@ -2476,9 +2478,9 @@ type Mutation {
   deletePreviewEnvVar(appId: ID!, key: String!): Boolean
 
   """
-  Delete a Project container; its folders and apps fall back to the team top level (not deleted).
+  Delete a Project container; its folders and apps fall back to the team top level, or every app inside is stopped and deleted with it when deleteApps is true (which needs delete_apps on every one of them).
   """
-  deleteProject(id: ID!): Boolean
+  deleteProject(deleteApps: Boolean, id: ID!): Boolean
 
   """Delete a registry credential. Returns true."""
   deleteRegistry(id: String!): Boolean

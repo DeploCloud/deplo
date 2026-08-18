@@ -406,13 +406,28 @@ export async function setProjectColor(
 }
 
 /**
- * Delete a container. Nothing inside is deleted: its folders and apps fall
- * back to the team top level (`project_id = NULL`, the FK default). The
+ * Delete a container. By default nothing inside is deleted: its folders and apps
+ * fall back to the team top level (`project_id = NULL`, the FK default). The
  * `team_project_order` row CASCADEs on the delete.
+ *
+ * `deleteApps` is the opt-in the delete dialog offers: every app the container
+ * counts - its own, in every environment, plus anything in a folder filed under
+ * it - is stopped and deleted with it, gated per app on `delete_apps` (so one
+ * app the caller may not delete refuses the lot). The FOLDERS still fall back to
+ * the top level - the option deletes apps, not structure.
  */
-export async function deleteProject(id: string): Promise<void> {
+export async function deleteProject(
+  id: string,
+  opts: { deleteApps?: boolean } = {},
+): Promise<void> {
   const { teamId } = await requireCapability("delete_projects");
   const userName = (await getCurrentUser())?.name ?? "Someone";
+  // Before the project row goes, while its apps still resolve through it
+  // (ADR-0016). Lazy import: apps.ts imports this module.
+  if (opts.deleteApps) {
+    const { deleteAppsIn } = await import("./apps");
+    await deleteAppsIn({ projectId: id });
+  }
   const name = await getDb().transaction(async (tx) => {
     const rows = await tx
       .select()

@@ -40,6 +40,7 @@ import { ConfirmAction } from "@/components/shared/confirm-action";
 import { FolderColorPicker } from "@/components/apps/folder-color-picker";
 import { ShareFolderDialog } from "@/components/apps/share-folder-dialog";
 import { useBulkAppActions } from "@/components/apps/bulk-app-actions";
+import { DeleteAppsOption } from "@/components/apps/delete-apps-option";
 import { cn, readableTextColor } from "@/lib/utils";
 import { useOptimisticValue } from "@/components/shared/use-optimistic-value";
 import { gqlAction } from "@/lib/graphql-client";
@@ -134,6 +135,8 @@ export function FolderCard({
   const [pending, startTransition] = React.useTransition();
   const [renameOpen, setRenameOpen] = React.useState(false);
   const [deleteOpen, setDeleteOpen] = React.useState(false);
+  // "Delete all apps" on the delete dialog - off on every open (see below).
+  const [deleteApps, setDeleteApps] = React.useState(false);
   const [colorOpen, setColorOpen] = React.useState(false);
   const [shareOpen, setShareOpen] = React.useState(false);
   const [name, setName] = React.useState(folder.name);
@@ -150,6 +153,10 @@ export function FolderCard({
   const caps = folder.capabilities ?? [];
   const canManageThisFolder = isAdminOverride || caps.includes("deploy");
   const canShare = isAdminOverride || (folder.isOwner ?? false);
+  // Deleting the apps too is `delete_apps` HERE - a different permission from
+  // deleting the folder, so a member who may tidy the grid isn't offered the
+  // one click that destroys its contents.
+  const canDeleteApps = isAdminOverride || caps.includes("delete_apps");
   // Draft colour while the colour dialog is open; seeded from the folder and
   // reset on open so cancelling discards an unsaved choice.
   const [draftColor, setDraftColor] = React.useState<string | null>(
@@ -483,17 +490,35 @@ export function FolderCard({
 
       <ConfirmAction
         open={deleteOpen}
-        onOpenChange={setDeleteOpen}
+        // The option is a per-delete decision, so it resets on close: reopening
+        // the dialog must never arrive with the apps already ticked for deletion.
+        onOpenChange={(o) => {
+          setDeleteOpen(o);
+          if (!o) setDeleteApps(false);
+        }}
         title={`Delete ${folder.name}?`}
-        description="The folder is removed, but its apps are kept — they move back to the top level. This cannot be undone."
+        description={
+          deleteApps
+            ? "The folder and every app in it are deleted, containers and volumes included. This cannot be undone."
+            : "The folder is removed, but its apps are kept — they move back to the top level. This cannot be undone."
+        }
         confirmLabel="Delete folder"
         successMessage="Folder deleted"
         optimistic
+        extra={
+          count > 0 && canDeleteApps ? (
+            <DeleteAppsOption
+              checked={deleteApps}
+              onChange={setDeleteApps}
+              count={count}
+            />
+          ) : undefined
+        }
         onConfirm={async () => {
           onDeleted?.();
           const res = await gqlAction(
-            `mutation($id: ID!) { deleteFolder(id: $id) }`,
-            { id: folder.id },
+            `mutation($id: ID!, $deleteApps: Boolean) { deleteFolder(id: $id, deleteApps: $deleteApps) }`,
+            { id: folder.id, deleteApps },
           );
           if (!res.ok) onRestored?.();
           router.refresh();

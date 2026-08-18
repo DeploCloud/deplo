@@ -383,12 +383,29 @@ export async function moveFolder(
 }
 
 /**
- * Delete a folder. Nothing inside is deleted: its apps and its CHILD folders
- * are re-parented to the deleted folder's own parent (so a nested subtree stays
- * intact one level up). The team_folder_order row CASCADEs on the delete.
+ * Delete a folder. By default nothing inside is deleted: its apps and its CHILD
+ * folders are re-parented to the deleted folder's own parent (so a nested
+ * subtree stays intact one level up). The team_folder_order row CASCADEs on the
+ * delete.
+ *
+ * `deleteApps` is the opt-in the delete dialog offers: every app in the folder's
+ * whole subtree is stopped and deleted with it, gated per app on `delete_apps`
+ * (so one app the caller may not delete refuses the lot). The CHILD FOLDERS
+ * still fall back to the parent - the option deletes apps, not structure.
  */
-export async function deleteFolder(id: string): Promise<void> {
+export async function deleteFolder(
+  id: string,
+  opts: { deleteApps?: boolean } = {},
+): Promise<void> {
   const { teamId, userName } = await requireFolderCapability(id, "delete_folders");
+  // Before the folder row goes, while its apps still resolve THROUGH it
+  // (ADR-0016) and their gate is the one the folder's own grants decide.
+  // Imported lazily: apps.ts imports this module, so a static import would close
+  // the cycle.
+  if (opts.deleteApps) {
+    const { deleteAppsIn } = await import("./apps");
+    await deleteAppsIn({ folderId: id });
+  }
   const name = await getDb().transaction(async (tx) => {
     const rows = await tx
       .select()

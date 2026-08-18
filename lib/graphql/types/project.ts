@@ -136,10 +136,13 @@ builder.mutationFields((t) => ({
     type: "Boolean",
     authScopes: deleteScope,
     description:
-      "Delete a Project container; its folders and apps fall back to the team top level (not deleted).",
-    args: { id: t.arg.id({ required: true }) },
-    resolve: async (_r, { id }) => {
-      await deleteProject(String(id));
+      "Delete a Project container; its folders and apps fall back to the team top level, or every app inside is stopped and deleted with it when deleteApps is true (which needs delete_apps on every one of them).",
+    args: {
+      id: t.arg.id({ required: true }),
+      deleteApps: t.arg.boolean({ required: false }),
+    },
+    resolve: async (_r, { id, deleteApps }) => {
+      await deleteProject(String(id), { deleteApps: deleteApps ?? false });
       return true;
     },
   }),

@@ -2456,6 +2456,84 @@ export async function resumeAppDeletes(): Promise<void> {
   }
 }
 
+/** Which container a whole-contents action runs over - a folder or a project. */
+export type AppScope = { folderId?: string | null; projectId?: string | null };
+
+/**
+ * Every app in a folder (its WHOLE subtree) or in a project (its own apps, in
+ * every environment, plus anything inside a legacy folder filed under it) - the
+ * same two sources the tile counts, so nothing nested can sit out an action that
+ * says "all". Team-scoped rows and nothing else: the caller applies its own
+ * reach (token scope + the per-app gate).
+ */
+async function appsInScope(
+  teamId: string,
+  scope: AppScope,
+): Promise<
+  {
+    id: string;
+    folderId: string | null;
+    projectId: string | null;
+    environmentId: string | null;
+  }[]
+> {
+  if (!scope.folderId && !scope.projectId)
+    throw new Error("Pick a folder or a project to act on");
+  const tree = await getDb()
+    .select({
+      id: foldersTable.id,
+      parentId: foldersTable.parentId,
+      projectId: foldersTable.projectId,
+    })
+    .from(foldersTable)
+    .where(eq(foldersTable.teamId, teamId));
+  const folderIds = scope.folderId
+    ? [...descendantFolderIds(scope.folderId, tree)]
+    : // A project's apps are its own (ADR-0009's per-environment membership),
+      // plus anything inside a LEGACY folder filed under it - the same two
+      // sources its tile counts.
+      tree
+        .filter((f) => f.projectId === scope.projectId)
+        .flatMap((f) => [...descendantFolderIds(f.id, tree)]);
+  return getDb()
+    .select({
+      id: appsTable.id,
+      folderId: appsTable.folderId,
+      projectId: appsTable.projectId,
+      environmentId: appsTable.environmentId,
+    })
+    .from(appsTable)
+    .where(
+      and(
+        eq(appsTable.teamId, teamId),
+        scope.folderId
+          ? inArray(appsTable.folderId, folderIds)
+          : folderIds.length > 0
+            ? or(
+                eq(appsTable.projectId, scope.projectId!),
+                inArray(appsTable.folderId, folderIds),
+              )
+            : eq(appsTable.projectId, scope.projectId!),
+      ),
+    );
+}
+
+/**
+ * Stop and delete every app in a folder or a project - the "Delete all apps"
+ * option on their delete dialogs, run BEFORE the container itself goes (while
+ * its apps still resolve through it, ADR-0016). Same target set as
+ * {@link bulkAppAction} and the same teardown as the multi-select delete: gated
+ * per app on `delete_apps`, so an app the caller may not delete REFUSES the
+ * whole thing instead of leaving half a folder destroyed. Returns how many were
+ * stamped; their stacks come down behind the response.
+ */
+export async function deleteAppsIn(scope: AppScope): Promise<number> {
+  const { membership } = await requireMembership();
+  const rows = await appsInScope(membership.teamId, scope);
+  if (rows.length === 0) return 0;
+  return startAppsDelete(rows.map((r) => r.id));
+}
+
 /** The lifecycle actions a folder or a project runs over all of its apps at once. */
 export type BulkAppAction = "start" | "stop" | "restart" | "redeploy";
 
@@ -2477,52 +2555,12 @@ export type BulkAppAction = "start" | "stop" | "restart" | "redeploy";
  */
 export async function bulkAppAction(
   action: BulkAppAction,
-  scope: { folderId?: string | null; projectId?: string | null },
+  scope: AppScope,
 ): Promise<{ ok: number; failed: number; error: string | null }> {
   const { membership } = await requireMembership();
   const teamId = membership.teamId;
 
-  if (!scope.folderId && !scope.projectId)
-    throw new Error("Pick a folder or a project to act on");
-  // Both branches count their WHOLE subtree on the tile, so the action has to
-  // reach the same apps: nothing nested may sit out a "Stop all".
-  const tree = await getDb()
-    .select({
-      id: foldersTable.id,
-      parentId: foldersTable.parentId,
-      projectId: foldersTable.projectId,
-    })
-    .from(foldersTable)
-    .where(eq(foldersTable.teamId, teamId));
-  const folderIds = scope.folderId
-    ? [...descendantFolderIds(scope.folderId, tree)]
-    : // A project's apps are its own (ADR-0009's per-environment membership),
-      // plus anything inside a LEGACY folder filed under it - the same two
-      // sources its tile counts.
-      tree
-        .filter((f) => f.projectId === scope.projectId)
-        .flatMap((f) => [...descendantFolderIds(f.id, tree)]);
-  const where = and(
-    eq(appsTable.teamId, teamId),
-    scope.folderId
-      ? inArray(appsTable.folderId, folderIds)
-      : folderIds.length > 0
-        ? or(
-            eq(appsTable.projectId, scope.projectId!),
-            inArray(appsTable.folderId, folderIds),
-          )
-        : eq(appsTable.projectId, scope.projectId!),
-  );
-
-  const rows = await getDb()
-    .select({
-      id: appsTable.id,
-      folderId: appsTable.folderId,
-      projectId: appsTable.projectId,
-      environmentId: appsTable.environmentId,
-    })
-    .from(appsTable)
-    .where(where);
+  const rows = await appsInScope(teamId, scope);
   // Token scope first, then per-app reach: the same two filters `listApps`
   // applies, so a bulk action can never touch an app its own list wouldn't show.
   const scoped = rows.filter((p) => inAppScope(p));

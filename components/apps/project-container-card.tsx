@@ -28,6 +28,7 @@ import { Label } from "@/components/ui/label";
 import { ConfirmAction } from "@/components/shared/confirm-action";
 import { FolderColorPicker } from "@/components/apps/folder-color-picker";
 import { useBulkAppActions } from "@/components/apps/bulk-app-actions";
+import { DeleteAppsOption } from "@/components/apps/delete-apps-option";
 import { cn, readableTextColor } from "@/lib/utils";
 import { useOptimisticValue } from "@/components/shared/use-optimistic-value";
 import { gqlAction } from "@/lib/graphql-client";
@@ -61,9 +62,10 @@ type MenuKit = {
  * environments each hold their own apps. The whole card links to the
  * drill-in view on the Overview itself (`/?project=<id>`, environment dropdown
  * inside); a ⋯ menu (open / rename / colour / delete) sits above the link.
- * Delete re-parents the project's apps back to the top
- * level — it never deletes them. While a reorder drag is active the link is
- * made inert, and `dropActive` highlights the card as a drop target.
+ * Delete re-parents the project's apps back to the top level unless the dialog's
+ * "Delete all apps" is ticked, which stops and deletes them instead. While a
+ * reorder drag is active the link is made inert, and `dropActive` highlights the
+ * card as a drop target.
  */
 export function ProjectContainerCard({
   project,
@@ -91,6 +93,8 @@ export function ProjectContainerCard({
   const [renameOpen, setRenameOpen] = React.useState(false);
   const [colorOpen, setColorOpen] = React.useState(false);
   const [deleteOpen, setDeleteOpen] = React.useState(false);
+  // "Delete all apps" on the delete dialog - off on every open (see below).
+  const [deleteApps, setDeleteApps] = React.useState(false);
   const [name, setName] = React.useState(project.name);
   // What the card SHOWS: a rename or a recolour lands here on the click and the
   // server's own value takes over when the refresh brings it.
@@ -117,6 +121,10 @@ export function ProjectContainerCard({
     canControl: caps.includes("control_apps"),
     canDeploy: caps.includes("deploy_apps"),
   });
+  // Deleting the apps too is `delete_apps` HERE - a different permission from
+  // deleting the container, so a member who may tidy the grid isn't offered the
+  // one click that destroys its contents.
+  const canDeleteApps = caps.includes("delete_apps");
   const countLabel =
     `${s} ${s === 1 ? "app" : "apps"} · ${e} ${e === 1 ? "environment" : "environments"}`;
 
@@ -333,17 +341,35 @@ export function ProjectContainerCard({
 
       <ConfirmAction
         open={deleteOpen}
-        onOpenChange={setDeleteOpen}
+        // The option is a per-delete decision, so it resets on close: reopening
+        // the dialog must never arrive with the apps already ticked for deletion.
+        onOpenChange={(o) => {
+          setDeleteOpen(o);
+          if (!o) setDeleteApps(false);
+        }}
         title={`Delete ${project.name}?`}
-        description="The project is removed, but its apps are kept — they move back to the Overview top level. This cannot be undone."
+        description={
+          deleteApps
+            ? "The project and every app in it are deleted, containers and volumes included. This cannot be undone."
+            : "The project is removed, but its apps are kept — they move back to the Overview top level. This cannot be undone."
+        }
         confirmLabel="Delete project"
         successMessage="Project deleted"
         optimistic
+        extra={
+          s > 0 && canDeleteApps ? (
+            <DeleteAppsOption
+              checked={deleteApps}
+              onChange={setDeleteApps}
+              count={s}
+            />
+          ) : undefined
+        }
         onConfirm={async () => {
           onDeleted?.();
           const res = await gqlAction(
-            `mutation($id: ID!) { deleteProject(id: $id) }`,
-            { id: project.id },
+            `mutation($id: ID!, $deleteApps: Boolean) { deleteProject(id: $id, deleteApps: $deleteApps) }`,
+            { id: project.id, deleteApps },
           );
           if (!res.ok) onRestored?.();
           router.refresh();

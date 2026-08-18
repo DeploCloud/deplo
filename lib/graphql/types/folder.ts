@@ -205,10 +205,14 @@ builder.mutationFields((t) => ({
   deleteFolder: t.field({
     type: "Boolean",
     authScopes: perFolder,
-    description: "Delete a folder; its apps fall back to the top level.",
-    args: { id: t.arg.id({ required: true }) },
-    resolve: async (_r, { id }) => {
-      await deleteFolder(String(id));
+    description:
+      "Delete a folder; its apps fall back to the top level, or are stopped and deleted with it when deleteApps is true (which needs delete_apps on every one of them).",
+    args: {
+      id: t.arg.id({ required: true }),
+      deleteApps: t.arg.boolean({ required: false }),
+    },
+    resolve: async (_r, { id, deleteApps }) => {
+      await deleteFolder(String(id), { deleteApps: deleteApps ?? false });
       return true;
     },
   }),
