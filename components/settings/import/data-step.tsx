@@ -22,7 +22,6 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { SimpleTooltip } from "@/components/ui/tooltip";
 import { EmptyState } from "@/components/shared/empty-state";
 import { Skeleton } from "@/components/ui/skeleton";
 
@@ -206,6 +205,18 @@ export function DataStep({
     return [...ids];
   }, [plan]);
 
+  /**
+   * Only what there is actually something to copy for.
+   *
+   * A service with no named volume has nothing to move, and a row offering to
+   * move nothing is a row to read past. The split is not a plain filter though:
+   * `volumes: []` means BOTH "there are none" and "Dokploy has no container up,
+   * so we could not look" - and hiding the second kind is how someone leaves a
+   * database behind thinking Deplo checked. Those are named instead.
+   */
+  const movable = (plan ?? []).filter((s) => s.volumes.length > 0);
+  const unread = (plan ?? []).filter((s) => s.volumes.length === 0 && !s.running);
+
   return (
     <div className="space-y-4">
       <Card>
@@ -264,7 +275,7 @@ export function DataStep({
             </div>
           )}
 
-          {plan != null && plan.length === 0 && (
+          {plan != null && movable.length === 0 && unread.length === 0 && (
             <EmptyState
               icon={HardDrive}
               title="Nothing to move"
@@ -272,7 +283,7 @@ export function DataStep({
             />
           )}
 
-          {(plan ?? []).map((s) => (
+          {movable.map((s) => (
             <ServiceRow
               key={s.sourceId}
               service={s}
@@ -282,6 +293,22 @@ export function DataStep({
               onMove={() => setConfirming(s)}
             />
           ))}
+
+          {unread.length > 0 && (
+            <div className="flex items-start gap-3 rounded-lg border border-warning/40 bg-warning/10 p-4 text-sm">
+              <TriangleAlert className="mt-0.5 size-5 shrink-0 text-warning" />
+              <div className="min-w-0">
+                <div className="font-medium text-warning">
+                  {unread.length} service(s) could not be read
+                </div>
+                <p className="mt-1 text-muted-foreground">
+                  {unread.map((s) => s.sourceName).join(", ")} - Dokploy has no
+                  container running for them, so their volumes are unknown. Start them
+                  over there once, then refresh.
+                </p>
+              </div>
+            </div>
+          )}
         </CardContent>
       </Card>
 
@@ -317,34 +344,13 @@ function ServiceRow({
   onMove: () => void;
 }) {
   const Icon = service.targetKind === "database" ? Database : Layers;
-  const nothingToMove = service.volumes.length === 0;
-
-  const button = (
-    <Button
-      size="sm"
-      variant="outline"
-      onClick={onMove}
-      disabled={disabled || moving || nothingToMove}
-    >
+  // Only services with something to copy reach this row, so there is no
+  // "nothing to move" state to explain here any more - the ones Deplo could not
+  // read are named once, above the list.
+  const moveButton = (
+    <Button size="sm" variant="outline" onClick={onMove} disabled={disabled || moving}>
       {moving ? "Copying" : "Move the data"}
     </Button>
-  );
-  // A disabled button emits no pointer events, so the tooltip hangs off a span
-  // around it. The two reasons read the same in the data (`volumes: []`) and are
-  // told apart by whether Dokploy has the service up - which is the difference
-  // between "there is nothing here" and "we could not look".
-  const moveButton = nothingToMove ? (
-    <SimpleTooltip
-      content={
-        service.running
-          ? "This service has no named volumes on Dokploy."
-          : "No container on Dokploy, so its volumes cannot be read. Start it over there, then refresh."
-      }
-    >
-      <span className="inline-flex cursor-not-allowed">{button}</span>
-    </SimpleTooltip>
-  ) : (
-    button
   );
 
   return (
@@ -371,19 +377,14 @@ function ServiceRow({
         </div>
       </div>
 
-      {service.volumes.length > 0 && (
-        <ul className="mt-2 space-y-1">
-          {service.volumes.map((v) => (
-            <li key={v.sourceVolume} className="text-xs text-muted-foreground">
-              <code>{v.mountPath}</code> {v.sourceVolume} into {v.targetVolume}
-              {v.note && <span className="ml-1 text-warning">{v.note}</span>}
-            </li>
-          ))}
-        </ul>
-      )}
-      {service.volumes.length === 0 && (
-        <p className="mt-2 text-xs text-muted-foreground">No volume to move.</p>
-      )}
+      <ul className="mt-2 space-y-1">
+        {service.volumes.map((v) => (
+          <li key={v.sourceVolume} className="text-xs text-muted-foreground">
+            <code>{v.mountPath}</code> {v.sourceVolume} into {v.targetVolume}
+            {v.note && <span className="ml-1 text-warning">{v.note}</span>}
+          </li>
+        ))}
+      </ul>
       {[...service.notes, ...(result?.notes ?? [])].map((n, i) => (
         <p key={i} className="mt-1 text-xs text-muted-foreground">
           {n}
