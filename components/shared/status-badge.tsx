@@ -27,6 +27,8 @@ type AnyStatus =
   | "degraded"
   | "unhealthy"
   | "down"
+  // An app that has never been deployed at all (lib/apps/display-status.ts).
+  | "not_deployed"
   // A pull request preview from a fork, held until a maintainer approves it.
   | "blocked"
   // A pull request preview stopped to stay within the app's own limit.
@@ -92,6 +94,9 @@ const COLORS: Record<string, string> = {
   idle: "bg-muted-foreground",
   stopped: "bg-muted-foreground",
   canceled: "bg-muted-foreground",
+  // Nothing was ever built for this app. Grey for the same reason "idle" is:
+  // nothing is wrong, there is just nothing running yet.
+  not_deployed: "bg-muted-foreground",
 };
 
 const PULSE = new Set([
@@ -134,6 +139,7 @@ const VARIANTS: Record<string, "success" | "warning" | "destructive" | "muted"> 
   down: "destructive",
   never: "muted",
   idle: "muted",
+  not_deployed: "muted",
   stopped: "muted",
   canceled: "muted",
 };
@@ -171,6 +177,10 @@ export function StatusDot({
  */
 const LABELS: Record<string, string> = {
   idle: "Stopped",
+  // Never built, never started. "Stopped" would say someone stopped it, which
+  // is the one thing that did not happen — an imported app has simply not shipped
+  // yet, and the only control that makes sense on it is a first Deploy.
+  not_deployed: "Not deployed",
   // A fork's preview waiting on a maintainer — not a failure, and not something
   // Deplo is doing. "Blocked" would read like an error; this names the action.
   blocked: "Needs approval",

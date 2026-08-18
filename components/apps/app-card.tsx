@@ -8,6 +8,7 @@ import {
   MoreHorizontal,
   GitBranch,
   RotateCw,
+  Rocket,
   Settings,
   Trash2,
   Activity,
@@ -37,6 +38,7 @@ import { AppLogo } from "@/components/shared/project-logo";
 import {
   AppLiveStatusProvider,
   useLiveStatus,
+  useNeverDeployed,
 } from "@/components/apps/app-live-status";
 import { AppStatusDot } from "@/components/apps/app-status-dot";
 import { DeleteWithArtifacts } from "@/components/shared/delete-with-artifacts";
@@ -96,8 +98,13 @@ function LiveCardStatusDot({ project }: { project: AppSummary }) {
  *  (the dot's colour carries the state; this only spells it out on hover). */
 function LiveCardDotInner({ fallback }: { fallback: AppStatus }) {
   const status = useLiveStatus(fallback);
-  const statusLabel =
-    status === "idle"
+  // Never built ⇒ "Not deployed", never "Stopped": nobody stopped it. Same fold
+  // the dot itself runs (lib/apps/display-status.ts) — the word on hover and the
+  // colour under it have to agree.
+  const neverDeployed = useNeverDeployed();
+  const statusLabel = neverDeployed
+    ? "Not deployed"
+    : status === "idle"
       ? "Stopped"
       : status === "active"
         ? "Running"
@@ -171,6 +178,9 @@ export function AppCard({
   // overview, so a refresh after each action keeps the menu in sync).
   const stopped = project.status === "idle";
   const stopping = project.status === "stopping";
+  // Never built at all: there is no container to start, stop or reroute, so the
+  // menu drops those verbs entirely and Redeploy becomes the first Deploy.
+  const neverDeployed = stopped && !dep;
   // A backup is being put back in place — Deplo owns the stack until it lands.
   const restoring = project.status === "restoring";
 
@@ -189,7 +199,9 @@ export function AppCard({
         (d) => d.redeploy,
       );
       if (res.ok) {
-        toast.success(`Redeploying ${project.name}…`);
+        toast.success(
+          `${neverDeployed ? "Deploying" : "Redeploying"} ${project.name}`,
+        );
         // Follow the new build straight to its live logs; fall back to a refresh
         // if no id came back.
         if (res.data?.id) {
@@ -290,7 +302,7 @@ export function AppCard({
   // what it does (reliable inside menus, unlike a nested styled tooltip).
   const menu = (K: MenuKit) => (
     <>
-      {restoring ? (
+      {neverDeployed ? null : restoring ? (
         <SimpleTooltip
           content="A backup is being restored into this app"
           side="left"
@@ -347,22 +359,32 @@ export function AppCard({
           </K.Item>
         </SimpleTooltip>
       )}
+      {!neverDeployed && (
+        <SimpleTooltip
+          content="Re-apply domains and basic auth to the running container — no rebuild"
+          side="left"
+        >
+          <K.Item onSelect={reload} disabled={!can("control_apps")}>
+            <RefreshCw className="size-4" />
+            Reload
+          </K.Item>
+        </SimpleTooltip>
+      )}
       <SimpleTooltip
-        content="Re-apply domains and basic auth to the running container — no rebuild"
-        side="left"
-      >
-        <K.Item onSelect={reload} disabled={!can("control_apps")}>
-          <RefreshCw className="size-4" />
-          Reload
-        </K.Item>
-      </SimpleTooltip>
-      <SimpleTooltip
-        content="Redeploy the latest successful build"
+        content={
+          neverDeployed
+            ? "Build and start this app for the first time"
+            : "Redeploy the latest successful build"
+        }
         side="left"
       >
         <K.Item onSelect={redeploy} disabled={pending || !can("deploy_apps")}>
-          <RotateCw className="size-4" />
-          Redeploy
+          {neverDeployed ? (
+            <Rocket className="size-4" />
+          ) : (
+            <RotateCw className="size-4" />
+          )}
+          {neverDeployed ? "Deploy" : "Redeploy"}
         </K.Item>
       </SimpleTooltip>
       <K.Separator />

@@ -2,7 +2,11 @@
 
 import { StatusBadge, StatusDot } from "@/components/shared/status-badge";
 import { SimpleTooltip } from "@/components/ui/tooltip";
-import { useLiveApp, useLiveStatus } from "@/components/apps/app-live-status";
+import {
+  useLiveApp,
+  useLiveStatus,
+  useNeverDeployed,
+} from "@/components/apps/app-live-status";
 import {
   useAppRuntime,
   type AppRuntimeView,
@@ -26,6 +30,7 @@ function useDisplayStatus(fallback: AppStatus): {
 } {
   const live = useLiveApp();
   const status = useLiveStatus(fallback);
+  const neverDeployed = useNeverDeployed();
   const appId = live?.id ?? "";
   const runtime = useAppRuntime(appId, {
     enabled: !!appId && status === "active",
@@ -39,7 +44,10 @@ function useDisplayStatus(fallback: AppStatus): {
       detail:
         "Deplo is putting a backup back in place. The app is down while it is written, and comes back up on its own.",
     };
-  return { status: displayStatus(status, runtime), detail: detailFor(runtime) };
+  return {
+    status: displayStatus(status, runtime, neverDeployed),
+    detail: detailFor(runtime),
+  };
 }
 
 /** The sentence behind a badge that is reporting trouble. */
@@ -92,10 +100,10 @@ export function AppStatusDot({ status }: { status: AppStatus }) {
 
 /**
  * The same live app status as {@link AppStatusDot}, but as a LABELLED badge
- * ("Online" / "Restarting" / "Degraded" / "Not running" / "Stopped" / "Building"
- * / "Error") for the app header — so the container's lifecycle reads clearly and
- * in real time, kept separate from the deployment/commit status shown elsewhere
- * on the page. Rendered as a tinted chip.
+ * ("Online" / "Restarting" / "Degraded" / "Not running" / "Stopped" /
+ * "Not deployed" / "Building" / "Error") for the app header — so the container's
+ * lifecycle reads clearly and in real time, kept separate from the
+ * deployment/commit status shown elsewhere on the page. Rendered as a tinted chip.
  */
 export function AppStatusBadge({ status }: { status: AppStatus }) {
   const { status: shown, detail } = useDisplayStatus(status);

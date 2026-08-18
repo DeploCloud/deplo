@@ -28,13 +28,17 @@ import type { AppStatus } from "@/lib/types";
  *  - `degraded`   — part of a compose stack is up, part is not
  *  - `unhealthy`  — running, but failing its own healthcheck
  *  - `down`       — we believe the app is deployed and up, and nothing is running
+ *
+ * One more is a CONTROL-PLANE fact rather than a runtime one:
+ *  - `not_deployed` — nothing was ever built for this app, so it has never run.
  */
 export type DisplayStatus =
   | AppStatus
   | "restarting"
   | "degraded"
   | "unhealthy"
-  | "down";
+  | "down"
+  | "not_deployed";
 
 /** The slice of {@link import("@/lib/data/console").AppRuntime} the fold needs. */
 export interface RuntimeSnapshot {
@@ -51,7 +55,15 @@ export interface RuntimeSnapshot {
 export function displayStatus(
   status: AppStatus,
   runtime: RuntimeSnapshot | null | undefined,
+  /** This app has no deployment at all — see {@link DisplayStatus}. */
+  neverDeployed?: boolean,
 ): DisplayStatus {
+  // Never built, so never running: "Stopped" would claim somebody stopped it,
+  // and the only control that makes sense is a first deploy. This is where a
+  // bulk import lands every app it creates (`createApp` with `deploy: false`),
+  // and where an app created by someone without `deploy_apps` lands too.
+  if (neverDeployed && status === "idle") return "not_deployed";
+
   // No probe, or the agent never answered: we do NOT know what the host is
   // doing. Say what we were told last and nothing more — inventing "down" from
   // an unreachable agent would trade one lie for another.

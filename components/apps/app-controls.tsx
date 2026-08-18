@@ -7,7 +7,10 @@ import { Play, Square, RefreshCw, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { SimpleTooltip } from "@/components/ui/tooltip";
 import { gqlAction } from "@/lib/graphql-client";
-import { useLiveStatus } from "@/components/apps/app-live-status";
+import {
+  useLiveStatus,
+  useNeverDeployed,
+} from "@/components/apps/app-live-status";
 import { CapabilityTip, useAppCan } from "@/components/apps/app-capabilities";
 import type { AppStatus } from "@/lib/types";
 
@@ -25,6 +28,11 @@ export function AppControls({
   // label is driven by the persisted "stopping" status, so it survives reload
   // and every viewer sees it, not just the user who clicked.
   const status = useLiveStatus(serverStatus);
+  // Nothing has ever been built for this app, so there is no container to start,
+  // stop or reroute — every control here would dial the host for a stack that is
+  // not there. The header's Deploy button is the only thing that can act on it,
+  // and it stands alone until the first build lands.
+  const neverDeployed = useNeverDeployed();
   // Start / Stop / Reload are all one permission. Without it every button here
   // is disabled rather than hidden, so the app still reads as an app - it just
   // isn't this viewer's to power on and off.
@@ -78,6 +86,8 @@ export function AppControls({
       router.refresh();
     });
   }
+
+  if (neverDeployed) return null;
 
   if (!can) {
     return (

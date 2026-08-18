@@ -106,6 +106,21 @@ export function useLiveStatus(fallback: AppStatus): AppStatus {
   return useLiveApp()?.status ?? fallback;
 }
 
+/**
+ * True when this app has never been deployed: no deployment row at all, and it
+ * has not been started either. That is NOT the same as stopped — nobody stopped
+ * it, it has never shipped — and it is exactly where a bulk import from another
+ * platform lands every app it creates (`createApp` with `deploy: false`).
+ *
+ * False when no provider is mounted: without the live app we cannot tell the two
+ * apart, and claiming "never deployed" for an app that has shipped is the worse
+ * of the two mistakes.
+ */
+export function useNeverDeployed(): boolean {
+  const live = useLiveApp();
+  return !!live && live.latestDeploymentId === null && live.status === "idle";
+}
+
 /** True when the app's container is running (status === "active"). */
 export function useLiveRunning(fallback: boolean): boolean {
   const live = useLiveApp();

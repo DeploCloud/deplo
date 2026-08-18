@@ -3,11 +3,12 @@
 import * as React from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
-import { RotateCw } from "lucide-react";
+import { RotateCw, Rocket, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { SimpleTooltip } from "@/components/ui/tooltip";
 import { gqlAction } from "@/lib/graphql-client";
 import { CapabilityTip, useAppCan } from "@/components/apps/app-capabilities";
+import { useNeverDeployed } from "@/components/apps/app-live-status";
 
 export function RedeployButton({
   appId,
@@ -24,6 +25,13 @@ export function RedeployButton({
   const [pending, startTransition] = React.useTransition();
   const router = useRouter();
   const can = useAppCan("deploy_apps");
+  // Nothing has ever been built for this app — an imported one, or one created by
+  // someone without `deploy_apps`. Same mutation either way (a deploy reads the
+  // app's source, it does not need a previous build), but "Redeploy" would name a
+  // build that does not exist, so the button says what it will actually do.
+  const first = useNeverDeployed();
+  const label = first ? "Deploy" : "Redeploy";
+  const Icon = first ? Rocket : RotateCw;
 
   function redeploy() {
     startTransition(async () => {
@@ -36,7 +44,7 @@ export function RedeployButton({
         (d) => d.redeploy,
       );
       if (res.ok) {
-        toast.success("Redeploy started");
+        toast.success(first ? "Deploy started" : "Redeploy started");
         // Follow the new build straight to its live logs (same destination as the
         // create + Save & Deploy flows); fall back to a refresh if the redeploy
         // returned no id.
@@ -55,18 +63,29 @@ export function RedeployButton({
     return (
       <CapabilityTip cap="deploy_apps">
         <Button variant={variant} size={size} disabled>
-          <RotateCw className="size-4" />
-          Redeploy
+          <Icon className="size-4" />
+          {label}
         </Button>
       </CapabilityTip>
     );
   }
 
   return (
-    <SimpleTooltip content="Redeploy the latest successful build">
+    <SimpleTooltip
+      content={
+        first
+          ? "Build and start this app for the first time"
+          : "Redeploy the latest successful build"
+      }
+    >
       <Button variant={variant} size={size} onClick={redeploy} disabled={pending}>
-        <RotateCw className={pending ? "size-4 animate-spin" : "size-4"} />
-        {pending ? "Redeploying" : "Redeploy"}
+        {/* The house spinner while it fires — a spinning rocket is not a thing. */}
+        {pending ? (
+          <Loader2 className="size-4 animate-spin" />
+        ) : (
+          <Icon className="size-4" />
+        )}
+        {pending ? (first ? "Deploying" : "Redeploying") : label}
       </Button>
     </SimpleTooltip>
   );

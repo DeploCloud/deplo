@@ -108,3 +108,16 @@ test("statuses the host cannot contradict pass through untouched", () => {
   assert.equal(displayStatus("stopping", none), "stopping");
   assert.equal(displayStatus("error", none), "error");
 });
+
+test("never deployed reads as such, not as stopped", () => {
+  const none = runtime({ total: 0, running: 0 });
+  // The state a bulk import lands every app in: no build, so nothing ever ran.
+  assert.equal(displayStatus("idle", none, true), "not_deployed");
+  assert.equal(displayStatus("idle", null, true), "not_deployed");
+  // Someone stopped it AFTER a build: still "Stopped".
+  assert.equal(displayStatus("idle", none, false), "idle");
+  // The flag only ever speaks for an app at rest — a build in flight, a failed
+  // deploy or a running container all outrank "it has no deployment row".
+  assert.equal(displayStatus("building", none, true), "building");
+  assert.equal(displayStatus("error", none, true), "error");
+});
