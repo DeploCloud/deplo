@@ -290,7 +290,7 @@ export function mapBuildSettings(
   const buildMethod = BUILD_METHOD[app.buildType] ?? "nixpacks";
   if (app.buildType === "heroku_buildpacks" || app.buildType === "paketo_buildpacks")
     notes.push(
-      `Built with ${app.buildType.replace("_", " ")} on Dokploy, which Deplo does not have. Set to Nixpacks — check the build before you rely on it.`,
+      `Built with ${app.buildType.replace("_", " ")} on Dokploy. Set to Nixpacks - check the build.`,
     );
 
   const build: Partial<BuildConfig> = { buildMethod };
@@ -332,13 +332,13 @@ export function mapBuildSettings(
     build.startCommand = command;
     if (buildMethod === "dockerfile")
       notes.push(
-        `Container command "${truncate(command, 80)}" moved to the start command. A Dockerfile build keeps its own CMD, so check it took effect.`,
+        `Container command "${truncate(command, 80)}" became the start command. A Dockerfile keeps its own CMD.`,
       );
   }
 
   if ((app.replicas ?? 1) > 1)
     notes.push(
-      `Ran ${app.replicas} replicas on Dokploy. Deplo runs one container per app — scale is not imported.`,
+      `Ran ${app.replicas} replicas on Dokploy. Deplo runs one container per app.`,
     );
 
   return { value: build, notes };
@@ -496,21 +496,21 @@ export function mapSource(app: DokployApplication): Mapped<MappedSource> {
     }
     if (app.registryId || app.registry)
       notes.push(
-        "Pulled from a private registry. Registry passwords are not exposed by Dokploy's API - add the registry in Deplo and reselect it.",
+        "From a private registry. Add it under Registries and reselect it - Dokploy never exposes the password.",
       );
     // A registry running ON the source host. The reference is perfectly valid over
     // there and means nothing here, and the failure it produces later ("pull
     // access denied") points at the image rather than at the move.
     if (/^(localhost|127\.0\.0\.1|::1|host\.docker\.internal)[:/]/i.test(image))
       notes.push(
-        `${image} lives in a registry ON the Dokploy machine, so Deplo cannot pull it. Push it somewhere both can reach, or build the app from its source instead.`,
+        `${image} is in a registry on the Dokploy machine. Push it somewhere Deplo can reach, or build from source.`,
       );
     return { value: { kind: "docker-image", image }, notes };
   }
 
   if (app.sourceType === "drop") {
     notes.push(
-      "Deployed from an uploaded archive on Dokploy. Upload the archive again in Deplo - the file itself is not reachable over the API.",
+      "Deployed from an uploaded archive. Upload it again here - the API does not hand over the file.",
     );
     return { value: { kind: "none" }, notes };
   }
@@ -523,11 +523,11 @@ export function mapSource(app: DokployApplication): Mapped<MappedSource> {
 
   if (app.customGitSSHKeyId)
     notes.push(
-      "Cloned over SSH with a key stored in Dokploy. Deplo clones over https - add a git connection for this host.",
+      "Cloned over SSH with a key kept in Dokploy. Deplo clones over https - add a git connection for this host.",
     );
   else
     notes.push(
-      `Repository ${repo.repo} arrives with no credential - Dokploy's API never exposes one. Attach a git connection when you are ready to deploy it: doing that is also what starts auto-deploying on every push, which you do not want while the old platform is still serving this app.`,
+      `${repo.repo} arrives with no credential. Attach a git connection to deploy it - that also turns on auto-deploy.`,
     );
 
   return {
@@ -880,7 +880,7 @@ export function mapDatabase(
 
   if (row.command?.trim())
     notes.push(
-      `Had a custom start command on Dokploy ("${truncate(row.command.trim(), 60)}") - set it under the database's advanced settings if it is still needed.`,
+      `Custom start command on Dokploy ("${truncate(row.command.trim(), 60)}") - set it under Advanced if you still need it.`,
     );
   if ((row.mounts ?? []).length > 0)
     notes.push(
@@ -1019,7 +1019,7 @@ export function pairVolumes(
   for (const s of source)
     if (!pairs.some((p) => p.sourceVolume === s.name))
       notes.push(
-        `${s.name} (mounted at ${s.mountPath} on Dokploy) has nowhere to go here - no volume of this app mounts that path.`,
+        `${s.name} was mounted at ${s.mountPath} on Dokploy, but no volume of this app mounts that path.`,
       );
   for (const t of target)
     if (!pairs.some((p) => p.targetVolume === t.name))

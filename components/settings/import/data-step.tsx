@@ -227,9 +227,8 @@ export function DataStep({
               <div>
                 <div className="text-sm font-medium">Where the data lives now</div>
                 <p className="mt-1 text-sm text-muted-foreground">
-                  The volumes are on the machine that runs them, so Deplo has to be
-                  able to reach it. If Dokploy is on a machine Deplo does not manage,
-                  add it as a server first.
+                  Deplo has to reach the machine the volumes are on. If it is not in
+                  your fleet, add it as a server first.
                 </p>
               </div>
               {hosts.map((h) => (
@@ -339,7 +338,7 @@ function ServiceRow({
       content={
         service.running
           ? "This service has no named volumes on Dokploy."
-          : "Dokploy has no container running for this service, so its volumes cannot be read. Start it over there once, then refresh."
+          : "No container on Dokploy, so its volumes cannot be read. Start it over there, then refresh."
       }
     >
       <span className="inline-flex cursor-not-allowed">{button}</span>
@@ -423,9 +422,8 @@ function ConfirmDialog({
                 <TriangleAlert className="mt-0.5 size-5 shrink-0 text-warning" />
                 <p>
                   This stops {service.sourceName} on Dokploy and does not start it
-                  again. Deplo needs it stopped to copy a volume that is not changing
-                  underneath. Nothing else over there is touched: the volumes are read
-                  through a read-only mount, and Dokploy can start the service again.
+                  again - Deplo needs it still to copy the volume. Nothing else is
+                  touched, and you can start it again over there.
                 </p>
               </div>
             ) : (
@@ -434,8 +432,7 @@ function ConfirmDialog({
               // people to click through without reading.
               <p className="text-sm text-muted-foreground">
                 {service.sourceName} is already stopped on Dokploy, so nothing goes
-                down. Its volumes are read through a read-only mount and left exactly
-                as they are.
+                down. Its volumes are read and left as they are.
               </p>
             )}
 

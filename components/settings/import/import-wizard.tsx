@@ -963,8 +963,8 @@ function ReviewStep({
           <CardHeader>
             <CardTitle>Where things run</CardTitle>
             <p className="mt-1 text-sm text-muted-foreground">
-              Pick which of your servers takes each of Dokploy&apos;s. The data would
-              be read from there later, so it has to be a machine Deplo manages.
+              Pick which of your servers takes each of Dokploy&apos;s. It has to be a
+              machine Deplo manages.
             </p>
           </CardHeader>
           <CardContent className="space-y-3">
@@ -1066,9 +1066,8 @@ function ReviewStep({
           <div className="min-w-0">
             <FieldLabel htmlFor="skip-databases">Leave the databases out</FieldLabel>
             <p className="mt-1 text-sm text-muted-foreground">
-              A database is the one thing an import really starts: Deplo brings the
-              container up empty, ready for your data. Left out, they are listed in
-              the report instead.
+              Deplo brings each one up empty, ready for your data. Left out, they
+              only appear in the report.
             </p>
           </div>
           <Switch

@@ -253,7 +253,7 @@ test("mapBuildSettings falls back to nixpacks for the buildpack families, with a
     const { value, notes } = mapBuildSettings(app({ buildType }));
     assert.equal(value.buildMethod, "nixpacks");
     assert.equal(notes.length, 1);
-    assert.match(notes[0], /does not have/);
+    assert.match(notes[0], /Set to Nixpacks/);
   }
 });
 
@@ -480,7 +480,7 @@ test("mapSource reports a private registry, whose password never leaves Dokploy"
   const { notes } = mapSource(
     app({ sourceType: "docker", dockerImage: "reg.acme.com/api:1", registryId: "reg-1" }),
   );
-  assert.match(notes.join(" "), /Registry passwords are not exposed/);
+  assert.match(notes.join(" "), /private registry/);
 });
 
 test("mapSource flags an image that only exists on the source machine", () => {
@@ -494,13 +494,13 @@ test("mapSource flags an image that only exists on the source machine", () => {
     kind: "docker-image",
     image: "localhost:5000/database-fdo:1.0",
   });
-  assert.match(notes.join(" "), /registry ON the Dokploy machine/);
+  assert.match(notes.join(" "), /on the Dokploy machine/);
 });
 
 test("mapSource cannot import an uploaded archive", () => {
   const { value, notes } = mapSource(app({ sourceType: "drop" }));
   assert.deepEqual(value, { kind: "none" });
-  assert.match(notes.join(" "), /Upload the archive again/);
+  assert.match(notes.join(" "), /uploaded archive/);
 });
 
 test("repoNameFromUrl handles https and scp-style remotes", () => {
@@ -681,7 +681,7 @@ test("mapDatabase carries the external port and reports what a database cannot t
     }),
   );
   assert.equal(value?.exposedPort, 5432);
-  assert.match(notes.join(" "), /custom start command/);
+  assert.match(notes.join(" "), /start command/);
   assert.match(notes.join(" "), /takes no others/);
 });
 
@@ -726,7 +726,7 @@ test("pairVolumes reports both kinds of leftover", () => {
   );
   assert.deepEqual(value, []);
   assert.equal(notes.length, 2);
-  assert.match(notes[0], /has nowhere to go here/);
+  assert.match(notes[0], /no volume of this app mounts that path/);
   assert.match(notes[1], /stays empty/);
 });
 

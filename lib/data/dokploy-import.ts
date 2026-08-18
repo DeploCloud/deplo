@@ -1231,12 +1231,12 @@ async function importAppService(
   const env = [...envEntries, ...argEntries];
   if (argEntries.length > 0)
     notes.push(
-      `${argEntries.length} build argument(s) were imported as environment variables, which is how Deplo passes values to a build.`,
+      `${argEntries.length} build argument(s) became environment variables - that is how Deplo passes values to a build.`,
     );
   const interpolated = envNeedsInterpolation(env);
   if (interpolated.length > 0)
     notes.push(
-      `These variables use Dokploy's \`\${{...}}\` templating, which Deplo does not resolve: ${interpolated.join(", ")}. Put the real values in.`,
+      `Deplo does not resolve Dokploy's \`\${{...}}\` templating - put the real values in: ${interpolated.join(", ")}.`,
     );
 
   const domains = mapDomains(detail.domains, { isCompose });
@@ -1269,14 +1269,14 @@ async function importAppService(
     }
     if (!inline)
       notes.push(
-        "The compose file came from Dokploy's resolved copy of the repository - Deplo keeps it inline from now on, so changes in the repo will not follow.",
+        "The compose file is kept inline from now on, so changes in the repository will not follow.",
       );
     const adapted = adaptComposeForDeplo(yamlText);
     compose = adapted.compose;
     notes.push(...adapted.changes);
     if (detail.isolatedDeployment)
       notes.push(
-        "Ran as an isolated deployment on Dokploy (its own network and volume namespace). Deplo namespaces every stack anyway, but check the service names it talks to.",
+        "Was an isolated deployment on Dokploy. Deplo namespaces every stack, but check the service names it talks to.",
       );
   } else {
     const app = detail as DokployApplication;
@@ -1346,7 +1346,7 @@ async function importAppService(
       .where(and(eq(domainsTable.appId, created.id), eq(domainsTable.isPrimary, true)));
     if (landed[0] && landed[0].name.toLowerCase() !== primary.host)
       notes.push(
-        `${primary.host} could not be taken (another team routes it, or it is not a name Deplo accepts) - the app answers on ${landed[0].name} instead.`,
+        `${primary.host} could not be taken, so the app answers on ${landed[0].name} instead.`,
       );
     else if (landed[0] && landed[0].certProvider !== primary.certProvider) {
       // createApp mints the primary domain itself and decides its certificate the
@@ -1397,7 +1397,7 @@ async function importAppService(
       await addBasicAuthUser(created.id, s.username, s.password);
     } catch (e) {
       notes.push(
-        `Basic-auth user "${s.username}" was not imported: ${e instanceof Error ? e.message : "refused"}. Deplo checks these passwords against its policy and against known breaches.`,
+        `Basic-auth user "${s.username}" was not imported: ${e instanceof Error ? e.message : "refused"}.`,
       );
     }
   }
@@ -1543,10 +1543,10 @@ async function importDatabaseService(
       created = await createDatabase(base);
       if (spec.exposedPort)
         notes.push(
-          `Port ${spec.exposedPort} was not published (${first}). Publish it under the database's settings once the old instance has let it go.`,
+          `Port ${spec.exposedPort} was not published (${first}). Publish it once the old instance lets it go.`,
         );
       notes.push(
-        `The original password was refused (${first}), so Deplo generated one. Every imported connection string still spells out the OLD password - update them, or rotate this database's password to match.`,
+        `Password refused (${first}), so Deplo made a new one - the imported connection strings still hold the old.`,
       );
     } catch (e2) {
       await report.add({
@@ -1579,7 +1579,7 @@ async function importDatabaseService(
   }
 
   notes.push(
-    `The database is empty and reachable inside Deplo as "${created.host}", not as "${row.appName}" - update the connection strings in the apps that use it, then restore your data.`,
+    `Empty, and reachable here as "${created.host}" instead of "${row.appName}". Update the connection strings, then restore your data.`,
   );
   await report.notes(svc.kind, name, notes, {
     kind: "database",

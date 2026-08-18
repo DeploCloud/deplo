@@ -213,7 +213,7 @@ async function sourceState(
       volumes: [],
       running: false,
       notes: [
-        `Dokploy has no container for ${appName} right now, so its volumes cannot be read. Start it over there once, then come back.`,
+        `Dokploy has no container for ${appName}, so its volumes cannot be read. Start it over there, then refresh.`,
       ],
     };
 
@@ -596,8 +596,8 @@ export async function moveDokployServiceData(
   if (moved > 0)
     notes.push(
       landed.targetKind === "app"
-        ? `${landed.targetName} is stopped here and stopped on Dokploy. Press Deploy when you are ready for the traffic to follow the data.`
-        : `${landed.targetName} is stopped so the copy could land. Start it from its own page, then check it comes up with the data.`,
+        ? `${landed.targetName} is stopped on both sides. Press Deploy when the traffic should follow the data.`
+        : `${landed.targetName} is stopped so the copy could land. Start it from its own page and check the data.`,
     );
 
   for (const message of notes)
