@@ -1362,7 +1362,7 @@ async function importAppService(
     notes.push(...adapted.changes);
     if (detail.isolatedDeployment)
       notes.push(
-        "Was an isolated deployment on Dokploy. Deplo namespaces every stack, but check the service names it talks to.",
+        "Dokploy isolates this stack's network and volume names. Deplo does that for every stack - check the service names it talks to.",
       );
   } else {
     const app = detail as DokployApplication;
@@ -1528,7 +1528,7 @@ async function importCrons(
   for (const s of await listSchedules(c, scheduleType, sourceId)) {
     const command = (s.command ?? s.script ?? "").trim();
     if (!command) {
-      notes.push(`Cron "${s.name}" had no command on Dokploy - not imported.`);
+      notes.push(`Cron "${s.name}" has no command on Dokploy - not imported.`);
       continue;
     }
     try {

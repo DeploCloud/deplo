@@ -378,7 +378,7 @@ test("mapResources drops a reservation above the limit rather than losing both",
 
 test("mapResources reports a limit it could not read", () => {
   const { notes } = mapResources({ memoryLimit: "loads" });
-  assert.match(notes.join(" "), /not a value Deplo could read/);
+  assert.match(notes.join(" "), /set it by hand/);
 });
 
 /* ---- source --------------------------------------------------------- */
@@ -500,7 +500,7 @@ test("mapSource flags an image that only exists on the source machine", () => {
 test("mapSource cannot import an uploaded archive", () => {
   const { value, notes } = mapSource(app({ sourceType: "drop" }));
   assert.deepEqual(value, { kind: "none" });
-  assert.match(notes.join(" "), /uploaded archive/);
+  assert.match(notes.join(" "), /Upload it again here/);
 });
 
 test("repoNameFromUrl handles https and scp-style remotes", () => {
@@ -668,7 +668,7 @@ test("mapDatabase keeps a non-canonical image and says so", () => {
   );
   assert.equal(value?.customImage, "pgvector/pgvector:pg16");
   assert.equal(value?.version, "pg16");
-  assert.match(notes.join(" "), /not a plain postgres/);
+  assert.match(notes.join(" "), /plain postgres/);
 });
 
 test("mapDatabase carries the external port and reports what a database cannot take", () => {
@@ -682,7 +682,7 @@ test("mapDatabase carries the external port and reports what a database cannot t
   );
   assert.equal(value?.exposedPort, 5432);
   assert.match(notes.join(" "), /start command/);
-  assert.match(notes.join(" "), /takes no others/);
+  assert.match(notes.join(" "), /only its data volume/);
 });
 
 /* ---- the data cutover ----------------------------------------------- */

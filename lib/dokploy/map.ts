@@ -338,7 +338,7 @@ export function mapBuildSettings(
 
   if ((app.replicas ?? 1) > 1)
     notes.push(
-      `Ran ${app.replicas} replicas on Dokploy. Deplo runs one container per app.`,
+      `Runs ${app.replicas} replicas on Dokploy. Deplo runs one container per app, so it arrives as one.`,
     );
 
   return { value: build, notes };
@@ -433,12 +433,12 @@ export function mapResources(row: {
     ["CPU limit", row.cpuLimit, cpuMilli],
   ] as const)
     if (raw?.trim() && parsed == null)
-      notes.push(`${label} "${raw.trim()}" was not a value Deplo could read - set it by hand.`);
+      notes.push(`${label} "${raw.trim()}" is not a value Deplo can read - set it by hand.`);
 
   // Dokploy's cpuReservation is a swarm scheduling hint with no deplo column.
   if (row.cpuReservation?.trim())
     notes.push(
-      `CPU reservation "${row.cpuReservation.trim()}" is a Swarm placement hint - Deplo has no equivalent.`,
+      `CPU reservation "${row.cpuReservation.trim()}" is a Swarm placement hint. Deplo has no equivalent, so it is not imported.`,
     );
 
   // A reservation above the limit is what deplo's own validator refuses; drop it
@@ -448,7 +448,7 @@ export function mapResources(row: {
       ? null
       : memoryReservationMb;
   if (reservation !== memoryReservationMb)
-    notes.push("Memory reservation was above the limit on Dokploy - not imported.");
+    notes.push("Memory reservation is above the limit on Dokploy - not imported.");
 
   if (memoryMb == null && reservation == null && cpuMilli == null)
     return { value: null, notes };
@@ -510,7 +510,7 @@ export function mapSource(app: DokployApplication): Mapped<MappedSource> {
 
   if (app.sourceType === "drop") {
     notes.push(
-      "Deployed from an uploaded archive. Upload it again here - the API does not hand over the file.",
+      "Its code is an archive somebody uploaded to Dokploy, and the API will not hand the file over. Upload it again here.",
     );
     return { value: { kind: "none" }, notes };
   }
@@ -523,7 +523,7 @@ export function mapSource(app: DokployApplication): Mapped<MappedSource> {
 
   if (app.customGitSSHKeyId)
     notes.push(
-      "Cloned over SSH with a key kept in Dokploy. Deplo clones over https - add a git connection for this host.",
+      "Clones over SSH with a key stored in Dokploy. Deplo clones over https, so add a git connection for this host.",
     );
   else
     notes.push(
@@ -679,7 +679,7 @@ export function mapDomains(
     if (d.certificateType === "letsencrypt") certProvider = "letsencrypt";
     else if (d.certificateType === "custom")
       notes.push(
-        `${host} used a custom certificate resolver on Dokploy. Imported without a certificate - pick one in Domains.`,
+        `${host} uses a custom certificate resolver on Dokploy. Imported without a certificate - pick one in Domains.`,
       );
 
     const path = (d.path ?? "/").trim();
@@ -747,14 +747,14 @@ export function mapMounts(
       // the whole files dir, so only the file's own name travels.
       const name = (m.filePath ?? "").trim().replace(/^\.?\//, "");
       if (!name) {
-        notes.push("A file mount had no path on Dokploy - not imported.");
+        notes.push("A file mount has no path on Dokploy - not imported.");
         continue;
       }
       files.push({ filePath: name, content: m.content ?? "" });
       continue;
     }
     if (!mountPath) {
-      notes.push("A mount had no container path on Dokploy - not imported.");
+      notes.push("A mount has no container path on Dokploy - not imported.");
       continue;
     }
     if (m.type === "volume") {
@@ -768,7 +768,7 @@ export function mapMounts(
     // bind
     const hostPath = m.hostPath?.trim();
     if (!hostPath) {
-      notes.push(`Bind mount at ${mountPath} had no host path on Dokploy - not imported.`);
+      notes.push(`Bind mount at ${mountPath} has no host path on Dokploy - not imported.`);
       continue;
     }
     volumes.push({
@@ -875,7 +875,7 @@ export function mapDatabase(
   const customImage = canonical ? null : (row.dockerImage?.trim() ?? null);
   if (customImage)
     notes.push(
-      `Ran the image ${customImage} on Dokploy, not a plain ${type}. Imported with that image kept - check it starts.`,
+      `Runs ${customImage} on Dokploy instead of a plain ${type}. Kept as it is - check that it starts.`,
     );
 
   if (row.command?.trim())
@@ -884,7 +884,7 @@ export function mapDatabase(
     );
   if ((row.mounts ?? []).length > 0)
     notes.push(
-      "Had extra mounts on Dokploy. A Deplo database owns its own data volume and takes no others.",
+      "Extra files and volumes are mounted on Dokploy. A Deplo database gets only its data volume, so they do not come across.",
     );
 
   return {
@@ -1019,12 +1019,12 @@ export function pairVolumes(
   for (const s of source)
     if (!pairs.some((p) => p.sourceVolume === s.name))
       notes.push(
-        `${s.name} was mounted at ${s.mountPath} on Dokploy, but no volume of this app mounts that path.`,
+        `${s.name} is mounted at ${s.mountPath} on Dokploy, but no volume of this app mounts that path.`,
       );
   for (const t of target)
     if (!pairs.some((p) => p.targetVolume === t.name))
       notes.push(
-        `${t.name} (${t.mountPath}) stays empty - nothing on Dokploy was mounted there.`,
+        `${t.name} (${t.mountPath}) stays empty - nothing on Dokploy is mounted there.`,
       );
 
   return { value: pairs, notes };
