@@ -285,7 +285,7 @@ export function TwoFactorWizard({
                 <span className="flex size-10 items-center justify-center rounded-full bg-primary/10">
                   <StepIcon className="size-5 text-primary" />
                 </span>
-                <h2 className="text-base font-semibold">{title}</h2>
+                <h2 className="text-base font-semibold lg:text-lg">{title}</h2>
                 <p className="text-sm text-balance text-muted-foreground">
                   {blurb}
                 </p>

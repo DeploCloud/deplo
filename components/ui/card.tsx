@@ -37,7 +37,14 @@ const CardTitle = React.forwardRef<
 >(({ className, ...props }, ref) => (
   <div
     ref={ref}
-    className={cn("font-semibold leading-none tracking-tight", className)}
+    // The explicit `text-base` looks redundant next to the ~55 call sites that
+    // also pass it, but it is the partner of `lg:text-lg` (tailwind-merge keys
+    // on the modifier, so a call site's bare `text-base` never eats it) and it
+    // is the only size the ~16 headers that pass no className ever get.
+    className={cn(
+      "text-base lg:text-lg font-semibold leading-none tracking-tight",
+      className
+    )}
     {...props}
   />
 ));

@@ -2,6 +2,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import {
   appTypeLabel,
+  cn,
   formatBuildDuration,
   isHexColor,
   normalizeHexColor,
@@ -100,4 +101,22 @@ test("readableTextColor returns a valid foreground for every curated folder colo
       `${c.name} (${c.value}) → ${fg}`,
     );
   }
+});
+
+test("cn keeps a breakpoint-scoped size when a call site overrides the base one", () => {
+  // CardTitle ships "text-base lg:text-lg" and ~55 call sites still pass their
+  // own "text-base". tailwind-merge keys the font-size group on the modifier,
+  // so the bare one is replaced and the lg: one survives - which is the ONLY
+  // reason every card title grows on a wide screen without touching 55 files.
+  const merged = cn(
+    "text-base lg:text-lg font-semibold leading-none tracking-tight",
+    "flex w-fit items-center gap-2 text-base"
+  );
+  assert.match(merged, /\blg:text-lg\b/);
+  assert.match(merged, /\btext-base\b/);
+
+  // A call site that pins BOTH sizes wins on both (the login/monitoring cards).
+  const pinned = cn("text-base lg:text-lg font-semibold", "text-2xl lg:text-2xl");
+  assert.doesNotMatch(pinned, /\blg:text-lg\b/);
+  assert.doesNotMatch(pinned, /(^|\s)text-base(\s|$)/);
 });

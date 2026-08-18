@@ -258,7 +258,7 @@ export default async function OverviewPage(props: PageProps<"/">) {
       <div className="order-2 space-y-6 lg:order-2">
         <Card>
           <CardHeader className="pb-3">
-            <CardTitle className="text-sm">Recent activity</CardTitle>
+            <CardTitle className="text-sm lg:text-sm">Recent activity</CardTitle>
           </CardHeader>
           <CardContent className="space-y-3">
             {activity.length === 0 && (

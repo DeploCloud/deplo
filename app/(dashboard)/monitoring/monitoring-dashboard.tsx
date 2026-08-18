@@ -541,7 +541,7 @@ function ChartCard({
   return (
     <Card className={className}>
       <CardHeader className="pb-3">
-        <CardTitle className="text-sm">{title}</CardTitle>
+        <CardTitle className="text-sm lg:text-sm">{title}</CardTitle>
         {caption && (
           <p className="text-xs text-muted-foreground tabular-nums">{caption}</p>
         )}

@@ -894,7 +894,7 @@ function AppVarsCard({
           <span className="min-w-0">
             {/* CardTitle's own classes, on a <span>: it renders a <div>, and a
                 <div> can't legally live inside a <button>. */}
-            <span className="block truncate text-base font-semibold leading-none tracking-tight">
+            <span className="block truncate text-base font-semibold leading-none tracking-tight lg:text-lg">
               {app.name}
             </span>
             {/* Where the app is reached, and — once the table is folded away —

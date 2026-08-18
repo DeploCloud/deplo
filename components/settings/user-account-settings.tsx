@@ -387,7 +387,7 @@ export function UserAccountSettings({
             </AvatarFallback>
           </Avatar>
           <div className="min-w-0">
-            <h2 className="flex flex-wrap items-center gap-2 text-lg font-semibold leading-none tracking-tight">
+            <h2 className="flex flex-wrap items-center gap-2 text-base font-semibold leading-none tracking-tight lg:text-lg">
               @{user.username}
               {/* The badges read the SAVED state, never the form: the header
                   says who this account is, the form below says what you are

@@ -199,7 +199,7 @@ export function TemplateStore({
 
           <section className="space-y-3">
             <div>
-              <h2 className="text-base font-semibold tracking-tight">
+              <h2 className="text-base font-semibold tracking-tight lg:text-lg">
                 All templates
               </h2>
               <p className="mt-1 text-sm text-muted-foreground">

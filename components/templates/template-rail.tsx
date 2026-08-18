@@ -57,7 +57,7 @@ export function TemplateRail({
     <section className="group/rail space-y-3">
       <div className="flex items-end justify-between gap-4">
         <div className="min-w-0">
-          <h2 className="text-base font-semibold tracking-tight">{title}</h2>
+          <h2 className="text-base font-semibold tracking-tight lg:text-lg">{title}</h2>
           {subtitle && (
             <p className="mt-1 text-sm text-muted-foreground">{subtitle}</p>
           )}

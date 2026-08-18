@@ -100,7 +100,7 @@ export function ToolsDialog({
         className="grid h-[min(85vh,44rem)] grid-rows-[auto_minmax(0,1fr)] gap-0 p-0 sm:max-w-2xl"
       >
         <DialogHeader className="space-y-0 border-b border-border p-6 pb-4">
-          <DialogTitle className="text-base">
+          <DialogTitle className="text-base lg:text-lg">
             What an agent can do
           </DialogTitle>
           <DialogDescription className="mt-1">

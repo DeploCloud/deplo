@@ -69,7 +69,7 @@ export function SetupForm() {
   return (
     <Card>
       <CardHeader>
-        <CardTitle className="text-xl">Welcome to Deplo</CardTitle>
+        <CardTitle className="text-xl lg:text-xl">Welcome to Deplo</CardTitle>
         <CardDescription>
           Create your workspace and admin account. This runs once, on first
           launch.

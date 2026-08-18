@@ -20,12 +20,12 @@ export function TemplateMarkdown({ source }: { source: string }) {
         remarkPlugins={[remarkGfm]}
         components={{
           h1: ({ children }) => (
-            <h3 className="pt-2 text-base font-semibold text-foreground">
+            <h3 className="pt-2 text-base font-semibold text-foreground lg:text-lg">
               {children}
             </h3>
           ),
           h2: ({ children }) => (
-            <h3 className="pt-2 text-base font-semibold text-foreground">
+            <h3 className="pt-2 text-base font-semibold text-foreground lg:text-lg">
               {children}
             </h3>
           ),

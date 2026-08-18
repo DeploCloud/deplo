@@ -200,7 +200,7 @@ export default function LoginPage() {
     return (
       <Card className="bg-transparent! border-transparent!">
         <CardHeader>
-          <CardTitle className="text-2xl">Two-factor authentication</CardTitle>
+          <CardTitle className="text-2xl lg:text-2xl">Two-factor authentication</CardTitle>
           <CardDescription>
             {useRecovery
               ? "Enter one of the recovery codes you saved when you turned this on."
@@ -277,7 +277,7 @@ export default function LoginPage() {
   return (
     <Card className="bg-transparent! border-transparent!">
       <CardHeader>
-        <CardTitle className="text-2xl">Welcome back.</CardTitle>
+        <CardTitle className="text-2xl lg:text-2xl">Welcome back.</CardTitle>
         <CardDescription>
           Welcome back. Enter your credentials to continue.
         </CardDescription>

@@ -274,7 +274,7 @@ export function RegisterUserWizard({
                     <span className="flex size-10 items-center justify-center rounded-full bg-primary/10">
                       <UserPlus className="size-5 text-primary" />
                     </span>
-                    <h2 className="text-base font-semibold">
+                    <h2 className="text-base font-semibold lg:text-lg">
                       Where does this person work?
                     </h2>
                     <p className="text-sm text-balance text-muted-foreground">
@@ -308,7 +308,7 @@ export function RegisterUserWizard({
                     <span className="flex size-10 items-center justify-center rounded-full bg-primary/10">
                       <Users className="size-5 text-primary" />
                     </span>
-                    <h2 className="text-base font-semibold">Which teams?</h2>
+                    <h2 className="text-base font-semibold lg:text-lg">Which teams?</h2>
                     <p className="text-sm text-balance text-muted-foreground">
                       They can be in more than one.
                       {selectedCount > 0 && ` ${selectedCount} selected.`}
@@ -427,7 +427,7 @@ export function RegisterUserWizard({
                     <span className="flex size-10 items-center justify-center rounded-full bg-primary/10">
                       <Link2 className="size-5 text-primary" />
                     </span>
-                    <h2 className="text-base font-semibold">Share this link</h2>
+                    <h2 className="text-base font-semibold lg:text-lg">Share this link</h2>
                     <p className="text-sm text-balance text-muted-foreground">
                       It works once and expires in 24 hours
                       {expiresAt ? ` — ${atClock(expiresAt)}` : ""}. You can copy
