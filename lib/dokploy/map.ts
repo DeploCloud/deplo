@@ -987,7 +987,29 @@ export function sourceVolumesFrom(inspect: {
     seen.add(name);
     out.push({ name, mountPath: normalizePath(dest) });
   }
-  return out;
+  // Drop a mount whose path is an ANCESTOR of another mount's. That one is the
+  // image's own `VOLUME` declaration, which Docker satisfies with an anonymous
+  // volume the real mount then sits INSIDE of: postgres 18 declares
+  // `VOLUME /var/lib/postgresql` while its data lives in
+  // `/var/lib/postgresql/<major>/docker`, so every Postgres 18 container reports
+  // two volumes. Its bytes are whatever the image shipped, never the database -
+  // and counting it made the source look like it had two data volumes, which is
+  // exactly what stopped the single-data pairing from matching a Postgres 18 and
+  // left the imported database empty.
+  return out.filter(
+    (v) => !out.some((o) => o !== v && isUnderPath(o.mountPath, v.mountPath)),
+  );
+}
+
+/** Docker names an anonymous volume with its own 64-hex id. Nobody chose it, so
+ *  there is never a volume on the other side that corresponds to it. */
+function isAnonymousVolume(name: string): boolean {
+  return /^[0-9a-f]{64}$/.test(name);
+}
+
+/** Is `child` strictly inside `parent`? (`/a/b` is under `/a`, `/ab` is not.) */
+function isUnderPath(child: string, parent: string): boolean {
+  return parent !== "/" ? child.startsWith(`${parent}/`) : child !== "/";
 }
 
 /**
@@ -1087,7 +1109,11 @@ export function pairVolumes(
   }
 
   for (const s of source)
-    if (!pairs.some((p) => p.sourceVolume === s.name))
+    // An anonymous volume left over is not news: the image asked for it, nobody
+    // named it, and nothing on this side could ever correspond to it. Saying so
+    // on every mongo (which declares /data/configdb) is noise in a report whose
+    // whole value is that every line means something.
+    if (!pairs.some((p) => p.sourceVolume === s.name) && !isAnonymousVolume(s.name))
       notes.push(
         `${s.name} is mounted at ${s.mountPath} on Dokploy, but no volume of this app mounts that path.`,
       );

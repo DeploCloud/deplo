@@ -901,3 +901,53 @@ test("declaredSourceVolumes prefixes a compose stack's volumes with its project"
 test("declaredSourceVolumes has nothing to say about a service with no volumes", () => {
   assert.deepEqual(declaredSourceVolumes({ kind: "application", appName: "x" }), []);
 });
+
+// A Postgres 18 container on Dokploy reports TWO volumes: its data volume at
+// /var/lib/postgresql/<major>/docker, and the anonymous one Docker creates for
+// the image's own `VOLUME /var/lib/postgresql`, which the first is mounted
+// inside of. Counting both made the source look like it had two data volumes, so
+// pairVolumes' single-data rule (one per side) never fired and the imported
+// database stayed empty.
+test("sourceVolumesFrom drops the image's own parent mount", () => {
+  const out = sourceVolumesFrom({
+    Mounts: [
+      {
+        Type: "volume",
+        Name: "svc-data",
+        Destination: "/var/lib/postgresql/18/docker",
+      },
+      {
+        Type: "volume",
+        Name: "ff2ec11d77f7e019a1911e354db2112fc211fa2ce18a84529ce4a4ef272cc0d8",
+        Destination: "/var/lib/postgresql",
+      },
+    ],
+  });
+  assert.deepEqual(out, [
+    { name: "svc-data", mountPath: "/var/lib/postgresql/18/docker" },
+  ]);
+});
+
+test("sourceVolumesFrom keeps siblings that merely share a prefix", () => {
+  const out = sourceVolumesFrom({
+    Mounts: [
+      { Type: "volume", Name: "a", Destination: "/data/db" },
+      { Type: "volume", Name: "b", Destination: "/data/dbx" },
+    ],
+  });
+  assert.equal(out.length, 2);
+});
+
+test("pairVolumes stays quiet about an unmatched anonymous volume", () => {
+  const { notes } = pairVolumes(
+    [
+      { name: "svc-data", mountPath: "/data/db" },
+      {
+        name: "935208427f4c92e7cd97bd69fa7bc26dbbc9c8898a6d801dea55ad1f69256f8b",
+        mountPath: "/data/configdb",
+      },
+    ],
+    [{ name: "deplo-db-x_db-x-data", mountPath: "/data/db" }],
+  );
+  assert.deepEqual(notes, []);
+});

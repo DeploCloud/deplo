@@ -300,6 +300,16 @@ if [ -e "$AGENT_DATA/agent.crt" ] || [ -e "$AGENT_DATA/agent.key" ] || [ -e "$AG
   ok "Old materials cleared (the agent will re-provision with the new token)"
 fi
 
+# 3a-bis. The shared `deplo` network -----------------------------------------
+# EVERY stack this host runs joins it, so it has to exist before anything is
+# deployed here — and it used to be created only inside the Traefik branch below.
+# A host that already runs a reverse proxy (which is every host anyone MIGRATES
+# from) skips that branch, so the network was never created: an app deploy still
+# worked, because the agent's Deploy opens with EnsureNetwork, but provisioning a
+# DATABASE goes through Reroute, which does not, and failed with
+# "network deplo not found" on a server that looked perfectly healthy.
+docker network create deplo >/dev/null 2>&1 || true
+
 # 3b. Traefik reverse proxy (idempotent) ------------------------------------
 # Deplo's deploys emit `traefik.*` labels and join the shared `deplo` network, but
 # something must READ those labels and route traffic — that is Traefik. The master
@@ -331,7 +341,6 @@ else
     err "existing proxy at the 'deplo' network, or free 80/443 and re-run."
   else
     step "Installing Traefik reverse proxy..."
-    docker network create deplo >/dev/null 2>&1 || true
     mkdir -p "$TRAEFIK_DIR/acme"
     touch "$TRAEFIK_DIR/acme/acme.json"
     chmod 600 "$TRAEFIK_DIR/acme/acme.json"

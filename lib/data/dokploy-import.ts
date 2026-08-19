@@ -75,7 +75,7 @@ import { addBasicAuthUser } from "./basic-auth";
 import { addExistingMember, mintRegistrationLink } from "./members";
 import { createApp, isSecretKey, setAppVolumes, updateAppResources } from "./apps";
 import { createCronJob } from "./crons";
-import { createDatabase, updateDatabaseImage } from "./databases";
+import { createDatabase } from "./databases";
 import { addDomain, updateDomain } from "./domains";
 import { createEnvironment, listEnvironmentsForProject } from "./environments";
 import { createProject, defaultEnvironmentFor, listProjects } from "./projects";
@@ -1676,6 +1676,11 @@ async function importDatabaseService(
     serverId,
     username: spec.username ?? undefined,
     dbName: spec.dbName ?? undefined,
+    // The source's image, pinned at CREATE so the first provision already runs
+    // it. Setting it afterwards only rewrites the row: the container would keep
+    // running the derived image until somebody pressed Redeploy, and the Data
+    // step would then pour the source's bytes into the wrong binary.
+    customImage: spec.customImage,
   };
   const withPort = spec.exposedPort
     ? { exposedPublicly: true, exposedPort: spec.exposedPort }
@@ -1718,17 +1723,6 @@ async function importDatabaseService(
     targetKind: "database",
     targetId: created.id,
   });
-
-  // Pinned for EVERY imported database, not only an exotic one: the data volume
-  // is copied byte for byte, so it has to be reopened by the binary that wrote it
-  // (a Postgres cluster written under glibc sorts text differently under musl).
-  try {
-    await updateDatabaseImage(created.id, { customImage: spec.customImage });
-  } catch (e) {
-    notes.push(
-      `The image ${spec.customImage} could not be kept: ${e instanceof Error ? e.message : "refused"}.`,
-    );
-  }
 
   // Names the step that fills it. "Restore your data" read as "go find a dump
   // and do it yourself", which is how someone concludes the import left them

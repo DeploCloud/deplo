@@ -481,6 +481,15 @@ export async function createDatabase(input: {
    * silently fail). Ignored when not exposing.
    */
   exposedPort?: number;
+  /**
+   * Run this exact image instead of the one derived from type + version. Set at
+   * CREATE time (not left to a later edit) so the very first provision already
+   * runs it: an import pins the source platform's image, and a database whose
+   * volume is about to receive a byte-for-byte copy must be reopened by the
+   * binary that wrote it — a Postgres cluster written under glibc sorts text
+   * differently under musl, which silently breaks every text index.
+   */
+  customImage?: string | null;
 }): Promise<DatabaseDTO> {
   const { membership } = await requireCapability("create_databases");
   const teamId = membership.teamId;
@@ -496,6 +505,11 @@ export async function createDatabase(input: {
   // update path (updateDatabaseImage) already does; the create path had the gap.
   if (!/^[A-Za-z0-9._-]+$/.test(input.version))
     throw new Error("Version must be a valid image tag.");
+  const customImage = input.customImage?.trim() || null;
+  if (customImage && !isValidImageRef(customImage))
+    throw new Error(
+      "Custom image must be a plain image reference (repo[:tag] or repo@digest) with no spaces or quotes.",
+    );
   // Validate a supplied password up front — it is cheap, local input validation,
   // so fail fast (before any server lookup or agent probe) with a clear message
   // rather than surfacing it only after slower checks.
@@ -634,7 +648,7 @@ export async function createDatabase(input: {
     exposedPublicly: exposed,
     exposedPort,
     resources: null,
-    customImage: null,
+    customImage,
     customCommand: null,
     // Off, like an app's: a cron job runs arbitrary commands in the container.
     cronEnabled: false,
