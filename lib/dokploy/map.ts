@@ -1021,6 +1021,82 @@ export function sourceVolumesFrom(inspect: {
   );
 }
 
+/** One host directory a container mounts: where it is on the host, and where the
+ *  container sees it. The bind-mount counterpart of a NamedVolume. */
+export interface HostMount {
+  hostPath: string;
+  mountPath: string;
+}
+
+/**
+ * The BIND MOUNTS a `docker inspect` says a container is using.
+ *
+ * Kept apart from `sourceVolumesFrom` rather than folded into it, because the two
+ * are copied by different RPCs with very different blast radii: a named volume is
+ * Docker's to hand over, a host directory is the machine's. Same reason the copy of
+ * one is instance-admin plus the host-volumes grant and the copy of the other is
+ * not.
+ */
+export function sourceBindMountsFrom(inspect: {
+  Mounts?: { Type?: string; Source?: string; Destination?: string }[];
+}): HostMount[] {
+  const out: HostMount[] = [];
+  const seen = new Set<string>();
+  for (const m of inspect.Mounts ?? []) {
+    if (m.Type !== "bind") continue;
+    const hostPath = m.Source?.trim();
+    const dest = m.Destination?.trim();
+    if (!hostPath || !dest || seen.has(dest)) continue;
+    seen.add(dest);
+    out.push({ hostPath: normalizePath(hostPath), mountPath: normalizePath(dest) });
+  }
+  return out;
+}
+
+/** The bind mounts a Dokploy service DECLARES - the fallback for a stopped service,
+ *  exactly like `declaredSourceVolumes` is for its named ones. */
+export function declaredSourceBindMounts(
+  mounts?:
+    | { type?: string | null; hostPath?: string | null; mountPath?: string | null }[]
+    | null,
+): HostMount[] {
+  const out: HostMount[] = [];
+  const seen = new Set<string>();
+  for (const m of mounts ?? []) {
+    if (m?.type !== "bind") continue;
+    const hostPath = m.hostPath?.trim();
+    const dest = m.mountPath?.trim();
+    if (!hostPath || !dest || seen.has(dest)) continue;
+    seen.add(dest);
+    out.push({ hostPath: normalizePath(hostPath), mountPath: normalizePath(dest) });
+  }
+  return out;
+}
+
+/**
+ * Match every source bind mount to the deplo host mount that should receive it.
+ *
+ * By container PATH, the same identity the named volumes pair on - the host paths
+ * routinely agree (the import copies Dokploy's own path across verbatim), but they
+ * do not have to, and the path inside the container is what the app actually reads.
+ */
+export function pairHostMounts(
+  source: HostMount[],
+  target: HostMount[],
+): { sourcePath: string; targetPath: string; mountPath: string }[] {
+  const out: { sourcePath: string; targetPath: string; mountPath: string }[] = [];
+  for (const s of source) {
+    const hit = target.find((t) => t.mountPath === s.mountPath);
+    if (!hit) continue;
+    out.push({
+      sourcePath: s.hostPath,
+      targetPath: hit.hostPath,
+      mountPath: s.mountPath,
+    });
+  }
+  return out;
+}
+
 /** Docker names an anonymous volume with its own 64-hex id. Nobody chose it, so
  *  there is never a volume on the other side that corresponds to it. */
 function isAnonymousVolume(name: string): boolean {

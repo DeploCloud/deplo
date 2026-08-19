@@ -182,6 +182,8 @@ let agentCalls: string[] = [];
 /** What each host holds. A volume that is ABSENT here is one `docker volume` would
  *  create empty on the spot - the exact shape that destroyed every import. */
 let volumes: Record<string, Record<string, Buffer>> = {};
+/** What each host has in a plain DIRECTORY, for the bind-mount half. */
+let hostPaths: Record<string, Record<string, Buffer>> = {};
 
 /** A gzipped tar of an empty directory: the archive a missing volume produces. */
 const EMPTY_ARCHIVE = Buffer.alloc(45, 0);
@@ -205,6 +207,19 @@ function fakeAgent(serverId: string) {
       for await (const c of chunks) parts.push(c);
       volumes[serverId] ??= {};
       volumes[serverId][name] = Buffer.concat(parts);
+      return { ok: true, error: "" };
+    },
+    async *exportHostPath(path: string) {
+      say("export-path", path);
+      yield hostPaths[serverId]?.[path] ?? EMPTY_ARCHIVE;
+    },
+    async importHostPath(path: string, wipeFirst: boolean, chunks: AsyncIterable<Buffer>) {
+      say("import-path", path);
+      if (wipeFirst) say("wipe-path", path);
+      const parts: Buffer[] = [];
+      for await (const c of chunks) parts.push(c);
+      hostPaths[serverId] ??= {};
+      hostPaths[serverId][path] = Buffer.concat(parts);
       return { ok: true, error: "" };
     },
     async stopStack(slug: string) {
@@ -332,6 +347,7 @@ beforeEach(async () => {
   __setDokployFetchForTest(fakeDokploy());
   calls = [];
   agentCalls = [];
+  hostPaths = { srv_dokploy_host: { "/etc/dokploy/x": Buffer.alloc(2048, 5) } };
   // The Dokploy host holds both source volumes, with real content in them.
   volumes = {
     srv_dokploy_host: {
@@ -395,6 +411,22 @@ beforeEach(async () => {
     readOnly: false,
     propagation: null,
   });
+  // The bind mount the import carried across verbatim: same host path, same place
+  // in the container. Its bytes are NOT in a volume, so they move by a different
+  // RPC behind a different permission.
+  await db.insert(appVolumesTable).values({
+    appId: "prj_web",
+    position: 1,
+    volumeId: "vol_bind",
+    type: "host",
+    name: "config",
+    service: null,
+    projectPath: null,
+    hostPath: "/etc/dokploy/x",
+    mountPath: "/app/config.json",
+    readOnly: false,
+    propagation: null,
+  });
   await db.insert(databasesTable).values({
     id: "db_blink",
     teamId: TEAM_A,
@@ -433,10 +465,16 @@ test("the plan pairs an imported app's volume with the one Deplo will mount", as
   assert.equal(web.running, true);
   assert.deepEqual(
     web.volumes.map((v) => `${v.sourceVolume}->${v.targetVolume}@${v.mountPath}`),
-    ["blink-web-abc_uploads->deplo-blink-web-uploads@/app/uploads"],
+    [
+      "blink-web-abc_uploads->deplo-blink-web-uploads@/app/uploads",
+      // The bind mount is listed as what it is - a host DIRECTORY, moved by a
+      // different RPC behind a different permission - rather than dropped in
+      // silence, which is how an app used to arrive missing half its data with a
+      // report that said everything went fine.
+      "/etc/dokploy/x->/etc/dokploy/x@/app/config.json",
+    ],
   );
-  // The bind mount is not a volume and is not offered as one.
-  assert.equal(web.volumes.length, 1);
+  assert.match(web.volumes[1].note!, /host directory/);
 });
 
 test("a service that was never imported is not listed at all", async () => {
@@ -536,7 +574,7 @@ test("the copy reads the source host, and the bytes land in the target volume", 
     }),
   );
 
-  assert.equal(res.moved, 1);
+  assert.equal(res.moved, 2, "the named volume and the host directory");
   assert.equal(res.failed, 0);
   // Read from the machine that HOLDS it, written to the one that runs the app.
   assert.ok(
@@ -569,7 +607,6 @@ test("a source volume that is not on that host wipes nothing and is not a copy",
     }),
   );
 
-  assert.equal(res.moved, 0, "nothing was copied, so nothing may be counted as copied");
   assert.deepEqual(
     volumes[SERVER_1]["deplo-blink-web-uploads"],
     before,
@@ -630,6 +667,64 @@ test("a copied database is started again and checked, and the report says what l
   );
   const running = await db.execute("select status from databases where id = 'db_blink'");
   assert.equal(running.rows[0].status, "running");
+});
+
+test("a bind mount's host directory is copied too, and says it is a directory", async () => {
+  await seedDokployHostServer();
+  const runId = await openRun();
+  agentCalls = [];
+
+  const res = await asOwner(() =>
+    moveDokployServiceData({
+      ...CONNECT,
+      runId,
+      sourceKind: "application",
+      sourceId: "dok-app-web",
+    }),
+  );
+
+  // The named volume AND the host directory: an app arrives whole or the report
+  // names what is missing.
+  assert.equal(res.moved, 2, JSON.stringify(res));
+  assert.ok(
+    agentCalls.includes("srv_dokploy_host:export-path:/etc/dokploy/x"),
+    agentCalls.join(" | "),
+  );
+  assert.deepEqual(hostPaths[SERVER_1]["/etc/dokploy/x"], Buffer.alloc(2048, 5));
+  const items = await db.execute(
+    `select message from dokploy_import_items where run_id = '${runId}' and message like '%host directory%'`,
+  );
+  assert.equal(items.rows.length, 1, "the report has to say it was a host directory");
+});
+
+test("a host directory already on this machine is not copied over itself", async () => {
+  // Same machine on both sides: the directory the app reads IS the one the old
+  // platform wrote, so a wipe-then-restore of it is all risk and no movement.
+  await db.execute(
+    `update servers set host = 'dokploy.acme.test', ip = 'dokploy.acme.test' where id = '${SERVER_1}'`,
+  );
+  const runId = await openRun();
+  volumes[SERVER_1]["blink-web-abc_uploads"] = Buffer.alloc(4096, 7);
+  agentCalls = [];
+
+  await asOwner(() =>
+    moveDokployServiceData({
+      ...CONNECT,
+      runId,
+      sourceKind: "application",
+      sourceId: "dok-app-web",
+    }),
+  );
+
+  assert.equal(
+    agentCalls.some((c) => c.includes("wipe-path")),
+    false,
+    "a directory must never be emptied to restore itself",
+  );
+  const items = await db.execute(
+    `select message from dokploy_import_items where run_id = '${runId}' and message like '%already on this machine%'`,
+  );
+  assert.equal(items.rows.length, 1);
 });
 
 /* ---- the refusals ---------------------------------------------------- */

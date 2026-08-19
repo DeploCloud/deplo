@@ -893,6 +893,44 @@ export interface StackRef {
 export interface StackResult {
   ok: boolean;
   error: string;
+  /**
+   * ImportVolume / ImportFiles only: how many bytes of the COMPRESSED stream this
+   * host actually consumed, and their sha256. The control plane relays the stream,
+   * so it knows both for the sending side and cross-checks them here — the same
+   * digest check the backup relay makes. Zero/empty from an agent older than the
+   * fields, and from every other RPC that answers with a StackResult: treat them as
+   * "not reported", never as "nothing arrived".
+   */
+  bytesWritten: number;
+  sha256: string;
+}
+
+export interface ExportHostPathRequest {
+  /**
+   * An ABSOLUTE, already-existing host directory. Refused when it is missing, is
+   * not a directory, climbs with "..", or names one of the system roots the agent
+   * will not hand over wholesale.
+   */
+  path: string;
+}
+
+export interface HostPathChunk {
+  header?: HostPathChunk_Header | undefined;
+  data?: Uint8Array | undefined;
+}
+
+export interface HostPathChunk_Header {
+  /**
+   * The ABSOLUTE host directory on the DESTINATION to untar into. Created if it
+   * does not exist (its PARENT must, so a typo cannot scatter a tree across the
+   * filesystem); refused for the same system roots as the export.
+   */
+  path: string;
+  /**
+   * Empty the target first. Applied on the FIRST DATA FRAME, never on the header
+   * alone — see VolumeChunk.Header.wipe_first for why.
+   */
+  wipeFirst: boolean;
 }
 
 export interface ExportVolumeRequest {
@@ -933,6 +971,11 @@ export interface VolumeChunk_Header {
    * Empty the target volume before untarring (default true for a move, so the
    * import overwrites rather than merges into whatever the freshly-provisioned
    * stack initialised). A false value appends onto existing contents.
+   *
+   * The wipe happens when the FIRST DATA FRAME ARRIVES, never on this header
+   * alone: a header followed by nothing is what a failed or empty export looks
+   * like, and emptying a volume for one of those destroys the data the copy was
+   * supposed to protect. No data, no wipe.
    */
   wipeFirst: boolean;
 }
@@ -5073,7 +5116,7 @@ export const StackRef: MessageFns<StackRef> = {
 };
 
 function createBaseStackResult(): StackResult {
-  return { ok: false, error: "" };
+  return { ok: false, error: "", bytesWritten: 0, sha256: "" };
 }
 
 export const StackResult: MessageFns<StackResult> = {
@@ -5083,6 +5126,12 @@ export const StackResult: MessageFns<StackResult> = {
     }
     if (message.error !== "") {
       writer.uint32(18).string(message.error);
+    }
+    if (message.bytesWritten !== 0) {
+      writer.uint32(24).int64(message.bytesWritten);
+    }
+    if (message.sha256 !== "") {
+      writer.uint32(34).string(message.sha256);
     }
     return writer;
   },
@@ -5110,6 +5159,22 @@ export const StackResult: MessageFns<StackResult> = {
           message.error = reader.string();
           continue;
         }
+        case 3: {
+          if (tag !== 24) {
+            break;
+          }
+
+          message.bytesWritten = longToNumber(reader.int64());
+          continue;
+        }
+        case 4: {
+          if (tag !== 34) {
+            break;
+          }
+
+          message.sha256 = reader.string();
+          continue;
+        }
       }
       if ((tag & 7) === 4 || tag === 0) {
         break;
@@ -5123,6 +5188,12 @@ export const StackResult: MessageFns<StackResult> = {
     return {
       ok: isSet(object.ok) ? globalThis.Boolean(object.ok) : false,
       error: isSet(object.error) ? globalThis.String(object.error) : "",
+      bytesWritten: isSet(object.bytesWritten)
+        ? globalThis.Number(object.bytesWritten)
+        : isSet(object.bytes_written)
+        ? globalThis.Number(object.bytes_written)
+        : 0,
+      sha256: isSet(object.sha256) ? globalThis.String(object.sha256) : "",
     };
   },
 
@@ -5134,6 +5205,12 @@ export const StackResult: MessageFns<StackResult> = {
     if (message.error !== "") {
       obj.error = message.error;
     }
+    if (message.bytesWritten !== 0) {
+      obj.bytesWritten = Math.round(message.bytesWritten);
+    }
+    if (message.sha256 !== "") {
+      obj.sha256 = message.sha256;
+    }
     return obj;
   },
 
@@ -5144,6 +5221,224 @@ export const StackResult: MessageFns<StackResult> = {
     const message = createBaseStackResult();
     message.ok = object.ok ?? false;
     message.error = object.error ?? "";
+    message.bytesWritten = object.bytesWritten ?? 0;
+    message.sha256 = object.sha256 ?? "";
+    return message;
+  },
+};
+
+function createBaseExportHostPathRequest(): ExportHostPathRequest {
+  return { path: "" };
+}
+
+export const ExportHostPathRequest: MessageFns<ExportHostPathRequest> = {
+  encode(message: ExportHostPathRequest, writer: BinaryWriter = new BinaryWriter()): BinaryWriter {
+    if (message.path !== "") {
+      writer.uint32(10).string(message.path);
+    }
+    return writer;
+  },
+
+  decode(input: BinaryReader | Uint8Array, length?: number): ExportHostPathRequest {
+    const reader = input instanceof BinaryReader ? input : new BinaryReader(input);
+    const end = length === undefined ? reader.len : reader.pos + length;
+    const message = createBaseExportHostPathRequest();
+    while (reader.pos < end) {
+      const tag = reader.uint32();
+      switch (tag >>> 3) {
+        case 1: {
+          if (tag !== 10) {
+            break;
+          }
+
+          message.path = reader.string();
+          continue;
+        }
+      }
+      if ((tag & 7) === 4 || tag === 0) {
+        break;
+      }
+      reader.skip(tag & 7);
+    }
+    return message;
+  },
+
+  fromJSON(object: any): ExportHostPathRequest {
+    return { path: isSet(object.path) ? globalThis.String(object.path) : "" };
+  },
+
+  toJSON(message: ExportHostPathRequest): unknown {
+    const obj: any = {};
+    if (message.path !== "") {
+      obj.path = message.path;
+    }
+    return obj;
+  },
+
+  create<I extends Exact<DeepPartial<ExportHostPathRequest>, I>>(base?: I): ExportHostPathRequest {
+    return ExportHostPathRequest.fromPartial(base ?? ({} as any));
+  },
+  fromPartial<I extends Exact<DeepPartial<ExportHostPathRequest>, I>>(object: I): ExportHostPathRequest {
+    const message = createBaseExportHostPathRequest();
+    message.path = object.path ?? "";
+    return message;
+  },
+};
+
+function createBaseHostPathChunk(): HostPathChunk {
+  return { header: undefined, data: undefined };
+}
+
+export const HostPathChunk: MessageFns<HostPathChunk> = {
+  encode(message: HostPathChunk, writer: BinaryWriter = new BinaryWriter()): BinaryWriter {
+    if (message.header !== undefined) {
+      HostPathChunk_Header.encode(message.header, writer.uint32(10).fork()).join();
+    }
+    if (message.data !== undefined) {
+      writer.uint32(18).bytes(message.data);
+    }
+    return writer;
+  },
+
+  decode(input: BinaryReader | Uint8Array, length?: number): HostPathChunk {
+    const reader = input instanceof BinaryReader ? input : new BinaryReader(input);
+    const end = length === undefined ? reader.len : reader.pos + length;
+    const message = createBaseHostPathChunk();
+    while (reader.pos < end) {
+      const tag = reader.uint32();
+      switch (tag >>> 3) {
+        case 1: {
+          if (tag !== 10) {
+            break;
+          }
+
+          message.header = HostPathChunk_Header.decode(reader, reader.uint32());
+          continue;
+        }
+        case 2: {
+          if (tag !== 18) {
+            break;
+          }
+
+          message.data = reader.bytes();
+          continue;
+        }
+      }
+      if ((tag & 7) === 4 || tag === 0) {
+        break;
+      }
+      reader.skip(tag & 7);
+    }
+    return message;
+  },
+
+  fromJSON(object: any): HostPathChunk {
+    return {
+      header: isSet(object.header) ? HostPathChunk_Header.fromJSON(object.header) : undefined,
+      data: isSet(object.data) ? bytesFromBase64(object.data) : undefined,
+    };
+  },
+
+  toJSON(message: HostPathChunk): unknown {
+    const obj: any = {};
+    if (message.header !== undefined) {
+      obj.header = HostPathChunk_Header.toJSON(message.header);
+    }
+    if (message.data !== undefined) {
+      obj.data = base64FromBytes(message.data);
+    }
+    return obj;
+  },
+
+  create<I extends Exact<DeepPartial<HostPathChunk>, I>>(base?: I): HostPathChunk {
+    return HostPathChunk.fromPartial(base ?? ({} as any));
+  },
+  fromPartial<I extends Exact<DeepPartial<HostPathChunk>, I>>(object: I): HostPathChunk {
+    const message = createBaseHostPathChunk();
+    message.header = (object.header !== undefined && object.header !== null)
+      ? HostPathChunk_Header.fromPartial(object.header)
+      : undefined;
+    message.data = object.data ?? undefined;
+    return message;
+  },
+};
+
+function createBaseHostPathChunk_Header(): HostPathChunk_Header {
+  return { path: "", wipeFirst: false };
+}
+
+export const HostPathChunk_Header: MessageFns<HostPathChunk_Header> = {
+  encode(message: HostPathChunk_Header, writer: BinaryWriter = new BinaryWriter()): BinaryWriter {
+    if (message.path !== "") {
+      writer.uint32(10).string(message.path);
+    }
+    if (message.wipeFirst !== false) {
+      writer.uint32(16).bool(message.wipeFirst);
+    }
+    return writer;
+  },
+
+  decode(input: BinaryReader | Uint8Array, length?: number): HostPathChunk_Header {
+    const reader = input instanceof BinaryReader ? input : new BinaryReader(input);
+    const end = length === undefined ? reader.len : reader.pos + length;
+    const message = createBaseHostPathChunk_Header();
+    while (reader.pos < end) {
+      const tag = reader.uint32();
+      switch (tag >>> 3) {
+        case 1: {
+          if (tag !== 10) {
+            break;
+          }
+
+          message.path = reader.string();
+          continue;
+        }
+        case 2: {
+          if (tag !== 16) {
+            break;
+          }
+
+          message.wipeFirst = reader.bool();
+          continue;
+        }
+      }
+      if ((tag & 7) === 4 || tag === 0) {
+        break;
+      }
+      reader.skip(tag & 7);
+    }
+    return message;
+  },
+
+  fromJSON(object: any): HostPathChunk_Header {
+    return {
+      path: isSet(object.path) ? globalThis.String(object.path) : "",
+      wipeFirst: isSet(object.wipeFirst)
+        ? globalThis.Boolean(object.wipeFirst)
+        : isSet(object.wipe_first)
+        ? globalThis.Boolean(object.wipe_first)
+        : false,
+    };
+  },
+
+  toJSON(message: HostPathChunk_Header): unknown {
+    const obj: any = {};
+    if (message.path !== "") {
+      obj.path = message.path;
+    }
+    if (message.wipeFirst !== false) {
+      obj.wipeFirst = message.wipeFirst;
+    }
+    return obj;
+  },
+
+  create<I extends Exact<DeepPartial<HostPathChunk_Header>, I>>(base?: I): HostPathChunk_Header {
+    return HostPathChunk_Header.fromPartial(base ?? ({} as any));
+  },
+  fromPartial<I extends Exact<DeepPartial<HostPathChunk_Header>, I>>(object: I): HostPathChunk_Header {
+    const message = createBaseHostPathChunk_Header();
+    message.path = object.path ?? "";
+    message.wipeFirst = object.wipeFirst ?? false;
     return message;
   },
 };
@@ -16102,6 +16397,43 @@ export const AgentService = {
     responseDeserialize: (value: Buffer): StackResult => StackResult.decode(value),
   },
   /**
+   * Copy an arbitrary HOST DIRECTORY off this machine — the bind-mount half of a
+   * migration from another platform, where a service's data may sit in a plain
+   * directory rather than in a Docker volume.
+   *
+   * Deliberately narrow, because this is the one RPC that names a host path off the
+   * wire. The path must already EXIST and be a directory (a `-v /missing:/v` mount
+   * would otherwise create it and export nothing, the same trap ExportVolume has),
+   * and a short list of system roots is refused outright. The real gate is on the
+   * control-plane side: instance admin plus the host-volumes grant, which is the
+   * same power a compose stack with a bind mount already has — this is a second
+   * door onto it, never a wider one.
+   */
+  exportHostPath: {
+    path: "/deplo.agent.v1.Agent/ExportHostPath" as const,
+    requestStream: false as const,
+    responseStream: true as const,
+    requestSerialize: (value: ExportHostPathRequest): Buffer =>
+      Buffer.from(ExportHostPathRequest.encode(value).finish()),
+    requestDeserialize: (value: Buffer): ExportHostPathRequest => ExportHostPathRequest.decode(value),
+    responseSerialize: (value: VolumeChunk): Buffer => Buffer.from(VolumeChunk.encode(value).finish()),
+    responseDeserialize: (value: Buffer): VolumeChunk => VolumeChunk.decode(value),
+  },
+  /**
+   * The destination half of a host-directory copy (see ExportHostPath). First
+   * message carries the header (target path + wipe flag), the rest carry the
+   * gzipped tar. Same deferred wipe as ImportVolume: no data, no wipe.
+   */
+  importHostPath: {
+    path: "/deplo.agent.v1.Agent/ImportHostPath" as const,
+    requestStream: true as const,
+    responseStream: false as const,
+    requestSerialize: (value: HostPathChunk): Buffer => Buffer.from(HostPathChunk.encode(value).finish()),
+    requestDeserialize: (value: Buffer): HostPathChunk => HostPathChunk.decode(value),
+    responseSerialize: (value: StackResult): Buffer => Buffer.from(StackResult.encode(value).finish()),
+    responseDeserialize: (value: Buffer): StackResult => StackResult.decode(value),
+  },
+  /**
    * Stream a BUILT IMAGE off this host, for a build server: the third sibling of
    * the volume and files-dir relays, and the same star-topology reasoning - the
    * control plane calls ExportImage on the BUILDER and feeds the chunks into
@@ -16995,6 +17327,26 @@ export interface AgentServer extends UntypedServiceImplementation {
    */
   importFiles: handleClientStreamingCall<FilesChunk, StackResult>;
   /**
+   * Copy an arbitrary HOST DIRECTORY off this machine — the bind-mount half of a
+   * migration from another platform, where a service's data may sit in a plain
+   * directory rather than in a Docker volume.
+   *
+   * Deliberately narrow, because this is the one RPC that names a host path off the
+   * wire. The path must already EXIST and be a directory (a `-v /missing:/v` mount
+   * would otherwise create it and export nothing, the same trap ExportVolume has),
+   * and a short list of system roots is refused outright. The real gate is on the
+   * control-plane side: instance admin plus the host-volumes grant, which is the
+   * same power a compose stack with a bind mount already has — this is a second
+   * door onto it, never a wider one.
+   */
+  exportHostPath: handleServerStreamingCall<ExportHostPathRequest, VolumeChunk>;
+  /**
+   * The destination half of a host-directory copy (see ExportHostPath). First
+   * message carries the header (target path + wipe flag), the rest carry the
+   * gzipped tar. Same deferred wipe as ImportVolume: no data, no wipe.
+   */
+  importHostPath: handleClientStreamingCall<HostPathChunk, StackResult>;
+  /**
    * Stream a BUILT IMAGE off this host, for a build server: the third sibling of
    * the volume and files-dir relays, and the same star-topology reasoning - the
    * control plane calls ExportImage on the BUILDER and feeds the chunks into
@@ -17648,6 +18000,46 @@ export interface AgentClient extends Client {
     options: Partial<CallOptions>,
     callback: (error: ServiceError | null, response: StackResult) => void,
   ): ClientWritableStream<FilesChunk>;
+  /**
+   * Copy an arbitrary HOST DIRECTORY off this machine — the bind-mount half of a
+   * migration from another platform, where a service's data may sit in a plain
+   * directory rather than in a Docker volume.
+   *
+   * Deliberately narrow, because this is the one RPC that names a host path off the
+   * wire. The path must already EXIST and be a directory (a `-v /missing:/v` mount
+   * would otherwise create it and export nothing, the same trap ExportVolume has),
+   * and a short list of system roots is refused outright. The real gate is on the
+   * control-plane side: instance admin plus the host-volumes grant, which is the
+   * same power a compose stack with a bind mount already has — this is a second
+   * door onto it, never a wider one.
+   */
+  exportHostPath(request: ExportHostPathRequest, options?: Partial<CallOptions>): ClientReadableStream<VolumeChunk>;
+  exportHostPath(
+    request: ExportHostPathRequest,
+    metadata?: Metadata,
+    options?: Partial<CallOptions>,
+  ): ClientReadableStream<VolumeChunk>;
+  /**
+   * The destination half of a host-directory copy (see ExportHostPath). First
+   * message carries the header (target path + wipe flag), the rest carry the
+   * gzipped tar. Same deferred wipe as ImportVolume: no data, no wipe.
+   */
+  importHostPath(
+    callback: (error: ServiceError | null, response: StackResult) => void,
+  ): ClientWritableStream<HostPathChunk>;
+  importHostPath(
+    metadata: Metadata,
+    callback: (error: ServiceError | null, response: StackResult) => void,
+  ): ClientWritableStream<HostPathChunk>;
+  importHostPath(
+    options: Partial<CallOptions>,
+    callback: (error: ServiceError | null, response: StackResult) => void,
+  ): ClientWritableStream<HostPathChunk>;
+  importHostPath(
+    metadata: Metadata,
+    options: Partial<CallOptions>,
+    callback: (error: ServiceError | null, response: StackResult) => void,
+  ): ClientWritableStream<HostPathChunk>;
   /**
    * Stream a BUILT IMAGE off this host, for a build server: the third sibling of
    * the volume and files-dir relays, and the same star-topology reasoning - the

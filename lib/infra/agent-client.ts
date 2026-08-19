@@ -32,6 +32,7 @@ import {
   type ConsoleInstance as PbConsoleInstance,
   type FileEntry as PbFileEntry,
   type VolumeChunk,
+  type HostPathChunk,
   type FilesChunk,
   type ImageChunk,
   type StoreTarget,
@@ -389,7 +390,29 @@ export interface AgentConnection {
     volumeName: string,
     wipeFirst: boolean,
     chunks: AsyncIterable<Buffer>,
-  ): Promise<{ ok: boolean; error: string }>;
+  ): Promise<{
+    ok: boolean;
+    error: string;
+    /** Compressed bytes this host consumed, and their sha256 — for the caller to
+     *  check against what it relayed. 0/"" from an agent older than the fields;
+     *  that is "not reported", never "nothing arrived". */
+    bytesWritten: number;
+    sha256: string;
+  }>;
+  /** Stream an arbitrary HOST DIRECTORY out of this host as a gzipped tar — the
+   *  bind-mount half of a migration from another platform, whose services may keep
+   *  their data in a plain directory. Rejects with NOT_FOUND when the directory is
+   *  not there (it is never created on the way past) and PERMISSION_DENIED for a
+   *  system root. Gated control-plane side on instance admin + the host-volumes
+   *  grant, the same power a compose bind mount already carries. */
+  exportHostPath(path: string): AsyncGenerator<Buffer, void, unknown>;
+  /** Untar a stream into a HOST DIRECTORY on this host — the receiving half. The
+   *  wipe happens on the first data frame, never on the header alone. */
+  importHostPath(
+    path: string,
+    wipeFirst: boolean,
+    chunks: AsyncIterable<Buffer>,
+  ): Promise<{ ok: boolean; error: string; bytesWritten: number; sha256: string }>;
   /** Stream an app's host-side FILES DIR (a plain host directory, not a Docker
    *  volume) OUT of this host as a gzipped tar — the files-dir sibling of
    *  {@link exportVolume} for an app move. A missing dir yields an empty stream.
@@ -1371,18 +1394,74 @@ function dial(target: DialTarget): AgentConnection {
       // Client-streaming: header frame first (the only message carrying `header`),
       // then data frames, then end(). ts-proto models the oneof as flat optional
       // fields. The terminal StackResult arrives via the callback.
-      return new Promise<{ ok: boolean; error: string }>((resolve, reject) => {
+      return new Promise<{
+        ok: boolean;
+        error: string;
+        bytesWritten: number;
+        sha256: string;
+      }>((resolve, reject) => {
         const call: ClientWritableStream<VolumeChunk> = client.importVolume(
           new Metadata(),
           { deadline: new Date(Date.now() + VOLUME_COPY_DEADLINE_MS) },
           (err: ServiceError | null, resp: StackResult) =>
             err
               ? reject(toAgentError(err))
-              : resolve({ ok: resp.ok, error: resp.error }),
+              : resolve({
+                  ok: resp.ok,
+                  error: resp.error,
+                  bytesWritten: Number(resp.bytesWritten ?? 0),
+                  sha256: resp.sha256 ?? "",
+                }),
         );
         pumpClientStream<VolumeChunk>(
           call,
           { header: { volumeName, wipeFirst } },
+          chunks,
+          (data) => ({ data }),
+          (e) => reject(toAgentError(e)),
+        );
+      });
+    },
+    exportHostPath(path: string) {
+      // Same bridge as exportVolume; the agent refuses a missing directory rather
+      // than creating it, so an empty archive here means the directory really is
+      // empty.
+      return (async function* () {
+        const stream = client.exportHostPath(
+          { path },
+          { deadline: new Date(Date.now() + VOLUME_COPY_DEADLINE_MS) },
+        );
+        for await (const chunk of streamEvents<VolumeChunk>(stream, {
+          pauseAbove: STREAM_BYTES_PAUSE_ABOVE,
+          normalise: toAgentError,
+        })) {
+          if (chunk.data && chunk.data.length) yield Buffer.from(chunk.data);
+        }
+      })();
+    },
+    importHostPath(path: string, wipeFirst: boolean, chunks: AsyncIterable<Buffer>) {
+      return new Promise<{
+        ok: boolean;
+        error: string;
+        bytesWritten: number;
+        sha256: string;
+      }>((resolve, reject) => {
+        const call: ClientWritableStream<HostPathChunk> = client.importHostPath(
+          new Metadata(),
+          { deadline: new Date(Date.now() + VOLUME_COPY_DEADLINE_MS) },
+          (err: ServiceError | null, resp: StackResult) =>
+            err
+              ? reject(toAgentError(err))
+              : resolve({
+                  ok: resp.ok,
+                  error: resp.error,
+                  bytesWritten: Number(resp.bytesWritten ?? 0),
+                  sha256: resp.sha256 ?? "",
+                }),
+        );
+        pumpClientStream<HostPathChunk>(
+          call,
+          { header: { path, wipeFirst } },
           chunks,
           (data) => ({ data }),
           (e) => reject(toAgentError(e)),

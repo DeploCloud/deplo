@@ -112,6 +112,17 @@ test("the probe reads a chunk and no more, then the copy re-reads the whole volu
   assert.equal(to.received.data.length, REAL.length * 2);
 });
 
+test("an agent too old to report a byte count is not treated as having written none", async () => {
+  const from = source({ data: REAL });
+  // What every agent below the version answers: zero and empty string.
+  const to = dest(() => ({ ok: true, error: "", bytesWritten: 0, sha256: "" }));
+
+  const res = await copyVolumeBetween(from.conn, to.conn, "data");
+
+  assert.equal(res.bytes, REAL.length);
+  assert.equal(res.empty, false);
+});
+
 test("a destination that writes fewer bytes than were sent is a failure", async () => {
   const from = source({ data: REAL });
   const to = dest((b) => ({ ok: true, error: "", bytesWritten: b.length - 10 }));

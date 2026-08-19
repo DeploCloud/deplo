@@ -12,7 +12,12 @@ import {
 import { formatBytes, mapLimit } from "../utils";
 import { nowIso } from "../ids";
 import { getCurrentUser } from "../auth";
-import { reachesWholeTeam, requireCapability } from "../membership";
+import {
+  canMountHostVolumes,
+  isInstanceAdmin,
+  reachesWholeTeam,
+  requireCapability,
+} from "../membership";
 import { connectAgent } from "../infra/agent-client";
 import { publishDatabaseChanged } from "../graphql/pubsub";
 import { DB_DATA_DIRS } from "../deploy/database-compose";
@@ -32,16 +37,25 @@ import {
 } from "../dokploy/client";
 import {
   composeVolumeMounts,
+  declaredSourceBindMounts,
   declaredSourceVolumes,
   deploDatabaseVolumeName,
   deploVolumeName,
+  pairHostMounts,
   pairVolumes,
+  sourceBindMountsFrom,
   sourceVolumesFrom,
+  type HostMount,
   type NamedVolume,
 } from "../dokploy/map";
 
 import { requireAppCapability } from "./node-access";
-import { copyVolumeBetween, startStackOn, stopStackOn } from "./volume-migration";
+import {
+  copyHostPathBetween,
+  copyVolumeBetween,
+  startStackOn,
+  stopStackOn,
+} from "./volume-migration";
 import { recordActivity } from "./activity";
 import { listServersForTeam } from "./servers";
 import {
@@ -148,6 +162,8 @@ interface SourceService {
   /** What Dokploy SAYS it mounts, read off the same detail call. The fallback
    *  for a stopped service, which has no container to inspect. */
   declaredVolumes: NamedVolume[];
+  /** Same, for the host directories it bind-mounts. */
+  declaredBindMounts: HostMount[];
 }
 
 /**
@@ -197,6 +213,7 @@ async function sourceServices(c: DokployCredential): Promise<SourceService[]> {
           composeFile:
             "composeFile" in detail ? ((detail as { composeFile?: string | null }).composeFile ?? null) : null,
         }),
+        declaredBindMounts: declaredSourceBindMounts(detail.mounts),
       };
     },
   );
@@ -217,7 +234,13 @@ async function sourceState(
   appName: string,
   kind: string,
   declared: NamedVolume[],
-): Promise<{ volumes: NamedVolume[]; running: boolean; notes: string[] }> {
+  declaredBinds: HostMount[] = [],
+): Promise<{
+  volumes: NamedVolume[];
+  hostMounts: HostMount[];
+  running: boolean;
+  notes: string[];
+}> {
   // A compose stack's containers are plain ones named after the stack; an
   // application or a database is a swarm service. Both orders end with the other
   // value rather than assuming, because a Dokploy configured differently (a
@@ -237,6 +260,7 @@ async function sourceState(
   if (containers.length === 0)
     return {
       volumes: declared,
+      hostMounts: declaredBinds,
       running: false,
       notes: declared.length
         ? [
@@ -248,7 +272,9 @@ async function sourceState(
     };
 
   const volumes: NamedVolume[] = [];
+  const hostMounts: HostMount[] = [];
   const seen = new Set<string>();
+  const seenBind = new Set<string>();
   const notes: string[] = [];
   let running = false;
   await mapLimit(containers, 4, async (ct) => {
@@ -263,8 +289,13 @@ async function sourceState(
         seen.add(v.name);
         volumes.push(v);
       }
+    for (const m of sourceBindMountsFrom(info))
+      if (!seenBind.has(m.mountPath)) {
+        seenBind.add(m.mountPath);
+        hostMounts.push(m);
+      }
   });
-  return { volumes, running, notes };
+  return { volumes, hostMounts, running, notes };
 }
 
 /* ------------------------------------------------------------------ */
@@ -279,6 +310,8 @@ interface Landed {
   targetSlug: string;
   targetServerId: string;
   volumes: NamedVolume[];
+  /** The host directories this app bind-mounts. Only an app has any. */
+  hostMounts: HostMount[];
   /** Engine facts, for the post-copy check. Only on a database. */
   engine?: { type: DatabaseType; username: string; dbName: string };
 }
@@ -361,6 +394,7 @@ async function landedFor(
           mountPath: DB_DATA_DIRS[hit.type as DatabaseType] ?? "/data",
         },
       ],
+      hostMounts: [],
       engine: {
         type: hit.type as DatabaseType,
         username: hit.username,
@@ -386,6 +420,7 @@ async function landedFor(
     .select({
       name: appVolumesTable.name,
       type: appVolumesTable.type,
+      hostPath: appVolumesTable.hostPath,
       mountPath: appVolumesTable.mountPath,
     })
     .from(appVolumesTable)
@@ -412,6 +447,9 @@ async function landedFor(
         mountPath: v.mountPath,
       })),
     ],
+    hostMounts: managed
+      .filter((v) => v.type === "host" && (v.hostPath ?? "").trim())
+      .map((v) => ({ hostPath: v.hostPath!.trim(), mountPath: v.mountPath })),
   };
 }
 
@@ -454,10 +492,17 @@ export async function planDokployDataMove(
     const landed = await landedFor(teamId, target);
     if (!landed) continue;
 
-    const state = await sourceState(c, svc.appName, svc.kind, svc.declaredVolumes);
+    const state = await sourceState(
+      c,
+      svc.appName,
+      svc.kind,
+      svc.declaredVolumes,
+      svc.declaredBindMounts,
+    );
     const paired = pairVolumes(state.volumes, landed.volumes, {
       singleData: landed.targetKind === "database",
     });
+    const binds = pairHostMounts(state.hostMounts, landed.hostMounts);
     // Said HERE, before anything is stopped: a machine Deplo has no agent on is a
     // machine whose data cannot move at all, and the review screen is where that
     // has to be read - not the cutover, with the old platform already down.
@@ -476,7 +521,19 @@ export async function planDokployDataMove(
       targetName: landed.targetName,
       targetServerId: landed.targetServerId,
       running: state.running,
-      volumes: paired.value,
+      volumes: [
+        ...paired.value,
+        // A bind mount is listed as what it is: a host DIRECTORY, copied by a
+        // different RPC behind a different permission. Naming it a volume in the
+        // report would be the sort of half-truth that makes someone believe data
+        // moved when it could not.
+        ...binds.map((b) => ({
+          sourceVolume: b.sourcePath,
+          targetVolume: b.targetPath,
+          mountPath: b.mountPath,
+          note: "A host directory, not a volume. Copying it needs instance admin and the host-volumes permission.",
+        })),
+      ],
       notes: [
         ...state.notes,
         ...paired.notes,
@@ -587,13 +644,29 @@ export async function moveDokployServiceData(
   // answers by creating an empty one rather than by failing.
   const sourceServerId = await resolveSourceServer(c, teamId, svc.serverId);
 
-  const state = await sourceState(c, svc.appName, svc.kind, svc.declaredVolumes);
+  const state = await sourceState(
+    c,
+    svc.appName,
+    svc.kind,
+    svc.declaredVolumes,
+    svc.declaredBindMounts,
+  );
   const paired = pairVolumes(state.volumes, landed.volumes, {
     singleData: landed.targetKind === "database",
   });
   const notes = [...state.notes, ...paired.notes];
 
-  if (paired.value.length === 0) {
+  // A bind mount's bytes sit in a plain host directory, so copying one reads and
+  // writes an arbitrary path on two machines. That is the same power a compose
+  // stack's own bind mount already carries, and it is gated the same way: instance
+  // admin AND the host-volumes grant. Without both, the directory is not copied and
+  // the report says so by name - silence here would leave someone believing an app
+  // arrived whole when its data never left the old machine.
+  const binds = pairHostMounts(state.hostMounts, landed.hostMounts);
+  const mayCopyHostPaths =
+    binds.length === 0 || ((await isInstanceAdmin()) && (await canMountHostVolumes()));
+
+  if (paired.value.length === 0 && binds.length === 0) {
     // Nothing to copy means nothing is stopped either: a cutover that would move
     // no bytes has no business taking the source down.
     await appendRunItem(input.runId, {
@@ -605,7 +678,7 @@ export async function moveDokployServiceData(
       targetId: landed.targetId,
       message:
         notes.join(" ") ||
-        "Nothing to move: this service has no named volumes on Dokploy.",
+        "Nothing to move: this service has no data of its own on Dokploy.",
     });
     await refreshCounts(input.runId, teamId);
     return { moved: 0, failed: 0, notes };
@@ -702,6 +775,79 @@ export async function moveDokployServiceData(
           path,
           sourceKind: "volume",
           sourceName: pair.sourceVolume,
+          outcome: "failed",
+          targetKind: landed.targetKind,
+          targetId: landed.targetId,
+          message,
+        });
+      }
+    }
+    for (const bind of binds) {
+      if (!mayCopyHostPaths) {
+        await appendRunItem(input.runId, {
+          path,
+          sourceKind: "volume",
+          sourceName: bind.sourcePath,
+          outcome: "manual",
+          targetKind: landed.targetKind,
+          targetId: landed.targetId,
+          message: `${bind.sourcePath} is a host directory (mounted at ${bind.mountPath}). Copying one needs instance admin and the host-volumes permission, so its contents did not come over.`,
+        });
+        continue;
+      }
+      // Same machine, same path: the directory the app will read IS the one the old
+      // platform wrote. Copying it over itself would be a wipe followed by a
+      // restore of what was just wiped - all risk, no movement.
+      if (sourceServerId === landed.targetServerId && bind.sourcePath === bind.targetPath) {
+        await appendRunItem(input.runId, {
+          path,
+          sourceKind: "volume",
+          sourceName: bind.sourcePath,
+          outcome: "skipped",
+          targetKind: landed.targetKind,
+          targetId: landed.targetId,
+          message: `${bind.sourcePath} is already on this machine at the same path - nothing to copy.`,
+        });
+        continue;
+      }
+      try {
+        const copied = await copyHostPathBetween(
+          source,
+          dest,
+          bind.sourcePath,
+          bind.targetPath,
+        );
+        if (copied.empty) {
+          empty++;
+          await appendRunItem(input.runId, {
+            path,
+            sourceKind: "volume",
+            sourceName: bind.sourcePath,
+            outcome: "skipped",
+            targetKind: landed.targetKind,
+            targetId: landed.targetId,
+            message: `${bind.sourcePath} is empty on Dokploy, so ${bind.targetPath} was left as it is.`,
+          });
+          continue;
+        }
+        moved++;
+        await appendRunItem(input.runId, {
+          path,
+          sourceKind: "volume",
+          sourceName: bind.sourcePath,
+          outcome: "created",
+          targetKind: landed.targetKind,
+          targetId: landed.targetId,
+          message: `Copied ${formatBytes(copied.bytes)} into ${bind.targetPath} (${bind.mountPath}), a host directory.`,
+        });
+      } catch (e) {
+        failed++;
+        const message = e instanceof Error ? e.message : "the copy failed";
+        notes.push(`${bind.sourcePath}: ${message}`);
+        await appendRunItem(input.runId, {
+          path,
+          sourceKind: "volume",
+          sourceName: bind.sourcePath,
           outcome: "failed",
           targetKind: landed.targetKind,
           targetId: landed.targetId,

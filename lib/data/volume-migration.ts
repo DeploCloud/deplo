@@ -172,6 +172,9 @@ export async function copyVolumeBetween(
   })();
 
   let res: { ok: boolean; error: string; bytesWritten?: number; sha256?: string };
+  // Both cross-checks are OPTIONAL by version, not by importance: an agent older
+  // than the fields answers 0 and "", which is "not reported" - reading a 0 as
+  // "wrote nothing" would fail every copy on the fleet that has not updated yet.
   try {
     res = await dest.importVolume(targetName, true, counted);
   } catch (e) {
@@ -196,9 +199,75 @@ export async function copyVolumeBetween(
     throw new Error(
       `the copy of "${volumeName}" arrived corrupted: ${bytes} bytes sent, digest ${res.sha256} received instead of ${digest}`,
     );
-  if (res.bytesWritten != null && res.bytesWritten !== bytes)
+  if (res.bytesWritten != null && res.bytesWritten > 0 && res.bytesWritten !== bytes)
     throw new Error(
       `the copy of "${volumeName}" was truncated: ${bytes} bytes sent, ${res.bytesWritten} written`,
+    );
+
+  return { bytes, sha256: digest, empty: false };
+}
+
+/**
+ * Copy one HOST DIRECTORY from `source` to `dest` — the bind-mount half of a
+ * migration from a platform that keeps service data in a plain directory.
+ *
+ * Same contract as {@link copyVolumeBetween}, for the same reasons: the source is
+ * proven to hold something before the destination is opened, the bytes are counted
+ * and hashed, and an empty source is answered rather than performed. The agent
+ * refuses a directory that is not there instead of creating one, so `empty` here
+ * genuinely means "that directory holds nothing".
+ *
+ * The CALLER owns the authorization: this reads and writes arbitrary host paths, so
+ * it belongs behind instance admin plus the host-volumes grant.
+ */
+export async function copyHostPathBetween(
+  source: AgentConnection,
+  dest: AgentConnection,
+  sourcePath: string,
+  targetPath: string,
+): Promise<VolumeCopyResult> {
+  let seen = 0;
+  try {
+    for await (const chunk of source.exportHostPath(sourcePath)) {
+      seen += chunk.length;
+      if (seen > EMPTY_ARCHIVE_CEILING) break;
+    }
+  } catch (e) {
+    throw attributeCopyError(e);
+  }
+  if (seen <= EMPTY_ARCHIVE_CEILING) return { bytes: 0, sha256: "", empty: true };
+
+  const hash = createHash("sha256");
+  let bytes = 0;
+  const counted = (async function* () {
+    for await (const chunk of source.exportHostPath(sourcePath)) {
+      bytes += chunk.length;
+      hash.update(chunk);
+      yield chunk;
+    }
+  })();
+
+  let res: { ok: boolean; error: string; bytesWritten?: number; sha256?: string };
+  try {
+    res = await dest.importHostPath(targetPath, true, counted);
+  } catch (e) {
+    throw attributeCopyError(e);
+  }
+  if (!res.ok)
+    throw new Error(res.error || `agent failed to import the directory "${targetPath}"`);
+
+  const digest = hash.digest("hex");
+  if (bytes <= EMPTY_ARCHIVE_CEILING)
+    throw new Error(
+      `nothing was copied out of "${sourcePath}" - the directory is empty or no longer on that host`,
+    );
+  if (res.sha256 && res.sha256 !== digest)
+    throw new Error(
+      `the copy of "${sourcePath}" arrived corrupted: ${bytes} bytes sent, digest ${res.sha256} received instead of ${digest}`,
+    );
+  if (res.bytesWritten != null && res.bytesWritten > 0 && res.bytesWritten !== bytes)
+    throw new Error(
+      `the copy of "${sourcePath}" was truncated: ${bytes} bytes sent, ${res.bytesWritten} written`,
     );
 
   return { bytes, sha256: digest, empty: false };
