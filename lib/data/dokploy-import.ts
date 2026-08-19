@@ -216,6 +216,8 @@ export interface ImportItemDTO {
   path: string;
   sourceKind: string;
   sourceName: string;
+  /** The Dokploy service id, on the rows that are a service. Null everywhere else. */
+  sourceId: string | null;
   outcome: string;
   targetKind: string | null;
   targetId: string | null;
@@ -660,6 +662,14 @@ async function hostnamesOwnedElsewhere(teamId: string): Promise<Set<string>> {
  * Every machine behind that Dokploy, each paired with the Deplo server at the
  * same address - or nothing, when Deplo has no agent there.
  *
+ * `dokployMachines` is the same answer for a caller holding no plan: the CUTOVER
+ * needs exactly one field out of it - which Deplo server can read a given Dokploy
+ * host's disk - and takes it from here rather than from the browser. That mapping
+ * used to be a client input, and the wizard filled every machine in with the Deplo
+ * host: the export then read a volume that was not on that machine, Docker made an
+ * empty one on the spot, and the copy overwrote real data with nothing while
+ * reporting success. An address is a fact; it is not something to be asked.
+ *
  * Matched on ADDRESS, because that is the only thing the two systems share: a
  * Dokploy server row carries an IP, a Deplo server row carries the ip/host the
  * agent was registered with, and one machine is one address. A storage-only host
@@ -668,6 +678,13 @@ async function hostnamesOwnedElsewhere(teamId: string): Promise<Set<string>> {
  * The Dokploy host itself comes first and is the empty id, the same key the
  * server mapping and the cutover already use for it.
  */
+export async function dokployMachines(
+  c: DokployCredential,
+  teamId: string,
+): Promise<PlanServer[]> {
+  return planMachines(c, teamId, await listServers(c).catch(() => []));
+}
+
 async function planMachines(
   c: DokployCredential,
   teamId: string,
@@ -877,6 +894,9 @@ class Report {
     path?: string;
     sourceKind: string;
     sourceName: string;
+    /** The Dokploy service id, when this row IS a service. What the data cutover
+     *  pairs on — see `dokploy_import_items.source_id`. */
+    sourceId?: string | null;
     outcome: "created" | "skipped" | "failed" | "manual" | "unsupported";
     targetKind?: string | null;
     targetId?: string | null;
@@ -886,6 +906,7 @@ class Report {
       path: entry.path ?? this.path.join(" / "),
       sourceKind: entry.sourceKind,
       sourceName: entry.sourceName,
+      sourceId: entry.sourceId ?? null,
       outcome: entry.outcome,
       targetKind: entry.targetKind ?? null,
       targetId: entry.targetId ?? null,
@@ -904,11 +925,13 @@ class Report {
     name: string,
     notes: string[],
     target?: { kind: string; id: string },
+    sourceId?: string | null,
   ): Promise<void> {
     for (const message of notes)
       await this.add({
         sourceKind: kind,
         sourceName: name,
+        sourceId: sourceId ?? null,
         outcome: "manual",
         targetKind: target?.kind ?? null,
         targetId: target?.id ?? null,
@@ -928,6 +951,7 @@ export async function appendRunItem(
     path: string;
     sourceKind: string;
     sourceName: string;
+    sourceId?: string | null;
     outcome: "created" | "skipped" | "failed" | "manual" | "unsupported";
     targetKind?: string | null;
     targetId?: string | null;
@@ -1024,6 +1048,7 @@ export async function importDokployProject(
       if (!isApp && !deploEngineFor(svc.kind as DokployDbKind)) {
         await envReport.at(svc.name || svc.id).add({
           sourceKind: svc.kind,
+          sourceId: svc.id,
           sourceName: svc.name || svc.id,
           outcome: "unsupported",
           targetKind,
@@ -1041,6 +1066,7 @@ export async function importDokployProject(
       } catch (e) {
         await envReport.at(svc.name || svc.id).add({
           sourceKind: svc.kind,
+          sourceId: svc.id,
           sourceName: svc.name || svc.id,
           outcome: "failed",
           targetKind,
@@ -1080,6 +1106,7 @@ export async function importDokployProject(
       } catch (e) {
         await svcReport.add({
           sourceKind: svc.kind,
+          sourceId: svc.id,
           sourceName: name,
           outcome: "failed",
           targetKind,
@@ -1361,6 +1388,7 @@ async function importAppService(
   if (match) {
     await report.add({
       sourceKind: svc.kind,
+      sourceId: svc.id,
       sourceName: name,
       outcome: "skipped",
       targetKind: "app",
@@ -1409,6 +1437,7 @@ async function importAppService(
     if (!yamlText.trim()) {
       await report.add({
         sourceKind: svc.kind,
+        sourceId: svc.id,
         sourceName: name,
         outcome: "failed",
         targetKind: "app",
@@ -1479,6 +1508,7 @@ async function importAppService(
 
   await report.add({
     sourceKind: svc.kind,
+    sourceId: svc.id,
     sourceName: name,
     outcome: "created",
     targetKind: "app",
@@ -1555,7 +1585,7 @@ async function importAppService(
 
   await importCrons(c, isCompose ? "compose" : "application", svc.id, created.id, notes);
 
-  await report.notes(svc.kind, name, notes, target);
+  await report.notes(svc.kind, name, notes, target, svc.id);
   return created.id;
 }
 
@@ -1635,6 +1665,7 @@ async function importDatabaseService(
   if (!mapped.value) {
     await report.add({
       sourceKind: svc.kind,
+      sourceId: svc.id,
       sourceName: name,
       outcome: "unsupported",
       targetKind: "database",
@@ -1656,6 +1687,7 @@ async function importDatabaseService(
   if (clash.length > 0) {
     await report.add({
       sourceKind: svc.kind,
+      sourceId: svc.id,
       sourceName: name,
       outcome: "skipped",
       targetKind: "database",
@@ -1718,6 +1750,7 @@ async function importDatabaseService(
       } catch (e2) {
         await report.add({
           sourceKind: svc.kind,
+          sourceId: svc.id,
           sourceName: name,
           outcome: "failed",
           targetKind: "database",
@@ -1730,22 +1763,26 @@ async function importDatabaseService(
 
   await report.add({
     sourceKind: svc.kind,
+    sourceId: svc.id,
     sourceName: name,
     outcome: "created",
     targetKind: "database",
     targetId: created.id,
   });
 
-  // Names the step that fills it. "Restore your data" read as "go find a dump
-  // and do it yourself", which is how someone concludes the import left them
-  // with an empty database and no way to move the old one.
+  // Says what happens NEXT, in this same import. "Restore your data" read as "go
+  // find a dump and do it yourself", which is how someone concludes the import left
+  // them with an empty database and no way to move the old one.
   notes.push(
-    `Empty for now. The Data step copies its data over from Dokploy - and it will answer as "${created.host}", not "${row.appName}", so update the connection strings.`,
+    `Empty until the data copy runs, a moment from now in this same import. It answers as "${created.host}", not "${row.appName}", so update the connection strings.`,
   );
-  await report.notes(svc.kind, name, notes, {
-    kind: "database",
-    id: created.id,
-  });
+  await report.notes(
+    svc.kind,
+    name,
+    notes,
+    { kind: "database", id: created.id },
+    svc.id,
+  );
 }
 
 /* ---- project / environment level variables --------------------------- */
@@ -1991,6 +2028,7 @@ export async function getDokployImport(
         path: i.path,
         sourceKind: i.sourceKind,
         sourceName: i.sourceName,
+        sourceId: i.sourceId,
         outcome: i.outcome,
         targetKind: i.targetKind,
         targetId: i.targetId,

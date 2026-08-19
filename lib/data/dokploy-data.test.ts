@@ -34,18 +34,24 @@ import {
   __setDokployFetchForTest,
   __resetDokployFetchForTest,
 } from "../dokploy/client";
+import {
+  dokployImportItems as itemsTable,
+  servers as serversTable,
+} from "../db/schema/control-plane";
+import { __setAgentConnectorForTest } from "../infra/agent-client";
 import { beginDokployImport } from "./dokploy-import";
 import { moveDokployServiceData, planDokployDataMove } from "./dokploy-data";
 
 /**
- * The data cutover, against a fake Dokploy.
+ * The data cutover, against a fake Dokploy and a fake agent.
  *
- * What is testable here is everything up to the byte copy: which services can
- * still be moved, which volume goes into which, and the refusals. The copy itself
- * is two agent RPCs and this repo has no `connectAgent` seam (the same note is in
- * `databases.test.ts`), so it is covered by the manual end-to-end instead — which
- * is also why the ORDER matters and is asserted: nothing on the source may be
- * stopped until every check has passed.
+ * The byte copy IS covered here, and has to be: for as long as it was not, a relay
+ * that reported "Copied" having moved nothing passed every suite in this repo while
+ * destroying every volume it touched. So the three things the copy must never do
+ * are pinned - it must not read from a host nobody derived, must not wipe a
+ * destination before the source has proven it has data, and must not report a
+ * success it did not perform - alongside the ORDER, which is the other half:
+ * nothing on the source may be stopped until every check has passed.
  */
 
 let db: TestDb;
@@ -167,6 +173,142 @@ function fakeDokploy() {
   };
 }
 
+/* ------------------------------------------------------------------ */
+/* The fake agent                                                      */
+/* ------------------------------------------------------------------ */
+
+/** Everything the copy asked each host to do, in order: `<serverId>:<verb>:<arg>`. */
+let agentCalls: string[] = [];
+/** What each host holds. A volume that is ABSENT here is one `docker volume` would
+ *  create empty on the spot - the exact shape that destroyed every import. */
+let volumes: Record<string, Record<string, Buffer>> = {};
+
+/** A gzipped tar of an empty directory: the archive a missing volume produces. */
+const EMPTY_ARCHIVE = Buffer.alloc(45, 0);
+
+function fakeAgent(serverId: string) {
+  const say = (verb: string, arg: string) => agentCalls.push(`${serverId}:${verb}:${arg}`);
+  return {
+    async *exportVolume(name: string) {
+      say("export", name);
+      // Docker CREATES a missing named volume rather than failing, so an export of
+      // one that is not here answers with a complete, empty archive.
+      yield volumes[serverId]?.[name] ?? EMPTY_ARCHIVE;
+    },
+    async importVolume(name: string, wipeFirst: boolean, chunks: AsyncIterable<Buffer>) {
+      say("import", name);
+      if (wipeFirst) {
+        say("wipe", name);
+        delete volumes[serverId]?.[name];
+      }
+      const parts: Buffer[] = [];
+      for await (const c of chunks) parts.push(c);
+      volumes[serverId] ??= {};
+      volumes[serverId][name] = Buffer.concat(parts);
+      return { ok: true, error: "" };
+    },
+    async stopStack(slug: string) {
+      say("stop", slug);
+      return { ok: true, error: "" };
+    },
+    async startStack(slug: string) {
+      say("start", slug);
+      return { ok: true, error: "" };
+    },
+    async listInstances(_id: string, slug: string) {
+      return [
+        {
+          name: slug,
+          service: slug,
+          image: "postgres:16",
+          running: true,
+          exposed: false,
+          user: "postgres",
+          workdir: "/",
+          openStdin: false,
+          tty: false,
+          state: "running",
+          health: "healthy",
+          restartCount: 0,
+        },
+      ];
+    },
+    async exec() {
+      return { stdout: "7\n", stderr: "", code: 0, rawMode: false };
+    },
+    close() {},
+  };
+}
+
+/** The rows an import writes when it creates something - the ONLY thing that makes
+ *  a service's data movable, and the reason a resource this run did not create can
+ *  never be reached. */
+async function seedRunItems(
+  runId: string,
+  rows: { sourceKind: string; sourceId: string; sourceName: string; targetKind: string; targetId: string; outcome?: string }[],
+): Promise<void> {
+  for (const [i, r] of rows.entries())
+    await db.insert(itemsTable).values({
+      id: `dimi_seed_${i}`,
+      runId,
+      path: `Blink / production / ${r.sourceName}`,
+      sourceKind: r.sourceKind,
+      sourceName: r.sourceName,
+      sourceId: r.sourceId,
+      outcome: r.outcome ?? "created",
+      targetKind: r.targetKind,
+      targetId: r.targetId,
+      message: null,
+    });
+}
+
+/** A run holding everything the fixture imported. */
+async function openRun(): Promise<string> {
+  const runId = await asOwner(() => beginDokployImport({ url: CONNECT.url }));
+  await seedRunItems(runId, [
+    {
+      sourceKind: "application",
+      sourceId: "dok-app-web",
+      sourceName: "blink-web",
+      targetKind: "app",
+      targetId: "prj_web",
+    },
+    {
+      sourceKind: "postgres",
+      sourceId: "dok-pg-1",
+      sourceName: "blink-db",
+      targetKind: "database",
+      targetId: "db_blink",
+    },
+  ]);
+  return runId;
+}
+
+/** Register the Deplo server that sits at the Dokploy address, which is the only
+ *  thing that makes a copy possible - it is derived, never chosen. */
+async function seedDokployHostServer(): Promise<void> {
+  await db
+    .insert(serversTable)
+    .values({
+      id: "srv_dokploy_host",
+      name: "dokploy-host",
+      host: "dokploy.acme.test",
+      type: "remote",
+      status: "online",
+      ip: "dokploy.acme.test",
+      dockerVersion: "27",
+      traefikEnabled: true,
+      cpuCores: 4,
+      memoryMb: 8192,
+      diskGb: 100,
+      cpuUsage: 1,
+      memoryUsage: 1,
+      diskUsage: 1,
+      createdAt: "2026-01-01T00:00:00.000Z",
+    })
+    .onConflictDoNothing();
+}
+
 before(async () => {
   ({ db, pg } = await makeTestDb());
   __setTestDb(db);
@@ -174,6 +316,7 @@ before(async () => {
 
 after(async () => {
   __resetDokployFetchForTest();
+  __setAgentConnectorForTest();
   __resetTestDb();
   await pg.close();
 });
@@ -188,6 +331,23 @@ beforeEach(async () => {
   await seedServer(db);
   __setDokployFetchForTest(fakeDokploy());
   calls = [];
+  agentCalls = [];
+  // The Dokploy host holds both source volumes, with real content in them.
+  volumes = {
+    srv_dokploy_host: {
+      "blink-web-abc_uploads": Buffer.alloc(4096, 7),
+      "blink-db-abc_data": Buffer.alloc(8192, 9),
+    },
+    [SERVER_1]: {
+      "deplo-blink-web-uploads": Buffer.alloc(64, 1),
+      "deplo-db-blink-db_db-blink-db-data": Buffer.alloc(64, 2),
+    },
+  };
+  __setAgentConnectorForTest(
+    async (serverId) => fakeAgent(serverId) as unknown as Awaited<
+      ReturnType<typeof import("../infra/agent-client").connectAgent>
+    >,
+  );
 
   // The state an import leaves behind: the project, its production environment,
   // the app, one managed volume, and the database.
@@ -263,7 +423,8 @@ function asOwner<T>(fn: () => Promise<T>): Promise<T> {
 /* ---- the plan -------------------------------------------------------- */
 
 test("the plan pairs an imported app's volume with the one Deplo will mount", async () => {
-  const plan = await asOwner(() => planDokployDataMove(CONNECT));
+  const runId = await openRun();
+  const plan = await asOwner(() => planDokployDataMove({ ...CONNECT, runId }));
   const web = plan.find((s) => s.sourceName === "blink-web");
   assert.ok(web, JSON.stringify(plan.map((s) => s.sourceName)));
   assert.equal(web.path, "Blink / production / blink-web");
@@ -279,7 +440,8 @@ test("the plan pairs an imported app's volume with the one Deplo will mount", as
 });
 
 test("a service that was never imported is not listed at all", async () => {
-  const plan = await asOwner(() => planDokployDataMove(CONNECT));
+  const runId = await openRun();
+  const plan = await asOwner(() => planDokployDataMove({ ...CONNECT, runId }));
   assert.equal(
     plan.some((s) => s.sourceName === "never-imported"),
     false,
@@ -287,7 +449,8 @@ test("a service that was never imported is not listed at all", async () => {
 });
 
 test("a database pairs 1:1 and says the data directory moved", async () => {
-  const plan = await asOwner(() => planDokployDataMove(CONNECT));
+  const runId = await openRun();
+  const plan = await asOwner(() => planDokployDataMove({ ...CONNECT, runId }));
   const database = plan.find((s) => s.targetKind === "database");
   assert.ok(database);
   assert.equal(database.targetId, "db_blink");
@@ -297,7 +460,8 @@ test("a database pairs 1:1 and says the data directory moved", async () => {
 });
 
 test("the plan reads both sides and writes to neither", async () => {
-  await asOwner(() => planDokployDataMove(CONNECT));
+  const runId = await openRun();
+  await asOwner(() => planDokployDataMove({ ...CONNECT, runId }));
   assert.equal(
     calls.some((p) => p.endsWith(".stop")),
     false,
@@ -306,11 +470,175 @@ test("the plan reads both sides and writes to neither", async () => {
   assert.ok(calls.includes("docker.getConfig"));
 });
 
+test("the plan says so when Deplo has no agent on the machine holding the data", async () => {
+  const runId = await openRun();
+  const plan = await asOwner(() => planDokployDataMove({ ...CONNECT, runId }));
+  // No Deplo server sits at the Dokploy address in this fixture, so every service
+  // on it carries the warning - on the REVIEW screen, not at the cutover with the
+  // old platform already stopped.
+  assert.ok(
+    plan.every((svc) => svc.notes.some((n) => /no agent on the machine/.test(n))),
+    JSON.stringify(plan.map((s) => s.notes)),
+  );
+});
+
+test("a resource this run did not create is not reachable at all", async () => {
+  // The database is here and its name matches a Dokploy service exactly — which is
+  // all the old name-matching needed to offer it up for a copy that WIPES it.
+  const runId = await asOwner(() => beginDokployImport({ url: CONNECT.url }));
+  await seedRunItems(runId, [
+    {
+      sourceKind: "application",
+      sourceId: "dok-app-web",
+      sourceName: "blink-web",
+      targetKind: "app",
+      targetId: "prj_web",
+    },
+  ]);
+  const plan = await asOwner(() => planDokployDataMove({ ...CONNECT, runId }));
+  assert.equal(
+    plan.some((s) => s.targetKind === "database"),
+    false,
+    "a database this run did not import must never be a copy target",
+  );
+});
+
+test("a resource the run only SKIPPED is left alone, data included", async () => {
+  const runId = await asOwner(() => beginDokployImport({ url: CONNECT.url }));
+  await seedRunItems(runId, [
+    {
+      sourceKind: "postgres",
+      sourceId: "dok-pg-1",
+      sourceName: "blink-db",
+      targetKind: "database",
+      targetId: "db_blink",
+      // "already here, left as it is" — which has to include its data.
+      outcome: "skipped",
+    },
+  ]);
+  const plan = await asOwner(() => planDokployDataMove({ ...CONNECT, runId }));
+  assert.deepEqual(plan, []);
+});
+
+/* ---- the copy -------------------------------------------------------- */
+
+test("the copy reads the source host, and the bytes land in the target volume", async () => {
+  await seedDokployHostServer();
+  const runId = await openRun();
+  agentCalls = [];
+
+  const res = await asOwner(() =>
+    moveDokployServiceData({
+      ...CONNECT,
+      runId,
+      sourceKind: "application",
+      sourceId: "dok-app-web",
+    }),
+  );
+
+  assert.equal(res.moved, 1);
+  assert.equal(res.failed, 0);
+  // Read from the machine that HOLDS it, written to the one that runs the app.
+  assert.ok(
+    agentCalls.includes("srv_dokploy_host:export:blink-web-abc_uploads"),
+    agentCalls.join(" | "),
+  );
+  assert.ok(agentCalls.includes(`${SERVER_1}:import:deplo-blink-web-uploads`));
+  assert.deepEqual(
+    volumes[SERVER_1]["deplo-blink-web-uploads"],
+    Buffer.alloc(4096, 7),
+    "the destination must hold exactly what the source had",
+  );
+});
+
+test("a source volume that is not on that host wipes nothing and is not a copy", async () => {
+  await seedDokployHostServer();
+  // The volume is missing where the export runs: Docker answers with an empty
+  // archive instead of failing, which is the whole bug this guards.
+  delete volumes.srv_dokploy_host["blink-web-abc_uploads"];
+  const before = volumes[SERVER_1]["deplo-blink-web-uploads"];
+  const runId = await openRun();
+  agentCalls = [];
+
+  const res = await asOwner(() =>
+    moveDokployServiceData({
+      ...CONNECT,
+      runId,
+      sourceKind: "application",
+      sourceId: "dok-app-web",
+    }),
+  );
+
+  assert.equal(res.moved, 0, "nothing was copied, so nothing may be counted as copied");
+  assert.deepEqual(
+    volumes[SERVER_1]["deplo-blink-web-uploads"],
+    before,
+    "the destination must be untouched when the source has nothing",
+  );
+  assert.equal(
+    agentCalls.some((c) => c.includes(":wipe:")),
+    false,
+    "a destination must never be emptied before the source has proven it has data",
+  );
+  const rows = await db.execute(
+    `select outcome, message from dokploy_import_items where run_id = '${runId}' and source_kind = 'volume'`,
+  );
+  assert.equal(rows.rows[0].outcome, "skipped");
+  assert.match(String(rows.rows[0].message), /holds nothing on Dokploy/);
+});
+
+test("a copied database is started again and checked, and the report says what landed", async () => {
+  await seedDokployHostServer();
+  const runId = await openRun();
+  agentCalls = [];
+
+  const res = await asOwner(() =>
+    moveDokployServiceData({
+      ...CONNECT,
+      runId,
+      sourceKind: "postgres",
+      sourceId: "dok-pg-1",
+    }),
+  );
+
+  assert.equal(res.moved, 1);
+  assert.equal(res.failed, 0);
+  assert.deepEqual(
+    volumes[SERVER_1]["deplo-db-blink-db_db-blink-db-data"],
+    Buffer.alloc(8192, 9),
+  );
+  // Stopped for the copy, started again afterwards: a database left down would
+  // read as a broken migration.
+  assert.ok(agentCalls.includes(`${SERVER_1}:stop:db-blink-db`));
+  assert.ok(agentCalls.includes(`${SERVER_1}:start:db-blink-db`));
+
+  const items = await db.execute(
+    `select outcome, message from dokploy_import_items where run_id = '${runId}' order by seq`,
+  );
+  const messages = items.rows.map((r) => String(r.message ?? ""));
+  // The size is IN the report. A copy that says only "Copied" is exactly what a
+  // copy of nothing said for as long as this was broken.
+  assert.ok(
+    messages.some((m) =>
+      /Copied 8\.19 kB into deplo-db-blink-db_db-blink-db-data/.test(m),
+    ),
+    messages.join(" | "),
+  );
+  assert.ok(
+    messages.some((m) => /is up on the copied data/.test(m)),
+    messages.join(" | "),
+  );
+  const running = await db.execute("select status from databases where id = 'db_blink'");
+  assert.equal(running.rows[0].status, "running");
+});
+
 /* ---- the refusals ---------------------------------------------------- */
 
 test("nothing is stopped until Deplo knows which server holds the data", async () => {
-  const runId = await asOwner(() => beginDokployImport({ url: CONNECT.url }));
+  // No Deplo server sits at the Dokploy address, so there is no host to read from.
+  const runId = await openRun();
   calls = [];
+  agentCalls = [];
   await assert.rejects(
     () =>
       asOwner(() =>
@@ -319,23 +647,21 @@ test("nothing is stopped until Deplo knows which server holds the data", async (
           runId,
           sourceKind: "application",
           sourceId: "dok-app-web",
-          // The Dokploy host is unmapped: pointing the copy at the wrong machine
-          // would read a volume that is not there and overwrite real data with an
-          // empty archive.
-          servers: [],
         }),
       ),
-    /which of its servers runs that Dokploy host/,
+    /no agent on the machine/,
   );
   assert.equal(
     calls.some((p) => p.endsWith(".stop")),
     false,
     "the source must still be running after a refusal",
   );
+  assert.deepEqual(agentCalls, [], "and nothing of ours may be touched either");
 });
 
-test("a service that is not in this team cannot be moved into it", async () => {
-  const runId = await asOwner(() => beginDokployImport({ url: CONNECT.url }));
+test("a service this run did not import cannot be moved into anything", async () => {
+  await seedDokployHostServer();
+  const runId = await openRun();
   await assert.rejects(
     () =>
       asOwner(() =>
@@ -344,15 +670,15 @@ test("a service that is not in this team cannot be moved into it", async () => {
           runId,
           sourceKind: "application",
           sourceId: "dok-app-ghost",
-          servers: [{ from: "", to: SERVER_1 }],
         }),
       ),
-    /not in this team/,
+    /did not create anything/,
   );
 });
 
 test("a service Dokploy no longer has is refused before anything else", async () => {
-  const runId = await asOwner(() => beginDokployImport({ url: CONNECT.url }));
+  await seedDokployHostServer();
+  const runId = await openRun();
   await assert.rejects(
     () =>
       asOwner(() =>
@@ -361,7 +687,6 @@ test("a service Dokploy no longer has is refused before anything else", async ()
           runId,
           sourceKind: "application",
           sourceId: "dok-app-vanished",
-          servers: [{ from: "", to: SERVER_1 }],
         }),
       ),
     /no longer on the Dokploy instance/,
@@ -369,7 +694,8 @@ test("a service Dokploy no longer has is refused before anything else", async ()
 });
 
 test("a run from another team is not a place to write a report", async () => {
-  const runId = await asOwner(() => beginDokployImport({ url: CONNECT.url }));
+  await seedDokployHostServer();
+  const runId = await openRun();
   await assert.rejects(
     () =>
       runWithIdentity({ userId: USER_1, teamId: TEAM_B }, () =>
@@ -378,7 +704,6 @@ test("a run from another team is not a place to write a report", async () => {
           runId,
           sourceKind: "application",
           sourceId: "dok-app-web",
-          servers: [{ from: "", to: SERVER_1 }],
         }),
       ),
     /scoped to a team the user no longer belongs to|does not belong to this team/,

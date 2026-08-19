@@ -1,0 +1,11 @@
+-- The Dokploy service that produced an imported resource, on the run's own item.
+--
+-- The data cutover has to answer "which Deplo resource did THIS Dokploy service
+-- become". It used to answer by matching DISPLAY NAMES across the whole team, which
+-- reached resources the run never created (and would have wiped their volumes), and
+-- lost the pairing the moment either side was renamed. The run already writes down
+-- what it made; it just never wrote down what it made it FROM.
+--
+-- Nullable: rows written before this column existed have no source id, and a
+-- cutover simply does not offer those services rather than guessing at them.
+ALTER TABLE "dokploy_import_items" ADD COLUMN IF NOT EXISTS "source_id" text;

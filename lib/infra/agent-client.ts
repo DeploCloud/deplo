@@ -1943,10 +1943,30 @@ function dial(target: DialTarget): AgentConnection {
 }
 
 /**
+ * Test-only: answer `connectAgent` with a stand-in.
+ *
+ * The repo had NO seam here, and the cost was precise: not one test covered a byte
+ * of the volume copy, so a relay that reported "Copied" having moved nothing passed
+ * every suite for as long as it existed. Same shape as the other injected dials
+ * (`__setMetricsConnectorForTest`, `__setRunnerForTest`) - a module-level swap the
+ * production path reads once, so nothing about the real code changes.
+ *
+ * Pass nothing to restore the real dial.
+ */
+let connector: ((serverId: string) => Promise<AgentConnection>) | null = null;
+
+export function __setAgentConnectorForTest(
+  fn?: (serverId: string) => Promise<AgentConnection>,
+): void {
+  connector = fn ?? null;
+}
+
+/**
  * Open a connection to the agent owning `serverId`. The caller must `close()` it.
  * Throws if the agent is unreachable/unavailable (caller falls back).
  */
 export async function connectAgent(serverId: string): Promise<AgentConnection> {
+  if (connector) return connector(serverId);
   const target = await resolveTarget(serverId);
   return dial(target);
 }

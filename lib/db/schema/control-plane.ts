@@ -3438,6 +3438,17 @@ export const dokployImportItems = pgTable(
     /** What it was on Dokploy: `application` | `compose` | `postgres` | `domain` | ... */
     sourceKind: text("source_kind").notNull(),
     sourceName: text("source_name").notNull(),
+    /**
+     * The Dokploy service id this row came from, when the row IS a service.
+     *
+     * The pairing the data cutover runs on: it asks "what did this Dokploy service
+     * become here", and the run is the only place that knows. Matching names across
+     * the team instead reached resources the run never created — and the copy
+     * WIPES its target, so a stale name match was a way to destroy a database
+     * nobody had asked to import. Null on the rows that are not a service (a
+     * project, a domain, a note) and on every row written before it existed.
+     */
+    sourceId: text("source_id"),
     /** `'created'` | `'skipped'` | `'failed'` | `'manual'`. */
     outcome: text("outcome").notNull(),
     /** What it became here: `app` | `database` | `project` | `environment` | ... */

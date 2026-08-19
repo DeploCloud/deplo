@@ -179,8 +179,8 @@ const IMPORT_PROJECT = /* GraphQL */ `
 `;
 
 const PLAN_DATA = /* GraphQL */ `
-  mutation PlanDokployData($input: DokployConnectInput!) {
-    planDokployDataMove(input: $input) {
+  mutation PlanDokployData($input: DokployConnectInput!, $runId: String!) {
+    planDokployDataMove(input: $input, runId: $runId) {
       path
       sourceKind
       sourceId
@@ -203,14 +203,12 @@ const MOVE_DATA = /* GraphQL */ `
     $runId: String!
     $sourceKind: String!
     $sourceId: String!
-    $servers: [DokployServerChoiceInput!]
   ) {
     moveDokployServiceData(
       input: $input
       runId: $runId
       sourceKind: $sourceKind
       sourceId: $sourceId
-      servers: $servers
     ) {
       moved
       failed
@@ -254,10 +252,14 @@ const MINT_LINK = /* GraphQL */ `
 
 /** What `planDokployDataMove` answers, trimmed to what the copy loop reads. */
 interface DataService {
+  path: string;
   sourceKind: string;
   sourceId: string;
   sourceName: string;
   volumes: { sourceVolume: string }[];
+  /** Why a volume could not be paired, or why this host cannot be read at all.
+   *  Shown, never swallowed: it is the line that says what will NOT come over. */
+  notes: string[];
 }
 
 interface MoveResult {
@@ -392,10 +394,11 @@ export function ImportWizard({
           ),
         ),
       );
-      // The SAME default for the other direction: the cutover asks which of our
-      // servers can reach each Dokploy host, and the Data step is where that is
-      // edited. Pre-answering it here means the common case (Dokploy on this very
-      // machine) needs no answer at all.
+      // The same default for a service whose placement was never touched: which of
+      // our servers its apps LAND on. It is only that - where the data is READ from
+      // is derived server-side from the machine's address, never from this map.
+      // Answering both questions with one field is what made every copy read the
+      // Deplo host, find no volume there, and overwrite real data with nothing.
       setServerMap(
         Object.fromEntries([
           [OWN_HOST, home],
@@ -495,9 +498,24 @@ export function ImportWizard({
           },
           (d) => d.importDokployProject,
         );
+        // One project failing does not abandon the others, and above all does not
+        // skip the DATA phase: the projects that did land are already created here
+        // and stopped over there, and leaving them without their data is the worse
+        // half-finished state.
         if (!res.ok) {
-          setFailure(res.error);
-          return;
+          setItems((prev) => [
+            ...prev,
+            {
+              path: target.project.name,
+              sourceKind: "project",
+              sourceName: target.project.name,
+              outcome: "failed",
+              targetKind: null,
+              targetId: null,
+              message: res.error,
+            },
+          ]);
+          continue;
         }
         setItems((prev) => [...prev, ...(res.data?.items ?? [])]);
       }
@@ -509,13 +527,24 @@ export function ImportWizard({
       setProgress({ done: targets.length, total: targets.length, current: "Reading the volumes" });
       const dataPlan = await gqlAction<{ planDokployDataMove: DataService[] }, DataService[]>(
         PLAN_DATA,
-        { input: connectInput },
+        { input: connectInput, runId: openRunId },
         (d) => d.planDokployDataMove,
       );
-      const movable = (dataPlan.ok ? (dataPlan.data ?? []) : []).filter(
-        (d) => d.volumes.length > 0,
-      );
-      if (!dataPlan.ok) setItems((prev) => [...prev, dataNote("Could not read what data is on Dokploy: " + dataPlan.error)]);
+      if (!dataPlan.ok)
+        setItems((prev) => [
+          ...prev,
+          dataNote("Could not read what data is on Dokploy: " + dataPlan.error, "failed"),
+        ]);
+      const planned = dataPlan.ok ? (dataPlan.data ?? []) : [];
+      // Every reason a service will not have its data copied is SAID. These notes
+      // are the whole value of the report - "no volume of this app mounts that
+      // path", "Deplo has no agent on that machine" - and they used to be fetched
+      // and dropped on the floor, which is how a migration reads as complete while
+      // leaving data behind.
+      for (const d of planned)
+        for (const note of d.notes)
+          setItems((prev) => [...prev, dataNote(`${d.sourceName}: ${note}`)]);
+      const movable = planned.filter((d) => d.volumes.length > 0);
 
       for (const [i, d] of movable.entries()) {
         setProgress({ done: i, total: movable.length, current: `Copying ${d.sourceName}` });
@@ -526,7 +555,6 @@ export function ImportWizard({
             runId: openRunId,
             sourceKind: d.sourceKind,
             sourceId: d.sourceId,
-            servers: serverChoices,
           },
           (d2) => d2.moveDokployServiceData,
         );
@@ -606,8 +634,8 @@ export function ImportWizard({
           }
         : prev,
     );
-    // The cutover reads this mapping to know which of our hosts holds the
-    // source volumes, and it is the same answer.
+    // A machine that just became one of ours is also the obvious place for its own
+    // services to land, so it becomes their default placement.
     setServerMap((prev) => ({ ...prev, [sourceId]: serverId }));
   }
 

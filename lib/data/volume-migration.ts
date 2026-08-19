@@ -1,5 +1,7 @@
 import "server-only";
 
+import { createHash } from "node:crypto";
+
 import {
   connectAgent,
   mapVolumeCopyUnsupported,
@@ -82,9 +84,61 @@ function attributeCopyError(e: unknown): Error {
 }
 
 /**
+ * A gzipped tar of an EMPTY directory is about 45 bytes — a header, two zero
+ * blocks and the gzip trailer. Nothing that holds a byte of real data compresses
+ * to anything near this, so a whole export that ends under the ceiling carried
+ * nothing, whatever the RPC said.
+ */
+const EMPTY_ARCHIVE_CEILING = 512;
+
+/**
+ * What a copy actually moved. `empty` is the source having had NOTHING to give -
+ * told apart from a failure on purpose, because the two want opposite handling:
+ * a failure is reported and rolled back, an empty source is a volume nobody ever
+ * wrote to and the honest answer is to leave the destination alone.
+ */
+export interface VolumeCopyResult {
+  /** Compressed bytes relayed through the control plane. */
+  bytes: number;
+  /** sha256 of the relayed stream, for the destination's own digest to meet. */
+  sha256: string;
+  /** The source archive held no files; nothing was written or wiped. */
+  empty: boolean;
+}
+
+/**
+ * Prove the source volume has content BEFORE the destination is touched.
+ *
+ * `docker run -v <name>:/v` CREATES the named volume when it is missing, so an
+ * export of a volume that is not on that host exits 0 with an empty archive - and
+ * `ImportVolume` wipes the target before the first frame arrives. That pair turned
+ * a wrong source host into total data loss reported as a successful copy (every
+ * Dokploy import did exactly this until August 2026). An agent new enough to answer
+ * NOT_FOUND refuses first; this probe is what makes the control plane safe on the
+ * agents already out there, and it costs one chunk: read until the archive proves
+ * itself, then cancel the stream (streamEvents cancels the call on early return).
+ */
+async function sourceHasData(
+  source: AgentConnection,
+  volumeName: string,
+): Promise<boolean> {
+  let seen = 0;
+  for await (const chunk of source.exportVolume(volumeName)) {
+    seen += chunk.length;
+    if (seen > EMPTY_ARCHIVE_CEILING) return true;
+  }
+  return false;
+}
+
+/**
  * Copy ONE named Docker volume from `source` to `dest` (both already-open agent
  * connections), overwriting the destination volume. Throws on any failure so the
  * caller can roll the move back.
+ *
+ * Answers how much it moved rather than nothing at all: a copy that reports success
+ * having relayed zero bytes is indistinguishable from one that worked, and that is
+ * the shape every silent data loss in this path has taken. The destination is not
+ * opened at all until the source has proven it has something to send.
  *
  * `targetName` defaults to the same name, which is what a server MOVE wants: the
  * same stack, re-provisioned on another host, names its volumes identically. It is
@@ -96,10 +150,30 @@ export async function copyVolumeBetween(
   dest: AgentConnection,
   volumeName: string,
   targetName: string = volumeName,
-): Promise<void> {
-  let res: { ok: boolean; error: string };
+): Promise<VolumeCopyResult> {
   try {
-    res = await dest.importVolume(targetName, true, source.exportVolume(volumeName));
+    if (!(await sourceHasData(source, volumeName)))
+      return { bytes: 0, sha256: "", empty: true };
+  } catch (e) {
+    throw attributeCopyError(e);
+  }
+
+  // Count and hash what actually crosses. The digest is the same cross-check the
+  // backup relay makes (lib/data/backup-transport.ts): an agent that reports its
+  // own sha256 back has to meet this one.
+  const hash = createHash("sha256");
+  let bytes = 0;
+  const counted = (async function* () {
+    for await (const chunk of source.exportVolume(volumeName)) {
+      bytes += chunk.length;
+      hash.update(chunk);
+      yield chunk;
+    }
+  })();
+
+  let res: { ok: boolean; error: string; bytesWritten?: number; sha256?: string };
+  try {
+    res = await dest.importVolume(targetName, true, counted);
   } catch (e) {
     throw attributeCopyError(e);
   }
@@ -107,6 +181,27 @@ export async function copyVolumeBetween(
     throw new Error(
       res.error || `agent failed to import the data volume "${targetName}"`,
     );
+
+  const digest = hash.digest("hex");
+  // The source proved itself a moment ago, so an empty stream here means the export
+  // stopped answering between the probe and the copy - never a success.
+  if (bytes <= EMPTY_ARCHIVE_CEILING)
+    throw new Error(
+      `nothing was copied out of "${volumeName}" - the volume is empty or no longer on that host`,
+    );
+  // Both halves of the digest cross-check are optional until the whole fleet
+  // answers them (they are additive StackResult fields); when they are there they
+  // are load-bearing, because a truncated untar is otherwise invisible.
+  if (res.sha256 && res.sha256 !== digest)
+    throw new Error(
+      `the copy of "${volumeName}" arrived corrupted: ${bytes} bytes sent, digest ${res.sha256} received instead of ${digest}`,
+    );
+  if (res.bytesWritten != null && res.bytesWritten !== bytes)
+    throw new Error(
+      `the copy of "${volumeName}" was truncated: ${bytes} bytes sent, ${res.bytesWritten} written`,
+    );
+
+  return { bytes, sha256: digest, empty: false };
 }
 
 /**

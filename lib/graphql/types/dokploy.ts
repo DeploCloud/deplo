@@ -471,33 +471,31 @@ builder.mutationFields((t) => ({
     type: [DataMoveServiceRef],
     authScopes: { capability: "create_projects" },
     description:
-      "The already-imported services whose DATA could still be moved, with each volume paired to the Deplo one that would receive it (paired by container path, the only identity the two platforms share). Reads both sides and writes nothing. A service renamed on either side since the import is simply not listed.",
-    args: { input: t.arg({ type: ConnectInputRef, required: true }) },
-    resolve: (_r, { input }) =>
+      "The services THIS RUN imported whose DATA can still be moved, with each volume paired to the Deplo one that would receive it (paired by container path, the only identity the two platforms share). Reads both sides and writes nothing. Scoped to the run because the copy WIPES its target before writing: what a service became is a fact the run recorded, never a name that happens to match.",
+    args: {
+      input: t.arg({ type: ConnectInputRef, required: true }),
+      runId: t.arg.string({ required: true }),
+    },
+    resolve: (_r, { input, runId }) =>
       planDokployDataMove({
         url: input.url,
         apiKey: input.apiKey,
         allowPrivate: input.allowPrivate ?? false,
+        runId,
       }),
   }),
   moveDokployServiceData: t.field({
     type: DataMoveResultRef,
     authScopes: { capability: "create_projects" },
     description:
-      "Cut ONE service's data over: STOP it on Dokploy (and leave it stopped - a volume read while its container writes cannot be trusted), then copy every paired volume into the app or database imported from it. Additionally gated on `restore_backups` on the target, which is what overwriting a resource's data already requires. Nothing is deployed afterwards. The volumes are derived from the service and the app, never taken from the caller: naming both sides would be an instruction to copy any volume on the host into any other one.",
+      "Cut ONE service's data over: STOP it on Dokploy (and leave it stopped - a volume read while its container writes cannot be trusted), then copy every paired volume into the app or database imported from it. A database is started again afterwards and checked, so the report says the engine reads the copied data rather than only that bytes moved. Additionally gated on `restore_backups` on the target, which is what overwriting a resource's data already requires. NEITHER side is taken from the caller: the volumes are derived from the service and the app, and the host the data is read from is derived from that machine's address - naming either would be an instruction to copy any volume on any host over any other one.",
     args: {
       input: t.arg({ type: ConnectInputRef, required: true }),
       runId: t.arg.string({ required: true }),
       sourceKind: t.arg.string({ required: true }),
       sourceId: t.arg.string({ required: true }),
-      servers: t.arg({
-        type: [ServerChoiceInput],
-        required: false,
-        description:
-          "The same Dokploy-host → Deplo-server mapping the import used. Required for the host the service runs on: that is where its volumes are, so Deplo has to know which of its own servers can read them.",
-      }),
     },
-    resolve: (_r, { input, runId, sourceKind, sourceId, servers }) =>
+    resolve: (_r, { input, runId, sourceKind, sourceId }) =>
       moveDokployServiceData({
         url: input.url,
         apiKey: input.apiKey,
@@ -505,7 +503,6 @@ builder.mutationFields((t) => ({
         runId,
         sourceKind,
         sourceId,
-        servers: servers?.map((s) => ({ from: s.from, to: s.to })),
       }),
   }),
   finishDokployImport: t.field({

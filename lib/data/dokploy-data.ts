@@ -7,10 +7,9 @@ import {
   appVolumes as appVolumesTable,
   apps as appsTable,
   databases as databasesTable,
-  environments as environmentsTable,
-  projects as projectsTable,
+  dokployImportItems as itemsTable,
 } from "../db/schema/control-plane";
-import { mapLimit } from "../utils";
+import { formatBytes, mapLimit } from "../utils";
 import { nowIso } from "../ids";
 import { getCurrentUser } from "../auth";
 import { reachesWholeTeam, requireCapability } from "../membership";
@@ -42,18 +41,26 @@ import {
 } from "../dokploy/map";
 
 import { requireAppCapability } from "./node-access";
-import { copyVolumeBetween, stopStackOn } from "./volume-migration";
+import { copyVolumeBetween, startStackOn, stopStackOn } from "./volume-migration";
 import { recordActivity } from "./activity";
 import { listServersForTeam } from "./servers";
 import {
   appendRunItem,
   assertImportGate,
   credentialFor,
+  dokployMachines,
   ownRun,
   refreshCounts,
   type ConnectInput,
-  type ServerChoice,
 } from "./dokploy-import";
+
+/**
+ * The one refusal that has to read the same on the review screen and at the
+ * cutover: Deplo reads a volume by asking the agent ON the machine that holds it,
+ * so a Dokploy host with no agent is a host whose data cannot move at all.
+ */
+const UNREACHABLE_SOURCE_HOST =
+  "Deplo has no agent on the machine this service's data is on, so its data cannot be copied. Add that machine as a server first - the Connect step lists it and installs the agent for you.";
 
 /**
  * The data half of a Dokploy migration: move a service's volumes over, once its
@@ -272,44 +279,75 @@ interface Landed {
   targetSlug: string;
   targetServerId: string;
   volumes: NamedVolume[];
-}
-
-/** Case-insensitive name equality, the tolerance the import itself applies. */
-function sameName(a: string, b: string): boolean {
-  return a.trim().toLowerCase() === b.trim().toLowerCase();
+  /** Engine facts, for the post-copy check. Only on a database. */
+  engine?: { type: DatabaseType; username: string; dbName: string };
 }
 
 /**
- * Where a Dokploy service ended up here, with the volumes it would receive.
+ * What this import run actually created: Dokploy service id → the Deplo resource.
  *
- * Matched the way the import PLACED it — project name, environment name, service
- * name, inside this team — so the two halves of a migration line up without
- * storing a second copy of the mapping. Renamed on either side since the import?
- * Then it is not matched, and the caller says so. That is the honest failure; the
- * alternative is copying data into whatever happens to be adjacent.
+ * The whole pairing, and the reason it is a READ of the run rather than a search.
+ * It used to be a name match across the entire team, which is wrong in both
+ * directions: a service renamed on either side silently paired with nothing, and a
+ * database that merely happened to share a name with something on Dokploy was
+ * offered up as a target — for a copy whose first act is to WIPE it. A run knows
+ * what it made and what it made it from; nothing else has to be inferred.
+ *
+ * Only `created` rows count. A row that came back `skipped` names a resource this
+ * run found ALREADY here and deliberately left alone, and leaving it alone has to
+ * include its data.
  */
-async function findLanded(
-  teamId: string,
-  svc: { kind: string; name: string; projectName: string; environmentName: string },
-): Promise<Landed | null> {
-  const isDatabase = svc.kind !== "application" && svc.kind !== "compose";
+async function runTargets(
+  runId: string,
+): Promise<Map<string, { targetKind: "app" | "database"; targetId: string }>> {
+  const rows = await getDb()
+    .select({
+      sourceId: itemsTable.sourceId,
+      targetKind: itemsTable.targetKind,
+      targetId: itemsTable.targetId,
+      outcome: itemsTable.outcome,
+    })
+    .from(itemsTable)
+    .where(eq(itemsTable.runId, runId));
 
-  if (isDatabase) {
-    // A database's display name is unique per team (`databases_team_name_uq`) and
-    // the import created it with the Dokploy service's own name, so the name IS
-    // the key — no slug rule to re-derive here, which would be a second copy of
-    // one that already lives in `lib/data/databases.ts`.
+  const out = new Map<string, { targetKind: "app" | "database"; targetId: string }>();
+  for (const r of rows) {
+    if (r.outcome !== "created" || !r.sourceId || !r.targetId) continue;
+    if (r.targetKind !== "app" && r.targetKind !== "database") continue;
+    out.set(r.sourceId, { targetKind: r.targetKind, targetId: r.targetId });
+  }
+  return out;
+}
+
+/**
+ * The imported resource itself, with the volumes it would receive.
+ *
+ * Loaded BY ID and scoped to the team, so a run item pointing somewhere it should
+ * not reach resolves to nothing rather than to someone else's database.
+ */
+async function landedFor(
+  teamId: string,
+  target: { targetKind: "app" | "database"; targetId: string },
+): Promise<Landed | null> {
+  if (target.targetKind === "database") {
     const rows = await getDb()
       .select({
         id: databasesTable.id,
         name: databasesTable.name,
         host: databasesTable.host,
         type: databasesTable.type,
+        username: databasesTable.username,
+        dbName: databasesTable.dbName,
         serverId: databasesTable.serverId,
       })
       .from(databasesTable)
-      .where(eq(databasesTable.teamId, teamId));
-    const hit = rows.find((d) => sameName(d.name, svc.name));
+      .where(
+        and(
+          eq(databasesTable.id, target.targetId),
+          eq(databasesTable.teamId, teamId),
+        ),
+      );
+    const hit = rows[0];
     if (!hit) return null;
     return {
       targetKind: "database",
@@ -323,6 +361,11 @@ async function findLanded(
           mountPath: DB_DATA_DIRS[hit.type as DatabaseType] ?? "/data",
         },
       ],
+      engine: {
+        type: hit.type as DatabaseType,
+        username: hit.username,
+        dbName: hit.dbName,
+      },
     };
   }
 
@@ -333,27 +376,10 @@ async function findLanded(
       slug: appsTable.slug,
       serverId: appsTable.serverId,
       compose: appsTable.compose,
-      environmentId: appsTable.environmentId,
     })
     .from(appsTable)
-    .where(eq(appsTable.teamId, teamId));
-
-  const named = rows.filter((a) => sameName(a.name, svc.name));
-  if (named.length === 0) return null;
-
-  const placed = await placementNames(teamId);
-  const hit =
-    named.find((a) => {
-      const at = placed.get(a.environmentId ?? "");
-      return (
-        at != null &&
-        sameName(at.project, svc.projectName) &&
-        sameName(at.environment, svc.environmentName)
-      );
-    }) ??
-    // Exactly one app of that name and nothing to disambiguate: take it. Two would
-    // be ambiguous, and an ambiguous data move is not one to guess at.
-    (named.length === 1 ? named[0] : undefined);
+    .where(and(eq(appsTable.id, target.targetId), eq(appsTable.teamId, teamId)));
+  const hit = rows[0];
   if (!hit) return null;
 
   const managed = await getDb()
@@ -389,56 +415,53 @@ async function findLanded(
   };
 }
 
-/** environmentId → the project + environment names around it. */
-async function placementNames(
-  teamId: string,
-): Promise<Map<string, { project: string; environment: string }>> {
-  const rows = await getDb()
-    .select({
-      environmentId: environmentsTable.id,
-      environmentName: environmentsTable.name,
-      projectName: projectsTable.name,
-    })
-    .from(environmentsTable)
-    .innerJoin(projectsTable, eq(projectsTable.id, environmentsTable.projectId))
-    .where(eq(projectsTable.teamId, teamId));
-  return new Map(
-    rows.map((r) => [
-      r.environmentId,
-      { project: r.projectName, environment: r.environmentName },
-    ]),
-  );
-}
-
 /* ------------------------------------------------------------------ */
 /* Plan                                                               */
 /* ------------------------------------------------------------------ */
 
 /**
- * Every already-imported service whose data could still be moved.
+ * Every service THIS RUN imported whose data can still be moved.
  *
- * Driven off the SOURCE tree rather than off an import run, because the cutover
- * happens days after the import and may cover services imported by several runs.
+ * Scoped to the run on purpose. The plan drives a copy that wipes its target before
+ * writing, so "which resource is this service's" has to be a fact the run recorded,
+ * never a name that happens to match something in the team.
+ *
+ * A service with nothing to pair is still listed, carrying the notes that say why —
+ * a volume that cannot be paired is the single most useful line in the whole report,
+ * and dropping it silently is how a migration finishes "clean" with data left behind.
  *
  * ponytail: one container list + one inspect per container, per service. Fine for
  * the tens of services a migration has; a fleet with hundreds wants the container
  * list cached per HOST instead of per service.
  */
 export async function planDokployDataMove(
-  input: ConnectInput,
+  input: ConnectInput & { runId: string },
 ): Promise<DataMoveService[]> {
   const { teamId } = await assertImportGate();
   const c = await credentialFor(input);
+  if (!(await ownRun(input.runId, teamId)))
+    throw new Error("That import run does not belong to this team.");
+
+  const targets = await runTargets(input.runId);
+  if (targets.size === 0) return [];
+
+  const machines = await dokployMachines(c, teamId);
   const out: DataMoveService[] = [];
 
   for (const svc of await sourceServices(c)) {
-    const landed = await findLanded(teamId, svc);
+    const target = targets.get(svc.id);
+    if (!target) continue;
+    const landed = await landedFor(teamId, target);
     if (!landed) continue;
 
     const state = await sourceState(c, svc.appName, svc.kind, svc.declaredVolumes);
     const paired = pairVolumes(state.volumes, landed.volumes, {
       singleData: landed.targetKind === "database",
     });
+    // Said HERE, before anything is stopped: a machine Deplo has no agent on is a
+    // machine whose data cannot move at all, and the review screen is where that
+    // has to be read - not the cutover, with the old platform already down.
+    const reachable = machines.find((m) => m.sourceId === svc.serverId)?.deploServerId;
 
     out.push({
       path: `${svc.projectName} / ${svc.environmentName} / ${svc.name}`,
@@ -454,7 +477,11 @@ export async function planDokployDataMove(
       targetServerId: landed.targetServerId,
       running: state.running,
       volumes: paired.value,
-      notes: [...state.notes, ...paired.notes],
+      notes: [
+        ...state.notes,
+        ...paired.notes,
+        ...(reachable ? [] : [UNREACHABLE_SOURCE_HOST]),
+      ],
     });
   }
   return out;
@@ -469,8 +496,6 @@ export interface MoveInput extends ConnectInput {
   /** The Dokploy service to cut over. Its volumes are DERIVED, never passed in. */
   sourceKind: string;
   sourceId: string;
-  /** Dokploy server id → Deplo server id, the same mapping the import used. */
-  servers?: ServerChoice[];
 }
 
 /**
@@ -538,11 +563,12 @@ export async function moveDokployServiceData(
   );
   if (!svc) throw new Error("That service is no longer on the Dokploy instance.");
 
-  const landed = await findLanded(teamId, svc);
+  const target = (await runTargets(input.runId)).get(svc.id);
+  const landed = target ? await landedFor(teamId, target) : null;
   const path = `${svc.projectName} / ${svc.environmentName} / ${svc.name}`;
   if (!landed)
     throw new Error(
-      `${svc.name} is not in this team. Import its configuration first, and keep the names as they were.`,
+      `This import did not create anything for ${svc.name}, so there is nothing here to copy its data into. Import its configuration first.`,
     );
 
   // The target's own gate. A database has no node dimension, so it stays team-wide
@@ -556,14 +582,10 @@ export async function moveDokployServiceData(
   }
 
   // Which Deplo server holds the Dokploy volumes. DERIVED from the service's own
-  // Dokploy host through the mapping the import already collected, never a free
-  // choice: pointing this at the wrong host would read a volume that does not
-  // exist there and overwrite the target with an empty archive.
-  const sourceServerId = await resolveSourceServer(
-    teamId,
-    input.servers ?? [],
-    svc.serverId,
-  );
+  // Dokploy host by ADDRESS, never a free choice and never a client input:
+  // pointing this at the wrong host reads a volume that is not there, and Docker
+  // answers by creating an empty one rather than by failing.
+  const sourceServerId = await resolveSourceServer(c, teamId, svc.serverId);
 
   const state = await sourceState(c, svc.appName, svc.kind, svc.declaredVolumes);
   const paired = pairVolumes(state.volumes, landed.volumes, {
@@ -589,6 +611,29 @@ export async function moveDokployServiceData(
     return { moved: 0, failed: 0, notes };
   }
 
+  // A database is provisioned in the BACKGROUND by the import (`createDatabase`
+  // floats it), so at this point its first container may still be running `initdb`
+  // into the very volume about to be replaced. Wait for the row to settle before
+  // anything is stopped - untarring under a live initialisation leaves a cluster
+  // that is half one database and half another.
+  if (landed.targetKind === "database") {
+    const settled = await waitForProvision(landed.targetId, teamId);
+    if (!settled) {
+      await appendRunItem(input.runId, {
+        path,
+        sourceKind: input.sourceKind,
+        sourceName: svc.name,
+        sourceId: svc.id,
+        outcome: "failed",
+        targetKind: landed.targetKind,
+        targetId: landed.targetId,
+        message: `${landed.targetName} is still being created, so its data was not copied. Run the copy again once it is up.`,
+      });
+      await refreshCounts(input.runId, teamId);
+      return { moved: 0, failed: 1, notes };
+    }
+  }
+
   // The point of no return, and what makes the copy trustworthy.
   await stopService(c, input.sourceKind, input.sourceId);
 
@@ -605,6 +650,7 @@ export async function moveDokployServiceData(
 
   let moved = 0;
   let failed = 0;
+  let empty = 0;
   const source = await connectAgent(sourceServerId);
   const dest =
     sourceServerId === landed.targetServerId
@@ -613,7 +659,29 @@ export async function moveDokployServiceData(
   try {
     for (const pair of paired.value) {
       try {
-        await copyVolumeBetween(source, dest, pair.sourceVolume, pair.targetVolume);
+        const copied = await copyVolumeBetween(
+          source,
+          dest,
+          pair.sourceVolume,
+          pair.targetVolume,
+        );
+        // An empty source is not a copy and must never read as one. Nothing was
+        // written and nothing was wiped, so the honest line is that there was
+        // nothing there - which is also the first thing to check when a service
+        // arrives without the data someone expected.
+        if (copied.empty) {
+          empty++;
+          await appendRunItem(input.runId, {
+            path,
+            sourceKind: "volume",
+            sourceName: pair.sourceVolume,
+            outcome: "skipped",
+            targetKind: landed.targetKind,
+            targetId: landed.targetId,
+            message: `${pair.sourceVolume} holds nothing on Dokploy, so ${pair.targetVolume} (${pair.mountPath}) was left as it is.`,
+          });
+          continue;
+        }
         moved++;
         await appendRunItem(input.runId, {
           path,
@@ -623,7 +691,7 @@ export async function moveDokployServiceData(
           targetKind: landed.targetKind,
           targetId: landed.targetId,
           message:
-            `Copied into ${pair.targetVolume} (${pair.mountPath}).` +
+            `Copied ${formatBytes(copied.bytes)} into ${pair.targetVolume} (${pair.mountPath}).` +
             (pair.note ? ` ${pair.note}` : ""),
         });
       } catch (e) {
@@ -646,15 +714,36 @@ export async function moveDokployServiceData(
     if (dest !== source) dest.close();
   }
 
-  // Both sides are stopped now, and the copy left them that way on purpose. Say
-  // which verb starts this one again: "Deploy" is the app's, and a database's page
-  // has a Start button - a user staring at a stopped database wondering whether the
-  // move broke it is a failure of the report, not of the move.
-  if (moved > 0)
+  // A database is brought back up and CHECKED, because "the bytes are in the
+  // volume" is not the claim anyone cares about - "the engine reads them" is. It is
+  // also the one check that catches a copy the engine cannot use at all (a data
+  // directory written by a different major version), which otherwise surfaces days
+  // later as a database that will not start.
+  if (moved > 0 && landed.targetKind === "database") {
+    const verdict = await startAndVerifyDatabase(landed, teamId);
+    await appendRunItem(input.runId, {
+      path,
+      sourceKind: input.sourceKind,
+      sourceName: svc.name,
+      sourceId: svc.id,
+      outcome: verdict.ok ? "created" : "failed",
+      targetKind: "database",
+      targetId: landed.targetId,
+      message: verdict.message,
+    });
+    if (!verdict.ok) failed++;
+  }
+
+  // The app half is left stopped on purpose, and the report has to say which verb
+  // starts it again - a user staring at a stopped app wondering whether the move
+  // broke it is a failure of the report, not of the move.
+  if (moved > 0 && landed.targetKind === "app")
     notes.push(
-      landed.targetKind === "app"
-        ? `${landed.targetName} is stopped on both sides. Press Deploy when the traffic should follow the data.`
-        : `${landed.targetName} is stopped so the copy could land. Start it from its own page and check the data.`,
+      `${landed.targetName} is stopped on both sides. Press Deploy when the traffic should follow the data.`,
+    );
+  if (empty > 0 && moved === 0)
+    notes.push(
+      `Nothing was copied for ${landed.targetName}: every volume it has on Dokploy is empty.`,
     );
 
   for (const message of notes)
@@ -680,27 +769,209 @@ export async function moveDokployServiceData(
   return { moved, failed, notes };
 }
 
+/* ------------------------------------------------------------------ */
+/* After the copy: does the engine actually read it                    */
+/* ------------------------------------------------------------------ */
+
+/** How long to wait for a floated `provisionDatabase` to settle, and for the
+ *  engine to come back up after the copy. Both are one image pull plus a first
+ *  start; a slow host on a cold image genuinely takes minutes. */
+const PROVISION_WAIT_MS = 5 * 60_000;
+const HEALTH_WAIT_MS = 3 * 60_000;
+const POLL_MS = 2_000;
+
+const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+
+/**
+ * Wait for a database row to stop saying `provisioning`.
+ *
+ * `createDatabase` floats the provision (`void provisionDatabase(...)`), so an
+ * import returns while `initdb` is still writing the very volume this is about to
+ * replace. Untarring under a live initialisation produces a directory that is half
+ * one cluster and half another - which starts, and is corrupt.
+ */
+async function waitForProvision(databaseId: string, teamId: string): Promise<boolean> {
+  const deadline = Date.now() + PROVISION_WAIT_MS;
+  for (;;) {
+    const rows = await getDb()
+      .select({ status: databasesTable.status })
+      .from(databasesTable)
+      .where(
+        and(eq(databasesTable.id, databaseId), eq(databasesTable.teamId, teamId)),
+      );
+    const status = rows[0]?.status;
+    if (!status) return false;
+    // "error" is settled too: the volume is not being written any more, and a
+    // failed first provision is exactly the case where the copied data is what
+    // makes the database work.
+    if (status !== "provisioning") return true;
+    if (Date.now() > deadline) return false;
+    await sleep(POLL_MS);
+  }
+}
+
+/**
+ * What to ask each engine for a number that proves the copied data is READABLE.
+ *
+ * Run inside the container, so no credential leaves the control plane and none has
+ * to match: postgres trusts the local socket, and the others read the password out
+ * of their own environment. Best effort by design - the verdict is the engine
+ * coming up healthy, and a count that will not run must never turn a good copy into
+ * a reported failure.
+ */
+const CONTENT_COUNT: Record<
+  DatabaseType,
+  (a: { username: string; dbName: string }) => { command: string; noun: string }
+> = {
+  postgres: (a) => ({
+    command: `psql -U ${a.username} -d ${a.dbName} -tAc "select count(*) from information_schema.tables where table_schema not in ('pg_catalog','information_schema')"`,
+    noun: "table",
+  }),
+  mysql: () => ({
+    command: `sh -c 'mysql -u root -p"$MYSQL_ROOT_PASSWORD" -N -B -e "select count(*) from information_schema.tables where table_schema not in (\'mysql\',\'information_schema\',\'performance_schema\',\'sys\')"'`,
+    noun: "table",
+  }),
+  mariadb: () => ({
+    command: `sh -c 'mariadb -u root -p"$MARIADB_ROOT_PASSWORD" -N -B -e "select count(*) from information_schema.tables where table_schema not in (\'mysql\',\'information_schema\',\'performance_schema\',\'sys\')"'`,
+    noun: "table",
+  }),
+  mongodb: (a) => ({
+    command: `sh -c 'mongosh --quiet -u "$MONGO_INITDB_ROOT_USERNAME" -p "$MONGO_INITDB_ROOT_PASSWORD" --authenticationDatabase admin ${a.dbName} --eval "db.getCollectionNames().length"'`,
+    noun: "collection",
+  }),
+  redis: () => ({
+    command: `sh -c 'redis-cli -a "$REDIS_PASSWORD" --no-auth-warning dbsize'`,
+    noun: "key",
+  }),
+  clickhouse: (a) => ({
+    command: `clickhouse-client --query "select count(*) from system.tables where database = '${a.dbName}'"`,
+    noun: "table",
+  }),
+};
+
+/**
+ * Start the copied database and check the engine reads what landed in its volume.
+ *
+ * This is the difference between "the bytes are in the volume" and "the database
+ * works", and only the second one is worth reporting. It is also the check that
+ * catches a data directory the engine cannot open at all - a cluster written by a
+ * different major version - which otherwise shows up days later as a database that
+ * will not start and no clue why.
+ */
+async function startAndVerifyDatabase(
+  landed: Landed,
+  teamId: string,
+): Promise<{ ok: boolean; message: string }> {
+  try {
+    await startStackOn(landed.targetServerId, landed.targetSlug);
+  } catch (e) {
+    return {
+      ok: false,
+      message: `The data was copied but ${landed.targetName} would not start: ${
+        e instanceof Error ? e.message : "the host refused"
+      }`,
+    };
+  }
+
+  const conn = await connectAgent(landed.targetServerId);
+  try {
+    const deadline = Date.now() + HEALTH_WAIT_MS;
+    let last = "";
+    for (;;) {
+      const instances = await conn
+        .listInstances(landed.targetId, landed.targetSlug, "")
+        .catch(() => []);
+      const pick = instances.find((i) => i.running) ?? instances[0];
+      // No healthcheck on the image is not the same as healthy, but it is all the
+      // signal there is: a running container is then the verdict.
+      if (pick?.running && (pick.health === "healthy" || pick.health === "")) {
+        await setDatabaseRunningAfterCopy(landed.targetId, teamId);
+        const counted = await countContent(conn, landed, pick.name, pick.image);
+        return {
+          ok: true,
+          message: counted
+            ? `${landed.targetName} is up on the copied data - ${counted}.`
+            : `${landed.targetName} is up on the copied data.`,
+        };
+      }
+      last = pick ? pick.health || pick.state || "starting" : "no container";
+      if (Date.now() > deadline)
+        return {
+          ok: false,
+          message: `The data was copied but ${landed.targetName} did not come up (${last}). Check its logs - a data directory written by a different engine version is the usual cause.`,
+        };
+      await sleep(POLL_MS);
+    }
+  } finally {
+    conn.close();
+  }
+}
+
+/** The engine's own count of what it can see, or "" when it would not answer. */
+async function countContent(
+  conn: Awaited<ReturnType<typeof connectAgent>>,
+  landed: Landed,
+  container: string,
+  image: string,
+): Promise<string> {
+  if (!landed.engine) return "";
+  const ask = CONTENT_COUNT[landed.engine.type];
+  if (!ask) return "";
+  const { command, noun } = ask(landed.engine);
+  try {
+    const res = await conn.exec(landed.targetId, container, command, image);
+    const value = res.stdout.trim().split(/\s+/).pop() ?? "";
+    if (res.code !== 0 || !/^\d+$/.test(value)) return "";
+    const n = Number(value);
+    return `${n} ${noun}${n === 1 ? "" : "s"}`;
+  } catch {
+    return "";
+  }
+}
+
+/** The copy stopped it and wrote that down; coming back up has to be written down
+ *  too, or the row keeps saying "stopped" over a running engine. */
+async function setDatabaseRunningAfterCopy(
+  databaseId: string,
+  teamId: string,
+): Promise<void> {
+  await getDb()
+    .update(databasesTable)
+    .set({ status: "running" })
+    .where(and(eq(databasesTable.id, databaseId), eq(databasesTable.teamId, teamId)));
+  publishDatabaseChanged(databaseId);
+}
+
 /**
  * The Deplo server that can read a given Dokploy host's volumes.
  *
- * There is no way to ask an agent whether a volume exists, so a wrong answer here
- * is not a failure but an EMPTY copy over real data. Hence: no free-form server
- * argument, only the same Dokploy-host → Deplo-server mapping the import already
- * made, and it must name a server this team can actually deploy to.
+ * Derived from the ADDRESS, and never accepted from the caller. A wrong answer here
+ * is not a failure but an EMPTY copy over real data: `docker run -v <name>:/v`
+ * creates the volume when it is missing, so exporting from the wrong machine
+ * succeeds and returns nothing. That is exactly what happened while this was a
+ * client input - the wizard filled every Dokploy machine in with the Deplo host, so
+ * every copy read a volume that was not there and wiped a real one on arrival.
+ *
+ * `dokployMachines` is the same matching the scan shows on the review screen, so
+ * what the user was told the migration would do is what it does.
  */
 async function resolveSourceServer(
+  c: DokployCredential,
   teamId: string,
-  choices: ServerChoice[],
   dokployServerId: string,
 ): Promise<string> {
-  const mapped = choices.find((s) => s.from === dokployServerId)?.to;
-  if (!mapped)
+  const machine = (await dokployMachines(c, teamId)).find(
+    (m) => m.sourceId === dokployServerId,
+  );
+  if (!machine)
     throw new Error(
-      "Tell Deplo which of its servers runs that Dokploy host: the data lives there, so Deplo has to be able to reach it. If Dokploy is on a machine Deplo does not manage yet, add it as a server first.",
+      "Dokploy no longer lists the machine this service runs on, so Deplo cannot tell which host holds its data.",
     );
+  if (!machine.deploServerId)
+    throw new Error(UNREACHABLE_SOURCE_HOST);
   const usable = (await listServersForTeam(teamId)).some(
-    (s) => s.id === mapped && !s.storageOnly,
+    (s) => s.id === machine.deploServerId && !s.storageOnly,
   );
   if (!usable) throw new Error("That server is not available to this team.");
-  return mapped;
+  return machine.deploServerId;
 }
