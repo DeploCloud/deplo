@@ -1,6 +1,6 @@
 import "server-only";
 
-import { eq } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 
 import { getDb } from "../db/client";
 import {
@@ -11,9 +11,11 @@ import {
   projects as projectsTable,
 } from "../db/schema/control-plane";
 import { mapLimit } from "../utils";
+import { nowIso } from "../ids";
 import { getCurrentUser } from "../auth";
 import { reachesWholeTeam, requireCapability } from "../membership";
 import { connectAgent } from "../infra/agent-client";
+import { publishDatabaseChanged } from "../graphql/pubsub";
 import { DB_DATA_DIRS } from "../deploy/database-compose";
 import type { DatabaseType } from "../types";
 
@@ -472,6 +474,39 @@ export interface MoveInput extends ConnectInput {
 }
 
 /**
+ * Write down the stop the copy just performed, because it was DELIBERATE.
+ *
+ * `databases.status` / `apps.status` are intent, and the live fold
+ * (lib/apps/display-status.ts) only ever contradicts a row that claims to be up:
+ * a row still saying "running" over a container we stopped ourselves is the one
+ * input that makes the badge lie, and it lies in the worst direction - red "Not
+ * running", the word for a database that fell over, on a migration where nothing
+ * went wrong. Grey "Stopped" is both true and the state whose button is Start,
+ * which is exactly what the copy's own note tells the user to press.
+ */
+async function recordStoppedForCopy(landed: Landed, teamId: string): Promise<void> {
+  if (landed.targetKind === "database") {
+    await getDb()
+      .update(databasesTable)
+      .set({ status: "stopped" })
+      .where(
+        and(
+          eq(databasesTable.id, landed.targetId),
+          eq(databasesTable.teamId, teamId),
+        ),
+      );
+    // The status badge holds an open subscription; without this it keeps the
+    // snapshot it opened with until the page is reloaded.
+    publishDatabaseChanged(landed.targetId);
+    return;
+  }
+  await getDb()
+    .update(appsTable)
+    .set({ status: "idle", updatedAt: nowIso() })
+    .where(and(eq(appsTable.id, landed.targetId), eq(appsTable.teamId, teamId)));
+}
+
+/**
  * Cut one service's data over: stop it on Dokploy, then copy every paired volume
  * into the app or database that was imported from it.
  *
@@ -563,6 +598,7 @@ export async function moveDokployServiceData(
   // if the host is genuinely unreachable.
   try {
     await stopStackOn(landed.targetServerId, landed.targetSlug);
+    await recordStoppedForCopy(landed, teamId);
   } catch {
     /* nothing of ours is running there yet */
   }
