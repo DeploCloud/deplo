@@ -9,8 +9,8 @@ function sameMembers(a: ReadonlySet<string>, b: ReadonlySet<string>): boolean {
   return true;
 }
 
-export interface OverviewSelection {
-  /** Currently selected card ids (projects + folders + apps). */
+export interface CardSelection {
+  /** Currently selected card ids, in the caller's own id space. */
   selected: Set<string>;
   /** Attach to the marquee box element. The hook positions/sizes it imperatively
    *  during a drag (so a pointermove never re-renders the grid); it stays hidden
@@ -32,15 +32,16 @@ export interface OverviewSelection {
 }
 
 /**
- * Windows/macOS-style selection for the Overview: a rubber-band marquee over the
- * empty canvas, plus ctrl/cmd-click (toggle) and shift-click (range) on cards.
+ * Windows/macOS-style selection for any card grid (Overview, Storage): a
+ * rubber-band marquee over the empty canvas, plus ctrl/cmd-click (toggle) and
+ * shift-click (range) on cards.
  * Pure DOM hit-testing against `[data-card-id]` nodes inside the canvas — no
  * dependency on dnd-kit, which only ever activates on a card (left-drag), while
  * the marquee only starts on empty space, so the two never fight.
  *
  * @param orderedIds all selectable ids in display order (for shift-range + select-all)
  */
-export function useOverviewSelection(orderedIds: string[]): OverviewSelection {
+export function useCardSelection(orderedIds: string[]): CardSelection {
   const [selected, setSelected] = React.useState<Set<string>>(() => new Set());
   const canvasRef = React.useRef<HTMLDivElement | null>(null);
   const marqueeRef = React.useRef<HTMLDivElement | null>(null);

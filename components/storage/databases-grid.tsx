@@ -20,7 +20,19 @@ import {
   useSortable,
 } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
-import { Search, LayoutGrid, List, GripVertical, Database } from "lucide-react";
+import {
+  Search,
+  LayoutGrid,
+  List,
+  GripVertical,
+  Database,
+  Play,
+  Square,
+  RotateCw,
+  Trash2,
+  MousePointerSquareDashed,
+  X,
+} from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import {
@@ -33,6 +45,8 @@ import {
 import { SimpleTooltip } from "@/components/ui/tooltip";
 import { scopeListenersToSubtree } from "@/lib/portal-event-scope";
 import { EmptyState } from "@/components/shared/empty-state";
+import { ConfirmAction } from "@/components/shared/confirm-action";
+import { useCardSelection } from "@/components/shared/use-card-selection";
 import {
   PendingCards,
   usePendingCreate,
@@ -66,12 +80,18 @@ export function DatabasesGrid({
   serverNames,
   canReorder,
   canReveal,
+  canControl,
+  canDelete,
 }: {
   databases: DatabaseDTO[];
   serverNames: Record<string, string>;
   canReorder: boolean;
   /** The viewer holds `manage_infra` — the capability `revealConnection` needs. */
   canReveal: boolean;
+  /** `control_databases` — gates the bulk Start / Stop / Restart. */
+  canControl: boolean;
+  /** `delete_databases` — gates the bulk Delete. */
+  canDelete: boolean;
 }) {
   const router = useRouter();
   // Databases being created right now: their dialog already closed, and each
@@ -114,6 +134,73 @@ export function DatabasesGrid({
   // partial order) and the caller may manage order.
   const reorderable = canReorder && !filtering;
 
+  /* ---- Multi-selection (marquee + ctrl/shift-click) + bulk actions ------- */
+  // Only what is ON SCREEN is selectable, in display order, so a shift-click
+  // range spans the grid exactly as it reads and a filtered-out database can
+  // never become a bulk target.
+  const visibleIds = filtered.map((d) => d.id);
+  const {
+    selected,
+    marqueeRef,
+    canvasRef,
+    onCanvasPointerDown,
+    onItemClick,
+    clear: clearSelection,
+    selectAll,
+  } = useCardSelection(visibleIds);
+  const selectedIds = visibleIds.filter((id) => selected.has(id));
+  const [bulkDeleteOpen, setBulkDeleteOpen] = React.useState(false);
+
+  // One mutation per selected database — there is no bulk endpoint, and each
+  // one is its own teardown/lifecycle on its own host. The first refusal is
+  // surfaced verbatim and the selection SURVIVES it, so re-confirming retries.
+  async function bulkRun(mutation: string, success: string) {
+    const ids = selectedIds;
+    const results = await Promise.all(
+      ids.map((id) => gqlAction(mutation, { id })),
+    );
+    router.refresh();
+    const failed = results.find((r) => !r.ok);
+    if (failed && !failed.ok) toast.error(failed.error);
+    else {
+      toast.success(success);
+      clearSelection();
+    }
+    return failed ?? { ok: true as const, data: undefined };
+  }
+
+  // "1 database" / "3 databases" — every bulk toast and the confirm name what
+  // is actually selected, so nothing reads "Databases deleted" for one.
+  const selectionNoun = `${selectedIds.length} database${selectedIds.length === 1 ? "" : "s"}`;
+
+  // Page-scoped shortcuts, same as the Overview grid: ⌘/Ctrl+A selects all,
+  // Esc clears, Delete/Backspace opens the bulk-delete confirm.
+  const selectionCount = selectedIds.length;
+  React.useEffect(() => {
+    function onKey(e: KeyboardEvent) {
+      const t = e.target as HTMLElement | null;
+      if (
+        t?.closest("input, textarea, [contenteditable='true'], [role='dialog']")
+      )
+        return;
+      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "a") {
+        e.preventDefault();
+        selectAll();
+      } else if (e.key === "Escape" && selectionCount > 0) {
+        clearSelection();
+      } else if (
+        (e.key === "Delete" || e.key === "Backspace") &&
+        canDelete &&
+        selectionCount > 0
+      ) {
+        e.preventDefault();
+        setBulkDeleteOpen(true);
+      }
+    }
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [selectionCount, selectAll, clearSelection, canDelete]);
+
   const sensors = useSensors(
     useSensor(MouseSensor, { activationConstraint: { distance: 4 } }),
     useSensor(TouchSensor, { activationConstraint: { delay: 200, tolerance: 6 } }),
@@ -154,50 +241,243 @@ export function DatabasesGrid({
         onView={setView}
       />
 
-      {filtered.length === 0 && pending.length === 0 ? (
-        <EmptyState
-          icon={Database}
-          title="No matching databases"
-          description="No database matches the current search and filters."
+      {/* The selection canvas: a relative, tall surface so there is empty space
+          to start a marquee, and the coordinate space it hit-tests against. */}
+      <div
+        ref={canvasRef}
+        onPointerDown={onCanvasPointerDown}
+        className="relative min-h-[60vh] select-none"
+      >
+        {/* Positioned imperatively by the selection hook during a drag (no
+            re-render per pointermove); hidden when idle. */}
+        <div
+          ref={marqueeRef}
+          className="pointer-events-none absolute z-20 hidden rounded-sm border border-primary bg-primary/10"
         />
-      ) : reorderable ? (
-        <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={onDragEnd}>
-          <SortableContext items={filtered.map((d) => d.id)} strategy={rectSortingStrategy}>
-            <div className={gridClass(view)}>
-              {filtered.map((d) => (
-                <SortableCard key={d.id} id={d.id}>
-                  {({ handle, dragActive }) => (
-                    <DatabaseCard
-                      db={d}
-                      serverName={serverNames[d.serverId]}
-                      view={view}
-                      dragHandle={handle}
-                      dragActive={dragActive}
-                      pollMs={view === "list" ? 20000 : 15000}
-                      canReveal={canReveal}
-                    />
-                  )}
-                </SortableCard>
-              ))}
-              <PendingCards />
-            </div>
-          </SortableContext>
-        </DndContext>
-      ) : (
-        <div className={gridClass(view)}>
-          {filtered.map((d) => (
-            <DatabaseCard
-              key={d.id}
-              db={d}
-              serverName={serverNames[d.serverId]}
-              view={view}
-              pollMs={view === "list" ? 20000 : 15000}
-              canReveal={canReveal}
-            />
-          ))}
-          <PendingCards />
-        </div>
+        {filtered.length === 0 && pending.length === 0 ? (
+          <EmptyState
+            icon={Database}
+            title="No matching databases"
+            description="No database matches the current search and filters."
+          />
+        ) : reorderable ? (
+          <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={onDragEnd}>
+            <SortableContext items={filtered.map((d) => d.id)} strategy={rectSortingStrategy}>
+              <div className={gridClass(view)}>
+                {filtered.map((d) => (
+                  <SortableCard
+                    key={d.id}
+                    id={d.id}
+                    selected={selected.has(d.id)}
+                    onSelect={(e) => onItemClick(d.id, e)}
+                  >
+                    {({ handle, dragActive }) => (
+                      <DatabaseCard
+                        db={d}
+                        serverName={serverNames[d.serverId]}
+                        view={view}
+                        dragHandle={handle}
+                        dragActive={dragActive}
+                        pollMs={view === "list" ? 20000 : 15000}
+                        canReveal={canReveal}
+                      />
+                    )}
+                  </SortableCard>
+                ))}
+                <PendingCards />
+              </div>
+            </SortableContext>
+          </DndContext>
+        ) : (
+          <div className={gridClass(view)}>
+            {filtered.map((d) => (
+              <SelectableCard
+                key={d.id}
+                id={d.id}
+                selected={selected.has(d.id)}
+                onSelect={(e) => onItemClick(d.id, e)}
+              >
+                <DatabaseCard
+                  db={d}
+                  serverName={serverNames[d.serverId]}
+                  view={view}
+                  pollMs={view === "list" ? 20000 : 15000}
+                  canReveal={canReveal}
+                />
+              </SelectableCard>
+            ))}
+            <PendingCards />
+          </div>
+        )}
+      </div>
+
+      <SelectionActionBar
+        count={selectionCount}
+        canControl={canControl}
+        canDelete={canDelete}
+        onStart={() =>
+          void bulkRun(
+            `mutation($id: String!) { setDatabaseRunning(id: $id, running: true) { id } }`,
+            `${selectionNoun} started`,
+          )
+        }
+        onStop={() =>
+          void bulkRun(
+            `mutation($id: String!) { setDatabaseRunning(id: $id, running: false) { id } }`,
+            `${selectionNoun} stopped`,
+          )
+        }
+        onRestart={() =>
+          void bulkRun(
+            `mutation($id: String!) { restartDatabase(id: $id) { id } }`,
+            `${selectionNoun} restarted`,
+          )
+        }
+        onDelete={() => setBulkDeleteOpen(true)}
+        onSelectAll={selectAll}
+        onClear={clearSelection}
+      />
+
+      {/* The bulk delete is the plain one: no "delete it anyway" force option,
+          which stays on the single-card dialog where it belongs (it is the
+          escape hatch for one database on a host that is never coming back). */}
+      <ConfirmAction
+        open={bulkDeleteOpen}
+        onOpenChange={setBulkDeleteOpen}
+        title={`Delete ${selectionNoun}?`}
+        description={`${selectionCount === 1 ? "This database is" : "These databases are"} stopped, and their containers, all their data and every backup they have stored are permanently destroyed.`}
+        confirmLabel={`Delete ${selectionCount === 1 ? "database" : "databases"}`}
+        onConfirm={() => bulkRun(DELETE_DATABASE, `${selectionNoun} deleted`)}
+      />
+    </div>
+  );
+}
+
+const DELETE_DATABASE = `mutation($id: String!) { deleteDatabase(id: $id) }`;
+
+/** The multi-selection highlight, shared by both card wrappers below. */
+const SELECTED_RING = "ring-2 ring-primary ring-offset-2 ring-offset-background";
+
+/**
+ * The bulk-actions bar: it floats at the bottom of the viewport whenever one or
+ * more cards are selected (marquee drag / ⌘-click), exactly like the Overview's.
+ * Every action is gated on the same capability its single-card twin needs, so
+ * the bar never offers a button the server would refuse.
+ */
+function SelectionActionBar({
+  count,
+  canControl,
+  canDelete,
+  onStart,
+  onStop,
+  onRestart,
+  onDelete,
+  onSelectAll,
+  onClear,
+}: {
+  count: number;
+  canControl: boolean;
+  canDelete: boolean;
+  onStart: () => void;
+  onStop: () => void;
+  onRestart: () => void;
+  onDelete: () => void;
+  onSelectAll: () => void;
+  onClear: () => void;
+}) {
+  if (count === 0) return null;
+  return (
+    <div className="pointer-events-none fixed inset-x-0 bottom-6 z-40 flex justify-center px-4">
+      <div className="pointer-events-auto flex items-center gap-1 rounded-full border border-border bg-popover/95 py-1.5 pl-4 pr-1.5 shadow-lg backdrop-blur supports-[backdrop-filter]:bg-popover/80">
+        <span className="whitespace-nowrap text-sm font-medium">
+          {count} selected
+        </span>
+        <span className="mx-1.5 h-5 w-px bg-border" />
+        {canControl && (
+          <>
+            <Button variant="ghost" size="sm" onClick={onStart}>
+              <Play className="size-4" />
+              Start
+            </Button>
+            <Button variant="ghost" size="sm" onClick={onStop}>
+              <Square className="size-4" />
+              Stop
+            </Button>
+            <Button variant="ghost" size="sm" onClick={onRestart}>
+              <RotateCw className="size-4" />
+              Restart
+            </Button>
+          </>
+        )}
+        {canDelete && (
+          <Button
+            variant="ghost"
+            size="sm"
+            className="text-destructive hover:text-destructive"
+            onClick={onDelete}
+          >
+            <Trash2 className="size-4" />
+            Delete
+          </Button>
+        )}
+        <span className="mx-1.5 h-5 w-px bg-border" />
+        <Button variant="ghost" size="sm" onClick={onSelectAll}>
+          <MousePointerSquareDashed className="size-4" />
+          Select all
+        </Button>
+        <Button
+          variant="ghost"
+          size="icon-sm"
+          aria-label="Clear selection"
+          onClick={onClear}
+        >
+          <X className="size-4" />
+        </Button>
+      </div>
+    </div>
+  );
+}
+
+/**
+ * The card wrapper used when reorder is off (filtering, or no capability): the
+ * same selection surface {@link SortableCard} provides — the marquee's
+ * `data-card-id` target, the highlight, and modifier-click instead of navigation
+ * — without dnd-kit.
+ */
+function SelectableCard({
+  id,
+  selected,
+  onSelect,
+  children,
+}: {
+  id: string;
+  selected: boolean;
+  onSelect: (e: {
+    metaKey: boolean;
+    ctrlKey: boolean;
+    shiftKey: boolean;
+  }) => boolean;
+  children: React.ReactNode;
+}) {
+  return (
+    <div
+      data-card-id={id}
+      onClickCapture={(e: React.MouseEvent<HTMLDivElement>) => {
+        // A menu or dialog this card opened is portalled out of its DOM but not
+        // out of its React tree (see lib/portal-event-scope.ts).
+        if (!e.currentTarget.contains(e.target as Node)) return;
+        if (!(e.metaKey || e.ctrlKey || e.shiftKey)) return;
+        if ((e.target as HTMLElement).closest?.("[data-card-actions]")) return;
+        e.preventDefault();
+        e.stopPropagation();
+        onSelect(e);
+      }}
+      className={cn(
+        "touch-manipulation select-none rounded-xl",
+        selected && SELECTED_RING,
       )}
+    >
+      {children}
     </div>
   );
 }
@@ -304,9 +584,17 @@ function Toolbar({
  */
 function SortableCard({
   id,
+  selected,
+  onSelect,
   children,
 }: {
   id: string;
+  selected: boolean;
+  onSelect: (e: {
+    metaKey: boolean;
+    ctrlKey: boolean;
+    shiftKey: boolean;
+  }) => boolean;
   children: (opts: { handle: React.ReactNode; dragActive: boolean }) => React.ReactNode;
 }) {
   const {
@@ -360,11 +648,19 @@ function SortableCard({
     const onControls = Boolean(
       (e.target as HTMLElement).closest?.("[data-card-actions]"),
     );
+    // 1) Swallow the click dnd-kit emits on the dragged card after a drop.
     if (draggedRef.current) {
       draggedRef.current = false;
       if (onControls) return;
       e.preventDefault();
       e.stopPropagation();
+      return;
+    }
+    // 2) Modifier-click selects this card instead of opening it (spare the ⋯).
+    if ((e.metaKey || e.ctrlKey || e.shiftKey) && !onControls) {
+      e.preventDefault();
+      e.stopPropagation();
+      onSelect(e);
     }
   }
 
@@ -386,9 +682,11 @@ function SortableCard({
     <div
       ref={setNodeRef}
       style={style}
+      data-card-id={id}
       onClickCapture={onClickCapture}
       className={cn(
         "touch-manipulation select-none rounded-xl [-webkit-touch-callout:none]",
+        selected && SELECTED_RING,
         isDragging && "relative z-10 opacity-80",
       )}
       {...wrapperAttributes}

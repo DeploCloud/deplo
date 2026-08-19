@@ -47,7 +47,7 @@ import {
   type ProjectCardData,
 } from "./project-container-card";
 import { CreateFolderDialog } from "./create-folder-dialog";
-import { useOverviewSelection } from "./use-overview-selection";
+import { useCardSelection } from "@/components/shared/use-card-selection";
 import { ConfirmAction } from "@/components/shared/confirm-action";
 import { DeleteAppsOption } from "@/components/apps/delete-apps-option";
 import { Button } from "@/components/ui/button";
@@ -640,7 +640,7 @@ function SortableGrid({
     onItemClick,
     clear: clearSelection,
     selectAll,
-  } = useOverviewSelection(selectableIds);
+  } = useCardSelection(selectableIds);
 
   // Only ever count / act on selected ids that are STILL on screen, in display
   // order. A card moved into a folder (or deleted) without a remount leaves a

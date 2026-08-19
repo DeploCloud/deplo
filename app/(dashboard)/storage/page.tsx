@@ -98,6 +98,8 @@ export default async function StoragePage(props: PageProps<"/storage">) {
     services,
     mayExposePorts,
     canManageDatabases,
+    canControlDatabases,
+    canDeleteDatabases,
     canCreateDatabase,
     canManageDestinations,
     canManageBackups,
@@ -116,6 +118,11 @@ export default async function StoragePage(props: PageProps<"/storage">) {
     // Gates drag-to-reorder of the databases grid (persisted team-wide) — the
     // same capability every database mutation is gated on.
     hasCapability("configure_databases"),
+    // The two bulk lifecycle actions on a multi-selection, each gated on exactly
+    // the capability its mutation requires (the same one the card's own menu
+    // uses) — without them the button is simply not on the selection bar.
+    hasCapability("control_databases"),
+    hasCapability("delete_databases"),
     // The three create surfaces of this page, each gated on exactly the
     // capability its mutation requires. Without them the button is disabled
     // (tooltip says why) and the empty state says what to ask for, instead of
@@ -221,6 +228,8 @@ export default async function StoragePage(props: PageProps<"/storage">) {
                 // Same capability the reveal mutation is gated on: without it a
                 // card shows the masked string and no reveal/copy affordance.
                 canReveal={canManageDatabases}
+                canControl={canControlDatabases}
+                canDelete={canDeleteDatabases}
               />
             </PendingList>
           </PendingCreateProvider>
