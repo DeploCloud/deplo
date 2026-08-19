@@ -1,8 +1,8 @@
-import { CloudOff } from "lucide-react";
 import { PageHeader } from "@/components/shared/page-header";
 import { EmptyState } from "@/components/shared/empty-state";
 import { toStoreTemplate } from "@/components/templates/template-card";
 import { TemplateStore } from "@/components/templates/template-store";
+import { CatalogOfflineGraphic } from "@/components/templates/catalog-offline-graphic";
 import { resolveOverviewPlacement } from "@/lib/data/placement";
 import { placementFromSearchParams } from "@/lib/overview-links";
 import { templateAccents } from "@/lib/templates/logo-color";
@@ -35,7 +35,7 @@ export default async function TemplatesPage(props: PageProps<"/templates">) {
       <div className="space-y-6">
         <PageHeader title="Templates" />
         <EmptyState
-          icon={CloudOff}
+          graphic={<CatalogOfflineGraphic />}
           title="The template catalog is unreachable"
           description="Deplo could not reach the template service. Check this server's internet access and try again."
         />
