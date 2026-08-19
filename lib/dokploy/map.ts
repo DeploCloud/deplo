@@ -914,6 +914,26 @@ export function mapDatabase(
         .join(", ")}). They are not imported - add them again here if you need them.`,
     );
 
+  // mysql and mariadb keep TWO credentials on Dokploy - an application user and
+  // root - while deplo models ONE and uses it for both. That is true of a
+  // database deplo created and false of a volume copied off another platform:
+  // the copied cluster keeps the SOURCE's users, and the engine's init env is
+  // not re-applied to a volume that is already initialized. Everything deplo
+  // does to a database itself authenticates as root (the backup dump needs it -
+  // `mysqldump --databases` wants privileges a scoped user does not have - and
+  // so do the console and password rotation), so root's credential is the one
+  // that has to become the database's. The application user is left untouched
+  // inside the copied cluster, so the imported app's own connection string goes
+  // on working with it.
+  const rootPassword =
+    (type === "mysql" || type === "mariadb") && row.databaseRootPassword?.trim()
+      ? row.databaseRootPassword.trim()
+      : null;
+  if (rootPassword && rootPassword !== row.databasePassword?.trim())
+    notes.push(
+      `Connects as root, because that is the login Deplo's own backups and console use and the copied data keeps Dokploy's users. "${row.databaseUser?.trim() || "the application user"}" still works from inside the database.`,
+    );
+
   return {
     value: {
       type,
@@ -922,9 +942,9 @@ export function mapDatabase(
       // always has it; the fallback keeps this pure function total either way.
       name: row.name?.trim() || "database",
       version,
-      username: row.databaseUser?.trim() || null,
+      username: rootPassword ? "root" : row.databaseUser?.trim() || null,
       dbName: row.databaseName?.trim() || null,
-      password: row.databasePassword?.trim() || null,
+      password: rootPassword ?? (row.databasePassword?.trim() || null),
       exposedPort: row.externalPort ?? null,
       customImage,
     },

@@ -951,3 +951,41 @@ test("pairVolumes stays quiet about an unmatched anonymous volume", () => {
   );
   assert.deepEqual(notes, []);
 });
+
+// mysql/mariadb carry two credentials on Dokploy and deplo models one, using it
+// for BOTH the connection string and its own root-only operations (the backup
+// dump, the console, rotation). A copied volume keeps the source's users, so the
+// credential that has to come across is root's - otherwise every backup of an
+// imported mysql fails with "access denied" long after the import looked fine.
+test("mapDatabase imports mysql as root, because that is who Deplo acts as", () => {
+  const { value, notes } = mapDatabase(
+    "mysql",
+    db({
+      dockerImage: "mysql:8.4",
+      databaseUser: "appuser",
+      databasePassword: "app-pw",
+      databaseRootPassword: "root-pw",
+    }),
+  );
+  assert.equal(value?.username, "root");
+  assert.equal(value?.password, "root-pw");
+  assert.match(notes.join(" "), /Connects as root/);
+});
+
+test("mapDatabase leaves the application user alone when it IS root's password", () => {
+  const { value, notes } = mapDatabase(
+    "mysql",
+    db({ databaseUser: "appuser", databasePassword: "same", databaseRootPassword: "same" }),
+  );
+  assert.equal(value?.username, "root");
+  assert.equal(notes.join(" ").includes("Connects as root"), false);
+});
+
+test("mapDatabase keeps the application user for engines with a single credential", () => {
+  const { value } = mapDatabase(
+    "postgres",
+    db({ databaseUser: "appuser", databasePassword: "app-pw", databaseRootPassword: "root-pw" }),
+  );
+  assert.equal(value?.username, "appuser");
+  assert.equal(value?.password, "app-pw");
+});
