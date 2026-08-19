@@ -100,8 +100,10 @@ for (const [i, s] of order.entries()) {
     continue;
   }
 
+  let target = "";
   try {
     const res = await selfUpdateServerAgent(s.id);
+    target = res.version;
     console.log(`  ... ${label}: ${before} -> ${res.version} (restarting=${res.restarting})`);
   } catch (e) {
     if (e instanceof AgentUpdateUnsupportedError) {
@@ -114,6 +116,15 @@ for (const [i, s] of order.entries()) {
     skipped++;
     console.log("Stopping: do not roll on past a failure.");
     break;
+  }
+
+  // A host ALREADY on the release has nothing to come back as. The documented
+  // playbook is canary-one-by-hand then roll the rest, so without this the roll
+  // stops dead on the very host the canary just updated — and everything after it,
+  // including agent 0, silently never gets the release.
+  if (target && target === before) {
+    console.log(`OK    ${label} — already on ${before}`);
+    continue;
   }
 
   // The agent re-execs after replying; wait for the new binary to answer Hello
