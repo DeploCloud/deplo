@@ -19,6 +19,7 @@ import { seedIdentity, TEAM_A, TEAM_B, USER_1 } from "./identity-test-helpers";
 import { seedServer } from "./app-graph-test-helpers";
 import { seedBackup, seedDatabase, seedRun, seedS3, TRUNCATE_BACKUPS } from "./backup-test-helpers";
 import {
+  createDatabase,
   getConnectionString,
   getDatabase,
   listDatabases,
@@ -598,4 +599,43 @@ test("rotationExecCommand: mariadb is driven by the mariadb client, mysql by mys
     assert.match(cmd, /app/);
     assert.match(cmd, /FLUSH PRIVILEGES/);
   }
+});
+
+/* ------------------------------------------------------------------ */
+/* Whose password is it: chosen vs. generated                          */
+/* ------------------------------------------------------------------ */
+
+/**
+ * The account policy bounds a password a PERSON chose. An import carries
+ * another platform's generated token, and running the policy over that one
+ * refused practically every Dokploy database (they are alphanumeric, so "at
+ * least 1 special character" alone was enough) - after which the import minted
+ * a fresh password and every connection string that still spells out the old
+ * one stopped working. What the connection string itself cannot carry stays
+ * refused on both paths: that check is about the URL and the env-file, not
+ * about strength.
+ */
+test("createDatabase: the password policy is for a chosen password, not an imported one", async () => {
+  await asUser1(async () => {
+    const input = {
+      name: "imported",
+      type: "postgres" as const,
+      version: "16",
+      password: "dokploygeneratedpw1A",
+    };
+    await assert.rejects(() => createDatabase(input), /special character/);
+    await assert.rejects(
+      () => createDatabase({ ...input, passwordIsGenerated: true }),
+      (e: Error) => !/special character/.test(e.message),
+    );
+    await assert.rejects(
+      () =>
+        createDatabase({
+          ...input,
+          password: "has/a slash",
+          passwordIsGenerated: true,
+        }),
+      /may not contain/,
+    );
+  });
 });

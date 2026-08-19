@@ -1665,9 +1665,12 @@ async function importDatabaseService(
     return;
   }
 
-  // The password is carried over on purpose (see mapDatabase). deplo's own policy
-  // may still refuse it, and then the apps' connection strings no longer match —
-  // which is exactly the kind of thing that must be shouted, not logged.
+  // The password is carried over on purpose (see mapDatabase), and as a GENERATED
+  // credential: another platform's random token is not something a person chose,
+  // so deplo's account policy does not apply to it. It used to, and it refused
+  // essentially every Dokploy database - those passwords are alphanumeric, so
+  // "at least 1 special character" alone was enough - which silently swapped the
+  // credential that every imported connection string still spells out.
   let created: Awaited<ReturnType<typeof createDatabase>>;
   const base = {
     name: spec.name,
@@ -1685,34 +1688,43 @@ async function importDatabaseService(
   const withPort = spec.exposedPort
     ? { exposedPublicly: true, exposedPort: spec.exposedPort }
     : {};
+  const withPassword = {
+    ...base,
+    password: spec.password ?? undefined,
+    passwordIsGenerated: true,
+  };
+  const portNote = (why: string) =>
+    `Port ${spec.exposedPort} was not published (${why}). Publish it once the old instance lets it go.`;
   try {
-    created = await createDatabase({
-      ...base,
-      ...withPort,
-      password: spec.password ?? undefined,
-    });
+    created = await createDatabase({ ...withPassword, ...withPort });
   } catch (e) {
     const first = e instanceof Error ? e.message : "refused";
-    // Two things can fail here and both have a useful fallback: the port is still
-    // held by the live Dokploy, or the password does not pass deplo's policy.
+    // Two things can still fail here, and the report must name the one that did:
+    // the port is held by the Dokploy that is still running, or the password
+    // cannot ride inside a connection string. Drop the PORT first and keep the
+    // credential - announcing "password refused" when the port was the problem
+    // sends people off to rewrite connection strings that were never broken.
     try {
-      created = await createDatabase(base);
-      if (spec.exposedPort)
+      if (!spec.exposedPort) throw e;
+      created = await createDatabase(withPassword);
+      notes.push(portNote(first));
+    } catch {
+      try {
+        created = await createDatabase(base);
+        if (spec.exposedPort) notes.push(portNote(first));
         notes.push(
-          `Port ${spec.exposedPort} was not published (${first}). Publish it once the old instance lets it go.`,
+          `Password refused (${first}), so Deplo made a new one - the imported connection strings still hold the old.`,
         );
-      notes.push(
-        `Password refused (${first}), so Deplo made a new one - the imported connection strings still hold the old.`,
-      );
-    } catch (e2) {
-      await report.add({
-        sourceKind: svc.kind,
-        sourceName: name,
-        outcome: "failed",
-        targetKind: "database",
-        message: e2 instanceof Error ? e2.message : "Could not create the database.",
-      });
-      return;
+      } catch (e2) {
+        await report.add({
+          sourceKind: svc.kind,
+          sourceName: name,
+          outcome: "failed",
+          targetKind: "database",
+          message: e2 instanceof Error ? e2.message : "Could not create the database.",
+        });
+        return;
+      }
     }
   }
 
