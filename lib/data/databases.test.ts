@@ -570,3 +570,32 @@ test("rotationExecCommand: a hostile password never escapes its quotes", () => {
     );
   }
 });
+
+// MariaDB 11 removed the `mysql*` compatibility symlinks its images used to
+// ship, so the client only answers to its own name there. Emitting `mysql` meant
+// password rotation on a MariaDB 11 failed with "executable file not found",
+// which reads like the container is broken rather than like deplo typed the
+// wrong program name.
+test("rotationExecCommand: mariadb is driven by the mariadb client, mysql by mysql", () => {
+  const base = { username: "app", dbName: "db_x" };
+  const maria = rotationExecCommand(
+    { ...base, type: "mariadb" } as unknown as Parameters<typeof rotationExecCommand>[0],
+    "old",
+    "new",
+  )!;
+  const mysql = rotationExecCommand(
+    { ...base, type: "mysql" } as unknown as Parameters<typeof rotationExecCommand>[0],
+    "old",
+    "new",
+  )!;
+  assert.ok(maria.startsWith("mariadb -uroot "), maria);
+  assert.ok(mysql.startsWith("mysql -uroot "), mysql);
+  // Both still rotate root AND the application user, whichever client runs it.
+  // (The statement is shell-quoted, so match on the parts, not the raw SQL.)
+  for (const cmd of [maria, mysql]) {
+    assert.equal((cmd.match(/ALTER USER IF EXISTS/g) ?? []).length, 3, cmd);
+    assert.match(cmd, /root/);
+    assert.match(cmd, /app/);
+    assert.match(cmd, /FLUSH PRIVILEGES/);
+  }
+});
