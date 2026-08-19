@@ -324,9 +324,15 @@ networks:
  *
  * `host`/`port` are already reachability-resolved by the caller: the internal
  * service DNS name + engine port when unexposed, the server's reachable host +
- * published host port when exposed. `username`/`password`/`dbName` ride raw
- * (createDatabase sanitizes the identifiers and rejects URL-unsafe passwords, and
- * randomToken is URL-safe), so no percent-encoding is applied here.
+ * published host port when exposed.
+ *
+ * The credential is PERCENT-ENCODED, and that is load-bearing rather than tidy:
+ * `parseConnectionPassword` has always decoded on the way out, so the encode was
+ * the missing half, and without it every password holding a URL delimiter had to
+ * be refused outright. That refusal reached somewhere it does badly - an IMPORT
+ * from another platform, where the password is not ours to choose. A rotated one
+ * there leaves the database holding the OLD platform's users and Deplo holding a
+ * credential that opens nothing.
  */
 export function buildConnectionString(a: {
   type: DatabaseType;
@@ -338,7 +344,7 @@ export function buildConnectionString(a: {
   dbName: string;
 }): string {
   const { type, username, password, host, port, dbName } = a;
-  const auth = `${username}:${password}@${host}:${port}`;
+  const auth = `${encodeURIComponent(username)}:${encodeURIComponent(password)}@${host}:${port}`;
   switch (type) {
     case "redis":
       // Redis has no logical DB — no path segment (a numeric SELECT db, not a

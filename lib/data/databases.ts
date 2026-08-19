@@ -159,21 +159,25 @@ function sanitizeDbIdentifier(raw: string): string | null {
 }
 
 /**
- * Reject a user-supplied password that can't ride raw inside the connection-string
- * URL and the compose env-file. The password is stored ONLY inside the connection
- * string (parsed back out by `parseConnectionPassword`, which `decodeURIComponent`s
- * it) and is also emitted as a bare `- KEY=value` compose env line, so any of these
- * would corrupt one or both: URL-authority delimiters (`@ / : ? #`), a lone `%`
- * (breaks `decodeURIComponent` → an empty dump password → a silently failing
- * backup), YAML/env-file hazards (`$` interpolation, backslash, backtick, brackets),
- * and whitespace/control chars. `randomToken`'s output is URL-safe base64url, so the
- * auto-generated default always passes.
+ * Reject a password that would corrupt the two places it is written.
+ *
+ * It used to reject every URL-authority delimiter too (`@ / : ? # %`), because the
+ * password rode RAW inside the connection string. It no longer does -
+ * `buildConnectionString` percent-encodes and `parseConnectionPassword` decodes -
+ * and the old rule had a cost paid somewhere it should not have been: an IMPORT
+ * carries a password chosen on another platform, `@` is about the most common
+ * character in one, and rotating it there leaves the imported database holding the
+ * OLD platform's users while Deplo holds a credential that opens nothing. The data
+ * arrives and is unreachable.
+ *
+ * What still cannot ride: `$`, which docker-compose INTERPOLATES out of the
+ * `- KEY=value` env line this password is emitted on, and whitespace or control
+ * characters, which break that line (and the YAML around it) outright.
  */
 function assertPasswordSafe(password: string): void {
-  if (/[@/:?#%$\\`[\]\s]/.test(password))
-    throw new Error(
-      "Password may not contain @ / : ? # % $ \\ ` [ ] or whitespace",
-    );
+  // eslint-disable-next-line no-control-regex
+  if (/[$\s\u0000-\u001f\u007f]/.test(password))
+    throw new Error("Password may not contain $ or whitespace");
 }
 
 /**

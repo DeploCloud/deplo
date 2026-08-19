@@ -628,11 +628,21 @@ test("createDatabase: the password policy is for a chosen password, not an impor
       () => createDatabase({ ...input, passwordIsGenerated: true }),
       (e: Error) => !/special character/.test(e.message),
     );
+    // What the env line genuinely cannot carry stays refused on both paths.
     await assert.rejects(
       () =>
         createDatabase({
           ...input,
-          password: "has/a slash",
+          password: "has a space",
+          passwordIsGenerated: true,
+        }),
+      /may not contain/,
+    );
+    await assert.rejects(
+      () =>
+        createDatabase({
+          ...input,
+          password: "interpolated$HOME",
           passwordIsGenerated: true,
         }),
       /may not contain/,

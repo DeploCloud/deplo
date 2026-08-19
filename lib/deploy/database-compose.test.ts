@@ -258,6 +258,38 @@ test("buildConnectionString: per-engine scheme + path", () => {
   );
 });
 
+/**
+ * A URL delimiter in the password is not a reason to refuse the password.
+ *
+ * `@` is about the most common character in a password another platform
+ * generated, and it used to be refused outright because the credential rode RAW
+ * in this string. An IMPORT is where that was paid for: the import minted a fresh
+ * password over data whose users came from the OLD platform, so the database
+ * arrived whole and unopenable. The encode is the half that was missing - the
+ * reader has always decoded - and only the round trip proves it.
+ */
+test("buildConnectionString: the credential survives every URL delimiter", () => {
+  const password = "p@ss/w:o?r#d%2Fx[]";
+  const username = "we@ird user";
+  const conn = buildConnectionString({
+    type: "postgres",
+    username,
+    password,
+    host: "db-x",
+    port: 5432,
+    dbName: "shop",
+  });
+
+  assert.equal(parseConnectionPassword(conn), password);
+  // It is a URL, which is what every client and every masked display parses it as.
+  const url = new URL(conn);
+  assert.equal(decodeURIComponent(url.username), username);
+  assert.equal(url.hostname, "db-x");
+  assert.equal(url.pathname, "/shop");
+  // And nothing of the password leaked into the authority as a delimiter.
+  assert.equal(url.port, "5432");
+});
+
 // The deplo.* labels are LOAD-BEARING: the agent authorizes every container RPC
 // (listInstances/exec/attach/followLogs) by `deplo.project=<id>`, so a DB stack
 // without them is invisible to logs, the terminal, and the runtime poll.

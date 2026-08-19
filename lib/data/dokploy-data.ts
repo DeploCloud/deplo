@@ -965,30 +965,41 @@ async function waitForProvision(databaseId: string, teamId: string): Promise<boo
  * coming up healthy, and a count that will not run must never turn a good copy into
  * a reported failure.
  */
-const CONTENT_COUNT: Record<
-  DatabaseType,
-  (a: { username: string; dbName: string }) => { command: string; noun: string }
+const CONTENT_COUNT: Partial<
+  Record<
+    DatabaseType,
+    (a: { username: string; dbName: string }) => { command: string; noun: string }
+  >
 > = {
   postgres: (a) => ({
     command: `psql -U ${a.username} -d ${a.dbName} -tAc "select count(*) from information_schema.tables where table_schema not in ('pg_catalog','information_schema')"`,
     noun: "table",
   }),
-  mysql: () => ({
-    command: `sh -c 'mysql -u root -p"$MYSQL_ROOT_PASSWORD" -N -B -e "select count(*) from information_schema.tables where table_schema not in (\'mysql\',\'information_schema\',\'performance_schema\',\'sys\')"'`,
+  // `-D <db>` + `database()` rather than a quoted schema list: the whole command
+  // rides inside `sh -c '...'`, and a single quote cannot be escaped inside single
+  // quotes in POSIX sh - the quoted form parsed as nothing and silently answered
+  // with no count at all.
+  mysql: (a) => ({
+    command: `sh -c 'mysql -u root -p"$MYSQL_ROOT_PASSWORD" -N -B -D ${a.dbName} -e "select count(*) from information_schema.tables where table_schema = database()"'`,
     noun: "table",
   }),
-  mariadb: () => ({
-    command: `sh -c 'mariadb -u root -p"$MARIADB_ROOT_PASSWORD" -N -B -e "select count(*) from information_schema.tables where table_schema not in (\'mysql\',\'information_schema\',\'performance_schema\',\'sys\')"'`,
+  mariadb: (a) => ({
+    command: `sh -c 'mariadb -u root -p"$MARIADB_ROOT_PASSWORD" -N -B -D ${a.dbName} -e "select count(*) from information_schema.tables where table_schema = database()"'`,
     noun: "table",
   }),
-  mongodb: (a) => ({
-    command: `sh -c 'mongosh --quiet -u "$MONGO_INITDB_ROOT_USERNAME" -p "$MONGO_INITDB_ROOT_PASSWORD" --authenticationDatabase admin ${a.dbName} --eval "db.getCollectionNames().length"'`,
+  // Every database on the instance, not the one the row names: a Mongo on the old
+  // platform carries no database name for the import to carry across, so the row
+  // holds a placeholder and the data is wherever the app actually wrote it. The
+  // regex is deliberate - a string literal here would need a quote this command has
+  // no way to spare.
+  mongodb: () => ({
+    command: `sh -c 'mongosh --quiet -u "$MONGO_INITDB_ROOT_USERNAME" -p "$MONGO_INITDB_ROOT_PASSWORD" --authenticationDatabase admin --eval "db.adminCommand({listDatabases:1}).databases.filter(d=>!/^(admin|local|config)$/.test(d.name)).reduce((a,d)=>a+db.getSiblingDB(d.name).getCollectionNames().length,0)"'`,
     noun: "collection",
   }),
-  redis: () => ({
-    command: `sh -c 'redis-cli -a "$REDIS_PASSWORD" --no-auth-warning dbsize'`,
-    noun: "key",
-  }),
+  // No redis: Deplo passes its password as `--requirepass` on the server's argv, so
+  // nothing inside the container can authenticate a client without being handed the
+  // secret again. The healthcheck already proves the engine answers, and a count
+  // that always fails is worse than no count.
   clickhouse: (a) => ({
     command: `clickhouse-client --query "select count(*) from system.tables where database = '${a.dbName}'"`,
     noun: "table",
