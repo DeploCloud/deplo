@@ -26,6 +26,7 @@ import {
   repoNameFromUrl,
   adaptComposeForDeplo,
   volumeLabel,
+  declaredSourceVolumes,
 } from "./map";
 import type { DokployApplication, DokployDatabase } from "./client";
 
@@ -658,7 +659,38 @@ test("mapDatabase keeps the original password so imported env vars still match",
   assert.equal(value?.username, "app");
   assert.equal(value?.dbName, "app");
   assert.equal(value?.version, "16");
-  assert.equal(value?.customImage, null);
+  // The source image is pinned even when it is the canonical one: the data volume
+  // is copied byte for byte, and only the binary that wrote a cluster can reopen
+  // it faithfully (glibc and musl sort text differently).
+  assert.equal(value?.customImage, "postgres:16");
+});
+
+test("mapDatabase pins the source image whatever shape the ref has", () => {
+  const cases: [string, string, string][] = [
+    // dockerImage, expected customImage, expected version
+    ["postgres:18", "postgres:18", "18"],
+    // a suffixed tag used to be re-suffixed into `postgres:16-alpine-alpine`
+    ["postgres:16-alpine", "postgres:16-alpine", "16-alpine"],
+    // no tag at all used to produce version "" and fail createDatabase; the ref
+    // stays verbatim (it is what Dokploy runs) and the report warns about it
+    ["postgres", "postgres", "latest"],
+    ["ghcr.io/org/pg:1", "ghcr.io/org/pg:1", "1"],
+  ];
+  for (const [image, wantImage, wantVersion] of cases) {
+    const { value } = mapDatabase("postgres", db({ dockerImage: image }));
+    assert.equal(value?.customImage, wantImage, image);
+    assert.equal(value?.version, wantVersion, image);
+  }
+});
+
+test("mapDatabase warns when the source image has no version pinned", () => {
+  const { notes } = mapDatabase("postgres", db({ dockerImage: "postgres" }));
+  assert.match(notes.join(" "), /no version pinned/);
+});
+
+test("mapDatabase pins a suffixed redis tag instead of re-suffixing it", () => {
+  const { value } = mapDatabase("redis", db({ dockerImage: "redis:7-alpine" }));
+  assert.equal(value?.customImage, "redis:7-alpine");
 });
 
 test("mapDatabase keeps a non-canonical image and says so", () => {
@@ -669,6 +701,8 @@ test("mapDatabase keeps a non-canonical image and says so", () => {
   assert.equal(value?.customImage, "pgvector/pgvector:pg16");
   assert.equal(value?.version, "pg16");
   assert.match(notes.join(" "), /plain postgres/);
+  // A canonical image is pinned too, but silently — there is nothing to warn about.
+  assert.equal(mapDatabase("postgres", db()).notes.join(" ").includes("plain postgres"), false);
 });
 
 test("mapDatabase carries the external port and reports what a database cannot take", () => {
@@ -677,12 +711,33 @@ test("mapDatabase carries the external port and reports what a database cannot t
     db({
       externalPort: 5432,
       command: "postgres -c max_connections=200",
-      mounts: [{ mountId: "1", type: "volume", volumeName: "extra", mountPath: "/x" }],
+      mounts: [{ mountId: "1", type: "file", filePath: "extra.conf", mountPath: "/etc/x.conf" }],
     }),
   );
   assert.equal(value?.exposedPort, 5432);
   assert.match(notes.join(" "), /start command/);
-  assert.match(notes.join(" "), /extra files mounted/);
+  assert.match(notes.join(" "), /mounted on Dokploy/);
+});
+
+// Dokploy models a database's DATA volume as a mount row. Warning "extra files
+// are not imported" about it fired on EVERY database and pointed at the one thing
+// the Data step does copy.
+test("mapDatabase does not call the data volume an extra file mount", () => {
+  const { notes } = mapDatabase(
+    "postgres",
+    db({
+      appName: "project-db-abc123",
+      mounts: [
+        {
+          mountId: "1",
+          type: "volume",
+          volumeName: "project-db-abc123-data",
+          mountPath: "/var/lib/postgresql/18/docker",
+        },
+      ],
+    }),
+  );
+  assert.equal(notes.join(" ").includes("mounted on Dokploy"), false, notes.join(" "));
 });
 
 /* ---- the data cutover ----------------------------------------------- */
@@ -739,7 +794,7 @@ test("pairVolumes pairs a database 1:1 even when the data dir moved", () => {
   assert.equal(value.length, 1);
   assert.equal(value[0].sourceVolume, "dok_pg");
   assert.match(value[0].note!, /data directory moved/);
-  assert.match(value[0].note!, /PGDATA/);
+  assert.match(value[0].note!, /pins the engine's data path/);
   assert.deepEqual(notes, []);
 });
 
@@ -803,4 +858,46 @@ test("portNotes explains why published ports do not come across", () => {
   assert.equal(notes.length, 1);
   assert.match(notes[0], /8080->80\/tcp/);
   assert.deepEqual(portNotes(app()), []);
+});
+
+// A platform someone is leaving is usually STOPPED, and Dokploy stops a service
+// by scaling its swarm service to 0 replicas: no container to inspect, while the
+// volume sits untouched on the host. Reading what Dokploy declares is the only
+// way that service's data moves at all.
+test("declaredSourceVolumes reads a stopped service's volumes from its mounts", () => {
+  const out = declaredSourceVolumes({
+    kind: "postgres",
+    appName: "test2-test-u9vb1j",
+    mounts: [
+      { type: "volume", volumeName: "test2-test-u9vb1j-data", mountPath: "/var/lib/postgresql/18/docker" },
+      { type: "file", volumeName: null, mountPath: "/etc/thing.conf" },
+      { type: "bind", volumeName: null, mountPath: "/srv/x" },
+    ],
+  });
+  assert.deepEqual(out, [
+    { name: "test2-test-u9vb1j-data", mountPath: "/var/lib/postgresql/18/docker" },
+  ]);
+});
+
+test("declaredSourceVolumes prefixes a compose stack's volumes with its project", () => {
+  const out = declaredSourceVolumes({
+    kind: "compose",
+    appName: "test-alltube-ab12",
+    composeFile: [
+      "services:",
+      "  web:",
+      "    volumes:",
+      "      - data:/var/lib/app",
+      "      - ./local:/etc/app",
+      "volumes:",
+      "  data:",
+    ].join("\n"),
+  });
+  assert.deepEqual(out, [
+    { name: "test-alltube-ab12_data", mountPath: "/var/lib/app" },
+  ]);
+});
+
+test("declaredSourceVolumes has nothing to say about a service with no volumes", () => {
+  assert.deepEqual(declaredSourceVolumes({ kind: "application", appName: "x" }), []);
 });

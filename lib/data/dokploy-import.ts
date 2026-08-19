@@ -1672,7 +1672,7 @@ async function importDatabaseService(
   const base = {
     name: spec.name,
     type: spec.type,
-    version: spec.version ?? "",
+    version: spec.version,
     serverId,
     username: spec.username ?? undefined,
     dbName: spec.dbName ?? undefined,
@@ -1719,14 +1719,15 @@ async function importDatabaseService(
     targetId: created.id,
   });
 
-  if (spec.customImage) {
-    try {
-      await updateDatabaseImage(created.id, { customImage: spec.customImage });
-    } catch (e) {
-      notes.push(
-        `The image ${spec.customImage} could not be kept: ${e instanceof Error ? e.message : "refused"}.`,
-      );
-    }
+  // Pinned for EVERY imported database, not only an exotic one: the data volume
+  // is copied byte for byte, so it has to be reopened by the binary that wrote it
+  // (a Postgres cluster written under glibc sorts text differently under musl).
+  try {
+    await updateDatabaseImage(created.id, { customImage: spec.customImage });
+  } catch (e) {
+    notes.push(
+      `The image ${spec.customImage} could not be kept: ${e instanceof Error ? e.message : "refused"}.`,
+    );
   }
 
   // Names the step that fills it. "Restore your data" read as "go find a dump

@@ -811,14 +811,15 @@ export function deploEngineFor(kind: DokployDbKind): DatabaseType | null {
 export interface MappedDatabase {
   type: DatabaseType;
   name: string;
-  /** Image tag, or null to let deplo pick its default for the engine. */
-  version: string | null;
+  /** The source image's tag, or "latest" when it had none. Display only - the
+   *  image a database actually runs is {@link MappedDatabase.customImage}. */
+  version: string;
   username: string | null;
   dbName: string | null;
   password: string | null;
   exposedPort: number | null;
-  /** Set when Dokploy ran an image that is not the canonical `<engine>:<tag>`. */
-  customImage: string | null;
+  /** The image Dokploy ran, ALWAYS kept verbatim - see `mapDatabase`. */
+  customImage: string;
 }
 
 /** The version tag out of an image ref, ignoring a registry port. */
@@ -864,7 +865,27 @@ export function mapDatabase(
     return { value: null, notes };
   }
 
-  const version = imageTag(row.dockerImage);
+  // The source's EXACT image is kept, canonical or not - deplo never re-derives
+  // one here. Deriving looked equivalent and is not, for two measured reasons:
+  //
+  //  - Deplo's own ref appends a suffix (`postgres:${v}-alpine`), so a source tag
+  //    that is not a bare number came out as `postgres:16-alpine-alpine`, and an
+  //    untagged image came out with no version at all.
+  //  - The data volume is copied byte for byte, and a Postgres cluster written by
+  //    the Debian image (glibc) reopened by the Alpine one (musl) sorts text
+  //    differently - verified on a real cluster: `'a' < 'B'` is true under glibc
+  //    and false under musl - so every btree index on a text column silently
+  //    stops matching. Data must be reopened by the binary that wrote it.
+  //
+  // `kind` is also the official Docker Hub repo for all five engines, so an image
+  // Dokploy left blank falls back to the same thing Docker itself would resolve.
+  const customImage = row.dockerImage?.trim() || `${kind}:latest`;
+  const tag = imageTag(customImage);
+  const version = tag ?? "latest";
+  if (!tag)
+    notes.push(
+      `Dokploy runs ${customImage} with no version pinned, so what it resolves to can change under the data. Pin a version under Advanced.`,
+    );
   const repo = imageRepo(row.dockerImage);
   const canonical =
     !repo ||
@@ -872,8 +893,7 @@ export function mapDatabase(
     repo === type ||
     repo === `library/${kind}` ||
     (kind === "mongo" && repo === "mongo");
-  const customImage = canonical ? null : (row.dockerImage?.trim() ?? null);
-  if (customImage)
+  if (!canonical)
     notes.push(
       `Runs ${customImage} on Dokploy instead of a plain ${type}. Kept as it is - check that it starts.`,
     );
@@ -882,9 +902,16 @@ export function mapDatabase(
     notes.push(
       `Custom start command on Dokploy ("${truncate(row.command.trim(), 60)}") - set it under Advanced if you still need it.`,
     );
-  if ((row.mounts ?? []).length > 0)
+  // Dokploy models a database's own DATA volume as a mount row, so counting every
+  // mount announced "extra files that are not imported" about the one thing the
+  // Data step exists to copy - on every single database. Only a FILE or BIND
+  // mount is genuinely extra; a volume is data, and data moves.
+  const extraMounts = (row.mounts ?? []).filter((m) => m.type !== "volume");
+  if (extraMounts.length > 0)
     notes.push(
-      "This database has extra files mounted on Dokploy. They are not imported - add them again here if you need them.",
+      `This database has ${extraMounts.length === 1 ? "a file" : "files"} mounted on Dokploy (${extraMounts
+        .map((m) => m.mountPath)
+        .join(", ")}). They are not imported - add them again here if you need them.`,
     );
 
   return {
@@ -964,6 +991,48 @@ export function sourceVolumesFrom(inspect: {
 }
 
 /**
+ * The volumes a Dokploy service DECLARES, for when there is no container to
+ * inspect.
+ *
+ * Inspecting the running container is exact, and it is also unavailable exactly
+ * when it is most needed: a platform someone is migrating off is usually stopped,
+ * and Dokploy stops a service by scaling its swarm service to 0 replicas - no
+ * container, no mounts, and the data move would report "no volumes" while a
+ * perfectly good volume sits on the host. Dokploy's own API still answers with
+ * the mounts it declared, so that is the fallback.
+ *
+ * A compose stack's volumes are not in `mounts` at all - they live in its compose
+ * file, and docker-compose prefixes each with the project name, which for Dokploy
+ * is the service's `appName`.
+ */
+export function declaredSourceVolumes(input: {
+  kind: string;
+  appName: string;
+  mounts?:
+    | { type?: string | null; volumeName?: string | null; mountPath?: string | null }[]
+    | null;
+  composeFile?: string | null;
+}): NamedVolume[] {
+  const out: NamedVolume[] = [];
+  const seen = new Set<string>();
+  const push = (name: string, mountPath: string) => {
+    if (!name || !mountPath || seen.has(name)) return;
+    seen.add(name);
+    out.push({ name, mountPath: normalizePath(mountPath) });
+  };
+
+  for (const m of input.mounts ?? [])
+    if (m?.type === "volume")
+      push(m.volumeName?.trim() ?? "", m.mountPath?.trim() ?? "");
+
+  if (input.kind === "compose" && input.appName.trim())
+    for (const v of composeVolumeMounts(input.composeFile ?? ""))
+      push(`${input.appName.trim()}_${v.name}`, v.mountPath);
+
+  return out;
+}
+
+/**
  * Match every source volume to the deplo volume that should receive it.
  *
  * The container PATH is the identity: `/app/uploads` on one platform is
@@ -971,7 +1040,8 @@ export function sourceVolumesFrom(inspect: {
  *
  * `singleData` is for a database, where each side has exactly one data volume and
  * the paths routinely DISAGREE - postgres 18 defaults its data dir to
- * `/var/lib/postgresql/18/docker` while Deplo mounts `/var/lib/postgresql/data`.
+ * `/var/lib/postgresql/18/docker` while Deplo mounts (and pins `PGDATA` to)
+ * `/var/lib/postgresql/data`.
  * One volume on each side has no ambiguity to resolve, so they are paired anyway
  * and the note names both paths, because that mismatch is also the thing most
  * likely to stop the imported database from starting.
@@ -1012,7 +1082,7 @@ export function pairVolumes(
       mountPath: target[0].mountPath,
       note:
         `The data directory moved: Dokploy mounted it at ${source[0].mountPath}, Deplo mounts ${target[0].mountPath}. ` +
-        "The copy is still the right one (one data volume on each side), but check the database starts - a newer Postgres refuses the older path unless PGDATA is set explicitly.",
+        "The copy is still the right one - one data volume on each side, and Deplo pins the engine's data path to where it mounts it.",
     });
   }
 

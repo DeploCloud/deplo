@@ -28,6 +28,20 @@ const DEFAULTS = { username: "app", dbName: "mydb", databaseId: "db_test" };
  *     restored RDB rather than leaving redis down.
  */
 
+// A CURRENT major per engine. The suite used to render every engine at
+// `version: "1"`, which is exactly the version at which no image changes its
+// layout — that is how Postgres 18 moving its data dir to
+// `/var/lib/postgresql/<major>/docker` went unnoticed here while every new
+// Postgres 18 database on a real host failed to boot.
+const CURRENT_VERSION: Record<DatabaseType, string> = {
+  postgres: "18",
+  mysql: "8.4",
+  mariadb: "11",
+  mongodb: "8",
+  redis: "8",
+  clickhouse: "25.8",
+};
+
 // The official images' documented data dirs — the volume must mount here.
 const EXPECTED_DATA_DIR: Record<DatabaseType, string> = {
   postgres: "/var/lib/postgresql/data",
@@ -43,7 +57,7 @@ for (const type of Object.keys(EXPECTED_DATA_DIR) as DatabaseType[]) {
     const yaml = generateDatabaseCompose({
       name: "mydb",
       type,
-      version: "1",
+      version: CURRENT_VERSION[type],
       password: "pw",
       ...DEFAULTS,
     });
@@ -373,4 +387,57 @@ test("parseConnectionPassword: round-trips the embedded password", () => {
     assert.equal(parseConnectionPassword(conn), "p4ss-w0rd_.~", conn);
   }
   assert.equal(parseConnectionPassword("not a url"), "");
+});
+
+// Postgres 18+ defaults PGDATA to `/var/lib/postgresql/<major>/docker` and its
+// entrypoint EXITS when `/var/lib/postgresql/data` is a mount point — which the
+// volume above always is. Pinning PGDATA to the mounted path is what makes a
+// default Postgres bootable at all, and it must not depend on the version: the
+// same line has to cover 15 (where it is a no-op) and 19 (which does not exist
+// yet).
+for (const version of ["15", "16", "17", "18", "19"]) {
+  test(`generateDatabaseCompose(postgres ${version}): pins PGDATA to the mounted path`, () => {
+    const yaml = generateDatabaseCompose({
+      name: "mydb",
+      type: "postgres",
+      version,
+      password: "pw",
+      ...DEFAULTS,
+    });
+    assert.ok(
+      yaml.includes("- PGDATA=/var/lib/postgresql/data"),
+      `expected PGDATA pinned to the mount, got:\n${yaml}`,
+    );
+  });
+}
+
+// An import pins the SOURCE's image on every database it brings over (a cluster
+// must be reopened by the binary that wrote it), so `customImage` is now the
+// normal case. Degrading the probe to `exit 0` for all of them would report
+// health nothing ever checked — the degrade is only for a FOREIGN image.
+test("generateDatabaseCompose: an official customImage keeps the real healthcheck", () => {
+  const yaml = generateDatabaseCompose({
+    name: "mydb",
+    type: "postgres",
+    version: "18",
+    password: "pw",
+    ...DEFAULTS,
+    customImage: "postgres:18",
+  });
+  assert.ok(yaml.includes("image: postgres:18\n"), yaml);
+  assert.ok(yaml.includes("pg_isready"), yaml);
+  assert.ok(!yaml.includes("exit 0"), yaml);
+});
+
+test("generateDatabaseCompose: a foreign customImage still degrades the healthcheck", () => {
+  const yaml = generateDatabaseCompose({
+    name: "mydb",
+    type: "postgres",
+    version: "16",
+    password: "pw",
+    ...DEFAULTS,
+    customImage: "timescale/timescaledb:2.15-pg16",
+  });
+  assert.ok(yaml.includes("exit 0"), yaml);
+  assert.ok(!yaml.includes("pg_isready"), yaml);
 });

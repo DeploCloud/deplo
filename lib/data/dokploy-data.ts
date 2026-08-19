@@ -31,6 +31,7 @@ import {
 } from "../dokploy/client";
 import {
   composeVolumeMounts,
+  declaredSourceVolumes,
   deploDatabaseVolumeName,
   deploVolumeName,
   pairVolumes,
@@ -135,6 +136,9 @@ interface SourceService {
   serverId: string;
   projectName: string;
   environmentName: string;
+  /** What Dokploy SAYS it mounts, read off the same detail call. The fallback
+   *  for a stopped service, which has no container to inspect. */
+  declaredVolumes: NamedVolume[];
 }
 
 /**
@@ -171,11 +175,19 @@ async function sourceServices(c: DokployCredential): Promise<SourceService[]> {
     async ({ stub, index }) => {
       const detail = await getService(c, stub.kind, stub.id).catch(() => null);
       if (!detail) return;
+      const appName = detail.appName?.trim() ?? "";
       out[index] = {
         ...stub,
         name: serviceDisplayName(detail, stub.id),
-        appName: detail.appName?.trim() ?? "",
+        appName,
         serverId: detail.serverId ?? "",
+        declaredVolumes: declaredSourceVolumes({
+          kind: stub.kind,
+          appName,
+          mounts: detail.mounts,
+          composeFile:
+            "composeFile" in detail ? ((detail as { composeFile?: string | null }).composeFile ?? null) : null,
+        }),
       };
     },
   );
@@ -195,6 +207,7 @@ async function sourceState(
   c: DokployCredential,
   appName: string,
   kind: string,
+  declared: NamedVolume[],
 ): Promise<{ volumes: NamedVolume[]; running: boolean; notes: string[] }> {
   // A compose stack's containers are plain ones named after the stack; an
   // application or a database is a swarm service. Both orders end with the other
@@ -208,13 +221,21 @@ async function sourceState(
     containers = await listAppContainers(c, appName, type).catch(() => []);
     if (containers.length > 0) break;
   }
+  // No container is the NORMAL state of a platform someone is leaving (Dokploy
+  // stops a service by scaling it to 0 replicas), and the volume is still on the
+  // host. Fall back to what Dokploy declares it mounts rather than reporting the
+  // service as having no data — which reads identically to genuinely having none.
   if (containers.length === 0)
     return {
-      volumes: [],
+      volumes: declared,
       running: false,
-      notes: [
-        `Dokploy has no container for ${appName}, so its volumes cannot be read. Start it over there, then refresh.`,
-      ],
+      notes: declared.length
+        ? [
+            `${appName} is stopped on Dokploy, so its volumes come from what Dokploy says it mounts rather than from a live container.`,
+          ]
+        : [
+            `Dokploy has no container for ${appName} and declares no volume for it, so there is nothing to copy.`,
+          ],
     };
 
   const volumes: NamedVolume[] = [];
@@ -412,7 +433,7 @@ export async function planDokployDataMove(
     const landed = await findLanded(teamId, svc);
     if (!landed) continue;
 
-    const state = await sourceState(c, svc.appName, svc.kind);
+    const state = await sourceState(c, svc.appName, svc.kind, svc.declaredVolumes);
     const paired = pairVolumes(state.volumes, landed.volumes, {
       singleData: landed.targetKind === "database",
     });
@@ -509,7 +530,7 @@ export async function moveDokployServiceData(
     svc.serverId,
   );
 
-  const state = await sourceState(c, svc.appName, svc.kind);
+  const state = await sourceState(c, svc.appName, svc.kind, svc.declaredVolumes);
   const paired = pairVolumes(state.volumes, landed.volumes, {
     singleData: landed.targetKind === "database",
   });

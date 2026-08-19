@@ -42,7 +42,7 @@ const FALLBACK: Record<DatabaseType, string[]> = {
   mariadb: ["11", "10"],
   mongodb: ["8", "7", "6"],
   redis: ["8", "7"],
-  clickhouse: ["25", "24"],
+  clickhouse: ["25.8", "25.3", "24"],
 };
 
 const TTL_MS = 6 * 60 * 60 * 1000; // 6h — engine majors change slowly.
