@@ -39,6 +39,7 @@ import { Switch } from "@/components/ui/switch";
 import { gqlAction } from "@/lib/graphql-client";
 import { DEFAULT_ALERTS } from "@/lib/alerts";
 import { ALL_CHANNELS } from "@/lib/types";
+import { cn } from "@/lib/utils";
 import type {
   NotificationChannel,
   NotificationChannelInstance,
@@ -254,14 +255,23 @@ export function NotificationsPanel({
         }
       />
 
-      <div className="grid items-start gap-6 xl:grid-cols-[minmax(0,1fr)_260px]">
+      <div
+        className={cn(
+          "grid items-start gap-6",
+          // No sidebar column while the list is empty: the phone moves INTO the
+          // empty state there, and a 260px hole beside it would be a column
+          // holding nothing.
+          channels.length > 0 && "xl:grid-cols-[minmax(0,1fr)_260px]"
+        )}
+      >
         <div className="min-w-0 space-y-4">
           {channels.length === 0 ? (
             // Deliberately NOT wrapped in the card: a dashed box inside a card
             // inside the page is three surfaces for one message. The card is
             // what holds the LIST, so it arrives with the list.
             <EmptyState
-              icon={Bell}
+              graphic={<NotificationIllustration caption={false} />}
+              className="py-12"
               title="No channels yet"
               description="Add a channel, then pick what it should tell you about."
             />
@@ -300,9 +310,11 @@ export function NotificationsPanel({
         {/* Decoration, and the only thing on this page that says what it is FOR.
             Outside the branch above: the phone is what the page is about, empty
             or not, so it does not come and go with the list. */}
-        <aside className="hidden xl:sticky xl:top-20 xl:block">
-          <NotificationIllustration />
-        </aside>
+        {channels.length > 0 && (
+          <aside className="hidden xl:sticky xl:top-20 xl:block">
+            <NotificationIllustration />
+          </aside>
+        )}
       </div>
 
       {/* ONE modal for whichever channel is open, so only one alert picker is

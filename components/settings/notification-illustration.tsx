@@ -42,7 +42,13 @@ const INBOX: {
   },
 ];
 
-export function NotificationIllustration() {
+export function NotificationIllustration({
+  /** The caption under the phone. Off inside the empty state, which says it
+      already in its own description. */
+  caption = true,
+}: {
+  caption?: boolean;
+} = {}) {
   return (
     <div aria-hidden className="pointer-events-none select-none">
       <div className="relative mx-auto w-full max-w-[260px]">
@@ -90,9 +96,12 @@ export function NotificationIllustration() {
         </div>
       </div>
 
-      <p className="mt-4 text-center text-xs leading-snug text-muted-foreground">
-        Deplo tells you what happened, on the channels you pick, wherever you are.
-      </p>
+      {caption && (
+        <p className="mt-4 text-center text-xs leading-snug text-muted-foreground">
+          Deplo tells you what happened, on the channels you pick, wherever you
+          are.
+        </p>
+      )}
     </div>
   );
 }
