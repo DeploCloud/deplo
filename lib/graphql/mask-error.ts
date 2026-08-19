@@ -5,13 +5,12 @@ import { GraphQLError } from "graphql";
 /**
  * What may be said to a client when a resolver throws.
  *
- * Shared by BOTH execution paths — `yoga.ts` (the public endpoint) and
- * `playground.ts` (the in-dashboard sandbox, which runs graphql-js `execute()`
- * directly and so gets none of Yoga's own handling). It lives in its own module
- * for exactly that reason: the playground once returned `e.message` verbatim and
- * handed back the raw Drizzle string — the full SQL and its bound parameters —
- * for a query the real endpoint masked to "Something went wrong". A policy that
- * has to be remembered twice is a policy that holds in one place.
+ * It lives in its own module so any execution path that runs graphql-js
+ * `execute()` directly — getting none of Yoga's own handling — shares the same
+ * policy: an in-dashboard sandbox once returned `e.message` verbatim and handed
+ * back the raw Drizzle string — the full SQL and its bound parameters — for a
+ * query the real endpoint masked to "Something went wrong". A policy that has to
+ * be remembered twice is a policy that holds in one place.
  */
 
 /**

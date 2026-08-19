@@ -254,7 +254,7 @@ Single endpoint `app/api/graphql/route.ts` (thin) → `lib/graphql/yoga.ts`. One
   `apps/[id]/upload` (raw archive), `.../logs` (SSE), `.../attach`, `databases/[id]/logs` (SSE),
   `databases/[id]/attach` (SSE siblings of the app routes — reuse `lib/logs/session.ts` +
   `lib/attach/session.ts`), `github/webhook|callback|setup`, `auth/[...all]`, `agent/bootstrap`,
-  `graphql/playground`, `health`, `node-versions`, `railpack-versions`, `registry/images`.
+  `health`, `node-versions`, `railpack-versions`, `registry/images`.
   **Two exceptions to the cookie rule**, both authenticating with an API token
   (`Authorization: Bearer deplo_…`) and both re-entering the normal gates via `runWithIdentity`
   — never bypass them with a hand-rolled capability check:

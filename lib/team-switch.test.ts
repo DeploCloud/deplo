@@ -18,7 +18,6 @@ test("stays on team-agnostic section pages", () => {
     "/activity",
     "/monitoring",
     "/new",
-    "/api-docs",
     "/settings",
     "/settings/registries",
     "/settings/git",
