@@ -428,7 +428,7 @@ builder.mutationFields((t) => ({
         type: [PlacementInput],
         required: false,
         description:
-          "Where each service lands, one entry per service. Wins over `servers`, which stays the fallback for anything not listed here and is what the data cutover reads. A server this team cannot deploy to is refused into a report line, never used.",
+          "Where each service lands, one entry per service. Wins over `servers`, which stays the fallback for anything not listed here. Both are about where a service RUNS; where its data is READ FROM is derived from the Dokploy machine's own address and is never a caller's choice. A server this team cannot deploy to is refused into a report line, never used.",
       }),
     },
     resolve: (

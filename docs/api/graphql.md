@@ -239,15 +239,22 @@ therefore not capped per team.
   the API key is never stored: it rides each call. `input.allowPrivate` reaches a
   private address (the same-machine case) and is instance-admin only, like
   `allowPrivateEndpoint` on a git connection.
-  The DATA follows separately: `planDokployDataMove(input)` pairs each source
-  volume with the Deplo one that would receive it (by container path, read from
-  the source's own `docker inspect`), and `moveDokployServiceData(input, runId,
-  sourceKind, sourceId, servers)` stops that ONE service on Dokploy and copies its
-  volumes over. Additionally gated on `restore_backups` on the target. Neither
-  call accepts a volume name: naming both sides would be an instruction to copy
-  any volume on the host into any other one, so both are derived from the service
-  and the app - and the source HOST comes from the same server mapping, because a
-  wrong one would overwrite the destination with an empty archive.
+  The DATA moves in the same run: `planDokployDataMove(input, runId)` lists what
+  THAT run imported and pairs each source volume with the Deplo one that would
+  receive it (by container path, read from the source's own `docker inspect`),
+  and `moveDokployServiceData(input, runId, sourceKind, sourceId)` stops that ONE
+  service on Dokploy, copies its volumes and its bind-mounted host directories
+  over, then starts a database again and checks the engine reads what landed.
+  Additionally gated on `restore_backups` on the target (and, for a host
+  directory, on instance admin plus the host-volumes grant).
+  Neither call accepts a volume name, a path, or a source host. Naming any of
+  them would be an instruction to copy any volume on any host over any other one,
+  so all three are derived: the volumes from the service and the app, the target
+  from the run's own record of what it created, and the source MACHINE from its
+  address. The last one is not a detail - while it was a caller's input, the
+  wizard filled every Dokploy machine in with the Deplo host, every export read a
+  volume that was not there, and `docker` answered by creating an empty one:
+  every copy overwrote real data with nothing and reported success.
 - **Subscriptions** (SSE via graphql-yoga): `appStatus(slug)` and
   `databaseStatus(id)` — each emits the entity on every state change (initial
   snapshot, then live), so a client tracks provisioning/start/stop/deploy with
