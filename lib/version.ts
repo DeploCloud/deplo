@@ -16,7 +16,7 @@ import { FALLBACK_AGENT_VERSION } from "./agent/release";
  * are server-only, so the JSON import never reaches a client bundle.
  */
 export const DEPLO_VERSION: string = packageVersion;
-export const DEPLO_REPO = "IdraDev/deplo";
+export const DEPLO_REPO = "DeploCloud/deplo";
 
 /**
  * The agent version we expect every server to be running. The agent now lives in

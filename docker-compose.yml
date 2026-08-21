@@ -9,7 +9,7 @@ services:
   deplo:
     # Build from this checkout, or comment out `build` to pull the published image.
     build: .
-    image: ghcr.io/idradev/deplo:latest
+    image: ghcr.io/deplocloud/deplo:latest
     restart: unless-stopped
     depends_on:
       postgres:

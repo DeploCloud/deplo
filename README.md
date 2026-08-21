@@ -6,9 +6,9 @@
 
 **push a repo, pick a server, get a deployment — on your own infrastructure**
 
-[![Release](https://img.shields.io/github/v/release/IdraDev/deplo?color=0a0a0a)](https://github.com/IdraDev/deplo/releases)
-[![Stars](https://img.shields.io/github/stars/IdraDev/deplo?style=flat)](https://github.com/IdraDev/deplo/stargazers)
-[![Last commit](https://img.shields.io/github/last-commit/IdraDev/deplo)](https://github.com/IdraDev/deplo/commits)
+[![Release](https://img.shields.io/github/v/release/DeploCloud/deplo?color=0a0a0a)](https://github.com/DeploCloud/deplo/releases)
+[![Stars](https://img.shields.io/github/stars/DeploCloud/deplo?style=flat)](https://github.com/DeploCloud/deplo/stargazers)
+[![Last commit](https://img.shields.io/github/last-commit/DeploCloud/deplo)](https://github.com/DeploCloud/deplo/commits)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](#-license)
 
 [Features](#-features) · [Quick start](#-quick-start) · [Configuration](#%EF%B8%8F-configuration) · [Security](#-security) · [Stack](#-tech-stack)
@@ -45,13 +45,13 @@ Deplo is that: a self-hostable control plane. Push a repository or pick a templa
 Run one command on a fresh Linux box — it installs Docker, Traefik (automatic HTTPS), a private Postgres and the Deplo control plane:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/IdraDev/deplo/main/install.sh | bash
+curl -fsSL https://raw.githubusercontent.com/DeploCloud/deplo/main/install.sh | bash
 ```
 
 The installer is idempotent: secrets are generated once and stored in `/opt/deplo/.env`, so re-running never rotates them. Override defaults with env vars:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/IdraDev/deplo/main/install.sh | \
+curl -fsSL https://raw.githubusercontent.com/DeploCloud/deplo/main/install.sh | \
   DEPLO_DOMAIN=deplo.example.com ACME_EMAIL=you@example.com bash
 ```
 
@@ -67,7 +67,7 @@ docker run -d --name deplo \
   -p 3000:3000 \
   -v /var/run/docker.sock:/var/run/docker.sock \
   -v deplo-data:/data \
-  ghcr.io/idradev/deplo:latest
+  ghcr.io/deplocloud/deplo:latest
 ```
 
 ### Run locally
@@ -137,7 +137,7 @@ Copy `.env.example` to `.env` and fill in the important variables:
 
 ## 🔄 Releases & CI
 
-Pushing a `v*.*` tag triggers [`.github/workflows/docker-image.yml`](.github/workflows/docker-image.yml): it creates a GitHub Release and builds + pushes the image to `ghcr.io/idradev/deplo:<version>` and `:latest`.
+Pushing a `v*.*` tag triggers [`.github/workflows/docker-image.yml`](.github/workflows/docker-image.yml): it creates a GitHub Release and builds + pushes the image to `ghcr.io/deplocloud/deplo:<version>` and `:latest`.
 
 ```bash
 git tag v1.2.0 && git push origin v1.2.0
@@ -177,6 +177,6 @@ proxy.ts          CSP, security headers and the optimistic auth gate
 
 ## 📄 License
 
-MIT © [IdraDev](https://github.com/IdraDev)
+MIT © [DeploCloud](https://github.com/DeploCloud)
 
 <div align="center"><sub>Built for people who'd rather own their deploys.</sub></div>

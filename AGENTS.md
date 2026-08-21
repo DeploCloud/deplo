@@ -537,7 +537,7 @@ language — reconsider, or note the gap.
 
 ## Working rules
 
-- **Issues & PRDs = GitHub Issues in `IdraDev/deplo` via the `gh` CLI** (`docs/agents/issue-tracker.md`);
+- **Issues & PRDs = GitHub Issues in `DeploCloud/deplo` via the `gh` CLI** (`docs/agents/issue-tracker.md`);
   triage with the five canonical labels (`docs/agents/triage-labels.md`).
 - Check `docs/adr/` before working an area; flag contradictions explicitly rather than overriding.
 - **Commits = Conventional Commits with a scope**, imperative summary (`feat(apps): …`,

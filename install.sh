@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 #
 # Deplo installer / updater
-# Usage:  curl -fsSL https://raw.githubusercontent.com/IdraDev/deplo/main/install.sh | bash
+# Usage:  curl -fsSL https://raw.githubusercontent.com/DeploCloud/deplo/main/install.sh | bash
 #
 # The dashboard ALWAYS answers on the server's IP at port 3000
 # (http://<ip>:3000) - that address is the way back in when a domain, a
@@ -18,7 +18,7 @@ DEPLO_VERSION="${DEPLO_VERSION:-latest}"
 DEPLO_DIR="/opt/deplo"
 ENV_FILE="$DEPLO_DIR/.env"
 DEFAULT_ACME_EMAIL="admin@example.com"
-DEPLO_IMAGE="ghcr.io/idradev/deplo:${DEPLO_VERSION}"
+DEPLO_IMAGE="ghcr.io/deplocloud/deplo:${DEPLO_VERSION}"
 
 bold() { printf "\n\033[1m%s\033[0m\n" "$1"; }
 step() { printf "  \033[36m[..]\033[0m %s\n" "$1"; }
