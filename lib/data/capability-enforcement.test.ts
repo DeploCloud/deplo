@@ -349,7 +349,7 @@ test("create_apps is not permission to claim a hostname", async () => {
           source: "docker-image",
           repo: null,
           dockerImage: "nginx:1.27",
-          extraDomains: [{ host: "api.example.com", port: 80, service: null }],
+          extraDomains: [{ host: "api.example.com", port: 80, service: "web" }],
         }),
       ),
       "refused",
