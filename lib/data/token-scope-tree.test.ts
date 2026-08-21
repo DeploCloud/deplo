@@ -8,6 +8,7 @@ import { __setTestDb, __resetTestDb } from "../db/client";
 import {
   domains as domainsTable,
   folders as foldersTable,
+  apiTokenTeams,
   memberships as membershipsTable,
   membershipCapabilities as membershipCapabilitiesTable,
   projects as projectsTable,
@@ -694,4 +695,69 @@ test("a folder-scoped token creates apps in its own folder, and nowhere else", a
       );
     },
   );
+});
+
+/* ------------------------------------------------------------------ */
+/* A team ticked ALONGSIDE something inside it                         */
+/* ------------------------------------------------------------------ */
+
+test("the whole team and one app inside it is refused, not merged", async () => {
+  await assert.rejects(
+    () =>
+      asUser1(() =>
+        createToken({
+          name: "Both",
+          capabilities: ["deploy_apps"],
+          teamIds: [TEAM_A],
+          appIds: ["prj_in"],
+        }),
+      ),
+    /not both/,
+    "the API must not accept a shape whose two halves disagree",
+  );
+
+  // Another team's app alongside a whole team is NOT that shape: breadth, not depth.
+  const ok = await asUser1(() =>
+    createToken({
+      name: "Two teams",
+      capabilities: ["deploy_apps"],
+      teamIds: [TEAM_A],
+      appIds: ["prj_b"],
+    }),
+  );
+  assert.ok(ok.raw);
+});
+
+test("a token minted before that refusal reads as narrowed, never as the whole team", async () => {
+  // Exactly the row shape `createToken` used to accept: one app, plus its own team.
+  const raw = await asUser1(async () =>
+    (
+      await createToken({
+        name: "Legacy both",
+        capabilities: ["deploy_apps", "manage_members"],
+        appIds: ["prj_in"],
+      })
+    ).raw,
+  );
+  const tokenId = (await asUser1(() => listTokens()))[0]!.id;
+  await db.insert(apiTokenTeams).values({ tokenId, teamId: TEAM_A });
+
+  const identity = await authenticateToken(raw);
+  assert.ok(identity);
+  assert.deepEqual(
+    identity!.token?.scope?.wholeTeamIds,
+    [],
+    "the app it names is the narrower tick, and the narrower tick wins",
+  );
+  assert.deepEqual(identity!.token?.scope?.teamIds, [TEAM_A]);
+
+  await runWithIdentity(identity!, async () => {
+    assert.deepEqual(
+      (await listApps()).map((a) => a.id),
+      ["prj_in"],
+      "it still reaches only the app it names",
+    );
+    // And the team-wide capability it was minted with stays clamped away.
+    await assert.rejects(() => listMembers(), /limited to specific projects/);
+  });
 });

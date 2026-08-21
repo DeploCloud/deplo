@@ -1389,6 +1389,16 @@ async function resolveScopeInput(
   for (const id of teamIds)
     if (!mine.has(id)) throw new Error("You're not a member of one of those teams");
   const reached = new Set<string>(teamIds);
+  // Refused rather than reinterpreted: `loadScope` lets the narrower tick win, so
+  // accepting both would hand back a token that reads as whole-team and behaves
+  // as one app. Say which one they meant.
+  const whole = new Set(teamIds);
+  const narrower = (teamId: string) => {
+    if (whole.has(teamId))
+      throw new Error(
+        "Tick either the whole team or the parts of it, not both - the parts would win.",
+      );
+  };
 
   const db = getDb();
   if (projectIds.length > 0) {
@@ -1398,7 +1408,10 @@ async function resolveScopeInput(
       .where(inArray(projectsTable.id, projectIds));
     if (rows.length !== projectIds.length || rows.some((r) => !mine.has(r.teamId)))
       throw new Error("One of those projects isn't in a team you belong to");
-    for (const r of rows) reached.add(r.teamId);
+    for (const r of rows) {
+      narrower(r.teamId);
+      reached.add(r.teamId);
+    }
   }
   if (folderIds.length > 0) {
     const rows = await db
@@ -1407,7 +1420,10 @@ async function resolveScopeInput(
       .where(inArray(foldersTable.id, folderIds));
     if (rows.length !== folderIds.length || rows.some((r) => !mine.has(r.teamId)))
       throw new Error("One of those folders isn't in a team you belong to");
-    for (const r of rows) reached.add(r.teamId);
+    for (const r of rows) {
+      narrower(r.teamId);
+      reached.add(r.teamId);
+    }
   }
   if (appIds.length > 0) {
     const rows = await db
@@ -1416,7 +1432,10 @@ async function resolveScopeInput(
       .where(inArray(appsTable.id, appIds));
     if (rows.length !== appIds.length || rows.some((r) => !mine.has(r.teamId)))
       throw new Error("One of those apps isn't in a team you belong to");
-    for (const r of rows) reached.add(r.teamId);
+    for (const r of rows) {
+      narrower(r.teamId);
+      reached.add(r.teamId);
+    }
   }
   return { teamIds, projectIds, folderIds, appIds, teamsReached: [...reached] };
 }
@@ -1554,11 +1573,21 @@ async function loadScope(tokenId: string): Promise<TokenScope> {
       .where(eq(apiTokenApps.tokenId, tokenId)),
   ]);
 
-  const wholeTeamIds = teamRows.map((r) => r.teamId);
   const projectIds = projRows.map((r) => r.id);
+  // A team is WHOLE only when nothing narrower inside it is named. Both at once
+  // is not a shape the picker can draw (ticking a node clears everything under
+  // it), but `createToken` accepts it from an API client, and read as a union it
+  // turned "one app" into the whole team while the editor still displayed the
+  // app. The narrower tick wins: it is the one the reader believes.
+  const narrowedTeamIds = new Set(
+    [...projRows, ...folderRows, ...appRows].map((r) => r.teamId),
+  );
+  const wholeTeamIds = teamRows
+    .map((r) => r.teamId)
+    .filter((id) => !narrowedTeamIds.has(id));
   const teamIds = [
     ...new Set([
-      ...wholeTeamIds,
+      ...teamRows.map((r) => r.teamId),
       ...projRows.map((r) => r.teamId),
       ...folderRows.map((r) => r.teamId),
       ...appRows.map((r) => r.teamId),
