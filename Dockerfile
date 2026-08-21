@@ -12,7 +12,17 @@ WORKDIR /app
 COPY package.json bun.lock ./
 RUN bun install --frozen-lockfile
 
-FROM oven/bun:1.3 AS builder
+# Bun installs, NODE builds. `bun run build` segfaulted bun 1.3.14 itself
+# ("panic: Segmentation fault at address 0x13CB0", then SIGILL / exit 132) at the
+# very end of `next build` - after the route table had already printed, so the
+# compile was done and the crash is in bun's own teardown. Deterministic: same
+# address on a re-run. Nothing here is bun-specific (the script is a bare
+# `next build`, the runtime below is node:22-alpine running `node server.js`), so
+# building under the runtime we actually ship on costs nothing and removes a whole
+# class of "bun crashed on our tree" from the release path. Keep the deps stage on
+# bun - bun.lock is the lockfile, and its node_modules layout is npm-compatible.
+# Same debian/glibc family as the bun image, so sharp's prebuild still resolves.
+FROM node:22-bookworm-slim AS builder
 WORKDIR /app
 COPY --from=deps /app/node_modules ./node_modules
 COPY . .
@@ -28,7 +38,7 @@ ENV NEXT_TELEMETRY_DISABLED=1
 # real values arrive as environment variables at run time.
 ENV DEPLO_DATABASE_URL=postgres://build:build@127.0.0.1:5432/build
 ENV DEPLO_SECRET=build-time-placeholder-not-a-real-secret
-RUN bun run build
+RUN node node_modules/next/dist/bin/next build
 
 # --- Runtime: minimal standalone server ---
 FROM node:22-alpine AS runner
