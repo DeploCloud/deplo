@@ -452,13 +452,13 @@ networks:
     internal: true
 EOF
 
-# Pull the control-plane image first so a missing/private package (or, on an
-# update, the newest image) fails clearly instead of a cryptic compose error.
+# Pull the control-plane image first so a bad version tag (or, on an update, the
+# newest image) fails clearly instead of a cryptic compose error. The image is
+# public, so let Docker's own message through rather than guessing the cause.
 step "Pulling $DEPLO_IMAGE..."
-if ! docker pull "$DEPLO_IMAGE" >/dev/null 2>&1; then
+if ! docker pull "$DEPLO_IMAGE" >/dev/null; then
   err "Could not pull $DEPLO_IMAGE."
-  err "If the package is private, make it public on GitHub, or authenticate first:"
-  err "  echo \$GHCR_TOKEN | docker login ghcr.io -u <user> --password-stdin"
+  err "Check the internet connection, and that DEPLO_VERSION=$DEPLO_VERSION is a released version."
   exit 1
 fi
 
