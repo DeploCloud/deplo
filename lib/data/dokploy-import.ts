@@ -18,6 +18,7 @@ import { getCurrentUser } from "../auth";
 import {
   canExposePorts,
   canMountHostVolumes,
+  hasCapability,
   requireActiveTeamId,
   requireCapability,
   requireInstanceAdmin,
@@ -33,6 +34,7 @@ import {
   composeNeedsHostPrivileges,
   composePublishesPorts,
   composeUsesExternalMerge,
+  lintCompose,
 } from "../deploy/compose-lint";
 import type { BuildConfig, VolumeMount } from "../types";
 
@@ -40,6 +42,7 @@ import {
   DOKPLOY_DB_KINDS,
   activeOrganizationName,
   getConvertedCompose,
+  getEnvironment,
   getService,
   listMembers,
   listProjects as listDokployProjects,
@@ -364,6 +367,18 @@ function loadService(
   return getService(c, svc.kind, svc.id);
 }
 
+/** What to call a service Deplo will NOT import: worth one detail call, since
+ *  the tree carries no name for a database and an id names nothing to anybody. */
+async function nameOfService(
+  c: DokployCredential,
+  svc: SourceService,
+): Promise<string> {
+  if (svc.name?.trim()) return svc.name;
+  return loadService(c, svc)
+    .then((d) => nameOf(d, svc))
+    .catch(() => svc.id);
+}
+
 /** What to call a service: its detail row's name, the tree's, or its id. */
 function nameOf(
   detail: { name?: string | null } | null,
@@ -448,6 +463,12 @@ export async function scanDokploy(input: ConnectInput): Promise<DokployPlan> {
         // fact into an HTTP 404 in the report.
         if (line.targetKind === null) {
           line.status = "unsupported";
+          // Its NAME is still worth one call. `project.all` gives a database
+          // nothing but its id, so the line otherwise reads
+          // "jiNnZQIEqsTkIARVHq0He has no equivalent here" - true, and useless to
+          // the person who has to decide what to do about it. A refusal here
+          // changes nothing: the id stands, as it did before.
+          line.name = await nameOfService(c, svc);
           line.notes.push(`Deplo has no ${svc.kind} engine.`);
           services[index] = line;
           return;
@@ -512,6 +533,7 @@ export async function scanDokploy(input: ConnectInput): Promise<DokployPlan> {
               "The compose file lives in a git repository - Deplo will try to fetch the resolved file at import time.",
             );
           line.notes.push(...adapted.changes);
+          line.notes.push(...composeAdvice(adapted.compose));
           if (blocked.length > 0 && line.status === "new") {
             line.status = "needs_grant";
             line.notes.push(...blocked);
@@ -560,6 +582,23 @@ export async function scanDokploy(input: ConnectInput): Promise<DokployPlan> {
     servers: await planMachines(c, teamId, servers),
     members: await planMembers(c, teamId),
   };
+}
+
+/**
+ * Compose warnings worth a REPORT line, borrowed from the editor's own linter.
+ *
+ * Neither of these stops an import, and both are things the stack's author would
+ * see the moment they opened the compose editor - which, on an import, is the one
+ * time nobody does: the file arrives from somewhere else and goes straight to a
+ * deploy. A service named `deplo` deploys nowhere the moment it gets a domain.
+ */
+function composeAdvice(compose: string): string[] {
+  return lintCompose(compose)
+    .filter(
+      (d) =>
+        d.rule === "reserved-service-name" || d.rule === "network-aliases-dropped",
+    )
+    .map((d) => d.message);
 }
 
 /**
@@ -864,7 +903,11 @@ export async function refreshCounts(runId: string, teamId: string): Promise<void
       created: count("created"),
       skipped: count("skipped"),
       failed: count("failed"),
-      manual: count("manual"),
+      // `unsupported` counts as "needs a look": it is a decision left to a
+      // person, exactly like `manual`, and its own column would be a fifth
+      // number nobody asked for. Left out of every total, a run of 92 items
+      // reported 91 - which reads as a lost line, not as a category.
+      manual: count("manual") + count("unsupported"),
     })
     .where(and(eq(runsTable.id, runId), eq(runsTable.teamId, teamId)));
 }
@@ -1044,12 +1087,14 @@ export async function importDokployProject(
       const isApp = svc.kind === "application" || svc.kind === "compose";
       const targetKind = isApp ? "app" : "database";
 
-      // An engine Deplo does not have is settled without asking about it.
+      // An engine Deplo does not have is settled without importing anything —
+      // but under its own name, not its id (see the scan for why).
       if (!isApp && !deploEngineFor(svc.kind as DokployDbKind)) {
-        await envReport.at(svc.name || svc.id).add({
+        const unsupportedName = await nameOfService(c, svc);
+        await envReport.at(unsupportedName).add({
           sourceKind: svc.kind,
           sourceId: svc.id,
-          sourceName: svc.name || svc.id,
+          sourceName: unsupportedName,
           outcome: "unsupported",
           targetKind,
           message: `Deplo has no ${svc.kind} engine.`,
@@ -1115,7 +1160,10 @@ export async function importDokployProject(
       }
     }
 
-    await importSharedVars(env.env, {
+    // `project.all` is a projection: an environment's variable blob is ALWAYS
+    // null there, however much it holds, so this asks for the row itself.
+    const envBlob = env.env ?? (await getEnvironment(c, env.environmentId))?.env ?? null;
+    await importSharedVars(envBlob, {
       teamId,
       label: `${source.name} / ${env.name}`,
       environmentIds: [environmentId],
@@ -1162,7 +1210,9 @@ function tally(items: ImportItemDTO[]): {
     created: n("created"),
     skipped: n("skipped"),
     failed: n("failed"),
-    manual: n("manual"),
+    // Same fold as `refreshCounts`: an engine with no equivalent here is a
+    // decision for a person, and every item belongs to exactly one total.
+    manual: n("manual") + n("unsupported"),
   };
 }
 
@@ -1453,6 +1503,7 @@ async function importAppService(
     const adapted = adaptComposeForDeplo(yamlText);
     compose = adapted.compose;
     notes.push(...adapted.changes);
+    notes.push(...composeAdvice(adapted.compose));
     if (detail.isolatedDeployment)
       notes.push(
         "Dokploy isolates this stack's network and volume names. Deplo does that for every stack - check the service names it talks to.",
@@ -1486,6 +1537,18 @@ async function importAppService(
   // consistent from the start.
   if (primary?.port) build.port = primary.port;
 
+  // Claiming a hostname needs `manage_domains`, and an import must not turn a
+  // missing permission into a failed app: without it the app comes across on a
+  // generated host and the report says which names were left behind, exactly
+  // like the extra domains below.
+  const mayClaimHosts = await hasCapability("manage_domains");
+  if (!mayClaimHosts && domains.value.length > 0)
+    notes.push(
+      `You don't have permission to manage domains, so ${domains.value
+        .map((d) => d.host)
+        .join(", ")} came across on a generated address instead.`,
+    );
+
   const created = await createApp({
     name,
     source,
@@ -1499,7 +1562,7 @@ async function importAppService(
     environmentId: home.environmentId,
     build,
     autoDeploy: detail.autoDeploy ?? true,
-    autoDomain: primary?.host ?? null,
+    autoDomain: mayClaimHosts ? primary?.host ?? null : null,
     composeService: isCompose ? primary?.service ?? null : null,
     composePort: isCompose ? primary?.port ?? null : null,
     mounts: mounts.value.files.length > 0 ? mounts.value.files : null,

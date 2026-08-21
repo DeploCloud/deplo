@@ -262,13 +262,17 @@ async function sourceState(
       volumes: declared,
       hostMounts: declaredBinds,
       running: false,
-      notes: declared.length
-        ? [
-            `${appName} is stopped on Dokploy, so its volumes come from what Dokploy says it mounts rather than from a live container.`,
-          ]
-        : [
-            `Dokploy has no container for ${appName} and declares no volume for it, so there is nothing to copy.`,
-          ],
+      // The count is volumes AND host binds: a service with only a bind mount
+      // used to be told it "declares no volume", right beside the bind mount the
+      // plan had already paired for it.
+      notes:
+        declared.length + declaredBinds.length > 0
+          ? [
+              `${appName} is stopped on Dokploy, so its data comes from what Dokploy says it mounts rather than from a live container.`,
+            ]
+          : [
+              `Dokploy has no container for ${appName} and declares nothing it mounts, so there is nothing to copy.`,
+            ],
     };
 
   const volumes: NamedVolume[] = [];
@@ -764,7 +768,7 @@ export async function moveDokployServiceData(
           targetKind: landed.targetKind,
           targetId: landed.targetId,
           message:
-            `Copied ${formatBytes(copied.bytes)} into ${pair.targetVolume} (${pair.mountPath}).` +
+            `Copied ${formatBytes(copied.bytes)} (compressed) into ${pair.targetVolume} (${pair.mountPath}).` +
             (pair.note ? ` ${pair.note}` : ""),
         });
       } catch (e) {
@@ -838,7 +842,7 @@ export async function moveDokployServiceData(
           outcome: "created",
           targetKind: landed.targetKind,
           targetId: landed.targetId,
-          message: `Copied ${formatBytes(copied.bytes)} into ${bind.targetPath} (${bind.mountPath}), a host directory.`,
+          message: `Copied ${formatBytes(copied.bytes)} (compressed) into ${bind.targetPath} (${bind.mountPath}), a host directory.`,
         });
       } catch (e) {
         failed++;

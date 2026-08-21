@@ -657,7 +657,7 @@ test("a copied database is started again and checked, and the report says what l
   // copy of nothing said for as long as this was broken.
   assert.ok(
     messages.some((m) =>
-      /Copied 8\.19 kB into deplo-db-blink-db_db-blink-db-data/.test(m),
+      /Copied 8\.19 kB \(compressed\) into deplo-db-blink-db_db-blink-db-data/.test(m),
     ),
     messages.join(" | "),
   );

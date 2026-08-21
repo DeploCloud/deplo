@@ -77,10 +77,26 @@ export async function destroyStackOn(
  * passes through unchanged either way — we just prefer the source attribution when
  * the error is ambiguous, since the source export is what starts the stream.
  */
-function attributeCopyError(e: unknown): Error {
+function attributeCopyError(e: unknown, what?: string): Error {
   const asSource = mapVolumeCopyUnsupported(e, "source");
   if (asSource.constructor.name === "AgentVolumeCopyUnsupportedError") return asSource;
+  // A source that is not there is the agent doing its job (it refuses rather than
+  // creating an empty volume and calling it a copy) — but it reached the report as
+  // `5 NOT_FOUND: … docker: Error response from daemon`, which reads like a broken
+  // platform rather than like "nothing ever wrote there". Wording stays neutral:
+  // this path serves a server move as well as an import.
+  if (what && isNotFound(e))
+    return new Error(
+      `${what} is not on that machine, so nothing was copied. A service that has never run has no data volume yet.`,
+    );
   return mapVolumeCopyUnsupported(e, "destination");
+}
+
+/** gRPC NOT_FOUND (5), however the error object reaches us. */
+function isNotFound(e: unknown): boolean {
+  const code = (e as { code?: unknown } | null)?.code;
+  if (code === 5) return true;
+  return e instanceof Error && /\b5 NOT_FOUND\b/.test(e.message);
 }
 
 /**
@@ -155,7 +171,7 @@ export async function copyVolumeBetween(
     if (!(await sourceHasData(source, volumeName)))
       return { bytes: 0, sha256: "", empty: true };
   } catch (e) {
-    throw attributeCopyError(e);
+    throw attributeCopyError(e, `The volume "${volumeName}"`);
   }
 
   // Count and hash what actually crosses. The digest is the same cross-check the
@@ -233,7 +249,7 @@ export async function copyHostPathBetween(
       if (seen > EMPTY_ARCHIVE_CEILING) break;
     }
   } catch (e) {
-    throw attributeCopyError(e);
+    throw attributeCopyError(e, `The directory "${sourcePath}"`);
   }
   if (seen <= EMPTY_ARCHIVE_CEILING) return { bytes: 0, sha256: "", empty: true };
 

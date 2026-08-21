@@ -110,6 +110,9 @@ export interface DokployApplication {
   dockerImage?: string | null;
   registryUrl?: string | null;
   registryId?: string | null;
+  /** The docker-provider credentials typed onto the app itself. The password is
+   *  excluded from the API, so only the fact that there IS one comes across. */
+  username?: string | null;
   // dockerfile / static build settings
   dockerfile?: string | null;
   dockerContextPath?: string | null;
@@ -351,6 +354,64 @@ export function __resetDokployFetchForTest(): void {
   doFetch = (input, init) => fetch(input, init);
 }
 
+/**
+ * A transport failure, said out loud.
+ *
+ * `fetch` rejects with a bare "fetch failed" whatever went wrong, and this is the
+ * FIRST screen of a migration: the everyday mistakes are the port (Dokploy serves
+ * :3000 over plain http by default), `https://` typed at an http instance, and a
+ * typo in the host. All three read the same otherwise, so the user is left
+ * guessing on the one screen where guessing costs the most.
+ */
+export function describeDokployTransportError(err: unknown, baseUrl: string): string {
+  const at = `at ${baseUrl}`;
+  if (err instanceof Error && (err.name === "TimeoutError" || err.name === "AbortError"))
+    return `Dokploy did not answer within ${REQUEST_TIMEOUT_MS / 1000} seconds ${at}. It may be slow, or something on the way is dropping the connection.`;
+
+  const cause = err instanceof Error ? (err.cause as { code?: string } | undefined) : undefined;
+  const code = typeof cause?.code === "string" ? cause.code : "";
+  const message = err instanceof Error ? err.message : String(err);
+
+  switch (code) {
+    case "ECONNREFUSED":
+      return `Nothing is listening ${at}. Check the port - Dokploy serves :3000 unless it is behind a proxy.`;
+    case "ENOTFOUND":
+    case "EAI_AGAIN":
+      return `That address does not resolve (${baseUrl}). Check the hostname.`;
+    case "ECONNRESET":
+    case "EPIPE":
+      return `The connection to ${baseUrl} was cut before Dokploy answered. If Dokploy is on plain http there, use http:// rather than https://.`;
+    case "EHOSTUNREACH":
+    case "ENETUNREACH":
+    case "ETIMEDOUT":
+    case "UND_ERR_CONNECT_TIMEOUT":
+      return `Could not reach ${baseUrl} - no route to it from this machine. If it is on a private network, an instance admin has to allow that.`;
+    case "CERT_HAS_EXPIRED":
+    case "DEPTH_ZERO_SELF_SIGNED_CERT":
+    case "SELF_SIGNED_CERT_IN_CHAIN":
+    case "UNABLE_TO_VERIFY_LEAF_SIGNATURE":
+      return `The https certificate ${at} is not one this machine trusts (${code}).`;
+    case "ERR_SSL_WRONG_VERSION_NUMBER":
+    case "EPROTO":
+      return `${baseUrl} answered, but not over https. Try http:// instead.`;
+    default:
+      return `Could not reach Dokploy ${at}${code ? ` (${code})` : ""}: ${message}.`;
+  }
+}
+
+/** Every call goes out through here so no caller can leak a bare "fetch failed". */
+async function send(
+  baseUrl: string,
+  url: string,
+  init: RequestInit,
+): Promise<Response> {
+  try {
+    return await doFetch(url, init);
+  } catch (e) {
+    throw new Error(describeDokployTransportError(e, baseUrl));
+  }
+}
+
 /** Origin with no trailing slash and no trailing `/api`, however it was typed. */
 export function normalizeDokployBaseUrl(raw: string): string {
   const trimmed = raw.trim();
@@ -385,7 +446,7 @@ async function get<T>(
   for (const [k, v] of Object.entries(params))
     if (v !== undefined) url.searchParams.set(k, v);
 
-  const res = await doFetch(url.toString(), {
+  const res = await send(c.baseUrl, url.toString(), {
     method: "GET",
     headers: {
       Accept: "application/json",
@@ -424,7 +485,7 @@ async function post<T>(
   procedure: string,
   body: Record<string, unknown>,
 ): Promise<T> {
-  const res = await doFetch(`${c.baseUrl}/api/${procedure}`, {
+  const res = await send(c.baseUrl, `${c.baseUrl}/api/${procedure}`, {
     method: "POST",
     headers: {
       Accept: "application/json",
@@ -502,6 +563,26 @@ export async function listProjects(
   });
 }
 
+/**
+ * One environment's own row, for the variable blob `project.all` never carries.
+ *
+ * The tree's environments come back with `env: null` whatever they hold — it is a
+ * projection — so an environment's shared variables looked like "there were
+ * none" and were dropped without a report line. Only the detail row has them.
+ */
+export async function getEnvironment(
+  c: DokployCredential,
+  environmentId: string,
+): Promise<DokployEnvironment | null> {
+  try {
+    return await get<DokployEnvironment>(c, "environment.one", { environmentId });
+  } catch {
+    // An older Dokploy has no environments at all (the tree is synthesised), and
+    // a member key can be refused here. Neither is worth failing an import over.
+    return null;
+  }
+}
+
 /** One application WITH its domains, mounts, ports and basic-auth users. */
 export function getApplication(
   c: DokployCredential,
@@ -557,6 +638,17 @@ export function serviceDisplayName(
 }
 
 /**
+ * A compose body only counts when it declares services. Dokploy answers the JSON
+ * body `null` for a repo it has not cloned yet, which arrives here as the
+ * four-character string "null" — truthy, and indistinguishable from a real file
+ * unless we look inside it.
+ */
+function composeOrNull(body: string): string | null {
+  const yaml = body.trim();
+  return yaml && /^\s*services\s*:/m.test(yaml) ? yaml : null;
+}
+
+/**
  * The compose file Dokploy would actually deploy, for a stack whose YAML lives
  * in a git repo rather than in the database.
  *
@@ -573,10 +665,12 @@ export async function getConvertedCompose(
     const body = await get<unknown>(c, "compose.getConvertedCompose", {
       composeId,
     });
-    if (typeof body === "string") return body.trim() || null;
+    if (typeof body === "string") return composeOrNull(body);
     if (body && typeof body === "object") {
-      for (const v of Object.values(body as Record<string, unknown>))
-        if (typeof v === "string" && v.includes("services:")) return v;
+      for (const v of Object.values(body as Record<string, unknown>)) {
+        const yaml = typeof v === "string" ? composeOrNull(v) : null;
+        if (yaml) return yaml;
+      }
     }
     return null;
   } catch {

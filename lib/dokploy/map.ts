@@ -494,7 +494,12 @@ export function mapSource(app: DokployApplication): Mapped<MappedSource> {
       notes.push(`Image reference "${truncate(image, 80)}" is not one Deplo accepts - set it by hand.`);
       return { value: { kind: "none" }, notes };
     }
-    if (app.registryId || app.registry)
+    // A private pull can be configured two ways over there: a registry ENTITY, or
+    // a username/password/URL typed straight onto the application
+    // (`saveDockerProvider`). Both need re-entering here, and only the first was
+    // ever mentioned — so the second arrived as a plain public image and failed
+    // its first deploy on an unauthenticated pull, with nothing in the report.
+    if (app.registryId || app.registry || app.username || app.registryUrl)
       notes.push(
         "From a private registry. Add it under Registries and reselect it - Dokploy never exposes the password.",
       );

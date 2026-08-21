@@ -482,6 +482,21 @@ test("mapSource reports a private registry, whose password never leaves Dokploy"
     app({ sourceType: "docker", dockerImage: "reg.acme.com/api:1", registryId: "reg-1" }),
   );
   assert.match(notes.join(" "), /private registry/);
+
+  // The other half of the same setting: credentials typed onto the application
+  // rather than picked from a registry entity. Same pull, same missing password,
+  // and it used to come across looking like a public image.
+  assert.match(
+    mapSource(
+      app({
+        sourceType: "docker",
+        dockerImage: "reg.acme.com/api:1",
+        username: "robot",
+        registryUrl: "reg.acme.com",
+      }),
+    ).notes.join(" "),
+    /private registry/,
+  );
 });
 
 test("mapSource flags an image that only exists on the source machine", () => {
