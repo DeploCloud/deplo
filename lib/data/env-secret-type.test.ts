@@ -90,3 +90,27 @@ test("a fork preview drops the team's SHARED secrets", async () => {
 test("a fork preview drops INSTANCE-GLOBAL secrets, which cross every team", async () => {
   assert.deepEqual(keys(keep(await loadInstanceEnv())), ["GLOBAL_PLAIN"]);
 });
+
+/**
+ * The classifier that decides the type in the first place.
+ *
+ * A framework's public prefix is the one thing that settles the question by
+ * itself: those values are compiled into the bundle the browser downloads, so
+ * marking one secret hides nothing and costs a fork's preview its own config.
+ */
+test("a name that announces itself as public is never typed secret", async () => {
+  const { isSecretKey } = await import("./apps");
+
+  for (const key of [
+    "NEXT_PUBLIC_URL",
+    "NEXT_PUBLIC_API_KEY",
+    "VITE_API_URL",
+    "REACT_APP_TOKEN",
+    "PUBLIC_STRIPE_KEY",
+  ])
+    assert.equal(isSecretKey(key), false, key);
+
+  // And the ones that ARE secrets still are.
+  for (const key of ["DATABASE_URL", "API_KEY", "STRIPE_SECRET", "SMTP_PASSWORD"])
+    assert.equal(isSecretKey(key), true, key);
+});

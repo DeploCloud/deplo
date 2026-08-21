@@ -9,6 +9,7 @@ import {
   activities as activitiesTable,
   apps as appsTable,
   appPreviews as appPreviewsTable,
+  appVolumes as appVolumesTable,
   pendingTeardowns as pendingTeardownsTable,
   servers as serversTable,
 } from "../db/schema/control-plane";
@@ -78,11 +79,12 @@ function fakeAgent(opts: {
   /** Names left behind AFTER a destroy (defaults to none). */
   after?: string[];
 }) {
-  const calls = { destroy: 0, stop: 0, list: 0 };
+  const calls = { destroy: 0, stop: 0, list: 0, reclaimed: [] as string[] };
   let names = opts.containers ?? [];
   __setTeardownDialForTest(async () => ({
-    destroyStack: async () => {
+    destroyStack: async (_slug: string, _rm?: boolean, reclaim?: string[]) => {
       calls.destroy++;
+      calls.reclaimed = reclaim ?? [];
       names = opts.after ?? [];
       return { ok: opts.destroyOk ?? true, error: "" };
     },
@@ -404,5 +406,51 @@ test("a preview pinned to its own server is queued on THAT host", async () => {
       ["blink", SERVER_1, "prj_1"],
       ["blink__pr-3", SERVER_2, "pvw_1"],
     ],
+  );
+});
+
+test("a delete names the app's own volumes, so a never-deployed stack loses them too", async () => {
+  const calls = fakeAgent({ containers: [] });
+  await asOwner(async () => {
+    await seedApp(db, { id: "prj_1", slug: "blink" });
+    // A Storage-settings volume (rendered with its own `name:`) and a host bind,
+    // which is NOT Deplo's to remove.
+    await db.insert(appVolumesTable).values([
+      {
+        appId: "prj_1",
+        position: 0,
+        volumeId: "vol_1",
+        type: "named",
+        name: "data",
+        mountPath: "/data",
+        readOnly: false,
+      },
+      {
+        appId: "prj_1",
+        position: 1,
+        volumeId: "vol_2",
+        type: "host",
+        name: "etc",
+        hostPath: "/etc/blink",
+        mountPath: "/etc/blink",
+        readOnly: false,
+      },
+    ]);
+    // Plus what the user's own compose declares: `cache` is Deplo's to create,
+    // `shared` points at a volume that already exists elsewhere.
+    await db
+      .update(appsTable)
+      .set({
+        compose:
+          "services:\n  web:\n    image: nginx\nvolumes:\n  cache: {}\n  shared:\n    external: true\n",
+      })
+      .where(eq(appsTable.id, "prj_1"));
+    await deleteApp("prj_1");
+  });
+  assert.equal(calls.destroy, 1);
+  assert.deepEqual(
+    calls.reclaimed.sort(),
+    ["deplo-blink-data", "deplo-blink_cache"],
+    "its own two volumes by name; never the host path, never the foreign volume",
   );
 });

@@ -291,3 +291,31 @@ test("successorPrimary is pure, deterministic and null-safe", () => {
   assert.equal(successorPrimary([a, b], { service: null, port: null })?.name, "b.example.com");
   assert.equal(successorPrimary([b, a], { service: null, port: null })?.name, "b.example.com");
 });
+
+/* ------------------------------------------------------------------ */
+/* The build port and the hostnames that follow it                     */
+/* ------------------------------------------------------------------ */
+
+test("changing the build port moves the domains that were routing to the old one", async () => {
+  const { updateAppBuild } = await import("./apps");
+  // One hostname born on the build port (3000, what a seeded app carries), one
+  // deliberately pointed somewhere else.
+  await seedDomains([
+    { id: "d_follows", name: "follows.example.com", primary: true, port: 3000 },
+    { id: "d_pinned", name: "pinned.example.com", port: 8080 },
+  ]);
+
+  await asUser1(() => updateAppBuild("prj_1", { port: 80 }));
+
+  const rows = await db
+    .select({ id: domainsTable.id, port: domainsTable.port })
+    .from(domainsTable)
+    .where(eq(domainsTable.appId, "prj_1"));
+  const portOf = (id: string) => rows.find((r) => r.id === id)?.port;
+  assert.equal(portOf("d_follows"), 80, "it was following the build port");
+  assert.equal(
+    portOf("d_pinned"),
+    8080,
+    "a hostname pointed somewhere on purpose is left alone",
+  );
+});

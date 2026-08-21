@@ -58,6 +58,14 @@ export interface TeardownEntry {
   label: string;
   /** NULL for a deleted team, which is also "nowhere to report to". */
   teamId: string | null;
+  /**
+   * Volumes to reclaim BY NAME on the destroy, on top of what `down -v` finds.
+   * In-memory only: it rides the INLINE attempt, which is the one that matters —
+   * a stack whose host answers is torn down there and then. A row replayed from
+   * `pending_teardowns` has no names (the app row is gone by then), and its
+   * retry is about a host that was unreachable, not about a volume.
+   */
+  reclaimVolumes?: string[];
 }
 
 /**
@@ -212,7 +220,7 @@ async function attemptTeardown(
       const before = await stackContainers(conn, entry);
       if (before !== null && before.length === 0) return { gone: true, error: "" };
     }
-    const res = await conn.destroyStack(entry.deployKey, true);
+    const res = await conn.destroyStack(entry.deployKey, true, entry.reclaimVolumes);
     const left = await stackContainers(conn, entry);
     // An agent too old for the probe (or one that errored on it) answers null:
     // we cannot verify, so the destroy's own verdict stands.

@@ -56,6 +56,32 @@ import type { CertProvider, Domain, DomainEntrypoint } from "../types";
 
 const DOMAIN_RE = /^(?!:\/\/)([a-zA-Z0-9-_]+\.)+[a-zA-Z]{2,}$/;
 
+/** A caller-supplied hostname as it would be STORED: trimmed, lowercased, with
+ *  the scheme and any trailing slash taken off. */
+export function normalizePreferredHost(raw: string | null | undefined): string {
+  return (raw ?? "")
+    .trim()
+    .toLowerCase()
+    .replace(/^https?:\/\//, "")
+    .replace(/\/$/, "");
+}
+
+/**
+ * Whether a caller-supplied hostname is a CLAIM on a name — the thing
+ * `manage_domains` exists to gate.
+ *
+ * `domains.name` is unique instance-wide, so registering a real hostname takes
+ * it away from every other team. Two kinds of value are NOT a claim and must not
+ * drag the permission onto the first-run path: one of Deplo's own generated
+ * `…-<hexip>.nip.io` hosts (a template bakes them in /new, and nobody else can
+ * want one), and anything that is not a hostname at all — `ensureAutoDomain`
+ * drops those and generates a nip.io instead, so nothing is claimed.
+ */
+export function isHostnameClaim(raw: string | null | undefined): boolean {
+  const host = normalizePreferredHost(raw);
+  return host !== "" && DOMAIN_RE.test(host) && nipEmbeddedIp(host) == null;
+}
+
 /** The one DNS resolver every domain check goes through, swappable so the
  * pglite test suite stays hermetic (a real `resolve4` would hit the network for
  * every seeded `*.example.io` host). Production always uses node's resolver. */
@@ -266,11 +292,7 @@ export async function ensureAutoDomain(
   // to another project (a re-used template domain, or a regenerate-after-delete
   // that drew the same words) — in which case fall back to a freshly-generated
   // unique host. Absent a preferred, generate a globally-unique one.
-  const preferred = opts.preferred
-    ?.trim()
-    .toLowerCase()
-    .replace(/^https?:\/\//, "")
-    .replace(/\/$/, "");
+  const preferred = normalizePreferredHost(opts.preferred) || undefined;
   // Only honor a preferred host that is one of our OWN generated nip.io hosts or
   // at least a syntactically valid hostname; a garbage value is dropped and a
   // fresh nip.io host is generated instead of being persisted.
@@ -348,11 +370,7 @@ export async function ensureExtraDomain(
     certProvider?: CertProvider;
   },
 ): Promise<void> {
-  const clean = rawName
-    .trim()
-    .toLowerCase()
-    .replace(/^https?:\/\//, "")
-    .replace(/\/$/, "");
+  const clean = normalizePreferredHost(rawName);
   if (!clean || !DOMAIN_RE.test(clean)) return;
   const existing = await loadDomainsForApp(appId);
   // Already on this project (idempotent re-run) ⇒ nothing to do.

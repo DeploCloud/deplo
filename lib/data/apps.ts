@@ -42,6 +42,7 @@ import {
   composeHasHostBindMount,
   composeMountsForeignStorage,
   composeNeedsHostPrivileges,
+  composeOwnVolumeKeys,
   composePublishesPorts,
   composeUsesExternalMerge,
   externalMergeMessage,
@@ -82,13 +83,13 @@ import type {
   UploadArchive,
   VolumeMount,
 } from "../types";
-import { mapLimit, usesComposeStack } from "../utils";
+import { hostVolumeName, mapLimit, usesComposeStack } from "../utils";
 import {
   startDeployment,
   stopContainer,
   startContainer,
 } from "../deploy/build";
-import { ensureAutoDomain, ensureExtraDomain } from "./domains";
+import { ensureAutoDomain, ensureExtraDomain, isHostnameClaim } from "./domains";
 import { requireFolderCapability } from "./folder-access";
 import { defaultEnvironmentFor } from "./projects";
 import {
@@ -168,6 +169,14 @@ import {
  * hidden, a secret marked plain is readable at the `view` floor.
  */
 export function isSecretKey(key: string): boolean {
+  // A name that announces itself as public is not a secret, whatever else it
+  // says. These prefixes are the framework conventions for "this value is
+  // compiled into the bundle the browser downloads" - so calling one a secret is
+  // wrong twice over: it hides a value anybody can already read, and a preview of
+  // a FORK drops every secret-typed value, which took the build's own public
+  // config with it.
+  if (/^(NEXT_PUBLIC_|NUXT_PUBLIC_|PUBLIC_|VITE_|REACT_APP_|EXPO_PUBLIC_|GATSBY_)/i.test(key.trim()))
+    return false;
   return /pass|secret|token|key|api|private|credential|dsn|url/i.test(key);
 }
 
@@ -741,6 +750,20 @@ export async function createApp(
     const claimed = composeClaimsReservedName(input.compose);
     if (claimed) throw new Error(reservedNameMessage(claimed));
   }
+  // A REAL hostname the caller chose is a domain claim, not a by-product of
+  // creating an app. `domains.name` is unique across the whole instance, so
+  // registering one takes it away from every other team — which is exactly why
+  // `addDomain` asks for `manage_domains`. Creating the app was the way around
+  // that: the FIRST host went in through `ensureAutoDomain(preferred)` ungated
+  // while the second, on the same app, was refused. Our own generated
+  // `…-<hexip>.nip.io` hosts are NOT a claim (a template bakes them in /new, and
+  // nobody else can want one), so they stay ungated and the first-run path is
+  // untouched.
+  const claimsAHostname = [
+    input.autoDomain,
+    ...(input.extraDomains ?? []).map((e) => e.host),
+  ].some(isHostnameClaim);
+  if (claimsAHostname) await requireCapability("manage_domains");
   // Where the app is filed (folder / project environment / top level) — resolved
   // and authorized BEFORE anything is written, so an unusable destination fails
   // the create outright instead of silently stranding the app at the top level.
@@ -957,7 +980,7 @@ export async function createApp(
       throw e;
     }
   }
-  await recordActivity("app", `Created project ${project.name}`, user.name, project.id);
+  await recordActivity("app", `Created app ${project.name}`, user.name, project.id);
   // Register the push webhook on the provider so the very first push after an
   // import already deploys - the same thing importing from GitHub gives you.
   // Best-effort: never let a third party's HTTP failure undo a created app.
@@ -1066,10 +1089,12 @@ export async function updateAppBuild(
   // One tx (PLAN cut-set (c) Decision 15): the parent `app_build` columns
   // MERGE field-by-field, while a provided `methodSettings` object FULLY REPLACES
   // the 1-to-1 method-settings row.
+  let portBefore: number | null = null;
   await getDb().transaction(async (tx) => {
     const existing = await loadAppGraph(id, tx);
     if (!existing || existing.teamId !== membership.teamId)
       throw new Error("App not found");
+    portBefore = existing.build.port ?? null;
     const merged: BuildConfig = {
       ...existing.build,
       ...build,
@@ -1096,6 +1121,27 @@ export async function updateAppBuild(
         .where(eq(appBuildMethodSettingsTable.appId, id));
     }
   });
+  // Domains that were ROUTING TO the old port follow the new one.
+  //
+  // A domain's port is an override, and an auto domain is born carrying whatever
+  // the build port was at creation. So changing the build port left every
+  // hostname pointing at the old one: a healthy container, a green deploy, and a
+  // 502 whose cause is on another screen. A row that names a DIFFERENT port was
+  // deliberately pointed there and is left alone.
+  if (portBefore != null && build.port != null && build.port !== portBefore) {
+    const moved = await getDb()
+      .update(domainsTable)
+      .set({ port: build.port })
+      .where(and(eq(domainsTable.appId, id), eq(domainsTable.port, portBefore)))
+      .returning({ id: domainsTable.id });
+    if (moved.length > 0)
+      await recordActivity(
+        "app",
+        `Moved ${moved.length === 1 ? "1 domain" : `${moved.length} domains`} to port ${build.port}`,
+        user.name,
+        id,
+      );
+  }
   await recordActivity("app", `Updated build settings`, user.name, id);
 }
 
@@ -1837,7 +1883,7 @@ export async function renameApp(id: string, name: string): Promise<void> {
     name: clean,
     updatedAt: nowIso(),
   });
-  await recordActivity("app", `Renamed project to ${clean}`, user.name, id);
+  await recordActivity("app", `Renamed app to ${clean}`, user.name, id);
 }
 
 /**
@@ -1883,7 +1929,7 @@ export async function updateAppLogo(
     if (!exists) throw new Error("App not found");
     return;
   }
-  await recordActivity("app", `Updated project logo`, user.name, id);
+  await recordActivity("app", `Updated app logo`, user.name, id);
 }
 
 /**
@@ -1949,7 +1995,7 @@ export async function redetectAppLogo(id: string): Promise<string> {
     .where(
       and(eq(appsTable.id, id), eq(appsTable.teamId, membership.teamId)),
     );
-  await recordActivity("app", `Detected project logo from source`, user.name, id);
+  await recordActivity("app", `Detected app logo from source`, user.name, id);
   publishAppChanged(id);
   return logo;
 }
@@ -2253,6 +2299,26 @@ async function beginAppDelete(
 }
 
 /**
+ * Every volume Deplo itself created for this app, by its name ON THE HOST.
+ *
+ * Two shapes, and both are Deplo's own: a Storage-settings volume is rendered
+ * with an explicit `name:` (`deplo-<slug>-<alias>`), while one declared in the
+ * user's compose is prefixed by the compose project (`deplo-<slug>_<alias>`). A
+ * host bind mount and a volume the compose points elsewhere are deliberately
+ * absent: Deplo does not own those.
+ */
+function appOwnVolumeNames(project: App): string[] {
+  return [
+    ...(project.volumes ?? [])
+      .filter((v) => (v.type ?? "named") === "named")
+      .map((v) => hostVolumeName(project.slug, v.name)),
+    ...composeOwnVolumeKeys(project.compose ?? "").map(
+      (key) => `deplo-${project.slug}_${key}`,
+    ),
+  ];
+}
+
+/**
  * Delete an app and WAIT for its host to be clear of it. The identity-free half
  * of the delete (`actor` is already resolved), so the boot reconcile can finish
  * a delete whose control plane died without a session to read.
@@ -2296,6 +2362,12 @@ async function destroyApp(project: App, actor: string): Promise<void> {
       projectLabel: project.id,
       label: project.name,
       teamId: project.teamId,
+      // Named BY NAME, because `down -v` can only reclaim what the compose file
+      // ON THE HOST declares — and an app that was never deployed has no file
+      // there. That is exactly the state a migrated app sits in between "the
+      // data arrived" and "somebody deployed it", so deleting one used to leave
+      // its imported volumes on the disk with nothing able to name them.
+      reclaimVolumes: appOwnVolumeNames(project),
     });
     // Drop any uploaded archive backing an "upload" source.
     await removeUploads(id).catch(() => {});
@@ -2439,6 +2511,7 @@ async function destroyApps(apps: App[], actor: string): Promise<void> {
         projectLabel: project.id,
         label: project.name,
         teamId: project.teamId,
+        reclaimVolumes: appOwnVolumeNames(project),
       }).catch(() => false);
       await removeUploads(project.id).catch(() => {});
       await getDb().delete(appsTable).where(eq(appsTable.id, project.id));

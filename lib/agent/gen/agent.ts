@@ -888,6 +888,17 @@ export interface StackRef {
    * a volume-orphaning `down`. Defaults to false, so app teardown is unchanged.
    */
   removeVolumes: boolean;
+  /**
+   * DestroyStack only: named volumes to reclaim BY NAME, on top of whatever the
+   * `down -v` finds. `down` can only reclaim what the on-disk compose file
+   * declares, and a stack that was never deployed has no file — which is exactly
+   * the state a migrated app is in between "the data arrived" and "somebody
+   * deployed it". Deleting that app used to leave its imported data on the disk
+   * with nothing left that could name it. Every entry must start with `deplo-`
+   * (the agent refuses the rest), so this can only ever reclaim volumes Deplo
+   * itself creates. Ignored by an older agent, which is the pre-existing leak.
+   */
+  reclaimVolumes: string[];
 }
 
 export interface StackResult {
@@ -5036,7 +5047,7 @@ export const DeployResult: MessageFns<DeployResult> = {
 };
 
 function createBaseStackRef(): StackRef {
-  return { slug: "", removeVolumes: false };
+  return { slug: "", removeVolumes: false, reclaimVolumes: [] };
 }
 
 export const StackRef: MessageFns<StackRef> = {
@@ -5046,6 +5057,9 @@ export const StackRef: MessageFns<StackRef> = {
     }
     if (message.removeVolumes !== false) {
       writer.uint32(16).bool(message.removeVolumes);
+    }
+    for (const v of message.reclaimVolumes) {
+      writer.uint32(26).string(v!);
     }
     return writer;
   },
@@ -5073,6 +5087,14 @@ export const StackRef: MessageFns<StackRef> = {
           message.removeVolumes = reader.bool();
           continue;
         }
+        case 3: {
+          if (tag !== 26) {
+            break;
+          }
+
+          message.reclaimVolumes.push(reader.string());
+          continue;
+        }
       }
       if ((tag & 7) === 4 || tag === 0) {
         break;
@@ -5090,6 +5112,11 @@ export const StackRef: MessageFns<StackRef> = {
         : isSet(object.remove_volumes)
         ? globalThis.Boolean(object.remove_volumes)
         : false,
+      reclaimVolumes: globalThis.Array.isArray(object?.reclaimVolumes)
+        ? object.reclaimVolumes.map((e: any) => globalThis.String(e))
+        : globalThis.Array.isArray(object?.reclaim_volumes)
+        ? object.reclaim_volumes.map((e: any) => globalThis.String(e))
+        : [],
     };
   },
 
@@ -5101,6 +5128,9 @@ export const StackRef: MessageFns<StackRef> = {
     if (message.removeVolumes !== false) {
       obj.removeVolumes = message.removeVolumes;
     }
+    if (message.reclaimVolumes?.length) {
+      obj.reclaimVolumes = message.reclaimVolumes;
+    }
     return obj;
   },
 
@@ -5111,6 +5141,7 @@ export const StackRef: MessageFns<StackRef> = {
     const message = createBaseStackRef();
     message.slug = object.slug ?? "";
     message.removeVolumes = object.removeVolumes ?? false;
+    message.reclaimVolumes = object.reclaimVolumes?.map((e) => e) || [];
     return message;
   },
 };

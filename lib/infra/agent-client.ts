@@ -343,10 +343,18 @@ export interface AgentConnection {
    *  the compose file — used by database deletion so the data volume is reclaimed
    *  rather than orphaned. An agent too old to understand the flag ignores it
    *  (protobuf skips the unknown field) and falls back to a volume-orphaning
-   *  `down`; the caller logs that the volume needs a manual sweep. */
+   *  `down`; the caller logs that the volume needs a manual sweep.
+   *
+   *  `reclaimVolumes` names volumes to remove OUTRIGHT, on top of what the `down`
+   *  finds. `down -v` can only reclaim what the on-disk compose file declares, so
+   *  a stack that was never deployed — an imported app between "the data arrived"
+   *  and "somebody deployed it" — kept its volumes forever. Only `deplo-` names
+   *  are accepted on the far side. An older agent ignores the field, which is the
+   *  pre-existing behaviour. */
   destroyStack(
     slug: string,
     removeVolumes?: boolean,
+    reclaimVolumes?: string[],
   ): Promise<{ ok: boolean; error: string }>;
   /** Re-apply routing to a running stack WITHOUT a rebuild: the control plane
    *  re-renders the stack YAML (+ env + compose mounts) and the agent writes it
@@ -1289,7 +1297,7 @@ function dial(target: DialTarget): AgentConnection {
         // `removeVolumes` is part of StackRef but meaningless for start/stop —
         // these only toggle the running state, never touch volumes.
         client.stopStack(
-          { slug, removeVolumes: false },
+          { slug, removeVolumes: false, reclaimVolumes: [] },
           new Metadata(),
           { deadline: new Date(Date.now() + STACK_DEADLINE_MS) },
           (err, resp) =>
@@ -1300,7 +1308,7 @@ function dial(target: DialTarget): AgentConnection {
     startStack(slug: string) {
       return new Promise<{ ok: boolean; error: string }>((resolve, reject) => {
         client.startStack(
-          { slug, removeVolumes: false },
+          { slug, removeVolumes: false, reclaimVolumes: [] },
           new Metadata(),
           { deadline: new Date(Date.now() + STACK_DEADLINE_MS) },
           (err, resp) =>
@@ -1308,10 +1316,10 @@ function dial(target: DialTarget): AgentConnection {
         );
       });
     },
-    destroyStack(slug: string, removeVolumes = false) {
+    destroyStack(slug: string, removeVolumes = false, reclaimVolumes: string[] = []) {
       return new Promise<{ ok: boolean; error: string }>((resolve, reject) => {
         client.destroyStack(
-          { slug, removeVolumes },
+          { slug, removeVolumes, reclaimVolumes },
           new Metadata(),
           { deadline: new Date(Date.now() + STACK_DEADLINE_MS) },
           (err, resp) =>
@@ -1553,7 +1561,7 @@ function dial(target: DialTarget): AgentConnection {
     },
     readStack(slug: string) {
       return new Promise<{ exists: boolean; yaml: string }>((resolve, reject) => {
-        client.readStack({ slug, removeVolumes: false }, (err, resp) =>
+        client.readStack({ slug, removeVolumes: false, reclaimVolumes: [] }, (err, resp) =>
           err
             ? reject(toAgentError(err))
             : resolve({ exists: resp.exists, yaml: resp.yaml }),

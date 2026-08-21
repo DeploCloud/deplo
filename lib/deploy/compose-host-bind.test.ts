@@ -12,6 +12,7 @@ import {
   isEscapingSource,
   isFilesConventionSource,
   isHostBindSource,
+  lintCompose,
   volumeSource,
 } from "./compose-lint";
 
@@ -546,4 +547,49 @@ test("composeUsesExternalMerge: extends-file, include, label_file are refused; s
     null,
   );
   assert.equal(composeUsesExternalMerge(`services:\n  a:\n    image: x`), null);
+});
+
+/* ------------------------------------------------------------------ */
+/* What the editor SAYS before the deploy refuses it                   */
+/* ------------------------------------------------------------------ */
+
+test("a reserved service name and a network alias are warned about, not silently handled", () => {
+  const diags = lintCompose(
+    [
+      "services:",
+      "  deplo:",
+      "    image: nginx:1.27",
+      "  api:",
+      "    image: nginx:1.27",
+      "    networks:",
+      "      default:",
+      "        aliases:",
+      "          - postgres",
+    ].join("\n"),
+  );
+  const rules = diags.map((d) => d.rule);
+  assert.ok(
+    rules.includes("reserved-service-name"),
+    "a service named `deplo` deploys nowhere the moment it gets a domain",
+  );
+  assert.ok(
+    rules.includes("network-aliases-dropped"),
+    "the alias is removed at render time, so saying nothing is how it goes missing",
+  );
+  // Neither stops the stack: both are warnings, and only errors block a save.
+  assert.equal(
+    diags.filter(
+      (d) =>
+        d.rule === "reserved-service-name" || d.rule === "network-aliases-dropped",
+    ).every((d) => d.severity === "warning"),
+    true,
+  );
+});
+
+test("an ordinary stack collects neither warning", () => {
+  const rules = lintCompose(
+    "services:\n  web:\n    image: nginx:1.27\n    networks:\n      - default\n",
+  ).map((d) => d.rule);
+  assert.equal(rules.includes("reserved-service-name"), false);
+  assert.equal(rules.includes("network-aliases-dropped"), false);
 });

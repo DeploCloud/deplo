@@ -327,6 +327,47 @@ test("create_apps + deploy_apps creates AND ships", async () => {
   );
 });
 
+test("create_apps is not permission to claim a hostname", async () => {
+  await as(CREATOR, async () => {
+    assert.equal(
+      await outcome(() =>
+        createApp({
+          name: "Squatter",
+          source: "docker-image",
+          repo: null,
+          dockerImage: "nginx:1.27",
+          autoDomain: "shop.example.com",
+        }),
+      ),
+      "refused",
+      "a hostname is unique instance-wide: taking one is manage_domains, not create_apps",
+    );
+    assert.equal(
+      await outcome(() =>
+        createApp({
+          name: "Squatter extra",
+          source: "docker-image",
+          repo: null,
+          dockerImage: "nginx:1.27",
+          extraDomains: [{ host: "api.example.com", port: 80, service: null }],
+        }),
+      ),
+      "refused",
+      "and the extras go the same way the primary does",
+    );
+    // A template's own generated host is not a claim, so the first-run path is
+    // untouched by the gate.
+    const fromTemplate = await createApp({
+      name: "From template",
+      source: "docker-image",
+      repo: null,
+      dockerImage: "nginx:1.27",
+      autoDomain: "app-blue-otter-7f000001.nip.io",
+    });
+    assert.ok(fromTemplate.id);
+  });
+});
+
 test("a member without create_apps cannot create at all", async () => {
   await as(ENV_ONLY, async () => {
     assert.equal(

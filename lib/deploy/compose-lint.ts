@@ -59,6 +59,19 @@ function lineOfAppKey(lines: string[], service: string): number {
   return 1;
 }
 
+/** The `aliases:` a service asks for on any network, in either compose form. */
+function svcNetworkAliases(svc: Record<string, unknown>): string[] {
+  const nets = svc.networks;
+  if (!nets || typeof nets !== "object" || Array.isArray(nets)) return [];
+  const out: string[] = [];
+  for (const entry of Object.values(nets as Record<string, unknown>)) {
+    if (!entry || typeof entry !== "object" || Array.isArray(entry)) continue;
+    const aliases = (entry as { aliases?: unknown }).aliases;
+    if (Array.isArray(aliases)) out.push(...aliases.map(String));
+  }
+  return out;
+}
+
 /** Find the line of a `key:` within a service block (best-effort). */
 function lineOfServiceField(
   lines: string[],
@@ -208,6 +221,32 @@ export function lintCompose(source: string): LintDiagnostic[] {
       continue;
     }
     const svc = raw as Record<string, unknown>;
+
+    // A name Deplo's own infrastructure answers to on the shared network. It is
+    // only REFUSED once the service is actually on that network (giving it a
+    // domain is what puts it there), so a stack can be saved and imported with
+    // one - and then fail its first deploy on a rule nothing had mentioned.
+    if (RESERVED_SHARED_NETWORK_NAMES.has(name)) {
+      diags.push({
+        severity: "warning",
+        rule: "reserved-service-name",
+        message: `\`${name}\` is a name Deplo's own infrastructure uses. This service cannot be given a domain under it - rename it if it needs one.`,
+        line: svcLine,
+      });
+    }
+
+    // Aliases on the shared network are dropped at deploy: a container there
+    // already answers to its service name, and a hand-written alias is a way to
+    // claim any OTHER name on a network every app on the host shares. Said here
+    // because the stack still deploys, so nothing else would ever mention it.
+    if (svcNetworkAliases(svc).length > 0) {
+      diags.push({
+        severity: "warning",
+        rule: "network-aliases-dropped",
+        message: `\`${name}\` sets network aliases. Deplo removes them - other services reach it by its service name.`,
+        line: lineOfServiceField(lines, svcLine, "networks"),
+      });
+    }
 
     // image vs build
     const hasImage = typeof svc.image === "string" && svc.image.trim() !== "";
@@ -777,6 +816,36 @@ function fileSourcedKeys(entries: Record<string, unknown>): string[] {
     if (typeof v.file === "string" && v.file.trim() !== "") out.push(key);
   }
   return out;
+}
+
+/**
+ * The volumes DEPLO itself creates for a stack: every top-level `volumes:` entry
+ * that is neither `external:` nor pinned to a `name:` of its own, so compose
+ * creates it as `<project>_<key>` and it belongs to this app alone.
+ *
+ * Used by the teardown to name what a `down -v` cannot reach — a stack that was
+ * never deployed has no compose file on the host, so `down` has nothing to read
+ * and the volumes an import already filled would survive the app that owned
+ * them. A volume the user pointed elsewhere is deliberately NOT in this list:
+ * Deplo does not own those and must never remove one.
+ */
+export function composeOwnVolumeKeys(composeYaml: string): string[] {
+  let doc: { volumes?: Record<string, unknown> } | null;
+  try {
+    doc = yaml.load(composeYaml) as typeof doc;
+  } catch {
+    return [];
+  }
+  const declared = doc?.volumes;
+  if (!declared || typeof declared !== "object" || Array.isArray(declared)) return [];
+  return Object.entries(declared as Record<string, unknown>)
+    .filter(([, v]) => {
+      if (v == null) return true; // `vol:` with no body — compose creates it
+      if (typeof v !== "object") return false;
+      const spec = v as { external?: unknown; name?: unknown };
+      return !spec.external && typeof spec.name !== "string";
+    })
+    .map(([k]) => k);
 }
 
 /**
