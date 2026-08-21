@@ -371,7 +371,7 @@ export function CreateDatabase({
                 <Label>Server</Label>
                 <Select value={serverId} onValueChange={setServerId}>
                   <SelectTrigger>
-                    <SelectValue placeholder="Select…" />
+                    <SelectValue placeholder="Select" />
                   </SelectTrigger>
                   <SelectContent>
                     {servers.map((s) => (

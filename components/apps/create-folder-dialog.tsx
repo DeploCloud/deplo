@@ -109,7 +109,7 @@ export function CreateFolderDialog({
                 id="new-folder-name"
                 value={name}
                 onChange={(e) => setName(e.target.value)}
-                placeholder="Production, Clients, Internal…"
+                placeholder="Production, Clients, Internal"
                 autoFocus
               />
             </div>

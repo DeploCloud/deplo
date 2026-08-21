@@ -538,7 +538,7 @@ function ProjectsSection({
         <Input
           value={q}
           onChange={(e) => setQ(e.target.value)}
-          placeholder="Search projects…"
+          placeholder="Search projects"
           aria-label="Search projects"
           className="h-9 pl-9"
           // A filter box, not a field of the form: Enter here would otherwise
@@ -720,7 +720,7 @@ function AppsSection({
         <Input
           value={q}
           onChange={(e) => setQ(e.target.value)}
-          placeholder="Search apps by name or domain…"
+          placeholder="Search apps by name or domain"
           aria-label="Search apps"
           className="h-9 pl-9"
           // A filter box, not a field of the form: Enter here would otherwise

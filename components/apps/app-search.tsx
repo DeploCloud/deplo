@@ -82,7 +82,7 @@ export function AppSearch({
         <Input
           value={q}
           onChange={(e) => setQ(e.target.value)}
-          placeholder="Search apps…"
+          placeholder="Search apps"
           className="h-9 pl-9"
         />
       </div>

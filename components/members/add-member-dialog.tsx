@@ -207,7 +207,7 @@ export function AddMemberDialog({
                 <Input
                   value={query}
                   onChange={(e) => setQuery(e.target.value)}
-                  placeholder="Search by username…"
+                  placeholder="Search by username"
                   className="pl-9"
                   autoFocus
                 />

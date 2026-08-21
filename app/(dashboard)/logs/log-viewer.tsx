@@ -158,7 +158,7 @@ export function LogViewer({
               <Input
                 value={query}
                 onChange={(e) => setQuery(e.target.value)}
-                placeholder="Search logs…"
+                placeholder="Search logs"
                 className="h-9 pl-9"
               />
             </div>

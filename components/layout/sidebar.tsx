@@ -106,7 +106,7 @@ export function Sidebar({
             ref={searchRef}
             value={query}
             onChange={(e) => setQuery(e.target.value)}
-            placeholder="Search apps…"
+            placeholder="Search apps"
             aria-label="Search apps"
             className="h-9 pl-8 pr-7"
           />

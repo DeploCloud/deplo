@@ -515,7 +515,7 @@ function Toolbar({
         <Input
           value={query}
           onChange={(e) => onQuery(e.target.value)}
-          placeholder="Search databases…"
+          placeholder="Search databases"
           className="pl-9"
         />
       </div>

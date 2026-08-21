@@ -1,6 +1,7 @@
 "use client";
 
 import * as React from "react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import {
@@ -32,11 +33,11 @@ import { PageHeader } from "@/components/shared/page-header";
 import { EmptyState } from "@/components/shared/empty-state";
 import { WizardStepper, type WizardStep } from "@/components/shared/wizard-stepper";
 import { MachineGate } from "./machines";
+import { ImportReport } from "./import-report";
 import { ImportTree } from "./import-tree";
 import {
   ImportProgressDialog,
   ImportProgressPill,
-  ItemLine,
   type ImportProgress,
 } from "./import-progress";
 import {
@@ -378,18 +379,29 @@ export function ImportWizard({
         ),
       ),
     );
-    // Everything lands on the machine Deplo itself runs on unless someone says
-    // otherwise: it is the one host every install has, and it is where an app
-    // that came over to be looked at should be. Automatic for the build, which
-    // is what "use a build server if the fleet has one" is called.
+    // A service lands on the Deplo server that IS the Dokploy machine it runs on,
+    // whenever the scan matched one by address - staying put is what somebody
+    // moving twenty-five services means by "import", and re-picking the host on
+    // twenty-five dropdowns is not a choice, it is a chore. Anything with no
+    // match (a machine with no agent here) falls back to the host Deplo runs on,
+    // the one host every install has.
     const home = (servers.find((s) => s.isDeploHost) ?? servers[0])?.id;
+    const runnable = new Set(servers.map((s) => s.id));
+    const byMachine = new Map(
+      scanned.servers.map((m) => [
+        m.sourceId,
+        m.deploServerId && runnable.has(m.deploServerId) ? m.deploServerId : home,
+      ]),
+    );
+    const landingFor = (sourceServerId: string) =>
+      byMachine.get(sourceServerId) ?? home;
     if (home) {
       setPlacements(
         Object.fromEntries(
           scanned.projects.flatMap((p) =>
             importableOf(p).map((svc) => [
               svc.sourceId,
-              { serverId: home, buildServerId: null },
+              { serverId: landingFor(svc.sourceServerId), buildServerId: null },
             ]),
           ),
         ),
@@ -401,8 +413,8 @@ export function ImportWizard({
       // Deplo host, find no volume there, and overwrite real data with nothing.
       setServerMap(
         Object.fromEntries([
-          [OWN_HOST, home],
-          ...scanned.servers.map((s) => [s.sourceId, home]),
+          [OWN_HOST, landingFor(OWN_HOST)],
+          ...scanned.servers.map((s) => [s.sourceId, landingFor(s.sourceId)]),
         ]),
       );
     }
@@ -908,6 +920,8 @@ function ConnectStep({
   );
 }
 
+const PAST_RUNS_SHOWN = 5;
+
 function PastRuns({
   runs,
   onPick,
@@ -915,6 +929,8 @@ function PastRuns({
   runs: ImportRun[];
   onPick: (run: ImportRun) => void;
 }) {
+  const [showAll, setShowAll] = React.useState(false);
+  const shown = showAll ? runs : runs.slice(0, PAST_RUNS_SHOWN);
   return (
     <Card>
       <CardHeader>
@@ -924,12 +940,15 @@ function PastRuns({
         </p>
       </CardHeader>
       <CardContent className="space-y-2">
-        {runs.slice(0, 5).map((r) => (
+        {shown.map((r) => (
           <div
             key={r.id}
             className="flex flex-wrap items-center justify-between gap-2 rounded-lg border p-3 text-sm"
           >
-            <div className="min-w-0">
+            {/* `basis-48` so the name keeps a readable width and the buttons drop
+                to their own line on a phone instead of pushing the card wider
+                than the screen. */}
+            <div className="min-w-0 flex-1 basis-48">
               <div className="truncate font-medium">
                 {r.orgName ?? r.sourceUrl}
               </div>
@@ -937,17 +956,25 @@ function PastRuns({
                 {new Date(r.startedAt).toLocaleString()} by {r.actor}
               </p>
             </div>
-            <div className="flex items-center gap-1.5">
+            <div className="flex min-w-0 flex-wrap items-center gap-1.5">
               <Badge variant="secondary">{r.created} created</Badge>
               {r.manual > 0 && <Badge variant="outline">{r.manual} to check</Badge>}
               {r.failed > 0 && <Badge variant="destructive">{r.failed} failed</Badge>}
               {r.status !== "done" && <Badge variant="outline">{r.status}</Badge>}
+              <Button variant="outline" size="sm" asChild>
+                <Link href={`/settings/import/${r.id}`}>View report</Link>
+              </Button>
               <Button variant="outline" size="sm" onClick={() => onPick(r)}>
                 Use this address
               </Button>
             </div>
           </div>
         ))}
+        {runs.length > PAST_RUNS_SHOWN && !showAll && (
+          <Button variant="ghost" size="sm" onClick={() => setShowAll(true)}>
+            Show all
+          </Button>
+        )}
       </CardContent>
     </Card>
   );
@@ -995,6 +1022,10 @@ function ReviewStep({
   const [confirming, setConfirming] = React.useState(false);
   const pickable = plan.projects.flatMap((p) => importableOf(p));
   const allChosen = pickable.length > 0 && chosen.size === pickable.length;
+  // The confirm names them. A search box above the tree filters what you SEE and
+  // not what is ticked, so a count alone let somebody stop three services while
+  // looking at one.
+  const chosenNames = pickable.filter((s) => chosen.has(s.sourceId)).map((s) => s.name);
   return (
     <div className="space-y-4">
       {isInstanceAdmin && showNewTeam && (
@@ -1121,11 +1152,17 @@ function ReviewStep({
               <TriangleAlert className="mt-0.5 size-5 shrink-0 text-warning" />
               <div className="min-w-0">
                 <div className="font-medium text-warning">
-                  This stops {chosen.size} service(s) on Dokploy
+                  {chosenNames.length === 1
+                    ? "This stops 1 service on Dokploy"
+                    : `This stops ${chosenNames.length} services on Dokploy`}
                 </div>
+                <p className="mt-1 break-words text-muted-foreground">
+                  {chosenNames.join(", ")}
+                </p>
                 <p className="mt-1 text-muted-foreground">
-                  They are not started again over there. Nothing starts here
-                  either: open each app and press Deploy when you have checked it.
+                  {chosenNames.length === 1 ? "It is" : "They are"} not started
+                  again over there. Nothing starts here either: open each app and
+                  press Deploy when you have checked it.
                 </p>
               </div>
             </div>
@@ -1300,16 +1337,6 @@ function PeopleStep({
 /* Step - done                                                        */
 /* ------------------------------------------------------------------ */
 
-const OUTCOME_ORDER = ["failed", "manual", "unsupported", "created", "skipped"];
-
-const OUTCOME_TITLE: Record<string, string> = {
-  failed: "Could not be imported",
-  manual: "Imported, needs a look",
-  unsupported: "No equivalent in Deplo",
-  created: "Created",
-  skipped: "Skipped",
-};
-
 function DoneStep({
   items,
   onStartOver,
@@ -1319,61 +1346,12 @@ function DoneStep({
   onStartOver: () => void;
   onFinish: () => void;
 }) {
-  const groups = OUTCOME_ORDER.map((outcome) => ({
-    outcome,
-    rows: items.filter((i) => i.outcome === outcome),
-  })).filter((g) => g.rows.length > 0);
-
-  function copyReport() {
-    const md = groups
-      .map(
-        (g) =>
-          `## ${OUTCOME_TITLE[g.outcome] ?? g.outcome}\n\n` +
-          g.rows
-            .map(
-              (r) =>
-                `- **${r.path}** (${r.sourceKind})` +
-                (r.message ? ` - ${r.message}` : ""),
-            )
-            .join("\n"),
-      )
-      .join("\n\n");
-    navigator.clipboard.writeText(md);
-    toast.success("Report copied");
-  }
-
   return (
     <div className="space-y-4">
-      <Card>
-        <CardHeader className="flex flex-row flex-wrap items-center justify-between gap-3">
-          <div className="min-w-0">
-            <CardTitle>Report</CardTitle>
-            <p className="mt-1 text-sm text-muted-foreground">
-              Nothing was deployed. Open an app and press Deploy when you are ready to
-              move the traffic.
-            </p>
-          </div>
-          <Button variant="outline" size="sm" onClick={copyReport}>
-            <Copy className="size-4" />
-            Copy
-          </Button>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          {groups.map((g) => (
-            <div key={g.outcome}>
-              <div className="text-sm font-medium">
-                {OUTCOME_TITLE[g.outcome] ?? g.outcome}
-                <span className="ml-2 text-muted-foreground">{g.rows.length}</span>
-              </div>
-              <div className="mt-1 space-y-1">
-                {g.rows.map((r, i) => (
-                  <ItemLine key={i} item={r} />
-                ))}
-              </div>
-            </div>
-          ))}
-        </CardContent>
-      </Card>
+      <ImportReport
+        items={items}
+        description="Nothing was deployed. Open an app and press Deploy when you are ready to move the traffic."
+      />
 
       <div className="flex flex-wrap justify-between gap-2">
         <Button variant="outline" onClick={onStartOver}>
