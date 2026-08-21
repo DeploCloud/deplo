@@ -26,10 +26,10 @@ export default async function DatabaseConnectionSettingsPage(
   if (!db) notFound();
 
   // Only provisioned servers can host a database (provisioning routes through a
-  // live agent), so those are the only move targets — and a storage-only host
-  // runs nothing, so it is never one.
+  // live agent), so those are the only move targets — and neither a storage-only
+  // host (runs nothing) nor a migration source (not our machine) is ever one.
   const dbServers = servers
-    .filter((s) => Boolean(s.agent?.certFingerprint) && !s.storageOnly)
+    .filter((s) => Boolean(s.agent?.certFingerprint) && !s.storageOnly && !s.importOnly)
     .map((s) => ({ id: s.id, name: s.name }));
 
   return (

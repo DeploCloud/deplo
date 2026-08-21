@@ -9,6 +9,7 @@ import {
   addServer,
   reissueBootstrap,
   removeServer,
+  uninstallServerAgent,
   updateServerAgent,
   setServerTeams,
   setServerDeployConcurrency,
@@ -17,6 +18,7 @@ import {
   updateServerAddress,
   type ServerRole,
   type ServerRemoval,
+  type ServerUninstall,
 } from "@/lib/data/servers";
 import { checkServerHealth, checkAllServerHealth } from "@/lib/data/server-health";
 import {
@@ -112,7 +114,7 @@ export const ServerRef = builder.objectRef<Server>("Server").implement({
     }),
     role: t.string({
       description:
-        'What this server is for: "everything" (the default), "build" (Docker but no proxy; it compiles for other hosts and runs nothing) or "storage" (no Docker; it only holds backups). Only the build axis is changeable after installation.',
+        'What this server is for: "everything" (the default), "build" (Docker but no proxy; it compiles for other hosts and runs nothing), "storage" (no Docker; it only holds backups) or "import" (a MIGRATION SOURCE: another platform\'s host, registered by the import wizard to read its volumes, out of every deploy and build picker and swept by nothing). Only the build axis is changeable after installation; "import" is refused by setServerRole in both directions.',
       resolve: (s) => serverRole(s),
     }),
     hostArch: t.exposeString("hostArch", {
@@ -349,6 +351,31 @@ const ServerRemovalRef = builder
     }),
   });
 
+const ServerUninstallRef = builder
+  .objectRef<ServerUninstall>("ServerUninstall")
+  .implement({
+    description:
+      "The result of uninstalling the agent from a MIGRATION SOURCE. Unlike ServerRemoval this one DOES touch the host - it is the only case where Deplo installed the agent on a machine that is not part of the fleet, so taking it back off is Deplo's job and not the operator's.",
+    fields: (t) => ({
+      removed: t.exposeBoolean("removed", {
+        description:
+          "True when the host is clean AND the server row is gone. False leaves both in place - the agent is still installed there, and pretending otherwise would strand a running agent nobody can see.",
+      }),
+      uninstallCommand: t.exposeString("uninstallCommand", {
+        description:
+          "The host-side command, returned in both cases: on success so the operator can verify, on failure because it is then the only way through.",
+      }),
+      error: t.exposeString("error", {
+        nullable: true,
+        description: "Why the uninstall did not happen, or null. Surface it verbatim.",
+      }),
+      warning: t.exposeString("warning", {
+        nullable: true,
+        description: "A non-blocking hazard, same meaning as on ServerRemoval, or null.",
+      }),
+    }),
+  });
+
 const ServerReadinessCheckRef = builder
   .objectRef<ReadinessCheck>("ServerReadinessCheck")
   .implement({
@@ -412,6 +439,12 @@ const AddServerInputType = builder.inputType("AddServerInput", {
     // address pools are installed as usual - it runs the whole build pipeline), and
     // the host stays out of every deploy-target picker.
     buildOnly: t.boolean({ required: false }),
+    // A MIGRATION SOURCE: another platform's host, registered only to import from.
+    // The install command touches nothing on the box beyond the agent itself (no
+    // Traefik, no shared network, no Docker configuration), the row is granted to
+    // the calling team alone, and the host is excluded from everything - deploys,
+    // builds, backup destinations, sweeps, monitoring. Set by the import wizard.
+    importOnly: t.boolean({ required: false }),
   }),
 });
 
@@ -544,7 +577,7 @@ builder.queryFields((t) => ({
     type: [BuildServerChoiceRef],
     authScopes: { loggedIn: true },
     description:
-      "The hosts this team can compile on, for an app's 'Build on' setting. Wider than the deploy-target list on purpose: a build-only server is here BECAUSE it cannot deploy, and an ordinary server is here too (one big machine can build for several small ones without giving up its own apps). Only storage-only hosts are excluded - no Docker, no build. `hostArch` is included so the caller can disable the servers whose architecture cannot produce a runnable image for the target.",
+      "The hosts this team can compile on, for an app's 'Build on' setting. Wider than the deploy-target list on purpose: a build-only server is here BECAUSE it cannot deploy, and an ordinary server is here too (one big machine can build for several small ones without giving up its own apps). Two roles are excluded: storage-only (no Docker, no build) and a migration source (it has Docker, but it is another platform's machine and a build would ship the app's source and decrypted env there). `hostArch` is included so the caller can disable the servers whose architecture cannot produce a runnable image for the target.",
     resolve: () => listBuildServerChoices(),
   }),
 }));
@@ -566,13 +599,22 @@ builder.mutationFields((t) => ({
         teamIds: input.teamIds ?? undefined,
         storageOnly: input.storageOnly ?? undefined,
         buildOnly: input.buildOnly ?? undefined,
+        importOnly: input.importOnly ?? undefined,
       }),
+  }),
+  uninstallServerAgent: t.field({
+    type: ServerUninstallRef,
+    authScopes: { instanceAdmin: true },
+    description:
+      "Take Deplo off a MIGRATION SOURCE: uninstall the agent from the host (systemd unit, binary, state dir - never Docker), then forget the server. Only a server whose role is \"import\" - an ordinary server is removed with removeServer, which is trust revocation and leaves the host alone. `removed: false` means the host still has the agent on it and the server row was KEPT; `uninstallCommand` is returned either way, because an unreachable or de-trusted host will always need the host-side path. A registration whose install command was never run has nothing to uninstall and is simply forgotten.",
+    args: { id: t.arg.string({ required: true }) },
+    resolve: (_r, { id }) => uninstallServerAgent(id),
   }),
   setServerRole: t.field({
     type: ServerRef,
     authScopes: { instanceAdmin: true },
     description:
-      'Change what a server is for: "everything", "build" or "storage". Leaving "everything" is refused while the host still has apps or databases on it. A server INSTALLED as backups-only has no Docker and stays pinned to "storage" until its install command is re-run on the host.',
+      'Change what a server is for: "everything", "build" or "storage". Leaving "everything" is refused while the host still has apps or databases on it. A server INSTALLED as backups-only has no Docker and stays pinned to "storage" until its install command is re-run on the host. "import" is not settable and a migration source is not convertible: the install command is the way in and the way out.',
     args: {
       id: t.arg.string({ required: true }),
       role: t.arg.string({ required: true }),

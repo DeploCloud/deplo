@@ -2088,7 +2088,15 @@ async function anyBackupCapableServer(): Promise<string | null> {
   const rows = await getDb()
     .select({ id: serversTable.id })
     .from(serversTable)
-    .where(isNotNull(serversTable.agentCertFingerprint))
+    .where(
+      and(
+        isNotNull(serversTable.agentCertFingerprint),
+        // Never a migration source: it is the other platform's machine, borrowed
+        // for one import. Relaying our backup traffic through it would be using
+        // infrastructure that is not ours for something it never agreed to.
+        eq(serversTable.importOnly, false),
+      ),
+    )
     .limit(1);
   return rows[0]?.id ?? null;
 }

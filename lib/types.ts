@@ -541,6 +541,18 @@ export interface Server {
    */
   buildOnly: boolean;
   /**
+   * A server registered ONLY to import from another platform - the host the
+   * migration reads its volumes from, nothing else.
+   *
+   * The narrowest role, and the only one that is somebody else's machine: out of
+   * every deploy AND build picker, never a backup destination, never swept, not
+   * counted in the fleet. Born only from the import wizard, granted to the team
+   * that ran it, and refused by `setServerRole` in both directions - a box becomes
+   * a real server by having the install command re-run on it, not by a database
+   * write. Finishing the migration uninstalls the agent from the host.
+   */
+  importOnly: boolean;
+  /**
    * This host's CPU architecture ("amd64" | "arm64"), observed from each Hello.
    * "" when the agent is too old to report it, which keeps the server out of the
    * build-server picker rather than risking an image the target cannot execute.

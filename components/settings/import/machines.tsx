@@ -77,7 +77,16 @@ export function MachineGate({
       { server: { id: string; name: string }; installCommand: string }
     >(
       ADD_SERVER,
-      { input: { name: m.sourceId ? m.name : "dokploy-host", host: m.ipAddress } },
+      {
+        input: {
+          name: m.sourceId ? m.name : "dokploy-host",
+          host: m.ipAddress,
+          // A MIGRATION SOURCE, not a server: the install command touches nothing
+          // on the box but the agent itself, the host stays out of every picker
+          // and every sweep, and finishing the migration uninstalls it from here.
+          importOnly: true,
+        },
+      },
       (d) => d.addServer,
     );
     setAdding(null);
@@ -107,7 +116,19 @@ export function MachineGate({
           { server: { status: string } | null },
           { status: string } | null
         >(SERVER_STATUS, { id: p.serverId }, (d) => d.server);
-        if (!res.ok || !res.data) continue;
+        if (!res.ok) continue;
+        // A null server means the row is GONE (removed elsewhere, or the
+        // migration was finished in another tab). Waiting for it forever would
+        // leave this line stuck on "Waiting for the agent" with nothing coming.
+        if (!res.data) {
+          setPending((prev) => {
+            const next = { ...prev };
+            delete next[sourceId];
+            return next;
+          });
+          toast.error(`${p.name} is no longer registered - add it again`);
+          continue;
+        }
         if (res.data.status !== "provisioning") {
           setPending((prev) => {
             const next = { ...prev };
@@ -127,7 +148,8 @@ export function MachineGate({
         <div className="text-sm font-medium">Machines behind that Dokploy</div>
         <p className="mt-1 text-sm text-muted-foreground">
           Deplo copies your data by reading it on the machine that holds it, so it
-          needs its agent on each one.
+          needs its agent on each one. Nothing else is installed there, and Deplo
+          removes it for you when the migration is done.
         </p>
       </div>
 

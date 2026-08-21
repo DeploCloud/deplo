@@ -83,6 +83,7 @@ import { addDomain, updateDomain } from "./domains";
 import { createEnvironment, listEnvironmentsForProject } from "./environments";
 import { createProject, defaultEnvironmentFor, listProjects } from "./projects";
 import { canHostWorkloads, listServersForTeam } from "./servers";
+import { deploHostSelfAddresses, isDeploHostServer } from "../deploy/domains";
 import { saveSharedVar } from "./shared-vars";
 import { recordActivity } from "./activity";
 
@@ -729,13 +730,28 @@ async function planMachines(
   teamId: string,
   servers: { serverId: string; name: string; ipAddress?: string | null }[],
 ): Promise<PlanServer[]> {
+  // Migration sources stay in this list on purpose: matching a machine to the
+  // agent that can read its disks is the ONE lookup they exist for, and a second
+  // pass of the same import has to find the one the first pass registered.
   const mine = (await listServersForTeam(teamId)).filter((s) => !s.storageOnly);
+  const self = deploHostSelfAddresses();
   const at = (address: string | null) => {
     const a = address?.trim().toLowerCase();
     if (!a) return null;
-    const hit = mine.find(
-      (s) => s.ip?.trim().toLowerCase() === a || s.host?.trim().toLowerCase() === a,
-    );
+    const hit =
+      mine.find(
+        (s) => s.ip?.trim().toLowerCase() === a || s.host?.trim().toLowerCase() === a,
+      ) ??
+      // The same-machine case, which the wizard has a toggle for: the other
+      // platform runs on the box Deplo runs on. The addresses rarely match in
+      // FORM (a panel hostname here, an IP on the row), so without this the
+      // machine reads as unknown - and registering it again is refused, because
+      // a second row for the same host would re-bootstrap the fleet's own agent
+      // as a migration source. The agent that can read those disks is already
+      // installed; this is how the wizard finds it.
+      (isDeploHostServer({ ip: a, host: a }, self)
+        ? mine.find((s) => isDeploHostServer(s, self))
+        : undefined);
     return hit ? { deploServerId: hit.id, deploServerName: hit.name } : null;
   };
 
@@ -1264,8 +1280,12 @@ async function resolvePlacements(
   const servers = await listServersForTeam(teamId);
   const canRun = new Set(servers.filter(canHostWorkloads).map((s) => s.id));
   // Wider than `canRun` on purpose: a build-only host is a legal builder and an
-  // illegal target, which is the whole point of the two columns.
-  const canBuild = new Set(servers.filter((s) => !s.storageOnly).map((s) => s.id));
+  // illegal target, which is the whole point of the two columns. A migration
+  // source is neither: it has Docker, but it is the machine we are importing FROM,
+  // and a build there would hand it this app's source and decrypted env.
+  const canBuild = new Set(
+    servers.filter((s) => !s.storageOnly && !s.importOnly).map((s) => s.id),
+  );
 
   for (const p of placements) {
     if (!canRun.has(p.serverId)) {

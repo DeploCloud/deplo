@@ -977,7 +977,10 @@ export async function listCertificateAccounts(): Promise<CertificateAccount[]> {
 async function readAccounts(): Promise<CertificateAccount[]> {
   const { listAllServers } = await import("./servers");
   const { fetchHostInfo } = await import("../infra/agent-client");
-  const servers = await listAllServers();
+  // Every host that routes traffic - which a migration source never does. It has
+  // no Traefik of ours to read an ACME account from, and writing one would put our
+  // certificate settings on another platform's proxy.
+  const servers = (await listAllServers()).filter((s) => !s.importOnly);
 
   return Promise.all(
     servers.map(async (server): Promise<CertificateAccount> => {

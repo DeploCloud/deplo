@@ -245,6 +245,15 @@ const STOPPING_STALE_MS = 90_000;
 const RESTORING_STALE_MS = BACKUP_RUN_MAX_MS;
 
 /**
+ * Why nothing of ours may run OR build on a MIGRATION SOURCE. It is the one
+ * specialised role that has Docker - it is the other platform's own host - so
+ * every "can this machine build?" check that reads `storageOnly` alone would
+ * happily send this app's source and its DECRYPTED env there.
+ */
+const ON_IMPORT_SOURCE =
+  "That server is a migration source - it only exists to import from another platform.";
+
+/**
  * Map a project's persisted status to the status callers should see, self-
  * healing a wedged transient state. Exported for unit tests; pure (no
  * store/docker).
@@ -822,15 +831,18 @@ export async function createApp(
     );
 
   // Where it COMPILES, on the same terms `setAppBuildServer` applies later: it has
-  // to be a host this team can reach, and a storage-only box has no Docker to
-  // build with. Validated here rather than trusted, because an import sends these
-  // ids from a browser and a build carries the app's source and decrypted env.
+  // to be a host this team can reach, a storage-only box has no Docker to build
+  // with, and a migration source HAS Docker but is another platform's machine.
+  // Validated here rather than trusted, because an import sends these ids from a
+  // browser and a build carries the app's source and decrypted env.
   let buildServerId: string | null = null;
   if (input.buildServerId) {
     const picked = servers.find((b) => b.id === input.buildServerId);
     if (!picked) throw new Error("That build server isn't available to this team.");
     if (picked.storageOnly)
       throw new Error("That server holds backups only - it has no Docker to build with.");
+    if (picked.importOnly)
+      throw new Error(ON_IMPORT_SOURCE);
     buildServerId = picked.id;
   }
 
@@ -1211,6 +1223,8 @@ export async function setAppBuildServer(
     if (!picked) throw new Error("That server isn't available to this team.");
     if (picked.storageOnly)
       throw new Error("That server holds backups only - it has no Docker to build with.");
+    if (picked.importOnly)
+      throw new Error(ON_IMPORT_SOURCE);
     buildServerId = picked.id;
   }
   await getDb()
@@ -1334,7 +1348,21 @@ export async function updateAppSource(
     const oldServerId = p.serverId;
     let serverId = p.serverId;
     if (input.serverId) {
-      if (!serversById.has(input.serverId)) throw new Error("Server not found");
+      const picked = serversById.get(input.serverId);
+      if (!picked) throw new Error("Server not found");
+      // A move has to answer the same question a creation does. It never did:
+      // membership was the only check here, so any specialised host - including a
+      // migration source, which is another platform's machine - could be named as
+      // a destination through the API and the app would land somewhere that runs
+      // nothing.
+      if (!canHostWorkloads(picked))
+        throw new Error(
+          picked.importOnly
+            ? ON_IMPORT_SOURCE
+            : picked.storageOnly
+              ? "That server holds backups only - nothing is deployed there."
+              : "That server only builds images - nothing is deployed there.",
+        );
       serverId = input.serverId;
     }
     const isMove = serverId !== oldServerId;

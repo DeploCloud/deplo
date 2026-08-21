@@ -134,7 +134,9 @@ async function checkCustomCertificates(): Promise<void> {
   const rows = await getDb()
     .select({ id: serversTable.id, name: serversTable.name })
     .from(serversTable)
-    .where(isNotNull(serversTable.agentCertPem));
+    // A migration source has no Traefik stack of ours to read: dialing it would
+    // only ever produce a miss, on a machine we are borrowing.
+    .where(and(isNotNull(serversTable.agentCertPem), eq(serversTable.importOnly, false)));
   for (const s of rows) {
     let yaml: string;
     try {

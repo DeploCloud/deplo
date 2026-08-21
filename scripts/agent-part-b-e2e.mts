@@ -132,6 +132,7 @@ async function main() {
       cpuUsage: 0, memoryUsage: 0, diskUsage: 0, allTeams: true,
       storageOnly: false,
       buildOnly: false,
+      importOnly: false,
       hostArch: "amd64",
       deployConcurrency: 1,
       createdAt: new Date(0).toISOString(),

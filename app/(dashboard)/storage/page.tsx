@@ -140,16 +140,19 @@ export default async function StoragePage(props: PageProps<"/storage">) {
   // Only provisioned servers can host a database (provisioning routes through a
   // live agent). A server is provisioned once its agent has called home and
   // pinned a cert fingerprint.
-  // A storage-only host runs nothing, so it can never provision a database.
+  // A storage-only host runs nothing, so it can never provision a database; nor
+  // can a migration source, which is another platform's machine.
   const dbServers = servers
-    .filter((s) => Boolean(s.agent?.certFingerprint) && !s.storageOnly)
+    .filter((s) => Boolean(s.agent?.certFingerprint) && !s.storageOnly && !s.importOnly)
     .map((s) => ({ id: s.id, name: s.name }));
   // serverId → name, so a card can show which host each database runs on.
   const serverNames = Object.fromEntries(servers.map((s) => [s.id, s.name]));
   // A backup destination can live on ANY server the team reaches, including a
-  // storage-only box that hosts nothing — which is exactly the point of one.
+  // storage-only box that hosts nothing — which is exactly the point of one. A
+  // migration source is the exception: the agent there is removed the day the
+  // import ends, and it would take the artifacts with it.
   const destinationServers = servers
-    .filter((s) => Boolean(s.agent?.certFingerprint))
+    .filter((s) => Boolean(s.agent?.certFingerprint) && !s.importOnly)
     .map((s) => ({ id: s.id, name: s.name, storageOnly: s.storageOnly }));
 
   return (

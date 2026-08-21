@@ -276,14 +276,18 @@ function withSpecTimeout<T>(p: Promise<T>, ms = 4000): Promise<T> {
  * servers and unreachable agents keep their zeros (the card shows "—").
  */
 export async function hydrateServerSpecs(servers: Server[]): Promise<Server[]> {
-  const needsMeasure = servers.some(
-    (s) => s.cpuCores === 0 && Boolean(s.agent?.certFingerprint),
-  );
-  if (!needsMeasure) return servers;
+  // A migration source is never measured: this dial happens INSIDE the page
+  // render, so a freshly registered one (specs still 0, which it always is - it is
+  // never polled) would put a multi-second round trip to another platform's box in
+  // front of every load of Settings → Servers. Its card shows "—", which is
+  // honest: we do not monitor that machine.
+  const measurable = (s: Server) =>
+    s.cpuCores === 0 && Boolean(s.agent?.certFingerprint) && !s.importOnly;
+  if (!servers.some(measurable)) return servers;
   const expected = await resolveExpectedAgentVersion();
   return Promise.all(
     servers.map(async (s) => {
-      if (s.cpuCores > 0 || !s.agent?.certFingerprint) return s;
+      if (!measurable(s)) return s;
       try {
         // Bound the one-time measure: this runs SYNCHRONOUSLY in the page render,
         // so an unreachable provisioned host must degrade to "—" in a few seconds
@@ -309,36 +313,41 @@ export async function getInitialServerMetrics(): Promise<ServerMetrics[]> {
   if (!(await hasCapability("view_metrics"))) return [];
   const facts = hostFacts();
   const expected = await resolveExpectedAgentVersion();
-  return (await listServersForCurrentTeam()).map((s) => ({
-    serverId: s.id,
-    // Cheap hydration hint from the stored status; the first live poll replaces
-    // it. A not-yet-provisioned server has no agent and reports offline, exactly
-    // as metricsFor() would, keeping the card UI consistent.
-    //
-    // `warning` counts as up: the agent answered, it just can't reach Docker. It
-    // still serves metrics, so hydrating it as offline would blank the very host
-    // an operator opened this page to look at.
-    online:
-      Boolean(s.agent?.certFingerprint) &&
-      (s.status === "online" || s.status === "warning"),
-    // Cheap hydration value from the stored flag; the first live poll replaces it.
-    traefik: s.traefikEnabled,
-    cpu: s.cpuUsage,
-    cpuCores: s.cpuCores || facts.cpuCores,
-    memUsed: 0,
-    memTotal: s.memoryMb * 1024 * 1024,
-    memPct: s.memoryUsage,
-    diskUsed: 0,
-    diskTotal: s.diskGb * 1024 * 1024 * 1024,
-    diskPct: s.diskUsage,
-    netRx: 0,
-    netTx: 0,
-    load: [0, 0, 0],
-    uptimeSec: 0,
-    containers: 0,
-    // Stored version + the resolved "latest" — keeps the hydration badge identical
-    // to what the RSC card renders, so the first poll doesn't visibly flip it.
-    ...agentVersionFields(expected, s),
-    ts: Date.now(),
-  }));
+  // A migration source is out: it is another platform's machine, borrowed to read
+  // volumes from, and no telemetry stream is opened to it in the first place - a
+  // card for it would sit permanently blank and count as fleet capacity.
+  return (await listServersForCurrentTeam())
+    .filter((s) => !s.importOnly)
+    .map((s) => ({
+      serverId: s.id,
+      // Cheap hydration hint from the stored status; the first live poll replaces
+      // it. A not-yet-provisioned server has no agent and reports offline, exactly
+      // as metricsFor() would, keeping the card UI consistent.
+      //
+      // `warning` counts as up: the agent answered, it just can't reach Docker. It
+      // still serves metrics, so hydrating it as offline would blank the very host
+      // an operator opened this page to look at.
+      online:
+        Boolean(s.agent?.certFingerprint) &&
+        (s.status === "online" || s.status === "warning"),
+      // Cheap hydration value from the stored flag; the first live poll replaces it.
+      traefik: s.traefikEnabled,
+      cpu: s.cpuUsage,
+      cpuCores: s.cpuCores || facts.cpuCores,
+      memUsed: 0,
+      memTotal: s.memoryMb * 1024 * 1024,
+      memPct: s.memoryUsage,
+      diskUsed: 0,
+      diskTotal: s.diskGb * 1024 * 1024 * 1024,
+      diskPct: s.diskUsage,
+      netRx: 0,
+      netTx: 0,
+      load: [0, 0, 0],
+      uptimeSec: 0,
+      containers: 0,
+      // Stored version + the resolved "latest" — keeps the hydration badge identical
+      // to what the RSC card renders, so the first poll doesn't visibly flip it.
+      ...agentVersionFields(expected, s),
+      ts: Date.now(),
+    }));
 }

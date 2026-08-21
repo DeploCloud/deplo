@@ -255,6 +255,12 @@ test("schema: the load-bearing constraints from PLAN §2 are present", async () 
   const checks = new Set(chk.rows.map((x) => x.conname));
   assert.ok(checks.has("backups_target_kind_xor"), "backups XOR check");
   assert.ok(checks.has("cron_jobs_target_kind_xor"), "cron jobs XOR check");
+  // The server ROLE flags are exclusive in the database, not just in the UI. It
+  // has been rewritten once already (two columns to three, in 0111): a migration
+  // that adds a fourth role and forgets to widen it would let a host be two
+  // things at once, and `serverRole` would silently answer with whichever it
+  // checks first.
+  assert.ok(checks.has("servers_role_exclusive"), "server role exclusivity check");
 });
 
 test("schema: the append-only tables carry a bigint identity seq", async () => {

@@ -32,7 +32,7 @@ import { recordActivity } from "./activity";
 import { loadAppGraph } from "./app-graph-load";
 import { requireFolderCapabilityForApp } from "./folder-access";
 import { assertPreviewBaseNotAnotherTeams } from "./domains";
-import { listServersForTeam } from "./servers";
+import { canHostWorkloads, listServersForTeam } from "./servers";
 import { requireAppCapability } from "./node-access";
 
 /**
@@ -452,8 +452,14 @@ export async function setAppPreviewSettings(
     // `createApp` validates an explicit pick against.
     if (wanted) {
       const usable = await listServersForTeam(membership.teamId);
-      if (!usable.some((s) => s.id === wanted))
-        throw new Error("That server is not available to this team");
+      const picked = usable.find((s) => s.id === wanted);
+      if (!picked) throw new Error("That server is not available to this team");
+      // Accessible is not the same as usable: a preview is a deploy, so the
+      // specialised roles are refused here exactly as `createApp` refuses them -
+      // this check only asked about access, so a storage/build host, or another
+      // platform's machine, could be pinned here through the API.
+      if (!canHostWorkloads(picked))
+        throw new Error("Nothing is deployed on that server - pick one that runs apps");
     }
     // The app's own server IS the default, so storing it explicitly would only
     // pin what is already true and survive a later app move.

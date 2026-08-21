@@ -100,6 +100,7 @@ function srv(over: Partial<Server> = {}): Server {
     allTeams: true,
     storageOnly: false,
     buildOnly: false,
+    importOnly: false,
     hostArch: "amd64",
     deployConcurrency: 1,
     createdAt: "2026-07-01T00:00:00.000Z",

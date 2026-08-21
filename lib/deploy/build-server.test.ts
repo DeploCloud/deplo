@@ -32,6 +32,7 @@ function srv(over: Partial<Server> & { id: string }): Server {
     allTeams: true,
     storageOnly: over.storageOnly ?? false,
     buildOnly: over.buildOnly ?? false,
+    importOnly: over.importOnly ?? false,
     hostArch: over.hostArch ?? "amd64",
     deployConcurrency: 1,
     createdAt: over.createdAt ?? "2026-01-01T00:00:00.000Z",
@@ -119,6 +120,17 @@ test("an offline or still-provisioning builder is skipped before it is dialed", 
 test("a storage-only server can never build - it has no Docker", () => {
   const box = srv({ id: "srv_store", storageOnly: true, buildOnly: false });
   assert.equal(canBuildFor(box, TARGET), false);
+});
+
+test("a migration source can never build - it HAS Docker, and that is the trap", () => {
+  // Every other "can this machine build?" check reads storageOnly, which a
+  // migration source passes: the other platform's host obviously has Docker. What
+  // makes it illegal is ownership, not capability - a build ships the app's source
+  // and its DECRYPTED env to the builder.
+  const box = srv({ id: "srv_import", importOnly: true, hostArch: "amd64" });
+  assert.equal(canBuildFor(box, TARGET), false);
+  // And it is never picked automatically either, even alone in the fleet.
+  assert.equal(pickBuildServer(app(), TARGET, [TARGET, box]).serverId, null);
 });
 
 test("the least busy builder wins, and ties break on creation order", () => {

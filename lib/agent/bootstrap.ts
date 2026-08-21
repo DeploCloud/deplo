@@ -88,8 +88,17 @@ export function installCommand(opts: {
    * exclusive with it: a build server without Docker could not build.
    */
   buildOnly?: boolean;
+  /**
+   * A server registered only to IMPORT from another platform: Docker is already
+   * there (it is that platform's host) and is never installed, no address pools
+   * are written, no Traefik, and not even the shared `deplo` network. The host
+   * ends up carrying the unit, the binary and the agent's state dir and nothing
+   * else, which is exactly the footprint SelfUninstall knows how to remove.
+   * Exclusive with the other two, and the narrowest of the three.
+   */
+  importOnly?: boolean;
 }): string {
-  const { baseUrl, rawToken, fingerprint, storageOnly, buildOnly } = opts;
+  const { baseUrl, rawToken, fingerprint, storageOnly, buildOnly, importOnly } = opts;
   // Order: <token> <control-plane-url> [fingerprint]. The script forwards them
   // to the agent's --bootstrap-* flags. Single-quoted so the shell treats them
   // as literals (the token is base64url, the url/fingerprint are constrained).
@@ -97,11 +106,13 @@ export function installCommand(opts: {
   // `sudo` does not forward the caller's environment, so the variable is set
   // INSIDE the elevated shell — `DEPLO_STORAGE_ONLY=1 sudo bash` would silently
   // install a normal agent.
-  const env = storageOnly
-    ? "DEPLO_STORAGE_ONLY=1 "
-    : buildOnly
-      ? "DEPLO_BUILD_ONLY=1 "
-      : "";
+  const env = importOnly
+    ? "DEPLO_IMPORT_ONLY=1 "
+    : storageOnly
+      ? "DEPLO_STORAGE_ONLY=1 "
+      : buildOnly
+        ? "DEPLO_BUILD_ONLY=1 "
+        : "";
   return `curl -fsSL '${baseUrl}/install-agent.sh' | sudo ${env}bash -s -- '${rawToken}' '${baseUrl}'${fp}`;
 }
 

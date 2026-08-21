@@ -47,13 +47,17 @@ export default async function MonitoringPage() {
         description="Real-time CPU, memory, disk and network across your servers."
       />
       <MonitoringDashboard
-        servers={servers.map((s) => ({
-          id: s.id,
-          name: s.name,
-          status: s.status,
-          ip: s.ip,
-          dockerVersion: s.dockerVersion,
-        }))}
+        // Migration sources are not the fleet: no telemetry stream is opened to
+        // them, so a row here could only ever read "No data".
+        servers={servers
+          .filter((s) => !s.importOnly)
+          .map((s) => ({
+            id: s.id,
+            name: s.name,
+            status: s.status,
+            ip: s.ip,
+            dockerVersion: s.dockerVersion,
+          }))}
         initialMetrics={initialMetrics}
         initialSaveMetrics={settings.saveMetrics}
         canManageInfra={canManageInfra}

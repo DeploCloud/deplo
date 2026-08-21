@@ -19,7 +19,7 @@ import { withTraefikDashboard, traefikDashboardDomain } from "../deploy/traefik-
 import { assertPasswordNotPwned } from "../pwned-password";
 import { assertPasswordPolicy } from "../password-policy";
 import { recordActivity } from "./activity";
-import { getServerById } from "./servers";
+import { assertNotMigrationSource, getServerById } from "./servers";
 import { stopStackOn, startStackOn } from "./volume-migration";
 
 /**
@@ -223,6 +223,7 @@ export async function restartServerWorkloads(id: string): Promise<ServerRestartR
   const user = (await getCurrentUser())!;
   const server = await getServerById(id);
   if (!server) throw new Error("Server not found");
+  assertNotMigrationSource(server);
 
   const db = getDb();
   const [appRows, dbRows] = await Promise.all([
@@ -345,6 +346,7 @@ export async function restartServerTraefik(id: string): Promise<void> {
   const user = (await getCurrentUser())!;
   const server = await getServerById(id);
   if (!server) throw new Error("Server not found");
+  assertNotMigrationSource(server);
 
   const { applyTraefikConfig } = await import("../infra/agent-client");
   const res = await applyTraefikConfig(id, { restartOnly: true });

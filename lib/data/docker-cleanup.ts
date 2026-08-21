@@ -899,6 +899,15 @@ export async function runCleanupNow(serverId: string): Promise<CleanupRunDTO> {
   // per-team `manage_infra` could reach here — that was the escalation to block.
   const server = await getServerById(serverId);
   if (!server) throw new Error("Server not found");
+  // Same refusal the scheduler makes, and it has to be here too: this is the
+  // MANUAL sweep, reachable from the API and from MCP, and reclaiming disk on a
+  // migration source would delete the other platform's images while it is running
+  // on them.
+  if (server.importOnly)
+    throw new Error(
+      `${server.name} is a migration source - Deplo does not reclaim disk on a ` +
+        `machine it is only importing from.`,
+    );
 
   const policy = await loadPolicy();
   // Fail fast rather than record a run that asks the agent for nothing: an empty scope

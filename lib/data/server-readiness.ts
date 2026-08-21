@@ -130,6 +130,16 @@ export async function checkServerReadiness(id: string): Promise<ReadinessReport>
   const server = await getServerById(id);
   // The same message checkServerHealth throws, so the UI's toast reads identically.
   if (!server) throw new Error("Server not found");
+  // Readiness asks "could a deployment land here?", and for a migration source the
+  // answer is no by design - it has no Traefik of ours and something else owns
+  // :80. Reporting that as findings would describe a healthy machine as broken,
+  // so the question is refused rather than answered wrongly. Reachable from the
+  // API and MCP, hence a check here and not only a hidden button.
+  if (server.importOnly)
+    throw new Error(
+      `${server.name} is a migration source - nothing is deployed there, so there ` +
+        `is no readiness to check.`,
+    );
 
   const observedAt = nowIso();
   const grantedTeamCount = (await getServerTeamIds(id)).length;

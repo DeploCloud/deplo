@@ -34,6 +34,7 @@ import { EmptyState } from "@/components/shared/empty-state";
 import { WizardStepper, type WizardStep } from "@/components/shared/wizard-stepper";
 import { MachineGate } from "./machines";
 import { ImportReport } from "./import-report";
+import { RemoveMigrationSources } from "./remove-sources";
 import { ImportTree } from "./import-tree";
 import {
   ImportProgressDialog,
@@ -757,7 +758,12 @@ export function ImportWizard({
       )}
 
       {step === "done" && (
-        <DoneStep items={items} onStartOver={startOver} onFinish={() => router.push("/")} />
+        <DoneStep
+          items={items}
+          onStartOver={startOver}
+          onFinish={() => router.push("/")}
+          isInstanceAdmin={isInstanceAdmin}
+        />
       )}
 
       {/* The import, wherever you are. The pill only exists while there is a run
@@ -1341,10 +1347,13 @@ function DoneStep({
   items,
   onStartOver,
   onFinish,
+  isInstanceAdmin,
 }: {
   items: ReportItem[];
   onStartOver: () => void;
   onFinish: () => void;
+  /** Uninstalling an agent is instance-admin, like every server action. */
+  isInstanceAdmin: boolean;
 }) {
   return (
     <div className="space-y-4">
@@ -1352,6 +1361,10 @@ function DoneStep({
         items={items}
         description="Nothing was deployed. Open an app and press Deploy when you are ready to move the traffic."
       />
+
+      {/* Below the report, not above it: read what happened first, then hand the
+          other platform's machine back. */}
+      {isInstanceAdmin && <RemoveMigrationSources />}
 
       <div className="flex flex-wrap justify-between gap-2">
         <Button variant="outline" onClick={onStartOver}>

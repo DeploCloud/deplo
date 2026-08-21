@@ -10,6 +10,7 @@ import {
   Settings2,
   Hammer,
   Archive,
+  DownloadCloud,
 } from "lucide-react";
 
 import { PageHeader } from "@/components/shared/page-header";
@@ -46,6 +47,7 @@ import {
   type ServerHealthState,
 } from "./server-health-provider";
 import { CheckStatusButton, CheckAllStatusButton } from "./check-status-button";
+import { UninstallAgentMenu } from "./uninstall-agent-menu";
 
 export const metadata = { title: "Servers" };
 
@@ -151,6 +153,16 @@ function ServerCard({
               Backups only
             </Badge>
           )}
+          {server.importOnly && (
+            <Badge
+              variant="muted"
+              className="shrink-0 gap-1"
+              title="Another platform's host. Deplo installed its agent there to read the data being imported, and removes it when the migration is done."
+            >
+              <DownloadCloud className="size-3" />
+              Migration source
+            </Badge>
+          )}
           <ServerHealthChip
             serverId={server.id}
             fallback={{
@@ -168,17 +180,30 @@ function ServerCard({
               included), so the management page applies to all of them. The card
               stays a summary: everything you can DO to a server lives on its own
               page, where each action has room to say what it interrupts. */}
+          {/* A migration source has no management page - there is nothing to manage
+              on a machine we do not run - so its card carries the one action it
+              has instead of the fleet's two. */}
           <div className="ml-auto flex items-center gap-1">
-            <CheckStatusButton
-              serverId={server.id}
-              serverName={serverLabel(server)}
-            />
-            <Button variant="outline" size="sm" asChild>
-              <Link href={`/settings/servers/${server.id}`}>
-                <Settings2 className="size-4" />
-                Manage
-              </Link>
-            </Button>
+            {server.importOnly ? (
+              <UninstallAgentMenu
+                serverId={server.id}
+                serverName={serverLabel(server)}
+                provisioned={Boolean(server.agent?.certFingerprint)}
+              />
+            ) : (
+              <>
+                <CheckStatusButton
+                  serverId={server.id}
+                  serverName={serverLabel(server)}
+                />
+                <Button variant="outline" size="sm" asChild>
+                  <Link href={`/settings/servers/${server.id}`}>
+                    <Settings2 className="size-4" />
+                    Manage
+                  </Link>
+                </Button>
+              </>
+            )}
           </div>
         </div>
         <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5 text-xs">
@@ -199,34 +224,39 @@ function ServerCard({
           <AgentVersionBadge version={agentVersion} />
         </div>
       </CardHeader>
-      <CardContent>
-        <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
-          <Spec
-            icon={Cpu}
-            label="CPU"
-            value={num(server.cpuCores)}
-            unit={server.cpuCores === 1 ? "core" : "cores"}
-          />
-          <Spec
-            icon={MemoryStick}
-            label="Memory"
-            value={num(ramGb)}
-            unit="GB RAM"
-          />
-          <Spec
-            icon={HardDrive}
-            label="Disk"
-            value={num(server.diskGb)}
-            unit="GB"
-          />
-          <Spec
-            icon={Boxes}
-            label="Docker"
-            value={server.dockerVersion || "—"}
-            unit="engine"
-          />
-        </div>
-      </CardContent>
+      {/* Capacity is fleet information. A migration source is never measured (we
+          do not poll a machine we do not run), so four "—" tiles would only read
+          as a broken card. */}
+      {!server.importOnly && (
+        <CardContent>
+          <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+            <Spec
+              icon={Cpu}
+              label="CPU"
+              value={num(server.cpuCores)}
+              unit={server.cpuCores === 1 ? "core" : "cores"}
+            />
+            <Spec
+              icon={MemoryStick}
+              label="Memory"
+              value={num(ramGb)}
+              unit="GB RAM"
+            />
+            <Spec
+              icon={HardDrive}
+              label="Disk"
+              value={num(server.diskGb)}
+              unit="GB"
+            />
+            <Spec
+              icon={Boxes}
+              label="Docker"
+              value={server.dockerVersion || "—"}
+              unit="engine"
+            />
+          </div>
+        </CardContent>
+      )}
     </Card>
   );
 }
@@ -271,6 +301,13 @@ export default async function ServersPage(
       Number(isDeploHostServer(b, selfAddrs)) -
       Number(isDeploHostServer(a, selfAddrs)),
   );
+
+  // Migration sources are listed apart from the fleet, and counted apart from it:
+  // they are other platforms' machines, borrowed for one import and given back.
+  // Mixed into the grid they read as servers someone forgot to configure - which
+  // is exactly the confusion this section exists to end.
+  const fleet = servers.filter((s) => !s.importOnly);
+  const migrationSources = servers.filter((s) => s.importOnly);
 
   // The LAST OBSERVED health of each server, handed to the client so the cards paint
   // immediately. It is a seed, not the answer: <ServerHealthProvider> re-probes every
@@ -326,7 +363,7 @@ export default async function ServersPage(
           }
         />
 
-        {servers.length === 0 ? (
+        {fleet.length === 0 ? (
           <EmptyState
             icon={ServerIcon}
             title="No servers connected"
@@ -334,7 +371,7 @@ export default async function ServersPage(
           />
         ) : (
           <div className="grid gap-4 sm:grid-cols-2">
-            {servers.map((server) => (
+            {fleet.map((server) => (
               <ServerCard
                 key={server.id}
                 server={server}
@@ -342,6 +379,28 @@ export default async function ServersPage(
                 isDeploHost={isDeploHostServer(server, selfAddrs)}
               />
             ))}
+          </div>
+        )}
+
+        {migrationSources.length > 0 && (
+          <div>
+            <h2 className="text-lg font-semibold tracking-tight">
+              Migration sources
+            </h2>
+            <p className="mt-1 text-sm text-muted-foreground">
+              Only used to import from another platform. Nothing is deployed here,
+              and Deplo removes its agent when the migration is done.
+            </p>
+            <div className="mt-3 grid gap-4 sm:grid-cols-2">
+              {migrationSources.map((server) => (
+                <ServerCard
+                  key={server.id}
+                  server={server}
+                  accessTeamIds={serverTeamIds.get(server.id) ?? []}
+                  isDeploHost={false}
+                />
+              ))}
+            </div>
           </div>
         )}
       </div>

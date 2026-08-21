@@ -810,6 +810,25 @@ export const servers = pgTable(
     // databases on it. The one true one-way door is physical - a host installed as
     // backups-only has no Docker to build with.
     buildOnly: boolean("build_only").notNull().default(false),
+    // A server registered ONLY to import from another platform: Docker is there
+    // (it is that platform's host), Traefik is not, the shared `deplo` network is
+    // not, and nothing of ours ever runs here.
+    //
+    // The third specialised role, exclusive with the other two (the CHECK counts
+    // all three). Unlike them it is not a shape of machine the operator chose - it
+    // is a machine that belongs to somebody else, which Deplo is standing on only
+    // to read its disks. So it is the narrowest role there is: out of every deploy
+    // AND build picker (source and decrypted env would otherwise cross to it), out
+    // of backup destinations, out of every sweep, out of the fleet count.
+    //
+    // Born only from the import wizard and granted to the one team that ran it;
+    // `setServerRole` refuses it in both directions, because the installer never
+    // put Traefik or the network on the host and no database write can change
+    // that - re-running the install command is how this box becomes a real server.
+    // It is also the only role with a real agent-side uninstall (SelfUninstall):
+    // finishing a migration takes Deplo off that host instead of handing someone
+    // a shell command.
+    importOnly: boolean("import_only").notNull().default(false),
     // This host's CPU architecture ("amd64" | "arm64"), observed from each Hello
     // like `docker_version` and `traefik_enabled` - never asserted at registration.
     // "" means an agent too old to report it, which can never equal another host's

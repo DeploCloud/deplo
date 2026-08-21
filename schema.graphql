@@ -65,6 +65,7 @@ input AddServerInput {
   allTeams: Boolean
   buildOnly: Boolean
   host: String!
+  importOnly: Boolean
   name: String!
   storageOnly: Boolean
   teamIds: [String!]
@@ -3047,7 +3048,7 @@ type Mutation {
   setServerDeployConcurrency(concurrency: Int!, id: String!): Server
 
   """
-  Change what a server is for: "everything", "build" or "storage". Leaving "everything" is refused while the host still has apps or databases on it. A server INSTALLED as backups-only has no Docker and stays pinned to "storage" until its install command is re-run on the host.
+  Change what a server is for: "everything", "build" or "storage". Leaving "everything" is refused while the host still has apps or databases on it. A server INSTALLED as backups-only has no Docker and stays pinned to "storage" until its install command is re-run on the host. "import" is not settable and a migration source is not convertible: the install command is the way in and the way out.
   """
   setServerRole(id: String!, role: String!): Server
 
@@ -3132,6 +3133,11 @@ type Mutation {
   Hand the active team to another member, who is put on the Owner role with the whole team in reach as part of the same write. Primary-owner only; requires the caller's password, plus a two-factor code when their account has 2FA on. Returns true.
   """
   transferTeamOwnership(code: String, password: String!, userId: String!): Boolean
+
+  """
+  Take Deplo off a MIGRATION SOURCE: uninstall the agent from the host (systemd unit, binary, state dir - never Docker), then forget the server. Only a server whose role is "import" - an ordinary server is removed with removeServer, which is trust revocation and leaves the host alone. `removed: false` means the host still has the agent on it and the server row was KEPT; `uninstallCommand` is returned either way, because an unreachable or de-trusted host will always need the host-side path. A registration whose install command was never run has nothing to uninstall and is simply forgotten.
+  """
+  uninstallServerAgent(id: String!): ServerUninstall
 
   """Forget this browser's push registration."""
   unsubscribeWebPush(endpoint: String!): Boolean
@@ -3461,7 +3467,7 @@ type Query {
   basicAuthUsers(appId: String!): [BasicAuthUser!]
 
   """
-  The hosts this team can compile on, for an app's 'Build on' setting. Wider than the deploy-target list on purpose: a build-only server is here BECAUSE it cannot deploy, and an ordinary server is here too (one big machine can build for several small ones without giving up its own apps). Only storage-only hosts are excluded - no Docker, no build. `hostArch` is included so the caller can disable the servers whose architecture cannot produce a runnable image for the target.
+  The hosts this team can compile on, for an app's 'Build on' setting. Wider than the deploy-target list on purpose: a build-only server is here BECAUSE it cannot deploy, and an ordinary server is here too (one big machine can build for several small ones without giving up its own apps). Two roles are excluded: storage-only (no Docker, no build) and a migration source (it has Docker, but it is another platform's machine and a build would ship the app's source and decrypted env there). `hostArch` is included so the caller can disable the servers whose architecture cannot produce a runnable image for the target.
   """
   buildServerChoices: [BuildServerChoice!]
 
@@ -4106,7 +4112,7 @@ type Server {
   provisioned: Boolean
 
   """
-  What this server is for: "everything" (the default), "build" (Docker but no proxy; it compiles for other hosts and runs nothing) or "storage" (no Docker; it only holds backups). Only the build axis is changeable after installation.
+  What this server is for: "everything" (the default), "build" (Docker but no proxy; it compiles for other hosts and runs nothing), "storage" (no Docker; it only holds backups) or "import" (a MIGRATION SOURCE: another platform's host, registered by the import wizard to read its volumes, out of every deploy and build picker and swept by nothing). Only the build axis is changeable after installation; "import" is refused by setServerRole in both directions.
   """
   role: String
   status: ServerStatus
@@ -4400,6 +4406,27 @@ enum ServerStatus {
 
 enum ServerType {
   remote
+}
+
+"""
+The result of uninstalling the agent from a MIGRATION SOURCE. Unlike ServerRemoval this one DOES touch the host - it is the only case where Deplo installed the agent on a machine that is not part of the fleet, so taking it back off is Deplo's job and not the operator's.
+"""
+type ServerUninstall {
+  """Why the uninstall did not happen, or null. Surface it verbatim."""
+  error: String
+
+  """
+  True when the host is clean AND the server row is gone. False leaves both in place - the agent is still installed there, and pretending otherwise would strand a running agent nobody can see.
+  """
+  removed: Boolean
+
+  """
+  The host-side command, returned in both cases: on success so the operator can verify, on failure because it is then the only way through.
+  """
+  uninstallCommand: String
+
+  """A non-blocking hazard, same meaning as on ServerRemoval, or null."""
+  warning: String
 }
 
 """

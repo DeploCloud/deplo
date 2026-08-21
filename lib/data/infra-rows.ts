@@ -83,6 +83,7 @@ const SERVER_FIELDS = {
   allTeams: true,
   storageOnly: true,
   buildOnly: true,
+  importOnly: true,
   hostArch: true,
   deployConcurrency: true,
   traefikDashboard: true,
@@ -115,6 +116,7 @@ export function serverToRow(s: Server): ServerInsert {
     allTeams: s.allTeams,
     storageOnly: s.storageOnly,
     buildOnly: s.buildOnly,
+    importOnly: s.importOnly,
     hostArch: s.hostArch,
     deployConcurrency: s.deployConcurrency,
     // Flattened ServerAgent (NULL columns when not yet provisioned).
@@ -166,6 +168,7 @@ export function assembleServer(row: ServerRow): Server {
     allTeams: row.allTeams,
     storageOnly: row.storageOnly ?? false,
     buildOnly: row.buildOnly ?? false,
+    importOnly: row.importOnly ?? false,
     // "" is "the agent never told us", which never matches another host's arch -
     // so an un-upgraded server is simply not offered as a builder.
     hostArch: row.hostArch ?? "",

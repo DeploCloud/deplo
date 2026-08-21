@@ -120,9 +120,12 @@ export async function getServer(id: string): Promise<Server | null> {
  */
 export async function getPrimaryServer(): Promise<Server | null> {
   // Team-scoped: the first server the active team can target (was: the first
-  // server overall, which leaked existence of an other-team-only server).
+  // server overall, which leaked existence of an other-team-only server), and
+  // filtered by role: "primary" means the default place to PUT something, so a
+  // storage/build/import host answering it hands callers a target that refuses
+  // the very thing they were about to do.
   const servers = await listServersForCurrentTeam();
-  return servers[0] ?? null;
+  return servers.filter(canHostWorkloads)[0] ?? null;
 }
 
 /**
@@ -206,14 +209,33 @@ export async function listServerChoices(): Promise<
  * target picker, and behind the server-side re-checks in `createApp` and the
  * database resolver that back them up.
  *
- * Both specialised roles are excluded, for the same reason stated two ways: a
- * storage-only host has no Docker to run anything with, and a build-only host has
- * Docker but exists to compile for other machines and has no proxy to route to it.
- * Either way, picking one would produce a deploy that fails on the host after
- * everything looked fine in the UI.
+ * All three specialised roles are excluded, for the same reason stated three
+ * ways: a storage-only host has no Docker to run anything with, a build-only host
+ * has Docker but exists to compile for other machines and has no proxy to route to
+ * it, and a migration source is another platform's machine that Deplo only reads
+ * volumes from. Any of them would produce a deploy that fails on the host after
+ * everything looked fine in the UI - or, for the last one, a deploy that lands on
+ * infrastructure that is not ours to use.
  */
 export function canHostWorkloads(s: Server): boolean {
-  return !s.storageOnly && !s.buildOnly;
+  return !s.storageOnly && !s.buildOnly && !s.importOnly;
+}
+
+/**
+ * Refuse an action that treats a MIGRATION SOURCE as one of our servers.
+ *
+ * The host-management verbs (restart the workloads, restart Traefik, sweep Docker,
+ * check readiness) are reachable from the API and from MCP, not only from a page
+ * we can hide. Most would be harmless no-ops on a migration source - there are no
+ * workloads, and the agent refuses a Traefik it did not install - but a no-op that
+ * answers OK writes an Activity line claiming Deplo just operated another
+ * platform's machine, which is worse than the refusal.
+ */
+export function assertNotMigrationSource(s: Pick<Server, "name" | "importOnly">): void {
+  if (s.importOnly)
+    throw new Error(
+      `${s.name} is a migration source - Deplo only reads from it, it does not run it.`,
+    );
 }
 
 /**
@@ -222,8 +244,10 @@ export function canHostWorkloads(s: Server): boolean {
  * Wider than {@link listServerChoices} on purpose - a build-only server is here
  * BECAUSE it cannot deploy, and an ordinary server is here too, since a fleet with
  * one big machine and several small ones wants the big one building for all of
- * them without giving up its own apps. Only storage-only is excluded: no Docker,
- * no build.
+ * them without giving up its own apps. Two roles are excluded: storage-only (no
+ * Docker, no build) and a migration source - it HAS Docker, which is exactly why
+ * it has to be named here, and building on it would ship an app's source and its
+ * decrypted env to another platform's host.
  *
  * `hostArch` rides along because the caller has to grey out the hosts whose
  * architecture cannot produce a runnable image for the target, and asking each
@@ -234,7 +258,7 @@ export async function listBuildServerChoices(): Promise<
 > {
   const teamId = await requireActiveTeamId();
   return (await listServersForTeam(teamId))
-    .filter((s) => !s.storageOnly)
+    .filter((s) => !s.storageOnly && !s.importOnly)
     .map((s) => ({
       id: s.id,
       name: s.name,
@@ -327,6 +351,13 @@ export interface AddServerInput {
   storageOnly?: boolean;
   /** A server that only BUILDS: Docker installed, no Traefik, nothing deployed. */
   buildOnly?: boolean;
+  /**
+   * A server registered only to IMPORT from another platform. Forces the row to
+   * the one team doing the migration and takes the host out of everything else -
+   * see {@link Server.importOnly}. Set by the import wizard, never by the Add
+   * server dialog.
+   */
+  importOnly?: boolean;
   teamIds?: string[];
 }
 
@@ -362,11 +393,23 @@ export async function addServer(input: AddServerInput): Promise<AddServerResult>
   // command (P3). Empty over plain HTTP — the agent then uses the HMAC path.
   const fingerprint = await controlPlaneCertFingerprint(baseUrl);
 
+  const importOnly = input.importOnly ?? false;
+  if (importOnly) await assertImportHostIsNew(host);
+
   // Default to instance-wide. When restricting at registration, the junction
   // grants the named teams; an empty teamIds list means "no team yet" (the
   // operator wires teams up later from the server's Team access editor).
-  const allTeams = input.allTeams ?? true;
-  const teamIds = allTeams ? [] : [...new Set(input.teamIds ?? [])];
+  //
+  // A migration source is the exception, and it is not the caller's to choose:
+  // it is somebody else's machine, borrowed by ONE team for one migration, so it
+  // is granted to that team and to no other. Another team seeing it in its own
+  // Servers list would be a leak of who is migrating what from where.
+  const allTeams = importOnly ? false : (input.allTeams ?? true);
+  const teamIds = importOnly
+    ? [teamId]
+    : allTeams
+      ? []
+      : [...new Set(input.teamIds ?? [])];
 
   const server: Server = {
     id: newId("srv"),
@@ -387,8 +430,9 @@ export async function addServer(input: AddServerInput): Promise<AddServerResult>
     // Exclusive by CHECK constraint too, but decided here so a client that sends
     // both gets the safer of the two rather than a database error: storage-only is
     // the one that skips Docker, and a host with no Docker cannot build.
-    storageOnly: input.storageOnly ?? false,
-    buildOnly: !input.storageOnly && (input.buildOnly ?? false),
+    storageOnly: !importOnly && (input.storageOnly ?? false),
+    buildOnly: !importOnly && !input.storageOnly && (input.buildOnly ?? false),
+    importOnly,
     // Unknown until the agent says Hello, like dockerVersion above it.
     hostArch: "",
     // Born strict: one deploy at a time on this host until an admin raises it.
@@ -413,8 +457,42 @@ export async function addServer(input: AddServerInput): Promise<AddServerResult>
       fingerprint,
       storageOnly: server.storageOnly,
       buildOnly: server.buildOnly,
+      importOnly: server.importOnly,
     }),
   };
+}
+
+/**
+ * Refuse to register a MIGRATION SOURCE that is a machine Deplo already stands on.
+ *
+ * The failure this prevents is quiet and expensive. Someone runs Deplo and the
+ * platform they are migrating from on the SAME box (the import wizard has a
+ * toggle for exactly that case). The wizard resolves the source machine by
+ * address and, when the Dokploy URL is a hostname while the server row holds an
+ * IP, finds no match - so it offers to add it, and now one host has two rows. The
+ * install command then re-runs on a box that already has an agent: the installer
+ * clears the existing mTLS materials and re-bootstraps, and the fleet's own agent
+ * is now the migration source. "Migration complete" would uninstall it.
+ *
+ * Cheap to prevent, impossible to undo, so it is checked here rather than trusted
+ * to the wizard - the mutation is reachable from the API too.
+ */
+async function assertImportHostIsNew(host: string): Promise<void> {
+  const self = deploHostSelfAddresses();
+  if (isDeploHostServer({ ip: host, host }, self))
+    throw new Error(
+      "That address is the machine Deplo itself runs on. A migration source is " +
+        "the other platform's host, and the agent here is already installed.",
+    );
+  const a = host.trim().toLowerCase();
+  const clash = (await listAllServers()).find(
+    (s) => s.ip?.trim().toLowerCase() === a || s.host?.trim().toLowerCase() === a,
+  );
+  if (clash)
+    throw new Error(
+      `${clash.name} is already registered at that address. Deplo can import ` +
+        "from a machine it already reaches - no second server is needed.",
+    );
 }
 
 /**
@@ -465,6 +543,10 @@ export async function reissueBootstrap(id: string): Promise<AddServerResult> {
       fingerprint,
       storageOnly: fresh.storageOnly,
       buildOnly: fresh.buildOnly,
+      // The role has to ride along or the re-copied command installs a DIFFERENT
+      // host: without it a migration source's second install would put Traefik and
+      // the shared network on another platform's box.
+      importOnly: fresh.importOnly,
     }),
   };
 }
@@ -664,6 +746,97 @@ export async function removeServer(id: string): Promise<ServerRemoval> {
   };
 }
 
+/** What {@link uninstallServerAgent} hands back. */
+export interface ServerUninstall {
+  /** True when the host is clean AND the row is gone. False leaves both in place. */
+  removed: boolean;
+  /**
+   * The host-side one-liner, ALWAYS returned - on success so the operator can
+   * verify, on failure because it is then the only way through. ADR-0011's rule
+   * survives the arrival of the RPC: an unreachable or already-de-trusted host
+   * will always need a path that does not go through the agent.
+   */
+  uninstallCommand: string;
+  /** Why it did not happen, or null. Surfaced verbatim in the UI. */
+  error: string | null;
+  /** A non-blocking hazard, or null - same shape as {@link ServerRemoval}. */
+  warning: string | null;
+}
+
+/**
+ * Take Deplo off a MIGRATION SOURCE: uninstall the agent from the host, then
+ * forget the server.
+ *
+ * This is the one place the product does what ADR-0011 says removal does not, and
+ * the reason is the mission rather than a change of mind: the agent on a migration
+ * source was installed BY Deplo, for Deplo, on a machine that is not part of the
+ * fleet. Ending a migration by handing someone a shell command to undo an install
+ * they never performed is exactly the failure mode Deplo exists to remove. ADR-0011
+ * anticipated this shape - additive RPC, gated on a Hello capability, and the
+ * script stays - and this is it.
+ *
+ * The ORDER is the contract:
+ *
+ *   (0) Nothing installed yet (a registration whose install command was never run)
+ *       is not a failure: there is no agent to uninstall, so this degrades to
+ *       forgetting the row. It is also the only way out for that row now that a
+ *       migration source has no management page.
+ *   (1) Block on what would make the delete fail - BEFORE the RPC. A backup
+ *       destination on the host is ON DELETE RESTRICT, so discovering it after the
+ *       uninstall would leave a de-agented host that can never be removed.
+ *   (2) Uninstall, THEN revoke. Revoking trust is precisely the act that ends our
+ *       right to command that agent, so the call has to come first.
+ *   (3) Only on success, remove the row - reusing {@link removeServer}, which
+ *       carries the revoke → delete → restore-the-pin-if-the-delete-fails dance.
+ *
+ * A failure at (2) keeps the row and returns the host-side command. That is the
+ * honest outcome: the machine still has an agent on it, and pretending otherwise
+ * by deleting the row would strand a running agent nobody can see.
+ */
+export async function uninstallServerAgent(id: string): Promise<ServerUninstall> {
+  await requireInstanceAdmin();
+  const teamId = await requireActiveTeamId();
+  const user = (await getCurrentUser())!;
+  const server = await getServerById(id);
+  if (!server) throw new Error("Server not found");
+  const command = uninstallCommand({ baseUrl: await publicBaseUrl() });
+
+  // Scoped to the one role that asked for it. An ordinary server's removal is a
+  // deliberate, unchanged flow (ADR-0011); widening this is a product decision,
+  // not a side effect of the RPC existing.
+  if (serverRole(server) !== "import")
+    throw new Error(
+      `${server.name} is a server in your fleet, not a migration source. ` +
+        `Remove it from its own page if you want it gone.`,
+    );
+
+  await assertServerRemovable(id);
+
+  if (server.agent?.certFingerprint) {
+    try {
+      const { selfUninstallServerAgent } = await import("../infra/agent-client");
+      const removed = await selfUninstallServerAgent(id);
+      await recordActivity(
+        "member",
+        `Uninstalled the agent from ${server.name} (${removed.join(", ") || "nothing found"})`,
+        user.name,
+        null,
+        teamId,
+      );
+    } catch (e) {
+      return {
+        removed: false,
+        uninstallCommand: command,
+        error: e instanceof Error ? e.message : String(e),
+        warning: null,
+      };
+    }
+  }
+
+  const { warning } = await removeServer(id);
+  return { removed: true, uninstallCommand: command, error: null, warning };
+}
+
 export interface UpdateServerAddressInput {
   id: string;
   /** The new dial address (IP or DNS name) - written to BOTH `host` and `ip`,
@@ -785,6 +958,10 @@ export async function updateServerAgent(id: string): Promise<{ version: string }
   const user = (await getCurrentUser())!;
   const server = await getServerById(id);
   if (!server) throw new Error("Server not found");
+  // Not on a migration source: upgrading the agent on another platform's machine
+  // is maintenance of a host we do not run, and the one thing this feature is FOR
+  // there is removing it. Reachable from MCP, so the refusal lives here.
+  assertNotMigrationSource(server);
   if (!server.agent?.certFingerprint)
     throw new Error("This server is not provisioned yet — finish provisioning before updating its agent");
 
@@ -1002,11 +1179,16 @@ export async function setServerDeployConcurrency(
 }
 
 /** What a server is FOR. `everything` is the default and what almost every host is;
- *  the other two are the specialised installs. */
-export type ServerRole = "everything" | "build" | "storage";
+ *  the other three are the specialised installs. `import` is the odd one out - it
+ *  is not a machine the operator shaped, it is another platform's host Deplo is
+ *  migrating away from, and the import wizard is its only birth path. */
+export type ServerRole = "everything" | "build" | "storage" | "import";
 
 /** The stored flags as one word. */
-export function serverRole(s: Pick<Server, "storageOnly" | "buildOnly">): ServerRole {
+export function serverRole(
+  s: Pick<Server, "storageOnly" | "buildOnly" | "importOnly">,
+): ServerRole {
+  if (s.importOnly) return "import";
   if (s.storageOnly) return "storage";
   if (s.buildOnly) return "build";
   return "everything";
@@ -1015,11 +1197,11 @@ export function serverRole(s: Pick<Server, "storageOnly" | "buildOnly">): Server
 /**
  * Change what a server is for.
  *
- * All three roles are settable after installation, because a role is a
+ * The three FLEET roles are settable after installation, because a role is a
  * CONTROL-PLANE decision: it changes which pickers offer the host and which
  * readiness rows apply, and the installer's only per-role difference is whether it
  * sets Traefik up. A host that has Docker can therefore be any of them, and go
- * back.
+ * back. `import` is not one of them and is refused in both directions - see below.
  *
  * The one true asymmetry is physical rather than a policy: a server INSTALLED as
  * backups-only never had Docker put on it, and no database write can change that.
@@ -1045,6 +1227,23 @@ export async function setServerRole(id: string, role: ServerRole): Promise<Serve
   const current = serverRole(server);
   if (role === current) return server;
 
+  // A migration source is not a role anyone picks: it is another platform's host,
+  // registered by the import wizard, where the installer put no Traefik and no
+  // shared network. Promoting one from here would produce a server that looks
+  // ready and routes nothing, and demoting a real server into one would arm an
+  // agent uninstall against a box that runs apps. Both directions are refused; the
+  // way in and the way out are both the install command.
+  if (current === "import")
+    throw new Error(
+      `${server.name} was installed only to import from another platform. ` +
+        `Re-run the install command on the host to use it as a normal server.`,
+    );
+  if (role === "import")
+    throw new Error(
+      "A migration source is created by the import wizard, which installs the " +
+        "agent on the other platform's host for you.",
+    );
+
   // The physical one-way door: no Docker on the box, nothing to run or build with.
   if (current === "storage" && !server.dockerVersion)
     throw new Error(
@@ -1056,7 +1255,11 @@ export async function setServerRole(id: string, role: ServerRole): Promise<Serve
 
   await getDb()
     .update(serversTable)
-    .set({ buildOnly: role === "build", storageOnly: role === "storage" })
+    .set({
+      buildOnly: role === "build",
+      storageOnly: role === "storage",
+      importOnly: false,
+    })
     .where(eq(serversTable.id, id));
   await recordActivity(
     "member",

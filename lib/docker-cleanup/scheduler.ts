@@ -163,6 +163,11 @@ export async function runCleanupSchedulerTick(
     const inFlight = new Set([...running, ...serversWithDeploySweepInFlight()]);
 
     const due = servers.filter((s) => {
+      // A migration source is another platform's live host: reclaiming disk there
+      // would delete THEIR images and build cache, off a schedule they never set.
+      // Not an opt-out (nobody should have to know to tick it) - it is simply not
+      // a machine Deplo sweeps.
+      if (s.importOnly) return false;
       if (excluded.has(s.id)) return false; // the host opted out of the SCHEDULE.
       if (inFlight.has(s.id)) return false; // never stack sweeps on one host.
       if (state.lastFired.get(s.id) === key) return false;

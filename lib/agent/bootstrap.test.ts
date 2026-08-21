@@ -34,6 +34,7 @@ function provisioningServer(over: Partial<Server> = {}): Server {
     allTeams: true,
     storageOnly: false,
     buildOnly: false,
+    importOnly: false,
     hostArch: "amd64",
     deployConcurrency: 1,
     createdAt: new Date("2020-01-01").toISOString(),
@@ -68,6 +69,37 @@ test("installCommand embeds the token + url, and the fingerprint only over HTTPS
   });
   assert.doesNotMatch(noFp, /'abcd'/);
   assert.match(noFp, /'http:\/\/10\.0\.0\.5:3000'/);
+});
+
+test("the role rides as an env prefix INSIDE the elevated shell", () => {
+  // `sudo` does not forward the caller's environment, so a prefix outside it
+  // would be silently dropped and the host would install as an ordinary server -
+  // with Traefik, the shared network and a rewritten daemon.json on a machine
+  // Deplo is only borrowing.
+  const base = { baseUrl: "https://deplo.example.com", rawToken: "tok123", fingerprint: "" };
+  const cases = [
+    [{ ...base, storageOnly: true }, "DEPLO_STORAGE_ONLY=1"],
+    [{ ...base, buildOnly: true }, "DEPLO_BUILD_ONLY=1"],
+    [{ ...base, importOnly: true }, "DEPLO_IMPORT_ONLY=1"],
+  ] as const;
+  for (const [opts, env] of cases) {
+    const cmd = installCommand(opts);
+    assert.match(cmd, new RegExp(`sudo ${env} bash`), `${env} is not inside the sudo`);
+  }
+
+  // Exactly one of them, ever: the three roles are exclusive, and a command
+  // carrying two would leave the host's shape up to the script's branch order.
+  const all = installCommand({ ...base, storageOnly: true, buildOnly: true, importOnly: true });
+  assert.equal(
+    (all.match(/DEPLO_[A-Z_]+_ONLY=1/g) ?? []).length,
+    1,
+    "more than one role flag reached the command",
+  );
+  // And the narrowest wins, because it is the one that touches the host least.
+  assert.match(all, /DEPLO_IMPORT_ONLY=1/);
+
+  // An ordinary server carries no prefix at all.
+  assert.doesNotMatch(installCommand(base), /DEPLO_[A-Z_]+_ONLY/);
 });
 
 test("findServerForToken: matches by hash and validates state", () => {

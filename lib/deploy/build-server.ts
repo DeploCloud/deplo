@@ -108,11 +108,15 @@ export function pickBuildServer(
  * a builder that dies between this read and the dial is what the fallback is for.
  */
 export function canBuildFor(
-  builder: Pick<Server, "id" | "status" | "storageOnly" | "hostArch">,
+  builder: Pick<Server, "id" | "status" | "storageOnly" | "importOnly" | "hostArch">,
   target: Pick<Server, "id" | "hostArch">,
 ): boolean {
   if (builder.id === target.id) return false;
   if (builder.storageOnly) return false; // no Docker, nothing to build with
+  // A migration source HAS Docker - it is the other platform's own host - which is
+  // exactly why it must be named here: a build ships this app's source and its
+  // decrypted env to the builder, and that machine is not ours.
+  if (builder.importOnly) return false;
   if (builder.status === "offline" || builder.status === "provisioning") return false;
   return builder.hostArch !== "" && builder.hostArch === target.hostArch;
 }
@@ -134,7 +138,7 @@ export async function resolveBuildServer(
   // is the single-server fleet, i.e. most of them.
   const candidates = await listServersForTeam(app.teamId);
   const usableIds = candidates
-    .filter((s) => s.id !== target.id && !s.storageOnly)
+    .filter((s) => s.id !== target.id && !s.storageOnly && !s.importOnly)
     .map((s) => s.id);
   if (usableIds.length === 0) {
     return pickBuildServer(app, target, candidates);

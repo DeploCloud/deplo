@@ -255,6 +255,20 @@ therefore not capped per team.
   wizard filled every Dokploy machine in with the Deplo host, every export read a
   volume that was not there, and `docker` answered by creating an empty one:
   every copy overwrote real data with nothing and reported success.
+  The agent an import needs on the source machine is registered as a **migration
+  source** (`addServer(input.importOnly)`, instance admin): `Server.role` reads
+  `"import"`, the row is granted to the importing team alone, and the host is
+  excluded from every deploy AND build picker, from backup destinations, from the
+  cleanup sweep and from monitoring — it is the other platform's machine, not a
+  member of the fleet. `setServerRole` refuses that role in both directions;
+  re-running the install command is the only way in or out.
+  `uninstallServerAgent(id)` (instance admin) ends the migration: it asks that
+  agent to remove itself from the host — systemd unit, binary, state dir, never
+  Docker — and only then forgets the server. `removed: false` means the host still
+  has the agent and the row was KEPT; `uninstallCommand` comes back either way,
+  because an unreachable or already-de-trusted host will always need the host-side
+  path (ADR-0011). It refuses an ordinary server: that removal is `removeServer`,
+  which is trust revocation and leaves the host alone.
 - **Subscriptions** (SSE via graphql-yoga): `appStatus(slug)` and
   `databaseStatus(id)` — each emits the entity on every state change (initial
   snapshot, then live), so a client tracks provisioning/start/stop/deploy with

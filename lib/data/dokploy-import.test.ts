@@ -334,6 +334,97 @@ test("a Dokploy machine Deplo already manages is recognised by its address", asy
   assert.equal(plan.servers.find((s) => s.sourceId === "dok-srv-1")!.deploServerId, null);
 });
 
+test("a machine already registered as a MIGRATION SOURCE is still recognised", async () => {
+  // The regression that would break every volume copy in silence: the source
+  // machine is excluded from every picker, so an over-eager filter here would
+  // stop matching it - and `resolveSourceServer`, which reads its address the
+  // same way, would then answer "no agent on that host" on the second pass.
+  const { servers: serversTable } = await import("../db/schema/control-plane");
+  const { eq } = await import("drizzle-orm");
+  await db
+    .update(serversTable)
+    .set({ ip: "dokploy.acme.test", host: "dokploy.acme.test", importOnly: true })
+    .where(eq(serversTable.id, SERVER_1));
+
+  const plan = await asOwner(() => scanDokploy(CONNECT));
+  assert.equal(plan.servers.find((s) => s.sourceId === "")!.deploServerId, SERVER_1);
+});
+
+test("Dokploy on the machine Deplo runs on resolves to the agent already there", async () => {
+  // The same-machine case the wizard has a toggle for. The addresses rarely match
+  // in FORM - a panel hostname in the URL, an IP on the row - so this used to read
+  // as an unknown machine, and registering it again is now refused (a second row
+  // for one host would re-bootstrap the fleet's own agent as a migration source).
+  // The agent that can read those disks is already installed.
+  const { servers: serversTable } = await import("../db/schema/control-plane");
+  const { eq } = await import("drizzle-orm");
+  const beforeIp = process.env.DEPLO_SERVER_IP;
+  const beforeUrl = process.env.DEPLO_PUBLIC_URL;
+  // The Deplo host row is registered by IP...
+  await db
+    .update(serversTable)
+    .set({ ip: "10.9.9.9", host: "10.9.9.9" })
+    .where(eq(serversTable.id, SERVER_1));
+  process.env.DEPLO_SERVER_IP = "10.9.9.9";
+  try {
+    // ...and the Dokploy URL names the same box by a name nothing on the row
+    // mentions. Address matching alone cannot see it.
+    delete process.env.DEPLO_PUBLIC_URL;
+    const plan = await asOwner(() => scanDokploy(CONNECT));
+    assert.equal(plan.servers.find((s) => s.sourceId === "")!.deploServerId, null);
+
+    // Once that name is one of THIS instance's own addresses, the two are the
+    // same machine and the agent to use is the one already installed here.
+    process.env.DEPLO_PUBLIC_URL = URL_BASE;
+    const again = await asOwner(() => scanDokploy(CONNECT));
+    assert.equal(again.servers.find((s) => s.sourceId === "")!.deploServerId, SERVER_1);
+  } finally {
+    if (beforeIp === undefined) delete process.env.DEPLO_SERVER_IP;
+    else process.env.DEPLO_SERVER_IP = beforeIp;
+    if (beforeUrl === undefined) delete process.env.DEPLO_PUBLIC_URL;
+    else process.env.DEPLO_PUBLIC_URL = beforeUrl;
+  }
+});
+
+test("a placement naming a migration source is refused, on both axes", async () => {
+  // It has Docker, so nothing about the machine says "no" - only the role does.
+  // Running there would deploy onto the platform being left behind; building
+  // there would hand it the app's source and decrypted env.
+  const { servers: serversTable } = await import("../db/schema/control-plane");
+  const { eq } = await import("drizzle-orm");
+  const SOURCE = "srv_source";
+  await seedServer(db, SOURCE);
+  await db
+    .update(serversTable)
+    .set({ importOnly: true })
+    .where(eq(serversTable.id, SOURCE));
+
+  const runId = await asOwner(() => beginDokployImport({ url: URL_BASE }));
+  const result = await asOwner(() =>
+    importDokployProject({
+      ...CONNECT,
+      runId,
+      projectId: "dok-prj-blink",
+      serviceIds: ["dok-app-web", "dok-app-api"],
+      placements: [
+        { serviceId: "dok-app-web", serverId: SOURCE },
+        { serviceId: "dok-app-api", serverId: SERVER_1, buildServerId: SOURCE },
+      ],
+    }),
+  );
+
+  const apps = await db.select().from(appsTable);
+  const byName = new Map(apps.map((a) => [a.name, a]));
+  // Both land, both on the default, both reported - never silently elsewhere.
+  assert.equal(byName.get("blink-web")?.serverId, SERVER_1);
+  assert.equal(byName.get("blink-api")?.buildServerId, null);
+  assert.equal(
+    result.items.filter((i) => i.sourceKind === "server" && i.outcome === "manual").length,
+    2,
+    "one line per dropped pick",
+  );
+});
+
 test("a database the tree gives only an id for is still named, not a crash", async () => {
   const plan = await asOwner(() => scanDokploy(CONNECT));
   const db = plan.projects[0].environments[0].services.find(

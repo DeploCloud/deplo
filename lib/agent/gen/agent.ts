@@ -1244,6 +1244,31 @@ export interface ArchBinary {
   sha256: string;
 }
 
+/**
+ * What SelfUninstall removes. Empty: the agent knows every path involved — the
+ * binary from os.Executable(), the state dir from its own --agent-dir flag, the
+ * unit from the fixed systemd path the installer writes. Taking any of them from
+ * the caller would be handing a remote peer an `rm -rf` argument.
+ */
+export interface SelfUninstallRequest {
+}
+
+export interface SelfUninstallResponse {
+  /**
+   * The absolute paths actually removed, for the control plane's activity trail
+   * and for the operator to see what was on the box. A path the agent never
+   * found (no unit file, e.g. an agent run in a container) is simply absent —
+   * that is a skip, not a failure.
+   */
+  removed: string[];
+  /**
+   * True once every removal has happened and the process is about to exit. The
+   * reply is sent FIRST and the exit follows after a short grace period, so this
+   * is the last thing this agent will ever say.
+   */
+  stopping: boolean;
+}
+
 export interface SelfUpdateResponse {
   /** The version now staged on disk (echoes the request's version on success). */
   version: string;
@@ -7280,6 +7305,125 @@ export const ArchBinary: MessageFns<ArchBinary> = {
     const message = createBaseArchBinary();
     message.url = object.url ?? "";
     message.sha256 = object.sha256 ?? "";
+    return message;
+  },
+};
+
+function createBaseSelfUninstallRequest(): SelfUninstallRequest {
+  return {};
+}
+
+export const SelfUninstallRequest: MessageFns<SelfUninstallRequest> = {
+  encode(_: SelfUninstallRequest, writer: BinaryWriter = new BinaryWriter()): BinaryWriter {
+    return writer;
+  },
+
+  decode(input: BinaryReader | Uint8Array, length?: number): SelfUninstallRequest {
+    const reader = input instanceof BinaryReader ? input : new BinaryReader(input);
+    const end = length === undefined ? reader.len : reader.pos + length;
+    const message = createBaseSelfUninstallRequest();
+    while (reader.pos < end) {
+      const tag = reader.uint32();
+      switch (tag >>> 3) {
+      }
+      if ((tag & 7) === 4 || tag === 0) {
+        break;
+      }
+      reader.skip(tag & 7);
+    }
+    return message;
+  },
+
+  fromJSON(_: any): SelfUninstallRequest {
+    return {};
+  },
+
+  toJSON(_: SelfUninstallRequest): unknown {
+    const obj: any = {};
+    return obj;
+  },
+
+  create<I extends Exact<DeepPartial<SelfUninstallRequest>, I>>(base?: I): SelfUninstallRequest {
+    return SelfUninstallRequest.fromPartial(base ?? ({} as any));
+  },
+  fromPartial<I extends Exact<DeepPartial<SelfUninstallRequest>, I>>(_: I): SelfUninstallRequest {
+    const message = createBaseSelfUninstallRequest();
+    return message;
+  },
+};
+
+function createBaseSelfUninstallResponse(): SelfUninstallResponse {
+  return { removed: [], stopping: false };
+}
+
+export const SelfUninstallResponse: MessageFns<SelfUninstallResponse> = {
+  encode(message: SelfUninstallResponse, writer: BinaryWriter = new BinaryWriter()): BinaryWriter {
+    for (const v of message.removed) {
+      writer.uint32(10).string(v!);
+    }
+    if (message.stopping !== false) {
+      writer.uint32(16).bool(message.stopping);
+    }
+    return writer;
+  },
+
+  decode(input: BinaryReader | Uint8Array, length?: number): SelfUninstallResponse {
+    const reader = input instanceof BinaryReader ? input : new BinaryReader(input);
+    const end = length === undefined ? reader.len : reader.pos + length;
+    const message = createBaseSelfUninstallResponse();
+    while (reader.pos < end) {
+      const tag = reader.uint32();
+      switch (tag >>> 3) {
+        case 1: {
+          if (tag !== 10) {
+            break;
+          }
+
+          message.removed.push(reader.string());
+          continue;
+        }
+        case 2: {
+          if (tag !== 16) {
+            break;
+          }
+
+          message.stopping = reader.bool();
+          continue;
+        }
+      }
+      if ((tag & 7) === 4 || tag === 0) {
+        break;
+      }
+      reader.skip(tag & 7);
+    }
+    return message;
+  },
+
+  fromJSON(object: any): SelfUninstallResponse {
+    return {
+      removed: globalThis.Array.isArray(object?.removed) ? object.removed.map((e: any) => globalThis.String(e)) : [],
+      stopping: isSet(object.stopping) ? globalThis.Boolean(object.stopping) : false,
+    };
+  },
+
+  toJSON(message: SelfUninstallResponse): unknown {
+    const obj: any = {};
+    if (message.removed?.length) {
+      obj.removed = message.removed;
+    }
+    if (message.stopping !== false) {
+      obj.stopping = message.stopping;
+    }
+    return obj;
+  },
+
+  create<I extends Exact<DeepPartial<SelfUninstallResponse>, I>>(base?: I): SelfUninstallResponse {
+    return SelfUninstallResponse.fromPartial(base ?? ({} as any));
+  },
+  fromPartial<I extends Exact<DeepPartial<SelfUninstallResponse>, I>>(object: I): SelfUninstallResponse {
+    const message = createBaseSelfUninstallResponse();
+    message.removed = object.removed?.map((e) => e) || [];
+    message.stopping = object.stopping ?? false;
     return message;
   },
 };
@@ -16650,6 +16794,39 @@ export const AgentService = {
     responseDeserialize: (value: Buffer): SelfUpdateResponse => SelfUpdateResponse.decode(value),
   },
   /**
+   * Remove the agent's own footprint from this host and stop: the systemd unit,
+   * the binary, and the state dir under --agent-dir (mTLS materials included).
+   * The sibling of SelfUpdate, and the ONLY RPC that ends the agent's own life.
+   *
+   * Exists for the MIGRATION SOURCE: a host of another platform that Deplo is
+   * importing from, where the agent is installed to read volumes and for nothing
+   * else. Sending someone to a shell to undo an install Deplo performed is the
+   * exact thing the product refuses to do.
+   *
+   * Ordering is the whole contract, and the control plane depends on it: the
+   * removals happen BEFORE the reply (so a failure is returnable and the row is
+   * kept), the process then exits 0 shortly after — cleanly, so systemd's
+   * Restart=on-failure does not bring it back. The unit is disabled but never
+   * `stop`ped: KillMode defaults to control-group, so stopping first would kill
+   * this process before it could delete anything.
+   *
+   * OUT OF SCOPE, deliberately: Docker. No container, image, volume or network
+   * is touched — on a migration source they belong to the other platform, and on
+   * an ordinary server that is what uninstall-agent.sh is for. The script also
+   * stays the answer for a host that is unreachable or already de-trusted
+   * (ADR-0011), which is why the control plane always hands it over too.
+   */
+  selfUninstall: {
+    path: "/deplo.agent.v1.Agent/SelfUninstall" as const,
+    requestStream: false as const,
+    responseStream: false as const,
+    requestSerialize: (value: SelfUninstallRequest): Buffer => Buffer.from(SelfUninstallRequest.encode(value).finish()),
+    requestDeserialize: (value: Buffer): SelfUninstallRequest => SelfUninstallRequest.decode(value),
+    responseSerialize: (value: SelfUninstallResponse): Buffer =>
+      Buffer.from(SelfUninstallResponse.encode(value).finish()),
+    responseDeserialize: (value: Buffer): SelfUninstallResponse => SelfUninstallResponse.decode(value),
+  },
+  /**
    * Back up a database or a project to a destination, streaming progress.
    * DATABASE → the agent `docker exec`s the engine's dump tool (per the format
    * table in docs/research/dbs-backups/PLAN.md), gzip-compresses the stream, and
@@ -17498,6 +17675,30 @@ export interface AgentServer extends UntypedServiceImplementation {
    */
   selfUpdate: handleUnaryCall<SelfUpdateRequest, SelfUpdateResponse>;
   /**
+   * Remove the agent's own footprint from this host and stop: the systemd unit,
+   * the binary, and the state dir under --agent-dir (mTLS materials included).
+   * The sibling of SelfUpdate, and the ONLY RPC that ends the agent's own life.
+   *
+   * Exists for the MIGRATION SOURCE: a host of another platform that Deplo is
+   * importing from, where the agent is installed to read volumes and for nothing
+   * else. Sending someone to a shell to undo an install Deplo performed is the
+   * exact thing the product refuses to do.
+   *
+   * Ordering is the whole contract, and the control plane depends on it: the
+   * removals happen BEFORE the reply (so a failure is returnable and the row is
+   * kept), the process then exits 0 shortly after — cleanly, so systemd's
+   * Restart=on-failure does not bring it back. The unit is disabled but never
+   * `stop`ped: KillMode defaults to control-group, so stopping first would kill
+   * this process before it could delete anything.
+   *
+   * OUT OF SCOPE, deliberately: Docker. No container, image, volume or network
+   * is touched — on a migration source they belong to the other platform, and on
+   * an ordinary server that is what uninstall-agent.sh is for. The script also
+   * stays the answer for a host that is unreachable or already de-trusted
+   * (ADR-0011), which is why the control plane always hands it over too.
+   */
+  selfUninstall: handleUnaryCall<SelfUninstallRequest, SelfUninstallResponse>;
+  /**
    * Back up a database or a project to a destination, streaming progress.
    * DATABASE → the agent `docker exec`s the engine's dump tool (per the format
    * table in docs/research/dbs-backups/PLAN.md), gzip-compresses the stream, and
@@ -18292,6 +18493,44 @@ export interface AgentClient extends Client {
     metadata: Metadata,
     options: Partial<CallOptions>,
     callback: (error: ServiceError | null, response: SelfUpdateResponse) => void,
+  ): ClientUnaryCall;
+  /**
+   * Remove the agent's own footprint from this host and stop: the systemd unit,
+   * the binary, and the state dir under --agent-dir (mTLS materials included).
+   * The sibling of SelfUpdate, and the ONLY RPC that ends the agent's own life.
+   *
+   * Exists for the MIGRATION SOURCE: a host of another platform that Deplo is
+   * importing from, where the agent is installed to read volumes and for nothing
+   * else. Sending someone to a shell to undo an install Deplo performed is the
+   * exact thing the product refuses to do.
+   *
+   * Ordering is the whole contract, and the control plane depends on it: the
+   * removals happen BEFORE the reply (so a failure is returnable and the row is
+   * kept), the process then exits 0 shortly after — cleanly, so systemd's
+   * Restart=on-failure does not bring it back. The unit is disabled but never
+   * `stop`ped: KillMode defaults to control-group, so stopping first would kill
+   * this process before it could delete anything.
+   *
+   * OUT OF SCOPE, deliberately: Docker. No container, image, volume or network
+   * is touched — on a migration source they belong to the other platform, and on
+   * an ordinary server that is what uninstall-agent.sh is for. The script also
+   * stays the answer for a host that is unreachable or already de-trusted
+   * (ADR-0011), which is why the control plane always hands it over too.
+   */
+  selfUninstall(
+    request: SelfUninstallRequest,
+    callback: (error: ServiceError | null, response: SelfUninstallResponse) => void,
+  ): ClientUnaryCall;
+  selfUninstall(
+    request: SelfUninstallRequest,
+    metadata: Metadata,
+    callback: (error: ServiceError | null, response: SelfUninstallResponse) => void,
+  ): ClientUnaryCall;
+  selfUninstall(
+    request: SelfUninstallRequest,
+    metadata: Metadata,
+    options: Partial<CallOptions>,
+    callback: (error: ServiceError | null, response: SelfUninstallResponse) => void,
   ): ClientUnaryCall;
   /**
    * Back up a database or a project to a destination, streaming progress.

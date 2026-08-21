@@ -2,13 +2,14 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { ArrowLeft } from "lucide-react";
 
-import { hasCapability, reachesWholeTeam } from "@/lib/membership";
+import { hasCapability, isInstanceAdmin, reachesWholeTeam } from "@/lib/membership";
 import { getDokployImport } from "@/lib/data/dokploy-import";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { OutsideYourAccess } from "@/components/shared/outside-your-access";
 import { PageHeader } from "@/components/shared/page-header";
 import { ImportReport } from "@/components/settings/import/import-report";
+import { RemoveMigrationSources } from "@/components/settings/import/remove-sources";
 
 export const metadata = { title: "Settings · Import report" };
 
@@ -71,6 +72,11 @@ export default async function ImportReportPage(
         items={run.items}
         description="What this import did, line by line. Nothing here was deployed."
       />
+
+      {/* The report outlives the tab that ran the import, and so does the machine
+          the agent was installed on: this is where someone finishes the job the
+          morning after. Renders nothing once the sources are gone. */}
+      {(await isInstanceAdmin()) && <RemoveMigrationSources />}
     </div>
   );
 }

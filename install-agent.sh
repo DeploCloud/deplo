@@ -55,6 +55,16 @@ STORAGE_ONLY="${DEPLO_STORAGE_ONLY:-0}"
 # Set from the dashboard's Add server dialog, which prefixes the copy-paste command
 # with DEPLO_BUILD_ONLY=1 when "Only build" is chosen.
 BUILD_ONLY="${DEPLO_BUILD_ONLY:-0}"
+# A MIGRATION SOURCE: another platform's host, which Deplo installs an agent on
+# for one purpose - reading the volumes it is importing. It is the narrowest
+# install there is, and deliberately: Docker is already there and is never
+# installed, the address pools are NOT rewritten (that edits /etc/docker/
+# daemon.json and can restart the daemon under a live workload), no Traefik, and
+# not even the shared `deplo` network. What is left on the box is the unit, the
+# binary and the agent state dir - exactly what the agent's SelfUninstall removes
+# when the migration ends.
+# Set by the import wizard, which prefixes the command with DEPLO_IMPORT_ONLY=1.
+IMPORT_ONLY="${DEPLO_IMPORT_ONLY:-0}"
 
 err()  { printf "\033[31m[!!]\033[0m %s\n" "$1" >&2; }
 step() { printf "\033[36m[..]\033[0m %s\n" "$1"; }
@@ -93,6 +103,15 @@ done
 # 1. Docker -----------------------------------------------------------------
 if [ "$STORAGE_ONLY" = "1" ]; then
   ok "Storage-only server: skipping Docker"
+elif [ "$IMPORT_ONLY" = "1" ]; then
+  # Docker has to be here already - this is the other platform's host, and its
+  # volumes are what we came to read. Installing it would be changing a machine we
+  # are only borrowing, so a missing Docker is a hard stop instead.
+  if ! command -v docker >/dev/null 2>&1; then
+    err "Docker is not installed on this host, so there are no volumes to import."
+    exit 1
+  fi
+  ok "Migration source: using the Docker already on this host"
 elif ! command -v docker >/dev/null 2>&1; then
   step "Installing Docker..."
   curl -fsSL https://get.docker.com | sh
@@ -245,6 +264,12 @@ sys.stdout.write(json.dumps(d, indent=2) + "\n")' "$CFG" "$BASE" "$SIZE" > "$TMP
 
 if [ "$STORAGE_ONLY" = "1" ]; then
   ok "Storage-only server: skipping Docker address pools"
+elif [ "$IMPORT_ONLY" = "1" ]; then
+  # The one step that would MODIFY the host: it writes /etc/docker/daemon.json and
+  # restarts the daemon when nothing is running. Deplo deploys nothing here, so
+  # the ceiling this raises is irrelevant - and the change is one the uninstall
+  # could never take back.
+  ok "Migration source: leaving this host's Docker configuration alone"
 else
   configure_docker_address_pools
 fi
@@ -308,7 +333,11 @@ fi
 # worked, because the agent's Deploy opens with EnsureNetwork, but provisioning a
 # DATABASE goes through Reroute, which does not, and failed with
 # "network deplo not found" on a server that looked perfectly healthy.
-docker network create deplo >/dev/null 2>&1 || true
+if [ "$IMPORT_ONLY" = "1" ]; then
+  ok "Migration source: skipping the shared 'deplo' network (nothing is deployed here)"
+else
+  docker network create deplo >/dev/null 2>&1 || true
+fi
 
 # 3b. Traefik reverse proxy (idempotent) ------------------------------------
 # Deplo's deploys emit `traefik.*` labels and join the shared `deplo` network, but
@@ -322,6 +351,8 @@ if [ "$STORAGE_ONLY" = "1" ]; then
   ok "Storage-only server: skipping Traefik (nothing is routed here)"
 elif [ "$BUILD_ONLY" = "1" ]; then
   ok "Build-only server: skipping Traefik (it builds images, it routes nothing)"
+elif [ "$IMPORT_ONLY" = "1" ]; then
+  ok "Migration source: skipping Traefik (this host has its own, and it is not ours)"
 elif docker ps --filter status=running --format '{{.Image}} {{.Names}}' 2>/dev/null \
      | grep -qi traefik; then
   ok "Traefik already running — leaving it untouched"
@@ -492,8 +523,12 @@ chmod 600 "$UNIT"
 # The backup store the agent owns. Created here rather than lazily so a
 # storage-only box shows the right permissions from the first minute, and so a
 # full disk is visible before the first backup rather than during it.
-mkdir -p /data/backups
-chmod 700 /data/backups
+if [ "$IMPORT_ONLY" = "1" ]; then
+  ok "Migration source: skipping the backup store (nothing is stored here)"
+else
+  mkdir -p /data/backups
+  chmod 700 /data/backups
+fi
 
 step "Starting the agent..."
 systemctl daemon-reload

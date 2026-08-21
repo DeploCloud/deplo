@@ -651,7 +651,35 @@ Traefik, never a deploy target. Chosen at registration; the install command then
 it. Its Docker readiness and health checks are skipped rather than failed, because a storage
 box without Docker is correct, not broken.
 _Avoid_: backup server (it holds backups, it does not run them — the workload's own agent
-does the dump).
+does the dump); **migration source** (a different role entirely - that one has Docker and is
+not ours).
+
+**Migration source**:
+A **server** registered ONLY to import from another platform - the machine Deplo is being
+migrated FROM. It exists because a volume can only be read by the agent standing on the disk
+that holds it (agents are a star and cannot dial each other), so the **import** wizard installs
+one there; the alternative is telling somebody to move their data by hand over SSH, which is
+the thing the product refuses to do. `servers.import_only`, the third specialised role and
+exclusive with the other two (`servers_role_exclusive` counts all three).
+It is the narrowest role there is, and the only one that is somebody else's machine: out of
+every deploy picker AND every build picker (it HAS Docker - it is the other platform's own host
+- so every check that reads `storage_only` alone would offer it, and a build ships an App's
+source and DECRYPTED env to the builder), never a **backup destination**, never swept by
+**Docker cleanup**, absent from **Monitoring** and from the fleet count, and refused by the
+host-management verbs. It is **born only from the import wizard**, granted to the one team
+running that import (never `all_teams`), and `setServerRole` refuses it in BOTH directions:
+the installer put no Traefik, no shared `deplo` network and no `daemon.json` change on that
+host, and no database write can undo that - re-running the install command is the way in and
+the way out.
+It is also the ONLY server with a real agent-side uninstall: `SelfUninstall` removes the unit,
+the binary and the agent state dir (never Docker, never a container), and the control plane
+then forgets the row - the host-side `uninstall-agent.sh` stays the answer for an unreachable
+or already-de-trusted host ([ADR-0011](../docs/adr/0011-server-removal-is-trust-revocation-not-a-host-uninstall.md),
+which anticipated exactly this shape). Listed apart from the fleet on Settings → Servers, with
+one action: **Uninstall agent**.
+_Avoid_: import server (ambiguous with an import RUN), Dokploy host (that is the other
+platform's name for its own machine), source server (that is the volume-copy sense in
+`resolveSourceServer`).
 
 **Backup**:
 A **schedule**: a cron expression + **backup destination** + retention (**a count** — how many

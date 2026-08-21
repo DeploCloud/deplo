@@ -144,6 +144,7 @@ export const BACKUP_RUN_MAX_MS = BACKUP_DEADLINE_MS + 30 * 60_000;
 // time out rather than hang the request that triggered it.
 const S3_OP_DEADLINE_MS = 60_000;
 const SELF_UPDATE_TIMEOUT_MS = 2 * 60_000; // agent downloads + verifies + swaps its own binary
+const SELF_UNINSTALL_TIMEOUT_MS = 60_000; // a few file removals + two systemctl calls
 // Stack lifecycle verbs (reroute/start/stop/destroy). The agent caps its own
 // compose up/down at ~90-120s; this is that plus dial/network slack. A deadline
 // is mandatory: these run under the per-DB lifecycle lock (lib/data/keyed-mutex),
@@ -479,6 +480,12 @@ export interface AgentConnection {
     version: string,
     binaries: Record<string, { url: string; sha256: string }>,
   ): Promise<{ version: string; restarting: boolean }>;
+  /** Remove the agent's OWN footprint from the host - systemd unit, binary, state
+   *  dir (mTLS materials included) - and stop. Resolves with the paths it actually
+   *  removed once every removal is done; the agent then exits, so this is the last
+   *  thing it ever answers. Docker is never touched. Rejects with UNIMPLEMENTED on
+   *  an agent without the `self-uninstall` capability. */
+  selfUninstall(): Promise<string[]>;
   /** Reclaim Docker disk on the host — a STRICT ALLOW-LIST, never a prune verb. The
    *  agent removes only what it can PROVE is unreferenced (a container-reference
    *  reverse index over running AND exited containers, or an on-disk sentinel), and
@@ -711,6 +718,13 @@ export class AgentUnreachableError extends Error {
  * changes — every layer above it is already wired.
  */
 export class AgentUpdateUnsupportedError extends Error {}
+
+/**
+ * The reachable agent is too old to remove itself (no `self-uninstall` capability,
+ * or gRPC UNIMPLEMENTED). Distinct from a failure ON the host: the operator's next
+ * step is the host-side command, which the caller always returns anyway.
+ */
+export class AgentUninstallUnsupportedError extends Error {}
 
 /**
  * The reachable agent does not (yet) implement the backup RPCs (Backup /
@@ -1621,6 +1635,16 @@ function dial(target: DialTarget): AgentConnection {
             err
               ? reject(toAgentError(err))
               : resolve({ version: resp.version, restarting: resp.restarting }),
+        );
+      });
+    },
+    selfUninstall() {
+      return new Promise<string[]>((resolve, reject) => {
+        client.selfUninstall(
+          {},
+          new Metadata(),
+          { deadline: new Date(Date.now() + SELF_UNINSTALL_TIMEOUT_MS) },
+          (err, resp) => (err ? reject(toAgentError(err)) : resolve(resp.removed)),
         );
       });
     },
@@ -2537,6 +2561,56 @@ export async function selfUpdateServerAgent(
       throw new AgentUpdateUnsupportedError(
         `The agent on this server is too old to update itself remotely ` +
           `(target v${release.version}). Re-run the install command to upgrade it.`,
+      );
+    }
+    throw e;
+  } finally {
+    conn.close();
+  }
+}
+
+/** The capability an agent advertises in Hello once it can uninstall itself
+ *  (mirrors the "self-uninstall" entry in the agent's server.Capabilities). */
+const SELF_UNINSTALL_CAPABILITY = "self-uninstall";
+
+/**
+ * Ask a server's agent to remove itself from its host, and report what it removed.
+ *
+ * The mirror image of {@link selfUpdateServerAgent} in every way that matters: same
+ * pinned-mTLS dial, same Hello capability pre-flight, same UNIMPLEMENTED mapping.
+ * The difference is what a success means - the agent is gone, the mTLS materials
+ * with it, and this connection is the last one that host will ever accept. So the
+ * caller must not revoke trust first (the call would then be one we are no longer
+ * entitled to make) and must not delete the row before this resolves.
+ *
+ * Only a MIGRATION SOURCE is uninstalled this way (`uninstallServerAgent` in
+ * lib/data/servers.ts enforces that). For an ordinary server, removal stays trust
+ * revocation plus the host-side script - ADR-0011 - and that script also remains
+ * the answer whenever this throws.
+ */
+export async function selfUninstallServerAgent(serverId: string): Promise<string[]> {
+  // `connectAgent` rather than resolveTarget + dial (which is what SelfUpdate
+  // does): identical in production - it IS resolveTarget + dial - but it is the
+  // seam the tests inject a stand-in through, and an uninstall that no test can
+  // drive is one nobody would notice breaking until a real host kept its agent.
+  const conn = await connectAgent(serverId);
+  try {
+    const hello = await conn.hello();
+    if (!hello.capabilities?.includes(SELF_UNINSTALL_CAPABILITY)) {
+      throw new AgentUninstallUnsupportedError(
+        "The agent on this server is too old to uninstall itself. Run the " +
+          "uninstall command on the host instead.",
+      );
+    }
+    return await conn.selfUninstall();
+  } catch (e) {
+    if (
+      !(e instanceof AgentUninstallUnsupportedError) &&
+      (e as Partial<ServiceError> | null)?.code === GrpcStatus.UNIMPLEMENTED
+    ) {
+      throw new AgentUninstallUnsupportedError(
+        "The agent on this server is too old to uninstall itself. Run the " +
+          "uninstall command on the host instead.",
       );
     }
     throw e;

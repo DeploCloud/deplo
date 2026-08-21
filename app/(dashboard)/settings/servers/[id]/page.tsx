@@ -50,6 +50,11 @@ export default async function ServerDetailPage(props: PageProps<"/settings/serve
   const { id } = await props.params;
   const server = await getServerById(id);
   if (!server) notFound();
+  // A migration source has no management page. Every tab here operates a host -
+  // its proxy, its disk, its certificates, its role - and that host belongs to the
+  // platform being migrated from. Its one action (uninstall the agent) lives on
+  // its card in the list instead.
+  if (server.importOnly) notFound();
 
   const [expectedAgentVersion, teamIds, teamsRaw, policy, runs] = await Promise.all([
     resolveExpectedAgentVersion(),
@@ -140,7 +145,9 @@ export default async function ServerDetailPage(props: PageProps<"/settings/serve
             dockerVersion: hydrated.dockerVersion,
             allTeams: hydrated.allTeams,
             deployConcurrency: hydrated.deployConcurrency,
-            role: serverRole(hydrated),
+            // Never "import": a migration source 404s above, so the summary's
+            // three-role union still holds here.
+            role: serverRole(hydrated) as "everything" | "build" | "storage",
             traefikDashboard: hydrated.traefikDashboard ?? null,
             suggestedTraefikDomain,
             isDeploHost,

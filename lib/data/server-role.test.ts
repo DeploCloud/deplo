@@ -13,7 +13,15 @@ import {
   SERVER_1,
   TRUNCATE_PROJECT_GRAPH,
 } from "./app-graph-test-helpers";
-import { setServerRole, serverRole, getServerById, listServerChoices } from "./servers";
+import {
+  setServerRole,
+  serverRole,
+  getServerById,
+  listServerChoices,
+  listBuildServerChoices,
+  addServer,
+  canHostWorkloads,
+} from "./servers";
 
 /**
  * What a server is FOR, and the one direction that is genuinely one-way.
@@ -141,5 +149,76 @@ test("either specialised role drops the host out of the deploy-target picker", a
         `a ${role} server was still offered as a deploy target`,
       );
     }
+  });
+});
+
+/* ------------------------------------------------------------------ */
+/* The fourth role: a MIGRATION SOURCE                                  */
+/* ------------------------------------------------------------------ */
+
+/** Register one the only way there is: through the import wizard's addServer. */
+async function addMigrationSource(name = "dokploy-host", host = "10.9.9.9") {
+  const { server } = await addServer({ name, host, importOnly: true });
+  return server;
+}
+
+test("a migration source is not a role anyone can pick, and not one it can leave", async () => {
+  await asOwner(async () => {
+    // Into it: refused. The installer put no Traefik and no shared network on
+    // that host, so a database write claiming otherwise would produce a server
+    // that looks ready and routes nothing.
+    await assert.rejects(
+      () => setServerRole(SERVER_1, "import" as never),
+      /created by the import wizard/,
+      "an ordinary server was demoted into a migration source",
+    );
+    assert.equal(serverRole((await getServerById(SERVER_1))!), "everything");
+
+    // Out of it: refused too, and the message says what to do instead.
+    const src = await addMigrationSource();
+    for (const role of ["everything", "build", "storage"] as const) {
+      await assert.rejects(
+        () => setServerRole(src.id, role),
+        /Re-run the install command/,
+        `a migration source was promoted to ${role}`,
+      );
+    }
+    assert.equal(serverRole((await getServerById(src.id))!), "import");
+  });
+});
+
+test("a migration source is out of the deploy picker AND the build picker", async () => {
+  await asOwner(async () => {
+    const src = await addMigrationSource();
+    assert.equal(canHostWorkloads(src), false);
+    assert.equal(
+      (await listServerChoices()).some((c) => c.id === src.id),
+      false,
+      "a migration source was offered as a deploy target",
+    );
+    // The build picker is the one that reads differently: it deliberately keeps
+    // hosts that cannot deploy, and a migration source HAS Docker - so without
+    // its own exclusion it would be offered, and a build would ship the app's
+    // source and decrypted env to another platform's machine.
+    const builders = await listBuildServerChoices();
+    assert.ok(
+      builders.some((c) => c.id === SERVER_1),
+      "an ordinary server is still a legal builder",
+    );
+    assert.equal(
+      builders.some((c) => c.id === src.id),
+      false,
+      "a migration source was offered as a build server",
+    );
+  });
+});
+
+test("a build-only server is still a legal builder, unlike a migration source", async () => {
+  await asOwner(async () => {
+    await setServerRole(SERVER_1, "build");
+    assert.ok(
+      (await listBuildServerChoices()).some((c) => c.id === SERVER_1),
+      "a build-only server must stay in the build picker - that is what it is for",
+    );
   });
 });

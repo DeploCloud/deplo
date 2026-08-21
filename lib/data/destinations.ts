@@ -559,6 +559,15 @@ async function serverDestinationFields(input: CreateDestinationInput) {
   if (!server) throw new Error("Not found");
   if (!server.agent?.certFingerprint)
     throw new Error(`${serverLabel(server)} has no agent connected yet`);
+  // Storage-only hosts are welcome here - holding backups is what they are for -
+  // but a migration source is not ours to fill: it is the other platform's machine,
+  // and the agent on it is removed the day the migration ends, which would take the
+  // destination's artifacts with it.
+  if (server.importOnly)
+    throw new Error(
+      `${serverLabel(server)} is a migration source - Deplo is only borrowing it ` +
+        `to import from. Pick a server in your fleet.`,
+    );
 
   const path = input.path?.trim() || null;
   if (path) {
@@ -667,8 +676,12 @@ export async function ensureDefaultDestination(): Promise<void> {
   // transient failure BEFORE the insert (a blip reading the fleet) used to keep
   // the claim forever and the team never got its default at all.
   try {
+    // A migration source can be the first - or the only - provisioned server a
+    // fresh team can see, and seeding its default destination there would both put
+    // the backups on someone else's machine and make the server un-uninstallable
+    // (destination.server_id is ON DELETE RESTRICT).
     const provisioned = (await listServersForCurrentTeam()).filter(
-      (s) => s.agent?.certFingerprint,
+      (s) => s.agent?.certFingerprint && !s.importOnly,
     );
     const self = deploHostSelfAddresses();
     const server =
@@ -998,7 +1011,11 @@ async function checkOnAnyBackupAgent(
   /** `<server> — <why>` for each server tried and skipped, in order. */
   attempts: string[];
 }> {
-  const servers = (await listAllServers()).filter((s) => s.agent?.certFingerprint);
+  // Any provisioned agent can reach a bucket - except a migration source, which is
+  // another platform's host that happens to have our agent on it for one job.
+  const servers = (await listAllServers()).filter(
+    (s) => s.agent?.certFingerprint && !s.importOnly,
+  );
   if (servers.length === 0) {
     throw new AgentUnreachableError(
       "No provisioned server is available to verify the bucket.",

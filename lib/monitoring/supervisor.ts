@@ -549,6 +549,12 @@ export async function reconcileMetricsStreams(): Promise<void> {
     // No agent enrolled yet (still provisioning, or never called home): there is
     // nothing to dial, and pretending otherwise would write a false offline.
     if (!s.agent?.certFingerprint) continue;
+    // A migration source is not part of the fleet: no telemetry stream is opened
+    // to it, because we do not operate that machine and nobody is watching a chart
+    // of it. Skipped HERE rather than by filtering `servers`, which is also what
+    // pruneMetricsHistoryTo below reads - filtering the array would prune the whole
+    // buffer every tick.
+    if (s.importOnly) continue;
     live.add(s.id);
     if (state.servers.has(s.id)) continue;
 
