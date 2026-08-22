@@ -11,16 +11,16 @@ import { ConfirmAction } from "@/components/shared/confirm-action";
 import { gql, gqlAction } from "@/lib/graphql-client";
 
 /**
- * The end of a migration: take Deplo's agent back off the machines it was
- * installed on.
+ * The FALLBACK for taking Deplo's agent back off the machines it was installed on.
  *
- * It is a step, not an automatic sweep, because an import is usually several
- * passes - the configuration, then the volumes, then the project someone forgot -
- * and uninstalling after the first one would lock the operator out of the rest.
- * So the report offers it, once there is nothing left to import.
+ * Finishing an import does it by itself (`removeMigrationSources`), so this card
+ * is what is left when it could not: the host refused three times, a volume copy
+ * failed and the bytes are still over there, or whoever ran the import is not an
+ * instance admin. The report says which, this presses the button once it is safe.
  *
- * Renders NOTHING when there are no migration sources, which is every import from
- * a platform Deplo already had an agent on, and every report opened afterwards.
+ * Renders NOTHING when there are no migration sources, which is the normal end of
+ * a migration, every import from a platform Deplo already had an agent on, and
+ * every report opened afterwards.
  */
 const SOURCES = /* GraphQL */ `
   query MigrationSources {
@@ -107,12 +107,12 @@ export function RemoveMigrationSources() {
         <div className="min-w-0">
           <CardTitle className="flex items-center gap-2">
             <DownloadCloud className="size-4 text-muted-foreground" />
-            Migration complete
+            Agent still installed
           </CardTitle>
           <p className="mt-1 text-sm text-muted-foreground">
             {one
-              ? "Remove Deplo's agent from the machine it imported from."
-              : "Remove Deplo's agent from the machines it imported from."}
+              ? "Deplo's agent is still on the machine it imported from. Remove it once there is nothing left to import."
+              : "Deplo's agent is still on the machines it imported from. Remove them once there is nothing left to import."}
           </p>
         </div>
         <ConfirmAction

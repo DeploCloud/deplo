@@ -19,6 +19,7 @@ import {
   databases as databasesTable,
   domains as domainsTable,
   envVars as envVarsTable,
+  servers as serversTable,
   sharedEnvVars as sharedVarsTable,
   sharedEnvVarApps as sharedVarAppsTable,
 } from "../db/schema/control-plane";
@@ -43,6 +44,7 @@ import {
 } from "../dokploy/client";
 import { __setAgentConnectorForTest } from "../infra/agent-client";
 import {
+  appendRunItem,
   beginDokployImport,
   finishDokployImport,
   getDokployImport,
@@ -51,6 +53,7 @@ import {
   scanDokploy,
 } from "./dokploy-import";
 import { createProject } from "./projects";
+import { addServer, getServerById } from "./servers";
 import { listEnvironmentsForProject } from "./environments";
 
 /**
@@ -809,6 +812,83 @@ test("the run keeps the report after the tab is gone", async () => {
   assert.ok(full!.items.some((i) => i.path.startsWith("Blink / production /")));
   // The API key is nowhere in the stored run.
   assert.equal(JSON.stringify(full).includes(CONNECT.apiKey), false);
+});
+
+/* ------------------------------------------------------------------ */
+/* The migration source                                                */
+/* ------------------------------------------------------------------ */
+
+/** Register a migration source the way the wizard's Machines step does. */
+async function seedSource(name: string, host: string, withAgent = false) {
+  const { server } = await asOwner(() => addServer({ name, host, importOnly: true }));
+  if (withAgent)
+    await db
+      .update(serversTable)
+      .set({ agentCertFingerprint: `sha256:${server.id}`, agentPort: 9443 })
+      .where(eq(serversTable.id, server.id));
+  return server.id;
+}
+
+test("finishing an import takes Deplo's agent back off the migration source", async () => {
+  const id = await seedSource("dokploy-host", "192.0.2.70");
+  const runId = await asOwner(() => beginDokployImport({ url: URL_BASE }));
+
+  await asOwner(() => finishDokployImport(runId));
+
+  assert.equal(
+    await asOwner(() => getServerById(id)),
+    null,
+    "the source outlived the migration - someone has to go and remove it by hand",
+  );
+});
+
+test("data that did not copy KEEPS the source, agent and all", async () => {
+  const id = await seedSource("dokploy-host", "192.0.2.71");
+  const runId = await asOwner(() => beginDokployImport({ url: URL_BASE }));
+  await appendRunItem(runId, {
+    path: "Blink / production / api",
+    sourceKind: "volume",
+    sourceName: "api-data",
+    outcome: "failed",
+    message: "the copy failed",
+  });
+
+  await asOwner(() => finishDokployImport(runId));
+
+  assert.ok(
+    await asOwner(() => getServerById(id)),
+    "the only way back to the bytes was uninstalled",
+  );
+  const full = await asOwner(() => getDokployImport(runId));
+  assert.match(
+    full!.items.find((i) => i.sourceKind === "server")!.message!,
+    /still on dokploy-host: data that did not copy/,
+  );
+});
+
+test("a host that will not let go keeps its row, and the report says so", async () => {
+  const id = await seedSource("dokploy-host", "192.0.2.72", true);
+  // An agent too old to know the RPC: it never advertises the capability, so
+  // every retry lands on the same refusal.
+  __setAgentConnectorForTest(
+    async () =>
+      ({
+        hello: async () => ({ capabilities: ["self-update"] }),
+        close: () => {},
+      }) as unknown as Awaited<
+        ReturnType<typeof import("../infra/agent-client").connectAgent>
+      >,
+  );
+  const runId = await asOwner(() => beginDokployImport({ url: URL_BASE }));
+
+  await asOwner(() => finishDokployImport(runId));
+
+  assert.ok(await asOwner(() => getServerById(id)), "the row must survive");
+  const full = await asOwner(() => getDokployImport(runId));
+  assert.match(
+    full!.items.find((i) => i.sourceKind === "server")!.message!,
+    /could not remove its own agent from dokploy-host after 3 tries/,
+  );
 });
 
 test("a run left open by a closed tab is closed as interrupted by the next one", async () => {

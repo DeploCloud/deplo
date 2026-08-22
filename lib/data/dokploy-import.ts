@@ -19,6 +19,7 @@ import {
   canExposePorts,
   canMountHostVolumes,
   hasCapability,
+  isInstanceAdmin,
   requireActiveTeamId,
   requireCapability,
   requireInstanceAdmin,
@@ -83,7 +84,7 @@ import { createDatabase, isValidExposePort } from "./databases";
 import { addDomain, updateDomain } from "./domains";
 import { createEnvironment, listEnvironmentsForProject } from "./environments";
 import { createProject, defaultEnvironmentFor, listProjects } from "./projects";
-import { canHostWorkloads, listServersForTeam } from "./servers";
+import { canHostWorkloads, listServersForTeam, uninstallServerAgent } from "./servers";
 import { deploHostSelfAddresses, isDeploHostServer } from "../deploy/domains";
 import { saveSharedVar } from "./shared-vars";
 import { recordActivity } from "./activity";
@@ -893,11 +894,98 @@ export async function beginDokployImport(input: {
   return id;
 }
 
-/** Close a run. Idempotent: a finished run is left alone. */
+/**
+ * How many times a finished migration asks a source host to uninstall Deplo's
+ * agent before it hands the job back to a person. The failure it retries is the
+ * transient one - a box still busy with the last volume, an RPC that timed out.
+ */
+const UNINSTALL_ATTEMPTS = 3;
+const UNINSTALL_RETRY_MS = 2000;
+
+/**
+ * The last act of a migration: take Deplo's agent back off every machine it was
+ * installed on to read Dokploy, and forget those rows.
+ *
+ * Automatic, because a migration that ends with "now go and remove the agent
+ * yourself" is not finished - the operator never installed it, so undoing it is
+ * not their errand. It stays best-effort: anything it cannot do becomes a
+ * `manual` line in the report and leaves the source in place, which is exactly
+ * what makes the button on the report page appear.
+ *
+ * Two things hold it back on purpose:
+ *  - a volume copy that FAILED, because the bytes are still over there and
+ *    removing the agent is removing the only way to fetch them;
+ *  - an actor who is not an instance admin, since uninstalling is instance-admin
+ *    like every other server action.
+ */
+async function removeMigrationSources(runId: string, teamId: string): Promise<void> {
+  const sources = (await listServersForTeam(teamId)).filter((s) => s.importOnly);
+  if (sources.length === 0) return;
+
+  const hold = async (why: string) => {
+    for (const s of sources)
+      await appendRunItem(runId, {
+        path: s.name,
+        sourceKind: "server",
+        sourceName: s.name,
+        outcome: "manual",
+        message: `Deplo's agent is still on ${s.name}: ${why}`,
+      });
+  };
+
+  const stranded = await getDb()
+    .select({ id: itemsTable.id })
+    .from(itemsTable)
+    .where(
+      and(
+        eq(itemsTable.runId, runId),
+        eq(itemsTable.sourceKind, "volume"),
+        eq(itemsTable.outcome, "failed"),
+      ),
+    )
+    .limit(1);
+  if (stranded.length > 0)
+    return hold("data that did not copy is still on it. Remove it once the copy is done.");
+  if (!(await isInstanceAdmin()))
+    return hold("only an instance admin can remove it.");
+
+  for (const s of sources) {
+    let error = "";
+    for (let attempt = 1; attempt <= UNINSTALL_ATTEMPTS; attempt++) {
+      try {
+        const res = await uninstallServerAgent(s.id);
+        error = res.removed ? "" : (res.error ?? "the agent is still installed");
+      } catch (e) {
+        error = e instanceof Error ? e.message : String(e);
+      }
+      if (!error) break;
+      if (attempt < UNINSTALL_ATTEMPTS)
+        await new Promise((r) => setTimeout(r, UNINSTALL_RETRY_MS));
+    }
+    // Only the failure is reported: a source that went away is visible by being
+    // gone, and its uninstall is already in the Activity trail.
+    if (error)
+      await appendRunItem(runId, {
+        path: s.name,
+        sourceKind: "server",
+        sourceName: s.name,
+        outcome: "manual",
+        message:
+          `Deplo could not remove its own agent from ${s.name} after ${UNINSTALL_ATTEMPTS} ` +
+          `tries: ${error}. Remove it from the import report.`,
+      });
+  }
+}
+
+/** Close a run. Idempotent: a finished run is left alone.
+ *
+ *  The status flips FIRST, and only the call that flipped it sweeps the migration
+ *  sources: closing is the one atomic step here, so a second Finish (a retried
+ *  request, a second tab) cannot uninstall twice or write the same "still on that
+ *  host" line again. Counts come last, because the sweep writes report rows. */
 export async function finishDokployImport(runId: string): Promise<void> {
   const { teamId } = await assertImportGate();
-  await refreshCounts(runId, teamId);
-  await getDb()
+  const closed = await getDb()
     .update(runsTable)
     .set({ status: "done", finishedAt: nowIso() })
     .where(
@@ -906,7 +994,10 @@ export async function finishDokployImport(runId: string): Promise<void> {
         eq(runsTable.teamId, teamId),
         eq(runsTable.status, "running"),
       ),
-    );
+    )
+    .returning({ id: runsTable.id });
+  if (closed.length > 0) await removeMigrationSources(runId, teamId);
+  await refreshCounts(runId, teamId);
 }
 
 /** The open run of this team, as ids only — the writer's cheap ownership check.
