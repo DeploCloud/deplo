@@ -18,6 +18,7 @@ import {
   Loader2,
   FolderInput,
   Boxes,
+  TriangleAlert,
 } from "lucide-react";
 import { GitHubIcon } from "@/components/shared/brand-icons";
 import { describeAppSource } from "@/components/apps/app-source";
@@ -42,7 +43,7 @@ import {
 } from "@/components/apps/app-live-status";
 import { AppStatusDot } from "@/components/apps/app-status-dot";
 import { DeleteWithArtifacts } from "@/components/shared/delete-with-artifacts";
-import { appTypeLabel, cn, timeAgo } from "@/lib/utils";
+import { appTypeLabel, cn, repoCredentialMissing, timeAgo } from "@/lib/utils";
 import { gqlAction } from "@/lib/graphql-client";
 import type { AppSummary } from "@/lib/data/apps";
 import type { AppStatus, Capability } from "@/lib/types";
@@ -608,6 +609,14 @@ export function AppCard({
     <>
       <GitHubIcon className="size-3.5 shrink-0" />
       <span className="min-w-0 truncate">{project.repo.repo}</span>
+      {/* Names a repo, carries no credential to clone it with: the deploy would
+          die with a bare `exit status 128`. Derived from props the grid already
+          has, so flagging 70 cards costs nothing. */}
+      {repoCredentialMissing(project) && (
+        <SimpleTooltip content="No GitHub App is linked - a private repository will not clone">
+          <TriangleAlert className="pointer-events-auto size-3.5 shrink-0 text-[var(--warning)]" />
+        </SimpleTooltip>
+      )}
     </>
   ) : nonGit ? (
     <>

@@ -16,13 +16,14 @@ import { StatusBadge, StatusDot } from "@/components/shared/status-badge";
 import { EmptyState } from "@/components/shared/empty-state";
 import { DeploymentGraphic } from "@/components/apps/deployment-graphic";
 import { describeAppSource } from "@/components/apps/app-source";
+import { RepoLinkNotice } from "@/components/apps/repo-link-notice";
 import { FrameworkBadge } from "@/components/apps/framework-badge";
 import {
   effectiveFramework,
   supportsFrameworkDetection,
 } from "@/lib/apps/framework-catalog";
 import { CommitLink } from "@/components/apps/commit-link";
-import { formatBuildDuration, repoCommitUrl, timeAgo } from "@/lib/utils";
+import { formatBuildDuration, repoCommitUrl, repoCredentialMissing, timeAgo } from "@/lib/utils";
 
 export default async function AppOverview(
   props: PageProps<"/apps/[slug]">,
@@ -41,6 +42,13 @@ export default async function AppOverview(
 
   return (
     <div className="space-y-6">
+      {/* An app that names a repository but has no credential to clone it with:
+          the deploy would fail with nothing but `exit status 128` in the log,
+          so say it here instead. Derived from the row - no query, no API call. */}
+      {repoCredentialMissing(project) && project.repo && (
+        <RepoLinkNotice slug={slug} repoName={project.repo.repo || project.repo.url} />
+      )}
+
       {/* Production hero */}
       <Card>
         <CardHeader className="flex-row items-center justify-between space-y-0">

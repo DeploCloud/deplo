@@ -273,7 +273,11 @@ export function DeploymentSettingsForm({
   const [ghSelection, setGhSelection] = React.useState<GithubSelection | null>(
     initialSource === "github" && initialRepo
       ? {
-          installationId: initialRepo.installationId ?? installations[0]?.id ?? "",
+          // NOT `installations[0]`: an app whose installation column is NULL
+          // (imported, or its App reinstalled) does not deploy through the
+          // team's first App, and seeding one here claimed it did. The picker
+          // reports the empty string back as "not connected".
+          installationId: initialRepo.installationId ?? "",
           fullName: initialRepo.repo,
           branch: initialRepo.branch,
         }
@@ -320,8 +324,16 @@ export function DeploymentSettingsForm({
   // deploys with the deploy hook in Advanced settings.
   const gitConnection =
     connections.find((c) => c.id === gitValue.connectionId) ?? null;
+  // Deploy-on-push is real only when THIS APP has a credential: both webhook
+  // routes find their candidate apps BY the credential id
+  // (`repo_installation_id` / `repo_connection_id`), so an app with neither can
+  // never be delivered a push no matter how many Apps the team has connected.
+  // Asking `installations.length > 0` asked about the TEAM and offered the
+  // switch on apps whose pushes go nowhere. The `initialRepo` fallback keeps a
+  // healthy app's switch steady while the picker's repo list loads.
   const autoDeployPossible =
-    (usesGithubApp && installations.length > 0) ||
+    (usesGithubApp &&
+      Boolean(ghSelection?.installationId || initialRepo?.installationId)) ||
     (usesGitUrl && Boolean(gitConnection?.hasApi));
   const autoDeployBranch =
     (usesGithubApp ? ghSelection?.branch : gitValue.branch) ||

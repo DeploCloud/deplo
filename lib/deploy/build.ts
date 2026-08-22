@@ -84,6 +84,7 @@ import {
 } from "../data/domains";
 import { basicAuthUsersValue } from "../data/basic-auth";
 import { forkCloneUrl, resolveCloneUrl } from "../git/clone-url";
+import { repoCloneRefusal } from "../git/repo-access";
 import { publishAppChanged } from "../graphql/pubsub";
 import {
   agentCapabilityForMethod,
@@ -2162,6 +2163,17 @@ async function runDeployment(depId: string): Promise<void> {
         const forkUrl = preview?.isFork
           ? forkCloneUrl(repo.url, preview.headCloneUrl)
           : null;
+        // Say WHY the clone is about to fail, before it does. The agent reports
+        // back only `git clone failed: exit status 128` - it forwards no git
+        // stderr - so the build log has never been able to name a cause, and a
+        // repo the credential cannot reach looked identical to a broken build.
+        // Fails OPEN: only an explicit 401/403/404 stops the deploy, a slow or
+        // unhappy provider does not (see `repoCloneRefusal`). A fork preview
+        // clones the FORK anonymously by design, so it is exempt.
+        if (!forkUrl) {
+          const refusal = await repoCloneRefusal(repo);
+          if (refusal) throw new Error(refusal);
+        }
         const cloneUrl = forkUrl ?? (await resolveCloneUrl(repo));
         // One tag per deployment, and the agent builds under exactly this string -
         // it resolves the commit sha but never retags with it. Recorded on the row

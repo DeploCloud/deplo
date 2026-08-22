@@ -1263,8 +1263,12 @@ export interface UpdateSourceInput {
  * both arrive as a plain id in a client request - so without this, a crafted
  * payload could point an app at ANOTHER team's credential and have Deplo clone
  * their private repository with it. Dropping the id (rather than failing) leaves
- * an anonymous clone, which is exactly right for a public repo and gives a clear
- * "authentication failed" for a private one.
+ * an anonymous clone, which is exactly right for a public repo.
+ *
+ * It is NOT, however, "a clear authentication failed" for a private one, as this
+ * used to claim: the agent forwards no git stderr, so the deploy log said only
+ * `git clone failed: exit status 128`. `repoCloneRefusal` (lib/git/repo-access.ts)
+ * is what now names the cause before the clone is attempted.
  *
  * Called before the transaction, never inside one: it runs its own queries.
  */

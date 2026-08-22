@@ -6,7 +6,9 @@ import {
   formatBuildDuration,
   isHexColor,
   normalizeHexColor,
+  pickerInstallationId,
   readableTextColor,
+  repoCredentialMissing,
 } from "./utils";
 import { FOLDER_COLORS } from "./folder-colors";
 
@@ -119,4 +121,39 @@ test("cn keeps a breakpoint-scoped size when a call site overrides the base one"
   const pinned = cn("text-base lg:text-lg font-semibold", "text-2xl lg:text-2xl");
   assert.doesNotMatch(pinned, /\blg:text-lg\b/);
   assert.doesNotMatch(pinned, /(^|\s)text-base(\s|$)/);
+});
+
+test("pickerInstallationId never invents a GitHub App for an app that already has a repo", () => {
+  const insts = [{ id: "gi_first" }, { id: "gi_real" }];
+  // A NEW app asserts nothing yet, so opening on the first App is helpful.
+  assert.equal(pickerInstallationId(undefined, insts), "gi_first");
+  // A properly connected app opens on its OWN App.
+  assert.equal(pickerInstallationId({ installationId: "gi_real" }, insts), "gi_real");
+  // An imported app: repo set, credential NULL. This used to answer "gi_first",
+  // which is how the UI came to claim a connection the database never had.
+  assert.equal(pickerInstallationId({ installationId: null }, insts), "");
+  // A re-installed App re-keys the row: the stored id no longer exists. Same
+  // class of lie, same answer.
+  assert.equal(pickerInstallationId({ installationId: "gi_gone" }, insts), "");
+  assert.equal(pickerInstallationId(undefined, []), "");
+});
+
+test("only a row that claims a GitHub App it lacks is flagged", () => {
+  const bare = { installationId: null, connectionId: null };
+  // The real broken row: source github, both credential columns NULL.
+  assert.equal(repoCredentialMissing({ source: "github", repo: bare }), true);
+  assert.equal(
+    repoCredentialMissing({ source: "github", repo: { installationId: "gi_1" } }),
+    false,
+  );
+  assert.equal(
+    repoCredentialMissing({ source: "github", repo: { connectionId: "gc_1" } }),
+    false,
+  );
+  // A bare Repository URL is the documented use of that source, not a fault:
+  // an anonymous clone of a PUBLIC repo deploys fine. Widening the predicate to
+  // "no credential" would flag it, and a warning on a healthy app is noise.
+  assert.equal(repoCredentialMissing({ source: "git", repo: bare }), false);
+  assert.equal(repoCredentialMissing({ source: "docker-image", repo: null }), false);
+  assert.equal(repoCredentialMissing({ source: "github", repo: null }), false);
 });

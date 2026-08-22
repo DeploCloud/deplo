@@ -299,8 +299,13 @@ export async function listRepoBranches(
 /** GET a fixed api.github.com path, authenticating only when a token is given
  * (public repos can be read unauthenticated, subject to GitHub's IP rate
  * limit). Same pinned host + headers as {@link githubFetch}; no SSRF surface. */
-async function githubGet(path: string, token: string | null): Promise<Response> {
+async function githubGet(
+  path: string,
+  token: string | null,
+  signal?: AbortSignal,
+): Promise<Response> {
   return fetch(`${API}${path}`, {
+    signal,
     headers: {
       Accept: "application/vnd.github+json",
       "X-GitHub-Api-Version": "2022-11-28",
@@ -308,6 +313,32 @@ async function githubGet(path: string, token: string | null): Promise<Response> 
       ...(token ? { Authorization: `Bearer ${token}` } : {}),
     },
   });
+}
+
+/**
+ * Whether a repository is visible to an installation - or, with a null id, to an
+ * anonymous caller, which is exactly what a credential-less clone gets.
+ *
+ * Deliberately NOT team-gated, unlike {@link listRepoBranches} and
+ * {@link listInstallationRepos}: it runs at the deploy edge, where there is no
+ * session to resolve a team from. That is safe only because it answers a
+ * yes/no about a repo the CALLER already named and returns no repository data -
+ * but it means the answer is a private-repo existence oracle, so **this must
+ * never be exposed through GraphQL, MCP or any route**. Its only caller is
+ * `repoCloneRefusal` in lib/git/repo-access.ts.
+ *
+ * Throws with the status spelled into the message, which is what `isRefusal`
+ * reads to tell a real refusal (401/403/404) from a bad minute at GitHub.
+ */
+export async function checkRepoVisible(
+  installationId: string | null,
+  fullName: string,
+  signal?: AbortSignal,
+): Promise<void> {
+  if (!OWNER_REPO_RE.test(fullName)) throw new Error("Invalid repository");
+  const token = installationId ? await getInstallationToken(installationId) : null;
+  const res = await githubGet(`/repos/${fullName}`, token, signal);
+  if (!res.ok) throw new Error(`GitHub repo check failed (${res.status})`);
 }
 
 /** A single blob entry from a repo's recursive git tree. */

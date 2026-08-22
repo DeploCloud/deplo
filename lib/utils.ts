@@ -231,6 +231,56 @@ export function appTypeLabel(app: {
 }
 
 /**
+ * Which GitHub App the repo picker opens on.
+ *
+ * For a NEW app (`initial` undefined - no repo chosen yet) the first connected
+ * App is a fine starting point: nothing is asserted, and the user is about to
+ * choose one anyway. For an app that ALREADY has a repo, falling back to the
+ * first App DRAWS A CONNECTION THE APP DOES NOT HAVE - an imported app carries a
+ * repo with no installation, and a re-installed App re-keys the row this used to
+ * point at. Both then READ as linked while `resolveCloneUrl` takes its third
+ * branch and clones anonymously, which is how an app ends up failing to deploy
+ * from a repository the UI says it is connected to.
+ *
+ * Empty string instead: the picker says "not connected", which is the truth, and
+ * a credential the user never chose cannot be stitched onto a save.
+ */
+export function pickerInstallationId(
+  initial: { installationId?: string | null } | undefined,
+  installations: { id: string }[],
+): string {
+  if (!initial) return installations[0]?.id ?? "";
+  return installations.some((i) => i.id === initial.installationId)
+    ? initial.installationId!
+    : "";
+}
+
+/**
+ * Whether an App claims a git credential it does not have.
+ *
+ * `source: "github"` means "clone through a connected GitHub App". With no
+ * installation stored the row contradicts itself: the deploy will clone
+ * anonymously, which fails on a private repository and cannot receive a webhook
+ * either (both webhook routes find apps BY the credential id).
+ *
+ * A bare "Repository URL" with no connection is NOT this. Cloning a public repo
+ * anonymously is exactly what that source is for, so widening this to "no
+ * credential" would flag apps that deploy perfectly well - and a warning on a
+ * healthy app is what teaches people to ignore the warning.
+ */
+export function repoCredentialMissing(app: {
+  source: string;
+  repo: { installationId?: string | null; connectionId?: string | null } | null;
+}): boolean {
+  return (
+    app.source === "github" &&
+    !!app.repo &&
+    !app.repo.installationId &&
+    !app.repo.connectionId
+  );
+}
+
+/**
  * The host-global docker volume name for a single-container project's named
  * volume. A volume name is GLOBAL on the daemon (like container_name was —
  * compose strips it to avoid collisions) and the host is shared across teams,

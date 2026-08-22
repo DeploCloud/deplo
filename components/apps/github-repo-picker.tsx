@@ -25,7 +25,7 @@ import { FieldLabel } from "@/components/ui/info-tip";
 import { GitHubIcon } from "@/components/shared/brand-icons";
 import { useGithubConnect } from "@/components/apps/github-connect-button";
 import { RepoBrowser, type RepoSelection } from "@/components/apps/repo-browser";
-import { cn } from "@/lib/utils";
+import { cn, pickerInstallationId } from "@/lib/utils";
 import type { GithubInstallationDTO } from "@/lib/data/github";
 
 export interface GithubSelection {
@@ -124,7 +124,9 @@ export function GithubRepoPicker({
   /**
    * Pre-select a repo/branch already attached to the app (settings flow).
    * The installation is matched by id; when it isn't among the connected
-   * installations (e.g. the App was reinstalled) the first one is used.
+   * installations (the App was reinstalled, or the app was imported and never
+   * had one) NOTHING is selected - the switcher says so rather than showing an
+   * App the app does not actually deploy through.
    */
   initial?: { installationId?: string | null; fullName: string; branch: string };
   onChange: (value: GithubSelection | null) => void;
@@ -132,12 +134,17 @@ export function GithubRepoPicker({
   manageHref?: string;
 }) {
   const { connect, pending: connecting } = useGithubConnect();
-  const [installationId, setInstallationId] = React.useState(
-    (initial?.installationId &&
-      installations.some((i) => i.id === initial.installationId)
-      ? initial.installationId
-      : installations[0]?.id) ?? "",
+  // Never seed an App the user did not choose: for an app that already has a
+  // repo, falling back to the first one claims a connection the row does not
+  // have. See `pickerInstallationId`.
+  const [installationId, setInstallationId] = React.useState(() =>
+    pickerInstallationId(initial, installations),
   );
+  // An app that carries a repo but no App to reach it through. The row is legal
+  // (a public repo clones anonymously) but it is almost never what was meant,
+  // and until now nothing on this screen said so - the switcher simply showed
+  // the first connected App as though it were linked.
+  const unlinkedRepo = Boolean(initial && !installationId && installations.length > 0);
 
   const activeInstallation =
     installations.find((i) => i.id === installationId) ?? null;
@@ -145,7 +152,10 @@ export function GithubRepoPicker({
 
   const handleChange = React.useCallback(
     (sel: RepoSelection | null) => {
-      onChange(sel ? { installationId, ...sel } : null);
+      // `installationId` is stitched on here, at the last moment, so a selection
+      // must never bubble without one: that pair would be a credential the user
+      // never picked.
+      onChange(sel && installationId ? { installationId, ...sel } : null);
     },
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [installationId],
@@ -182,9 +192,25 @@ export function GithubRepoPicker({
                   </>
                 ) : (
                   <>
-                    <GitHubIcon className="size-4 shrink-0 text-muted-foreground" />
-                    <span className="min-w-0 flex-1 truncate text-muted-foreground">
-                      No connected apps
+                    <GitHubIcon
+                      className={cn(
+                        "size-4 shrink-0",
+                        hasInstallations
+                          ? "text-[var(--warning)]"
+                          : "text-muted-foreground",
+                      )}
+                    />
+                    <span
+                      className={cn(
+                        "min-w-0 flex-1 truncate",
+                        hasInstallations
+                          ? "text-[var(--warning)]"
+                          : "text-muted-foreground",
+                      )}
+                    >
+                      {hasInstallations
+                        ? "Not connected - choose an App"
+                        : "No connected apps"}
                     </span>
                   </>
                 )}
@@ -245,6 +271,15 @@ export function GithubRepoPicker({
         </div>
       </div>
 
+      {unlinkedRepo && initial && (
+        <p className="rounded-lg border border-[var(--warning)]/30 bg-[var(--warning)]/5 px-3 py-2 text-xs text-muted-foreground">
+          <span className="font-medium text-foreground">{initial.fullName}</span>{" "}
+          is not connected to a GitHub App here, so Deplo clones it anonymously
+          and pushes cannot deploy it. Choose the App that can reach it, pick the
+          repository, then Save.
+        </p>
+      )}
+
       {!hasInstallations ? (
         <ConnectPanel connect={connect} connecting={connecting} />
       ) : (
@@ -256,7 +291,11 @@ export function GithubRepoPicker({
           avatarUrl={activeInstallation?.avatarUrl ?? ""}
           avatarFallback={activeInstallation?.accountLogin}
           repoLinkLabel="Open repository on GitHub"
-          emptyMessage="No repositories accessible to this App."
+          emptyMessage={
+            installationId
+              ? "No repositories accessible to this App."
+              : "Choose a GitHub App above to list its repositories."
+          }
           emptyAction={
             activeInstallation && (
               <a

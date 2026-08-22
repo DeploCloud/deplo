@@ -106,6 +106,11 @@ export function RepoBrowser({
   // Apply the initial selection only against the first repo list we load for
   // the source it belongs to; afterwards the user is in control.
   const seededRef = React.useRef(false);
+  // The repo the app is SAVED against, when this credential cannot reach it.
+  // The list already tells us (the seed found no match); until now that answer
+  // was thrown away and the field simply rendered empty, leaving the reason -
+  // the App was reinstalled, or never had access - for the user to guess.
+  const [unreachable, setUnreachable] = React.useState<string | null>(null);
   // Mirror the latest `initial` in a ref so the one-time seed in loadRepos can
   // read it WITHOUT making loadRepos reactive to it. If loadRepos depended on
   // initial.fullName / initial.branch, a post-save router.refresh - which feeds
@@ -167,6 +172,7 @@ export function RepoBrowser({
       setSelected(null);
       setBranches([]);
       setBranch("");
+      setUnreachable(null);
       const res =
         kindRef.current === "github"
           ? await gqlAction<{ githubRepos: RepoSummary[] }, RepoSummary[]>(
@@ -202,6 +208,9 @@ export function RepoBrowser({
             setBranches([seed.branch || match.defaultBranch]);
             void hydrateBranches(id, match, seed.branch);
           }
+          // No match: this credential cannot reach the repository the app is
+          // saved against. Say which one, rather than showing an empty field.
+          setUnreachable(match ? null : seed.fullName);
         }
       } else {
         setRepos([]);
@@ -373,6 +382,14 @@ export function RepoBrowser({
           <RefreshCw className={cn("size-4", loadingRepos && "animate-spin")} />
         </Button>
       </div>
+      {unreachable && !loadingRepos && (
+        <p className="rounded-lg border border-[var(--warning)]/30 bg-[var(--warning)]/5 px-3 py-2 text-xs text-muted-foreground">
+          <span className="font-medium text-foreground">{unreachable}</span> is
+          not among the repositories this credential can reach. Grant it access,
+          or pick another repository.
+          {emptyAction && <span className="mt-1 block">{emptyAction}</span>}
+        </p>
+      )}
 
       <div className="max-h-56 space-y-1 overflow-y-auto rounded-lg border border-border p-1">
         {loadingRepos ? (
