@@ -17,8 +17,10 @@ import { runWithIdentity } from "../auth/request-context";
 import {
   apps as appsTable,
   databases as databasesTable,
+  dokployImports as runsTable,
   domains as domainsTable,
   envVars as envVarsTable,
+  projects as projectsTable,
   servers as serversTable,
   sharedEnvVars as sharedVarsTable,
   sharedEnvVarApps as sharedVarAppsTable,
@@ -50,6 +52,7 @@ import {
   getDokployImport,
   importDokployProject,
   listDokployImports,
+  revertDokployImport,
   scanDokploy,
 } from "./dokploy-import";
 import { createProject } from "./projects";
@@ -1132,4 +1135,78 @@ test("without the publish-ports grant the port is dropped, and the report says w
   const row = await dbRowOf("blink-db");
   assert.equal(row?.exposedPublicly, false);
   assert.match(await notesOf(runId), /permission to publish ports/);
+});
+
+/* ------------------------------------------------------------------ */
+/* Undo                                                                */
+/* ------------------------------------------------------------------ */
+
+/**
+ * The half-finished migration, taken back out.
+ *
+ * The property that matters is not "it deletes things" - it is the LINE it
+ * draws. A run that reused something already here recorded that as `skipped`,
+ * and a revert that walked outcomes carelessly would delete a project somebody
+ * had been using for a year because a Dokploy project happened to share its
+ * name. So both directions are asserted, in the same fixture.
+ */
+
+test("a revert removes what the run created", async () => {
+  const runId = await asOwner(() => beginDokployImport({ url: URL_BASE }));
+  await importProject(runId, "dok-prj-blink");
+  await settleProvisioning(db);
+  assert.ok((await db.select().from(appsTable)).length > 0, "nothing was imported");
+
+  const result = await asOwner(() => revertDokployImport(runId));
+  await settleProvisioning(db);
+
+  assert.ok(result.apps > 0, `removed ${result.apps} apps`);
+  assert.equal(result.projects, 1, "the project it created is gone too");
+  assert.deepEqual(result.failed, []);
+  assert.equal((await db.select().from(appsTable)).length, 0);
+  assert.equal((await db.select().from(projectsTable)).length, 0);
+
+  // The run stays in History, saying what it now is.
+  const rows = await db.select().from(runsTable).where(eq(runsTable.id, runId));
+  assert.equal(rows[0].status, "reverted");
+});
+
+test("a revert never touches a project the run only reused", async () => {
+  // Same name Dokploy uses, created here first: `ensureProject` reuses it and
+  // records `skipped`, so it is not the run's to take away.
+  const mine = await asOwner(() => createProject("Blink"));
+  await seedApp(db, { id: "prj_keep", projectId: mine.id });
+
+  const runId = await asOwner(() => beginDokployImport({ url: URL_BASE }));
+  await importProject(runId, "dok-prj-blink");
+  await settleProvisioning(db);
+
+  const result = await asOwner(() => revertDokployImport(runId));
+  await settleProvisioning(db);
+
+  assert.equal(result.projects, 0, "it deleted a project it did not create");
+  const projects = await db.select().from(projectsTable);
+  assert.deepEqual(
+    projects.map((p) => p.id),
+    [mine.id],
+  );
+  // The app that was already in it is still in it.
+  const apps = await db.select().from(appsTable);
+  assert.deepEqual(
+    apps.map((a) => a.id),
+    ["prj_keep"],
+  );
+});
+
+test("a revert of somebody else's run is not found", async () => {
+  const runId = await asOwner(() => beginDokployImport({ url: URL_BASE }));
+  await importProject(runId, "dok-prj-blink");
+  await settleProvisioning(db);
+
+  await assert.rejects(
+    () => runWithIdentity({ userId: USER_1, teamId: TEAM_B }, () => revertDokployImport(runId)),
+    /no longer belongs|not found|permission/i,
+  );
+  // And nothing moved.
+  assert.ok((await db.select().from(appsTable)).length > 0);
 });

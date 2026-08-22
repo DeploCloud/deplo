@@ -3,7 +3,13 @@
 import * as React from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
-import { Loader2, ScrollText } from "lucide-react";
+import {
+  CircleStop,
+  Loader2,
+  ScrollText,
+  Server as ServerIcon,
+  Undo2,
+} from "lucide-react";
 
 import { gqlAction } from "@/lib/graphql-client";
 import { cn } from "@/lib/utils";
@@ -14,6 +20,8 @@ import { Switch } from "@/components/ui/switch";
 import { SimpleTooltip } from "@/components/ui/tooltip";
 import { FieldLabel } from "@/components/ui/info-tip";
 import { ConfettiBurst } from "@/components/shared/confetti-burst";
+import { ConfirmAction } from "@/components/shared/confirm-action";
+import type { ActionResult } from "@/lib/result";
 import { WizardStepper, type WizardStep } from "@/components/shared/wizard-stepper";
 import { UnsavedChangesGuard } from "@/components/apps/unsaved-changes-guard";
 import { InstallStep, type PendingMachine } from "./install-step";
@@ -33,6 +41,7 @@ import {
   type Placement,
   type Plan,
   type ReportItem,
+  type RevertResult,
   type ServerChoice,
 } from "./types";
 
@@ -216,6 +225,18 @@ const MOVE_DATA = /* GraphQL */ `
   }
 `;
 
+const REVERT = /* GraphQL */ `
+  mutation RevertDokployImport($runId: String!) {
+    revertDokployImport(runId: $runId) {
+      apps
+      databases
+      environments
+      projects
+      failed
+    }
+  }
+`;
+
 const FINISH = /* GraphQL */ `
   mutation FinishDokployImport($runId: String!) {
     finishDokployImport(runId: $runId)
@@ -338,6 +359,14 @@ export function MigrationWizard({
   const [runId, setRunId] = React.useState<string | null>(null);
   const [failure, setFailure] = React.useState<string | null>(null);
   const [running, setRunning] = React.useState(false);
+  /**
+   * Somebody pressed Stop. A ref, not state: the loop below reads it between
+   * calls in a closure that was made before the click, and a state read there
+   * would be the value it had when the run started.
+   */
+  const cancelled = React.useRef(false);
+  const [stopped, setStopped] = React.useState(false);
+  const [reverting, setReverting] = React.useState(false);
   const [logOpen, setLogOpen] = React.useState(false);
 
   const [invites, setInvites] = React.useState<Invite[] | null>(null);
@@ -456,6 +485,8 @@ export function MigrationWizard({
 
     setItems([]);
     setFailure(null);
+    cancelled.current = false;
+    setStopped(false);
     setProgress({ done: 0, total: targets.length, current: targets[0].project.name });
     setRunning(true);
 
@@ -481,6 +512,11 @@ export function MigrationWizard({
         .map(([from, to]) => ({ from, to }));
 
       for (const [i, target] of targets.entries()) {
+        // Between projects, never mid-request: a call already sent is finishing
+        // on the server whatever this tab does, and abandoning its answer would
+        // leave a project created here with no line in the report - the one
+        // thing a revert reads to know what to take back out.
+        if (cancelled.current) return;
         setProgress({ done: i, total: targets.length, current: target.project.name });
         const res = await gqlAction<
           { importDokployProject: { items: ReportItem[] } },
@@ -525,6 +561,7 @@ export function MigrationWizard({
       // The configuration is here; now the bytes. Read both sides once, then
       // copy every service that actually has a volume - the ones with none (a
       // git-built app, usually) have nothing to do here.
+      if (cancelled.current) return;
       setProgress({ done: targets.length, total: targets.length, current: "Reading the volumes" });
       const dataPlan = await gqlAction<{ planDokployDataMove: DataService[] }, DataService[]>(
         PLAN_DATA,
@@ -548,6 +585,7 @@ export function MigrationWizard({
       const movable = planned.filter((d) => d.volumes.length > 0);
 
       for (const [i, d] of movable.entries()) {
+        if (cancelled.current) return;
         setProgress({ done: i, total: movable.length, current: `Copying ${d.sourceName}` });
         const res = await gqlAction<{ moveDokployServiceData: MoveResult }, MoveResult>(
           MOVE_DATA,
@@ -578,11 +616,75 @@ export function MigrationWizard({
       router.refresh();
     } finally {
       setRunning(false);
+      // Every early return above lands here: a failure, or a Stop. Either way
+      // the wizard stays on this panel, which is where the way out of a
+      // half-finished migration is.
+      if (cancelled.current) {
+        setStopped(true);
+        router.refresh();
+      }
     }
 
-    // Only the happy path gets here: an early return above runs the `finally`
-    // and leaves the wizard on the moving panel with its failure, which is
-    // where it belongs.
+    // Only the happy path gets here.
+    setLogOpen(false);
+    setStep(isInstanceAdmin ? "people" : "done");
+  }
+
+  /**
+   * Take the half-finished migration back out.
+   *
+   * The whole point is that it is not the person's job to work out what landed:
+   * the run wrote a line for every object it created, and the server walks that
+   * ledger backwards. What it cannot remove - a database whose host will not
+   * confirm the volume is gone, a kind this actor may not delete - comes back
+   * named, rather than as a silent partial success.
+   */
+  async function revertRun() {
+    if (!runId) return { ok: false as const, error: "There is no run to undo." };
+    setReverting(true);
+    const res = await gqlAction<{ revertDokployImport: RevertResult }, RevertResult>(
+      REVERT,
+      { runId },
+      (d) => d.revertDokployImport,
+    );
+    setReverting(false);
+    if (!res.ok) {
+      toast.error(res.error);
+      return res;
+    }
+    const r = res.data;
+    const removed =
+      (r?.apps ?? 0) + (r?.databases ?? 0) + (r?.projects ?? 0) + (r?.environments ?? 0);
+    if (r && r.failed.length > 0)
+      // Not a toast: a list of what is STILL here is the thing to read, and a
+      // toast expires in four seconds. It lands in the log instead.
+      setItems((prev) => [
+        ...prev,
+        ...r.failed.map((f) => dataNote(f, "failed")),
+      ]);
+    toast.success(
+      removed === 0 ? "Nothing was left to remove" : `Removed ${removed} object(s)`,
+    );
+    setStopped(false);
+    setFailure(null);
+    setPlan(null);
+    setRunId(null);
+    setItems([]);
+    setProgress({ done: 0, total: 0, current: "" });
+    setChosen(new Set());
+    setPlacements({});
+    setServerMap({});
+    setPendingMachines({});
+    attemptedMachines.current = new Set();
+    setApiKey("");
+    setStep("connect");
+    router.refresh();
+    return res;
+  }
+
+  /** Keep what landed and read the report on it. */
+  function keepPartial() {
+    setStopped(false);
     setLogOpen(false);
     setStep(isInstanceAdmin ? "people" : "done");
   }
@@ -721,22 +823,27 @@ export function MigrationWizard({
               firstRun ? "max-w-xl" : "max-w-3xl",
             )}
           >
-            <WizardStepper
-              steps={STEPS}
-              current={step}
-              reachable={(s) => {
-                if (s === "connect") return true;
-                if (s === "install" || s === "review") return plan != null;
-                // People and the report are what the migration produces: an
-                // empty one is worse than a chip that does not respond.
-                return items.length > 0;
-              }}
-              onSelect={(s) => {
-                // Nothing moves while the loop is mid-flight.
-                if (running) return;
-                setStep(s);
-              }}
-            />
+            {/* Centred, because the column under it is centred: a rail hugging
+                the left edge of a narrow centred column reads as misaligned
+                with the heading below it, not as an anchor. */}
+            <div className="flex justify-center">
+              <WizardStepper
+                steps={STEPS}
+                current={step}
+                reachable={(s) => {
+                  if (s === "connect") return true;
+                  if (s === "install" || s === "review") return plan != null;
+                  // People and the report are what the migration produces: an
+                  // empty one is worse than a chip that does not respond.
+                  return items.length > 0;
+                }}
+                onSelect={(s) => {
+                  // Nothing moves while the loop is mid-flight.
+                  if (running) return;
+                  setStep(s);
+                }}
+              />
+            </div>
 
             <div>
               {step === "connect" && (
@@ -767,11 +874,18 @@ export function MigrationWizard({
 
               {step === "review" &&
                 plan &&
-                (running ? (
+                (running || stopped || failure ? (
                   <MovingPanel
                     progress={progress}
                     failure={failure}
+                    running={running}
+                    reverting={reverting}
                     onShowLog={() => setLogOpen(true)}
+                    onStop={() => {
+                      cancelled.current = true;
+                    }}
+                    onRevert={revertRun}
+                    onKeep={keepPartial}
                   />
                 ) : (
                   <ReviewStep
@@ -894,18 +1008,27 @@ function ConnectStep({
             used to be hidden without the grant, which left the most common
             single-box install - Dokploy and Deplo on the same machine - staring
             at an address that will not resolve, with nothing on screen saying
-            why or who could fix it. */}
-        <div className="flex items-start justify-between gap-4 rounded-lg border p-3">
-          <div className="min-w-0">
-            <FieldLabel htmlFor="same-machine">
-              Dokploy runs on this same machine
-            </FieldLabel>
-            <p className="mt-1 text-sm text-muted-foreground">
-              Allows a private address. From inside Deplo, Dokploy is usually
-              reachable at <code>http://172.17.0.1:3000</code> or on the host&apos;s
-              own IP.
-            </p>
-          </div>
+            why or who could fix it.
+
+            The explanation is a tooltip, not a paragraph: three lines of prose
+            under a switch is three lines every reader of this screen scrolls
+            past, and the only person who needs them is the one who already
+            wondered what the switch does. */}
+        <div className="flex items-center justify-between gap-4 rounded-lg border p-3">
+          <FieldLabel
+            htmlFor="same-machine"
+            className="gap-2"
+            info={
+              <>
+                Lets Deplo dial a private address. From in here, Dokploy is
+                usually at <code>http://172.17.0.1:3000</code> or on the
+                host&apos;s own IP.
+              </>
+            }
+          >
+            <ServerIcon className="size-4 text-muted-foreground" />
+            Same machine
+          </FieldLabel>
           {canUsePrivate ? (
             <Switch
               id="same-machine"
@@ -937,32 +1060,92 @@ function ConnectStep({
 /* ------------------------------------------------------------------ */
 
 /**
- * What the review turns into once the move starts.
+ * What the review turns into once the move starts, and what it becomes if that
+ * move does not finish.
  *
- * Not a dialog and not a step of its own: there is no decision here, so it gets
- * no chip on the rail, and nothing to close - leaving the page is refused while
- * this runs, so a dismissible dialog would only be offering a way out that does
- * not exist. Two lines and a bar say everything a person needs; the line-by-line
- * log is one secondary button away for whoever wants to watch a specific service
- * go over.
+ * Not a dialog and not a step of its own: there is no decision here while it
+ * runs, so it gets no chip on the rail, and nothing to close - leaving the page
+ * is refused, so a dismissible dialog would only offer a way out that does not
+ * exist. Two lines and a bar say everything; the line-by-line log is one
+ * secondary button away.
+ *
+ * The half-finished case is the one this panel really exists for. A run that
+ * failed on project four of seven, or one somebody stopped, leaves apps and
+ * databases here that are not a migration - they are debris - and Dokploy has
+ * already been stopped for them. So the panel asks the only question left, in
+ * two words each: take it back out, or keep it and read the report.
  */
 function MovingPanel({
   progress,
   failure,
+  running,
+  reverting,
   onShowLog,
+  onStop,
+  onRevert,
+  onKeep,
 }: {
   progress: MigrationProgress;
   failure: string | null;
+  running: boolean;
+  reverting: boolean;
   onShowLog: () => void;
+  /** Stop after the call in flight. Never mid-request - see the loop. */
+  onStop: () => void;
+  onRevert: () => Promise<ActionResult<unknown>>;
+  onKeep: () => void;
 }) {
   const pct = progress.total === 0 ? 0 : (progress.done / progress.total) * 100;
+  const [stopping, setStopping] = React.useState(false);
+
+  if (!running)
+    return (
+      <StepShell
+        title={failure ? "The migration stopped" : "You stopped the migration"}
+        lead={
+          failure ??
+          "Whatever had already come over is here, and Dokploy is not serving it any more."
+        }
+      >
+        <div className="flex flex-wrap items-center gap-2">
+          <ConfirmAction
+            trigger={
+              <Button variant="destructive">
+                <Undo2 className="size-4" />
+                Remove what came over
+              </Button>
+            }
+            title="Remove everything this migration created?"
+            confirmLabel="Remove it"
+            successMessage=""
+            description={
+              <>
+                Deplo deletes the apps, databases and projects this run created
+                here, with their data. Anything that was already in this team is
+                left alone.
+                <br />
+                <br />
+                It does not start Dokploy back up - the services this migration
+                stopped over there stay stopped.
+              </>
+            }
+            onConfirm={onRevert}
+          />
+          <Button variant="outline" onClick={onKeep} disabled={reverting}>
+            Keep it and see the report
+          </Button>
+          <Button variant="ghost" onClick={onShowLog} disabled={reverting}>
+            <ScrollText className="size-4" />
+            Show log
+          </Button>
+        </div>
+      </StepShell>
+    );
+
   return (
     <StepShell
-      title={failure ? "The migration stopped" : "Moving everything over"}
-      lead={
-        failure ??
-        "Deplo is creating your projects here and copying their data across. Stay on this page."
-      }
+      title="Moving everything over"
+      lead="Deplo is creating your projects here and copying their data across. Stay on this page."
     >
       <div className="space-y-2">
         <Progress value={pct} />
@@ -974,10 +1157,28 @@ function MovingPanel({
         </p>
       </div>
 
-      <div>
+      <div className="flex flex-wrap items-center gap-2">
         <Button variant="outline" onClick={onShowLog}>
           <ScrollText className="size-4" />
           Show log
+        </Button>
+        {/* Stop, not Cancel: the call in flight finishes either way, so this
+            asks for no confirmation - it is the safe half of the decision, and
+            the destructive one (take it back out) comes after, with its own. */}
+        <Button
+          variant="ghost"
+          onClick={() => {
+            setStopping(true);
+            onStop();
+          }}
+          disabled={stopping}
+        >
+          {stopping ? (
+            <Loader2 className="size-4 animate-spin" />
+          ) : (
+            <CircleStop className="size-4" />
+          )}
+          {stopping ? "Stopping" : "Stop"}
         </Button>
       </div>
     </StepShell>

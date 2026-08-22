@@ -1687,6 +1687,21 @@ enum DokployPlanStatus {
 }
 
 """
+What a revert took back out of Deplo, and what is still here because it could not be removed.
+"""
+type DokployRevertResult {
+  apps: Int
+  databases: Int
+  environments: Int
+
+  """
+  One line per thing that is still here, and why - a host that would not confirm the volume is gone, or a capability the actor does not hold.
+  """
+  failed: [String!]
+  projects: Int
+}
+
+"""
 Map one Dokploy server onto one of ours. `from` is the Dokploy server id, or the empty string for Dokploy's own host.
 """
 input DokployServerChoiceInput {
@@ -2875,6 +2890,11 @@ type Mutation {
   Reveal one shared variable's decrypted value (the `manage_env`-gated reveal; the UI keeps secrets masked).
   """
   revealSharedVar(id: String!): String
+
+  """
+  Remove everything this run CREATED in Deplo - apps, databases, and the projects it made. Anything it merely reused is left alone, and Dokploy is not restarted. Each delete keeps its own capability gate, so what the actor may not remove comes back in `failed`.
+  """
+  revertDokployImport(runId: String!): DokployRevertResult
 
   """
   Sign out every device except the one making the request, and return how many were ended.

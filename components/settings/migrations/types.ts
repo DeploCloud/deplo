@@ -101,6 +101,16 @@ export interface ImportRun {
   finishedAt: string | null;
 }
 
+/** What a revert took back out of Deplo, and what it could not. */
+export interface RevertResult {
+  apps: number;
+  databases: number;
+  environments: number;
+  projects: number;
+  /** One line per thing that is still here, and why. */
+  failed: string[];
+}
+
 /** A server a picker offers. `isDeploHost` marks the machine Deplo itself runs on. */
 export interface ServerChoice {
   id: string;

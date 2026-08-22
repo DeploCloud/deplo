@@ -8,22 +8,24 @@ import {
 } from "@/lib/data/dokploy-data";
 import {
   beginDokployImport,
+  type DokployInvite,
+  type DokployPlan,
   finishDokployImport,
   getDokployImport,
   importDokployMembers,
   importDokployProject,
-  listDokployImports,
-  scanDokploy,
-  type DokployInvite,
-  type DokployPlan,
   type ImportItemDTO,
   type ImportProjectResult,
   type ImportRunDTO,
+  listDokployImports,
   type PlanEnvironment,
   type PlanMember,
   type PlanProject,
   type PlanServer,
   type PlanService,
+  revertDokployImport,
+  type RevertResultDTO,
+  scanDokploy,
 } from "@/lib/data/dokploy-import";
 
 /**
@@ -317,6 +319,23 @@ const DataMoveResultRef = builder
     }),
   });
 
+const RevertResultRef = builder
+  .objectRef<RevertResultDTO>("DokployRevertResult")
+  .implement({
+    description:
+      "What a revert took back out of Deplo, and what is still here because it could not be removed.",
+    fields: (t) => ({
+      apps: t.exposeInt("apps"),
+      databases: t.exposeInt("databases"),
+      environments: t.exposeInt("environments"),
+      projects: t.exposeInt("projects"),
+      failed: t.exposeStringList("failed", {
+        description:
+          "One line per thing that is still here, and why - a host that would not confirm the volume is gone, or a capability the actor does not hold.",
+      }),
+    }),
+  });
+
 /* ------------------------------------------------------------------ */
 /* Inputs                                                             */
 /* ------------------------------------------------------------------ */
@@ -518,6 +537,14 @@ builder.mutationFields((t) => ({
         sourceKind,
         sourceId,
       }),
+  }),
+  revertDokployImport: t.field({
+    type: RevertResultRef,
+    authScopes: { capability: "create_projects" },
+    description:
+      "Remove everything this run CREATED in Deplo - apps, databases, and the projects it made. Anything it merely reused is left alone, and Dokploy is not restarted. Each delete keeps its own capability gate, so what the actor may not remove comes back in `failed`.",
+    args: { runId: t.arg.string({ required: true }) },
+    resolve: (_r, { runId }) => revertDokployImport(runId),
   }),
   finishDokployImport: t.field({
     type: "Boolean",

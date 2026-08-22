@@ -93,6 +93,9 @@ const CABLE_LEFT: Record<MigrationState, number> = {
 /** Three reads as a stream; one reads as an accident. */
 const PACKETS = 3;
 
+/** The id of the brand sweep. Same three stops in every copy of the drawing. */
+const BRAND_GRADIENT = "deplo-migration-brand";
+
 export function MigrationGraphic({
   state = "connect",
   className,
@@ -115,9 +118,36 @@ export function MigrationGraphic({
       aria-label={LABEL[state]}
       className={cn("h-32 w-auto", className)}
     >
+      <defs>
+        {/* Deplo's machine is drawn in the brand gradient - violet, pink, blue -
+            and only its CASE is: the mark on its face stays `currentColor`, the
+            way every logo in this repo does, so it reads in both themes.
+
+            `userSpaceOnUse` over the machine's own box, not the default bounding
+            box: a `<line>` has no height, so a bounding-box gradient on the drive
+            bays would collapse. Pinned to x 112-156 / y 32-88, the whole machine
+            shares one sweep instead of each part restarting it.
+
+            A fixed id is safe here even though the drawing appears more than once
+            on a page: every copy defines the same three stops, so whichever one
+            the browser resolves is the same gradient. */}
+        <linearGradient
+          id={BRAND_GRADIENT}
+          gradientUnits="userSpaceOnUse"
+          x1="112"
+          y1="32"
+          x2="156"
+          y2="88"
+        >
+          <stop offset="0%" stopColor="var(--deplo-migrate-g1)" />
+          <stop offset="50%" stopColor="var(--deplo-migrate-g2)" />
+          <stop offset="100%" stopColor="var(--deplo-migrate-g3)" />
+        </linearGradient>
+      </defs>
+
       {/* ---- the source, on the left. It dims at the end: the whole point of
               the drawing is that it stops being the one that serves. ---- */}
-      <Machine x={4} dim={done} lit={false}>
+      <Machine x={4} dim={done}>
         <svg
           x="14"
           y="41"
@@ -173,28 +203,28 @@ export function MigrationGraphic({
 
       {/* The sockets, drawn over the cable ends so it reads as plugged in. */}
       <Socket x={44} lit={done} />
-      <Socket x={108} lit={done} />
+      <Socket x={108} brand />
 
-      {/* ---- Deplo, on the right. The one element that turns green, and only
-              at the end - the single success beat every graphic here spends
-              its one `--success` on. ---- */}
+      {/* ---- Deplo, on the right. Always in the brand gradient, because it is
+              always Deplo; what CHANGES at the end is that it lights up - the
+              halo behind it, and the cable arriving in green. ---- */}
       {done && (
         <circle
           cx="134"
           cy="60"
           r="34"
           className="deplo-migrate-halo"
-          fill="var(--success)"
+          fill={`url(#${BRAND_GRADIENT})`}
         />
       )}
-      <Machine x={112} dim={false} lit={done}>
+      <Machine x={112} brand>
         <svg
           x="125"
           y="41"
           width="18"
           height="18"
           viewBox={MARK_VIEWBOX}
-          className={done ? "text-[var(--success)]" : "text-foreground"}
+          className="text-foreground"
         >
           <path d={LOGO_PATH} fill="currentColor" />
         </svg>
@@ -217,16 +247,17 @@ export function MigrationGraphic({
 function Machine({
   x,
   dim,
-  lit,
+  brand,
   children,
 }: {
   x: number;
   /** The source, after the move: still drawn, no longer the subject. */
-  dim: boolean;
-  /** Deplo, after the move. */
-  lit: boolean;
+  dim?: boolean;
+  /** Deplo's own machine, drawn in the brand gradient. */
+  brand?: boolean;
   children: React.ReactNode;
 }) {
+  const ink = brand ? `url(#${BRAND_GRADIENT})` : undefined;
   const line = dim ? "stroke-muted-foreground/20" : "stroke-muted-foreground/40";
   return (
     <>
@@ -236,9 +267,10 @@ function Machine({
         width="44"
         height="56"
         rx="7"
+        stroke={ink}
         className={
-          lit
-            ? "stroke-[var(--success)]"
+          brand
+            ? undefined
             : dim
               ? "stroke-muted-foreground/25"
               : "stroke-muted-foreground/50"
@@ -253,7 +285,8 @@ function Machine({
             y1={y}
             x2={x + 27}
             y2={y}
-            className={line}
+            stroke={ink}
+            className={brand ? "opacity-70" : line}
             strokeWidth="2.5"
             strokeLinecap="round"
           />
@@ -261,12 +294,15 @@ function Machine({
             cx={x + 34}
             cy={y}
             r="2"
+            fill={ink}
             className={cn(
-              // Only the first bay's light is alive, and only while this
-              // machine is the one doing something.
-              i === 0 && !dim && !lit && "deplo-migrate-blip",
-              lit
-                ? "fill-[var(--success)]"
+              // Only the first bay's light is alive, and only on the machine
+              // that is still the one serving.
+              i === 0 && !dim && !brand && "deplo-migrate-blip",
+              brand
+                ? i === 0
+                  ? undefined
+                  : "opacity-50"
                 : dim
                   ? "fill-muted-foreground/20"
                   : i === 0
@@ -280,7 +316,17 @@ function Machine({
   );
 }
 
-function Socket({ x, lit }: { x: number; lit: boolean }) {
+function Socket({
+  x,
+  lit,
+  brand,
+}: {
+  x: number;
+  /** The migration landed, so this end went green with the cable. */
+  lit?: boolean;
+  /** Deplo's end, which wears the brand gradient like the machine behind it. */
+  brand?: boolean;
+}) {
   return (
     <rect
       x={x}
@@ -288,7 +334,14 @@ function Socket({ x, lit }: { x: number; lit: boolean }) {
       width="8"
       height="8"
       rx="2"
-      className={lit ? "stroke-[var(--success)]" : "stroke-muted-foreground/60"}
+      stroke={brand ? `url(#${BRAND_GRADIENT})` : undefined}
+      className={
+        brand
+          ? undefined
+          : lit
+            ? "stroke-[var(--success)]"
+            : "stroke-muted-foreground/60"
+      }
       fill="var(--background)"
       strokeWidth="2.5"
     />

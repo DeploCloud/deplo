@@ -2943,6 +2943,23 @@
   transition: stroke-dashoffset 700ms cubic-bezier(0.16, 1, 0.3, 1);
 }
 
+/* Deplo's own machine in the migration drawing is the one thing here that is
+   not a token: a violet-pink-blue sweep, brand artwork rather than UI colour.
+   Two sets, because a gradient bright enough to read on the dark theme is
+   washed out on the light one - the same reason `--deplo-robot-l/c` exist.
+   (components/settings/migrations/migration-graphic.tsx) */
+:root {
+  --deplo-migrate-g1: #7c3aed;
+  --deplo-migrate-g2: #db2777;
+  --deplo-migrate-g3: #2563eb;
+}
+
+.dark {
+  --deplo-migrate-g1: #a78bfa;
+  --deplo-migrate-g2: #f472b6;
+  --deplo-migrate-g3: #60a5fa;
+}
+
 /* The dotted track drifts toward Deplo whenever the cable has not reached it.
    The dash period is 6 (2 + 4) and the offset travels two periods per cycle, so
    the loop point is invisible. */

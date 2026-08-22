@@ -9,6 +9,7 @@ import {
   dokployImportItems as itemsTable,
   dokployImports as runsTable,
   domains as domainsTable,
+  environments as environmentsTable,
   sharedEnvVars as sharedVarsTable,
   users as usersTable,
 } from "../db/schema/control-plane";
@@ -2309,6 +2310,173 @@ export async function importDokployMembers(
 /* ------------------------------------------------------------------ */
 /* History                                                            */
 /* ------------------------------------------------------------------ */
+
+/* ------------------------------------------------------------------ */
+/* Undo                                                               */
+/* ------------------------------------------------------------------ */
+
+/** The message off whatever a delete threw, without leaking a stack. */
+function revertError(e: unknown): string {
+  return e instanceof Error ? e.message : String(e);
+}
+
+/** What a revert managed to take back out, and what it could not. */
+export interface RevertResultDTO {
+  apps: number;
+  databases: number;
+  environments: number;
+  projects: number;
+  /** One line per thing that is still here, and why. */
+  failed: string[];
+}
+
+/**
+ * Take a migration back out of Deplo.
+ *
+ * The case this exists for is the half-finished one: a run that failed on
+ * project four of seven, or one somebody stopped, leaves apps and databases here
+ * that nobody asked for and that are not a migration - they are debris. Deleting
+ * eleven of them by hand, in the right order, is exactly the kind of clean-up
+ * the product exists to not ask for.
+ *
+ * **It only removes what the run CREATED.** The ledger is `dokploy_import_items`,
+ * and reusing something that was already here is recorded as `skipped`, never
+ * `created` - so a project that existed before the migration keeps every app it
+ * had, and a revert can never eat something the migration merely wrote into.
+ *
+ * **It does not put Dokploy back.** The migration stopped those services over
+ * there and the platform never restarts them, so a revert is "unmake what landed
+ * here", not "undo the whole thing". The wizard says so before it runs.
+ *
+ * Order is children first: apps, then databases, then the projects the run made
+ * (their environments cascade with them), then any environment the run added to
+ * a project that was already here. Each delete keeps its OWN capability gate -
+ * `delete_apps`, `delete_databases`, `delete_projects`, `manage_environments` -
+ * so somebody who may unmake apps but not databases gets the apps removed and a
+ * line saying which databases are still here. That mirrors the import itself,
+ * which creates what the actor may create and reports the rest.
+ *
+ * A database refuses to be deleted until its host proves the container and the
+ * volume are gone, which is what makes "reverted" mean it. That refusal arrives
+ * here as a `failed` line rather than as an exception, because one unreachable
+ * host must not strand the other ten objects.
+ */
+export async function revertDokployImport(
+  runId: string,
+): Promise<RevertResultDTO> {
+  const { teamId } = await assertImportGate();
+  if (!(await ownRun(runId, teamId))) throw new Error("Migration not found");
+
+  const rows = await getDb()
+    .select({
+      path: itemsTable.path,
+      sourceName: itemsTable.sourceName,
+      targetKind: itemsTable.targetKind,
+      targetId: itemsTable.targetId,
+    })
+    .from(itemsTable)
+    .where(and(eq(itemsTable.runId, runId), eq(itemsTable.outcome, "created")));
+
+  const idsOf = (kind: string) => [
+    ...new Set(
+      rows.filter((r) => r.targetKind === kind && r.targetId).map((r) => r.targetId!),
+    ),
+  ];
+  const nameOf = (id: string) =>
+    rows.find((r) => r.targetId === id)?.sourceName ?? id;
+
+  const failed: string[] = [];
+  const result: RevertResultDTO = {
+    apps: 0,
+    databases: 0,
+    environments: 0,
+    projects: 0,
+    failed,
+  };
+
+  // ---- apps ---------------------------------------------------------
+  // One bulk call rather than N: it tears the stacks down with bounded
+  // concurrency, so reverting twenty apps cannot flood one host's agent.
+  const appIds = idsOf("app");
+  if (appIds.length > 0) {
+    const { deleteApps } = await import("./apps");
+    try {
+      result.apps = await deleteApps(appIds);
+    } catch (e) {
+      failed.push(`Apps: ${revertError(e)}`);
+    }
+  }
+
+  // ---- databases ----------------------------------------------------
+  // One at a time, because each one holds its own lifecycle lock and its own
+  // proof that the volume is gone.
+  const { deleteDatabase } = await import("./databases");
+  for (const id of idsOf("database")) {
+    try {
+      await deleteDatabase(id);
+      result.databases += 1;
+    } catch (e) {
+      failed.push(`${nameOf(id)}: ${revertError(e)}`);
+    }
+  }
+
+  // ---- projects the run made ----------------------------------------
+  // Their environments go with them (the FK cascades), which is why the
+  // environment pass below only has to look at the others.
+  const projectIds = idsOf("project");
+  const { deleteProject } = await import("./projects");
+  for (const id of projectIds) {
+    try {
+      await deleteProject(id);
+      result.projects += 1;
+    } catch (e) {
+      failed.push(`${nameOf(id)}: ${revertError(e)}`);
+    }
+  }
+
+  // ---- environments added to a project that was already here --------
+  const { deleteEnvironment } = await import("./environments");
+  for (const id of idsOf("environment")) {
+    // One under a project this revert just removed went with it.
+    if (await environmentIsGone(id)) continue;
+    try {
+      await deleteEnvironment(id);
+      result.environments += 1;
+    } catch (e) {
+      failed.push(`${nameOf(id)}: ${revertError(e)}`);
+    }
+  }
+
+  // The run stays in History - what happened is still what happened - but it
+  // says out loud that it was taken back out, so nobody reads "12 created" as
+  // twelve apps that exist.
+  await getDb()
+    .update(runsTable)
+    .set({ status: "reverted", finishedAt: nowIso() })
+    .where(and(eq(runsTable.id, runId), eq(runsTable.teamId, teamId)));
+
+  // Same `project` type the import itself writes under, so the two halves of
+  // one migration sit together in the trail.
+  await recordActivity(
+    "project",
+    `Reverted a migration: removed ${result.apps} app(s), ` +
+      `${result.databases} database(s) and ${result.projects} project(s)`,
+    (await getCurrentUser())?.name ?? "Someone",
+    null,
+    teamId,
+  );
+
+  return result;
+}
+
+/** Has this environment already gone with its project? */
+async function environmentIsGone(id: string): Promise<boolean> {
+  const rows = await getDb()
+    .select({ id: environmentsTable.id })
+    .from(environmentsTable)
+    .where(eq(environmentsTable.id, id));
+  return rows.length === 0;
+}
 
 export async function listDokployImports(): Promise<ImportRunDTO[]> {
   const teamId = await requireActiveTeamId();
