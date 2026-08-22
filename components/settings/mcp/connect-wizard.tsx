@@ -44,7 +44,8 @@ import { cn } from "@/lib/utils";
 import type { Capability } from "@/lib/types";
 import type { ScopeTreeTeam } from "@/lib/data/tokens";
 import { AGENTS, TOKEN_PLACEHOLDER, type AgentDef, type AgentId } from "./agents";
-import { ConfettiBurst, RobotGraphic, type RobotState } from "./robot-graphic";
+import { RobotGraphic, type RobotState } from "./robot-graphic";
+import { ConfettiBurst } from "@/components/shared/confetti-burst";
 import { ToolsDialog, type McpToolSummary } from "./tools-dialog";
 import { veilProps } from "@/components/templates/veil";
 

@@ -2571,11 +2571,12 @@
   }
 }
 
-/* The confetti burst for a connection that really arrived. Twelve spans, one
-   keyframe, and every per-piece difference derived from `--i`: the angle fans
-   the pieces evenly, the delay staggers them, the distance and hue alternate so
-   no two neighbours land together. `--deplo-confetti-a` is in TURNS, which is
-   what lets one multiplication spread twelve pieces over a full circle. */
+/* The confetti burst (components/shared/confetti-burst.tsx), for a thing that
+   really happened. Twelve spans, one keyframe, and every per-piece difference
+   derived from `--i`: the angle fans the pieces evenly, the delay staggers
+   them, the distance and hue alternate so no two neighbours land together.
+   `--deplo-confetti-a` is in TURNS, which is what lets one multiplication
+   spread twelve pieces over a full circle. */
 @keyframes deplo-confetti-piece {
   0% {
     opacity: 0;
@@ -2927,5 +2928,107 @@
   }
   .deplo-offline-cloud {
     animation: none;
+  }
+}
+
+/* The migration wizard draws the migration it is asking about
+   (components/settings/migrations/migration-graphic.tsx): a cable that grows a
+   fifth at a time as the wizard advances, packets running down it while the
+   data actually moves, and one halo when Deplo takes over.
+
+   The cable is TRANSITIONED rather than animated: its length is a fact about
+   the step you are on, not a loop, so moving between steps has to look like the
+   cable being pushed further in - a keyframe would replay the whole run every
+   time React re-rendered. `pathLength="1"` on the path is what lets the offsets
+   be plain fractions. */
+.deplo-migrate-cable {
+  transition: stroke-dashoffset 700ms cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+/* Each packet takes its delay from its index, so three elements share one
+   keyframe and still read as a stream. The travel distance is the cable's own
+   60 units; transform and opacity only, so the whole thing stays on the
+   compositor while the import holds the tab. */
+@keyframes deplo-migrate-packet {
+  0% {
+    transform: translateX(0);
+    opacity: 0;
+  }
+  12% {
+    opacity: 1;
+  }
+  76% {
+    transform: translateX(56px);
+    opacity: 1;
+  }
+  88%,
+  100% {
+    transform: translateX(56px);
+    opacity: 0;
+  }
+}
+
+.deplo-migrate-packet {
+  transform-box: fill-box;
+  transform-origin: center;
+  animation: deplo-migrate-packet 1.8s linear infinite;
+  animation-delay: calc(var(--i) * 0.6s);
+}
+
+/* The source machine's own light, while it is still the one serving. It stops
+   at `done` by not being on the element any more, rather than by a second
+   keyframe - the drawing decides, not the stylesheet. */
+@keyframes deplo-migrate-blip {
+  0%,
+  100% {
+    opacity: 0.45;
+  }
+  50% {
+    opacity: 1;
+  }
+}
+
+.deplo-migrate-blip {
+  animation: deplo-migrate-blip 2.4s ease-in-out infinite;
+}
+
+/* The one success beat: Deplo lighting up, once the migration is over. */
+@keyframes deplo-migrate-halo {
+  0%,
+  100% {
+    opacity: 0.1;
+    transform: scale(0.9);
+  }
+  50% {
+    opacity: 0.22;
+    transform: scale(1);
+  }
+}
+
+.deplo-migrate-halo {
+  transform-box: fill-box;
+  transform-origin: center;
+  animation: deplo-migrate-halo 2.6s ease-in-out infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  /* Hold the frame that still carries the meaning: the cable jumps to its new
+     length instead of sliding, the packets rest at Deplo's end (arrived, which
+     is the half of "in flight" worth showing), and the two lights stop
+     flickering without going out. */
+  .deplo-migrate-cable {
+    transition: none;
+  }
+  .deplo-migrate-packet {
+    animation: none;
+    transform: translateX(56px);
+  }
+  .deplo-migrate-blip {
+    animation: none;
+    opacity: 1;
+  }
+  .deplo-migrate-halo {
+    animation: none;
+    opacity: 0.18;
   }
 }

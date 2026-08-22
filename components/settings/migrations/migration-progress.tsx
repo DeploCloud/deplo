@@ -5,15 +5,12 @@ import {
   Check,
   CircleSlash,
   DownloadCloud,
-  Loader2,
   Lock,
-  ScrollText,
   SkipForward,
   TriangleAlert,
 } from "lucide-react";
 
 import { cn } from "@/lib/utils";
-import { Button } from "@/components/ui/button";
 import {
   Dialog,
   DialogContent,
@@ -25,21 +22,21 @@ import { Progress } from "@/components/ui/progress";
 import type { ReportItem } from "./types";
 
 /**
- * The import as it happens: a dialog, not a step.
+ * The line-by-line log of a migration in flight.
  *
- * It is not a step because nothing on it is a decision - watching is optional,
- * and a wizard that parks you in front of a progress bar is a wizard that makes
- * you wait for it. Closing it does not stop anything (the loop lives in the
- * wizard), and the pill puts it back.
+ * Secondary on purpose. The wizard's own step already says which project it is
+ * on and how far along it is, which is everything a person needs to decide
+ * nothing; this is the detail for whoever wants to watch a specific service go
+ * over. Closing it stops nothing - the loop lives in the wizard.
  */
 
-export interface ImportProgress {
+export interface MigrationProgress {
   done: number;
   total: number;
   current: string;
 }
 
-export function ImportProgressDialog({
+export function MigrationLogDialog({
   open,
   onOpenChange,
   progress,
@@ -49,7 +46,7 @@ export function ImportProgressDialog({
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  progress: ImportProgress;
+  progress: MigrationProgress;
   items: ReportItem[];
   failure: string | null;
   running: boolean;
@@ -61,16 +58,16 @@ export function ImportProgressDialog({
         <DialogHeader>
           <DialogTitle>
             {failure
-              ? "Import stopped"
+              ? "Migration stopped"
               : running
                 ? progress.current || "Finishing"
-                : "Import finished"}
+                : "Migration finished"}
           </DialogTitle>
           <DialogDescription>
             {failure
               ? failure
               : running
-                ? `Project ${Math.min(progress.done + 1, progress.total)} of ${progress.total}. You can close this - the import keeps going.`
+                ? `Project ${Math.min(progress.done + 1, progress.total)} of ${progress.total}. You can close this - the migration keeps going.`
                 : `${progress.total} project(s) read.`}
           </DialogDescription>
         </DialogHeader>
@@ -85,55 +82,12 @@ export function ImportProgressDialog({
 
         {failure && (
           <p className="text-sm text-muted-foreground">
-            Everything created so far is kept. Running the import again resumes from
-            here - whatever is already in Deplo is skipped.
+            Everything created so far is kept. Running the migration again
+            resumes from here - whatever is already in Deplo is skipped.
           </p>
         )}
       </DialogContent>
     </Dialog>
-  );
-}
-
-/**
- * The way back into the dialog, anchored to the viewport so it survives every
- * step. Only rendered while there is a run to look at.
- *
- * Bottom CENTRE, not the corner: sonner puts its toasts bottom-right and this
- * flow raises one on every failed call, so a pill parked there spends the whole
- * import underneath them. Centre is also where the repo already puts a
- * persistent status strip (`server-connection-guard`), which owns the top of
- * that stack when a host actually drops.
- */
-export function ImportProgressPill({
-  progress,
-  running,
-  failure,
-  onOpen,
-}: {
-  progress: ImportProgress;
-  running: boolean;
-  failure: string | null;
-  onOpen: () => void;
-}) {
-  return (
-    <Button
-      variant={failure ? "destructive" : "secondary"}
-      onClick={onOpen}
-      className="fixed bottom-6 left-1/2 z-40 -translate-x-1/2 shadow-lg"
-    >
-      {failure ? (
-        <TriangleAlert className="size-4" />
-      ) : running ? (
-        <Loader2 className="size-4 animate-spin" />
-      ) : (
-        <ScrollText className="size-4" />
-      )}
-      {failure
-        ? "Import stopped"
-        : running
-          ? `Importing ${progress.done}/${progress.total}`
-          : "Import log"}
-    </Button>
   );
 }
 

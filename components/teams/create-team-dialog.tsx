@@ -25,9 +25,17 @@ import type { Team } from "@/lib/types";
 export function CreateTeamDialog({
   open,
   onOpenChange,
+  redirect = true,
 }: {
   open: boolean;
   onOpenChange: (o: boolean) => void;
+  /**
+   * Whether to leave for the overview once the team exists. True everywhere a
+   * new team is the whole errand; false when the caller is mid-flow and has
+   * state of its own that a navigation would throw away - the migration wizard
+   * holds a scan, a selection and an API key that exist only in its tab.
+   */
+  redirect?: boolean;
 }) {
   const router = useRouter();
   const [pending, startTransition] = React.useTransition();
@@ -49,7 +57,10 @@ export function CreateTeamDialog({
         toast.success("Team created");
         onOpenChange(false);
         setName("");
-        router.push("/");
+        if (redirect) router.push("/");
+        // Either way: `createTeam` switches the active team server-side, so
+        // every read on the page behind this dialog is now about a different
+        // team and has to run again.
         router.refresh();
       } else {
         toast.error(res.error);

@@ -4,7 +4,7 @@ import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 
 import { TooltipProvider } from "@/components/ui/tooltip";
-import { ImportTree, visible, type PortConflict } from "./import-tree";
+import { MigrationTree, visible, type PortConflict } from "./migration-tree";
 import type { Placement, PlanProject, PlanService, ServerChoice } from "./types";
 
 /**
@@ -19,6 +19,8 @@ import type { Placement, PlanProject, PlanService, ServerChoice } from "./types"
  * What static markup CANNOT show is a Radix Select's chosen label - it resolves
  * that on the client - so the assertions here are about which controls exist and
  * what placeholder they fall back to, never about the text inside a closed one.
+ * That is also how the bulk row is tested: its placeholder is visible exactly
+ * when the rows disagree and it therefore has no value to show.
  */
 
 function service(over: Partial<PlanService> & { sourceId: string }): PlanService {
@@ -126,6 +128,7 @@ function homePlacements(): Record<string, Placement> {
 function render(
   chosen: string[],
   opts: {
+    projects?: PlanProject[];
     buildServers?: ServerChoice[];
     placements?: Record<string, Placement>;
     portConflicts?: Record<string, PortConflict>;
@@ -136,8 +139,8 @@ function render(
     createElement(
       TooltipProvider,
       null,
-      createElement(ImportTree, {
-        projects: PROJECTS,
+      createElement(MigrationTree, {
+        projects: opts.projects ?? PROJECTS,
         chosen: new Set(chosen),
         onChange: () => {},
         servers: SERVERS,
@@ -148,6 +151,8 @@ function render(
         onPlacementsChange: () => {},
         portConflicts: opts.portConflicts ?? {},
         showPorts: opts.showPorts ?? true,
+        allChosen: false,
+        onToggleAll: () => {},
       }),
     ),
   );
@@ -165,9 +170,10 @@ function stateOf(html: string, id: string): string {
   return m ? m[1] : "MISSING";
 }
 
-/** Everything above the scrolling body: the column captions and Set all. */
-function header(html: string): string {
-  return html.slice(0, html.indexOf("max-h-[28rem]"));
+/** The bulk row, which now lives ABOVE the table instead of inside its head. */
+function toolbar(html: string): string {
+  const i = html.indexOf("min-w-[48rem]");
+  return html.slice(0, i === -1 ? html.length : i);
 }
 
 /* ---- selection ------------------------------------------------------ */
@@ -206,16 +212,49 @@ test("an engine Deplo does not have can never be picked, and never counts", () =
   assert.match(html, />1 of 1 selected</);
 });
 
-test("a service's notes are warnings on screen, not grey small print", () => {
+test("a service's notes stay off the review entirely", () => {
+  // They are not warnings - "this path now points at Deplo's files directory"
+  // is a fact about how the import maps a thing, and a strip of yellow under
+  // every second row is how a screen stops being read. They live in the report
+  // the run leaves behind, and in the docs.
   const html = render(["s-web"]);
-  // The note's own row carries the warning token - the point of the change is
-  // that these stopped being `text-muted-foreground` under each service.
-  const before = html.slice(0, html.indexOf("Published host ports"));
-  assert.ok(
-    before.slice(-1500).includes("text-warning"),
-    "the note is not rendered as a warning",
-  );
+  assert.equal(html.includes("Published host ports"), false);
+  assert.equal(html.includes("Deplo has no libsql engine"), false);
+  // What DOES stay is the one-word verdict, which is a property of the row.
   assert.match(html, /Not supported/);
+});
+
+test("something already in Deplo reads as a state, not a warning", () => {
+  const already: PlanProject[] = [
+    {
+      sourceId: "p3",
+      name: "Ported",
+      exists: true,
+      environments: [
+        {
+          sourceId: "e-p3",
+          name: "production",
+          exists: true,
+          services: [service({ sourceId: "s-old", status: "exists" })],
+        },
+      ],
+    },
+  ];
+  const html = render([], {
+    projects: already,
+    placements: { "s-old": { serverId: HOME, buildServerId: null } },
+  });
+  assert.match(html, /Already here/);
+  // `info`, the blue token - never `warning`, which is what "there is a problem
+  // with this row" means everywhere else in the app.
+  const badge = html.match(/<[^>]*>Already here</);
+  assert.ok(badge, "no Already here badge");
+  const around = html.slice(
+    Math.max(0, html.indexOf("Already here") - 400),
+    html.indexOf("Already here"),
+  );
+  assert.ok(around.includes("--info"), "Already here is not on the info token");
+  assert.equal(around.includes("--warning"), false);
 });
 
 /* ---- placement ------------------------------------------------------ */
@@ -228,16 +267,20 @@ test("every app gets a Runs on picker, including the ones nothing builds", () =>
   assert.equal(html.includes(`id="imp-run-s-libsql"`), false);
 });
 
-test("no build-only host in the fleet means no Build column at all", () => {
+test("no build-only host in the fleet means no build picker anywhere", () => {
   const html = render([]);
-  assert.equal(html.includes("Runs on"), true);
-  assert.equal(html.includes(">Build<"), false);
+  assert.equal(html.includes("Build everything on"), false);
   assert.equal(html.includes(`id="imp-build-s-api"`), false);
 });
 
-test("one build-only host brings the column back", () => {
+test("one build-only host brings the build pickers back", () => {
   const html = render([], { buildServers: WITH_BUILDER });
-  assert.equal(html.includes(">Build<"), true);
+  // The aria-label, not the placeholder: rows that agree on Automatic give the
+  // bulk control a value, and a Select showing one renders no placeholder.
+  assert.ok(
+    toolbar(html).includes(`aria-label="Build everything on"`),
+    "no bulk build control",
+  );
   assert.ok(html.includes(`id="imp-build-s-api"`));
 });
 
@@ -252,16 +295,27 @@ test("a service Deplo never compiles gets a dash, not a picker", () => {
   assert.ok(html.includes(`id="imp-build-s-api"`), "a git app lost its picker");
 });
 
-test("Set all reads Mixed only when the rows actually disagree", () => {
-  const agree = header(render([]));
-  assert.equal(agree.includes("Mixed"), false);
+test("the bulk control offers itself only when the rows disagree", () => {
+  // Rows that agree give it a value, and a Radix Select showing a value renders
+  // no placeholder - so the absence IS the assertion that it picked one up.
+  const agree = toolbar(render([]));
+  assert.equal(agree.includes("Place all on"), false);
 
-  const split = header(
+  const split = toolbar(
     render([], {
       placements: { ...homePlacements(), "s-api": { serverId: OTHER, buildServerId: null } },
     }),
   );
-  assert.match(split, /Mixed/);
+  assert.match(split, /Place all on/);
+});
+
+test("the bulk row carries the select-all, and the table head is gone", () => {
+  const html = render([]);
+  assert.match(toolbar(html), /Select all/);
+  // The header row that used to sit inside the table, with "Set all" down its
+  // left and a caption over each picker, is not a column and is not there.
+  assert.equal(html.includes("Set all"), false);
+  assert.equal(html.includes(">Runs on<"), false);
 });
 
 /* ---- what a search leaves standing ---------------------------------- */
@@ -316,13 +370,6 @@ test("every term has to match, and nothing matching is empty", () => {
 test("a database wears its engine's own mark, not a generic glyph", () => {
   const html = render([]);
   assert.match(html, /\/engines\/postgres\.svg/);
-});
-
-test("a note is a tinted row, not just coloured text", () => {
-  const html = render([]);
-  const row = html.match(/<div[^>]*bg-warning[^>]*>/);
-  assert.ok(row, "the note row has no warning background");
-  assert.match(row[0], /text-warning/);
 });
 
 /**

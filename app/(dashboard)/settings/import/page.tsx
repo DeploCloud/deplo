@@ -1,62 +1,6 @@
-import {
-  canExposePorts,
-  hasCapability,
-  isInstanceAdmin,
-  reachesWholeTeam,
-} from "@/lib/membership";
-import { getTeamIdentity } from "@/lib/data/teams";
-import { listBuildServerChoices, listServerChoices } from "@/lib/data/servers";
-import { listDokployImports } from "@/lib/data/dokploy-import";
-import { OutsideYourAccess } from "@/components/shared/outside-your-access";
-import { ImportWizard } from "@/components/settings/import/import-wizard";
+import { redirect } from "next/navigation";
 
-export const metadata = { title: "Settings · Import" };
-
-/**
- * Import from Dokploy.
- *
- * Team-scoped, not instance-admin: a team owner brings their own projects over.
- * The two instance-admin extras are handed down as flags rather than hidden
- * behind a second page - reaching a private address (what the same-machine case
- * needs) and inviting the other platform's members.
- *
- * `create_projects` is the entry gate, mirrored server-side in every mutation.
- * `reachesWholeTeam` too: an import writes across the whole team, so a narrowed
- * token or a project-scoped role has no business starting one.
- */
-export default async function SettingsImportPage() {
-  if (!(await reachesWholeTeam()) || !(await hasCapability("create_projects")))
-    return (
-      <OutsideYourAccess
-        title="Import"
-        description="Bring projects over from Dokploy."
-        what="Imports"
-      />
-    );
-
-  const [team, servers, buildServers, runs, admin, mayExposePorts] =
-    await Promise.all([
-      getTeamIdentity(),
-      listServerChoices(),
-      // A second, wider list: a build-only host cannot RUN anything, which is
-      // exactly why it belongs in the other column.
-      listBuildServerChoices(),
-      listDokployImports(),
-      isInstanceAdmin(),
-      // A migrated database keeps the host port it had over there, and that is a
-      // published port like any other - so the review only offers to sort one out
-      // for somebody who could publish it.
-      canExposePorts(),
-    ]);
-
-  return (
-    <ImportWizard
-      teamId={team.id}
-      servers={servers}
-      buildServers={buildServers}
-      runs={runs}
-      isInstanceAdmin={admin}
-      canExposePorts={mayExposePorts}
-    />
-  );
+/** The page moved to Settings, Migrations. Old links keep working. */
+export default function ImportRedirect() {
+  redirect("/settings/migrations");
 }

@@ -32,7 +32,7 @@ import {
   SlidersHorizontal,
   Cpu,
   Bot,
-  DownloadCloud,
+  Cable,
   type LucideIcon,
 } from "lucide-react";
 
@@ -251,9 +251,9 @@ export const SETTINGS_NAV: NavSection[] = [
         requiresAny: ["manage_mcp", "manage_tokens"],
       },
       {
-        label: "Import",
-        href: "/settings/import",
-        icon: DownloadCloud,
+        label: "Migrations",
+        href: "/settings/migrations",
+        icon: Cable,
         tooltip: "Bring projects over from Dokploy",
         // The smallest capability that can produce what an import produces. Every
         // object it creates then re-checks its own permission, so someone who can

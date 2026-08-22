@@ -13,6 +13,7 @@ import {
 
 import { cn } from "@/lib/utils";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import {
@@ -147,7 +148,7 @@ export function visible(
   return out;
 }
 
-export function ImportTree({
+export function MigrationTree({
   projects,
   chosen,
   onChange,
@@ -157,6 +158,8 @@ export function ImportTree({
   onPlacementsChange,
   portConflicts,
   showPorts,
+  allChosen,
+  onToggleAll,
 }: {
   projects: PlanProject[];
   /** Source service ids. The leaves ARE the selection; parents are derived. */
@@ -172,6 +175,9 @@ export function ImportTree({
   portConflicts: Record<string, PortConflict>;
   /** False without the publish-ports grant: no port comes over, so none is shown. */
   showPorts: boolean;
+  /** Every importable service is ticked, so the button offers the opposite. */
+  allChosen: boolean;
+  onToggleAll: () => void;
 }) {
   // Everything open on arrival: a migration is read top to bottom once, and a
   // tree that hides the thing you came to check is a tree you fight.
@@ -227,27 +233,82 @@ export function ImportTree({
 
   const rows = projects.filter((p) => !shown || shown.projects.has(p.sourceId));
 
+  // What the bulk controls display: the one value every row agrees on, or
+  // nothing when they differ - so they double as the answer to "where is all of
+  // this going" without counting down the list.
+  const runIds = all.map((x) => x.sourceId);
+  const buildIds = all.filter((x) => x.buildsFromSource).map((x) => x.sourceId);
+  const commonRun = shared(runIds.map((id) => placements[id]?.serverId));
+  const commonBuild = shared(buildIds.map((id) => placements[id]?.buildServerId));
+
   return (
     <div className="space-y-3">
-      <div className="relative">
-        <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
-        <Input
-          value={query}
-          onChange={(e) => setQuery(e.target.value)}
-          placeholder="Search apps, databases, hostnames"
-          aria-label="Search what will come over"
-          className="pl-9 pr-9"
-        />
-        {query && (
-          <button
-            type="button"
-            onClick={() => setQuery("")}
-            aria-label="Clear the search"
-            className="absolute right-2 top-1/2 -translate-y-1/2 rounded p-1 text-muted-foreground transition-colors hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+      {/* One row for everything that acts on the WHOLE list: find something,
+          take everything, put everything somewhere. It replaced a header row
+          inside the table whose left cell read "Set all" - a caption you have
+          to read before you can use the control beside it, in a column that was
+          not a column.
+
+          The bulk controls write `all`, never the filtered rows: a search is a
+          lens on the list, so setting everything still means everything. */}
+      <div className="flex flex-wrap items-center gap-2">
+        <div className="relative min-w-[11rem] flex-1 basis-full sm:basis-auto lg:max-w-[18rem]">
+          <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
+          <Input
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            placeholder="Search apps, databases, hostnames"
+            aria-label="Search what will come over"
+            className="pl-9 pr-9"
+          />
+          {query && (
+            <button
+              type="button"
+              onClick={() => setQuery("")}
+              aria-label="Clear the search"
+              className="absolute right-2 top-1/2 -translate-y-1/2 rounded p-1 text-muted-foreground transition-colors hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            >
+              <X className="size-3.5" />
+            </button>
+          )}
+        </div>
+        <div className="flex flex-wrap items-center gap-2 sm:ml-auto">
+          {showBuild && (
+            <SimpleTooltip content="Build every app on this server">
+              <span className="inline-flex">
+                <BuildSelect
+                  servers={buildServers}
+                  value={buildIds.length === 0 ? undefined : commonBuild}
+                  onChange={(v) => place(buildIds, { buildServerId: v })}
+                  placeholder="Build all on"
+                  label="Build everything on"
+                  className="h-9 w-44"
+                />
+              </span>
+            </SimpleTooltip>
+          )}
+          <SimpleTooltip content="Put everything on this server">
+            <span className="inline-flex">
+              <RunSelect
+                servers={servers}
+                value={commonRun}
+                onChange={(v) => place(runIds, { serverId: v })}
+                placeholder="Place all on"
+                label="Place everything on"
+                className="h-9 w-44"
+              />
+            </span>
+          </SimpleTooltip>
+          {/* Default size, not `sm`: it sits beside an Input and two
+              SelectTriggers, all `h-9`, and `sm` would land it 4px short. */}
+          <Button
+            variant="outline"
+            onClick={onToggleAll}
+            disabled={all.length === 0}
           >
-            <X className="size-3.5" />
-          </button>
-        )}
+            {allChosen ? "Unselect all" : "Select all"}
+          </Button>
+        </div>
       </div>
 
       {rows.length === 0 ? (
@@ -257,16 +318,6 @@ export function ImportTree({
       ) : (
         <div className="overflow-x-auto rounded-lg border border-border">
           <div className="min-w-[48rem]">
-            {/* `all`, not the filtered rows: a search is a lens on the list, so
-                setting everything still means everything. */}
-            <SetAllHeader
-              showBuild={showBuild}
-              servers={servers}
-              buildServers={buildServers}
-              services={all}
-              placements={placements}
-              onPlace={place}
-            />
             <div className="max-h-[28rem] divide-y divide-border/60 overflow-y-auto">
               {rows.map((p) => {
                 // Counted over the WHOLE project, never the filtered slice.
@@ -287,7 +338,7 @@ export function ImportTree({
                       disabled={pickable.length === 0}
                       onCheckedChange={(v) => set(pickable, v)}
                       showBuild={showBuild}
-                      status={p.exists ? <Badge variant="outline">Already here</Badge> : null}
+                      status={p.exists ? <Badge variant="info">Already here</Badge> : null}
                     />
                     {isOpen(p.sourceId) &&
                       p.environments
@@ -450,7 +501,7 @@ function ServiceRows({
               service.status === "new"
                 ? "secondary"
                 : service.status === "exists"
-                  ? "outline"
+                  ? "info"
                   : "warning"
             }
           >
@@ -464,6 +515,7 @@ function ServiceRows({
               servers={buildServers}
               value={placement.buildServerId}
               onChange={(buildServerId) => onPlace({ buildServerId })}
+              label={`Where ${service.name} is built`}
             />
           ) : (
             <NothingToBuild service={service} />
@@ -476,6 +528,7 @@ function ServiceRows({
               servers={servers}
               value={placement.serverId}
               onChange={(serverId) => onPlace({ serverId })}
+              label={`Where ${service.name} runs`}
             />
           )
         }
@@ -488,18 +541,6 @@ function ServiceRows({
           onPlace={onPlace}
         />
       )}
-      {/* The notes are the whole reason this screen exists, so they are warnings
-          here rather than grey small print nobody reads. */}
-      {service.notes.map((n, i) => (
-        <div
-          key={i}
-          className="flex items-start gap-2 bg-warning/10 py-1.5 pr-3 text-xs text-warning"
-          style={{ paddingLeft: `${0.75 + 3 * 1.25}rem` }}
-        >
-          <TriangleAlert className="mt-0.5 size-3.5 shrink-0" />
-          <span className="min-w-0">{n}</span>
-        </div>
-      ))}
     </>
   );
 }
@@ -543,52 +584,59 @@ function PortConflictRow({
           Port {conflict.takenPort} is taken on {conflict.serverName}.
         </span>
       </span>
-      <span className="flex items-center gap-2">
-        <Checkbox
-          id={toggleField}
-          checked={exposed}
-          // Back ON means back to what the source published, which the review
-          // then finds a free port for exactly as it did the first time - so
-          // there is no "last port" to remember here, and no way for this row to
-          // hand back a stale one.
-          onCheckedChange={(v) =>
-            onPlace({
-              exposedPort: v === true ? (service.exposedPort ?? conflict.takenPort) : null,
-            })
-          }
-        />
-        <label htmlFor={toggleField} className="cursor-pointer text-foreground">
-          Expose publicly
-        </label>
-      </span>
-      {exposed && (
+      {/* The problem reads on the left, the remedy sits at the far end of the
+          strip: you find out what is wrong before you are handed the controls
+          for it, and every row's controls line up with each other instead of
+          starting wherever their sentence happened to stop. */}
+      <span className="flex flex-wrap items-center gap-x-3 gap-y-2 sm:ml-auto">
         <span className="flex items-center gap-2">
-          <FieldLabel
-            htmlFor={portField}
-            info="The port on the server clients connect to. Use a free unprivileged port (1024-65535)."
-          >
-            Host port
-          </FieldLabel>
-          <Input
-            id={portField}
-            type="number"
-            inputMode="numeric"
-            min={1024}
-            max={65535}
-            value={port ?? ""}
-            aria-invalid={conflict.invalid || undefined}
-            onChange={(e) => {
-              const n = Number(e.target.value);
-              const next = Number.isInteger(n) && n > 0 ? n : null;
-              // Emptying the box IS "publish nothing", and the checkbox says so
-              // by going off - rather than leaving a field that looks filled-in-
-              // pending and an Import button nobody can explain.
-              onPlace({ exposedPort: next });
-            }}
-            className="h-8 w-24"
+          <Checkbox
+            id={toggleField}
+            checked={exposed}
+            // Back ON means back to what the source published, which the review
+            // then finds a free port for exactly as it did the first time - so
+            // there is no "last port" to remember here, and no way for this row
+            // to hand back a stale one.
+            onCheckedChange={(v) =>
+              onPlace({
+                exposedPort:
+                  v === true ? (service.exposedPort ?? conflict.takenPort) : null,
+              })
+            }
           />
+          <label htmlFor={toggleField} className="cursor-pointer text-foreground">
+            Expose publicly
+          </label>
         </span>
-      )}
+        {exposed && (
+          <span className="flex items-center gap-2">
+            <FieldLabel
+              htmlFor={portField}
+              info="The port on the server clients connect to. Use a free unprivileged port (1024-65535)."
+            >
+              Host port
+            </FieldLabel>
+            <Input
+              id={portField}
+              type="number"
+              inputMode="numeric"
+              min={1024}
+              max={65535}
+              value={port ?? ""}
+              aria-invalid={conflict.invalid || undefined}
+              onChange={(e) => {
+                const n = Number(e.target.value);
+                const next = Number.isInteger(n) && n > 0 ? n : null;
+                // Emptying the box IS "publish nothing", and the checkbox says
+                // so by going off - rather than leaving a field that looks
+                // filled-in-pending and an Import button nobody can explain.
+                onPlace({ exposedPort: next });
+              }}
+              className="h-8 w-24"
+            />
+          </span>
+        )}
+      </span>
     </div>
   );
 }
@@ -624,16 +672,22 @@ function RunSelect({
   value,
   onChange,
   placeholder,
+  className,
+  label,
 }: {
   id?: string;
   servers: ServerChoice[];
   value: string | undefined;
   onChange: (serverId: string) => void;
   placeholder?: string;
+  /** The trigger's own size. Rows want `h-8`; a toolbar beside an Input wants `h-9`. */
+  className?: string;
+  /** A column caption used to name these; without a header each says it itself. */
+  label?: string;
 }) {
   return (
     <Select value={value ?? ""} onValueChange={onChange}>
-      <SelectTrigger id={id} className="h-8 w-full">
+      <SelectTrigger id={id} aria-label={label} className={cn("h-8 w-full", className)}>
         <SelectValue placeholder={placeholder ?? "Choose a server"} />
       </SelectTrigger>
       <SelectContent>
@@ -658,19 +712,23 @@ function BuildSelect({
   value,
   onChange,
   placeholder,
+  className,
+  label,
 }: {
   id?: string;
   servers: ServerChoice[];
   value: string | null | undefined;
   onChange: (buildServerId: string | null) => void;
   placeholder?: string;
+  className?: string;
+  label?: string;
 }) {
   return (
     <Select
       value={value === undefined ? "" : (value ?? AUTOMATIC)}
       onValueChange={(v) => onChange(v === AUTOMATIC ? null : v)}
     >
-      <SelectTrigger id={id} className="h-8 w-full">
+      <SelectTrigger id={id} aria-label={label} className={cn("h-8 w-full", className)}>
         <SelectValue placeholder={placeholder ?? "Automatic"} />
       </SelectTrigger>
       <SelectContent>
@@ -708,66 +766,6 @@ function NothingToBuild({ service }: { service: PlanService }) {
         -
       </span>
     </SimpleTooltip>
-  );
-}
-
-/* ------------------------------------------------------------------ */
-/* The header                                                         */
-/* ------------------------------------------------------------------ */
-
-/**
- * The columns, and one control that writes every row at once.
- *
- * Each shows the value the rows agree on, or nothing when they differ - so it
- * doubles as the answer to "where is all of this going" without counting down
- * the list.
- */
-function SetAllHeader({
-  showBuild,
-  servers,
-  buildServers,
-  services,
-  placements,
-  onPlace,
-}: {
-  showBuild: boolean;
-  servers: ServerChoice[];
-  buildServers: ServerChoice[];
-  services: PlanService[];
-  placements: Record<string, Placement>;
-  onPlace: (serviceIds: string[], patch: Partial<Placement>) => void;
-}) {
-  const runIds = services.map((s) => s.sourceId);
-  const buildIds = services.filter((s) => s.buildsFromSource).map((s) => s.sourceId);
-
-  const commonRun = shared(runIds.map((id) => placements[id]?.serverId));
-  const commonBuild = shared(buildIds.map((id) => placements[id]?.buildServerId));
-
-  return (
-    <div className="flex items-end gap-2 border-b border-border bg-muted/30 py-2 pl-3 pr-3">
-      <div className="min-w-0 flex-1 text-xs text-muted-foreground">Set all</div>
-      <span className={cn("shrink-0", COL.status)} aria-hidden />
-      {showBuild && (
-        <div className={cn("shrink-0", COL.build)}>
-          <div className="mb-1 text-xs text-muted-foreground">Build</div>
-          <BuildSelect
-            servers={buildServers}
-            value={buildIds.length === 0 ? undefined : commonBuild}
-            onChange={(v) => onPlace(buildIds, { buildServerId: v })}
-            placeholder="Mixed"
-          />
-        </div>
-      )}
-      <div className={cn("shrink-0", COL.run)}>
-        <div className="mb-1 text-xs text-muted-foreground">Runs on</div>
-        <RunSelect
-          servers={servers}
-          value={commonRun}
-          onChange={(v) => onPlace(runIds, { serverId: v })}
-          placeholder="Mixed"
-        />
-      </div>
-    </div>
   );
 }
 

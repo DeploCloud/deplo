@@ -41,18 +41,37 @@ export function CodeBlock({
 }
 
 /** Inline command with copy button — for install one-liners. */
-export function CommandLine({ command }: { command: string }) {
+export function CommandLine({
+  command,
+  truncate,
+}: {
+  command: string;
+  /**
+   * Keep it to one line, cut off at the edge. For places where the command is
+   * evidence that something has to be run rather than something to read: a
+   * bootstrap one-liner is 200 characters of token nobody parses, and wrapped
+   * across four lines it takes over the step it belongs to. Copy still takes
+   * the whole thing.
+   */
+  truncate?: boolean;
+}) {
   return (
     <div className="flex items-start gap-2 rounded-lg border border-border bg-[#0a0a0a] px-3 py-2">
       <span className="select-none font-mono text-sm leading-relaxed text-muted-foreground">
         $
       </span>
-      {/* WRAP the command (break-all) instead of scrolling it: the whole
-          one-liner — long bootstrap token and all — stays visible and fully
-          selectable, so it copies correctly by hand too, with zero horizontal
-          overflow. min-w-0 keeps this flex child from forcing the row wider than
-          its container (the classic flexbox min-width:auto overflow). */}
-      <code className="min-w-0 flex-1 whitespace-pre-wrap break-all font-mono text-sm leading-relaxed text-zinc-200">
+      {/* By default WRAP the command (break-all) instead of scrolling it: the
+          whole one-liner — long bootstrap token and all — stays visible and
+          fully selectable, so it copies correctly by hand too, with zero
+          horizontal overflow. min-w-0 keeps this flex child from forcing the
+          row wider than its container (the classic flexbox min-width:auto
+          overflow), and is what makes `truncate` able to cut at all. */}
+      <code
+        className={cn(
+          "min-w-0 flex-1 font-mono text-sm leading-relaxed text-zinc-200",
+          truncate ? "truncate" : "whitespace-pre-wrap break-all",
+        )}
+      >
         {command}
       </code>
       <CopyButton value={command} className="shrink-0" />

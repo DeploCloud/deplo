@@ -27,8 +27,25 @@ import { Button } from "@/components/ui/button";
  * Browser Back/Forward (popstate) is intentionally NOT guarded — the App Router
  * exposes no reliable hook for it, and the two vectors above cover the paths a
  * user actually takes to leave the form.
+ *
+ * The wording is overridable because "unsaved changes" is only true of a form.
+ * The migration wizard guards a job that is half-done on somebody else's
+ * server, and telling that person they have unsaved changes would describe the
+ * wrong risk entirely.
  */
-export function UnsavedChangesGuard({ when }: { when: boolean }) {
+export function UnsavedChangesGuard({
+  when,
+  title = "Discard unsaved changes?",
+  description = "You have unsaved changes on this page. If you leave now they'll be lost.",
+  confirmLabel = "Discard & leave",
+  cancelLabel = "Keep editing",
+}: {
+  when: boolean;
+  title?: string;
+  description?: string;
+  confirmLabel?: string;
+  cancelLabel?: string;
+}) {
   const router = useRouter();
   // The href a blocked click was heading to; non-null ⇒ show the confirm dialog.
   const [pendingHref, setPendingHref] = React.useState<string | null>(null);
@@ -84,15 +101,12 @@ export function UnsavedChangesGuard({ when }: { when: boolean }) {
     <Dialog open={pendingHref !== null} onOpenChange={(o) => !o && setPendingHref(null)}>
       <DialogContent>
         <DialogHeader>
-          <DialogTitle>Discard unsaved changes?</DialogTitle>
-          <DialogDescription>
-            You have unsaved changes on this page. If you leave now they&apos;ll
-            be lost.
-          </DialogDescription>
+          <DialogTitle>{title}</DialogTitle>
+          <DialogDescription>{description}</DialogDescription>
         </DialogHeader>
         <DialogFooter>
           <Button variant="outline" onClick={() => setPendingHref(null)}>
-            Keep editing
+            {cancelLabel}
           </Button>
           <Button
             variant="destructive"
@@ -102,7 +116,7 @@ export function UnsavedChangesGuard({ when }: { when: boolean }) {
               if (href) router.push(href);
             }}
           >
-            Discard &amp; leave
+            {confirmLabel}
           </Button>
         </DialogFooter>
       </DialogContent>
