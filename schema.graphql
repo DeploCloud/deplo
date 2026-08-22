@@ -3136,6 +3136,11 @@ type Mutation {
   startTwoFactorEnrolment(password: String!): TwoFactorEnrolment
   stopApp(id: String!): App
 
+  """
+  Close a run somebody stopped part-way, WITHOUT finishing it - the migration sources keep their agents, because re-running is how a stopped migration is resumed.
+  """
+  stopDokployImport(runId: String!): Boolean
+
   """Register this browser for push alerts in the active team."""
   subscribeWebPush(auth: String!, endpoint: String!, p256dh: String!): Boolean
 

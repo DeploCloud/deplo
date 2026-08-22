@@ -2320,6 +2320,32 @@ function revertError(e: unknown): string {
   return e instanceof Error ? e.message : String(e);
 }
 
+/**
+ * Close a run somebody stopped, without finishing it.
+ *
+ * Deliberately NOT `finishDokployImport`: that one also uninstalls the agents
+ * from the machines this migration read, and re-running is how a stopped
+ * migration is resumed - whatever is already here is skipped the second time.
+ * Taking the agents away would make that impossible.
+ *
+ * Only ever moves a `running` row, so it is idempotent and cannot overwrite the
+ * verdict of a run that had already failed on its own.
+ */
+export async function stopDokployImport(runId: string): Promise<void> {
+  const { teamId } = await assertImportGate();
+  await getDb()
+    .update(runsTable)
+    .set({ status: "stopped", finishedAt: nowIso() })
+    .where(
+      and(
+        eq(runsTable.id, runId),
+        eq(runsTable.teamId, teamId),
+        eq(runsTable.status, "running"),
+      ),
+    );
+  await refreshCounts(runId, teamId);
+}
+
 /** What a revert managed to take back out, and what it could not. */
 export interface RevertResultDTO {
   apps: number;

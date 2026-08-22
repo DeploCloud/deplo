@@ -26,6 +26,7 @@ import {
   revertDokployImport,
   type RevertResultDTO,
   scanDokploy,
+  stopDokployImport,
 } from "@/lib/data/dokploy-import";
 
 /**
@@ -537,6 +538,17 @@ builder.mutationFields((t) => ({
         sourceKind,
         sourceId,
       }),
+  }),
+  stopDokployImport: t.field({
+    type: "Boolean",
+    authScopes: { capability: "create_projects" },
+    description:
+      "Close a run somebody stopped part-way, WITHOUT finishing it - the migration sources keep their agents, because re-running is how a stopped migration is resumed.",
+    args: { runId: t.arg.string({ required: true }) },
+    resolve: async (_r, { runId }) => {
+      await stopDokployImport(runId);
+      return true;
+    },
   }),
   revertDokployImport: t.field({
     type: RevertResultRef,

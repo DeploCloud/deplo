@@ -225,6 +225,12 @@ const MOVE_DATA = /* GraphQL */ `
   }
 `;
 
+const STOP = /* GraphQL */ `
+  mutation StopDokployImport($runId: String!) {
+    stopDokployImport(runId: $runId)
+  }
+`;
+
 const REVERT = /* GraphQL */ `
   mutation RevertDokployImport($runId: String!) {
     revertDokployImport(runId: $runId) {
@@ -490,6 +496,9 @@ export function MigrationWizard({
     setProgress({ done: 0, total: targets.length, current: targets[0].project.name });
     setRunning(true);
 
+    // Visible to the `finally` below, which has to close the row when somebody
+    // stops the run - `openRunId` inside the try is not in scope there.
+    let openRun: string | null = null;
     try {
       const begun = await gqlAction<{ beginDokployImport: string }, string>(
         BEGIN,
@@ -505,6 +514,7 @@ export function MigrationWizard({
         return;
       }
       const openRunId = begun.data;
+      openRun = openRunId;
       setRunId(openRunId);
 
       const serverChoices = Object.entries(serverMap)
@@ -621,6 +631,10 @@ export function MigrationWizard({
       // half-finished migration is.
       if (cancelled.current) {
         setStopped(true);
+        // Close the row so History does not read "running" for a run nobody is
+        // running. NOT `finishDokployImport`: that also takes the agents off the
+        // source machines, and re-running is how a stopped migration is resumed.
+        if (openRun) await gqlAction(STOP, { runId: openRun });
         router.refresh();
       }
     }
@@ -686,6 +700,12 @@ export function MigrationWizard({
   function keepPartial() {
     setStopped(false);
     setLogOpen(false);
+    // Stopped before the server opened a run: nothing was created, so there is
+    // no report to go to - this is just "never mind", back to the review.
+    if (!runId) {
+      setFailure(null);
+      return;
+    }
     setStep(isInstanceAdmin ? "people" : "done");
   }
 
@@ -886,6 +906,7 @@ export function MigrationWizard({
                     }}
                     onRevert={revertRun}
                     onKeep={keepPartial}
+                    canRevert={runId != null}
                   />
                 ) : (
                   <ReviewStep
@@ -1084,6 +1105,7 @@ function MovingPanel({
   onStop,
   onRevert,
   onKeep,
+  canRevert,
 }: {
   progress: MigrationProgress;
   failure: string | null;
@@ -1094,6 +1116,11 @@ function MovingPanel({
   onStop: () => void;
   onRevert: () => Promise<ActionResult<unknown>>;
   onKeep: () => void;
+  /**
+   * There is a run to undo. False when it stopped before the server had even
+   * opened one, which means nothing was created and there is nothing to offer.
+   */
+  canRevert: boolean;
 }) {
   const pct = progress.total === 0 ? 0 : (progress.done / progress.total) * 100;
   const [stopping, setStopping] = React.useState(false);
@@ -1108,31 +1135,34 @@ function MovingPanel({
         }
       >
         <div className="flex flex-wrap items-center gap-2">
-          <ConfirmAction
-            trigger={
-              <Button variant="destructive">
-                <Undo2 className="size-4" />
-                Remove what came over
-              </Button>
-            }
-            title="Remove everything this migration created?"
-            confirmLabel="Remove it"
-            successMessage=""
-            description={
-              <>
-                Deplo deletes the apps, databases and projects this run created
-                here, with their data. Anything that was already in this team is
-                left alone.
-                <br />
-                <br />
-                It does not start Dokploy back up - the services this migration
-                stopped over there stay stopped.
-              </>
-            }
-            onConfirm={onRevert}
-          />
+          {canRevert && (
+            <ConfirmAction
+              trigger={
+                <Button variant="destructive">
+                  <Undo2 className="size-4" />
+                  Remove what came over
+                </Button>
+              }
+              title="Remove everything this migration created?"
+              confirmLabel="Remove it"
+              // No `successMessage`: the revert raises its own, with the count
+              // of what it actually managed to take out.
+              description={
+                <>
+                  Deplo deletes the apps, databases and projects this run created
+                  here, with their data. Anything that was already in this team is
+                  left alone.
+                  <br />
+                  <br />
+                  It does not start Dokploy back up - the services this migration
+                  stopped over there stay stopped.
+                </>
+              }
+              onConfirm={onRevert}
+            />
+          )}
           <Button variant="outline" onClick={onKeep} disabled={reverting}>
-            Keep it and see the report
+            {canRevert ? "Keep it and see the report" : "Back to the review"}
           </Button>
           <Button variant="ghost" onClick={onShowLog} disabled={reverting}>
             <ScrollText className="size-4" />

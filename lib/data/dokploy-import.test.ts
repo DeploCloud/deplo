@@ -54,6 +54,7 @@ import {
   listDokployImports,
   revertDokployImport,
   scanDokploy,
+  stopDokployImport,
 } from "./dokploy-import";
 import { createProject } from "./projects";
 import { addServer, getServerById } from "./servers";
@@ -1209,4 +1210,32 @@ test("a revert of somebody else's run is not found", async () => {
   );
   // And nothing moved.
   assert.ok((await db.select().from(appsTable)).length > 0);
+});
+
+test("stopping a run closes it WITHOUT taking the agents off the source", async () => {
+  // The machine the migration reads from, registered the way the install step
+  // registers it.
+  const SOURCE = "srv_stop_source";
+  await seedServer(db, SOURCE);
+  await db
+    .update(serversTable)
+    .set({ importOnly: true })
+    .where(eq(serversTable.id, SOURCE));
+
+  const runId = await asOwner(() => beginDokployImport({ url: URL_BASE }));
+  await importProject(runId, "dok-prj-blink");
+  await settleProvisioning(db);
+
+  await asOwner(() => stopDokployImport(runId));
+
+  const rows = await db.select().from(runsTable).where(eq(runsTable.id, runId));
+  assert.equal(rows[0].status, "stopped");
+  // Still ours, still reachable - re-running is how a stopped migration is
+  // resumed, and it cannot be if the agent has been uninstalled.
+  assert.ok(await asOwner(() => getServerById(SOURCE)), "the source was removed");
+
+  // Idempotent, and it never overwrites a verdict a run reached on its own.
+  await asOwner(() => stopDokployImport(runId));
+  const again = await db.select().from(runsTable).where(eq(runsTable.id, runId));
+  assert.equal(again[0].status, "stopped");
 });
