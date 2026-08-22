@@ -224,6 +224,14 @@ test("a service's notes stay off the review entirely", () => {
   assert.match(html, /Not supported/);
 });
 
+test("nothing marks a row as new, because everything here is", () => {
+  // The status column says what is DIFFERENT about a row. A badge reading "New"
+  // on nine rows out of ten is a column you have to look past to find the one
+  // that says "Already here".
+  const html = render([]);
+  assert.equal(html.includes(">New<"), false);
+});
+
 test("something already in Deplo reads as a state, not a warning", () => {
   const already: PlanProject[] = [
     {

@@ -72,8 +72,14 @@ export interface PortConflict {
  * second one in a different list means matching names by eye.
  */
 
-const STATUS_LABEL: Record<PlanService["status"], string> = {
-  new: "New",
+/**
+ * The status column says what is DIFFERENT about a row, so `new` says nothing.
+ *
+ * Everything on this screen is new until it is not - a badge reading "New" on
+ * nine rows out of ten is a column of noise you have to look past to find the
+ * one that says "Already here". The absence is the answer.
+ */
+const STATUS_LABEL: Partial<Record<PlanService["status"], string>> = {
   exists: "Already here",
   unsupported: "Not supported",
   needs_grant: "Needs a permission",
@@ -496,18 +502,14 @@ function ServiceRows({
         onCheckedChange={onCheckedChange}
         showBuild={showBuild}
         status={
-          <Badge
-            className="whitespace-nowrap"
-            variant={
-              service.status === "new"
-                ? "secondary"
-                : service.status === "exists"
-                  ? "info"
-                  : "warning"
-            }
-          >
-            {STATUS_LABEL[service.status]}
-          </Badge>
+          STATUS_LABEL[service.status] ? (
+            <Badge
+              className="whitespace-nowrap"
+              variant={service.status === "exists" ? "info" : "warning"}
+            >
+              {STATUS_LABEL[service.status]}
+            </Badge>
+          ) : null
         }
         build={
           !placeable ? null : service.buildsFromSource ? (
@@ -611,8 +613,12 @@ function PortConflictRow({
         </span>
         {exposed && (
           <span className="flex items-center gap-2">
+            {/* `text-xs` on purpose: `Label` is `text-sm`, and inside this
+                strip it came out a size bigger than the sentence it belongs
+                to. One row, one type size. */}
             <FieldLabel
               htmlFor={portField}
+              className="text-xs"
               info="The port on the server clients connect to. Use a free unprivileged port (1024-65535)."
             >
               Host port

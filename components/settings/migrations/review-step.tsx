@@ -342,37 +342,8 @@ export function ReviewStep({
   return (
     <StepShell
       title="What comes over"
-      lead="Pick what to bring and where it lands. Nothing is deployed - Dokploy keeps serving until you say so."
+      lead="Pick what to bring and where it lands. Nothing is deployed yet."
     >
-      {/* Where it all ends up, said once and in the only place it can be
-          changed. The destination is otherwise invisible: an API key is scoped
-          to one Dokploy organization and everything here to the active team, so
-          without this card the only clue is the team switcher two rows up. */}
-      <div className="flex flex-wrap items-center gap-4 rounded-lg border border-border p-4">
-        <TeamTargetGraphic />
-        <div className="min-w-0 flex-1">
-          <div className="text-sm font-medium">Everything lands in {teamName}</div>
-          <p className="mt-1 text-sm text-muted-foreground">
-            Apps, databases and the variables that go with them.
-          </p>
-        </div>
-        {isInstanceAdmin && (
-          <Button variant="secondary" onClick={() => setNewTeamOpen(true)}>
-            Create a new team
-          </Button>
-        )}
-      </div>
-      {isInstanceAdmin && (
-        // `redirect={false}`: creating a team switches you into it, and the
-        // dialog's usual trip to the overview would throw away the scan, the
-        // selection and the key that are only in this tab.
-        <CreateTeamDialog
-          open={newTeamOpen}
-          onOpenChange={setNewTeamOpen}
-          redirect={false}
-        />
-      )}
-
       {/* Said once, at the top, instead of on every database it applies to: it
           is one fact about the person importing, not a property of each row,
           and repeating it N times is how a screen stops being read. */}
@@ -421,6 +392,37 @@ export function ReviewStep({
               allChosen ? new Set() : new Set(pickable.map((s) => s.sourceId)),
             )
           }
+        />
+      )}
+
+      {/* Where it all ends up, and it sits AFTER the list: the question this
+          step asks is "what comes over", and the answer to "into which team" is
+          the one you check once you have seen the list - not a card to read
+          past on the way to it. The destination is otherwise invisible, since
+          an API key is scoped to one Dokploy organization and everything here
+          to the active team. */}
+      <div className="flex flex-wrap items-center gap-4 rounded-lg border border-border p-4">
+        <TeamTargetGraphic />
+        <div className="min-w-0 flex-1">
+          <div className="text-sm font-medium">Everything lands in {teamName}</div>
+          <p className="mt-1 text-sm text-muted-foreground">
+            Apps, databases and the variables that go with them.
+          </p>
+        </div>
+        {isInstanceAdmin && (
+          <Button variant="secondary" onClick={() => setNewTeamOpen(true)}>
+            Create a new team
+          </Button>
+        )}
+      </div>
+      {isInstanceAdmin && (
+        // `redirect={false}`: creating a team switches you into it, and the
+        // dialog's usual trip to the overview would throw away the scan, the
+        // selection and the key that are only in this tab.
+        <CreateTeamDialog
+          open={newTeamOpen}
+          onOpenChange={setNewTeamOpen}
+          redirect={false}
         />
       )}
 

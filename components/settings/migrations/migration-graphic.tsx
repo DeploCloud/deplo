@@ -133,7 +133,14 @@ export function MigrationGraphic({
               line on top of it is how far along we are. ---- */}
       <path
         d="M52 60 H108"
-        className="stroke-muted-foreground/25"
+        className={cn(
+          "stroke-muted-foreground/25",
+          // The dots drift toward Deplo while the cable is still short of it.
+          // It is the only motion the first screen has - nothing is connected
+          // yet, so there is nothing else to show - and it says which way this
+          // is going before a single field has been filled in.
+          !done && "deplo-migrate-track",
+        )}
         strokeWidth="2.5"
         strokeDasharray="2 4"
         strokeLinecap="round"

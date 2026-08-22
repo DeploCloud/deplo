@@ -3,7 +3,7 @@
 import * as React from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
-import { Loader2, RotateCcw, ScrollText } from "lucide-react";
+import { Loader2, ScrollText } from "lucide-react";
 
 import { gqlAction } from "@/lib/graphql-client";
 import { Button } from "@/components/ui/button";
@@ -651,28 +651,6 @@ export function MigrationWizard({
 
   const goToReview = React.useCallback(() => setStep("review"), []);
 
-  /** Back to a blank wizard, same page, nothing carried over but the address. */
-  function startOver() {
-    setStep("connect");
-    setApiKey("");
-    setPlan(null);
-    setChosen(new Set());
-    setPlacements({});
-    // All three belong to the instance that was just migrated: the mapping keys
-    // are ITS server ids, and so are the machines waiting for an agent.
-    setServerMap({});
-    setPendingMachines({});
-    attemptedMachines.current = new Set();
-    setProgress({ done: 0, total: 0, current: "" });
-    setItems([]);
-    setRunId(null);
-    setFailure(null);
-    setInvites(null);
-    setInviteLink(null);
-    router.refresh();
-  }
-
-
   /* ---- render ------------------------------------------------------ */
 
   // One derived value drives the picture. `running` wins over the step, because
@@ -693,6 +671,9 @@ export function MigrationWizard({
   // report is somewhere you are meant to go.
   const guarded =
     step !== "done" && (plan != null || url.trim() !== "" || apiKey.trim() !== "");
+
+  /** The one step that stacks instead of splitting into two columns. */
+  const firstRun = step === "connect";
 
   return (
     <>
@@ -722,22 +703,41 @@ export function MigrationWizard({
       {step === "done" ? (
         <DoneStep
           items={items}
-          onStartOver={startOver}
           onFinish={() => router.push("/")}
           isInstanceAdmin={isInstanceAdmin}
         />
       ) : (
-        <div className="mx-auto grid max-w-6xl gap-8 min-[1440px]:grid-cols-[minmax(0,1fr)_22rem] min-[1440px]:gap-10">
+        <div
+          className={
+            firstRun
+              ? // The first screen is two fields and a switch, so it does not
+                // need a column of its own beside the picture - and a form that
+                // narrow next to a 22rem illustration reads as a leftover. It
+                // stacks instead: the drawing large on top, doing the one thing
+                // it can do before anything is connected, and the form under it
+                // at a width you can read in one line.
+                "mx-auto flex max-w-xl flex-col items-center gap-8"
+              : "mx-auto grid max-w-6xl gap-8 min-[1440px]:grid-cols-[minmax(0,1fr)_22rem] min-[1440px]:gap-10"
+          }
+        >
           {/* First in the DOM on a phone, where the picture on top reads as a
               heading; last on a wide screen, where it belongs on the right. */}
-          <div className="order-first flex justify-center min-[1440px]:order-last min-[1440px]:sticky min-[1440px]:top-24 min-[1440px]:self-start">
+          <div
+            className={
+              firstRun
+                ? "flex w-full max-w-md justify-center"
+                : "order-first flex justify-center min-[1440px]:order-last min-[1440px]:sticky min-[1440px]:top-24 min-[1440px]:self-start"
+            }
+          >
             <MigrationGraphic
               state={pose}
-              className="h-auto w-52 min-[1440px]:w-full"
+              className={
+                firstRun ? "h-auto w-full" : "h-auto w-52 min-[1440px]:w-full"
+              }
             />
           </div>
 
-          <div className="min-w-0 space-y-6">
+          <div className="w-full min-w-0 space-y-6">
             <WizardStepper
               steps={STEPS}
               current={step}
@@ -1019,12 +1019,10 @@ function MovingPanel({
  */
 function DoneStep({
   items,
-  onStartOver,
   onFinish,
   isInstanceAdmin,
 }: {
   items: ReportItem[];
-  onStartOver: () => void;
   onFinish: () => void;
   /** Uninstalling an agent is instance-admin, like every server action. */
   isInstanceAdmin: boolean;
@@ -1032,10 +1030,13 @@ function DoneStep({
   const [reportOpen, setReportOpen] = React.useState(false);
   return (
     <div className="mx-auto flex max-w-xl flex-col items-center gap-6 text-center">
-      <div className="relative flex justify-center">
-        <MigrationGraphic state="done" className="h-48 w-auto" />
-        <ConfettiBurst className="top-1/2" />
-      </div>
+      {/* Over the WINDOW, not over the drawing: a burst of twelve pieces
+          throwing 46px inside a 300px picture is a shimmer somebody misses
+          while they are reading the heading. Fixed, from the middle of the
+          screen, forty pieces going most of the way to the edges. */}
+      <ConfettiBurst className="fixed left-1/2 top-1/2 z-50" count={40} spread={320} />
+
+      <MigrationGraphic state="done" className="h-48 w-auto" />
 
       <div>
         <h2 className="text-xl font-semibold">You&apos;re on Deplo</h2>
@@ -1045,16 +1046,17 @@ function DoneStep({
         </p>
       </div>
 
-      <div className="flex flex-wrap justify-center gap-2">
-        <Button onClick={onFinish}>Finish</Button>
+      {/* The two ends of the row, the way every footer in the app reads: what
+          you might want to look at first on the left, the way out on the right.
+          There is no "migrate another one" - Finish leaves the page, and coming
+          back here gives a blank wizard, which is the same thing without a
+          button nobody presses twice. */}
+      <div className="flex w-full flex-wrap items-center justify-between gap-2">
         <Button variant="outline" onClick={() => setReportOpen(true)}>
           <ScrollText className="size-4" />
           View report
         </Button>
-        <Button variant="ghost" onClick={onStartOver}>
-          <RotateCcw className="size-4" />
-          Migrate another one
-        </Button>
+        <Button onClick={onFinish}>Finish</Button>
       </div>
 
       {/* Only ever shown when an agent really is still out there: finishing the

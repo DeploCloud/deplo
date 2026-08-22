@@ -2572,11 +2572,11 @@
 }
 
 /* The confetti burst (components/shared/confetti-burst.tsx), for a thing that
-   really happened. Twelve spans, one keyframe, and every per-piece difference
-   derived from `--i`: the angle fans the pieces evenly, the delay staggers
-   them, the distance and hue alternate so no two neighbours land together.
-   `--deplo-confetti-a` is in TURNS, which is what lets one multiplication
-   spread twelve pieces over a full circle. */
+   really happened. One keyframe for every piece: the delay and the rotation
+   come from `--i`, the hue from `nth-child`, and the angle and distance are set
+   per instance by the component - which is what lets the same burst be twelve
+   pieces beside a drawing or forty across the window. `--deplo-confetti-a` is
+   in TURNS. */
 @keyframes deplo-confetti-piece {
   0% {
     opacity: 0;
@@ -2596,8 +2596,6 @@
 }
 
 .deplo-confetti-piece {
-  --deplo-confetti-a: calc(var(--i) * 0.0833turn + 0.02turn);
-  --deplo-confetti-d: calc(46px + mod(var(--i), 3) * 16px);
   --deplo-confetti-r: calc(var(--i) * 47deg + 180deg);
   position: absolute;
   display: block;
@@ -2945,6 +2943,22 @@
   transition: stroke-dashoffset 700ms cubic-bezier(0.16, 1, 0.3, 1);
 }
 
+/* The dotted track drifts toward Deplo whenever the cable has not reached it.
+   The dash period is 6 (2 + 4) and the offset travels two periods per cycle, so
+   the loop point is invisible. */
+@keyframes deplo-migrate-track {
+  from {
+    stroke-dashoffset: 12;
+  }
+  to {
+    stroke-dashoffset: 0;
+  }
+}
+
+.deplo-migrate-track {
+  animation: deplo-migrate-track 1.6s linear infinite;
+}
+
 /* Each packet takes its delay from its index, so three elements share one
    keyframe and still read as a stream. The travel distance is the cable's own
    60 units; transform and opacity only, so the whole thing stays on the
@@ -3018,6 +3032,9 @@
      flickering without going out. */
   .deplo-migrate-cable {
     transition: none;
+  }
+  .deplo-migrate-track {
+    animation: none;
   }
   .deplo-migrate-packet {
     animation: none;

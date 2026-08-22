@@ -56,7 +56,15 @@ export function CommandLine({
   truncate?: boolean;
 }) {
   return (
-    <div className="flex items-start gap-2 rounded-lg border border-border bg-[#0a0a0a] px-3 py-2">
+    // `items-center` once truncated: the copy button is taller than one line of
+    // code, so top-aligning a single line leaves a band of dead space under it.
+    // A wrapped command still aligns to the top, where its first line is.
+    <div
+      className={cn(
+        "flex gap-2 rounded-lg border border-border bg-[#0a0a0a] px-3 py-2",
+        truncate ? "items-center" : "items-start",
+      )}
+    >
       <span className="select-none font-mono text-sm leading-relaxed text-muted-foreground">
         $
       </span>
