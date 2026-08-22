@@ -50,6 +50,7 @@ import {
   listServers,
   normalizeDokployBaseUrl,
   serviceDisplayName,
+  stopService,
   type DokployApplication,
   type DokployCompose,
   type DokployCredential,
@@ -78,7 +79,7 @@ import { addBasicAuthUser } from "./basic-auth";
 import { addExistingMember, mintRegistrationLink } from "./members";
 import { createApp, isSecretKey, setAppVolumes, updateAppResources } from "./apps";
 import { createCronJob } from "./crons";
-import { createDatabase } from "./databases";
+import { createDatabase, isValidExposePort } from "./databases";
 import { addDomain, updateDomain } from "./domains";
 import { createEnvironment, listEnvironmentsForProject } from "./environments";
 import { createProject, defaultEnvironmentFor, listProjects } from "./projects";
@@ -158,6 +159,14 @@ export interface PlanService {
    * drifts the first time an engine is added.
    */
   engine: string | null;
+  /**
+   * The host port this database publishes on Dokploy, or null when it publishes
+   * none (and for anything that is not a database). Carried into the plan so the
+   * review can say what will be published BEFORE it is, and ask about a port
+   * something else on the target host already holds - which used to be found out
+   * only from the report, after the import had silently dropped it.
+   */
+  exposedPort: number | null;
   /** Hostnames that would be imported (the throwaway ones already dropped). */
   domains: string[];
   notes: string[];
@@ -456,6 +465,7 @@ export async function scanDokploy(input: ConnectInput): Promise<DokployPlan> {
           // flips this below or leaves it false.
           buildsFromSource: false,
           engine: deploEngineFor(svc.kind as DokployDbKind),
+          exposedPort: null,
           domains: [],
           notes: [],
         };
@@ -495,12 +505,17 @@ export async function scanDokploy(input: ConnectInput): Promise<DokployPlan> {
         if (line.targetKind === "database") {
           const key = line.name.trim().toLowerCase();
           if (existing.databases.has(key)) line.status = "exists";
-          line.notes.push(
-            ...mapDatabase(svc.kind as DokployDbKind, {
-              ...(detail as DokployDatabase),
-              name: line.name,
-            }).notes,
-          );
+          const mappedDb = mapDatabase(svc.kind as DokployDbKind, {
+            ...(detail as DokployDatabase),
+            name: line.name,
+          });
+          // The port the review needs to talk about. Carried whatever the caller
+          // may do with it - this describes the SOURCE, and whether it can be
+          // published here is a separate fact the review states once at the top -
+          // so a screen with no port controls can still say how many databases
+          // are about to lose theirs.
+          line.exposedPort = mappedDb.value?.exposedPort ?? null;
+          line.notes.push(...mappedDb.notes);
           services[index] = line;
           return;
         }
@@ -1078,6 +1093,40 @@ export async function importDokployProject(
     source.name,
   );
 
+  // Read ONCE, up here, for the same reason the scan reads it: without the grant
+  // a database's port cannot be published at all, and knowing that BEFORE the
+  // create is what lets the report say the true reason instead of guessing at
+  // whichever one the failed create happened to raise.
+  const mayExposePorts = await canExposePorts();
+
+  // Which of OUR servers is each Dokploy machine, as an address match rather than
+  // the caller's `servers` mapping - that one falls back to the Deplo host for a
+  // machine we have no agent on, which is the right default for "where does this
+  // land" and the wrong answer to "is this the same box". Read once, and only if
+  // a database asks.
+  let machineHosts: Map<string, string | null> | null = null;
+  const hostOfMachine = async (sourceServerId: string) => {
+    if (!machineHosts)
+      machineHosts = new Map(
+        (await dokployMachines(c, teamId)).map((m) => [m.sourceId, m.deploServerId]),
+      );
+    return machineHosts.get(sourceServerId) ?? null;
+  };
+
+  // Where a service lands when nobody named a host. Mirrors resolveTeamServer's
+  // own rule - a single usable server is the answer, several is a refusal - so
+  // "is the source on this box" can be asked even for a caller that sent no
+  // placements at all (the API, and every import before the review had columns).
+  let soleServer: string | null | undefined;
+  const targetServerFor = async (given: string | undefined) => {
+    if (given) return given;
+    if (soleServer === undefined) {
+      const usable = (await listServersForTeam(teamId)).filter(canHostWorkloads);
+      soleServer = usable.length === 1 ? usable[0].id : null;
+    }
+    return soleServer ?? undefined;
+  };
+
   const projectId = await ensureProject(source, report);
   if (!projectId)
     return { projectName: source.name, ...tally(report.items), items: report.items };
@@ -1156,13 +1205,23 @@ export async function importDokployProject(
           );
           if (appId) appIds.push(appId);
         } else {
-          await importDatabaseService(
-            svc,
-            detail as DokployDatabase,
-            name,
-            placed.get(svc.id)?.serverId ?? serverMap.get(svc.serverId),
-            svcReport,
+          const placement = placed.get(svc.id);
+          const serverId = await targetServerFor(
+            placement?.serverId ?? serverMap.get(svc.serverId),
           );
+          await importDatabaseService(c, svc, detail as DokployDatabase, name, {
+            serverId,
+            // The port the review settled on, or the source's own when it said
+            // nothing. `null` is a decision ("publish nothing"), not a silence.
+            exposedPort: placement?.exposedPort,
+            mayExposePorts,
+            // Whether the machine this database runs on over there IS the machine
+            // it is about to run on here - the one case where the port it wants is
+            // held by the very container we are importing, and stopping that frees
+            // it. False when that Dokploy machine maps to no server of ours.
+            sourceIsTargetHost:
+              serverId != null && (await hostOfMachine(svc.serverId)) === serverId,
+          }, svcReport);
         }
       } catch (e) {
         await svcReport.add({
@@ -1265,6 +1324,21 @@ export interface ServicePlacement {
   serverId: string;
   /** Null (or absent) is Automatic: use a build server if the fleet has one. */
   buildServerId?: string | null;
+  /**
+   * A database's host port, decided in the review. Three distinct values, and the
+   * difference matters: ABSENT keeps the source's own port (what an API or MCP
+   * caller that knows nothing about this field gets, and what the import always
+   * did), `null` publishes nothing, and a number publishes there instead.
+   * Ignored for anything that is not a database.
+   */
+  exposedPort?: number | null;
+}
+
+/** What resolvePlacements settles for one service. */
+interface ResolvedPlacement {
+  serverId: string;
+  buildServerId: string | null;
+  exposedPort?: number | null;
 }
 
 /** Dokploy service id → where it lands, for the services the caller placed. */
@@ -1273,8 +1347,8 @@ async function resolvePlacements(
   placements: ServicePlacement[],
   report: Report,
   projectName: string,
-): Promise<Map<string, { serverId: string; buildServerId: string | null }>> {
-  const out = new Map<string, { serverId: string; buildServerId: string | null }>();
+): Promise<Map<string, ResolvedPlacement>> {
+  const out = new Map<string, ResolvedPlacement>();
   if (placements.length === 0) return out;
 
   const servers = await listServersForTeam(teamId);
@@ -1312,7 +1386,22 @@ async function resolvePlacements(
             "The build server picked for this app is not one this team can build on - it builds automatically instead.",
         });
     }
-    out.set(p.serviceId, { serverId: p.serverId, buildServerId });
+    // A port outside the range createDatabase accepts is refused HERE, where the
+    // report can name the service, instead of down at the create where it would
+    // read as "the database could not be made". The source's own port is used
+    // instead - the same thing an absent override means.
+    let exposedPort = p.exposedPort;
+    if (typeof exposedPort === "number" && !isValidExposePort(exposedPort)) {
+      await report.add({
+        path: projectName,
+        sourceKind: "server",
+        sourceName: p.serviceId,
+        outcome: "manual",
+        message: `Port ${exposedPort} is not a port a database can publish (1024-65535) - the one it had on Dokploy was used instead.`,
+      });
+      exposedPort = undefined;
+    }
+    out.set(p.serviceId, { serverId: p.serverId, buildServerId, exposedPort });
   }
   return out;
 }
@@ -1737,12 +1826,20 @@ async function importCrons(
  * not come with it.
  */
 async function importDatabaseService(
+  c: DokployCredential,
   svc: SourceService,
   row: DokployDatabase,
   name: string,
-  serverId: string | undefined,
+  opts: {
+    serverId: string | undefined;
+    /** Undefined keeps the source's port, null publishes none, a number overrides. */
+    exposedPort?: number | null;
+    mayExposePorts: boolean;
+    sourceIsTargetHost: boolean;
+  },
   report: Report,
 ): Promise<void> {
+  const { serverId } = opts;
   const mapped = mapDatabase(svc.kind as DokployDbKind, { ...row, name });
   const notes = [...mapped.notes];
   if (!mapped.value) {
@@ -1786,7 +1883,6 @@ async function importDatabaseService(
   // essentially every Dokploy database - those passwords are alphanumeric, so
   // "at least 1 special character" alone was enough - which silently swapped the
   // credential that every imported connection string still spells out.
-  let created: Awaited<ReturnType<typeof createDatabase>>;
   const base = {
     name: spec.name,
     type: spec.type,
@@ -1800,49 +1896,95 @@ async function importDatabaseService(
     // step would then pour the source's bytes into the wrong binary.
     customImage: spec.customImage,
   };
-  const withPort = spec.exposedPort
-    ? { exposedPublicly: true, exposedPort: spec.exposedPort }
-    : {};
   const withPassword = {
     ...base,
     password: spec.password ?? undefined,
     passwordIsGenerated: true,
   };
+
+  // What this database publishes here. The review may have said otherwise - a
+  // different port, or none at all - and without the grant nothing can be
+  // published whatever anyone chose.
+  const sourcePort = spec.exposedPort ?? null;
+  const chosenPort = opts.exposedPort !== undefined ? opts.exposedPort : sourcePort;
+  if (!opts.mayExposePorts && chosenPort != null)
+    notes.push(
+      `Port ${chosenPort} was not published: you don't have permission to publish ports.`,
+    );
+  else if (chosenPort == null && sourcePort != null)
+    notes.push(`Port ${sourcePort} was not published, as chosen during the import.`);
+  const publishPort = opts.mayExposePorts ? chosenPort : null;
+  const withPort =
+    publishPort != null
+      ? { exposedPublicly: true, exposedPort: publishPort }
+      : {};
+
   const portNote = (why: string) =>
-    `Port ${spec.exposedPort} was not published (${why}). Publish it once the old instance lets it go.`;
-  try {
-    created = await createDatabase({ ...withPassword, ...withPort });
-  } catch (e) {
-    const first = e instanceof Error ? e.message : "refused";
-    // Two things can still fail here, and the report must name the one that did:
-    // the port is held by the Dokploy that is still running, or the password
-    // cannot ride inside a connection string. Drop the PORT first and keep the
-    // credential - announcing "password refused" when the port was the problem
-    // sends people off to rewrite connection strings that were never broken.
+    `Port ${publishPort} was not published (${why}). Publish it from the database's Connection settings once that port is free.`;
+
+  // The FIRST failure is the one worth reporting: every later attempt is Deplo
+  // giving something up, so their errors describe the compromise, not the cause.
+  let firstError = "";
+  const attempt = async (payload: Parameters<typeof createDatabase>[0]) => {
     try {
-      if (!spec.exposedPort) throw e;
-      created = await createDatabase(withPassword);
-      notes.push(portNote(first));
+      return await createDatabase(payload);
+    } catch (e) {
+      if (!firstError) firstError = e instanceof Error ? e.message : "refused";
+      return null;
+    }
+  };
+
+  let created = await attempt({ ...withPassword, ...withPort });
+
+  // The port is held by the very container we are importing. Nothing else can
+  // free it, and the import stops that service anyway a moment later to read its
+  // volume - so stop it now and ask again. Only ever on the SAME host: stopping a
+  // service on another machine frees nothing here.
+  if (!created && publishPort != null && opts.sourceIsTargetHost) {
+    try {
+      await stopService(c, svc.kind, svc.id);
+      created = await attempt({ ...withPassword, ...withPort });
     } catch {
-      try {
-        created = await createDatabase(base);
-        if (spec.exposedPort) notes.push(portNote(first));
-        notes.push(
-          `Password refused (${first}), so Deplo made a new one - the imported connection strings still hold the old.`,
-        );
-      } catch (e2) {
-        await report.add({
-          sourceKind: svc.kind,
-          sourceId: svc.id,
-          sourceName: name,
-          outcome: "failed",
-          targetKind: "database",
-          message: e2 instanceof Error ? e2.message : "Could not create the database.",
-        });
-        return;
-      }
+      /* Dokploy would not stop it; the data phase tries again and says so. */
     }
   }
+
+  // Two things can still fail here, and the report must name the one that did:
+  // the port is held by something that is not ours, or the password cannot ride
+  // inside a connection string. Drop the PORT first and keep the credential -
+  // announcing "password refused" when the port was the problem sends people off
+  // to rewrite connection strings that were never broken.
+  if (!created && publishPort != null) {
+    created = await attempt(withPassword);
+    if (created) notes.push(portNote(firstError));
+  }
+  if (!created) {
+    created = await attempt(base);
+    if (created) {
+      if (publishPort != null) notes.push(portNote(firstError));
+      notes.push(
+        `Password refused (${firstError}), so Deplo made a new one - the imported connection strings still hold the old.`,
+      );
+    }
+  }
+  if (!created) {
+    await report.add({
+      sourceKind: svc.kind,
+      sourceId: svc.id,
+      sourceName: name,
+      outcome: "failed",
+      targetKind: "database",
+      message: firstError || "Could not create the database.",
+    });
+    return;
+  }
+
+  // Said out loud, because every connection string the import just brought over
+  // still spells out the old one.
+  if (publishPort != null && sourcePort != null && publishPort !== sourcePort)
+    notes.push(
+      `Published on ${publishPort} instead of ${sourcePort} - update the connection strings that name the old port.`,
+    );
 
   await report.add({
     sourceKind: svc.kind,

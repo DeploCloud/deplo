@@ -4,7 +4,7 @@ import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 
 import { TooltipProvider } from "@/components/ui/tooltip";
-import { ImportTree, visible } from "./import-tree";
+import { ImportTree, visible, type PortConflict } from "./import-tree";
 import type { Placement, PlanProject, PlanService, ServerChoice } from "./types";
 
 /**
@@ -30,6 +30,7 @@ function service(over: Partial<PlanService> & { sourceId: string }): PlanService
     sourceServerId: "",
     buildsFromSource: true,
     engine: null,
+    exposedPort: null,
     domains: [],
     notes: [],
     ...over,
@@ -59,6 +60,7 @@ const PROJECTS: PlanProject[] = [
             kind: "postgres",
             engine: "postgres",
             buildsFromSource: false,
+            exposedPort: 5432,
             domains: [],
           }),
         ],
@@ -126,6 +128,8 @@ function render(
   opts: {
     buildServers?: ServerChoice[];
     placements?: Record<string, Placement>;
+    portConflicts?: Record<string, PortConflict>;
+    showPorts?: boolean;
   } = {},
 ): string {
   return renderToStaticMarkup(
@@ -142,6 +146,8 @@ function render(
         buildServers: opts.buildServers ?? SERVERS,
         placements: opts.placements ?? homePlacements(),
         onPlacementsChange: () => {},
+        portConflicts: opts.portConflicts ?? {},
+        showPorts: opts.showPorts ?? true,
       }),
     ),
   );
@@ -317,4 +323,49 @@ test("a note is a tinted row, not just coloured text", () => {
   const row = html.match(/<div[^>]*bg-warning[^>]*>/);
   assert.ok(row, "the note row has no warning background");
   assert.match(row[0], /text-warning/);
+});
+
+/**
+ * A database's host port, which is the one thing on this screen that is not
+ * about WHERE something goes.
+ *
+ * Quiet by default: a port nothing else wants is a fact, shown next to the
+ * engine, not a question. It only becomes a control when it collides - and then
+ * the row has to carry both answers, "publish it somewhere else" and "don't
+ * publish it", because an import that silently drops the port is what this whole
+ * strip exists to stop.
+ */
+test("a database says what it publishes, and only asks when that port is taken", () => {
+  const clean = render(["s-db"]);
+  assert.match(clean, /Publishes 5432/, "shown next to the engine");
+  assert.equal(/imp-port-s-db/.test(clean), false, "and nothing to fill in");
+
+  const clash = render(["s-db"], {
+    placements: { ...homePlacements(), "s-db": { serverId: HOME, buildServerId: null, exposedPort: 25432 } },
+    portConflicts: {
+      "s-db": { takenPort: 5432, serverName: "eu-main-1", invalid: false },
+    },
+  });
+  assert.match(clash, /Port 5432 is taken on eu-main-1\./);
+  assert.match(clash, /Expose publicly/);
+  // The alternative is already filled in: pressing Import is a working answer.
+  assert.match(clash, /id="imp-port-s-db"[^>]*value="25432"/);
+  // ...and the read-only chip is gone, because the number moved into the field.
+  assert.equal(/Publishes 5432/.test(clash), false);
+
+  // "Don't publish" is the same control turned off: no port field, and the row
+  // no longer claims to publish anything.
+  const off = render(["s-db"], {
+    placements: { ...homePlacements(), "s-db": { serverId: HOME, buildServerId: null, exposedPort: null } },
+    portConflicts: {
+      "s-db": { takenPort: 5432, serverName: "eu-main-1", invalid: false },
+    },
+  });
+  assert.equal(/imp-port-s-db/.test(off), false);
+  assert.match(off, /Expose publicly/);
+
+  // Without the publish-ports grant nothing about a port is shown at all - the
+  // review says once, at the top, that these databases come over private.
+  const noGrant = render(["s-db"], { showPorts: false });
+  assert.equal(/Publishes 5432/.test(noGrant), false);
 });

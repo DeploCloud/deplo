@@ -1562,6 +1562,11 @@ Where one service lands. `serviceId` is the `sourceId` a scan reports. Omit `bui
 """
 input DokployPlacementInput {
   buildServerId: String
+
+  """
+  A database's host port. Omit the field to keep the port it had on Dokploy (what the import has always done); send null to publish nothing; send a number to publish there instead - which is how a review resolves a port something else already holds on the target server. Ignored for anything that is not a database.
+  """
+  exposedPort: Int
   serverId: String!
   serviceId: String!
 }
@@ -1645,6 +1650,11 @@ type DokployPlanService {
   Deplo's own engine id for a database (`mongo` on Dokploy is `mongodb` here), so a client can show the engine's brand mark. Null for anything that is not a database Deplo has.
   """
   engine: String
+
+  """
+  The host port this database publishes on Dokploy, so a review can say what will be published and offer another port when that one is taken here. Describes the SOURCE: it is reported whether or not the caller holds the publish-ports grant, and null only for something that is not a database or publishes nothing.
+  """
+  exposedPort: Int
 
   """
   What it is on Dokploy: application, compose, or one of postgres/mysql/mariadb/mongo/redis/libsql.
@@ -2106,6 +2116,20 @@ type GlobalUser {
   teamCount: Int
   userId: ID
   username: String
+}
+
+"""The answer to 'are these host ports free on that server?'."""
+type HostPortCheck {
+  """
+  False when the server could not be asked at all, in which case `inUse` is empty and says nothing.
+  """
+  checked: Boolean
+
+  """The subset of the requested ports that is taken."""
+  inUse: [Int!]
+
+  """Why the check could not run. Null when it did."""
+  reason: String
 }
 
 """
@@ -3637,6 +3661,11 @@ type Query {
   The capabilities the caller may hand out on a folder (their own effective folder caps). Owner/admin only.
   """
   grantableFolderCapabilities(folderId: ID!): [String!]
+
+  """
+  Which of these host ports are already taken on a server - both by something listening right now and by a database that has reserved one. For a screen that has to say so before anything is created, such as the import review. `checked` is false when the server's agent could not answer (too old, or unreachable); the reason says which. Requires the publish-ports grant.
+  """
+  hostPortsInUse(ports: [Int!]!, serverId: ID!): HostPortCheck
 
   """
   Instance-wide env vars — injected into every app of every team. Instance admin only.

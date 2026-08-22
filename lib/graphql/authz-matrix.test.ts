@@ -332,6 +332,7 @@ const refused = (messages: string[]): boolean => messages.some((m) => REFUSED.te
  */
 const NEEDS_INSTANCE_GRANT = new Map<string, RegExp>([
   ["M.generateAvailableDbPort", /permission to publish ports/i],
+  ["Q.hostPortsInUse", /permission to publish ports/i],
   ["Q.databaseCronJobs", /database.*console/i],
   ["M.createCronJob", /database.*console/i],
   ["M.setCronEnabled", /database.*console/i],

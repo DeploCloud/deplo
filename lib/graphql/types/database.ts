@@ -22,6 +22,7 @@ import {
   rotateDatabasePassword,
   deleteDatabase,
   generateAvailableDbPort,
+  hostPortsInUse,
   type DatabaseDTO,
 } from "@/lib/data/databases";
 import type { ResourceLimitsInput } from "@/lib/data/apps";
@@ -156,6 +157,27 @@ const UpdateDatabaseImageInputType = builder.inputType("UpdateDatabaseImageInput
   }),
 });
 
+const HostPortCheckRef = builder
+  .objectRef<{ checked: boolean; inUse: number[]; reason: string | null }>(
+    "HostPortCheck",
+  )
+  .implement({
+    description: "The answer to 'are these host ports free on that server?'.",
+    fields: (t) => ({
+      checked: t.exposeBoolean("checked", {
+        description:
+          "False when the server could not be asked at all, in which case `inUse` is empty and says nothing.",
+      }),
+      inUse: t.exposeIntList("inUse", {
+        description: "The subset of the requested ports that is taken.",
+      }),
+      reason: t.exposeString("reason", {
+        nullable: true,
+        description: "Why the check could not run. Null when it did.",
+      }),
+    }),
+  });
+
 /* ------------------------------------------------------------------ */
 /* Queries                                                             */
 /* ------------------------------------------------------------------ */
@@ -181,6 +203,22 @@ builder.queryFields((t) => ({
     authScopes: { loggedIn: true },
     args: { id: t.arg.string({ required: true }) },
     resolve: (_r, { id }) => getDatabase(id),
+  }),
+  hostPortsInUse: t.field({
+    type: HostPortCheckRef,
+    authScopes: { capability: "create_databases" },
+    description:
+      "Which of these host ports are already taken on a server - both by " +
+      "something listening right now and by a database that has reserved one. " +
+      "For a screen that has to say so before anything is created, such as the " +
+      "import review. `checked` is false when the server's agent could not " +
+      "answer (too old, or unreachable); the reason says which. Requires the " +
+      "publish-ports grant.",
+    args: {
+      serverId: t.arg.id({ required: true }),
+      ports: t.arg.intList({ required: true }),
+    },
+    resolve: (_r, { serverId, ports }) => hostPortsInUse(String(serverId), ports),
   }),
 }));
 

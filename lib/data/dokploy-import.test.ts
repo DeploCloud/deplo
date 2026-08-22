@@ -36,10 +36,12 @@ import {
   TRUNCATE_PROJECT_GRAPH,
 } from "./app-graph-test-helpers";
 import { __setDnsResolve4ForTest, __resetDnsResolve4ForTest } from "./domains";
+import { settleProvisioning } from "./backup-test-helpers";
 import {
   __setDokployFetchForTest,
   __resetDokployFetchForTest,
 } from "../dokploy/client";
+import { __setAgentConnectorForTest } from "../infra/agent-client";
 import {
   beginDokployImport,
   finishDokployImport,
@@ -163,6 +165,9 @@ function defaultFixtures(): Fixtures {
       ],
       mounts: [],
     },
+    // The one WRITE the importer makes on the other side: stopping the container
+    // that is still holding the port this database wants here.
+    "postgres.stop": { ok: true },
     "postgres.one": {
       postgresId: "dok-pg-1",
       name: "blink-db",
@@ -249,13 +254,17 @@ before(async () => {
 });
 
 after(async () => {
+  await settleProvisioning(db);
   __resetDnsResolve4ForTest();
   __resetDokployFetchForTest();
+  __setAgentConnectorForTest();
   __resetTestDb();
   await pg.close();
 });
 
 beforeEach(async () => {
+  // Drain the previous test's floated provisioning before its rows disappear.
+  await settleProvisioning(db);
   await db.execute(TRUNCATE_PROJECT_GRAPH);
   await db.execute(TRUNCATE_IDENTITY);
   await db.execute("truncate table dokploy_imports cascade;");
@@ -263,6 +272,8 @@ beforeEach(async () => {
   await seedServer(db);
   fixtures = defaultFixtures();
   __setDokployFetchForTest(routingFetch());
+  __setAgentConnectorForTest();
+  await db.execute("truncate table databases cascade;");
   calls = [];
 });
 
@@ -862,3 +873,183 @@ function json(body: unknown): Response {
     headers: { "content-type": "application/json" },
   });
 }
+
+/* ------------------------------------------------------------------ */
+/* A database's host port                                              */
+/* ------------------------------------------------------------------ */
+
+/**
+ * The port a database publishes over there is the port it should publish here,
+ * and for a long time it simply did not arrive.
+ *
+ * `mapDatabase` read Dokploy's `externalPort` all along - what dropped it was the
+ * create: publishing 5432 fails while the Dokploy container still holds it (which
+ * is the NORMAL state of a migration, since the source is stopped later, to read
+ * its volume), and the fallback quietly made an unexposed database and wrote a
+ * line in the report. These cover the three ways it can now end instead: the
+ * review picked another port, the review said not to publish, and the only thing
+ * holding the port was the source itself.
+ */
+
+/** Give SERVER_1 an agent, and say which host ports are already taken on it. */
+async function provisionServer1(taken: number[] = []): Promise<{
+  probed: number[];
+}> {
+  const { servers: serversTable } = await import("../db/schema/control-plane");
+  const { eq } = await import("drizzle-orm");
+  await db
+    .update(serversTable)
+    .set({
+      agentPort: 9443,
+      agentCertFingerprint: "sha256:pinned",
+      agentCertPem: "-----BEGIN CERTIFICATE-----",
+      agentVersion: "1.27.0",
+    })
+    .where(eq(serversTable.id, SERVER_1));
+  const held = new Set(taken);
+  const probed: number[] = [];
+  __setAgentConnectorForTest(
+    async () =>
+      ({
+        checkPort: async (port: number) => {
+          probed.push(port);
+          // The source lets go the moment it is stopped, which is the whole point
+          // of stopping it before asking again.
+          return {
+            available: !held.has(port) || calls.includes("postgres.stop"),
+            reason: "",
+          };
+        },
+        reroute: async () => ({ ok: true, error: "" }),
+        close: () => {},
+      }) as unknown as Awaited<
+        ReturnType<typeof import("../infra/agent-client").connectAgent>
+      >,
+  );
+  return { probed };
+}
+
+/** The publish-ports grant, which is a per-user flag and not a capability. */
+async function grantExposePorts(): Promise<void> {
+  await db.execute(
+    `update users set can_expose_ports = true where id = '${USER_1}'`,
+  );
+}
+
+const dbRowOf = async (name: string) =>
+  (await db.select().from(databasesTable)).find((d) => d.name === name);
+
+const notesOf = async (runId: string) =>
+  (await asOwner(() => getDokployImport(runId)))!
+    .items.filter((i) => i.sourceKind === "postgres")
+    .map((i) => i.message ?? "")
+    .join(" | ");
+
+test("a database keeps the host port it published on Dokploy", async () => {
+  await provisionServer1();
+  await grantExposePorts();
+  const runId = await asOwner(() => beginDokployImport({ url: URL_BASE }));
+  await importProject(runId, "dok-prj-blink");
+  // Provisioning is floated, and the runner blames the test that started work
+  // still in flight when it returns - so every one of these drains its own.
+  await settleProvisioning(db);
+
+  const row = await dbRowOf("blink-db");
+  assert.equal(row?.exposedPublicly, true);
+  assert.equal(row?.exposedPort, 5432);
+  // Exposed means the connection string is the one that WORKS from outside.
+  assert.ok(row!.connectionStringEnc.length > 0);
+});
+
+test("the review can move that port, or refuse to publish it at all", async () => {
+  await provisionServer1();
+  await grantExposePorts();
+
+  const runA = await asOwner(() => beginDokployImport({ url: URL_BASE }));
+  await asOwner(() =>
+    importDokployProject({
+      ...CONNECT,
+      runId: runA,
+      projectId: "dok-prj-blink",
+      serviceIds: ["dok-pg-1"],
+      placements: [
+        { serviceId: "dok-pg-1", serverId: SERVER_1, exposedPort: 25432 },
+      ],
+    }),
+  );
+  await settleProvisioning(db);
+  const moved = await dbRowOf("blink-db");
+  assert.equal(moved?.exposedPort, 25432);
+  assert.match(await notesOf(runA), /instead of 5432/);
+
+  await db.execute("truncate table databases cascade;");
+  const runB = await asOwner(() => beginDokployImport({ url: URL_BASE }));
+  await asOwner(() =>
+    importDokployProject({
+      ...CONNECT,
+      runId: runB,
+      projectId: "dok-prj-blink",
+      serviceIds: ["dok-pg-1"],
+      placements: [
+        { serviceId: "dok-pg-1", serverId: SERVER_1, exposedPort: null },
+      ],
+    }),
+  );
+  await settleProvisioning(db);
+  const quiet = await dbRowOf("blink-db");
+  assert.equal(quiet?.exposedPublicly, false);
+  assert.equal(quiet?.exposedPort, null);
+  assert.match(await notesOf(runB), /not published, as chosen/);
+});
+
+test("the source holding the port is not a reason to drop it - it is stopped", async () => {
+  // 5432 is taken on the target host, and the thing holding it is the Dokploy
+  // container being imported: same machine, so stopping it frees the port.
+  const { servers: serversTable } = await import("../db/schema/control-plane");
+  const { eq } = await import("drizzle-orm");
+  await db
+    .update(serversTable)
+    .set({ ip: "dokploy.acme.test", host: "dokploy.acme.test" })
+    .where(eq(serversTable.id, SERVER_1));
+  await provisionServer1([5432]);
+  await grantExposePorts();
+
+  const runId = await asOwner(() => beginDokployImport({ url: URL_BASE }));
+  await importProject(runId, "dok-prj-blink");
+
+  await settleProvisioning(db);
+  assert.equal(
+    calls.filter((p) => p === "postgres.stop").length,
+    1,
+    "the source was stopped, once",
+  );
+  const row = await dbRowOf("blink-db");
+  assert.equal(row?.exposedPublicly, true, "and the port came over anyway");
+  assert.equal(row?.exposedPort, 5432);
+});
+
+test("without the publish-ports grant the port is dropped, and the report says why", async () => {
+  await provisionServer1();
+  // An instance admin holds every grant implicitly, and the seeded owner is one -
+  // so taking the grant away means taking that away too.
+  await db.execute(
+    `update users set is_instance_admin = false, can_expose_ports = false
+       where id = '${USER_1}'`,
+  );
+  // The plan still SAYS what the source publishes - that is a fact about the
+  // other platform, and the review needs it to count how many databases are
+  // about to lose theirs - but the import says the true reason rather than
+  // blaming the old instance.
+  const plan = await asOwner(() => scanDokploy(CONNECT));
+  const planned = plan.projects
+    .flatMap((p) => p.environments.flatMap((e) => e.services))
+    .find((s) => s.sourceId === "dok-pg-1")!;
+  assert.equal(planned.exposedPort, 5432);
+
+  const runId = await asOwner(() => beginDokployImport({ url: URL_BASE }));
+  await importProject(runId, "dok-prj-blink");
+  await settleProvisioning(db);
+  const row = await dbRowOf("blink-db");
+  assert.equal(row?.exposedPublicly, false);
+  assert.match(await notesOf(runId), /permission to publish ports/);
+});

@@ -17,9 +17,19 @@ import {
 import { runWithIdentity } from "../auth/request-context";
 import { seedIdentity, TEAM_A, TEAM_B, USER_1 } from "./identity-test-helpers";
 import { seedServer } from "./app-graph-test-helpers";
-import { seedBackup, seedDatabase, seedRun, seedS3, TRUNCATE_BACKUPS } from "./backup-test-helpers";
+import { seedServerRow } from "./infra-test-helpers";
+import { __setAgentConnectorForTest } from "../infra/agent-client";
+import {
+  seedBackup,
+  seedDatabase,
+  seedRun,
+  seedS3,
+  settleProvisioning,
+  TRUNCATE_BACKUPS,
+} from "./backup-test-helpers";
 import {
   createDatabase,
+  hostPortsInUse,
   getConnectionString,
   getDatabase,
   listDatabases,
@@ -57,11 +67,14 @@ before(async () => {
 });
 
 after(async () => {
+  await settleProvisioning(db);
   __resetTestDb();
   await pg.close();
 });
 
 beforeEach(async () => {
+  // Drain the previous test's floated provisioning before its rows disappear.
+  await settleProvisioning(db);
   await pg.exec(`${TRUNCATE_BACKUPS}
     truncate table users, teams restart identity cascade;`);
   await seedIdentity(db, {
@@ -648,4 +661,149 @@ test("createDatabase: the password policy is for a chosen password, not an impor
       /may not contain/,
     );
   });
+});
+
+/**
+ * A host port is a singleton on the machine, and the agent's bind probe cannot
+ * see one that has been CLAIMED but is not yet listening.
+ *
+ * Two databases created in a row - which is exactly what an import does, several
+ * at once, each carrying the port it had on the other platform - both passed that
+ * probe, because the first one's container is provisioned in the background and
+ * has not bound anything yet. Both rows were written, and whichever started
+ * second failed at `compose up` with nobody having been told. The row is the
+ * second half of the check, and it is the half nothing had.
+ */
+test("a host port another database has reserved is refused before anything listens", async () => {
+  await seedServerRow(db, {
+    id: "srv_ports",
+    name: "ports-1",
+    ip: "10.0.0.7",
+    host: "10.0.0.7",
+    agent: {
+      port: 9443,
+      certFingerprint: "sha256:pinned",
+      certPem: "-----BEGIN CERTIFICATE-----",
+      version: "1.20.0",
+    },
+  });
+  await db.execute(
+    `update users set can_expose_ports = true where id = '${USER_1}'`,
+  );
+  // Everything is free ON THE HOST, so the row is the only thing that can refuse.
+  const probed: number[] = [];
+  __setAgentConnectorForTest(
+    async () =>
+      ({
+        checkPort: async (port: number) => {
+          probed.push(port);
+          return { available: true, reason: "" };
+        },
+        reroute: async () => ({ ok: true, error: "" }),
+        close: () => {},
+      }) as unknown as Awaited<
+        ReturnType<typeof import("../infra/agent-client").connectAgent>
+      >,
+  );
+  try {
+    await asUser1(async () => {
+      const base = {
+        type: "postgres" as const,
+        version: "16",
+        serverId: "srv_ports",
+        exposedPublicly: true,
+      };
+      await createDatabase({ ...base, name: "first", exposedPort: 25432 });
+      await assert.rejects(
+        () => createDatabase({ ...base, name: "second", exposedPort: 25432 }),
+        /already in use/,
+      );
+      // A different port on the same host is untouched by any of this.
+      const ok = await createDatabase({
+        ...base,
+        name: "third",
+        exposedPort: 25433,
+      });
+      assert.equal(ok.exposedPort, 25433);
+      assert.ok(probed.includes(25432), "the host was still asked");
+    });
+    // Drained HERE, not in the next beforeEach: the runner attributes async work
+    // to the test that started it, so provisioning still in flight when this one
+    // returns fails THIS test however tidily the next one cleans up.
+    await settleProvisioning(db);
+  } finally {
+    __setAgentConnectorForTest();
+  }
+});
+
+/**
+ * The same reservation, seen from the other side: `hostPortsInUse` is what the
+ * import review reads before it offers anybody a choice, so it has to answer for
+ * a claimed-but-idle port too - and it must never THROW for an agent that cannot
+ * answer, or a migration would stop on a probe.
+ */
+test("hostPortsInUse reports claimed ports, and says so when it cannot ask", async () => {
+  await seedServerRow(db, {
+    id: "srv_probe",
+    name: "probe-1",
+    ip: "10.0.0.8",
+    host: "10.0.0.8",
+    agent: {
+      port: 9443,
+      // Its OWN fingerprint: `servers` is partial-unique on that column and the
+      // seed swallows a conflict, so two servers sharing one would leave the
+      // second row silently absent.
+      certFingerprint: "sha256:probe",
+      certPem: "-----BEGIN CERTIFICATE-----",
+      version: "1.20.0",
+    },
+  });
+  await db.execute(
+    `update users set can_expose_ports = true where id = '${USER_1}'`,
+  );
+  await seedDatabase(db, {
+    id: "db_claim",
+    name: "claimer",
+    serverId: "srv_probe",
+    exposedPublicly: true,
+    exposedPort: 25500,
+  });
+  __setAgentConnectorForTest(
+    async () =>
+      ({
+        // 5432 is a real listener; everything else on this host is free.
+        checkPort: async (port: number) => ({
+          available: port !== 5432,
+          reason: "",
+        }),
+        close: () => {},
+      }) as unknown as Awaited<
+        ReturnType<typeof import("../infra/agent-client").connectAgent>
+      >,
+  );
+  try {
+    await asUser1(async () => {
+      const res = await hostPortsInUse("srv_probe", [5432, 25500, 25501, 25501]);
+      assert.equal(res.checked, true);
+      assert.deepEqual(res.inUse.sort((a, b) => a - b), [5432, 25500]);
+    });
+  } finally {
+    __setAgentConnectorForTest();
+  }
+
+  // An agent that will not answer is not an error the caller has to handle: the
+  // review says so once and carries on.
+  __setAgentConnectorForTest(async () => {
+    throw new Error("agent is too old to check ports");
+  });
+  try {
+    await asUser1(async () => {
+      const res = await hostPortsInUse("srv_probe", [5432]);
+      assert.equal(res.checked, false);
+      assert.deepEqual(res.inUse, []);
+      assert.match(res.reason ?? "", /too old/);
+    });
+  } finally {
+    __setAgentConnectorForTest();
+  }
 });

@@ -24,6 +24,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { SimpleTooltip } from "@/components/ui/tooltip";
+import { FieldLabel } from "@/components/ui/info-tip";
 import { DatabaseLogo } from "@/components/storage/database-logo";
 import type { DatabaseType } from "@/lib/types";
 import {
@@ -35,6 +36,22 @@ import {
   type PlanService,
   type ServerChoice,
 } from "./types";
+
+/**
+ * A database whose host port is taken on the server it is about to land on, as
+ * the review needs to say it: the port that clashes, the host it clashes on, and
+ * whether what is currently chosen still clashes.
+ *
+ * Keyed on the SOURCE port rather than on the current choice, so the row keeps
+ * its controls after the clash has been resolved - somebody who changes their
+ * mind about a port they were just given has nowhere else to go.
+ */
+export interface PortConflict {
+  takenPort: number;
+  serverName: string;
+  /** The port chosen RIGHT NOW is itself taken, so the import cannot start. */
+  invalid: boolean;
+}
 
 /**
  * What is coming over, as a tree you can prune and place.
@@ -138,6 +155,8 @@ export function ImportTree({
   buildServers,
   placements,
   onPlacementsChange,
+  portConflicts,
+  showPorts,
 }: {
   projects: PlanProject[];
   /** Source service ids. The leaves ARE the selection; parents are derived. */
@@ -149,6 +168,10 @@ export function ImportTree({
   buildServers: ServerChoice[];
   placements: Record<string, Placement>;
   onPlacementsChange: (next: Record<string, Placement>) => void;
+  /** Source service id → the port clash to resolve on that row, if any. */
+  portConflicts: Record<string, PortConflict>;
+  /** False without the publish-ports grant: no port comes over, so none is shown. */
+  showPorts: boolean;
 }) {
   // Everything open on arrival: a migration is read top to bottom once, and a
   // tree that hides the thing you came to check is a tree you fight.
@@ -283,6 +306,8 @@ export function ImportTree({
                             buildServers={buildServers}
                             placements={placements}
                             onPlace={place}
+                            portConflicts={portConflicts}
+                            showPorts={showPorts}
                           />
                         ))}
                   </React.Fragment>
@@ -308,6 +333,8 @@ function EnvironmentRows({
   buildServers,
   placements,
   onPlace,
+  portConflicts,
+  showPorts,
 }: {
   environment: PlanEnvironment;
   /** The service ids a search left standing, or null when nothing is filtered. */
@@ -321,6 +348,8 @@ function EnvironmentRows({
   buildServers: ServerChoice[];
   placements: Record<string, Placement>;
   onPlace: (serviceIds: string[], patch: Partial<Placement>) => void;
+  portConflicts: Record<string, PortConflict>;
+  showPorts: boolean;
 }) {
   // Same rule as the project row: counted over every service in the environment,
   // not over the ones a search happens to be showing.
@@ -360,6 +389,8 @@ function EnvironmentRows({
               buildServers={buildServers}
               placement={placements[s.sourceId]}
               onPlace={(patch) => onPlace([s.sourceId], patch)}
+              conflict={portConflicts[s.sourceId]}
+              showPorts={showPorts}
             />
           ))}
     </>
@@ -375,6 +406,8 @@ function ServiceRows({
   buildServers,
   placement,
   onPlace,
+  conflict,
+  showPorts,
 }: {
   service: PlanService;
   checked: boolean;
@@ -384,8 +417,14 @@ function ServiceRows({
   buildServers: ServerChoice[];
   placement: Placement | undefined;
   onPlace: (patch: Partial<Placement>) => void;
+  conflict: PortConflict | undefined;
+  showPorts: boolean;
 }) {
   const placeable = isImportable(service) && placement != null;
+  // What this database will publish, after whatever the review decided. Absent
+  // means nobody decided anything, which is the source's own port.
+  const port =
+    placement?.exposedPort !== undefined ? placement.exposedPort : service.exposedPort;
   return (
     <>
       <Row
@@ -393,7 +432,11 @@ function ServiceRows({
         depth={2}
         label={service.name}
         mark={<ServiceMark service={service} />}
-        meta={service.domains[0] ?? service.kind}
+        meta={
+          showPorts && port != null && !conflict
+            ? `${service.kind} · Publishes ${port}`
+            : (service.domains[0] ?? service.kind)
+        }
         expandable={false}
         expanded={false}
         onToggleExpand={() => {}}
@@ -437,6 +480,14 @@ function ServiceRows({
           )
         }
       />
+      {conflict && placeable && (
+        <PortConflictRow
+          service={service}
+          conflict={conflict}
+          port={port ?? null}
+          onPlace={onPlace}
+        />
+      )}
       {/* The notes are the whole reason this screen exists, so they are warnings
           here rather than grey small print nobody reads. */}
       {service.notes.map((n, i) => (
@@ -450,6 +501,95 @@ function ServiceRows({
         </div>
       ))}
     </>
+  );
+}
+
+/**
+ * The one thing on this screen that is not a choice about WHERE, but about what
+ * a database will answer on.
+ *
+ * It sits under the row it belongs to, in the same warning strip the notes use,
+ * because that is where somebody already looks for "what about this one". The
+ * port is pre-filled with one that is free on the target host, so the person who
+ * has no opinion presses Import and gets a working database; the checkbox is for
+ * the person who would rather it stayed private for now.
+ *
+ * The labels are Storage's own - "Expose publicly", "Host port" - deliberately:
+ * this is the same setting the database's own Connection screen shows, and
+ * calling it something else here would make it read as a second, different one.
+ */
+function PortConflictRow({
+  service,
+  conflict,
+  port,
+  onPlace,
+}: {
+  service: PlanService;
+  conflict: PortConflict;
+  port: number | null;
+  onPlace: (patch: Partial<Placement>) => void;
+}) {
+  const exposed = port != null;
+  const portField = `imp-port-${service.sourceId}`;
+  const toggleField = `imp-expose-${service.sourceId}`;
+  return (
+    <div
+      className="flex flex-wrap items-center gap-x-3 gap-y-2 bg-warning/10 py-2 pr-3 text-xs text-warning"
+      style={{ paddingLeft: `${0.75 + 3 * 1.25}rem` }}
+    >
+      <span className="flex items-start gap-2">
+        <TriangleAlert className="mt-0.5 size-3.5 shrink-0" />
+        <span className="min-w-0">
+          Port {conflict.takenPort} is taken on {conflict.serverName}.
+        </span>
+      </span>
+      <span className="flex items-center gap-2">
+        <Checkbox
+          id={toggleField}
+          checked={exposed}
+          // Back ON means back to what the source published, which the review
+          // then finds a free port for exactly as it did the first time - so
+          // there is no "last port" to remember here, and no way for this row to
+          // hand back a stale one.
+          onCheckedChange={(v) =>
+            onPlace({
+              exposedPort: v === true ? (service.exposedPort ?? conflict.takenPort) : null,
+            })
+          }
+        />
+        <label htmlFor={toggleField} className="cursor-pointer text-foreground">
+          Expose publicly
+        </label>
+      </span>
+      {exposed && (
+        <span className="flex items-center gap-2">
+          <FieldLabel
+            htmlFor={portField}
+            info="The port on the server clients connect to. Use a free unprivileged port (1024-65535)."
+          >
+            Host port
+          </FieldLabel>
+          <Input
+            id={portField}
+            type="number"
+            inputMode="numeric"
+            min={1024}
+            max={65535}
+            value={port ?? ""}
+            aria-invalid={conflict.invalid || undefined}
+            onChange={(e) => {
+              const n = Number(e.target.value);
+              const next = Number.isInteger(n) && n > 0 ? n : null;
+              // Emptying the box IS "publish nothing", and the checkbox says so
+              // by going off - rather than leaving a field that looks filled-in-
+              // pending and an Import button nobody can explain.
+              onPlace({ exposedPort: next });
+            }}
+            className="h-8 w-24"
+          />
+        </span>
+      )}
+    </div>
   );
 }
 

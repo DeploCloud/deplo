@@ -42,6 +42,31 @@ export const TRUNCATE_BACKUPS = `truncate table
   pending_teardowns, backup_runs, backups, databases, backup_destination
   restart identity cascade;`;
 
+/**
+ * Wait for every floated `provisionDatabase` to finish.
+ *
+ * `createDatabase` returns before its container exists - provisioning is a
+ * `void`ed promise on purpose, so the caller is not held for a docker round-trip
+ * - which in a test means work that outlives the test that started it. Once the
+ * harness has torn the pglite database down, that work asks a `getDb()` which is
+ * no longer pointed anywhere and the whole FILE fails with an unhandled
+ * rejection about DEPLO_DATABASE_URL, naming a test that passed.
+ *
+ * Call it before truncating and before closing: it drains what is in flight.
+ */
+export async function settleProvisioning(db: TestDb): Promise<void> {
+  for (let i = 0; i < 400; i++) {
+    const rows = await db
+      .select({ status: databasesTable.status })
+      .from(databasesTable);
+    if (!rows.some((r) => r.status === "provisioning")) break;
+    await new Promise((r) => setTimeout(r, 5));
+  }
+  // The status flip is not the last thing provisioning does (the readiness alert
+  // is dispatched after it, and floats too), so give the tail a turn to land.
+  await new Promise((r) => setTimeout(r, 100));
+}
+
 export interface SeedDatabaseOpts {
   id: string;
   teamId?: string;
@@ -51,6 +76,9 @@ export interface SeedDatabaseOpts {
   username?: string;
   dbName?: string;
   status?: Database["status"];
+  /** Publish a host port, the way an exposed database's row really looks. */
+  exposedPublicly?: boolean;
+  exposedPort?: number | null;
 }
 
 /** Seed one database row (its `connection_string_enc` is a real encrypted value). */
@@ -78,8 +106,8 @@ export async function seedDatabase(
     connectionStringEnc: encryptSecret(
       `postgres://app:pw@db-${name}:5432/db-${name}`,
     ),
-    exposedPublicly: false,
-    exposedPort: null,
+    exposedPublicly: opts.exposedPublicly ?? false,
+    exposedPort: opts.exposedPort ?? null,
     resources: null,
     customImage: null,
     customCommand: null,

@@ -950,7 +950,14 @@ export function mapDatabase(
       username: rootPassword ? "root" : row.databaseUser?.trim() || null,
       dbName: row.databaseName?.trim() || null,
       password: rootPassword ?? (row.databasePassword?.trim() || null),
-      exposedPort: row.externalPort ?? null,
+      // A real published port or nothing. Dokploy's column is nullable and a
+      // service that publishes none can also carry 0, which is not a port
+      // anything here would accept - and it would reach the report as a line
+      // about "port 0" that reads like a fault instead of an absence.
+      exposedPort:
+        typeof row.externalPort === "number" && row.externalPort > 0
+          ? row.externalPort
+          : null,
       customImage,
     },
     notes,

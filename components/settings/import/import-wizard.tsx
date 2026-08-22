@@ -35,7 +35,7 @@ import { WizardStepper, type WizardStep } from "@/components/shared/wizard-stepp
 import { MachineGate } from "./machines";
 import { ImportReport } from "./import-report";
 import { RemoveMigrationSources } from "./remove-sources";
-import { ImportTree } from "./import-tree";
+import { ImportTree, type PortConflict } from "./import-tree";
 import {
   ImportProgressDialog,
   ImportProgressPill,
@@ -48,6 +48,7 @@ import {
   type Placement,
   type Plan,
   type PlanMember,
+  type PortCheck,
   type ReportItem,
   type ServerChoice,
 } from "./types";
@@ -130,12 +131,29 @@ const SCAN = /* GraphQL */ `
             sourceServerId
             buildsFromSource
             engine
+            exposedPort
             domains
             notes
           }
         }
       }
     }
+  }
+`;
+
+const PORTS_IN_USE = /* GraphQL */ `
+  query HostPortsInUse($serverId: ID!, $ports: [Int!]!) {
+    hostPortsInUse(serverId: $serverId, ports: $ports) {
+      checked
+      inUse
+      reason
+    }
+  }
+`;
+
+const SUGGEST_PORT = /* GraphQL */ `
+  mutation GenerateAvailableDbPort($serverId: ID) {
+    generateAvailableDbPort(serverId: $serverId)
   }
 `;
 
@@ -299,12 +317,15 @@ export function ImportWizard({
   buildServers,
   runs,
   isInstanceAdmin,
+  canExposePorts,
 }: {
   teamId: string;
   servers: ServerChoice[];
   buildServers: ServerChoice[];
   runs: ImportRun[];
   isInstanceAdmin: boolean;
+  /** The publish-ports grant. Without it a database's port cannot come over at all. */
+  canExposePorts: boolean;
 }) {
   const router = useRouter();
 
@@ -732,6 +753,7 @@ export function ImportWizard({
           buildServers={buildServers}
           placements={placements}
           setPlacements={setPlacements}
+          canExposePorts={canExposePorts}
           isInstanceAdmin={isInstanceAdmin}
           newTeam={newTeam}
           setNewTeam={setNewTeam}
@@ -987,6 +1009,250 @@ function PastRuns({
 }
 
 /* ------------------------------------------------------------------ */
+/* Host ports                                                         */
+/* ------------------------------------------------------------------ */
+
+/** Every database in the plan that publishes a port, whatever anyone has ticked. */
+function databasesWithPorts(plan: Plan) {
+  return plan.projects
+    .flatMap(importableOf)
+    .filter((s) => s.targetKind === "database" && s.exposedPort != null);
+}
+
+/**
+ * Which databases would land on a host port something else already holds, and a
+ * free port to offer instead.
+ *
+ * The whole point is that this is answered BEFORE the import, not after: the port
+ * a database publishes on the other platform is routinely taken over here (by
+ * Deplo's own Postgres on 5432, by an app, by the other database in the same
+ * migration), and an import that discovers that at the create can only drop the
+ * port and write a line about it in a report nobody reads until it is too late.
+ *
+ * Two things are deliberately NOT a conflict:
+ *
+ * - **The source itself holding it.** When the database runs on the very machine
+ *   it is about to run on here, the container holding that port is the one being
+ *   imported, and the import stops it moments later to read its volume - so the
+ *   port frees itself and asking about it would be asking about nothing.
+ * - **A port on a server nothing could ask.** An agent too old to probe, or one
+ *   that will not answer, is reported once at the top rather than turned into a
+ *   decision per database about a problem that may not exist.
+ *
+ * Duplicates inside the same import are found here and nowhere else: neither
+ * database exists yet, so the host has nothing to bind and the probe cannot see
+ * the clash - only this list can.
+ */
+function usePortConflicts({
+  plan,
+  placements,
+  setPlacements,
+  chosen,
+  servers,
+  enabled,
+}: {
+  plan: Plan;
+  placements: Record<string, Placement>;
+  /** The real setter: a suggestion lands after an await, so it must merge, not overwrite. */
+  setPlacements: React.Dispatch<React.SetStateAction<Record<string, Placement>>>;
+  chosen: Set<string>;
+  servers: ServerChoice[];
+  /** False without the publish-ports grant: nothing can be published, so nothing is asked. */
+  enabled: boolean;
+}) {
+  const [checks, setChecks] = React.useState<Record<string, PortCheck>>({});
+
+  const dbs = React.useMemo(() => databasesWithPorts(plan), [plan]);
+
+  /** The Deplo server that IS the Dokploy machine a service runs on, if we have one. */
+  const homeHost = React.useMemo(
+    () => new Map(plan.servers.map((m) => [m.sourceId, m.deploServerId])),
+    [plan],
+  );
+
+  /** What a database will publish, after whatever the review has decided so far. */
+  const chosenPort = React.useCallback(
+    (sourceId: string, sourcePort: number | null) => {
+      const p = placements[sourceId]?.exposedPort;
+      return p !== undefined ? p : sourcePort;
+    },
+    [placements],
+  );
+
+  // The question to ask each server: the ports its databases came with, plus the
+  // ones the review has since chosen, so a typed port is checked too. Serialised
+  // to a string because it is what the effect keys on - an array rebuilt every
+  // render would make it fire forever.
+  const askKey = React.useMemo(() => {
+    const byServer = new Map<string, Set<number>>();
+    for (const s of dbs) {
+      const serverId = placements[s.sourceId]?.serverId;
+      if (!serverId) continue;
+      const ports = byServer.get(serverId) ?? new Set<number>();
+      if (s.exposedPort != null) ports.add(s.exposedPort);
+      const now = chosenPort(s.sourceId, s.exposedPort);
+      if (now != null) ports.add(now);
+      byServer.set(serverId, ports);
+    }
+    return JSON.stringify(
+      [...byServer].map(([id, ports]) => [id, [...ports].sort((a, b) => a - b)]),
+    );
+  }, [dbs, placements, chosenPort]);
+
+  React.useEffect(() => {
+    if (!enabled || dbs.length === 0) return;
+    const ask: [string, number[]][] = JSON.parse(askKey);
+    if (ask.length === 0) return;
+    let cancelled = false;
+    // Debounced: the run-server picker and the port field both feed this, and a
+    // probe per keystroke is a gRPC round-trip per keystroke.
+    const t = setTimeout(async () => {
+      const answers = await Promise.all(
+        ask.map(async ([serverId, ports]) => {
+          const res = await gqlAction<{ hostPortsInUse: PortCheck }, PortCheck>(
+            PORTS_IN_USE,
+            { serverId, ports },
+            (d) => d.hostPortsInUse,
+          );
+          const answer: PortCheck =
+            res.ok && res.data
+              ? res.data
+              : {
+                  checked: false,
+                  inUse: [],
+                  reason: res.ok ? null : res.error,
+                };
+          return [serverId, answer] as const;
+        }),
+      );
+      if (cancelled) return;
+      setChecks(Object.fromEntries(answers));
+    }, 350);
+    return () => {
+      cancelled = true;
+      clearTimeout(t);
+    };
+  }, [askKey, enabled, dbs.length]);
+
+  /** A port taken on the host this database lands on, by something that is not it. */
+  const clashes = React.useCallback(
+    (sourceId: string, sourceServerId: string, port: number | null) => {
+      if (port == null) return false;
+      const serverId = placements[sourceId]?.serverId;
+      if (!serverId) return false;
+      // The container holding it is the one we are importing; it lets go.
+      if (homeHost.get(sourceServerId) === serverId) return false;
+      const check = checks[serverId];
+      if (check?.checked && check.inUse.includes(port)) return true;
+      // Nothing on the host can see a database that does not exist yet, so two
+      // arrivals wanting one port are only ever caught by comparing them.
+      return dbs.some(
+        (o) =>
+          o.sourceId !== sourceId &&
+          placements[o.sourceId]?.serverId === serverId &&
+          chosenPort(o.sourceId, o.exposedPort) === port &&
+          // Ordered, so exactly ONE of the pair is the one to move.
+          o.sourceId < sourceId,
+      );
+    },
+    [placements, homeHost, checks, dbs, chosenPort],
+  );
+
+  const conflicts = React.useMemo(() => {
+    const out: Record<string, PortConflict> = {};
+    for (const s of dbs) {
+      // Only what is actually coming over: a port on a database somebody unticked
+      // is a question about something that is not going to happen.
+      if (!chosen.has(s.sourceId)) continue;
+      if (s.exposedPort == null) continue;
+      if (!clashes(s.sourceId, s.sourceServerId, s.exposedPort)) continue;
+      const serverId = placements[s.sourceId]?.serverId;
+      out[s.sourceId] = {
+        takenPort: s.exposedPort,
+        serverName: servers.find((v) => v.id === serverId)?.name ?? "that server",
+        invalid: clashes(
+          s.sourceId,
+          s.sourceServerId,
+          chosenPort(s.sourceId, s.exposedPort),
+        ),
+      };
+    }
+    return out;
+  }, [dbs, chosen, clashes, placements, servers, chosenPort]);
+
+  // A free port, offered rather than demanded: whoever has no opinion about which
+  // port a migrated database answers on presses Import and gets a working one.
+  React.useEffect(() => {
+    // Only a row nobody has touched: once a port has been chosen - by this effect
+    // or by the person - it stands, even if it is still taken. Which is also what
+    // stops this from looping, since the pick immediately fails this test.
+    const open = dbs
+      .filter(
+        (s) =>
+          conflicts[s.sourceId]?.invalid &&
+          chosenPort(s.sourceId, s.exposedPort) === s.exposedPort,
+      )
+      .map((s) => s.sourceId);
+    if (open.length === 0) return;
+    let cancelled = false;
+    void (async () => {
+      const picked: [string, number][] = [];
+      for (const id of open) {
+        const serverId = placements[id]?.serverId;
+        if (!serverId) continue;
+        const res = await gqlAction<{ generateAvailableDbPort: number }, number>(
+          SUGGEST_PORT,
+          { serverId },
+          (d) => d.generateAvailableDbPort,
+        );
+        // Two databases suggested in one pass must not be handed the same port:
+        // the server answers from what is live, and neither of them is.
+        if (res.ok && res.data != null && !picked.some(([, p]) => p === res.data)) {
+          picked.push([id, res.data]);
+        }
+      }
+      if (cancelled || picked.length === 0) return;
+      // Merged into whatever is current, not into the copy this effect started
+      // with: the picks arrive after a round-trip, and a server changed in the
+      // meantime must not be undone by them.
+      setPlacements((cur) => {
+        const next = { ...cur };
+        for (const [id, port] of picked)
+          if (next[id]) next[id] = { ...next[id], exposedPort: port };
+        return next;
+      });
+    })();
+    return () => {
+      cancelled = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [conflicts]);
+
+  /** Servers whose agent could not answer, by name, for the one line that says so. */
+  const unreachable = React.useMemo(
+    () =>
+      Object.entries(checks)
+        .filter(([, c]) => !c.checked)
+        .map(([id]) => servers.find((v) => v.id === id)?.name ?? id),
+    [checks, servers],
+  );
+
+  /** Something still points at a port that is taken - the import waits. */
+  const blocked = React.useMemo(
+    () => Object.values(conflicts).some((c) => c.invalid),
+    [conflicts],
+  );
+
+  return {
+    conflicts,
+    unreachable,
+    blocked,
+    /** How many databases would publish a port, of the ones being imported. */
+    count: dbs.filter((s) => chosen.has(s.sourceId)).length,
+  };
+}
+
+/* ------------------------------------------------------------------ */
 /* Step 2 - review                                                    */
 /* ------------------------------------------------------------------ */
 
@@ -998,6 +1264,7 @@ function ReviewStep({
   buildServers,
   placements,
   setPlacements,
+  canExposePorts,
   isInstanceAdmin,
   newTeam,
   setNewTeam,
@@ -1013,7 +1280,8 @@ function ReviewStep({
   servers: ServerChoice[];
   buildServers: ServerChoice[];
   placements: Record<string, Placement>;
-  setPlacements: (v: Record<string, Placement>) => void;
+  setPlacements: React.Dispatch<React.SetStateAction<Record<string, Placement>>>;
+  canExposePorts: boolean;
   isInstanceAdmin: boolean;
   newTeam: string;
   setNewTeam: (v: string) => void;
@@ -1026,6 +1294,14 @@ function ReviewStep({
 }) {
   const [showNewTeam, setShowNewTeam] = React.useState(false);
   const [confirming, setConfirming] = React.useState(false);
+  const ports = usePortConflicts({
+    plan,
+    placements,
+    setPlacements,
+    chosen,
+    servers,
+    enabled: canExposePorts,
+  });
   const pickable = plan.projects.flatMap((p) => importableOf(p));
   const allChosen = pickable.length > 0 && chosen.size === pickable.length;
   // The confirm names them. A search box above the tree filters what you SEE and
@@ -1095,7 +1371,23 @@ function ReviewStep({
             )}
           </div>
         </CardHeader>
-        <CardContent>
+        <CardContent className="space-y-3">
+          {/* Said once, at the top, instead of on every database it applies to:
+              it is one fact about the person importing, not a property of each
+              row, and repeating it N times is how a screen stops being read. */}
+          {!canExposePorts && ports.count > 0 && (
+            <PortsNotice>
+              You can&rsquo;t publish ports, so{" "}
+              {ports.count === 1 ? "1 database comes" : `${ports.count} databases come`}{" "}
+              over without public access.
+            </PortsNotice>
+          )}
+          {ports.unreachable.length > 0 && (
+            <PortsNotice>
+              Deplo can&rsquo;t check ports on {ports.unreachable.join(", ")}. Update
+              the agent there, or check them after the import.
+            </PortsNotice>
+          )}
           {servers.length === 0 ? (
             // Without a host there is nothing to place anything on, so this
             // replaces the tree rather than sitting beside it.
@@ -1119,6 +1411,8 @@ function ReviewStep({
               buildServers={buildServers}
               placements={placements}
               onPlacementsChange={setPlacements}
+              portConflicts={ports.conflicts}
+              showPorts={canExposePorts}
             />
           )}
         </CardContent>
@@ -1130,7 +1424,9 @@ function ReviewStep({
         </Button>
         <Button
           onClick={() => setConfirming(true)}
-          disabled={running || chosen.size === 0 || servers.length === 0}
+          disabled={
+            running || chosen.size === 0 || servers.length === 0 || ports.blocked
+          }
         >
           {running ? "Importing" : "Import"}
         </Button>
@@ -1186,6 +1482,16 @@ function ReviewStep({
           </form>
         </DialogContent>
       </Dialog>
+    </div>
+  );
+}
+
+/** One line about ports, in the warning colour the rest of this screen uses. */
+function PortsNotice({ children }: { children: React.ReactNode }) {
+  return (
+    <div className="flex items-start gap-2 rounded-lg border border-warning/40 bg-warning/10 px-3 py-2 text-sm text-warning">
+      <TriangleAlert className="mt-0.5 size-4 shrink-0" />
+      <span className="min-w-0 text-muted-foreground">{children}</span>
     </div>
   );
 }

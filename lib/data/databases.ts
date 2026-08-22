@@ -87,7 +87,7 @@ const MIN_USER_PORT = 1024;
 const MAX_PORT = 65535;
 
 /** Whether a host port is a valid, unprivileged TCP port a user may request. */
-function isValidExposePort(port: number): boolean {
+export function isValidExposePort(port: number): boolean {
   return Number.isInteger(port) && port >= MIN_USER_PORT && port <= MAX_PORT;
 }
 
@@ -227,6 +227,101 @@ async function isHostPortFree(serverId: string, port: number): Promise<boolean> 
   } finally {
     conn.close();
   }
+}
+
+/**
+ * Whether another database ALREADY holds this host port on this server, by row.
+ *
+ * The agent probe is a liveness test, not a registry: it answers by binding, so a
+ * database whose container is not up right now does not hold anything - and a
+ * database Deplo has only just created never is (`provisionDatabase` is floated).
+ * Two rows could therefore both claim 5432 on one host, each passing the probe,
+ * and whichever started second failed at `compose up` with nobody having been
+ * told. An import makes that routine: several databases arrive at once, from
+ * different source machines, carrying the port each had over there.
+ *
+ * Cross-team on purpose. Servers are shared, and a host port is a singleton on
+ * the machine, so the answer cannot depend on who is asking.
+ */
+async function portClaimedByAnotherDatabase(
+  serverId: string,
+  port: number,
+  exceptId?: string,
+): Promise<boolean> {
+  const rows = await getDb()
+    .select({ id: databasesTable.id })
+    .from(databasesTable)
+    .where(
+      and(
+        eq(databasesTable.serverId, serverId),
+        eq(databasesTable.exposedPublicly, true),
+        eq(databasesTable.exposedPort, port),
+      ),
+    );
+  return rows.some((r) => r.id !== exceptId);
+}
+
+/**
+ * The one check a host port has to pass before it is written: nothing is listening
+ * on it right now, AND no other database row has already reserved it. Both halves
+ * are needed - see {@link portClaimedByAnotherDatabase} for why the bind probe
+ * alone is not enough - and both raise the SAME sentence, because from where the
+ * caller stands the port is taken either way.
+ */
+async function assertHostPortAvailable(
+  server: { id: string; name: string },
+  port: number,
+  exceptId?: string,
+): Promise<void> {
+  if (
+    (await portClaimedByAnotherDatabase(server.id, port, exceptId)) ||
+    !(await isHostPortFree(server.id, port))
+  )
+    throw new Error(
+      `Port ${port} is already in use on ${server.name}. Pick a different port.`,
+    );
+}
+
+/**
+ * Which of these host ports are taken on this server, for a screen that wants to
+ * say so BEFORE anything is created - the import review, where a database carries
+ * the port it had on the other platform and the person still has a choice about it.
+ *
+ * Never throws for an unreachable or too-old agent: `checked: false` plus the
+ * reason is the honest answer, and the caller says it once rather than blocking a
+ * migration on a probe. A genuine refusal (the team cannot see that server, or
+ * cannot publish ports at all) still throws - that is not a probe result.
+ */
+export async function hostPortsInUse(
+  serverId: string,
+  ports: number[],
+): Promise<{ checked: boolean; inUse: number[]; reason: string | null }> {
+  const teamId = await requireActiveTeamId();
+  if (!(await canExposePorts()))
+    throw new Error("You don't have permission to publish ports");
+  const server = await resolveTeamServer(teamId, serverId);
+
+  // One RPC per port, so the list is deduped and bounded. 50 is far above any
+  // real import (Dokploy publishes a port on a handful of databases, not fifty)
+  // and well under anything that would hold the review open.
+  const wanted = [...new Set(ports)].filter(isValidExposePort).slice(0, 50);
+  const inUse: number[] = [];
+  for (const port of wanted) {
+    if (await portClaimedByAnotherDatabase(server.id, port)) {
+      inUse.push(port);
+      continue;
+    }
+    try {
+      if (!(await isHostPortFree(server.id, port))) inUse.push(port);
+    } catch (e) {
+      return {
+        checked: false,
+        inUse: [],
+        reason: e instanceof Error ? e.message : "Deplo could not check ports on this server.",
+      };
+    }
+  }
+  return { checked: true, inUse, reason: null };
 }
 
 /**
@@ -602,10 +697,7 @@ export async function createDatabase(input: {
       throw new Error(
         `Port ${input.exposedPort} is invalid — choose an unprivileged port (${MIN_USER_PORT}-${MAX_PORT})`,
       );
-    if (!(await isHostPortFree(server.id, input.exposedPort)))
-      throw new Error(
-        `Port ${input.exposedPort} is already in use on ${server.name}. Pick a different port.`,
-      );
+    await assertHostPortAvailable(server, input.exposedPort);
     exposedPort = input.exposedPort;
   }
 
@@ -924,11 +1016,11 @@ export async function updateDatabase(
   // The old host we tear down after a successful move. Non-null only on a move.
   const movingFrom = targetServer.id !== db.serverId ? db.serverId : null;
 
-  // Validate the new exposed port, mirroring create. The bind-probe runs against
-  // the TARGET server. Skip it only for a true self-collision — the DB is ALREADY
-  // exposed on this exact port on the SAME host we're staying on; on a MOVE the
-  // port must be re-probed on the new host (it may be taken there even if free
-  // here), so the self-reuse shortcut must not apply.
+  // Validate the new exposed port, mirroring create: the bind probe AND the other
+  // databases' rows, both against the TARGET server. Skip both only for a true
+  // self-collision — the DB is ALREADY exposed on this exact port on the SAME
+  // host we're staying on; on a MOVE the port must be re-checked on the new host
+  // (it may be taken there even if free here), so the shortcut must not apply.
   let newExposedPort: number | null = null;
   if (exposed) {
     if (input.exposedPort == null)
@@ -941,13 +1033,8 @@ export async function updateDatabase(
       !movingFrom &&
       db.exposedPublicly &&
       db.exposedPort === input.exposedPort;
-    if (
-      !reusingOwnPort &&
-      !(await isHostPortFree(targetServer.id, input.exposedPort))
-    )
-      throw new Error(
-        `Port ${input.exposedPort} is already in use on ${targetServer.name}. Pick a different port.`,
-      );
+    if (!reusingOwnPort)
+      await assertHostPortAvailable(targetServer, input.exposedPort, db.id);
     newExposedPort = input.exposedPort;
   }
 

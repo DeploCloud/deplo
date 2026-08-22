@@ -91,6 +91,11 @@ const PlanServiceRef = builder
         description:
           "Deplo's own engine id for a database (`mongo` on Dokploy is `mongodb` here), so a client can show the engine's brand mark. Null for anything that is not a database Deplo has.",
       }),
+      exposedPort: t.exposeInt("exposedPort", {
+        nullable: true,
+        description:
+          "The host port this database publishes on Dokploy, so a review can say what will be published and offer another port when that one is taken here. Describes the SOURCE: it is reported whether or not the caller holds the publish-ports grant, and null only for something that is not a database or publishes nothing.",
+      }),
       domains: t.exposeStringList("domains", {
         description:
           "The hostnames that would come across. Dokploy's generated throwaway hosts (traefik.me, sslip.io, nip.io) are already dropped — Deplo mints its own.",
@@ -332,6 +337,11 @@ const PlacementInput = builder.inputType("DokployPlacementInput", {
     serviceId: t.string({ required: true }),
     serverId: t.string({ required: true }),
     buildServerId: t.string({ required: false }),
+    exposedPort: t.int({
+      required: false,
+      description:
+        "A database's host port. Omit the field to keep the port it had on Dokploy (what the import has always done); send null to publish nothing; send a number to publish there instead - which is how a review resolves a port something else already holds on the target server. Ignored for anything that is not a database.",
+    }),
   }),
 });
 
@@ -447,6 +457,10 @@ builder.mutationFields((t) => ({
           serviceId: p.serviceId,
           serverId: p.serverId,
           buildServerId: p.buildServerId ?? null,
+          // NOT `?? null` like the line above it: for a port, absent and null are
+          // two different instructions (keep the source's, publish nothing), so
+          // an omitted field has to stay undefined all the way down.
+          exposedPort: p.exposedPort,
         })),
       }),
   }),

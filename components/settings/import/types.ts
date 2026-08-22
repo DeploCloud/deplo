@@ -18,6 +18,12 @@ export interface PlanService {
   buildsFromSource: boolean;
   /** Deplo's engine id for a database, for its brand mark. Null otherwise. */
   engine: string | null;
+  /**
+   * The host port this database publishes on Dokploy. Null for anything else,
+   * and null throughout when the person importing cannot publish ports at all -
+   * which is why the review can just read this and never has to ask twice.
+   */
+  exposedPort: number | null;
   domains: string[];
   notes: string[];
 }
@@ -108,6 +114,19 @@ export interface ServerChoice {
 export interface Placement {
   serverId: string;
   buildServerId: string | null;
+  /**
+   * A database's host port. `undefined` keeps the one it had on Dokploy, `null`
+   * publishes none, a number publishes there instead. Only ever set for a
+   * database whose port the review had something to say about.
+   */
+  exposedPort?: number | null;
+}
+
+/** A server's answer to "are these host ports free?" - see `hostPortsInUse`. */
+export interface PortCheck {
+  checked: boolean;
+  inUse: number[];
+  reason: string | null;
 }
 
 /** A service Deplo has no equivalent for cannot be picked, so it never counts. */

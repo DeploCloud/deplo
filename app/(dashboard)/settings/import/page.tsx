@@ -1,4 +1,9 @@
-import { hasCapability, isInstanceAdmin, reachesWholeTeam } from "@/lib/membership";
+import {
+  canExposePorts,
+  hasCapability,
+  isInstanceAdmin,
+  reachesWholeTeam,
+} from "@/lib/membership";
 import { getTeamIdentity } from "@/lib/data/teams";
 import { listBuildServerChoices, listServerChoices } from "@/lib/data/servers";
 import { listDokployImports } from "@/lib/data/dokploy-import";
@@ -29,15 +34,20 @@ export default async function SettingsImportPage() {
       />
     );
 
-  const [team, servers, buildServers, runs, admin] = await Promise.all([
-    getTeamIdentity(),
-    listServerChoices(),
-    // A second, wider list: a build-only host cannot RUN anything, which is
-    // exactly why it belongs in the other column.
-    listBuildServerChoices(),
-    listDokployImports(),
-    isInstanceAdmin(),
-  ]);
+  const [team, servers, buildServers, runs, admin, mayExposePorts] =
+    await Promise.all([
+      getTeamIdentity(),
+      listServerChoices(),
+      // A second, wider list: a build-only host cannot RUN anything, which is
+      // exactly why it belongs in the other column.
+      listBuildServerChoices(),
+      listDokployImports(),
+      isInstanceAdmin(),
+      // A migrated database keeps the host port it had over there, and that is a
+      // published port like any other - so the review only offers to sort one out
+      // for somebody who could publish it.
+      canExposePorts(),
+    ]);
 
   return (
     <ImportWizard
@@ -46,6 +56,7 @@ export default async function SettingsImportPage() {
       buildServers={buildServers}
       runs={runs}
       isInstanceAdmin={admin}
+      canExposePorts={mayExposePorts}
     />
   );
 }
