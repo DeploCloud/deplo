@@ -1699,6 +1699,7 @@ type DokployRevertResult {
   """
   failed: [String!]
   projects: Int
+  sharedVars: Int
 }
 
 """

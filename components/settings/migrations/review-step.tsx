@@ -5,17 +5,9 @@ import { Layers, Server as ServerIcon, TriangleAlert } from "lucide-react";
 
 import { gqlAction } from "@/lib/graphql-client";
 import { Button } from "@/components/ui/button";
-import {
-  Dialog,
-  DialogContent,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog";
 import { SimpleTooltip } from "@/components/ui/tooltip";
 import { EmptyState } from "@/components/shared/empty-state";
 import { CreateTeamDialog } from "@/components/teams/create-team-dialog";
-import { MigrationGraphic } from "./migration-graphic";
 import { TeamTargetGraphic } from "./team-target-graphic";
 import { MigrationTree, type PortConflict } from "./migration-tree";
 import { StepShell } from "./step-shell";
@@ -321,7 +313,6 @@ export function ReviewStep({
   onStart: () => void;
 }) {
   const [newTeamOpen, setNewTeamOpen] = React.useState(false);
-  const [confirming, setConfirming] = React.useState(false);
   const ports = usePortConflicts({
     plan,
     placements,
@@ -401,18 +392,41 @@ export function ReviewStep({
           past on the way to it. The destination is otherwise invisible, since
           an API key is scoped to one Dokploy organization and everything here
           to the active team. */}
-      <div className="flex flex-wrap items-center gap-4 rounded-lg border border-border p-4">
-        <TeamTargetGraphic />
-        <div className="min-w-0 flex-1">
-          <div className="text-sm font-medium">Everything lands in {teamName}</div>
-          <p className="mt-1 text-sm text-muted-foreground">
-            Apps, databases and the variables that go with them.
-          </p>
+      <div className="space-y-3">
+        <div className="flex flex-wrap items-center gap-4 rounded-lg border border-border p-4">
+          <TeamTargetGraphic />
+          <div className="min-w-0 flex-1">
+            <div className="text-sm font-medium">Everything lands in {teamName}</div>
+            <p className="mt-1 text-sm text-muted-foreground">
+              Apps, databases and the variables that go with them.
+            </p>
+          </div>
+          {isInstanceAdmin && (
+            <Button variant="secondary" onClick={() => setNewTeamOpen(true)}>
+              Create a new team
+            </Button>
+          )}
         </div>
-        {isInstanceAdmin && (
-          <Button variant="secondary" onClick={() => setNewTeamOpen(true)}>
-            Create a new team
-          </Button>
+
+        {/* The one consequence worth stopping on, in its own small card right
+            under the destination - and NOT behind a confirm dialog. A modal
+            that says one sentence is a click people learn to dismiss without
+            reading; a line that is on screen the whole time you are ticking
+            boxes has already been read by the time you press the button. The
+            names live in the tooltip: the number is the thing being decided. */}
+        {chosenNames.length > 0 && (
+          <div className="flex items-start gap-2 rounded-lg border border-warning/40 bg-warning/10 px-3 py-2 text-sm">
+            <TriangleAlert className="mt-0.5 size-4 shrink-0 text-warning" />
+            <p className="min-w-0 text-muted-foreground">
+              <SimpleTooltip content={chosenNames.join(", ")}>
+                <span className="font-medium text-warning underline decoration-dotted underline-offset-4">
+                  {chosenNames.length}
+                </span>
+              </SimpleTooltip>{" "}
+              {chosenNames.length === 1 ? "service is" : "services are"} stopped on
+              Dokploy when this starts, and not started again.
+            </p>
+          </div>
         )}
       </div>
       {isInstanceAdmin && (
@@ -431,66 +445,12 @@ export function ReviewStep({
           Back
         </Button>
         <Button
-          onClick={() => setConfirming(true)}
+          onClick={onStart}
           disabled={chosen.size === 0 || servers.length === 0 || ports.blocked}
         >
           Move it over
         </Button>
       </div>
-
-      <Dialog open={confirming} onOpenChange={setConfirming}>
-        {/* Banner-topped, like the panel-address confirm: this is the one click
-            in the flow that reaches across and stops somebody's production, so
-            it gets the drawing of what it is about to do. */}
-        <DialogContent className="gap-0 overflow-hidden p-0 sm:max-w-xl">
-          <form
-            onSubmit={(e) => {
-              e.preventDefault();
-              setConfirming(false);
-              onStart();
-            }}
-          >
-            <div className="flex justify-center border-b border-border bg-muted/30 px-6 pt-7 pb-5">
-              <MigrationGraphic state="moving" className="h-28" />
-            </div>
-            <div className="grid gap-5 p-6">
-              <DialogHeader>
-                <DialogTitle>Move everything over?</DialogTitle>
-              </DialogHeader>
-
-              {/* One line, and the names live in the tooltip behind the count.
-                  A paragraph listing eleven services is a paragraph nobody
-                  reads standing in front of a decision - the number is what
-                  they are deciding about. Nounless on purpose: the selection
-                  mixes Apps and databases, and calling a Postgres an app in the
-                  same breath as the glossary is how a vocabulary rots. */}
-              <div className="flex items-start gap-3 rounded-lg border border-warning/40 bg-warning/10 p-4 text-sm">
-                <TriangleAlert className="mt-0.5 size-5 shrink-0 text-warning" />
-                <p className="min-w-0 text-muted-foreground">
-                  <SimpleTooltip content={chosenNames.join(", ")}>
-                    <span className="font-medium text-warning underline decoration-dotted underline-offset-4">
-                      {chosenNames.length}
-                    </span>
-                  </SimpleTooltip>{" "}
-                  {chosenNames.length === 1 ? "service is" : "services are"} stopped
-                  on Dokploy, and not started again.
-                </p>
-              </div>
-
-              <DialogFooter>
-                <Button
-                  type="button"
-                  variant="outline"
-                  onClick={() => setConfirming(false)}
-                >
-                  Cancel
-                </Button>
-                <Button type="submit">Stop and move</Button>
-              </DialogFooter>
-            </div>
-          </form>
-        </DialogContent>
-      </Dialog>
     </StepShell>
   );
 }

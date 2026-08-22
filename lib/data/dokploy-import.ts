@@ -2352,6 +2352,7 @@ export interface RevertResultDTO {
   databases: number;
   environments: number;
   projects: number;
+  sharedVars: number;
   /** One line per thing that is still here, and why. */
   failed: string[];
 }
@@ -2375,8 +2376,8 @@ export interface RevertResultDTO {
  * here", not "undo the whole thing". The wizard says so before it runs.
  *
  * Order is children first: apps, then databases, then the projects the run made
- * (their environments cascade with them), then any environment the run added to
- * a project that was already here. Each delete keeps its OWN capability gate -
+ * (their environments cascade with them), then the shared variables it added to
+ * the team, then any environment it put in a project that was already here. Each delete keeps its OWN capability gate -
  * `delete_apps`, `delete_databases`, `delete_projects`, `manage_environments` -
  * so somebody who may unmake apps but not databases gets the apps removed and a
  * line saying which databases are still here. That mirrors the import itself,
@@ -2417,6 +2418,7 @@ export async function revertDokployImport(
     databases: 0,
     environments: 0,
     projects: 0,
+    sharedVars: 0,
     failed,
   };
 
@@ -2457,6 +2459,32 @@ export async function revertDokployImport(
       result.projects += 1;
     } catch (e) {
       failed.push(`${nameOf(id)}: ${revertError(e)}`);
+    }
+  }
+
+  // ---- the team's shared variables the run added ---------------------
+  // Matched by KEY, not by id: the report line for a shared variable carries no
+  // target id, and it does not need one - a key that already existed is
+  // recorded `skipped`, so a `created` line can only be this run's own. Listing
+  // and deleting both want `manage_env`, so an actor without it gets one line
+  // per variable rather than a silent leftover.
+  const varKeys = new Set(
+    rows.filter((r) => r.targetKind === "shared-var").map((r) => r.sourceName),
+  );
+  if (varKeys.size > 0) {
+    const { deleteSharedVar, listSharedVars } = await import("./shared-vars");
+    try {
+      for (const v of await listSharedVars()) {
+        if (!varKeys.has(v.key)) continue;
+        try {
+          await deleteSharedVar(v.id);
+          result.sharedVars += 1;
+        } catch (e) {
+          failed.push(`${v.key}: ${revertError(e)}`);
+        }
+      }
+    } catch (e) {
+      failed.push(`Shared variables: ${revertError(e)}`);
     }
   }
 

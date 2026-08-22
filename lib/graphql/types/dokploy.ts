@@ -330,6 +330,7 @@ const RevertResultRef = builder
       databases: t.exposeInt("databases"),
       environments: t.exposeInt("environments"),
       projects: t.exposeInt("projects"),
+      sharedVars: t.exposeInt("sharedVars"),
       failed: t.exposeStringList("failed", {
         description:
           "One line per thing that is still here, and why - a host that would not confirm the volume is gone, or a capability the actor does not hold.",

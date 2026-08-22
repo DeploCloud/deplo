@@ -258,7 +258,11 @@ export function MigrationTree({
           The bulk controls write `all`, never the filtered rows: a search is a
           lens on the list, so setting everything still means everything. */}
       <div className="flex flex-wrap items-center gap-2">
-        <div className="relative min-w-[11rem] flex-1 basis-full sm:basis-auto lg:max-w-[20rem]">
+        {/* No cap: the search takes whatever the bulk controls beside it do not
+            want. A fixed 20rem left a gap in the middle of the row on every
+            screen wide enough to matter, and a search box that stops growing
+            while its table keeps going reads as a leftover. */}
+        <div className="relative min-w-[11rem] flex-1 basis-full sm:basis-auto">
           <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
           <Input
             value={query}

@@ -1166,6 +1166,9 @@ test("a revert removes what the run created", async () => {
   assert.deepEqual(result.failed, []);
   assert.equal((await db.select().from(appsTable)).length, 0);
   assert.equal((await db.select().from(projectsTable)).length, 0);
+  // The team-level variables it added go too - otherwise "reverted" leaves a
+  // page of shared variables nobody asked for.
+  assert.equal((await db.select().from(sharedVarsTable)).length, 0);
 
   // The run stays in History, saying what it now is.
   const rows = await db.select().from(runsTable).where(eq(runsTable.id, runId));

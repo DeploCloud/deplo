@@ -12,7 +12,6 @@ import {
 } from "lucide-react";
 
 import { gqlAction } from "@/lib/graphql-client";
-import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Progress } from "@/components/ui/progress";
@@ -238,6 +237,7 @@ const REVERT = /* GraphQL */ `
       databases
       environments
       projects
+      sharedVars
       failed
     }
   }
@@ -668,7 +668,11 @@ export function MigrationWizard({
     }
     const r = res.data;
     const removed =
-      (r?.apps ?? 0) + (r?.databases ?? 0) + (r?.projects ?? 0) + (r?.environments ?? 0);
+      (r?.apps ?? 0) +
+      (r?.databases ?? 0) +
+      (r?.projects ?? 0) +
+      (r?.environments ?? 0) +
+      (r?.sharedVars ?? 0);
     if (r && r.failed.length > 0)
       // Not a toast: a list of what is STILL here is the thing to read, and a
       // toast expires in four seconds. It lands in the log instead.
@@ -795,9 +799,6 @@ export function MigrationWizard({
   const guarded =
     step !== "done" && (plan != null || url.trim() !== "" || apiKey.trim() !== "");
 
-  /** The one step that stacks instead of splitting into two columns. */
-  const firstRun = step === "connect";
-
   return (
     <>
       {/* Both vectors, and `running` is the one that matters: half a migration
@@ -834,15 +835,12 @@ export function MigrationWizard({
         <div className="mx-auto flex w-full flex-col items-center gap-8">
           <MigrationGraphic state={pose} className="h-auto w-full max-w-md" />
 
-          <div
-            className={cn(
-              "w-full min-w-0 space-y-6",
-              // Two fields and a switch want a narrow measure; a tree of apps
-              // with a server picker on every row needs 40rem before it starts
-              // hiding a column.
-              firstRun ? "max-w-xl" : "max-w-3xl",
-            )}
-          >
+          {/* One width for every step. It used to narrow for the first one,
+              which looked right in isolation and wrong in sequence: the column
+              jumped 200px wider the moment you pressed Check, and again on the
+              way back. The measure is the tree's - it needs 40rem before it
+              starts hiding a column - and a form is happy inside it. */}
+          <div className="w-full min-w-0 max-w-3xl space-y-6">
             {/* Centred, because the column under it is centred: a rail hugging
                 the left edge of a narrow centred column reads as misaligned
                 with the heading below it, not as an anchor. */}

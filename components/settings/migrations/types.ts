@@ -107,6 +107,7 @@ export interface RevertResult {
   databases: number;
   environments: number;
   projects: number;
+  sharedVars: number;
   /** One line per thing that is still here, and why. */
   failed: string[];
 }
