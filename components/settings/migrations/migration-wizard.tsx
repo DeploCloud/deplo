@@ -6,6 +6,7 @@ import { toast } from "sonner";
 import { Loader2, ScrollText } from "lucide-react";
 
 import { gqlAction } from "@/lib/graphql-client";
+import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Progress } from "@/components/ui/progress";
@@ -691,15 +692,16 @@ export function MigrationWizard({
         cancelLabel="Stay on this page"
       />
 
-      {/* Two columns from 1440px, not from `xl`, and this is measured rather
-          than guessed. The review tree is the widest thing in this app that is
-          not a table (~40rem before it starts hiding a column), and the sidebar
-          takes ~240px off every viewport before this grid sees it. At `xl` on a
-          1280px screen the left column comes out at 544px and the tree scrolls
-          sideways on the one step where you are reading across rows - which is
-          worse than putting the picture on top for one breakpoint.
+      {/* Every step stacks: the drawing large and centred on top, the rail and
+          the content under it. It used to split into two columns from 1440px,
+          and that was a worse deal than it looked - the sidebar takes ~240px off
+          every viewport before this container sees it, so the content column
+          came out at 592px whatever the screen, which is narrower than the
+          review tree needs and narrower than the first screen wanted. One
+          column, centred, and the width is the step's own: a form you read in
+          one line, a tree you read across.
 
-          The Done step opts out entirely and goes full width - see `DoneStep`. */}
+          The Done step opts out entirely - see `DoneStep`. */}
       {step === "done" ? (
         <DoneStep
           items={items}
@@ -707,37 +709,18 @@ export function MigrationWizard({
           isInstanceAdmin={isInstanceAdmin}
         />
       ) : (
-        <div
-          className={
-            firstRun
-              ? // The first screen is two fields and a switch, so it does not
-                // need a column of its own beside the picture - and a form that
-                // narrow next to a 22rem illustration reads as a leftover. It
-                // stacks instead: the drawing large on top, doing the one thing
-                // it can do before anything is connected, and the form under it
-                // at a width you can read in one line.
-                "mx-auto flex max-w-xl flex-col items-center gap-8"
-              : "mx-auto grid max-w-6xl gap-8 min-[1440px]:grid-cols-[minmax(0,1fr)_22rem] min-[1440px]:gap-10"
-          }
-        >
-          {/* First in the DOM on a phone, where the picture on top reads as a
-              heading; last on a wide screen, where it belongs on the right. */}
-          <div
-            className={
-              firstRun
-                ? "flex w-full max-w-md justify-center"
-                : "order-first flex justify-center min-[1440px]:order-last min-[1440px]:sticky min-[1440px]:top-24 min-[1440px]:self-start"
-            }
-          >
-            <MigrationGraphic
-              state={pose}
-              className={
-                firstRun ? "h-auto w-full" : "h-auto w-52 min-[1440px]:w-full"
-              }
-            />
-          </div>
+        <div className="mx-auto flex w-full flex-col items-center gap-8">
+          <MigrationGraphic state={pose} className="h-auto w-full max-w-md" />
 
-          <div className="w-full min-w-0 space-y-6">
+          <div
+            className={cn(
+              "w-full min-w-0 space-y-6",
+              // Two fields and a switch want a narrow measure; a tree of apps
+              // with a server picker on every row needs 40rem before it starts
+              // hiding a column.
+              firstRun ? "max-w-xl" : "max-w-3xl",
+            )}
+          >
             <WizardStepper
               steps={STEPS}
               current={step}

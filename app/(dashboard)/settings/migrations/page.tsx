@@ -8,6 +8,7 @@ import { getTeamIdentity } from "@/lib/data/teams";
 import { listBuildServerChoices, listServerChoices } from "@/lib/data/servers";
 import { listDokployImports } from "@/lib/data/dokploy-import";
 import { PageHeader } from "@/components/shared/page-header";
+import { BetaChip } from "@/components/shared/beta-chip";
 import { OutsideYourAccess } from "@/components/shared/outside-your-access";
 import { MigrationsTabs } from "@/components/settings/migrations/migrations-tabs";
 
@@ -51,9 +52,14 @@ export default async function SettingsMigrationsPage() {
     ]);
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-8">
       <PageHeader
-        title="Migrations"
+        title={
+          <span className="flex items-center gap-2">
+            Migrations
+            <BetaChip />
+          </span>
+        }
         description="Bring projects, apps and their configuration over from Dokploy."
       />
       <MigrationsTabs

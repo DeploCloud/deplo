@@ -84,8 +84,11 @@ export function MigrationsTabs({
   }
 
   return (
-    <Tabs value={active} onValueChange={selectTab} className="space-y-6">
-      <div className="border-b border-border">
+    <Tabs value={active} onValueChange={selectTab} className="space-y-10">
+      {/* `pt-2` plus the page's own gap: the tab bar was sitting right under
+          the description, which read as part of the header rather than as the
+          thing that switches the page. */}
+      <div className="border-b border-border pt-2">
         <UnderlineTabsList>
           <UnderlineTabsTrigger value="migrate">
             <Cable />

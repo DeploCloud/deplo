@@ -2,14 +2,13 @@ import { Skeleton } from "@/components/ui/skeleton";
 
 /**
  * Mirrors the migrate tab on its first step: the header, the tab bar, then the
- * two columns - the connect form on the left, the illustration on the right.
- * Same 1440px split as the wizard, so the layout does not jump when the real
- * thing arrives.
+ * illustration on top and the connect form under it. Same single centred column
+ * as the wizard, so the layout does not jump when the real thing arrives.
  */
 export default function Loading() {
   return (
     <div
-      className="space-y-6"
+      className="space-y-8"
       role="status"
       aria-busy
       aria-label="Loading Migrations"
@@ -23,16 +22,14 @@ export default function Loading() {
       </div>
 
       {/* Tab bar */}
-      <div className="flex gap-6 border-b border-border pb-3">
+      <div className="flex gap-6 border-b border-border pb-3 pt-2">
         <Skeleton className="h-5 w-20" />
         <Skeleton className="h-5 w-20" />
       </div>
 
-      <div className="mx-auto grid max-w-6xl gap-8 min-[1440px]:grid-cols-[minmax(0,1fr)_22rem] min-[1440px]:gap-10">
-        <div className="order-first flex justify-center min-[1440px]:order-last">
-          <Skeleton className="h-32 w-52 rounded-xl min-[1440px]:w-full" />
-        </div>
-        <div className="min-w-0 space-y-6">
+      <div className="mx-auto flex w-full flex-col items-center gap-8 pt-4">
+        <Skeleton className="h-56 w-full max-w-md rounded-xl" />
+        <div className="w-full max-w-xl space-y-6">
           <Skeleton className="h-7 w-72 rounded-md" />
           <Skeleton shimmer className="h-64 w-full rounded-xl" />
         </div>

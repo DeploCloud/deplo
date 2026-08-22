@@ -103,12 +103,13 @@ export function MigrationGraphic({
   const done = state === "done";
   const moving = state === "moving";
   return (
-    // The viewBox is cropped tight to the drawing (the machines live at y 32-88
-    // and the success halo reaches 94): a 120-tall box left a band of nothing
-    // above and below, which at `h-48` on the last step read as 40px of gap
-    // between the picture and its own heading.
+    // Cropped to the drawing, but not tighter than the widest thing IN it.
+    // The machines live at y 32-88, and on `done` the success halo around the
+    // right-hand one reaches x 168 and y 26-94 - a box of `0 20 160 80` sliced
+    // its right edge off against the outer `<svg>`, which clips by default.
+    // So: x -10 to 170, y 18 to 102.
     <svg
-      viewBox="0 20 160 80"
+      viewBox="-10 18 180 84"
       fill="none"
       role="img"
       aria-label={LABEL[state]}
