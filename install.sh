@@ -240,6 +240,21 @@ if [ ! -f "$ENV_FILE" ]; then
   } > "$ENV_FILE"
   chmod 600 "$ENV_FILE"
 fi
+
+# The token that lets THIS machine enroll itself as a server (agent 0). Appended
+# rather than written in the block above so an instance installed before host
+# enrollment existed gets one by re-running this script - which is also the
+# documented repair when the enrollment at the end of this script fails.
+# Deplo reads it from its environment and arms a one-time bootstrap on the server
+# row; the agent installer below presents the same token to claim it.
+if ! grep -q '^DEPLO_HOST_BOOTSTRAP_TOKEN=' "$ENV_FILE"; then
+  umask 077
+  echo "DEPLO_HOST_BOOTSTRAP_TOKEN=$(openssl rand -base64 32 | tr -d '/+=\n')" >> "$ENV_FILE"
+fi
+HOST_TOKEN="$(grep '^DEPLO_HOST_BOOTSTRAP_TOKEN=' "$ENV_FILE" | cut -d= -f2-)"
+# This box's own name, for the server card. Read here because Deplo runs in a
+# container, where `hostname` answers with a random container id.
+HOST_NAME="$(hostname 2>/dev/null || cat /proc/sys/kernel/hostname 2>/dev/null || echo "")"
 ok "Workspace ready (secrets in $ENV_FILE)"
 
 # Resolve how the dashboard is exposed.
@@ -426,6 +441,8 @@ services:
       - DEPLO_SECRET=\${DEPLO_SECRET}
       - DEPLO_PUBLIC_URL=$PUBLIC_URL
       - DEPLO_SERVER_IP=$SERVER_IP
+      - DEPLO_HOST_BOOTSTRAP_TOKEN=\${DEPLO_HOST_BOOTSTRAP_TOKEN}
+      - DEPLO_HOST_NAME=$HOST_NAME
       - DEPLO_DATABASE_URL=postgres://deplo:\${DEPLO_DB_PASSWORD}@postgres:5432/deplo
       - DEPLO_ACME_EMAIL=\${ACME_EMAIL}
     # NO docker.sock. The panel is the one container on this host reachable from
@@ -466,6 +483,58 @@ step "Starting Postgres and the Deplo control plane..."
 docker compose -f "$DEPLO_DIR/docker-compose.yml" --env-file "$ENV_FILE" up -d
 ok "Deplo control plane running"
 
+# 5. This host is a server too (agent 0) --------------------------------------
+#
+# Without this, a brand-new install comes up with an EMPTY server list and the
+# first deploy is impossible: every deploy goes through a server agent, and the
+# only other way to get one is to copy a command out of the dashboard and paste
+# it into an SSH session on this very box. Deplo exists to remove that trip, so
+# the installer - which is already root here - does it.
+#
+# The panel cannot do this for itself: it runs in a container with no Docker
+# socket and no host access, on purpose. What it CAN do is arm a one-time
+# bootstrap on its own server row from $HOST_TOKEN, which is exactly the token
+# handed to the agent installer below. From there the agent calls home and gets
+# its certificate signed like any other server - no second trust path.
+#
+# Always over the IP address, never the domain: in domain mode DNS may not point
+# here yet and the certificate may not have issued, while :3000 answers from the
+# moment the panel is up. The URL is used only to bootstrap; afterwards the panel
+# dials the agent, not the other way round.
+AGENT_BOOTSTRAP_URL="http://$SERVER_IP:3000"
+
+enroll_this_host() {
+  if [ -x /usr/local/bin/deplo-agent ]; then
+    ok "Server agent already installed on this host"
+    return 0
+  fi
+  step "Waiting for the control plane to answer..."
+  i=0
+  while true; do
+    if curl -fsS -o /dev/null "$AGENT_BOOTSTRAP_URL/api/health"; then break; fi
+    i=$((i + 1))
+    if [ "$i" -ge 60 ]; then
+      err "The control plane did not answer on $AGENT_BOOTSTRAP_URL after 2 minutes."
+      return 1
+    fi
+    sleep 2
+  done
+  step "Installing the server agent on this host..."
+  # No `sudo`: this script already runs as root (checked at the top).
+  curl -fsSL "$AGENT_BOOTSTRAP_URL/install-agent.sh" \
+    | bash -s -- "$HOST_TOKEN" "$AGENT_BOOTSTRAP_URL" || return 1
+}
+
+# Warn and carry on. A panel that is up with one server left to finish is a far
+# better place to land than no panel at all, and everything needed to retry is on
+# the box: re-running this script re-arms the token and installs the agent again.
+HOST_ENROLLED=true
+if ! enroll_this_host; then
+  HOST_ENROLLED=false
+  err "This host was not added as a server. Deplo itself is installed and running."
+  err "Re-run this script to try again, or add the server from Settings > Servers."
+fi
+
 if [ "$MODE" = update ]; then
   bold "Deplo updated"
 else
@@ -475,6 +544,9 @@ echo ""
 echo "  Dashboard:  $PUBLIC_URL"
 echo "  Data dir:   $DEPLO_DIR"
 echo "  Database:   Postgres (private, internal network only)"
+if [ "$HOST_ENROLLED" = true ]; then
+  echo "  Server:     ${HOST_NAME:-$SERVER_IP} (this machine, added as a server)"
+fi
 if [ "$USE_DOMAIN" = true ]; then
   echo "  Proxy:      Traefik (ports 80/443, automatic HTTPS)"
   echo ""

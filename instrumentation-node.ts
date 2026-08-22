@@ -69,6 +69,20 @@ export async function register(): Promise<void> {
     console.error("[deplo] could not read the stored panel address at boot:", e);
   }
   try {
+    // Register this host as a server if nothing has yet - the first server a new
+    // install gets, without anyone opening a shell. AWAITED and placed after the
+    // panel address above, because it classifies "is this row my own host?"
+    // against the addresses that hydration settles. A no-op (one SELECT) unless
+    // the installer put a host bootstrap token in the environment.
+    const { ensureDeploHostServer } = await import("./lib/data/servers");
+    await ensureDeploHostServer();
+  } catch (e) {
+    // Not fatal: the panel still boots and the host can be added from the
+    // dashboard the old way. Loud, though - a fresh install that lands here has
+    // an empty server list and nothing to deploy to.
+    console.error("[deplo] could not register this host as a server:", e);
+  }
+  try {
     // Retire anything left by the withdrawn Plugins feature (ADR-0013): with no
     // Plugins UI left, an installed plugin's container would otherwise be an
     // orphan only a shell on the host could remove. Floated — a teardown can take

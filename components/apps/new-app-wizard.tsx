@@ -1,6 +1,7 @@
 "use client";
 
 import * as React from "react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import {
@@ -26,6 +27,7 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
+import { EmptyState } from "@/components/shared/empty-state";
 import { Input } from "@/components/ui/input";
 // Textarea no longer used here — the compose editor replaces it.
 import { Label } from "@/components/ui/label";
@@ -816,26 +818,41 @@ export function NewAppWizard({
             </CardTitle>
             <CardDescription>
               Choose which server runs this {isTemplate ? "template" : "app"}.
-              The master is the host running Deplo; remote servers appear here
-              once connected.
             </CardDescription>
           </CardHeader>
           <CardContent>
-            <Select value={serverId} onValueChange={setServerId}>
-              <SelectTrigger className="max-w-md">
-                <SelectValue placeholder="Select a server" />
-              </SelectTrigger>
-              <SelectContent>
-                {servers.map((s) => (
-                  <SelectItem key={s.id} value={s.id}>
-                    <span className="flex items-center gap-2">
-                      <ServerIcon className="size-4 text-muted-foreground" />
-                      {serverLabel(s)}
-                    </span>
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+            {/* An install enrolls the machine Deplo runs on, so this is normally
+                impossible. It survives the cases that skip that: an instance
+                brought up by hand, or one whose host enrollment failed - where an
+                empty select and no explanation is the worst possible screen. */}
+            {servers.length === 0 ? (
+              <EmptyState
+                icon={ServerIcon}
+                title="No server connected"
+                description="Deplo runs your apps on a server, and none is connected yet."
+                action={
+                  <Button asChild>
+                    <Link href="/settings/servers">Add a server</Link>
+                  </Button>
+                }
+              />
+            ) : (
+              <Select value={serverId} onValueChange={setServerId}>
+                <SelectTrigger className="max-w-md">
+                  <SelectValue placeholder="Select a server" />
+                </SelectTrigger>
+                <SelectContent>
+                  {servers.map((s) => (
+                    <SelectItem key={s.id} value={s.id}>
+                      <span className="flex items-center gap-2">
+                        <ServerIcon className="size-4 text-muted-foreground" />
+                        {serverLabel(s)}
+                      </span>
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            )}
           </CardContent>
         </Card>
 

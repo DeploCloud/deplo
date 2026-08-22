@@ -31,6 +31,7 @@ import { recordActivity } from "./activity";
 import { pendingTeardownsForServer } from "./teardown-queue";
 import {
   mintBootstrap,
+  storedBootstrapFor,
   installCommand,
   uninstallCommand,
   controlPlaneCertFingerprint,
@@ -493,6 +494,99 @@ async function assertImportHostIsNew(host: string): Promise<void> {
       `${clash.name} is already registered at that address. Deplo can import ` +
         "from a machine it already reaches - no second server is needed.",
     );
+}
+
+/**
+ * Register the machine Deplo itself runs on as a server - "agent 0" - so a fresh
+ * install has somewhere to deploy to WITHOUT anyone opening a shell.
+ *
+ * Why this exists at all: every deploy goes to a server agent (ADR-0006, no
+ * localhost shortcut), and until now the only way to get the first one was the
+ * dashboard's Add server flow - which hands you a command to paste over SSH, on
+ * the very box you just installed. So a new VPS came up with an EMPTY server list
+ * and the first deploy was impossible without the shell the product exists to
+ * remove.
+ *
+ * The control plane cannot install the agent on its own host (it is a container
+ * with no Docker socket and no host access, deliberately). `install.sh` can - it
+ * is root on the box - so the two halves meet on a token the installer generates
+ * and passes to both: it lands here as `DEPLO_HOST_BOOTSTRAP_TOKEN`, and rides
+ * the agent installer's argv on the host. This side only ever creates the row and
+ * arms the token; the agent still calls home and gets its CSR signed exactly like
+ * any remote server, so there is no second trust path to audit.
+ *
+ * NO AUTH GATE, by necessity: it runs at boot, before any user or team exists on
+ * a first install. That is safe because it grants nothing - it writes a
+ * `provisioning` row whose only power is to accept ONE call-home from whoever
+ * already holds the token, i.e. root on this host. Everything it needs is
+ * environment written by the installer, never client input.
+ *
+ * Three outcomes, in order:
+ *  - no server matches this host -> create it, `provisioning`, armed;
+ *  - one matches and is still waiting for its first call-home -> RE-ARM its token
+ *    from the environment, because the stored one expires in an hour and the
+ *    retry may be days later (re-running `install.sh` is the documented repair);
+ *  - one matches and is already trusted -> do nothing. Never disturb a live
+ *    agent's pinned mTLS from a boot hook.
+ */
+export async function ensureDeploHostServer(): Promise<void> {
+  const rawToken = process.env.DEPLO_HOST_BOOTSTRAP_TOKEN?.trim();
+  if (!rawToken) return;
+  // The address the control plane will DIAL, which is why it is taken from the
+  // installer's own detection rather than guessed from a NIC here: a container
+  // sees docker's bridge addresses, and the agent's cert SANs are pinned to
+  // whatever this row declares (completeBootstrap never trusts a self-reported
+  // one). No address, no enrollment - a row we cannot dial is worse than none.
+  const ip = process.env.DEPLO_SERVER_IP?.trim();
+  if (!ip) return;
+
+  const self = deploHostSelfAddresses();
+  const existing = (await listAllServers()).find((s) => isDeploHostServer(s, self));
+  const stored = storedBootstrapFor(rawToken);
+
+  if (existing) {
+    if (existing.agent || existing.status !== "provisioning") return;
+    await getDb()
+      .update(serversTable)
+      .set({
+        bootstrapTokenHash: stored.tokenHash,
+        bootstrapExpiresAt: stored.expiresAt,
+        bootstrapUsedAt: stored.usedAt,
+      })
+      .where(eq(serversTable.id, existing.id));
+    return;
+  }
+
+  const server: Server = {
+    id: newId("srv"),
+    // The host's own hostname, passed in by the installer - `os.hostname()` here
+    // would answer with the container's random id. Falls back to the address,
+    // which at least says where it is.
+    name: process.env.DEPLO_HOST_NAME?.trim() || ip,
+    host: ip,
+    type: "remote",
+    status: "provisioning",
+    ip,
+    dockerVersion: "",
+    traefikEnabled: false,
+    cpuCores: 0,
+    memoryMb: 0,
+    diskGb: 0,
+    cpuUsage: 0,
+    memoryUsage: 0,
+    diskUsage: 0,
+    // Instance-wide: it is the only server a new install has, so restricting it
+    // to whichever team happens to be created first would strand every other one.
+    allTeams: true,
+    storageOnly: false,
+    buildOnly: false,
+    importOnly: false,
+    hostArch: "",
+    deployConcurrency: 1,
+    createdAt: nowIso(),
+    bootstrap: stored,
+  };
+  await getDb().insert(serversTable).values(serverToRow(server));
 }
 
 /**

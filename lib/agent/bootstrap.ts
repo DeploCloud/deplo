@@ -50,13 +50,25 @@ export interface MintedBootstrap {
 /** Mint a one-time bootstrap secret for a provisioning server (P2). */
 export function mintBootstrap(): MintedBootstrap {
   const rawToken = randomToken(32); // long + random
+  return { rawToken, stored: storedBootstrapFor(rawToken) };
+}
+
+/**
+ * The stored half of a bootstrap for a token the caller ALREADY holds, rather
+ * than one minted here.
+ *
+ * Exactly one caller: the Deplo host's own enrollment. `install.sh` generates
+ * that token on the box (it is the only party that can both write the control
+ * plane's environment and run the agent installer as root), so the control plane
+ * receives the secret instead of choosing it. Everything downstream - the hash
+ * at rest, the expiry, single use, `completeBootstrap` - is byte-identical to a
+ * minted one; only the source of the randomness differs.
+ */
+export function storedBootstrapFor(rawToken: string): MintedBootstrap["stored"] {
   return {
-    rawToken,
-    stored: {
-      tokenHash: sha256Hex(rawToken),
-      expiresAt: new Date(Date.now() + BOOTSTRAP_TTL_MS).toISOString(),
-      usedAt: null,
-    },
+    tokenHash: sha256Hex(rawToken),
+    expiresAt: new Date(Date.now() + BOOTSTRAP_TTL_MS).toISOString(),
+    usedAt: null,
   };
 }
 
