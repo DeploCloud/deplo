@@ -15,7 +15,7 @@ import { FieldLabel } from "@/components/ui/info-tip";
 import { ConfettiBurst } from "@/components/shared/confetti-burst";
 import { WizardStepper, type WizardStep } from "@/components/shared/wizard-stepper";
 import { UnsavedChangesGuard } from "@/components/apps/unsaved-changes-guard";
-import { InstallStep } from "./install-step";
+import { InstallStep, type PendingMachine } from "./install-step";
 import { MigrationGraphic, type MigrationState } from "./migration-graphic";
 import { MigrationReportDialog } from "./migration-report";
 import { RemoveMigrationSources } from "./remove-sources";
@@ -312,6 +312,17 @@ export function MigrationWizard({
   const [plan, setPlan] = React.useState<Plan | null>(null);
 
   const [serverMap, setServerMap] = React.useState<Record<string, string>>({});
+  /**
+   * The machines Deplo has registered and is waiting to hear from, and which it
+   * has already tried. They live HERE rather than in the install step because
+   * that step unmounts whenever somebody clicks another chip on the rail, and a
+   * registration that died with it came back as "already registered at that
+   * address" the second time round.
+   */
+  const [pendingMachines, setPendingMachines] = React.useState<
+    Record<string, PendingMachine>
+  >({});
+  const attemptedMachines = React.useRef(new Set<string>());
   /** Source SERVICE ids. The leaves are the selection; the tree derives the rest. */
   const [chosen, setChosen] = React.useState<Set<string>>(new Set());
   /** Source service id → where it lands. Filled for every importable service. */
@@ -647,9 +658,11 @@ export function MigrationWizard({
     setPlan(null);
     setChosen(new Set());
     setPlacements({});
-    // Both belong to the instance that was just imported: the mapping keys are
-    // ITS server ids, and the team name was ITS organization's.
+    // All three belong to the instance that was just migrated: the mapping keys
+    // are ITS server ids, and so are the machines waiting for an agent.
     setServerMap({});
+    setPendingMachines({});
+    attemptedMachines.current = new Set();
     setProgress({ done: 0, total: 0, current: "" });
     setItems([]);
     setRunId(null);
@@ -761,6 +774,9 @@ export function MigrationWizard({
                 <InstallStep
                   machines={plan.servers}
                   canAddServers={isInstanceAdmin}
+                  pending={pendingMachines}
+                  setPending={setPendingMachines}
+                  attempted={attemptedMachines}
                   onResolved={machineResolved}
                   onDone={goToReview}
                 />

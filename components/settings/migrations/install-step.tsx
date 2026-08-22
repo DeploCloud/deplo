@@ -63,7 +63,16 @@ const SETTLE_MS = 2000;
 /** How often a machine still short of its agent is asked again. */
 const POLL_MS = 5000;
 
-interface Pending {
+/**
+ * A machine Deplo has registered and is now waiting to hear from.
+ *
+ * Owned by the WIZARD, not by this step. The step unmounts the moment somebody
+ * clicks another chip on the rail, and a registration that died with it came
+ * back as "X is already registered at that address" the second time - the one
+ * error `addServer` raises for a migration source - with the install command
+ * they had not run yet gone from the screen.
+ */
+export interface PendingMachine {
   serverId: string;
   name: string;
   installCommand: string;
@@ -72,23 +81,34 @@ interface Pending {
 export function InstallStep({
   machines,
   canAddServers,
+  pending,
+  setPending,
+  attempted,
   onResolved,
   onDone,
 }: {
   machines: PlanServer[];
   /** Registering a host is instance-admin only, like everywhere else. */
   canAddServers: boolean;
+  /** Registered, waiting to be heard from. The wizard holds it - see above. */
+  pending: Record<string, PendingMachine>;
+  setPending: React.Dispatch<
+    React.SetStateAction<Record<string, PendingMachine>>
+  >;
+  /**
+   * Which machines have been through `addServer` already, so revisiting this
+   * step never registers one twice. A ref rather than state because it must not
+   * cause a render, and the wizard's rather than this component's because it has
+   * to outlive the step. A FAILED attempt takes itself back out, since no row
+   * was created and trying again is the right thing to do.
+   */
+  attempted: React.RefObject<Set<string>>;
   /** One machine just came online: it now maps to this Deplo server. */
   onResolved: (sourceId: string, serverId: string, serverName: string) => void;
   /** Every machine is ours. Carry on to the review. */
   onDone: () => void;
 }) {
-  const [pending, setPending] = React.useState<Record<string, Pending>>({});
   const [failed, setFailed] = React.useState<Record<string, string>>({});
-  // Which machines this step has already tried to register. A ref, not state:
-  // React re-invokes effects in development, and a second `addServer` for the
-  // same address is a second server row.
-  const attempted = React.useRef(new Set<string>());
 
   const missing = machines.filter((m) => !m.deploServerId);
   const settled = missing.length === 0;
@@ -143,12 +163,21 @@ export function InstallStep({
         // went out, so its answer is applied either way. Dropping it would
         // leave a registered server whose install command nothing ever shows.
         if (!res.ok || !res.data) {
+          // Nothing was created, so this one is fair to try again the next time
+          // somebody lands on this step.
+          attempted.current.delete(m.sourceId);
           setFailed((p) => ({
             ...p,
             [m.sourceId]: res.ok ? "Deplo could not register that machine." : res.error,
           }));
           continue;
         }
+        setFailed((p) => {
+          if (!(m.sourceId in p)) return p;
+          const next = { ...p };
+          delete next[m.sourceId];
+          return next;
+        });
         setPending((prev) => ({
           ...prev,
           [m.sourceId]: {
@@ -162,7 +191,7 @@ export function InstallStep({
     return () => {
       cancelled = true;
     };
-  }, [machines, canAddServers]);
+  }, [machines, canAddServers, attempted, setPending]);
 
   // ---- wait for each agent to call home ------------------------------
   // Stops by itself: a resolved machine is removed from `pending`.
@@ -200,7 +229,7 @@ export function InstallStep({
       }
     }, POLL_MS);
     return () => clearInterval(timer);
-  }, [pending, onResolved]);
+  }, [pending, onResolved, setPending, attempted]);
 
   // ---- and then move on ---------------------------------------------
   React.useEffect(() => {
