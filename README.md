@@ -139,8 +139,13 @@ Copy `.env.example` to `.env` and fill in the important variables:
 
 Pushing a `v*.*` tag triggers [`.github/workflows/docker-image.yml`](.github/workflows/docker-image.yml): it creates a GitHub Release and builds + pushes the image to `ghcr.io/deplocloud/deplo:<version>` and `:latest`.
 
+Bump `version` in `package.json` **before** tagging: it is the version the
+dashboard reports (`lib/version.ts` reads it), so a tag without the bump leaves
+every install announcing the previous one forever.
+
 ```bash
-git tag v1.2.0 && git push origin v1.2.0
+# package.json → "version": "1.3.0", committed
+git tag v1.3.0 && git push origin v1.3.0
 ```
 
 ## 🔐 Security
