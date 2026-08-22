@@ -17,6 +17,7 @@ import { randomBytes, randomUUID } from "node:crypto";
  *   serviceName = "app"
  *   port = 3000
  *   host = "${domain}"
+ *   primary = true         # optional; omitted means false
  *   [[config.mounts]]      # files written next to the stack and bind-mounted
  *   filePath = "configuration.yml"
  *   content = """ ... """
@@ -48,12 +49,13 @@ export interface TemplateBlueprint {
   compose: string;
   /** Environment variables the compose interpolates (config.env, resolved). */
   env: BlueprintEnv[];
-  /** Which service + container port Traefik should route to (first domain). */
+  /** Which service + container port Traefik should route to (primary domain). */
   expose: BlueprintExpose | null;
   /**
    * Every service the template exposes publicly (one per config.domains entry),
    * each on its own resolved hostname. Templates like garage-with-ui expose two
-   * (the API and the web UI); `expose` is just the first of these.
+   * (the API and the web UI); `expose` is the explicitly marked primary, or
+   * the first one for legacy templates without a marker.
    */
   exposes: BlueprintExpose[];
   /** Config files to write next to the stack and bind-mount (resolved). */
@@ -138,10 +140,14 @@ function parseTomlInt(value: string): number {
   return Number(stripQuotes(value).replace(/_/g, ""));
 }
 
+function parseTomlBool(value: string): boolean {
+  return stripQuotes(value).toLowerCase() === "true";
+}
+
 interface ParsedToml {
   variables: BlueprintEnv[];
   configEnv: BlueprintEnv[];
-  domains: { serviceName: string; port: number; host: string }[];
+  domains: { serviceName: string; port: number; host: string; primary: boolean }[];
   mounts: BlueprintMount[];
 }
 
@@ -154,7 +160,7 @@ interface ParsedToml {
 function parseToml(toml: string): ParsedToml {
   const variables: BlueprintEnv[] = [];
   const configEnv: BlueprintEnv[] = [];
-  const domains: { serviceName: string; port: number; host: string }[] = [];
+  const domains: { serviceName: string; port: number; host: string; primary: boolean }[] = [];
   const mounts: BlueprintMount[] = [];
 
   const lines = toml.split(/\r?\n/);
@@ -197,7 +203,7 @@ function parseToml(toml: string): ParsedToml {
     if (line.startsWith("[")) {
       section = line.replace(/\s+#.*$/, "");
       if (section === "[[config.domains]]") {
-        domains.push({ serviceName: "", port: 0, host: "" });
+        domains.push({ serviceName: "", port: 0, host: "", primary: false });
       } else if (section === "[[config.mounts]]") {
         mounts.push({ filePath: "", content: "" });
       }
@@ -253,6 +259,7 @@ function parseToml(toml: string): ParsedToml {
       if (key === "serviceName") cur.serviceName = value;
       else if (key === "port") cur.port = parseTomlInt(value);
       else if (key === "host") cur.host = value;
+      else if (key === "primary") cur.primary = parseTomlBool(value);
     } else if (section === "[[config.mounts]]") {
       const cur = mounts[mounts.length - 1];
       if (cur && key === "filePath") cur.filePath = value;
@@ -375,10 +382,15 @@ export function getTemplateBlueprint(
       }));
 
       // One expose per declared domain, each on its own resolved hostname. The
-      // host pattern (e.g. `web-ui.${domain}`) is resolved against the template
-      // variables so secondary services get the subdomain the author intended.
-      exposes = parsed.domains
-        .filter((d) => d.serviceName && d.port)
+      // explicitly marked primary is moved first because downstream creation
+      // treats the first expose as the service behind the generated main domain.
+      // If no marker exists, preserve the legacy first-entry behavior.
+      const domains = parsed.domains.filter((d) => d.serviceName && d.port);
+      const primary = domains.find((d) => d.primary);
+      const orderedDomains = primary
+        ? [primary, ...domains.filter((d) => d !== primary)]
+        : domains;
+      exposes = orderedDomains
         .map((d) => ({
           service: d.serviceName,
           port: d.port,
