@@ -13,6 +13,7 @@ import { UserMenu } from "./user-menu";
 import { TeamSwitcher } from "./team-switcher";
 import { Breadcrumbs } from "./breadcrumbs";
 import { isNonTeamSettings } from "./nav-config";
+import { cn } from "@/lib/utils";
 import type { BreadcrumbGraph } from "@/lib/breadcrumb-model";
 import type { PublicUser, TeamIdentity, TeamSummary } from "@/lib/types";
 
@@ -38,72 +39,125 @@ export function Topbar({
   // there and show a neutral "Settings" label in its place.
   const hideTeam = isNonTeamSettings(pathname);
 
+  const scrolled = useScrolled();
+
   return (
-    <header className="sticky top-0 z-30 flex h-14 items-center gap-3 border-b border-border bg-background/80 px-4 backdrop-blur-md">
-      {/* Mobile menu */}
-      <Sheet open={mobileOpen} onOpenChange={setMobileOpen}>
-        <SheetTrigger asChild>
-          <Button variant="ghost" size="icon-sm" className="md:hidden" aria-label="Menu">
-            <Menu className="size-5" />
-          </Button>
-        </SheetTrigger>
-        <SheetContent side="left" className="w-72 p-0">
-          <SheetTitle className="sr-only">Navigation</SheetTitle>
-          <div className="flex h-14 items-center border-b border-border px-5">
-            <DeploLogo />
-          </div>
-          <SidebarNav
-            onNavigate={() => setMobileOpen(false)}
-            capabilities={capabilities}
-            isAdmin={isAdmin}
-          />
-        </SheetContent>
-      </Sheet>
-
-      {/* Only present while the sidebar is collapsed — it has no header of its
-          own to host the control at zero width. */}
-      <SidebarExpandButton />
-
-      {/* Team switcher — replaced by a neutral label on personal/system settings,
-          which act outside any single team. */}
-      {hideTeam ? (
-        <span className="flex items-center gap-2 text-sm font-medium">
-          <Settings className="size-4 text-muted-foreground" />
-          Settings
-        </span>
-      ) : (
-        <TeamSwitcher team={team} teams={teams} />
+    // Two shapes, one element: flush against the top of the page, it is an
+    // ordinary bar with a rule under it; the moment the page moves it lifts off
+    // into a floating pill. The HEIGHT never changes (h-14 in both states, the
+    // pill inset inside it), because a sticky header that grows or shrinks
+    // shoves the whole page up and down under the reader's eyes.
+    <header
+      className={cn(
+        "sticky top-0 z-30 h-14 transition-colors duration-300",
+        scrolled
+          ? "border-b border-transparent"
+          : "border-b border-border bg-background/80 backdrop-blur-md",
       )}
+    >
+      {/* The content column, exactly: same max width and same gutters as <main>,
+          so the pill's edges land on the edges of the cards below it. */}
+      <div className="mx-auto flex h-full max-w-345 items-center px-4 sm:px-6 lg:px-8">
+        <div
+          className={cn(
+            "flex w-full items-center gap-3 rounded-full border px-3 transition-all duration-300",
+            scrolled
+              ? "h-11 border-border bg-background/70 shadow-lg shadow-black/5 backdrop-blur-xl"
+              : "h-full border-transparent",
+          )}
+        >
+          {/* Mobile menu */}
+          <Sheet open={mobileOpen} onOpenChange={setMobileOpen}>
+            <SheetTrigger asChild>
+              <Button variant="ghost" size="icon-sm" className="md:hidden" aria-label="Menu">
+                <Menu className="size-5" />
+              </Button>
+            </SheetTrigger>
+            <SheetContent side="left" className="w-72 p-0">
+              <SheetTitle className="sr-only">Navigation</SheetTitle>
+              <div className="flex h-14 items-center border-b border-border px-5">
+                <DeploLogo />
+              </div>
+              <SidebarNav
+                onNavigate={() => setMobileOpen(false)}
+                capabilities={capabilities}
+                isAdmin={isAdmin}
+              />
+            </SheetContent>
+          </Sheet>
 
-      {/* Rich trail on the apps tree (Overview ▾ / Folder ▾ / App ▾ /
-          Section ▾ with sibling menus), a plain "/ Label" everywhere else. Wrapped
-          in Suspense because Breadcrumbs reads the URL's search params
-          (?folder=/?project=) via useSearchParams. */}
-      <React.Suspense
-        fallback={
-          <span className="hidden items-center gap-2 sm:flex">
-            <span className="text-muted-foreground/40">/</span>
-            <span className="text-sm text-muted-foreground">
-              {breadcrumb(pathname)}
+          {/* Only present while the sidebar is collapsed — it has no header of its
+              own to host the control at zero width. */}
+          <SidebarExpandButton />
+
+          {/* Team switcher — replaced by a neutral label on personal/system settings,
+              which act outside any single team. */}
+          {hideTeam ? (
+            <span className="flex items-center gap-2 text-sm font-medium">
+              <Settings className="size-4 text-muted-foreground" />
+              Settings
             </span>
-          </span>
-        }
-      >
-        <Breadcrumbs
-          pathname={pathname}
-          graph={graph}
-          capabilities={capabilities}
-          fallback={breadcrumb(pathname)}
-        />
-      </React.Suspense>
+          ) : (
+            <TeamSwitcher team={team} teams={teams} />
+          )}
 
-      <div className="flex flex-1 items-center justify-end gap-2">
-        {/* Creation lives on the Overview's "Add New" menu only — the header
-            stays lean (theme + account). */}
-        <ThemeToggle />
-        <UserMenu user={user} />
+          {/* Rich trail on the apps tree (Overview ▾ / Folder ▾ / App ▾ /
+              Section ▾ with sibling menus), a plain "/ Label" everywhere else. Wrapped
+              in Suspense because Breadcrumbs reads the URL's search params
+              (?folder=/?project=) via useSearchParams. */}
+          <React.Suspense
+            fallback={
+              <span className="hidden items-center gap-2 sm:flex">
+                <span className="text-muted-foreground/40">/</span>
+                <span className="text-sm text-muted-foreground">
+                  {breadcrumb(pathname)}
+                </span>
+              </span>
+            }
+          >
+            <Breadcrumbs
+              pathname={pathname}
+              graph={graph}
+              capabilities={capabilities}
+              fallback={breadcrumb(pathname)}
+            />
+          </React.Suspense>
+
+          <div className="flex flex-1 items-center justify-end gap-2">
+            {/* Creation lives on the Overview's "Add New" menu only — the header
+                stays lean (theme + account). */}
+            <ThemeToggle />
+            <UserMenu user={user} />
+          </div>
+        </div>
       </div>
     </header>
+  );
+}
+
+/** Past this many pixels the bar becomes a pill. Small on purpose: the shape
+ *  should answer the first flick of the wheel, not a deliberate scroll. */
+const PILL_AFTER_PX = 8;
+
+function subscribeToScroll(onChange: () => void): () => void {
+  window.addEventListener("scroll", onChange, { passive: true });
+  return () => window.removeEventListener("scroll", onChange);
+}
+
+/**
+ * Whether the page has scrolled far enough to lift the bar into its pill.
+ *
+ * `useSyncExternalStore` rather than state + an effect: the snapshot is a
+ * BOOLEAN, so React re-renders the header when the shape actually changes and
+ * not on every scroll event - which is what a `setState(window.scrollY)` header
+ * does, sixty times a second, to a subtree that holds the breadcrumb menus.
+ * The server snapshot is `false`, the shape the page is first painted in.
+ */
+function useScrolled(): boolean {
+  return React.useSyncExternalStore(
+    subscribeToScroll,
+    () => window.scrollY > PILL_AFTER_PX,
+    () => false,
   );
 }
 
