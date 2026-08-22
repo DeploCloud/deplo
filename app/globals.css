@@ -2975,8 +2975,8 @@
   animation-delay: calc(var(--i) * 0.6s);
 }
 
-/* The source machine's own light, while it is still the one serving. It stops
-   at `done` by not being on the element any more, rather than by a second
+/* A machine's own light, while it is the one doing something. It stops at
+   `done` by not being on the element any more, rather than by a second
    keyframe - the drawing decides, not the stylesheet. */
 @keyframes deplo-migrate-blip {
   0%,

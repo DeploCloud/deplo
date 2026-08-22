@@ -88,9 +88,9 @@ const AUTOMATIC = "__automatic__";
 
 /** Column widths, shared by the header and every row so they line up. */
 const COL = {
-  status: "w-28",
-  build: "w-44",
-  run: "w-44",
+  status: "w-32",
+  build: "w-36",
+  run: "w-40",
 };
 
 /**
@@ -252,12 +252,12 @@ export function MigrationTree({
           The bulk controls write `all`, never the filtered rows: a search is a
           lens on the list, so setting everything still means everything. */}
       <div className="flex flex-wrap items-center gap-2">
-        <div className="relative min-w-[11rem] flex-1 basis-full sm:basis-auto lg:max-w-[18rem]">
+        <div className="relative min-w-[11rem] flex-1 basis-full sm:basis-auto lg:max-w-[20rem]">
           <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
           <Input
             value={query}
             onChange={(e) => setQuery(e.target.value)}
-            placeholder="Search apps, databases, hostnames"
+            placeholder="Search apps and databases"
             aria-label="Search what will come over"
             className="pl-9 pr-9"
           />
@@ -317,7 +317,7 @@ export function MigrationTree({
         </div>
       ) : (
         <div className="overflow-x-auto rounded-lg border border-border">
-          <div className="min-w-[48rem]">
+          <div className="min-w-[40rem]">
             <div className="max-h-[28rem] divide-y divide-border/60 overflow-y-auto">
               {rows.map((p) => {
                 // Counted over the WHOLE project, never the filtered slice.
@@ -497,6 +497,7 @@ function ServiceRows({
         showBuild={showBuild}
         status={
           <Badge
+            className="whitespace-nowrap"
             variant={
               service.status === "new"
                 ? "secondary"
@@ -687,7 +688,11 @@ function RunSelect({
 }) {
   return (
     <Select value={value ?? ""} onValueChange={onChange}>
-      <SelectTrigger id={id} aria-label={label} className={cn("h-8 w-full", className)}>
+      <SelectTrigger
+        id={id}
+        aria-label={label}
+        className={cn("h-8 w-full [&_[data-hint]]:hidden", className)}
+      >
         <SelectValue placeholder={placeholder ?? "Choose a server"} />
       </SelectTrigger>
       <SelectContent>
@@ -696,7 +701,9 @@ function RunSelect({
             <span className="flex items-center gap-2">
               {s.name}
               {s.isDeploHost && (
-                <span className="text-xs text-muted-foreground">Deplo host</span>
+                <span data-hint className="text-xs text-muted-foreground">
+                  Deplo host
+                </span>
               )}
             </span>
           </SelectItem>
@@ -728,7 +735,11 @@ function BuildSelect({
       value={value === undefined ? "" : (value ?? AUTOMATIC)}
       onValueChange={(v) => onChange(v === AUTOMATIC ? null : v)}
     >
-      <SelectTrigger id={id} aria-label={label} className={cn("h-8 w-full", className)}>
+      <SelectTrigger
+        id={id}
+        aria-label={label}
+        className={cn("h-8 w-full [&_[data-hint]]:hidden", className)}
+      >
         <SelectValue placeholder={placeholder ?? "Automatic"} />
       </SelectTrigger>
       <SelectContent>
@@ -739,7 +750,9 @@ function BuildSelect({
             <span className="flex items-center gap-2">
               {s.name}
               {s.buildOnly && (
-                <span className="text-xs text-muted-foreground">Build only</span>
+                <span data-hint className="text-xs text-muted-foreground">
+                  Build only
+                </span>
               )}
             </span>
           </SelectItem>

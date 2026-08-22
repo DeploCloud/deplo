@@ -654,10 +654,25 @@ _Avoid_: backup server (it holds backups, it does not run them — the workload'
 does the dump); **migration source** (a different role entirely - that one has Docker and is
 not ours).
 
+**Migration**:
+Bringing another platform's projects into a team, and the word the UI uses everywhere:
+`Settings → Migrations`, two tabs - the wizard that runs one, and the History of the ones
+already run. A **migration run** is the stored row plus the **report** it leaves behind
+(`dokploy_imports` + `dokploy_import_items`), readable from either tab in the same dialog.
+The wizard is five steps - Connect, Install, Review, People, Done - and Install is where the
+**migration source** gets its agent.
+The API and the data layer keep the older **import** spelling (`scanDokploy`,
+`importDokployProject`, `dokployImports`, `lib/data/dokploy-import.ts`): renaming a published
+schema to match a label would break every MCP tool that names a field, for nothing. So
+"import" is the wire word and "migration" is the product word, and neither is wrong.
+_Avoid_: transfer (that is **app transfer**, moving an App between teams), move (that is a
+**server move**, relocating one workload between hosts), sync (nothing here is continuous - a
+migration happens once and stops the source).
+
 **Migration source**:
 A **server** registered ONLY to import from another platform - the machine Deplo is being
 migrated FROM. It exists because a volume can only be read by the agent standing on the disk
-that holds it (agents are a star and cannot dial each other), so the **import** wizard installs
+that holds it (agents are a star and cannot dial each other), so a **migration** installs
 one there; the alternative is telling somebody to move their data by hand over SSH, which is
 the thing the product refuses to do. `servers.import_only`, the third specialised role and
 exclusive with the other two (`servers_role_exclusive` counts all three).
@@ -666,8 +681,8 @@ every deploy picker AND every build picker (it HAS Docker - it is the other plat
 - so every check that reads `storage_only` alone would offer it, and a build ships an App's
 source and DECRYPTED env to the builder), never a **backup destination**, never swept by
 **Docker cleanup**, absent from **Monitoring** and from the fleet count, and refused by the
-host-management verbs. It is **born only from the import wizard**, granted to the one team
-running that import (never `all_teams`), and `setServerRole` refuses it in BOTH directions:
+host-management verbs. It is **born only from a migration**, granted to the one team
+running it (never `all_teams`), and `setServerRole` refuses it in BOTH directions:
 the installer put no Traefik, no shared `deplo` network and no `daemon.json` change on that
 host, and no database write can undo that - re-running the install command is the way in and
 the way out.

@@ -697,12 +697,15 @@ export function MigrationWizard({
         cancelLabel="Stay on this page"
       />
 
-      {/* Two columns only from `xl`. Between 1024 and ~1150px the window cannot
-          afford a 24rem illustration AND a readable column, and the review tree
-          is the widest thing in this app that is not a table. Below that the
-          picture stacks on top and the content takes the full width.
+      {/* Two columns from 1440px, not from `xl`, and this is measured rather
+          than guessed. The review tree is the widest thing in this app that is
+          not a table (~40rem before it starts hiding a column), and the sidebar
+          takes ~240px off every viewport before this grid sees it. At `xl` on a
+          1280px screen the left column comes out at 544px and the tree scrolls
+          sideways on the one step where you are reading across rows - which is
+          worse than putting the picture on top for one breakpoint.
 
-          The Done step opts out and goes full width - see `DoneStep`. */}
+          The Done step opts out entirely and goes full width - see `DoneStep`. */}
       {step === "done" ? (
         <DoneStep
           items={items}
@@ -711,11 +714,14 @@ export function MigrationWizard({
           isInstanceAdmin={isInstanceAdmin}
         />
       ) : (
-        <div className="mx-auto grid max-w-5xl gap-8 xl:grid-cols-[minmax(0,1fr)_24rem] xl:gap-12">
+        <div className="mx-auto grid max-w-6xl gap-8 min-[1440px]:grid-cols-[minmax(0,1fr)_22rem] min-[1440px]:gap-10">
           {/* First in the DOM on a phone, where the picture on top reads as a
               heading; last on a wide screen, where it belongs on the right. */}
-          <div className="order-first flex justify-center xl:order-last xl:sticky xl:top-24 xl:self-start">
-            <MigrationGraphic state={pose} className="h-auto w-52 xl:w-full" />
+          <div className="order-first flex justify-center min-[1440px]:order-last min-[1440px]:sticky min-[1440px]:top-24 min-[1440px]:self-start">
+            <MigrationGraphic
+              state={pose}
+              className="h-auto w-52 min-[1440px]:w-full"
+            />
           </div>
 
           <div className="min-w-0 space-y-6">
@@ -1012,7 +1018,7 @@ function DoneStep({
     <div className="mx-auto flex max-w-xl flex-col items-center gap-6 text-center">
       <div className="relative flex justify-center">
         <MigrationGraphic state="done" className="h-48 w-auto" />
-        <ConfettiBurst className="top-24" />
+        <ConfettiBurst className="top-1/2" />
       </div>
 
       <div>

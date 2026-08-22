@@ -146,8 +146,15 @@ function PersonCard({
             {person.sourceRole} on Dokploy
           </p>
         </div>
-        {person.hasAccount && <Badge variant="info">Has an account</Badge>}
       </div>
+
+      {/* On its own row, not beside the address: an email is the identity here
+          and a badge sharing its line takes the half that says which person. */}
+      {person.hasAccount && (
+        <div className="flex flex-wrap gap-1.5">
+          <Badge variant="info">Has an account</Badge>
+        </div>
+      )}
 
       {/* The link is the point of the card, so it sits at its foot with a rule
           above it - the same shape a member card uses for its badges. */}

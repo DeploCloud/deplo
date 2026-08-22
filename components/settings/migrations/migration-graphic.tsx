@@ -1,4 +1,4 @@
-import type * as React from "react";
+import * as React from "react";
 import { cn } from "@/lib/utils";
 import { LOGO_PATH, MARK_VIEWBOX } from "@/components/logo";
 
@@ -103,8 +103,12 @@ export function MigrationGraphic({
   const done = state === "done";
   const moving = state === "moving";
   return (
+    // The viewBox is cropped tight to the drawing (the machines live at y 32-88
+    // and the success halo reaches 94): a 120-tall box left a band of nothing
+    // above and below, which at `h-48` on the last step read as 40px of gap
+    // between the picture and its own heading.
     <svg
-      viewBox="0 0 160 120"
+      viewBox="0 20 160 80"
       fill="none"
       role="img"
       aria-label={LABEL[state]}
@@ -112,49 +116,30 @@ export function MigrationGraphic({
     >
       {/* ---- the source, on the left. It dims at the end: the whole point of
               the drawing is that it stops being the one that serves. ---- */}
-      <rect
-        x="6"
-        y="26"
-        width="40"
-        height="68"
-        rx="8"
-        className={
-          done ? "stroke-muted-foreground/25" : "stroke-muted-foreground/50"
-        }
-        strokeWidth="2.5"
-      />
-      <svg
-        x="14"
-        y="38"
-        width="24"
-        height="20"
-        viewBox={DOKPLOY_VIEWBOX}
-        className={done ? "text-muted-foreground/30" : "text-foreground"}
-      >
-        {dokployPaths()}
-      </svg>
-      <Slots x={14} width={24} dim={done} />
-      <circle
-        cx="38"
-        cy="34"
-        r="2.5"
-        className={cn(
-          done ? "fill-muted-foreground/25" : "fill-muted-foreground/60",
-          !done && "deplo-migrate-blip",
-        )}
-      />
+      <Machine x={4} dim={done} lit={false}>
+        <svg
+          x="14"
+          y="41"
+          width="22"
+          height="19"
+          viewBox={DOKPLOY_VIEWBOX}
+          className={done ? "text-muted-foreground/30" : "text-foreground"}
+        >
+          {dokployPaths()}
+        </svg>
+      </Machine>
 
       {/* ---- the cable. The dotted track is the whole route, always; the solid
               line on top of it is how far along we are. ---- */}
       <path
-        d="M50 60 H110"
+        d="M52 60 H108"
         className="stroke-muted-foreground/25"
         strokeWidth="2.5"
         strokeDasharray="2 4"
         strokeLinecap="round"
       />
       <path
-        d="M50 60 H110"
+        d="M52 60 H108"
         pathLength="1"
         strokeDasharray="1 1"
         strokeDashoffset={CABLE_LEFT[state]}
@@ -170,7 +155,7 @@ export function MigrationGraphic({
         Array.from({ length: PACKETS }, (_, i) => (
           <circle
             key={i}
-            cx="52"
+            cx="54"
             cy="60"
             r="2.5"
             className="deplo-migrate-packet fill-primary"
@@ -179,8 +164,8 @@ export function MigrationGraphic({
         ))}
 
       {/* The sockets, drawn over the cable ends so it reads as plugged in. */}
-      <Socket x={42} lit={done} />
-      <Socket x={110} lit={done} />
+      <Socket x={44} lit={done} />
+      <Socket x={108} lit={done} />
 
       {/* ---- Deplo, on the right. The one element that turns green, and only
               at the end - the single success beat every graphic here spends
@@ -189,68 +174,100 @@ export function MigrationGraphic({
         <circle
           cx="134"
           cy="60"
-          r="30"
+          r="34"
           className="deplo-migrate-halo"
           fill="var(--success)"
         />
       )}
-      <rect
-        x="114"
-        y="26"
-        width="40"
-        height="68"
-        rx="8"
-        className={
-          done ? "stroke-[var(--success)]" : "stroke-muted-foreground/50"
-        }
-        strokeWidth="2.5"
-      />
-      <svg
-        x="124"
-        y="38"
-        width="20"
-        height="20"
-        viewBox={MARK_VIEWBOX}
-        className={done ? "text-[var(--success)]" : "text-foreground"}
-      >
-        <path d={LOGO_PATH} fill="currentColor" />
-      </svg>
-      <Slots x={124} width={20} dim={false} />
-      <circle
-        cx="146"
-        cy="34"
-        r="2.5"
-        className={
-          done ? "fill-[var(--success)]" : "fill-muted-foreground/30"
-        }
-      />
+      <Machine x={112} dim={false} lit={done}>
+        <svg
+          x="125"
+          y="41"
+          width="18"
+          height="18"
+          viewBox={MARK_VIEWBOX}
+          className={done ? "text-[var(--success)]" : "text-foreground"}
+        >
+          <path d={LOGO_PATH} fill="currentColor" />
+        </svg>
+      </Machine>
     </svg>
   );
 }
 
-/** The two rack lines under a mark. Enough to read as a machine, no more. */
-function Slots({ x, width, dim }: { x: number; width: number; dim: boolean }) {
-  const cls = dim ? "stroke-muted-foreground/20" : "stroke-muted-foreground/40";
+/**
+ * One machine: a case, the mark on its face, and two drive bays under it.
+ *
+ * The bays are what stop it reading as a handset. A rounded rectangle with a
+ * logo in the middle is a phone; a rounded rectangle with two short rows and a
+ * light at the end of each is a rack unit, and it costs four elements.
+ *
+ * The top light is the machine's own: it breathes while this is the machine
+ * doing the serving, and goes out (left) or green (right) when the migration
+ * lands.
+ */
+function Machine({
+  x,
+  dim,
+  lit,
+  children,
+}: {
+  x: number;
+  /** The source, after the move: still drawn, no longer the subject. */
+  dim: boolean;
+  /** Deplo, after the move. */
+  lit: boolean;
+  children: React.ReactNode;
+}) {
+  const line = dim ? "stroke-muted-foreground/20" : "stroke-muted-foreground/40";
   return (
     <>
-      <line
-        x1={x}
-        y1="72"
-        x2={x + width}
-        y2="72"
-        className={cls}
+      <rect
+        x={x}
+        y="32"
+        width="44"
+        height="56"
+        rx="7"
+        className={
+          lit
+            ? "stroke-[var(--success)]"
+            : dim
+              ? "stroke-muted-foreground/25"
+              : "stroke-muted-foreground/50"
+        }
         strokeWidth="2.5"
-        strokeLinecap="round"
       />
-      <line
-        x1={x}
-        y1="82"
-        x2={x + width}
-        y2="82"
-        className={cls}
-        strokeWidth="2.5"
-        strokeLinecap="round"
-      />
+      {children}
+      {[70, 79].map((y, i) => (
+        <React.Fragment key={y}>
+          <line
+            x1={x + 9}
+            y1={y}
+            x2={x + 27}
+            y2={y}
+            className={line}
+            strokeWidth="2.5"
+            strokeLinecap="round"
+          />
+          <circle
+            cx={x + 34}
+            cy={y}
+            r="2"
+            className={cn(
+              // Only the first bay's light is alive, and only while this
+              // machine is the one doing something.
+              i === 0 && !dim && !lit && "deplo-migrate-blip",
+              lit
+                ? "fill-[var(--success)]"
+                : dim
+                  ? "fill-muted-foreground/20"
+                  : i === 0
+                    ? "fill-muted-foreground/70"
+                    : "fill-muted-foreground/30",
+            )}
+          />
+        </React.Fragment>
+      ))}
     </>
   );
 }

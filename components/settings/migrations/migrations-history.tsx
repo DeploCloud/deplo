@@ -99,7 +99,7 @@ export function MigrationsHistory({
               <TableHead>Source</TableHead>
               <TableHead>When</TableHead>
               <TableHead>Outcome</TableHead>
-              <TableHead className="text-right">Report</TableHead>
+              <TableHead className="text-right">Actions</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
@@ -116,7 +116,12 @@ export function MigrationsHistory({
                   )}
                 </TableCell>
                 <TableCell className="whitespace-nowrap text-sm">
-                  {new Date(r.startedAt).toLocaleString()}
+                  {/* No seconds: nobody has two migrations in the same minute,
+                      and the column is read for "which run", not for timing. */}
+                  {new Date(r.startedAt).toLocaleString(undefined, {
+                    dateStyle: "medium",
+                    timeStyle: "short",
+                  })}
                   <div className="mt-1 text-xs text-muted-foreground">
                     by {r.actor}
                   </div>
