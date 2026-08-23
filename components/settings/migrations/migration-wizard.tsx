@@ -835,12 +835,13 @@ export function MigrationWizard({
         <div className="mx-auto flex w-full flex-col items-center gap-8">
           <MigrationGraphic state={pose} className="h-auto w-full max-w-md" />
 
-          {/* One width for every step. It used to narrow for the first one,
-              which looked right in isolation and wrong in sequence: the column
-              jumped 200px wider the moment you pressed Check, and again on the
-              way back. The measure is the tree's - it needs 40rem before it
-              starts hiding a column - and a form is happy inside it. */}
-          <div className="w-full min-w-0 max-w-3xl space-y-6">
+          {/* One width for every step, and it is the narrow one: a wizard is
+              read top to bottom, and a 48rem measure under a centred picture
+              reads as a page rather than a sequence. The review tree pays for
+              it - at this width its name column truncates a long hostname - so
+              its own columns are as narrow as their labels allow, and the last
+              resort is the `overflow-x-auto` it already had. */}
+          <div className="w-full min-w-0 max-w-xl space-y-6">
             {/* Centred, because the column under it is centred: a rail hugging
                 the left edge of a narrow centred column reads as misaligned
                 with the heading below it, not as an anchor. */}

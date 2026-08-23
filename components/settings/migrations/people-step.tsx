@@ -77,7 +77,10 @@ export function PeopleStep({
           description="That Dokploy organization had no other members."
         />
       ) : (
-        <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
+        // Two columns at most: the wizard's column is a fixed measure now, so
+        // a viewport-driven third column would be three 180px cards holding
+        // email addresses.
+        <div className="grid gap-3 sm:grid-cols-2">
           {people.map((p) => (
             <PersonCard
               key={p.email}

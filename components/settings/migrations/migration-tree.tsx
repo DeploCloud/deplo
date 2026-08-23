@@ -95,8 +95,8 @@ const AUTOMATIC = "__automatic__";
 /** Column widths, shared by the header and every row so they line up. */
 const COL = {
   status: "w-32",
-  build: "w-36",
-  run: "w-40",
+  build: "w-32",
+  run: "w-36",
 };
 
 /**
@@ -327,7 +327,7 @@ export function MigrationTree({
         </div>
       ) : (
         <div className="overflow-x-auto rounded-lg border border-border">
-          <div className="min-w-[40rem]">
+          <div className="min-w-[32rem]">
             <div className="max-h-[28rem] divide-y divide-border/60 overflow-y-auto">
               {rows.map((p) => {
                 // Counted over the WHOLE project, never the filtered slice.
@@ -893,19 +893,24 @@ function Row({
         )}
       >
         <span className="flex size-4 shrink-0 items-center justify-center">{mark}</span>
-        <span
-          className={cn(
-            "min-w-0 flex-1 truncate text-sm",
-            depth === 0 && "font-medium",
-          )}
-        >
-          {label}
-        </span>
-        {meta && (
-          <span className="shrink-0 truncate text-xs text-muted-foreground">
-            {meta}
+        {/* Name over meta, not name beside meta. Side by side they competed for
+            one shrinking box and the NAME lost - "storefront-web" came out as
+            "st…" next to a hostname printed in full, which is exactly backwards
+            for the thing you read the row to identify. Stacked, the name gets
+            the whole width at any measure and the hostname takes the same width
+            on the line under it. */}
+        <span className="min-w-0 flex-1">
+          <span
+            className={cn("block truncate text-sm", depth === 0 && "font-medium")}
+          >
+            {label}
           </span>
-        )}
+          {meta && (
+            <span className="mt-0.5 block truncate text-xs text-muted-foreground">
+              {meta}
+            </span>
+          )}
+        </span>
       </label>
       {/* Fixed-width cells on every row, empty ones included: the tree indents
           only on the left, so this is what keeps the columns a column. */}
