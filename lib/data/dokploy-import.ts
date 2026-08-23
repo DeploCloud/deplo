@@ -1922,6 +1922,23 @@ async function importAppService(
     }
   }
 
+  // The one place a re-hosted address cannot be fixed from out here: INSIDE the
+  // app's own data. Nextcloud keeps its hostname in `trusted_domains` and
+  // refuses every other name; WordPress keeps `siteurl` in its database and
+  // redirects to it. Both come across byte-for-byte, which is correct and is
+  // exactly why they still name the old machine.
+  //
+  // Deplo does not rewrite bytes inside a tenant's data, so it says so instead -
+  // once, naming the new address, next to the app it applies to. Without this
+  // the app comes up, answers, and shows an error nobody can connect to the
+  // migration.
+  if (rehosted.size > 0) {
+    const landedOn = [...new Set(rehosted.values())].join(", ");
+    notes.push(
+      `If this app stores its own address (Nextcloud's trusted_domains, WordPress's siteurl), the copied data still has the old one - open the app's Console and set it to ${landedOn}.`,
+    );
+  }
+
   // An address that could not come across is a DEAD address, and the app is
   // usually still carrying it in its own configuration: `NEXTCLOUD_DOMAIN`,
   // `SITE_URL`, a CORS origin, a callback URL. Left alone, the app comes up
