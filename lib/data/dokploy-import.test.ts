@@ -14,6 +14,7 @@ import type { PGlite } from "@electric-sql/pglite";
 import { makeTestDb, type TestDb } from "../db/test-harness";
 import { __setTestDb, __resetTestDb } from "../db/client";
 import { runWithIdentity } from "../auth/request-context";
+import { decryptSecret } from "../crypto";
 import {
   appMounts as appMountsTable,
   appVolumes as appVolumesTable,
@@ -220,7 +221,11 @@ const APPLICATIONS: Record<string, unknown> = {
     repository: "blink",
     branch: "main",
     buildPath: "apps/web",
-    env: "DATABASE_URL=postgres://blink:pw@blink-db-abc:5432/blink\nNODE_ENV=production\n",
+    env:
+      "DATABASE_URL=postgres://blink:pw@blink-db-abc:5432/blink\nNODE_ENV=production\n" +
+      // Names Dokploy's throwaway host - an address that stops existing the
+      // moment the app moves.
+      "OLD_ADDRESS=https://blink-web-abc.traefik.me/health\n",
     buildArgs: "NEXT_PUBLIC_SITE=https://blink.acme.test\n",
     memoryLimit: "512m",
     cpuLimit: "0.5",
@@ -519,6 +524,33 @@ test("scan warns when a hostname already belongs to another team", async () => {
   assert.match(web.notes.join(" "), /already routed by another team/);
 });
 
+// An imported value naming an address that could not come across points at the
+// machine the app just LEFT. Rewriting it is the difference between a migration
+// that works and one that looks like it worked.
+test("a variable that names the old address is moved to the new one", async () => {
+  const runId = await asOwner(() => beginDokployImport({ url: URL_BASE }));
+  await importProject(runId, "dok-prj-blink");
+  const apps = await db.select().from(appsTable);
+  const web = apps.find((a) => a.name === "blink-web")!;
+  const doms = await db
+    .select()
+    .from(domainsTable)
+    .where(eq(domainsTable.appId, web.id));
+  const rehosted = doms.find((d) => d.importedFrom)!;
+
+  const vars = await db
+    .select()
+    .from(envVarsTable)
+    .where(eq(envVarsTable.appId, web.id));
+  const site = vars.find((v) => v.key === "NEXT_PUBLIC_SITE")!;
+  // The build arg pointed at blink.acme.test, which this app DID keep, so it is
+  // untouched...
+  assert.equal(decryptSecret(site.valueEnc), "https://blink.acme.test");
+  // ...while the one naming the throwaway address now names what it became.
+  const old = vars.find((v) => v.key === "OLD_ADDRESS")!;
+  assert.equal(decryptSecret(old.valueEnc), `https://${rehosted.name}/health`);
+});
+
 // The rule, at its hardest: BOTH of this app's addresses are unavailable - one is
 // Dokploy's throwaway, the other is a real name another team here already serves.
 // It must still arrive answering on two.
@@ -613,7 +645,7 @@ test("a project lands complete: project, environment, apps, variables", async ()
   const byKey = new Map(env.map((e) => [e.key, e]));
   assert.deepEqual(
     [...byKey.keys()].sort(),
-    ["DATABASE_URL", "NEXT_PUBLIC_SITE", "NODE_ENV"],
+    ["DATABASE_URL", "NEXT_PUBLIC_SITE", "NODE_ENV", "OLD_ADDRESS"],
   );
   assert.equal(byKey.get("DATABASE_URL")!.type, "plain");
   assert.equal(byKey.get("NODE_ENV")!.type, "plain");

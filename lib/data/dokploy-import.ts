@@ -93,6 +93,7 @@ import {
   type ImportedRoute,
 } from "./domains";
 import { createEnvironment, listEnvironmentsForProject } from "./environments";
+import { setAppEnv } from "./env";
 import { createProject, defaultEnvironmentFor, listProjects } from "./projects";
 import {
   canHostWorkloads,
@@ -1904,18 +1905,56 @@ async function importAppService(
         rest.filter((d) => d.generated).map((d) => d.host),
       );
       for (const [source, host] of landed)
-        if (!rehosted.has(source))
+        if (!rehosted.has(source)) {
+          rehosted.set(source, host);
           notes.push(
             wasThrowaway.has(source)
               ? `${source} was Dokploy's own temporary address, so it comes across as ${host} here - same port, same route.`
               : `${source} answers on ${host} here instead - same port, same route. Point it at this server and add it under Domains to use the real name.`,
           );
+        }
     } catch (e) {
       notes.push(
         `The temporary addresses this app answered on were not recreated: ${
           e instanceof Error ? e.message : "refused"
         }. Add a domain under Domains.`,
       );
+    }
+  }
+
+  // An address that could not come across is a DEAD address, and the app is
+  // usually still carrying it in its own configuration: `NEXTCLOUD_DOMAIN`,
+  // `SITE_URL`, a CORS origin, a callback URL. Left alone, the app comes up
+  // pointing at the machine it just left - and the person who migrated it reads
+  // that as "the migration half worked".
+  //
+  // So a value that NAMES a re-hosted address is rewritten to the address it
+  // became. Only that substring, only for hosts this import itself moved, and
+  // every variable it touched is named in the report - a value nobody can act on
+  // is not worth preserving out of politeness.
+  if (rehosted.size > 0) {
+    const rewritten = env.map((e) => ({
+      key: e.key,
+      value: rewriteHosts(e.value, rehosted),
+    }));
+    const touched = rewritten
+      .filter((r, i) => r.value !== env[i]!.value)
+      .map((r) => r.key);
+    if (touched.length > 0) {
+      try {
+        await setAppEnv(created.id, rewritten);
+        notes.push(
+          `${touched.join(", ")} named the old address, so ${
+            touched.length === 1 ? "it now names" : "they now name"
+          } the new one.`,
+        );
+      } catch (e) {
+        notes.push(
+          `${touched.join(", ")} still name the old address (${
+            e instanceof Error ? e.message : "refused"
+          }) - update them under Variables.`,
+        );
+      }
     }
   }
 
@@ -2036,6 +2075,26 @@ async function importAppService(
 
   await report.notes(svc.kind, name, notes, target, svc.id);
   return created.id;
+}
+
+/**
+ * Every occurrence of a re-hosted address, replaced by the one it became.
+ *
+ * A plain substring swap, because that is how these values are shaped: the host
+ * sits inside a URL, a comma-separated list, a connection string. Matching is
+ * case-insensitive (a hostname is), and the longest source host goes first so a
+ * name that contains another one cannot be half-replaced.
+ */
+function rewriteHosts(value: string, hosts: Map<string, string>): string {
+  let out = value;
+  for (const [from, to] of [...hosts].sort((a, b) => b[0].length - a[0].length)) {
+    if (!from) continue;
+    out = out.replace(
+      new RegExp(from.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"), "gi"),
+      to,
+    );
+  }
+  return out;
 }
 
 /** A mapped domain as the domain writers take it: the route, plus where it came
