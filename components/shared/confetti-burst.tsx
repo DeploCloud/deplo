@@ -23,22 +23,31 @@ export function ConfettiBurst({
   className,
   count = CONFETTI,
   /**
-   * How far the nearest pieces fly, in px. The default is sized for a burst
-   * over an illustration; a celebration that should read across the whole
-   * window passes a few hundred and raises `count` to match - the same number
-   * of pieces spread ten times as wide is not a burst, it is a drizzle.
+   * How far the nearest pieces fly, in px. Sized for a burst over an
+   * illustration; ignored in `rain`, where the geometry is the window.
    */
   spread = 46,
+  /**
+   * Rain the pieces down the whole window instead of throwing them from one
+   * point. A burst is for a picture: centred on the screen it still reads as
+   * coming OUT of whatever illustration is sitting there, however far it
+   * throws. Rain reads as the room, which is what a finished migration wants.
+   */
+  rain = false,
 }: {
   className?: string;
   count?: number;
   spread?: number;
+  rain?: boolean;
 }) {
   return (
     <span
       aria-hidden
       className={cn(
-        "pointer-events-none absolute left-1/2 top-1/2 size-0 motion-reduce:hidden",
+        "pointer-events-none motion-reduce:hidden",
+        rain
+          ? "deplo-confetti-rain fixed inset-0 overflow-hidden"
+          : "absolute left-1/2 top-1/2 size-0",
         className,
       )}
     >
@@ -47,15 +56,27 @@ export function ConfettiBurst({
           key={i}
           className="deplo-confetti-piece"
           style={
-            {
-              "--i": i,
-              // The angle fans the pieces evenly over a full circle whatever
-              // `count` is; the small offset stops the first one flying due
-              // east, which reads as an arrow rather than a burst. Three
-              // distances in rotation so no two neighbours land together.
-              "--deplo-confetti-a": `${(i / count + 0.02).toFixed(4)}turn`,
-              "--deplo-confetti-d": `${Math.round(spread + (i % 3) * spread * 0.35)}px`,
-            } as React.CSSProperties
+            rain
+              ? ({
+                  "--i": i,
+                  // 37 is coprime with 100, so consecutive pieces land far
+                  // apart and the column positions never repeat before the
+                  // hundredth. Drift and fall time fan out the same cheap way:
+                  // no two neighbours come down together, and no randomness to
+                  // make the server and the client disagree.
+                  "--deplo-confetti-x": `${(i * 37) % 100}%`,
+                  "--deplo-confetti-drift": `${((i % 5) - 2) * 26}px`,
+                  "--deplo-confetti-t": `${(2.2 + (i % 4) * 0.45).toFixed(2)}s`,
+                } as React.CSSProperties)
+              : ({
+                  "--i": i,
+                  // The angle fans the pieces evenly over a full circle whatever
+                  // `count` is; the small offset stops the first one flying due
+                  // east, which reads as an arrow rather than a burst. Three
+                  // distances in rotation so no two neighbours land together.
+                  "--deplo-confetti-a": `${(i / count + 0.02).toFixed(4)}turn`,
+                  "--deplo-confetti-d": `${Math.round(spread + (i % 3) * spread * 0.35)}px`,
+                } as React.CSSProperties)
           }
         />
       ))}

@@ -1237,7 +1237,13 @@ function MovingPanel({
       lead="Deplo is creating your projects here and copying their data across. Stay on this page."
     >
       <div className="space-y-2">
-        <Progress value={pct} />
+        {/* The bar alone stalls for minutes on a big volume - same fill, no
+            movement, and it reads as hung. The sweep and the spinner are the
+            only two things on screen saying the work is still going. */}
+        <div className="flex items-center gap-3">
+          <Progress value={pct} className="deplo-progress-working" />
+          <Loader2 className="size-4 shrink-0 animate-spin text-primary" />
+        </div>
         <p className="text-sm text-muted-foreground">
           {progress.total > 0 &&
             `Project ${Math.min(progress.done + 1, progress.total)} of ${progress.total}`}
@@ -1303,11 +1309,12 @@ function DoneStep({
   const [reportOpen, setReportOpen] = React.useState(false);
   return (
     <div className="mx-auto flex max-w-xl flex-col items-center gap-6 text-center">
-      {/* Over the WINDOW, not over the drawing: a burst of twelve pieces
-          throwing 46px inside a 300px picture is a shimmer somebody misses
-          while they are reading the heading. Fixed, from the middle of the
-          screen, forty pieces going most of the way to the edges. */}
-      <ConfettiBurst className="fixed left-1/2 top-1/2 z-50" count={40} spread={320} />
+      {/* Over the WINDOW, not over the drawing. A burst thrown from the middle
+          of the screen is still a burst thrown from the middle of the screen -
+          which is where the illustration is, so that is what it looks like it
+          came out of. Rain instead: the whole width, top to bottom, sixty
+          pieces. */}
+      <ConfettiBurst rain className="z-50" count={60} />
 
       <MigrationGraphic state="done" className="h-48 w-auto" />
 

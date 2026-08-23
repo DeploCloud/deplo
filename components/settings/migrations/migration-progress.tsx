@@ -72,7 +72,10 @@ export function MigrationLogDialog({
           </DialogDescription>
         </DialogHeader>
 
-        <Progress value={pct} />
+        <Progress
+          value={pct}
+          className={running ? "deplo-progress-working" : undefined}
+        />
 
         <div className="max-h-80 space-y-1 overflow-y-auto">
           {items.map((i, n) => (

@@ -544,6 +544,26 @@
   animation-delay: var(--shimmer-delay, 0s);
 }
 
+/* A progress bar that is still working (`Progress className="deplo-progress-working"`).
+ * The skeleton shimmer is the wrong sweep here: it streaks in --foreground, and
+ * --primary IS near-foreground in both themes, so it disappears over exactly the
+ * part it has to cross - the fill. This one sweeps in --primary-foreground, the
+ * colour that is legible on the fill by definition. Root already carries
+ * `relative overflow-hidden`, and ::after paints over the indicator. */
+.deplo-progress-working::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  transform: translateX(-100%);
+  background-image: linear-gradient(
+    90deg,
+    transparent 0%,
+    color-mix(in oklab, var(--primary-foreground) 45%, transparent) 50%,
+    transparent 100%
+  );
+  animation: deplo-shimmer 1.6s ease-in-out infinite;
+}
+
 /* The notification settings' illustration: alerts landing on a phone. Three
  * cards share one loop, staggered by --notif-delay, so the stream never stops
  * and nothing has to be scripted in JS. Decoration only — the whole figure is
@@ -1928,7 +1948,8 @@
   .animate-jiggle,
   .animate-notif-card,
   .animate-notif-halo,
-  .animate-shimmer::after {
+  .animate-shimmer::after,
+  .deplo-progress-working::after {
     animation: none;
   }
   /* The cards start invisible so the stream can begin off-screen; with the
@@ -2617,6 +2638,39 @@
 
 .deplo-confetti-piece:nth-child(3n + 3) {
   background: var(--warning);
+}
+
+/* The full-window variant (`ConfettiBurst rain`). Same pieces, same colours -
+   only the geometry changes: they start above the top edge, spread across the
+   whole width, and fall past the bottom with a little drift. A radial burst
+   centred on the screen reads as coming out of whatever illustration sits in
+   the middle of it, however far it throws; this reads as the room. */
+@keyframes deplo-confetti-fall {
+  0% {
+    opacity: 0;
+    transform: translate(0, -12vh) rotate(0deg);
+  }
+  8% {
+    opacity: 1;
+  }
+  85% {
+    opacity: 1;
+  }
+  100% {
+    opacity: 0;
+    transform: translate(var(--deplo-confetti-drift), 104vh)
+      rotate(var(--deplo-confetti-r));
+  }
+}
+
+.deplo-confetti-rain .deplo-confetti-piece {
+  left: var(--deplo-confetti-x);
+  top: 0;
+  animation-name: deplo-confetti-fall;
+  animation-duration: var(--deplo-confetti-t);
+  /* Nearly linear: confetti falls, it does not ease out. */
+  animation-timing-function: cubic-bezier(0.35, 0.15, 0.6, 1);
+  animation-delay: calc(var(--i) * 40ms);
 }
 
 /* The robot glyph on "N agents connected" (components/settings/mcp/robot-graphic.tsx).
