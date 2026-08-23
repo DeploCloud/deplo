@@ -2428,6 +2428,37 @@ export function mapBackupUnsupported(e: unknown): Error {
 }
 
 /**
+ * The capability an agent advertises once it brings a compose stack up from the
+ * stack's OWN directory (`--project-directory`), with its env-file as `.env`
+ * inside it. Without it a relative path an author wrote - `env_file: .env` above
+ * all, which is what every stack exported from another platform carries -
+ * resolves against the shared stack dir and finds nothing.
+ */
+export const COMPOSE_PROJECTDIR_CAPABILITY = "deploy.compose.projectdir";
+
+/**
+ * Does this host's agent advertise a capability? Best-effort: an agent that is
+ * unreachable, too old to answer, or simply slow answers `false`, because every
+ * caller of this is deciding whether to WARN, never whether to proceed.
+ */
+export async function serverSupports(
+  serverId: string,
+  capability: string,
+): Promise<boolean> {
+  try {
+    const conn = await connectAgent(serverId);
+    try {
+      const hello = await conn.hello();
+      return hello.capabilities?.includes(capability) === true;
+    } finally {
+      conn.close();
+    }
+  } catch {
+    return false;
+  }
+}
+
+/**
  * Mandatory pre-flight (PLAN P5): confirm the agent answers Hello before a
  * deploy, with a contract-version check. Returns the HelloResponse or throws a
  * clear "server unreachable" error — never hangs. Also refreshes the server's

@@ -1827,6 +1827,19 @@ async function importAppService(
       notes.push(
         "Its compose file declares no services, so there is nothing to deploy yet. Add them under Compose.",
       );
+    // An `env_file` the author wrote resolves inside the stack's own directory,
+    // which is a thing the AGENT does - and an older one on this host does not,
+    // so the stack would come up looking for a file that is not there. Asked
+    // only when there is an env_file to care about.
+    if (/^\s*env_file\s*:/m.test(adapted.compose) && home.serverId) {
+      const { serverSupports, COMPOSE_PROJECTDIR_CAPABILITY } = await import(
+        "../infra/agent-client"
+      );
+      if (!(await serverSupports(home.serverId, COMPOSE_PROJECTDIR_CAPABILITY)))
+        notes.push(
+          "Its compose file names an `env_file`, which needs a newer agent on this server than the one running there. Update the server's agent under Servers before deploying.",
+        );
+    }
     // The host ports the stack binds, checked against the machine it is landing
     // on. A database says this already and says it well; a stack said nothing
     // and the collision arrived later as a `docker compose up` error nobody
