@@ -203,6 +203,19 @@ export function generateDatabaseCompose(input: {
    * command drops auth (the UI warns; not blocked, it's the escape hatch).
    */
   customCommand?: string | null;
+  /**
+   * Expert override: the engine's own config files, already written to
+   * `filesDir` by the agent. Each renders as a bind of one FILE — never a
+   * directory — so `/etc/postgresql.conf` can be replaced without hiding
+   * whatever else the image keeps in `/etc`.
+   */
+  mounts?: { filePath: string; mountPath: string }[] | null;
+  /**
+   * The absolute host directory those files land in ({@link stackFilesDir} of
+   * this stack's slug). Required only when `mounts` is non-empty; the caller
+   * owns it because the path is the agent's contract, not this renderer's.
+   */
+  filesDir?: string | null;
 }): string {
   const { name, databaseId, type, version, username, password, dbName, hostPort } =
     input;
@@ -281,6 +294,18 @@ export function generateDatabaseCompose(input: {
   // that is still the official image at another tag (what an import pins) keeps
   // the real probe — otherwise every imported database would report health it
   // never checked.
+  // The config files, as extra mount lines under the data volume. The source is
+  // the file the agent wrote next to the stack, the target the path the row
+  // names, and both are JSON-encoded into a `- "src:dst"` scalar: a path is
+  // user-typed, and a stray quote or newline must escape the string rather than
+  // grow the service a key of its own.
+  const configMounts = (input.mounts ?? [])
+    .map((m) => {
+      const source = `${(input.filesDir ?? "").replace(/\/+$/, "")}/${m.filePath}`;
+      return `\n      - ${JSON.stringify(`${source}:${m.mountPath}`)}`;
+    })
+    .join("");
+
   const custom = input.customImage?.trim();
   const healthTest =
     custom && !isOfficialEngineImage(type, custom)
@@ -298,7 +323,7 @@ ${labels}
     networks:
       - deplo
 ${resources}${command}${envBlock}${ports}    volumes:
-      - ${name}-data:${DB_DATA_DIRS[type]}
+      - ${name}-data:${DB_DATA_DIRS[type]}${configMounts}
     healthcheck:
       test: ["CMD-SHELL", ${JSON.stringify(healthTest)}]
       interval: 10s

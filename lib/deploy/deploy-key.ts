@@ -80,6 +80,22 @@ export function stackName(deployKey: string): string {
 }
 
 /**
+ * The HOST directory a stack's own files live in: its config files, and every
+ * `./<x>` bind a compose stack writes.
+ *
+ * Baked into rendered YAML, so it MUST resolve to the same path on whichever
+ * host runs the stack — the agent's default stack dir is `/data/stacks` too
+ * (agent/main.go), and the agent writes the files there before bringing the
+ * stack up. It is also the directory the agent's teardown sweeps and its
+ * leftover-files cleanup judges, which is why the derivation lives beside the
+ * key rather than in whichever renderer needed it first.
+ */
+export function stackFilesDir(deployKey: string): string {
+  const dataDir = process.env.DEPLO_DATA_DIR || "/data";
+  return `${dataDir}/stacks/files/${deployKey}`;
+}
+
+/**
  * The image tag one deploy of a BUILT source lands on: `deplo/<key>:<id[0:12]}`.
  *
  * Unique per deployment - nothing is ever overwritten, which is what makes a

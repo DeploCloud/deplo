@@ -14,6 +14,7 @@ import type {
   BackupRunStatus,
   BackupTargetKind,
   Database,
+  DatabaseMount,
   DatabaseStatus,
   DatabaseType,
   DestinationKind,
@@ -81,13 +82,25 @@ export function databaseToRow(d: Database): DatabaseInsert {
     sizeMb: d.sizeMb,
     createdAt: d.createdAt,
   } satisfies Record<
-    Exclude<keyof Database, "resources">,
+    // `mounts` is an ordered CHILD table (`database_mounts`), like an App's, so
+    // it is no more a column here than `resources` is one column.
+    Exclude<keyof Database, "resources" | "mounts">,
     unknown
   > as DatabaseInsert;
 }
 
-/** Reassemble a `databases` row into a {@link Database}. */
-export function assembleDatabase(row: DatabaseRow): Database {
+/**
+ * Reassemble a `databases` row into a {@link Database}.
+ *
+ * `mounts` comes from the child table and is NOT on the row, so it is a
+ * parameter: a caller that did not read the children passes nothing and gets an
+ * empty list, which is what almost every database has. The one caller that must
+ * pass them is the one whose result is rendered into a stack.
+ */
+export function assembleDatabase(
+  row: DatabaseRow,
+  mounts: DatabaseMount[] = [],
+): Database {
   return {
     id: row.id,
     teamId: row.teamId,
@@ -109,6 +122,7 @@ export function assembleDatabase(row: DatabaseRow): Database {
     customImage: row.customImage,
     customCommand: row.customCommand,
     cronEnabled: row.cronEnabled,
+    mounts,
     sizeMb: row.sizeMb,
     createdAt: row.createdAt,
   };

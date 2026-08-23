@@ -1124,6 +1124,11 @@ type Database {
   logo: String
 
   """
+  Expert override: the engine's own config files, written next to the stack and bind-mounted into the container. Empty for almost every database. Saving them applies immediately - the container is recreated.
+  """
+  mounts: [DatabaseMount!]
+
+  """
   Display name, editable with renameDatabase. Not the container's identity — `host` is, and it is fixed at creation.
   """
   name: String
@@ -1140,6 +1145,24 @@ type Database {
   type: DatabaseType
   username: String
   version: String
+}
+
+"""
+One config file of a database: its name in the stack's files directory, its body, and where it is mounted inside the container.
+"""
+type DatabaseMount {
+  content: String
+  filePath: String
+  mountPath: String
+}
+
+"""
+One config file to write next to the database's stack and bind-mount into its container. `filePath` is relative to the stack's files directory; `mountPath` is the absolute path inside the container and may not be inside the engine's data directory.
+"""
+input DatabaseMountInput {
+  content: String!
+  filePath: String!
+  mountPath: String!
 }
 
 enum DatabaseStatus {
@@ -3027,6 +3050,11 @@ type Mutation {
     """app | database."""
     targetKind: String!
   ): Boolean
+
+  """
+  Replace the database's config files (whole set - an omitted file is removed) and APPLY them: the files are written next to the stack and the container is recreated, unlike the image/command overrides beside them. A path inside the engine's data directory is refused.
+  """
+  setDatabaseMounts(id: String!, mounts: [DatabaseMountInput!]!): Database
   setDatabaseRunning(id: String!, running: Boolean!): Database
 
   """Make an environment the project's default (unsets the previous one)."""

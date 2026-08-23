@@ -1984,6 +1984,28 @@ export const databases = pgTable(
 );
 
 /**
+ * [Database.mounts](../../types.ts) → ordered child of the engine's own CONFIG
+ * FILES: `{filePath, content, mountPath}`. The sibling of `app_mounts`, plus the
+ * one field an App does not keep here — where in the container the file lands.
+ * An App's config file is bound by something that already knows (the stack's own
+ * compose, or a Storage File entry); a database's compose is rendered by deplo,
+ * so the row is the only thing that can say.
+ */
+export const databaseMounts = pgTable(
+  "database_mounts",
+  {
+    databaseId: text("database_id")
+      .notNull()
+      .references(() => databases.id, { onDelete: "cascade" }),
+    position: integer("position").notNull(),
+    filePath: text("file_path").notNull(),
+    content: text("content").notNull(),
+    mountPath: text("mount_path").notNull(),
+  },
+  (t) => [primaryKey({ columns: [t.databaseId, t.position] })],
+);
+
+/**
  * Team-wide database display order for the Storage grid — the direct analogue of
  * `team_app_order` for the databases list. PK `(team_id, database_id)`, both FKs
  * CASCADE so a deleted database can't leave a dead id in the order (the

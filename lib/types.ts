@@ -1597,8 +1597,36 @@ export interface Database {
    *  reason it rides the DTO, as `apps.cronEnabled`: the sidebar decides whether
    *  to offer the Cron jobs page from it. */
   cronEnabled: boolean;
+  /**
+   * Expert override: the engine's own CONFIG FILES, written next to the stack
+   * and bind-mounted into the container. Empty for almost every database.
+   *
+   * The third override, alongside {@link customImage} and {@link customCommand},
+   * and the one an engine actually documents: `postgresql.conf`, `my.cnf`,
+   * `redis.conf`, a script under `/docker-entrypoint-initdb.d`. Without it the
+   * only way to raise `shared_buffers` was a shell on the host.
+   */
+  mounts: DatabaseMount[];
   sizeMb: number;
   createdAt: string;
+}
+
+/**
+ * One config file of a database: its name in the stack's files directory, its
+ * body, and where it lands inside the container.
+ *
+ * The sibling of `App.mounts`, plus {@link mountPath} — an App's config file is
+ * bound by something that already knows where it goes (the stack's own compose,
+ * or a Storage **File** entry), while a database's compose is rendered by deplo,
+ * so the row is the only thing that can say.
+ */
+export interface DatabaseMount {
+  /** Relative path inside the stack's files dir, e.g. "postgresql.conf". */
+  filePath: string;
+  /** The file's body, written verbatim. */
+  content: string;
+  /** Absolute in-container path the file is bind-mounted at. */
+  mountPath: string;
 }
 
 export type S3Provider =

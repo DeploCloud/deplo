@@ -82,7 +82,7 @@ import { addExistingMember, mintRegistrationLink } from "./members";
 import { createApp, setAppVolumes, updateAppResources } from "./apps";
 import { writeAppFile } from "./app-files";
 import { createCronJob } from "./crons";
-import { createDatabase, isValidExposePort } from "./databases";
+import { createDatabase, isValidExposePort, setDatabaseMounts } from "./databases";
 import { addDomain, updateDomain } from "./domains";
 import { createEnvironment, listEnvironmentsForProject } from "./environments";
 import { createProject, defaultEnvironmentFor, listProjects } from "./projects";
@@ -2132,6 +2132,23 @@ async function importDatabaseService(
       message: firstError || "Could not create the database.",
     });
     return;
+  }
+
+  // The engine's config files. AFTER the create, because they are a whole-set
+  // replace on an existing database - and before the report, so a refusal is one
+  // of the notes rather than a silent gap. It reroutes, which on a database that
+  // is still provisioning is a no-op: the provision that follows renders the
+  // stack from the row, files included.
+  if (spec.mounts.length > 0) {
+    try {
+      await setDatabaseMounts(created.id, spec.mounts);
+    } catch (e) {
+      notes.push(
+        `The engine's config files were not imported: ${
+          e instanceof Error ? e.message : "refused"
+        }. Add them under Settings -> Advanced.`,
+      );
+    }
   }
 
   // Said out loud, because every connection string the import just brought over

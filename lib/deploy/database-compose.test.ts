@@ -473,3 +473,47 @@ test("generateDatabaseCompose: a foreign customImage still degrades the healthch
   assert.ok(yaml.includes("exit 0"), yaml);
   assert.ok(!yaml.includes("pg_isready"), yaml);
 });
+
+/* ------------------------------------------------------------------ */
+/* config files                                                        */
+/* ------------------------------------------------------------------ */
+
+// A config file is bound as ONE FILE, next to the data volume and never instead
+// of it: an engine configured by a file still has to persist its data.
+test("generateDatabaseCompose: a config file is bound under the data volume", () => {
+  const yaml = generateDatabaseCompose({
+    name: "mydb",
+    type: "postgres",
+    version: "16",
+    password: "pw",
+    ...DEFAULTS,
+    filesDir: "/data/stacks/files/db-mydb",
+    mounts: [
+      { filePath: "postgresql.conf", mountPath: "/etc/postgresql.conf" },
+      { filePath: "conf.d/tuning.conf", mountPath: "/etc/conf.d/tuning.conf" },
+    ],
+  });
+  assert.match(yaml, /\n {6}- mydb-data:\/var\/lib\/postgresql\/data\n/);
+  assert.ok(
+    yaml.includes(
+      '- "/data/stacks/files/db-mydb/postgresql.conf:/etc/postgresql.conf"',
+    ),
+    yaml,
+  );
+  assert.ok(
+    yaml.includes(
+      '- "/data/stacks/files/db-mydb/conf.d/tuning.conf:/etc/conf.d/tuning.conf"',
+    ),
+    yaml,
+  );
+});
+
+// The overwhelming majority of databases have none, and their stack must stay
+// byte-identical - a changed line recreates the container on the next reroute.
+test("generateDatabaseCompose: no config files renders exactly what it always did", () => {
+  const base = { name: "mydb", type: "postgres" as const, version: "16", password: "pw", ...DEFAULTS };
+  assert.equal(
+    generateDatabaseCompose({ ...base, mounts: [], filesDir: "/data/stacks/files/db-mydb" }),
+    generateDatabaseCompose(base),
+  );
+});

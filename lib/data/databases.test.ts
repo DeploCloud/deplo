@@ -45,6 +45,8 @@ import {
   reorderDatabases,
   renameDatabase,
   updateDatabaseLogo,
+  setDatabaseMounts,
+  validateDatabaseMounts,
 } from "./databases";
 import { generateDatabaseCompose } from "../deploy/database-compose";
 import { composeStackVolumeHostNames } from "./project-backup-descriptor";
@@ -805,5 +807,158 @@ test("hostPortsInUse reports claimed ports, and says so when it cannot ask", asy
     });
   } finally {
     __setAgentConnectorForTest();
+  }
+});
+
+/* ------------------------------------------------------------------ */
+/* config files                                                        */
+/* ------------------------------------------------------------------ */
+
+// The one path a config file must never take. A file inside the data directory
+// is stored WITH the data: it travels into every backup, comes back on every
+// restore, and on Postgres the entrypoint refuses to start at all.
+test("a config file may not be mounted inside the engine's data directory", () => {
+  assert.throws(
+    () =>
+      validateDatabaseMounts("postgres", [
+        {
+          filePath: "postgresql.conf",
+          content: "",
+          mountPath: "/var/lib/postgresql/data/postgresql.conf",
+        },
+      ]),
+    /data directory/,
+  );
+  // The same file one level up is the normal, correct thing to do.
+  assert.equal(
+    validateDatabaseMounts("postgres", [
+      { filePath: "postgresql.conf", content: "x", mountPath: "/etc/postgresql.conf" },
+    ]).length,
+    1,
+  );
+  // Each engine is judged against ITS OWN data dir, not postgres's.
+  assert.throws(
+    () =>
+      validateDatabaseMounts("mysql", [
+        { filePath: "my.cnf", content: "", mountPath: "/var/lib/mysql/my.cnf" },
+      ]),
+    /data directory/,
+  );
+  assert.equal(
+    validateDatabaseMounts("mysql", [
+      { filePath: "my.cnf", content: "x", mountPath: "/etc/my.cnf" },
+    ]).length,
+    1,
+  );
+});
+
+test("a config file's two paths are each refused when they cannot work", () => {
+  const one = (m: Partial<{ filePath: string; content: string; mountPath: string }>) =>
+    validateDatabaseMounts("postgres", [
+      { filePath: "pg.conf", content: "", mountPath: "/etc/pg.conf", ...m },
+    ]);
+  assert.throws(() => one({ filePath: "/etc/pg.conf" }), /must be relative/);
+  assert.throws(() => one({ filePath: "../pg.conf" }), /\.\./);
+  assert.throws(() => one({ mountPath: "etc/pg.conf" }), /must be absolute/);
+  assert.throws(() => one({ mountPath: "/etc/pg.conf:ro" }), /spaces or/);
+  assert.throws(
+    () =>
+      validateDatabaseMounts("postgres", [
+        { filePath: "a.conf", content: "", mountPath: "/etc/a.conf" },
+        { filePath: "a.conf", content: "", mountPath: "/etc/b.conf" },
+      ]),
+    /Duplicate file name/,
+  );
+  assert.throws(
+    () =>
+      validateDatabaseMounts("postgres", [
+        { filePath: "a.conf", content: "", mountPath: "/etc/a.conf" },
+        { filePath: "b.conf", content: "", mountPath: "/etc/a.conf" },
+      ]),
+    /Duplicate path/,
+  );
+});
+
+// Saving APPLIES: the files reach the agent in the same call that stores them,
+// and the rendered stack binds them. A save that only wrote rows would leave the
+// running engine reading its old configuration with the UI saying otherwise.
+test("saving config files reroutes the stack with them", async () => {
+  await seedDatabase(db, { id: "db_cfg", name: "cfg" });
+  const sent: { yaml: string; mounts: { path: string; content: string }[] }[] = [];
+  __setAgentConnectorForTest(
+    async () =>
+      ({
+        reroute: async (r: { composeYaml: string; mounts: { path: string; content: string }[] }) => {
+          sent.push({ yaml: r.composeYaml, mounts: r.mounts });
+          return { ok: true, error: "" };
+        },
+        close: () => {},
+      }) as unknown as Awaited<
+        ReturnType<typeof import("../infra/agent-client").connectAgent>
+      >,
+  );
+  try {
+    await asUser1(async () => {
+      await setDatabaseMounts("db_cfg", [
+        { filePath: "postgresql.conf", content: "shared_buffers = 1GB\n", mountPath: "/etc/postgresql.conf" },
+      ]);
+      const saved = await getDatabase("db_cfg");
+      assert.deepEqual(saved?.mounts, [
+        {
+          filePath: "postgresql.conf",
+          content: "shared_buffers = 1GB\n",
+          mountPath: "/etc/postgresql.conf",
+        },
+      ]);
+    });
+    assert.equal(sent.length, 1, "the save applied");
+    assert.deepEqual(sent[0]!.mounts, [
+      { path: "postgresql.conf", content: "shared_buffers = 1GB\n" },
+    ]);
+    assert.ok(
+      sent[0]!.yaml.includes("/files/db-cfg/postgresql.conf:/etc/postgresql.conf"),
+      sent[0]!.yaml,
+    );
+
+    // And a redeploy afterwards carries them too - the trap being a reroute path
+    // that renders from the row but ships no files, leaving docker to invent an
+    // empty DIRECTORY at the bind source.
+    await asUser1(() => redeployDatabase("db_cfg"));
+    assert.equal(sent.length, 2);
+    assert.deepEqual(sent[1]!.mounts, sent[0]!.mounts);
+  } finally {
+    __setAgentConnectorForTest(undefined);
+  }
+});
+
+// The whole set is replaced, so removing a file removes its mount.
+test("clearing the config files reroutes a stack with none", async () => {
+  await seedDatabase(db, {
+    id: "db_clear",
+    name: "clear",
+    mounts: [{ filePath: "pg.conf", content: "x", mountPath: "/etc/pg.conf" }],
+  });
+  const sent: { path: string; content: string }[][] = [];
+  __setAgentConnectorForTest(
+    async () =>
+      ({
+        reroute: async (r: { mounts: { path: string; content: string }[] }) => {
+          sent.push(r.mounts);
+          return { ok: true, error: "" };
+        },
+        close: () => {},
+      }) as unknown as Awaited<
+        ReturnType<typeof import("../infra/agent-client").connectAgent>
+      >,
+  );
+  try {
+    await asUser1(async () => {
+      assert.equal((await getDatabase("db_clear"))?.mounts.length, 1);
+      await setDatabaseMounts("db_clear", []);
+      assert.deepEqual((await getDatabase("db_clear"))?.mounts, []);
+    });
+    assert.deepEqual(sent, [[]]);
+  } finally {
+    __setAgentConnectorForTest(undefined);
   }
 });

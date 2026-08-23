@@ -6,6 +6,8 @@ import { hasCapability } from "@/lib/membership";
 import { listDatabaseCronJobs } from "@/lib/data/crons";
 import { SettingsSection } from "@/components/apps/settings/settings-shared";
 import { DatabaseImageSettings } from "@/components/storage/database-image-settings";
+import { DatabaseConfigFiles } from "@/components/storage/database-config-files";
+import { DB_DATA_DIRS } from "@/lib/deploy/database-compose";
 import { DatabaseDanger } from "@/components/storage/database-danger";
 import { CronSettingsForm } from "@/components/crons/cron-settings-form";
 import { Button } from "@/components/ui/button";
@@ -94,6 +96,7 @@ export default async function DatabaseAdvancedSettingsPage(
       )}
 
       <DatabaseImageSettings db={db} />
+      <DatabaseConfigFiles db={db} dataDir={DB_DATA_DIRS[db.type]} />
       <DatabaseDanger db={db} />
     </section>
   );

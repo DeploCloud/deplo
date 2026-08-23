@@ -711,8 +711,13 @@ export function mapDomains(
 /* ------------------------------------------------------------------ */
 
 export interface MappedMounts {
-  /** Config files written into the app's files dir at deploy time. */
-  files: { filePath: string; content: string }[];
+  /**
+   * Config files that must exist in the stack's files dir, with the container
+   * path Dokploy mounted each one at (empty for a compose stack's, whose YAML
+   * does the binding itself). WHO writes them is the caller's business - see
+   * {@link mapMounts}.
+   */
+  files: { filePath: string; content: string; mountPath: string }[];
   /** Named volumes and host binds, for `setAppVolumes`. */
   volumes: Omit<VolumeMount, "id">[];
 }
@@ -796,7 +801,7 @@ export function mapMounts(
   opts: { isCompose: boolean },
 ): Mapped<MappedMounts> {
   const notes: string[] = [];
-  const files: { filePath: string; content: string }[] = [];
+  const files: MappedMounts["files"] = [];
   const volumes: Omit<VolumeMount, "id">[] = [];
   const used = new Set<string>();
   const usedFiles = new Set<string>();
@@ -820,7 +825,7 @@ export function mapMounts(
         notes.push(
           `Two file mounts are both called ${wanted}, so one of them is ${name} in this app's Files.`,
         );
-      files.push({ filePath: name, content: m.content ?? "" });
+      files.push({ filePath: name, content: m.content ?? "", mountPath: mountPath ?? "" });
       // Only an application needs the pairing: a compose stack already binds the
       // file in its own YAML, and a second mount for it would fight that one.
       if (!opts.isCompose && mountPath)
@@ -900,6 +905,8 @@ export interface MappedDatabase {
   exposedPort: number | null;
   /** The image Dokploy ran, ALWAYS kept verbatim - see `mapDatabase`. */
   customImage: string;
+  /** The engine's config files, in deplo's shape. Almost always empty. */
+  mounts: { filePath: string; content: string; mountPath: string }[];
 }
 
 /** The version tag out of an image ref, ignoring a registry port. */
@@ -986,12 +993,21 @@ export function mapDatabase(
   // mount announced "extra files that are not imported" about the one thing the
   // Data step exists to copy - on every single database. Only a FILE or BIND
   // mount is genuinely extra; a volume is data, and data moves.
-  const extraMounts = (row.mounts ?? []).filter((m) => m.type !== "volume");
-  if (extraMounts.length > 0)
+  //
+  // A FILE comes across: it is the engine's configuration, and deplo keeps those
+  // itself (`Database.mounts`). A BIND does not - a database has no host-folder
+  // mount here, so the honest answer is to say which folder was left behind.
+  const mapped = mapMounts(
+    (row.mounts ?? []).filter((m) => m.type === "file"),
+    { isCompose: false },
+  );
+  notes.push(...mapped.notes);
+  const binds = (row.mounts ?? []).filter((m) => m.type === "bind");
+  if (binds.length > 0)
     notes.push(
-      `This database has ${extraMounts.length === 1 ? "a file" : "files"} mounted on Dokploy (${extraMounts
-        .map((m) => m.mountPath)
-        .join(", ")}). They are not imported - add them again here if you need them.`,
+      `This database bind-mounts ${binds.length === 1 ? "a folder" : "folders"} from its host on Dokploy (${binds
+        .map((m) => m.hostPath || m.mountPath)
+        .join(", ")}). Deplo databases have no host mounts - move what is in there another way.`,
     );
 
   // mysql and mariadb keep TWO credentials on Dokploy - an application user and
@@ -1034,6 +1050,10 @@ export function mapDatabase(
           ? row.externalPort
           : null,
       customImage,
+      // Every file mount Dokploy had, named and pathed the way deplo stores
+      // them. A file with no container path cannot be mounted anywhere and is
+      // dropped by `mapMounts` with a note of its own.
+      mounts: mapped.value.files.filter((f) => f.mountPath),
     },
     notes,
   };

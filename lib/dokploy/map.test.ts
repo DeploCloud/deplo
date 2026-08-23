@@ -604,7 +604,9 @@ test("mapMounts splits the three Dokploy kinds into deplo's two writers", () => 
     ],
     { isCompose: true },
   );
-  assert.deepEqual(value.files, [{ filePath: "config.toml", content: "a = 1" }]);
+  assert.deepEqual(value.files, [
+    { filePath: "config.toml", content: "a = 1", mountPath: "" },
+  ]);
   assert.deepEqual(value.volumes, [
     { type: "named", name: "pg-data", mountPath: "/var/lib/data", readOnly: false },
     {
@@ -635,7 +637,13 @@ test("mapMounts imports an application's file mount, which has no filePath", () 
     ],
     { isCompose: false },
   );
-  assert.deepEqual(value.files, [{ filePath: "index.html", content: "<h1>hi</h1>" }]);
+  assert.deepEqual(value.files, [
+    {
+      filePath: "index.html",
+      content: "<h1>hi</h1>",
+      mountPath: "/usr/share/nginx/html/index.html",
+    },
+  ]);
   // ...paired with the Storage "File" entry that mounts it back where it was.
   assert.deepEqual(value.volumes, [
     {
@@ -664,7 +672,9 @@ test("mapMounts does not pair a compose stack's file mount with a volume", () =>
     ],
     { isCompose: true },
   );
-  assert.deepEqual(value.files, [{ filePath: "fix.sh", content: "#!/bin/sh" }]);
+  assert.deepEqual(value.files, [
+    { filePath: "fix.sh", content: "#!/bin/sh", mountPath: "/usr/local/bin/fix.sh" },
+  ]);
   assert.deepEqual(value.volumes, []);
 });
 
@@ -680,8 +690,8 @@ test("mapMounts keeps two file mounts with the same file name apart", () => {
     { isCompose: false },
   );
   assert.deepEqual(value.files, [
-    { filePath: "app.ini", content: "one" },
-    { filePath: "app-2.ini", content: "two" },
+    { filePath: "app.ini", content: "one", mountPath: "/etc/a/app.ini" },
+    { filePath: "app-2.ini", content: "two", mountPath: "/etc/b/app.ini" },
   ]);
   assert.deepEqual(
     value.volumes.map((v) => `${v.projectPath}@${v.mountPath}`),
@@ -808,12 +818,42 @@ test("mapDatabase carries the external port and reports what a database cannot t
     db({
       externalPort: 5432,
       command: "postgres -c max_connections=200",
-      mounts: [{ mountId: "1", type: "file", filePath: "extra.conf", mountPath: "/etc/x.conf" }],
+      mounts: [{ mountId: "1", type: "bind", hostPath: "/srv/pg", mountPath: "/srv/pg" }],
     }),
   );
   assert.equal(value?.exposedPort, 5432);
   assert.match(notes.join(" "), /start command/);
-  assert.match(notes.join(" "), /mounted on Dokploy/);
+  // A BIND has nowhere to go on a deplo database, so it is named, not dropped in
+  // silence.
+  assert.match(notes.join(" "), /bind-mounts/);
+});
+
+// The engine's configuration is exactly what deplo now keeps itself, so it comes
+// across instead of turning into a to-do note. Dokploy leaves `filePath` null on
+// a database's file mount just as it does on an application's.
+test("mapDatabase imports the engine's config files", () => {
+  const { value, notes } = mapDatabase(
+    "postgres",
+    db({
+      mounts: [
+        {
+          mountId: "1",
+          type: "file",
+          filePath: null,
+          content: "shared_buffers = 1GB\n",
+          mountPath: "/etc/postgresql.conf",
+        },
+      ],
+    }),
+  );
+  assert.deepEqual(value?.mounts, [
+    {
+      filePath: "postgresql.conf",
+      content: "shared_buffers = 1GB\n",
+      mountPath: "/etc/postgresql.conf",
+    },
+  ]);
+  assert.equal(notes.join(" ").includes("not imported"), false, notes.join(" "));
 });
 
 // Dokploy models a database's DATA volume as a mount row. Warning "extra files

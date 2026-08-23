@@ -1,6 +1,7 @@
 import {
   backups as backupsTable,
   backupRuns as backupRunsTable,
+  databaseMounts as databaseMountsTable,
   databases as databasesTable,
   backupDestination as destTable,
 } from "../db/schema/control-plane";
@@ -79,6 +80,8 @@ export interface SeedDatabaseOpts {
   /** Publish a host port, the way an exposed database's row really looks. */
   exposedPublicly?: boolean;
   exposedPort?: number | null;
+  /** The engine's config files, seeded into `database_mounts` alongside the row. */
+  mounts?: Database["mounts"];
 }
 
 /** Seed one database row (its `connection_string_enc` is a real encrypted value). */
@@ -112,10 +115,16 @@ export async function seedDatabase(
     customImage: null,
     customCommand: null,
     cronEnabled: false,
+    mounts: opts.mounts ?? [],
     sizeMb: 0,
     createdAt: T0,
   };
   await db.insert(databasesTable).values(databaseToRow(row));
+  if (row.mounts.length > 0) {
+    await db.insert(databaseMountsTable).values(
+      row.mounts.map((m, position) => ({ databaseId: row.id, position, ...m })),
+    );
+  }
   return row.id;
 }
 

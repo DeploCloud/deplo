@@ -60,6 +60,7 @@ import {
   appSlugFromDeployKey,
   deployImageRef,
   prNumberFromDeployKey,
+  stackFilesDir,
   stackName,
 } from "./deploy-key";
 import { syncPreviewComment } from "./preview-comment";
@@ -911,7 +912,7 @@ export function renderCompose(opts: {
   // Absolute, per-project files dir — the same sandbox the `./<x>` compose
   // convention resolves to. A "service" mount's source is rendered here so it
   // stays isolated (never resolved against the stack dir by docker).
-  const filesDir = join(STACK_DIR, "files", deployKey);
+  const filesDir = stackFilesDir(deployKey);
   // Default PORT to the project's default container port so 12-factor apps
   // (buildpacks, Nixpacks, Railpack) bind where Traefik forwards. A user-set
   // PORT wins. Per-domain port overrides only change Traefik's target, not the
@@ -2400,7 +2401,7 @@ interface ComposeStackOpts {
  * files there before bringing the stack up.
  */
 function composeFilesDir(deployKey: string): string {
-  return join(STACK_DIR, "files", deployKey);
+  return stackFilesDir(deployKey);
 }
 
 /**

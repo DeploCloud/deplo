@@ -150,6 +150,9 @@ const CONTROL_PLANE = [
   "app_basic_auth_users",
   // data
   "databases",
+  // The engine's own config files — the sibling of `app_mounts`, carrying the
+  // container path too because a database's compose is rendered by deplo.
+  "database_mounts",
   "team_database_order",
   "backup_destination",
   "backups",

@@ -1,6 +1,6 @@
 import "server-only";
 
-import { and, desc, eq, sql } from "drizzle-orm";
+import { and, desc, eq, inArray, sql } from "drizzle-orm";
 
 import {
   listServersForTeam,
@@ -11,6 +11,7 @@ import {
 import { getDb } from "../db/client";
 import { narrowedScope } from "../auth/request-context";
 import {
+  databaseMounts as databaseMountsTable,
   databases as databasesTable,
   teamDatabaseOrder,
 } from "../db/schema/control-plane";
@@ -44,19 +45,21 @@ import {
   destroyStackOn,
 } from "./volume-migration";
 import {
+  DB_DATA_DIRS,
   generateDatabaseCompose,
   buildConnectionString,
   parseConnectionPassword,
   effectiveDatabaseImage,
 } from "../deploy/database-compose";
 import { isDockerLevelStderr } from "../infra/docker";
+import { stackFilesDir } from "../deploy/deploy-key";
 import { isValidLogoValue } from "../apps/logo-shared";
 import { withKeyedLock } from "./keyed-mutex";
 import { enqueueTeardowns } from "./teardown-queue";
 import { assertPasswordNotPwned } from "../pwned-password";
 import { assertPasswordPolicy } from "../password-policy";
 import { publishDatabaseChanged } from "../graphql/pubsub";
-import type { Database, DatabaseType } from "../types";
+import type { Database, DatabaseMount, DatabaseType } from "../types";
 
 export interface DatabaseDTO extends Omit<Database, "connectionStringEnc"> {
   connectionStringMasked: string;
@@ -373,6 +376,39 @@ function maskConnectionString(conn: string): string {
   }
 }
 
+/**
+ * The config files of one or more databases, keyed by id and in stored order.
+ *
+ * Every reader that assembles a {@link Database} goes through here, because the
+ * object it produces is what a reroute renders: a path that skipped the children
+ * would hand `generateDatabaseCompose` an empty list and silently UNMOUNT the
+ * engine's configuration on the next redeploy — the same trap the compose-stack
+ * reroute documents for volumes. One query for a whole list, so the Storage grid
+ * still costs two round trips no matter how many databases it shows.
+ */
+async function mountsByDatabase(
+  ids: string[],
+): Promise<Map<string, DatabaseMount[]>> {
+  const out = new Map<string, DatabaseMount[]>();
+  if (ids.length === 0) return out;
+  const rows = await getDb()
+    .select()
+    .from(databaseMountsTable)
+    .where(inArray(databaseMountsTable.databaseId, ids))
+    .orderBy(databaseMountsTable.databaseId, databaseMountsTable.position);
+  for (const r of rows) {
+    const list = out.get(r.databaseId) ?? [];
+    list.push({ filePath: r.filePath, content: r.content, mountPath: r.mountPath });
+    out.set(r.databaseId, list);
+  }
+  return out;
+}
+
+/** The one database's config files, in stored order. */
+async function mountsFor(id: string): Promise<DatabaseMount[]> {
+  return (await mountsByDatabase([id])).get(id) ?? [];
+}
+
 function toDTO(db: Database): DatabaseDTO {
   const { connectionStringEnc, ...rest } = db;
   return {
@@ -415,7 +451,8 @@ export async function getDatabaseForTeam(
     .from(databasesTable)
     .where(and(eq(databasesTable.id, id), eq(databasesTable.teamId, teamId)))
     .limit(1);
-  return rows[0] ? toDTO(assembleDatabase(rows[0])) : null;
+  if (!rows[0]) return null;
+  return toDTO(assembleDatabase(rows[0], await mountsFor(rows[0].id)));
 }
 
 /**
@@ -443,7 +480,8 @@ async function loadDatabase(
     .from(databasesTable)
     .where(and(eq(databasesTable.id, id), eq(databasesTable.teamId, teamId)))
     .limit(1);
-  return rows[0] ? assembleDatabase(rows[0]) : null;
+  if (!rows[0]) return null;
+  return assembleDatabase(rows[0], await mountsFor(rows[0].id));
 }
 
 /** Team-wide manual database order (the `team_database_order` junction), id→rank. */
@@ -477,8 +515,9 @@ export async function listDatabases(query?: string): Promise<DatabaseDTO[]> {
   // explicitly-ordered databases come first in that order, anything not listed
   // (a brand-new database, or before any reorder) falls back to newest-first —
   // the same rule the Overview apps grid uses.
+  const mounts = await mountsByDatabase(rows.map((r) => r.id));
   return rows
-    .map((r) => toDTO(assembleDatabase(r)))
+    .map((r) => toDTO(assembleDatabase(r, mounts.get(r.id) ?? [])))
     .filter((d) => !query || matchesQuery(query, d.name, d.id))
     .sort((a, b) => {
       const ra = rank.get(a.id) ?? Infinity;
@@ -763,6 +802,9 @@ export async function createDatabase(input: {
     customCommand: null,
     // Off, like an app's: a cron job runs arbitrary commands in the container.
     cronEnabled: false,
+    // The engine's defaults are the defaults. A config file is an expert edit
+    // made afterwards, never something a new database ships with.
+    mounts: [],
     sizeMb: 0,
     createdAt: nowIso(),
   };
@@ -812,6 +854,20 @@ export async function createDatabase(input: {
  * command overrides — from the {@link Database} object, so the renders can't
  * drift and "the row is truth": any reroute applies the row's pending edits.
  */
+/**
+ * The config files a Reroute has to carry, in the agent's own shape.
+ *
+ * Every reroute sends them, without exception: the agent writes what it is given
+ * and nothing else, so a call that omitted the list would bring the stack up
+ * against a bind source that is not there — and docker answers a missing bind
+ * source by inventing an empty DIRECTORY, which is a database that starts
+ * ignoring its own configuration. Small enough to inline; a function so no call
+ * site can decide it does not need one.
+ */
+function mountFilesFor(db: Database): { path: string; content: string }[] {
+  return db.mounts.map((m) => ({ path: m.filePath, content: m.content }));
+}
+
 function renderDatabaseStackYaml(db: Database, password: string): string {
   return generateDatabaseCompose({
     name: db.host, // service slug, stable
@@ -826,6 +882,12 @@ function renderDatabaseStackYaml(db: Database, password: string): string {
     resources: db.resources,
     customImage: db.customImage,
     customCommand: db.customCommand,
+    // The engine's config files. They ride the SAME object as everything else
+    // here, which is the whole point of "the row is truth": a reroute path that
+    // took them from somewhere else - or forgot them - would silently unmount
+    // the engine's configuration on the next redeploy.
+    mounts: db.mounts,
+    filesDir: stackFilesDir(db.host),
   });
 }
 
@@ -852,7 +914,7 @@ async function provisionDatabase(db: Database, password: string): Promise<void> 
         slug: db.host,
         composeYaml: yaml,
         env: {},
-        mounts: [],
+        mounts: mountFilesFor(db),
       });
       if (!res.ok) throw new Error(res.error || "agent failed to provision the database");
     } finally {
@@ -1102,7 +1164,7 @@ export async function updateDatabase(
         slug: cur.host,
         composeYaml: yaml,
         env: {},
-        mounts: [],
+        mounts: mountFilesFor(cur),
       });
       if (!res.ok)
         throw new Error(res.error || "agent failed to update the database");
@@ -1267,7 +1329,7 @@ async function teardownDatabaseStack(db: Database): Promise<string | null> {
         slug: db.host,
         composeYaml: renderDatabaseStackYaml(db, password),
         env: {},
-        mounts: [],
+        mounts: mountFilesFor(db),
       });
       // A failed heal leaves `res` — the ORIGINAL destroy error — as the reason;
       // it is the actionable one (the heal error is a symptom of the same host).
@@ -1609,6 +1671,149 @@ export async function updateDatabaseImage(
   );
 }
 
+/** The biggest a config file may be. It is a config file, not a data import. */
+const MAX_MOUNT_BYTES = 1024 * 1024; // 1 MiB, the same ceiling the Files editor uses
+
+/**
+ * Validate + canonicalise a database's whole config-file set. Pure, so the rules
+ * are unit-testable and the UI can lint against the same ones.
+ *
+ * Every rule exists because the alternative is a database that starts and
+ * silently ignores its configuration, or one that cannot start at all:
+ *
+ *  - the file path is RELATIVE and stays inside the stack's files dir (a `..`
+ *    or a leading `/` would name a host path, and the agent refuses to write it
+ *    anyway - here it becomes an error the user can read);
+ *  - the mount path is absolute, with no spaces or `:` (both would smuggle extra
+ *    fields into the `- "source:target"` compose line) and no `..`;
+ *  - NOTHING may be mounted inside the engine's own DATA DIRECTORY. That is the
+ *    named volume: a file placed there lands inside the data, travels into every
+ *    backup, and on Postgres the entrypoint refuses to start at all. It is the
+ *    one path a config file must never take, and the only one refused;
+ *  - the two paths are each unique - two files with the same name are one file,
+ *    and two mounts at the same path are a container docker will not create.
+ */
+export function validateDatabaseMounts(
+  type: DatabaseType,
+  raw: DatabaseMount[],
+): DatabaseMount[] {
+  const dataDir = DB_DATA_DIRS[type].replace(/\/+$/, "");
+  const seenFile = new Set<string>();
+  const seenMount = new Set<string>();
+  const out: DatabaseMount[] = [];
+  for (const m of raw) {
+    const filePath = (m.filePath ?? "").trim().replace(/^\.\/+/, "").replace(/\/+$/, "");
+    if (!filePath || filePath.startsWith("/"))
+      throw new Error(
+        `The file name must be relative, for example "postgresql.conf": "${m.filePath}"`,
+      );
+    if (/[\s:]/.test(filePath))
+      throw new Error(`A file name cannot contain spaces or ":": "${m.filePath}"`);
+    if (filePath.split("/").includes(".."))
+      throw new Error(`A file name cannot contain "..": "${m.filePath}"`);
+
+    const mountPath = (m.mountPath ?? "").trim().replace(/\/+$/, "");
+    if (!/^\/[^\s:]*$/.test(mountPath) || mountPath.length < 2)
+      throw new Error(
+        `The path in the container must be absolute, with no spaces or ":": "${m.mountPath}"`,
+      );
+    if (mountPath.split("/").includes(".."))
+      throw new Error(`The path in the container cannot contain "..": "${m.mountPath}"`);
+    if (mountPath === dataDir || mountPath.startsWith(dataDir + "/"))
+      throw new Error(
+        `${mountPath} is inside this engine's data directory (${dataDir}). A file there would be stored with the data and backed up with it - put the configuration somewhere else.`,
+      );
+
+    const content = m.content ?? "";
+    if (Buffer.byteLength(content, "utf8") > MAX_MOUNT_BYTES)
+      throw new Error(`${filePath} is too large to save (1 MiB max).`);
+
+    if (seenFile.has(filePath)) throw new Error(`Duplicate file name: "${filePath}"`);
+    if (seenMount.has(mountPath))
+      throw new Error(`Duplicate path in the container: "${mountPath}"`);
+    seenFile.add(filePath);
+    seenMount.add(mountPath);
+    out.push({ filePath, content, mountPath });
+  }
+  return out;
+}
+
+/**
+ * Replace a database's config files (whole set) and APPLY them.
+ *
+ * Applied immediately, unlike the image/command overrides sitting next to it in
+ * Advanced: those change what the next deploy builds, this one changes what the
+ * running engine reads, and a config file that is saved but not in effect is the
+ * kind of half-state that has people editing the same value twice. The reroute
+ * recreates the container, so the UI says so before the save.
+ *
+ * A database that has never been provisioned (or is mid-provision) is persisted
+ * and NOT rerouted - there is no stack to write into yet, and the provision that
+ * follows renders from the row.
+ */
+export async function setDatabaseMounts(
+  id: string,
+  mounts: DatabaseMount[],
+): Promise<void> {
+  const { teamId } = await requireCapability("configure_databases");
+  const user = (await getCurrentUser())!;
+  await withKeyedLock(id, async () => {
+    const cur = await loadDatabase(id, teamId);
+    if (!cur) throw new Error("Not found");
+    const validated = validateDatabaseMounts(cur.type, mounts);
+
+    await getDb().transaction(async (tx) => {
+      await tx
+        .delete(databaseMountsTable)
+        .where(eq(databaseMountsTable.databaseId, id));
+      if (validated.length > 0) {
+        await tx.insert(databaseMountsTable).values(
+          validated.map((m, position) => ({
+            databaseId: id,
+            position,
+            filePath: m.filePath,
+            content: m.content,
+            mountPath: m.mountPath,
+          })),
+        );
+      }
+    });
+    publishDatabaseChanged(id);
+
+    // Nothing to write into yet: a database still provisioning renders from the
+    // row when it comes up, and one that never did has no stack at all.
+    if (cur.status === "provisioning") return;
+    const password = parseConnectionPassword(
+      decryptSecretOrThrow(cur.connectionStringEnc, "The database password"),
+    );
+    const next = { ...cur, mounts: validated };
+    const conn = await connectAgent(cur.serverId);
+    try {
+      const res = await conn.reroute({
+        slug: cur.host,
+        composeYaml: renderDatabaseStackYaml(next, password),
+        env: {},
+        mounts: mountFilesFor(next),
+      });
+      if (!res.ok)
+        throw new Error(
+          `The files were saved but the database could not be updated: ${
+            res.error || "the agent refused the change"
+          }. Press Redeploy to try again.`,
+        );
+    } finally {
+      conn.close();
+    }
+  });
+  await recordActivity(
+    "database",
+    "Updated database config files",
+    user.name,
+    null,
+    teamId,
+  );
+}
+
 /**
  * Restart the database container (stop + start on the owning agent). Unlike
  * redeploy this does NOT re-render the compose — it bounces the container
@@ -1682,7 +1887,7 @@ export async function redeployDatabase(id: string): Promise<void> {
         slug: cur.host,
         composeYaml: yaml,
         env: {},
-        mounts: [],
+        mounts: mountFilesFor(cur),
       });
       if (!res.ok)
         throw new Error(res.error || "agent failed to redeploy the database");
@@ -1746,7 +1951,7 @@ export async function rebuildDatabase(id: string): Promise<void> {
         slug: cur.host,
         composeYaml: yaml,
         env: {},
-        mounts: [],
+        mounts: mountFilesFor(cur),
       });
       if (!up.ok) {
         await getDb()
@@ -1969,7 +2174,7 @@ export async function rotateDatabasePassword(
         slug: cur.host,
         composeYaml: yaml,
         env: {},
-        mounts: [],
+        mounts: mountFilesFor(cur),
       });
       if (!res.ok)
         throw new Error(

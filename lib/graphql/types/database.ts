@@ -15,6 +15,7 @@ import {
   reorderDatabases,
   updateDatabaseResources,
   updateDatabaseImage,
+  setDatabaseMounts,
   setDatabaseRunning,
   restartDatabase,
   redeployDatabase,
@@ -96,14 +97,50 @@ export const DatabaseRef = builder
           "Expert override: replaces the container command verbatim (redis's " +
           "default command carries --requirepass — omit it and auth is off).",
       }),
+      mounts: t.field({
+        type: [DatabaseMountRef],
+        description:
+          "Expert override: the engine's own config files, written next to the " +
+          "stack and bind-mounted into the container. Empty for almost every " +
+          "database. Saving them applies immediately - the container is recreated.",
+        resolve: (d) => d.mounts,
+      }),
       sizeMb: t.exposeInt("sizeMb"),
       createdAt: t.exposeString("createdAt"),
+    }),
+  });
+
+const DatabaseMountRef = builder
+  .objectRef<{ filePath: string; content: string; mountPath: string }>(
+    "DatabaseMount",
+  )
+  .implement({
+    description:
+      "One config file of a database: its name in the stack's files directory, " +
+      "its body, and where it is mounted inside the container.",
+    fields: (t) => ({
+      filePath: t.exposeString("filePath"),
+      content: t.exposeString("content"),
+      mountPath: t.exposeString("mountPath"),
     }),
   });
 
 /* ------------------------------------------------------------------ */
 /* Inputs                                                              */
 /* ------------------------------------------------------------------ */
+
+const DatabaseMountInputType = builder.inputType("DatabaseMountInput", {
+  description:
+    "One config file to write next to the database's stack and bind-mount into " +
+    "its container. `filePath` is relative to the stack's files directory; " +
+    "`mountPath` is the absolute path inside the container and may not be " +
+    "inside the engine's data directory.",
+  fields: (t) => ({
+    filePath: t.string({ required: true }),
+    content: t.string({ required: true }),
+    mountPath: t.string({ required: true }),
+  }),
+});
 
 const CreateDatabaseInputType = builder.inputType("CreateDatabaseInput", {
   fields: (t) => ({
@@ -397,6 +434,30 @@ builder.mutationFields((t) => ({
         customCommand: input.customCommand,
         version: input.version ?? undefined,
       });
+      return reloadDatabase(id);
+    },
+  }),
+  setDatabaseMounts: t.field({
+    type: DatabaseRef,
+    authScopes: { capability: "configure_databases" },
+    description:
+      "Replace the database's config files (whole set - an omitted file is " +
+      "removed) and APPLY them: the files are written next to the stack and the " +
+      "container is recreated, unlike the image/command overrides beside them. " +
+      "A path inside the engine's data directory is refused.",
+    args: {
+      id: t.arg.string({ required: true }),
+      mounts: t.arg({ type: [DatabaseMountInputType], required: true }),
+    },
+    resolve: async (_r, { id, mounts }) => {
+      await setDatabaseMounts(
+        id,
+        mounts.map((m) => ({
+          filePath: m.filePath,
+          content: m.content,
+          mountPath: m.mountPath,
+        })),
+      );
       return reloadDatabase(id);
     },
   }),
