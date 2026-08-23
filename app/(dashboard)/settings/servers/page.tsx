@@ -1,6 +1,6 @@
 import { notFound } from "next/navigation";
 import Link from "next/link";
-import type { ElementType } from "react";
+import { Suspense, type ElementType } from "react";
 import {
   Server as ServerIcon,
   Cpu,
@@ -24,6 +24,7 @@ import {
   CardContent,
 } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { Skeleton } from "@/components/ui/skeleton";
 import { Button } from "@/components/ui/button";
 import { InfoTip } from "@/components/ui/info-tip";
 import { listAllServers, listAllServerTeamIds } from "@/lib/data/servers";
@@ -77,12 +78,76 @@ function Spec({
   );
 }
 
+/**
+ * The four capacity tiles.
+ *
+ * They are the ONE thing on this page that can wait on a network round trip: a
+ * server nobody has measured yet is dialed here, in the render (see
+ * `hydrateServerSpecs`), and that dial is allowed four seconds. Awaited inline
+ * it held back the whole page - the header, every card, the health chips - for
+ * a number that fills four small boxes. So it is awaited here instead, behind
+ * the card's own <Suspense>, and everything else paints immediately.
+ *
+ * A fleet whose specs are all stored (the normal case) resolves before the
+ * first flush, so nothing flickers: the skeleton is for the one card that is
+ * genuinely being measured.
+ */
+async function SpecTiles({ specs }: { specs: Promise<Server> }) {
+  const server = await specs;
+  // Specs are stored capacity (persisted from the agent); 0 means not-yet-measured
+  // or unprovisioned — show an em dash rather than a misleading "0".
+  const ramGb = server.memoryMb ? Math.round(server.memoryMb / 1024) : 0;
+  const num = (n: number) => (n > 0 ? String(n) : "—");
+  return (
+    <>
+      <Spec
+        icon={Cpu}
+        label="CPU"
+        value={num(server.cpuCores)}
+        unit={server.cpuCores === 1 ? "core" : "cores"}
+      />
+      <Spec icon={MemoryStick} label="Memory" value={num(ramGb)} unit="GB RAM" />
+      <Spec icon={HardDrive} label="Disk" value={num(server.diskGb)} unit="GB" />
+      <Spec
+        icon={Boxes}
+        label="Docker"
+        value={server.dockerVersion || "—"}
+        unit="engine"
+      />
+    </>
+  );
+}
+
+/** Placeholder for {@link SpecTiles}: the same four boxes, same heights. */
+function SpecTilesSkeleton() {
+  return (
+    <>
+      {Array.from({ length: 4 }).map((_, i) => (
+        <div key={i} className="rounded-lg border border-border bg-muted/30 p-3">
+          <div className="flex items-center gap-1.5">
+            <Skeleton className="size-3.5 rounded" />
+            <Skeleton className="h-3 w-12" />
+          </div>
+          <div className="mt-1 flex items-baseline gap-1">
+            <Skeleton className="h-5 w-8" />
+            <Skeleton className="h-3 w-12" />
+          </div>
+        </div>
+      ))}
+    </>
+  );
+}
+
 function ServerCard({
   server,
+  specs,
   accessTeamIds,
   isDeploHost,
 }: {
   server: Server;
+  /** The same server with its capacity measured, still in flight - see
+   *  {@link SpecTiles}. Everything else on the card reads `server`. */
+  specs: Promise<Server>;
   accessTeamIds: string[];
   /**
    * True for the ONE host that also runs the Deplo control plane (dashboard + API),
@@ -95,10 +160,6 @@ function ServerCard({
   const accessLabel = server.allTeams
     ? "All teams"
     : `${accessTeamIds.length} team${accessTeamIds.length === 1 ? "" : "s"}`;
-  // Specs are stored capacity (persisted from the agent); 0 means not-yet-measured
-  // or unprovisioned — show an em dash rather than a misleading "0".
-  const ramGb = server.memoryMb ? Math.round(server.memoryMb / 1024) : 0;
-  const num = (n: number) => (n > 0 ? String(n) : "—");
   return (
     <Card className="transition-colors hover:border-foreground/20">
       <CardHeader className="space-y-3">
@@ -230,30 +291,9 @@ function ServerCard({
       {!server.importOnly && (
         <CardContent>
           <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
-            <Spec
-              icon={Cpu}
-              label="CPU"
-              value={num(server.cpuCores)}
-              unit={server.cpuCores === 1 ? "core" : "cores"}
-            />
-            <Spec
-              icon={MemoryStick}
-              label="Memory"
-              value={num(ramGb)}
-              unit="GB RAM"
-            />
-            <Spec
-              icon={HardDrive}
-              label="Disk"
-              value={num(server.diskGb)}
-              unit="GB"
-            />
-            <Spec
-              icon={Boxes}
-              label="Docker"
-              value={server.dockerVersion || "—"}
-              unit="engine"
-            />
+            <Suspense fallback={<SpecTilesSkeleton />}>
+              <SpecTiles specs={specs} />
+            </Suspense>
           </div>
         </CardContent>
       )}
@@ -288,7 +328,23 @@ export default async function ServersPage(
     ]);
   // Fill in capacity specs for the static cards (measures an unmeasured server
   // once, then reuses the persisted values). No per-second polling anymore.
-  const hydrated = await hydrateServerSpecs(serversRaw);
+  //
+  // Deliberately NOT awaited: measuring dials the agent, and an unreachable host
+  // spends the full four-second cap before giving up. Awaited here that cap was
+  // the whole page's - the operator who just added a server waited on the box
+  // they added to render the page that says whether it answered. Each card
+  // streams its own tiles instead (see `SpecTiles`); a rejection degrades to the
+  // stored capacity rather than to an error boundary over the fleet.
+  const measured = hydrateServerSpecs(serversRaw)
+    .catch(() => serversRaw)
+    .then((list) => new Map(list.map((s) => [s.id, s])));
+  // A server that already HAS its capacity stored is never re-measured (that is
+  // `hydrateServerSpecs`'s own rule), so it hands its tiles over resolved and
+  // never renders a placeholder. Only the box someone just added waits.
+  const specsFor = (server: Server) =>
+    server.cpuCores > 0
+      ? Promise.resolve(server)
+      : measured.then((m) => m.get(server.id) ?? server);
   const teams: TeamOption[] = teamsRaw.map((t) => ({ id: t.id, name: t.name }));
 
   // Which server (if any) is the host running Deplo itself — computed once, then
@@ -296,7 +352,7 @@ export default async function ServersPage(
   // the "this is the control-plane box" signal impossible to miss without reordering
   // the interchangeable remotes among themselves (they keep their creation order).
   const selfAddrs = deploHostSelfAddresses();
-  const servers = [...hydrated].sort(
+  const servers = [...serversRaw].sort(
     (a, b) =>
       Number(isDeploHostServer(b, selfAddrs)) -
       Number(isDeploHostServer(a, selfAddrs)),
@@ -315,6 +371,9 @@ export default async function ServersPage(
   // probe deliberately does NOT run here — dialing every agent inside the render would
   // make the one page an operator opens *because* a host is broken as slow as that
   // broken host, on every single load.
+  // Straight from the stored rows: the in-render measurement is not folded in
+  // any more, now that it streams. It never belonged here anyway - the seed is
+  // the LAST OBSERVED health, and the sweep is what makes it current.
   const healthSeed: Record<string, ServerHealthState> = Object.fromEntries(
     servers.map((s) => [
       s.id,
@@ -375,6 +434,7 @@ export default async function ServersPage(
               <ServerCard
                 key={server.id}
                 server={server}
+                specs={specsFor(server)}
                 accessTeamIds={serverTeamIds.get(server.id) ?? []}
                 isDeploHost={isDeploHostServer(server, selfAddrs)}
               />
@@ -396,6 +456,7 @@ export default async function ServersPage(
                 <ServerCard
                   key={server.id}
                   server={server}
+                  specs={specsFor(server)}
                   accessTeamIds={serverTeamIds.get(server.id) ?? []}
                   isDeploHost={false}
                 />
