@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import { Play, Square, RefreshCw, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { cn } from "@/lib/utils";
 import { SimpleTooltip } from "@/components/ui/tooltip";
 import { gqlAction } from "@/lib/graphql-client";
 import {
@@ -64,26 +65,36 @@ export function AppControls({
   // Reload re-applies the app's routing (domains + basic auth) to the running
   // container WITHOUT a rebuild. The mutation returns a status string we turn
   // into an honest toast — "deferred" means nothing was running to reroute.
+  //
+  // Unlike start/stop this one gets a spinner: there is no status for it. The
+  // container never leaves "running", so a click with no feedback looks like a
+  // click that missed, and the reroute takes as long as the host takes.
+  const [reloading, setReloading] = React.useState(false);
   function reload() {
+    setReloading(true);
     startTransition(async () => {
-      const res = await gqlAction<{ reloadApp: string | null }, string>(
-        `mutation($id: String!) { reloadApp(id: $id) }`,
-        { id: appId },
-        (d) => d.reloadApp ?? "",
-      );
-      if (!res.ok) {
-        toast.error(res.error);
-        return;
+      try {
+        const res = await gqlAction<{ reloadApp: string | null }, string>(
+          `mutation($id: String!) { reloadApp(id: $id) }`,
+          { id: appId },
+          (d) => d.reloadApp ?? "",
+        );
+        if (!res.ok) {
+          toast.error(res.error);
+          return;
+        }
+        const status = res.data;
+        toast.success(
+          status === "rerouted"
+            ? "Routing reloaded"
+            : status === "unchanged"
+              ? "Already up to date"
+              : "Saved — applies on the next deploy",
+        );
+        router.refresh();
+      } finally {
+        setReloading(false);
       }
-      const status = res.data;
-      toast.success(
-        status === "rerouted"
-          ? "Routing reloaded"
-          : status === "unchanged"
-            ? "Already up to date"
-            : "Saved — applies on the next deploy",
-      );
-      router.refresh();
     });
   }
 
@@ -162,9 +173,9 @@ export function AppControls({
           variant="outline"
           size="sm"
           onClick={reload}
-          disabled={restoring}
+          disabled={restoring || reloading}
         >
-          <RefreshCw className="size-4" />
+          <RefreshCw className={cn("size-4", reloading && "animate-spin")} />
           Reload
         </Button>
       </SimpleTooltip>
