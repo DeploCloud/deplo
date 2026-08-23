@@ -180,6 +180,32 @@ export const RESERVED_MOUNT_PREFIXES = [
   "/var/run",
 ];
 
+/**
+ * Whether this KIND of entry may not take `mountPath`, because the runtime owns
+ * it. The list above is the same for both answers; what differs is how much of
+ * it a kind is allowed near.
+ *
+ * A **Volume** or a **Bind** puts a whole DIRECTORY over the target, so a
+ * reserved path and everything under it stay off limits: replacing `/etc` or
+ * `/etc/nginx` hides the image's own files there and the container comes up
+ * broken.
+ *
+ * A **File** is ONE file, and putting one file inside a system directory is how
+ * containers have been configured since containers existed -
+ * `/etc/nginx/nginx.conf`, `/usr/share/nginx/html/index.html`,
+ * `/etc/php/conf.d/uploads.ini`. Refusing those refuses the commonest reason a
+ * File entry exists at all (and it is what a Dokploy import of a prebuilt image
+ * is almost always made of), so a File is refused only AT the reserved path
+ * itself - nothing may be mounted as `/etc`. Nothing escapes either way: a
+ * File's source is a file deplo wrote inside the app's own files dir, and the
+ * target is inside the app's own container.
+ */
+export function reservedMountPath(mountPath: string, kind: VolumeKind): boolean {
+  return RESERVED_MOUNT_PREFIXES.some((r) =>
+    kind === "app" ? mountPath === r : mountPath === r || mountPath.startsWith(r + "/"),
+  );
+}
+
 /** Docker's name shape for a managed volume (also blocks YAML key injection). */
 export const VOLUME_NAME_RE = /^[a-z0-9][a-z0-9_-]*$/;
 export const VOLUME_NAME_MAX = 40;
@@ -397,11 +423,7 @@ export function volumeProblem(
     };
   if (mountPath.split("/").includes(".."))
     return { field: "mountPath", message: 'The path cannot contain ".."' };
-  if (
-    RESERVED_MOUNT_PREFIXES.some(
-      (r) => mountPath === r || mountPath.startsWith(r + "/"),
-    )
-  )
+  if (reservedMountPath(mountPath, kind))
     return {
       field: "mountPath",
       message: `${mountPath} belongs to the system and cannot be replaced`,

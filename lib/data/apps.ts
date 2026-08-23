@@ -54,7 +54,8 @@ import {
   validateComposeUpArgs,
 } from "../deploy/compose-args";
 import {
-  RESERVED_MOUNT_PREFIXES,
+  kindOf,
+  reservedMountPath,
   VOLUME_NAME_MAX,
   VOLUME_NAME_RE,
 } from "../apps/volume-model";
@@ -1547,11 +1548,10 @@ export function validateVolumes(
     if (mountPath.split("/").includes("..")) {
       throw new Error(`Mount path must not contain "..": "${v.mountPath}"`);
     }
-    if (
-      RESERVED_MOUNT_PREFIXES.some(
-        (r) => mountPath === r || mountPath.startsWith(r + "/"),
-      )
-    ) {
+    // Reserved for a Volume or a Bind (they replace a whole directory), reserved
+    // only AS ITSELF for a File - one config file inside /etc or /usr is the
+    // commonest mount there is. See `reservedMountPath`.
+    if (reservedMountPath(mountPath, kindOf(v))) {
       throw new Error(`Mount path "${mountPath}" is reserved by the system.`);
     }
     // A volume conflicts with a template config file when their paths are equal,

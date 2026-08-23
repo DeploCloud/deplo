@@ -200,6 +200,19 @@ test("every reserved system path is refused, as itself and as a parent", () => {
   assert.equal(volumeProblem(vol({ mountPath: "/etcetera" })), null);
 });
 
+// One config FILE inside a system directory is how every image has ever been
+// configured. Refusing it refused the commonest File entry there is - and every
+// prebuilt image an import brings over, whose whole configuration is that file.
+test("a File may sit inside a system directory, but never replace one", () => {
+  const file = (mountPath: string) =>
+    volumeProblem(vol({ type: "app", projectPath: "nginx.conf", mountPath }));
+  assert.equal(file("/etc/nginx/nginx.conf"), null);
+  assert.equal(file("/usr/share/nginx/html/index.html"), null);
+  for (const p of RESERVED_MOUNT_PREFIXES) {
+    assert.match(file(p)!.message, /system/, p);
+  }
+});
+
 test("a Bind wants an absolute server path", () => {
   assert.match(volumeProblem(vol({ type: "host" }))!.message, /path on the server/);
   assert.match(
