@@ -23,7 +23,10 @@ import { FieldLabel } from "@/components/ui/info-tip";
 import { ConfettiBurst } from "@/components/shared/confetti-burst";
 import { ConfirmAction } from "@/components/shared/confirm-action";
 import type { ActionResult } from "@/lib/result";
-import { WizardStepper, type WizardStep } from "@/components/shared/wizard-stepper";
+import {
+  WizardStepper,
+  type WizardStep,
+} from "@/components/shared/wizard-stepper";
 import { UnsavedChangesGuard } from "@/components/apps/unsaved-changes-guard";
 import {
   useActiveMigration,
@@ -360,7 +363,9 @@ export function MigrationWizard({
   /** Source SERVICE ids. The leaves are the selection; the tree derives the rest. */
   const [chosen, setChosen] = React.useState<Set<string>>(new Set());
   /** Source service id → where it lands. Filled for every importable service. */
-  const [placements, setPlacements] = React.useState<Record<string, Placement>>({});
+  const [placements, setPlacements] = React.useState<Record<string, Placement>>(
+    {},
+  );
 
   const [progress, setProgress] = React.useState<MigrationProgress>({
     done: 0,
@@ -402,7 +407,10 @@ export function MigrationWizard({
     [url, apiKey, sameMachine],
   );
 
-  const STEPS = React.useMemo(() => stepsFor(isInstanceAdmin), [isInstanceAdmin]);
+  const STEPS = React.useMemo(
+    () => stepsFor(isInstanceAdmin),
+    [isInstanceAdmin],
+  );
 
   /* ---- step 1: connect --------------------------------------------- */
 
@@ -444,7 +452,9 @@ export function MigrationWizard({
     const byMachine = new Map(
       scanned.servers.map((m) => [
         m.sourceId,
-        m.deploServerId && runnable.has(m.deploServerId) ? m.deploServerId : home,
+        m.deploServerId && runnable.has(m.deploServerId)
+          ? m.deploServerId
+          : home,
       ]),
     );
     const landingFor = (sourceServerId: string) =>
@@ -499,7 +509,11 @@ export function MigrationWizard({
     setFailure(null);
     cancelled.current = false;
     setStopped(false);
-    setProgress({ done: 0, total: targets.length, current: targets[0].project.name });
+    setProgress({
+      done: 0,
+      total: targets.length,
+      current: targets[0].project.name,
+    });
     setRunning(true);
 
     // Visible to the `finally` below, which has to close the row when somebody
@@ -533,7 +547,11 @@ export function MigrationWizard({
         // leave a project created here with no line in the report - the one
         // thing a revert reads to know what to take back out.
         if (cancelled.current) return;
-        setProgress({ done: i, total: targets.length, current: target.project.name });
+        setProgress({
+          done: i,
+          total: targets.length,
+          current: target.project.name,
+        });
         const res = await gqlAction<
           { importDokployProject: { items: ReportItem[] } },
           { items: ReportItem[] }
@@ -578,8 +596,15 @@ export function MigrationWizard({
       // copy every service that actually has a volume - the ones with none (a
       // git-built app, usually) have nothing to do here.
       if (cancelled.current) return;
-      setProgress({ done: targets.length, total: targets.length, current: "Reading the volumes" });
-      const dataPlan = await gqlAction<{ planDokployDataMove: DataService[] }, DataService[]>(
+      setProgress({
+        done: targets.length,
+        total: targets.length,
+        current: "Reading the volumes",
+      });
+      const dataPlan = await gqlAction<
+        { planDokployDataMove: DataService[] },
+        DataService[]
+      >(
         PLAN_DATA,
         { input: connectInput, runId: openRunId },
         (d) => d.planDokployDataMove,
@@ -587,7 +612,10 @@ export function MigrationWizard({
       if (!dataPlan.ok)
         setItems((prev) => [
           ...prev,
-          dataNote("Could not read what data is on Dokploy: " + dataPlan.error, "failed"),
+          dataNote(
+            "Could not read what data is on Dokploy: " + dataPlan.error,
+            "failed",
+          ),
         ]);
       const planned = dataPlan.ok ? (dataPlan.data ?? []) : [];
       // Every reason a service will not have its data copied is SAID. These notes
@@ -602,8 +630,15 @@ export function MigrationWizard({
 
       for (const [i, d] of movable.entries()) {
         if (cancelled.current) return;
-        setProgress({ done: i, total: movable.length, current: `Copying ${d.sourceName}` });
-        const res = await gqlAction<{ moveDokployServiceData: MoveResult }, MoveResult>(
+        setProgress({
+          done: i,
+          total: movable.length,
+          current: `Copying ${d.sourceName}`,
+        });
+        const res = await gqlAction<
+          { moveDokployServiceData: MoveResult },
+          MoveResult
+        >(
           MOVE_DATA,
           {
             input: connectInput,
@@ -620,7 +655,9 @@ export function MigrationWizard({
           res.ok
             ? dataNote(
                 `${d.sourceName}: ${res.data?.moved ?? 0} volume(s) copied` +
-                  ((res.data?.failed ?? 0) > 0 ? `, ${res.data!.failed} failed` : ""),
+                  ((res.data?.failed ?? 0) > 0
+                    ? `, ${res.data!.failed} failed`
+                    : ""),
                 (res.data?.failed ?? 0) > 0 ? "failed" : "created",
               )
             : dataNote(`${d.sourceName}: ${res.error}`, "failed"),
@@ -660,13 +697,13 @@ export function MigrationWizard({
    * named, rather than as a silent partial success.
    */
   async function revertRun() {
-    if (!runId) return { ok: false as const, error: "There is no run to undo." };
+    if (!runId)
+      return { ok: false as const, error: "There is no run to undo." };
     setReverting(true);
-    const res = await gqlAction<{ revertDokployImport: RevertResult }, RevertResult>(
-      REVERT,
-      { runId },
-      (d) => d.revertDokployImport,
-    );
+    const res = await gqlAction<
+      { revertDokployImport: RevertResult },
+      RevertResult
+    >(REVERT, { runId }, (d) => d.revertDokployImport);
     setReverting(false);
     if (!res.ok) {
       toast.error(res.error);
@@ -687,7 +724,9 @@ export function MigrationWizard({
         ...r.failed.map((f) => dataNote(f, "failed")),
       ]);
     toast.success(
-      removed === 0 ? "Nothing was left to remove" : `Removed ${removed} object(s)`,
+      removed === 0
+        ? "Nothing was left to remove"
+        : `Removed ${removed} object(s)`,
     );
     setStopped(false);
     setFailure(null);
@@ -742,7 +781,12 @@ export function MigrationWizard({
     setMinting(true);
     const res = await gqlAction<{ mintRegistrationLink: string }, string>(
       MINT_LINK,
-      { input: { mode: "existing_teams", teamAssignments: [{ teamId, role: "member" }] } },
+      {
+        input: {
+          mode: "existing_teams",
+          teamAssignments: [{ teamId, role: "member" }],
+        },
+      },
       (d) => d.mintRegistrationLink,
     );
     setMinting(false);
@@ -769,7 +813,11 @@ export function MigrationWizard({
               ...prev,
               servers: prev.servers.map((m) =>
                 m.sourceId === sourceId
-                  ? { ...m, deploServerId: serverId, deploServerName: serverName }
+                  ? {
+                      ...m,
+                      deploServerId: serverId,
+                      deploServerName: serverName,
+                    }
                   : m,
               ),
             }
@@ -876,7 +924,8 @@ export function MigrationWizard({
   // after Finish either - by then the migration is over and every link on the
   // report is somewhere you are meant to go.
   const guarded =
-    step !== "done" && (plan != null || url.trim() !== "" || apiKey.trim() !== "");
+    step !== "done" &&
+    (plan != null || url.trim() !== "" || apiKey.trim() !== "");
 
   return (
     <>
@@ -886,7 +935,9 @@ export function MigrationWizard({
           and all this still carries is the browser's own close-tab prompt. */}
       <UnsavedChangesGuard
         when={guarded}
-        title={running ? "The migration is still running" : "Leave the migration?"}
+        title={
+          running ? "The migration is still running" : "Leave the migration?"
+        }
         description={
           running
             ? "Deplo is moving your projects right now. Leaving this page stops it part-way, with some services already stopped on Dokploy."
@@ -913,7 +964,10 @@ export function MigrationWizard({
           isInstanceAdmin={isInstanceAdmin}
         />
       ) : (
-        <div ref={heldRef} className="mx-auto flex w-full flex-col items-center gap-8">
+        <div
+          ref={heldRef}
+          className="mx-auto flex w-full flex-col items-center gap-8"
+        >
           <MigrationGraphic state={pose} className="h-auto w-full max-w-md" />
 
           {/* One width for every step, and it is the narrow one: a wizard is
@@ -1089,7 +1143,9 @@ function ConnectStep({
             value={url}
             onChange={(e) => setUrl(e.target.value)}
             placeholder={
-              sameMachine ? "http://172.17.0.1:3000" : "https://dokploy.acme.com"
+              sameMachine
+                ? "http://172.17.0.1:3000"
+                : "https://dokploy.acme.com"
             }
             autoComplete="off"
             spellCheck={false}
@@ -1155,7 +1211,10 @@ function ConnectStep({
         </div>
 
         <div className="flex justify-end">
-          <Button type="submit" disabled={scanning || !url.trim() || !apiKey.trim()}>
+          <Button
+            type="submit"
+            disabled={scanning || !url.trim() || !apiKey.trim()}
+          >
             {scanning && <Loader2 className="size-4 animate-spin" />}
             {scanning ? "Reading Dokploy" : "Check this Dokploy"}
           </Button>
@@ -1213,7 +1272,11 @@ function WatchingPanel({ run }: { run: ActiveMigration }) {
       </div>
 
       <div className="flex flex-wrap items-center gap-2">
-        <Button variant="outline" onClick={() => void showLog()} disabled={loading}>
+        <Button
+          variant="outline"
+          onClick={() => void showLog()}
+          disabled={loading}
+        >
           {loading ? (
             <Loader2 className="size-4 animate-spin" />
           ) : (
@@ -1302,13 +1365,13 @@ function MovingPanel({
               // of what it actually managed to take out.
               description={
                 <>
-                  Deplo deletes the apps, databases and projects this run created
-                  here, with their data. Anything that was already in this team is
-                  left alone.
+                  Deplo deletes the apps, databases and projects this run
+                  created here, with their data. Anything that was already in
+                  this team is left alone.
                   <br />
                   <br />
-                  It does not start Dokploy back up - the services this migration
-                  stopped over there stay stopped.
+                  It does not start Dokploy back up - the services this
+                  migration stopped over there stay stopped.
                 </>
               }
               onConfirm={onRevert}
@@ -1327,7 +1390,7 @@ function MovingPanel({
 
   return (
     <StepShell
-      title="Moving everything over"
+      title="Migration in progress..."
       lead="Deplo is creating your projects here and copying their data across. Stay on this page."
     >
       <div className="space-y-2">
