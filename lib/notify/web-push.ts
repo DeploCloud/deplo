@@ -179,8 +179,10 @@ export async function sendWebPushTo(
 
   const webpush = await import("web-push");
   // mailto: is what the push services want as a contact; the panel URL is not a
-  // valid VAPID subject.
-  webpush.setVapidDetails("mailto:alerts@deplo.local", publicKey, privateKey);
+  // valid VAPID subject. The domain has to be a REAL one: Apple answers 403
+  // BadJwtToken for a reserved TLD (`.local`, `localhost`), where Chrome and
+  // Firefox accept anything mailto:-shaped.
+  webpush.setVapidDetails("mailto:alerts@deplo.build", publicKey, privateKey);
 
   const payload = JSON.stringify({
     title: msg.title,
