@@ -350,7 +350,8 @@ export async function ensureAutoDomain(
  * Runs without an authenticated user (called from createApp, alongside the
  * primary auto domain). Registered ONCE at creation — never on a deploy — so a
  * deleted extra is never resurrected. Idempotent: a same-named domain on THIS
- * project is left as-is (so a creation retry won't duplicate it).
+ * project is left as-is (so a creation retry won't duplicate it) — except the
+ * app's own PRIMARY, which regenerates instead of no-oping (see below).
  *
  * The template-supplied `rawName` is honored when it's globally free. If it
  * already belongs to another project (two extras drew the same random words, or
@@ -373,8 +374,13 @@ export async function ensureExtraDomain(
   const clean = normalizePreferredHost(rawName);
   if (!clean || !DOMAIN_RE.test(clean)) return;
   const existing = await loadDomainsForApp(appId);
-  // Already on this project (idempotent re-run) ⇒ nothing to do.
-  if (existing.some((d) => d.name === clean)) return;
+  // Already on this project (idempotent re-run) ⇒ nothing to do. The app's own
+  // PRIMARY is NOT that case: a template that marks a non-first
+  // `[[config.domains]]` entry `primary = true` leaves the displaced entry still
+  // declaring the generated main host, which the primary now owns — that
+  // service needs an address of its own, not a silent no-op, so it falls
+  // through to the regenerate branch below.
+  if (existing.some((d) => d.name === clean && !d.primary)) return;
   // Honor the template host when globally free; otherwise regenerate a unique
   // one (labelled by slug + service so it stays recognizable) rather than skip.
   const name = (await domainNameExists(clean))

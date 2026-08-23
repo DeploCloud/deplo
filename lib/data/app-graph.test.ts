@@ -52,7 +52,7 @@ import {
   __resetDnsResolve4ForTest,
 } from "./domains";
 import { loadDomainsForApp } from "./app-graph-load";
-import { nipEmbeddedIp } from "../deploy/domains";
+import { nipDomain, nipEmbeddedIp } from "../deploy/domains";
 import { upsertEnv, listEnv } from "./env";
 import { saveSharedVar, setSharedVarAppLink, listSharedVars } from "./shared-vars";
 
@@ -466,6 +466,41 @@ test("ensureExtraDomain is idempotent on the SAME project (re-run does not dupli
   const rows = await loadDomainsForApp("prj_c");
   assert.equal(rows.length, 1, "the same host on the same project is not duplicated");
   assert.equal(rows[0].name, host);
+});
+
+test("a template's displaced domain gets an address of its own, not silence", async () => {
+  // garage-s3's web-ui variant with `primary = true` on the WEB UI: the UI takes
+  // the generated main host, so the S3 API — which is the entry that declared
+  // that host — is left asking for a name the primary now owns. It must come out
+  // of creation with an address of its own; dropping it puts a service the
+  // template publishes on no URL at all, silently.
+  const serverIp = "10.0.0.1"; // `beforeEach`'s seedServer(db)
+  const main = nipDomain("garage-s3", "bold-otter", serverIp);
+  const app = await asUser1(() =>
+    createApp({
+      name: "Garage S3",
+      source: "compose",
+      repo: null,
+      compose: "services:\n  garage: {}\n  garage-webui: {}\n",
+      composeService: "garage-webui",
+      composePort: 3909,
+      autoDomain: main,
+      extraDomains: [{ service: "garage", port: 3900, host: main }],
+      deploy: false,
+    }),
+  );
+
+  const rows = await loadDomainsForApp(app.id);
+  assert.equal(rows.length, 2, "both services the template publishes got a host");
+  const primary = rows.find((d) => d.primary)!;
+  assert.equal(primary.name, main, "the marked primary keeps the generated main host");
+  assert.equal(primary.service, "garage-webui");
+  assert.equal(primary.port, 3909);
+  const extra = rows.find((d) => !d.primary)!;
+  assert.notEqual(extra.name, main, "the displaced entry did not vanish onto the primary's host");
+  assert.equal(nipEmbeddedIp(extra.name), serverIp, "its regenerated host points at the same server");
+  assert.equal(extra.service, "garage");
+  assert.equal(extra.port, 3900);
 });
 
 test("ensureAutoDomain regenerates when its `preferred` host belongs to another project", async () => {

@@ -1037,7 +1037,7 @@ export async function createApp(
   )
     ? "letsencrypt"
     : "none";
-  const primaryName = await ensureAutoDomain(project.id, {
+  await ensureAutoDomain(project.id, {
     slug,
     ip,
     preferred: input.autoDomain ?? undefined,
@@ -1047,13 +1047,20 @@ export async function createApp(
   });
 
   // Register every EXTRA hostname a multi-domain template declares (e.g. a web
-  // UI's `web-ui.*` host) — also ONCE, here at creation, never on a deploy. Skip
-  // the primary (already registered above). Each extra carries its own service +
-  // port. Like the primary, a deleted extra is never resurrected by a later
-  // deploy. The `domains` table is the sole routing source from here on.
+  // UI's `web-ui.*` host) — also ONCE, here at creation, never on a deploy. Each
+  // extra carries its own service + port. Like the primary, a deleted extra is
+  // never resurrected by a later deploy. The `domains` table is the sole routing
+  // source from here on.
+  //
+  // An extra landing on the SAME host as the primary is not a duplicate to drop:
+  // the primary's own declared host is discarded in favour of the generated one,
+  // so a template that marks a non-first entry `primary = true` leaves the
+  // displaced entry declaring a host the primary just took. Handing it to
+  // `ensureExtraDomain` anyway gets it a generated host of its own instead of
+  // leaving that service with no address at all.
   for (const ex of input.extraDomains ?? []) {
     const host = ex.host.trim();
-    if (host && host !== primaryName)
+    if (host)
       await ensureExtraDomain(project.id, host, {
         port: ex.port,
         service: ex.service,

@@ -65,6 +65,56 @@ test("resolves env, domains and mounts from a template's config", () => {
   assert.equal(bp.mounts[0].content.trim(), `password = ${env.DB_PASSWORD}`);
 });
 
+/**
+ * Which entry gets the app's generated main domain. Document order decides it
+ * for a template that says nothing (the case above), so the marker has to beat
+ * that order — otherwise a stack's API sits on the URL the panel prints while
+ * its web UI is the one hidden on a subdomain.
+ */
+const PRIMARY_CONFIG = `
+[variables]
+main_domain = "\${domain}"
+
+[config]
+[config.env]
+APP_URL = "https://\${main_domain}"
+
+[[config.domains]]
+serviceName = "garage"
+port = 3900
+host = "\${main_domain}"
+primary = false
+
+[[config.domains]]
+serviceName = "garage-webui"
+port = 3909
+host = "web-ui.\${main_domain}"
+primary = true
+
+[[config.domains]]
+serviceName = "garage-admin"
+port = 3903
+host = "admin.\${main_domain}"
+primary = true
+`;
+
+test("an explicitly marked primary wins over document order", () => {
+  const bp = getTemplateBlueprint(
+    { slug: "garage-s3", compose: "services: {}\n", config: PRIMARY_CONFIG },
+    { domain: "demo.example.com" },
+  );
+
+  // The marked entry is hoisted, the rest keep document order, and every host
+  // travels with its own entry. `primary = false` marks nothing, and a SECOND
+  // marker does not take it off the first — an app has one main domain.
+  assert.deepEqual(bp.exposes, [
+    { service: "garage-webui", port: 3909, host: "web-ui.demo.example.com" },
+    { service: "garage", port: 3900, host: "demo.example.com" },
+    { service: "garage-admin", port: 3903, host: "admin.demo.example.com" },
+  ]);
+  assert.deepEqual(bp.expose, bp.exposes[0]);
+});
+
 test("a template with no config still deploys its compose", () => {
   const bp = getTemplateBlueprint({ slug: "bare", compose: "x", config: "" });
   assert.deepEqual(bp, {
