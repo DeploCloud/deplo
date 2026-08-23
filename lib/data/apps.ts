@@ -64,6 +64,7 @@ import {
   MOUNT_PROPAGATIONS,
 } from "../types";
 import { encryptSecret } from "../crypto";
+import type { EnvEntryType } from "../deploy/env-resolve";
 import { recordActivity } from "./activity";
 import { teardownOrQueue } from "./teardown-queue";
 import { matchesQuery } from "./match-query";
@@ -162,11 +163,11 @@ import {
 /**
  * Heuristic: treat secret-looking keys as masked secrets.
  *
- * Exported because a bulk importer has to type the variables it creates outside
- * `createApp` too (shared vars carrying a Dokploy project's env), and two copies
- * of this regex would be two answers to "is this a secret" — the wrong kind of
- * duplication. Wrong-way-safe by design: a plain value marked secret is only
- * hidden, a secret marked plain is readable at the `view` floor.
+ * For a variable somebody TYPES. Wrong-way-safe by design: a plain value marked
+ * secret is only hidden, a secret marked plain is readable at the `view` floor.
+ * A bulk import overrules it and writes everything plain (`CreateAppInput.env`
+ * carries the type) - guessing at scale masks values whoever ran the migration
+ * still has to check against the platform they came from.
  */
 export function isSecretKey(key: string): boolean {
   // A name that announces itself as public is not a secret, whatever else it
@@ -536,7 +537,13 @@ export interface CreateAppInput {
   /** Display logo (URL/path), defaulted from a template's logo on deploy. */
   logo?: string | null;
   compose?: string | null;
-  env?: { key: string; value: string }[];
+  /**
+   * Initial variables. `type` is optional and the heuristic (`isSecretKey`)
+   * fills it in - pass it to overrule that, which the Dokploy import does: it
+   * marks everything `plain`, because a value that arrives masked is one nobody
+   * can check against the platform it came from.
+   */
+  env?: { key: string; value: string; type?: EnvEntryType }[];
   serverId?: string;
   /**
    * Where the app COMPILES, when that is not where it runs. Omitted (or null) is
@@ -943,7 +950,7 @@ export async function createApp(
       key,
       valueEnc: encryptSecret(e.value),
       targets: ["production", "preview"] as EnvTarget[],
-      type: isSecretKey(e.key) ? ("secret" as const) : ("plain" as const),
+      type: e.type ?? (isSecretKey(e.key) ? ("secret" as const) : ("plain" as const)),
       // A template's defaults are still an authored write by whoever created the app.
       createdByUserId: userId,
       updatedByUserId: userId,

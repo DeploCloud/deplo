@@ -541,7 +541,9 @@ test("a project lands complete: project, environment, apps, variables", async ()
   assert.equal(api.source, "docker-image");
   assert.equal(api.dockerImage, "ghcr.io/acme/api:1.4.2");
 
-  // Env vars, with the build arg folded in and the secret-looking one masked.
+  // Env vars, with the build arg folded in. Every one of them PLAIN, including
+  // the secret-looking one: a migration must not mask values whoever ran it
+  // still has to check against the platform they came from.
   const env = await db
     .select()
     .from(envVarsTable)
@@ -551,7 +553,7 @@ test("a project lands complete: project, environment, apps, variables", async ()
     [...byKey.keys()].sort(),
     ["DATABASE_URL", "NEXT_PUBLIC_SITE", "NODE_ENV"],
   );
-  assert.equal(byKey.get("DATABASE_URL")!.type, "secret");
+  assert.equal(byKey.get("DATABASE_URL")!.type, "plain");
   assert.equal(byKey.get("NODE_ENV")!.type, "plain");
 
   // The database could not be created against a host with no agent, and that is
@@ -620,8 +622,8 @@ test("a project's and an environment's own variables become linked shared variab
   assert.ok(links.length >= 2, `expected app links, got ${links.length}`);
   assert.equal(
     shared.find((s) => s.key === "SHARED_TOKEN")!.type,
-    "secret",
-    "a token-looking key is not left readable",
+    "plain",
+    "a migrated variable is never masked, whatever it is called",
   );
 });
 

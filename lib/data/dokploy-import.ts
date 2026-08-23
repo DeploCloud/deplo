@@ -79,7 +79,7 @@ import {
 
 import { addBasicAuthUser } from "./basic-auth";
 import { addExistingMember, mintRegistrationLink } from "./members";
-import { createApp, isSecretKey, setAppVolumes, updateAppResources } from "./apps";
+import { createApp, setAppVolumes, updateAppResources } from "./apps";
 import { createCronJob } from "./crons";
 import { createDatabase, isValidExposePort } from "./databases";
 import { addDomain, updateDomain } from "./domains";
@@ -1657,7 +1657,18 @@ async function importAppService(
   const argEntries = parseEnvBlob((detail as DokployApplication).buildArgs).filter(
     (a) => !envEntries.some((e) => e.key === a.key),
   );
-  const env = [...envEntries, ...argEntries];
+  // Every migrated variable comes across PLAIN, whatever it is called. The
+  // heuristic that guesses "secret" from a key name exists for someone typing a
+  // variable into Deplo; here it would mask values that were readable on the
+  // platform they came from, and the first thing anybody does after a migration
+  // is compare the two side by side. A masked value has no reveal path at the
+  // `view` floor, and a secret-typed one is dropped from a fork's preview - so
+  // the guess turns a working import into one that cannot be checked. Whoever
+  // wants them hidden flips the type in Variables afterwards.
+  const env = [...envEntries, ...argEntries].map((e) => ({
+    ...e,
+    type: "plain" as const,
+  }));
   if (argEntries.length > 0)
     notes.push(
       `${argEntries.length} build argument(s) became environment variables - that is how Deplo passes values to a build.`,
@@ -2156,7 +2167,9 @@ async function importSharedVars(
       await saveSharedVar({
         key,
         value,
-        type: isSecretKey(key) ? "secret" : "plain",
+        // Plain, for the same reason the app's own variables are - see the
+        // service import.
+        type: "plain",
         teamWide: false,
         environmentIds: opts.environmentIds,
         projectIds: opts.projectIds,
