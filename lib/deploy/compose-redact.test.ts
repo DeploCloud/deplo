@@ -75,3 +75,55 @@ test("a stack with nothing to hide is returned byte-identical", () => {
   const yaml = ["services:", "  app:", "    image: nginx:1.27", ""].join("\n");
   assert.equal(redactComposeForDisplay(yaml), yaml);
 });
+
+/**
+ * A multi-line value is a value. Masking line by line covered only the header
+ * (`KEY: |`) and left the BODY in the clear - GitLab's `GITLAB_OMNIBUS_CONFIG`
+ * carries an `smtp_password`, and a PEM key is the same shape - while the
+ * orphaned body also made the preview invalid YAML, which is how it was found.
+ */
+test("a block scalar is masked whole, body and all", () => {
+  const out = redactComposeForDisplay(`services:
+  app:
+    image: gitlab/gitlab-ce:17
+    environment:
+      SIMPLE: plain-secret
+      GITLAB_OMNIBUS_CONFIG: |
+        external_url 'https://git.example.com'
+        gitlab_rails['smtp_password'] = 'SUPERSECRET'
+      PRIVATE_KEY: |-
+        -----BEGIN PRIVATE KEY-----
+        MIIEvQIBADANBg
+
+        -----END PRIVATE KEY-----
+      AFTER: another-secret
+    ports:
+      - "80:80"
+`);
+  assert.ok(!out.includes("SUPERSECRET"));
+  assert.ok(!out.includes("BEGIN PRIVATE KEY"));
+  assert.ok(!out.includes("MIIEvQIBADANBg"));
+  assert.ok(!out.includes("external_url"));
+  // The keys still show, and the value after the block is masked normally -
+  // swallowing the body must not swallow the rest of the environment.
+  assert.ok(out.includes(`GITLAB_OMNIBUS_CONFIG: "${MASKED}"`));
+  assert.ok(out.includes(`PRIVATE_KEY: "${MASKED}"`));
+  assert.ok(out.includes(`AFTER: "${MASKED}"`));
+  // Everything outside `environment:` is untouched.
+  assert.ok(out.includes('- "80:80"'));
+  assert.ok(out.includes("image: gitlab/gitlab-ce:17"));
+});
+
+test("every block-scalar spelling is recognised", () => {
+  for (const marker of ["|", "|-", "|+", ">", ">-", ">2"]) {
+    const out = redactComposeForDisplay(`services:
+  app:
+    environment:
+      K: ${marker}
+        leaked-value
+    image: nginx
+`);
+    assert.ok(!out.includes("leaked-value"), `body survived after ${marker}`);
+    assert.ok(out.includes("image: nginx"), `stack truncated after ${marker}`);
+  }
+});
