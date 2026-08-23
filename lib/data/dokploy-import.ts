@@ -1860,7 +1860,7 @@ async function importAppService(
       `You don't have permission to mount host folders, so ${volumes
         .filter((v) => v.type === "host")
         .map((v) => v.hostPath)
-        .join(", ")} did not come across. An admin grants it in Settings -> Users.`,
+        .join(", ")} did not come across. An admin turns it on with "Bind server folders" in Settings → Users.`,
     );
     volumes = volumes.filter((v) => v.type !== "host");
   }
