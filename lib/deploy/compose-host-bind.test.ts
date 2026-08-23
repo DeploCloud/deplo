@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 
 import {
   composeBuildReachesHost,
+  composeFileBindings,
   composeJoinsForeignNetwork,
   composeClaimsReservedName,
   composeHasHostBindMount,
@@ -592,4 +593,58 @@ test("an ordinary stack collects neither warning", () => {
   ).map((d) => d.rule);
   assert.equal(rules.includes("reserved-service-name"), false);
   assert.equal(rules.includes("network-aliases-dropped"), false);
+});
+
+/* ------------------------------------------------------------------ */
+/* composeFileBindings — where a stack mounts its own config files      */
+/* ------------------------------------------------------------------ */
+
+/**
+ * The compose is the only thing that knows where a stack's config file lands:
+ * the file itself just sits in the app's files dir. Reading it is what lets
+ * Storage show that file as a **File** entry with a real container path, rather
+ * than the app appearing to have no files at all.
+ */
+test("composeFileBindings reads both volume spellings, with the service", () => {
+  const yaml = [
+    "services:",
+    "  web:",
+    "    volumes:",
+    "      - ./nginx.conf:/etc/nginx/nginx.conf:ro",
+    "      - data:/var/lib/data", // a named volume is not a file
+    "      - /srv/host:/mnt", // a host bind is not a file either
+    "  api:",
+    "    volumes:",
+    "      - type: bind",
+    "        source: ./conf.d/api.ini",
+    "        target: /etc/api.ini",
+  ].join("\n");
+  assert.deepEqual(composeFileBindings(yaml), [
+    {
+      filePath: "nginx.conf",
+      service: "web",
+      mountPath: "/etc/nginx/nginx.conf",
+      readOnly: true,
+    },
+    {
+      filePath: "conf.d/api.ini",
+      service: "api",
+      mountPath: "/etc/api.ini",
+      readOnly: false,
+    },
+  ]);
+});
+
+test("composeFileBindings ignores what it cannot show as one file", () => {
+  const yaml = [
+    "services:",
+    "  web:",
+    "    volumes:",
+    "      - ./:/app", // the whole files dir: no single file to point at
+    "      - ../outside.conf:/etc/x.conf", // climbs out: a host bind, not ours
+    "      - ./no-target", // nowhere to mount it
+  ].join("\n");
+  assert.deepEqual(composeFileBindings(yaml), []);
+  // And a document it cannot read declares nothing rather than throwing.
+  assert.deepEqual(composeFileBindings("services: [oops"), []);
 });

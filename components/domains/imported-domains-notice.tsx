@@ -62,12 +62,11 @@ export function ImportedDomainsNotice({
           <Badge variant="outline">Beta</Badge>
         </p>
         <p className="text-muted-foreground">
-          Importing domains is still in beta. The
+          The
           {domains.length === 1 ? " address " : " addresses "}
           this app used before could not come across, so deplo gave it
           {domains.length === 1 ? " one " : " ones "}
-          of its own with the same routes. Add your own domain whenever you are
-          ready.
+          of its own with the same routes.
         </p>
         <ul className="space-y-1">
           {domains.map((d) => (

@@ -632,6 +632,73 @@ export function composeHasHostBindMount(composeYaml: string): boolean {
   return false;
 }
 
+/** Where a stack's own compose file binds one of its config files. */
+export interface ComposeFileBinding {
+  /** The path inside the app's files dir, as `./<x>` names it. */
+  filePath: string;
+  /** The compose service that mounts it. */
+  service: string;
+  /** The absolute path it lands on inside that container. */
+  mountPath: string;
+  readOnly: boolean;
+}
+
+/**
+ * Every `./<x>` bind a stack's services declare: which file, which service,
+ * where it lands, read-only or not.
+ *
+ * The compose is the ONLY thing that knows where a stack's config file is
+ * mounted - the file itself just sits in the app's files dir - so this is what
+ * lets Storage show a config file as a **File** entry with a real container path
+ * instead of a name with nowhere attached to it. An import reads it to describe
+ * a file mount the way the platform it came from described it.
+ *
+ * Tolerant like its neighbours: an unparseable document simply declares nothing.
+ */
+export function composeFileBindings(composeYaml: string): ComposeFileBinding[] {
+  let doc: ComposeDocShape | null;
+  try {
+    doc = yaml.load(composeYaml) as ComposeDocShape | null;
+  } catch {
+    return [];
+  }
+  const services = doc?.services;
+  if (!services || typeof services !== "object") return [];
+  const out: ComposeFileBinding[] = [];
+  for (const [service, svc] of Object.entries(services)) {
+    const vols = svc?.volumes;
+    if (!Array.isArray(vols)) continue;
+    for (const v of vols) {
+      const src = volumeSource(v);
+      if (!src || !isFilesConventionSource(src)) continue;
+      // The whole files dir bound as one (`.` / `./`) is not a FILE - there is
+      // no single path to show, and Storage has no row shape for it.
+      const filePath = src.replace(/^\.\/?/, "").replace(/\/+$/, "");
+      if (!filePath) continue;
+      const { mountPath, readOnly } = volumeTarget(v);
+      if (!mountPath) continue;
+      out.push({ filePath, service, mountPath, readOnly });
+    }
+  }
+  return out;
+}
+
+/** Target side of a volume entry: the container path and whether it is read-only. */
+function volumeTarget(v: unknown): { mountPath: string; readOnly: boolean } {
+  if (typeof v === "string") {
+    const [, target = "", mode = ""] = v.split(":");
+    return { mountPath: target.trim(), readOnly: mode.trim() === "ro" };
+  }
+  if (v && typeof v === "object") {
+    const rec = v as Record<string, unknown>;
+    return {
+      mountPath: typeof rec.target === "string" ? rec.target.trim() : "",
+      readOnly: rec.read_only === true,
+    };
+  }
+  return { mountPath: "", readOnly: false };
+}
+
 /**
  * The DNS names Deplo's own infrastructure answers to on the shared `deplo`
  * network. A container joining that network registers its SERVICE NAME as an

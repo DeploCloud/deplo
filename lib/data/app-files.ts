@@ -7,6 +7,10 @@ import { getActiveTeamId } from "../membership";
 import type { Capability } from "../types";
 import { getCurrentUser } from "../auth";
 import { recordActivity } from "./activity";
+import { and, eq } from "drizzle-orm";
+
+import { getDb } from "../db/client";
+import { appMounts as appMountsTable } from "../db/schema/control-plane";
 import { loadTeamApp } from "./app-graph-load";
 import { hasAppCapability, requireAppCapability } from "./node-access";
 import {
@@ -224,6 +228,8 @@ export async function writeAppFile(
   const conn = await agentFor(serverId);
   try {
     const entry = toEntry(await conn.writeFile(slug, path, content));
+    // The stored copy moves with the file, or the next deploy undoes this.
+    await syncAppMount(appId, path, { content });
     await note(appId, `Edited file ${entry.path}`);
     return entry;
   } finally {
@@ -381,6 +387,7 @@ export async function deleteAppFile(
   const conn = await agentFor(serverId);
   try {
     const ok = await conn.deleteFile(slug, path);
+    if (ok) await syncAppMount(appId, path, { deleted: true });
     await note(appId, `Deleted ${normalizeRel(path)}`);
     return ok;
   } finally {
@@ -400,11 +407,60 @@ export async function renameAppFile(
   const conn = await agentFor(serverId);
   try {
     const entry = toEntry(await conn.renameFile(slug, path, newPath));
+    await syncAppMount(appId, path, { renamedTo: entry.path });
     await note(appId, `Moved ${normalizeRel(path)} → ${entry.path}`);
     return entry;
   } finally {
     conn.close();
   }
+}
+
+/**
+ * Keep the app's stored CONFIG FILES in step with what just happened on disk.
+ *
+ * A compose stack's config files live in `app_mounts` and the agent re-writes
+ * them from there on every bring-up. So editing one here and leaving that row
+ * alone was not an edit at all: the next deploy put the old bytes back, and the
+ * only clue was that the change "did not take". A rename resurrected the old
+ * name on top of the new one; a delete brought the file back from the dead.
+ *
+ * The row is the durable copy and the disk is the live one - this is what keeps
+ * them the same thing. A path that is not one of the app's config files (an
+ * ordinary file in the tree) matches nothing and this does nothing.
+ */
+async function syncAppMount(
+  appId: string,
+  path: string,
+  change: { content: string } | { deleted: true } | { renamedTo: string },
+): Promise<void> {
+  const filePath = normalizeRel(path);
+  if (!filePath) return;
+  const db = getDb();
+  const rows = await db
+    .select({ position: appMountsTable.position })
+    .from(appMountsTable)
+    .where(
+      and(eq(appMountsTable.appId, appId), eq(appMountsTable.filePath, filePath)),
+    );
+  if (rows.length === 0) return;
+  if ("deleted" in change) {
+    await db
+      .delete(appMountsTable)
+      .where(
+        and(eq(appMountsTable.appId, appId), eq(appMountsTable.filePath, filePath)),
+      );
+    return;
+  }
+  const patch =
+    "content" in change
+      ? { content: change.content }
+      : { filePath: normalizeRel(change.renamedTo) };
+  await db
+    .update(appMountsTable)
+    .set(patch)
+    .where(
+      and(eq(appMountsTable.appId, appId), eq(appMountsTable.filePath, filePath)),
+    );
 }
 
 /** Record a project-scoped activity line for a files change. */

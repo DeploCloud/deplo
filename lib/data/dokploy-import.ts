@@ -35,6 +35,7 @@ import {
   composeMountsForeignStorage,
   composeNeedsHostPrivileges,
   composePublishesPorts,
+  composeFileBindings,
   composeUsesExternalMerge,
   lintCompose,
 } from "../deploy/compose-lint";
@@ -70,6 +71,7 @@ import {
   mapMounts,
   mapResources,
   mapSource,
+  volumeLabel,
   parseEnvBlob,
   portNotes,
   adaptComposeForDeplo,
@@ -1953,6 +1955,36 @@ async function importAppService(
   let volumes = mounts.value.volumes.filter(
     (v) => !(v.type === "app" && unwritten.has(v.projectPath ?? "")),
   );
+
+  // A compose stack's config file is mounted by the stack's OWN yaml, so nothing
+  // in Storage described it and the Storage page - the one place a person looks
+  // for "what files does this app have" - showed an empty list for an app that
+  // demonstrably had one. On the platform this came from that file is right
+  // there in the service's own settings, with its content.
+  //
+  // So it gets its Storage row: a **File** entry pointing at the same file, at
+  // the container path the compose binds it to. The row does not create a second
+  // mount - `injectAppVolumes` skips a path the authored compose already mounts
+  // on that service - it makes the file VISIBLE and editable where every other
+  // kind of storage is.
+  if (isCompose && compose) {
+    const bindings = composeFileBindings(compose);
+    for (const f of mounts.value.files) {
+      // Unlike a single-image app's File entry, this row does not depend on the
+      // write above having landed: the file is in `app_mounts` too, and the
+      // agent writes it from there on every bring-up.
+      const bound = bindings.find((b) => b.filePath === f.filePath);
+      if (!bound) continue; // in the files dir but mounted nowhere: nothing to show
+      volumes.push({
+        type: "app",
+        name: volumeLabel(f.filePath, "file"),
+        projectPath: f.filePath,
+        mountPath: bound.mountPath,
+        service: bound.service,
+        readOnly: bound.readOnly,
+      });
+    }
+  }
   // A host bind needs the host-volumes grant, and setAppVolumes refuses the WHOLE
   // set over one of them - which used to drop the app's named volumes with it.
   // Leave the bind behind, keep the storage that needs no grant, and say so.

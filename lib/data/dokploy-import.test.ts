@@ -15,6 +15,8 @@ import { makeTestDb, type TestDb } from "../db/test-harness";
 import { __setTestDb, __resetTestDb } from "../db/client";
 import { runWithIdentity } from "../auth/request-context";
 import {
+  appMounts as appMountsTable,
+  appVolumes as appVolumesTable,
   apps as appsTable,
   databases as databasesTable,
   dokployImports as runsTable,
@@ -105,6 +107,10 @@ const COMPOSE_WITH_DOKPLOY_NETWORK = [
   "services:",
   "  web:",
   "    image: nginx:1.27",
+  "    volumes:",
+  // Dokploy's own spelling for a config file next to the stack. The import
+  // rewrites it to `./nginx.conf`; the file itself rides in `mounts` below.
+  "      - ../files/nginx.conf:/etc/nginx/nginx.conf:ro",
   "    networks:",
   "      - dokploy-network",
   "networks:",
@@ -175,7 +181,15 @@ function defaultFixtures(): Fixtures {
           certificateType: "letsencrypt",
         },
       ],
-      mounts: [],
+      mounts: [
+        {
+          mountId: "m-3",
+          type: "file",
+          filePath: "nginx.conf",
+          content: "server { listen 80; }\n",
+          mountPath: "",
+        },
+      ],
     },
     // The one WRITE the importer makes on the other side: stopping the container
     // that is still holding the port this database wants here.
@@ -676,6 +690,40 @@ test("dismissing the notice clears it for that app only", async () => {
     after.map((d) => d.name).sort(),
     before.map((d) => d.name).sort(),
   );
+});
+
+// A compose stack's config file is mounted by the stack's own yaml, so nothing
+// in Storage described it and the page showed an empty list for an app that
+// plainly had one - while the platform it came from showed the file, with its
+// contents, in the service's own settings.
+test("a compose stack's config file shows up in Storage", async () => {
+  const runId = await asOwner(() => beginDokployImport({ url: URL_BASE }));
+  await importProject(runId, "dok-prj-other");
+  const apps = await db.select().from(appsTable);
+  const stack = apps.find((a) => a.name === "other-stack")!;
+
+  // Still the durable copy the agent re-materialises on every bring-up...
+  const stored = await db
+    .select()
+    .from(appMountsTable)
+    .where(eq(appMountsTable.appId, stack.id));
+  assert.deepEqual(
+    stored.map((m) => [m.filePath, m.content]),
+    [["nginx.conf", "server { listen 80; }\n"]],
+  );
+
+  // ...and now a File entry in Storage, pointing at the same file, at the path
+  // the compose binds it to, on the service that binds it.
+  const vols = await db
+    .select()
+    .from(appVolumesTable)
+    .where(eq(appVolumesTable.appId, stack.id));
+  assert.equal(vols.length, 1);
+  assert.equal(vols[0]!.type, "app");
+  assert.equal(vols[0]!.projectPath, "nginx.conf");
+  assert.equal(vols[0]!.mountPath, "/etc/nginx/nginx.conf");
+  assert.equal(vols[0]!.service, "web");
+  assert.equal(vols[0]!.readOnly, true);
 });
 
 test("the compose file arrives with Dokploy's network taken out", async () => {
