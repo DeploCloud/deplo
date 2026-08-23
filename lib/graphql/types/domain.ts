@@ -3,6 +3,7 @@ import { DomainStatusEnum } from "./enums";
 import {
   listDomains,
   addDomain,
+  dismissImportedDomains,
   updateDomain,
   verifyDomain,
   setPrimaryDomain,
@@ -96,6 +97,17 @@ export const DomainRef = builder.objectRef<DomainRow>("Domain").implement({
     pathPrefix: t.exposeString("pathPrefix", { nullable: true }),
     stripPrefix: t.exposeBoolean("stripPrefix", { nullable: true }),
     service: t.exposeString("service", { nullable: true }),
+    importedFrom: t.exposeString("importedFrom", {
+      nullable: true,
+      description:
+        "The hostname this domain REPLACED on the platform the app was imported " +
+        "from, or null when it is the address the app always had. An import " +
+        "cannot keep the source's own throwaway host (it carries that server's " +
+        "IP) nor a name another team here already serves, so the route is " +
+        "re-hosted onto an address Deplo mints - this is what the app's Domains " +
+        "section reads to say which address became which. Cleared by " +
+        "`dismissImportedDomains`.",
+    }),
     createdAt: t.exposeString("createdAt"),
     // Present only on rows from listDomains (decorated with the owning project);
     // null on a freshly-added/verified domain returned bare by the data layer.
@@ -167,6 +179,20 @@ builder.queryFields((t) => ({
 /* ------------------------------------------------------------------ */
 
 builder.mutationFields((t) => ({
+  dismissImportedDomains: t.field({
+    type: "Boolean",
+    authScopes: { capability: "manage_domains" },
+    description:
+      "Stop telling this app that its addresses changed when it was imported: " +
+      "clears `importedFrom` on every one of its domains. Per app on purpose - " +
+      "a migration brings over many, and one blanket dismissal would hide the " +
+      "fact on every app nobody has looked at yet.",
+    args: { appId: t.arg.string({ required: true }) },
+    resolve: async (_r, { appId }) => {
+      await dismissImportedDomains(appId);
+      return true;
+    },
+  }),
   addDomain: t.field({
     type: DomainRef,
     authScopes: { capability: "manage_domains" },

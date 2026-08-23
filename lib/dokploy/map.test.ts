@@ -534,7 +534,7 @@ test("isThrowawayHost only matches the generated hosts", () => {
     assert.equal(isThrowawayHost(host), false, host);
 });
 
-test("mapDomains keeps real hosts in order and drops the disposable ones", () => {
+test("mapDomains keeps every host in order and drops only what cannot route", () => {
   const { value } = mapDomains(
     [
       { domainId: "1", host: "app-x.traefik.me", certificateType: "letsencrypt" },
@@ -545,14 +545,52 @@ test("mapDomains keeps real hosts in order and drops the disposable ones", () =>
     ],
     { isCompose: false },
   );
+  // A disabled row and a preview host are dropped; the THROWAWAY one is not -
+  // it is flagged, because its route is real even though its name cannot come
+  // across. An app that answered on two addresses must not arrive with one.
   assert.deepEqual(
     value.map((d) => d.host),
-    ["acme.com", "api.acme.com"],
+    ["app-x.traefik.me", "acme.com", "api.acme.com"],
   );
-  assert.equal(value[0].port, 8080);
-  assert.equal(value[0].certProvider, "letsencrypt");
-  assert.equal(value[1].pathPrefix, "/api");
-  assert.equal(value[1].stripPrefix, true);
+  assert.deepEqual(
+    value.map((d) => d.generated),
+    [true, false, false],
+  );
+  assert.equal(value[1].port, 8080);
+  assert.equal(value[1].certProvider, "letsencrypt");
+  assert.equal(value[2].pathPrefix, "/api");
+  assert.equal(value[2].stripPrefix, true);
+});
+
+// The route of a throwaway host is kept whole: it is the only thing that CAN be
+// kept, and it is what the app will answer with on its new address.
+test("mapDomains keeps a throwaway host's whole route", () => {
+  const { value } = mapDomains(
+    [
+      {
+        domainId: "1",
+        host: "myapp-abc.sslip.io",
+        port: 8080,
+        path: "/api",
+        stripPath: true,
+        serviceName: "api",
+        https: false,
+      },
+    ],
+    { isCompose: true },
+  );
+  assert.deepEqual(value, [
+    {
+      host: "myapp-abc.sslip.io",
+      port: 8080,
+      pathPrefix: "/api",
+      stripPrefix: true,
+      certProvider: "none",
+      entrypoint: "web",
+      service: "api",
+      generated: true,
+    },
+  ]);
 });
 
 test("mapDomains reports a custom certificate resolver it cannot carry", () => {

@@ -83,11 +83,22 @@ import { createApp, setAppVolumes, updateAppResources } from "./apps";
 import { writeAppFile } from "./app-files";
 import { createCronJob } from "./crons";
 import { createDatabase, isValidExposePort, setDatabaseMounts } from "./databases";
-import { addDomain, updateDomain } from "./domains";
+import {
+  addDomain,
+  addImportedDomains,
+  applyImportedRoute,
+  updateDomain,
+  type ImportedRoute,
+} from "./domains";
 import { createEnvironment, listEnvironmentsForProject } from "./environments";
 import { createProject, defaultEnvironmentFor, listProjects } from "./projects";
-import { canHostWorkloads, listServersForTeam, uninstallServerAgent } from "./servers";
-import { deploHostSelfAddresses, isDeploHostServer } from "../deploy/domains";
+import {
+  canHostWorkloads,
+  getServerById,
+  listServersForTeam,
+  uninstallServerAgent,
+} from "./servers";
+import { deploHostSelfAddresses, isDeploHostServer, resolveServerIp } from "../deploy/domains";
 import { saveSharedVar } from "./shared-vars";
 import { recordActivity } from "./activity";
 import { publishMigrationChanged } from "../graphql/pubsub";
@@ -535,10 +546,19 @@ export async function scanDokploy(input: ConnectInput): Promise<DokployPlan> {
         );
         line.domains = domains.value.map((d) => d.host);
         line.notes.push(...domains.notes);
+        // Said BEFORE anyone presses import, because it is the one thing about a
+        // migrated app that is not the same afterwards: the address. The route
+        // survives; the name cannot (it carries the source server's IP).
+        for (const host of new Set(
+          domains.value.filter((d) => d.generated).map((d) => d.host),
+        ))
+          line.notes.push(
+            `${host} is Dokploy's own temporary address - Deplo cannot take it, so this app gets a temporary address of Deplo's instead, with the same routes.`,
+          );
         for (const host of line.domains)
           if (foreignHosts.has(host))
             line.notes.push(
-              `${host} is already routed by another team on this Deplo - it will be skipped.`,
+              `${host} is already routed by another team on this Deplo, so this app gets an address of Deplo's instead - same routes.`,
             );
 
         if (isCompose) {
@@ -1688,7 +1708,12 @@ async function importAppService(
 
   const domains = mapDomains(detail.domains, { isCompose });
   notes.push(...domains.notes);
-  const primary = domains.value[0] ?? null;
+  // The app's own address wins the primary slot over a temporary one, whatever
+  // order the source kept them in: a throwaway host is first over there simply
+  // because Dokploy minted it first, and promoting it here would demote the name
+  // people actually type to a secondary row.
+  const primary =
+    domains.value.find((d) => !d.generated) ?? domains.value[0] ?? null;
   const mounts = mapMounts(detail.mounts, { isCompose });
   notes.push(...mounts.notes);
 
@@ -1761,9 +1786,13 @@ async function importAppService(
   // generated host and the report says which names were left behind, exactly
   // like the extra domains below.
   const mayClaimHosts = await hasCapability("manage_domains");
-  if (!mayClaimHosts && domains.value.length > 0)
+  // Only a REAL hostname is a claim the permission gates. A throwaway address is
+  // re-hosted onto one of Deplo's own either way (`addImportedDomains`), so
+  // naming it here would blame a permission for something it never blocked.
+  const claimed = domains.value.filter((d) => !d.generated);
+  if (!mayClaimHosts && claimed.length > 0)
     notes.push(
-      `You don't have permission to manage domains, so ${domains.value
+      `You don't have permission to manage domains, so ${claimed
         .map((d) => d.host)
         .join(", ")} came across on a generated address instead.`,
     );
@@ -1781,7 +1810,10 @@ async function importAppService(
     environmentId: home.environmentId,
     build,
     autoDeploy: detail.autoDeploy ?? true,
-    autoDomain: mayClaimHosts ? primary?.host ?? null : null,
+    // A throwaway host is never asked for: it names the SOURCE's machine, and
+    // createApp would either refuse it or point this app at the old box.
+    autoDomain:
+      mayClaimHosts && primary && !primary.generated ? primary.host : null,
     composeService: isCompose ? primary?.service ?? null : null,
     composePort: isCompose ? primary?.port ?? null : null,
     // `app_mounts` is materialised by the compose deploy and by nothing else, so
@@ -1802,19 +1834,36 @@ async function importAppService(
   });
   const target = { kind: "app", id: created.id };
 
-  // The primary domain is minted inside createApp, which falls back to a
-  // generated hostname when the one we asked for is taken. Saying so is the whole
-  // point: the app is up, but not on the name it used to answer.
+  // EVERY address the app answered on over there has to be an address it answers
+  // on here. Two of them cannot come across under their own name - the source's
+  // throwaway hosts (they carry ITS server's IP) and a real name another team on
+  // this Deplo already serves - and the old behaviour was to drop them, which
+  // turned an app with two addresses into an app with none. They are RE-HOSTED
+  // instead: Deplo mints a temporary address of its own and keeps the route.
+  //
+  // The primary is minted inside createApp, before this code can say what it
+  // should serve, so the app's first source domain is applied ONTO it; the rest
+  // go through `addImportedDomains`, which mints one address per source host.
+  const rehosted = new Map<string, string>();
   if (primary) {
     const landed = await getDb()
       .select({ id: domainsTable.id, name: domainsTable.name, certProvider: domainsTable.certProvider })
       .from(domainsTable)
       .where(and(eq(domainsTable.appId, created.id), eq(domainsTable.isPrimary, true)));
-    if (landed[0] && landed[0].name.toLowerCase() !== primary.host)
+    const row = landed[0];
+    if (row && row.name.toLowerCase() !== primary.host) {
+      // The address changed - because it was a throwaway, or because the real
+      // one was taken. Either way the ROUTE is applied to what it landed on, and
+      // the row remembers where it came from so the app's Domains section can
+      // say so instead of leaving someone to load a URL that is gone.
+      await applyImportedRoute(row.id, importedRoute(primary));
+      rehosted.set(primary.host, row.name);
       notes.push(
-        `${primary.host} could not be taken, so the app answers on ${landed[0].name} instead.`,
+        primary.generated
+          ? `${primary.host} was Dokploy's own temporary address, so this app answers on ${row.name} here - same port, same route.`
+          : `${primary.host} could not be taken, so the app answers on ${row.name} instead.`,
       );
-    else if (landed[0] && landed[0].certProvider !== primary.certProvider) {
+    } else if (row && row.certProvider !== primary.certProvider) {
       // createApp mints the primary domain itself and decides its certificate the
       // way a template would (`blueprintWantsTls`), so the choice made on Dokploy
       // has to be applied afterwards. It IS explicit intent - certificates are
@@ -1822,7 +1871,7 @@ async function importAppService(
       // it now is the difference between an import and a to-do list of boxes to
       // re-tick on every app.
       try {
-        await updateDomain(landed[0].id, { certProvider: primary.certProvider });
+        await updateDomain(row.id, { certProvider: primary.certProvider });
       } catch (e) {
         notes.push(
           `${primary.host} kept no certificate: ${e instanceof Error ? e.message : "refused"}. Pick one under Domains.`,
@@ -1831,7 +1880,42 @@ async function importAppService(
     }
   }
 
-  for (const d of domains.value.slice(1)) await addExtraDomain(created.id, d, notes);
+  const rest = domains.value.filter((d) => d !== primary);
+  // A real hostname is asked for first. One that cannot be taken - another team
+  // here already serves it, or this member may not claim names - is NOT dropped
+  // either: it joins the re-hosting below, for the same reason a throwaway does.
+  // Going from two addresses to one is the same failure as going to none.
+  const refused: MappedDomain[] = [];
+  for (const d of rest.filter((d) => !d.generated))
+    if (!(await addExtraDomain(created.id, d, notes))) refused.push(d);
+
+  const toRehost = [...rest.filter((d) => d.generated), ...refused];
+  if (toRehost.length > 0) {
+    try {
+      const server = await getServerById(created.serverId);
+      const landed = await addImportedDomains(
+        created.id,
+        toRehost.map(importedRoute),
+        { slug: created.slug, ip: resolveServerIp(server ?? undefined), seed: rehosted },
+      );
+      const wasThrowaway = new Set(
+        rest.filter((d) => d.generated).map((d) => d.host),
+      );
+      for (const [source, host] of landed)
+        if (!rehosted.has(source))
+          notes.push(
+            wasThrowaway.has(source)
+              ? `${source} was Dokploy's own temporary address, so it comes across as ${host} here - same port, same route.`
+              : `${source} answers on ${host} here instead - same port, same route. Point it at this server and add it under Domains to use the real name.`,
+          );
+    } catch (e) {
+      notes.push(
+        `The temporary addresses this app answered on were not recreated: ${
+          e instanceof Error ? e.message : "refused"
+        }. Add a domain under Domains.`,
+      );
+    }
+  }
 
   // Every config file is written into the app's Files here and now - the same
   // write the Storage editor makes - for two different reasons.
@@ -1922,12 +2006,27 @@ async function importAppService(
   return created.id;
 }
 
+/** A mapped domain as the domain writers take it: the route, plus where it came
+ *  from. One function so the primary and the extras can never describe the same
+ *  source domain differently. */
+function importedRoute(d: MappedDomain): ImportedRoute {
+  return {
+    sourceHost: d.host,
+    port: d.port,
+    pathPrefix: d.pathPrefix,
+    stripPrefix: d.stripPrefix,
+    certProvider: d.certProvider,
+    entrypoint: d.entrypoint,
+    service: d.service,
+  };
+}
+
 /** An extra (non-primary) hostname, with everything Dokploy knew about it. */
 async function addExtraDomain(
   appId: string,
   d: MappedDomain,
   notes: string[],
-): Promise<void> {
+): Promise<boolean> {
   try {
     await addDomain(appId, d.host, {
       port: d.port,
@@ -1937,10 +2036,12 @@ async function addExtraDomain(
       entrypoint: d.entrypoint,
       service: d.service ?? undefined,
     });
+    return true;
   } catch (e) {
     notes.push(
-      `${d.host} was not imported: ${e instanceof Error ? e.message : "refused"}.`,
+      `${d.host} could not be taken here: ${e instanceof Error ? e.message : "refused"}.`,
     );
+    return false;
   }
 }
 

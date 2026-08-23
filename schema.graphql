@@ -1746,6 +1746,11 @@ type Domain {
   createdAt: String
   entrypoint: DomainEntrypoint
   id: ID
+
+  """
+  The hostname this domain REPLACED on the platform the app was imported from, or null when it is the address the app always had. An import cannot keep the source's own throwaway host (it carries that server's IP) nor a name another team here already serves, so the route is re-hosted onto an address Deplo mints - this is what the app's Domains section reads to say which address became which. Cleared by `dismissImportedDomains`.
+  """
+  importedFrom: String
   middlewares: [String!]
   name: String
   pathPrefix: String
@@ -2616,6 +2621,11 @@ type Mutation {
   Turn two-factor off. Requires the password AND a current code (a recovery code also works).
   """
   disableTwoFactor(code: String!, password: String!): Boolean
+
+  """
+  Stop telling this app that its addresses changed when it was imported: clears `importedFrom` on every one of its domains. Per app on purpose - a migration brings over many, and one blanket dismissal would hide the fact on every app nobody has looked at yet.
+  """
+  dismissImportedDomains(appId: String!): Boolean
 
   """
   Run a command in the app's live container (docker exec). Gated on the deploy capability — this is arbitrary code execution.

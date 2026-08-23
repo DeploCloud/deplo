@@ -407,6 +407,150 @@ export async function ensureExtraDomain(
 }
 
 /**
+ * One route an import could not keep the address of: everything Deplo needs to
+ * put it back on an address of its own.
+ */
+export interface ImportedRoute {
+  /** The hostname it answered on over there. Kept as provenance, never used. */
+  sourceHost: string;
+  port: number | null;
+  pathPrefix: string;
+  stripPrefix: boolean;
+  certProvider: CertProvider;
+  entrypoint: DomainEntrypoint;
+  service: string | null;
+}
+
+/**
+ * Re-host the routes an import could not keep the address of, and answer with
+ * the addresses they landed on (`sourceHost` -> the new hostname).
+ *
+ * An app that answered on two addresses over there must answer on two here. The
+ * old names cannot come across - the source's throwaway hosts carry ITS server's
+ * IP, and a real name may already be another team's - but the routes are real,
+ * so each one is put on a temporary address Deplo mints and keeps everything
+ * else: port, service, path, strip, entrypoint, certificate.
+ *
+ * ONE new host per SOURCE host, not per row. Two rows that shared `x.sslip.io`
+ * for `/` and `/api` were one address with two routes, and they stay one address
+ * with two routes - splitting them would hand back a topology the app never had.
+ *
+ * Ungated on purpose, and the same purpose `ensureExtraDomain` has: the names
+ * minted here are Deplo's own `…-<hexip>.nip.io` hosts, which `isHostnameClaim`
+ * exempts because nobody else can want one. The authority to create them was
+ * already established when the app was created; nothing here takes a name away
+ * from anyone.
+ */
+export async function addImportedDomains(
+  appId: string,
+  routes: ImportedRoute[],
+  opts: {
+    slug: string;
+    ip: string;
+    /**
+     * Source hosts that already landed somewhere - in practice the ONE the app's
+     * primary domain became. Without it a second row on that same source host
+     * would mint a second address, splitting an address that was never split.
+     */
+    seed?: Map<string, string>;
+  },
+): Promise<Map<string, string>> {
+  const landed = new Map<string, string>(opts.seed);
+  if (routes.length === 0) return landed;
+  const existing = await loadDomainsForApp(appId);
+  const taken = new Set(existing.map((d) => `${d.name}\u0000${d.pathPrefix ?? ""}`));
+
+  for (const route of routes) {
+    // One mint per source host; every later row on that host joins it.
+    let name = landed.get(route.sourceHost);
+    if (!name) {
+      name = await uniqueAutoDomainName(
+        // Labelled by service where there is one, the convention
+        // `ensureExtraDomain` set: on an app with several addresses, which is
+        // which has to be readable without opening each row.
+        route.service ? `${opts.slug}-${route.service}` : opts.slug,
+        opts.ip,
+      );
+      landed.set(route.sourceHost, name);
+    }
+    const key = `${name}\u0000${route.pathPrefix}`;
+    if (taken.has(key)) continue; // idempotent re-run, or a duplicate source row
+    taken.add(key);
+
+    const domain: Domain = {
+      id: newId("dom"),
+      appId,
+      name,
+      // Ours by construction: a nip.io host encodes this server's own IP, so it
+      // resolves here the moment it exists (same reasoning as ensureAutoDomain).
+      status: "valid",
+      // Never primary: createApp already minted the app's primary, and this runs
+      // after it. The import decides which route lands on THAT one.
+      primary: false,
+      redirectTo: null,
+      ssl: route.certProvider !== "none",
+      source: "auto",
+      port: route.port,
+      ...(route.service ? { service: route.service } : {}),
+      certProvider: route.certProvider,
+      entrypoint: route.entrypoint,
+      ...(route.pathPrefix ? { pathPrefix: route.pathPrefix } : {}),
+      ...(route.stripPrefix ? { stripPrefix: true } : {}),
+      importedFrom: route.sourceHost,
+      createdAt: nowIso(),
+    };
+    await insertDomain(getDb(), domain);
+  }
+  return landed;
+}
+
+/**
+ * Put an imported route onto a domain row that already exists - the app's
+ * primary, which `createApp` minted before the import could say what it should
+ * answer on.
+ *
+ * The same act as {@link addImportedDomains} and ungated for the same reason:
+ * the row is Deplo's own generated host, and this only decides which port,
+ * service and path it serves.
+ */
+export async function applyImportedRoute(
+  domainId: string,
+  route: ImportedRoute,
+): Promise<void> {
+  await getDb()
+    .update(domainsTable)
+    .set({
+      port: route.port,
+      service: route.service,
+      certProvider: route.certProvider,
+      entrypoint: route.entrypoint,
+      pathPrefix: route.pathPrefix || null,
+      stripPrefix: route.stripPrefix || null,
+      ssl: route.certProvider !== "none",
+      importedFrom: route.sourceHost,
+    })
+    .where(eq(domainsTable.id, domainId));
+}
+
+/**
+ * Stop telling this app that its addresses changed.
+ *
+ * Clearing the provenance IS the dismissal: it exists for that one message, and
+ * the import report keeps the permanent record of what became what. Gated like
+ * every other write to a domain row.
+ */
+export async function dismissImportedDomains(appId: string): Promise<void> {
+  const { membership } = await requireAppCapability(appId, "manage_domains");
+  const project = await loadAppGraph(appId);
+  if (!project || project.teamId !== membership.teamId)
+    throw new Error("App not found");
+  await getDb()
+    .update(domainsTable)
+    .set({ importedFrom: null })
+    .where(eq(domainsTable.appId, appId));
+}
+
+/**
  * The hostname of a project's current primary domain, or "" when the project
  * has no domains at all. Store-direct (no auth) for the deploy engine: the
  * production deploy routes to this host and NEVER resurrects a deleted auto

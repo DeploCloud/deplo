@@ -1763,6 +1763,12 @@ export const domains = pgTable(
     pathPrefix: text("path_prefix"),
     stripPrefix: boolean("strip_prefix"),
     service: text("service"),
+    // The hostname this row REPLACED on the platform it was imported from -
+    // set only when the address actually changed (the source's own throwaway
+    // host, or a name another team here already serves). NULL for every domain
+    // that was not imported or kept its name; cleared when the notice that reads
+    // it is dismissed.
+    importedFrom: text("imported_from"),
     createdAt: isoTimestamptz("created_at").notNull(),
   },
   (t) => [

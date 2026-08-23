@@ -17,6 +17,7 @@ import { AddDomain } from "@/components/domains/add-domain";
 import { DomainDnsAutoCheck } from "@/components/domains/domain-dns-auto-check";
 import { DomainGraphic } from "@/components/domains/domain-graphic";
 import { DomainRow } from "@/components/domains/domain-row";
+import { ImportedDomainsNotice } from "@/components/domains/imported-domains-notice";
 import {
   PendingCreateProvider,
   PendingList,
@@ -89,6 +90,13 @@ export default async function AppDomainsPage(
     .filter((d) => d.status !== "valid" && d.status !== "cloudflare")
     .map((d) => ({ id: d.id, name: d.name, status: d.status }));
 
+  // Rows that answer on a different name than they did on the platform this app
+  // was imported from. Empty for every app that was not imported, and for an
+  // imported one whose notice has been dismissed.
+  const importedDomains = domains
+    .filter((d) => (d.importedFrom ?? "").trim())
+    .map((d) => ({ id: d.id, name: d.name, importedFrom: d.importedFrom! }));
+
   return (
     // Adding a domain closes its dialog at once and puts the hostname in the
     // table as a pulsing row while the DNS check and the reroute run — the
@@ -112,6 +120,12 @@ export default async function AppDomainsPage(
             suggestedDomain={suggestedDomain}
           />
         </div>
+
+        {/* The addresses a migration could not keep. Above the DNS callout on
+            purpose: it explains WHY the hostnames in the table are not the ones
+            the app used to answer on, which is the first question the table
+            raises for someone who just imported. */}
+        <ImportedDomainsNotice appId={project.id} domains={importedDomains} />
 
         {/* Only a host that has NOT checked out is off the router (see
             `unsettledDomains`). While any exist, this client component both

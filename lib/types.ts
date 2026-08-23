@@ -1446,6 +1446,19 @@ export interface Domain {
    */
   certProvider?: CertProvider;
   /**
+   * The hostname this domain REPLACED on the platform it was imported from, or
+   * absent when it is the address the app always had.
+   *
+   * A migration cannot always keep the old address: the source's own throwaway
+   * host (`*.sslip.io` and friends, with the OLD server's IP in the name) points
+   * at a machine that is not this one, and a real hostname may already belong to
+   * another team here. The ROUTE is still real, so the domain is re-hosted onto
+   * an address Deplo mints rather than dropped - and this is what lets the app's
+   * Domains section say which address became which. Cleared when that notice is
+   * dismissed.
+   */
+  importedFrom?: string | null;
+  /**
    * Traefik middlewares applied to this host's router, in order, emitted as
    * `traefik.http.routers.<key>.middlewares=<m1>,<m2>,…`. Each entry is a
    * middleware reference the proxy already defines (e.g. `redirect-https` or a

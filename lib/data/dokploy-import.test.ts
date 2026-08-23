@@ -38,7 +38,11 @@ import {
   SERVER_1,
   TRUNCATE_PROJECT_GRAPH,
 } from "./app-graph-test-helpers";
-import { __setDnsResolve4ForTest, __resetDnsResolve4ForTest } from "./domains";
+import {
+  __setDnsResolve4ForTest,
+  __resetDnsResolve4ForTest,
+  dismissImportedDomains,
+} from "./domains";
 import { settleProvisioning } from "./backup-test-helpers";
 import {
   __setDokployFetchForTest,
@@ -473,8 +477,11 @@ test("scan reports the compose rewrite and the missing git credential up front",
   const web = plan.projects[0].environments[0].services[0];
   assert.match(web.notes.join(" "), /no credential/);
   assert.match(web.notes.join(" "), /8080->3000/);
-  // The throwaway traefik.me host never appears as something to import.
-  assert.deepEqual(web.domains, ["blink.acme.test"]);
+  // Both addresses the app answers on are listed - the throwaway one included,
+  // because it IS an address today and the review has to say what happens to it:
+  // it cannot come across, so Deplo re-hosts its route on one of its own.
+  assert.deepEqual(web.domains, ["blink-web-abc.traefik.me", "blink.acme.test"]);
+  assert.match(web.notes.join(" "), /Dokploy's own temporary address/);
 });
 
 test("scan warns when a hostname already belongs to another team", async () => {
@@ -496,6 +503,46 @@ test("scan warns when a hostname already belongs to another team", async () => {
   const plan = await asOwner(() => scanDokploy(CONNECT));
   const web = plan.projects[0].environments[0].services[0];
   assert.match(web.notes.join(" "), /already routed by another team/);
+});
+
+// The rule, at its hardest: BOTH of this app's addresses are unavailable - one is
+// Dokploy's throwaway, the other is a real name another team here already serves.
+// It must still arrive answering on two.
+test("an app never arrives with fewer addresses than it had", async () => {
+  await seedApp(db, { id: "prj_other_team", teamId: TEAM_B, slug: "victim" });
+  await db.insert(domainsTable).values({
+    id: "dom_victim",
+    appId: "prj_other_team",
+    name: "blink.acme.test",
+    status: "valid",
+    isPrimary: true,
+    ssl: true,
+    source: "custom",
+    entrypoint: "websecure",
+    certProvider: "letsencrypt",
+    stripPrefix: false,
+    createdAt: "2026-01-01T00:00:00.000Z",
+  });
+
+  const runId = await asOwner(() => beginDokployImport({ url: URL_BASE }));
+  await importProject(runId, "dok-prj-blink");
+  const apps = await db.select().from(appsTable);
+  const web = apps.find((a) => a.name === "blink-web")!;
+  const doms = await db
+    .select()
+    .from(domainsTable)
+    .where(eq(domainsTable.appId, web.id));
+
+  assert.equal(doms.length, 2, "two addresses over there, two here");
+  // Neither name came across - one belongs to another team, one to another
+  // machine - so both rows are addresses Deplo minted, and both remember why.
+  for (const d of doms) assert.match(d.name, /\.nip\.io$/);
+  assert.deepEqual(
+    doms.map((d) => d.importedFrom).sort(),
+    ["blink-web-abc.traefik.me", "blink.acme.test"],
+  );
+  // And the routes are intact: the port is what Dokploy served on, not a default.
+  for (const d of doms) assert.equal(d.port, 3000);
 });
 
 test("scan refuses an address that is not this team's business", async () => {
@@ -580,7 +627,55 @@ test("the primary domain is the real hostname, not Dokploy's throwaway one", asy
   // The certificate Dokploy had is explicit intent, so it is carried over rather
   // than left for someone to re-tick on every imported app.
   assert.equal(primary.certProvider, "letsencrypt");
+  // The throwaway name itself never comes across - it points at the OTHER
+  // platform's machine.
   assert.equal(doms.some((d) => d.name.endsWith(".traefik.me")), false);
+
+  // ...but the app still answers on TWO addresses, because it answered on two
+  // over there. The throwaway one is RE-HOSTED: a temporary address of Deplo's,
+  // same port, and a row that remembers what it replaced so the Domains section
+  // can say so.
+  assert.equal(doms.length, 2);
+  const rehosted = doms.find((d) => !d.isPrimary)!;
+  assert.equal(rehosted.importedFrom, "blink-web-abc.traefik.me");
+  assert.match(rehosted.name, /\.nip\.io$/);
+  assert.equal(rehosted.port, 3000);
+  assert.equal(rehosted.status, "valid");
+  assert.equal(rehosted.certProvider, "none");
+  // And the report names both ends, so the change is legible without opening the app.
+  const report = await asOwner(() => getDokployImport(runId));
+  assert.match(
+    report!.items.map((i) => i.message ?? "").join(" "),
+    /blink-web-abc\.traefik\.me was Dokploy's own temporary address/,
+  );
+});
+
+// Dismissing is per app and it is what CLEARS the provenance - the message
+// exists for that column, and the import report keeps the permanent record.
+test("dismissing the notice clears it for that app only", async () => {
+  const runId = await asOwner(() => beginDokployImport({ url: URL_BASE }));
+  await importProject(runId, "dok-prj-blink");
+  const apps = await db.select().from(appsTable);
+  const web = apps.find((a) => a.name === "blink-web")!;
+
+  const before = await db
+    .select()
+    .from(domainsTable)
+    .where(eq(domainsTable.appId, web.id));
+  assert.equal(before.filter((d) => d.importedFrom).length, 1);
+
+  await asOwner(() => dismissImportedDomains(web.id));
+  const after = await db
+    .select()
+    .from(domainsTable)
+    .where(eq(domainsTable.appId, web.id));
+  assert.equal(after.filter((d) => d.importedFrom).length, 0);
+  // The domains themselves are untouched: dismissing hides a message, it does
+  // not give up an address.
+  assert.deepEqual(
+    after.map((d) => d.name).sort(),
+    before.map((d) => d.name).sort(),
+  );
 });
 
 test("the compose file arrives with Dokploy's network taken out", async () => {

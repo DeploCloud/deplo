@@ -1,0 +1,21 @@
+-- The hostname this domain REPLACED on the platform it was imported from.
+--
+-- A migration cannot always keep the address an app answered on. Two cases, and
+-- until now both ended the same way - silently:
+--
+--   * the source's own THROWAWAY address (`*.sslip.io`, `*.traefik.me`,
+--     `*.nip.io` with the OLD server's IP baked into the name). It cannot be
+--     carried over, because it names a machine that is not this one.
+--   * a real hostname another team on this Deplo already serves.
+--
+-- Either way the ROUTE is real - a port, a service, a path someone chose - so
+-- the domain is re-hosted onto an address Deplo mints instead of being dropped.
+-- This column is what lets the app's Domains section say so, naming both the old
+-- address and the new one, instead of leaving someone to discover it by loading
+-- a URL that no longer exists.
+--
+-- NULL means "this is the address it always had" - which is every domain that
+-- was not imported, and every imported one that kept its name. Clearing it is
+-- how the notice is DISMISSED: the provenance exists for that message and the
+-- import report keeps the permanent record.
+ALTER TABLE "domains" ADD COLUMN IF NOT EXISTS "imported_from" text;

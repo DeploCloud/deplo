@@ -650,6 +650,10 @@ export function isThrowawayHost(host: string): boolean {
 }
 
 export interface MappedDomain {
+  /**
+   * The hostname on the SOURCE. When {@link generated} is true this name does
+   * NOT come across - it is kept only so the report can say what became what.
+   */
   host: string;
   port: number | null;
   pathPrefix: string;
@@ -657,15 +661,28 @@ export interface MappedDomain {
   certProvider: CertProvider;
   entrypoint: DomainEntrypoint;
   service: string | null;
+  /**
+   * The source host was the other platform's own THROWAWAY address - a
+   * `*.sslip.io` / `*.traefik.me` / `*.nip.io` name with its server's IP baked
+   * in. It cannot be carried over (it points at the old box, and half of them
+   * are not even a claim anyone could make), but the ROUTE it describes is real:
+   * a port, a service, a path someone chose.
+   *
+   * So it is not dropped - it is RE-HOSTED. Deplo mints a temporary address of
+   * its own and puts this same route on it, which is why an app that answered on
+   * two temporary addresses arrives answering on two, not on none.
+   */
+  generated: boolean;
 }
 
 /**
  * The domains worth importing, in Dokploy's own order (the first survivor becomes
  * deplo's primary).
  *
- * Dropped without a note: preview domains (deplo generates its own per PR),
- * disabled rows, and the throwaway hosts above. Everything else comes across with
- * its path, port, service and certificate choice.
+ * Dropped without a note: preview domains (deplo generates its own per PR) and
+ * disabled rows. A THROWAWAY host is not dropped - see {@link
+ * MappedDomain.generated}. Everything else comes across with its path, port,
+ * service and certificate choice.
  */
 export function mapDomains(
   domains: DokployDomain[] | null | undefined,
@@ -678,7 +695,6 @@ export function mapDomains(
     if (!host) continue;
     if (d.domainType === "preview") continue;
     if (d.enabled === false) continue;
-    if (isThrowawayHost(host)) continue;
 
     let certProvider: CertProvider = "none";
     if (d.certificateType === "letsencrypt") certProvider = "letsencrypt";
@@ -701,6 +717,7 @@ export function mapDomains(
       certProvider,
       entrypoint: d.https === false && certProvider === "none" ? "web" : "websecure",
       service: opts.isCompose ? (d.serviceName?.trim() || null) : null,
+      generated: isThrowawayHost(host),
     });
   }
   return { value: out, notes };
