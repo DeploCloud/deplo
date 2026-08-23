@@ -4596,6 +4596,11 @@ type Subscription {
   activeDeployments: Int
 
   """
+  Emits the migration this team currently has in flight, or null when there is none. Fires once immediately, then whenever a run starts, moves on or ends - it is what the header chip and the wizard's watching panel read. Deliberately NOT gated on `create_projects`: "somebody is moving a platform into this team right now" is a warning every member needs.
+  """
+  activeMigration: DokployImport
+
+  """
   Emits the app whenever its status (power / deployment) changes. Fires once immediately with the current snapshot, then on every change.
   """
   appStatus(slug: String!): App

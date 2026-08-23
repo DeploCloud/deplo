@@ -27,6 +27,7 @@ import { createPubSub } from "@graphql-yoga/subscription";
 type Channels = {
   appChanged: [id: string, payload: string];
   appActivity: [topic: string, payload: string];
+  migrationActivity: [topic: string, payload: string];
   databaseChanged: [id: string, payload: string];
   cleanupRunsChanged: [id: string, payload: string];
 };
@@ -52,6 +53,22 @@ export function publishAppChanged(appId: string): void {
   // app change (a COUNT over the team's in-flight builds). Key it per team if
   // the wakeups ever show up in a profile.
   pubSub.publish("appActivity", APP_ACTIVITY_TOPIC, appId);
+}
+
+/**
+ * The one key the `migrationActivity` channel uses, for the same reason as
+ * {@link APP_ACTIVITY_TOPIC}: "is a migration running in my team" is a
+ * team-wide question, and each subscriber answers it for its own team.
+ */
+export const MIGRATION_ACTIVITY_TOPIC = "instance";
+
+/** Notify every subscriber that a migration started, moved on, or ended. */
+export function publishMigrationChanged(): void {
+  pubSub.publish(
+    "migrationActivity",
+    MIGRATION_ACTIVITY_TOPIC,
+    MIGRATION_ACTIVITY_TOPIC,
+  );
 }
 
 /** Notify every subscriber that this database's state changed — same contract

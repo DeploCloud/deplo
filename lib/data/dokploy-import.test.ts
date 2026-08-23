@@ -56,6 +56,7 @@ import {
   scanDokploy,
   stopDokployImport,
 } from "./dokploy-import";
+import { activeMigrationStream } from "../graphql/types/dokploy";
 import { createProject } from "./projects";
 import { addServer, getServerById } from "./servers";
 import { listEnvironmentsForProject } from "./environments";
@@ -1243,4 +1244,31 @@ test("stopping a run closes it WITHOUT taking the agents off the source", async 
   await asOwner(() => stopDokployImport(runId));
   const again = await db.select().from(runsTable).where(eq(runsTable.id, runId));
   assert.equal(again[0].status, "stopped");
+});
+
+/* ------------------------------------------------------------------ */
+/* The header chip                                                     */
+/* ------------------------------------------------------------------ */
+
+test("the live stream follows a run from start to finish, team-scoped", async () => {
+  // No runWithIdentity: it is read from an SSE tick, where cookies are gone.
+  const gen = activeMigrationStream(TEAM_A);
+  assert.equal((await gen.next()).value, null, "nothing running, nothing to say");
+
+  const pending = gen.next();
+  const runId = await asOwner(() =>
+    beginDokployImport({ url: URL_BASE, orgName: "Acme Inc" }),
+  );
+  const started = await pending;
+  assert.equal(started.value?.id, runId);
+  assert.equal(started.value?.orgName, "Acme Inc");
+
+  // Another team's chip never lights up for it.
+  assert.equal((await activeMigrationStream(TEAM_B).next()).value, null);
+
+  const ending = gen.next();
+  await asOwner(() => stopDokployImport(runId));
+  assert.equal((await ending).value, null, "a stopped run is not in progress");
+
+  await gen.return(undefined as never);
 });

@@ -1,4 +1,5 @@
 import { builder } from "../builder";
+import { pubSub, MIGRATION_ACTIVITY_TOPIC } from "../pubsub";
 import {
   moveDokployServiceData,
   planDokployDataMove,
@@ -7,6 +8,7 @@ import {
   type DataMoveVolume,
 } from "@/lib/data/dokploy-data";
 import {
+  activeDokployImportForTeam,
   beginDokployImport,
   type DokployInvite,
   type DokployPlan,
@@ -407,6 +409,62 @@ builder.queryFields((t) => ({
     resolve: (_r, { id }) => getDokployImport(id),
   }),
 }));
+
+/* ------------------------------------------------------------------ */
+/* Subscriptions                                                      */
+/* ------------------------------------------------------------------ */
+
+builder.subscriptionFields((t) => ({
+  activeMigration: t.field({
+    type: ImportRunRef,
+    nullable: true,
+    description:
+      "Emits the migration this team currently has in flight, or null when there is none. Fires once immediately, then whenever a run starts, moves on or ends - it is what the header chip and the wizard's watching panel read. Deliberately NOT gated on `create_projects`: \"somebody is moving a platform into this team right now\" is a warning every member needs.",
+    authScopes: { loggedIn: true },
+    subscribe: (_root, _args, ctx) => activeMigrationStream(ctx.teamId),
+    resolve: (run) => run,
+  }),
+}));
+
+/**
+ * Live "is a migration running in this team". Cookie-free: the team comes from
+ * the GraphQL context and the read takes it as an argument, because `cookies()`
+ * is not callable across the iteration ticks of a long-lived SSE response.
+ *
+ * Emits on every change of the RUN, counts included, so the wizard's watching
+ * panel counts up without polling. A ping that changes nothing emits nothing.
+ */
+export async function* activeMigrationStream(
+  teamId: string | null,
+): AsyncGenerator<ImportRunDTO | null> {
+  if (!teamId) throw new Error("Not signed in");
+  let last = await activeDokployImportForTeam(teamId);
+  yield last;
+  for await (const ping of pubSub.subscribe(
+    "migrationActivity",
+    MIGRATION_ACTIVITY_TOPIC,
+  )) {
+    // The channel is instance-wide (a team-wide feed has no per-resource key),
+    // so the payload says nothing this team cares about - re-read instead.
+    void ping;
+    const next = await activeDokployImportForTeam(teamId);
+    if (sameRun(last, next)) continue;
+    last = next;
+    yield next;
+  }
+}
+
+/** Two reads of the run that would render identically. */
+function sameRun(a: ImportRunDTO | null, b: ImportRunDTO | null): boolean {
+  if (a === null || b === null) return a === b;
+  return (
+    a.id === b.id &&
+    a.created === b.created &&
+    a.skipped === b.skipped &&
+    a.failed === b.failed &&
+    a.manual === b.manual
+  );
+}
 
 /* ------------------------------------------------------------------ */
 /* Mutations                                                          */

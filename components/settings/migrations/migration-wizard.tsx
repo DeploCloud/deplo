@@ -13,6 +13,7 @@ import {
 
 import { gqlAction } from "@/lib/graphql-client";
 import { lockPageAround } from "@/lib/page-lock";
+import { timeAgo } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Progress } from "@/components/ui/progress";
@@ -24,9 +25,13 @@ import { ConfirmAction } from "@/components/shared/confirm-action";
 import type { ActionResult } from "@/lib/result";
 import { WizardStepper, type WizardStep } from "@/components/shared/wizard-stepper";
 import { UnsavedChangesGuard } from "@/components/apps/unsaved-changes-guard";
+import {
+  useActiveMigration,
+  type ActiveMigration,
+} from "@/components/layout/migration-activity";
 import { InstallStep, type PendingMachine } from "./install-step";
 import { MigrationGraphic, type MigrationState } from "./migration-graphic";
-import { MigrationReportDialog } from "./migration-report";
+import { MigrationReportDialog, RUN_REPORT_QUERY } from "./migration-report";
 import { RemoveMigrationSources } from "./remove-sources";
 import { ReviewStep } from "./review-step";
 import { PeopleStep } from "./people-step";
@@ -833,17 +838,38 @@ export function MigrationWizard({
     return () => window.removeEventListener("popstate", onPop);
   }, [moving, running]);
 
-  // One derived value drives the picture. `running` wins over the step, because
-  // the cable full of packets is the truest thing on the screen at that moment.
-  const pose: MigrationState = running
-    ? "moving"
-    : step === "done"
-      ? "done"
-      : step === "review"
-        ? "review"
-        : step === "install"
-          ? "install"
-          : "connect";
+  /**
+   * A migration this tab is NOT driving - somebody else's, or one this tab
+   * started before a reload. The wizard opens on it instead of on an empty
+   * connect form: a second run would mark the first one Interrupted, and a
+   * blank form is the worst thing to show while half a platform is in flight.
+   *
+   * Read live from the same stream the header chip uses, so it appears the
+   * moment a teammate starts one and clears itself when the run ends. Anything
+   * this tab holds of its own wins: the driver keeps its panel with Stop on it.
+   */
+  const watched = useActiveMigration();
+  const watching =
+    watched != null &&
+    runId == null &&
+    !running &&
+    !stopped &&
+    failure === null &&
+    step !== "done";
+
+  // One derived value drives the picture. A run in flight wins over the step -
+  // driven here or watched from here - because the cable full of packets is the
+  // truest thing on the screen at that moment.
+  const pose: MigrationState =
+    running || watching
+      ? "moving"
+      : step === "done"
+        ? "done"
+        : step === "review"
+          ? "review"
+          : step === "install"
+            ? "install"
+            : "connect";
 
   // Armed from the moment there is something to lose. Not from mount: a page
   // somebody opened to look at should not argue with them on the way out. Not
@@ -903,12 +929,13 @@ export function MigrationWizard({
             <div className="flex justify-center">
               <WizardStepper
                 steps={STEPS}
-                current={step}
+                current={watching ? "review" : step}
                 reachable={(s) => {
                   // The rail is inside the panel, so the lock cannot switch it
-                  // off - it says so itself instead: while the migration owns
-                  // the screen the only step there is is the one it is on.
-                  if (moving) return s === "review";
+                  // off - it says so itself instead: while a migration owns the
+                  // screen, driven here or watched from here, the only step
+                  // there is is the one it is on.
+                  if (moving || watching) return s === "review";
                   if (s === "connect") return true;
                   if (s === "install" || s === "review") return plan != null;
                   // People and the report are what the migration produces: an
@@ -918,14 +945,16 @@ export function MigrationWizard({
                 onSelect={(s) => {
                   // Nothing moves while the loop is mid-flight, or while a
                   // stopped run is still waiting to be undone or kept.
-                  if (moving) return;
+                  if (moving || watching) return;
                   setStep(s);
                 }}
               />
             </div>
 
             <div>
-              {step === "connect" && (
+              {watching && <WatchingPanel run={watched} />}
+
+              {!watching && step === "connect" && (
                 <ConnectStep
                   url={url}
                   setUrl={setUrl}
@@ -939,7 +968,7 @@ export function MigrationWizard({
                 />
               )}
 
-              {step === "install" && plan && (
+              {!watching && step === "install" && plan && (
                 <InstallStep
                   machines={plan.servers}
                   canAddServers={isInstanceAdmin}
@@ -951,7 +980,8 @@ export function MigrationWizard({
                 />
               )}
 
-              {step === "review" &&
+              {!watching &&
+                step === "review" &&
                 plan &&
                 (moving ? (
                   <MovingPanel
@@ -984,7 +1014,7 @@ export function MigrationWizard({
                   />
                 ))}
 
-              {step === "people" && (
+              {!watching && step === "people" && (
                 <PeopleStep
                   people={(plan?.members ?? []).filter((m) => !m.inTeam)}
                   invites={invites}
@@ -1138,6 +1168,70 @@ function ConnectStep({
 /* ------------------------------------------------------------------ */
 /* The move, while it happens                                         */
 /* ------------------------------------------------------------------ */
+
+/**
+ * Somebody else's migration, from the outside.
+ *
+ * The loop that moves a platform lives in the tab that started it - it holds
+ * the API key, which is never stored - so there is nothing to resume and
+ * nothing to drive from here. What there IS is the one thing a second person
+ * needs: that it is running, whose it is, how far it has got, and the advice to
+ * leave the fleet alone until it lands. The report reads live off the run's own
+ * ledger, so "12 created" is the truth of a minute ago, not of the page load.
+ */
+function WatchingPanel({ run }: { run: ActiveMigration }) {
+  const [items, setItems] = React.useState<ReportItem[] | null>(null);
+  const [loading, setLoading] = React.useState(false);
+
+  async function showLog() {
+    setLoading(true);
+    const res = await gqlAction<
+      { dokployImport: { items: ReportItem[] } | null },
+      { items: ReportItem[] } | null
+    >(RUN_REPORT_QUERY, { id: run.id }, (d) => d.dokployImport);
+    setLoading(false);
+    if (!res.ok) {
+      toast.error(res.error);
+      return;
+    }
+    setItems(res.data?.items ?? []);
+  }
+
+  const done = run.created + run.skipped + run.failed + run.manual;
+
+  return (
+    <StepShell
+      title="A migration is running"
+      lead={`${run.actor} is bringing ${run.orgName ?? run.sourceUrl} into this team. It keeps going in the tab that started it - best not to change anything here until it finishes.`}
+    >
+      <div className="flex items-center gap-3 text-sm text-muted-foreground">
+        <Loader2 className="size-4 shrink-0 animate-spin text-primary" />
+        <span>
+          Started {timeAgo(run.startedAt)} · {done} thing(s) across so far
+          {run.failed > 0 && `, ${run.failed} failed`}
+        </span>
+      </div>
+
+      <div className="flex flex-wrap items-center gap-2">
+        <Button variant="outline" onClick={() => void showLog()} disabled={loading}>
+          {loading ? (
+            <Loader2 className="size-4 animate-spin" />
+          ) : (
+            <ScrollText className="size-4" />
+          )}
+          Show log
+        </Button>
+      </div>
+
+      <MigrationReportDialog
+        open={items != null}
+        onOpenChange={(o) => !o && setItems(null)}
+        items={items ?? []}
+        description="What has come over so far."
+      />
+    </StepShell>
+  );
+}
 
 /**
  * What the review turns into once the move starts, and what it becomes if that

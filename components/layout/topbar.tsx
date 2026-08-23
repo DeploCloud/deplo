@@ -9,6 +9,7 @@ import { DeploLogo } from "@/components/logo";
 import { SidebarNav } from "./sidebar-nav";
 import { SidebarExpandButton } from "./sidebar";
 import { ThemeToggle } from "./theme-toggle";
+import { MigrationChip } from "./migration-activity";
 import { UserMenu } from "./user-menu";
 import { TeamSwitcher } from "./team-switcher";
 import { Breadcrumbs } from "./breadcrumbs";
@@ -99,7 +100,10 @@ export function Topbar({
 
       <div className="flex flex-1 items-center justify-end gap-2">
         {/* Creation lives on the Overview's "Add New" menu only — the header
-            stays lean (theme + account). */}
+            stays lean (theme + account). The one thing that earns a place here
+            is a migration in flight: it is moving somebody's platform across
+            the fleet, so it has to be visible from every page. */}
+        <MigrationChip canOpen={capabilities.includes("create_projects")} />
         <ThemeToggle />
         <UserMenu user={user} />
       </div>

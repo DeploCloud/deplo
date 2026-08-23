@@ -24,6 +24,28 @@ import type { ReportItem } from "./types";
  * close - and one renderer means the two can never drift.
  */
 
+/**
+ * One run's report lines. Lives next to the dialog that renders them, because
+ * both homes that fetch it - the History tab and the wizard watching somebody
+ * else's migration - render it through that dialog.
+ */
+export const RUN_REPORT_QUERY = /* GraphQL */ `
+  query MigrationRunReport($id: String!) {
+    dokployImport(id: $id) {
+      id
+      items {
+        path
+        sourceKind
+        sourceName
+        outcome
+        targetKind
+        targetId
+        message
+      }
+    }
+  }
+`;
+
 const OUTCOME_ORDER = ["failed", "manual", "unsupported", "created", "skipped"];
 
 const OUTCOME_TITLE: Record<string, string> = {

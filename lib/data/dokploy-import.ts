@@ -90,6 +90,7 @@ import { canHostWorkloads, listServersForTeam, uninstallServerAgent } from "./se
 import { deploHostSelfAddresses, isDeploHostServer } from "../deploy/domains";
 import { saveSharedVar } from "./shared-vars";
 import { recordActivity } from "./activity";
+import { publishMigrationChanged } from "../graphql/pubsub";
 
 /**
  * Import a Dokploy instance's projects into this team.
@@ -893,6 +894,7 @@ export async function beginDokployImport(input: {
     startedAt: now,
     finishedAt: null,
   });
+  publishMigrationChanged();
   return id;
 }
 
@@ -1034,6 +1036,10 @@ export async function refreshCounts(runId: string, teamId: string): Promise<void
       manual: count("manual") + count("unsupported"),
     })
     .where(and(eq(runsTable.id, runId), eq(runsTable.teamId, teamId)));
+  // Every writer of a run's state goes through here - a project landing, a
+  // volume copied, Finish, Stop - so this is the one place the live "a
+  // migration is running" chip has to be told about.
+  publishMigrationChanged();
 }
 
 /**
@@ -2590,6 +2596,7 @@ export async function revertDokployImport(
     .update(runsTable)
     .set({ status: "reverted", finishedAt: nowIso() })
     .where(and(eq(runsTable.id, runId), eq(runsTable.teamId, teamId)));
+  publishMigrationChanged();
 
   // Same `project` type the import itself writes under, so the two halves of
   // one migration sit together in the trail.
@@ -2612,6 +2619,27 @@ async function environmentIsGone(id: string): Promise<boolean> {
     .from(environmentsTable)
     .where(eq(environmentsTable.id, id));
   return rows.length === 0;
+}
+
+/**
+ * The team's migration in flight, or null. There is at most one: opening a run
+ * marks any older `running` row of the team Interrupted (see
+ * {@link beginDokployImport}), so this is a fact, not a first-of-many.
+ *
+ * Cookie-free (the team is an argument) because the header chip reads it from
+ * an SSE generator, where `cookies()` is no longer callable - same contract as
+ * `summarizeForTeam` in ./apps.ts. No capability gate on purpose: "somebody is
+ * moving a platform into this team right now, hold off" is a warning for every
+ * member, not only for the ones who may start one.
+ */
+export async function activeDokployImportForTeam(
+  teamId: string,
+): Promise<ImportRunDTO | null> {
+  const rows = await getDb()
+    .select()
+    .from(runsTable)
+    .where(and(eq(runsTable.teamId, teamId), eq(runsTable.status, "running")));
+  return rows.length > 0 ? toRunDTO(rows[0]) : null;
 }
 
 export async function listDokployImports(): Promise<ImportRunDTO[]> {

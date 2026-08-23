@@ -17,7 +17,7 @@ import {
 import { EmptyState } from "@/components/shared/empty-state";
 import { gqlAction } from "@/lib/graphql-client";
 import { MigrationGraphic } from "./migration-graphic";
-import { MigrationReportDialog } from "./migration-report";
+import { MigrationReportDialog, RUN_REPORT_QUERY } from "./migration-report";
 import type { ImportRun, ReportItem } from "./types";
 
 /**
@@ -32,23 +32,6 @@ import type { ImportRun, ReportItem } from "./types";
  * WITHOUT their items (a team with twenty migrations would otherwise ship
  * thousands of lines to render four dates), so opening one is a second call.
  */
-
-const RUN_REPORT = /* GraphQL */ `
-  query MigrationRunReport($id: String!) {
-    dokployImport(id: $id) {
-      id
-      items {
-        path
-        sourceKind
-        sourceName
-        outcome
-        targetKind
-        targetId
-        message
-      }
-    }
-  }
-`;
 
 export function MigrationsHistory({
   runs,
@@ -66,7 +49,7 @@ export function MigrationsHistory({
     const res = await gqlAction<
       { dokployImport: { items: ReportItem[] } | null },
       { items: ReportItem[] } | null
-    >(RUN_REPORT, { id: run.id }, (d) => d.dokployImport);
+    >(RUN_REPORT_QUERY, { id: run.id }, (d) => d.dokployImport);
     setLoadingId(null);
     if (!res.ok) {
       toast.error(res.error);
