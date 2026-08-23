@@ -73,6 +73,18 @@ export interface ComposeDomainRoute {
   service: string | null;
   /** Container port; null ⇒ the chosen service's compose-declared port. */
   port: number | null;
+  /**
+   * The route's TLS triplet, already resolved from its stored row by
+   * `domainTlsConfig`. Declared here because it USED not to be: the caller
+   * passes a full `RoutableDomain`, so the values were arriving and being
+   * dropped on the floor, and every compose route was rendered with the default
+   * (websecure + the instance resolver) whatever certificate its domain asked
+   * for. A `none` domain then had no router on :80 - the very address the panel
+   * prints for it.
+   */
+  entrypoint?: string;
+  tls?: boolean;
+  certResolver?: string;
   /** Path prefix to match (empty ⇒ whole host). */
   pathPrefix: string;
   /** Strip `pathPrefix` before forwarding. */
@@ -305,6 +317,12 @@ function traefikLabels(opts: {
   router: string;
   domains: string[];
   port: number;
+  /** The route's OWN TLS triplet (`domainTlsConfig` of its stored row). Absent
+   *  ⇒ the shared default (websecure + the instance resolver), which is what
+   *  every route here used to get whether or not it had a certificate. */
+  entrypoint?: string;
+  tls?: boolean;
+  certResolver?: string;
   /** Optional path prefix this router matches (empty ⇒ whole host). */
   pathPrefix?: string;
   /** Strip the path prefix before forwarding (ignored without a path). */
@@ -329,6 +347,18 @@ function traefikLabels(opts: {
     routes: domains.map((name) => ({
       name,
       port: null,
+      // Carried per route, not left to the default. Without these three a
+      // domain that asked for NO certificate was still rendered onto
+      // `websecure` with a resolver - so the http address Deplo shows for it
+      // (`domainScheme` reads the same row and says http) had no router at all
+      // and answered 404, while :443 served it under a self-signed cert. Every
+      // compose app on a plain `.nip.io` was reachable only at an address the
+      // panel never printed.
+      ...(opts.entrypoint ? { entrypoint: opts.entrypoint } : {}),
+      ...(opts.tls === undefined ? {} : { tls: opts.tls }),
+      ...(opts.certResolver === undefined
+        ? {}
+        : { certResolver: opts.certResolver }),
       pathPrefix,
       stripPrefix,
       redirectTo,
@@ -801,6 +831,11 @@ export function buildComposeStack(input: ComposeStackInput): string {
         router: `${keySeed.replace(/[^a-zA-Z0-9_-]/g, "-")}-${hash6(keySeed)}`,
         domains: [route.name],
         port,
+        // The row's own choice, resolved by `domainTlsConfig` before it got
+        // here. A route that terminates no TLS must land on `web`.
+        entrypoint: route.entrypoint,
+        tls: route.tls,
+        certResolver: route.certResolver,
         pathPrefix: route.pathPrefix,
         stripPrefix: route.stripPrefix,
         // A `www` host of a compose app still needs a router pointing at a real

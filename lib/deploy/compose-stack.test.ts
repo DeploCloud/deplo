@@ -851,3 +851,66 @@ networks:
   });
   assert.ok(!out.includes("aliases"), `an alias survived:\n${out}`);
 });
+
+/* ------------------------------------------------------------------ */
+/* a route's own certificate choice                                     */
+/* ------------------------------------------------------------------ */
+
+/**
+ * A compose route was rendered with the DEFAULT TLS triplet whatever its domain
+ * asked for, because `ComposeDomainRoute` never declared the three fields the
+ * caller was already passing. A domain with no certificate - which is what every
+ * auto `.nip.io` host is, certificates being opt-in - therefore got a router on
+ * `websecure` only: nothing answered on the http address the panel prints for
+ * it, while :443 served it under a self-signed cert.
+ */
+test("buildComposeStack: a route with no certificate lands on the web entrypoint", () => {
+  const yaml = buildComposeStack({
+    compose: "services:\n  web:\n    image: nginx\n",
+    name: "deplo-app",
+    deployKey: "app",
+    appId: "prj_1",
+    filesDir: "/data/stacks/files/app",
+    domainRoutes: [
+      {
+        name: "app-quiet-heron-0a000001.nip.io",
+        service: "web",
+        port: 80,
+        entrypoint: "web",
+        tls: false,
+        certResolver: "",
+        pathPrefix: "",
+        stripPrefix: false,
+      },
+    ],
+  });
+  assert.match(yaml, /entrypoints=web\b/);
+  assert.equal(/entrypoints=websecure/.test(yaml), false, yaml);
+  assert.equal(/tls=true/.test(yaml), false, yaml);
+  assert.equal(/certresolver/.test(yaml), false, yaml);
+});
+
+test("buildComposeStack: a route that asked for a certificate still gets one", () => {
+  const yaml = buildComposeStack({
+    compose: "services:\n  web:\n    image: nginx\n",
+    name: "deplo-app",
+    deployKey: "app",
+    appId: "prj_1",
+    filesDir: "/data/stacks/files/app",
+    domainRoutes: [
+      {
+        name: "app.acme.com",
+        service: "web",
+        port: 80,
+        entrypoint: "websecure",
+        tls: true,
+        certResolver: "letsencrypt",
+        pathPrefix: "",
+        stripPrefix: false,
+      },
+    ],
+  });
+  assert.match(yaml, /entrypoints=websecure/);
+  assert.match(yaml, /tls=true/);
+  assert.match(yaml, /tls\.certresolver=letsencrypt/);
+});
