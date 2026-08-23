@@ -80,6 +80,7 @@ import {
 import { addBasicAuthUser } from "./basic-auth";
 import { addExistingMember, mintRegistrationLink } from "./members";
 import { createApp, setAppVolumes, updateAppResources } from "./apps";
+import { writeAppFile } from "./app-files";
 import { createCronJob } from "./crons";
 import { createDatabase, isValidExposePort } from "./databases";
 import { addDomain, updateDomain } from "./domains";
@@ -569,7 +570,7 @@ export async function scanDokploy(input: ConnectInput): Promise<DokployPlan> {
           if ((app.mounts ?? []).some((m) => m.type === "bind") && !mayMountHost) {
             line.status = line.status === "exists" ? "exists" : "needs_grant";
             line.notes.push(
-              "Has a bind mount of a host folder, which needs the host-volumes grant.",
+              "Has a bind mount of a host folder, which needs the host-volumes grant - without it the app still comes across, that one folder does not.",
             );
           }
         }
@@ -1682,7 +1683,7 @@ async function importAppService(
   const domains = mapDomains(detail.domains, { isCompose });
   notes.push(...domains.notes);
   const primary = domains.value[0] ?? null;
-  const mounts = mapMounts(detail.mounts);
+  const mounts = mapMounts(detail.mounts, { isCompose });
   notes.push(...mounts.notes);
 
   // What createApp needs to know about the source.
@@ -1777,7 +1778,10 @@ async function importAppService(
     autoDomain: mayClaimHosts ? primary?.host ?? null : null,
     composeService: isCompose ? primary?.service ?? null : null,
     composePort: isCompose ? primary?.port ?? null : null,
-    mounts: mounts.value.files.length > 0 ? mounts.value.files : null,
+    // `app_mounts` is materialised by the compose deploy and by nothing else, so
+    // a single-image app's config files are written below instead - storing them
+    // here would be a row nobody ever turns back into a file.
+    mounts: isCompose && mounts.value.files.length > 0 ? mounts.value.files : null,
     deploy: false,
   });
 
@@ -1823,11 +1827,48 @@ async function importAppService(
 
   for (const d of domains.value.slice(1)) await addExtraDomain(created.id, d, notes);
 
-  if (mounts.value.volumes.length > 0) {
+  // A single-image app has no compose file to bind a config file with, so its
+  // file mounts land where Settings -> Storage would put them: the bytes go into
+  // the app's Files (the same write the Storage editor makes), mounted by the
+  // "app" volume `mapMounts` paired with each one. Written BEFORE the volumes,
+  // because a mount whose source file is missing is not a no-op: docker creates a
+  // DIRECTORY there, and the app starts and serves nothing.
+  const unwritten = new Set<string>();
+  if (!isCompose) {
+    for (const f of mounts.value.files) {
+      try {
+        await writeAppFile(created.id, f.filePath, f.content);
+      } catch (e) {
+        unwritten.add(f.filePath);
+        notes.push(
+          `${f.filePath} could not be written into this app's Files: ${
+            e instanceof Error ? e.message : "refused"
+          }. Add it under Files and mount it under Storage.`,
+        );
+      }
+    }
+  }
+
+  let volumes = mounts.value.volumes.filter(
+    (v) => !(v.type === "app" && unwritten.has(v.projectPath ?? "")),
+  );
+  // A host bind needs the host-volumes grant, and setAppVolumes refuses the WHOLE
+  // set over one of them - which used to drop the app's named volumes with it.
+  // Leave the bind behind, keep the storage that needs no grant, and say so.
+  if (volumes.some((v) => v.type === "host") && !(await canMountHostVolumes())) {
+    notes.push(
+      `You don't have permission to mount host folders, so ${volumes
+        .filter((v) => v.type === "host")
+        .map((v) => v.hostPath)
+        .join(", ")} did not come across. An admin grants it in Settings -> Users.`,
+    );
+    volumes = volumes.filter((v) => v.type !== "host");
+  }
+  if (volumes.length > 0) {
     try {
       await setAppVolumes(
         created.id,
-        mounts.value.volumes.map((v) => ({ ...v, id: newId("vol") }) as VolumeMount),
+        volumes.map((v) => ({ ...v, id: newId("vol") }) as VolumeMount),
       );
     } catch (e) {
       notes.push(

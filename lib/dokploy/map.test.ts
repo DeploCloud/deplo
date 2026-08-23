@@ -590,17 +590,20 @@ test("volumeLabel produces the lowercase-kebab deplo requires", () => {
 });
 
 test("mapMounts splits the three Dokploy kinds into deplo's two writers", () => {
-  const { value, notes } = mapMounts([
-    {
-      mountId: "1",
-      type: "file",
-      filePath: "./config.toml",
-      content: "a = 1",
-      mountPath: "/app/config.toml",
-    },
-    { mountId: "2", type: "volume", volumeName: "PG_DATA", mountPath: "/var/lib/data" },
-    { mountId: "3", type: "bind", hostPath: "/srv/uploads", mountPath: "/uploads" },
-  ]);
+  const { value, notes } = mapMounts(
+    [
+      {
+        mountId: "1",
+        type: "file",
+        filePath: "./config.toml",
+        content: "a = 1",
+        mountPath: "",
+      },
+      { mountId: "2", type: "volume", volumeName: "PG_DATA", mountPath: "/var/lib/data" },
+      { mountId: "3", type: "bind", hostPath: "/srv/uploads", mountPath: "/uploads" },
+    ],
+    { isCompose: true },
+  );
   assert.deepEqual(value.files, [{ filePath: "config.toml", content: "a = 1" }]);
   assert.deepEqual(value.volumes, [
     { type: "named", name: "pg-data", mountPath: "/var/lib/data", readOnly: false },
@@ -615,11 +618,86 @@ test("mapMounts splits the three Dokploy kinds into deplo's two writers", () => 
   assert.deepEqual(notes, []);
 });
 
-test("mapMounts keeps two volumes with the same label apart", () => {
-  const { value } = mapMounts([
-    { mountId: "1", type: "volume", volumeName: "data", mountPath: "/a" },
-    { mountId: "2", type: "volume", volumeName: "data", mountPath: "/b" },
+// Dokploy writes an APPLICATION's file mount with filePath NULL: there is no
+// compose file to put a bind in, so the container path is the whole address of
+// the file. Requiring filePath dropped the file AND its content - measured on a
+// real instance, on a static site whose only content was the mounted index.html.
+test("mapMounts imports an application's file mount, which has no filePath", () => {
+  const { value, notes } = mapMounts(
+    [
+      {
+        mountId: "1",
+        type: "file",
+        filePath: null,
+        content: "<h1>hi</h1>",
+        mountPath: "/usr/share/nginx/html/index.html",
+      },
+    ],
+    { isCompose: false },
+  );
+  assert.deepEqual(value.files, [{ filePath: "index.html", content: "<h1>hi</h1>" }]);
+  // ...paired with the Storage "File" entry that mounts it back where it was.
+  assert.deepEqual(value.volumes, [
+    {
+      type: "app",
+      name: "index-html",
+      projectPath: "index.html",
+      mountPath: "/usr/share/nginx/html/index.html",
+      readOnly: false,
+    },
   ]);
+  assert.deepEqual(notes, []);
+});
+
+// A compose stack binds its own file (`../files/x` -> `./x`). A second mount for
+// the same file would fight that one, so the pairing is the application's alone.
+test("mapMounts does not pair a compose stack's file mount with a volume", () => {
+  const { value } = mapMounts(
+    [
+      {
+        mountId: "1",
+        type: "file",
+        filePath: "fix.sh",
+        content: "#!/bin/sh",
+        mountPath: "/usr/local/bin/fix.sh",
+      },
+    ],
+    { isCompose: true },
+  );
+  assert.deepEqual(value.files, [{ filePath: "fix.sh", content: "#!/bin/sh" }]);
+  assert.deepEqual(value.volumes, []);
+});
+
+// Two files that are separate on Dokploy must stay separate here: the files dir
+// keeps only the last path segment, so both would be "app.ini" and the second
+// would silently overwrite the first.
+test("mapMounts keeps two file mounts with the same file name apart", () => {
+  const { value, notes } = mapMounts(
+    [
+      { mountId: "1", type: "file", content: "one", mountPath: "/etc/a/app.ini" },
+      { mountId: "2", type: "file", content: "two", mountPath: "/etc/b/app.ini" },
+    ],
+    { isCompose: false },
+  );
+  assert.deepEqual(value.files, [
+    { filePath: "app.ini", content: "one" },
+    { filePath: "app-2.ini", content: "two" },
+  ]);
+  assert.deepEqual(
+    value.volumes.map((v) => `${v.projectPath}@${v.mountPath}`),
+    ["app.ini@/etc/a/app.ini", "app-2.ini@/etc/b/app.ini"],
+  );
+  assert.match(notes.join(" "), /both called app\.ini/);
+});
+
+test("mapMounts keeps two volumes with the same label apart", () => {
+  const { value } = mapMounts(
+    [
+      { mountId: "1", type: "volume", volumeName: "data", mountPath: "/a" },
+      { mountId: "2", type: "volume", volumeName: "data", mountPath: "/b" },
+    ],
+    { isCompose: false },
+  );
   assert.deepEqual(
     value.volumes.map((v) => v.name),
     ["data", "data-2"],
@@ -627,10 +705,14 @@ test("mapMounts keeps two volumes with the same label apart", () => {
 });
 
 test("mapMounts reports a mount it had to drop", () => {
-  const { value, notes } = mapMounts([
-    { mountId: "1", type: "bind", hostPath: "", mountPath: "/x" },
-    { mountId: "2", type: "file", filePath: "", content: "x", mountPath: "/y" },
-  ]);
+  const { value, notes } = mapMounts(
+    [
+      { mountId: "1", type: "bind", hostPath: "", mountPath: "/x" },
+      // Neither a name nor a path: nothing to write and nowhere to mount it.
+      { mountId: "2", type: "file", filePath: "", content: "x", mountPath: "" },
+    ],
+    { isCompose: false },
+  );
   assert.deepEqual(value.volumes, []);
   assert.deepEqual(value.files, []);
   assert.equal(notes.length, 2);

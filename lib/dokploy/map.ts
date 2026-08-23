@@ -730,32 +730,107 @@ export function volumeLabel(raw: string, fallback: string): string {
 }
 
 /**
- * Dokploy's three mount kinds → deplo's two writers.
+ * The file's name in the app's files dir, taken from the only address a mount
+ * with no `filePath` has: the path it is mounted at inside the container
+ * ("/etc/nginx/nginx.conf" -> "nginx.conf").
+ */
+function fileNameFromMountPath(mountPath: string): string {
+  const last = mountPath
+    .split("/")
+    .filter((seg) => seg && seg !== "." && seg !== "..")
+    .pop();
+  return last ?? "";
+}
+
+/**
+ * `base`, or the first `<stem>-<n>.<ext>` nobody has taken yet. Two mounts at
+ * `/etc/a/app.ini` and `/etc/b/app.ini` are one file each on Dokploy and would
+ * be ONE file here - the second silently overwriting the first - because all the
+ * files dir keeps is the last path segment.
+ */
+function uniqueFilePath(base: string, used: Set<string>): string {
+  if (!used.has(base)) {
+    used.add(base);
+    return base;
+  }
+  const slash = base.lastIndexOf("/") + 1;
+  const dot = base.indexOf(".", slash + 1);
+  const stem = dot < 0 ? base : base.slice(0, dot);
+  const ext = dot < 0 ? "" : base.slice(dot);
+  let name = base;
+  for (let i = 2; ; i++) {
+    name = `${stem}-${i}${ext}`;
+    if (!used.has(name)) break;
+  }
+  used.add(name);
+  return name;
+}
+
+/**
+ * Dokploy's three mount kinds -> deplo's writers.
  *
- * `file` mounts (inline content) ride along in `createApp`; `volume` and `bind`
- * go through `setAppVolumes` afterwards. A bind mount needs the
- * `canMountHostVolumes` grant, so it may be refused there — the report says which
- * path was refused rather than dropping it silently.
+ * `volume` and `bind` become Storage entries (`setAppVolumes`). A `file` mount
+ * is content, and Dokploy stores it TWO different ways depending on what it is
+ * attached to:
+ *
+ *  - **a compose stack** names the file in `filePath`, writes it to
+ *    `<stack>/files/<filePath>` and lets the YAML bind it (`../files/<filePath>`,
+ *    which `adaptComposeForDeplo` rewrites to `./<filePath>`). `mountPath` is
+ *    empty - nothing reads it.
+ *  - **an application** has no YAML to write a bind into, so the container path
+ *    in `mountPath` IS the mount and `filePath` is left NULL. Requiring
+ *    `filePath` dropped every one of those on the floor, content included - a
+ *    prebuilt image whose only configuration is an injected `nginx.conf` or
+ *    `index.html` arrived here empty. So the last segment of `mountPath` is the
+ *    file's name, and it is paired with an **"app" volume** - what Settings ->
+ *    Storage calls a **File** - so something actually mounts it back where it
+ *    was.
+ *
+ * `files` is what must EXIST in the app's files dir; who puts it there is the
+ * caller's business (a compose deploy re-materialises `app_mounts` on every
+ * bring-up, a single-image app is written once through the file RPC, exactly
+ * like the Storage editor does it).
  */
 export function mapMounts(
   mounts: DokployMount[] | null | undefined,
+  opts: { isCompose: boolean },
 ): Mapped<MappedMounts> {
   const notes: string[] = [];
   const files: { filePath: string; content: string }[] = [];
   const volumes: Omit<VolumeMount, "id">[] = [];
   const used = new Set<string>();
+  const usedFiles = new Set<string>();
 
   for (const m of mounts ?? []) {
     const mountPath = m.mountPath?.trim();
     if (m.type === "file") {
-      // Dokploy writes the file next to the stack and bind-mounts it; deplo owns
-      // the whole files dir, so only the file's own name travels.
-      const name = (m.filePath ?? "").trim().replace(/^\.?\//, "");
-      if (!name) {
-        notes.push("A file mount has no path on Dokploy - not imported.");
+      // Deplo owns the whole files dir, so only the file's own name travels -
+      // never Dokploy's `../files/` prefix and never an absolute path.
+      const declared = (m.filePath ?? "")
+        .trim()
+        .replace(/^\.\/+/, "")
+        .replace(/^\/+|\/+$/g, "");
+      const wanted = declared || fileNameFromMountPath(mountPath ?? "");
+      if (!wanted || wanted.split("/").includes("..")) {
+        notes.push("A file mount has no usable path on Dokploy - not imported.");
         continue;
       }
+      const name = uniqueFilePath(wanted, usedFiles);
+      if (name !== wanted)
+        notes.push(
+          `Two file mounts are both called ${wanted}, so one of them is ${name} in this app's Files.`,
+        );
       files.push({ filePath: name, content: m.content ?? "" });
+      // Only an application needs the pairing: a compose stack already binds the
+      // file in its own YAML, and a second mount for it would fight that one.
+      if (!opts.isCompose && mountPath)
+        volumes.push({
+          type: "app",
+          name: volumeLabel(name, "file"),
+          projectPath: name,
+          mountPath,
+          readOnly: false,
+        });
       continue;
     }
     if (!mountPath) {

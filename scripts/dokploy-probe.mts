@@ -152,7 +152,7 @@ function describe(kind: string, row: Record<string, unknown>, name: string): voi
     );
     notes.push(...domains.notes);
 
-    const mounts = mapMounts(detail.mounts);
+    const mounts = mapMounts(detail.mounts, { isCompose: kind === "compose" });
     say(
       "mounts",
       `${mounts.value.files.length} file(s), ${mounts.value.volumes.length} volume(s)` +
