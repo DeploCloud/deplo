@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { EmptyState } from "@/components/shared/empty-state";
 import { CategoryChips } from "@/components/templates/category-chips";
 import { NoResultsGraphic } from "@/components/templates/no-results-graphic";
+import { StoreRailsSkeleton } from "@/components/templates/store-skeleton";
 import { TemplateSearchField } from "@/components/templates/template-search";
 import {
   TemplateCard,
@@ -17,12 +18,22 @@ import {
 } from "@/components/templates/collections";
 import { templatesHref, type OverviewPlacement } from "@/lib/overview-links";
 import type { LogoAccent } from "@/lib/templates/logo-color";
-import { cn } from "@/lib/utils";
 
 /** A row needs enough cards to be worth scrolling. */
 const MIN_RAIL_SIZE = 4;
 /** Cards per category row. The rest of a category is one chip away. */
 const RAIL_LIMIT = 12;
+
+/** slug → what its logo needs: a hue to wash the card in, a plate to be visible
+ *  at all, or nothing. Absent when the logo asked for neither. */
+type Accents = Record<string, LogoAccent>;
+
+interface Category {
+  slug: string;
+  name: string;
+  icon: string;
+  count: number;
+}
 
 export function TemplateStore({
   templates,
@@ -34,9 +45,18 @@ export function TemplateStore({
   /** The catalogue trimmed to what a card draws (see `StoreTemplate`),
    *  asset URLs resolved server-side. */
   templates: StoreTemplate[];
-  /** slug → what its logo needs: a hue to wash the card in, a plate to be
-   *  visible at all, or nothing. Absent when the logo asked for neither. */
-  accents: Record<string, LogoAccent>;
+  /**
+   * The accents, still in flight.
+   *
+   * Reading them means fetching and decoding every logo in the catalogue - a
+   * cold process spends seconds on it - while the band, the chips and the rail
+   * layout are all derived from `templates`, which is already here. So they
+   * arrive as a promise and the cards alone wait on it behind a `<Suspense>`,
+   * instead of the whole page sitting on a skeleton until the last logo is
+   * measured. Cards are not painted uncoloured first: a catalogue that changes
+   * shade seconds after it appears reads as broken, not as fast.
+   */
+  accents: Promise<Accents>;
   /** The Overview drill-in the store was opened from, carried on to the wizard
    *  so a template deployed from inside a folder is created IN that folder. */
   placement?: OverviewPlacement | null;
@@ -84,11 +104,8 @@ export function TemplateStore({
 
   // Categories the catalogue actually uses, most populated first — derived from
   // the entries rather than fetched, so a chip can never offer an empty filter.
-  const categories = React.useMemo(() => {
-    const seen = new Map<
-      string,
-      { slug: string; name: string; icon: string; count: number }
-    >();
+  const categories = React.useMemo<Category[]>(() => {
+    const seen = new Map<string, Category>();
     for (const t of templates) {
       const cur = seen.get(t.category.slug);
       if (cur) cur.count += 1;
@@ -102,6 +119,67 @@ export function TemplateStore({
     }
     return [...seen.values()].sort((a, b) => b.count - a.count);
   }, [templates]);
+
+  return (
+    <div className="space-y-8">
+      {/* The band: one control, the one every store opens with. */}
+      <div className="deplo-grid-bg rounded-xl border border-border px-4 py-6 sm:px-6 sm:py-8">
+        <div className="mx-auto max-w-2xl text-center">
+          <h1 className="text-2xl font-semibold tracking-tight">Templates</h1>
+          <p className="mt-1 text-sm text-muted-foreground">
+            {templates.length} apps, databases and services, ready to run on
+            your own servers.
+          </p>
+          <TemplateSearchField
+            value={q}
+            onChange={(next) => {
+              typed.current = true;
+              setQ(next);
+            }}
+            className="mt-5"
+          />
+        </div>
+      </div>
+
+      <CategoryChips
+        categories={categories}
+        active={category}
+        onSelect={selectCategory}
+      />
+
+      <React.Suspense fallback={<StoreRailsSkeleton />}>
+        <StoreResults
+          templates={templates}
+          accents={accents}
+          categories={categories}
+          category={category}
+          q={q}
+          placement={placement}
+        />
+      </React.Suspense>
+    </div>
+  );
+}
+
+/** The cards: everything that needs a logo accent, and so everything that waits
+ *  for one. Split out of {@link TemplateStore} purely to be the child of its
+ *  `<Suspense>` - the search field above stays usable while this streams. */
+function StoreResults({
+  templates,
+  accents: pending,
+  categories,
+  category,
+  q,
+  placement,
+}: {
+  templates: StoreTemplate[];
+  accents: Promise<Accents>;
+  categories: Category[];
+  category: string;
+  q: string;
+  placement: OverviewPlacement | null;
+}) {
+  const accents = React.use(pending);
 
   const bySlug = React.useMemo(
     () => new Map(templates.map((t) => [t.slug, t])),
@@ -140,91 +218,65 @@ export function TemplateStore({
     />
   );
 
-  return (
-    <div className="space-y-8">
-      {/* The band: one control, the one every store opens with. */}
-      <div className="deplo-grid-bg rounded-xl border border-border px-4 py-6 sm:px-6 sm:py-8">
-        <div className="mx-auto max-w-2xl text-center">
-          <h1 className="text-2xl font-semibold tracking-tight">Templates</h1>
-          <p className="mt-1 text-sm text-muted-foreground">
-            {templates.length} apps, databases and services, ready to run on
-            your own servers.
-          </p>
-          <TemplateSearchField
-            value={q}
-            onChange={(next) => {
-              typed.current = true;
-              setQ(next);
-            }}
-            className="mt-5"
+  if (!browsing)
+    return (
+      <section className="space-y-3">
+        <p className="text-sm text-muted-foreground">
+          {filtered.length} {filtered.length === 1 ? "template" : "templates"}
+        </p>
+        {filtered.length ? (
+          <Grid>{[...filtered].sort(byName).map((t) => card(t))}</Grid>
+        ) : (
+          <EmptyState
+            graphic={<NoResultsGraphic />}
+            title="No templates match"
+            description="Try a different word, or pick another category."
           />
-        </div>
-      </div>
+        )}
+      </section>
+    );
 
-      <CategoryChips
-        categories={categories}
-        active={category}
-        onSelect={selectCategory}
-      />
+  return (
+    <div className="space-y-10">
+      {COLLECTIONS.map((collection) => {
+        const picks = collection.slugs
+          .map((slug) => bySlug.get(slug))
+          .filter((t): t is StoreTemplate => Boolean(t));
+        if (picks.length < MIN_COLLECTION_SIZE) return null;
+        return (
+          <TemplateRail
+            key={collection.title}
+            title={collection.title}
+            subtitle={collection.subtitle}
+          >
+            {picks.map((t) => card(t, "w-56 shrink-0 snap-start"))}
+          </TemplateRail>
+        );
+      })}
 
-      {browsing ? (
-        <div className="space-y-10">
-          {COLLECTIONS.map((collection) => {
-            const picks = collection.slugs
-              .map((slug) => bySlug.get(slug))
-              .filter((t): t is StoreTemplate => Boolean(t));
-            if (picks.length < MIN_COLLECTION_SIZE) return null;
-            return (
-              <TemplateRail
-                key={collection.title}
-                title={collection.title}
-                subtitle={collection.subtitle}
-              >
-                {picks.map((t) => card(t, "w-56 shrink-0 snap-start"))}
-              </TemplateRail>
-            );
-          })}
+      {categories.map((c) => {
+        const picks = templates
+          .filter((t) => t.category.slug === c.slug)
+          .slice(0, RAIL_LIMIT);
+        if (picks.length < MIN_RAIL_SIZE) return null;
+        return (
+          <TemplateRail key={c.slug} title={c.name}>
+            {picks.map((t) => card(t, "w-56 shrink-0 snap-start"))}
+          </TemplateRail>
+        );
+      })}
 
-          {categories.map((c) => {
-            const picks = templates
-              .filter((t) => t.category.slug === c.slug)
-              .slice(0, RAIL_LIMIT);
-            if (picks.length < MIN_RAIL_SIZE) return null;
-            return (
-              <TemplateRail key={c.slug} title={c.name}>
-                {picks.map((t) => card(t, "w-56 shrink-0 snap-start"))}
-              </TemplateRail>
-            );
-          })}
-
-          <section className="space-y-3">
-            <div>
-              <h2 className="text-base font-semibold tracking-tight lg:text-lg">
-                All templates
-              </h2>
-              <p className="mt-1 text-sm text-muted-foreground">
-                Everything in the catalogue, A to Z.
-              </p>
-            </div>
-            <Grid>{[...templates].sort(byName).map((t) => card(t))}</Grid>
-          </section>
-        </div>
-      ) : (
-        <section className="space-y-3">
-          <p className="text-sm text-muted-foreground">
-            {filtered.length} {filtered.length === 1 ? "template" : "templates"}
+      <section className="space-y-3">
+        <div>
+          <h2 className="text-base font-semibold tracking-tight lg:text-lg">
+            All templates
+          </h2>
+          <p className="mt-1 text-sm text-muted-foreground">
+            Everything in the catalogue, A to Z.
           </p>
-          {filtered.length ? (
-            <Grid>{[...filtered].sort(byName).map((t) => card(t))}</Grid>
-          ) : (
-            <EmptyState
-              graphic={<NoResultsGraphic />}
-              title="No templates match"
-              description="Try a different word, or pick another category."
-            />
-          )}
-        </section>
-      )}
+        </div>
+        <Grid>{[...templates].sort(byName).map((t) => card(t))}</Grid>
+      </section>
     </div>
   );
 }

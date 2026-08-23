@@ -42,12 +42,14 @@ export default async function TemplatesPage(props: PageProps<"/templates">) {
       </div>
     );
 
-  const accents = await templateAccents(templates);
-
   return (
     <TemplateStore
       templates={templates.map(toStoreTemplate)}
-      accents={accents}
+      // Not awaited: reading the accents fetches and decodes every logo in the
+      // catalogue, which costs a cold process seconds. The store streams the
+      // cards behind a <Suspense> and paints the band and the chips now.
+      // A catalogue having a bad day costs colour, never the page.
+      accents={templateAccents(templates).catch(() => ({}))}
       placement={placement}
       initialQuery={one(searchParams.q)}
       initialCategory={one(searchParams.category)}

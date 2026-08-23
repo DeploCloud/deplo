@@ -1,11 +1,20 @@
 import { Skeleton } from "@/components/ui/skeleton";
+import {
+  StoreChipsSkeleton,
+  StoreRailsSkeleton,
+} from "@/components/templates/store-skeleton";
 
-/** Mirrors the store's real layout: the search band, the chip row, two rails
- *  and the head of the grid. It has to move with `template-store.tsx` — a
- *  skeleton that shows a different shape makes the page jump on arrival. */
+/** Mirrors the store's real layout: the search band, the chip row and two rails.
+ *  The chips and rails come from `store-skeleton.tsx`, which the store itself
+ *  renders while its logo accents stream - one shape, one place to change it. */
 export default function Loading() {
   return (
-    <div className="space-y-8" role="status" aria-busy aria-label="Loading templates">
+    <div
+      className="space-y-8"
+      role="status"
+      aria-busy
+      aria-label="Loading templates"
+    >
       <div className="deplo-grid-bg rounded-xl border border-border px-4 py-6 sm:px-6 sm:py-8">
         <div className="mx-auto flex max-w-2xl flex-col items-center">
           <Skeleton className="h-8 w-40" shimmer />
@@ -14,32 +23,8 @@ export default function Loading() {
         </div>
       </div>
 
-      <div className="flex gap-2 overflow-hidden">
-        {Array.from({ length: 9 }).map((_, i) => (
-          <Skeleton
-            key={i}
-            className="h-8 w-24 shrink-0 rounded-full"
-            shimmer
-            style={{ "--shimmer-delay": `${i * 40}ms` } as React.CSSProperties}
-          />
-        ))}
-      </div>
-
-      {Array.from({ length: 2 }).map((_, row) => (
-        <div key={row} className="space-y-3">
-          <Skeleton className="h-5 w-44" shimmer />
-          <div className="flex gap-3 overflow-hidden">
-            {Array.from({ length: 7 }).map((_, i) => (
-              <Skeleton
-                key={i}
-                className="h-36 w-56 shrink-0 rounded-xl"
-                shimmer
-                style={{ "--shimmer-delay": `${i * 60}ms` } as React.CSSProperties}
-              />
-            ))}
-          </div>
-        </div>
-      ))}
+      <StoreChipsSkeleton />
+      <StoreRailsSkeleton />
     </div>
   );
 }
