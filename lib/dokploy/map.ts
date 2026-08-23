@@ -241,11 +241,89 @@ export function adaptComposeForDeplo(source: string): {
     }
   }
 
+  // The SAME `../files/x` rewrite, everywhere else a compose file can name a
+  // file next to itself. `services[].volumes` was the only place it was applied,
+  // and the others are not rare: an `env_file`, a `secrets: file:`, a
+  // `configs: file:` and a `build.context` all resolve against the project
+  // directory, which is Deplo's own per-stack files dir - so a path left saying
+  // `../files/x` (or Dokploy's platform-written `.env`, which is not written
+  // here) points at nothing and the stack refuses to come up.
+  for (const [where, target] of topLevelFileRefs(doc)) {
+    const rewritten = deploFilesPath(target.value);
+    if (rewritten == null) continue;
+    target.set(rewritten);
+    changes.push(`${target.value} now points at Deplo's files directory (${where}).`);
+  }
+
   if (changes.length === 0) return { compose: source, changes: [] };
   return {
     compose: yaml.dump(doc, { lineWidth: -1, noRefs: true }),
     changes,
   };
+}
+
+/** One editable string that names a file relative to the compose file. */
+interface FileRef {
+  value: string;
+  set(next: string): void;
+}
+
+/**
+ * Every place OUTSIDE `services[].volumes` where a compose file names a
+ * neighbouring file: `env_file` (string or list, on each service),
+ * `build.context`, `label_file`, and the top-level `secrets` / `configs` blocks.
+ *
+ * Returned as setters rather than paths so the caller rewrites in place without
+ * a second walk of the same document.
+ */
+function topLevelFileRefs(
+  doc: Record<string, unknown>,
+): [string, FileRef][] {
+  const out: [string, FileRef][] = [];
+  const push = (
+    where: string,
+    holder: Record<string, unknown>,
+    key: string | number,
+  ) => {
+    const value = (holder as Record<string | number, unknown>)[key];
+    if (typeof value !== "string") return;
+    out.push([
+      where,
+      { value, set: (next) => ((holder as Record<string | number, unknown>)[key] = next) },
+    ]);
+  };
+
+  const services = doc.services;
+  if (services && typeof services === "object" && !Array.isArray(services))
+    for (const [name, raw] of Object.entries(services as Record<string, unknown>)) {
+      if (!raw || typeof raw !== "object" || Array.isArray(raw)) continue;
+      const svc = raw as Record<string, unknown>;
+      if (typeof svc.env_file === "string") push(`${name}.env_file`, svc, "env_file");
+      else if (Array.isArray(svc.env_file))
+        svc.env_file.forEach((entry, i) => {
+          if (typeof entry === "string") push(`${name}.env_file`, svc.env_file as never, i);
+          else if (entry && typeof entry === "object")
+            push(`${name}.env_file`, entry as Record<string, unknown>, "path");
+        });
+      if (typeof svc.label_file === "string") push(`${name}.label_file`, svc, "label_file");
+      else if (Array.isArray(svc.label_file))
+        svc.label_file.forEach((entry, i) => {
+          if (typeof entry === "string") push(`${name}.label_file`, svc.label_file as never, i);
+        });
+      if (typeof svc.build === "string") push(`${name}.build`, svc, "build");
+      else if (svc.build && typeof svc.build === "object" && !Array.isArray(svc.build))
+        push(`${name}.build`, svc.build as Record<string, unknown>, "context");
+    }
+
+  for (const block of ["secrets", "configs"] as const) {
+    const declared = doc[block];
+    if (!declared || typeof declared !== "object" || Array.isArray(declared)) continue;
+    for (const [name, raw] of Object.entries(declared as Record<string, unknown>)) {
+      if (!raw || typeof raw !== "object" || Array.isArray(raw)) continue;
+      push(`${block}.${name}`, raw as Record<string, unknown>, "file");
+    }
+  }
+  return out;
 }
 
 /**
@@ -922,6 +1000,13 @@ export interface MappedDatabase {
   exposedPort: number | null;
   /** The image Dokploy ran, ALWAYS kept verbatim - see `mapDatabase`. */
   customImage: string;
+  /**
+   * The start command Dokploy overrode, or null. Deplo stores one too
+   * (`databases.custom_command`, what Settings -> Advanced writes), so an engine
+   * tuned with `-c max_connections=500` keeps its tuning instead of arriving as
+   * a sentence in a report asking someone to retype it.
+   */
+  command: string | null;
   /** The engine's config files, in deplo's shape. Almost always empty. */
   mounts: { filePath: string; content: string; mountPath: string }[];
 }
@@ -1002,9 +1087,12 @@ export function mapDatabase(
       `Runs ${customImage} on Dokploy instead of a plain ${type}. Kept as it is - check that it starts.`,
     );
 
-  if (row.command?.trim())
+  // A multi-line command is not something Deplo's column takes (it renders as a
+  // quoted scalar in the compose), so that one still has to be retyped.
+  const command = row.command?.trim() || null;
+  if (command && /[\r\n\t]/.test(command))
     notes.push(
-      `Custom start command on Dokploy ("${truncate(row.command.trim(), 60)}") - set it under Advanced if you still need it.`,
+      `Custom start command on Dokploy ("${truncate(command, 60)}") spans more than one line - set it under Advanced if you still need it.`,
     );
   // Dokploy models a database's own DATA volume as a mount row, so counting every
   // mount announced "extra files that are not imported" about the one thing the
@@ -1038,6 +1126,17 @@ export function mapDatabase(
   // that has to become the database's. The application user is left untouched
   // inside the copied cluster, so the imported app's own connection string goes
   // on working with it.
+  // A database's own environment. Deplo has no per-database variables (an engine
+  // is configured through its image, its command and its config files), so these
+  // cannot come across - but they were doing so in SILENCE, and some of them
+  // decide how the cluster is initialised (`POSTGRES_INITDB_ARGS`, `TZ`,
+  // `PGDATA`). Name them.
+  const envKeys = parseEnvBlob(row.env).map((e) => e.key);
+  if (envKeys.length > 0)
+    notes.push(
+      `Carried ${envKeys.length} environment variable(s) on Dokploy (${envKeys.join(", ")}). A Deplo database has none - fold what matters into the image, the start command or a config file under Settings -> Advanced.`,
+    );
+
   const rootPassword =
     (type === "mysql" || type === "mariadb") && row.databaseRootPassword?.trim()
       ? row.databaseRootPassword.trim()
@@ -1067,6 +1166,7 @@ export function mapDatabase(
           ? row.externalPort
           : null,
       customImage,
+      command: command && !/[\r\n\t]/.test(command) ? command : null,
       // Every file mount Dokploy had, named and pathed the way deplo stores
       // them. A file with no container path cannot be mounted anywhere and is
       // dropped by `mapMounts` with a note of its own.
@@ -1450,5 +1550,31 @@ export function unsupportedNotes(app: DokployApplication): string[] {
     notes.push(
       `${app.redirects!.length} redirect rule(s) on Dokploy - Deplo has no redirect list, use a domain per host.`,
     );
+  // Swarm's own service spec. Deplo runs one container per app through compose,
+  // so none of these have a column here - which is a reason to SAY them, not to
+  // drop them without a word: a healthcheck and a placement constraint are
+  // decisions somebody made, and finding out they are gone because a container
+  // never restarted is the wrong way to learn it.
+  const swarm = (
+    [
+      ["healthCheckSwarm", "a health check"],
+      ["placementSwarm", "placement constraints"],
+      ["labelsSwarm", "service labels"],
+      ["ulimitsSwarm", "ulimits"],
+    ] as const
+  ).filter(([key]) => hasSwarmValue(app[key]));
+  if (swarm.length > 0)
+    notes.push(
+      `Swarm settings on Dokploy (${swarm.map(([, label]) => label).join(", ")}) have no equivalent here - Deplo runs one container per app through compose.`,
+    );
   return notes;
+}
+
+/** A swarm column Dokploy actually filled in (it stores `null` or `{}` otherwise). */
+function hasSwarmValue(v: unknown): boolean {
+  if (v == null) return false;
+  if (typeof v === "string") return v.trim() !== "" && v.trim() !== "{}";
+  if (Array.isArray(v)) return v.length > 0;
+  if (typeof v === "object") return Object.keys(v as object).length > 0;
+  return false;
 }

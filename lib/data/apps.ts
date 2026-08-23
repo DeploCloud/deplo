@@ -568,6 +568,18 @@ export interface CreateAppInput {
   extraDomains?: { service: string; port: number; host: string }[] | null;
   /** Pre-generated PRIMARY domain a template baked into its env; kept consistent. */
   autoDomain?: string | null;
+  /**
+   * Create the app with NO address at all.
+   *
+   * Deplo's own answer to "where is my app" is a generated host, and every
+   * interactive path wants it. An IMPORT is the one caller that knows better:
+   * a service that answered on nothing over there (a worker, a queue consumer,
+   * a Pi-hole reached on port 53, an agent) does not want a public URL invented
+   * for it here - measured on a real instance, 48 of 182 imported apps came out
+   * published on an address nobody had asked for, one of them routing HTTP at
+   * port 53. The report says so instead, and Domains is one click away.
+   */
+  noAutoDomain?: boolean;
   /** Template config files to materialise at deploy time. */
   mounts?: { filePath: string; content: string }[] | null;
   /** WHERE the app is born. The Overview drill-ins (an open folder, or a
@@ -1037,14 +1049,15 @@ export async function createApp(
   )
     ? "letsencrypt"
     : "none";
-  await ensureAutoDomain(project.id, {
-    slug,
-    ip,
-    preferred: input.autoDomain ?? undefined,
-    defaultPort: detected?.port ?? project.build.port,
-    defaultApp: detected?.service ?? null,
-    certProvider,
-  });
+  if (!input.noAutoDomain)
+    await ensureAutoDomain(project.id, {
+      slug,
+      ip,
+      preferred: input.autoDomain ?? undefined,
+      defaultPort: detected?.port ?? project.build.port,
+      defaultApp: detected?.service ?? null,
+      certProvider,
+    });
 
   // Register every EXTRA hostname a multi-domain template declares (e.g. a web
   // UI's `web-ui.*` host) — also ONCE, here at creation, never on a deploy. Each
@@ -1527,6 +1540,18 @@ export function validateVolumes(
   raw: VolumeMount[],
   existingMounts: { filePath: string }[] | null | undefined,
   composeServices?: string[] | null,
+  opts?: {
+    /**
+     * These entries come from another platform, where they were RUNNING. The
+     * reserved-prefix rule then guards nothing worth guarding: `/etc/linkding/data`
+     * and `/var/jenkins_home` are what those images actually use, and refusing
+     * them does not protect the container - it silently drops the app's data
+     * directory and lets it start writing into its own layer instead. So an
+     * imported Volume or Bind is judged the way a File already is: refused only
+     * AT the reserved path itself, never merely under it.
+     */
+    imported?: boolean;
+  },
 ): VolumeMount[] | null {
   const seenPath = new Set<string>();
   const seenName = new Set<string>();
@@ -1558,7 +1583,7 @@ export function validateVolumes(
     // Reserved for a Volume or a Bind (they replace a whole directory), reserved
     // only AS ITSELF for a File - one config file inside /etc or /usr is the
     // commonest mount there is. See `reservedMountPath`.
-    if (reservedMountPath(mountPath, kindOf(v))) {
+    if (reservedMountPath(mountPath, opts?.imported ? "app" : kindOf(v))) {
       throw new Error(`Mount path "${mountPath}" is reserved by the system.`);
     }
     // A volume conflicts with a template config file when their paths are equal,
@@ -1700,6 +1725,10 @@ export function validateVolumes(
 export async function setAppVolumes(
   id: string,
   volumes: VolumeMount[],
+  opts?: {
+    /** Entries carried over from another platform - see {@link validateVolumes}. */
+    imported?: boolean;
+  },
 ): Promise<void> {
   const { membership } = await requireAppCapability(id, "configure_apps");
   // A host bind mount escapes the per-project sandbox, so it needs the dedicated
@@ -1717,7 +1746,7 @@ export async function setAppVolumes(
     const composeServices = usesComposeStack(p)
       ? composeServiceNames(p.compose)
       : null;
-    const validated = validateVolumes(volumes, p.mounts, composeServices);
+    const validated = validateVolumes(volumes, p.mounts, composeServices, opts);
     await tx.delete(appVolumesTable).where(eq(appVolumesTable.appId, id));
     const rows = volumesToRows(id, validated);
     if (rows.length > 0) await tx.insert(appVolumesTable).values(rows);

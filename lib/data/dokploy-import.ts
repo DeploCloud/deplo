@@ -1,6 +1,7 @@
 import "server-only";
 
 import { and, eq, inArray, sql } from "drizzle-orm";
+import yaml from "js-yaml";
 
 import { getDb } from "../db/client";
 import {
@@ -38,8 +39,10 @@ import {
   composeFileBindings,
   composeUsesExternalMerge,
   lintCompose,
+  composeHostPorts,
 } from "../deploy/compose-lint";
 import type { BuildConfig, VolumeMount } from "../types";
+import { reservedMountPath } from "../apps/volume-model";
 
 import {
   DOKPLOY_DB_KINDS,
@@ -86,6 +89,7 @@ import { writeAppFile } from "./app-files";
 import { createCronJob } from "./crons";
 import { createDatabase, isValidExposePort, setDatabaseMounts } from "./databases";
 import {
+  type DomainPatch,
   addDomain,
   addImportedDomains,
   applyImportedRoute,
@@ -405,6 +409,42 @@ async function nameOfService(
   return loadService(c, svc)
     .then((d) => nameOf(d, svc))
     .catch(() => svc.id);
+}
+
+/**
+ * How many services a compose file declares, or null when it is not valid YAML.
+ *
+ * `composeServiceNames` answers `[]` to both questions, and the report has to
+ * tell them apart: "this file is broken" and "this file is empty" are different
+ * things to do about an app that will otherwise never deploy.
+ */
+function composeServiceCount(compose: string): number | null {
+  let doc: unknown;
+  try {
+    doc = yaml.load(compose);
+  } catch {
+    return null;
+  }
+  if (!doc || typeof doc !== "object") return 0;
+  const services = (doc as { services?: unknown }).services;
+  return services && typeof services === "object" && !Array.isArray(services)
+    ? Object.keys(services as Record<string, unknown>).length
+    : 0;
+}
+
+/**
+ * Deplo's own name cap, applied here rather than being hit as an error.
+ *
+ * Trimmed on a word boundary when there is one within reach, so a truncated
+ * name still reads as a name and not as a string that ran out.
+ */
+function truncateName(name: string): string {
+  const MAX = 60;
+  const trimmed = name.trim();
+  if (trimmed.length <= MAX) return trimmed;
+  const cut = trimmed.slice(0, MAX);
+  const lastBreak = Math.max(cut.lastIndexOf(" "), cut.lastIndexOf("-"));
+  return (lastBreak >= MAX - 12 ? cut.slice(0, lastBreak) : cut).trim();
 }
 
 /** What to call a service: its detail row's name, the tree's, or its id. */
@@ -1314,8 +1354,24 @@ export async function importDokployProject(
         continue;
       }
 
-      const name = nameOf(detail, svc);
+      // Deplo caps a name at 60 characters and so does Dokploy's own column at
+      // 63 for `appName` - but its display NAME is free text, and a service
+      // called after a team, a region and a cluster goes past it. Refusing the
+      // whole app over its title is the wrong trade: an app that arrives
+      // renamed can be renamed back, an app that never arrives is a migration
+      // someone has to notice.
+      const fullName = nameOf(detail, svc);
+      const name = truncateName(fullName);
       const svcReport = envReport.at(name);
+      if (name !== fullName)
+        await svcReport.add({
+          sourceKind: svc.kind,
+          sourceId: svc.id,
+          sourceName: name,
+          outcome: "manual",
+          targetKind,
+          message: `Its name is longer than Deplo allows, so it came across as "${name}". Rename it under Settings.`,
+        });
 
       try {
         if (isApp) {
@@ -1758,6 +1814,37 @@ async function importAppService(
     compose = adapted.compose;
     notes.push(...adapted.changes);
     notes.push(...composeAdvice(adapted.compose));
+    // A compose file that parses to nothing deployable still comes across (its
+    // variables, domains and mounts are the part that takes an afternoon to
+    // retype), but it used to do so without a word - and the app it makes can
+    // never deploy. Say it here, where the report is read.
+    const services = composeServiceCount(adapted.compose);
+    if (services === null)
+      notes.push(
+        "Its compose file is not valid YAML, so it came across exactly as it is - nothing here rewrote it. Fix it under Compose before deploying.",
+      );
+    else if (services === 0)
+      notes.push(
+        "Its compose file declares no services, so there is nothing to deploy yet. Add them under Compose.",
+      );
+    // The host ports the stack binds, checked against the machine it is landing
+    // on. A database says this already and says it well; a stack said nothing
+    // and the collision arrived later as a `docker compose up` error nobody
+    // could connect back to the import. 80 and 443 belong to the proxy, so an
+    // imported reverse proxy trips this every time.
+    const wantedPorts = composeHostPorts(adapted.compose);
+    if (wantedPorts.length > 0 && home.serverId && (await canExposePorts())) {
+      try {
+        const { hostPortsInUse } = await import("./databases");
+        const probe = await hostPortsInUse(home.serverId, wantedPorts);
+        if (probe.checked && probe.inUse.length > 0)
+          notes.push(
+            `It publishes ${probe.inUse.join(", ")} on the host, and ${probe.inUse.length === 1 ? "that port is" : "those ports are"} already taken on this server - the stack will not start until you change ${probe.inUse.length === 1 ? "it" : "them"} under Compose.`,
+          );
+      } catch {
+        /* A probe is a courtesy: never let it fail an import. */
+      }
+    }
     if (detail.isolatedDeployment)
       notes.push(
         "Dokploy isolates this stack's network and volume names. Deplo does that for every stack - check the service names it talks to.",
@@ -1824,6 +1911,12 @@ async function importAppService(
     // createApp would either refuse it or point this app at the old box.
     autoDomain:
       mayClaimHosts && primary && !primary.generated ? primary.host : null,
+    // A service that answered on NOTHING over there gets nothing here. Deplo
+    // mints an address for every app it creates, which is right everywhere else
+    // and wrong on an import: a worker, a queue consumer or a Pi-hole reached on
+    // port 53 would arrive published on a public host nobody asked for, routed
+    // at whatever port happened to be first in its compose.
+    noAutoDomain: domains.value.length === 0,
     composeService: isCompose ? primary?.service ?? null : null,
     composePort: isCompose ? primary?.port ?? null : null,
     // `app_mounts` is materialised by the compose deploy and by nothing else, so
@@ -1855,9 +1948,20 @@ async function importAppService(
   // should serve, so the app's first source domain is applied ONTO it; the rest
   // go through `addImportedDomains`, which mints one address per source host.
   const rehosted = new Map<string, string>();
+  if (domains.value.length === 0)
+    notes.push(
+      "It answered on no address on Dokploy, so it arrives with none here either. Add one under Domains if it should be reachable from outside.",
+    );
   if (primary) {
     const landed = await getDb()
-      .select({ id: domainsTable.id, name: domainsTable.name, certProvider: domainsTable.certProvider })
+      .select({
+        id: domainsTable.id,
+        name: domainsTable.name,
+        certProvider: domainsTable.certProvider,
+        pathPrefix: domainsTable.pathPrefix,
+        stripPrefix: domainsTable.stripPrefix,
+        entrypoint: domainsTable.entrypoint,
+      })
       .from(domainsTable)
       .where(and(eq(domainsTable.appId, created.id), eq(domainsTable.isPrimary, true)));
     const row = landed[0];
@@ -1873,20 +1977,38 @@ async function importAppService(
           ? `${primary.host} was Dokploy's own temporary address, so this app answers on ${row.name} here - same port, same route.`
           : `${primary.host} could not be taken, so the app answers on ${row.name} instead.`,
       );
-    } else if (row && row.certProvider !== primary.certProvider) {
-      // createApp mints the primary domain itself and decides its certificate the
-      // way a template would (`blueprintWantsTls`), so the choice made on Dokploy
-      // has to be applied afterwards. It IS explicit intent - certificates are
-      // opt-in here, and someone who had one over there asked for it - and doing
-      // it now is the difference between an import and a to-do list of boxes to
-      // re-tick on every app.
-      try {
-        await updateDomain(row.id, { certProvider: primary.certProvider });
-      } catch (e) {
-        notes.push(
-          `${primary.host} kept no certificate: ${e instanceof Error ? e.message : "refused"}. Pick one under Domains.`,
-        );
-      }
+    } else if (row) {
+      // createApp mints the primary domain itself and knows only its NAME, so
+      // everything else about the route has to be applied afterwards.
+      //
+      // The certificate was already done here: it is explicit intent (certs are
+      // opt-in, and someone who had one over there asked for it) and re-ticking
+      // it by hand on every app is the difference between an import and a
+      // to-do list. The PATH was not, and that was the bug: an app served on
+      // `example.com/api` over there arrived claiming the whole of
+      // `example.com` here - a different route, and one that collides with
+      // whatever already answers on that host. Same for the entrypoint.
+      //
+      // Deliberately NOT the port: `ensureAutoDomain` already derived it from
+      // the build settings (themselves taken from this very domain), and writing
+      // it again would pin it as an override that stops following them.
+      const patch: DomainPatch = {};
+      if (row.certProvider !== primary.certProvider)
+        patch.certProvider = primary.certProvider;
+      if ((row.pathPrefix ?? "") !== primary.pathPrefix)
+        patch.pathPrefix = primary.pathPrefix;
+      if (primary.pathPrefix && !!row.stripPrefix !== primary.stripPrefix)
+        patch.stripPrefix = primary.stripPrefix;
+      if ((row.entrypoint ?? "") !== primary.entrypoint)
+        patch.entrypoint = primary.entrypoint;
+      if (Object.keys(patch).length > 0)
+        try {
+          await updateDomain(row.id, patch);
+        } catch (e) {
+          notes.push(
+            `${primary.host} did not keep its route (${primary.pathPrefix || "/"}, ${primary.certProvider}): ${e instanceof Error ? e.message : "refused"}. Set it under Domains.`,
+          );
+        }
     }
   }
 
@@ -2060,11 +2182,30 @@ async function importAppService(
     );
     volumes = volumes.filter((v) => v.type !== "host");
   }
+  // Same shape as the grant filter above, and for the same measured reason:
+  // `setAppVolumes` writes the whole set or nothing, so ONE entry it will not
+  // take used to leave the app with NO storage at all. A Jenkins whose
+  // `/var/run/docker.sock` bind is (rightly) reserved arrived without
+  // `/var/jenkins_home` either - no error on screen, no data on the next
+  // deploy. Refuse per ENTRY, name each one, and write the rest.
+  const refusedMounts: string[] = [];
+  volumes = volumes.filter((v) => {
+    const path = (v.mountPath ?? "").trim().replace(/\/+$/, "");
+    // The relaxed rule an import gets: reserved only AS the path itself.
+    if (!path || !reservedMountPath(path, "app")) return true;
+    refusedMounts.push(path);
+    return false;
+  });
+  if (refusedMounts.length > 0)
+    notes.push(
+      `${refusedMounts.join(", ")} ${refusedMounts.length === 1 ? "is a path" : "are paths"} the container runtime owns, so ${refusedMounts.length === 1 ? "it" : "they"} did not come across. Everything else this app mounts did.`,
+    );
   if (volumes.length > 0) {
     try {
       await setAppVolumes(
         created.id,
         volumes.map((v) => ({ ...v, id: newId("vol") }) as VolumeMount),
+        { imported: true },
       );
     } catch (e) {
       notes.push(
@@ -2092,6 +2233,33 @@ async function importAppService(
       notes.push(
         `Basic-auth user "${s.username}" was not imported: ${e instanceof Error ? e.message : "refused"}.`,
       );
+    }
+  }
+
+  // Preview deployments. Dokploy has the same feature and deplo has the whole of
+  // it (enabled, port, how many at once), so a repo that opened a preview per
+  // pull request over there keeps doing it here instead of arriving switched off
+  // with nothing said. Only the three fields that mean the same thing on both
+  // sides travel; a preview's own env, wildcard and certificate are deplo's to
+  // derive.
+  if (!isCompose) {
+    const app = detail as DokployApplication;
+    if (app.isPreviewDeploymentsActive) {
+      try {
+        const { setAppPreviewSettings } = await import("./previews");
+        await setAppPreviewSettings(created.id, {
+          enabled: true,
+          port: app.previewPort ?? null,
+          maxActive:
+            typeof app.previewLimit === "number" && app.previewLimit > 0
+              ? Math.min(app.previewLimit, 50)
+              : null,
+        });
+      } catch (e) {
+        notes.push(
+          `Preview deployments were on over there but did not come across: ${e instanceof Error ? e.message : "refused"}. Turn them on under Previews.`,
+        );
+      }
     }
   }
 
@@ -2354,6 +2522,34 @@ async function importDatabaseService(
       message: firstError || "Could not create the database.",
     });
     return;
+  }
+
+  // The start command and the resource caps, both of which Deplo stores on a
+  // database and neither of which the import was writing: a Postgres tuned with
+  // `-c shared_buffers=1GB` arrived untuned, and one capped at 1 GB / 0.5 CPU
+  // arrived uncapped - free to take the whole host from every other tenant.
+  // `mapResources` is the same function the app path already uses.
+  if (spec.command) {
+    try {
+      const { updateDatabaseImage } = await import("./databases");
+      await updateDatabaseImage(created.id, { customCommand: spec.command });
+    } catch (e) {
+      notes.push(
+        `Its start command was not imported: ${e instanceof Error ? e.message : "refused"}. Set it under Settings -> Advanced.`,
+      );
+    }
+  }
+  const dbResources = mapResources(row);
+  notes.push(...dbResources.notes);
+  if (dbResources.value) {
+    try {
+      const { updateDatabaseResources } = await import("./databases");
+      await updateDatabaseResources(created.id, dbResources.value);
+    } catch (e) {
+      notes.push(
+        `Its memory and CPU limits were not imported: ${e instanceof Error ? e.message : "refused"}. Set them under Settings -> Resources.`,
+      );
+    }
   }
 
   // The engine's config files. AFTER the create, because they are a whole-set

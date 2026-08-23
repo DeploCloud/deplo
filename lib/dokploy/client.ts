@@ -151,6 +151,15 @@ export interface DokployApplication {
   customGitBranch?: string | null;
   customGitBuildPath?: string | null;
   customGitSSHKeyId?: string | null;
+  // preview deployments (deplo has the same feature)
+  isPreviewDeploymentsActive?: boolean | null;
+  previewPort?: number | null;
+  previewLimit?: number | null;
+  // swarm-only knobs, reported rather than imported
+  healthCheckSwarm?: unknown;
+  placementSwarm?: unknown;
+  labelsSwarm?: unknown;
+  ulimitsSwarm?: unknown;
   // limits
   memoryLimit?: string | null;
   memoryReservation?: string | null;

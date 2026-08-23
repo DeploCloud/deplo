@@ -860,7 +860,10 @@ test("mapDatabase carries the external port and reports what a database cannot t
     }),
   );
   assert.equal(value?.exposedPort, 5432);
-  assert.match(notes.join(" "), /start command/);
+  // The start command COMES ACROSS (deplo stores one too), instead of becoming a
+  // sentence asking someone to retype it.
+  assert.equal(value?.command, "postgres -c max_connections=200");
+  assert.doesNotMatch(notes.join(" "), /start command/);
   // A BIND has nowhere to go on a deplo database, so it is named, not dropped in
   // silence.
   assert.match(notes.join(" "), /bind-mounts/);
@@ -1163,4 +1166,75 @@ test("mapDatabase keeps the application user for engines with a single credentia
   );
   assert.equal(value?.username, "appuser");
   assert.equal(value?.password, "app-pw");
+});
+
+/**
+ * `../files/x` is how Dokploy spells "a file next to this stack", and it appears
+ * in more than one place. Only `services[].volumes` was rewritten, so an
+ * `env_file`, a `secrets: file:`, a `configs: file:` or a `build.context` came
+ * across still climbing out of Deplo's per-stack directory - pointing at nothing,
+ * which `docker compose up` refuses outright.
+ */
+test("adaptComposeForDeplo rewrites ../files everywhere a compose names a file", () => {
+  const { compose, changes } = adaptComposeForDeplo(`services:
+  app:
+    image: nginx
+    env_file:
+      - ../files/app.env
+      - .env
+    build:
+      context: ../files/build
+  worker:
+    image: alpine
+    env_file: ../files/worker.env
+secrets:
+  api_key:
+    file: ../files/api_key.txt
+configs:
+  cfg:
+    file: ../files/cfg.yml
+`);
+  const doc = yaml.load(compose) as {
+    services: Record<string, { env_file?: unknown; build?: { context?: string } }>;
+    secrets: Record<string, { file: string }>;
+    configs: Record<string, { file: string }>;
+  };
+  assert.deepEqual(doc.services.app.env_file, ["./app.env", ".env"]);
+  assert.equal(doc.services.app.build?.context, "./build");
+  assert.equal(doc.services.worker.env_file, "./worker.env");
+  assert.equal(doc.secrets.api_key.file, "./api_key.txt");
+  assert.equal(doc.configs.cfg.file, "./cfg.yml");
+  // Every rewrite is reported, and the platform's own `.env` is left alone (the
+  // agent writes one next to the stack).
+  assert.equal(changes.filter((c) => c.includes("files directory")).length, 5);
+});
+
+test("adaptComposeForDeplo leaves a file reference that is not Dokploy's alone", () => {
+  const source = `services:
+  app:
+    image: nginx
+    env_file: ./config/app.env
+secrets:
+  k:
+    file: /etc/secret
+`;
+  const { compose, changes } = adaptComposeForDeplo(source);
+  assert.equal(compose, source);
+  assert.deepEqual(changes, []);
+});
+
+test("mapDatabase names the environment variables a Deplo database cannot hold", () => {
+  const { notes } = mapDatabase(
+    "postgres",
+    db({ env: "POSTGRES_INITDB_ARGS=--data-checksums\nTZ=Europe/Rome" }),
+  );
+  const joined = notes.join(" ");
+  assert.match(joined, /POSTGRES_INITDB_ARGS/);
+  assert.match(joined, /TZ/);
+});
+
+test("mapDatabase still asks for a MULTI-LINE start command by hand", () => {
+  const { value, notes } = mapDatabase("postgres", db({ command: "a\nb" }));
+  assert.equal(value?.command, null);
+  assert.match(notes.join(" "), /more than one line/);
 });

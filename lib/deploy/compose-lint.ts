@@ -1392,6 +1392,58 @@ export function composePublishesPorts(composeYaml: string): boolean {
   return false;
 }
 
+/**
+ * The HOST ports a compose file would bind, deduped.
+ *
+ * `composePublishesPorts` answers whether a stack publishes at all (the grant
+ * question); this answers WHICH, for the one caller that has to say something
+ * useful before anything is created: an import, where a stack carrying `80:80`
+ * is about to land on a machine whose 80 belongs to the proxy and the failure
+ * would otherwise arrive as an unexplained `docker compose up` error.
+ *
+ * Both spellings, and the range form (`8000-8005:8000-8005`) expanded, bounded
+ * so a wide range cannot turn one stack into a thousand probes.
+ */
+export function composeHostPorts(composeYaml: string): number[] {
+  let doc: ComposeDocShape | null;
+  try {
+    doc = yaml.load(composeYaml) as ComposeDocShape | null;
+  } catch {
+    return [];
+  }
+  const out = new Set<number>();
+  const add = (n: unknown) => {
+    const port = typeof n === "number" ? n : Number(String(n ?? "").trim());
+    if (Number.isInteger(port) && port > 0 && port < 65536) out.add(port);
+  };
+  for (const svc of Object.values(doc?.services ?? {})) {
+    const ports = svc?.ports;
+    if (!Array.isArray(ports)) continue;
+    for (const entry of ports) {
+      if (entry && typeof entry === "object") {
+        add((entry as { published?: unknown }).published);
+        continue;
+      }
+      if (typeof entry === "number") continue; // `- 3000` is a container port
+      if (typeof entry !== "string") continue;
+      // `[ip:]host[-range]:container[/proto]` - the host side is the
+      // second-to-last colon-separated field when there are two or more.
+      const parts = entry.split("/")[0].split(":");
+      if (parts.length < 2) continue;
+      const host = parts[parts.length - 2];
+      const range = /^(\d+)-(\d+)$/.exec(host);
+      if (range) {
+        const from = Number(range[1]);
+        const to = Math.min(Number(range[2]), from + 24);
+        for (let p = from; p <= to; p++) add(p);
+        continue;
+      }
+      add(host);
+    }
+  }
+  return [...out];
+}
+
 function hasExplicitTagOrDigest(image: string): boolean {
   if (image.includes("@")) return true; // digest pin
   // Strip a registry host (which may contain a port colon) before checking for
