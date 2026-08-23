@@ -14,8 +14,9 @@ import { cn } from "@/lib/utils";
  * Entirely GREY, no accent at all. "Not running" is the state the product paints
  * grey everywhere else (`AppStatusBadge` reserves red for `error`/`failed`), so a
  * coloured drawing here would contradict the badge sitting a few pixels away. The
- * socket is structure at 40% - it is the thing that was already there - and the
- * plug is the subject at full `--muted-foreground`.
+ * skirting is `--border`, the socket `--ring` - it is the thing that was already
+ * there - and the plug is the subject on `--muted-foreground`. Three solid greys,
+ * never one grey faded down.
  *
  * Pure SVG + CSS keyframes (see globals.css), no JS and no library. Two nested
  * groups, because the swing turns about the top of the cord while the dip runs
@@ -39,7 +40,7 @@ export function NotRunningGraphic({ className }: { className?: string }) {
         y1="86"
         x2="112"
         y2="86"
-        className="stroke-muted-foreground/40"
+        className="stroke-border"
         strokeWidth="2.5"
         strokeLinecap="round"
       />
@@ -47,14 +48,14 @@ export function NotRunningGraphic({ className }: { className?: string }) {
       {/* The socket: always there, never animated, waiting to be used. Two
           vertical slots and the earth hole below them - the arrangement everyone
           has looked at a thousand times, which is what makes it need no label. */}
-      <g className="stroke-muted-foreground/40" strokeWidth="2.5">
+      <g className="stroke-ring" strokeWidth="2.5">
         <rect x="42" y="65" width="36" height="18" rx="4.5" />
         <g strokeLinecap="round">
           <line x1="54" y1="69" x2="54" y2="75.5" />
           <line x1="66" y1="69" x2="66" y2="75.5" />
         </g>
       </g>
-      <circle cx="60" cy="79.5" r="2" className="fill-muted-foreground/40" />
+      <circle cx="60" cy="79.5" r="2" className="fill-ring" />
 
       {/* The plug, hanging from off the top of the frame. The swing turns the
           whole thing about the point the cord leaves the frame; the dip inside it

@@ -36,14 +36,14 @@ export function CronGraphic({ className }: { className?: string }) {
         cx="60"
         cy="60"
         r="42"
-        className="stroke-muted-foreground/40"
+        className="stroke-ring"
         strokeWidth="2.5"
       />
 
       {/* Three ticks, at 3, 6 and 9. The fourth position is the fire mark itself
           and a tick under it would blunt the one beat that matters. They stop at
           r=40 so they meet the ring's inner edge instead of crossing it. */}
-      <g className="stroke-muted-foreground/30" strokeWidth="2" strokeLinecap="round">
+      <g className="stroke-border" strokeWidth="2" strokeLinecap="round">
         <line x1="93" y1="60" x2="100" y2="60" />
         <line x1="60" y1="93" x2="60" y2="100" />
         <line x1="27" y1="60" x2="20" y2="60" />

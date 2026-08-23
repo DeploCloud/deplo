@@ -15,8 +15,9 @@ import { cn } from "@/lib/utils";
  * bays come on, the power light goes green, everything clears, and the frame
  * sits dark for a moment. A drawing that never stops moving reads as loading.
  *
- * Structure at 40% (ground, belt, rack, empty bays), the moving parts at full
- * `--muted-foreground`, and one `--success` beat for the moment it is live -
+ * Furniture on `--border` (ground, vents), the machines and the conveyor on
+ * `--ring`, the moving parts on `--muted-foreground`, and one `--success` beat
+ * for the moment it is live -
  * the same green the merge dot and the cron fire get, since it is the same kind
  * of moment. Nothing else is coloured: a deployment already owns a palette
  * elsewhere in the product (the status badges) and the empty state stays out of
@@ -44,7 +45,7 @@ export function DeploymentGraphic({ className }: { className?: string }) {
         y1="72"
         x2="114"
         y2="72"
-        className="stroke-muted-foreground/40"
+        className="stroke-border"
         strokeWidth="2.5"
         strokeLinecap="round"
       />
@@ -53,7 +54,7 @@ export function DeploymentGraphic({ className }: { className?: string }) {
           so it is drawn as recessive structure. Three empty bays waiting for
           something to run in them. */}
       <g
-        className="stroke-muted-foreground/40"
+        className="stroke-ring"
         strokeWidth="2"
         strokeLinejoin="round"
       >
@@ -66,7 +67,7 @@ export function DeploymentGraphic({ className }: { className?: string }) {
       {/* Vents. Two thin lines are the whole difference between a rounded
           rectangle and a machine. */}
       <g
-        className="stroke-muted-foreground/30"
+        className="stroke-border"
         strokeWidth="1.75"
         strokeLinecap="round"
       >
@@ -105,7 +106,7 @@ export function DeploymentGraphic({ className }: { className?: string }) {
       {/* The conveyor: two pulleys with the belt surface tangent across their
           tops and the ground doubling as the return side. */}
       <g
-        className="stroke-muted-foreground/40"
+        className="stroke-ring"
         strokeWidth="2"
         strokeLinecap="round"
       >
@@ -118,7 +119,7 @@ export function DeploymentGraphic({ className }: { className?: string }) {
           read as running; butt caps, because rounded ones turn every dash into a
           pill. */}
       <line
-        className="deplo-deploy-belt stroke-muted-foreground/70"
+        className="deplo-deploy-belt stroke-muted-foreground"
         x1="15"
         y1="58"
         x2="65"

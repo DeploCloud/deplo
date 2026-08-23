@@ -11,8 +11,9 @@ import { cn } from "@/lib/utils";
  *
  * Grey throughout, and deliberately: a log line has no status of its own here,
  * and the coloured beat the other drawings get (`--success` for a merge, a fired
- * job, a live server) would claim one. Recessive `--muted-foreground/40`
- * structure, the lines themselves at full muted-foreground.
+ * job, a live server) would claim one. The pane is `--ring`, its window buttons
+ * `--border`, and the lines themselves `--muted-foreground` - three solid greys,
+ * never one grey faded down.
  *
  * Pure SVG + CSS keyframes (see globals.css), no JS and no library, so it costs
  * one paint and renders in a server component. Under `prefers-reduced-motion` it
@@ -34,7 +35,7 @@ export function LogsGraphic({ className }: { className?: string }) {
         width="100"
         height="62"
         rx="5"
-        className="stroke-muted-foreground/40"
+        className="stroke-ring"
         strokeWidth="2"
       />
       <line
@@ -42,13 +43,13 @@ export function LogsGraphic({ className }: { className?: string }) {
         y1="28"
         x2="110"
         y2="28"
-        className="stroke-muted-foreground/40"
+        className="stroke-ring"
         strokeWidth="2"
       />
 
       {/* Window buttons. Three dots are the whole difference between a rounded
           rectangle and a terminal. */}
-      <g className="fill-muted-foreground/30">
+      <g className="fill-border">
         <circle cx="18" cy="21" r="2" />
         <circle cx="25" cy="21" r="2" />
         <circle cx="32" cy="21" r="2" />

@@ -154,7 +154,7 @@ export function MigrationGraphic({
           width="22"
           height="19"
           viewBox={DOKPLOY_VIEWBOX}
-          className={done ? "text-muted-foreground/30" : "text-foreground"}
+          className={done ? "text-border" : "text-foreground"}
         >
           {dokployPaths()}
         </svg>
@@ -165,7 +165,7 @@ export function MigrationGraphic({
       <path
         d="M52 60 H108"
         className={cn(
-          "stroke-muted-foreground/25",
+          "stroke-border",
           // The dots drift toward Deplo while the cable is still short of it.
           // It is the only motion the first screen has - nothing is connected
           // yet, so there is nothing else to show - and it says which way this
@@ -258,7 +258,7 @@ function Machine({
   children: React.ReactNode;
 }) {
   const ink = brand ? `url(#${BRAND_GRADIENT})` : undefined;
-  const line = dim ? "stroke-muted-foreground/20" : "stroke-muted-foreground/40";
+  const line = dim ? "stroke-border" : "stroke-ring";
   return (
     <>
       <rect
@@ -272,8 +272,8 @@ function Machine({
           brand
             ? undefined
             : dim
-              ? "stroke-muted-foreground/25"
-              : "stroke-muted-foreground/50"
+              ? "stroke-border"
+              : "stroke-muted-foreground"
         }
         strokeWidth="2.5"
       />
@@ -304,10 +304,10 @@ function Machine({
                   ? undefined
                   : "opacity-50"
                 : dim
-                  ? "fill-muted-foreground/20"
+                  ? "fill-border"
                   : i === 0
-                    ? "fill-muted-foreground/70"
-                    : "fill-muted-foreground/30",
+                    ? "fill-muted-foreground"
+                    : "fill-ring",
             )}
           />
         </React.Fragment>
@@ -340,7 +340,7 @@ function Socket({
           ? undefined
           : lit
             ? "stroke-[var(--success)]"
-            : "stroke-muted-foreground/60"
+            : "stroke-ring"
       }
       fill="var(--background)"
       strokeWidth="2.5"

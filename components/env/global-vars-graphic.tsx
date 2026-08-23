@@ -58,7 +58,7 @@ export function GlobalVarsGraphic({ className }: { className?: string }) {
 
       {/* The teams, each with its own two apps. Recessive structure: they exist
           whether or not anything is set here. */}
-      <g strokeWidth="2" className="stroke-muted-foreground/40">
+      <g strokeWidth="2" className="stroke-ring">
         <rect x="6" y="52" width="32" height="30" rx="5" />
         <rect x="44" y="52" width="32" height="30" rx="5" />
         <rect x="82" y="52" width="32" height="30" rx="5" />
@@ -66,13 +66,13 @@ export function GlobalVarsGraphic({ className }: { className?: string }) {
       <g
         strokeWidth="3"
         strokeLinecap="round"
-        className="stroke-muted-foreground/40"
+        className="stroke-border"
       >
         <line x1="13" y1="60" x2="24" y2="60" />
         <line x1="51" y1="60" x2="62" y2="60" />
         <line x1="89" y1="60" x2="100" y2="60" />
       </g>
-      <g strokeWidth="1.75" className="stroke-muted-foreground/40">
+      <g strokeWidth="1.75" className="stroke-border">
         <rect x="12" y="67" width="9" height="9" rx="2" />
         <rect x="23" y="67" width="9" height="9" rx="2" />
         <rect x="50" y="67" width="9" height="9" rx="2" />

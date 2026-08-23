@@ -53,12 +53,12 @@ export function NotificationIllustration({
     <div aria-hidden className="pointer-events-none select-none">
       <div className="relative mx-auto w-full max-w-[260px]">
         {/* The halo, breathing on the same clock as the cards. */}
-        <div className="absolute inset-x-4 top-10 -z-10 h-56 rounded-full bg-primary/25 blur-3xl animate-notif-halo" />
+        <div className="absolute inset-x-4 top-10 -z-10 h-56 rounded-full bg-[var(--violet)]/25 blur-3xl animate-notif-halo" />
 
-        <div className="relative overflow-hidden rounded-[2rem] border-[6px] border-foreground/10 bg-sidebar shadow-xl ring-1 ring-border">
+        <div className="relative overflow-hidden rounded-[2rem] border-[6px] border-border bg-sidebar shadow-xl ring-1 ring-border">
           {/* Notch */}
           <div className="flex justify-center pt-2">
-            <div className="h-1.5 w-16 rounded-full bg-foreground/15" />
+            <div className="h-1.5 w-16 rounded-full bg-border" />
           </div>
 
           <div className="space-y-2.5 px-3 pb-8 pt-5">
@@ -91,7 +91,7 @@ export function NotificationIllustration({
 
           {/* Home indicator */}
           <div className="flex justify-center pb-2">
-            <div className="h-1 w-20 rounded-full bg-foreground/15" />
+            <div className="h-1 w-20 rounded-full bg-border" />
           </div>
         </div>
       </div>

@@ -33,7 +33,7 @@ export function BackupScheduleGraphic({ className }: { className?: string }) {
       {/* What gets copied. Recessive: the loop is the subject, this is only what
           it goes around. */}
       <g
-        className="stroke-muted-foreground/40"
+        className="stroke-border"
         strokeWidth="2"
         strokeLinecap="round"
         strokeLinejoin="round"

@@ -28,7 +28,7 @@ export function AppVarsGraphic({ className }: { className?: string }) {
     >
       {/* The cards: already there before anything is set, so they are recessive
           structure and never move. The short bar is the app's name. */}
-      <g strokeWidth="2" className="stroke-muted-foreground/40">
+      <g strokeWidth="2" className="stroke-ring">
         <rect x="6" y="22" width="32" height="46" rx="5" />
         <rect x="44" y="22" width="32" height="46" rx="5" />
         <rect x="82" y="22" width="32" height="46" rx="5" />
@@ -36,7 +36,7 @@ export function AppVarsGraphic({ className }: { className?: string }) {
       <g
         strokeWidth="3"
         strokeLinecap="round"
-        className="stroke-muted-foreground/40"
+        className="stroke-border"
       >
         <line x1="13" y1="32" x2="25" y2="32" />
         <line x1="51" y1="32" x2="63" y2="32" />

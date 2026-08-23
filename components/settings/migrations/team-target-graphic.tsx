@@ -22,13 +22,13 @@ export function TeamTargetGraphic({ className }: { className?: string }) {
       {/* The open flaps, so it reads as a crate being filled and not a box. */}
       <path
         d="M9 21 L3 15"
-        className="stroke-muted-foreground/45"
+        className="stroke-border"
         strokeWidth="2.5"
         strokeLinecap="round"
       />
       <path
         d="M39 21 L45 15"
-        className="stroke-muted-foreground/45"
+        className="stroke-border"
         strokeWidth="2.5"
         strokeLinecap="round"
       />
@@ -38,13 +38,13 @@ export function TeamTargetGraphic({ className }: { className?: string }) {
         width="32"
         height="21"
         rx="3.5"
-        className="stroke-muted-foreground/55"
+        className="stroke-ring"
         strokeWidth="2.5"
       />
       {/* Three, because two reads as a pair and four as a crowd. */}
-      <rect x="13" y="26" width="6" height="9" rx="1.5" className="fill-primary/70" />
-      <rect x="21" y="26" width="6" height="9" rx="1.5" className="fill-primary/45" />
-      <rect x="29" y="26" width="6" height="9" rx="1.5" className="fill-primary/25" />
+      <rect x="13" y="26" width="6" height="9" rx="1.5" className="fill-primary" />
+      <rect x="21" y="26" width="6" height="9" rx="1.5" className="fill-muted-foreground" />
+      <rect x="29" y="26" width="6" height="9" rx="1.5" className="fill-ring" />
     </svg>
   );
 }

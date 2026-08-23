@@ -44,7 +44,7 @@ export function RegistryGraphic({ className }: { className?: string }) {
           offset ones read as water. Static - the whale moves, the sea does not,
           so there is one moving idea and not two competing ones. */}
       <g
-        className="stroke-muted-foreground/30"
+        className="stroke-border"
         strokeWidth="2.5"
         strokeLinecap="round"
       >

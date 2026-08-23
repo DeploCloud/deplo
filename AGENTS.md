@@ -512,6 +512,22 @@ Single endpoint `app/api/graphql/route.ts` (thin) → `lib/graphql/yoga.ts`. One
   (`bg-background`, `text-muted-foreground`). App defaults to dark; theme is a **custom provider**
   (`useTheme` from `@/components/theme-provider`, not next-themes), zero-flash via the `theme`
   cookie read in `app/layout.tsx`. `cn()` from `@/lib/utils`; the only path alias is `@/* → ./*`.
+- **An illustration NEVER draws a grey as white-with-alpha.** Every `*-graphic.tsx` and every
+  animated or static illustration paints in **solid tokens at 100%**: if a grey is wanted, use the
+  token that IS that grey. `foreground/40`, `primary/45`, `muted-foreground/25`, `bg-white/[0.04]`,
+  `fillOpacity="0.65"` over a light fill - all forbidden, in both themes and in every state
+  (`dim`, `off`, `done`, hover). It matters because `--foreground` and `--primary` are **near-white
+  on the dark theme**: `stroke-primary/45` is not "a soft grey", it is white at 45%, and it renders
+  as a washed-out smear that changes shade with whatever sits behind it. The three greys, recessive
+  to prominent, are:
+  **`--border`** furniture (floors, shelves, panes, tracks, vents) · **`--ring`** the drawn object
+  that is not the subject (a machine, a socket, a crate, a clock face) · **`--muted-foreground`**
+  the subject when it carries no colour. Colour beats stay what they were (`--success`, `--violet`,
+  `--chart-*`, a brand gradient), and an alpha on a genuinely coloured token is fine - the ban is
+  white and near-white only.
+  **The one carve-out is MOTION:** an opacity that animates (a fade-in, a blink, a pulse, a packet
+  arriving) is movement, not a colour choice, and stays. An opacity that is the element's resting
+  shade is a colour choice, and gets replaced by the token for that shade.
 
 ## UX philosophy to preserve
 

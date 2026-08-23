@@ -48,14 +48,14 @@ export function EnvGraphic({ className }: { className?: string }) {
         width="100"
         height="56"
         rx="10"
-        className="stroke-muted-foreground/40"
+        className="stroke-ring"
         strokeWidth="2.5"
       />
 
       {/* The equals. Muted because it is grammar, not content - it is the same
           on every row that will ever land here. */}
       <g
-        className="stroke-muted-foreground/40"
+        className="stroke-border"
         strokeWidth="2"
         strokeLinecap="round"
       >

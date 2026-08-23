@@ -44,7 +44,7 @@ export function CatalogOfflineGraphic({ className }: { className?: string }) {
           dashed line is what every network diagram means by "a hop", and muted
           because this half of the picture is not what failed. */}
       <g
-        className="stroke-muted-foreground/40"
+        className="stroke-border"
         strokeWidth="2.5"
         strokeLinecap="round"
         strokeDasharray="2 6"
@@ -55,7 +55,7 @@ export function CatalogOfflineGraphic({ className }: { className?: string }) {
 
       {/* This instance: the only thing in the drawing that is definitely fine,
           so it never moves and never changes colour. */}
-      <g className="stroke-muted-foreground/40" strokeWidth="2.5">
+      <g className="stroke-ring" strokeWidth="2.5">
         <rect x="38" y="96" width="44" height="20" rx="5" />
         {/* One lit pin, so the box reads as a machine and not as a card. */}
         <line x1="46" y1="106" x2="46" y2="106" strokeLinecap="round" />

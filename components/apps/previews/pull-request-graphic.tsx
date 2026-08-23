@@ -51,11 +51,11 @@ export function PullRequestGraphic({
         y1="12"
         x2="30"
         y2="88"
-        className="stroke-muted-foreground/40"
+        className="stroke-ring"
         strokeWidth="2.5"
         strokeLinecap="round"
       />
-      <circle cx="30" cy="12" r="3.5" className="fill-muted-foreground/40" />
+      <circle cx="30" cy="12" r="3.5" className="fill-ring" />
 
       {/* The pull request: out of the trunk, along, and back in. One path so the
           draw-on reads as a single continuous gesture rather than three. */}
@@ -63,7 +63,7 @@ export function PullRequestGraphic({
         d="M30 28 C30 40, 80 34, 80 46 L80 62 C80 74, 30 70, 30 82"
         className={
           off
-            ? "deplo-pr-branch-off stroke-muted-foreground/50"
+            ? "deplo-pr-branch-off stroke-muted-foreground"
             : "deplo-pr-branch stroke-primary"
         }
         strokeWidth="2.5"

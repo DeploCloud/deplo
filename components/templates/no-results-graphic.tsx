@@ -32,7 +32,7 @@ export function NoResultsGraphic({ className }: { className?: string }) {
         y1="82"
         x2="104"
         y2="82"
-        className="stroke-muted-foreground/30"
+        className="stroke-border"
         strokeWidth="2.5"
         strokeLinecap="round"
       />
@@ -63,14 +63,16 @@ export function NoResultsGraphic({ className }: { className?: string }) {
       {/* The lens. It fades in at the left edge and out at the right one rather
           than snapping back, so the loop has no seam. */}
       <g className="deplo-find-lens">
-        {/* Barely-there fill: you have to be able to see the row THROUGH the
+        {/* No fill at all: you have to be able to see the row THROUGH the
             glass, or this is a disc that eats templates rather than a lens
-            that looks at them. */}
+            that looks at them. The glint below is what says "glass"; a tinted
+            disc would have to be white at a few percent, which this repo does
+            not draw. */}
         <circle
           cx="60"
           cy="60"
           r="21"
-          className="fill-foreground/5 stroke-primary"
+          className="stroke-primary"
           strokeWidth="3"
         />
         <line
@@ -88,7 +90,6 @@ export function NoResultsGraphic({ className }: { className?: string }) {
           className="stroke-background"
           strokeWidth="2.5"
           strokeLinecap="round"
-          opacity="0.7"
         />
       </g>
     </svg>

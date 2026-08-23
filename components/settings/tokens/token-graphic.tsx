@@ -42,7 +42,7 @@ export function TokenGraphic({ className }: { className?: string }) {
           where they enter it. It pivots on the LEFT leg's base, which is what
           makes it swing out like a padlock instead of sliding up like a lid. */}
       <path
-        className="deplo-token-shackle stroke-muted-foreground/40"
+        className="deplo-token-shackle stroke-ring"
         d="M60 44V30a18 18 0 0 1 36 0v14"
         strokeWidth="2.5"
         strokeLinecap="round"
@@ -111,13 +111,13 @@ export function TokenGraphic({ className }: { className?: string }) {
         width="56"
         height="48"
         rx="10"
-        className="fill-secondary stroke-muted-foreground/40"
+        className="fill-secondary stroke-ring"
         strokeWidth="2.5"
       />
 
       {/* The keyhole, on top of the body, on the shaft's own line: it is what
           the angled key points at once it turns. */}
-      <g className="fill-muted-foreground/40">
+      <g className="fill-ring">
         <circle cx="78" cy="63" r="4.5" />
         <path d="M75.5 66h5l1.5 9h-8Z" />
       </g>

@@ -34,14 +34,14 @@ export function AppsGraphic({ className }: { className?: string }) {
         y1="78"
         x2="86"
         y2="78"
-        className="stroke-muted-foreground/40"
+        className="stroke-border"
         strokeWidth="2.5"
         strokeLinecap="round"
       />
 
       {/* Exhaust rolling out sideways along the pad. Drawn before the rocket so
           it never covers it, and gone by the time the frame comes to rest. */}
-      <g className="fill-muted-foreground/25">
+      <g className="fill-border">
         <circle className="deplo-rocket-smoke" cx="42" cy="77" r="4" />
         <circle className="deplo-rocket-smoke" cx="78" cy="77" r="4" />
       </g>
@@ -77,7 +77,7 @@ export function AppsGraphic({ className }: { className?: string }) {
           cx="60"
           cy="50"
           r="4.5"
-          className="stroke-muted-foreground/40"
+          className="stroke-ring"
           strokeWidth="2"
         />
       </g>

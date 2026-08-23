@@ -45,7 +45,7 @@ export function DatabaseGraphic({ className }: { className?: string }) {
         y1="70"
         x2="112"
         y2="70"
-        className="stroke-muted-foreground/40"
+        className="stroke-border"
         strokeWidth="2.5"
         strokeLinecap="round"
       />
@@ -53,7 +53,7 @@ export function DatabaseGraphic({ className }: { className?: string }) {
       {/* The database that is not there: dashed, sitting ON the ground, with the
           one band that separates a drum from a plain cylinder. */}
       <g
-        className="stroke-muted-foreground/40"
+        className="stroke-ring"
         strokeWidth="2"
         strokeDasharray="5 4"
       >

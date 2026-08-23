@@ -43,7 +43,7 @@ export function DomainGraphic({ className }: { className?: string }) {
       className={cn("size-32", className)}
     >
       <g
-        className="stroke-muted-foreground/40"
+        className="stroke-ring"
         strokeWidth="2.5"
         strokeLinecap="round"
       >

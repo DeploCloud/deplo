@@ -32,7 +32,7 @@ export function DestinationGraphic({ className }: { className?: string }) {
         y1="70"
         x2="112"
         y2="70"
-        className="stroke-muted-foreground/40"
+        className="stroke-border"
         strokeWidth="2.5"
         strokeLinecap="round"
       />

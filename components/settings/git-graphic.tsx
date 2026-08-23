@@ -57,7 +57,7 @@ export function GitGraphic({ className }: { className?: string }) {
         y1="45"
         x2="70"
         y2="45"
-        className="stroke-muted-foreground/25"
+        className="stroke-border"
         strokeWidth="2"
         strokeDasharray="3 5"
         strokeLinecap="round"
@@ -71,10 +71,10 @@ export function GitGraphic({ className }: { className?: string }) {
         width="44"
         height="62"
         rx="10"
-        className="stroke-muted-foreground/40"
+        className="stroke-ring"
         strokeWidth="2.5"
       />
-      <g className="fill-muted-foreground/40" strokeLinecap="round">
+      <g className="fill-ring" strokeLinecap="round">
         {[29, 45, 61].map((y) => (
           <g key={y}>
             <circle cx="15" cy={y} r="3" />
@@ -83,7 +83,7 @@ export function GitGraphic({ className }: { className?: string }) {
               y1={y}
               x2="40"
               y2={y}
-              className="stroke-muted-foreground/40"
+              className="stroke-ring"
               strokeWidth="5"
             />
           </g>
@@ -97,7 +97,7 @@ export function GitGraphic({ className }: { className?: string }) {
         width="44"
         height="62"
         rx="10"
-        className="stroke-muted-foreground/40"
+        className="stroke-ring"
         strokeWidth="2.5"
       />
 

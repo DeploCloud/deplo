@@ -131,7 +131,7 @@ export function RobotGraphic({
         width="32"
         height="48"
         rx="6"
-        className="stroke-muted-foreground/40"
+        className="stroke-ring"
         strokeWidth="2.5"
       />
       <line
@@ -139,7 +139,7 @@ export function RobotGraphic({
         y1="51"
         x2="143"
         y2="51"
-        className="stroke-muted-foreground/40"
+        className="stroke-border"
         strokeWidth="2.5"
         strokeLinecap="round"
       />
@@ -148,7 +148,7 @@ export function RobotGraphic({
         y1="60"
         x2="143"
         y2="60"
-        className="stroke-muted-foreground/40"
+        className="stroke-border"
         strokeWidth="2.5"
         strokeLinecap="round"
       />
@@ -171,7 +171,7 @@ export function RobotGraphic({
         width="7"
         height="10"
         rx="2"
-        className={live ? undefined : "stroke-muted-foreground/40"}
+        className={live ? undefined : "stroke-ring"}
         fill={live ? "var(--success)" : "none"}
         strokeWidth="2.5"
       />
@@ -183,7 +183,7 @@ export function RobotGraphic({
           className={
             live
               ? "stroke-[var(--deplo-robot-ink)]"
-              : "deplo-robot-cable stroke-muted-foreground/70"
+              : "deplo-robot-cable stroke-muted-foreground"
           }
           strokeWidth="2.5"
           strokeLinecap="round"
@@ -205,7 +205,7 @@ export function RobotGraphic({
         y1="26"
         x2="44"
         y2="17"
-        className="stroke-muted-foreground/60"
+        className="stroke-ring"
         strokeWidth="2.5"
         strokeLinecap="round"
       />

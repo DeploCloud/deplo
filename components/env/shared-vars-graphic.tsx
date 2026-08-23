@@ -67,7 +67,7 @@ export function SharedVarsGraphic({ className }: { className?: string }) {
       </g>
 
       {/* The apps that consume it, waiting: recessive until the value arrives. */}
-      <g strokeWidth="2" className="stroke-muted-foreground/40">
+      <g strokeWidth="2" className="stroke-ring">
         <rect x="8" y="62" width="26" height="20" rx="4" />
         <rect x="47" y="62" width="26" height="20" rx="4" />
         <rect x="86" y="62" width="26" height="20" rx="4" />
