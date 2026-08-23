@@ -4563,6 +4563,11 @@ input ShellLabelInput {
 
 type Subscription {
   """
+  Emits how many deployments are in flight (queued or building) across the active team, counting only the apps the caller can reach. Fires once immediately, then on every change - it is what the sidebar's live chip reads.
+  """
+  activeDeployments: Int
+
+  """
   Emits the app whenever its status (power / deployment) changes. Fires once immediately with the current snapshot, then on every change.
   """
   appStatus(slug: String!): App
