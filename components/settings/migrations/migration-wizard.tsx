@@ -12,6 +12,7 @@ import {
 } from "lucide-react";
 
 import { gqlAction } from "@/lib/graphql-client";
+import { lockPageAround } from "@/lib/page-lock";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Progress } from "@/components/ui/progress";
@@ -780,6 +781,58 @@ export function MigrationWizard({
 
   /* ---- render ------------------------------------------------------ */
 
+  /**
+   * The migration owns the screen. True from the first project moved until the
+   * run is resolved one way or the other - a stopped or failed one included,
+   * because that is half of somebody's platform sitting between two places and
+   * "Undo the migration" lives on this panel and nowhere else.
+   *
+   * It is exactly the window in which the moving panel is up - the step
+   * included, because keeping a half-finished run carries its failure over to
+   * the report, and a page that never let go of the lock would be the worst
+   * possible place to end a migration.
+   */
+  const moving = step === "review" && (running || stopped || failure !== null);
+
+  /**
+   * While it does, everything else on the page is switched off: the sidebar,
+   * the topbar with its team switcher and account menu, the banners, the
+   * page's own tabs. Not a confirm dialog - switching team is a button, not a
+   * link, and it remounts every page under the layout, so it took the running
+   * migration with it without ever looking like navigation.
+   *
+   * Back is refused the same way: the browser gets its entry pushed straight
+   * back and the person gets told what to do instead. Closing the tab is the
+   * one vector left, and that one is the browser's own prompt (the guard
+   * below).
+   */
+  const heldRef = React.useRef<HTMLDivElement>(null);
+  React.useEffect(() => {
+    const root = heldRef.current;
+    if (!moving || !root) return;
+    // One spare history entry for Back to land on, pushed once for the whole
+    // window. The state object is Next's, not ours: a sentinel carrying a null
+    // state is one the App Router cannot restore on the way forward again.
+    window.history.pushState(window.history.state, "", window.location.href);
+    return lockPageAround(root);
+  }, [moving]);
+
+  React.useEffect(() => {
+    if (!moving) return;
+    const onPop = () => {
+      // Put the entry back before the browser is done with the gesture, so the
+      // URL never actually changes and nothing under the layout remounts.
+      window.history.pushState(window.history.state, "", window.location.href);
+      toast.warning(
+        running
+          ? "The migration is still running. Stop it first if you need to leave."
+          : "Undo the migration or keep what landed before leaving this page.",
+      );
+    };
+    window.addEventListener("popstate", onPop);
+    return () => window.removeEventListener("popstate", onPop);
+  }, [moving, running]);
+
   // One derived value drives the picture. `running` wins over the step, because
   // the cable full of packets is the truest thing on the screen at that moment.
   const pose: MigrationState = running
@@ -801,8 +854,10 @@ export function MigrationWizard({
 
   return (
     <>
-      {/* Both vectors, and `running` is the one that matters: half a migration
-          is projects already stopped on Dokploy and not yet created here. */}
+      {/* The soft half, for a plan somebody spent ten minutes choosing: a
+          confirm on the way out. Once the run STARTS there is nothing to
+          confirm - `moving` above switches the rest of the page off outright,
+          and all this still carries is the browser's own close-tab prompt. */}
       <UnsavedChangesGuard
         when={guarded}
         title={running ? "The migration is still running" : "Leave the migration?"}
@@ -832,7 +887,7 @@ export function MigrationWizard({
           isInstanceAdmin={isInstanceAdmin}
         />
       ) : (
-        <div className="mx-auto flex w-full flex-col items-center gap-8">
+        <div ref={heldRef} className="mx-auto flex w-full flex-col items-center gap-8">
           <MigrationGraphic state={pose} className="h-auto w-full max-w-md" />
 
           {/* One width for every step, and it is the narrow one: a wizard is
@@ -850,6 +905,10 @@ export function MigrationWizard({
                 steps={STEPS}
                 current={step}
                 reachable={(s) => {
+                  // The rail is inside the panel, so the lock cannot switch it
+                  // off - it says so itself instead: while the migration owns
+                  // the screen the only step there is is the one it is on.
+                  if (moving) return s === "review";
                   if (s === "connect") return true;
                   if (s === "install" || s === "review") return plan != null;
                   // People and the report are what the migration produces: an
@@ -857,8 +916,9 @@ export function MigrationWizard({
                   return items.length > 0;
                 }}
                 onSelect={(s) => {
-                  // Nothing moves while the loop is mid-flight.
-                  if (running) return;
+                  // Nothing moves while the loop is mid-flight, or while a
+                  // stopped run is still waiting to be undone or kept.
+                  if (moving) return;
                   setStep(s);
                 }}
               />
@@ -893,7 +953,7 @@ export function MigrationWizard({
 
               {step === "review" &&
                 plan &&
-                (running || stopped || failure ? (
+                (moving ? (
                   <MovingPanel
                     progress={progress}
                     failure={failure}
