@@ -17,7 +17,10 @@ import { backOutOf } from "./navigation-history";
 import { useAppNav } from "@/components/apps/app-nav-store";
 import { useDbNav } from "@/components/storage/db-nav-store";
 import { useConsoleAck } from "@/components/apps/console-ack";
+import { useActiveDeployments } from "./deploy-activity";
 import { cn } from "@/lib/utils";
+import { Badge } from "@/components/ui/badge";
+import { StatusDot } from "@/components/shared/status-badge";
 import {
   Tooltip,
   TooltipContent,
@@ -48,6 +51,9 @@ export function SidebarNav({
   // The console chip is unlocked only once the user confirms its warning; `null`
   // (undecided, pre-hydration) reads as "not yet" so nothing flashes.
   const consoleAcknowledged = useConsoleAck() === true;
+  // Builds in flight right now, live. Decorates the Deployments entry so a
+  // running deploy is visible from anywhere in the dashboard.
+  const deploying = useActiveDeployments();
 
   // A "back" escape hatch leaves the whole current section via the browser's
   // history — jumping to the last page you were on *outside* it — so it lands
@@ -283,13 +289,22 @@ export function SidebarNav({
                 </Tooltip>
               );
             }
+            // "3 deployments in progress" replaces both the label and the
+            // tooltip while builds are running: with the chip on, that IS what
+            // the entry is saying.
+            const deployingTip =
+              item.href === "/deployments" && deploying > 0
+                ? `${deploying} deployment${deploying === 1 ? "" : "s"} in progress`
+                : null;
             return (
               <Tooltip key={item.href} delayDuration={collapsed ? 0 : 400}>
                 <TooltipTrigger asChild>
                   <Link
                     href={item.href}
                     onClick={(e) => handleNavClick(item, e)}
-                    aria-label={item.label}
+                    aria-label={
+                      deployingTip ? `${item.label}, ${deployingTip}` : item.label
+                    }
                     data-active={active ? "true" : undefined}
                     className={cn(
                       // relative z-10 keeps the label/icon above the sliding pill.
@@ -311,10 +326,27 @@ export function SidebarNav({
                       />
                     )}
                     {!collapsed && item.label}
+                    {deployingTip &&
+                      (collapsed ? (
+                        // No room for a number next to the icon: the pulsing dot
+                        // alone, in its corner, like any unread marker.
+                        <StatusDot
+                          status="building"
+                          className="absolute right-1 top-1"
+                        />
+                      ) : (
+                        <Badge
+                          variant="warning"
+                          className="ml-auto gap-1.5 px-1.5 py-0 tabular-nums"
+                        >
+                          <StatusDot status="building" />
+                          {deploying}
+                        </Badge>
+                      ))}
                   </Link>
                 </TooltipTrigger>
                 <TooltipContent side="right">
-                  {collapsed ? item.label : item.tooltip}
+                  {deployingTip ?? (collapsed ? item.label : item.tooltip)}
                 </TooltipContent>
               </Tooltip>
             );

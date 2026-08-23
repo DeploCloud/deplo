@@ -26,6 +26,7 @@ import { createPubSub } from "@graphql-yoga/subscription";
  */
 type Channels = {
   appChanged: [id: string, payload: string];
+  appActivity: [topic: string, payload: string];
   databaseChanged: [id: string, payload: string];
   cleanupRunsChanged: [id: string, payload: string];
 };
@@ -37,9 +38,20 @@ const g = globalThis as unknown as { [PUBSUB_KEY]?: ServicePubSub };
 export const pubSub: ServicePubSub = (g[PUBSUB_KEY] ??=
   createPubSub<Channels>());
 
+/**
+ * The one key the `appActivity` channel uses. A team-wide feed - "is anything
+ * deploying right now" - has no per-resource key to filter on, so it rides a
+ * single channel with a constant key, the same shape as {@link CLEANUP_RUNS_TOPIC}.
+ */
+export const APP_ACTIVITY_TOPIC = "instance";
+
 /** Notify every subscriber that this app's state changed. */
 export function publishAppChanged(appId: string): void {
   pubSub.publish("appChanged", appId, appId);
+  // ponytail: one instance-wide channel, so every open sidebar re-counts on any
+  // app change (a COUNT over the team's in-flight builds). Key it per team if
+  // the wakeups ever show up in a profile.
+  pubSub.publish("appActivity", APP_ACTIVITY_TOPIC, appId);
 }
 
 /** Notify every subscriber that this database's state changed — same contract

@@ -54,7 +54,7 @@ import {
   frameworkById,
   type FrameworkDefinition,
 } from "@/lib/apps/framework-catalog";
-import { pubSub } from "../pubsub";
+import { pubSub, APP_ACTIVITY_TOPIC } from "../pubsub";
 import {
   listDeployments,
   getDeployment,
@@ -68,6 +68,7 @@ import {
   cancelAllDeployments,
   deleteDeployments,
   deleteAllDeployments,
+  countActiveDeploymentsForTeam,
 } from "@/lib/data/deployments";
 import { renderAppStack } from "@/lib/deploy/build";
 import { redactComposeForDisplay } from "@/lib/deploy/compose-redact";
@@ -1278,7 +1279,45 @@ builder.subscriptionFields((t) => ({
     // The generator yields fully-resolved, team-scoped snapshots already.
     resolve: (project) => project,
   }),
+  activeDeployments: t.int({
+    description:
+      "Emits how many deployments are in flight (queued or building) across the active team, counting only the apps the caller can reach. Fires once immediately, then on every change - it is what the sidebar's live chip reads.",
+    authScopes: { loggedIn: true },
+    subscribe: (_root, _args, ctx) =>
+      activeDeploymentsStream(ctx.teamId, ctx.viewer?.id ?? null),
+    resolve: (count) => count,
+  }),
 }));
+
+/**
+ * Live count of the team's in-flight builds. Cookie-free like the stream above:
+ * team and principal come from the GraphQL context, and the count re-reads
+ * through the explicit-argument seam on every ping.
+ *
+ * It listens on the instance-wide `appActivity` channel because a team-wide
+ * feed has no per-resource key to filter on. Every app change wakes it; only a
+ * CHANGED count is pushed, so a start/stop that moves nothing emits nothing.
+ */
+export async function* activeDeploymentsStream(
+  teamId: string | null,
+  userId: string | null,
+): AsyncGenerator<number> {
+  if (!teamId || !userId) throw new Error("Not signed in");
+  let last = await countActiveDeploymentsForTeam(teamId, userId);
+  yield last;
+  for await (const changedId of pubSub.subscribe(
+    "appActivity",
+    APP_ACTIVITY_TOPIC,
+  )) {
+    // The payload names the app that moved; this answer is a team-wide count,
+    // so the id means nothing here beyond "re-read".
+    void changedId;
+    const next = await countActiveDeploymentsForTeam(teamId, userId);
+    if (next === last) continue;
+    last = next;
+    yield next;
+  }
+}
 
 // Exported for the cut-set (c) SSE test (PLAN §6 "Add a test that drives the
 // generator across >1 ping"): it must stay cookie-free across iteration ticks.

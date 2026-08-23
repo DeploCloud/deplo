@@ -14,6 +14,7 @@ import { seedIdentity, TEAM_A, USER_1 } from "./identity-test-helpers";
 import {
   seedServer,
   seedApp,
+  seedDeployment,
   TRUNCATE_PROJECT_GRAPH,
 } from "./app-graph-test-helpers";
 import { eq } from "drizzle-orm";
@@ -26,7 +27,7 @@ import {
   projects as projectsTable,
 } from "../db/schema/control-plane";
 import { ALL_CAPABILITIES } from "../types";
-import { appStatusStream } from "../graphql/types/app";
+import { appStatusStream, activeDeploymentsStream } from "../graphql/types/app";
 
 /**
  * Step 4 SSE generator test (relational-store PLAN §6 "SSE generators must stay
@@ -280,4 +281,71 @@ test("an app moved into a folder the watcher can't see ends their stream", async
     .where(eq(appsTable.id, "prj_1"));
   publishAppChanged("prj_1");
   assert.equal((await pending).done, true, "the stream must end, not keep feeding");
+});
+
+/* ------------------------------------------------------------------ */
+/* The sidebar's live "deploying" chip                                 */
+/* ------------------------------------------------------------------ */
+
+test("activeDeploymentsStream counts in-flight builds and only pushes on change", async () => {
+  await seedApp(db, { id: "prj_1", slug: "alpha", teamId: TEAM_A, status: "active" });
+  await seedDeployment(db, { id: "dep_1", appId: "prj_1", status: "building" });
+  await seedDeployment(db, { id: "dep_2", appId: "prj_1", status: "queued" });
+  // Finished history never counts.
+  await seedDeployment(db, { id: "dep_3", appId: "prj_1", status: "ready" });
+
+  // No runWithIdentity: the chip reads this from an SSE tick, where cookies are
+  // long gone.
+  const gen = activeDeploymentsStream(TEAM_A, USER_1);
+  assert.equal((await gen.next()).value, 2);
+
+  // A ping is only a "re-read": one build settling drops the count to 1.
+  const pending = gen.next();
+  await pg.exec(`update deployments set status = 'ready' where id = 'dep_1';`);
+  publishAppChanged("prj_1");
+  assert.equal((await pending).value, 1);
+
+  await pg.exec(`update deployments set status = 'canceled' where id = 'dep_2';`);
+  const drained = gen.next();
+  publishAppChanged("prj_1");
+  assert.equal((await drained).value, 0);
+
+  await gen.return(undefined as never);
+});
+
+test("a build inside a folder the member can't see is not counted", async () => {
+  await pg.exec(`truncate table users, teams restart identity cascade;`);
+  await seedIdentity(db, {
+    users: [
+      { id: "u_folder_owner", teamId: TEAM_A, role: "owner" },
+      {
+        id: "u_outsider",
+        teamId: TEAM_A,
+        role: "member",
+        isInstanceAdmin: false,
+        capabilities: ["view", "create_apps", "deploy_apps"],
+      },
+    ],
+  });
+  await db.insert(foldersTable).values({
+    id: "fld_private",
+    teamId: TEAM_A,
+    name: "Private",
+    parentId: null,
+    color: null,
+    ownerUserId: "u_folder_owner",
+    createdAt: "2026-01-01T00:00:00.000Z",
+    updatedAt: "2026-01-01T00:00:00.000Z",
+  });
+  await seedApp(db, { id: "prj_1", slug: "alpha", teamId: TEAM_A, status: "active" });
+  await db
+    .update(appsTable)
+    .set({ folderId: "fld_private" })
+    .where(eq(appsTable.id, "prj_1"));
+  await seedDeployment(db, { id: "dep_1", appId: "prj_1", status: "building" });
+
+  // A count is small, but it is still "something is happening in a folder you
+  // are refused" — and clicking the chip would show an empty Deployments page.
+  assert.equal((await activeDeploymentsStream(TEAM_A, "u_outsider").next()).value, 0);
+  assert.equal((await activeDeploymentsStream(TEAM_A, "u_folder_owner").next()).value, 1);
 });

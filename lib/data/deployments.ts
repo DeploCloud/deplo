@@ -34,6 +34,7 @@ import { loadDeploymentLogs } from "./deployment-logs";
 import {
   appCapabilities,
   appCapabilitiesForTeam,
+  nodeCapabilitiesFor,
   hasAppCapability,
   requireAppCapability,
 } from "./node-access";
@@ -640,6 +641,52 @@ export async function cancelDeployment(id: string): Promise<boolean> {
  * else (`ready` / `error` / `canceled`) is terminal history and safe to remove.
  */
 const IN_PROGRESS: Deployment["status"][] = ["queued", "building"];
+
+/**
+ * How many deployments are in flight (queued or building) for a team, seen from
+ * one member's side: a build inside a folder they can't reach - or outside a
+ * narrowed token's scope - is not counted, exactly as it is not listed on the
+ * Deployments page. Feeds the sidebar's live chip.
+ *
+ * Cookie-free on purpose (team and principal are arguments): the chip reads it
+ * from an SSE generator, where `cookies()` is no longer callable across
+ * iteration ticks - the same contract as `summarizeForTeam` in ./apps.ts.
+ */
+export async function countActiveDeploymentsForTeam(
+  teamId: string,
+  userId: string,
+): Promise<number> {
+  const rows = await getDb()
+    .select({ appId: deploymentsTable.appId })
+    .from(deploymentsTable)
+    .innerJoin(appsTable, eq(deploymentsTable.appId, appsTable.id))
+    .where(
+      and(
+        eq(appsTable.teamId, teamId),
+        appScopeWhere(),
+        inArray(deploymentsTable.status, IN_PROGRESS),
+      ),
+    );
+  // One reachability answer per DISTINCT app - the set is whatever is building
+  // right now, so a handful at most, and two builds of one app ask once.
+  const reachable = new Map<string, boolean>();
+  let count = 0;
+  for (const row of rows) {
+    let ok = reachable.get(row.appId);
+    if (ok === undefined) {
+      ok =
+        (
+          await nodeCapabilitiesFor(userId, teamId, {
+            kind: "app",
+            id: row.appId,
+          })
+        ).length > 0;
+      reachable.set(row.appId, ok);
+    }
+    if (ok) count++;
+  }
+  return count;
+}
 
 /** Narrow a deployment sweep to one owning server. Matches the SAME effective
  *  server the list shows — the deployment's own `server_id`, or the app's when
