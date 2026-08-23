@@ -1823,6 +1823,16 @@ export const appBasicAuthUsers = pgTable(
       .references(() => apps.id, { onDelete: "cascade" }),
     username: text("username").notNull(),
     passwordEnc: text("password_enc").notNull(),
+    /**
+     * Carried over from another platform, unchanged and unvetted.
+     *
+     * Every password a person CHOOSES here goes through the policy and the
+     * breach check. An imported one is not chosen now: it is already protecting
+     * a URL that is already public, and refusing it removes the protection
+     * rather than strengthening it. So it is written as it is and flagged, and
+     * Access says so next to the user.
+     */
+    imported: boolean("imported").notNull().default(false),
     createdByUserId: text("created_by_user_id").references(() => users.id, {
       onDelete: "set null",
     }),

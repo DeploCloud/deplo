@@ -306,6 +306,9 @@ test("no DTO ever carries the password — the reveal is the only way to it", as
     "createdAt",
     "createdBy",
     "id",
+    // Whether the credential was carried over unvetted. Identity metadata like
+    // the authors: safe to project, and the reason Access can warn about it.
+    "imported",
     "updatedAt",
     "updatedBy",
     "username",
@@ -358,5 +361,28 @@ test("a password that cannot be decrypted fails the reveal (never returns empty)
   await assert.rejects(
     () => as(OWNER_A, TEAM_A, () => revealBasicAuthPassword(u.id)),
     /could not be decrypted/i,
+  );
+});
+
+/**
+ * A credential carried over from another platform keeps working. Deplo's two
+ * password gates are for a password someone is CHOOSING; an imported one is
+ * already in use and already protecting a public URL, so refusing it removed the
+ * protection instead of strengthening it - a real migration put a code-server
+ * online with no basic auth at all because "CoderPass123" has no special
+ * character.
+ */
+test("an imported credential skips the password policy and is flagged weak", async () => {
+  const weak = await as(OWNER_A, TEAM_A, () =>
+    addBasicAuthUser(APP_A, "carried", "coderpass123", { imported: true }),
+  );
+  assert.equal(weak.imported, true);
+  // The same password typed in by hand is still refused.
+  await assert.rejects(
+    () =>
+      as(OWNER_A, TEAM_A, () =>
+        addBasicAuthUser(APP_A, "typed", "coderpass123"),
+      ),
+    /uppercase|special|number/i,
   );
 });

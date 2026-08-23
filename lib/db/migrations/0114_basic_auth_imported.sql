@@ -1,0 +1,13 @@
+-- A basic-auth credential that came from another platform, unchanged.
+--
+-- Deplo puts every password a PERSON chooses through the same two gates (the
+-- local policy, then Have I Been Pwned). A credential carried over by an import
+-- is not one of those: nobody is choosing it now, it is already in use, and the
+-- app it protects is about to answer on the internet. Refusing it did not make
+-- anything stronger - it dropped the protection and let the app arrive OPEN,
+-- which is what a migration of a code-server did on a real instance.
+--
+-- So an imported credential is written verbatim and flagged here, and Access
+-- shows that flag next to the user. NULL/false is every credential someone typed
+-- into Deplo, which still passes both gates.
+ALTER TABLE "app_basic_auth_users" ADD COLUMN IF NOT EXISTS "imported" boolean DEFAULT false NOT NULL;

@@ -799,6 +799,13 @@
       "when": 1784942201000,
       "tag": "0113_domain_imported_from",
       "breakpoints": true
+    },
+    {
+      "idx": 114,
+      "version": "7",
+      "when": 1784942201001,
+      "tag": "0114_basic_auth_imported",
+      "breakpoints": true
     }
   ]
 }

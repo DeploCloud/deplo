@@ -59,6 +59,13 @@ export interface BasicAuthUserDTO {
    * "—" rather than guessing. */
   createdBy: VarAuthor | null;
   updatedBy: VarAuthor | null;
+  /**
+   * The credential came from another platform verbatim, so it never went
+   * through Deplo's password policy or the breach check. Shown in Access as a
+   * warning: keeping the app protected during a migration is worth more than a
+   * strong password nobody set, but it is worth rotating afterwards.
+   */
+  imported: boolean;
   createdAt: string;
   updatedAt: string;
 }
@@ -79,6 +86,7 @@ function toDTO(
     username: u.username,
     createdBy: authorOf(u.createdByUserId, authors),
     updatedBy: authorOf(u.updatedByUserId, authors),
+    imported: u.imported === true,
     createdAt: u.createdAt,
     updatedAt: u.updatedAt,
   };
@@ -90,6 +98,7 @@ function assemble(row: typeof basicAuthTable.$inferSelect): BasicAuthUser {
     appId: row.appId,
     username: row.username,
     passwordEnc: row.passwordEnc,
+    imported: row.imported,
     createdByUserId: row.createdByUserId,
     updatedByUserId: row.updatedByUserId,
     createdAt: row.createdAt,
@@ -182,6 +191,19 @@ export async function addBasicAuthUser(
   appId: string,
   username: string,
   password: string,
+  opts?: {
+    /**
+     * The credential is being CARRIED OVER from another platform, not chosen.
+     *
+     * Deplo's two password gates exist for a password someone is picking right
+     * now. An imported one is already in use and already protecting a public
+     * URL: refusing it does not make anything stronger, it removes the
+     * protection - measured on a real migration, a code-server arrived online
+     * with no basic auth at all because its password had no special character.
+     * So it is written as it is, flagged, and shown as weak in Access.
+     */
+    imported?: boolean;
+  },
 ): Promise<BasicAuthUserDTO> {
   const { membership } = await requireAppCapability(appId, "manage_basic_auth");
   const user = (await getCurrentUser())!;
@@ -208,8 +230,11 @@ export async function addBasicAuthUser(
   // A basic-auth credential is a password a PERSON chooses and is handed to
   // another person, on an internet-facing URL: same two gates as an account
   // password, in the same order (the local rules before the network call).
-  assertPasswordPolicy(password);
-  await assertPasswordNotPwned(password);
+  // Skipped for an imported one - see `opts.imported`.
+  if (!opts?.imported) {
+    assertPasswordPolicy(password);
+    await assertPasswordNotPwned(password);
+  }
 
   const now = nowIso();
   const row = {
@@ -217,6 +242,7 @@ export async function addBasicAuthUser(
     appId,
     username: name,
     passwordEnc: encryptSecret(password),
+    imported: opts?.imported === true,
     // Both stamped on create: "added by" is the author of record until someone
     // rotates the password, and the Access page reads `updatedBy ?? createdBy`
     // exactly as the variables table does.

@@ -601,6 +601,11 @@ type BasicAuthUser {
   """Who added the credential."""
   createdBy: VarAuthor
   id: ID
+
+  """
+  The credential was carried over from another platform verbatim, so it never went through Deplo's password rules. Shown as a warning next to the user.
+  """
+  imported: Boolean
   updatedAt: String
 
   """Who last changed its password."""

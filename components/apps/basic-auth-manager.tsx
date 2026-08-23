@@ -12,6 +12,7 @@ import {
   SearchX,
   ShieldOff,
   Trash2,
+  TriangleAlert,
   UserRound,
 } from "lucide-react";
 import {
@@ -22,6 +23,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -269,12 +271,22 @@ function CredentialCard({
             <UserRound className="size-4" />
           </span>
           <div className="min-w-0">
-            <p
-              className="truncate font-mono text-sm font-medium"
-              title={user.username}
-            >
-              {user.username}
-            </p>
+            <div className="flex min-w-0 items-center gap-1.5">
+              <p
+                className="truncate font-mono text-sm font-medium"
+                title={user.username}
+              >
+                {user.username}
+              </p>
+              {user.imported ? (
+                <SimpleTooltip content="Carried over from another platform, so it never went through Deplo's password rules. Change it when the migration is done.">
+                  <Badge variant="warning" className="shrink-0">
+                    <TriangleAlert className="size-3" />
+                    Weak
+                  </Badge>
+                </SimpleTooltip>
+              ) : null}
+            </div>
             <p className="mt-1 text-xs text-muted-foreground">Username</p>
           </div>
         </div>

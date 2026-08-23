@@ -2226,15 +2226,27 @@ async function importAppService(
     }
   }
 
-  for (const s of (detail as DokployApplication).security ?? []) {
+  // The credential comes across AS IT IS. Putting an inherited password through
+  // Deplo's policy dropped it, and dropping it does not make the app safer - it
+  // publishes an admin panel that was behind a password a moment ago. Measured:
+  // a code-server arrived online and open because "CoderPass123" has no special
+  // character. It is flagged instead, and Access says so.
+  const security = (detail as DokployApplication).security ?? [];
+  for (const s of security) {
     try {
-      await addBasicAuthUser(created.id, s.username, s.password);
+      await addBasicAuthUser(created.id, s.username, s.password, {
+        imported: true,
+      });
     } catch (e) {
       notes.push(
-        `Basic-auth user "${s.username}" was not imported: ${e instanceof Error ? e.message : "refused"}.`,
+        `Basic-auth user "${s.username}" was not imported: ${e instanceof Error ? e.message : "refused"}. This app answers WITHOUT that password now.`,
       );
     }
   }
+  if (security.length > 0)
+    notes.push(
+      `${security.length === 1 ? "Its basic-auth password came" : `Its ${security.length} basic-auth passwords came`} across unchanged, so the app is protected exactly as it was. ${security.length === 1 ? "It was" : "They were"} never checked against Deplo's password rules - rotate ${security.length === 1 ? "it" : "them"} under Access when the migration is done.`,
+    );
 
   // Preview deployments. Dokploy has the same feature and deplo has the whole of
   // it (enabled, port, how many at once), so a repo that opened a preview per

@@ -1516,6 +1516,9 @@ export interface BasicAuthUser {
   /** AES-GCM-encrypted password. Reversible (re-hashed to htpasswd at render);
    * never in a DTO, read back only through the gated reveal. */
   passwordEnc: string;
+  /** Carried over from another platform verbatim, so it never went through the
+   * password policy or the breach check — see `addBasicAuthUser`. */
+  imported?: boolean;
   /** Who added the credential / who last rotated its password. Null for rows
    * written before migration 0045, or once that user is deleted. Identity
    * metadata, never a value — see {@link VarAuthor}. */

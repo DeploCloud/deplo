@@ -40,6 +40,10 @@ const BasicAuthUserRef = builder
         description: "Who last changed its password.",
         resolve: (u) => u.updatedBy,
       }),
+      imported: t.exposeBoolean("imported", {
+        description:
+          "The credential was carried over from another platform verbatim, so it never went through Deplo's password rules. Shown as a warning next to the user.",
+      }),
       createdAt: t.exposeString("createdAt"),
       updatedAt: t.exposeString("updatedAt"),
     }),
