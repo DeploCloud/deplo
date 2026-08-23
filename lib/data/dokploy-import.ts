@@ -1827,25 +1827,36 @@ async function importAppService(
 
   for (const d of domains.value.slice(1)) await addExtraDomain(created.id, d, notes);
 
-  // A single-image app has no compose file to bind a config file with, so its
-  // file mounts land where Settings -> Storage would put them: the bytes go into
-  // the app's Files (the same write the Storage editor makes), mounted by the
-  // "app" volume `mapMounts` paired with each one. Written BEFORE the volumes,
-  // because a mount whose source file is missing is not a no-op: docker creates a
-  // DIRECTORY there, and the app starts and serves nothing.
+  // Every config file is written into the app's Files here and now - the same
+  // write the Storage editor makes - for two different reasons.
+  //
+  // A SINGLE-IMAGE app has no compose file to bind one with, so this IS the
+  // import: the bytes land in Files and the "app" volume `mapMounts` paired with
+  // each one mounts them back where they were. Written BEFORE the volumes,
+  // because a mount whose source file is missing is not a no-op - docker creates
+  // a DIRECTORY there, and the app starts and serves nothing.
+  //
+  // A COMPOSE stack re-materialises `app_mounts` on every bring-up, so its files
+  // would appear anyway - but only after the first deploy, and an import
+  // deliberately deploys nothing. Until then the file existed as a database row
+  // and nowhere a person could look, which reads exactly like a file mount that
+  // did not come across. Writing it now puts it in the Files tab immediately; the
+  // deploy writes the same bytes to the same path, so nothing diverges.
   const unwritten = new Set<string>();
-  if (!isCompose) {
-    for (const f of mounts.value.files) {
-      try {
-        await writeAppFile(created.id, f.filePath, f.content);
-      } catch (e) {
-        unwritten.add(f.filePath);
+  for (const f of mounts.value.files) {
+    try {
+      await writeAppFile(created.id, f.filePath, f.content);
+    } catch (e) {
+      unwritten.add(f.filePath);
+      // Only worth saying for a single-image app: there, a file that was not
+      // written is a file that is GONE, and its mount is dropped below with it.
+      // The stack's own deploy will write the compose one on its own.
+      if (!isCompose)
         notes.push(
           `${f.filePath} could not be written into this app's Files: ${
             e instanceof Error ? e.message : "refused"
           }. Add it under Files and mount it under Storage.`,
         );
-      }
     }
   }
 
