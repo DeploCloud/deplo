@@ -45,7 +45,8 @@ export default async function AppEnvPage(
     // it stays behind the TEAM capability: someone whose `manage_env` comes from
     // this app alone sees the app's own variables, not the team's library.
     teamWideEnv ? listSharedVars() : Promise.resolve([]),
-    listPreviewEnvVars(project.id),
+    // Preview overrides only mean anything once preview deployments are on.
+    project.previewEnabled ? listPreviewEnvVars(project.id) : [],
   ]);
   const linkedIds = new Set(
     sharedVars.filter((v) => v.linked).map((v) => v.id),
@@ -60,7 +61,9 @@ export default async function AppEnvPage(
         sharedVars={sharedVars}
         sharedVarDetails={sharedVarDetails}
       />
-      <PreviewOverrides appId={project.id} overrides={previewOverrides} />
+      {project.previewEnabled && (
+        <PreviewOverrides appId={project.id} overrides={previewOverrides} />
+      )}
     </div>
   );
 }
