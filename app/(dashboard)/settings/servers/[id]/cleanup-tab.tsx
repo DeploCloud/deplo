@@ -101,6 +101,17 @@ const SCOPES: { id: CleanupScopeId; label: string; info: React.ReactNode }[] = [
       </>
     ),
   },
+  {
+    id: "leftover_app_files",
+    label: "Leftover app files",
+    info: (
+      <>
+        The config files of apps and databases that were deleted. Judged against
+        everything this Deplo still knows about, so a live app keeps its files even
+        while it is moving between servers.
+      </>
+    ),
+  },
 ];
 
 /** The policy as the form holds it: the numbers as text, so a half-typed field is a

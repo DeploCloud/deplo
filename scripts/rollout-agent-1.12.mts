@@ -93,8 +93,10 @@ async function updateOne(serverId: string, name: string): Promise<void> {
     minAgeHours: 24,
     keepImagesPerApp: 1,
     // This script pre-dates per-app rollback retention and is kept as the 1.12
-    // record; the scalar is what it always sent.
+    // record; the scalar is what it always sent. Same for the leftover-files
+    // inventory: no scope here asks for one.
     keepPerSlug: {},
+    liveSlugs: [],
   });
   if (!dry.ok) throw new Error(`${name}: dry-run cleanup failed: ${dry.error}`);
   for (const r of dry.results ?? []) {

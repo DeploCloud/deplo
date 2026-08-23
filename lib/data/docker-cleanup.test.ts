@@ -14,7 +14,8 @@ import {
 } from "../db/schema/control-plane";
 import { runWithIdentity } from "../auth/request-context";
 import { seedIdentity, TEAM_A, USER_1 } from "./identity-test-helpers";
-import { seedServer, SERVER_1 } from "./app-graph-test-helpers";
+import { seedApp, seedPreview, seedServer, SERVER_1 } from "./app-graph-test-helpers";
+import { seedDatabase } from "./backup-test-helpers";
 import {
   seedCleanupPolicy,
   seedCleanupRun,
@@ -23,6 +24,7 @@ import {
 import {
   __settleCleanupSweeps,
   getCleanupPolicy,
+  liveStackSlugs,
   listCleanupRuns,
   pruneCleanupRunHistory,
   reconcileInFlightCleanupRuns,
@@ -232,6 +234,7 @@ test("getCleanupPolicy on a never-configured instance is ENABLED with every scop
     "dangling_images",
     "orphan_buildkit_cache",
     "unused_app_images",
+    "leftover_app_files",
   ]);
 });
 
@@ -501,4 +504,24 @@ test("sweepSupersededAppImages honors the policy's controls and never throws", a
   // The in-flight signal the scheduler reads must be cleaned up on every exit path —
   // a leaked id would exclude that host from the nightly sweep forever.
   assert.deepEqual(serversWithDeploySweepInFlight(), [], "no sweep left in flight");
+});
+
+/* ------------------------------------------------------------------ */
+/* the live-slug inventory the leftover-files scope is judged against   */
+/* ------------------------------------------------------------------ */
+
+/**
+ * Every KIND of stack that owns a files directory has to be in this list. A kind
+ * left out is not a missing feature, it is the sweep deleting a live stack's
+ * config files - which is why the assertion names all three rather than a count.
+ */
+test("the live inventory names apps, their previews and databases", async () => {
+  await seedApp(db, { id: "prj_live", slug: "web" });
+  await seedPreview(db, { id: "prv_live", appId: "prj_live", prNumber: 7 });
+  await seedDatabase(db, { id: "db_live", name: "shop" });
+
+  const slugs = await asOwner(() => liveStackSlugs());
+  assert.ok(slugs.includes("web"), `apps: ${slugs}`);
+  assert.ok(slugs.includes("web__pr-7"), `previews: ${slugs}`);
+  assert.ok(slugs.includes("db-shop"), `databases: ${slugs}`);
 });

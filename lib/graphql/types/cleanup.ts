@@ -23,12 +23,13 @@ import {
 // app and a dangling volume may hold user data — do not add a value here.
 const DockerCleanupScopeEnum = builder.enumType("DockerCleanupScope", {
   description:
-    "A class of Docker object a cleanup may reclaim. build_cache = the daemon's BuildKit cache. dangling_images = untagged layers (never `-a`). orphan_buildkit_cache = dangling volumes proven to be abandoned buildkitd stores. unused_app_images = old app images no container references, bounded per app by that app's `rollbackKeep` (falling back to keepImagesPerApp where a rollback is impossible). Deplo pushes to no registry, so a removed image comes back only by a rebuild - the newest image per app always survives. All four are on by default.",
+    "A class of Docker object a cleanup may reclaim. build_cache = the daemon's BuildKit cache. dangling_images = untagged layers (never `-a`). orphan_buildkit_cache = dangling volumes proven to be abandoned buildkitd stores. unused_app_images = old app images no container references, bounded per app by that app's `rollbackKeep` (falling back to keepImagesPerApp where a rollback is impossible). Deplo pushes to no registry, so a removed image comes back only by a rebuild - the newest image per app always survives. leftover_app_files = the config files of Apps and databases that were DELETED, judged against the stacks this instance still knows about; the only scope that removes something no rebuild recreates, so it is skipped outright on an agent too old to have the list. All five are on by default.",
   values: [
     "build_cache",
     "dangling_images",
     "orphan_buildkit_cache",
     "unused_app_images",
+    "leftover_app_files",
   ] as const,
 });
 

@@ -4,7 +4,9 @@ import { and, desc, eq, inArray, lt, ne, notInArray } from "drizzle-orm";
 
 import { getDb } from "../db/client";
 import {
+  appPreviews as appPreviewsTable,
   apps as appsTable,
+  databases as databasesTable,
   dockerCleanupExcludedServers,
   dockerCleanupPolicy,
   dockerCleanupPolicyScopes,
@@ -24,6 +26,7 @@ import { runAgentCleanup } from "../infra/agent-client";
 import { CleanupScope } from "../agent/gen/agent";
 import type { CleanupScopeResult } from "../agent/gen/agent";
 import { appBuildsItsOwnImage, formatBytes } from "../utils";
+import { previewDeployKey } from "../deploy/deploy-key";
 import { MAX_ROLLBACK_KEEP } from "../types";
 
 /**
@@ -67,6 +70,7 @@ export const CLEANUP_SCOPES = [
   "dangling_images",
   "orphan_buildkit_cache",
   "unused_app_images",
+  "leftover_app_files",
 ] as const;
 
 export type CleanupScopeId = (typeof CLEANUP_SCOPES)[number];
@@ -213,6 +217,7 @@ const SCOPE_TO_WIRE: Record<CleanupScopeId, CleanupScope> = {
   dangling_images: CleanupScope.CLEANUP_SCOPE_DANGLING_IMAGES,
   orphan_buildkit_cache: CleanupScope.CLEANUP_SCOPE_ORPHAN_BUILDKIT_CACHE,
   unused_app_images: CleanupScope.CLEANUP_SCOPE_UNUSED_APP_IMAGES,
+  leftover_app_files: CleanupScope.CLEANUP_SCOPE_LEFTOVER_APP_FILES,
 };
 
 const WIRE_TO_SCOPE = new Map<CleanupScope, CleanupScopeId>(
@@ -709,6 +714,13 @@ async function finishCleanupRun(args: {
       // Per-app retention wins over the instance number wherever an app names one
       // - that is what keeps its rollbacks alive. See rollbackKeepBySlug.
       keepPerSlug: await rollbackKeepBySlug(serverId),
+      // What `leftover_app_files` judges a directory against. Sent whenever the
+      // scope is on; an agent too old for it has both dropped for it
+      // (`dropUnsupportedScopes`), and an empty list makes the agent skip rather
+      // than guess.
+      liveSlugs: policy.scopes.includes("leftover_app_files")
+        ? await liveStackSlugs()
+        : [],
     });
     // A per-scope `error`/`skipped` is NOT a run failure — the agent declines a scope it
     // cannot prove is safe and sweeps the rest. Only `ok:false` (the sweep could not
@@ -1059,6 +1071,45 @@ export async function rollbackKeepBySlug(
 }
 
 /**
+ * Every stack slug this Deplo still knows about — the proof
+ * `leftover_app_files` rests on, and the one list that decides whether a
+ * directory on a host is somebody's configuration or litter.
+ *
+ * Three sources, and all three are load-bearing: an App's `slug`, the deploy key
+ * of each pull request PREVIEW (`<slug>__pr-<n>`, a stack of its own with its own
+ * files directory) and a database's `host` (`db-<name>`, the slug its stack is
+ * rerouted under). Miss one and the sweep deletes a live stack's config files.
+ *
+ * INSTANCE-WIDE, deliberately: filtering by `server_id` would be tighter and
+ * wrong, because a stack MOVING between hosts is written on the destination
+ * before the row points there and torn down on the source after - a per-host list
+ * would call its files leftover in exactly that window. It is not team-scoped
+ * either, for the same reason `rollbackKeepBySlug` is not: a host is cross-team
+ * infra and this is assembled behind the instance-admin gate the policy sits
+ * behind.
+ *
+ * Exported for tests: an empty answer makes the agent SKIP the scope, so the one
+ * failure that matters (a query that silently returns nothing) is safe by
+ * construction - but a MISSING KIND is not, and that is what a test pins.
+ */
+export async function liveStackSlugs(): Promise<string[]> {
+  const db = getDb();
+  const [apps, previews, databases] = await Promise.all([
+    db.select({ slug: appsTable.slug }).from(appsTable),
+    db
+      .select({ slug: appsTable.slug, prNumber: appPreviewsTable.prNumber })
+      .from(appPreviewsTable)
+      .innerJoin(appsTable, eq(appsTable.id, appPreviewsTable.appId)),
+    db.select({ host: databasesTable.host }).from(databasesTable),
+  ]);
+  const slugs = new Set<string>();
+  for (const a of apps) slugs.add(a.slug);
+  for (const p of previews) slugs.add(previewDeployKey(p.slug, p.prNumber));
+  for (const d of databases) slugs.add(d.host);
+  return [...slugs];
+}
+
+/**
  * Remove the superseded app images a deploy just left behind on `serverId` — the
  * deploy-time half of app-image retention. The nightly sweep alone cannot keep a
  * fast-iterating host inside its disk: a day of redeploys at 1-2GB per image
@@ -1103,6 +1154,9 @@ export async function sweepSupersededAppImages(serverId: string): Promise<number
       // instance scalar instead of the app's own depth, the rollback target is gone
       // before anybody could have asked for it.
       keepPerSlug: await rollbackKeepBySlug(serverId),
+      // Images only here: the files sweep belongs on the schedule, where an app
+      // deleted an hour ago is already past its grace window.
+      liveSlugs: [],
     });
     if (!resp.ok) {
       console.warn(`[cleanup] deploy-time image sweep on ${serverId} failed: ${resp.error || "unknown"}`);

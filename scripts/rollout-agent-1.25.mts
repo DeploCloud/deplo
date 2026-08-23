@@ -96,6 +96,8 @@ async function dryRunImages(
     minAgeHours: 24,
     keepImagesPerApp,
     keepPerSlug,
+    // Images only: this dry run asks for no scope that reads the inventory.
+    liveSlugs: [],
   });
   if (!resp.ok) throw new Error(`dry-run cleanup failed: ${resp.error}`);
   const r = (resp.results ?? [])[0];

@@ -41,6 +41,7 @@ import {
   type RestoreChunk,
   type RestoreChunk_Header,
   type StackResult,
+  CleanupScope,
   type DockerCleanupRequest,
   type DockerCleanupResponse,
   type HostInfoRequest,
@@ -2630,6 +2631,12 @@ export const DOCKER_CLEANUP_CAPABILITY = "docker-cleanup";
  *  {@link runAgentCleanup}. */
 const CLEANUP_KEEP_PER_SLUG_CAPABILITY = "cleanup.keep-per-slug";
 
+/** The Hello capability gating CLEANUP_SCOPE_LEFTOVER_APP_FILES. HARD, unlike
+ *  {@link CLEANUP_KEEP_PER_SLUG_CAPABILITY}: an unknown scope is an
+ *  INVALID_ARGUMENT that fails the WHOLE sweep, so an agent without this must
+ *  never be sent it - see {@link dropUnsupportedScopes}. */
+const CLEANUP_LEFTOVER_FILES_CAPABILITY = "cleanup.leftover-files";
+
 /**
  * Reclaim Docker disk on `serverId`'s host: dial → Hello → capability pre-flight →
  * DockerCleanup → close, all in one self-contained op. Shaped like
@@ -2690,6 +2697,33 @@ export function compensateKeepPerSlug(
   };
 }
 
+/**
+ * Strip scopes THIS agent does not implement, so an old host still gets the four
+ * it does understand.
+ *
+ * The opposite failure mode from {@link compensateKeepPerSlug}: an unrecognised
+ * FIELD is ignored by the agent, but an unrecognised SCOPE is a contract
+ * violation it answers with INVALID_ARGUMENT — which fails the whole sweep, not
+ * just that scope. So the drop happens here, once, rather than as a per-host
+ * branch in the policy: the operator's saved scope set is instance-wide and must
+ * not have to know which host is on which version.
+ *
+ * Exported for tests, like its sibling.
+ */
+export function dropUnsupportedScopes(
+  req: DockerCleanupRequest,
+  hello: HelloResponse,
+): DockerCleanupRequest {
+  if (hello.capabilities?.includes(CLEANUP_LEFTOVER_FILES_CAPABILITY)) return req;
+  const scopes = req.scopes.filter(
+    (s) => s !== CleanupScope.CLEANUP_SCOPE_LEFTOVER_APP_FILES,
+  );
+  if (scopes.length === req.scopes.length) return req;
+  // The list goes too: it is meaningless without its scope, and sending a host's
+  // whole app inventory to an agent that will not read it is needless.
+  return { ...req, scopes, liveSlugs: [] };
+}
+
 export async function runAgentCleanup(
   serverId: string,
   req: DockerCleanupRequest,
@@ -2706,7 +2740,9 @@ export async function runAgentCleanup(
     if (!hello.capabilities?.includes(DOCKER_CLEANUP_CAPABILITY)) {
       throw new AgentCleanupUnsupportedError(CLEANUP_UNSUPPORTED_MESSAGE);
     }
-    return await conn.dockerCleanup(compensateKeepPerSlug(req, hello));
+    return await conn.dockerCleanup(
+      dropUnsupportedScopes(compensateKeepPerSlug(req, hello), hello),
+    );
   } catch (e) {
     // Belt-and-braces: an agent one version behind on the RPC can advertise the
     // capability and still answer UNIMPLEMENTED. mapCleanupUnsupported turns that

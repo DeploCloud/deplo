@@ -380,6 +380,20 @@ export enum CleanupScope {
    * by a rebuild: this scope is opt-in and off by default.
    */
   CLEANUP_SCOPE_UNUSED_APP_IMAGES = 4,
+  /**
+   * CLEANUP_SCOPE_LEFTOVER_APP_FILES - `<stack-dir>/files/<slug>` directories belonging to no stack any more: the
+   * config files of Apps and stacks that were DELETED. Nothing on the host says
+   * an app is gone — the directory is simply never read again — so the control
+   * plane sends the slugs it still knows about (live_slugs) and everything else
+   * is leftover. Removed one directory at a time.
+   *
+   * The only scope that removes something a rebuild cannot recreate, which is why
+   * it fails CLOSED: an empty live_slugs is not "nothing is live", it is a caller
+   * that could not tell us, and the scope is SKIPPED rather than guessed at. A
+   * directory younger than the grace period is left alone too, so a stack being
+   * written right now is never a candidate.
+   */
+  CLEANUP_SCOPE_LEFTOVER_APP_FILES = 5,
   UNRECOGNIZED = -1,
 }
 
@@ -400,6 +414,9 @@ export function cleanupScopeFromJSON(object: any): CleanupScope {
     case 4:
     case "CLEANUP_SCOPE_UNUSED_APP_IMAGES":
       return CleanupScope.CLEANUP_SCOPE_UNUSED_APP_IMAGES;
+    case 5:
+    case "CLEANUP_SCOPE_LEFTOVER_APP_FILES":
+      return CleanupScope.CLEANUP_SCOPE_LEFTOVER_APP_FILES;
     case -1:
     case "UNRECOGNIZED":
     default:
@@ -419,6 +436,8 @@ export function cleanupScopeToJSON(object: CleanupScope): string {
       return "CLEANUP_SCOPE_ORPHAN_BUILDKIT_CACHE";
     case CleanupScope.CLEANUP_SCOPE_UNUSED_APP_IMAGES:
       return "CLEANUP_SCOPE_UNUSED_APP_IMAGES";
+    case CleanupScope.CLEANUP_SCOPE_LEFTOVER_APP_FILES:
+      return "CLEANUP_SCOPE_LEFTOVER_APP_FILES";
     case CleanupScope.UNRECOGNIZED:
     default:
       return "UNRECOGNIZED";
@@ -2318,6 +2337,17 @@ export interface DockerCleanupRequest {
    * agent is updated.
    */
   keepPerSlug: { [key: string]: number };
+  /**
+   * LEFTOVER_APP_FILES only: every stack slug the control plane still knows —
+   * Apps, their preview stacks (`<slug>__pr-<n>`) and databases — INSTANCE-WIDE,
+   * not just the ones placed on this host. Instance-wide because a stack that is
+   * moving between hosts exists on both for a moment and on neither in the
+   * records of one; a per-host list would delete the files of an app mid-move.
+   *
+   * Empty (or absent, which is what an older control plane sends) means the scope
+   * is SKIPPED, never "remove everything".
+   */
+  liveSlugs: string[];
 }
 
 export interface DockerCleanupRequest_KeepPerSlugEntry {
@@ -14171,7 +14201,7 @@ export const TunnelStatus: MessageFns<TunnelStatus> = {
 };
 
 function createBaseDockerCleanupRequest(): DockerCleanupRequest {
-  return { scopes: [], dryRun: false, minAgeHours: 0, keepImagesPerApp: 0, keepPerSlug: {} };
+  return { scopes: [], dryRun: false, minAgeHours: 0, keepImagesPerApp: 0, keepPerSlug: {}, liveSlugs: [] };
 }
 
 export const DockerCleanupRequest: MessageFns<DockerCleanupRequest> = {
@@ -14193,6 +14223,9 @@ export const DockerCleanupRequest: MessageFns<DockerCleanupRequest> = {
     globalThis.Object.entries(message.keepPerSlug).forEach(([key, value]: [string, number]) => {
       DockerCleanupRequest_KeepPerSlugEntry.encode({ key: key as any, value }, writer.uint32(42).fork()).join();
     });
+    for (const v of message.liveSlugs) {
+      writer.uint32(50).string(v!);
+    }
     return writer;
   },
 
@@ -14256,6 +14289,14 @@ export const DockerCleanupRequest: MessageFns<DockerCleanupRequest> = {
           }
           continue;
         }
+        case 6: {
+          if (tag !== 50) {
+            break;
+          }
+
+          message.liveSlugs.push(reader.string());
+          continue;
+        }
       }
       if ((tag & 7) === 4 || tag === 0) {
         break;
@@ -14300,6 +14341,11 @@ export const DockerCleanupRequest: MessageFns<DockerCleanupRequest> = {
           {},
         )
         : {},
+      liveSlugs: globalThis.Array.isArray(object?.liveSlugs)
+        ? object.liveSlugs.map((e: any) => globalThis.String(e))
+        : globalThis.Array.isArray(object?.live_slugs)
+        ? object.live_slugs.map((e: any) => globalThis.String(e))
+        : [],
     };
   },
 
@@ -14326,6 +14372,9 @@ export const DockerCleanupRequest: MessageFns<DockerCleanupRequest> = {
         });
       }
     }
+    if (message.liveSlugs?.length) {
+      obj.liveSlugs = message.liveSlugs;
+    }
     return obj;
   },
 
@@ -14347,6 +14396,7 @@ export const DockerCleanupRequest: MessageFns<DockerCleanupRequest> = {
       },
       {},
     );
+    message.liveSlugs = object.liveSlugs?.map((e) => e) || [];
     return message;
   },
 };
