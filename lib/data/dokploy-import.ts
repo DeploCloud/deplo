@@ -639,7 +639,14 @@ function composeAdvice(compose: string): string[] {
   return lintCompose(compose)
     .filter(
       (d) =>
-        d.rule === "reserved-service-name" || d.rule === "network-aliases-dropped",
+        d.rule === "reserved-service-name" ||
+        d.rule === "network-aliases-dropped" ||
+        // A service on the host's network namespace is not reachable through
+        // Deplo's proxy, so its address (if it had one over there) is now a
+        // host port and nothing else. Said here because the compose editor,
+        // which says it too, is the one screen an import never opens.
+        d.rule === "network-mode-host" ||
+        d.rule === "network-mode-conflict",
     )
     .map((d) => d.message);
 }

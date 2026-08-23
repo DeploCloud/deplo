@@ -798,14 +798,25 @@ export function buildComposeStack(input: ComposeStackInput): string {
   // user who publishes a port (a TCP game server, a database, an admin port)
   // keeps it reachable at that host port, AND still gets the HTTP router labels.
   // Idempotent per service.
-  const wireApp = (service: string): void => {
-    if (wired.has(service)) return;
+  //
+  // Answers whether the service CAN be wired. A service with `network_mode`
+  // cannot: compose refuses `network_mode` and `networks` together and fails the
+  // WHOLE project ("mutually exclusive"), so writing one here does not merely
+  // mis-route that container - it stops every other service in the stack from
+  // coming up. Home Assistant, Plex and the media stacks are written that way,
+  // and they arrive from an import already routed. Such a service is left
+  // exactly as its author wrote it and gets no router either: it is not on the
+  // deplo network, so Traefik could never reach it there anyway.
+  const wireApp = (service: string): boolean => {
     const target = services[service] as App | undefined;
-    if (!target) return;
+    if (!target) return false;
+    if (target.network_mode != null) return false;
+    if (wired.has(service)) return true;
     const existing = appNetworks(target);
     const base = existing.length ? existing : ["default"];
     target.networks = Array.from(new Set([...base, NETWORK]));
     wired.add(service);
+    return true;
   };
 
   // The `domains` table IS the routing: one Traefik router per routed domain,
@@ -817,7 +828,7 @@ export function buildComposeStack(input: ComposeStackInput): string {
   for (const route of domainRoutes) {
     const service = route.service;
     if (!service || !services[service]) continue;
-    wireApp(service);
+    if (!wireApp(service)) continue;
     const port = route.port ?? portOf(service);
     const keySeed = `${name}-${service}-${route.name}${route.pathPrefix}`;
     mergeLabels(

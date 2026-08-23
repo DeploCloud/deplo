@@ -914,3 +914,67 @@ test("buildComposeStack: a route that asked for a certificate still gets one", (
   assert.match(yaml, /tls=true/);
   assert.match(yaml, /tls\.certresolver=letsencrypt/);
 });
+
+/**
+ * `network_mode` and `networks` are mutually exclusive in Compose, and the
+ * failure is not local to the service: `docker compose up` refuses the WHOLE
+ * project ("service X declares mutually exclusive `network_mode` and
+ * `networks`: invalid compose project"), so one host-network container would
+ * stop every other service in the stack from starting. Home Assistant, Plex and
+ * the media stacks are all written that way and arrive from an import already
+ * routed, which is exactly when nobody opens the compose editor to read the
+ * lint. Such a service is left as its author wrote it and gets no router: it is
+ * not on the deplo network, so Traefik could not reach it there anyway.
+ */
+test("a network_mode service is left alone: no networks key, no router", () => {
+  const doc = buildDoc(
+    `
+services:
+  web:
+    image: nginx
+  agent:
+    image: alpine
+    network_mode: host
+`,
+    {
+      domainRoutes: [
+        route("demo.1.2.3.4.nip.io", "web", 80),
+        route("agent.1.2.3.4.nip.io", "agent", 8123),
+      ],
+    },
+  );
+  assert.equal(doc.services.agent.networks, undefined);
+  assert.equal(
+    (doc.services.agent as { network_mode?: unknown }).network_mode,
+    "host",
+  );
+  assert.deepEqual(
+    labelsOf(doc.services.agent).filter((l) => l.startsWith("traefik.")),
+    [],
+  );
+  // The rest of the stack is routed exactly as before.
+  assert.ok((doc.services.web.networks as string[]).includes("deplo"));
+  assert.ok(
+    labelsOf(doc.services.web).some((l) =>
+      l.includes("Host(`demo.1.2.3.4.nip.io`)"),
+    ),
+  );
+});
+
+test("a single-service stack in host network mode still renders a valid project", () => {
+  const doc = buildDoc(
+    `
+services:
+  homeassistant:
+    image: ghcr.io/home-assistant/home-assistant:2024.8
+    network_mode: host
+    privileged: true
+`,
+    { domainRoutes: [route("ha.1.2.3.4.nip.io", "homeassistant", 8123)] },
+  );
+  assert.equal(doc.services.homeassistant.networks, undefined);
+  assert.deepEqual(
+    labelsOf(doc.services.homeassistant).filter((l) => l.startsWith("traefik.")),
+    [],
+  );
+});
