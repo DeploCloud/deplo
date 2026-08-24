@@ -16,7 +16,7 @@
     "db:migrate": "drizzle-kit migrate"
   },
   "dependencies": {
-    "@better-auth/oauth-provider": "1.6.29",
+    "@better-auth/oauth-provider": "1.7.0",
     "@better-auth/passkey": "1.6.29",
     "@codemirror/commands": "^6.11.0",
     "@codemirror/lang-yaml": "^6.1.3",
