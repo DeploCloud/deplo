@@ -264,7 +264,7 @@ export function BuildLogStream({
             which lands a button 4px short of an Input and reads as a broken row. */}
         <div className="flex flex-wrap items-center gap-2 border-b border-border px-3 py-2">
           <span className="flex shrink-0 items-center gap-2 text-xs text-muted-foreground">
-            {logs.length} lines
+            {logs.length === 1 ? "1 line" : `${logs.length} lines`}
             {live && (
               <span className="flex items-center gap-1.5 text-[var(--warning)]">
                 <span className="relative flex size-2">

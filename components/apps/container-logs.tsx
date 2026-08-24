@@ -29,12 +29,18 @@ import {
   RUNTIME_LEVELS,
 } from "@/components/logs/log-filters";
 import { LogNoticeChip, type LogNotice } from "@/components/logs/log-notice";
+import {
+  TimelineMenu,
+  DEFAULT_TIMELINE,
+  formatLogClock,
+  type LogTimeline,
+} from "@/components/logs/timeline-menu";
 import type { AppRuntimeView } from "@/components/apps/use-app-runtime";
 import type { ConsoleInstance } from "@/lib/data/console";
 import { stripAnsi } from "@/lib/ansi";
 import { mergeLogBurst } from "@/lib/logs/merge";
 import { detectLogLevel, isLogContinuation } from "@/lib/log-level-detect";
-import type { LogLevel } from "@/lib/types";
+import { DEFAULT_LOG_RANGE_DAYS, type LogLevel } from "@/lib/types";
 import { cn } from "@/lib/utils";
 
 type Status = "connecting" | "live" | "reattaching" | "ended" | "error";
@@ -78,6 +84,21 @@ function capBuffer(text: string): string {
   return nl === -1 ? tail : tail.slice(nl + 1);
 }
 
+/**
+ * `docker logs --timestamps` prefixes every line with an RFC3339Nano instant and
+ * a single space. Split it back off: the viewer shows it in its own gutter, and
+ * leaving it inline would both waste 30 columns of every row and feed the level
+ * detector a date it has to look past. Docker writes the prefix ahead of the
+ * raw line, so this matches before any ANSI the producer emitted.
+ */
+const TIMESTAMP_PREFIX =
+  /^(\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?Z)\s([\s\S]*)$/;
+
+function splitTimestamp(line: string): { ts: string | null; rest: string } {
+  const m = TIMESTAMP_PREFIX.exec(line);
+  return m ? { ts: m[1]!, rest: m[2]! } : { ts: null, rest: line };
+}
+
 /** Classify one raw line, scanning only a bounded head (a pathological line is
  *  still RENDERED whole; only the level detection is capped).
  *
@@ -86,15 +107,22 @@ function capBuffer(text: string): string {
  *  its own — otherwise a Python traceback renders as one red line followed by
  *  eleven grey ones, which is what both reference implementations do. Nothing
  *  inherits `info`: that is the neutral default, not a verdict worth spreading. */
-function classifyLine(
-  text: string,
-  prev: LogLevel,
-): { level: LogLevel; text: string } {
+function classifyLine(raw: string, prev: LogLevel): ParsedLine {
+  const { ts, rest: text } = splitTimestamp(raw);
   const sample =
     text.length > MAX_DETECT_CHARS ? text.slice(0, MAX_DETECT_CHARS) : text;
   const plain = stripAnsi(sample);
-  if (prev !== "info" && isLogContinuation(plain)) return { level: prev, text };
-  return { level: detectLogLevel(plain), text };
+  if (prev !== "info" && isLogContinuation(plain))
+    return { level: prev, text, ts };
+  return { level: detectLogLevel(plain), text, ts };
+}
+
+/** One rendered row: the level we inferred, the message with its ANSI intact,
+ *  and the write time when the host sent one. */
+interface ParsedLine {
+  level: LogLevel;
+  text: string;
+  ts: string | null;
 }
 
 /**
@@ -117,10 +145,19 @@ export function ContainerLogs({
   runtime,
   apiBase,
   notice = null,
+  supportsTimeline = false,
+  logMaxDays = DEFAULT_LOG_RANGE_DAYS,
 }: {
   appId: string;
   instances: ConsoleInstance[];
   runtime?: AppRuntimeView | null;
+  /** The owning host's agent honours a time window on FollowLogs
+   *  (`logs.timerange`). False greys the control out: an older agent streams
+   *  fine but ignores the window, and silently returning the wrong range is
+   *  worse than saying the host cannot do it yet. */
+  supportsTimeline?: boolean;
+  /** The instance ceiling on that window, in days. */
+  logMaxDays?: number;
   /** Why this output might not be the whole story (restart loop, failing
    *  healthcheck, half a stack down). Rendered as a chip in the toolbar. */
   notice?: LogNotice | null;
@@ -137,13 +174,12 @@ export function ContainerLogs({
     () => instances[0],
   );
   const [status, setStatus] = React.useState<Status>("connecting");
+  const [timeline, setTimeline] = React.useState<LogTimeline>(DEFAULT_TIMELINE);
   const [failure, setFailure] = React.useState<string | null>(null);
   const [output, setOutput] = React.useState("");
   // Parsed, levelled lines for render — updated incrementally by
   // `publishLines` below, never re-split from the whole buffer per chunk.
-  const [lines, setLines] = React.useState<
-    { level: LogLevel; text: string }[]
-  >([]);
+  const [lines, setLines] = React.useState<ParsedLine[]>([]);
   // Auto-follow keeps the view pinned to the newest line. Turned off when the
   // user scrolls up, back on when they scroll to the bottom (or hit Resume).
   const [follow, setFollow] = React.useState(true);
@@ -169,7 +205,7 @@ export function ContainerLogs({
   const parseRef = React.useRef<{
     text: string;
     parsedTo: number;
-    lines: { level: LogLevel; text: string }[];
+    lines: ParsedLine[];
   }>({ text: "", parsedTo: 0, lines: [] });
 
   // Split the buffer into lines with a level inferred per line (Docker keeps
@@ -234,8 +270,52 @@ export function ContainerLogs({
 
   const base = apiBase ?? `/api/apps/${encodeURIComponent(appId)}/logs`;
 
+  // Identity of the window the open stream was asked for, so the effect can tell
+  // "the range moved" from "we reconnected". `null` until the first attach,
+  // which is not a change and must not clear a buffer that is already empty.
+  const windowKeyRef = React.useRef<string | null>(null);
+
+  // Relative timestamps go stale on their own. Tick only while they are shown:
+  // an absolute clock never needs it, and a paused pane with the column off
+  // should re-render for nothing.
+  const [nowMs, setNowMs] = React.useState(() => Date.now());
   React.useEffect(() => {
-    const url = `${base}?container=${encodeURIComponent(active.name)}`;
+    if (!timeline.timestamps || timeline.format !== "relative") return;
+    const t = setInterval(() => setNowMs(Date.now()), 10_000);
+    return () => clearInterval(t);
+  }, [timeline.timestamps, timeline.format]);
+
+  React.useEffect(() => {
+    // `supportsTimeline` belongs in the key as much as the range does: it flips
+    // when the owning server's agent is updated, and the refetch that notices
+    // turns a tail-only stream into a windowed one. Same splice, different cause.
+    const windowKey = `${supportsTimeline}:${timeline.sinceMinutes}:${timeline.timestamps}`;
+
+    // A new window is a different question, not more of the same answer: the
+    // lines already on screen came from the old `--since`, and merging the new
+    // burst into them (mergeLogBurst) would splice two unrelated windows
+    // together. Drop the buffer first, and only when the window itself moved —
+    // a reconnect or a container switch has its own reset.
+    const previous = windowKeyRef.current;
+    windowKeyRef.current = windowKey;
+    if (previous !== null && previous !== windowKey) {
+      outputRef.current = "";
+      setOutput("");
+      publishLines();
+      replayBaseRef.current = null;
+      replayBurstRef.current = "";
+    }
+
+    // The window rides the URL, so changing it reopens the stream — which is
+    // the point: `--since` is decided when `docker logs` starts, not filtered
+    // afterwards. An unsupported agent gets no window params at all, so its
+    // request is byte-for-byte the one this sent before the feature existed.
+    const params = new URLSearchParams({ container: active.name });
+    if (supportsTimeline) {
+      params.set("sinceMinutes", String(timeline.sinceMinutes));
+      if (timeline.timestamps) params.set("timestamps", "1");
+    }
+    const url = `${base}?${params.toString()}`;
     const es = new EventSource(url);
     let reattachTimer: ReturnType<typeof setTimeout> | undefined;
 
@@ -340,7 +420,15 @@ export function ContainerLogs({
       }
       sessionId.current = null;
     };
-  }, [base, active.name, attempt, publishLines]);
+  }, [
+    base,
+    active.name,
+    attempt,
+    publishLines,
+    supportsTimeline,
+    timeline.sinceMinutes,
+    timeline.timestamps,
+  ]);
 
   // Pin to the bottom on new output while following. Flag the scroll as
   // programmatic so onScroll doesn't mistake it for the user scrolling away.
@@ -366,8 +454,18 @@ export function ContainerLogs({
   // and getting the unfiltered stream back is the kind of surprise that gets
   // pasted into a bug report unread.
   const plainOutput = React.useMemo(
-    () => filters.shown.map((l) => stripAnsi(l.text)).join("\n"),
-    [filters.shown],
+    () =>
+      filters.shown
+        .map((l) =>
+          // The ISO instant, not the formatted gutter: a log pasted into a bug
+          // report is read on someone else's clock, and "2m ago" means nothing
+          // an hour later.
+          l.ts && timeline.timestamps
+            ? `${l.ts} ${stripAnsi(l.text)}`
+            : stripAnsi(l.text),
+        )
+        .join("\n"),
+    [filters.shown, timeline.timestamps],
   );
 
   function onScroll() {
@@ -533,6 +631,12 @@ export function ContainerLogs({
           counts={filters.counts}
           onChange={(levels) => filters.setState((s) => ({ ...s, levels }))}
         />
+        <TimelineMenu
+          value={timeline}
+          onChange={setTimeline}
+          maxDays={logMaxDays}
+          disabled={!supportsTimeline}
+        />
 
         <div className="ml-auto flex shrink-0 items-center gap-1">
           <SimpleTooltip
@@ -592,6 +696,14 @@ export function ContainerLogs({
             key={i}
             level={l.level}
             text={l.text}
+            // Only when the host actually sent one. No placeholder dashes: an
+            // empty gutter says "this stream carries no clock", a row of `--`
+            // says "the clock is broken".
+            time={
+              l.ts && timeline.timestamps
+                ? formatLogClock(l.ts, timeline.format, nowMs)
+                : undefined
+            }
             tintMessage={false}
             chip="auto"
             highlight={filters.highlight}

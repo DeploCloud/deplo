@@ -4,11 +4,14 @@ import { getCurrentUser } from "@/lib/auth";
 import { resolveLogsTarget } from "@/lib/data/console";
 import * as logs from "@/lib/logs/session";
 import { connectAgent } from "@/lib/infra/agent-client";
+import { parseLogWindow } from "@/lib/logs/window";
+import { logMaxDays } from "@/lib/data/instance-settings";
 
 /**
  * Live runtime logs (`docker logs -f`) for an app's container, over plain HTTP.
  *
- *   GET    ?container=<name>&tail=<n> → SSE stream of the container's live output.
+ *   GET    ?container=<name>&tail=<n>&sinceMinutes=<m>&timestamps=1
+ *                                    → SSE stream of the container's live output.
  *                                       The first event is `session` with the id.
  *   DELETE ?sessionId=<id>           → detach (kills our local logs client only).
  *
@@ -70,6 +73,15 @@ export async function GET(
   const tail = Number.isFinite(parsedTail)
     ? Math.min(Math.max(Math.trunc(parsedTail), 0), 5000)
     : 500;
+  // How far back to reach and whether to prefix each line with its write time.
+  // Both are the AGENT's job — the stream is raw bytes with no per-line clock,
+  // so this side has nothing to filter on. An agent without `logs.timerange`
+  // ignores them and streams `--tail` as before, which is why an unsupported
+  // host still gets its logs (the viewer greys the control out instead).
+  const window = parseLogWindow(
+    request.nextUrl.searchParams,
+    await logMaxDays(),
+  );
 
   const resolved = await resolveLogsTarget(appId, target);
   if (!resolved.ok) {
@@ -90,7 +102,7 @@ export async function GET(
   let session;
   try {
     const conn = await connectAgent(resolved.server!.id);
-    const handle = conn.followLogs(appId, resolved.instance.name, tail);
+    const handle = conn.followLogs(appId, resolved.instance.name, tail, window);
     session = logs.open(appId, user.id, resolved.instance.name, handle, () =>
       conn.close(),
     );

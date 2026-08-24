@@ -9,9 +9,12 @@ import { composeServiceNames } from "../deploy/compose-stack";
 import { isDockerLevelStderr } from "../infra/docker";
 import {
   connectAgent,
+  serverSupports,
   AgentUnreachableError,
+  LOGS_TIMERANGE_CAPABILITY,
   type AgentConnection,
 } from "../infra/agent-client";
+import { logMaxDays } from "./instance-settings";
 import type { App, Server } from "../types";
 
 /**
@@ -156,6 +159,17 @@ export interface LogsInfo {
   /** The agent could not be reached: the list below is a placeholder, not truth. */
   unreachable: boolean;
   instances: ConsoleInstance[];
+  /**
+   * The owning host's agent can narrow a log stream by time
+   * (`logs.timerange`). False on an older agent, which streams fine but only
+   * `--tail` — so the viewer greys the time-range control out instead of
+   * offering a window the host will silently ignore. A SOFT gate: never a
+   * reason to withhold the logs themselves.
+   */
+  supportsTimeline: boolean;
+  /** The instance's ceiling on that time range, in days. Read here so the logs
+   *  page needs one round trip, not two. */
+  logMaxDays: number;
 }
 
 /**
@@ -213,12 +227,18 @@ export async function getLogsInfo(appId: string): Promise<LogsInfo | null> {
   // stream at, so the picker resolves nothing rather than listing containers a
   // caller may not read. Soft (null) because it feeds a page, not an action.
   if (!(await hasAppCapability(appId, "view_logs"))) return null;
-  const found = await listInstancesForDisplay(p);
+  const [found, supportsTimeline, maxDays] = await Promise.all([
+    listInstancesForDisplay(p),
+    serverSupports(p.serverId, LOGS_TIMERANGE_CAPABILITY),
+    logMaxDays(),
+  ]);
   return {
     running: found.instances.some((i) => i.running),
     streamable: found.real,
     unreachable: found.unreachable,
     instances: found.instances,
+    supportsTimeline,
+    logMaxDays: maxDays,
   };
 }
 

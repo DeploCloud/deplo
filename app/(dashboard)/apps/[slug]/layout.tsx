@@ -13,6 +13,7 @@ import { RedeployButton } from "@/components/apps/redeploy-button";
 import { AppControls } from "@/components/apps/app-controls";
 import { AppStatusBadge } from "@/components/apps/app-status-dot";
 import { AppNavSync } from "@/components/apps/app-nav-sync";
+import { DetailFrame } from "@/components/layout/detail-frame";
 import {
   AppLiveStatusProvider,
   type LiveApp,
@@ -76,9 +77,12 @@ export default async function AppLayout(props: LayoutProps<"/apps/[slug]">) {
     <AppLiveStatusProvider key={initialLive.slug} initial={initialLive}>
     <AppCapabilitiesProvider capabilities={capabilities}>
     {/* An app's pages are forms and detail views, not grids — they stay at a
-        readable width instead of the wide shell the list pages use. */}
-    <div className="mx-auto w-full max-w-6xl space-y-6">
-      <div>
+        readable width instead of the wide shell the list pages use. The one
+        exception is the full-screen log pane, where DetailFrame drops both this
+        measure and the header below it. */}
+    <DetailFrame
+      header={
+        <div>
         <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
           <div className="flex items-center gap-3">
             <AppLogo logo={project.logo} size={44} />
@@ -134,22 +138,26 @@ export default async function AppLayout(props: LayoutProps<"/apps/[slug]">) {
             />
           </div>
         </div>
-      </div>
-
-      {/* Publishes this app's live/per-app facts to the sidebar, which
-          renders the app sub-menu in place of the main nav. Renders nothing. */}
-      <AppNavSync
-        slug={slug}
-        running={project.status === "active"}
-        showFiles={showFiles}
-        capabilities={capabilities}
-        isGithubApp={project.source === "github"}
-        previewsEnabled={project.previewEnabled}
-        cronsEnabled={project.cronEnabled}
-      />
-
+        </div>
+      }
+      sidecars={
+        /* Publishes this app's live/per-app facts to the sidebar, which renders
+           the app sub-menu in place of the main nav. Renders nothing, and has to
+           survive the header being dropped — otherwise a full-bleed route would
+           lose the section menu along with the title. */
+        <AppNavSync
+          slug={slug}
+          running={project.status === "active"}
+          showFiles={showFiles}
+          capabilities={capabilities}
+          isGithubApp={project.source === "github"}
+          previewsEnabled={project.previewEnabled}
+          cronsEnabled={project.cronEnabled}
+        />
+      }
+    >
       {props.children}
-    </div>
+    </DetailFrame>
     </AppCapabilitiesProvider>
     </AppLiveStatusProvider>
   );

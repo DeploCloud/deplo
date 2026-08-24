@@ -6,6 +6,7 @@ import { getLogs } from "@/lib/data/deployments";
 import { hasAppCapability } from "@/lib/data/node-access";
 import { EmptyState } from "@/components/shared/empty-state";
 import { LiveLogs } from "@/components/apps/live-logs";
+import { DEFAULT_LOG_RANGE_DAYS } from "@/lib/types";
 
 export const metadata = { title: "Logs" };
 
@@ -53,6 +54,8 @@ export default async function AppLogsPage(
         appId={project.id}
         initialInstances={info?.instances ?? []}
         initialStreamable={!!info?.streamable}
+        initialSupportsTimeline={!!info?.supportsTimeline}
+        initialLogMaxDays={info?.logMaxDays ?? DEFAULT_LOG_RANGE_DAYS}
         latestDeployment={latest ? { id: latest.id, status: latest.status } : null}
         initialBuildLogs={buildLogs}
       />

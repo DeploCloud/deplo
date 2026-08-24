@@ -32,6 +32,20 @@ const FULL_BLEED = [
   /^\/storage\/databases\/[^/]+\/logs\/?$/,
 ];
 
+/**
+ * Is the current route one of the full-bleed ones?
+ *
+ * Exported because the shell is not the only thing in the way: an app's own
+ * layout adds a `max-w-6xl` measure and a header of name, status and controls,
+ * and a database's does the same. Both consult this so the three of them agree
+ * on one list — a page that escaped the shell only to sit inside a 72rem column
+ * with a Redeploy button above it is not full-bleed, it is just missing a title.
+ */
+export function useFullBleedRoute(): boolean {
+  const pathname = usePathname();
+  return FULL_BLEED.some((re) => re.test(pathname));
+}
+
 export function ShellFrame({
   sidebar,
   header,
@@ -46,8 +60,7 @@ export function ShellFrame({
   contentKey: string;
   children: React.ReactNode;
 }) {
-  const pathname = usePathname();
-  const full = FULL_BLEED.some((re) => re.test(pathname));
+  const full = useFullBleedRoute();
 
   return (
     <div

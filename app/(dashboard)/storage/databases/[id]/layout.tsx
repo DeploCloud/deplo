@@ -12,6 +12,7 @@ import { DatabaseStatusBadge } from "@/components/storage/database-status-badge"
 import { DatabaseControls } from "@/components/storage/database-controls";
 import { DatabaseRedeployButton } from "@/components/storage/database-redeploy-button";
 import { DbNavSync } from "@/components/storage/db-nav-store";
+import { DetailFrame } from "@/components/layout/detail-frame";
 
 const DB_TITLE_MAX = 24;
 
@@ -48,8 +49,10 @@ export default async function DatabaseLayout(
       {/* Publishes this database's nav facts to the sidebar, which lives outside
           this layout and so cannot read a context. Renders nothing. */}
       <DbNavSync id={db.id} cronsEnabled={db.cronEnabled} />
-      {/* Same readable width as the App pages (see apps/[slug]/layout). */}
-      <div className="mx-auto w-full max-w-6xl space-y-6">
+      {/* Same readable width as the App pages, and the same exception: on a
+          full-bleed route DetailFrame drops both the measure and the header. */}
+      <DetailFrame
+        header={
         <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
           <div className="flex items-center gap-3">
             <DatabaseLogo type={db.type} logo={db.logo} size={44} />
@@ -71,9 +74,10 @@ export default async function DatabaseLayout(
             <DatabaseRedeployButton id={db.id} />
           </div>
         </div>
-
+        }
+      >
         {props.children}
-      </div>
+      </DetailFrame>
     </DatabaseLiveStatusProvider>
   );
 }

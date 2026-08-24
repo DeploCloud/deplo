@@ -18,11 +18,17 @@ export function DatabaseLogs({
   status: serverStatus,
   instances,
   streamable,
+  supportsTimeline,
+  logMaxDays,
 }: {
   id: string;
   status: DatabaseStatus;
   instances: ConsoleInstance[];
   streamable: boolean;
+  /** The owning host's agent honours a log time window (`logs.timerange`). */
+  supportsTimeline: boolean;
+  /** The instance ceiling on that window, in days. */
+  logMaxDays: number;
 }) {
   const status = useLiveDatabaseStatus(serverStatus);
   const runtime = useDatabaseRuntime(id, { enabled: status === "running" });
@@ -46,6 +52,8 @@ export function DatabaseLogs({
       instances={instances}
       runtime={runtime}
       notice={runtimeNotice(runtime)}
+      supportsTimeline={supportsTimeline}
+      logMaxDays={logMaxDays}
       apiBase={`/api/databases/${encodeURIComponent(id)}/logs`}
     />
   );

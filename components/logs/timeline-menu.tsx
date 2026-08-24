@@ -64,6 +64,33 @@ export function rangesFor(maxDays: number): { minutes: number; label: string }[]
   return ranges;
 }
 
+/**
+ * The write time as the gutter shows it, in whichever of the two formats is on.
+ *
+ * Local clock, not UTC: this component only ever renders on the client (the log
+ * stream is an EventSource), so the hydration mismatch that forces `getUTC*` on
+ * the server-rendered deployment logs cannot happen here — and a viewer reading
+ * a live stream wants their own wall clock, not the server's.
+ */
+export function formatLogClock(
+  iso: string,
+  format: LogTimeline["format"],
+  nowMs: number,
+): string {
+  const t = Date.parse(iso);
+  if (Number.isNaN(t)) return "";
+  if (format === "absolute") {
+    const d = new Date(t);
+    const pad = (n: number) => String(n).padStart(2, "0");
+    return `${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
+  }
+  const secs = Math.max(0, Math.round((nowMs - t) / 1000));
+  if (secs < 60) return `${secs}s ago`;
+  if (secs < 3600) return `${Math.round(secs / 60)}m ago`;
+  if (secs < 86_400) return `${Math.round(secs / 3600)}h ago`;
+  return `${Math.round(secs / 86_400)}d ago`;
+}
+
 export function TimelineMenu({
   value,
   onChange,

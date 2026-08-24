@@ -22,6 +22,8 @@ const LOGS_INFO_QUERY = /* GraphQL */ `
       running
       streamable
       unreachable
+      supportsTimeline
+      logMaxDays
       instances {
         name
         service
@@ -42,6 +44,8 @@ type LogsInfoResponse = {
     running: boolean;
     streamable: boolean;
     unreachable: boolean;
+    supportsTimeline: boolean;
+    logMaxDays: number;
     instances: ConsoleInstance[];
   } | null;
 };
@@ -66,12 +70,18 @@ export function LiveLogs({
   appId,
   initialInstances,
   initialStreamable,
+  initialSupportsTimeline,
+  initialLogMaxDays,
   latestDeployment,
   initialBuildLogs,
 }: {
   appId: string;
   initialInstances: ConsoleInstance[];
   initialStreamable: boolean;
+  /** The owning host's agent honours a log time window (`logs.timerange`). */
+  initialSupportsTimeline: boolean;
+  /** The instance ceiling on that window, in days. */
+  initialLogMaxDays: number;
   latestDeployment: LatestDeployment | null;
   initialBuildLogs: LogLine[];
 }) {
@@ -79,6 +89,13 @@ export function LiveLogs({
   const [instances, setInstances] =
     React.useState<ConsoleInstance[]>(initialInstances);
   const [streamable, setStreamable] = React.useState(initialStreamable);
+  // Both follow the same refetch as `streamable`: moving the app to another
+  // server, or updating that server's agent, changes whether the window is
+  // honoured, and the control must not keep offering one the host ignores.
+  const [supportsTimeline, setSupportsTimeline] = React.useState(
+    initialSupportsTimeline,
+  );
+  const [logMaxDays, setLogMaxDays] = React.useState(initialLogMaxDays);
 
   // What the containers are really doing — drives the banner above the stream
   // and tells a crash loop apart from a container that has simply stopped.
@@ -97,6 +114,8 @@ export function LiveLogs({
         const li = data.logsInfo;
         if (!li) return;
         setStreamable(li.streamable);
+        setSupportsTimeline(li.supportsTimeline);
+        setLogMaxDays(li.logMaxDays);
         if (li.instances.length) setInstances(li.instances);
       })
       .catch(() => {});
@@ -112,6 +131,8 @@ export function LiveLogs({
         instances={instances}
         runtime={runtime}
         notice={runtimeNotice(runtime)}
+        supportsTimeline={supportsTimeline}
+        logMaxDays={logMaxDays}
       />
     );
   }

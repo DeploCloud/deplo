@@ -1,0 +1,11 @@
+-- How far back the log viewer's time range may reach, in days.
+--
+-- Instance-wide, not per team: the logs live on the HOST, and a host is the one
+-- resource several teams share. Default 7, which is what the picker offers as its
+-- last row; 1 collapses it to the three fixed ranges (30 minutes, an hour, a day).
+--
+-- It bounds what may be ASKED for and nothing else. Docker rotates its json-file
+-- logs by SIZE (max-size / max-file), so no column here can make "7 days" true,
+-- and Deplo sets no rotation policy of its own. When the window comes back empty
+-- the viewer says the host rotated them, which is the honest answer.
+ALTER TABLE "instance_settings" ADD COLUMN IF NOT EXISTS "log_max_days" integer DEFAULT 7 NOT NULL;

@@ -31,6 +31,7 @@ import { CopyButton } from "@/components/shared/copy-button";
 import { RevealChip } from "@/components/shared/reveal-chip";
 import { PanelAddressDialog } from "@/components/settings/panel-address-dialog";
 import { UpdateCard } from "@/components/settings/update-card";
+import { LogsRetentionCard } from "@/components/settings/logs-retention-card";
 import {
   InstanceOwnerCard,
   type OwnerCandidate,
@@ -97,6 +98,7 @@ export function DeploSettingsPanel({
     <div className="space-y-4">
       <PanelAddressCard settings={settings} />
       <CertificatesCard />
+      <LogsRetentionCard logMaxDays={settings.logMaxDays} />
       {/* After the two settings: updating Deplo is a state to read and an action
           to take, not a knob, and the page opens on what can be changed. It lives
           here rather than on Settings, General because only an instance admin can

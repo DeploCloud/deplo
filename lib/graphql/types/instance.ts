@@ -6,6 +6,7 @@ import {
   listCertificateAccounts,
   setCertificateEmail,
   setPanelHttps,
+  setLogMaxDays,
   setPanelUrl,
   type CertificateAccount,
   type InstanceSettings,
@@ -26,6 +27,10 @@ const InstanceSettingsRef = builder
       panelUrl: t.exposeString("panelUrl", {
         description:
           "The address Deplo uses for itself right now. Every install command, deploy hook URL and invite link is built from it.",
+      }),
+      logMaxDays: t.exposeInt("logMaxDays", {
+        description:
+          "How far back the log viewer's time range may reach, in days. Instance-wide because the logs live on the host, which several teams share. It bounds what may be ASKED for and nothing else: docker rotates its json-file logs by size, so no setting here makes the host actually hold that much.",
       }),
       panelUrlSource: t.exposeString("panelUrlSource", {
         description:
@@ -177,6 +182,14 @@ builder.mutationFields((t) => ({
       "Serve the panel over https, or over plain http. Turning it off is for a panel whose address cannot get a certificate - it does not resolve publicly yet, :80 is closed, the box is internal - where https means a browser warning on a page nobody has logged into yet. Three things move together: the route goes to the :80 entrypoint (with that entrypoint's redirect pinned below it), the stored panel address takes the new scheme, and the session cookie drops its `__Secure-` prefix, without which the panel would load over http and be impossible to log into. The host's proxy is recreated to pick it up, so sites on that server - this panel included - are unreachable for the few seconds it takes to come back. On a Deplo installed before it published its own route, the first change ADOPTS that route: Deplo writes one beside the container labels the installer left and outranks them, after proving from inside the network that it knows where the panel listens.",
     args: { enabled: t.arg.boolean({ required: true }) },
     resolve: (_r, { enabled }) => setPanelHttps(enabled),
+  }),
+  setLogMaxDays: t.field({
+    type: InstanceSettingsRef,
+    authScopes: { instanceAdmin: true },
+    description:
+      "Set how far back the log viewer's time range may reach, in days. It is a ceiling on the ranges the picker offers, not a retention policy: docker rotates a container's logs by SIZE, so nothing here makes a host hold more of them, and a window that comes back empty says the host rotated them rather than pretending the app was quiet. Clamped rather than rejected - the field is a number input with the same bounds, so a value outside them arrived from an API client, and the honest answer to \"keep 900 days\" is the ceiling.",
+    args: { days: t.arg.int({ required: true }) },
+    resolve: (_r, { days }) => setLogMaxDays(days),
   }),
   serverCertificateAccounts: t.field({
     type: [CertificateAccountRef],

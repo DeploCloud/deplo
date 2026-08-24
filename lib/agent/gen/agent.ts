@@ -1820,6 +1820,25 @@ export interface FollowLogsRequest {
   container: string;
   /** Seed the stream with the last N lines before following live. 0 => 500. */
   tail: number;
+  /**
+   * Time window, in Unix SECONDS. 0 means unset on both ends: no lower bound,
+   * and follow live forever. They map straight onto `docker logs --since/--until`.
+   *
+   * Why the agent and not the control plane: the log stream is raw bytes with no
+   * per-line clock, so a control plane holding one end of the pipe cannot filter
+   * by time at all — the only thing that knows when a line was written is the
+   * log file docker is reading. Gated behind the `logs.timerange` capability;
+   * an agent without it ignores these and streams `--tail` as before.
+   */
+  sinceUnix: number;
+  untilUnix: number;
+  /**
+   * Prefix every line with its RFC3339Nano write time (`docker logs
+   * --timestamps`). Off by default: the prefix costs ~30 bytes a line and the
+   * viewer strips it back off, so it is only paid for when the timestamp column
+   * is actually shown.
+   */
+  timestamps: boolean;
 }
 
 /**
@@ -10015,7 +10034,7 @@ export const RestoreChunk_Header: MessageFns<RestoreChunk_Header> = {
 };
 
 function createBaseFollowLogsRequest(): FollowLogsRequest {
-  return { projectId: "", container: "", tail: 0 };
+  return { projectId: "", container: "", tail: 0, sinceUnix: 0, untilUnix: 0, timestamps: false };
 }
 
 export const FollowLogsRequest: MessageFns<FollowLogsRequest> = {
@@ -10028,6 +10047,15 @@ export const FollowLogsRequest: MessageFns<FollowLogsRequest> = {
     }
     if (message.tail !== 0) {
       writer.uint32(24).int32(message.tail);
+    }
+    if (message.sinceUnix !== 0) {
+      writer.uint32(32).int64(message.sinceUnix);
+    }
+    if (message.untilUnix !== 0) {
+      writer.uint32(40).int64(message.untilUnix);
+    }
+    if (message.timestamps !== false) {
+      writer.uint32(48).bool(message.timestamps);
     }
     return writer;
   },
@@ -10063,6 +10091,30 @@ export const FollowLogsRequest: MessageFns<FollowLogsRequest> = {
           message.tail = reader.int32();
           continue;
         }
+        case 4: {
+          if (tag !== 32) {
+            break;
+          }
+
+          message.sinceUnix = longToNumber(reader.int64());
+          continue;
+        }
+        case 5: {
+          if (tag !== 40) {
+            break;
+          }
+
+          message.untilUnix = longToNumber(reader.int64());
+          continue;
+        }
+        case 6: {
+          if (tag !== 48) {
+            break;
+          }
+
+          message.timestamps = reader.bool();
+          continue;
+        }
       }
       if ((tag & 7) === 4 || tag === 0) {
         break;
@@ -10081,6 +10133,17 @@ export const FollowLogsRequest: MessageFns<FollowLogsRequest> = {
         : "",
       container: isSet(object.container) ? globalThis.String(object.container) : "",
       tail: isSet(object.tail) ? globalThis.Number(object.tail) : 0,
+      sinceUnix: isSet(object.sinceUnix)
+        ? globalThis.Number(object.sinceUnix)
+        : isSet(object.since_unix)
+        ? globalThis.Number(object.since_unix)
+        : 0,
+      untilUnix: isSet(object.untilUnix)
+        ? globalThis.Number(object.untilUnix)
+        : isSet(object.until_unix)
+        ? globalThis.Number(object.until_unix)
+        : 0,
+      timestamps: isSet(object.timestamps) ? globalThis.Boolean(object.timestamps) : false,
     };
   },
 
@@ -10095,6 +10158,15 @@ export const FollowLogsRequest: MessageFns<FollowLogsRequest> = {
     if (message.tail !== 0) {
       obj.tail = Math.round(message.tail);
     }
+    if (message.sinceUnix !== 0) {
+      obj.sinceUnix = Math.round(message.sinceUnix);
+    }
+    if (message.untilUnix !== 0) {
+      obj.untilUnix = Math.round(message.untilUnix);
+    }
+    if (message.timestamps !== false) {
+      obj.timestamps = message.timestamps;
+    }
     return obj;
   },
 
@@ -10106,6 +10178,9 @@ export const FollowLogsRequest: MessageFns<FollowLogsRequest> = {
     message.projectId = object.projectId ?? "";
     message.container = object.container ?? "";
     message.tail = object.tail ?? 0;
+    message.sinceUnix = object.sinceUnix ?? 0;
+    message.untilUnix = object.untilUnix ?? 0;
+    message.timestamps = object.timestamps ?? false;
     return message;
   },
 };

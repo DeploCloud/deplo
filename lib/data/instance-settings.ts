@@ -19,6 +19,11 @@ import {
 import { passkey, session } from "../db/schema/auth";
 import { getCurrentUser } from "../auth";
 import { nowIso } from "../ids";
+import {
+  DEFAULT_LOG_RANGE_DAYS,
+  MAX_LOG_RANGE_DAYS,
+  MIN_LOG_RANGE_DAYS,
+} from "../types";
 import { requireActiveTeamId, requireInstanceAdmin } from "../membership";
 import {
   passkeyRelyingParty,
@@ -119,6 +124,8 @@ export type InstanceSettings = {
   panelIpUrl: string | null;
   /** The IPv4 an A record for the panel's domain should point at. */
   deploHostIp: string | null;
+  /** How far back the log viewer's time range may reach, in days. */
+  logMaxDays: number;
   /** This control plane's version. */
   version: string;
   /** The server running the panel, when it is one Deplo knows about. */
@@ -185,13 +192,74 @@ export type CertificateAccount = {
 /* ------------------------------------------------------------------ */
 
 /** The stored row, ungated and per-request cached. See the module comment. */
-const loadSettings = cache(async (): Promise<{ panelUrl: string | null }> => {
-  const [row] = await getDb()
-    .select({ panelUrl: instanceSettings.panelUrl })
-    .from(instanceSettings)
-    .where(eq(instanceSettings.id, SETTINGS_ID));
-  return { panelUrl: row?.panelUrl ?? null };
-});
+const loadSettings = cache(
+  async (): Promise<{ panelUrl: string | null; logMaxDays: number }> => {
+    const [row] = await getDb()
+      .select({
+        panelUrl: instanceSettings.panelUrl,
+        logMaxDays: instanceSettings.logMaxDays,
+      })
+      .from(instanceSettings)
+      .where(eq(instanceSettings.id, SETTINGS_ID));
+    return {
+      panelUrl: row?.panelUrl ?? null,
+      // No row at all is a fresh instance, which gets the same default the
+      // column does rather than a 0 that would collapse the picker.
+      logMaxDays: row?.logMaxDays ?? DEFAULT_LOG_RANGE_DAYS,
+    };
+  },
+);
+
+/**
+ * How far back the log viewer's time range may reach, in days.
+ *
+ * Ungated on purpose, unlike everything else in this file: it is read on every
+ * logs page, by any member holding `view_logs`, and it is a ceiling on a picker
+ * — not a secret, and not something an instance admin's absence should hide.
+ * Writing it is admin-only ({@link setLogMaxDays}).
+ */
+export async function logMaxDays(): Promise<number> {
+  const { logMaxDays } = await loadSettings();
+  return clampLogMaxDays(logMaxDays);
+}
+
+/** Clamp, never reject. The field is a number input with these same bounds, so
+ *  anything outside them arrived from an API client, and the honest answer to
+ *  "keep 900 days" is the ceiling — not an error about a number nobody typed. */
+function clampLogMaxDays(days: number): number {
+  return Number.isFinite(days)
+    ? Math.min(MAX_LOG_RANGE_DAYS, Math.max(MIN_LOG_RANGE_DAYS, Math.trunc(days)))
+    : DEFAULT_LOG_RANGE_DAYS;
+}
+
+/**
+ * Set the log viewer's maximum time range. Instance-wide because the logs live
+ * on the HOST, which several teams share.
+ */
+export async function setLogMaxDays(days: number): Promise<InstanceSettings> {
+  await requireInstanceAdmin();
+  const teamId = await requireActiveTeamId();
+  const user = (await getCurrentUser())!;
+
+  const value = clampLogMaxDays(days);
+  const now = nowIso();
+  await getDb()
+    .insert(instanceSettings)
+    .values({ id: SETTINGS_ID, logMaxDays: value, updatedAt: now })
+    .onConflictDoUpdate({
+      target: instanceSettings.id,
+      set: { logMaxDays: value, updatedAt: now },
+    });
+
+  await recordActivity(
+    "member",
+    `Set the maximum log range to ${value} ${value === 1 ? "day" : "days"}`,
+    user.name,
+    null,
+    teamId,
+  );
+  return getInstanceSettings();
+}
 
 /**
  * This instance's public base URL, as everything Deplo hands out should spell it.
@@ -268,7 +336,7 @@ function panelPort(): string {
 
 export async function getInstanceSettings(): Promise<InstanceSettings> {
   await requireInstanceAdmin();
-  const { panelUrl } = await loadSettings();
+  const { panelUrl, logMaxDays } = await loadSettings();
   const [host, ownerName] = await Promise.all([
     deploHostServer(),
     instanceOwnerName(),
@@ -285,6 +353,7 @@ export async function getInstanceSettings(): Promise<InstanceSettings> {
         ? "environment"
         : "request",
     storedPanelUrl: panelUrl,
+    logMaxDays: clampLogMaxDays(logMaxDays),
     version: DEPLO_VERSION,
     deploHostId: host?.id ?? null,
     deploHostName: host ? serverLabel(host) : null,

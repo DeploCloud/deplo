@@ -79,6 +79,19 @@ const LogsInfoRef = builder.objectRef<LogsInfo>("LogsInfo").implement({
       type: [ConsoleInstanceRef],
       resolve: (l) => l.instances,
     }),
+    supportsTimeline: t.exposeBoolean("supportsTimeline", {
+      description:
+        "The owning host's agent can narrow a log stream by time " +
+        "(`logs.timerange`). False on an older agent, which still streams but " +
+        "only honours `tail` — the viewer greys out the time-range control " +
+        "rather than offering a window the host would silently ignore.",
+    }),
+    logMaxDays: t.exposeInt("logMaxDays", {
+      description:
+        "How far back the time range may reach, in days (instance setting). A " +
+        "bound on what may be asked for, not a promise the host still holds it: " +
+        "docker rotates its logs by size.",
+    }),
   }),
 });
 

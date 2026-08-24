@@ -4,10 +4,13 @@ import { hasCapability, requireActiveTeamId, requireCapability } from "../member
 import { loadDatabaseForTeam } from "./databases";
 import {
   connectAgent,
+  serverSupports,
   AgentUnreachableError,
+  LOGS_TIMERANGE_CAPABILITY,
   type AgentConnection,
   type AgentConsoleInstance,
 } from "../infra/agent-client";
+import { logMaxDays } from "./instance-settings";
 import { effectiveDatabaseImage } from "../deploy/database-compose";
 import { isDockerLevelStderr } from "../infra/docker";
 import type {
@@ -199,12 +202,18 @@ export async function getDatabaseLogsInfo(id: string): Promise<LogsInfo | null> 
   // connection errors (and their DSNs) come out. Team-level: a database has no
   // folder to grant on.
   if (!(await hasCapability("view_logs"))) return null;
-  const found = await listForDisplay(db);
+  const [found, supportsTimeline, maxDays] = await Promise.all([
+    listForDisplay(db),
+    serverSupports(db.serverId, LOGS_TIMERANGE_CAPABILITY),
+    logMaxDays(),
+  ]);
   return {
     running: found.instances.some((i) => i.running),
     streamable: found.real,
     unreachable: found.unreachable,
     instances: found.instances,
+    supportsTimeline,
+    logMaxDays: maxDays,
   };
 }
 

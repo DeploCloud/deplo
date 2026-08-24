@@ -841,6 +841,13 @@
       "when": 1784942201006,
       "tag": "0119_migration_in_progress",
       "breakpoints": true
+    },
+    {
+      "idx": 120,
+      "version": "7",
+      "when": 1784942202006,
+      "tag": "0120_instance_log_max_days",
+      "breakpoints": true
     }
   ]
 }

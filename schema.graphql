@@ -2208,6 +2208,11 @@ type InstanceSettings {
   deploHostName: String
 
   """
+  How far back the log viewer's time range may reach, in days. Instance-wide because the logs live on the host, which several teams share. It bounds what may be ASKED for and nothing else: docker rotates its json-file logs by size, so no setting here makes the host actually hold that much.
+  """
+  logMaxDays: Int
+
+  """
   The address the panel also answers on, straight on the machine it runs on (http://<server ip>:3000). Always on and not a setting: it is the way back in when the panel's domain, certificate or proxy stops working. Null only when Deplo cannot work out an address of its own that anyone else could reach.
   """
   panelIpUrl: String
@@ -2239,12 +2244,22 @@ type LogLine {
 """Lighter container list for the logs viewer (no shell probe)."""
 type LogsInfo {
   instances: [ConsoleInstance!]
+
+  """
+  How far back the time range may reach, in days (instance setting). A bound on what may be asked for, not a promise the host still holds it: docker rotates its logs by size.
+  """
+  logMaxDays: Int
   running: Boolean
 
   """
   A real container exists on the host, so its logs can be streamed — whether it is running, restarting or exited. Attach on this, not on `running`: a crash-looping container is the one whose logs you need.
   """
   streamable: Boolean
+
+  """
+  The owning host's agent can narrow a log stream by time (`logs.timerange`). False on an older agent, which still streams but only honours `tail` — the viewer greys out the time-range control rather than offering a window the host would silently ignore.
+  """
+  supportsTimeline: Boolean
 
   """The owning server's agent could not be reached."""
   unreachable: Boolean
@@ -3109,6 +3124,11 @@ type Mutation {
   Grant (or replace) a user's capabilities on a folder. Bounded by both the granter's and the grantee's caps; owner/admin only. Returns the fresh grant list.
   """
   setFolderGrant(capabilities: [String!]!, folderId: ID!, userId: ID!): [FolderGrant!]
+
+  """
+  Set how far back the log viewer's time range may reach, in days. It is a ceiling on the ranges the picker offers, not a retention policy: docker rotates a container's logs by SIZE, so nothing here makes a host hold more of them, and a window that comes back empty says the host rotated them rather than pretending the app was quiet. Clamped rather than rejected - the field is a number input with the same bounds, so a value outside them arrived from an API client, and the honest answer to "keep 900 days" is the ceiling.
+  """
+  setLogMaxDays(days: Int!): InstanceSettings
 
   """Turn MCP access on or off for this team."""
   setMcpSettings(enabled: Boolean!): McpSettings

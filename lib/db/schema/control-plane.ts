@@ -3432,6 +3432,17 @@ export const instanceSettings = pgTable("instance_settings", {
    */
   vapidPublicKey: text("vapid_public_key"),
   vapidPrivateKeyEnc: text("vapid_private_key_enc"),
+  /**
+   * How far back the log viewer's time range may reach, in DAYS. Instance-wide
+   * because the logs live on the HOST, which several teams share.
+   *
+   * A ceiling on what may be ASKED for, never a promise the host still has it:
+   * docker rotates its json-file logs by SIZE (`max-size`/`max-file`), so no
+   * setting anywhere can make "7 days" true. Deplo sets no rotation policy of
+   * its own, and an empty result says the host rotated them rather than
+   * pretending there was nothing to say.
+   */
+  logMaxDays: integer("log_max_days").notNull().default(7),
   updatedAt: isoTimestamptz("updated_at").notNull(),
 });
 

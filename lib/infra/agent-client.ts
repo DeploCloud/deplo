@@ -600,8 +600,19 @@ export interface AgentConnection {
    *  A compose stack's containers are not addressable by slug — `exists:false`. */
   inspect(slug: string): Promise<{ exists: boolean; running: boolean; state: string }>;
   /** Live `docker logs -f` as an output-only AttachHandle (reuses the SSE session
-   *  plumbing). `write` is a no-op; `close()` cancels the stream + the grpc client. */
-  followLogs(appId: string, container: string, tail: number): AttachHandle;
+   *  plumbing). `write` is a no-op; `close()` cancels the stream + the grpc client.
+   *
+   *  `opts` is the time window and the timestamp prefix. It has to be the AGENT's
+   *  job: the stream is raw bytes with no per-line clock, so this side of the pipe
+   *  has nothing to filter on. An agent without {@link LOGS_TIMERANGE_CAPABILITY}
+   *  ignores the fields and streams `--tail` as before, which is why the UI greys
+   *  the control out rather than refusing to show logs. */
+  followLogs(
+    appId: string,
+    container: string,
+    tail: number,
+    opts?: FollowLogsOptions,
+  ): AttachHandle;
   /** Interactive attach as a full-duplex AttachHandle (write = stdin, onData =
    *  output). `tty` selects the pty backing agent-side. */
   attach(
@@ -1882,10 +1893,26 @@ function dial(target: DialTarget): AgentConnection {
         },
       );
     },
-    followLogs(appId: string, container: string, tail: number) {
+    followLogs(
+      appId: string,
+      container: string,
+      tail: number,
+      opts: FollowLogsOptions = {},
+    ) {
       return logsHandle(
         client.followLogs(
-          { projectId: appId, container, tail },
+          {
+            projectId: appId,
+            container,
+            tail,
+            // 0 is the proto default and the agent's "unset", so an omitted
+            // window produces the exact request this sent before the fields
+            // existed. Seconds, not milliseconds: `docker logs --since` reads
+            // an integer as a Unix timestamp in seconds.
+            sinceUnix: opts.sinceUnix ?? 0,
+            untilUnix: opts.untilUnix ?? 0,
+            timestamps: opts.timestamps ?? false,
+          },
           { deadline: new Date(Date.now() + STREAM_DEADLINE_MS) },
         ),
       );
@@ -2436,6 +2463,25 @@ export function mapBackupUnsupported(e: unknown): Error {
  * resolves against the shared stack dir and finds nothing.
  */
 export const COMPOSE_PROJECTDIR_CAPABILITY = "deploy.compose.projectdir";
+
+/**
+ * The time window for {@link AgentConnection.followLogs}, in Unix SECONDS.
+ * Omitted or 0 on either end means unset: no lower bound, follow live forever.
+ */
+export interface FollowLogsOptions {
+  sinceUnix?: number;
+  untilUnix?: number;
+  /** Prefix each line with its RFC3339Nano write time. */
+  timestamps?: boolean;
+}
+
+/**
+ * `FollowLogsRequest` carries `since_unix` / `until_unix` / `timestamps`. A SOFT
+ * gate, unlike most: an agent without it still streams, so the control plane
+ * keeps the stream and the UI greys out the time-range control. Refusing to show
+ * any logs because the host cannot narrow them would be the worse trade.
+ */
+export const LOGS_TIMERANGE_CAPABILITY = "logs.timerange";
 
 /**
  * Does this host's agent advertise a capability? Best-effort: an agent that is

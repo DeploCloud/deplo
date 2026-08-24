@@ -2,6 +2,7 @@ import { notFound } from "next/navigation";
 import { getDatabase } from "@/lib/data/databases";
 import { getDatabaseLogsInfo } from "@/lib/data/database-console";
 import { DatabaseLogs } from "@/components/storage/database-logs";
+import { DEFAULT_LOG_RANGE_DAYS } from "@/lib/types";
 
 export const metadata = { title: "Logs" };
 
@@ -23,6 +24,8 @@ export default async function DatabaseLogsPage(
         status={db.status}
         instances={info?.instances ?? []}
         streamable={!!info?.streamable}
+        supportsTimeline={!!info?.supportsTimeline}
+        logMaxDays={info?.logMaxDays ?? DEFAULT_LOG_RANGE_DAYS}
       />
     </div>
   );
