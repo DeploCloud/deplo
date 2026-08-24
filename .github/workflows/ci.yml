@@ -3,6 +3,13 @@ name: CI
 on:
   push:
     branches: ["main"]
+    # A release tag runs the checks too. docker-image.yml builds and publishes the
+    # image on the same tag without running anything, so before this a tag shipped
+    # to every install without lint, tests or tsc having ever seen that commit.
+    # Deliberately NOT a gate on the build: the red arrives while the image is
+    # being pushed and tells you to pull the release, rather than letting one
+    # flaky test hold a release hostage.
+    tags: ["v*.*"]
   pull_request:
   # So a newly-published advisory turns the repo red on its own, without waiting
   # for somebody to push. The audit job is the only one that finds work when the
