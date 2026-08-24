@@ -103,10 +103,28 @@ nobody can clean.
 Settings → Servers lists migration sources in their own section, out of the fleet count, with no
 Manage page (every tab there operates a host) and one action in a `⋯` menu: **Uninstall agent**,
 which degrades to "forget the row" when the install command was never run - the only way out for
-a failed registration now that the page is gone. The import report, in both its homes, offers
-**Migration complete - remove the agent**. It is a step and not an automatic sweep because an
-import is usually several passes, and uninstalling after the first would lock the operator out of
-the rest.
+a failed registration now that the page is gone.
+
+**Finishing the migration is what removes the agent, and the system keeps trying.** An earlier
+version of this ADR made it a button on the report, reasoning that an import is usually several
+passes and uninstalling after the first would lock the operator out of the rest. The pass is not
+what ends the migration - **Finish** is, and it is pressed once - so the sweep hangs off that
+instead, and a run that is merely *stopped* still takes its sources with it untouched.
+
+The intent is durable, on the `servers` row that has to die: `uninstall_next_at` /
+`uninstall_attempts` / `uninstall_error` / `uninstall_run_id` (migration 0118). One attempt is
+made inline while the wizard is open, with a **15s** deadline rather than the RPC's minute, so
+"Finish" cannot sit for three minutes on a host that has gone away; two more come from the preview
+reaper's tick, at a minute and five. Success deletes the row, which drops the intent with it.
+
+Only when all three fail does anything appear in front of a person: `uninstall_error` carries the
+host's own sentence, and it is what the card on the migration screen and the line under Migration
+sources both read. The sweep runs with **nobody signed in**, which is the point - the import is
+gated on `create_projects` and uninstalling is instance-admin, so a migration finished by an
+ordinary member used to leave the agent installed and say so in the report. The ungated
+`uninstallMigrationSource` is safe because it refuses anything whose role is not `import`:
+finishing what the wizard promised is the closing half of an action already authorised, not a new
+one. A failed volume copy still stops it dead, agent and all - the bytes are still over there.
 
 ## Consequences
 

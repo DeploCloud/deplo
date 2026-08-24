@@ -1,6 +1,6 @@
 import "server-only";
 
-import { and, eq, inArray, sql } from "drizzle-orm";
+import { and, asc, eq, inArray, isNotNull, lte, sql } from "drizzle-orm";
 import yaml from "js-yaml";
 
 import { getDb } from "../db/client";
@@ -11,6 +11,8 @@ import {
   dokployImports as runsTable,
   domains as domainsTable,
   environments as environmentsTable,
+  serverTeams as serverTeamsTable,
+  servers as serversTable,
   sharedEnvVars as sharedVarsTable,
   users as usersTable,
 } from "../db/schema/control-plane";
@@ -21,7 +23,6 @@ import {
   canExposePorts,
   canMountHostVolumes,
   hasCapability,
-  isInstanceAdmin,
   requireActiveTeamId,
   requireCapability,
   requireInstanceAdmin,
@@ -105,7 +106,7 @@ import {
   canHostWorkloads,
   getServerById,
   listServersForTeam,
-  uninstallServerAgent,
+  uninstallMigrationSource,
 } from "./servers";
 import { deploHostSelfAddresses, isDeploHostServer, resolveServerIp } from "../deploy/domains";
 import { saveSharedVar } from "./shared-vars";
@@ -980,12 +981,29 @@ export async function beginDokployImport(input: {
 }
 
 /**
- * How many times a finished migration asks a source host to uninstall Deplo's
- * agent before it hands the job back to a person. The failure it retries is the
- * transient one - a box still busy with the last volume, an RPC that timed out.
+ * Attempts before Deplo stops trying to take its agent off a migration source and
+ * asks a person instead: the one made while the wizard is still open, then two
+ * from the sweep. The failures worth retrying are all transient - a host still
+ * finishing the last volume copy, an RPC that timed out, a box rebooting - and
+ * they clear in under a minute far more often than they do not.
  */
 const UNINSTALL_ATTEMPTS = 3;
-const UNINSTALL_RETRY_MS = 2000;
+
+/** How long the ladder waits before attempt N+1: a minute, then five. Short,
+ *  because nothing is being retried here except reaching a machine that was
+ *  answering a moment ago. */
+const UNINSTALL_BACKOFF_MS = [60_000, 5 * 60_000];
+
+/**
+ * The deadline for the ONE attempt made inline, while somebody is watching the
+ * wizard finish. The RPC's own deadline is a minute, and three of those in a row
+ * is how "Finish" used to sit for three minutes on a host that had gone away. On
+ * a host that is up, removing a unit file and a binary takes well under this.
+ */
+const UNINSTALL_INLINE_DEADLINE_MS = 15_000;
+
+/** How many stuck sources one sweep tick picks up. */
+const UNINSTALL_DRAIN_BATCH = 8;
 
 /**
  * The last act of a migration: take Deplo's agent back off every machine it was
@@ -993,30 +1011,24 @@ const UNINSTALL_RETRY_MS = 2000;
  *
  * Automatic, because a migration that ends with "now go and remove the agent
  * yourself" is not finished - the operator never installed it, so undoing it is
- * not their errand. It stays best-effort: anything it cannot do becomes a
- * `manual` line in the report and leaves the source in place, which is exactly
- * what makes the button on the report page appear.
+ * not their errand. What changed is that "automatic" now survives the request:
+ * the intent is written on the server row (`uninstall_next_at`), one attempt is
+ * made here while the wizard is still open, and the sweep carries the rest. A
+ * person is asked only once Deplo has given up, which takes three attempts over
+ * several minutes - and by then the sentence the host refused with is on the row
+ * to show them.
  *
- * Two things hold it back on purpose:
- *  - a volume copy that FAILED, because the bytes are still over there and
- *    removing the agent is removing the only way to fetch them;
- *  - an actor who is not an instance admin, since uninstalling is instance-admin
- *    like every other server action.
+ * The actor is the migration's, not the caller's: this runs as the closing half
+ * of the import, and the Activity trail should say who asked for the migration.
+ *
+ * ONE thing still holds it back completely: a volume copy that FAILED, because
+ * the bytes are still over there and the agent is the only way to fetch them.
+ * That is not a failure to retry, it is a decision to leave to a person, so it
+ * writes its `manual` line and schedules nothing.
  */
 async function removeMigrationSources(runId: string, teamId: string): Promise<void> {
   const sources = (await listServersForTeam(teamId)).filter((s) => s.importOnly);
   if (sources.length === 0) return;
-
-  const hold = async (why: string) => {
-    for (const s of sources)
-      await appendRunItem(runId, {
-        path: s.name,
-        sourceKind: "server",
-        sourceName: s.name,
-        outcome: "manual",
-        message: `Deplo's agent is still on ${s.name}: ${why}`,
-      });
-  };
 
   const stranded = await getDb()
     .select({ id: itemsTable.id })
@@ -1029,36 +1041,168 @@ async function removeMigrationSources(runId: string, teamId: string): Promise<vo
       ),
     )
     .limit(1);
-  if (stranded.length > 0)
-    return hold("data that did not copy is still on it. Remove it once the copy is done.");
-  if (!(await isInstanceAdmin()))
-    return hold("only an instance admin can remove it.");
-
-  for (const s of sources) {
-    let error = "";
-    for (let attempt = 1; attempt <= UNINSTALL_ATTEMPTS; attempt++) {
-      try {
-        const res = await uninstallServerAgent(s.id);
-        error = res.removed ? "" : (res.error ?? "the agent is still installed");
-      } catch (e) {
-        error = e instanceof Error ? e.message : String(e);
-      }
-      if (!error) break;
-      if (attempt < UNINSTALL_ATTEMPTS)
-        await new Promise((r) => setTimeout(r, UNINSTALL_RETRY_MS));
-    }
-    // Only the failure is reported: a source that went away is visible by being
-    // gone, and its uninstall is already in the Activity trail.
-    if (error)
+  if (stranded.length > 0) {
+    for (const s of sources)
       await appendRunItem(runId, {
         path: s.name,
         sourceKind: "server",
         sourceName: s.name,
         outcome: "manual",
         message:
-          `Deplo could not remove its own agent from ${s.name} after ${UNINSTALL_ATTEMPTS} ` +
-          `tries: ${error}. Remove it from the import report.`,
+          `Deplo's agent is still on ${s.name}: data that did not copy is still ` +
+          `on it. Remove it once the copy is done.`,
       });
+    return;
+  }
+
+  const [run] = await getDb()
+    .select({ actor: runsTable.actor })
+    .from(runsTable)
+    .where(eq(runsTable.id, runId))
+    .limit(1);
+  const actor = run?.actor ?? "the migration";
+
+  for (const s of sources) {
+    // The intent FIRST, so a process that dies on the next line still leaves a
+    // row the sweep will pick up. `attempts: 0` because the try below is the
+    // first one.
+    await getDb()
+      .update(serversTable)
+      .set({
+        uninstallRunId: runId,
+        uninstallAttempts: 0,
+        uninstallError: "",
+        uninstallNextAt: nowIso(),
+      })
+      .where(eq(serversTable.id, s.id));
+    await attemptSourceUninstall(
+      { id: s.id, name: s.name, attempts: 0, runId },
+      teamId,
+      actor,
+      new Date(),
+      UNINSTALL_INLINE_DEADLINE_MS,
+    );
+  }
+}
+
+/**
+ * One attempt at taking Deplo off one migration source, and what to do with the
+ * answer.
+ *
+ * Success deletes the server row, which takes the pending intent with it - the
+ * row IS the queue entry, which is why there is no second table to keep in step.
+ * A failure either moves the row along the ladder or, on the last rung, stops
+ * trying: `uninstall_next_at` goes NULL, the host's own words go into
+ * `uninstall_error`, and only THEN does anything appear in front of a person -
+ * the card on the migration screen, the line under Migration sources, a `manual`
+ * row in the report and an entry in Activity.
+ */
+async function attemptSourceUninstall(
+  source: { id: string; name: string; attempts: number; runId: string | null },
+  teamId: string,
+  actor: string,
+  now: Date,
+  deadlineMs?: number,
+): Promise<void> {
+  let error = "";
+  try {
+    const res = await uninstallMigrationSource(source.id, actor, teamId, deadlineMs);
+    error = res.removed ? "" : (res.error ?? "the agent is still installed");
+  } catch (e) {
+    error = e instanceof Error ? e.message : String(e);
+  }
+  if (!error) return;
+
+  const attempts = source.attempts + 1;
+  if (attempts < UNINSTALL_ATTEMPTS) {
+    const wait = UNINSTALL_BACKOFF_MS[Math.min(attempts, UNINSTALL_BACKOFF_MS.length) - 1];
+    await getDb()
+      .update(serversTable)
+      .set({
+        uninstallAttempts: attempts,
+        uninstallError: "",
+        uninstallNextAt: new Date(now.getTime() + wait).toISOString(),
+      })
+      .where(eq(serversTable.id, source.id));
+    return;
+  }
+
+  await getDb()
+    .update(serversTable)
+    .set({ uninstallAttempts: attempts, uninstallError: error, uninstallNextAt: null })
+    .where(eq(serversTable.id, source.id));
+  if (source.runId) {
+    await appendRunItem(source.runId, {
+      path: source.name,
+      sourceKind: "server",
+      sourceName: source.name,
+      outcome: "manual",
+      message:
+        `Deplo could not remove its own agent from ${source.name} after ` +
+        `${UNINSTALL_ATTEMPTS} tries: ${error}. Remove it from Settings → Servers.`,
+    });
+    await refreshCounts(source.runId, teamId);
+  }
+  await recordActivity(
+    "member",
+    `Could not remove Deplo's agent from ${source.name} after ${UNINSTALL_ATTEMPTS} tries: ${error}`,
+    actor,
+    null,
+    teamId,
+  );
+}
+
+/**
+ * The sweep half: retry every migration source whose uninstall is still owed.
+ *
+ * Runs on the preview reaper's tick (every 60s, under its lease), because that is
+ * already a loop that dials hosts on a schedule and this is the same shape of
+ * work. There is no catch-up window to miss: the predicate is a DB state, so a
+ * tick that never ran costs nothing but the delay.
+ */
+export async function drainMigrationSourceUninstalls(
+  now: Date = new Date(),
+): Promise<void> {
+  const due = await getDb()
+    .select({
+      id: serversTable.id,
+      name: serversTable.name,
+      attempts: serversTable.uninstallAttempts,
+      runId: serversTable.uninstallRunId,
+    })
+    .from(serversTable)
+    .where(
+      and(
+        eq(serversTable.importOnly, true),
+        isNotNull(serversTable.uninstallNextAt),
+        lte(serversTable.uninstallNextAt, now.toISOString()),
+      ),
+    )
+    .orderBy(asc(serversTable.uninstallNextAt))
+    .limit(UNINSTALL_DRAIN_BATCH);
+
+  for (const row of due) {
+    // The team comes from the GRANT rather than the run: a migration source is
+    // granted to exactly one team at registration, and that outlives the run row.
+    const [grant] = await getDb()
+      .select({ teamId: serverTeamsTable.teamId })
+      .from(serverTeamsTable)
+      .where(eq(serverTeamsTable.serverId, row.id))
+      .limit(1);
+    if (!grant) continue;
+    const [run] = row.runId
+      ? await getDb()
+          .select({ actor: runsTable.actor })
+          .from(runsTable)
+          .where(eq(runsTable.id, row.runId))
+          .limit(1)
+      : [];
+    await attemptSourceUninstall(
+      row,
+      grant.teamId,
+      run?.actor ?? "the migration",
+      now,
+    );
   }
 }
 

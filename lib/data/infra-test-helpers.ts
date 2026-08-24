@@ -60,6 +60,8 @@ export function makeServer(opts: Partial<Server> & { id: string }): Server {
     storageOnly: opts.storageOnly ?? false,
     buildOnly: opts.buildOnly ?? false,
     importOnly: opts.importOnly ?? false,
+    uninstallPending: opts.uninstallPending ?? false,
+    uninstallError: opts.uninstallError ?? "",
     hostArch: opts.hostArch ?? "amd64",
     deployConcurrency: opts.deployConcurrency ?? 1,
     createdAt: opts.createdAt ?? T0,

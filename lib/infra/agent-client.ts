@@ -485,8 +485,9 @@ export interface AgentConnection {
    *  dir (mTLS materials included) - and stop. Resolves with the paths it actually
    *  removed once every removal is done; the agent then exits, so this is the last
    *  thing it ever answers. Docker is never touched. Rejects with UNIMPLEMENTED on
-   *  an agent without the `self-uninstall` capability. */
-  selfUninstall(): Promise<string[]>;
+   *  an agent without the `self-uninstall` capability. `deadlineMs` overrides the
+ *  default RPC deadline, for the one attempt made while somebody is waiting. */
+  selfUninstall(deadlineMs?: number): Promise<string[]>;
   /** Reclaim Docker disk on the host — a STRICT ALLOW-LIST, never a prune verb. The
    *  agent removes only what it can PROVE is unreferenced (a container-reference
    *  reverse index over running AND exited containers, or an on-disk sentinel), and
@@ -1639,12 +1640,12 @@ function dial(target: DialTarget): AgentConnection {
         );
       });
     },
-    selfUninstall() {
+    selfUninstall(deadlineMs?: number) {
       return new Promise<string[]>((resolve, reject) => {
         client.selfUninstall(
           {},
           new Metadata(),
-          { deadline: new Date(Date.now() + SELF_UNINSTALL_TIMEOUT_MS) },
+          { deadline: new Date(Date.now() + (deadlineMs ?? SELF_UNINSTALL_TIMEOUT_MS)) },
           (err, resp) => (err ? reject(toAgentError(err)) : resolve(resp.removed)),
         );
       });
@@ -2620,7 +2621,12 @@ const SELF_UNINSTALL_CAPABILITY = "self-uninstall";
  * revocation plus the host-side script - ADR-0011 - and that script also remains
  * the answer whenever this throws.
  */
-export async function selfUninstallServerAgent(serverId: string): Promise<string[]> {
+export async function selfUninstallServerAgent(
+  serverId: string,
+  /** Shorter deadline for the one attempt made while somebody is waiting on the
+   *  wizard; the background retries take the full one. */
+  deadlineMs?: number,
+): Promise<string[]> {
   // `connectAgent` rather than resolveTarget + dial (which is what SelfUpdate
   // does): identical in production - it IS resolveTarget + dial - but it is the
   // seam the tests inject a stand-in through, and an uninstall that no test can
@@ -2634,7 +2640,7 @@ export async function selfUninstallServerAgent(serverId: string): Promise<string
           "uninstall command on the host instead.",
       );
     }
-    return await conn.selfUninstall();
+    return await conn.selfUninstall(deadlineMs);
   } catch (e) {
     if (
       !(e instanceof AgentUninstallUnsupportedError) &&

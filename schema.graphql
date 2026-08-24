@@ -4267,6 +4267,16 @@ type Server {
   traefikDashboardUser: String
   traefikEnabled: Boolean
   type: ServerType
+
+  """
+  Why Deplo could not take its agent off this migration source, after it stopped trying (three attempts over several minutes). Empty otherwise. This is the only state that needs a person: surface it verbatim next to the host-side uninstall command.
+  """
+  uninstallError: String
+
+  """
+  Deplo is still trying to take its agent off this migration source, and will try again on its own. Nothing is asked of anyone while this is true. False for every other server.
+  """
+  uninstallPending: Boolean
 }
 
 """

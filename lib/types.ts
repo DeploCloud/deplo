@@ -553,6 +553,20 @@ export interface Server {
    */
   importOnly: boolean;
   /**
+   * Deplo is still trying to take its agent off this migration source. Set from
+   * the moment the migration finishes until the host lets go - a few minutes at
+   * most, and nothing is asked of anyone while it is true.
+   */
+  uninstallPending: boolean;
+  /**
+   * Why Deplo could not take its agent off this migration source, after it stopped
+   * trying. Empty for every other server and for one it is still working on.
+   *
+   * This is the ONLY state that asks a person for anything: the host refused three
+   * times over several minutes, so the sentence it refused with is what they need.
+   */
+  uninstallError: string;
+  /**
    * This host's CPU architecture ("amd64" | "arm64"), observed from each Hello.
    * "" when the agent is too old to report it, which keeps the server out of the
    * build-server picker rather than risking an image the target cannot execute.

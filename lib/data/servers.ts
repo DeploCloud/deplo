@@ -434,6 +434,10 @@ export async function addServer(input: AddServerInput): Promise<AddServerResult>
     storageOnly: !importOnly && (input.storageOnly ?? false),
     buildOnly: !importOnly && !input.storageOnly && (input.buildOnly ?? false),
     importOnly,
+    // Nothing is being taken off anything yet: a migration source earns its
+    // uninstall when its migration finishes.
+    uninstallPending: false,
+    uninstallError: "",
     // Unknown until the agent says Hello, like dockerVersion above it.
     hostArch: "",
     // Born strict: one deploy at a time on this host until an admin raises it.
@@ -581,6 +585,8 @@ export async function ensureDeploHostServer(): Promise<void> {
     storageOnly: false,
     buildOnly: false,
     importOnly: false,
+    uninstallPending: false,
+    uninstallError: "",
     hostArch: "",
     deployConcurrency: 1,
     createdAt: nowIso(),
@@ -758,6 +764,27 @@ export async function removeServer(id: string): Promise<ServerRemoval> {
   await requireInstanceAdmin();
   const teamId = await requireActiveTeamId();
   const user = (await getCurrentUser())!;
+  return removeServerRow(id, user.name, teamId);
+}
+
+/**
+ * The removal itself, with NO gate of its own - everything {@link removeServer}
+ * does once it knows the caller is allowed to.
+ *
+ * Split out for exactly one other caller: the sweep that takes Deplo's agent off
+ * a finished migration's source. That runs on a timer with nobody signed in, so
+ * it cannot pass through `requireInstanceAdmin` / `requireActiveTeamId` - and it
+ * must not therefore grow its own copy of the revoke → delete → restore-the-pin
+ * dance, which is the part that must never differ between the two. The gates stay
+ * at the callers; the invariant that keeps the ungated one honest is that it may
+ * only ever be handed a MIGRATION SOURCE (see {@link uninstallMigrationSource}).
+ */
+async function removeServerRow(
+  id: string,
+  actorName: string,
+  teamId: string,
+): Promise<ServerRemoval> {
+  const user = { name: actorName };
   const server = await getServerById(id);
   if (!server) throw new Error("Server not found");
 
@@ -891,6 +918,34 @@ export async function uninstallServerAgent(id: string): Promise<ServerUninstall>
   await requireInstanceAdmin();
   const teamId = await requireActiveTeamId();
   const user = (await getCurrentUser())!;
+  return uninstallMigrationSource(id, user.name, teamId);
+}
+
+/**
+ * The uninstall itself, with NO capability gate - what {@link uninstallServerAgent}
+ * does once it knows the caller is allowed to, and what the automatic sweep does
+ * with nobody signed in at all.
+ *
+ * Ungated is safe here because of the one check it makes for itself and never
+ * skips: the target must be a MIGRATION SOURCE. That is not a role anything but
+ * the import wizard can create, it is granted to one team, it is out of every
+ * deploy and build picker, and it holds no workload by construction (a
+ * {@link assertServerRemovable} away from proving it). Taking Deplo's own agent
+ * back off such a box is the closing half of an action somebody already
+ * authorised - the wizard told them Deplo would - not a new one, which is why the
+ * timer is allowed to finish it when the person who started the migration was
+ * never an instance admin. Widening it to any other role would be a different
+ * decision entirely, and this refusal is what stops that happening by accident.
+ *
+ * `deadlineMs` shortens the RPC for the ONE attempt made inline while somebody is
+ * waiting on the wizard; the retries take the full deadline.
+ */
+export async function uninstallMigrationSource(
+  id: string,
+  actorName: string,
+  teamId: string,
+  deadlineMs?: number,
+): Promise<ServerUninstall> {
   const server = await getServerById(id);
   if (!server) throw new Error("Server not found");
   const command = uninstallCommand({ baseUrl: await publicBaseUrl() });
@@ -909,11 +964,11 @@ export async function uninstallServerAgent(id: string): Promise<ServerUninstall>
   if (server.agent?.certFingerprint) {
     try {
       const { selfUninstallServerAgent } = await import("../infra/agent-client");
-      const removed = await selfUninstallServerAgent(id);
+      const removed = await selfUninstallServerAgent(id, deadlineMs);
       await recordActivity(
         "member",
         `Uninstalled the agent from ${server.name} (${removed.join(", ") || "nothing found"})`,
-        user.name,
+        actorName,
         null,
         teamId,
       );
@@ -927,7 +982,7 @@ export async function uninstallServerAgent(id: string): Promise<ServerUninstall>
     }
   }
 
-  const { warning } = await removeServer(id);
+  const { warning } = await removeServerRow(id, actorName, teamId);
   return { removed: true, uninstallCommand: command, error: null, warning };
 }
 

@@ -829,6 +829,21 @@ export const servers = pgTable(
     // finishing a migration takes Deplo off that host instead of handing someone
     // a shell command.
     importOnly: boolean("import_only").notNull().default(false),
+    // The pending removal of a MIGRATION SOURCE's agent, kept on the row that has
+    // to die rather than in a queue of its own: the surviving `servers` row IS the
+    // unfinished intent, and deleting it (which is what success means) drops the
+    // intent with it (migration 0118).
+    //
+    // `uninstall_next_at` set = Deplo is still trying, and will again at that time.
+    // NULL with a non-empty `uninstall_error` = it gave up, and only THEN is a
+    // person asked - which is the whole point: three tries spread over minutes
+    // cover the host that was busy finishing a copy, and nobody has to watch.
+    // `uninstall_run_id` names the migration that asked, so the give-up can be
+    // written back into its report where the rest of that migration is.
+    uninstallNextAt: isoTimestamptz("uninstall_next_at"),
+    uninstallAttempts: integer("uninstall_attempts").notNull().default(0),
+    uninstallError: text("uninstall_error").notNull().default(""),
+    uninstallRunId: text("uninstall_run_id"),
     // This host's CPU architecture ("amd64" | "arm64"), observed from each Hello
     // like `docker_version` and `traefik_enabled` - never asserted at registration.
     // "" means an agent too old to report it, which can never equal another host's

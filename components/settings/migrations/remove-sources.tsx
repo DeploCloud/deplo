@@ -11,16 +11,20 @@ import { ConfirmAction } from "@/components/shared/confirm-action";
 import { gql, gqlAction } from "@/lib/graphql-client";
 
 /**
- * The FALLBACK for taking Deplo's agent back off the machines it was installed on.
+ * The FALLBACK for taking Deplo's agent back off the machines it was installed on,
+ * and it appears only once Deplo has GIVEN UP.
  *
- * Finishing an import does it by itself (`removeMigrationSources`), so this card
- * is what is left when it could not: the host refused three times, a volume copy
- * failed and the bytes are still over there, or whoever ran the import is not an
- * instance admin. The report says which, this presses the button once it is safe.
+ * Finishing an import does this by itself and keeps doing it on a ladder that
+ * outlives the request: one attempt while the wizard is open, two more from the
+ * sweep over the following minutes. A source that is merely still being worked on
+ * shows nothing at all - asking someone to press a button next to a job already
+ * running is how a person learns to press it every time, and then to distrust the
+ * automatic half entirely.
  *
- * Renders NOTHING when there are no migration sources, which is the normal end of
- * a migration, every import from a platform Deplo already had an agent on, and
- * every report opened afterwards.
+ * So the filter is `uninstallError`, not "is there a migration source": non-empty
+ * means three attempts failed, and the sentence in it is the host's own. The one
+ * other way to get here is a volume copy that failed, which stops the ladder
+ * before it starts because the bytes are still on that machine.
  */
 const SOURCES = /* GraphQL */ `
   query MigrationSources {
@@ -28,6 +32,7 @@ const SOURCES = /* GraphQL */ `
       id
       name
       role
+      uninstallError
     }
   }
 `;
@@ -45,6 +50,8 @@ interface Source {
   id: string;
   name: string;
   role: string;
+  /** Why Deplo stopped trying. Empty ⇒ nothing to ask anyone. */
+  uninstallError: string;
 }
 
 export function RemoveMigrationSources() {
@@ -57,7 +64,9 @@ export function RemoveMigrationSources() {
   const load = React.useCallback(async (): Promise<Source[]> => {
     try {
       const data = await gql<{ servers: Source[] | null }>(SOURCES);
-      return (data.servers ?? []).filter((s) => s.role === "import");
+      return (data.servers ?? []).filter(
+        (s) => s.role === "import" && s.uninstallError,
+      );
     } catch {
       // The report is worth reading on its own; a failed side query must not
       // take it down.
@@ -111,8 +120,8 @@ export function RemoveMigrationSources() {
           </CardTitle>
           <p className="mt-1 text-sm text-muted-foreground">
             {one
-              ? "Deplo's agent is still on the machine it imported from. Remove it once there is nothing left to import."
-              : "Deplo's agent is still on the machines it imported from. Remove them once there is nothing left to import."}
+              ? "Deplo tried three times to take its agent off the machine it imported from, and could not. Try again once that machine is reachable."
+              : "Deplo tried three times to take its agent off the machines it imported from, and could not. Try again once they are reachable."}
           </p>
         </div>
         <ConfirmAction
@@ -135,10 +144,16 @@ export function RemoveMigrationSources() {
         />
       </CardHeader>
       <CardContent>
-        <ul className="space-y-1 text-sm">
+        <ul className="space-y-2 text-sm">
           {sources.map((s) => (
-            <li key={s.id} className="text-muted-foreground">
-              {s.name}
+            <li key={s.id}>
+              <p className="font-medium">{s.name}</p>
+              {/* The host's own words, verbatim: whether this is worth retrying
+                  or the machine is simply gone is not something Deplo can tell
+                  the reader, and the sentence usually can. */}
+              <p className="mt-1 font-mono text-xs break-words text-muted-foreground">
+                {s.uninstallError}
+              </p>
             </li>
           ))}
         </ul>

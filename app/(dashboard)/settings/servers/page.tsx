@@ -284,6 +284,20 @@ function ServerCard({
           />
           <AgentVersionBadge version={agentVersion} />
         </div>
+        {/* Where a migration source's removal actually stands. Deplo takes its own
+            agent off one of these by itself, retrying for a few minutes, so the
+            card says which of the two states this is instead of leaving a row that
+            was supposed to disappear looking abandoned. */}
+        {server.uninstallPending && (
+          <p className="text-xs text-muted-foreground">
+            Deplo is removing its agent from this machine.
+          </p>
+        )}
+        {server.uninstallError && (
+          <p className="text-xs text-[var(--warning)]">
+            Deplo could not remove its agent: {server.uninstallError}
+          </p>
+        )}
       </CardHeader>
       {/* Capacity is fleet information. A migration source is never measured (we
           do not poll a machine we do not run), so four "—" tiles would only read
@@ -449,7 +463,8 @@ export default async function ServersPage(
             </h2>
             <p className="mt-1 text-sm text-muted-foreground">
               Only used to import from another platform. Nothing is deployed here,
-              and Deplo removes its agent when the migration is done.
+              and Deplo removes its agent when the migration is done - these are
+              the ones it has not managed to yet.
             </p>
             <div className="mt-3 grid gap-4 sm:grid-cols-2">
               {migrationSources.map((server) => (

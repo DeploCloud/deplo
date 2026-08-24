@@ -84,6 +84,8 @@ const SERVER_FIELDS = {
   storageOnly: true,
   buildOnly: true,
   importOnly: true,
+  uninstallPending: true,
+  uninstallError: true,
   hostArch: true,
   deployConcurrency: true,
   traefikDashboard: true,
@@ -117,6 +119,11 @@ export function serverToRow(s: Server): ServerInsert {
     storageOnly: s.storageOnly,
     buildOnly: s.buildOnly,
     importOnly: s.importOnly,
+    // The retry state itself (attempts, next_at, run_id) is written by targeted
+    // UPDATEs, never from a DTO round trip - a full row write from a shape that
+    // cannot carry it would reset the ladder on every unrelated save. Same rule
+    // the Traefik dashboard password follows above.
+    uninstallError: s.uninstallError,
     hostArch: s.hostArch,
     deployConcurrency: s.deployConcurrency,
     // Flattened ServerAgent (NULL columns when not yet provisioned).
@@ -169,6 +176,8 @@ export function assembleServer(row: ServerRow): Server {
     storageOnly: row.storageOnly ?? false,
     buildOnly: row.buildOnly ?? false,
     importOnly: row.importOnly ?? false,
+    uninstallPending: row.uninstallNextAt !== null,
+    uninstallError: row.uninstallError ?? "",
     // "" is "the agent never told us", which never matches another host's arch -
     // so an un-upgraded server is simply not offered as a builder.
     hostArch: row.hostArch ?? "",

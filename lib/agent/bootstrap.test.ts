@@ -35,6 +35,8 @@ function provisioningServer(over: Partial<Server> = {}): Server {
     storageOnly: false,
     buildOnly: false,
     importOnly: false,
+    uninstallPending: false,
+    uninstallError: "",
     hostArch: "amd64",
     deployConcurrency: 1,
     createdAt: new Date("2020-01-01").toISOString(),

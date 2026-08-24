@@ -62,6 +62,7 @@ async function seedProvisioning(tokenHash: string, expiresAt: string): Promise<v
       ip: "10.0.0.1", dockerVersion: "", traefikEnabled: false, cpuCores: 0, memoryMb: 0,
       diskGb: 0, cpuUsage: 0, memoryUsage: 0, diskUsage: 0, allTeams: true,
       storageOnly: false, buildOnly: false, importOnly: false, hostArch: "amd64",
+      uninstallPending: false, uninstallError: "",
       deployConcurrency: 1,
       createdAt: "2026-01-01T00:00:00.000Z",
       bootstrap: { tokenHash, expiresAt, usedAt: null },

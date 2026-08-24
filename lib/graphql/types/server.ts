@@ -117,6 +117,14 @@ export const ServerRef = builder.objectRef<Server>("Server").implement({
         'What this server is for: "everything" (the default), "build" (Docker but no proxy; it compiles for other hosts and runs nothing), "storage" (no Docker; it only holds backups) or "import" (a MIGRATION SOURCE: another platform\'s host, registered by the import wizard to read its volumes, out of every deploy and build picker and swept by nothing). Only the build axis is changeable after installation; "import" is refused by setServerRole in both directions.',
       resolve: (s) => serverRole(s),
     }),
+    uninstallPending: t.exposeBoolean("uninstallPending", {
+      description:
+        "Deplo is still trying to take its agent off this migration source, and will try again on its own. Nothing is asked of anyone while this is true. False for every other server.",
+    }),
+    uninstallError: t.exposeString("uninstallError", {
+      description:
+        "Why Deplo could not take its agent off this migration source, after it stopped trying (three attempts over several minutes). Empty otherwise. This is the only state that needs a person: surface it verbatim next to the host-side uninstall command.",
+    }),
     hostArch: t.exposeString("hostArch", {
       description:
         'This host\'s CPU architecture ("amd64" | "arm64"), observed from the agent. Empty when the agent is too old to report it. A build server can only build for a host of the SAME architecture.',

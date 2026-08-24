@@ -133,6 +133,8 @@ async function main() {
       storageOnly: false,
       buildOnly: false,
       importOnly: false,
+      uninstallPending: false,
+      uninstallError: "",
       hostArch: "amd64",
       deployConcurrency: 1,
       createdAt: new Date(0).toISOString(),

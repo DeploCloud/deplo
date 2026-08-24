@@ -15,6 +15,7 @@ import {
   teardownPreviewStack,
 } from "../deploy/preview-lifecycle";
 import { drainTeardowns } from "../data/teardown-queue";
+import { drainMigrationSourceUninstalls } from "../data/dokploy-import";
 import { getPullRequestState } from "../github/app";
 
 /**
@@ -100,6 +101,11 @@ export async function runPreviewReaperTick(
     // ponytail: one lease for two loops. If they ever contend, the drain takes a
     // fifth `scheduler_lease` name (no migration) and a boot block of its own.
     await drainTeardowns(now);
+    // And the other thing a finished action can still owe a host: taking Deplo's
+    // agent back off a migration source. Same reasoning as the queue above - a
+    // ladder measured in minutes, a predicate that is pure DB state, and nobody
+    // to watch it - so it rides the same tick rather than growing a timer.
+    await drainMigrationSourceUninstalls(now);
     // The preview sweep stays hourly: nothing here changes minute to minute.
     if (now.getTime() - state.lastSweepAt < SWEEP_INTERVAL_MS) return;
     state.lastSweepAt = now.getTime();

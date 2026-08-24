@@ -33,6 +33,8 @@ function srv(over: Partial<Server> & { id: string }): Server {
     storageOnly: over.storageOnly ?? false,
     buildOnly: over.buildOnly ?? false,
     importOnly: over.importOnly ?? false,
+    uninstallPending: false,
+    uninstallError: "",
     hostArch: over.hostArch ?? "amd64",
     deployConcurrency: 1,
     createdAt: over.createdAt ?? "2026-01-01T00:00:00.000Z",

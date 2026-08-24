@@ -55,6 +55,7 @@ import { __setAgentConnectorForTest } from "../infra/agent-client";
 import {
   appendRunItem,
   beginDokployImport,
+  drainMigrationSourceUninstalls,
   finishDokployImport,
   getDokployImport,
   importDokployProject,
@@ -1085,10 +1086,9 @@ test("data that did not copy KEEPS the source, agent and all", async () => {
   );
 });
 
-test("a host that will not let go keeps its row, and the report says so", async () => {
-  const id = await seedSource("dokploy-host", "192.0.2.72", true);
-  // An agent too old to know the RPC: it never advertises the capability, so
-  // every retry lands on the same refusal.
+/** An agent too old to know the uninstall RPC: it never advertises the
+ *  capability, so every attempt lands on the same refusal. */
+function refusingAgent() {
   __setAgentConnectorForTest(
     async () =>
       ({
@@ -1098,15 +1098,102 @@ test("a host that will not let go keeps its row, and the report says so", async 
         ReturnType<typeof import("../infra/agent-client").connectAgent>
       >,
   );
+}
+
+/** The `servers` row's own view of where its uninstall stands. */
+async function uninstallState(id: string) {
+  const rows = await db.execute(
+    `select uninstall_attempts, uninstall_error, uninstall_next_at from servers where id = '${id}'`,
+  );
+  return rows.rows[0] as {
+    uninstall_attempts: number;
+    uninstall_error: string;
+    uninstall_next_at: string | null;
+  };
+}
+
+test("a host that will not let go is retried later, and says nothing yet", async () => {
+  const id = await seedSource("dokploy-host", "192.0.2.72", true);
+  refusingAgent();
   const runId = await asOwner(() => beginDokployImport({ url: URL_BASE }));
 
   await asOwner(() => finishDokployImport(runId));
 
   assert.ok(await asOwner(() => getServerById(id)), "the row must survive");
+  const state = await uninstallState(id);
+  assert.equal(Number(state.uninstall_attempts), 1);
+  assert.ok(state.uninstall_next_at, "a failed attempt schedules the next one");
+  // Nothing is asked of anyone while Deplo is still trying: the card on the
+  // migration screen reads `uninstallError`, and it is empty until it gives up.
+  assert.equal(state.uninstall_error, "");
+  const full = await asOwner(() => getDokployImport(runId));
+  assert.equal(
+    full!.items.some((i) => i.sourceKind === "server"),
+    false,
+    "the report must not report a failure that is still being retried",
+  );
+});
+
+test("after the third try Deplo gives up, and only then asks a person", async () => {
+  const id = await seedSource("dokploy-host", "192.0.2.73", true);
+  refusingAgent();
+  const runId = await asOwner(() => beginDokployImport({ url: URL_BASE }));
+  await asOwner(() => finishDokployImport(runId));
+
+  // The sweep, twice, each time past the row's own next-attempt stamp.
+  const later = new Date(Date.now() + 10 * 60_000);
+  await drainMigrationSourceUninstalls(later);
+  assert.equal(Number((await uninstallState(id)).uninstall_attempts), 2);
+  await drainMigrationSourceUninstalls(new Date(later.getTime() + 10 * 60_000));
+
+  const state = await uninstallState(id);
+  assert.equal(Number(state.uninstall_attempts), 3);
+  assert.equal(state.uninstall_next_at, null, "it stopped trying");
+  assert.match(String(state.uninstall_error), /too old to uninstall itself/);
+  assert.ok(await asOwner(() => getServerById(id)), "the row must survive");
+  // NOW the report says so, and the trail carries it too.
   const full = await asOwner(() => getDokployImport(runId));
   assert.match(
     full!.items.find((i) => i.sourceKind === "server")!.message!,
     /could not remove its own agent from dokploy-host after 3 tries/,
+  );
+  const trail = await db.execute(
+    "select message from activities where message like '%Could not remove Deplo%'",
+  );
+  assert.equal(trail.rows.length, 1);
+});
+
+test("a source that is not due yet is left alone by the sweep", async () => {
+  const id = await seedSource("dokploy-host", "192.0.2.74", true);
+  refusingAgent();
+  const runId = await asOwner(() => beginDokployImport({ url: URL_BASE }));
+  await asOwner(() => finishDokployImport(runId));
+
+  // A tick that arrives before the ladder's next rung must not burn an attempt:
+  // otherwise three ticks in the same minute would spend the whole budget on a
+  // host that was simply rebooting.
+  await drainMigrationSourceUninstalls(new Date());
+  assert.equal(Number((await uninstallState(id)).uninstall_attempts), 1);
+});
+
+test("the sweep finishes what a dead process started, with nobody signed in", async () => {
+  const id = await seedSource("dokploy-host", "192.0.2.75");
+  const runId = await asOwner(() => beginDokployImport({ url: URL_BASE }));
+  // The state a control plane that died mid-finish leaves behind: the intent is
+  // on the row, nothing has been retried, and there is no request to hang it off.
+  await db.execute(
+    `update servers set uninstall_run_id = '${runId}', uninstall_next_at = now() - interval '1 minute' where id = '${id}'`,
+  );
+
+  // No runWithIdentity: the sweep runs on a timer, and uninstalling is otherwise
+  // instance-admin - which is exactly the gate that used to leave agents behind
+  // when whoever finished the migration was an ordinary member.
+  await drainMigrationSourceUninstalls(new Date());
+
+  assert.equal(
+    await asOwner(() => getServerById(id)),
+    null,
+    "the sweep must be able to finish the job on its own",
   );
 });
 
