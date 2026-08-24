@@ -262,6 +262,91 @@ export function adaptComposeForDeplo(source: string): {
   };
 }
 
+/**
+ * Point an `env_file` at the env file DEPLO writes, when the stack names one it
+ * did not bring with it.
+ *
+ * Every platform materialises a service's variables into a file next to the
+ * compose, and they do not agree on its name: Dokploy writes `.env`, others
+ * write `stack.env`. The agent writes `.env` in the stack's own directory
+ * (>= 1.31.0), so a stack that says `env_file: stack.env` looks for a file
+ * nobody creates and `docker compose up` refuses the whole project - measured on
+ * a real Paperless stack.
+ *
+ * The rule is deliberately narrow: an entry is retargeted ONLY when the file is
+ * not one this app carries. A `./config/app.env` the author actually wrote (and
+ * that came across as a config file) is left exactly as it is - it names their
+ * file, not the platform's.
+ *
+ * `carried` is the set of file paths the app brings, as `mapMounts` names them.
+ */
+export function retargetPlatformEnvFiles(
+  source: string,
+  carried: string[],
+): { compose: string; changes: string[] } {
+  let doc: Record<string, unknown> | null;
+  try {
+    doc = yaml.load(source) as Record<string, unknown> | null;
+  } catch {
+    return { compose: source, changes: [] };
+  }
+  if (!doc || typeof doc !== "object" || Array.isArray(doc))
+    return { compose: source, changes: [] };
+
+  const have = new Set(
+    carried.map((f) => f.trim().replace(/^\.\/+/, "").replace(/^\/+/, "")),
+  );
+  const changes: string[] = [];
+  const retarget = (value: string): string | null => {
+    const named = value.trim().replace(/^\.\/+/, "");
+    if (!named || named === ".env") return null;
+    // An absolute path or one climbing out is a host path, not the platform's
+    // env file - the compose gates decide about those, not this.
+    if (named.startsWith("/") || named.split("/").includes("..")) return null;
+    if (have.has(named)) return null;
+    return "./.env";
+  };
+
+  for (const [name, raw] of Object.entries(
+    (doc.services ?? {}) as Record<string, unknown>,
+  )) {
+    if (!raw || typeof raw !== "object" || Array.isArray(raw)) continue;
+    const svc = raw as Record<string, unknown>;
+    const note = (from: string) =>
+      changes.push(
+        `${name} reads its variables from ${from}, which is the file the other platform wrote. It now reads Deplo's own - the values are this app's variables.`,
+      );
+    if (typeof svc.env_file === "string") {
+      const next = retarget(svc.env_file);
+      if (next) {
+        note(svc.env_file);
+        svc.env_file = next;
+      }
+    } else if (Array.isArray(svc.env_file)) {
+      svc.env_file = svc.env_file.map((entry) => {
+        if (typeof entry === "string") {
+          const next = retarget(entry);
+          if (!next) return entry;
+          note(entry);
+          return next;
+        }
+        if (entry && typeof entry === "object" && !Array.isArray(entry)) {
+          const e = entry as Record<string, unknown>;
+          if (typeof e.path !== "string") return entry;
+          const next = retarget(e.path);
+          if (!next) return entry;
+          note(e.path);
+          return { ...e, path: next };
+        }
+        return entry;
+      });
+    }
+  }
+
+  if (changes.length === 0) return { compose: source, changes: [] };
+  return { compose: yaml.dump(doc, { lineWidth: -1, noRefs: true }), changes };
+}
+
 /** One editable string that names a file relative to the compose file. */
 interface FileRef {
   value: string;
@@ -783,6 +868,16 @@ export function mapDomains(
 
     const path = (d.path ?? "/").trim();
     const pathPrefix = path === "/" ? "" : path;
+    // Dokploy can rewrite the path on the way to the container. Deplo either
+    // strips the prefix or forwards the request whole - there is no third
+    // answer - so a REAL rewrite (anything but the default `/`) is named here
+    // instead of disappearing: the app would otherwise receive a path it has
+    // never been asked to serve.
+    const internal = (d.internalPath ?? "").trim();
+    if (internal && internal !== "/")
+      notes.push(
+        `${host} rewrites the path to ${internal} before the container sees it. Deplo forwards the path as it is (or strips the prefix), so the app now receives ${pathPrefix || "/"} - check that it serves that.`,
+      );
     const port = d.port ?? opts.fallbackPort ?? null;
     if (opts.isCompose && port == null)
       notes.push(`${host} has no container port set - Deplo needs one for a compose stack.`);

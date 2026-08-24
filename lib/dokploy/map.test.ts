@@ -5,6 +5,7 @@ import yaml from "js-yaml";
 
 import {
   cloneTarget,
+  retargetPlatformEnvFiles,
   composeVolumeMounts,
   deploDatabaseVolumeName,
   deploVolumeName,
@@ -1237,4 +1238,78 @@ test("mapDatabase still asks for a MULTI-LINE start command by hand", () => {
   const { value, notes } = mapDatabase("postgres", db({ command: "a\nb" }));
   assert.equal(value?.command, null);
   assert.match(notes.join(" "), /more than one line/);
+});
+
+/**
+ * Every platform writes a service's variables into a file next to the compose,
+ * and they disagree on its name. Deplo's agent writes `.env` in the stack's own
+ * directory, so a stack that says `env_file: stack.env` looks for a file nobody
+ * creates - and `docker compose up` refuses the WHOLE project over it, which is
+ * how a real Paperless stack failed to come up.
+ */
+test("retargetPlatformEnvFiles points a foreign env file at Deplo's own", () => {
+  const { compose, changes } = retargetPlatformEnvFiles(
+    `services:
+  web:
+    image: nginx
+    env_file: stack.env
+  api:
+    image: node
+    env_file:
+      - stack.env
+      - ./config/app.env
+`,
+    ["config/app.env"],
+  );
+  const doc = yaml.load(compose) as {
+    services: Record<string, { env_file?: unknown }>;
+  };
+  assert.equal(doc.services.web.env_file, "./.env");
+  // The one the app CARRIES is left exactly as the author wrote it.
+  assert.deepEqual(doc.services.api.env_file, ["./.env", "./config/app.env"]);
+  assert.equal(changes.length, 2);
+  assert.match(changes[0], /stack\.env/);
+});
+
+test("retargetPlatformEnvFiles leaves .env, a host path and a climb alone", () => {
+  const source = `services:
+  a:
+    image: nginx
+    env_file: .env
+  b:
+    image: nginx
+    env_file: /etc/secrets/app.env
+  c:
+    image: nginx
+    env_file: ../outside/app.env
+`;
+  const { compose, changes } = retargetPlatformEnvFiles(source, []);
+  assert.equal(compose, source);
+  assert.deepEqual(changes, []);
+});
+
+test("mapDomains reports a real internal-path rewrite and ignores the default", () => {
+  const withRewrite = mapDomains(
+    [
+      {
+        domainId: "d1",
+        host: "shop.example.com",
+        path: "/shop",
+        internalPath: "/",
+      },
+      {
+        domainId: "d2",
+        host: "api.example.com",
+        path: "/v2",
+        internalPath: "/internal",
+      },
+    ],
+    { isCompose: false },
+  );
+  const joined = withRewrite.notes.join(" ");
+  assert.doesNotMatch(joined, /shop\.example\.com rewrites/);
+  assert.match(joined, /api\.example\.com rewrites the path to \/internal/);
+  // Both routes still come across whole.
+  assert.equal(withRewrite.value.length, 2);
+  assert.equal(withRewrite.value[0].pathPrefix, "/shop");
 });

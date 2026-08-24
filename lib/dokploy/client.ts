@@ -57,6 +57,13 @@ export interface DokployDomain {
   port?: number | null;
   path?: string | null;
   stripPath?: boolean | null;
+  /**
+   * The path the request is rewritten TO before it reaches the container
+   * (Dokploy's own middleware). Deplo strips a prefix or forwards it whole and
+   * has no third answer, so a real rewrite is reported rather than silently
+   * dropped. `/` is the default and rewrites nothing.
+   */
+  internalPath?: string | null;
   serviceName?: string | null;
   domainType?: "application" | "compose" | "preview" | null;
   certificateType?: "letsencrypt" | "none" | "custom" | null;
