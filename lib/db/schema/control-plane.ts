@@ -110,8 +110,17 @@ export const users = pgTable(
      *  Auth's twoFactor plugin; read by deplo's policy gate (lib/membership.ts). */
     twoFactorEnabled: boolean("two_factor_enabled").notNull().default(false),
     // Better Auth's `user` model requires these three. deplo has no email
-    // verification flow, so `email_verified` is true for everyone and `image` is
-    // unused (avatars are `avatar_color`); they exist to satisfy the model.
+    // verification flow, so `email_verified` is true for everyone; `updated_at`
+    // exists to satisfy the model.
+    //
+    // `image` is the person's PROFILE PICTURE, and it is Better Auth's own avatar
+    // field being used for what it is named for rather than a column borrowed for
+    // something else. A base64 image data-URI inline on the row (same contract as
+    // `apps.logo` - the dashboard CSP allows no remote host), capped far tighter
+    // than a logo by `MAX_AVATAR_BYTES`, because this column is read by every
+    // members table, every "Modified by" cell and every activity row. NULL falls
+    // back to Gravatar (when the instance allows it), then to the `avatar_color`
+    // monogram.
     emailVerified: boolean("email_verified").notNull().default(true),
     image: text("image"),
     updatedAt: isoTimestamptz("updated_at")
@@ -168,6 +177,11 @@ export const teams = pgTable(
     // seeding on "the team has no destinations" instead made the default
     // undeletable — removing it simply re-created it on the next page load.
     backupDefaultSeededAt: isoTimestamptz("backup_default_seeded_at"),
+    // The team's picture, shown before its name everywhere the team is named.
+    // Same contract as {@link users.image} and `apps.logo`: a base64 image
+    // data-URI inline on the row. A team has no email, so there is no Gravatar
+    // fallback - NULL simply means the two-letter monogram.
+    image: text("image"),
     createdAt: isoTimestamptz("created_at").notNull(),
   },
   (t) => [uniqueIndex("teams_slug_uq").on(t.slug)],
@@ -597,6 +611,16 @@ export const memberships = pgTable(
     // taken away from one person. False for everyone who simply follows a role,
     // which is almost everyone.
     customCapabilities: boolean("custom_capabilities").notNull().default(false),
+    // THIS PERSON's arrangement of the topbar team switcher — their own
+    // preference, not a team-wide one, which is why it sits here rather than in a
+    // `user_team_order` junction: this row already IS the (user, team) junction
+    // the order is grained on, the same shape `team_app_order.position` has. No
+    // second table to keep in step, and leaving a team takes the ordering with it
+    // instead of leaving a stale row behind.
+    //
+    // NULL is "never dragged". Those sort LAST, in the order `listMyTeams` already
+    // returned them, so a user who has never touched this sees no change at all.
+    switcherPosition: integer("switcher_position"),
     createdAt: isoTimestamptz("created_at").notNull(),
   },
   (t) => [uniqueIndex("memberships_user_team_uq").on(t.userId, t.teamId)],
@@ -1450,6 +1474,17 @@ export const deployments = pgTable(
     // which builds are still on the host. NULL ⇒ "this deploy built its own image".
     rollbackOf: text("rollback_of"),
     creator: text("creator").notNull(),
+    // WHO `creator` names, when it names somebody with a deplo account.
+    //
+    // `creator` stays free text because it also carries a GitHub login for a
+    // webhook push, which belongs to no account here. This is the nullable half:
+    // set when a person in a request asked for the deploy, NULL for a webhook and
+    // for every row written before it existed. That is what lets a deployment show
+    // a face without the history rewriting itself — and why the UI must fall back
+    // to the bare `creator` string rather than assuming an id is always there.
+    creatorUserId: text("creator_user_id").references(() => users.id, {
+      onDelete: "set null",
+    }),
     createdAt: isoTimestamptz("created_at").notNull(),
   },
   (t) => [
@@ -3443,6 +3478,21 @@ export const instanceSettings = pgTable("instance_settings", {
    * pretending there was nothing to say.
    */
   logMaxDays: integer("log_max_days").notNull().default(7),
+  /**
+   * Whether a person with no uploaded picture falls back to their Gravatar.
+   *
+   * ON by default: a picture nobody had to upload is the whole point, and most
+   * developers already have one. The panel itself never dials gravatar.com — the
+   * data layer only COMPUTES the URL (sha256 of the address) and each viewer's
+   * browser fetches it, so an instance with no egress still works.
+   *
+   * Off is the answer for an operator whose reason for self-hosting is to stop
+   * talking to other people's servers: the data layer then emits no gravatar URL
+   * anywhere, so nothing about anybody leaves the instance. Instance-wide rather
+   * than per team, because it is a property of this deployment's egress and
+   * policy, not of one team's taste.
+   */
+  gravatarEnabled: boolean("gravatar_enabled").notNull().default(true),
   updatedAt: isoTimestamptz("updated_at").notNull(),
 });
 

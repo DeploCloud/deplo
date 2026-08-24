@@ -3,6 +3,7 @@ import {
   updateProfile,
   updateEmail,
   changePassword,
+  updateMyAvatar,
 } from "@/lib/data/account";
 
 /* ------------------------------------------------------------------ */
@@ -22,6 +23,17 @@ builder.mutationFields((t) => ({
     args: { name: t.arg.string({ required: true }) },
     resolve: async (_r, { name }) => {
       await updateProfile({ name });
+      return true;
+    },
+  }),
+  updateMyAvatar: t.field({
+    type: "Boolean",
+    authScopes: { loggedIn: true },
+    description:
+      "Set or clear the current user's profile picture. The value is a base64 image data-URI (png/jpeg/webp) - the browser downscales to 256x256 and re-encodes before sending, but that is a convenience, not a guarantee, so the size and grammar are enforced here. Null or empty removes it, which falls back to their Gravatar (when the instance allows it) and then to their monogram. Returns true.",
+    args: { image: t.arg.string({ required: false }) },
+    resolve: async (_r, { image }) => {
+      await updateMyAvatar(image ?? null);
       return true;
     },
   }),

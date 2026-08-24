@@ -157,13 +157,18 @@ test("authorship is stamped on create and only updatedBy changes on edit", async
   const [created] = await asUser1(() => listInstanceEnv());
   assert.equal(created!.createdBy?.id, USER_1);
   assert.equal(created!.updatedBy?.id, USER_1);
-  // Identity only — no email, no hash.
+  // Identity only — no email, no hash. `avatarUrl` is the RESOLVED picture, and
+  // this is the assertion that proves resolving it server-side did not smuggle
+  // the address out with it: the query selects `email` to build the Gravatar
+  // hash, and the DTO must still not carry it.
   assert.deepEqual(Object.keys(created!.createdBy!).sort(), [
     "avatarColor",
+    "avatarUrl",
     "id",
     "name",
     "username",
   ]);
+  assert.ok(!("email" in created!.createdBy!), "an author must carry no email");
 });
 
 test("loadInstanceEnv returns instance globals (encrypted, targeted)", async () => {

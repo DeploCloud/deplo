@@ -9,7 +9,8 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
-import { Avatar, AvatarFallback } from "@/components/ui/avatar";
+import { UserAvatar } from "@/components/shared/user-avatar";
+import { AvatarPicker } from "@/components/shared/avatar-picker";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -52,18 +53,30 @@ function ProfileCard({ user }: { user: PublicUser }) {
       <CardHeader>
         <CardTitle className="flex w-fit items-center gap-2 text-base">
           Profile
-          <InfoTip content="Your name and avatar." />
+          <InfoTip content="Your name, and the picture people see next to it." />
         </CardTitle>
       </CardHeader>
       <CardContent className="space-y-4">
         <div className="flex items-center gap-3">
-          <Avatar className="size-12">
-            <AvatarFallback
-              style={{ backgroundColor: user.avatarColor, color: "#000" }}
-            >
-              {user.name.slice(0, 2).toUpperCase()}
-            </AvatarFallback>
-          </Avatar>
+          <AvatarPicker
+            label="Change your picture"
+            hasImage={Boolean(user.avatarUrl?.startsWith("data:"))}
+            onSave={(image) =>
+              gqlAction(
+                `mutation($image: String) { updateMyAvatar(image: $image) }`,
+                { image },
+              )
+            }
+            preview={
+              <UserAvatar
+                name={user.name}
+                username={user.username}
+                avatarColor={user.avatarColor}
+                avatarUrl={user.avatarUrl}
+                size="2xl"
+              />
+            }
+          />
           <div className="flex-1 space-y-2">
             <Label htmlFor="acct-name">Name</Label>
             <Input

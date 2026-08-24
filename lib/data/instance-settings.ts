@@ -49,6 +49,10 @@ import { DEPLO_VERSION } from "../version";
 import { serverLabel } from "../utils";
 import { recordActivity } from "./activity";
 import { instanceOwnerUserId } from "./instance-owner";
+// The flag itself lives in the leaf `lib/avatar.ts`, not here: this module
+// imports `getCurrentUser` from `lib/auth`, and `lib/auth` needs the flag to
+// build its own DTO — reading it here would close an import cycle.
+import { gravatarEnabled } from "../avatar";
 
 /**
  * Instance-wide settings: the two facts about a Deplo that are neither a team's
@@ -126,6 +130,8 @@ export type InstanceSettings = {
   deploHostIp: string | null;
   /** How far back the log viewer's time range may reach, in days. */
   logMaxDays: number;
+  /** Whether a person with no uploaded picture falls back to their Gravatar. */
+  gravatarEnabled: boolean;
   /** This control plane's version. */
   version: string;
   /** The server running the panel, when it is one Deplo knows about. */
@@ -262,6 +268,46 @@ export async function setLogMaxDays(days: number): Promise<InstanceSettings> {
 }
 
 /**
+ * Turn Gravatar fallback on or off for the whole instance.
+ *
+ * Instance-wide rather than per team because it is a property of this
+ * deployment's egress and policy, not of one team's taste: with it on, every
+ * VIEWER's browser dials gravatar.com for the people they can see, which is a
+ * decision about where this company's staff list may be looked up, not about
+ * whose picture looks nicer.
+ *
+ * The panel itself never dials out either way — off simply stops the data layer
+ * emitting the URL, so the read side needs no network awareness at all.
+ */
+export async function setGravatarEnabled(
+  enabled: boolean,
+): Promise<InstanceSettings> {
+  await requireInstanceAdmin();
+  const teamId = await requireActiveTeamId();
+  const user = (await getCurrentUser())!;
+
+  const now = nowIso();
+  await getDb()
+    .insert(instanceSettings)
+    .values({ id: SETTINGS_ID, gravatarEnabled: enabled, updatedAt: now })
+    .onConflictDoUpdate({
+      target: instanceSettings.id,
+      set: { gravatarEnabled: enabled, updatedAt: now },
+    });
+
+  await recordActivity(
+    "member",
+    enabled
+      ? "Turned on Gravatar profile pictures"
+      : "Turned off Gravatar profile pictures",
+    user.name,
+    null,
+    teamId,
+  );
+  return getInstanceSettings();
+}
+
+/**
  * This instance's public base URL, as everything Deplo hands out should spell it.
  *
  * The stored address wins over `DEPLO_PUBLIC_URL`: the operator set it in the UI,
@@ -354,6 +400,7 @@ export async function getInstanceSettings(): Promise<InstanceSettings> {
         : "request",
     storedPanelUrl: panelUrl,
     logMaxDays: clampLogMaxDays(logMaxDays),
+    gravatarEnabled: await gravatarEnabled(),
     version: DEPLO_VERSION,
     deploHostId: host?.id ?? null,
     deploHostName: host ? serverLabel(host) : null,

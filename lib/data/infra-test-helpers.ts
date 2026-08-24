@@ -138,6 +138,7 @@ export async function seedActivity(
     type: (opts.type ?? "service") as ActivityType,
     message: opts.message ?? "did a thing",
     actor: opts.actor ?? "owner",
+    actorUser: opts.actorUser ?? null,
     actorUserId: opts.actorUserId ?? null,
     appId: opts.appId ?? null,
     createdAt: opts.createdAt ?? T0,

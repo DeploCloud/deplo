@@ -11,13 +11,12 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { Avatar, AvatarFallback } from "@/components/ui/avatar";
+import { UserAvatar } from "@/components/shared/user-avatar";
 import { gqlAction } from "@/lib/graphql-client";
 import type { PublicUser } from "@/lib/types";
 
 export function UserMenu({ user }: { user: PublicUser }) {
   const router = useRouter();
-  const initials = user.username.slice(0, 2).toUpperCase();
 
   async function handleLogout() {
     await gqlAction(`mutation { logout }`);
@@ -32,13 +31,13 @@ export function UserMenu({ user }: { user: PublicUser }) {
           className="cursor-pointer rounded-full outline-none focus-visible:ring-2 focus-visible:ring-ring"
           aria-label="Account menu"
         >
-          <Avatar className="size-8">
-            <AvatarFallback
-              style={{ backgroundColor: user.avatarColor, color: "#000" }}
-            >
-              {initials}
-            </AvatarFallback>
-          </Avatar>
+          <UserAvatar
+            name={user.name}
+            username={user.username}
+            avatarColor={user.avatarColor}
+            avatarUrl={user.avatarUrl}
+            size="lg"
+          />
         </button>
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end" className="w-56">

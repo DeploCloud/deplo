@@ -11,7 +11,7 @@ import {
   Share2,
   UserRound,
 } from "lucide-react";
-import { Avatar, AvatarFallback } from "@/components/ui/avatar";
+import { UserAvatar } from "@/components/shared/user-avatar";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -677,17 +677,14 @@ function FacetOptionRow({
     >
       <Checkbox checked={checked} onCheckedChange={onToggle} />
       {opt.author && (
-        <Avatar className="size-5 shrink-0">
-          <AvatarFallback
-            className="text-[9px]"
-            style={{
-              backgroundColor: opt.author.avatarColor,
-              color: "#000",
-            }}
-          >
-            {opt.author.username.slice(0, 2).toUpperCase()}
-          </AvatarFallback>
-        </Avatar>
+        <UserAvatar
+          name={opt.author.name}
+          username={opt.author.username}
+          avatarColor={opt.author.avatarColor}
+          avatarUrl={opt.author.avatarUrl}
+          size="sm"
+          className="shrink-0"
+        />
       )}
       <span className={cn("truncate", opt.labelClassName)}>{opt.label}</span>
       {opt.hint && (

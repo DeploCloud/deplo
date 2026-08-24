@@ -29,7 +29,7 @@ import {
   AccordionItem,
   AccordionTrigger,
 } from "@/components/ui/accordion";
-import { Avatar, AvatarFallback } from "@/components/ui/avatar";
+import { UserAvatar } from "@/components/shared/user-avatar";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { InfoTip } from "@/components/ui/info-tip";
@@ -53,6 +53,8 @@ export interface EditUserSeedUser {
   username: string;
   name: string;
   avatarColor: string;
+  /** Their resolved picture, so the drawer opens on the same face the list showed. */
+  avatarUrl: string | null;
 }
 
 /**
@@ -379,13 +381,14 @@ export function UserAccountSettings({
     <>
       {showHeader && (
         <div className="flex items-center gap-3">
-          <Avatar className="size-10 shrink-0">
-            <AvatarFallback
-              style={{ backgroundColor: user.avatarColor, color: "#000" }}
-            >
-              {user.username.slice(0, 2).toUpperCase()}
-            </AvatarFallback>
-          </Avatar>
+          <UserAvatar
+            name={user.name}
+            username={user.username}
+            avatarColor={user.avatarColor}
+            avatarUrl={user.avatarUrl}
+            size="xl"
+            className="shrink-0"
+          />
           <div className="min-w-0">
             <h2 className="flex flex-wrap items-center gap-2 text-base font-semibold leading-none tracking-tight lg:text-lg">
               @{user.username}
@@ -523,7 +526,7 @@ export function UserAccountSettings({
                   <AccordionContent className="space-y-2 pb-1 pt-1">
                     <ToggleRow
                       title="Publish ports"
-                      info="Declare published ports in a compose stack — a service's ports: (bound to the host) or expose:. Public domains and routes don't need this."
+                      info="Let a compose stack bind a port on the server itself, with a service's ports:. Public domains and routes don't need this."
                       checked={admin || exposePorts}
                       disabled={admin || ownerLocked}
                       onChange={setExposePorts}

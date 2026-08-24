@@ -6,6 +6,7 @@ import { toast } from "sonner";
 import { Globe, Loader2, Pencil, TriangleAlert } from "lucide-react";
 import { Card } from "@/components/ui/card";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
+import { TeamAvatar } from "@/components/shared/user-avatar";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -349,11 +350,13 @@ export function ConsentForm({
                 {accessTeams.length ? (
                   <span className="flex -space-x-1.5">
                     {accessTeams.map((t) => (
-                      <Avatar key={t.id} className="size-6 border-2 border-card">
-                        <AvatarFallback className="bg-foreground text-[9px] text-background">
-                          {t.name.slice(0, 2).toUpperCase()}
-                        </AvatarFallback>
-                      </Avatar>
+                      <TeamAvatar
+                        key={t.id}
+                        name={t.name}
+                        avatarUrl={t.avatarUrl}
+                        size="md"
+                        className="border-2 border-card"
+                      />
                     ))}
                   </span>
                 ) : null}

@@ -303,6 +303,10 @@ export function activityToRow(a: Activity): ActivityInsert {
     message: a.message,
     actor: a.actor,
     actorUserId: a.actorUserId,
+    // Named only to satisfy the `Record<keyof Activity>` guard, which is what
+    // makes a new field impossible to forget here. It is a display DECORATION
+    // resolved from `actor_user_id` on the way out; there is no column to write.
+    actorUser: undefined,
     appId: a.appId,
     createdAt: a.createdAt,
   } satisfies Record<keyof Activity, unknown> as ActivityInsert;
@@ -321,6 +325,9 @@ export function assembleActivity(row: ActivityRow): Activity {
     message: row.message,
     actor: row.actor,
     actorUserId: row.actorUserId,
+    // A DECORATION the caller batch-resolves, never a column. Null here so the
+    // one shape stays honest: a list that has not looked the actor up says so.
+    actorUser: null,
     appId: row.appId,
     createdAt: row.createdAt,
   };

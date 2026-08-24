@@ -42,6 +42,7 @@ import { appCapabilitiesForTeam } from "./node-access";
 // other (`node-scope.ts` explains why).
 import { expandFolders } from "./node-scope";
 import { recordActivity } from "./activity";
+import { avatarResolver } from "../avatar";
 import { assertUser, getCurrentUser } from "../auth";
 import { sha256Hex, randomToken } from "../crypto";
 import { ALL_CAPABILITIES, type Capability, type Membership } from "../types";
@@ -107,6 +108,10 @@ export interface ApiTokenDTO {
   homeTeamName: string;
   /** The member it acts as. Its power is clamped to theirs, so name them. */
   createdByUsername: string | null;
+  /** That member's monogram colour + resolved picture, so the name is shown the
+   *  way a person is shown everywhere else. Null when the account is gone. */
+  createdByAvatarColor: string | null;
+  createdByAvatarUrl: string | null;
   /**
    * That member's id. A token is minted on a PERSON's account and can reach
    * several teams, so its creator manages it from any of them — this is what a
@@ -317,6 +322,10 @@ export async function listTokens(): Promise<ApiTokenDTO[]> {
       ...DTO_COLUMNS,
       homeTeamName: teamsTable.name,
       createdByUsername: usersTable.username,
+      createdByAvatarColor: usersTable.avatarColor,
+      // Consumed by `createdByAvatarUrl` and dropped — no email in this DTO.
+      createdByImage: usersTable.image,
+      createdByEmail: usersTable.email,
       oauthClientName: oauthClient.name,
     })
     .from(apiTokens)
@@ -373,8 +382,17 @@ export async function listTokens(): Promise<ApiTokenDTO[]> {
   const appsById = group(appRows);
 
   const now = Date.now();
-  return rows.map((r) => ({
+  const avatarUrl = await avatarResolver();
+  // `createdByImage` / `createdByEmail` are DESTRUCTURED OUT before the spread:
+  // the row carries them so the avatar can be resolved, and `...rest` would
+  // otherwise walk both straight into the DTO — an email this list has never
+  // exposed.
+  return rows.map(({ createdByImage, createdByEmail, ...r }) => ({
     ...r,
+    createdByAvatarUrl: avatarUrl({
+      image: createdByImage,
+      email: createdByEmail,
+    }),
     expired: r.expiresAt != null && Date.parse(r.expiresAt) <= now,
     homeTeamName: r.homeTeamName ?? "",
     // Chosen by the app at registration: free text, any length, shown in a badge.
@@ -440,6 +458,8 @@ export interface ScopeTreeProject {
 export interface ScopeTreeTeam {
   id: string;
   name: string;
+  /** The team's picture, so the tree names it the way the switcher does. */
+  avatarUrl: string | null;
   projects: ScopeTreeProject[];
   /** Folders at the team top level, in no project. */
   folders: ScopeTreeFolder[];
@@ -496,7 +516,7 @@ export async function listTeamScopeTree(): Promise<ScopeTreeTeam[]> {
  * the teams it has already decided the actor may see.
  */
 export async function buildScopeTree(
-  mine: { id: string; name: string }[],
+  mine: { id: string; name: string; avatarUrl?: string | null }[],
   opts: { asCaller?: boolean } = {},
 ): Promise<ScopeTreeTeam[]> {
   if (mine.length === 0) return [];
@@ -610,6 +630,7 @@ export async function buildScopeTree(
   return mine.map((t) => ({
     id: t.id,
     name: t.name,
+    avatarUrl: t.avatarUrl ?? null,
     projects: projectRows
       .filter((p) => p.teamId === t.id)
       .sort(byName)
@@ -802,6 +823,10 @@ export async function createToken(
       homeTeamName:
         (await teamsForUser(userId)).find((t) => t.id === teamId)?.name ?? "",
       createdByUsername: (await getCurrentUser())?.username ?? null,
+      // The minter is the current user, whose picture is already resolved on the
+      // session DTO — no second lookup.
+      createdByAvatarColor: (await getCurrentUser())?.avatarColor ?? null,
+      createdByAvatarUrl: (await getCurrentUser())?.avatarUrl ?? null,
       createdByUserId: userId,
       // Set by `mintMcpConnection` right after this, in the same flow, when the
       // mint came from an OAuth consent rather than from the tokens page.

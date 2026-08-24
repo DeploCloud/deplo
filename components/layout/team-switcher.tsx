@@ -12,7 +12,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { Avatar, AvatarFallback } from "@/components/ui/avatar";
+import { TeamAvatar } from "@/components/shared/user-avatar";
 import { CreateTeamDialog } from "@/components/teams/create-team-dialog";
 import { gqlAction } from "@/lib/graphql-client";
 import { teamSwitchDestination } from "@/lib/team-switch";
@@ -61,11 +61,7 @@ export function TeamSwitcher({
       <DropdownMenu>
         <DropdownMenuTrigger asChild>
           <button type="button" className="flex cursor-pointer items-center gap-2 rounded-md px-2 py-1.5 text-sm hover:bg-accent">
-            <Avatar className="size-6">
-              <AvatarFallback className="bg-foreground text-[10px] text-background">
-                {team.name.slice(0, 2).toUpperCase()}
-              </AvatarFallback>
-            </Avatar>
+            <TeamAvatar name={team.name} avatarUrl={team.avatarUrl} size="md" />
             <span className="max-w-40 truncate font-medium">{team.name}</span>
             <ChevronDown className="size-3.5 text-muted-foreground" />
           </button>
@@ -79,11 +75,7 @@ export function TeamSwitcher({
               disabled={pending}
               onSelect={() => switchTo(t.id)}
             >
-              <Avatar className="size-5">
-                <AvatarFallback className="bg-foreground text-[9px] text-background">
-                  {t.name.slice(0, 2).toUpperCase()}
-                </AvatarFallback>
-              </Avatar>
+              <TeamAvatar name={t.name} avatarUrl={t.avatarUrl} size="sm" />
               <span className="flex flex-col">
                 <span className="truncate">{t.name}</span>
                 <span className="text-xs capitalize text-muted-foreground">

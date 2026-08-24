@@ -17,6 +17,7 @@ import { requirePersonalSession } from "../auth/request-context";
 import { assertPasswordPolicy } from "../password-policy";
 import { assertPasswordNotPwned } from "../pwned-password";
 import { rateLimit } from "../security";
+import { isValidAvatarValue } from "../apps/avatar-shared";
 
 /**
  * The current user's own account.
@@ -36,6 +37,34 @@ export async function updateProfile(input: { name: string }): Promise<void> {
   const updated = await getDb()
     .update(usersTable)
     .set({ name })
+    .where(eq(usersTable.id, user.id))
+    .returning({ id: usersTable.id });
+  if (updated.length === 0) throw new Error("User not found");
+}
+
+/**
+ * Set or clear the current user's profile picture.
+ *
+ * No capability and no password re-check: it is a picture, not a credential, and
+ * the only person who can reach this is the account's owner in a real session
+ * (`requirePersonalSession` keeps API tokens out, like everything else here).
+ *
+ * `null` or an empty string removes it, which falls the avatar back to their
+ * Gravatar (when the instance allows it) and then to their monogram. The value is
+ * a base64 image data-URI; the browser downscales to 256x256 and re-encodes to
+ * WebP before sending, but that is a convenience and never a guarantee, so
+ * `isValidAvatarValue` — grammar, MIME and size — is the whole server-side trust
+ * boundary.
+ */
+export async function updateMyAvatar(image: string | null): Promise<void> {
+  requirePersonalSession("your account settings");
+  const user = await assertUser();
+  const next = image?.trim() || null;
+  if (next && !isValidAvatarValue(next))
+    throw new Error("Unsupported profile picture");
+  const updated = await getDb()
+    .update(usersTable)
+    .set({ image: next })
     .where(eq(usersTable.id, user.id))
     .returning({ id: usersTable.id });
   if (updated.length === 0) throw new Error("User not found");

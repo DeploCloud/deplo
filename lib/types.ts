@@ -189,6 +189,17 @@ export interface PublicUser {
   isInstanceAdmin: boolean;
   avatarColor: string;
   /**
+   * Where this person's picture comes from, already resolved: their uploaded
+   * image, else their Gravatar (when the instance allows it), else null for the
+   * {@link avatarColor} monogram.
+   *
+   * Always COMPUTED server-side, never a raw column. That is what keeps the
+   * Gravatar switch enforceable in one place, and what keeps an email address out
+   * of every DTO that names a person — the address is hashed into the URL and
+   * never travels itself.
+   */
+  avatarUrl: string | null;
+  /**
    * True once the account has a verified TOTP factor. Safe to expose: it says
    * whether a second factor exists, never anything about the factor itself.
    * Drives the reminder modal and the "2FA required" gate's messaging.
@@ -295,6 +306,12 @@ export interface Team {
    * newest-first. Stale/missing ids are tolerated exactly like {@link appOrder}.
    */
   folderOrder?: ID[];
+  /**
+   * The team's picture, already resolved: its uploaded image, or null for the
+   * two-letter monogram. Unlike a person's there is no Gravatar step — a team has
+   * no email — so this is the stored value, validated on the way out.
+   */
+  avatarUrl: string | null;
   createdAt: string;
 }
 
@@ -305,7 +322,7 @@ export interface Team {
  * Distinct from {@link Team} on purpose: the full row is a team-wide READ, and a
  * member limited to part of the team is refused it. The topbar is not a setting.
  */
-export type TeamIdentity = Pick<Team, "id" | "name" | "slug">;
+export type TeamIdentity = Pick<Team, "id" | "name" | "slug" | "avatarUrl">;
 
 /** A team as shown in the switcher: the user's role in it + its size. */
 export interface TeamSummary extends Team {
@@ -1275,6 +1292,15 @@ export interface Deployment {
    *  occupies a retention slot - a rollback reuses an image, it does not add one). */
   rollbackOf: ID | null;
   creator: string;
+  /**
+   * The account behind {@link creator}, when there is one. Free text is what the
+   * row shows; this is what lets it show a face. NULL for a webhook push (whose
+   * creator is a GitHub login, not a deplo account) and for every row written
+   * before it existed — both of which render the bare string.
+   */
+  creatorUserId: ID | null;
+  /** That person, resolved for display. A DECORATION the list batch-resolves. */
+  creatorUser: VarAuthor | null;
 }
 
 export type LogLevel =
@@ -1321,6 +1347,9 @@ export interface VarAuthor {
   name: string;
   username: string;
   avatarColor: string;
+  /** Resolved picture: uploaded image, else Gravatar, else null. See
+   *  {@link PublicUser.avatarUrl} — the address itself never reaches here. */
+  avatarUrl: string | null;
 }
 
 export interface EnvVar {
@@ -2051,6 +2080,16 @@ export interface Activity {
    * to a person — those stay `null`, as do rows predating the column.
    */
   actorUserId: ID | null;
+  /**
+   * That person's identity, resolved for display — the avatar the row shows
+   * before the name. Null for a non-human actor ("system" / "github"), for a
+   * deleted account, and for rows written before `actor_user_id` existed, all of
+   * which render the bare {@link actor} string with no picture.
+   *
+   * A DECORATION, not a column: the list batch-resolves it in one query, the way
+   * env authors are resolved.
+   */
+  actorUser: VarAuthor | null;
   appId: ID | null;
   createdAt: string;
 }

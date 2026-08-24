@@ -30,6 +30,7 @@ import {
   appScopeWhere,
 } from "./app-graph-load";
 import { assembleDeployment } from "./app-graph-rows";
+import { authorOf, loadUserIdentities } from "./user-identity";
 import { loadDeploymentLogs } from "./deployment-logs";
 import {
   appCapabilities,
@@ -175,6 +176,10 @@ export async function listDeployments(filter?: {
     }
   }
 
+  // Who asked for each of these, in one query for the page — the same batch the
+  // env authors and the activity trail use.
+  const creators = await loadUserIdentities(rows.map((r) => r.creatorUserId));
+
   return rows
     .map((row) => ({ dep: assembleDeployment(row), rowServerId: row.serverId }))
     .filter(({ dep }) => !filter?.environment || dep.environment === filter.environment)
@@ -184,6 +189,7 @@ export async function listDeployments(filter?: {
       const serverId = rowServerId ?? p?.serverId ?? null;
       return {
         ...dep,
+        creatorUser: authorOf(dep.creatorUserId, creators),
         canRollback: rollbackable.has(dep.id),
         serviceName: p?.name ?? "",
         appSlug: p?.slug ?? "",
@@ -216,7 +222,12 @@ export async function getDeployment(
   // "no such deployment" and "not yours", so neither can be told apart. A
   // narrowed principal is not exempt, exactly as in `listDeployments` above.
   if ((await appCapabilities(dep.appId)).length === 0) return null;
-  return { ...dep, canRollback: await canRollbackTo(dep) };
+  const creators = await loadUserIdentities([dep.creatorUserId]);
+  return {
+    ...dep,
+    creatorUser: authorOf(dep.creatorUserId, creators),
+    canRollback: await canRollbackTo(dep),
+  };
 }
 
 /**

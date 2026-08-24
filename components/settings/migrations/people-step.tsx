@@ -3,7 +3,7 @@
 import * as React from "react";
 import { Link2, Loader2, UserPlus } from "lucide-react";
 
-import { Avatar, AvatarFallback } from "@/components/ui/avatar";
+import { UserAvatar } from "@/components/shared/user-avatar";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -122,11 +122,6 @@ export function PeopleStep({
 }
 
 /** Two letters for the avatar. The local part, which is the half people read. */
-function initials(email: string, name: string): string {
-  const from = name.trim() || email.split("@")[0] || email;
-  return from.slice(0, 2).toUpperCase();
-}
-
 function PersonCard({
   person,
   invite,
@@ -140,9 +135,10 @@ function PersonCard({
   return (
     <div className="flex h-full flex-col gap-3 rounded-lg border border-border p-4">
       <div className="flex w-full items-center gap-3">
-        <Avatar>
-          <AvatarFallback>{initials(person.email, person.name)}</AvatarFallback>
-        </Avatar>
+        {/* These people have no deplo account yet — no stored colour, and no
+            picture to resolve. The neutral mark, and their name or the local
+            part of their address for the letters. */}
+        <UserAvatar name={person.name} username={person.email} size="lg" />
         <div className="min-w-0 flex-1">
           <p className="truncate text-sm font-medium">{person.email}</p>
           <p className="mt-1 truncate text-xs text-muted-foreground">

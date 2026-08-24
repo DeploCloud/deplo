@@ -12,7 +12,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { Avatar, AvatarFallback } from "@/components/ui/avatar";
+import { TeamAvatar, UserAvatar } from "@/components/shared/user-avatar";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -124,7 +124,9 @@ export function AddMemberDialog({
               username
               name
               avatarColor
+              avatarUrl
               teamName
+              teamAvatarUrl
             }
           }`,
           { query: q },
@@ -245,17 +247,22 @@ export function AddMemberDialog({
                     onClick={() => setPicked(u)}
                     className="flex w-full cursor-pointer items-center gap-3 rounded-lg border border-transparent px-2 py-2 text-left hover:border-border hover:bg-accent"
                   >
-                    <Avatar className="size-8">
-                      <AvatarFallback
-                        style={{ backgroundColor: u.avatarColor, color: "#000" }}
-                      >
-                        {u.username.slice(0, 2).toUpperCase()}
-                      </AvatarFallback>
-                    </Avatar>
+                    <UserAvatar
+                      name={u.name}
+                      username={u.username}
+                      avatarColor={u.avatarColor}
+                      avatarUrl={u.avatarUrl}
+                      size="lg"
+                    />
                     <span className="flex flex-col">
                       <span className="text-sm font-medium">@{u.username}</span>
                       {u.teamName && (
-                        <span className="text-xs text-muted-foreground">
+                        <span className="flex items-center gap-1 text-xs text-muted-foreground">
+                          <TeamAvatar
+                            name={u.teamName}
+                            avatarUrl={u.teamAvatarUrl}
+                            size="xs"
+                          />
                           {u.teamName}
                         </span>
                       )}
@@ -299,20 +306,22 @@ export function AddMemberDialog({
             <div className="space-y-4">
               <div className="flex items-center justify-between rounded-lg border border-border p-3">
                 <div className="flex items-center gap-3">
-                  <Avatar className="size-8">
-                    <AvatarFallback
-                      style={{
-                        backgroundColor: picked.avatarColor,
-                        color: "#000",
-                      }}
-                    >
-                      {picked.username.slice(0, 2).toUpperCase()}
-                    </AvatarFallback>
-                  </Avatar>
+                  <UserAvatar
+                    name={picked.name}
+                    username={picked.username}
+                    avatarColor={picked.avatarColor}
+                    avatarUrl={picked.avatarUrl}
+                    size="lg"
+                  />
                   <div>
                     <p className="text-sm font-medium">@{picked.username}</p>
                     {picked.teamName && (
-                      <p className="text-xs text-muted-foreground">
+                      <p className="flex items-center gap-1 text-xs text-muted-foreground">
+                        <TeamAvatar
+                          name={picked.teamName}
+                          avatarUrl={picked.teamAvatarUrl}
+                          size="xs"
+                        />
                         {picked.teamName}
                       </p>
                     )}

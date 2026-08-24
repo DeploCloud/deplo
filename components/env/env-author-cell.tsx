@@ -1,4 +1,4 @@
-import { Avatar, AvatarFallback } from "@/components/ui/avatar";
+import { UserAvatar } from "@/components/shared/user-avatar";
 import { SimpleTooltip } from "@/components/ui/tooltip";
 import type { VarAuthor } from "@/lib/types";
 
@@ -17,14 +17,13 @@ export function EnvAuthorCell({ author }: { author: VarAuthor | null }) {
   return (
     <SimpleTooltip content={name ? `${name} (@${author.username})` : `@${author.username}`}>
       <span className="flex w-fit items-center gap-2">
-        <Avatar className="size-5">
-          <AvatarFallback
-            className="text-[9px]"
-            style={{ backgroundColor: author.avatarColor, color: "#000" }}
-          >
-            {author.username.slice(0, 2).toUpperCase()}
-          </AvatarFallback>
-        </Avatar>
+        <UserAvatar
+          name={author.name}
+          username={author.username}
+          avatarColor={author.avatarColor}
+          avatarUrl={author.avatarUrl}
+          size="sm"
+        />
         <span className="truncate text-xs">@{author.username}</span>
       </span>
     </SimpleTooltip>

@@ -28,7 +28,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { Avatar, AvatarFallback } from "@/components/ui/avatar";
+import { UserAvatar } from "@/components/shared/user-avatar";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { SimpleTooltip } from "@/components/ui/tooltip";
@@ -191,13 +191,13 @@ function UserRow({
       onClick={() => setOpen(true)}
       className="flex min-w-0 flex-1 items-center gap-3 text-left"
     >
-      <Avatar>
-        <AvatarFallback
-          style={{ backgroundColor: user.avatarColor, color: "#000" }}
-        >
-          {user.username.slice(0, 2).toUpperCase()}
-        </AvatarFallback>
-      </Avatar>
+      <UserAvatar
+        name={user.name}
+        username={user.username}
+        avatarColor={user.avatarColor}
+        avatarUrl={user.avatarUrl}
+        size="lg"
+      />
       <div className="min-w-0 flex-1">
         <div className="flex items-center gap-1.5">
           <p className="truncate text-sm font-medium">
@@ -352,6 +352,7 @@ function UserRow({
             username: user.username,
             name: user.name,
             avatarColor: user.avatarColor,
+            avatarUrl: user.avatarUrl,
           }}
           seed={{
             isInstanceAdmin: user.isInstanceAdmin,

@@ -18,6 +18,7 @@ enum AccessNodeKind {
 """A single audit-log event in the active team's timeline."""
 type Activity {
   actor: String
+  actorUser: VarAuthor
   actorUserId: ID
   appId: ID
   createdAt: String
@@ -92,6 +93,12 @@ type ApiToken {
   """
   capabilities: [String!]
   createdAt: String
+  createdByAvatarColor: String
+
+  """
+  That member's resolved picture, so a token names them the way every other screen does.
+  """
+  createdByAvatarUrl: String
 
   """The member this token acts as, and is clamped to."""
   createdByUsername: String
@@ -1287,6 +1294,7 @@ type Deployment {
   commitSha: String
   createdAt: String
   creator: String
+  creatorUser: VarAuthor
 
   """
   The stack this build owns: the app slug for production, `<slug>__pr-<n>` for a pull request preview.
@@ -1985,6 +1993,7 @@ A user's access to a folder: the owner (isOwner=true, implicit) or a grantee the
 """
 type FolderGrant {
   avatarColor: String
+  avatarUrl: String
   capabilities: [String!]
   folderId: ID
   isOwner: Boolean
@@ -1998,6 +2007,7 @@ A team member who could be granted access to a folder (used to populate the Shar
 """
 type FolderShareCandidate {
   avatarColor: String
+  avatarUrl: String
   name: String
   userId: ID
   username: String
@@ -2169,6 +2179,11 @@ type GlobalEnvVar {
 """A registered user in the instance-wide Users list (no email exposed)."""
 type GlobalUser {
   avatarColor: String
+
+  """
+  Resolved profile picture: uploaded image, else Gravatar, else null for the monogram.
+  """
+  avatarUrl: String
   canExposePorts: Boolean
   canMountHostVolumes: Boolean
   createdAt: String
@@ -2206,6 +2221,11 @@ type InstanceSettings {
   """The IPv4 an A record for the panel's domain should point at."""
   deploHostIp: String
   deploHostName: String
+
+  """
+  Whether a person with no uploaded picture falls back to their Gravatar. The panel never dials gravatar.com itself — it only computes the address, and each viewer's browser fetches it.
+  """
+  gravatarEnabled: Boolean
 
   """
   How far back the log viewer's time range may reach, in days. Instance-wide because the logs live on the host, which several teams share. It bounds what may be ASKED for and nothing else: docker rotates its json-file logs by size, so no setting here makes the host actually hold that much.
@@ -2307,6 +2327,11 @@ type McpSettings {
 """A user's membership in the active team (no email exposed)."""
 type Member {
   avatarColor: String
+
+  """
+  Resolved profile picture: uploaded image, else Gravatar, else null for the monogram.
+  """
+  avatarUrl: String
   capabilities: [Capability!]
   createdAt: String
   isInstanceAdmin: Boolean
@@ -2894,6 +2919,11 @@ type Mutation {
   """Set the team-wide display order of folders in Overview."""
   reorderFolders(folderIds: [ID!]!): Boolean
 
+  """
+  Set the current user's own order for the topbar team switcher, first to last. Personal, never team-wide: nobody else's list moves. Ids the user is not a member of are ignored, and any team left out of the list keeps its place at the end. Returns true.
+  """
+  reorderMyTeams(teamIds: [String!]!): Boolean
+
   """Set the team-wide display order of Project containers."""
   reorderProjects(projectIds: [ID!]!): Boolean
 
@@ -3126,6 +3156,11 @@ type Mutation {
   setFolderGrant(capabilities: [String!]!, folderId: ID!, userId: ID!): [FolderGrant!]
 
   """
+  Turn Gravatar profile pictures on or off for the whole instance. On, a person with no uploaded picture falls back to the one registered against their address, and each VIEWER's browser fetches it - the panel itself never dials out, so an instance with no egress still works. Off, no Gravatar address is emitted anywhere and nothing about anybody leaves the instance. Instance-wide because it is a property of this deployment's egress and policy, not of one team's taste.
+  """
+  setGravatarEnabled(enabled: Boolean!): InstanceSettings
+
+  """
   Set how far back the log viewer's time range may reach, in days. It is a ceiling on the ranges the picker offers, not a retention policy: docker rotates a container's logs by SIZE, so nothing here makes a host hold more of them, and a window that comes back empty says the host rotated them rather than pretending the app was quiet. Clamped rather than rejected - the field is a number input with the same bounds, so a value outside them arrived from an API client, and the honest answer to "keep 900 days" is the ceiling.
   """
   setLogMaxDays(days: Int!): InstanceSettings
@@ -3341,6 +3376,11 @@ type Mutation {
   """Change a member's role and/or capabilities."""
   updateMember(input: UpdateMemberInput!): Member
 
+  """
+  Set or clear the current user's profile picture. The value is a base64 image data-URI (png/jpeg/webp) - the browser downscales to 256x256 and re-encodes before sending, but that is a convenience, not a guarantee, so the size and grammar are enforced here. Null or empty removes it, which falls back to their Gravatar (when the instance allows it) and then to their monogram. Returns true.
+  """
+  updateMyAvatar(image: String): Boolean
+
   """Update the current user's display name. Returns true."""
   updateProfile(name: String!): Boolean
 
@@ -3359,6 +3399,11 @@ type Mutation {
   """
   updateServerAgent(id: String!): String
   updateTeam(input: UpdateTeamInput!): Team
+
+  """
+  Set or clear the active team's picture. Same gate as renaming the team, because it IS the same action - how the team presents itself. The value is a base64 image data-URI (png/jpeg/webp); null or empty removes it and falls back to the two-letter monogram.
+  """
+  updateTeamAvatar(image: String): Team
 
   """
   Change a token's name, permissions or project scope. The secret is unchanged, so tightening a live token costs no rotation. Returns true.
@@ -4688,6 +4733,10 @@ type Subscription {
 
 """A team that owns apps, infra and members."""
 type Team {
+  """
+  The team's picture, or null for its two-letter monogram. A team has no email, so there is no Gravatar step.
+  """
+  avatarUrl: String
   createdAt: String
   id: ID
   name: String
@@ -4700,6 +4749,7 @@ type Team {
 
 """A team the viewer belongs to, carrying their role and the team size."""
 type TeamMembership {
+  avatarUrl: String
   createdAt: String
   id: ID
   memberCount: Int
@@ -4905,6 +4955,11 @@ Full per-user detail for the admin editor — the email IS included here.
 """
 type UserDetail {
   avatarColor: String
+
+  """
+  Resolved profile picture: uploaded image, else Gravatar, else null for the monogram.
+  """
+  avatarUrl: String
   canExposePorts: Boolean
   canMountHostVolumes: Boolean
   createdAt: String
@@ -4932,6 +4987,7 @@ type UserDetail {
 
 type UserDetailTeam {
   role: Role
+  teamAvatarUrl: String
   teamId: ID
   teamName: String
 }
@@ -4941,7 +4997,13 @@ A registered user matched by username/display name when adding members.
 """
 type UserSearchResult {
   avatarColor: String
+
+  """
+  Resolved profile picture: uploaded image, else Gravatar, else null for the monogram.
+  """
+  avatarUrl: String
   name: String
+  teamAvatarUrl: String
   teamName: String
   userId: ID
   username: String
@@ -5011,6 +5073,11 @@ The user who created or last modified a variable. Identity only — never an ema
 """
 type VarAuthor {
   avatarColor: String
+
+  """
+  Resolved profile picture: uploaded image, else Gravatar, else null for the monogram. Derived server-side, so the address itself never travels.
+  """
+  avatarUrl: String
   id: ID
   name: String
   username: String
@@ -5019,6 +5086,11 @@ type VarAuthor {
 """The authenticated principal for the current request."""
 type Viewer {
   avatarColor: String
+
+  """
+  Resolved profile picture: uploaded image, else Gravatar, else null for the monogram.
+  """
+  avatarUrl: String
   email: String
   id: ID
   isInstanceAdmin: Boolean

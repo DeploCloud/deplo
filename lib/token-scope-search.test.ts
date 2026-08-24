@@ -22,6 +22,7 @@ const TREE: ScopeTreeTeam[] = [
   {
     id: "team_a",
     name: "Acme",
+    avatarUrl: null,
     projects: [
       {
         id: "prc_mkt",
@@ -59,7 +60,14 @@ const TREE: ScopeTreeTeam[] = [
     ],
     looseApps: [app("prj_cron", "legacy-cron")],
   },
-  { id: "team_b", name: "Idra Arts", projects: [], folders: [], looseApps: [] },
+  {
+    id: "team_b",
+    name: "Idra Arts",
+    avatarUrl: null,
+    projects: [],
+    folders: [],
+    looseApps: [],
+  },
 ];
 
 test("a match three folders deep pulls its whole ancestry through", () => {

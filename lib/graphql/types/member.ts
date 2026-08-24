@@ -85,6 +85,11 @@ export const MemberRef = builder.objectRef<MemberDTO>("Member").implement({
     isPrimaryOwner: t.exposeBoolean("isPrimaryOwner"),
     isInstanceAdmin: t.exposeBoolean("isInstanceAdmin"),
     avatarColor: t.exposeString("avatarColor"),
+    avatarUrl: t.exposeString("avatarUrl", {
+      nullable: true,
+      description:
+        "Resolved profile picture: uploaded image, else Gravatar, else null for the monogram.",
+    }),
     createdAt: t.exposeString("createdAt"),
   }),
 });
@@ -99,7 +104,13 @@ export const UserSearchResultRef = builder
       username: t.exposeString("username"),
       name: t.exposeString("name"),
       avatarColor: t.exposeString("avatarColor"),
+      avatarUrl: t.exposeString("avatarUrl", {
+        nullable: true,
+        description:
+          "Resolved profile picture: uploaded image, else Gravatar, else null for the monogram.",
+      }),
       teamName: t.exposeString("teamName", { nullable: true }),
+      teamAvatarUrl: t.exposeString("teamAvatarUrl", { nullable: true }),
     }),
   });
 
@@ -113,6 +124,11 @@ export const GlobalUserRef = builder
       username: t.exposeString("username"),
       name: t.exposeString("name"),
       avatarColor: t.exposeString("avatarColor"),
+      avatarUrl: t.exposeString("avatarUrl", {
+        nullable: true,
+        description:
+          "Resolved profile picture: uploaded image, else Gravatar, else null for the monogram.",
+      }),
       teamCount: t.exposeInt("teamCount"),
       isInstanceAdmin: t.exposeBoolean("isInstanceAdmin"),
       isInstanceOwner: t.exposeBoolean("isInstanceOwner", {
@@ -134,6 +150,7 @@ const UserDetailTeamRef = builder
     fields: (t) => ({
       teamId: t.exposeID("teamId"),
       teamName: t.exposeString("teamName"),
+      teamAvatarUrl: t.exposeString("teamAvatarUrl", { nullable: true }),
       role: t.field({ type: RoleEnum, resolve: (x) => x.role }),
     }),
   });
@@ -149,6 +166,11 @@ export const UserDetailRef = builder
       name: t.exposeString("name"),
       email: t.exposeString("email"),
       avatarColor: t.exposeString("avatarColor"),
+      avatarUrl: t.exposeString("avatarUrl", {
+        nullable: true,
+        description:
+          "Resolved profile picture: uploaded image, else Gravatar, else null for the monogram.",
+      }),
       isInstanceAdmin: t.exposeBoolean("isInstanceAdmin"),
       isInstanceOwner: t.exposeBoolean("isInstanceOwner", {
         description:

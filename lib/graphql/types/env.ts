@@ -39,6 +39,11 @@ export const VarAuthorRef = builder.objectRef<VarAuthor>("VarAuthor").implement(
     name: t.exposeString("name"),
     username: t.exposeString("username"),
     avatarColor: t.exposeString("avatarColor"),
+    avatarUrl: t.exposeString("avatarUrl", {
+      nullable: true,
+      description:
+        "Resolved profile picture: uploaded image, else Gravatar, else null for the monogram. Derived server-side, so the address itself never travels.",
+    }),
   }),
 });
 

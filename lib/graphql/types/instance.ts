@@ -6,6 +6,7 @@ import {
   listCertificateAccounts,
   setCertificateEmail,
   setPanelHttps,
+  setGravatarEnabled,
   setLogMaxDays,
   setPanelUrl,
   type CertificateAccount,
@@ -31,6 +32,10 @@ const InstanceSettingsRef = builder
       logMaxDays: t.exposeInt("logMaxDays", {
         description:
           "How far back the log viewer's time range may reach, in days. Instance-wide because the logs live on the host, which several teams share. It bounds what may be ASKED for and nothing else: docker rotates its json-file logs by size, so no setting here makes the host actually hold that much.",
+      }),
+      gravatarEnabled: t.exposeBoolean("gravatarEnabled", {
+        description:
+          "Whether a person with no uploaded picture falls back to their Gravatar. The panel never dials gravatar.com itself — it only computes the address, and each viewer's browser fetches it.",
       }),
       panelUrlSource: t.exposeString("panelUrlSource", {
         description:
@@ -190,6 +195,14 @@ builder.mutationFields((t) => ({
       "Set how far back the log viewer's time range may reach, in days. It is a ceiling on the ranges the picker offers, not a retention policy: docker rotates a container's logs by SIZE, so nothing here makes a host hold more of them, and a window that comes back empty says the host rotated them rather than pretending the app was quiet. Clamped rather than rejected - the field is a number input with the same bounds, so a value outside them arrived from an API client, and the honest answer to \"keep 900 days\" is the ceiling.",
     args: { days: t.arg.int({ required: true }) },
     resolve: (_r, { days }) => setLogMaxDays(days),
+  }),
+  setGravatarEnabled: t.field({
+    type: InstanceSettingsRef,
+    authScopes: { instanceAdmin: true },
+    description:
+      "Turn Gravatar profile pictures on or off for the whole instance. On, a person with no uploaded picture falls back to the one registered against their address, and each VIEWER's browser fetches it - the panel itself never dials out, so an instance with no egress still works. Off, no Gravatar address is emitted anywhere and nothing about anybody leaves the instance. Instance-wide because it is a property of this deployment's egress and policy, not of one team's taste.",
+    args: { enabled: t.arg.boolean({ required: true }) },
+    resolve: (_r, { enabled }) => setGravatarEnabled(enabled),
   }),
   serverCertificateAccounts: t.field({
     type: [CertificateAccountRef],

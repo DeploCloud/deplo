@@ -9,6 +9,7 @@ import {
   teams,
 } from "../db/schema/control-plane";
 import { assembleActivity, activityToRow } from "./infra-rows";
+import { authorOf, loadUserIdentities } from "./user-identity";
 import { getCurrentUser } from "../auth";
 import { newId, nowIso } from "../ids";
 import {
@@ -67,7 +68,13 @@ async function queryActivity(
     // (PLAN §5); the `(team_id, created_at DESC, seq DESC)` index serves this.
     .orderBy(desc(activitiesTable.createdAt), desc(activitiesTable.seq))
     .limit(limit);
-  return rows.map(assembleActivity);
+  // One query for the whole page, the same batch the env authors use: the trail
+  // shows who did it, and a name with no face is exactly what this reads as.
+  const authors = await loadUserIdentities(rows.map((r) => r.actorUserId));
+  return rows.map((row) => ({
+    ...assembleActivity(row),
+    actorUser: authorOf(row.actorUserId, authors),
+  }));
 }
 
 /**
@@ -181,6 +188,8 @@ export async function recordActivity(
       message,
       actor,
       actorUserId: await resolveActorUserId(actor),
+      // Resolved on the way OUT, per list. Nothing on the write path needs it.
+      actorUser: null,
       appId,
       createdAt: nowIso(),
     };
@@ -260,6 +269,7 @@ async function flushDroppedMarker(teamId: string): Promise<void> {
         activityToRow({
           id: newId("act"),
           teamId,
+          actorUser: null,
           type: "member",
           message:
             n === 1
@@ -283,7 +293,7 @@ async function flushDroppedMarker(teamId: string): Promise<void> {
  *  - a NON-HUMAN actor ("system" / "github") must never be attributed to whoever
  *    happens to be logged in, so the string has to match the user it names.
  */
-async function resolveActorUserId(actor: string): Promise<string | null> {
+export async function resolveActorUserId(actor: string): Promise<string | null> {
   try {
     const u = await getCurrentUser();
     if (u && (u.name === actor || u.username === actor)) return u.id;

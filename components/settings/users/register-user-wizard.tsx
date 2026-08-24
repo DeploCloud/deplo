@@ -26,7 +26,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Avatar, AvatarFallback } from "@/components/ui/avatar";
+import { TeamAvatar } from "@/components/shared/user-avatar";
 import { ChoiceCard } from "@/components/shared/choice-card";
 import { WizardStepper } from "@/components/shared/wizard-stepper";
 import { atClock } from "@/components/settings/registration-link-row";
@@ -35,7 +35,7 @@ import { capabilitiesForRole } from "@/lib/membership-shared";
 import { cn } from "@/lib/utils";
 import type { Capability, Role } from "@/lib/types";
 
-type TeamOption = { id: string; name: string };
+type TeamOption = { id: string; name: string; avatarUrl: string | null };
 type Assignment = { role: Role; capabilities: Capability[] };
 type Choice = "own_team" | "existing_teams";
 type StepId = "access" | "teams" | "link";
@@ -371,14 +371,13 @@ export function RegisterUserWizard({
                                   toggleTeam(tm.id, v === true)
                                 }
                               />
-                              {/* A team has no logo of its own: its identity
-                                  everywhere in deplo is the two-letter avatar
-                                  the topbar switcher shows. */}
-                              <Avatar className="size-5">
-                                <AvatarFallback className="bg-foreground text-[9px] text-background">
-                                  {tm.name.slice(0, 2).toUpperCase()}
-                                </AvatarFallback>
-                              </Avatar>
+                              {/* The same mark the topbar switcher shows, so a
+                                  team looks the same wherever it is named. */}
+                              <TeamAvatar
+                                name={tm.name}
+                                avatarUrl={tm.avatarUrl}
+                                size="sm"
+                              />
                               <span className="text-sm font-medium">{tm.name}</span>
                             </label>
                             {/* Which of that team's two joinable default roles they

@@ -7,15 +7,19 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { FieldLabel } from "@/components/ui/info-tip";
 import { Button } from "@/components/ui/button";
+import { TeamAvatar } from "@/components/shared/user-avatar";
+import { AvatarPicker } from "@/components/shared/avatar-picker";
 import { gqlAction } from "@/lib/graphql-client";
 
 export function TeamForm({
   name: initialName,
   slug: initialSlug,
+  avatarUrl,
   canManage = true,
 }: {
   name: string;
   slug: string;
+  avatarUrl: string | null;
   canManage?: boolean;
 }) {
   const router = useRouter();
@@ -39,8 +43,35 @@ export function TeamForm({
     });
   }
 
+  const teamMark = (
+    <TeamAvatar name={initialName} avatarUrl={avatarUrl} size="2xl" />
+  );
+
   return (
     <div className="space-y-4">
+      <div className="flex items-center gap-3">
+        {canManage ? (
+          <AvatarPicker
+            label="Change the team picture"
+            hasImage={Boolean(avatarUrl)}
+            preview={teamMark}
+            onSave={(image) =>
+              gqlAction(
+                `mutation($image: String) { updateTeamAvatar(image: $image) { id } }`,
+                { image },
+              )
+            }
+          />
+        ) : (
+          teamMark
+        )}
+        <div>
+          <p className="text-sm font-medium">Team picture</p>
+          <p className="mt-1 text-xs text-muted-foreground">
+            Shown before the team&apos;s name everywhere it appears.
+          </p>
+        </div>
+      </div>
       <div className="grid gap-4 sm:grid-cols-2">
         <div className="space-y-2">
           <Label htmlFor="team-name">Team name</Label>

@@ -28,6 +28,7 @@ import { narrowedScope } from "../auth/request-context";
 import { newId, nowIso } from "../ids";
 import { instancePublicBaseUrl } from "./instance-settings";
 import { recordActivity } from "./activity";
+import { teamAvatarUrl } from "../avatar";
 import { pendingTeardownsForServer } from "./teardown-queue";
 import {
   mintBootstrap,
@@ -308,6 +309,7 @@ export async function getServerTeams(serverId: string): Promise<Team[]> {
       name: teamsTable.name,
       slug: teamsTable.slug,
       plan: teamsTable.plan,
+      image: teamsTable.image,
       createdAt: teamsTable.createdAt,
     })
     .from(serverTeamsTable)
@@ -319,6 +321,7 @@ export async function getServerTeams(serverId: string): Promise<Team[]> {
     name: r.name,
     slug: r.slug,
     plan: r.plan as Team["plan"],
+    avatarUrl: teamAvatarUrl(r.image),
     createdAt: r.createdAt,
   }));
 }

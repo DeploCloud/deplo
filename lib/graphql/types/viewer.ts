@@ -16,6 +16,11 @@ export const ViewerRef = builder.objectRef<PublicUser>("Viewer").implement({
     role: t.exposeString("role"),
     isInstanceAdmin: t.exposeBoolean("isInstanceAdmin"),
     avatarColor: t.exposeString("avatarColor"),
+    avatarUrl: t.exposeString("avatarUrl", {
+      nullable: true,
+      description:
+        "Resolved profile picture: uploaded image, else Gravatar, else null for the monogram.",
+    }),
     twoFactorEnabled: t.exposeBoolean("twoFactorEnabled", {
       description:
         "Whether this account has a verified second factor. Says only that one exists, never anything about it.",

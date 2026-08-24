@@ -193,6 +193,8 @@ export async function seedDeployment(
     rollbackOf?: string | null;
     /** The server this deploy BUILT on, when that was not `serverId`. */
     buildServerId?: string | null;
+    /** The account behind `creator`, for the attribution tests. */
+    creatorUserId?: string | null;
   },
 ): Promise<void> {
   const dep: Deployment = {
@@ -200,6 +202,8 @@ export async function seedDeployment(
     appId: opts.appId,
     status: opts.status ?? "ready",
     forceRecreate: false,
+    creatorUserId: opts.creatorUserId ?? null,
+    creatorUser: null,
     serverId: opts.serverId ?? SERVER_1,
     buildServerId: opts.buildServerId ?? null,
     environment: opts.environment ?? "production",

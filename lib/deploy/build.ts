@@ -26,7 +26,7 @@ import {
 } from "./env-resolve";
 import { loadInstanceEnv } from "../data/global-env";
 import { loadSharedVarsForApp } from "../data/shared-vars";
-import { recordActivity } from "../data/activity";
+import { recordActivity, resolveActorUserId } from "../data/activity";
 import { dispatchAlert } from "../notify/dispatch";
 import {
   loadDeployment,
@@ -1237,6 +1237,15 @@ export async function startDeployment(
     imageRef: rollback?.imageRef ?? null,
     rollbackOf: rollback?.deploymentId ?? null,
     creator: opts.creator,
+    // WHO `creator` names, when it names somebody with an account here.
+    //
+    // Resolved from the string rather than threaded through all seven callers:
+    // `resolveActorUserId` already exists for the activity trail and does exactly
+    // this, and it answers null in precisely the cases that should stay
+    // unattributed — a GitHub webhook push (no session, and the creator is a
+    // GitHub login) and any background run with no request behind it.
+    creatorUserId: await resolveActorUserId(opts.creator),
+    creatorUser: null,
     serverId: preview?.serverId || project.serverId,
     // Resolved just below, once the target server row is in hand.
     buildServerId: null,

@@ -45,6 +45,7 @@ import { assertUser, getCurrentUser, revokeAllSessions, setUserPassword } from "
 import { assertPasswordPolicy } from "../password-policy";
 import { assertPasswordNotPwned } from "../pwned-password";
 import { recordActivity } from "./activity";
+import { avatarResolver, avatarUrlFor, teamAvatarUrl } from "../avatar";
 import { instanceOwnerUserId } from "./instance-owner";
 import {
   isInstanceAdmin,
@@ -127,6 +128,8 @@ export interface MemberDTO {
    */
   isInstanceAdmin: boolean;
   avatarColor: string;
+  /** Resolved picture: uploaded image, else Gravatar, else null for the monogram. */
+  avatarUrl: string | null;
   createdAt: string;
 }
 
@@ -136,8 +139,12 @@ export interface UserSearchResult {
   username: string;
   name: string;
   avatarColor: string;
+  /** Resolved picture: uploaded image, else Gravatar, else null for the monogram. */
+  avatarUrl: string | null;
   /** Their home team's name, to disambiguate identical display names. */
   teamName: string | null;
+  /** That team's picture, so the subline reads like every other team mention. */
+  teamAvatarUrl: string | null;
 }
 
 /** A registered user as shown in the global Users list (no email). */
@@ -146,6 +153,8 @@ export interface GlobalUserDTO {
   username: string;
   name: string;
   avatarColor: string;
+  /** Resolved picture: uploaded image, else Gravatar, else null for the monogram. */
+  avatarUrl: string | null;
   teamCount: number;
   isInstanceAdmin: boolean;
   /** Owns the instance — their row is closed to every other admin. */
@@ -164,6 +173,8 @@ export interface UserDetailDTO {
   /** Shown ONLY in the admin detail view — never in lists or search. */
   email: string;
   avatarColor: string;
+  /** Resolved picture: uploaded image, else Gravatar, else null for the monogram. */
+  avatarUrl: string | null;
   isInstanceAdmin: boolean;
   /** Owns the instance — their row is closed to every other admin. */
   isInstanceOwner: boolean;
@@ -175,7 +186,12 @@ export interface UserDetailDTO {
   /** How many passkeys they hold - the twin escape hatch, offered only above zero. */
   passkeyCount: number;
   createdAt: string;
-  teams: { teamId: string; teamName: string; role: Role }[];
+  teams: {
+    teamId: string;
+    teamName: string;
+    teamAvatarUrl: string | null;
+    role: Role;
+  }[];
 }
 
 /** How a registration link decides the registrant's team(s). */
@@ -285,6 +301,10 @@ export async function listMembers(): Promise<MemberDTO[]> {
       username: usersTable.username,
       name: usersTable.name,
       avatarColor: usersTable.avatarColor,
+      // Selected, never projected: both are consumed by `avatarUrl` below and
+      // dropped. This DTO's contract is "no email", and it still holds.
+      image: usersTable.image,
+      email: usersTable.email,
       isInstanceAdmin: usersTable.isInstanceAdmin,
     })
     .from(membershipsTable)
@@ -297,6 +317,7 @@ export async function listMembers(): Promise<MemberDTO[]> {
     rows.map((r) => r.membershipId),
   );
   const deltas = await memberDeltas(db, teamId, rows, caps);
+  const avatarUrl = await avatarResolver();
   return rows.map((r) => ({
     userId: r.userId,
     membershipId: r.membershipId,
@@ -311,6 +332,7 @@ export async function listMembers(): Promise<MemberDTO[]> {
     isPrimaryOwner: r.userId === founderId,
     isInstanceAdmin: r.isInstanceAdmin ?? false,
     avatarColor: r.avatarColor,
+    avatarUrl: avatarUrl(r),
     createdAt: r.createdAt,
   }));
 }
@@ -502,6 +524,9 @@ export async function searchUsers(query: string): Promise<UserSearchResult[]> {
       username: usersTable.username,
       name: usersTable.name,
       avatarColor: usersTable.avatarColor,
+      // Consumed by `avatarUrl` below and dropped — this DTO carries no email.
+      image: usersTable.image,
+      email: usersTable.email,
     })
     .from(usersTable)
     .where(notInArray(usersTable.id, inTeam))
@@ -548,28 +573,33 @@ export async function searchUsers(query: string): Promise<UserSearchResult[]> {
       userId: membershipsTable.userId,
       role: membershipsTable.role,
       teamName: teamsTable.name,
+      teamImage: teamsTable.image,
     })
     .from(membershipsTable)
     .innerJoin(teamsTable, eq(teamsTable.id, membershipsTable.teamId))
     .where(inArray(membershipsTable.userId, candidateIds));
-  const homeByUser = new Map<string, string>();
+  const homeByUser = new Map<string, { name: string; image: string | null }>();
   const ownedSet = new Set<string>();
   for (const m of mine) {
+    const home = { name: m.teamName, image: m.teamImage };
     // Prefer the team they own; otherwise keep the first seen.
     if (m.role === "owner" && !ownedSet.has(m.userId)) {
-      homeByUser.set(m.userId, m.teamName);
+      homeByUser.set(m.userId, home);
       ownedSet.add(m.userId);
     } else if (!homeByUser.has(m.userId)) {
-      homeByUser.set(m.userId, m.teamName);
+      homeByUser.set(m.userId, home);
     }
   }
 
+  const avatarUrl = await avatarResolver();
   return filtered.map((u) => ({
     userId: u.id,
     username: u.username,
     name: u.name,
     avatarColor: u.avatarColor,
-    teamName: homeByUser.get(u.id) ?? null,
+    avatarUrl: avatarUrl(u),
+    teamName: homeByUser.get(u.id)?.name ?? null,
+    teamAvatarUrl: teamAvatarUrl(homeByUser.get(u.id)?.image),
   }));
 }
 
@@ -666,6 +696,9 @@ export async function addExistingMember(input: {
       username: usersTable.username,
       name: usersTable.name,
       avatarColor: usersTable.avatarColor,
+      // Consumed by `avatarUrl` on the returned DTO and dropped.
+      image: usersTable.image,
+      email: usersTable.email,
       isInstanceAdmin: usersTable.isInstanceAdmin,
     })
     .from(usersTable)
@@ -712,6 +745,7 @@ export async function addExistingMember(input: {
     membershipId,
     username: target.username,
     name: target.name,
+    avatarUrl: await avatarUrlFor(target),
     role: assignment.rank,
     roleId: assignment.roleId,
     roleName: assignment.roleName,
@@ -965,6 +999,9 @@ export async function listAllUsers(): Promise<GlobalUserDTO[]> {
       username: usersTable.username,
       name: usersTable.name,
       avatarColor: usersTable.avatarColor,
+      // Consumed by `avatarUrl` below and dropped — this list carries no email.
+      image: usersTable.image,
+      email: usersTable.email,
       isInstanceAdmin: usersTable.isInstanceAdmin,
       suspended: usersTable.suspended,
       canExposePorts: usersTable.canExposePorts,
@@ -982,11 +1019,13 @@ export async function listAllUsers(): Promise<GlobalUserDTO[]> {
     .groupBy(membershipsTable.userId);
   const countByUser = new Map(counts.map((c) => [c.userId, Number(c.n)]));
   const ownerUserId = await instanceOwnerUserId();
+  const avatarUrl = await avatarResolver();
   return users.map((u) => ({
     userId: u.id,
     username: u.username,
     name: u.name,
     avatarColor: u.avatarColor,
+    avatarUrl: avatarUrl(u),
     teamCount: countByUser.get(u.id) ?? 0,
     isInstanceAdmin: u.isInstanceAdmin ?? false,
     isInstanceOwner: u.id === ownerUserId,
@@ -1013,6 +1052,7 @@ export async function getUserDetail(userId: string): Promise<UserDetailDTO> {
       name: usersTable.name,
       email: usersTable.email,
       avatarColor: usersTable.avatarColor,
+      image: usersTable.image,
       isInstanceAdmin: usersTable.isInstanceAdmin,
       suspended: usersTable.suspended,
       canExposePorts: usersTable.canExposePorts,
@@ -1035,6 +1075,7 @@ export async function getUserDetail(userId: string): Promise<UserDetailDTO> {
     .select({
       teamId: membershipsTable.teamId,
       teamName: teamsTable.name,
+      teamImage: teamsTable.image,
       role: membershipsTable.role,
     })
     .from(membershipsTable)
@@ -1046,6 +1087,7 @@ export async function getUserDetail(userId: string): Promise<UserDetailDTO> {
     name: u.name,
     email: u.email,
     avatarColor: u.avatarColor,
+    avatarUrl: await avatarUrlFor(u),
     isInstanceAdmin: u.isInstanceAdmin ?? false,
     isInstanceOwner: u.id === (await instanceOwnerUserId()),
     suspended: u.suspended ?? false,
@@ -1057,6 +1099,7 @@ export async function getUserDetail(userId: string): Promise<UserDetailDTO> {
     teams: teamRows.map((t) => ({
       teamId: t.teamId,
       teamName: t.teamName ?? "(unknown)",
+      teamAvatarUrl: teamAvatarUrl(t.teamImage),
       role: t.role as Role,
     })),
   };

@@ -12,7 +12,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { Avatar, AvatarFallback } from "@/components/ui/avatar";
+import { UserAvatar } from "@/components/shared/user-avatar";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -30,6 +30,7 @@ interface FolderGrant {
   username: string;
   name: string;
   avatarColor: string;
+  avatarUrl: string | null;
   capabilities: string[];
   isOwner: boolean;
 }
@@ -40,6 +41,7 @@ interface ShareCandidate {
   username: string;
   name: string;
   avatarColor: string;
+  avatarUrl: string | null;
 }
 
 const GRANTS_QUERY = `query($folderId: ID!) {
@@ -49,6 +51,7 @@ const GRANTS_QUERY = `query($folderId: ID!) {
     username
     name
     avatarColor
+    avatarUrl
     capabilities
     isOwner
   }
@@ -64,6 +67,7 @@ const CANDIDATES_QUERY = `query($folderId: ID!, $query: String) {
     username
     name
     avatarColor
+    avatarUrl
   }
 }`;
 
@@ -218,6 +222,7 @@ export function ShareFolderDialog({
         username: chosen.username,
         name: chosen.name,
         avatarColor: chosen.avatarColor,
+        avatarUrl: chosen.avatarUrl,
         capabilities,
         isOwner: false,
       },
@@ -232,6 +237,7 @@ export function ShareFolderDialog({
             username
             name
             avatarColor
+            avatarUrl
             capabilities
             isOwner
           }
@@ -268,6 +274,7 @@ export function ShareFolderDialog({
             username
             name
             avatarColor
+            avatarUrl
             capabilities
             isOwner
           }
@@ -334,13 +341,13 @@ export function ShareFolderDialog({
                   key={g.userId}
                   className="flex items-center gap-3 rounded-lg border border-border px-2 py-2"
                 >
-                  <Avatar className="size-8">
-                    <AvatarFallback
-                      style={{ backgroundColor: g.avatarColor, color: "#000" }}
-                    >
-                      {initials(g.username)}
-                    </AvatarFallback>
-                  </Avatar>
+                  <UserAvatar
+                    name={g.name}
+                    username={g.username}
+                    avatarColor={g.avatarColor}
+                    avatarUrl={g.avatarUrl}
+                    size="lg"
+                  />
                   <div className="min-w-0 flex-1">
                     <p className="truncate text-sm font-medium">
                       @{g.username}
@@ -418,16 +425,13 @@ export function ShareFolderDialog({
                       onClick={() => pickCandidate(c)}
                       className="flex w-full cursor-pointer items-center gap-3 rounded-lg border border-transparent px-2 py-2 text-left hover:border-border hover:bg-accent"
                     >
-                      <Avatar className="size-8">
-                        <AvatarFallback
-                          style={{
-                            backgroundColor: c.avatarColor,
-                            color: "#000",
-                          }}
-                        >
-                          {initials(c.username)}
-                        </AvatarFallback>
-                      </Avatar>
+                      <UserAvatar
+                        name={c.name}
+                        username={c.username}
+                        avatarColor={c.avatarColor}
+                        avatarUrl={c.avatarUrl}
+                        size="lg"
+                      />
                       <span className="flex flex-col">
                         <span className="text-sm font-medium">
                           @{c.username}
@@ -446,16 +450,13 @@ export function ShareFolderDialog({
               <div className="space-y-4">
                 <div className="flex items-center justify-between rounded-lg border border-border p-3">
                   <div className="flex items-center gap-3">
-                    <Avatar className="size-8">
-                      <AvatarFallback
-                        style={{
-                          backgroundColor: picked.avatarColor,
-                          color: "#000",
-                        }}
-                      >
-                        {initials(picked.username)}
-                      </AvatarFallback>
-                    </Avatar>
+                    <UserAvatar
+                      name={picked.name}
+                      username={picked.username}
+                      avatarColor={picked.avatarColor}
+                      avatarUrl={picked.avatarUrl}
+                      size="lg"
+                    />
                     <div>
                       <p className="text-sm font-medium">@{picked.username}</p>
                       {picked.name && (

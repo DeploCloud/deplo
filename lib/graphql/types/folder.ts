@@ -78,6 +78,7 @@ const FolderGrantRef = builder
       username: t.exposeString("username"),
       name: t.exposeString("name"),
       avatarColor: t.exposeString("avatarColor"),
+      avatarUrl: t.exposeString("avatarUrl", { nullable: true }),
       capabilities: t.exposeStringList("capabilities"),
       isOwner: t.exposeBoolean("isOwner"),
     }),
@@ -89,6 +90,7 @@ const FolderShareCandidateRef = builder
     username: string;
     name: string;
     avatarColor: string;
+    avatarUrl: string | null;
   }>("FolderShareCandidate")
   .implement({
     description:
@@ -98,6 +100,7 @@ const FolderShareCandidateRef = builder
       username: t.exposeString("username"),
       name: t.exposeString("name"),
       avatarColor: t.exposeString("avatarColor"),
+      avatarUrl: t.exposeString("avatarUrl", { nullable: true }),
     }),
   });
 

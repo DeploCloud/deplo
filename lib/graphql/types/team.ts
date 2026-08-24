@@ -6,6 +6,8 @@ import {
   updateTeam,
   createTeam,
   switchTeam,
+  updateTeamAvatar,
+  reorderMyTeams,
 } from "@/lib/data/teams";
 import { deleteTeam } from "@/lib/data/team-delete";
 import { transferTeamOwnership } from "@/lib/data/team-ownership";
@@ -37,6 +39,11 @@ export const TeamRef = builder.objectRef<Team>("Team").implement({
         "Whether every member of this team must have two-factor authentication.",
       resolve: (x) => x.requireTwoFactor ?? false,
     }),
+    avatarUrl: t.exposeString("avatarUrl", {
+      nullable: true,
+      description:
+        "The team's picture, or null for its two-letter monogram. A team has no email, so there is no Gravatar step.",
+    }),
     createdAt: t.exposeString("createdAt"),
   }),
 });
@@ -54,6 +61,7 @@ export const TeamMembershipRef = builder
       name: t.exposeString("name"),
       slug: t.exposeString("slug"),
       plan: t.field({ type: TeamPlanEnum, resolve: (x) => x.plan }),
+      avatarUrl: t.exposeString("avatarUrl", { nullable: true }),
       createdAt: t.exposeString("createdAt"),
       role: t.exposeString("role"),
       memberCount: t.exposeInt("memberCount"),
@@ -115,6 +123,29 @@ builder.mutationFields((t) => ({
         slug: input.slug,
         requireTwoFactor: input.requireTwoFactor ?? undefined,
       }),
+  }),
+  updateTeamAvatar: t.field({
+    type: TeamRef,
+    authScopes: { capability: "manage_team" },
+    description:
+      "Set or clear the active team's picture. Same gate as renaming the team, because it IS the same action - how the team presents itself. The value is a base64 image data-URI (png/jpeg/webp); null or empty removes it and falls back to the two-letter monogram.",
+    args: { image: t.arg.string({ required: false }) },
+    resolve: (_r, { image }) => updateTeamAvatar(image ?? null),
+  }),
+  reorderMyTeams: t.field({
+    type: "Boolean",
+    // NOT capability-gated, and deliberately: this is nobody's team setting, it
+    // is where YOUR switcher puts things. The data layer's
+    // `requirePersonalSession` is the gate that matters - an API token has no
+    // switcher and no business rewriting somebody's.
+    authScopes: { loggedIn: true },
+    description:
+      "Set the current user's own order for the topbar team switcher, first to last. Personal, never team-wide: nobody else's list moves. Ids the user is not a member of are ignored, and any team left out of the list keeps its place at the end. Returns true.",
+    args: { teamIds: t.arg.stringList({ required: true }) },
+    resolve: async (_r, { teamIds }) => {
+      await reorderMyTeams(teamIds);
+      return true;
+    },
   }),
   transferTeamOwnership: t.field({
     type: "Boolean",

@@ -1,4 +1,5 @@
 import { builder } from "../builder";
+import { VarAuthorRef } from "./env";
 import { listActivity } from "@/lib/data/activity";
 import type { Activity } from "@/lib/types";
 
@@ -41,6 +42,13 @@ const ActivityRef = builder.objectRef<Activity>("Activity").implement({
     // The human behind `actor`, when there is one. Non-human actors ("system" /
     // "github") and rows predating the column stay null.
     actorUserId: t.exposeID("actorUserId", { nullable: true }),
+    // That person, resolved for display: the avatar the row shows before the
+    // name. Same shape as an env var's author, deliberately — one identity type.
+    actorUser: t.field({
+      type: VarAuthorRef,
+      nullable: true,
+      resolve: (a) => a.actorUser,
+    }),
     appId: t.exposeID("appId", { nullable: true }),
     createdAt: t.exposeString("createdAt"),
   }),

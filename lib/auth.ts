@@ -18,6 +18,8 @@ import {
 } from "./db/schema/auth";
 import { createLocalAccountIssuer } from "better-auth";
 import { hashPassword, passwordNeedsRehash, verifyPassword } from "./crypto";
+import { avatarUrlFor } from "./avatar";
+import { AVATAR_COLORS } from "./avatar-colors";
 import type { Capability, PublicUser, Role, Team, User } from "./types";
 import { capabilitiesForRole, cleanCapabilities } from "./membership-shared";
 import { normalizeUsername, validateUsername } from "./username";
@@ -85,10 +87,15 @@ const PUBLIC_USER_COLS = {
   role: usersTable.role,
   isInstanceAdmin: usersTable.isInstanceAdmin,
   avatarColor: usersTable.avatarColor,
+  image: usersTable.image,
   twoFactorEnabled: usersTable.twoFactorEnabled,
 } as const;
 
-function toPublic(u: {
+/**
+ * Async only because of `avatarUrl`: resolving it reads the instance's Gravatar
+ * flag. One caller ({@link getCurrentUser}), already async.
+ */
+async function toPublic(u: {
   id: string;
   email: string;
   username: string;
@@ -96,8 +103,9 @@ function toPublic(u: {
   role: string;
   isInstanceAdmin: boolean | null;
   avatarColor: string;
+  image: string | null;
   twoFactorEnabled: boolean | null;
-}): PublicUser {
+}): Promise<PublicUser> {
   return {
     id: u.id,
     email: u.email,
@@ -106,11 +114,12 @@ function toPublic(u: {
     role: u.role as PublicUser["role"],
     isInstanceAdmin: u.isInstanceAdmin ?? false,
     avatarColor: u.avatarColor,
+    avatarUrl: await avatarUrlFor(u),
     twoFactorEnabled: u.twoFactorEnabled ?? false,
   };
 }
 
-const AVATAR_COLORS = ["#50e3c2", "#f5a623", "#7928ca", "#ff0080", "#0070f3"];
+
 
 /** True if a username is already in use (case-insensitive, normalized). */
 export async function isUsernameTaken(username: string): Promise<boolean> {
@@ -319,6 +328,7 @@ export async function createAccountWithTeam(
       plan: "pro",
       // The registrant is the founder (absolute owner / "crown") of their team.
       founderUserId: user.id,
+      avatarUrl: null,
       createdAt: now,
     };
     const membershipId = `mbr_${randomBytes(8).toString("hex")}`;

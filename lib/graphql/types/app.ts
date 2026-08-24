@@ -1,4 +1,5 @@
 import { builder } from "../builder";
+import { VarAuthorRef } from "./env";
 import { remapBuildInput } from "./build-input";
 import { ResourceLimitsRef, ResourceLimitsInputType } from "./resource-limits";
 import {
@@ -141,6 +142,14 @@ export const DeploymentRef = builder
       readyAt: t.exposeString("readyAt", { nullable: true }),
       buildDurationMs: t.exposeInt("buildDurationMs", { nullable: true }),
       creator: t.exposeString("creator"),
+      // Who `creator` names, when it names an account here. Null for a webhook
+      // push (a GitHub login, not a deplo user) and for rows predating it — both
+      // of which show the bare string with no picture.
+      creatorUser: t.field({
+        type: VarAuthorRef,
+        nullable: true,
+        resolve: (d) => d.creatorUser,
+      }),
       rollbackOf: t.exposeID("rollbackOf", {
         nullable: true,
         description:

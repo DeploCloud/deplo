@@ -1,8 +1,8 @@
 import "server-only";
 
-import { asc, count, eq } from "drizzle-orm";
+import { and, asc, count, eq, sql } from "drizzle-orm";
 import { getDb } from "../db/client";
-import { currentIdentity } from "../auth/request-context";
+import { currentIdentity, requirePersonalSession } from "../auth/request-context";
 import {
   memberships as membershipsTable,
   membershipCapabilities as membershipCapabilitiesTable,
@@ -21,6 +21,8 @@ import {
   requireTeamWide,
 } from "../membership";
 import { recordActivity } from "./activity";
+import { teamAvatarUrl } from "../avatar";
+import { isValidAvatarValue } from "../apps/avatar-shared";
 import type { Team } from "../types";
 
 function slugify(s: string): string {
@@ -38,6 +40,7 @@ function rowToTeam(t: {
   plan: string;
   founderUserId?: string | null;
   requireTwoFactor?: boolean;
+  image?: string | null;
   createdAt: string;
 }): Team {
   return {
@@ -47,6 +50,7 @@ function rowToTeam(t: {
     plan: t.plan as Team["plan"],
     founderUserId: t.founderUserId ?? null,
     requireTwoFactor: t.requireTwoFactor ?? false,
+    avatarUrl: teamAvatarUrl(t.image),
     createdAt: t.createdAt,
   };
 }
@@ -65,7 +69,7 @@ function rowToTeam(t: {
  * team may always know which team they are in.
  */
 export async function getTeamIdentity(): Promise<
-  Pick<Team, "id" | "name" | "slug">
+  Pick<Team, "id" | "name" | "slug" | "avatarUrl">
 > {
   const teamId = await requireActiveTeamId();
   const rows = await getDb()
@@ -73,13 +77,17 @@ export async function getTeamIdentity(): Promise<
       id: teamsTable.id,
       name: teamsTable.name,
       slug: teamsTable.slug,
+      image: teamsTable.image,
     })
     .from(teamsTable)
     .where(eq(teamsTable.id, teamId))
     .limit(1);
   const t = rows[0];
   if (!t) throw new Error("No team");
-  return t;
+  // The picture belongs here and not only on the full row: this is what the
+  // topbar switcher's TRIGGER renders, which is the single most-seen avatar in
+  // the product. `getTeam` is a team-wide read a limited member is refused.
+  return { id: t.id, name: t.name, slug: t.slug, avatarUrl: teamAvatarUrl(t.image) };
 }
 
 /** The active team, settings included. A team-wide read. */
@@ -111,11 +119,21 @@ export async function listMyTeams(): Promise<
   if (teams.length === 0) return [];
 
   // The current user's role per team + each team's member count, in two queries.
+  // `switcherPosition` rides along on a query that already runs: their own
+  // arrangement of the switcher, which is why it is read per USER and not once
+  // per team.
   const mine = await db
-    .select({ teamId: membershipsTable.teamId, role: membershipsTable.role })
+    .select({
+      teamId: membershipsTable.teamId,
+      role: membershipsTable.role,
+      switcherPosition: membershipsTable.switcherPosition,
+    })
     .from(membershipsTable)
     .where(eq(membershipsTable.userId, user.id));
   const roleByTeam = new Map(mine.map((m) => [m.teamId, m.role]));
+  const positionByTeam = new Map(
+    mine.map((m) => [m.teamId, m.switcherPosition]),
+  );
 
   const counts = await db
     .select({ teamId: membershipsTable.teamId, n: count() })
@@ -123,11 +141,23 @@ export async function listMyTeams(): Promise<
     .groupBy(membershipsTable.teamId);
   const countByTeam = new Map(counts.map((c) => [c.teamId, Number(c.n)]));
 
-  return teams.map((t) => ({
-    ...t,
-    role: roleByTeam.get(t.id) ?? "member",
-    memberCount: countByTeam.get(t.id) ?? 0,
-  }));
+  return teams
+    .map((t) => ({
+      ...t,
+      role: roleByTeam.get(t.id) ?? "member",
+      memberCount: countByTeam.get(t.id) ?? 0,
+    }))
+    // NULLS LAST, stable within each group: a team the user has never dragged
+    // keeps the order `teamsForUser` already returned it in, so somebody who
+    // never touches this sees no change at all.
+    .sort((a, b) => {
+      const pa = positionByTeam.get(a.id);
+      const pb = positionByTeam.get(b.id);
+      if (pa == null && pb == null) return 0;
+      if (pa == null) return 1;
+      if (pb == null) return -1;
+      return pa - pb;
+    });
 }
 
 /**
@@ -214,6 +244,105 @@ export async function updateTeam(input: {
 }
 
 /**
+ * Set or clear the active team's picture.
+ *
+ * `manage_team`, the same gate that renames the team — because it IS the same
+ * action: changing how the team presents itself. Splitting it into its own
+ * Capability would put a row in the catalogue that nobody would ever grant on its
+ * own.
+ *
+ * `null` or an empty string removes it. The value is a base64 image data-URI (the
+ * browser downscales and re-encodes before sending, but that is a convenience,
+ * never a guarantee) and `isValidAvatarValue` is the whole server-side trust
+ * boundary: grammar, MIME and size.
+ *
+ * The UPDATE is scoped by id AND team so a cross-team id hits zero rows, and it
+ * is conditional on the value actually differing, so re-picking the same picture
+ * writes nothing and records nothing.
+ */
+export async function updateTeamAvatar(image: string | null): Promise<Team> {
+  const { teamId } = await requireCapability("manage_team");
+  const next = image?.trim() || null;
+  if (next && !isValidAvatarValue(next))
+    throw new Error("Unsupported profile picture");
+
+  const rows = await getDb()
+    .update(teamsTable)
+    .set({ image: next })
+    .where(
+      and(
+        eq(teamsTable.id, teamId),
+        sql`${teamsTable.image} is distinct from ${next}`,
+      ),
+    )
+    .returning();
+
+  if (rows[0])
+    await recordActivity(
+      "member",
+      next
+        ? `Changed the team picture`
+        : `Removed the team picture`,
+      (await assertUser()).name,
+      null,
+      teamId,
+    );
+
+  // Nothing changed ⇒ the row is still what it was; read it rather than lying.
+  if (rows[0]) return rowToTeam(rows[0]);
+  const current = await getDb()
+    .select()
+    .from(teamsTable)
+    .where(eq(teamsTable.id, teamId))
+    .limit(1);
+  if (!current[0]) throw new Error("No team");
+  return rowToTeam(current[0]);
+}
+
+/**
+ * This person's arrangement of the topbar team switcher.
+ *
+ * NOT capability-gated, and deliberately: it is nobody's team setting, it is
+ * where YOUR list puts things. `requirePersonalSession` is the gate that matters
+ * — an API token has no switcher and no business rewriting somebody's.
+ *
+ * Sanitising follows `reorderApps`: keep only ids the user is actually a member
+ * of, drop duplicates, then append every membership the client left out so a
+ * stale tab cannot silently unposition a team. Ids the user is not in are
+ * ignored rather than refused — the client is describing its own list, and a team
+ * they just left is a race, not an attack.
+ */
+export async function reorderMyTeams(orderedIds: string[]): Promise<void> {
+  const user = await assertUser();
+  requirePersonalSession("your team order");
+
+  await getDb().transaction(async (tx) => {
+    const mine = await tx
+      .select({ id: membershipsTable.id, teamId: membershipsTable.teamId })
+      .from(membershipsTable)
+      .where(eq(membershipsTable.userId, user.id));
+    const idByTeam = new Map(mine.map((m) => [m.teamId, m.id]));
+
+    const seen = new Set<string>();
+    const next: string[] = [];
+    for (const teamId of orderedIds) {
+      if (idByTeam.has(teamId) && !seen.has(teamId)) {
+        seen.add(teamId);
+        next.push(teamId);
+      }
+    }
+    for (const m of mine) if (!seen.has(m.teamId)) next.push(m.teamId);
+
+    for (const [position, teamId] of next.entries()) {
+      await tx
+        .update(membershipsTable)
+        .set({ switcherPosition: position })
+        .where(eq(membershipsTable.id, idByTeam.get(teamId)!));
+    }
+  });
+}
+
+/**
  * How many members of the active team have no second factor yet — what the team
  * Security card shows before an admin flips the policy on, so "3 of 8 members"
  * is visible rather than discovered by those three being locked out.
@@ -259,6 +388,7 @@ export async function createTeam(input: { name: string }): Promise<Team> {
       plan: "pro",
       // The creator is the founder (absolute owner / "crown") of the new team.
       founderUserId: user.id,
+      avatarUrl: null,
       createdAt: now,
     };
     const membershipId = newId("mbr");

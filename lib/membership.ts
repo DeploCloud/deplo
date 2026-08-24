@@ -5,6 +5,7 @@ import { cookies } from "next/headers";
 import { and, eq, inArray } from "drizzle-orm";
 import { getDb } from "./db/client";
 import { holdsAPasskey, passkeyCountsForThisRequest } from "./passkey-policy";
+import { teamAvatarUrl } from "./avatar";
 import {
   appGrants as appGrantsTable,
   apps as appsTable,
@@ -90,6 +91,7 @@ export async function teamsForUser(userId: string): Promise<Team[]> {
       slug: teamsTable.slug,
       plan: teamsTable.plan,
       founderUserId: teamsTable.founderUserId,
+      image: teamsTable.image,
       createdAt: teamsTable.createdAt,
     })
     .from(teamsTable)
@@ -105,6 +107,7 @@ export async function teamsForUser(userId: string): Promise<Team[]> {
     slug: t.slug,
     plan: t.plan as Team["plan"],
     founderUserId: t.founderUserId ?? null,
+    avatarUrl: teamAvatarUrl(t.image),
     createdAt: t.createdAt,
   }));
 }

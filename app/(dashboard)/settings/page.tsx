@@ -60,6 +60,7 @@ export default async function SettingsGeneralPage() {
                 <TeamForm
                   name={team.name}
                   slug={team.slug}
+                  avatarUrl={team.avatarUrl}
                   canManage={canManageTeam}
                 />
               </CardContent>

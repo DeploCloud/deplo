@@ -686,6 +686,9 @@ export function assembleDeployment(row: DeploymentRow): Deployment {
     imageRef: row.imageRef,
     rollbackOf: row.rollbackOf,
     creator: row.creator,
+    creatorUserId: row.creatorUserId ?? null,
+    // A DECORATION the list batch-resolves from `creatorUserId`, never a column.
+    creatorUser: null,
   };
 }
 
@@ -711,6 +714,7 @@ export function deploymentToRow(d: Deployment): typeof deployments.$inferInsert 
     imageRef: d.imageRef ?? null,
     rollbackOf: d.rollbackOf ?? null,
     creator: d.creator,
+    creatorUserId: d.creatorUserId ?? null,
     createdAt: d.createdAt,
   };
 }

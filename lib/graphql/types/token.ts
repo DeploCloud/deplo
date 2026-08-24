@@ -74,6 +74,14 @@ export const ApiTokenRef = builder
         nullable: true,
         description: "The member this token acts as, and is clamped to.",
       }),
+      createdByAvatarColor: t.exposeString("createdByAvatarColor", {
+        nullable: true,
+      }),
+      createdByAvatarUrl: t.exposeString("createdByAvatarUrl", {
+        nullable: true,
+        description:
+          "That member's resolved picture, so a token names them the way every other screen does.",
+      }),
       oauthClientName: t.exposeString("oauthClientName", {
         nullable: true,
         description:

@@ -19,6 +19,7 @@ import {
 } from "../membership-shared";
 import { holdsManageTeam, nodeCapabilities, withView } from "./node-access";
 import { memberScopeFor } from "./node-scope";
+import { avatarResolver, avatarUrlFor } from "../avatar";
 import { type Capability } from "../types";
 
 /**
@@ -54,6 +55,8 @@ export interface FolderGrant {
   username: string;
   name: string;
   avatarColor: string;
+  /** Resolved picture: uploaded image, else Gravatar, else null for the monogram. */
+  avatarUrl: string | null;
   /** The capabilities this user holds on the folder, exactly as granted. */
   capabilities: Capability[];
   /** True for the owner row (implicit, never stored in `folder_grants`). */
@@ -362,17 +365,28 @@ async function userIdentity(userId: string): Promise<{
   username: string;
   name: string;
   avatarColor: string;
+  avatarUrl: string | null;
 } | null> {
   const rows = await getDb()
     .select({
       username: usersTable.username,
       name: usersTable.name,
       avatarColor: usersTable.avatarColor,
+      // Consumed by `avatarUrl` and dropped — a grant DTO carries no email.
+      image: usersTable.image,
+      email: usersTable.email,
     })
     .from(usersTable)
     .where(eq(usersTable.id, userId))
     .limit(1);
-  return rows[0] ?? null;
+  const r = rows[0];
+  if (!r) return null;
+  return {
+    username: r.username,
+    name: r.name,
+    avatarColor: r.avatarColor,
+    avatarUrl: await avatarUrlFor(r),
+  };
 }
 
 /**
@@ -398,6 +412,7 @@ export async function listFolderGrants(
         username: id.username,
         name: id.name,
         avatarColor: id.avatarColor,
+        avatarUrl: id.avatarUrl,
         // The owner's effective caps are their live team caps (+ view).
         capabilities: withView(await teamCapsFor(ownerUserId, teamId)),
         isOwner: true,
@@ -429,6 +444,7 @@ export async function listFolderGrants(
       username: id.username,
       name: id.name,
       avatarColor: id.avatarColor,
+      avatarUrl: id.avatarUrl,
       capabilities: withView(raw),
       isOwner: false,
     });
@@ -536,7 +552,15 @@ export async function removeFolderGrant(
 export async function folderShareCandidates(
   folderId: string,
   query?: string,
-): Promise<{ userId: string; username: string; name: string; avatarColor: string }[]> {
+): Promise<
+  {
+    userId: string;
+    username: string;
+    name: string;
+    avatarColor: string;
+    avatarUrl: string | null;
+  }[]
+> {
   const { teamId, ownerUserId } = await requireFolderOwnerOrAdmin(folderId);
   const rows = await getDb()
     .select({
@@ -544,6 +568,9 @@ export async function folderShareCandidates(
       username: usersTable.username,
       name: usersTable.name,
       avatarColor: usersTable.avatarColor,
+      // Consumed by `avatarUrl` below and dropped.
+      image: usersTable.image,
+      email: usersTable.email,
     })
     .from(membershipsTable)
     .innerJoin(usersTable, eq(usersTable.id, membershipsTable.userId))
@@ -559,6 +586,7 @@ export async function folderShareCandidates(
   );
 
   const q = query?.trim().toLowerCase();
+  const avatarUrl = await avatarResolver();
   return rows
     .filter((r) => r.userId !== ownerUserId && !alreadyGranted.has(r.userId))
     .filter(
@@ -567,5 +595,12 @@ export async function folderShareCandidates(
         r.username.toLowerCase().includes(q) ||
         r.name.toLowerCase().includes(q),
     )
-    .sort((a, b) => a.username.localeCompare(b.username));
+    .sort((a, b) => a.username.localeCompare(b.username))
+    .map((r) => ({
+      userId: r.userId,
+      username: r.username,
+      name: r.name,
+      avatarColor: r.avatarColor,
+      avatarUrl: avatarUrl(r),
+    }));
 }

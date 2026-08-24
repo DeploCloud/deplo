@@ -1,5 +1,6 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { templatesApiBase } from "@/templates/api-base";
+import { GRAVATAR_ORIGINS } from "@/lib/apps/avatar-shared";
 
 /**
  * Deplo proxy (Next.js 16 replacement for middleware).
@@ -95,7 +96,18 @@ export function proxy(request: NextRequest) {
     // service worker registration is refused outright.
     `worker-src 'self'`,
     `style-src 'self' 'unsafe-inline'`,
-    `img-src 'self' blob: data:${templatesOrigin ? ` ${templatesOrigin}` : ""}`,
+    // Two remote image origins, for the same reason the template catalog's is
+    // allowed: the panel does not proxy them, the browser fetches them.
+    //  - Gravatar, for a person who has never uploaded a picture. Kept here even
+    //    when the instance switch is off, because deciding per request would mean
+    //    the middleware hitting Postgres on every page load — and with the switch
+    //    off no gravatar address is emitted anywhere, so the entry is inert.
+    //  - GitHub's avatar CDN, which the repo picker has been pointing at since it
+    //    was written and this header has been silently blocking the whole time:
+    //    those avatars have always fallen back to initials.
+    `img-src 'self' blob: data: ${GRAVATAR_ORIGINS.join(" ")} https://avatars.githubusercontent.com${
+      templatesOrigin ? ` ${templatesOrigin}` : ""
+    }`,
     `font-src 'self' data:`,
     `connect-src 'self'`,
     `object-src 'none'`,

@@ -11,7 +11,7 @@ import {
   Search,
   X,
 } from "lucide-react";
-import { Avatar, AvatarFallback } from "@/components/ui/avatar";
+import { TeamAvatar } from "@/components/shared/user-avatar";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { LogoImage } from "@/components/shared/project-logo";
@@ -663,18 +663,11 @@ function openForSelection(
 }
 
 /**
- * A team has no logo of its own — its identity everywhere in deplo is the
- * two-letter avatar the topbar switcher shows, so the picker shows the same one
- * rather than inventing a generic glyph for it.
+ * A team's picture, or its two-letter monogram — the same mark the topbar
+ * switcher shows, so a team looks the same wherever it is named.
  */
-function TeamMark({ name }: { name: string }) {
-  return (
-    <Avatar className="size-4">
-      <AvatarFallback className="bg-foreground text-[8px] text-background">
-        {name.slice(0, 2).toUpperCase()}
-      </AvatarFallback>
-    </Avatar>
-  );
+function TeamMark({ name, avatarUrl }: { name: string; avatarUrl?: string | null }) {
+  return <TeamAvatar name={name} avatarUrl={avatarUrl} size="xs" />;
 }
 
 /** An app's own logo when it has one, else the generic app glyph. */

@@ -15,7 +15,7 @@ import {
   UserMinus,
 } from "lucide-react";
 
-import { Avatar, AvatarFallback } from "@/components/ui/avatar";
+import { UserAvatar } from "@/components/shared/user-avatar";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
@@ -299,13 +299,13 @@ export function MemberDetailTabs({
     <div className="space-y-6">
       <header className="space-y-3">
         <div className="flex flex-wrap items-center gap-3">
-          <Avatar className="size-10">
-            <AvatarFallback
-              style={{ backgroundColor: member.avatarColor, color: "#000" }}
-            >
-              {member.username.slice(0, 2).toUpperCase()}
-            </AvatarFallback>
-          </Avatar>
+          <UserAvatar
+            name={member.name}
+            username={member.username}
+            avatarColor={member.avatarColor}
+            avatarUrl={member.avatarUrl}
+            size="xl"
+          />
           <div className="min-w-0">
             <div className="flex flex-wrap items-center gap-2">
               <h1 className="text-2xl font-semibold tracking-tight">

@@ -16,7 +16,7 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
-import { Avatar, AvatarFallback } from "@/components/ui/avatar";
+import { UserAvatar } from "@/components/shared/user-avatar";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { AddMemberDialog } from "@/components/members/add-member-dialog";
@@ -136,13 +136,13 @@ function MemberCard({
   const inner = (
     <div className="flex h-full flex-col gap-3 rounded-lg border border-border p-4 transition-colors group-hover:border-foreground/20">
       <div className="flex w-full items-center gap-3">
-        <Avatar>
-          <AvatarFallback
-            style={{ backgroundColor: member.avatarColor, color: "#000" }}
-          >
-            {member.username.slice(0, 2).toUpperCase()}
-          </AvatarFallback>
-        </Avatar>
+        <UserAvatar
+          name={member.name}
+          username={member.username}
+          avatarColor={member.avatarColor}
+          avatarUrl={member.avatarUrl}
+          size="lg"
+        />
         <div className="min-w-0 flex-1">
           <p className="flex items-center gap-1 text-sm font-medium">
             <span className="truncate">@{member.username}</span>
