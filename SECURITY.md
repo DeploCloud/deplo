@@ -37,8 +37,7 @@ and tells you in the dashboard, so staying current is the supported path.
 
 | Version | Supported |
 | --- | :-: |
-| 1.3.x | yes |
-| < 1.3 | no |
+| 0.x | yes |
 
 ## Scope
 

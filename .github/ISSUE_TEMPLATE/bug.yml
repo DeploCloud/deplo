@@ -47,7 +47,7 @@ body:
     attributes:
       label: deplo version
       description: Shown in the dashboard under Settings. Include it even if it is `latest`.
-      placeholder: "1.3.0"
+      placeholder: "0.1.0"
     validations:
       required: true
 

@@ -7,7 +7,8 @@ the deeper docs it links (this file points; it does not restate them).
 - **`CONTEXT.md`** (repo root) — authoritative glossary / ubiquitous language. Single-context repo.
 - **`docs/adr/`** — numbered decisions (0001-0024). Contradicting one? Surface it, don't silently override.
 - **`docs/api/graphql.md`** — external API reference · **`schema.graphql`** (root) — generated SDL.
-- **`docs/agents/`** — `issue-tracker.md`, `triage-labels.md`, `domain.md`.
+- **`docs/agents/`** — `issue-tracker.md`, `triage-labels.md`, `domain.md`, `releasing.md`,
+  `fleet-rollout.md`.
 
 ## Core mission — the north star every feature answers to
 
@@ -558,6 +559,14 @@ language — reconsider, or note the gap.
 - Check `docs/adr/` before working an area; flag contradictions explicitly rather than overriding.
 - **Commits = Conventional Commits with a scope**, imperative summary (`feat(apps): …`,
   `fix(auth): …`). Branch off `main` before committing.
+- **Never bump the version on your own initiative.** A finished task is a commit, not a release:
+  no `chore(release):` commit and no tag unless the owner explicitly asks for one. deplo is in
+  beta, so a release is `0.x.y` — **minor** when the user notices (feature, changed behaviour, DB
+  migration, needs a newer agent), **patch** for everything else, and `1.0.0` is the launch, which
+  is the owner's call. One command does the whole thing and makes tag/file drift impossible:
+  `bun pm version minor --message "chore(release): deplo %s"` then `git push --follow-tags`. Full
+  procedure in `docs/agents/releasing.md`. `deplo-agent` versions on its own 1.x line and is
+  forward-only — never reset or lower it (`docs/agents/fleet-rollout.md`).
 - **Stop what you start — including :3000.** Any build or server you launch to work a task (dev
   server, test server, watcher, Playwright harness) MUST be stopped once the task is 100% done —
   never leave it running in the background. **This includes the control plane on :3000: if YOU
