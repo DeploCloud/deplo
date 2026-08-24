@@ -16,6 +16,7 @@ import {
   BUILD_LEVELS,
 } from "@/components/logs/log-filters";
 import { LogNoticeChip, type LogNotice } from "@/components/logs/log-notice";
+import { LogTitleLink, type LogTitle } from "@/components/logs/log-title";
 import { isDeploymentLive } from "@/lib/deployment-status";
 import { stripAnsi } from "@/lib/ansi";
 import { levelLabelPadded } from "@/lib/log-levels";
@@ -68,6 +69,7 @@ export function BuildLogStream({
   initialQueuePosition = null,
   showQueueBanner = false,
   notice = null,
+  title,
   fill = false,
 }: {
   deploymentId: string;
@@ -77,6 +79,10 @@ export function BuildLogStream({
    *  chip in the toolbar; only the app Logs page, which falls back here when
    *  there is no container, passes one. */
   notice?: LogNotice | null;
+  /** What these logs belong to, linked back to its Overview. Set only on the
+   *  full-screen route, where the toolbar is the only heading left; the
+   *  deployment detail page keeps the app header and would say it twice. */
+  title?: LogTitle;
   /** Fill the height of the frame instead of sitting in a fixed-height card.
    *  Set on the full-bleed logs page; the deployment detail page leaves it off
    *  and keeps its card. */
@@ -263,6 +269,7 @@ export function BuildLogStream({
         {/* Every control beside the search input is h-9 — `size="sm"` is h-8,
             which lands a button 4px short of an Input and reads as a broken row. */}
         <div className="flex flex-wrap items-center gap-2 border-b border-border px-3 py-2">
+          <LogTitleLink title={title} />
           <span className="flex shrink-0 items-center gap-2 text-xs text-muted-foreground">
             {logs.length === 1 ? "1 line" : `${logs.length} lines`}
             {live && (
@@ -281,7 +288,11 @@ export function BuildLogStream({
           <LogSearch
             value={filters.state.q}
             onChange={(q) => filters.setState((s) => ({ ...s, q }))}
-            className="basis-full sm:basis-auto lg:max-w-100"
+            // No max width: the search box takes whatever the row has left, so
+            // the toolbar has no dead gap in the middle and a long query stays
+            // readable. `basis-full` still drops it onto its own line on a
+            // narrow viewport, where sharing the row would leave it unusable.
+            className="basis-full sm:basis-auto"
           />
           <LogLevelFilter
             facet={filters.facet}

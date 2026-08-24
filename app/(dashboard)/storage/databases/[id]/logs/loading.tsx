@@ -36,6 +36,8 @@ export default function Loading() {
       {/* Toolbar: container picker, status, search, level filter, actions. */}
       <div className="flex flex-wrap items-center gap-2 border-b border-border bg-secondary/40 px-3 py-2">
         <Skeleton className="size-4" />
+        {/* The name, which is the only heading this route has. */}
+        <Skeleton className="h-4 w-28" />
         <Skeleton className="h-9 w-36 rounded-md" />
         <Skeleton className="h-4 w-20 rounded-full" />
         <Skeleton className="h-9 w-full max-w-100 rounded-md" />

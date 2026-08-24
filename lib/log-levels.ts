@@ -47,6 +47,26 @@ export const LEVEL_BAR_CLASS: Record<LogLevel, string> = {
   success: "bg-success",
 };
 
+/**
+ * A faint wash of the level's own colour across the whole row, and a slightly
+ * stronger one on hover. Same idea as the notice chip in the toolbar: the colour
+ * says what kind of thing this is before you have read a word of it.
+ *
+ * `info` gets NO wash, only the neutral hover. It is the majority of any log
+ * once the detector stops guessing, and a tint behind every line is a tint
+ * behind none — the whole point is that the four rows that matter stand out of
+ * the page. Kept at single digits: a screenful of errors should read as a page
+ * with red in it, not as a red page.
+ */
+export const LEVEL_ROW_CLASS: Record<LogLevel, string> = {
+  command: "bg-zinc-400/[0.05] hover:bg-zinc-400/[0.09]",
+  info: "hover:bg-white/[0.04]",
+  warn: "bg-[var(--warning)]/[0.08] hover:bg-[var(--warning)]/[0.14]",
+  error: "bg-destructive/[0.08] hover:bg-destructive/[0.14]",
+  debug: "bg-zinc-400/[0.05] hover:bg-zinc-400/[0.09]",
+  success: "bg-success/[0.07] hover:bg-success/[0.13]",
+};
+
 /** Classes for the log MESSAGE text itself (the pill carries the level color). */
 export const LEVEL_TEXT_CLASS: Record<LogLevel, string> = {
   command: "font-semibold text-white",

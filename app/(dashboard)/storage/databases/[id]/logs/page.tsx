@@ -21,6 +21,7 @@ export default async function DatabaseLogsPage(
     <div className="flex min-h-0 flex-1 flex-col">
       <DatabaseLogs
         id={db.id}
+        title={{ label: db.name, href: `/storage/databases/${db.id}` }}
         status={db.status}
         instances={info?.instances ?? []}
         streamable={!!info?.streamable}

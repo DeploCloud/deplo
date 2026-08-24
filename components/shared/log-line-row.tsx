@@ -4,6 +4,7 @@ import {
   LEVEL_BADGE_CLASS,
   LEVEL_BAR_CLASS,
   LEVEL_LABEL,
+  LEVEL_ROW_CLASS,
   LEVEL_TEXT_CLASS,
 } from "@/lib/log-levels";
 import type { LogLevel } from "@/lib/types";
@@ -208,7 +209,10 @@ export function LogRow({
       className={cn(
         // items-start, not the default stretch — see LevelChip.
         "log-row group relative flex items-start gap-3 rounded-md py-px pl-3 pr-1.5",
-        "transition-colors hover:bg-white/[0.04]",
+        "transition-colors",
+        // The level's own faint wash, hover included. `info` supplies only the
+        // neutral hover, so an ordinary line stays an ordinary line.
+        LEVEL_ROW_CLASS[level] ?? "hover:bg-white/[0.04]",
       )}
     >
       {/* The rail. Absolute so it costs no horizontal space and spans the full

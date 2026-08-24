@@ -13,6 +13,7 @@ import {
   type AppRuntimeView,
 } from "@/components/apps/use-app-runtime";
 import type { LogNotice } from "@/components/logs/log-notice";
+import type { LogTitle } from "@/components/logs/log-title";
 import type { ConsoleInstance } from "@/lib/data/console";
 import type { DeploymentStatus, LogLine } from "@/lib/types";
 
@@ -68,6 +69,7 @@ type LatestDeployment = { id: string; status: DeploymentStatus };
  */
 export function LiveLogs({
   appId,
+  title,
   initialInstances,
   initialStreamable,
   initialSupportsTimeline,
@@ -76,6 +78,9 @@ export function LiveLogs({
   initialBuildLogs,
 }: {
   appId: string;
+  /** The App's name and the way back to its Overview. The full-screen route has
+   *  no page title and no app header, so the toolbar carries both. */
+  title: LogTitle;
   initialInstances: ConsoleInstance[];
   initialStreamable: boolean;
   /** The owning host's agent honours a log time window (`logs.timerange`). */
@@ -131,6 +136,7 @@ export function LiveLogs({
         instances={instances}
         runtime={runtime}
         notice={runtimeNotice(runtime)}
+        title={title}
         supportsTimeline={supportsTimeline}
         logMaxDays={logMaxDays}
       />
@@ -156,6 +162,7 @@ export function LiveLogs({
         initialLogs={depId === seededId ? initialBuildLogs : []}
         initialStatus={depStatus}
         notice={noticeForStatus(depStatus)}
+        title={title}
         fill
       />
     );

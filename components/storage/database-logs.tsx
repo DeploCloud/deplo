@@ -5,6 +5,7 @@ import { ContainerLogs } from "@/components/apps/container-logs";
 import { useDatabaseRuntime } from "@/components/storage/use-database-runtime";
 import { useLiveDatabaseStatus } from "@/components/storage/database-live-status";
 import { runtimeNotice } from "@/components/apps/live-logs";
+import type { LogTitle } from "@/components/logs/log-title";
 import type { ConsoleInstance } from "@/lib/data/console";
 import type { DatabaseStatus } from "@/lib/types";
 
@@ -15,6 +16,7 @@ import type { DatabaseStatus } from "@/lib/types";
  */
 export function DatabaseLogs({
   id,
+  title,
   status: serverStatus,
   instances,
   streamable,
@@ -22,6 +24,9 @@ export function DatabaseLogs({
   logMaxDays,
 }: {
   id: string;
+  /** The database's name and the way back to its Overview: the toolbar is the
+   *  only heading this route has. */
+  title: LogTitle;
   status: DatabaseStatus;
   instances: ConsoleInstance[];
   streamable: boolean;
@@ -52,6 +57,7 @@ export function DatabaseLogs({
       instances={instances}
       runtime={runtime}
       notice={runtimeNotice(runtime)}
+      title={title}
       supportsTimeline={supportsTimeline}
       logMaxDays={logMaxDays}
       apiBase={`/api/databases/${encodeURIComponent(id)}/logs`}

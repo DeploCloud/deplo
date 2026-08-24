@@ -7,6 +7,7 @@ import {
   type BreadcrumbGraph,
   type BreadcrumbCaps,
   type BreadcrumbFlags,
+  type BreadcrumbContext,
   type BreadcrumbSegment,
 } from "./breadcrumb-model";
 
@@ -39,6 +40,10 @@ function graph(): BreadcrumbGraph {
       { id: "s7", slug: "stage", name: "Stage", folderId: null, projectId: "P", environmentId: "e2" },
     ],
     projects: [{ id: "P", name: "Store" }],
+    databases: [
+      { id: "db_1", name: "Primary", type: "postgres", logo: null },
+      { id: "db_2", name: "Cache", type: "redis", logo: null },
+    ],
   };
 }
 
@@ -329,4 +334,74 @@ test("folderChainFor tolerates a broken parent link and a cycle", () => {
     { id: "B", name: "B", parentId: "A" },
   ]);
   assert.equal(cyclic.length, 2);
+});
+
+/* ------------------------------------------------------------------ */
+/* Storage: its own short trail, not part of the apps tree             */
+/* ------------------------------------------------------------------ */
+
+const dbAt = (path: string): BreadcrumbContext => ({
+  pathname: path,
+  openFolderId: null,
+  openProjectId: null,
+  view: "grid",
+});
+
+test("a database reads as Storage / <name>, and the name carries its engine", () => {
+  const segs = buildBreadcrumb(dbAt("/storage/databases/db_1"), graph(), ALL_CAPS, NO_FLAGS);
+  assert.ok(segs);
+  assert.deepEqual(
+    segs.map((s) => [s.kind, s.name]),
+    [
+      ["storage", "Storage"],
+      ["database", "Primary"],
+    ],
+  );
+  // The crumb wears the thing's own mark: no uploaded logo here, so the engine
+  // is what the renderer falls back on.
+  assert.equal(segs[1]!.dbType, "postgres");
+});
+
+test("a database section adds a third crumb that can pivot", () => {
+  const segs = buildBreadcrumb(dbAt("/storage/databases/db_1/logs"), graph(), ALL_CAPS, NO_FLAGS);
+  assert.ok(segs);
+  assert.deepEqual(segs.map((s) => s.name), ["Storage", "Primary", "Logs"]);
+  const sections = segs[2]!.items.map((i) => i.label);
+  assert.deepEqual(sections, ["Overview", "Logs", "Monitoring", "Backups", "Settings"]);
+  assert.equal(segs[2]!.items.find((i) => i.current)?.label, "Logs");
+});
+
+test("switching database keeps the section you are on", () => {
+  const segs = buildBreadcrumb(dbAt("/storage/databases/db_1/logs"), graph(), ALL_CAPS, NO_FLAGS);
+  const sibling = segs![1]!.items.find((i) => i.id === "db_2");
+  assert.equal(sibling?.href, "/storage/databases/db_2/logs");
+  assert.equal(segs![1]!.items.find((i) => i.id === "db_1")?.current, true);
+});
+
+test("a section a sibling may not have is NOT carried over", () => {
+  // Console hides behind a per-database acknowledgement and cron jobs behind a
+  // switch: landing on a sibling's missing section would be a dead end.
+  for (const seg of ["console", "cron-jobs"]) {
+    const segs = buildBreadcrumb(dbAt(`/storage/databases/db_1/${seg}`), graph(), ALL_CAPS, NO_FLAGS);
+    const sibling = segs![1]!.items.find((i) => i.id === "db_2");
+    assert.equal(sibling?.href, "/storage/databases/db_2", seg);
+  }
+});
+
+test("a database the caller cannot see falls back to the plain label", () => {
+  // Same rule as an app that is not in the graph: null, so the topbar prints
+  // "Storage" rather than naming a row this viewer has no business reading.
+  assert.equal(
+    buildBreadcrumb(dbAt("/storage/databases/db_missing"), graph(), ALL_CAPS, NO_FLAGS),
+    null,
+  );
+  const narrowed = { ...graph(), databases: [] };
+  assert.equal(
+    buildBreadcrumb(dbAt("/storage/databases/db_1"), narrowed, ALL_CAPS, NO_FLAGS),
+    null,
+  );
+});
+
+test("plain /storage is still not an apps-tree location", () => {
+  assert.equal(buildBreadcrumb(dbAt("/storage"), graph(), ALL_CAPS, NO_FLAGS), null);
 });

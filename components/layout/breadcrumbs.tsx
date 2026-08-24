@@ -4,10 +4,10 @@ import * as React from "react";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import {
-  Box,
   Boxes,
   Check,
   ChevronDown,
+  Database as DatabaseIcon,
   Folder as FolderIcon,
 } from "lucide-react";
 import {
@@ -19,7 +19,9 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { AppLogo } from "@/components/shared/project-logo";
+import { DatabaseLogo } from "@/components/storage/database-logo";
 import { useAppNav } from "@/components/apps/app-nav-store";
+import type { DatabaseType } from "@/lib/types";
 import {
   buildBreadcrumb,
   type BreadcrumbGraph,
@@ -170,11 +172,20 @@ function Crumb({
         title={segment.name}
         aria-current={isCurrent ? "page" : undefined}
         className={cn(
-          "max-w-40 truncate rounded px-1 py-0.5 transition-colors hover:bg-accent/60 hover:text-foreground",
+          "flex min-w-0 items-center gap-1.5 rounded px-1 py-0.5 transition-colors hover:bg-accent/60 hover:text-foreground",
           isCurrent ? "font-medium text-foreground" : "text-muted-foreground",
         )}
       >
-        {segment.name}
+        {/* The thing's own mark, before its name. A trail of names is a trail of
+            strings that all look alike; the App you are working on wearing the
+            logo you know it by is what makes the crumb readable at a glance. */}
+        <KindIcon
+          kind={segment.kind}
+          logo={segment.logo}
+          dbType={segment.dbType}
+          size={14}
+        />
+        <span className="max-w-40 truncate">{segment.name}</span>
       </Link>
       {hasChoices && <SiblingMenu segment={segment} />}
     </span>
@@ -242,25 +253,63 @@ function SiblingMenu({
   );
 }
 
-function MenuRow({ item }: { item: DropItem }) {
+/**
+ * The mark a crumb or a menu row wears, from the kind of thing it names.
+ *
+ * An app and a database wear their OWN avatar — the same one their card, their
+ * header and their Overview show — so a trail or a menu reads as the things you
+ * recognise rather than a column of identical boxes. A database with no uploaded
+ * logo still gets its engine's mark, which is what `DatabaseLogo` falls back to;
+ * a logo-less app falls back to the generic glyph inside `AppLogo`.
+ *
+ * `null` for a section and for Overview: those name a PLACE, not a thing, and an
+ * icon on every crumb is an icon on none.
+ */
+function KindIcon({
+  kind,
+  logo,
+  dbType,
+  size = 16,
+}: {
+  kind: DropItem["kind"] | BreadcrumbSegment["kind"];
+  logo?: string | null;
+  dbType?: string | null;
+  size?: number;
+}) {
+  if (kind === "app") {
+    return <AppLogo logo={logo ?? null} size={size} className="rounded-[4px]" />;
+  }
+  if (kind === "database") {
+    return (
+      <DatabaseLogo
+        // The model keeps the engine as a plain string on purpose — a breadcrumb
+        // has no business owning the engine union. It is one of these by
+        // construction (it comes off the `databases.type` column), and an
+        // unknown value lands on DatabaseLogo's own generic fallback anyway.
+        type={(dbType ?? "postgres") as DatabaseType}
+        logo={logo ?? null}
+        size={size}
+        className="rounded-[4px]"
+      />
+    );
+  }
   const Icon =
-    item.kind === "folder"
+    kind === "folder"
       ? FolderIcon
-      : item.kind === "project"
+      : kind === "project"
         ? Boxes
-        : item.kind === "app"
-          ? Box
+        : kind === "storage"
+          ? DatabaseIcon
           : null;
-  // An app wears its own logo here — the same avatar its card, its header and
-  // the Environment tab show — so the menu reads as the apps you recognise
-  // rather than a column of identical boxes. Logo-less apps keep the glyph,
-  // which is exactly what AppLogo falls back to.
-  const icon =
-    item.kind === "app" && item.logo ? (
-      <AppLogo logo={item.logo} size={16} className="rounded-[4px]" />
-    ) : Icon ? (
-      <Icon className="size-4 text-muted-foreground" />
-    ) : null;
+  return Icon ? (
+    <Icon className="shrink-0 text-muted-foreground" style={{ width: size, height: size }} />
+  ) : null;
+}
+
+function MenuRow({ item }: { item: DropItem }) {
+  const icon = (
+    <KindIcon kind={item.kind} logo={item.logo} dbType={item.dbType} />
+  );
   if (item.current) {
     // The entry you're already on: a non-navigating marker, kept full-opacity
     // (the variant-scoped override beats the base data-[disabled]:opacity-50).

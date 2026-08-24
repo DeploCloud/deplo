@@ -9,6 +9,7 @@ import {
   Play,
   Trash2,
   FileSearch,
+  PlugZap,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
@@ -29,6 +30,7 @@ import {
   RUNTIME_LEVELS,
 } from "@/components/logs/log-filters";
 import { LogNoticeChip, type LogNotice } from "@/components/logs/log-notice";
+import { LogTitleLink, type LogTitle } from "@/components/logs/log-title";
 import {
   TimelineMenu,
   DEFAULT_TIMELINE,
@@ -131,6 +133,7 @@ export function ContainerLogs({
   runtime,
   apiBase,
   notice = null,
+  title,
   supportsTimeline = false,
   logMaxDays = DEFAULT_LOG_RANGE_DAYS,
 }: {
@@ -147,6 +150,8 @@ export function ContainerLogs({
   /** Why this output might not be the whole story (restart loop, failing
    *  healthcheck, half a stack down). Rendered as a chip in the toolbar. */
   notice?: LogNotice | null;
+  /** What these logs belong to, linked back to its Overview. See LogTitleLink. */
+  title?: LogTitle;
   /**
    * Override the logs endpoint — the database logs viewer passes
    * `/api/databases/<id>/logs` (same SSE contract). Default: the app route
@@ -529,6 +534,7 @@ export function ContainerLogs({
           button 4px short of an Input, which reads as a broken row. */}
       <div className="flex flex-wrap items-center gap-2 border-b border-border bg-secondary/40 px-3 py-2">
         <ScrollText className="size-4 shrink-0 text-muted-foreground" />
+        <LogTitleLink title={title} />
         {instances.length > 1 ? (
           <Select value={active.name} onValueChange={switchInstance}>
             <SelectTrigger className="h-9 w-auto gap-2 border-border/60 bg-background/60 px-2 font-mono text-xs">
@@ -571,7 +577,9 @@ export function ContainerLogs({
               })}
             </SelectContent>
           </Select>
-        ) : (
+        ) : title ? null : (
+          // With a name in front of it, one container's own name is the same
+          // fact twice — the picker earns its place only when there is a choice.
           <span className="shrink-0 font-mono text-xs">{active.name}</span>
         )}
 
@@ -609,7 +617,11 @@ export function ContainerLogs({
         <LogSearch
           value={filters.state.q}
           onChange={(q) => filters.setState((s) => ({ ...s, q }))}
-          className="basis-full sm:basis-auto lg:max-w-100"
+          // No max width: the search box takes whatever the row has left, so the
+          // toolbar has no dead gap in the middle and a long query stays
+          // readable. `basis-full` still drops it onto its own line on a narrow
+          // viewport, where sharing the row would leave it unusable.
+          className="basis-full sm:basis-auto"
         />
         <LogLevelFilter
           facet={filters.facet}
@@ -729,6 +741,28 @@ export function ContainerLogs({
 
         {failure ? (
           <p className="mt-1 text-[11px] text-destructive">{failure}</p>
+        ) : null}
+
+        {/*
+          The stream never opened and said nothing about why.
+
+          The route refuses an unreachable host with an HTTP 503, not with an
+          SSE `failure` frame — EventSource surfaces that as a bare `onerror`
+          with no body to read, so `failure` stays null and every branch above
+          declines to render. It used to leave a 520px box empty, which read as
+          "quiet app"; full-screen it leaves the whole page empty, which reads
+          as broken. Whatever the cause, an empty pane has to say something.
+        */}
+        {(status === "error" || status === "ended") &&
+        output === "" &&
+        !failure ? (
+          <div className="flex flex-col items-center justify-center gap-2 py-16 text-center">
+            <PlugZap className="size-5 text-zinc-500" />
+            <p className="max-w-100 text-[11px] text-zinc-500">
+              The log stream could not be opened. The container may be gone, or
+              its server unreachable — use Reconnect to try again.
+            </p>
+          </div>
         ) : null}
       </LogLines>
     </div>

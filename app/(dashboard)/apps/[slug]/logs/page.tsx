@@ -52,6 +52,7 @@ export default async function AppLogsPage(
           still streams. Only an app with NO container falls back to build logs. */}
       <LiveLogs
         appId={project.id}
+        title={{ label: project.name, href: `/apps/${project.slug}` }}
         initialInstances={info?.instances ?? []}
         initialStreamable={!!info?.streamable}
         initialSupportsTimeline={!!info?.supportsTimeline}

@@ -3,8 +3,15 @@ import "server-only";
 import { and, eq } from "drizzle-orm";
 
 import { getDb } from "../db/client";
-import { apps as appsTable } from "../db/schema/control-plane";
-import { currentMemberScope, requireActiveTeamId } from "../membership";
+import {
+  apps as appsTable,
+  databases as databasesTable,
+} from "../db/schema/control-plane";
+import {
+  currentMemberScope,
+  reachesWholeTeam,
+  requireActiveTeamId,
+} from "../membership";
 import { listFolders } from "./folders";
 import { appScopeWhere } from "./app-graph-load";
 import { appInScope } from "./node-scope";
@@ -30,7 +37,11 @@ export async function getBreadcrumbGraph(): Promise<BreadcrumbGraph> {
   // only. The topbar naming every app in the team is a small leak with a large
   // surface: it is on every page.
   const roleScope = await currentMemberScope();
-  const [folders, projects, appRows] = await Promise.all([
+  // Storage is a TEAM-WIDE list (`requireTeamWide` in listDatabases), so a member
+  // narrowed to part of the team sees none of it. Asked here as a boolean rather
+  // than by calling that helper, which THROWS — and this runs in the dashboard
+  // layout, where a throw takes down every page instead of one list.
+  const [folders, projects, appRows, teamWide] = await Promise.all([
     listFolders(),
     listProjects(),
     getDb()
@@ -45,7 +56,20 @@ export async function getBreadcrumbGraph(): Promise<BreadcrumbGraph> {
       })
       .from(appsTable)
       .where(and(eq(appsTable.teamId, teamId), appScopeWhere())),
+    reachesWholeTeam(),
   ]);
+
+  const databaseRows = teamWide
+    ? await getDb()
+        .select({
+          id: databasesTable.id,
+          name: databasesTable.name,
+          type: databasesTable.type,
+          logo: databasesTable.logo,
+        })
+        .from(databasesTable)
+        .where(eq(databasesTable.teamId, teamId))
+    : [];
   return {
     folders: folders.map((f) => ({
       id: f.id,
@@ -71,5 +95,11 @@ export async function getBreadcrumbGraph(): Promise<BreadcrumbGraph> {
       logo: s.logo ?? null,
     })),
     projects: projects.map((p) => ({ id: p.id, name: p.name })),
+    databases: databaseRows.map((d) => ({
+      id: d.id,
+      name: d.name,
+      type: d.type,
+      logo: d.logo ?? null,
+    })),
   };
 }

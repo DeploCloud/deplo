@@ -41,11 +41,23 @@ export interface BreadcrumbProject {
   name: string;
 }
 
+export interface BreadcrumbDatabase {
+  id: string;
+  name: string;
+  /** The engine ("postgres", "mysql", …). A database with no uploaded logo of
+   *  its own wears its engine's mark, exactly as its card does. */
+  type: string;
+  logo?: string | null;
+}
+
 /** The team-scoped snapshot the breadcrumb navigates over (see getBreadcrumbGraph). */
 export interface BreadcrumbGraph {
   folders: BreadcrumbFolder[];
   apps: BreadcrumbApp[];
   projects: BreadcrumbProject[];
+  /** Empty for a member whose role or token does not reach the whole team —
+   *  Storage is a team-wide list, so a narrowed caller sees none of it. */
+  databases: BreadcrumbDatabase[];
 }
 
 /** Where the viewer is: the pathname plus the Overview's drill-in query params. */
@@ -66,12 +78,14 @@ export interface DropItem {
   label: string;
   href: string;
   /** Distinguishes the icon and grouping in the menu. */
-  kind: "folder" | "app" | "project" | "section";
+  kind: "folder" | "app" | "project" | "database" | "section";
   /** The entry that IS the current path at this level (checkmarked, non-navigating). */
   current: boolean;
-  /** An app entry's logo (see BreadcrumbApp.logo) — the renderer shows it in
-   *  place of the generic glyph. Null/absent on every other kind. */
+  /** An app's or database's logo — the renderer shows it in place of the
+   *  generic glyph. Null/absent on every other kind. */
   logo?: string | null;
+  /** A database entry's engine, so a logo-less one still gets its own mark. */
+  dbType?: string | null;
   /** Optional group heading the renderer buckets items under ("Folders" / "Apps"). */
   group?: string;
 }
@@ -82,9 +96,21 @@ export interface BreadcrumbSegment {
   name: string;
   /** Where clicking the name navigates. */
   href: string;
-  kind: "overview" | "folder" | "project" | "app" | "section";
+  kind: "overview" | "storage" | "folder" | "project" | "app" | "database" | "section";
   /** Sibling / child targets for the ▾ dropdown (empty ⇒ no dropdown). */
   items: DropItem[];
+  /**
+   * The crumb's own avatar, when the thing it names has one. A trail of names is
+   * a trail of strings that all look alike; the App you are working on wearing
+   * the same logo its card and its Overview wear is what makes the crumb
+   * recognisable at a glance rather than read word by word.
+   *
+   * Only on the crumbs that name a THING (app, database, folder, project) —
+   * never on "Overview" or on a section like "Logs", which are places.
+   */
+  logo?: string | null;
+  /** A database crumb's engine — the fallback mark when it has no logo. */
+  dbType?: string | null;
 }
 
 /** The capabilities that gate which app sections are offered. Resolved PER APP
@@ -108,6 +134,22 @@ export interface BreadcrumbFlags {
   showFiles: boolean;
   slugMatches: boolean;
 }
+
+/**
+ * A database's top-level sections, in sidebar order (see nav-config.databaseNav).
+ * Deliberately the STABLE ones only: Console hides behind a one-time warning and
+ * Cron jobs behind a switch, both of which are client-side facts this pure model
+ * has no way to know. The crumb still names whichever section you are actually
+ * on — `capitalize(seg)` covers the two that are not listed here — it just does
+ * not offer them in the dropdown as if everyone had them.
+ */
+const DATABASE_SECTIONS: { seg: string; label: string }[] = [
+  { seg: "", label: "Overview" },
+  { seg: "logs", label: "Logs" },
+  { seg: "monitoring", label: "Monitoring" },
+  { seg: "backups", label: "Backups" },
+  { seg: "settings", label: "Settings" },
+];
 
 /** An app's top-level sections, in sidebar order (see nav-config.appNav). */
 const MAIN_SECTIONS: {
@@ -218,6 +260,18 @@ export function buildBreadcrumb(
   let project: BreadcrumbProject | null = null;
   let service: BreadcrumbApp | null = null;
   let rest: string[] = [];
+
+  // Storage is its own short trail — Storage / <database> / <section> — and not
+  // part of the apps tree, so it is resolved and returned before any of the
+  // folder/project machinery below runs.
+  const dbMatch = pathname.match(/^\/storage\/databases\/([^/]+)(\/.*)?$/);
+  if (dbMatch) {
+    return buildDatabaseTrail(
+      dbMatch[1]!,
+      (dbMatch[2] ?? "").split("/").filter(Boolean),
+      graph.databases,
+    );
+  }
 
   const appMatch = pathname.match(/^\/apps\/([^/]+)(\/.*)?$/);
   if (appMatch) {
@@ -462,6 +516,82 @@ export function buildBreadcrumb(
         items: subItems,
       });
     }
+  }
+
+  return segments;
+}
+
+/**
+ * Storage / <database> ▾ / <section> ▾.
+ *
+ * Shorter than the apps trail because storage has no tree: a database lives in
+ * the team, not in a folder. Returns null for an id the caller cannot see, which
+ * is what makes the topbar fall back to the plain "Storage" label instead of
+ * naming a database in a breadcrumb the viewer has no business reading.
+ */
+function buildDatabaseTrail(
+  id: string,
+  rest: string[],
+  databases: BreadcrumbDatabase[],
+): BreadcrumbSegment[] | null {
+  const db = databases.find((d) => d.id === id);
+  if (!db) return null;
+
+  const base = (dbId: string) => `/storage/databases/${dbId}`;
+  const mainSeg = rest[0] ?? "";
+  // Keep your tab when pivoting to another database, exactly as the app trail
+  // does — minus the sections that hinge on per-database facts a sibling may
+  // not share, and minus any deeper id in the path.
+  const UNSAFE = new Set(["console", "cron-jobs"]);
+  const suffix = mainSeg && !UNSAFE.has(mainSeg) ? `/${mainSeg}` : "";
+
+  const dbItems: DropItem[] = databases
+    .map((d) => ({
+      id: d.id,
+      label: d.name,
+      href: `${base(d.id)}${suffix}`,
+      kind: "database" as const,
+      logo: d.logo ?? null,
+      dbType: d.type,
+      current: d.id === db.id,
+    }))
+    .sort(byNameThenId);
+
+  const segments: BreadcrumbSegment[] = [
+    {
+      key: "storage",
+      name: "Storage",
+      href: "/storage",
+      kind: "storage",
+      items: dbItems,
+    },
+    {
+      key: `database-${db.id}`,
+      name: db.name,
+      href: base(db.id),
+      kind: "database",
+      logo: db.logo ?? null,
+      dbType: db.type,
+      items: dbItems,
+    },
+  ];
+
+  if (mainSeg) {
+    segments.push({
+      key: "database-section",
+      name:
+        DATABASE_SECTIONS.find((sec) => sec.seg === mainSeg)?.label ??
+        capitalize(mainSeg),
+      href: `${base(db.id)}/${mainSeg}`,
+      kind: "section",
+      items: DATABASE_SECTIONS.map((sec) => ({
+        id: sec.seg || "overview",
+        label: sec.label,
+        href: sec.seg ? `${base(db.id)}/${sec.seg}` : base(db.id),
+        kind: "section" as const,
+        current: sec.seg === mainSeg,
+      })),
+    });
   }
 
   return segments;
