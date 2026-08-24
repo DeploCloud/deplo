@@ -17,12 +17,7 @@ import { PageHeader } from "@/components/shared/page-header";
 import { EmptyState } from "@/components/shared/empty-state";
 import { DeploMark } from "@/components/logo";
 import { AddServer } from "@/components/servers/add-server";
-import {
-  Card,
-  CardHeader,
-  CardTitle,
-  CardContent,
-} from "@/components/ui/card";
+import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Button } from "@/components/ui/button";
@@ -106,8 +101,18 @@ async function SpecTiles({ specs }: { specs: Promise<Server> }) {
         value={num(server.cpuCores)}
         unit={server.cpuCores === 1 ? "core" : "cores"}
       />
-      <Spec icon={MemoryStick} label="Memory" value={num(ramGb)} unit="GB RAM" />
-      <Spec icon={HardDrive} label="Disk" value={num(server.diskGb)} unit="GB" />
+      <Spec
+        icon={MemoryStick}
+        label="Memory"
+        value={num(ramGb)}
+        unit="GB RAM"
+      />
+      <Spec
+        icon={HardDrive}
+        label="Disk"
+        value={num(server.diskGb)}
+        unit="GB"
+      />
       <Spec
         icon={Boxes}
         label="Docker"
@@ -123,7 +128,10 @@ function SpecTilesSkeleton() {
   return (
     <>
       {Array.from({ length: 4 }).map((_, i) => (
-        <div key={i} className="rounded-lg border border-border bg-muted/30 p-3">
+        <div
+          key={i}
+          className="rounded-lg border border-border bg-muted/30 p-3"
+        >
           <div className="flex items-center gap-1.5">
             <Skeleton className="size-3.5 rounded" />
             <Skeleton className="h-3 w-12" />
@@ -330,16 +338,15 @@ export default async function ServersPage(
   const autoOpenServer =
     (Array.isArray(newParam) ? newParam[0] : newParam) === "1";
 
-  const [serversRaw, serverTeamIds, teamsRaw] =
-    await Promise.all([
-      listAllServers(),
-      listAllServerTeamIds(),
-      // The team list feeds the per-server "Team access" editor. Read it via the
-      // instance-admin variant so it matches this page's admin-only gate — the
-      // manage_infra-scoped listAllTeams would reject an admin who isn't a
-      // manage_infra member of their active team.
-      listAllTeamsForAdmin(),
-    ]);
+  const [serversRaw, serverTeamIds, teamsRaw] = await Promise.all([
+    listAllServers(),
+    listAllServerTeamIds(),
+    // The team list feeds the per-server "Team access" editor. Read it via the
+    // instance-admin variant so it matches this page's admin-only gate — the
+    // manage_infra-scoped listAllTeams would reject an admin who isn't a
+    // manage_infra member of their active team.
+    listAllTeamsForAdmin(),
+  ]);
   // Fill in capacity specs for the static cards (measures an unmeasured server
   // once, then reuses the persisted values). No per-second polling anymore.
   //
@@ -415,10 +422,10 @@ export default async function ServersPage(
                 content={
                   <>
                     Start with <strong>this host</strong>: add it (use its IP),
-                    then run the one-time install command it gives you on the box
-                    to install the agent. Add more Linux hosts the same way. The
-                    agent calls home and provisions itself — Deplo never needs
-                    SSH access to your servers.
+                    then run the one-time install command it gives you on the
+                    box to install the agent. Add more Linux hosts the same way.
+                    The agent calls home and provisions itself — Deplo never
+                    needs SSH access to your servers.
                   </>
                 }
               />
@@ -462,9 +469,9 @@ export default async function ServersPage(
               Migration sources
             </h2>
             <p className="mt-1 text-sm text-muted-foreground">
-              Only used to import from another platform. Nothing is deployed here,
-              and Deplo removes its agent when the migration is done - these are
-              the ones it has not managed to yet.
+              Only used to import from another platform. Nothing is deployed
+              here, and Deplo removes its agent when the migration is done -
+              these are the ones it has not managed to yet.
             </p>
             <div className="mt-3 grid gap-4 sm:grid-cols-2">
               {migrationSources.map((server) => (

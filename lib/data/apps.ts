@@ -91,7 +91,11 @@ import {
   stopContainer,
   startContainer,
 } from "../deploy/build";
-import { ensureAutoDomain, ensureExtraDomain, isHostnameClaim } from "./domains";
+import {
+  ensureAutoDomain,
+  ensureExtraDomain,
+  isHostnameClaim,
+} from "./domains";
 import { requireFolderCapability } from "./folder-access";
 import { defaultEnvironmentFor } from "./projects";
 import {
@@ -123,7 +127,10 @@ import {
   gitConnectionInTeam,
   syncAppWebhook,
 } from "./git-connections";
-import { AgentUnreachableError, BACKUP_RUN_MAX_MS } from "../infra/agent-client";
+import {
+  AgentUnreachableError,
+  BACKUP_RUN_MAX_MS,
+} from "../infra/agent-client";
 import { publishAppChanged } from "../graphql/pubsub";
 import {
   inAppScope,
@@ -178,7 +185,11 @@ export function isSecretKey(key: string): boolean {
   // wrong twice over: it hides a value anybody can already read, and a preview of
   // a FORK drops every secret-typed value, which took the build's own public
   // config with it.
-  if (/^(NEXT_PUBLIC_|NUXT_PUBLIC_|PUBLIC_|VITE_|REACT_APP_|EXPO_PUBLIC_|GATSBY_)/i.test(key.trim()))
+  if (
+    /^(NEXT_PUBLIC_|NUXT_PUBLIC_|PUBLIC_|VITE_|REACT_APP_|EXPO_PUBLIC_|GATSBY_)/i.test(
+      key.trim(),
+    )
+  )
     return false;
   return /pass|secret|token|key|api|private|credential|dsn|url/i.test(key);
 }
@@ -193,7 +204,10 @@ function isUniqueViolation(err: unknown, constraint: string): boolean {
   for (let e: unknown = err; e; e = (e as { cause?: unknown }).cause) {
     const o = e as { code?: string; constraint?: string; message?: string };
     if (o.code === "23505") {
-      return o.constraint === constraint || (o.message?.includes(constraint) ?? false);
+      return (
+        o.constraint === constraint ||
+        (o.message?.includes(constraint) ?? false)
+      );
     }
   }
   return false;
@@ -267,7 +281,8 @@ export function reconcileStatus(
   now: number = Date.now(),
 ): AppStatus {
   const age = now - new Date(updatedAt).getTime();
-  if (status === "stopping") return age > STOPPING_STALE_MS ? "idle" : "stopping";
+  if (status === "stopping")
+    return age > STOPPING_STALE_MS ? "idle" : "stopping";
   if (status === "restoring")
     return age > RESTORING_STALE_MS ? "error" : "restoring";
   return status;
@@ -291,7 +306,7 @@ function summarize(p: App, pre: SummaryPreload): AppSummary {
     // Same for the folder grouping: absent (pre-folders) ⇒ ungrouped (null).
     folderId: p.folderId ?? null,
     latestDeployment: p.latestDeploymentId
-      ? pre.latestDeployments.get(p.latestDeploymentId) ?? null
+      ? (pre.latestDeployments.get(p.latestDeploymentId) ?? null)
       : null,
     domainCount: pre.domainCounts.get(p.id) ?? 0,
   };
@@ -424,9 +439,9 @@ export async function reorderApps(orderedIds: string[]): Promise<void> {
     // Whole-set replace: drop the team's order rows, re-insert in the new order.
     await tx.delete(teamAppOrder).where(eq(teamAppOrder.teamId, teamId));
     if (next.length > 0) {
-      await tx.insert(teamAppOrder).values(
-        next.map((appId, position) => ({ teamId, appId, position })),
-      );
+      await tx
+        .insert(teamAppOrder)
+        .values(next.map((appId, position) => ({ teamId, appId, position })));
     }
   });
 }
@@ -440,7 +455,7 @@ async function summarizeOne(p: App): Promise<AppSummary> {
 // React-cached so a request that reads the same project twice — e.g. the project
 // layout's generateMetadata AND its render — only hits the DB once per request.
 export const getAppBySlug = cache(async function getAppBySlug(
-  slug: string
+  slug: string,
 ): Promise<AppSummary | null> {
   const teamId = await requireActiveTeamId();
   const p = await loadAppGraphBySlug(slug);
@@ -514,7 +529,10 @@ export async function summarizeForTeam(
   userId: string,
 ): Promise<AppSummary | null> {
   const p = await loadAppGraph(id);
-  return p && p.teamId === teamId && inAppScope(p) && (await reachableByUser(userId, teamId, p.id))
+  return p &&
+    p.teamId === teamId &&
+    inAppScope(p) &&
+    (await reachableByUser(userId, teamId, p.id))
     ? summarizeOne(p)
     : null;
 }
@@ -526,7 +544,10 @@ export async function findAppSummaryBySlugForTeam(
   userId: string,
 ): Promise<AppSummary | null> {
   const p = await loadAppGraphBySlug(slug);
-  return p && p.teamId === teamId && inAppScope(p) && (await reachableByUser(userId, teamId, p.id))
+  return p &&
+    p.teamId === teamId &&
+    inAppScope(p) &&
+    (await reachableByUser(userId, teamId, p.id))
     ? summarizeOne(p)
     : null;
 }
@@ -641,7 +662,10 @@ async function resolveNewAppPlacement(
   // and a member through their role's reach.
   const roleScope = await currentMemberScope();
   if (placement.folderId) {
-    if (!inFolderScope(placement.folderId) || !folderInScope(roleScope, placement.folderId))
+    if (
+      !inFolderScope(placement.folderId) ||
+      !folderInScope(roleScope, placement.folderId)
+    )
       throw new Error("Folder not found");
   } else if (
     !inProjectScope(placement.projectId) ||
@@ -671,7 +695,10 @@ async function resolvePlacement(
         .select({ id: foldersTable.id })
         .from(foldersTable)
         .where(
-          and(eq(foldersTable.id, input.folderId), eq(foldersTable.teamId, teamId)),
+          and(
+            eq(foldersTable.id, input.folderId),
+            eq(foldersTable.teamId, teamId),
+          ),
         )
         .limit(1)
     )[0];
@@ -688,7 +715,10 @@ async function resolvePlacement(
           teamId: projectsTable.teamId,
         })
         .from(environmentsTable)
-        .innerJoin(projectsTable, eq(environmentsTable.projectId, projectsTable.id))
+        .innerJoin(
+          projectsTable,
+          eq(environmentsTable.projectId, projectsTable.id),
+        )
         .where(eq(environmentsTable.id, input.environmentId))
         .limit(1)
     )[0];
@@ -705,7 +735,10 @@ async function resolvePlacement(
         .select({ id: projectsTable.id })
         .from(projectsTable)
         .where(
-          and(eq(projectsTable.id, input.projectId), eq(projectsTable.teamId, teamId)),
+          and(
+            eq(projectsTable.id, input.projectId),
+            eq(projectsTable.teamId, teamId),
+          ),
         )
         .limit(1)
     )[0];
@@ -738,15 +771,19 @@ function cleanAppName(name: string): string {
   return trimmed;
 }
 
-export async function createApp(
-  input: CreateAppInput
-): Promise<AppSummary> {
+export async function createApp(input: CreateAppInput): Promise<AppSummary> {
   const { membership, userId } = await requireCapability("create_apps");
   input = { ...input, name: cleanAppName(input.name) };
   // A prebuilt image ref is interpolated raw into the compose `image:` scalar, so
   // reject anything that isn't a plain reference before it can inject service keys.
-  if (input.source === "docker-image" && input.dockerImage && !IMAGE_REF_RE.test(input.dockerImage))
-    throw new Error("Enter a valid image reference (e.g. nginx:1.27 or ghcr.io/org/app@sha256:…).");
+  if (
+    input.source === "docker-image" &&
+    input.dockerImage &&
+    !IMAGE_REF_RE.test(input.dockerImage)
+  )
+    throw new Error(
+      "Enter a valid image reference (e.g. nginx:1.27 or ghcr.io/org/app@sha256:…).",
+    );
   // Publishing container ports — a service's `ports:` (bound to the host) or
   // `expose:` (advertised to linked containers) — needs the expose-ports grant.
   // Giving a service a public Traefik DOMAIN (composeService/composePort/exposes)
@@ -859,11 +896,13 @@ export async function createApp(
   let buildServerId: string | null = null;
   if (input.buildServerId) {
     const picked = servers.find((b) => b.id === input.buildServerId);
-    if (!picked) throw new Error("That build server isn't available to this team.");
+    if (!picked)
+      throw new Error("That build server isn't available to this team.");
     if (picked.storageOnly)
-      throw new Error("That server holds backups only - it has no Docker to build with.");
-    if (picked.importOnly)
-      throw new Error(ON_IMPORT_SOURCE);
+      throw new Error(
+        "That server holds backups only - it has no Docker to build with.",
+      );
+    if (picked.importOnly) throw new Error(ON_IMPORT_SOURCE);
     buildServerId = picked.id;
   }
 
@@ -877,7 +916,11 @@ export async function createApp(
   // so that case also no-ops rather than rehosting toward a bad address.
   const serverIp = resolveServerIp(server);
   const hosts = rehostBlueprintHosts(
-    { autoDomain: input.autoDomain, extraDomains: input.extraDomains, env: input.env },
+    {
+      autoDomain: input.autoDomain,
+      extraDomains: input.extraDomains,
+      env: input.env,
+    },
     instanceHost(),
     serverIp,
   );
@@ -962,19 +1005,22 @@ export async function createApp(
       const key = e.key.trim();
       // Same gate as upsertEnv: a key with a newline/quote/`:` would break out of
       // the string-templated `environment:` block in renderCompose.
-      if (!ENV_KEY_RE.test(key)) throw new Error(`Invalid variable name: ${key}`);
+      if (!ENV_KEY_RE.test(key))
+        throw new Error(`Invalid variable name: ${key}`);
       return {
-      id: newId("env"),
-      appId: project.id,
-      key,
-      valueEnc: encryptSecret(e.value),
-      targets: ["production", "preview"] as EnvTarget[],
-      type: e.type ?? (isSecretKey(e.key) ? ("secret" as const) : ("plain" as const)),
-      // A template's defaults are still an authored write by whoever created the app.
-      createdByUserId: userId,
-      updatedByUserId: userId,
-      createdAt: now,
-      updatedAt: now,
+        id: newId("env"),
+        appId: project.id,
+        key,
+        valueEnc: encryptSecret(e.value),
+        targets: ["production", "preview"] as EnvTarget[],
+        type:
+          e.type ??
+          (isSecretKey(e.key) ? ("secret" as const) : ("plain" as const)),
+        // A template's defaults are still an authored write by whoever created the app.
+        createdByUserId: userId,
+        updatedByUserId: userId,
+        createdAt: now,
+        updatedAt: now,
       } satisfies EnvVar;
     });
 
@@ -1001,12 +1047,17 @@ export async function createApp(
         await tx
           .insert(appsTable)
           .values({ ...appToRow(project), createdByUserId: userId });
-        await tx.insert(appBuildTable).values(buildToRow(project.id, project.build));
+        await tx
+          .insert(appBuildTable)
+          .values(buildToRow(project.id, project.build));
         await tx
           .insert(appBuildMethodSettingsTable)
-          .values(methodSettingsToRow(project.id, project.build.methodSettings));
+          .values(
+            methodSettingsToRow(project.id, project.build.methodSettings),
+          );
         const mountRows = mountsToRows(project.id, project.mounts);
-        if (mountRows.length > 0) await tx.insert(appMountsTable).values(mountRows);
+        if (mountRows.length > 0)
+          await tx.insert(appMountsTable).values(mountRows);
         if (appEnvVars.length > 0) await insertEnvVars(tx, appEnvVars);
       });
       break;
@@ -1018,7 +1069,12 @@ export async function createApp(
       throw e;
     }
   }
-  await recordActivity("app", `Created app ${project.name}`, user.name, project.id);
+  await recordActivity(
+    "app",
+    `Created app ${project.name}`,
+    user.name,
+    project.id,
+  );
   // Register the push webhook on the provider so the very first push after an
   // import already deploys - the same thing importing from GitHub gives you.
   // Best-effort: never let a third party's HTTP failure undo a created app.
@@ -1107,7 +1163,11 @@ export async function createApp(
   // Without it the app is born idle — exactly like a fileless upload — for
   // someone who can deploy to pick up.
   const wantsDeploy = input.deploy !== false;
-  if (!isUpload && wantsDeploy && (await hasAppCapability(project.id, "deploy_apps"))) {
+  if (
+    !isUpload &&
+    wantsDeploy &&
+    (await hasAppCapability(project.id, "deploy_apps"))
+  ) {
     await startDeployment(project.id, {
       environment: "production",
       creator: user.name,
@@ -1125,7 +1185,7 @@ export async function createApp(
 
 export async function updateAppBuild(
   id: string,
-  build: Partial<BuildConfig>
+  build: Partial<BuildConfig>,
 ): Promise<void> {
   const { membership } = await requireAppCapability(id, "configure_apps");
   // build.port is only WHICH container port Traefik routes to (routing), not a
@@ -1256,9 +1316,10 @@ export async function setAppBuildServer(
     const picked = servers.find((s) => s.id === input.buildServerId);
     if (!picked) throw new Error("That server isn't available to this team.");
     if (picked.storageOnly)
-      throw new Error("That server holds backups only - it has no Docker to build with.");
-    if (picked.importOnly)
-      throw new Error(ON_IMPORT_SOURCE);
+      throw new Error(
+        "That server holds backups only - it has no Docker to build with.",
+      );
+    if (picked.importOnly) throw new Error(ON_IMPORT_SOURCE);
     buildServerId = picked.id;
   }
   await getDb()
@@ -1278,7 +1339,12 @@ export async function setAppBuildServer(
       : buildServerId === project.serverId
         ? "on its own server"
         : `on ${(await getServerById(buildServerId))?.name ?? buildServerId}`;
-  await recordActivity("app", `Set ${project.name} to build ${where}`, user.name, id);
+  await recordActivity(
+    "app",
+    `Set ${project.name} to build ${where}`,
+    user.name,
+    id,
+  );
 }
 
 export interface UpdateSourceInput {
@@ -1314,9 +1380,13 @@ async function scopeRepoCredentials(
   const out: GitRepo = { ...repo };
   if (out.installationId) {
     const mine = await listGithubInstallations();
-    if (!mine.some((i) => i.id === out.installationId)) out.installationId = null;
+    if (!mine.some((i) => i.id === out.installationId))
+      out.installationId = null;
   }
-  if (out.connectionId && !(await gitConnectionInTeam(out.connectionId, teamId))) {
+  if (
+    out.connectionId &&
+    !(await gitConnectionInTeam(out.connectionId, teamId))
+  ) {
     out.connectionId = null;
   }
   return out;
@@ -1324,13 +1394,19 @@ async function scopeRepoCredentials(
 
 export async function updateAppSource(
   id: string,
-  input: UpdateSourceInput
+  input: UpdateSourceInput,
 ): Promise<void> {
   const { membership } = await requireAppCapability(id, "configure_apps");
   // A prebuilt image ref is interpolated raw into the compose `image:` scalar, so
   // reject anything that isn't a plain reference before it can inject service keys.
-  if (input.source === "docker-image" && input.dockerImage && !IMAGE_REF_RE.test(input.dockerImage))
-    throw new Error("Enter a valid image reference (e.g. nginx:1.27 or ghcr.io/org/app@sha256:…).");
+  if (
+    input.source === "docker-image" &&
+    input.dockerImage &&
+    !IMAGE_REF_RE.test(input.dockerImage)
+  )
+    throw new Error(
+      "Enter a valid image reference (e.g. nginx:1.27 or ghcr.io/org/app@sha256:…).",
+    );
   // Saving compose YAML that publishes ports (`ports:`/`expose:`) requires the
   // expose-ports grant. Routing (the Traefik domains) lives in the `domains`
   // table, not here, and is NOT port publishing — so it isn't gated here.
@@ -1368,7 +1444,9 @@ export async function updateAppSource(
   // The project's current server is always in here (revoking a team's access is
   // blocked while it has workloads on the server), so the old-IP lookup is safe.
   const serversById = new Map(
-    (await listServersForTeam(membership.teamId)).map((s) => [s.id, s] as const),
+    (await listServersForTeam(membership.teamId)).map(
+      (s) => [s.id, s] as const,
+    ),
   );
   // Set inside the tx, consumed after commit to trigger the move's deploy.
   let migrateFromServerId: string | null = null;
@@ -1439,7 +1517,9 @@ export async function updateAppSource(
     // for. A pin to some OTHER host is a deliberate choice about that host and
     // stays put.
     const buildServerId =
-      isMove && p.buildServerId === oldServerId ? serverId : (p.buildServerId ?? null);
+      isMove && p.buildServerId === oldServerId
+        ? serverId
+        : (p.buildServerId ?? null);
 
     await tx
       .update(appsTable)
@@ -1619,7 +1699,9 @@ export function validateVolumes(
     }
     seenPath.add(pathKey);
 
-    const name = ((v.name ?? "").trim() || deriveVolumeName(mountPath)).toLowerCase();
+    const name = (
+      (v.name ?? "").trim() || deriveVolumeName(mountPath)
+    ).toLowerCase();
 
     if (v.type === "app") {
       // Bind a path INSIDE the project's isolated files dir. The source is
@@ -1645,7 +1727,9 @@ export function validateVolumes(
         );
       }
       if (projectPath.split("/").includes("..")) {
-        throw new Error(`The path in this app's Files cannot contain "..": "${v.projectPath}"`);
+        throw new Error(
+          `The path in this app's Files cannot contain "..": "${v.projectPath}"`,
+        );
       }
       out.push({
         id: v.id || newId("vol"),
@@ -1671,7 +1755,9 @@ export function validateVolumes(
         );
       }
       if (hostPath.split("/").includes("..")) {
-        throw new Error(`The path on the server cannot contain "..": "${v.hostPath}"`);
+        throw new Error(
+          `The path on the server cannot contain "..": "${v.hostPath}"`,
+        );
       }
       // Propagation rides into the compose mount line verbatim, so it is checked
       // against the closed set here too and not only at the API's enum: this
@@ -1807,7 +1893,9 @@ function cleanCpuset(v: string | null | undefined): string | null {
   const s = v.trim();
   if (!s) return null;
   if (!/^\d+([-,]\d+)*$/.test(s)) {
-    throw new Error('CPU pinning must be a core list like "0", "0,2" or "0-3".');
+    throw new Error(
+      'CPU pinning must be a core list like "0", "0,2" or "0-3".',
+    );
   }
   return s;
 }
@@ -1819,7 +1907,9 @@ function cleanCpuset(v: string | null | undefined): string | null {
  * the mutation's toast) on any value Docker's `compose up` would reject; an
  * all-null input validates to an all-null result ("no limits set").
  */
-export function cleanResourceLimits(input: ResourceLimitsInput): ResourceLimits {
+export function cleanResourceLimits(
+  input: ResourceLimitsInput,
+): ResourceLimits {
   const memoryMb = intLimit(input.memoryMb, "Memory limit", 6, MEM_MB_MAX);
   const memoryReservationMb = intLimit(
     input.memoryReservationMb,
@@ -1841,7 +1931,12 @@ export function cleanResourceLimits(input: ResourceLimitsInput): ResourceLimits 
   const storageGb = intLimit(input.storageGb, "Disk limit", 1, 65_536);
   const nofile = intLimit(input.nofile, "Open-files limit", 1, 1_073_741_816);
   const nproc = intLimit(input.nproc, "Process (ulimit) limit", 1, PIDS_MAX);
-  const oomScoreAdj = intLimit(input.oomScoreAdj, "OOM score adjust", -1000, 1000);
+  const oomScoreAdj = intLimit(
+    input.oomScoreAdj,
+    "OOM score adjust",
+    -1000,
+    1000,
+  );
 
   // Cross-field coherence — Docker rejects these combinations outright, so we
   // catch them here with a plain-language reason rather than at `compose up`.
@@ -2019,7 +2114,9 @@ export async function updateAppLogo(
  * — so telling that user we found "no file named favicon" would describe half
  * the search and point them at the wrong thing to fix.
  */
-function noIconFoundMessage(app: Parameters<typeof detectAppFavicon>[0]): string {
+function noIconFoundMessage(
+  app: Parameters<typeof detectAppFavicon>[0],
+): string {
   if (faviconSourceKind(app) === "app-files") {
     return "No icon found. deplo looked in this app's files and asked the running app for its favicon — check that the app is running and serves one.";
   }
@@ -2056,26 +2153,27 @@ export async function redetectAppLogo(id: string): Promise<string> {
     pathPrefix: d.pathPrefix ?? "",
     stripPrefix: d.stripPrefix ?? false,
   }));
-  const primaryHost = domains.find((d) => d.primary)?.name ?? domains[0]?.name ?? "";
+  const primaryHost =
+    domains.find((d) => d.primary)?.name ?? domains[0]?.name ?? "";
   // "We couldn't reach the server" must not be reported as "your app has no icon".
-  const logo = await detectAppFavicon(project, routes, primaryHost).catch((e) => {
-    if (e instanceof AgentUnreachableError) {
-      throw new Error(
-        "The server that runs this app didn't answer, so deplo couldn't read its files. It may be offline.",
-        { cause: e },
-      );
-    }
-    throw e;
-  });
+  const logo = await detectAppFavicon(project, routes, primaryHost).catch(
+    (e) => {
+      if (e instanceof AgentUnreachableError) {
+        throw new Error(
+          "The server that runs this app didn't answer, so deplo couldn't read its files. It may be offline.",
+          { cause: e },
+        );
+      }
+      throw e;
+    },
+  );
   if (!logo || !isValidLogoValue(logo)) {
     throw new Error(noIconFoundMessage(project));
   }
   await getDb()
     .update(appsTable)
     .set({ logo, updatedAt: nowIso() })
-    .where(
-      and(eq(appsTable.id, id), eq(appsTable.teamId, membership.teamId)),
-    );
+    .where(and(eq(appsTable.id, id), eq(appsTable.teamId, membership.teamId)));
   await recordActivity("app", `Detected app logo from source`, user.name, id);
   publishAppChanged(id);
   return logo;
@@ -2244,9 +2342,7 @@ export async function setAppRollbackKeep(
   if (updated.length === 0) throw new Error("App not found");
   await recordActivity(
     "app",
-    keep === 0
-      ? "Turned rollbacks off"
-      : `Set rollbacks kept to ${keep}`,
+    keep === 0 ? "Turned rollbacks off" : `Set rollbacks kept to ${keep}`,
     user.name,
     id,
   );
@@ -2261,7 +2357,10 @@ export async function setAppRollbackKeep(
  * and the write is unconditional on purpose — a read-then-decide would lose the
  * race against a deploy landing in the gap.
  */
-export async function setAppStatus(id: string, status: AppStatus): Promise<void> {
+export async function setAppStatus(
+  id: string,
+  status: AppStatus,
+): Promise<void> {
   await getDb()
     .update(appsTable)
     .set({ status, updatedAt: nowIso() })
@@ -2513,7 +2612,10 @@ export async function deleteApp(id: string): Promise<void> {
 export async function startAppDelete(id: string): Promise<void> {
   const { project, actor } = await beginAppDelete(id);
   void destroyApp(project, actor).catch((e) =>
-    console.error(`[deplo] delete of ${project.name} did not finish:`, errMsg(e)),
+    console.error(
+      `[deplo] delete of ${project.name} did not finish:`,
+      errMsg(e),
+    ),
   );
 }
 
@@ -2575,7 +2677,9 @@ async function beginAppsDelete(
 
 /** The identity-free teardown half of {@link deleteApps}. */
 async function destroyApps(apps: App[], actor: string): Promise<void> {
-  const serversById = new Map((await listAllServers()).map((s) => [s.id, s] as const));
+  const serversById = new Map(
+    (await listAllServers()).map((s) => [s.id, s] as const),
+  );
   // Tear down stacks ≤4 at a time (agent calls OUTSIDE any tx). A throw/
   // unreachable for one project must not abort the others or the record removal.
   // Each project's teardown + its OWN record delete run under that project's
@@ -2585,22 +2689,25 @@ async function destroyApps(apps: App[], actor: string): Promise<void> {
   // history.
   const unreachable: string[] = [];
   await mapLimit(apps, 4, async (project) => {
-    const tornDown = await withKeyedLock(`app-lifecycle:${project.id}`, async () => {
-      // Preview stacks first — see deleteApp.
-      await destroyPreviewsForApp(project.id).catch(() => {});
-      // Volumes go too - see deleteApp for why "keeping" them was not a kindness.
-      const ok = await teardownOrQueue({
-        serverId: project.serverId,
-        deployKey: project.slug,
-        projectLabel: project.id,
-        label: project.name,
-        teamId: project.teamId,
-        reclaimVolumes: appOwnVolumeNames(project),
-      }).catch(() => false);
-      await removeUploads(project.id).catch(() => {});
-      await getDb().delete(appsTable).where(eq(appsTable.id, project.id));
-      return ok;
-    });
+    const tornDown = await withKeyedLock(
+      `app-lifecycle:${project.id}`,
+      async () => {
+        // Preview stacks first — see deleteApp.
+        await destroyPreviewsForApp(project.id).catch(() => {});
+        // Volumes go too - see deleteApp for why "keeping" them was not a kindness.
+        const ok = await teardownOrQueue({
+          serverId: project.serverId,
+          deployKey: project.slug,
+          projectLabel: project.id,
+          label: project.name,
+          teamId: project.teamId,
+          reclaimVolumes: appOwnVolumeNames(project),
+        }).catch(() => false);
+        await removeUploads(project.id).catch(() => {});
+        await getDb().delete(appsTable).where(eq(appsTable.id, project.id));
+        return ok;
+      },
+    );
     if (!tornDown) {
       const server = serversById.get(project.serverId);
       unreachable.push(`${project.name} (${server?.name ?? "its server"})`);
@@ -2647,7 +2754,10 @@ export async function resumeAppDeletes(): Promise<void> {
     const project = await loadAppGraph(id);
     if (!project) continue;
     await destroyApp(project, "Deplo").catch((e) =>
-      console.error(`[deplo] could not finish deleting ${project.name}:`, errMsg(e)),
+      console.error(
+        `[deplo] could not finish deleting ${project.name}:`,
+        errMsg(e),
+      ),
     );
   }
 }

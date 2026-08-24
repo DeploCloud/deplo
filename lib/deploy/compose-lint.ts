@@ -108,12 +108,7 @@ type ComposeDoc = {
   [k: string]: unknown;
 };
 
-const VALID_RESTART = new Set([
-  "no",
-  "always",
-  "on-failure",
-  "unless-stopped",
-]);
+const VALID_RESTART = new Set(["no", "always", "on-failure", "unless-stopped"]);
 
 /** Lint a docker-compose document. Returns diagnostics ordered by line. */
 export function lintCompose(source: string): LintDiagnostic[] {
@@ -140,7 +135,9 @@ export function lintCompose(source: string): LintDiagnostic[] {
     const message = e instanceof Error ? e.message.split("\n")[0] : String(e);
     // A tab in the indentation is the most common cryptic YAML failure — give a
     // direct fix instead of js-yaml's raw "bad indentation" wording.
-    const isTab = /tab/i.test(message) || (mark != null && /\t/.test(lines[mark.line] ?? ""));
+    const isTab =
+      /tab/i.test(message) ||
+      (mark != null && /\t/.test(lines[mark.line] ?? ""));
     return [
       {
         severity: "error",
@@ -160,7 +157,8 @@ export function lintCompose(source: string): LintDiagnostic[] {
       {
         severity: "error",
         rule: "top-level-map",
-        message: "Top level of a compose file must be a mapping (services, networks, …).",
+        message:
+          "Top level of a compose file must be a mapping (services, networks, …).",
         line: 1,
       },
     ];
@@ -171,7 +169,8 @@ export function lintCompose(source: string): LintDiagnostic[] {
     diags.push({
       severity: "warning",
       rule: "obsolete-version",
-      message: "`version` is obsolete in Compose v2 and is ignored. You can remove it.",
+      message:
+        "`version` is obsolete in Compose v2 and is ignored. You can remove it.",
       line: lineOfTopKey(lines, "version"),
     });
   }
@@ -187,7 +186,11 @@ export function lintCompose(source: string): LintDiagnostic[] {
     });
     return sortDiags(diags);
   }
-  if (services === null || typeof services !== "object" || Array.isArray(services)) {
+  if (
+    services === null ||
+    typeof services !== "object" ||
+    Array.isArray(services)
+  ) {
     diags.push({
       severity: "error",
       rule: "services-shape",
@@ -376,7 +379,11 @@ export function lintCompose(source: string): LintDiagnostic[] {
     // restart policy
     if ("restart" in svc) {
       const r = svc.restart;
-      if (typeof r === "string" && !VALID_RESTART.has(r) && !r.startsWith("on-failure")) {
+      if (
+        typeof r === "string" &&
+        !VALID_RESTART.has(r) &&
+        !r.startsWith("on-failure")
+      ) {
         diags.push({
           severity: "warning",
           rule: "restart-value",
@@ -438,7 +445,9 @@ export function lintCompose(source: string): LintDiagnostic[] {
   // rather than an error because it IS a legitimate operator action, just not a
   // team-level one.
   const topLevelVolumes =
-    doc.volumes && typeof doc.volumes === "object" && !Array.isArray(doc.volumes)
+    doc.volumes &&
+    typeof doc.volumes === "object" &&
+    !Array.isArray(doc.volumes)
       ? (doc.volumes as Record<string, unknown>)
       : {};
   for (const key of foreignVolumeKeys(topLevelVolumes)) {
@@ -560,8 +569,10 @@ export function volumeSource(v: unknown): string | null {
   }
   if (v && typeof v === "object") {
     const rec = v as Record<string, unknown>;
-    if (rec.type === "bind" && typeof rec.source === "string") return rec.source;
-    if (typeof rec.source === "string" && rec.source.includes("/")) return rec.source;
+    if (rec.type === "bind" && typeof rec.source === "string")
+      return rec.source;
+    if (typeof rec.source === "string" && rec.source.includes("/"))
+      return rec.source;
   }
   return null;
 }
@@ -592,8 +603,8 @@ export function isEscapingSource(src: string | null | undefined): boolean {
 export function isHostBindSource(src: string | null | undefined): boolean {
   return Boolean(
     src &&
-      (src.startsWith("/") || isEscapingSource(src)) &&
-      !isFilesConventionSource(src),
+    (src.startsWith("/") || isEscapingSource(src)) &&
+    !isFilesConventionSource(src),
   );
 }
 
@@ -745,14 +756,14 @@ const SHARED_NETWORK = "deplo";
  * Exported so the renderer and the editor agree on what "on the shared network"
  * means.
  */
-export function sharedNetworkKeys(doc: {
-  networks?: unknown;
-}): Set<string> {
+export function sharedNetworkKeys(doc: { networks?: unknown }): Set<string> {
   const keys = new Set<string>([SHARED_NETWORK]);
   const declared = doc.networks;
   if (!declared || typeof declared !== "object" || Array.isArray(declared))
     return keys;
-  for (const [key, raw] of Object.entries(declared as Record<string, unknown>)) {
+  for (const [key, raw] of Object.entries(
+    declared as Record<string, unknown>,
+  )) {
     if (!raw || typeof raw !== "object" || Array.isArray(raw)) continue;
     const n = raw as Record<string, unknown>;
     const named =
@@ -799,7 +810,8 @@ export function composeClaimsReservedName(composeYaml: string): string | null {
     return null;
   }
   const services = doc?.services;
-  if (!services || typeof services !== "object" || Array.isArray(services)) return null;
+  if (!services || typeof services !== "object" || Array.isArray(services))
+    return null;
   const shared = sharedNetworkKeys(doc ?? {});
   for (const [name, raw] of Object.entries(services)) {
     if (!raw || typeof raw !== "object" || Array.isArray(raw)) continue;
@@ -904,7 +916,8 @@ export function composeOwnVolumeKeys(composeYaml: string): string[] {
     return [];
   }
   const declared = doc?.volumes;
-  if (!declared || typeof declared !== "object" || Array.isArray(declared)) return [];
+  if (!declared || typeof declared !== "object" || Array.isArray(declared))
+    return [];
   return Object.entries(declared as Record<string, unknown>)
     .filter(([, v]) => {
       if (v == null) return true; // `vol:` with no body — compose creates it
@@ -926,13 +939,11 @@ export function composeOwnVolumeKeys(composeYaml: string): string[] {
  * authoritative one.
  */
 export function composeMountsForeignStorage(composeYaml: string): boolean {
-  let doc:
-    | {
-        volumes?: Record<string, unknown>;
-        secrets?: Record<string, unknown>;
-        configs?: Record<string, unknown>;
-      }
-    | null;
+  let doc: {
+    volumes?: Record<string, unknown>;
+    secrets?: Record<string, unknown>;
+    configs?: Record<string, unknown>;
+  } | null;
   try {
     doc = yaml.load(composeYaml) as typeof doc;
   } catch {
@@ -990,7 +1001,10 @@ function foreignNetworkKeys(networks: Record<string, unknown>): string[] {
       !Array.isArray(n.external)
         ? String((n.external as Record<string, unknown>).name ?? "").trim()
         : null;
-    const target = pinnedName ?? externalName ?? (key === SHARED_NETWORK ? SHARED_NETWORK : null);
+    const target =
+      pinnedName ??
+      externalName ??
+      (key === SHARED_NETWORK ? SHARED_NETWORK : null);
     if (target === SHARED_NETWORK) continue;
     const pinned =
       (n.external != null && n.external !== false) ||
@@ -1030,7 +1044,9 @@ export function composeJoinsForeignNetwork(composeYaml: string): boolean {
     return false;
   }
   const declared =
-    doc?.networks && typeof doc.networks === "object" && !Array.isArray(doc.networks)
+    doc?.networks &&
+    typeof doc.networks === "object" &&
+    !Array.isArray(doc.networks)
       ? (doc.networks as Record<string, unknown>)
       : {};
   const foreign = new Set(foreignNetworkKeys(declared));
@@ -1040,7 +1056,8 @@ export function composeJoinsForeignNetwork(composeYaml: string): boolean {
   for (const raw of Object.values(services)) {
     if (!raw || typeof raw !== "object" || Array.isArray(raw)) continue;
     // Same join-shape reader the shared-network rule uses (list OR map form).
-    if (joinsSharedNetwork(raw as Record<string, unknown>, foreign)) return true;
+    if (joinsSharedNetwork(raw as Record<string, unknown>, foreign))
+      return true;
   }
   return false;
 }
@@ -1060,7 +1077,9 @@ export function composeJoinsForeignNetwork(composeYaml: string): boolean {
 export function composeBuildReachesHost(composeYaml: string): boolean {
   let doc: { services?: Record<string, unknown> } | null;
   try {
-    doc = yaml.load(composeYaml) as { services?: Record<string, unknown> } | null;
+    doc = yaml.load(composeYaml) as {
+      services?: Record<string, unknown>;
+    } | null;
   } catch {
     return false;
   }
@@ -1076,12 +1095,15 @@ export function composeBuildReachesHost(composeYaml: string): boolean {
     }
     if (typeof b !== "object" || Array.isArray(b)) continue;
     const rec = b as Record<string, unknown>;
-    if (typeof rec.context === "string" && isHostBindSource(rec.context)) return true;
+    if (typeof rec.context === "string" && isHostBindSource(rec.context))
+      return true;
     if (typeof rec.dockerfile === "string" && isHostBindSource(rec.dockerfile))
       return true;
     const ac = rec.additional_contexts;
     const acSources = Array.isArray(ac)
-      ? ac.map((e) => (typeof e === "string" ? e.slice(e.indexOf("=") + 1) : ""))
+      ? ac.map((e) =>
+          typeof e === "string" ? e.slice(e.indexOf("=") + 1) : "",
+        )
       : ac && typeof ac === "object"
         ? Object.values(ac as Record<string, unknown>).map((v) => String(v))
         : [];
@@ -1118,7 +1140,8 @@ export function composeUsesExternalMerge(composeYaml: string): string | null {
     return null;
   }
   const inc = doc?.include;
-  if (inc != null && (Array.isArray(inc) ? inc.length > 0 : true)) return "include";
+  if (inc != null && (Array.isArray(inc) ? inc.length > 0 : true))
+    return "include";
   const services = doc?.services;
   if (!services || typeof services !== "object") return null;
   for (const raw of Object.values(services)) {
@@ -1134,7 +1157,10 @@ export function composeUsesExternalMerge(composeYaml: string): string | null {
     )
       return "extends";
     const lf = svc.label_file;
-    if (lf != null && (Array.isArray(lf) ? lf.length > 0 : String(lf).trim() !== ""))
+    if (
+      lf != null &&
+      (Array.isArray(lf) ? lf.length > 0 : String(lf).trim() !== "")
+    )
       return "label_file";
   }
   return null;
@@ -1255,7 +1281,8 @@ function hostPrivilegeKeys(svc: Record<string, unknown>): string[] {
     }
     if (key === "group_add") {
       // Supplementary HOST groups (`docker`, `disk`) inside the container.
-      if (Array.isArray(v) ? v.length > 0 : String(v).trim() !== "") out.push(key);
+      if (Array.isArray(v) ? v.length > 0 : String(v).trim() !== "")
+        out.push(key);
       continue;
     }
     if (key === "logging") {
@@ -1264,12 +1291,16 @@ function hostPrivilegeKeys(svc: Record<string, unknown>): string[] {
       // `json-file`/`local` with no options is what deplo's own logs read from.
       if (typeof v !== "object" || Array.isArray(v)) continue;
       const log = v as Record<string, unknown>;
-      const driver = typeof log.driver === "string" ? log.driver.trim().toLowerCase() : "";
+      const driver =
+        typeof log.driver === "string" ? log.driver.trim().toLowerCase() : "";
       const opts =
-        log.options && typeof log.options === "object" && !Array.isArray(log.options)
+        log.options &&
+        typeof log.options === "object" &&
+        !Array.isArray(log.options)
           ? (log.options as Record<string, unknown>)
           : {};
-      const nonDefaultDriver = driver !== "" && driver !== "json-file" && driver !== "local";
+      const nonDefaultDriver =
+        driver !== "" && driver !== "json-file" && driver !== "local";
       // json-file's own size knobs are harmless; anything else is a driver option.
       const risky = Object.keys(opts).some(
         (k) => !/^max-(size|file)$/i.test(k.trim()),
@@ -1288,7 +1319,11 @@ function hostPrivilegeKeys(svc: Record<string, unknown>): string[] {
         const val = v.trim().toLowerCase();
         // `host` shares the host namespace; `container:`/`service:` joins ANOTHER
         // container's namespace on the same daemon (not limited to this stack).
-        if (val === "host" || val.startsWith("container:") || val.startsWith("service:"))
+        if (
+          val === "host" ||
+          val.startsWith("container:") ||
+          val.startsWith("service:")
+        )
           out.push(key);
       }
       continue;
@@ -1327,7 +1362,11 @@ function hostPrivilegeKeys(svc: Record<string, unknown>): string[] {
       if (weakening.length > 0) out.push(key);
       continue;
     }
-    if (Array.isArray(v) ? v.length > 0 : typeof v === "object" || String(v).trim() !== "")
+    if (
+      Array.isArray(v)
+        ? v.length > 0
+        : typeof v === "object" || String(v).trim() !== ""
+    )
       out.push(key);
   }
   return out;
@@ -1346,7 +1385,9 @@ function hostPrivilegeKeys(svc: Record<string, unknown>): string[] {
 export function composeNeedsHostPrivileges(composeYaml: string): boolean {
   let doc: { services?: Record<string, unknown> } | null;
   try {
-    doc = yaml.load(composeYaml) as { services?: Record<string, unknown> } | null;
+    doc = yaml.load(composeYaml) as {
+      services?: Record<string, unknown>;
+    } | null;
   } catch {
     return false;
   }
@@ -1354,7 +1395,8 @@ export function composeNeedsHostPrivileges(composeYaml: string): boolean {
   if (!services || typeof services !== "object") return false;
   for (const svc of Object.values(services)) {
     if (!svc || typeof svc !== "object" || Array.isArray(svc)) continue;
-    if (hostPrivilegeKeys(svc as Record<string, unknown>).length > 0) return true;
+    if (hostPrivilegeKeys(svc as Record<string, unknown>).length > 0)
+      return true;
   }
   return false;
 }
@@ -1483,7 +1525,10 @@ function lineOfTopKey(lines: string[], key: string): number {
 }
 
 function sortDiags(diags: LintDiagnostic[]): LintDiagnostic[] {
-  return [...diags].sort((a, b) => a.line - b.line || severityRank(a.severity) - severityRank(b.severity));
+  return [...diags].sort(
+    (a, b) =>
+      a.line - b.line || severityRank(a.severity) - severityRank(b.severity),
+  );
 }
 function severityRank(s: LintSeverity): number {
   return s === "error" ? 0 : s === "warning" ? 1 : 2;
