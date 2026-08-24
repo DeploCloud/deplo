@@ -41,6 +41,10 @@ import {
 import { __setAgentConnectorForTest } from "../infra/agent-client";
 import { beginDokployImport } from "./dokploy-import";
 import { moveDokployServiceData, planDokployDataMove } from "./dokploy-data";
+import { acceptDataCopyLoss } from "./data-copy";
+import { startApp } from "./apps";
+import { redeployDatabase, restartDatabase } from "./databases";
+import { startDeployment } from "../deploy/build";
 
 /**
  * The data cutover, against a fake Dokploy and a fake agent.
@@ -188,6 +192,10 @@ let hostPaths: Record<string, Record<string, Buffer>> = {};
 /** A gzipped tar of an empty directory: the archive a missing volume produces. */
 const EMPTY_ARCHIVE = Buffer.alloc(45, 0);
 
+/** When set, every importVolume refuses with this message - a host that ran out
+ *  of disk, a relay that died mid-stream. Reset between tests. */
+let importRefusal = "";
+
 function fakeAgent(serverId: string) {
   const say = (verb: string, arg: string) => agentCalls.push(`${serverId}:${verb}:${arg}`);
   return {
@@ -207,6 +215,7 @@ function fakeAgent(serverId: string) {
       for await (const c of chunks) parts.push(c);
       volumes[serverId] ??= {};
       volumes[serverId][name] = Buffer.concat(parts);
+      if (importRefusal) return { ok: false, error: importRefusal };
       return { ok: true, error: "" };
     },
     async *exportHostPath(path: string) {
@@ -347,6 +356,7 @@ beforeEach(async () => {
   __setDokployFetchForTest(fakeDokploy());
   calls = [];
   agentCalls = [];
+  importRefusal = "";
   hostPaths = { srv_dokploy_host: { "/etc/dokploy/x": Buffer.alloc(2048, 5) } };
   // The Dokploy host holds both source volumes, with real content in them.
   volumes = {
@@ -624,6 +634,92 @@ test("a source volume that is not on that host wipes nothing and is not a copy",
   assert.match(String(rows.rows[0].message), /holds nothing on Dokploy/);
 });
 
+test("a copy that fails marks the app, and the marker holds the deploy", async () => {
+  await seedDokployHostServer();
+  importRefusal = "no space left on device";
+  const runId = await openRun();
+
+  const res = await asOwner(() =>
+    moveDokployServiceData({
+      ...CONNECT,
+      runId,
+      sourceKind: "application",
+      sourceId: "dok-app-web",
+    }),
+  );
+  assert.ok(res.failed > 0, "the copy must be reported as failed");
+
+  // On the ROW, not only in the report: the report is read by whoever is
+  // watching the migration, this is read by whoever presses Deploy on Thursday.
+  const rows = await db.execute(
+    "select data_copy_error from apps where id = 'prj_web'",
+  );
+  assert.match(String(rows.rows[0].data_copy_error), /no space left on device/);
+
+  // And that is what refuses the deploy, from every door.
+  await assert.rejects(
+    () => asOwner(() => startDeployment("prj_web", { creator: "test" })),
+    /did not come across/,
+  );
+  await assert.rejects(() => asOwner(() => startApp("prj_web")), /did not come across/);
+});
+
+test("a copy that works clears a marker an earlier attempt left", async () => {
+  await seedDokployHostServer();
+  importRefusal = "the stream was truncated";
+  const runId = await openRun();
+  await asOwner(() =>
+    moveDokployServiceData({
+      ...CONNECT,
+      runId,
+      sourceKind: "application",
+      sourceId: "dok-app-web",
+    }),
+  );
+
+  // Running the migration again IS the fix, so the second pass has to lift the
+  // block - otherwise the only way out would be accepting the loss.
+  importRefusal = "";
+  const res = await asOwner(() =>
+    moveDokployServiceData({
+      ...CONNECT,
+      runId,
+      sourceKind: "application",
+      sourceId: "dok-app-web",
+    }),
+  );
+  assert.equal(res.failed, 0);
+  const rows = await db.execute(
+    "select data_copy_error from apps where id = 'prj_web'",
+  );
+  assert.equal(rows.rows[0].data_copy_error, "");
+});
+
+test("accepting the loss unblocks the app, and says so in the trail", async () => {
+  await seedDokployHostServer();
+  importRefusal = "the source host is gone";
+  const runId = await openRun();
+  await asOwner(() =>
+    moveDokployServiceData({
+      ...CONNECT,
+      runId,
+      sourceKind: "application",
+      sourceId: "dok-app-web",
+    }),
+  );
+
+  await asOwner(() => acceptDataCopyLoss({ kind: "app", id: "prj_web" }));
+
+  const rows = await db.execute(
+    "select data_copy_error from apps where id = 'prj_web'",
+  );
+  assert.equal(rows.rows[0].data_copy_error, "");
+  const trail = await db.execute(
+    "select message from activities where message like '%without the data%'",
+  );
+  assert.equal(trail.rows.length, 1);
+});
+
 test("a copied database is started again and checked, and the report says what landed", async () => {
   await seedDokployHostServer();
   const runId = await openRun();
@@ -667,6 +763,36 @@ test("a copied database is started again and checked, and the report says what l
   );
   const running = await db.execute("select status from databases where id = 'db_blink'");
   assert.equal(running.rows[0].status, "running");
+});
+
+test("a database whose data did not arrive refuses to be restarted", async () => {
+  await seedDokployHostServer();
+  importRefusal = "the stream was truncated";
+  const runId = await openRun();
+
+  await asOwner(() =>
+    moveDokployServiceData({
+      ...CONNECT,
+      runId,
+      sourceKind: "postgres",
+      sourceId: "dok-pg-1",
+    }),
+  );
+
+  const rows = await db.execute(
+    "select data_copy_error from databases where id = 'db_blink'",
+  );
+  assert.match(String(rows.rows[0].data_copy_error), /truncated/);
+  // The dangerous half: an engine handed an empty data directory does not fail,
+  // it initialises a new database over the old one's place.
+  await assert.rejects(
+    () => asOwner(() => restartDatabase("db_blink")),
+    /did not come across/,
+  );
+  await assert.rejects(
+    () => asOwner(() => redeployDatabase("db_blink")),
+    /did not come across/,
+  );
 });
 
 test("a bind mount's host directory is copied too, and says it is a directory", async () => {

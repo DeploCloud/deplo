@@ -108,8 +108,14 @@ export async function dispatchPushEvent(opts: {
         branch: event.refName,
       });
       started++;
-    } catch {
-      /* keep processing the rest */
+    } catch (e) {
+      // One app must not stop the delivery, but a push that silently deploys
+      // nothing is the worst version of that: the refusals reachable here are
+      // real states someone has to fix (data a migration could not copy, an app
+      // on its way out), and they belong in the log next to the slug.
+      console.warn(
+        `[${opts.logTag}] ${p.slug}: not deployed - ${e instanceof Error ? e.message : String(e)}`,
+      );
     }
   }
   return started;

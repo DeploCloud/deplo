@@ -8,6 +8,8 @@ import {
   ArrowRight,
 } from "lucide-react";
 import { getAppBySlug } from "@/lib/data/apps";
+import { hasAppCapability } from "@/lib/data/node-access";
+import { DataCopyNotice } from "@/components/shared/data-copy-notice";
 import { listDeployments } from "@/lib/data/deployments";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -33,6 +35,9 @@ export default async function AppOverview(
   if (!project) notFound();
 
   const deployments = await listDeployments({ appId: project.id });
+  // Only for the banner's "Deploy anyway": the mutation gates itself, this
+  // decides whether the affordance is worth showing.
+  const canDeploy = await hasAppCapability(project.id, "deploy_apps");
   const prod = project.latestDeployment;
   // What backs this app — a git repo (real branch/commit) or a compose
   // stack / docker image / upload (no git, so no branch). Same source of truth
@@ -42,6 +47,17 @@ export default async function AppOverview(
 
   return (
     <div className="space-y-6">
+      {/* The data a migration could not bring. FIRST, above everything: while it
+          is set Deploy is refused, so this is the explanation for a button that
+          does not work rather than a note beside one that does. */}
+      <DataCopyNotice
+        kind="app"
+        id={project.id}
+        name={project.name}
+        error={project.dataCopyError}
+        canAccept={canDeploy}
+      />
+
       {/* An app that names a repository but has no credential to clone it with:
           the deploy would fail with nothing but `exit status 128` in the log,
           so say it here instead. Derived from the row - no query, no API call. */}

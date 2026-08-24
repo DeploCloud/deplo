@@ -56,6 +56,7 @@ import { stackFilesDir } from "../deploy/deploy-key";
 import { isValidLogoValue } from "../apps/logo-shared";
 import { withKeyedLock } from "./keyed-mutex";
 import { enqueueTeardowns } from "./teardown-queue";
+import { assertDataCopyIntact, clearDataCopyError } from "./data-copy";
 import { assertPasswordNotPwned } from "../pwned-password";
 import { assertPasswordPolicy } from "../password-policy";
 import { publishDatabaseChanged } from "../graphql/pubsub";
@@ -783,6 +784,9 @@ export async function createDatabase(input: {
     id: newId("db"),
     teamId,
     name,
+    // Provisioned here, from nothing. Only a migration can hand a database a
+    // volume that was supposed to arrive from another host and did not.
+    dataCopyError: "",
     // No logo of its own: the UI shows the engine's real brand mark until
     // someone uploads one in Settings → General.
     logo: null,
@@ -1830,6 +1834,10 @@ export async function restartDatabase(id: string): Promise<void> {
       throw new Error(
         "Database is still provisioning — wait for it to finish before restarting it.",
       );
+    // An engine started on the volume a failed copy emptied does not fail: it
+    // initialises a new database over the old one's place. Refuse until the data
+    // is here or the loss is accepted.
+    assertDataCopyIntact(cur.name, cur.dataCopyError);
     const conn = await connectAgent(cur.serverId);
     try {
       const stop = await conn.stopStack(cur.host);
@@ -1874,6 +1882,7 @@ export async function redeployDatabase(id: string): Promise<void> {
       throw new Error(
         "Database is still provisioning — wait for it to finish before redeploying it.",
       );
+    assertDataCopyIntact(cur.name, cur.dataCopyError);
     // Consumed to RENDER the running stack (redis auth rides a compose `--requirepass`
     // flag applied on every boot, so an empty password here would silently disable
     // auth even on a preserved volume). Refuse rather than emit an empty credential.
@@ -1968,6 +1977,11 @@ export async function rebuildDatabase(id: string): Promise<void> {
       .update(databasesTable)
       .set({ status: "running" })
       .where(eq(databasesTable.id, id));
+    // A factory reset is the one action that makes an empty volume the INTENDED
+    // state, so it also settles a failed migration copy: the data is not coming,
+    // and someone confirmed that. Without this the database would stay blocked
+    // after the very action taken to unblock it.
+    await clearDataCopyError({ kind: "database", id });
     publishDatabaseChanged(id);
   });
   await recordActivity(

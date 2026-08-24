@@ -169,6 +169,11 @@ type App {
   createdAt: String
 
   """
+  Why this app's data did not arrive, when a migration tried to copy it and could not. Empty for every app that was never migrated and every copy that worked. While it is set, deploying and starting this app are refused - its volumes are empty or half written - and `deployWithoutMigratedData` is how someone accepts that and unblocks it.
+  """
+  dataCopyError: String
+
+  """
   Whether this app's deploy hook answers. The hook URL itself is never a field — read it back with revealAppDeployHook.
   """
   deployHookEnabled: Boolean
@@ -1117,6 +1122,11 @@ type Database {
   Expert override: the full image ref replacing the derived engine image; the version field is inert while set.
   """
   customImage: String
+
+  """
+  Why this database's data did not arrive, when a migration tried to copy it and could not. Empty in the common case. While it is set, restarting and redeploying are refused: an engine started on the emptied volume initialises a NEW database over the old one's place. `startWithoutMigratedData` accepts that; `rebuildDatabase` also clears it, since a factory reset makes the empty volume the intended state.
+  """
+  dataCopyError: String
   dbName: String
   exposedPort: Int
   exposedPublicly: Boolean
@@ -2613,6 +2623,11 @@ type Mutation {
   deployPullRequest(appId: ID!, prNumber: Int!): AppPreview
 
   """
+  Accept that the data a migration could not copy is not coming, and let this app deploy again: clears `dataCopyError`. The way out for an app whose source machine has since been turned off, which is how a migration normally ends. Recorded in Activity.
+  """
+  deployWithoutMigratedData(id: String!): App
+
+  """
   Fetch a server destination's recovery key, and mark it saved. This hands over the ability to read every artifact at that destination, so it is recorded in Activity. A mutation rather than a field precisely so that reading the destination never carries the key.
   """
   destinationRecoveryKey(id: String!): RecoveryKey
@@ -3184,6 +3199,11 @@ type Mutation {
   Mint a TOTP secret and recovery codes. Requires the account password. Refused when two-factor is already on.
   """
   startTwoFactorEnrolment(password: String!): TwoFactorEnrolment
+
+  """
+  Accept that the data a migration could not copy is not coming, and let this database start again: clears `dataCopyError`. The engine will initialise an EMPTY database on the volume, which is exactly what the refusal exists to stop - so this is a decision, not a retry. Recorded in Activity.
+  """
+  startWithoutMigratedData(id: String!): Database
   stopApp(id: String!): App
 
   """

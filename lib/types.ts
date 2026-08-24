@@ -994,6 +994,17 @@ export interface App {
    */
   migrateFromServerId?: ID | null;
   /**
+   * Why this app's data did not arrive, when a migration tried to copy it and
+   * could not. Empty string in the common case - every app that was never
+   * migrated, and every migration whose copy worked.
+   *
+   * Set means the data volumes are EMPTY or half-written (the copy wipes the
+   * destination before extracting), so every way of starting the workload
+   * refuses while it is: deploying onto it is how the loss becomes permanent.
+   * Cleared by a copy that works, or by someone accepting the loss.
+   */
+  dataCopyError: string;
+  /**
    * Which server BUILDS this app's image, when that is not `serverId`. null is
    * "Automatic": a build-only server if the fleet has one this team can reach and
    * its arch matches, otherwise build where the app runs. Pinning `serverId` itself
@@ -1578,6 +1589,13 @@ export interface Database {
    */
   dbName: string;
   status: DatabaseStatus;
+  /**
+   * Why this database's data did not arrive, when a migration tried to copy it
+   * and could not. Empty in the common case. The twin of {@link App.dataCopyError}
+   * and the more dangerous half: an engine started on the emptied volume does not
+   * fail, it initialises a brand new database over the place the old one was.
+   */
+  dataCopyError: string;
   serverId: ID;
   host: string;
   port: number;

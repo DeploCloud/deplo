@@ -160,6 +160,7 @@ import {
   nodeCapabilitiesFor,
   requireAppCapability,
 } from "./node-access";
+import { assertDataCopyIntact } from "./data-copy";
 
 /**
  * Heuristic: treat secret-looking keys as masked secrets.
@@ -902,6 +903,9 @@ export async function createApp(
     projectId: placement.projectId,
     environmentId: placement.environmentId,
     serverId: server.id,
+    // A new app's data is wherever the app puts it. Only a migration can start one
+    // whose volumes were meant to arrive from somewhere else and did not.
+    dataCopyError: "",
     // Born on Automatic unless a caller placed it deliberately: a new app uses a
     // build server if the fleet has one and says nothing about it otherwise.
     // Choosing a builder is an Advanced setting and the create flow does not ask;
@@ -2298,6 +2302,9 @@ export async function startApp(id: string): Promise<void> {
   const project = await loadAppGraph(id);
   if (!project || project.teamId !== membership.teamId)
     throw new Error("App not found");
+  // Start is a second door onto the same volumes, and it skips the deploy
+  // pipeline entirely - so it needs the same refusal.
+  assertDataCopyIntact(project.name, project.dataCopyError);
   try {
     await startContainer(project.slug);
   } catch (e) {

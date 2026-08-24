@@ -57,6 +57,7 @@ import {
   stopStackOn,
 } from "./volume-migration";
 import { recordActivity } from "./activity";
+import { clearDataCopyError, markDataCopyFailed } from "./data-copy";
 import { listServersForTeam } from "./servers";
 import {
   appendRunItem,
@@ -706,6 +707,10 @@ export async function moveDokployServiceData(
         targetId: landed.targetId,
         message: `${landed.targetName} is still being created, so its data was not copied. Run the copy again once it is up.`,
       });
+      await markDataCopyFailed(
+        { kind: landed.targetKind, id: landed.targetId },
+        `${landed.targetName} was still being created when the migration reached it, so its data was never copied`,
+      );
       await refreshCounts(input.runId, teamId);
       return { moved: 0, failed: 1, notes };
     }
@@ -728,6 +733,11 @@ export async function moveDokployServiceData(
   let moved = 0;
   let failed = 0;
   let empty = 0;
+  // What did NOT arrive, kept apart from `notes` (which also carries advice) so
+  // it can be written onto the app or database itself at the end. A report line
+  // is read by whoever is watching the migration; this is read by whoever presses
+  // Deploy three days later.
+  const lost: string[] = [];
   const source = await connectAgent(sourceServerId);
   const dest =
     sourceServerId === landed.targetServerId
@@ -775,6 +785,7 @@ export async function moveDokployServiceData(
         failed++;
         const message = e instanceof Error ? e.message : "the copy failed";
         notes.push(`${pair.sourceVolume}: ${message}`);
+        lost.push(`${pair.sourceVolume} (${pair.mountPath}): ${message}`);
         await appendRunItem(input.runId, {
           path,
           sourceKind: "volume",
@@ -848,6 +859,7 @@ export async function moveDokployServiceData(
         failed++;
         const message = e instanceof Error ? e.message : "the copy failed";
         notes.push(`${bind.sourcePath}: ${message}`);
+        lost.push(`${bind.sourcePath} (${bind.mountPath}): ${message}`);
         await appendRunItem(input.runId, {
           path,
           sourceKind: "volume",
@@ -881,8 +893,20 @@ export async function moveDokployServiceData(
       targetId: landed.targetId,
       message: verdict.message,
     });
-    if (!verdict.ok) failed++;
+    if (!verdict.ok) {
+      failed++;
+      lost.push(verdict.message);
+    }
   }
+
+  // The verdict on the whole service, written where a deploy will read it. Until
+  // it is cleared, nothing starts this workload: its volumes are empty or half
+  // written, and an engine handed an empty data directory initialises a new one
+  // rather than failing. A copy that worked clears the marker a previous attempt
+  // left, which is what makes running the migration again the actual fix.
+  const marker = { kind: landed.targetKind, id: landed.targetId } as const;
+  if (lost.length > 0) await markDataCopyFailed(marker, lost.join(" | "));
+  else if (failed === 0) await clearDataCopyError(marker);
 
   // The app half is left stopped on purpose, and the report has to say which verb
   // starts it again - a user staring at a stopped app wondering whether the move

@@ -127,6 +127,7 @@ export async function seedApp(
     projectId: opts.projectId ?? null,
     environmentId: opts.environmentId ?? null,
     serverId,
+    dataCopyError: "",
     buildServerId: opts.buildServerId ?? null,
     buildFallbackLocal: opts.buildFallbackLocal ?? true,
     logo: null,

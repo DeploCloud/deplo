@@ -3,6 +3,7 @@ import { DatabaseTypeEnum } from "./enums";
 import { ResourceLimitsRef, ResourceLimitsInputType } from "./resource-limits";
 import { pubSub } from "../pubsub";
 import { memberScopeFor } from "@/lib/data/node-scope";
+import { acceptDataCopyLoss } from "@/lib/data/data-copy";
 import {
   listDatabases,
   getDatabase,
@@ -61,6 +62,10 @@ export const DatabaseRef = builder
         description:
           "Uploaded display logo as an image data-URI, or null to fall back to " +
           "the engine's own brand mark (which is what the UI draws by default).",
+      }),
+      dataCopyError: t.exposeString("dataCopyError", {
+        description:
+          "Why this database's data did not arrive, when a migration tried to copy it and could not. Empty in the common case. While it is set, restarting and redeploying are refused: an engine started on the emptied volume initialises a NEW database over the old one's place. `startWithoutMigratedData` accepts that; `rebuildDatabase` also clears it, since a factory reset makes the empty volume the intended state.",
       }),
       type: t.field({ type: DatabaseTypeEnum, resolve: (d) => d.type }),
       version: t.exposeString("version"),
@@ -370,6 +375,21 @@ builder.mutationFields((t) => ({
     args: { id: t.arg.string({ required: true }) },
     resolve: async (_r, { id }) => {
       await restartDatabase(id);
+      return reloadDatabase(id);
+    },
+  }),
+  startWithoutMigratedData: t.field({
+    type: DatabaseRef,
+    authScopes: { capability: "control_databases" },
+    description:
+      "Accept that the data a migration could not copy is not coming, and let " +
+      "this database start again: clears `dataCopyError`. The engine will " +
+      "initialise an EMPTY database on the volume, which is exactly what the " +
+      "refusal exists to stop - so this is a decision, not a retry. Recorded in " +
+      "Activity.",
+    args: { id: t.arg.string({ required: true }) },
+    resolve: async (_r, { id }) => {
+      await acceptDataCopyLoss({ kind: "database", id });
       return reloadDatabase(id);
     },
   }),

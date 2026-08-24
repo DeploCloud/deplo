@@ -100,6 +100,7 @@ import {
   AgentVolumeCopyUnsupportedError,
 } from "../infra/agent-client";
 import { enqueueDeployment } from "./deploy-queue";
+import { assertDataCopyIntact } from "../data/data-copy";
 import type {
   App,
   BuildMethod,
@@ -1159,6 +1160,14 @@ export async function startDeployment(
   const project = await loadAppGraph(appId);
   if (!project) throw new Error("App not found");
   const preview = opts.preview ?? null;
+  // Data a migration could not copy is a refusal, not a warning: the volumes it
+  // names are empty or half-written, and deploying onto them is what turns a
+  // failed copy into permanent loss. Here because this is the ONLY function that
+  // starts a deployment - the hook, the git webhook, MCP, a rollback and a bulk
+  // redeploy all arrive through it, so the refusal cannot be walked around.
+  // A PREVIEW is exempt: it is a stack of its own with its own volumes, and the
+  // pull request is not what lost the data.
+  if (!preview) assertDataCopyIntact(project.name, project.dataCopyError);
   const rollback = opts.rollback ?? null;
   const environment = opts.environment ?? (preview ? "preview" : "production");
   if (preview && environment !== "preview") {

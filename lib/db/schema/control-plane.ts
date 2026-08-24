@@ -948,6 +948,21 @@ export const apps = pgTable(
       () => servers.id,
       { onDelete: "set null" },
     ),
+    // Why this app's data did NOT arrive, when a migration tried to copy it and
+    // could not (empty in the common case, which is every app that was never
+    // migrated). Written by the import's copy step, cleared by a copy that works
+    // and by the owner accepting the loss.
+    //
+    // It exists because the volume it names is not merely missing: the import
+    // wipes the destination before extracting, so a copy that dies mid-stream
+    // leaves it EMPTY or half-written. Starting the app on that is how a database
+    // re-initialises itself over its own data and how anything that version-checks
+    // a file on disk quietly bricks - both of them irreversibly, and both of them
+    // looking like a successful deploy. So the message is kept on the row and
+    // every way of starting the workload refuses while it is set, which is the
+    // one difference between a migration that failed loudly and one that failed
+    // the next morning.
+    dataCopyError: text("data_copy_error").notNull().default(""),
     // Which server BUILDS this app's image, when that is not the one that runs it.
     // NULL is "Automatic": use a build-only server if the fleet has one this team
     // can reach and its arch matches, otherwise build where the app runs - which is
@@ -1953,6 +1968,11 @@ export const databases = pgTable(
     // no logical DB, so its stored value is an inert placeholder.
     dbName: text("db_name").notNull(),
     status: text("status").notNull(),
+    // The twin of `apps.data_copy_error`, and the one that matters most: an
+    // engine started on a volume a failed migration emptied does not fail, it
+    // INITIALISES - a brand new empty database, over the place the old one was
+    // meant to be. See the comment on the apps column.
+    dataCopyError: text("data_copy_error").notNull().default(""),
     serverId: text("server_id")
       .notNull()
       .references(() => servers.id, { onDelete: "restrict" }),

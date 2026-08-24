@@ -71,6 +71,7 @@ import {
   countActiveDeploymentsForTeam,
 } from "@/lib/data/deployments";
 import { renderAppStack } from "@/lib/deploy/build";
+import { acceptDataCopyLoss } from "@/lib/data/data-copy";
 import { redactComposeForDisplay } from "@/lib/deploy/compose-redact";
 import { MOUNT_PROPAGATIONS } from "@/lib/types";
 import type {
@@ -243,6 +244,10 @@ export const AppRef = builder
         resolve: (p) => p.buildFallbackLocal,
       }),
       logo: t.exposeString("logo", { nullable: true }),
+      dataCopyError: t.exposeString("dataCopyError", {
+        description:
+          "Why this app's data did not arrive, when a migration tried to copy it and could not. Empty for every app that was never migrated and every copy that worked. While it is set, deploying and starting this app are refused - its volumes are empty or half written - and `deployWithoutMigratedData` is how someone accepts that and unblocks it.",
+      }),
       framework: t.string({
         nullable: true,
         description:
@@ -1133,6 +1138,20 @@ builder.mutationFields((t) => ({
       // htpasswd label, which rides a Traefik label rather than `environment:`
       // and so was readable by anyone who could open the app at all.
       return yaml === null ? null : redactComposeForDisplay(yaml);
+    },
+  }),
+  deployWithoutMigratedData: t.field({
+    type: AppRef,
+    authScopes: { capability: "deploy_apps" },
+    description:
+      "Accept that the data a migration could not copy is not coming, and let " +
+      "this app deploy again: clears `dataCopyError`. The way out for an app " +
+      "whose source machine has since been turned off, which is how a migration " +
+      "normally ends. Recorded in Activity.",
+    args: { id: t.arg.string({ required: true }) },
+    resolve: async (_r, { id }) => {
+      await acceptDataCopyLoss({ kind: "app", id });
+      return reloadApp(id);
     },
   }),
   redeploy: t.field({

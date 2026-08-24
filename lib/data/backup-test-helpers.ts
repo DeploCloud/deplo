@@ -95,6 +95,7 @@ export async function seedDatabase(
     id: opts.id,
     teamId: opts.teamId ?? TEAM_A,
     name,
+    dataCopyError: "",
     logo: null,
     type,
     version: "16",
