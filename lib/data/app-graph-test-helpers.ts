@@ -155,12 +155,10 @@ export async function seedApp(db: TestDb, opts: SeedAppOpts): Promise<string> {
     createdAt: T0,
     updatedAt: T0,
   };
-  await db
-    .insert(appsTable)
-    .values({
-      ...appToRow(project),
-      createdByUserId: opts.createdByUserId ?? null,
-    });
+  await db.insert(appsTable).values({
+    ...appToRow(project),
+    createdByUserId: opts.createdByUserId ?? null,
+  });
   await db.insert(appBuildTable).values(buildToRow(project.id, build));
   await db
     .insert(appBuildMethodSettingsTable)

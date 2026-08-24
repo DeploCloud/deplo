@@ -118,15 +118,13 @@ export async function seedDatabase(
   };
   await db.insert(databasesTable).values(databaseToRow(row));
   if (row.mounts.length > 0) {
-    await db
-      .insert(databaseMountsTable)
-      .values(
-        row.mounts.map((m, position) => ({
-          databaseId: row.id,
-          position,
-          ...m,
-        })),
-      );
+    await db.insert(databaseMountsTable).values(
+      row.mounts.map((m, position) => ({
+        databaseId: row.id,
+        position,
+        ...m,
+      })),
+    );
   }
   return row.id;
 }

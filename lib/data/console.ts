@@ -210,9 +210,7 @@ function displayFallback(p: App): ConsoleInstance {
  * `real` says whether the containers are the host's truth or that placeholder, so
  * callers can tell "nothing to stream from" apart from "a container is down".
  */
-async function listInstancesForDisplay(
-  p: App,
-): Promise<{
+async function listInstancesForDisplay(p: App): Promise<{
   instances: ConsoleInstance[];
   real: boolean;
   unreachable: boolean;

@@ -379,13 +379,11 @@ test("an environment grant is a rung of its own, beating the project it sits in"
     .values({ projectId: PRC_IN, userId: DEV, capability: "view_logs" });
   // …and the environment inside it says another. Most-specific-wins, and the
   // environment is more specific than the project it belongs to.
-  await db
-    .insert(envs.environmentGrants)
-    .values({
-      environmentId: "environ_stg",
-      userId: DEV,
-      capability: "manage_env",
-    });
+  await db.insert(envs.environmentGrants).values({
+    environmentId: "environ_stg",
+    userId: DEV,
+    capability: "manage_env",
+  });
 
   assert.deepEqual(await capsOn({ kind: "app", id: "prj_stg2" }), [
     "view",

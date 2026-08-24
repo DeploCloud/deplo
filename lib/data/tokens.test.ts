@@ -73,14 +73,12 @@ async function alsoMemberOfB(): Promise<void> {
     role: "owner",
     createdAt: T0,
   });
-  await db
-    .insert(membershipCapabilities)
-    .values(
-      ALL_CAPABILITIES.map((c) => ({
-        membershipId: "mem_user_1_b",
-        capability: c,
-      })),
-    );
+  await db.insert(membershipCapabilities).values(
+    ALL_CAPABILITIES.map((c) => ({
+      membershipId: "mem_user_1_b",
+      capability: c,
+    })),
+  );
 }
 
 async function seedProject(id: string, teamId: string, name = id) {

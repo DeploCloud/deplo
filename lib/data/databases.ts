@@ -595,15 +595,13 @@ export async function reorderDatabases(orderedIds: string[]): Promise<void> {
       .delete(teamDatabaseOrder)
       .where(eq(teamDatabaseOrder.teamId, teamId));
     if (next.length > 0) {
-      await tx
-        .insert(teamDatabaseOrder)
-        .values(
-          next.map((databaseId, position) => ({
-            teamId,
-            databaseId,
-            position,
-          })),
-        );
+      await tx.insert(teamDatabaseOrder).values(
+        next.map((databaseId, position) => ({
+          teamId,
+          databaseId,
+          position,
+        })),
+      );
     }
   });
 }

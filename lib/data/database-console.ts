@@ -165,9 +165,7 @@ function displayFallback(db: Database): ConsoleInstance {
   };
 }
 
-async function listForDisplay(
-  db: Database,
-): Promise<{
+async function listForDisplay(db: Database): Promise<{
   instances: ConsoleInstance[];
   real: boolean;
   unreachable: boolean;

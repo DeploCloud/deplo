@@ -118,14 +118,12 @@ async function seedAll(): Promise<void> {
     role: "owner",
     createdAt: T0,
   });
-  await db
-    .insert(membershipCapabilitiesTable)
-    .values(
-      ALL_CAPABILITIES.map((capability) => ({
-        membershipId: MEM_IN_B,
-        capability,
-      })),
-    );
+  await db.insert(membershipCapabilitiesTable).values(
+    ALL_CAPABILITIES.map((capability) => ({
+      membershipId: MEM_IN_B,
+      capability,
+    })),
+  );
   await seedServer(db);
   await db.insert(projectsTable).values({
     id: B.project,

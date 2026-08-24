@@ -111,14 +111,12 @@ test("deleteApp cascades every child + shared-var link (no orphans)", async () =
   await seedApp(db, { id: "prj_2", status: "active" });
   await seedDeployment(db, { id: "dpl_1", appId: "prj_1" });
   // A log line on prj_1's deployment.
-  await db
-    .insert(deploymentLogs)
-    .values({
-      deploymentId: "dpl_1",
-      ts: "2026-01-01T00:00:00.000Z",
-      level: "info",
-      text: "x",
-    });
+  await db.insert(deploymentLogs).values({
+    deploymentId: "dpl_1",
+    ts: "2026-01-01T00:00:00.000Z",
+    level: "info",
+    text: "x",
+  });
 
   await asUser1(async () => {
     // An env var + a domain on prj_1.

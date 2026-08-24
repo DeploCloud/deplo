@@ -220,14 +220,12 @@ export async function upsertInstanceEnv(input: {
         createdAt: now,
         updatedAt: now,
       });
-      await tx
-        .insert(instTargets)
-        .values(
-          (targets ?? [...ALL_ENV_TARGETS]).map((target) => ({
-            envVarId: id,
-            target,
-          })),
-        );
+      await tx.insert(instTargets).values(
+        (targets ?? [...ALL_ENV_TARGETS]).map((target) => ({
+          envVarId: id,
+          target,
+        })),
+      );
     }
   });
   await recordActivity(

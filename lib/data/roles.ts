@@ -777,14 +777,12 @@ async function writeRoleScope(
       .insert(teamRoleScopeProjects)
       .values(scope.projectIds.map((projectId) => ({ roleId, projectId })));
   if (scope.environmentIds.length)
-    await tx
-      .insert(teamRoleScopeEnvironments)
-      .values(
-        scope.environmentIds.map((environmentId) => ({
-          roleId,
-          environmentId,
-        })),
-      );
+    await tx.insert(teamRoleScopeEnvironments).values(
+      scope.environmentIds.map((environmentId) => ({
+        roleId,
+        environmentId,
+      })),
+    );
   if (scope.folderIds.length)
     await tx
       .insert(teamRoleScopeFolders)

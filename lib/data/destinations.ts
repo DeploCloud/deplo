@@ -1134,9 +1134,7 @@ async function checkOnAnyBackupAgent(
  * see once, for a destination you may not have consciously created, is a key
  * nobody has.
  */
-export async function revealRecoveryKey(
-  id: string,
-): Promise<{
+export async function revealRecoveryKey(id: string): Promise<{
   name: string;
   recipient: string;
   identity: string;

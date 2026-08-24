@@ -715,9 +715,7 @@ export async function previewsDueForReaping(
  * missed-`closed`-webhook safety net. Ordered oldest-checked first so one batch
  * per tick eventually covers everything.
  */
-export async function openPreviewsForStateCheck(
-  limit: number,
-): Promise<
+export async function openPreviewsForStateCheck(limit: number): Promise<
   {
     id: string;
     appId: string;
