@@ -204,9 +204,11 @@ function FieldGroup({
   children: React.ReactNode;
 }) {
   return (
-    <div className={first ? "space-y-3" : "space-y-3 border-t border-border pt-5"}>
+    <div
+      className={first ? "space-y-3" : "space-y-3 border-t border-border pt-5"}
+    >
       <div className="space-y-1">
-        <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+        <p className="text-xs font-medium tracking-wide text-muted-foreground uppercase">
           {title}
         </p>
         {hint && <p className="text-xs text-muted-foreground/80">{hint}</p>}

@@ -76,7 +76,9 @@ export function NewTokenMenu() {
             <DropdownMenuItem
               key={p.id}
               className="cursor-pointer"
-              onSelect={() => router.push(`/settings/tokens/new?preset=${p.id}`)}
+              onSelect={() =>
+                router.push(`/settings/tokens/new?preset=${p.id}`)
+              }
             >
               <Icon className="size-4 self-start" />
               <span className="flex min-w-0 flex-1 flex-col">
@@ -85,7 +87,7 @@ export function NewTokenMenu() {
                   {p.description}
                 </span>
               </span>
-              <span className="shrink-0 self-start tabular-nums text-xs text-muted-foreground">
+              <span className="shrink-0 self-start text-xs text-muted-foreground tabular-nums">
                 {p.capabilities.filter((c) => c !== "view").length}
               </span>
             </DropdownMenuItem>

@@ -93,28 +93,27 @@ const PanelAddressImpactRef = builder
     }),
   });
 
-const PanelHttpsRef = builder
-  .objectRef<PanelHttps>("PanelHttps")
-  .implement({
-    description:
-      "How the Deplo panel itself is served, read live off the router that publishes it. `unavailable` says why it is not Deplo's to change here - the host is not added as a server, its proxy is not one Deplo installed, or the panel is still published by its own container.",
-    fields: (t) => ({
-      domain: t.exposeString("domain", {
-        nullable: true,
-        description: "The host the panel's route answers on, as the proxy has it.",
-      }),
-      enabled: t.exposeBoolean("enabled", {
-        description:
-          "Whether the panel is served over https. False means plain http on :80, for a panel whose address cannot get a certificate.",
-      }),
-      provider: t.exposeString("provider", {
-        nullable: true,
-        description:
-          "The certificate resolver it is ordered from, named as this host names it. Null when https is off, or when this host orders from nobody and serves a certificate you installed.",
-      }),
-      unavailable: t.exposeString("unavailable", { nullable: true }),
+const PanelHttpsRef = builder.objectRef<PanelHttps>("PanelHttps").implement({
+  description:
+    "How the Deplo panel itself is served, read live off the router that publishes it. `unavailable` says why it is not Deplo's to change here - the host is not added as a server, its proxy is not one Deplo installed, or the panel is still published by its own container.",
+  fields: (t) => ({
+    domain: t.exposeString("domain", {
+      nullable: true,
+      description:
+        "The host the panel's route answers on, as the proxy has it.",
     }),
-  });
+    enabled: t.exposeBoolean("enabled", {
+      description:
+        "Whether the panel is served over https. False means plain http on :80, for a panel whose address cannot get a certificate.",
+    }),
+    provider: t.exposeString("provider", {
+      nullable: true,
+      description:
+        "The certificate resolver it is ordered from, named as this host names it. Null when https is off, or when this host orders from nobody and serves a certificate you installed.",
+    }),
+    unavailable: t.exposeString("unavailable", { nullable: true }),
+  }),
+});
 
 const CertificateAccountRef = builder
   .objectRef<CertificateAccount>("CertificateAccount")

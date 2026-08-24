@@ -89,7 +89,9 @@ const DEFAULT_TEAMS: SeedTeam[] = [
   { id: TEAM_A, slug: "alpha" },
   { id: TEAM_B, slug: "beta" },
 ];
-const DEFAULT_USERS: SeedUser[] = [{ id: USER_1, teamId: TEAM_A, role: "owner" }];
+const DEFAULT_USERS: SeedUser[] = [
+  { id: USER_1, teamId: TEAM_A, role: "owner" },
+];
 
 /**
  * Truncate every identity table (call in `beforeEach` before seeding).
@@ -162,9 +164,9 @@ export async function seedIdentity(
       founderUserId:
         t.founderUserId !== undefined
           ? t.founderUserId
-          : seedUsers.find(
+          : (seedUsers.find(
               (u) => u.teamId === t.id && (u.role ?? "owner") === "owner",
-            )?.id ?? null,
+            )?.id ?? null),
       createdAt: T0,
     })),
   );

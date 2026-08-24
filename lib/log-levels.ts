@@ -116,7 +116,9 @@ export const LEVEL_MENU_CLASS: Record<LogLevel, string> = {
 };
 
 /** Width to pad every label to so copied lines align in a column. */
-const LABEL_WIDTH = Math.max(...Object.values(LEVEL_LABEL).map((l) => l.length));
+const LABEL_WIDTH = Math.max(
+  ...Object.values(LEVEL_LABEL).map((l) => l.length),
+);
 
 /** A copy-friendly, fixed-width label prefix, e.g. `SUCCESS ` / `INFO    `. */
 export function levelLabelPadded(level: LogLevel): string {

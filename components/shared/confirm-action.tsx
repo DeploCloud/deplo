@@ -188,7 +188,11 @@ export function ConfirmAction({
             </div>
           )}
           <DialogFooter>
-            <Button variant="outline" onClick={() => setOpen(false)} disabled={pending}>
+            <Button
+              variant="outline"
+              onClick={() => setOpen(false)}
+              disabled={pending}
+            >
               Cancel
             </Button>
             <Button
@@ -203,7 +207,10 @@ export function ConfirmAction({
                   width and the footer doesn't jump mid-action. */}
               <span className="grid place-items-center">
                 <span
-                  className={cn("col-start-1 row-start-1", pending && "invisible")}
+                  className={cn(
+                    "col-start-1 row-start-1",
+                    pending && "invisible",
+                  )}
                 >
                   {confirmLabel}
                 </span>

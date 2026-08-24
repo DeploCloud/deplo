@@ -32,7 +32,10 @@ test("volumeSource extracts the source of each volume entry form", () => {
   assert.equal(volumeSource("/data:/data"), "/data");
   assert.equal(volumeSource("named:/data"), "named");
   assert.equal(volumeSource("/anon"), null); // no ":" → anonymous, not a bind src
-  assert.equal(volumeSource({ type: "bind", source: "/host", target: "/x" }), "/host");
+  assert.equal(
+    volumeSource({ type: "bind", source: "/host", target: "/x" }),
+    "/host",
+  );
 });
 
 test("isHostBindSource: absolute and escaping sources are host binds", () => {
@@ -213,12 +216,16 @@ test("composeNeedsHostPrivileges: pid/ipc/network_mode container: escapes (C-1)"
   // Joining another container's namespace on the same daemon is a cross-tenant
   // escape, not limited to this stack.
   for (const line of [
-    "    pid: \"container:x\"",
-    "    ipc: \"container:x\"",
-    "    network_mode: \"container:x\"",
+    '    pid: "container:x"',
+    '    ipc: "container:x"',
+    '    network_mode: "container:x"',
   ]) {
     const yaml = `services:\n  app:\n    image: nginx\n${line}`;
-    assert.equal(composeNeedsHostPrivileges(yaml), true, `not caught: ${line.trim()}`);
+    assert.equal(
+      composeNeedsHostPrivileges(yaml),
+      true,
+      `not caught: ${line.trim()}`,
+    );
   }
 });
 
@@ -288,7 +295,10 @@ volumes:
 });
 
 test("composeMountsForeignStorage: no volumes block, and unparseable YAML", () => {
-  assert.equal(composeMountsForeignStorage("services:\n  app:\n    image: nginx"), false);
+  assert.equal(
+    composeMountsForeignStorage("services:\n  app:\n    image: nginx"),
+    false,
+  );
   assert.equal(composeMountsForeignStorage("volumes: [oops"), false);
   assert.equal(composeMountsForeignStorage(""), false);
 });
@@ -366,11 +376,15 @@ test("composeNeedsHostPrivileges: volumes_from container: escapes; a bare servic
 
 test("composeNeedsHostPrivileges: cgroup host escapes; cgroup private does not", () => {
   assert.equal(
-    composeNeedsHostPrivileges(`services:\n  a:\n    image: x\n    cgroup: host`),
+    composeNeedsHostPrivileges(
+      `services:\n  a:\n    image: x\n    cgroup: host`,
+    ),
     true,
   );
   assert.equal(
-    composeNeedsHostPrivileges(`services:\n  a:\n    image: x\n    cgroup: private`),
+    composeNeedsHostPrivileges(
+      `services:\n  a:\n    image: x\n    cgroup: private`,
+    ),
     false,
   );
 });
@@ -405,11 +419,15 @@ test("the five ungated escapes leave an ordinary compose free (no over-gating)",
 
 test("oom_kill_disable is a cross-tenant DoS and needs the grant; false does not", () => {
   assert.equal(
-    composeNeedsHostPrivileges(`services:\n  a:\n    image: x\n    oom_kill_disable: true`),
+    composeNeedsHostPrivileges(
+      `services:\n  a:\n    image: x\n    oom_kill_disable: true`,
+    ),
     true,
   );
   assert.equal(
-    composeNeedsHostPrivileges(`services:\n  a:\n    image: x\n    oom_kill_disable: false`),
+    composeNeedsHostPrivileges(
+      `services:\n  a:\n    image: x\n    oom_kill_disable: false`,
+    ),
     false,
   );
 });
@@ -461,13 +479,28 @@ test("composeBuildReachesHost: absolute/ssh/privileged build reaches the host; a
  */
 test("composeJoinsForeignNetwork: an external/pinned/host-bridged network join needs the grant", () => {
   const joins = (nets: string) =>
-    composeJoinsForeignNetwork(`services:\n  a:\n    image: x\n    networks: [v]\n${nets}`);
-  assert.equal(joins(`networks:\n  v:\n    external: true\n    name: deplo-victim_default`), true);
+    composeJoinsForeignNetwork(
+      `services:\n  a:\n    image: x\n    networks: [v]\n${nets}`,
+    );
+  assert.equal(
+    joins(
+      `networks:\n  v:\n    external: true\n    name: deplo-victim_default`,
+    ),
+    true,
+  );
   assert.equal(joins(`networks:\n  v:\n    name: deplo-victim_default`), true);
   assert.equal(joins(`networks:\n  v:\n    external: true`), true);
-  assert.equal(joins(`networks:\n  v:\n    external:\n      name: deplo-victim_default`), true);
+  assert.equal(
+    joins(`networks:\n  v:\n    external:\n      name: deplo-victim_default`),
+    true,
+  );
   // A driver that bridges onto the host's own segment reaches past the app too.
-  assert.equal(joins(`networks:\n  v:\n    driver: macvlan\n    driver_opts:\n      parent: eth0`), true);
+  assert.equal(
+    joins(
+      `networks:\n  v:\n    driver: macvlan\n    driver_opts:\n      parent: eth0`,
+    ),
+    true,
+  );
   // Map form of the service join is read the same way.
   assert.equal(
     composeJoinsForeignNetwork(
@@ -506,7 +539,10 @@ test("composeJoinsForeignNetwork: an app's own network, and the shared one, stay
     ),
     false,
   );
-  assert.equal(composeJoinsForeignNetwork(`services:\n  a:\n    image: nginx`), false);
+  assert.equal(
+    composeJoinsForeignNetwork(`services:\n  a:\n    image: nginx`),
+    false,
+  );
 });
 
 test("oom_score_adj is a privilege only when NEGATIVE; group_add and a foreign logging driver always are", () => {
@@ -518,12 +554,16 @@ test("oom_score_adj is a privilege only when NEGATIVE; group_add and a foreign l
   assert.equal(svc("    oom_score_adj: 500"), false);
   assert.equal(svc(`    group_add: ["docker"]`), true);
   assert.equal(
-    svc(`    logging:\n      driver: syslog\n      options:\n        syslog-address: "tcp://evil:514"`),
+    svc(
+      `    logging:\n      driver: syslog\n      options:\n        syslog-address: "tcp://evil:514"`,
+    ),
     true,
   );
   // json-file's own size knobs are what deplo's logs read from — free.
   assert.equal(
-    svc(`    logging:\n      driver: json-file\n      options:\n        max-size: 10m`),
+    svc(
+      `    logging:\n      driver: json-file\n      options:\n        max-size: 10m`,
+    ),
     false,
   );
 });
@@ -536,15 +576,21 @@ test("composeUsesExternalMerge: extends-file, include, label_file are refused; s
     "extends",
   );
   assert.equal(
-    composeUsesExternalMerge(`include:\n  - extra.yml\nservices:\n  a:\n    image: x`),
+    composeUsesExternalMerge(
+      `include:\n  - extra.yml\nservices:\n  a:\n    image: x`,
+    ),
     "include",
   );
   assert.equal(
-    composeUsesExternalMerge(`services:\n  a:\n    image: x\n    label_file: ./evil.labels`),
+    composeUsesExternalMerge(
+      `services:\n  a:\n    image: x\n    label_file: ./evil.labels`,
+    ),
     "label_file",
   );
   assert.equal(
-    composeUsesExternalMerge(`services:\n  a:\n    image: x\n    extends:\n      service: b`),
+    composeUsesExternalMerge(
+      `services:\n  a:\n    image: x\n    extends:\n      service: b`,
+    ),
     null,
   );
   assert.equal(composeUsesExternalMerge(`services:\n  a:\n    image: x`), null);
@@ -579,10 +625,13 @@ test("a reserved service name and a network alias are warned about, not silently
   );
   // Neither stops the stack: both are warnings, and only errors block a save.
   assert.equal(
-    diags.filter(
-      (d) =>
-        d.rule === "reserved-service-name" || d.rule === "network-aliases-dropped",
-    ).every((d) => d.severity === "warning"),
+    diags
+      .filter(
+        (d) =>
+          d.rule === "reserved-service-name" ||
+          d.rule === "network-aliases-dropped",
+      )
+      .every((d) => d.severity === "warning"),
     true,
   );
 });

@@ -17,13 +17,15 @@ export default async function LogsPage() {
   // the ones they can't - indistinguishable from a build that printed nothing -
   // so resolve the reason here and let the viewer say which it is.
   const readable = await Promise.all(
-    recent.map((d) => hasAppCapability(d.appId, "view_logs"))
+    recent.map((d) => hasAppCapability(d.appId, "view_logs")),
   );
   const closedIds = recent.filter((_, i) => !readable[i]).map((d) => d.id);
   const logsById: Record<string, LogLine[]> = Object.fromEntries(
     await Promise.all(
-      recent.map(async (d, i) => [d.id, readable[i] ? await getLogs(d.id) : []] as const)
-    )
+      recent.map(
+        async (d, i) => [d.id, readable[i] ? await getLogs(d.id) : []] as const,
+      ),
+    ),
   );
 
   const summaries: DeploymentSummary[] = recent.map((d) => ({

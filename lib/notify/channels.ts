@@ -208,7 +208,9 @@ export async function sendToChannel(
           ...(msg.url ? { click: msg.url } : {}),
         },
         signal,
-        channel.token ? { Authorization: `Bearer ${channel.token}` } : undefined,
+        channel.token
+          ? { Authorization: `Bearer ${channel.token}` }
+          : undefined,
       );
       return;
 
@@ -333,7 +335,8 @@ async function postJson(
     redirect: "manual",
     signal,
   });
-  if (!res.ok) throw new Error(`${label.replace(/ URL$/, "")} returned ${res.status}`);
+  if (!res.ok)
+    throw new Error(`${label.replace(/ URL$/, "")} returned ${res.status}`);
 }
 
 /** Telegram answers a bad token or chat id with a readable `description`. */

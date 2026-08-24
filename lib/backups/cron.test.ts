@@ -29,7 +29,12 @@ test("seconds are ignored (minute precision)", () => {
 
 test("step `*/15` matches every 15th minute, not others", () => {
   for (const m of [0, 15, 30, 45]) {
-    assert.ok(cronMatches("*/15 * * * *", at(`2026-06-23T10:${String(m).padStart(2, "0")}:00Z`)));
+    assert.ok(
+      cronMatches(
+        "*/15 * * * *",
+        at(`2026-06-23T10:${String(m).padStart(2, "0")}:00Z`),
+      ),
+    );
   }
   assert.ok(!cronMatches("*/15 * * * *", at("2026-06-23T10:10:00Z")));
 });
@@ -46,7 +51,12 @@ test("comma list `0,30` matches both, ranges `1-5` are inclusive", () => {
 
 test("range+step `0-30/10` selects 0,10,20,30", () => {
   for (const m of [0, 10, 20, 30]) {
-    assert.ok(cronMatches("0-30/10 * * * *", at(`2026-06-23T10:${String(m).padStart(2, "0")}:00Z`)));
+    assert.ok(
+      cronMatches(
+        "0-30/10 * * * *",
+        at(`2026-06-23T10:${String(m).padStart(2, "0")}:00Z`),
+      ),
+    );
   }
   assert.ok(!cronMatches("0-30/10 * * * *", at("2026-06-23T10:40:00Z")));
 });
@@ -99,7 +109,11 @@ test("malformed expressions never match and never throw", () => {
     "abc * * * *", // non-numeric
     "*/ * * * *", // empty step
   ]) {
-    assert.equal(parseCron(bad), null, `expected ${JSON.stringify(bad)} to be unparseable`);
+    assert.equal(
+      parseCron(bad),
+      null,
+      `expected ${JSON.stringify(bad)} to be unparseable`,
+    );
     assert.equal(cronMatches(bad, at("2026-06-23T00:00:00Z")), false);
   }
 });

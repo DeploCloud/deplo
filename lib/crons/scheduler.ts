@@ -116,7 +116,8 @@ function replayWindow(now: Date): Date[] {
       state.lastFireAt.getTime() + FIRE_EVERY_MS,
       now.getTime() - LEASE_STALE_MS,
     );
-    for (let t = floor; t < now.getTime(); t += FIRE_EVERY_MS) minutes.push(new Date(t));
+    for (let t = floor; t < now.getTime(); t += FIRE_EVERY_MS)
+      minutes.push(new Date(t));
   }
   minutes.push(now);
   return minutes;
@@ -127,7 +128,9 @@ function replayWindow(now: Date): Date[] {
  * both phases contain per-job and per-run failures so one bad row cannot stop the
  * instance's other jobs.
  */
-export async function runCronSchedulerTick(now: Date = new Date()): Promise<void> {
+export async function runCronSchedulerTick(
+  now: Date = new Date(),
+): Promise<void> {
   if (state.ticking) return;
   state.ticking = true;
   const fire = shouldFire(now, state.lastFireAt);

@@ -30,21 +30,23 @@ export const EnvVarTypeEnum = builder.enumType("EnvVarType", {
 // The one authorship type for every kind of variable (app / instance / shared),
 // so exported: a Pothos type name must be unique, and global-env.ts and
 // shared-env.ts import this ref rather than declaring a second "VarAuthor".
-export const VarAuthorRef = builder.objectRef<VarAuthor>("VarAuthor").implement({
-  description:
-    "The user who created or last modified a variable. Identity only — never an email.",
-  fields: (t) => ({
-    id: t.exposeID("id"),
-    name: t.exposeString("name"),
-    username: t.exposeString("username"),
-    avatarColor: t.exposeString("avatarColor"),
-    avatarUrl: t.exposeString("avatarUrl", {
-      nullable: true,
-      description:
-        "Resolved profile picture: uploaded image, else Gravatar, else null for the monogram. Derived server-side, so the address itself never travels.",
+export const VarAuthorRef = builder
+  .objectRef<VarAuthor>("VarAuthor")
+  .implement({
+    description:
+      "The user who created or last modified a variable. Identity only — never an email.",
+    fields: (t) => ({
+      id: t.exposeID("id"),
+      name: t.exposeString("name"),
+      username: t.exposeString("username"),
+      avatarColor: t.exposeString("avatarColor"),
+      avatarUrl: t.exposeString("avatarUrl", {
+        nullable: true,
+        description:
+          "Resolved profile picture: uploaded image, else Gravatar, else null for the monogram. Derived server-side, so the address itself never travels.",
+      }),
     }),
-  }),
-});
+  });
 
 const EnvVarRef = builder.objectRef<EnvVarDTO>("EnvVar").implement({
   description:
@@ -90,26 +92,25 @@ const AppEnvGroupAppRef = builder
     }),
   });
 
-const AppEnvGroupRef = builder
-  .objectRef<AppEnvGroup>("AppEnvGroup")
-  .implement({
-    description: "One app together with all of its env vars.",
-    fields: (t) => ({
-      app: t.field({
-        type: AppEnvGroupAppRef,
-        resolve: (g) => g.app,
-      }),
-      vars: t.field({
-        type: [EnvVarRef],
-        resolve: (g) => g.vars,
-      }),
+const AppEnvGroupRef = builder.objectRef<AppEnvGroup>("AppEnvGroup").implement({
+  description: "One app together with all of its env vars.",
+  fields: (t) => ({
+    app: t.field({
+      type: AppEnvGroupAppRef,
+      resolve: (g) => g.app,
     }),
-  });
+    vars: t.field({
+      type: [EnvVarRef],
+      resolve: (g) => g.vars,
+    }),
+  }),
+});
 
 const EnvImportResultRef = builder
   .objectRef<{ added: number; skippedSecrets: number }>("EnvImportResult")
   .implement({
-    description: "What a .env import wrote, and what it deliberately left alone.",
+    description:
+      "What a .env import wrote, and what it deliberately left alone.",
     fields: (t) => ({
       added: t.exposeInt("added", {
         description: "Variables created or updated.",
@@ -191,7 +192,8 @@ builder.mutationFields((t) => ({
   renameEnv: t.field({
     type: EnvVarRef,
     authScopes: { capability: "manage_env" },
-    description: "Rename an env var's key in place, then return the stored entity.",
+    description:
+      "Rename an env var's key in place, then return the stored entity.",
     args: {
       id: t.arg.string({ required: true }),
       newKey: t.arg.string({ required: true }),

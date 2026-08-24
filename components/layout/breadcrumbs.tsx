@@ -277,7 +277,9 @@ function KindIcon({
   size?: number;
 }) {
   if (kind === "app") {
-    return <AppLogo logo={logo ?? null} size={size} className="rounded-[4px]" />;
+    return (
+      <AppLogo logo={logo ?? null} size={size} className="rounded-[4px]" />
+    );
   }
   if (kind === "database") {
     return (
@@ -302,7 +304,10 @@ function KindIcon({
           ? DatabaseIcon
           : null;
   return Icon ? (
-    <Icon className="shrink-0 text-muted-foreground" style={{ width: size, height: size }} />
+    <Icon
+      className="shrink-0 text-muted-foreground"
+      style={{ width: size, height: size }}
+    />
   ) : null;
 }
 

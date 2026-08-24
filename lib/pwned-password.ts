@@ -46,7 +46,10 @@ export const PWNED_PASSWORD_MESSAGE =
  */
 export async function isPasswordPwned(password: string): Promise<boolean> {
   if (!password) return false;
-  const sha1 = createHash("sha1").update(password, "utf8").digest("hex").toUpperCase();
+  const sha1 = createHash("sha1")
+    .update(password, "utf8")
+    .digest("hex")
+    .toUpperCase();
   const prefix = sha1.slice(0, 5);
   const suffix = sha1.slice(5);
 

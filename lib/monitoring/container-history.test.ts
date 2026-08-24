@@ -32,7 +32,11 @@ import type {
 // Read-time eviction is relative to Date.now(), so tests use near-now timestamps.
 const NOW = Date.now();
 
-function sample(id: string, ts: number, over: Partial<ContainerMetricsSample> = {}): ContainerMetricsSample {
+function sample(
+  id: string,
+  ts: number,
+  over: Partial<ContainerMetricsSample> = {},
+): ContainerMetricsSample {
   return {
     id,
     online: true,
@@ -52,7 +56,10 @@ function sample(id: string, ts: number, over: Partial<ContainerMetricsSample> = 
   };
 }
 
-function instance(name: string, over: Partial<ContainerInstanceMetrics> = {}): ContainerInstanceMetrics {
+function instance(
+  name: string,
+  over: Partial<ContainerInstanceMetrics> = {},
+): ContainerInstanceMetrics {
   return {
     name,
     running: true,
@@ -79,7 +86,10 @@ test("records online samples per id and reads them back oldest-first", () => {
   recordContainerSample(sample("app_2", NOW - 3500));
 
   const a = getContainerHistory("app_1");
-  assert.deepEqual(a.map((s) => s.ts), [NOW - 4000, NOW - 2000]);
+  assert.deepEqual(
+    a.map((s) => s.ts),
+    [NOW - 4000, NOW - 2000],
+  );
   assert.equal(getContainerHistory("app_2").length, 1);
   assert.equal(latestContainerSampleTs("app_1"), NOW - 2000);
   assert.equal(latestContainerSampleTs("missing"), 0);
@@ -110,7 +120,9 @@ test("drops samples landing inside the rate ceiling (MIN_GAP_MS = 250)", () => {
 });
 
 test("evicts samples older than the window", () => {
-  recordContainerSample(sample("app_1", NOW - CONTAINER_HISTORY_WINDOW_MS - 5000)); // stale
+  recordContainerSample(
+    sample("app_1", NOW - CONTAINER_HISTORY_WINDOW_MS - 5000),
+  ); // stale
   recordContainerSample(sample("app_1", NOW));
   const kept = getContainerHistory("app_1");
   assert.equal(kept.length, 1);
@@ -170,7 +182,10 @@ test("a container absent from a frame RETAINS its buffered window", () => {
 test("the breakdown starts empty and is a per-resource cell", () => {
   assert.deepEqual(latestContainerInstances("app_1"), []);
   recordContainerInstances("app_1", [instance("web")]);
-  assert.deepEqual(latestContainerInstances("app_1").map((i) => i.name), ["web"]);
+  assert.deepEqual(
+    latestContainerInstances("app_1").map((i) => i.name),
+    ["web"],
+  );
   assert.deepEqual(latestContainerInstances("app_2"), []);
 });
 
@@ -180,7 +195,10 @@ test("recordContainerInstances REPLACES the cell, never appends", () => {
   // sample by the container count, which is what toSample strips it out to avoid.
   recordContainerInstances("app_1", [instance("web"), instance("worker")]);
   recordContainerInstances("app_1", [instance("web")]); // the worker was removed
-  assert.deepEqual(latestContainerInstances("app_1").map((i) => i.name), ["web"]);
+  assert.deepEqual(
+    latestContainerInstances("app_1").map((i) => i.name),
+    ["web"],
+  );
 
   recordContainerInstances("app_1", []); // the whole stack went down
   assert.deepEqual(latestContainerInstances("app_1"), []);
@@ -195,7 +213,10 @@ test("clearContainerHistory clears the breakdown cell too, per id and wholesale"
 
   clearContainerHistory("app_1");
   assert.deepEqual(latestContainerInstances("app_1"), []);
-  assert.deepEqual(latestContainerInstances("app_2").map((i) => i.name), ["db"]);
+  assert.deepEqual(
+    latestContainerInstances("app_2").map((i) => i.name),
+    ["db"],
+  );
 
   clearContainerHistory();
   assert.deepEqual(latestContainerInstances("app_2"), []);

@@ -49,8 +49,11 @@ const OWNER = "u_owner";
 const OWNER_B = "u_owner_b";
 const SVC = "prj_svc";
 
-const as = <T>(userId: string, teamId: string, fn: () => Promise<T>): Promise<T> =>
-  runWithIdentity({ userId, teamId }, fn);
+const as = <T>(
+  userId: string,
+  teamId: string,
+  fn: () => Promise<T>,
+): Promise<T> => runWithIdentity({ userId, teamId }, fn);
 
 beforeEach(async () => {
   await pg.exec(TRUNCATE_PROJECT_GRAPH);
@@ -69,9 +72,17 @@ beforeEach(async () => {
   await seedApp(db, { id: SVC, teamId: TEAM_A });
   await seedDeployment(db, { id: "dep_ready", appId: SVC, status: "ready" });
   await seedDeployment(db, { id: "dep_error", appId: SVC, status: "error" });
-  await seedDeployment(db, { id: "dep_canceled", appId: SVC, status: "canceled" });
+  await seedDeployment(db, {
+    id: "dep_canceled",
+    appId: SVC,
+    status: "canceled",
+  });
   await seedDeployment(db, { id: "dep_queued", appId: SVC, status: "queued" });
-  await seedDeployment(db, { id: "dep_building", appId: SVC, status: "building" });
+  await seedDeployment(db, {
+    id: "dep_building",
+    appId: SVC,
+    status: "building",
+  });
 });
 
 const remaining = async (): Promise<string[]> =>
@@ -105,7 +116,11 @@ test("deleteAllDeployments(appId) clears finished, keeps in-progress", async () 
 
 test("deleteAllDeployments() sweeps the whole team's finished deployments", async () => {
   const n = await as(OWNER, TEAM_A, () => deleteAllDeployments());
-  assert.equal(n, 3, "every finished deployment the caller may manage is removed");
+  assert.equal(
+    n,
+    3,
+    "every finished deployment the caller may manage is removed",
+  );
   assert.deepEqual(await remaining(), ["dep_building", "dep_queued"]);
 });
 

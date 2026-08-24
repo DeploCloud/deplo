@@ -113,7 +113,13 @@ for (const [type, envLine] of Object.entries(DB_CREATE_ENV) as [
   string,
 ][]) {
   test(`generateDatabaseCompose(${type}): creates the logical database via ${envLine.split("=")[0]}`, () => {
-    const yaml = generateDatabaseCompose({ name: "mydb", type, version: "1", password: "pw", ...DEFAULTS });
+    const yaml = generateDatabaseCompose({
+      name: "mydb",
+      type,
+      version: "1",
+      password: "pw",
+      ...DEFAULTS,
+    });
     assert.ok(
       yaml.includes(envLine),
       `${type} must create the db-name database the backup descriptor dumps; got:\n${yaml}`,
@@ -135,7 +141,10 @@ test("generateDatabaseCompose: no ports block when hostPort omitted (internal on
     username: "app",
     dbName: "db-internal",
   });
-  assert.ok(!yaml.includes("ports:"), `an unexposed DB must not publish a port; got:\n${yaml}`);
+  assert.ok(
+    !yaml.includes("ports:"),
+    `an unexposed DB must not publish a port; got:\n${yaml}`,
+  );
 });
 
 test("generateDatabaseCompose: publishes hostPort:enginePort bound to 0.0.0.0 when exposed", () => {
@@ -150,7 +159,10 @@ test("generateDatabaseCompose: publishes hostPort:enginePort bound to 0.0.0.0 wh
     dbName: "db-public",
     hostPort: 25432,
   });
-  assert.ok(yaml.includes("ports:"), `an exposed DB must publish a port; got:\n${yaml}`);
+  assert.ok(
+    yaml.includes("ports:"),
+    `an exposed DB must publish a port; got:\n${yaml}`,
+  );
   assert.ok(
     yaml.includes(`- "0.0.0.0:25432:5432"`),
     `expected host:container mapping 0.0.0.0:25432:5432, got:\n${yaml}`,
@@ -211,7 +223,10 @@ for (const [type, prefix] of [
     });
     assert.ok(yaml.includes(`${prefix}_ROOT_PASSWORD=pw`), yaml);
     assert.ok(yaml.includes(`${prefix}_DATABASE=app`), yaml);
-    assert.ok(!yaml.includes(`${prefix}_USER=`), `must not emit ${prefix}_USER for root; got:\n${yaml}`);
+    assert.ok(
+      !yaml.includes(`${prefix}_USER=`),
+      `must not emit ${prefix}_USER for root; got:\n${yaml}`,
+    );
   });
 
   // A non-root username creates the extra scoped user ALONGSIDE root (root is
@@ -253,7 +268,12 @@ test("buildConnectionString: per-engine scheme + path", () => {
   );
   // redis has no logical DB — no path segment.
   assert.equal(
-    buildConnectionString({ ...base, type: "redis", username: "default", dbName: "ignored" }),
+    buildConnectionString({
+      ...base,
+      type: "redis",
+      username: "default",
+      dbName: "ignored",
+    }),
     "redis://default:pw@db-x:5432",
   );
 });
@@ -371,7 +391,10 @@ test("generateDatabaseCompose: customCommand replaces redis's requirepass comman
     customCommand: "redis-server /etc/redis/redis.conf",
   });
   // User-supplied commands render double-quoted (YAML-safe); the default stays plain.
-  assert.ok(yaml.includes('command: "redis-server /etc/redis/redis.conf"'), yaml);
+  assert.ok(
+    yaml.includes('command: "redis-server /etc/redis/redis.conf"'),
+    yaml,
+  );
   assert.ok(!yaml.includes("--requirepass"), yaml);
 });
 
@@ -394,7 +417,9 @@ test("generateDatabaseCompose: real healthcheck per engine, exit 0 under customI
       'mysqladmin ping -h 127.0.0.1 -uroot -p\\"$$MYSQL_ROOT_PASSWORD\\"',
     ),
   );
-  assert.ok(mk("mariadb").includes("healthcheck.sh --connect --innodb_initialized"));
+  assert.ok(
+    mk("mariadb").includes("healthcheck.sh --connect --innodb_initialized"),
+  );
   assert.ok(mk("mongodb").includes("db.adminCommand('ping').ok"));
   assert.ok(mk("redis").includes('"CMD-SHELL", "redis-cli ping"'));
   assert.ok(mk("clickhouse").includes("http://127.0.0.1:8123/ping"));
@@ -511,9 +536,19 @@ test("generateDatabaseCompose: a config file is bound under the data volume", ()
 // The overwhelming majority of databases have none, and their stack must stay
 // byte-identical - a changed line recreates the container on the next reroute.
 test("generateDatabaseCompose: no config files renders exactly what it always did", () => {
-  const base = { name: "mydb", type: "postgres" as const, version: "16", password: "pw", ...DEFAULTS };
+  const base = {
+    name: "mydb",
+    type: "postgres" as const,
+    version: "16",
+    password: "pw",
+    ...DEFAULTS,
+  };
   assert.equal(
-    generateDatabaseCompose({ ...base, mounts: [], filesDir: "/data/stacks/files/db-mydb" }),
+    generateDatabaseCompose({
+      ...base,
+      mounts: [],
+      filesDir: "/data/stacks/files/db-mydb",
+    }),
     generateDatabaseCompose(base),
   );
 });

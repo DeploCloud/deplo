@@ -112,7 +112,10 @@ const PULSE = new Set([
 // `tinted` (e.g. a green "Online" chip). Mirrors the hues of COLORS: green =
 // healthy, amber = in-progress, red = failure, grey = off-but-healthy. Callers
 // that don't pass `tinted` keep the plain outline badge, so nothing else moves.
-const VARIANTS: Record<string, "success" | "warning" | "destructive" | "muted"> = {
+const VARIANTS: Record<
+  string,
+  "success" | "warning" | "destructive" | "muted"
+> = {
   ready: "success",
   running: "success",
   online: "success",
@@ -157,14 +160,14 @@ export function StatusDot({
         <span
           className={cn(
             "absolute inline-flex h-full w-full animate-ping rounded-full opacity-60",
-            COLORS[status] ?? "bg-muted-foreground"
+            COLORS[status] ?? "bg-muted-foreground",
           )}
         />
       )}
       <span
         className={cn(
           "relative inline-flex size-2.5 rounded-full",
-          COLORS[status] ?? "bg-muted-foreground"
+          COLORS[status] ?? "bg-muted-foreground",
         )}
       />
     </span>
@@ -222,7 +225,7 @@ export function StatusBadge({
     labels?.[key] ?? LABELS[key] ?? key.replace(/^\w/, (c) => c.toUpperCase());
   return (
     <Badge
-      variant={tinted ? VARIANTS[key] ?? "muted" : "outline"}
+      variant={tinted ? (VARIANTS[key] ?? "muted") : "outline"}
       className={cn("gap-1.5 capitalize", PULSE.has(key) && "animate-pulse")}
     >
       <StatusDot status={status} />

@@ -31,7 +31,9 @@ import type { ResourceLimits } from "@/lib/types";
 
 /** "0.5 core" / "1 core" / "2 cores" from a fractional core count. */
 function fmtCores(cores: number): string {
-  const s = Number.isInteger(cores) ? String(cores) : String(Number(cores.toFixed(3)));
+  const s = Number.isInteger(cores)
+    ? String(cores)
+    : String(Number(cores.toFixed(3)));
   return `${s} core${cores === 1 ? "" : "s"}`;
 }
 
@@ -116,7 +118,8 @@ export function ContainerMonitoringDashboard({
 }) {
   const noun = kind === "app" ? "app" : "database";
   const metricsField = kind === "app" ? "appMetrics" : "databaseMetrics";
-  const historyField = kind === "app" ? "appMetricsHistory" : "databaseMetricsHistory";
+  const historyField =
+    kind === "app" ? "appMetricsHistory" : "databaseMetricsHistory";
   const idArg = kind === "app" ? "appId" : "databaseId";
 
   // Configured PER-CONTAINER caps. deplo applies the app-level resource limits to
@@ -129,7 +132,8 @@ export function ContainerMonitoringDashboard({
   // applied mem_limit, but CPU % is host-relative (100% = one core), so both are
   // rescaled here against the CONFIGURED cap × running: the gauges match the note
   // and still read honestly >100% when a cap isn't applied yet (pre-redeploy).
-  const cpuLimitCores = resources?.cpuMilli != null ? resources.cpuMilli / 1000 : null;
+  const cpuLimitCores =
+    resources?.cpuMilli != null ? resources.cpuMilli / 1000 : null;
   const memLimitMb = resources?.memoryMb ?? null;
   const memLimitBytes = memLimitMb != null ? memLimitMb * 1024 * 1024 : null;
   const pidsLimit = resources?.pidsLimit ?? null;
@@ -224,10 +228,7 @@ export function ContainerMonitoringDashboard({
           // memo and redraw every chart several times per new measurement.
           const head = merged[merged.length - 1];
           const prevHead = prev[prev.length - 1];
-          if (
-            merged.length === prev.length &&
-            head?.ts === prevHead?.ts
-          ) {
+          if (merged.length === prev.length && head?.ts === prevHead?.ts) {
             return prev;
           }
           return merged;
@@ -303,7 +304,8 @@ export function ContainerMonitoringDashboard({
   const runningCount = cur?.running ?? 0;
   const capMult = Math.max(runningCount, 1);
   const multiContainer = runningCount > 1;
-  const cpuLimitAggCores = cpuLimitCores != null ? cpuLimitCores * capMult : null;
+  const cpuLimitAggCores =
+    cpuLimitCores != null ? cpuLimitCores * capMult : null;
   const memLimitAggMb = memLimitMb != null ? memLimitMb * capMult : null;
   const pidsLimitAgg = pidsLimit != null ? pidsLimit * capMult : null;
   // Memory denominator to display when uncapped: docker's memLimit (the host
@@ -335,7 +337,9 @@ export function ContainerMonitoringDashboard({
       {cur ? (
         <LiveStatusLine stale={stale} asOf={cur.ts} />
       ) : (
-        <span className="text-xs text-muted-foreground">Live container metrics</span>
+        <span className="text-xs text-muted-foreground">
+          Live container metrics
+        </span>
       )}
       {cur && <WindowSelector windowMs={windowMs} onChange={setWindowMs} />}
     </div>
@@ -454,7 +458,11 @@ export function ContainerMonitoringDashboard({
           <StatTile
             icon={ListTree}
             label="Processes"
-            value={pidsLimitAgg != null ? `${cur.pids} / ${pidsLimitAgg}` : `${cur.pids}`}
+            value={
+              pidsLimitAgg != null
+                ? `${cur.pids} / ${pidsLimitAgg}`
+                : `${cur.pids}`
+            }
             sub={
               pidsLimitAgg != null
                 ? multiContainer
@@ -479,7 +487,14 @@ export function ContainerMonitoringDashboard({
               unit="percent"
               windowMs={windowMs}
               points={points}
-              series={[{ key: "cpu", label: "CPU", color: "var(--chart-1)", fill: true }]}
+              series={[
+                {
+                  key: "cpu",
+                  label: "CPU",
+                  color: "var(--chart-1)",
+                  fill: true,
+                },
+              ]}
               ariaLabel={`CPU usage over time, currently ${curCpu.toFixed(1)}%${cpuLimitAggCores != null ? ` of the ${fmtCores(cpuLimitAggCores)} limit` : ""}`}
             />
           </ChartCard>
@@ -498,7 +513,14 @@ export function ContainerMonitoringDashboard({
               unit="percent"
               windowMs={windowMs}
               points={points}
-              series={[{ key: "mem", label: "Memory", color: "var(--chart-1)", fill: true }]}
+              series={[
+                {
+                  key: "mem",
+                  label: "Memory",
+                  color: "var(--chart-1)",
+                  fill: true,
+                },
+              ]}
               ariaLabel={`Memory usage over time, currently ${curMemPct.toFixed(1)}%${memLimitAggMb != null ? ` of the ${fmtMemMb(memLimitAggMb)} limit` : ""}`}
             />
           </ChartCard>

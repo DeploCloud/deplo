@@ -411,10 +411,7 @@ export interface Project {
  * first three; user-created environments are `custom`.
  */
 export type EnvironmentKind =
-  | "development"
-  | "preview"
-  | "production"
-  | "custom";
+  "development" | "preview" | "production" | "custom";
 
 /**
  * An **Environment** (ADR-0008 Phase 3) — a per-{@link Project}, first-class
@@ -462,11 +459,7 @@ export interface Environment {
  *                     probe deadline (confirmed by a retry before we demote).
  */
 export type ServerStatus =
-  | "online"
-  | "warning"
-  | "error"
-  | "offline"
-  | "provisioning";
+  "online" | "warning" | "error" | "offline" | "provisioning";
 
 /**
  * The agent trust + reachability material for a server (PLAN Part B). EVERY
@@ -683,11 +676,7 @@ export type AppStatus =
  *  - compose     a multi-service docker-compose stack (template / hand-written)
  */
 export type DeploySource =
-  | "github"
-  | "git"
-  | "docker-image"
-  | "upload"
-  | "compose";
+  "github" | "git" | "docker-image" | "upload" | "compose";
 
 /**
  * The internal `DeploySource` strings are lowercase and hyphenated
@@ -771,11 +760,7 @@ export interface GitRepo {
  *  - nixpacks    Nixpacks auto-detects and builds an OCI image
  *  - static      serve a directory of files with nginx (optionally SPA)
  */
-export type BuildMethod =
-  | "dockerfile"
-  | "railpack"
-  | "nixpacks"
-  | "static";
+export type BuildMethod = "dockerfile" | "railpack" | "nixpacks" | "static";
 
 /**
  * Per-method build settings. All optional/defaulted; only the fields relevant to
@@ -1217,11 +1202,7 @@ export const MAX_LOG_RANGE_DAYS = 90;
 export const MIN_LOG_RANGE_DAYS = 1;
 
 export type DeploymentStatus =
-  | "queued"
-  | "building"
-  | "ready"
-  | "error"
-  | "canceled";
+  "queued" | "building" | "ready" | "error" | "canceled";
 
 export type DeploymentEnvironment = "production" | "preview";
 
@@ -1304,12 +1285,7 @@ export interface Deployment {
 }
 
 export type LogLevel =
-  | "info"
-  | "warn"
-  | "error"
-  | "debug"
-  | "command"
-  | "success";
+  "info" | "warn" | "error" | "debug" | "command" | "success";
 
 export interface LogLine {
   ts: string;
@@ -1449,11 +1425,7 @@ export interface GlobalEnvVarDTO {
  *  - error          a check failed unexpectedly (reserved).
  */
 export type DomainStatus =
-  | "valid"
-  | "cloudflare"
-  | "pending"
-  | "misconfigured"
-  | "error";
+  "valid" | "cloudflare" | "pending" | "misconfigured" | "error";
 
 /**
  * The Traefik entrypoint a domain's router binds to. Mirrors the two entrypoints
@@ -1620,12 +1592,7 @@ export interface BasicAuthUser {
 }
 
 export type DatabaseType =
-  | "postgres"
-  | "mysql"
-  | "mariadb"
-  | "mongodb"
-  | "redis"
-  | "clickhouse";
+  "postgres" | "mysql" | "mariadb" | "mongodb" | "redis" | "clickhouse";
 
 export type DatabaseStatus = "running" | "stopped" | "provisioning" | "error";
 
@@ -1955,12 +1922,7 @@ export type CronOverlap = "skip" | "allow";
  *    not kill it, and a run we lost track of most likely succeeded.
  */
 export type CronRunStatus =
-  | "running"
-  | "succeeded"
-  | "failed"
-  | "timedout"
-  | "skipped"
-  | "lost";
+  "running" | "succeeded" | "failed" | "timedout" | "skipped" | "lost";
 
 /**
  * A scheduled command inside one container of an App or a Database.
@@ -2355,8 +2317,10 @@ export interface NotificationChannelInstance {
  * stored one"** — an edit that only moves the SMTP host must not require
  * retyping the password, and there is no reveal path to fill it back in.
  */
-export interface NotificationChannelInput
-  extends Omit<NotificationChannelInstance, "id" | "secretSet" | "secret2Set"> {
+export interface NotificationChannelInput extends Omit<
+  NotificationChannelInstance,
+  "id" | "secretSet" | "secret2Set"
+> {
   secrets?: { secret?: string; secret2?: string };
 }
 

@@ -2,7 +2,7 @@
 
 - **Status**: Accepted — 2026-08-12.
 - **Resolves**: [ADR-0021](0021-the-mcp-server-is-a-first-party-route-not-a-plugin.md), "Considered
-  options" → *"OAuth 2.1 / Protected Resource Metadata: deferred, not rejected"*. That deferral is
+  options" → _"OAuth 2.1 / Protected Resource Metadata: deferred, not rejected"_. That deferral is
   now closed; everything else ADR-0021 decided stands unchanged.
 - **Builds on**: [ADR-0015](0015-an-api-token-is-a-principal-with-its-own-capabilities.md) and
   [ADR-0014](0014-better-auth-is-the-live-auth-path.md).
@@ -45,7 +45,7 @@ brings zero new transitive packages.
 
 2. **The consent screen is the token-minting form.** Team, capabilities and scope, with the same
    components Settings → API tokens uses and the `MCP & AI agents` preset selected — one click for
-   anyone who does not want to think about it, everything else behind an *Advanced* affordance. A
+   anyone who does not want to think about it, everything else behind an _Advanced_ affordance. A
    screen that only said "Allow" could not tell a person what they were handing a third party, and
    what they are handing it is a credential.
 
@@ -82,7 +82,7 @@ brings zero new transitive packages.
 6. **Never auto-approve, and the mint requires a fresh approval on file.** No trusted-client cache,
    no consent-skipping, and **`prompt=none` is refused** — the provider honours it, answering a
    top-level GET with a 302 straight back to the client carrying a code, and a `SameSite=Lax`
-   session cookie *is* sent on that navigation. Ordinary OAuth silent re-authentication; wrong here,
+   session cookie _is_ sent on that navigation. Ordinary OAuth silent re-authentication; wrong here,
    because a consent is not a preference a client re-reads, it is the act that mints a credential.
    `interaction_required` is the spec's own answer and a client retries with a real prompt.
 
@@ -126,7 +126,7 @@ brings zero new transitive packages.
   unique index on `(oauth_client_id, user_id)` says the same thing and keeps one list answering
   "who can act in this team".
 - **Better Auth's `referenceId`**: rejected as the carrier. It is populated by a callback that runs
-  *before* the consent form is filled in, so it cannot hold capabilities that have not been chosen
+  _before_ the consent form is filled in, so it cannot hold capabilities that have not been chosen
   yet, and it has no cascade.
 - **JWT access tokens** (the plugin's default): rejected, see decision 7.
 - **A "switch team" tool**: rejected, and it is the thing to reach for when a connection lands in the

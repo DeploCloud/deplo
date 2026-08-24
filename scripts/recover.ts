@@ -80,14 +80,19 @@ async function promptHidden(label: string): Promise<string> {
   const rl = createInterface({ input: process.stdin, output: process.stdout });
   // `output.write` is what readline uses to echo; muting it hides the typing
   // while leaving the prompt itself visible (written before the mute flips on).
-  const out = rl as unknown as { output: NodeJS.WriteStream; _writeToOutput: (s: string) => void };
+  const out = rl as unknown as {
+    output: NodeJS.WriteStream;
+    _writeToOutput: (s: string) => void;
+  };
   process.stdout.write(label);
   let muted = false;
   out._writeToOutput = (s: string) => {
     if (!muted) out.output.write(s);
   };
   muted = true;
-  const answer = await new Promise<string>((resolve) => rl.question("", resolve));
+  const answer = await new Promise<string>((resolve) =>
+    rl.question("", resolve),
+  );
   rl.close();
   process.stdout.write("\n");
   return answer;
@@ -106,7 +111,8 @@ async function findUser(handle: string) {
     })
     .from(usersTable);
   const user = rows.find(
-    (u) => u.username.toLowerCase() === needle || u.email.toLowerCase() === needle,
+    (u) =>
+      u.username.toLowerCase() === needle || u.email.toLowerCase() === needle,
   );
   if (!user)
     fail(
@@ -184,17 +190,19 @@ async function cmdPassword(handle: string, given: string | undefined) {
     )
     .returning({ id: accountTable.id });
   if (updated.length === 0)
-    await getDb().insert(accountTable).values({
-      id: `bacc_${randomBytes(8).toString("hex")}`,
-      userId: user.id,
-      accountId: user.id,
-      providerId: "credential",
-      // `account.issuer` is required since Better Auth 1.7.0 and the sign-in
-      // path matches on it exactly - a recovered password written without it is
-      // a credential that verifies and still cannot log in.
-      issuer: createLocalAccountIssuer("credential"),
-      password: await hashPassword(password),
-    });
+    await getDb()
+      .insert(accountTable)
+      .values({
+        id: `bacc_${randomBytes(8).toString("hex")}`,
+        userId: user.id,
+        accountId: user.id,
+        providerId: "credential",
+        // `account.issuer` is required since Better Auth 1.7.0 and the sign-in
+        // path matches on it exactly - a recovered password written without it is
+        // a credential that verifies and still cannot log in.
+        issuer: createLocalAccountIssuer("credential"),
+        password: await hashPassword(password),
+      });
   // Kill every live session: whoever locked this account out must not keep a cookie.
   await getDb().delete(sessionTable).where(eq(sessionTable.userId, user.id));
 
@@ -264,7 +272,11 @@ async function cmdUnsuspend(handle: string) {
  * to fix itself (the Deplo-host row most of all). Whoever can run this already
  * owns the box, like every other command here.
  */
-async function cmdServerAddress(handle: string, address?: string, portArg?: string) {
+async function cmdServerAddress(
+  handle: string,
+  address?: string,
+  portArg?: string,
+) {
   if (!address) fail(`\`server-address\` needs the new address.\n\n${USAGE}`);
   const rows = await getDb()
     .select({
@@ -296,7 +308,9 @@ async function cmdServerAddress(handle: string, address?: string, portArg?: stri
     .where(eq(serversTable.id, server.id));
   console.log(
     `\n  ${server.name}: ${server.ip} -> ${address}` +
-      (port && server.agentPort != null ? ` (agent port ${server.agentPort} -> ${port})` : "") +
+      (port && server.agentPort != null
+        ? ` (agent port ${server.agentPort} -> ${port})`
+        : "") +
       `\n`,
   );
 }
@@ -311,7 +325,8 @@ async function main() {
     fail(
       `\`${command}\` needs a ${command === "server-address" ? "server" : "username"}.\n\n${USAGE}`,
     );
-  if (command === "server-address") return cmdServerAddress(handle, extra, extra2);
+  if (command === "server-address")
+    return cmdServerAddress(handle, extra, extra2);
   if (command === "password") return cmdPassword(handle, extra);
   if (command === "owner") return cmdOwner(handle);
   if (command === "admin") return cmdAdmin(handle);

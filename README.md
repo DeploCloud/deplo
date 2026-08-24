@@ -33,22 +33,22 @@ lock-in. **The shell stays available for experts and is never required to get fu
 
 ## ✨ Features
 
-| | Feature | What you get |
-| :-: | --- | --- |
-| 🚀 | **Deploys** | Git (GitHub, GitLab, Bitbucket, Gitea or any Git URL), a registry image, a Dockerfile, a Compose file, or a plain upload. Framework detection picks the build for you and every command stays editable. |
-| 🧩 | **Templates** | One-click deploys from a live catalog (WordPress, Ghost, Plausible, n8n, Supabase, MinIO, Uptime Kuma, Postgres, Redis and many more), each with its own variants. |
-| 👥 | **Teams** | Several people, one instance, least privilege. **46 fine-grained Capabilities**, per-team editable Roles, per-folder grants, an Activity trail that answers "who did this and when" in the UI. |
-| 🖥️ | **Any number of servers** | One host or a fleet. Each one runs the server agent and every deploy targets a server you pick. Adding a host is one command, printed for you in the dashboard. |
-| 🔀 | **Preview deployments** | Every pull request gets its own URL and tears itself down on merge. A preview of a fork never receives your secrets. |
-| ⏪ | **Rollbacks** | Re-run any past build's exact image. No rebuild, no waiting, no hoping the dependency tree resolves the same way twice. |
-| 🗄️ | **Storage** | Managed databases (Postgres, MySQL, MariaDB, MongoDB, Redis, ClickHouse), volumes, and file mounts edited in the browser. |
-| 💾 | **Backups** | Scheduled, encrypted at rest with age, to any S3 bucket **or to another server's disk** - so disaster recovery uses hardware you already have instead of a cloud account you do not want. |
-| ⏰ | **Cron** | Scheduled jobs that run in the agent, so restarting the panel never kills a run. |
-| 📊 | **Live monitoring** | Streaming CPU, memory, disk and network per server and per app, with history and anomaly alerts over browser push, email, Discord or a webhook. |
-| 🌐 | **Domains** | Custom domains with automatic Let's Encrypt TLS, path-based routing, basic auth, and a working URL out of the box before you own a domain at all. |
-| 🔑 | **Variables** | Per-app, per-environment and shared groups, encrypted at rest, available at build time and run time. |
-| 🔐 | **Account security** | Passwords checked against known breaches, passkeys, TOTP two-factor that a team or a role can **require**, scoped API tokens that expire. |
-| 🤖 | **MCP server** | Point an AI agent at your infrastructure through the same authorization gates a human gets. Off by default for a new team. |
+|     | Feature                   | What you get                                                                                                                                                                                            |
+| :-: | ------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 🚀  | **Deploys**               | Git (GitHub, GitLab, Bitbucket, Gitea or any Git URL), a registry image, a Dockerfile, a Compose file, or a plain upload. Framework detection picks the build for you and every command stays editable. |
+| 🧩  | **Templates**             | One-click deploys from a live catalog (WordPress, Ghost, Plausible, n8n, Supabase, MinIO, Uptime Kuma, Postgres, Redis and many more), each with its own variants.                                      |
+| 👥  | **Teams**                 | Several people, one instance, least privilege. **46 fine-grained Capabilities**, per-team editable Roles, per-folder grants, an Activity trail that answers "who did this and when" in the UI.          |
+| 🖥️  | **Any number of servers** | One host or a fleet. Each one runs the server agent and every deploy targets a server you pick. Adding a host is one command, printed for you in the dashboard.                                         |
+| 🔀  | **Preview deployments**   | Every pull request gets its own URL and tears itself down on merge. A preview of a fork never receives your secrets.                                                                                    |
+| ⏪  | **Rollbacks**             | Re-run any past build's exact image. No rebuild, no waiting, no hoping the dependency tree resolves the same way twice.                                                                                 |
+| 🗄️  | **Storage**               | Managed databases (Postgres, MySQL, MariaDB, MongoDB, Redis, ClickHouse), volumes, and file mounts edited in the browser.                                                                               |
+| 💾  | **Backups**               | Scheduled, encrypted at rest with age, to any S3 bucket **or to another server's disk** - so disaster recovery uses hardware you already have instead of a cloud account you do not want.               |
+| ⏰  | **Cron**                  | Scheduled jobs that run in the agent, so restarting the panel never kills a run.                                                                                                                        |
+| 📊  | **Live monitoring**       | Streaming CPU, memory, disk and network per server and per app, with history and anomaly alerts over browser push, email, Discord or a webhook.                                                         |
+| 🌐  | **Domains**               | Custom domains with automatic Let's Encrypt TLS, path-based routing, basic auth, and a working URL out of the box before you own a domain at all.                                                       |
+| 🔑  | **Variables**             | Per-app, per-environment and shared groups, encrypted at rest, available at build time and run time.                                                                                                    |
+| 🔐  | **Account security**      | Passwords checked against known breaches, passkeys, TOTP two-factor that a team or a role can **require**, scoped API tokens that expire.                                                               |
+| 🤖  | **MCP server**            | Point an AI agent at your infrastructure through the same authorization gates a human gets. Off by default for a new team.                                                                              |
 
 ## 🚀 Quick start
 
@@ -157,19 +157,19 @@ Decisions behind this live in [`docs/adr/`](docs/adr/), the vocabulary in
 
 Copy [`.env.example`](.env.example) to `.env`. Only two are required:
 
-| Variable | Purpose |
-| --- | --- |
-| `DEPLO_DATABASE_URL` | **Required.** Postgres connection string. The only control-plane data store; also backs Better Auth. The app fails fast without it. |
-| `DEPLO_SECRET` | **Required in production.** Root secret, at least 16 characters, deriving every session-signing and AES-256-GCM encryption key. Rotating it is destructive. |
-| `DEPLO_PUBLIC_URL` | Public URL the dashboard is served from. Sets the cookie `secure` flag and the install command it prints. |
-| `DEPLO_SERVER_IP` | Public IPv4 of this server, used for the zero-config `sslip.io` hostnames. Detected automatically; set it by hand for a manual run. |
-| `DEPLO_HOST_BOOTSTRAP_TOKEN` | One-time token that enrolls the machine Deplo runs on as a server. `install.sh` generates it. Unset means "do not enroll", which is what a dev run wants. |
-| `DEPLO_HOST_NAME` | Name shown on that server's card. Deplo runs in a container and cannot read the host's own hostname. |
-| `DEPLO_TEMPLATES_API_URL` | Template catalog. Defaults to the public one; set it to mirror the catalog yourself. |
-| `DEPLO_ACME_EMAIL` | Email used for Let's Encrypt in the generated installer. |
-| `DEPLO_CERT_RESOLVER` | Name of the Traefik ACME resolver baked into every router. Defaults to `letsencrypt`. |
-| `DEPLO_DATABASE_POOL_MAX` | Cap on the Postgres connection pool. Defaults to 10. |
-| `DEPLO_DATA_DIR` | Host-visible directory for build and upload staging. Not a data store. |
+| Variable                     | Purpose                                                                                                                                                     |
+| ---------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `DEPLO_DATABASE_URL`         | **Required.** Postgres connection string. The only control-plane data store; also backs Better Auth. The app fails fast without it.                         |
+| `DEPLO_SECRET`               | **Required in production.** Root secret, at least 16 characters, deriving every session-signing and AES-256-GCM encryption key. Rotating it is destructive. |
+| `DEPLO_PUBLIC_URL`           | Public URL the dashboard is served from. Sets the cookie `secure` flag and the install command it prints.                                                   |
+| `DEPLO_SERVER_IP`            | Public IPv4 of this server, used for the zero-config `sslip.io` hostnames. Detected automatically; set it by hand for a manual run.                         |
+| `DEPLO_HOST_BOOTSTRAP_TOKEN` | One-time token that enrolls the machine Deplo runs on as a server. `install.sh` generates it. Unset means "do not enroll", which is what a dev run wants.   |
+| `DEPLO_HOST_NAME`            | Name shown on that server's card. Deplo runs in a container and cannot read the host's own hostname.                                                        |
+| `DEPLO_TEMPLATES_API_URL`    | Template catalog. Defaults to the public one; set it to mirror the catalog yourself.                                                                        |
+| `DEPLO_ACME_EMAIL`           | Email used for Let's Encrypt in the generated installer.                                                                                                    |
+| `DEPLO_CERT_RESOLVER`        | Name of the Traefik ACME resolver baked into every router. Defaults to `letsencrypt`.                                                                       |
+| `DEPLO_DATABASE_POOL_MAX`    | Cap on the Postgres connection pool. Defaults to 10.                                                                                                        |
+| `DEPLO_DATA_DIR`             | Host-visible directory for build and upload staging. Not a data store.                                                                                      |
 
 ## 🔐 Security
 

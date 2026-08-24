@@ -1,4 +1,8 @@
-import type { CompletionContext, CompletionResult, Completion } from "@codemirror/autocomplete";
+import type {
+  CompletionContext,
+  CompletionResult,
+  Completion,
+} from "@codemirror/autocomplete";
 import { splitForCompletion } from "@/lib/registry/image-ref";
 
 /**
@@ -71,7 +75,9 @@ export async function imageCompletionSource(
       // --- Completing a TAG (after the ":") ---
       // Forward the fragment as a server-side filter so a specific/old version
       // (e.g. "2.0") surfaces even when it isn't among the newest tags.
-      const filterParam = tagPart ? `&filter=${encodeURIComponent(tagPart)}` : "";
+      const filterParam = tagPart
+        ? `&filter=${encodeURIComponent(tagPart)}`
+        : "";
       const json = (await fetchJson(
         `/api/registry/images?action=tags&image=${encodeURIComponent(namePart)}${filterParam}`,
         signal,

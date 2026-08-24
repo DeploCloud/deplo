@@ -45,7 +45,9 @@ export const PREVIEW_TTL_DAYS_DEFAULT = 3;
 export type PreviewForkPolicy = "deny" | "approve" | "allow";
 
 /** NULL in the column ⇒ the safe middle: visible, but never built unasked. */
-export function forkPolicyOf(value: string | null | undefined): PreviewForkPolicy {
+export function forkPolicyOf(
+  value: string | null | undefined,
+): PreviewForkPolicy {
   return value === "deny" || value === "allow" ? value : "approve";
 }
 
@@ -131,10 +133,18 @@ export async function openOrSyncPreview(
     const settings = await previewSettings(appId);
     if (!settings) return { previewId: null, deploymentId: null };
     if (!settings.enabled) {
-      return { previewId: null, deploymentId: null, refusal: { kind: "previews-off" } };
+      return {
+        previewId: null,
+        deploymentId: null,
+        refusal: { kind: "previews-off" },
+      };
     }
     if (app.source !== "github" || !app.repo) {
-      return { previewId: null, deploymentId: null, refusal: { kind: "not-github" } };
+      return {
+        previewId: null,
+        deploymentId: null,
+        refusal: { kind: "not-github" },
+      };
     }
 
     const existing = await loadPreviewRow(appId, pr.number);
@@ -143,7 +153,11 @@ export async function openOrSyncPreview(
     // `deny` never records it at all; `approve` records it so the pull request is
     // VISIBLE in the list with an approve button, but builds nothing.
     if (pr.isFork && policy === "deny" && !opts.approve) {
-      return { previewId: null, deploymentId: null, refusal: { kind: "fork-denied" } };
+      return {
+        previewId: null,
+        deploymentId: null,
+        refusal: { kind: "fork-denied" },
+      };
     }
     // Per COMMIT, not per pull request. A maintainer approving what they read
     // must not also be approving every commit pushed to that branch afterwards:
@@ -222,34 +236,36 @@ export async function openOrSyncPreview(
         ip: resolveServerIp(server),
       });
       previewId = newId("prv");
-      await getDb().insert(appPreviewsTable).values({
-        id: previewId,
-        appId,
-        prNumber: pr.number,
-        prTitle: pr.title,
-        prAuthor: pr.author,
-        prUrl: pr.url,
-        headBranch: pr.headBranch,
-        headSha: pr.headSha,
-        headRepo: pr.headRepo,
-        headCloneUrl: pr.headCloneUrl,
-        baseBranch: pr.baseBranch,
-        isFork: pr.isFork,
-        approvedAt: approved ? now : null,
-        approvedSha: approved ? pr.headSha : null,
-        deployKey: previewDeployKey(app.slug, pr.number),
-        host,
-        certProvider,
-        // Frozen here, like the host and the deploy key: the renderer reads the
-        // preview ROW, and changing the app's setting must not silently repoint
-        // a preview somebody is already testing.
-        port: settings.port,
-        status: approved ? "queued" : "blocked",
-        state: "open",
-        lastActivityAt: now,
-        createdAt: now,
-        updatedAt: now,
-      });
+      await getDb()
+        .insert(appPreviewsTable)
+        .values({
+          id: previewId,
+          appId,
+          prNumber: pr.number,
+          prTitle: pr.title,
+          prAuthor: pr.author,
+          prUrl: pr.url,
+          headBranch: pr.headBranch,
+          headSha: pr.headSha,
+          headRepo: pr.headRepo,
+          headCloneUrl: pr.headCloneUrl,
+          baseBranch: pr.baseBranch,
+          isFork: pr.isFork,
+          approvedAt: approved ? now : null,
+          approvedSha: approved ? pr.headSha : null,
+          deployKey: previewDeployKey(app.slug, pr.number),
+          host,
+          certProvider,
+          // Frozen here, like the host and the deploy key: the renderer reads the
+          // preview ROW, and changing the app's setting must not silently repoint
+          // a preview somebody is already testing.
+          port: settings.port,
+          status: approved ? "queued" : "blocked",
+          state: "open",
+          lastActivityAt: now,
+          createdAt: now,
+          updatedAt: now,
+        });
     }
 
     // The cap has to be settled PER APP, not per pull request: the lock this
@@ -322,7 +338,8 @@ export async function deployPreviewRow(
     // Per-app section, like the create path: two revives racing would each read an
     // under-cap count and both take a slot.
     await withKeyedLock(`preview-cap:${p.appId}`, async () => {
-      if ((await countOpenPreviews(p.appId)) >= max) await evictToFit(p.appId, max);
+      if ((await countOpenPreviews(p.appId)) >= max)
+        await evictToFit(p.appId, max);
       await getDb()
         .update(appPreviewsTable)
         .set({ status: "queued", tornDownAt: null, updatedAt: nowIso() })
@@ -332,7 +349,8 @@ export async function deployPreviewRow(
   return startDeployment(p.appId, {
     environment: "preview",
     creator: opts.actor,
-    commitMessage: opts.commitMessage || p.prTitle || `Pull request #${p.prNumber}`,
+    commitMessage:
+      opts.commitMessage || p.prTitle || `Pull request #${p.prNumber}`,
     branch: p.headBranch,
     preview: {
       id: p.id,
@@ -395,7 +413,7 @@ export async function closePreview(
     gone
       ? `Destroyed the preview for pull request #${p.prNumber}${app ? ` of ${app.name}` : ""} (${reason})`
       : `Could not reach the server to destroy the preview for pull request #${p.prNumber}` +
-        `${app ? ` of ${app.name}` : ""} — Deplo will retry`,
+          `${app ? ` of ${app.name}` : ""} — Deplo will retry`,
     "system",
     p.appId,
   );
@@ -448,7 +466,12 @@ export async function destroyPreviewsForApp(appId: string): Promise<void> {
     })
     .from(appPreviewsTable)
     .innerJoin(appsTable, eq(appsTable.id, appPreviewsTable.appId))
-    .where(and(eq(appPreviewsTable.appId, appId), isNull(appPreviewsTable.tornDownAt)));
+    .where(
+      and(
+        eq(appPreviewsTable.appId, appId),
+        isNull(appPreviewsTable.tornDownAt),
+      ),
+    );
   // The queue, not `teardownPreviewStack`: these rows are about to CASCADE away
   // with the app, so the stamp they retry on is gone in a moment and nothing
   // would ever name these containers again. `deplo.project` on a preview carries
@@ -695,7 +718,13 @@ export async function previewsDueForReaping(
 export async function openPreviewsForStateCheck(
   limit: number,
 ): Promise<
-  { id: string; appId: string; prNumber: number; installationId: string | null; repo: string | null }[]
+  {
+    id: string;
+    appId: string;
+    prNumber: number;
+    installationId: string | null;
+    repo: string | null;
+  }[]
 > {
   return getDb()
     .select({

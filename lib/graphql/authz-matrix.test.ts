@@ -32,7 +32,12 @@ import { getCurrentUser } from "../auth";
 import { getActiveTeamId, reachableCapabilities } from "../membership";
 import { PROJECT_SCOPED_CAPABILITIES } from "../membership-shared";
 import { createToken } from "../data/tokens";
-import { seedIdentity, TEAM_A, TEAM_B, USER_1 } from "../data/leaf-test-helpers";
+import {
+  seedIdentity,
+  TEAM_A,
+  TEAM_B,
+  USER_1,
+} from "../data/leaf-test-helpers";
 import { ALL_CAPABILITIES, type Capability } from "../types";
 
 /**
@@ -142,7 +147,12 @@ function gateOf(field: GraphQLField<unknown, unknown>): Gate {
   const s = scopes as Record<string, unknown>;
   const any = s.$any as Record<string, unknown> | undefined;
   const cap = (s.capability ?? any?.capability) as Capability | undefined;
-  if (cap) return { kind: "capability", cap, orInstanceAdmin: Boolean(any?.instanceAdmin) };
+  if (cap)
+    return {
+      kind: "capability",
+      cap,
+      orInstanceAdmin: Boolean(any?.instanceAdmin),
+    };
   if (s.instanceAdmin || any?.instanceAdmin) return { kind: "instanceAdmin" };
   if (s.loggedIn || any?.loggedIn) return { kind: "loggedIn" };
   return { kind: "none" };
@@ -311,7 +321,8 @@ async function call(p: Principal, e: Endpoint): Promise<string[]> {
   }
 }
 
-const refused = (messages: string[]): boolean => messages.some((m) => REFUSED.test(m));
+const refused = (messages: string[]): boolean =>
+  messages.some((m) => REFUSED.test(m));
 
 /**
  * Endpoints that legitimately need MORE than their declared capability, listed
@@ -405,7 +416,11 @@ test("every capability the catalogue offers is either enforced on the API or enf
   const orphans = ALL_CAPABILITIES.filter(
     (c) => !byCapability.has(c) && !enforcedBelow.has(c),
   );
-  assert.deepEqual(orphans, [], `capabilities no field is gated on: ${orphans.join(", ")}`);
+  assert.deepEqual(
+    orphans,
+    [],
+    `capabilities no field is gated on: ${orphans.join(", ")}`,
+  );
 });
 
 /* ------------------------------------------------------------------ */
@@ -424,7 +439,11 @@ for (const [cap, endpoints] of byCapability) {
     for (const e of endpoints) {
       if (!refused(await call(principal, e))) leaks.push(e.label);
     }
-    assert.deepEqual(leaks, [], `reachable without ${cap}: ${leaks.join(", ")}`);
+    assert.deepEqual(
+      leaks,
+      [],
+      `reachable without ${cap}: ${leaks.join(", ")}`,
+    );
   });
 
   test(`${cap}: a member holding only it is admitted by all ${endpoints.length} of its endpoints`, async () => {
@@ -489,7 +508,9 @@ for (const [cap, endpoints] of byCapability) {
 /* 3. The instance-admin surface                                        */
 /* ------------------------------------------------------------------ */
 
-const ADMIN_ENDPOINTS = EXECUTABLE.filter((e) => e.gate.kind === "instanceAdmin");
+const ADMIN_ENDPOINTS = EXECUTABLE.filter(
+  (e) => e.gate.kind === "instanceAdmin",
+);
 
 test(`a member holding all ${ALL_CAPABILITIES.length} capabilities reaches none of the ${ADMIN_ENDPOINTS.length} instance-admin endpoints`, async () => {
   await reset(ALL_CAPABILITIES);
@@ -552,10 +573,14 @@ async function open(p: Principal, e: Endpoint): Promise<string[]> {
   );
   if (!(Symbol.asyncIterator in result))
     return (result.errors ?? []).map((err) => err.message);
-  const it = result as AsyncGenerator<{ errors?: readonly { message: string }[] }>;
+  const it = result as AsyncGenerator<{
+    errors?: readonly { message: string }[];
+  }>;
   try {
     const first = await runWithIdentity(p.identity, () => it.next());
-    return (first.value?.errors ?? []).map((err: { message: string }) => err.message);
+    return (first.value?.errors ?? []).map(
+      (err: { message: string }) => err.message,
+    );
   } finally {
     // Close it so the pubSub listener doesn't outlive the test.
     await it.return?.(undefined as never);
@@ -604,7 +629,10 @@ test("a token granted everything can do nothing its creator has since lost", asy
   // materialised, so the clamp has to bite on the next request.
   await setCaps([]);
   const principal = await asToken(raw);
-  assert.ok(principal, "the token still authenticates - it is the reach that narrows");
+  assert.ok(
+    principal,
+    "the token still authenticates - it is the reach that narrows",
+  );
   assert.deepEqual(
     principal.ctx.capabilities,
     ["view"],
@@ -616,7 +644,11 @@ test("a token granted everything can do nothing its creator has since lost", asy
       if (!refused(await call(principal, e))) leaks.push(`${e.label} (${cap})`);
     }
   }
-  assert.deepEqual(leaks, [], `reachable after the creator lost everything: ${leaks.join(", ")}`);
+  assert.deepEqual(
+    leaks,
+    [],
+    `reachable after the creator lost everything: ${leaks.join(", ")}`,
+  );
 });
 
 /* ------------------------------------------------------------------ */
@@ -653,7 +685,11 @@ test("a token narrowed to one project loses every capability that has no per-pro
       if (!refused(await call(principal, e))) leaks.push(`${e.label} (${cap})`);
     }
   }
-  assert.deepEqual(leaks, [], `a project-scoped token reached: ${leaks.join(", ")}`);
+  assert.deepEqual(
+    leaks,
+    [],
+    `a project-scoped token reached: ${leaks.join(", ")}`,
+  );
 });
 
 /* ------------------------------------------------------------------ */
@@ -678,7 +714,11 @@ test(`an anonymous caller is refused by all ${EXECUTABLE.length - PUBLIC_FIELDS.
     if (PUBLIC_FIELDS.has(e.label)) continue;
     if (!refused(await call(principal, e))) leaks.push(e.label);
   }
-  assert.deepEqual(leaks, [], `answered an anonymous caller: ${leaks.join(", ")}`);
+  assert.deepEqual(
+    leaks,
+    [],
+    `answered an anonymous caller: ${leaks.join(", ")}`,
+  );
 });
 
 test("a rejected bearer token is anonymous, not the member it names", async () => {
@@ -697,7 +737,11 @@ test("a rejected bearer token is anonymous, not the member it names", async () =
         headers: { authorization: `Bearer ${bad}` },
       }),
     );
-    assert.equal(ctx.viewer, null, `"${bad.slice(0, 16)}…" must not authenticate`);
+    assert.equal(
+      ctx.viewer,
+      null,
+      `"${bad.slice(0, 16)}…" must not authenticate`,
+    );
     assert.equal(ctx.identity, null);
     assert.deepEqual(ctx.capabilities, []);
   }
@@ -706,7 +750,10 @@ test("a rejected bearer token is anonymous, not the member it names", async () =
 test("a token stops resolving the moment its creator leaves the team", async () => {
   await reset(ALL_CAPABILITIES);
   const raw = await mintToken(ALL_CAPABILITIES, USER_M);
-  assert.ok(await asToken(raw), "fixture: it resolves while the membership stands");
+  assert.ok(
+    await asToken(raw),
+    "fixture: it resolves while the membership stands",
+  );
   await pg.exec(`delete from memberships where user_id = '${USER_M}';`);
   assert.equal(await asToken(raw), null, "no membership, no principal");
 });

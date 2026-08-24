@@ -105,7 +105,11 @@ export function AppControls({
       <>
         <CapabilityTip cap="control_apps">
           <Button variant="outline" size="sm" disabled>
-            {stopped ? <Play className="size-4" /> : <Square className="size-4" />}
+            {stopped ? (
+              <Play className="size-4" />
+            ) : (
+              <Square className="size-4" />
+            )}
             {stopped ? "Start" : "Stop"}
           </Button>
         </CapabilityTip>

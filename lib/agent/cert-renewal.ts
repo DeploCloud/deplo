@@ -63,7 +63,10 @@ export async function renewAgentCertIfDue(
   try {
     const hello = await conn.hello();
     if (!hello.capabilities?.includes(CERT_RENEWAL_CAPABILITY))
-      return { renewed: false, reason: "agent lacks the cert-renewal capability" };
+      return {
+        renewed: false,
+        reason: "agent lacks the cert-renewal capability",
+      };
 
     // 1. Agent mints a fresh keypair + CSR (its private key never leaves the host).
     const { csrPem } = await conn.renewalCsr();
@@ -71,8 +74,12 @@ export async function renewAgentCertIfDue(
     const dialHosts = [row.ip, row.host].filter(Boolean) as string[];
     const signed = await signAgentCsr(csrPem, dialHosts);
     // 3. Agent installs + hot-swaps; only then do we repin.
-    const res = await conn.installRenewedCert({ certPem: signed.certPem, caPem: "" });
-    if (!res.ok) return { renewed: false, reason: `agent rejected install: ${res.error}` };
+    const res = await conn.installRenewedCert({
+      certPem: signed.certPem,
+      caPem: "",
+    });
+    if (!res.ok)
+      return { renewed: false, reason: `agent rejected install: ${res.error}` };
     await getDb()
       .update(serversTable)
       .set({
@@ -80,7 +87,10 @@ export async function renewAgentCertIfDue(
         agentCertFingerprint: signed.fingerprint,
       })
       .where(eq(serversTable.id, serverId));
-    return { renewed: true, reason: `renewed until ${notAfterOf(signed.certPem)}` };
+    return {
+      renewed: true,
+      reason: `renewed until ${notAfterOf(signed.certPem)}`,
+    };
   } finally {
     conn.close();
   }
@@ -95,16 +105,25 @@ export async function renewAgentCertIfDue(
  * current address dialable. Throws on any failure (no window check, no
  * capability-as-reason softening: the caller decides how soft the failure is).
  */
-export async function renewAgentCert(serverId: string, dialHosts: string[]): Promise<void> {
+export async function renewAgentCert(
+  serverId: string,
+  dialHosts: string[],
+): Promise<void> {
   const conn = await connectAgent(serverId);
   try {
     const hello = await conn.hello();
     if (!hello.capabilities?.includes(CERT_RENEWAL_CAPABILITY))
-      throw new Error("the agent does not support certificate renewal - update it first");
+      throw new Error(
+        "the agent does not support certificate renewal - update it first",
+      );
     const { csrPem } = await conn.renewalCsr();
     const signed = await signAgentCsr(csrPem, dialHosts);
-    const res = await conn.installRenewedCert({ certPem: signed.certPem, caPem: "" });
-    if (!res.ok) throw new Error(`agent rejected the renewed certificate: ${res.error}`);
+    const res = await conn.installRenewedCert({
+      certPem: signed.certPem,
+      caPem: "",
+    });
+    if (!res.ok)
+      throw new Error(`agent rejected the renewed certificate: ${res.error}`);
     await getDb()
       .update(serversTable)
       .set({

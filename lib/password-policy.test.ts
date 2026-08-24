@@ -15,7 +15,11 @@ test("passwordMeetsPolicy: every rule must hold", () => {
   assert.equal(passwordMeetsPolicy("NOLOWER123!"), false, "no lowercase");
   assert.equal(passwordMeetsPolicy("NoDigits!!"), false, "no number");
   assert.equal(passwordMeetsPolicy("NoSpecial123"), false, "no special char");
-  assert.equal(passwordMeetsPolicy(`Aa1!${"x".repeat(200)}`), false, "over the cap");
+  assert.equal(
+    passwordMeetsPolicy(`Aa1!${"x".repeat(200)}`),
+    false,
+    "over the cap",
+  );
   // "Special" is anything non-alphanumeric, not a hand-picked punctuation set.
   assert.equal(passwordMeetsPolicy("Str0ng~pass"), true);
   assert.equal(passwordMeetsPolicy("Str0ng pass"), true);

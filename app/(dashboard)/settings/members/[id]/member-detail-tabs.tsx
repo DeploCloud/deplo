@@ -138,7 +138,11 @@ export function MemberDetailTabs({
     // parameter. Clicking between tabs faster than those renders finish left a
     // request per click queued behind the last, and the page got slower the more
     // you clicked. `useSearchParams` still sees this, so `active` follows.
-    window.history.replaceState(null, "", s ? `?${s}` : window.location.pathname);
+    window.history.replaceState(
+      null,
+      "",
+      s ? `?${s}` : window.location.pathname,
+    );
   }
 
   const savedRole = roles.find((r) => r.id === access.roleId) ?? null;
@@ -227,8 +231,7 @@ export function MemberDetailTabs({
   // Only the crown hands the crown on, and it can go to anybody in the team: the
   // transfer puts them on the Owner role itself, so there is no rank to arrange
   // first (lib/data/team-ownership.ts).
-  const canTransfer =
-    viewerIsPrimaryOwner && !isSelf && !member.isPrimaryOwner;
+  const canTransfer = viewerIsPrimaryOwner && !isSelf && !member.isPrimaryOwner;
   // What the ticked nodes can actually carry. A team-wide permission stays in
   // the list (struck through) because widening their reach brings it back, but
   // a node grant refuses it outright — so the payload is bounded here rather
@@ -444,7 +447,6 @@ export function MemberDetailTabs({
                 />
               </CardContent>
             </Card>
-
           </TabsContent>
 
           {!readOnly && onTeamTab && (
@@ -811,9 +813,12 @@ export function buildGrants(
       const own = setOf.get(id)?.capabilities;
       const caps = own && !capsEdited ? own : authored;
       const key = [...caps].sort().join(",");
-      const entry =
-        out.get(key) ??
-        { projectIds: [], folderIds: [], appIds: [], capabilities: caps };
+      const entry = out.get(key) ?? {
+        projectIds: [],
+        folderIds: [],
+        appIds: [],
+        capabilities: caps,
+      };
       if (kind === "project") entry.projectIds.push(id);
       else if (kind === "folder") entry.folderIds.push(id);
       else entry.appIds.push(id);

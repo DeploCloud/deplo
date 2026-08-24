@@ -150,8 +150,16 @@ function defaultFixtures(): Fixtures {
             isDefault: true,
             env: "ENV_LEVEL=yes\n",
             applications: [
-              { applicationId: "dok-app-web", name: "blink-web", serverId: null },
-              { applicationId: "dok-app-api", name: "blink-api", serverId: null },
+              {
+                applicationId: "dok-app-web",
+                name: "blink-web",
+                serverId: null,
+              },
+              {
+                applicationId: "dok-app-api",
+                name: "blink-api",
+                serverId: null,
+              },
             ],
             compose: [],
             // A real `project.all` gives a database NOTHING but its id - no name,
@@ -168,7 +176,9 @@ function defaultFixtures(): Fixtures {
             environmentId: "dok-env-stg",
             name: "staging",
             applications: [],
-            compose: [{ composeId: "dok-cmp-1", name: "other-stack", serverId: null }],
+            compose: [
+              { composeId: "dok-cmp-1", name: "other-stack", serverId: null },
+            ],
             libsql: [{ libsqlId: "dok-libsql-1", name: "other-libsql" }],
           },
         ],
@@ -265,7 +275,9 @@ const APPLICATIONS: Record<string, unknown> = {
         mountPath: "/app/uploads",
       },
     ],
-    ports: [{ portId: "p-1", publishedPort: 8080, targetPort: 3000, protocol: "tcp" }],
+    ports: [
+      { portId: "p-1", publishedPort: 8080, targetPort: 3000, protocol: "tcp" },
+    ],
     security: [],
   },
   "dok-app-api": {
@@ -361,8 +373,14 @@ test("scan describes the whole tree without writing anything", async () => {
   const blink = plan.projects[0];
   assert.equal(blink.exists, false);
   assert.deepEqual(
-    blink.environments[0].services.map((s) => `${s.kind}:${s.name}:${s.status}`),
-    ["application:blink-web:new", "application:blink-api:new", "postgres:blink-db:new"],
+    blink.environments[0].services.map(
+      (s) => `${s.kind}:${s.name}:${s.status}`,
+    ),
+    [
+      "application:blink-web:new",
+      "application:blink-api:new",
+      "postgres:blink-db:new",
+    ],
   );
 
   // Nothing was created by a scan.
@@ -384,7 +402,10 @@ test("a Dokploy machine Deplo already manages is recognised by its address", asy
   assert.equal(own.ipAddress, "dokploy.acme.test");
   assert.equal(own.deploServerId, SERVER_1);
   // Its remote server is still a machine Deplo has never heard of.
-  assert.equal(plan.servers.find((s) => s.sourceId === "dok-srv-1")!.deploServerId, null);
+  assert.equal(
+    plan.servers.find((s) => s.sourceId === "dok-srv-1")!.deploServerId,
+    null,
+  );
 });
 
 test("a machine already registered as a MIGRATION SOURCE is still recognised", async () => {
@@ -396,11 +417,18 @@ test("a machine already registered as a MIGRATION SOURCE is still recognised", a
   const { eq } = await import("drizzle-orm");
   await db
     .update(serversTable)
-    .set({ ip: "dokploy.acme.test", host: "dokploy.acme.test", importOnly: true })
+    .set({
+      ip: "dokploy.acme.test",
+      host: "dokploy.acme.test",
+      importOnly: true,
+    })
     .where(eq(serversTable.id, SERVER_1));
 
   const plan = await asOwner(() => scanDokploy(CONNECT));
-  assert.equal(plan.servers.find((s) => s.sourceId === "")!.deploServerId, SERVER_1);
+  assert.equal(
+    plan.servers.find((s) => s.sourceId === "")!.deploServerId,
+    SERVER_1,
+  );
 });
 
 test("Dokploy on the machine Deplo runs on resolves to the agent already there", async () => {
@@ -424,13 +452,19 @@ test("Dokploy on the machine Deplo runs on resolves to the agent already there",
     // mentions. Address matching alone cannot see it.
     delete process.env.DEPLO_PUBLIC_URL;
     const plan = await asOwner(() => scanDokploy(CONNECT));
-    assert.equal(plan.servers.find((s) => s.sourceId === "")!.deploServerId, null);
+    assert.equal(
+      plan.servers.find((s) => s.sourceId === "")!.deploServerId,
+      null,
+    );
 
     // Once that name is one of THIS instance's own addresses, the two are the
     // same machine and the agent to use is the one already installed here.
     process.env.DEPLO_PUBLIC_URL = URL_BASE;
     const again = await asOwner(() => scanDokploy(CONNECT));
-    assert.equal(again.servers.find((s) => s.sourceId === "")!.deploServerId, SERVER_1);
+    assert.equal(
+      again.servers.find((s) => s.sourceId === "")!.deploServerId,
+      SERVER_1,
+    );
   } finally {
     if (beforeIp === undefined) delete process.env.DEPLO_SERVER_IP;
     else process.env.DEPLO_SERVER_IP = beforeIp;
@@ -472,7 +506,9 @@ test("a placement naming a migration source is refused, on both axes", async () 
   assert.equal(byName.get("blink-web")?.serverId, SERVER_1);
   assert.equal(byName.get("blink-api")?.buildServerId, null);
   assert.equal(
-    result.items.filter((i) => i.sourceKind === "server" && i.outcome === "manual").length,
+    result.items.filter(
+      (i) => i.sourceKind === "server" && i.outcome === "manual",
+    ).length,
     2,
     "one line per dropped pick",
   );
@@ -510,7 +546,10 @@ test("scan reports the compose rewrite and the missing git credential up front",
   // Both addresses the app answers on are listed - the throwaway one included,
   // because it IS an address today and the review has to say what happens to it:
   // it cannot come across, so Deplo re-hosts its route on one of its own.
-  assert.deepEqual(web.domains, ["blink-web-abc.traefik.me", "blink.acme.test"]);
+  assert.deepEqual(web.domains, [
+    "blink-web-abc.traefik.me",
+    "blink.acme.test",
+  ]);
   assert.match(web.notes.join(" "), /Dokploy's own temporary address/);
 });
 
@@ -594,17 +633,18 @@ test("an app never arrives with fewer addresses than it had", async () => {
   // Neither name came across - one belongs to another team, one to another
   // machine - so both rows are addresses Deplo minted, and both remember why.
   for (const d of doms) assert.match(d.name, /\.nip\.io$/);
-  assert.deepEqual(
-    doms.map((d) => d.importedFrom).sort(),
-    ["blink-web-abc.traefik.me", "blink.acme.test"],
-  );
+  assert.deepEqual(doms.map((d) => d.importedFrom).sort(), [
+    "blink-web-abc.traefik.me",
+    "blink.acme.test",
+  ]);
   // And the routes are intact: the port is what Dokploy served on, not a default.
   for (const d of doms) assert.equal(d.port, 3000);
 });
 
 test("scan refuses an address that is not this team's business", async () => {
   await assert.rejects(
-    () => asOwner(() => scanDokploy({ url: "http://127.0.0.1:3000", apiKey: "k" })),
+    () =>
+      asOwner(() => scanDokploy({ url: "http://127.0.0.1:3000", apiKey: "k" })),
     /private or internal address/,
   );
 });
@@ -622,7 +662,9 @@ test("scan surfaces Dokploy's own words when the key is wrong", async () => {
 /* ------------------------------------------------------------------ */
 
 test("a project lands complete: project, environment, apps, variables", async () => {
-  const runId = await asOwner(() => beginDokployImport({ url: URL_BASE, orgName: "Acme Inc" }));
+  const runId = await asOwner(() =>
+    beginDokployImport({ url: URL_BASE, orgName: "Acme Inc" }),
+  );
 
   const result = await importProject(runId, "dok-prj-blink");
 
@@ -630,10 +672,7 @@ test("a project lands complete: project, environment, apps, variables", async ()
   assert.ok(result.created >= 5, `created ${result.created}`);
 
   const apps = await db.select().from(appsTable);
-  assert.deepEqual(
-    apps.map((a) => a.name).sort(),
-    ["blink-api", "blink-web"],
-  );
+  assert.deepEqual(apps.map((a) => a.name).sort(), ["blink-api", "blink-web"]);
 
   const web = apps.find((a) => a.name === "blink-web")!;
   // Nothing was deployed: the source instance is still serving those hostnames.
@@ -654,10 +693,12 @@ test("a project lands complete: project, environment, apps, variables", async ()
     .from(envVarsTable)
     .where(eq(envVarsTable.appId, web.id));
   const byKey = new Map(env.map((e) => [e.key, e]));
-  assert.deepEqual(
-    [...byKey.keys()].sort(),
-    ["DATABASE_URL", "NEXT_PUBLIC_SITE", "NODE_ENV", "OLD_ADDRESS"],
-  );
+  assert.deepEqual([...byKey.keys()].sort(), [
+    "DATABASE_URL",
+    "NEXT_PUBLIC_SITE",
+    "NODE_ENV",
+    "OLD_ADDRESS",
+  ]);
   assert.equal(byKey.get("DATABASE_URL")!.type, "plain");
   assert.equal(byKey.get("NODE_ENV")!.type, "plain");
 
@@ -754,7 +795,9 @@ test("an icon deplo would refuse is dropped, and the app still lands", async () 
   const web = { ...(APPLICATIONS["dok-app-web"] as Record<string, unknown>) };
   // A remote URL: the shape the dashboard's CSP refuses to load at all.
   web.icon = "https://templates.dokploy.com/blueprints/n8n/logo.png";
-  __setDokployFetchForTest(routingFetch({ applications: { "dok-app-web": web } }));
+  __setDokployFetchForTest(
+    routingFetch({ applications: { "dok-app-web": web } }),
+  );
 
   const runId = await asOwner(() => beginDokployImport({ url: URL_BASE }));
   await importProject(runId, "dok-prj-blink");
@@ -783,7 +826,10 @@ test("the primary domain is the real hostname, not Dokploy's throwaway one", asy
   assert.equal(primary.certProvider, "letsencrypt");
   // The throwaway name itself never comes across - it points at the OTHER
   // platform's machine.
-  assert.equal(doms.some((d) => d.name.endsWith(".traefik.me")), false);
+  assert.equal(
+    doms.some((d) => d.name.endsWith(".traefik.me")),
+    false,
+  );
 
   // ...but the app still answers on TWO addresses, because it answered on two
   // over there. The throwaway one is RE-HOSTED: a temporary address of Deplo's,
@@ -903,7 +949,10 @@ test("a project's and an environment's own variables become linked shared variab
   await importProject(runId, "dok-prj-blink");
 
   const shared = await db.select().from(sharedVarsTable);
-  assert.deepEqual(shared.map((s) => s.key).sort(), ["ENV_LEVEL", "SHARED_TOKEN"]);
+  assert.deepEqual(shared.map((s) => s.key).sort(), [
+    "ENV_LEVEL",
+    "SHARED_TOKEN",
+  ]);
   // The LINK is what injects (ADR-0012) — a scope alone would inject nothing.
   const links = await db.select().from(sharedVarAppsTable);
   assert.ok(links.length >= 2, `expected app links, got ${links.length}`);
@@ -921,10 +970,11 @@ test("an environment Dokploy calls production reuses the one Deplo already made"
   const projectId = (await db.select().from(appsTable))[0].projectId!;
   const envs = await asOwner(() => listEnvironmentsForProject(projectId));
   // Deplo seeds Development / Preview / Production; nothing was added beside them.
-  assert.deepEqual(
-    envs.map((e) => e.name).sort(),
-    ["Development", "Preview", "Production"],
-  );
+  assert.deepEqual(envs.map((e) => e.name).sort(), [
+    "Development",
+    "Preview",
+    "Production",
+  ]);
 });
 
 test("running the same import again creates nothing", async () => {
@@ -946,7 +996,10 @@ test("one service Dokploy will not return does not stop the others", async () =>
   const result = await importProject(runId, "dok-prj-blink");
 
   const apps = await db.select().from(appsTable);
-  assert.deepEqual(apps.map((a) => a.name), ["blink-web"]);
+  assert.deepEqual(
+    apps.map((a) => a.name),
+    ["blink-web"],
+  );
   assert.match(
     result.items.find((i) => i.sourceName === "blink-api")!.message!,
     /Dokploy request failed \(500\)/,
@@ -989,7 +1042,9 @@ test("only the picked services come over, and the rest are not even read", async
   // Unpicked is not an outcome: nothing about them is in the report, and their
   // detail is never fetched - the filter runs before the expensive call.
   assert.equal(
-    result.items.some((i) => i.sourceName === "blink-web" || i.sourceKind === "postgres"),
+    result.items.some(
+      (i) => i.sourceName === "blink-web" || i.sourceKind === "postgres",
+    ),
     false,
   );
   assert.equal(calls.includes("postgres.one"), false);
@@ -1007,7 +1062,11 @@ test("each app lands on the server it was placed on, and builds where it was tol
       serviceIds: ["dok-app-web", "dok-app-api"],
       placements: [
         { serviceId: "dok-app-web", serverId: SERVER_1 },
-        { serviceId: "dok-app-api", serverId: SERVER_2, buildServerId: SERVER_1 },
+        {
+          serviceId: "dok-app-api",
+          serverId: SERVER_2,
+          buildServerId: SERVER_1,
+        },
       ],
     }),
   );
@@ -1029,7 +1088,9 @@ test("a placement naming a server this team cannot reach is refused, not used", 
       runId,
       projectId: "dok-prj-blink",
       serviceIds: ["dok-app-web"],
-      placements: [{ serviceId: "dok-app-web", serverId: "srv_from_another_team" }],
+      placements: [
+        { serviceId: "dok-app-web", serverId: "srv_from_another_team" },
+      ],
     }),
   );
 
@@ -1087,7 +1148,9 @@ test("a project that is already here is reused, not duplicated", async () => {
 /* ------------------------------------------------------------------ */
 
 test("the run keeps the report after the tab is gone", async () => {
-  const runId = await asOwner(() => beginDokployImport({ url: URL_BASE, orgName: "Acme Inc" }));
+  const runId = await asOwner(() =>
+    beginDokployImport({ url: URL_BASE, orgName: "Acme Inc" }),
+  );
   await importProject(runId, "dok-prj-blink");
   await asOwner(() => finishDokployImport(runId));
 
@@ -1113,7 +1176,9 @@ test("the run keeps the report after the tab is gone", async () => {
 
 /** Register a migration source the way the wizard's Machines step does. */
 async function seedSource(name: string, host: string, withAgent = false) {
-  const { server } = await asOwner(() => addServer({ name, host, importOnly: true }));
+  const { server } = await asOwner(() =>
+    addServer({ name, host, importOnly: true }),
+  );
   if (withAgent)
     await db
       .update(serversTable)
@@ -1313,7 +1378,10 @@ function routingFetch(
     const url = new URL(input);
     const procedure = url.pathname.replace(/^\/api\//, "");
     calls.push(procedure);
-    assert.equal((init?.headers as Record<string, string>)["x-api-key"], CONNECT.apiKey);
+    assert.equal(
+      (init?.headers as Record<string, string>)["x-api-key"],
+      CONNECT.apiKey,
+    );
 
     if (procedure === "application.one") {
       const id = url.searchParams.get("applicationId") ?? "";
@@ -1406,8 +1474,8 @@ const dbRowOf = async (name: string) =>
   (await db.select().from(databasesTable)).find((d) => d.name === name);
 
 const notesOf = async (runId: string) =>
-  (await asOwner(() => getDokployImport(runId)))!
-    .items.filter((i) => i.sourceKind === "postgres")
+  (await asOwner(() => getDokployImport(runId)))!.items
+    .filter((i) => i.sourceKind === "postgres")
     .map((i) => i.message ?? "")
     .join(" | ");
 
@@ -1538,7 +1606,10 @@ test("a revert removes what the run created", async () => {
   const runId = await asOwner(() => beginDokployImport({ url: URL_BASE }));
   await importProject(runId, "dok-prj-blink");
   await settleProvisioning(db);
-  assert.ok((await db.select().from(appsTable)).length > 0, "nothing was imported");
+  assert.ok(
+    (await db.select().from(appsTable)).length > 0,
+    "nothing was imported",
+  );
 
   const result = await asOwner(() => revertDokployImport(runId));
   await settleProvisioning(db);
@@ -1590,7 +1661,10 @@ test("a revert of somebody else's run is not found", async () => {
   await settleProvisioning(db);
 
   await assert.rejects(
-    () => runWithIdentity({ userId: USER_1, teamId: TEAM_B }, () => revertDokployImport(runId)),
+    () =>
+      runWithIdentity({ userId: USER_1, teamId: TEAM_B }, () =>
+        revertDokployImport(runId),
+      ),
     /no longer belongs|not found|permission/i,
   );
   // And nothing moved.
@@ -1617,11 +1691,17 @@ test("stopping a run closes it WITHOUT taking the agents off the source", async 
   assert.equal(rows[0].status, "stopped");
   // Still ours, still reachable - re-running is how a stopped migration is
   // resumed, and it cannot be if the agent has been uninstalled.
-  assert.ok(await asOwner(() => getServerById(SOURCE)), "the source was removed");
+  assert.ok(
+    await asOwner(() => getServerById(SOURCE)),
+    "the source was removed",
+  );
 
   // Idempotent, and it never overwrites a verdict a run reached on its own.
   await asOwner(() => stopDokployImport(runId));
-  const again = await db.select().from(runsTable).where(eq(runsTable.id, runId));
+  const again = await db
+    .select()
+    .from(runsTable)
+    .where(eq(runsTable.id, runId));
   assert.equal(again[0].status, "stopped");
 });
 
@@ -1632,7 +1712,11 @@ test("stopping a run closes it WITHOUT taking the agents off the source", async 
 test("the live stream follows a run from start to finish, team-scoped", async () => {
   // No runWithIdentity: it is read from an SSE tick, where cookies are gone.
   const gen = activeMigrationStream(TEAM_A);
-  assert.equal((await gen.next()).value, null, "nothing running, nothing to say");
+  assert.equal(
+    (await gen.next()).value,
+    null,
+    "nothing running, nothing to say",
+  );
 
   const pending = gen.next();
   const runId = await asOwner(() =>

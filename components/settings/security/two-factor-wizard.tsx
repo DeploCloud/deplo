@@ -64,7 +64,11 @@ const STEPS: { id: StepId; label: string }[] = [
 /** Per-step heading, icon and one line of orientation. */
 const COPY: Record<
   StepId,
-  { icon: React.ComponentType<{ className?: string }>; title: string; blurb: string }
+  {
+    icon: React.ComponentType<{ className?: string }>;
+    title: string;
+    blurb: string;
+  }
 > = {
   password: {
     icon: Lock,
@@ -163,11 +167,7 @@ export function TwoFactorWizard({
     const res = await gqlAction<
       { startTwoFactorEnrolment: { totpUri: string; recoveryCodes: string[] } },
       { totpUri: string; recoveryCodes: string[] }
-    >(
-      START_ENROLMENT,
-      { password },
-      (d) => d.startTwoFactorEnrolment,
-    );
+    >(START_ENROLMENT, { password }, (d) => d.startTwoFactorEnrolment);
     setPending(false);
     if (!res.ok || !res.data) {
       setError(res.ok ? "Enrolment failed" : res.error);
@@ -237,7 +237,10 @@ export function TwoFactorWizard({
   const locked = step === "codes" || mandatory;
 
   return (
-    <Dialog open={open} onOpenChange={(o) => (o ? onOpenChange(true) : close())}>
+    <Dialog
+      open={open}
+      onOpenChange={(o) => (o ? onOpenChange(true) : close())}
+    >
       {/* Fixed height so the stepper and the footer hold their place instead of
           jumping as the body goes from one field to a QR code to ten codes. */}
       <DialogContent
@@ -277,7 +280,7 @@ export function TwoFactorWizard({
               area and be unreachable. Auto margins collapse to 0 the moment
               there is no free space, so short steps centre and tall ones scroll
               from the top. */}
-          <div className="flex flex-col overflow-y-auto focus-safe-scroll">
+          <div className="focus-safe-scroll flex flex-col overflow-y-auto">
             <div className="m-auto flex w-full max-w-sm shrink-0 flex-col gap-5 py-2">
               {/* One heading block, same shape on every step, so the eye lands
                   in the same place each time the body swaps under it. */}

@@ -98,7 +98,10 @@ export interface FaviconFileLister {
 
 /** The agent calls the byte read needs, narrowed the same way. */
 export interface FaviconFileReader {
-  readFile(slug: string, path: string): Promise<{ text: string | null; size: number }>;
+  readFile(
+    slug: string,
+    path: string,
+  ): Promise<{ text: string | null; size: number }>;
   hello(): Promise<{ capabilities: string[] }>;
   exportFiles(slug: string): AsyncIterable<Buffer>;
 }
@@ -122,7 +125,11 @@ export async function collectAgentFaviconCandidates(
   let listed = 0;
   let seen = 0;
 
-  while (queue.length > 0 && listed < MAX_DIRS_LISTED && found.length < MAX_CANDIDATES) {
+  while (
+    queue.length > 0 &&
+    listed < MAX_DIRS_LISTED &&
+    found.length < MAX_CANDIDATES
+  ) {
     const dir = queue.shift()!;
     listed++;
     let entries;
@@ -305,7 +312,9 @@ export function servedIconTarget(
 ): ServedIconTarget | null {
   const wired = routes.filter((r) => r.service);
   const route =
-    wired.find((r) => r.name.toLowerCase() === primaryHost.toLowerCase()) ?? wired[0] ?? null;
+    wired.find((r) => r.name.toLowerCase() === primaryHost.toLowerCase()) ??
+    wired[0] ??
+    null;
   const fallback = detectDefaultApp(app.compose);
   const service = route?.service ?? fallback?.service ?? "";
   if (!service) return null;
@@ -322,7 +331,8 @@ export function servedIconTarget(
     host: route?.name ?? primaryHost ?? "",
     // A stripped prefix never reaches the container, so the app still serves at
     // its own root; an unstripped one is genuinely part of every URL it sees.
-    basePath: route && route.pathPrefix && !route.stripPrefix ? route.pathPrefix : "",
+    basePath:
+      route && route.pathPrefix && !route.stripPrefix ? route.pathPrefix : "",
   };
 }
 
@@ -436,7 +446,7 @@ export async function detectServedFaviconVia(
   const tried = new Set<string>();
   // One budget for the whole search, so a chain of redirects can't turn a
   // handful of candidates into a crawl.
-  for (let fetches = 0; queue.length > 0 && fetches < MAX_ICON_FETCHES; ) {
+  for (let fetches = 0; queue.length > 0 && fetches < MAX_ICON_FETCHES;) {
     const candidate = queue.shift()!;
     if (candidate.kind === "inline") {
       const bytes = Buffer.from(candidate.bytes);
@@ -458,7 +468,8 @@ export async function detectServedFaviconVia(
         basePath: target.basePath,
         host: target.host,
       });
-      if (next && (next.kind === "inline" || !tried.has(next.path))) queue.unshift(next);
+      if (next && (next.kind === "inline" || !tried.has(next.path)))
+        queue.unshift(next);
       continue;
     }
     // `truncated` means the agent cut the body at the logo cap, so what we hold

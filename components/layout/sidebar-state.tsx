@@ -50,7 +50,11 @@ export function SidebarProvider({ children }: { children: React.ReactNode }) {
     }
     widthRef.current = storedWidth;
     // eslint-disable-next-line react-hooks/set-state-in-effect -- apply persisted UI preference after mount
-    setState({ collapsed: storedCollapsed, hydrated: true, width: storedWidth });
+    setState({
+      collapsed: storedCollapsed,
+      hydrated: true,
+      width: storedWidth,
+    });
   }, []);
 
   const toggle = React.useCallback(() => {

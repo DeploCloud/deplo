@@ -95,7 +95,9 @@ export function RemoveMigrationSources() {
       >(UNINSTALL, { id: s.id }, (d) => d.uninstallServerAgent);
       if (!res.ok) failures.push(`${s.name}: ${res.error}`);
       else if (!res.data?.removed)
-        failures.push(`${s.name}: ${res.data?.error ?? "the agent is still installed"}`);
+        failures.push(
+          `${s.name}: ${res.data?.error ?? "the agent is still installed"}`,
+        );
     }
     setSources(await load());
     router.refresh();
@@ -103,7 +105,10 @@ export function RemoveMigrationSources() {
       // Named, one by one: "some of them failed" is not something anyone can act
       // on. Each one stays in Settings → Servers with its own uninstall command.
       for (const f of failures) toast.error(f);
-      return { ok: false as const, error: `${failures.length} could not be removed` };
+      return {
+        ok: false as const,
+        error: `${failures.length} could not be removed`,
+      };
     }
     return { ok: true as const, data: null };
   }

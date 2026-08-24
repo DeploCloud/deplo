@@ -38,7 +38,10 @@ test("deployed with nothing running is not-running, not Online", () => {
 });
 
 test("the stack vanished from the host: not-running", () => {
-  assert.equal(displayStatus("active", runtime({ total: 0, running: 0 })), "down");
+  assert.equal(
+    displayStatus("active", runtime({ total: 0, running: 0 })),
+    "down",
+  );
 });
 
 test("half a compose stack up: degraded", () => {
@@ -88,7 +91,10 @@ test("a crash loop outranks an unhealthy sidecar", () => {
 test("an unreachable agent proves nothing: keep the stored status", () => {
   // Inventing "down" from a dead agent would just be a different lie.
   assert.equal(
-    displayStatus("active", runtime({ total: 0, running: 0, unreachable: true })),
+    displayStatus(
+      "active",
+      runtime({ total: 0, running: 0, unreachable: true }),
+    ),
     "active",
   );
 });

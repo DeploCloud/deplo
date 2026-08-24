@@ -140,7 +140,8 @@ builder.queryFields((t) => ({
   gitRepos: t.field({
     type: [GitRepoSummaryRef],
     authScopes: { loggedIn: true },
-    description: "Repositories a git connection can reach. Empty for plain git.",
+    description:
+      "Repositories a git connection can reach. Empty for plain git.",
     args: { connectionId: t.arg.string({ required: true }) },
     resolve: async (_r, { connectionId }) => {
       await assertUser();
@@ -166,38 +167,51 @@ builder.queryFields((t) => ({
 /* Mutations                                                           */
 /* ------------------------------------------------------------------ */
 
-const ConnectGitProviderInputRef = builder.inputType("ConnectGitProviderInput", {
-  fields: (t) => ({
-    provider: t.string({ required: true, description: "gitlab | bitbucket | gitea | git." }),
-    label: t.string({ required: true }),
-    baseUrl: t.string({
-      required: true,
-      description:
-        "Origin of the git host. A bare domain becomes https://; a path or embedded credentials are refused.",
+const ConnectGitProviderInputRef = builder.inputType(
+  "ConnectGitProviderInput",
+  {
+    fields: (t) => ({
+      provider: t.string({
+        required: true,
+        description: "gitlab | bitbucket | gitea | git.",
+      }),
+      label: t.string({ required: true }),
+      baseUrl: t.string({
+        required: true,
+        description:
+          "Origin of the git host. A bare domain becomes https://; a path or embedded credentials are refused.",
+      }),
+      username: t.string({
+        required: false,
+        description:
+          "Basic-auth username for the clone. Defaults per provider.",
+      }),
+      token: t.string({
+        required: true,
+        description: "Access token. Write-only.",
+      }),
+      allowPrivateEndpoint: t.boolean({
+        required: false,
+        description:
+          "Allow an address inside the deployment, for a git server on your own network. Instance-admin only; refused otherwise.",
+      }),
     }),
-    username: t.string({
-      required: false,
-      description: "Basic-auth username for the clone. Defaults per provider.",
-    }),
-    token: t.string({ required: true, description: "Access token. Write-only." }),
-    allowPrivateEndpoint: t.boolean({
-      required: false,
-      description:
-        "Allow an address inside the deployment, for a git server on your own network. Instance-admin only; refused otherwise.",
-    }),
-  }),
-});
+  },
+);
 
-const UpdateGitConnectionInputRef = builder.inputType("UpdateGitConnectionInput", {
-  fields: (t) => ({
-    label: t.string({ required: false }),
-    username: t.string({ required: false }),
-    token: t.string({
-      required: false,
-      description: "A replacement token. Omit to keep the stored one.",
+const UpdateGitConnectionInputRef = builder.inputType(
+  "UpdateGitConnectionInput",
+  {
+    fields: (t) => ({
+      label: t.string({ required: false }),
+      username: t.string({ required: false }),
+      token: t.string({
+        required: false,
+        description: "A replacement token. Omit to keep the stored one.",
+      }),
     }),
-  }),
-});
+  },
+);
 
 builder.mutationFields((t) => ({
   connectGitProvider: t.field({
@@ -205,7 +219,9 @@ builder.mutationFields((t) => ({
     authScopes: { capability: "manage_git" },
     description:
       "Store credentials for a git host, after proving the token works against it.",
-    args: { input: t.arg({ type: ConnectGitProviderInputRef, required: true }) },
+    args: {
+      input: t.arg({ type: ConnectGitProviderInputRef, required: true }),
+    },
     resolve: (_r, { input }) =>
       connectGitProvider({
         provider: input.provider,

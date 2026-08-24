@@ -136,7 +136,8 @@ function initialProjectScopes(
   environments: TeamEnvironment[],
 ): Record<string, ProjectScope> {
   const out: Record<string, ProjectScope> = {};
-  for (const id of editing?.projectIds ?? []) out[id] = { mode: "all", envIds: [] };
+  for (const id of editing?.projectIds ?? [])
+    out[id] = { mode: "all", envIds: [] };
   for (const envId of editing?.environmentIds ?? []) {
     const env = environments.find((e) => e.id === envId);
     if (!env) continue;
@@ -144,7 +145,10 @@ function initialProjectScopes(
     // environments; the two-way choice can't say both, so the wider one wins.
     const cur = out[env.projectId];
     if (cur?.mode === "all") continue;
-    out[env.projectId] = { mode: "some", envIds: [...(cur?.envIds ?? []), envId] };
+    out[env.projectId] = {
+      mode: "some",
+      envIds: [...(cur?.envIds ?? []), envId],
+    };
   }
   return out;
 }
@@ -179,7 +183,9 @@ export function SharedVarDialog({
   // the stored value" — so prefilling it is what lets a scope-only edit save.
   const [value, setValue] = React.useState(editing?.value ?? "");
   const [secret, setSecret] = React.useState(editing?.type === "secret");
-  const [scopes, setScopes] = React.useState<ScopeId[]>(() => initialScopes(editing));
+  const [scopes, setScopes] = React.useState<ScopeId[]>(() =>
+    initialScopes(editing),
+  );
   const [projectScopes, setProjectScopes] = React.useState<
     Record<string, ProjectScope>
   >(() => initialProjectScopes(editing, environments));
@@ -225,7 +231,8 @@ export function SharedVarDialog({
     variable: KEY_RE.test(key.trim()),
     scope: scopes.length > 0,
     details:
-      (!picked.projects || projectsReady) && (!picked.apps || appIds.length > 0),
+      (!picked.projects || projectsReady) &&
+      (!picked.apps || appIds.length > 0),
     review: true,
   };
 
@@ -286,7 +293,9 @@ export function SharedVarDialog({
         },
       );
       if (res.ok) {
-        toast.success(editing ? "Shared variable updated" : "Shared variable created");
+        toast.success(
+          editing ? "Shared variable updated" : "Shared variable created",
+        );
       } else {
         onOpenChange(true);
         toast.error(res.error);
@@ -303,14 +312,16 @@ export function SharedVarDialog({
           buttons hold their place instead of jumping around as you move between a
           three-field form and a hundred app cards — only the middle row scrolls. */}
       <DialogContent
-        selfManaged className="h-[min(90vh,52rem)] grid-rows-[auto_minmax(0,1fr)] overflow-hidden sm:max-w-3xl">
+        selfManaged
+        className="h-[min(90vh,52rem)] grid-rows-[auto_minmax(0,1fr)] overflow-hidden sm:max-w-3xl"
+      >
         <DialogHeader>
           <DialogTitle>
             {editing ? "Edit shared variable" : "New shared variable"}
           </DialogTitle>
           <DialogDescription>
-            Write the variable once, then choose who can use it. Apps opt in —
-            a shared variable is never added to an app automatically.
+            Write the variable once, then choose who can use it. Apps opt in — a
+            shared variable is never added to an app automatically.
           </DialogDescription>
         </DialogHeader>
 
@@ -323,143 +334,153 @@ export function SharedVarDialog({
             current={steps[index]}
             // A step is reachable once every step before it is complete — which,
             // when editing, is all of them from the first render.
-            reachable={(s) => steps.slice(0, steps.indexOf(s)).every((p) => valid[p])}
+            reachable={(s) =>
+              steps.slice(0, steps.indexOf(s)).every((p) => valid[p])
+            }
             onSelect={setStep}
           />
 
           {/* The one scrolling row. The form steps keep a readable measure inside the
               wide dialog; only Details (the card grids) uses the full width. */}
-          <div className="overflow-y-auto focus-safe-scroll">
-          {steps[index] === "variable" && (
-            <div className="mx-auto w-full max-w-xl space-y-4">
-              <div className="space-y-2">
-                <FieldLabel info="The variable's name, exposed to apps during builds and at runtime. It can't be renamed once created.">
-                  Key
-                </FieldLabel>
-                <Input
-                  value={key}
-                  onChange={(e) => setKey(e.target.value)}
-                  placeholder="DATABASE_URL"
-                  aria-invalid={keyInvalid}
-                  className={cn(
-                    "font-mono text-sm",
-                    keyInvalid && "border-destructive focus-visible:ring-destructive",
+          <div className="focus-safe-scroll overflow-y-auto">
+            {steps[index] === "variable" && (
+              <div className="mx-auto w-full max-w-xl space-y-4">
+                <div className="space-y-2">
+                  <FieldLabel info="The variable's name, exposed to apps during builds and at runtime. It can't be renamed once created.">
+                    Key
+                  </FieldLabel>
+                  <Input
+                    value={key}
+                    onChange={(e) => setKey(e.target.value)}
+                    placeholder="DATABASE_URL"
+                    aria-invalid={keyInvalid}
+                    className={cn(
+                      "font-mono text-sm",
+                      keyInvalid &&
+                        "border-destructive focus-visible:ring-destructive",
+                    )}
+                    disabled={!!editing}
+                    autoFocus={!editing}
+                  />
+                  {keyInvalid && (
+                    <p className="text-xs text-destructive">
+                      “{key.trim()}” isn&apos;t a valid variable name. Names
+                      must start with a letter or underscore and contain only
+                      letters, digits and underscores.
+                    </p>
                   )}
-                  disabled={!!editing}
-                  autoFocus={!editing}
-                />
-                {keyInvalid && (
-                  <p className="text-xs text-destructive">
-                    “{key.trim()}” isn&apos;t a valid variable name. Names must start
-                    with a letter or underscore and contain only letters, digits and
-                    underscores.
-                  </p>
-                )}
-              </div>
-              <div className="space-y-2">
-                <label className="text-sm font-medium">Value</label>
-                {/* Editing a SECRET, this wizard only changes who receives it: the
+                </div>
+                <div className="space-y-2">
+                  <label className="text-sm font-medium">Value</label>
+                  {/* Editing a SECRET, this wizard only changes who receives it: the
                     value and the type are frozen, so both controls go read-only
                     rather than pretending the save would carry them. */}
-                <Textarea
-                  value={value}
-                  onChange={(e) => setValue(e.target.value)}
-                  placeholder={editing ? "Enter a new value" : "value"}
-                  rows={3}
-                  readOnly={frozen}
-                  className={cn(frozen && "text-muted-foreground")}
-                />
-                {frozen && (
-                  <p className="text-xs text-muted-foreground">
-                    {SECRET_EDIT_BLOCKED} You can still change who it is shared
-                    with.
-                  </p>
+                  <Textarea
+                    value={value}
+                    onChange={(e) => setValue(e.target.value)}
+                    placeholder={editing ? "Enter a new value" : "value"}
+                    rows={3}
+                    readOnly={frozen}
+                    className={cn(frozen && "text-muted-foreground")}
+                  />
+                  {frozen && (
+                    <p className="text-xs text-muted-foreground">
+                      {SECRET_EDIT_BLOCKED} You can still change who it is
+                      shared with.
+                    </p>
+                  )}
+                </div>
+                <div className="flex items-center justify-between rounded-lg border border-border p-3">
+                  <div>
+                    <p className="text-sm font-medium">Secret</p>
+                    <p className="mt-1 text-xs text-muted-foreground">
+                      Hide the value in the UI after saving. It can never be
+                      read back or edited.
+                    </p>
+                  </div>
+                  <Switch
+                    checked={secret}
+                    onCheckedChange={setSecret}
+                    disabled={frozen}
+                  />
+                </div>
+              </div>
+            )}
+
+            {steps[index] === "scope" && (
+              <div className="mx-auto w-full max-w-xl space-y-3">
+                <p className="text-sm text-muted-foreground">
+                  Who is this variable for? Pick one or more — you&apos;ll fill
+                  in the details next. Only “Specific apps” adds it somewhere
+                  right away; the other scopes suggest it and each app opts in
+                  itself.
+                </p>
+                <div
+                  role="group"
+                  aria-label="Shared with"
+                  className="space-y-2"
+                >
+                  {SCOPES.map((s) => (
+                    <ChoiceCard
+                      multi
+                      key={s.id}
+                      title={s.title}
+                      blurb={s.blurb}
+                      icon={s.icon}
+                      selected={scopes.includes(s.id)}
+                      disabled={
+                        (s.id === "projects" && projects.length === 0) ||
+                        (s.id === "apps" && apps.length === 0)
+                      }
+                      disabledNote={
+                        s.id === "projects"
+                          ? "No projects yet."
+                          : "No apps yet."
+                      }
+                      onSelect={() => toggleScope(s.id)}
+                    />
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {steps[index] === "details" && (
+              <div className="space-y-6">
+                {picked.projects && (
+                  <ProjectsSection
+                    projects={projects}
+                    envsByProject={envsByProject}
+                    scopes={projectScopes}
+                    onChange={setProjectScopes}
+                  />
+                )}
+                {picked.projects && picked.apps && (
+                  <hr className="border-border" />
+                )}
+                {picked.apps && (
+                  <AppsSection
+                    apps={apps}
+                    selected={appIds}
+                    onChange={setAppIds}
+                  />
                 )}
               </div>
-              <div className="flex items-center justify-between rounded-lg border border-border p-3">
-                <div>
-                  <p className="text-sm font-medium">Secret</p>
-                  <p className="mt-1 text-xs text-muted-foreground">
-                    Hide the value in the UI after saving. It can never be read back
-                    or edited.
-                  </p>
-                </div>
-                <Switch
-                  checked={secret}
-                  onCheckedChange={setSecret}
-                  disabled={frozen}
-                />
-              </div>
-            </div>
-          )}
+            )}
 
-          {steps[index] === "scope" && (
-            <div className="mx-auto w-full max-w-xl space-y-3">
-              <p className="text-sm text-muted-foreground">
-                Who is this variable for? Pick one or more — you&apos;ll fill in
-                the details next. Only “Specific apps” adds it somewhere right
-                away; the other scopes suggest it and each app opts in itself.
-              </p>
-              <div role="group" aria-label="Shared with" className="space-y-2">
-                {SCOPES.map((s) => (
-                  <ChoiceCard
-                    multi
-                    key={s.id}
-                    title={s.title}
-                    blurb={s.blurb}
-                    icon={s.icon}
-                    selected={scopes.includes(s.id)}
-                    disabled={
-                      (s.id === "projects" && projects.length === 0) ||
-                      (s.id === "apps" && apps.length === 0)
-                    }
-                    disabledNote={
-                      s.id === "projects" ? "No projects yet." : "No apps yet."
-                    }
-                    onSelect={() => toggleScope(s.id)}
-                  />
-                ))}
-              </div>
-            </div>
-          )}
-
-          {steps[index] === "details" && (
-            <div className="space-y-6">
-              {picked.projects && (
-                <ProjectsSection
+            {steps[index] === "review" && (
+              <div className="mx-auto w-full max-w-xl">
+                <Review
+                  varKey={key}
+                  secret={secret}
+                  teamWide={scoped.teamWide}
                   projects={projects}
-                  envsByProject={envsByProject}
-                  scopes={projectScopes}
-                  onChange={setProjectScopes}
-                />
-              )}
-              {picked.projects && picked.apps && (
-                <hr className="border-border" />
-              )}
-              {picked.apps && (
-                <AppsSection
+                  environments={environments}
+                  projectScopes={picked.projects ? projectScopes : {}}
                   apps={apps}
-                  selected={appIds}
-                  onChange={setAppIds}
+                  appIds={scoped.appIds}
                 />
-              )}
-            </div>
-          )}
-
-          {steps[index] === "review" && (
-            <div className="mx-auto w-full max-w-xl">
-              <Review
-                varKey={key}
-                secret={secret}
-                teamWide={scoped.teamWide}
-                projects={projects}
-                environments={environments}
-                projectScopes={picked.projects ? projectScopes : {}}
-                apps={apps}
-                appIds={scoped.appIds}
-              />
-            </div>
-          )}
+              </div>
+            )}
           </div>
 
           <DialogFooter className="sm:justify-between">
@@ -553,7 +574,7 @@ function ProjectsSection({
         </p>
       </div>
       <div className="relative">
-        <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
+        <Search className="pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2 text-muted-foreground" />
         <Input
           value={q}
           onChange={(e) => setQ(e.target.value)}
@@ -647,7 +668,8 @@ function ProjectsSection({
                       )}
                       {scope.mode === "some" && scope.envIds.length === 0 && (
                         <p className="text-xs text-muted-foreground">
-                          Pick at least one environment, or share with all of them.
+                          Pick at least one environment, or share with all of
+                          them.
                         </p>
                       )}
                     </>
@@ -659,7 +681,9 @@ function ProjectsSection({
         })}
       </div>
       {count === 0 && (
-        <p className="text-xs text-muted-foreground">Pick at least one project.</p>
+        <p className="text-xs text-muted-foreground">
+          Pick at least one project.
+        </p>
       )}
     </section>
   );
@@ -683,7 +707,7 @@ function ModeButton({
       onClick={onSelect}
       className={cn(
         "rounded-md border px-2.5 py-1 text-xs transition-colors",
-        "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+        "focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none",
         selected
           ? "border-primary bg-primary/10 font-medium text-foreground"
           : "border-border text-muted-foreground hover:text-foreground",
@@ -735,7 +759,7 @@ function AppsSection({
         </p>
       </div>
       <div className="relative">
-        <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
+        <Search className="pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2 text-muted-foreground" />
         <Input
           value={q}
           onChange={(e) => setQ(e.target.value)}
@@ -770,7 +794,7 @@ function AppsSection({
                 onClick={() => toggle(a.id)}
                 className={cn(
                   "flex items-center gap-3 rounded-lg border p-3 text-left transition-colors",
-                  "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1 focus-visible:ring-offset-background",
+                  "focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1 focus-visible:ring-offset-background focus-visible:outline-none",
                   on
                     ? "border-primary bg-primary/[0.06] ring-1 ring-primary/60"
                     : "border-border hover:border-foreground/20 hover:bg-muted/40",
@@ -849,21 +873,25 @@ function Review({
     scope.mode === "all"
       ? apps.filter((a) => a.projectId === projectId).length
       : apps.filter(
-          (a) => a.environmentId != null && scope.envIds.includes(a.environmentId),
+          (a) =>
+            a.environmentId != null && scope.envIds.includes(a.environmentId),
         ).length;
   const appCount = (n: number) => `${n} app${n === 1 ? "" : "s"}`;
 
   // Keyed by ENTITY id, never by the label: two projects (or an app and a
   // project) may legitimately carry the same name.
-  const projectChips = Object.entries(projectScopes).map(([projectId, scope]) => ({
-    id: projectId,
-    label:
-      (scope.mode === "all"
-        ? `${name(projects, projectId)} · all environments`
-        : `${name(projects, projectId)} · ${scope.envIds
-            .map((id) => environments.find((e) => e.id === id)?.name ?? id)
-            .join(", ")}`) + ` → ${appCount(reach(scope, projectId))} can add it`,
-  }));
+  const projectChips = Object.entries(projectScopes).map(
+    ([projectId, scope]) => ({
+      id: projectId,
+      label:
+        (scope.mode === "all"
+          ? `${name(projects, projectId)} · all environments`
+          : `${name(projects, projectId)} · ${scope.envIds
+              .map((id) => environments.find((e) => e.id === id)?.name ?? id)
+              .join(", ")}`) +
+        ` → ${appCount(reach(scope, projectId))} can add it`,
+    }),
+  );
   const appChips = appIds.map((id) => ({ id, label: name(apps, id) }));
   const teamChips = teamWide
     ? [
@@ -877,7 +905,7 @@ function Review({
   return (
     <div className="space-y-4">
       <div className="space-y-1.5">
-        <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+        <p className="text-xs font-medium tracking-wide text-muted-foreground uppercase">
           Variable
         </p>
         <div className="flex items-center gap-2">
@@ -888,7 +916,7 @@ function Review({
         </div>
       </div>
       <div className="space-y-3">
-        <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+        <p className="text-xs font-medium tracking-wide text-muted-foreground uppercase">
           Available to
         </p>
         <ChipGroup title="Whole team" chips={teamChips} />

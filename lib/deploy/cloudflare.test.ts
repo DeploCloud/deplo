@@ -35,7 +35,11 @@ test("isCloudflareIp: false for non-Cloudflare IPv4 (incl. the CF DNS resolver)"
     "192.168.1.1", // private
     "203.0.113.7", // TEST-NET-3
   ]) {
-    assert.equal(isCloudflareIp(ip), false, `${ip} should NOT be a Cloudflare IP`);
+    assert.equal(
+      isCloudflareIp(ip),
+      false,
+      `${ip} should NOT be a Cloudflare IP`,
+    );
   }
 });
 
@@ -51,7 +55,13 @@ test("isCloudflareIp: /13 and /14 boundaries are exact", () => {
 });
 
 test("isCloudflareIp: malformed input is never a Cloudflare IP", () => {
-  for (const bad of ["", "not-an-ip", "999.999.999.999", "104.16", "104.16.0"]) {
+  for (const bad of [
+    "",
+    "not-an-ip",
+    "999.999.999.999",
+    "104.16",
+    "104.16.0",
+  ]) {
     assert.equal(isCloudflareIp(bad), false, `${JSON.stringify(bad)} → false`);
   }
 });
@@ -75,7 +85,11 @@ test("isCloudflareIp: false for non-Cloudflare IPv6", () => {
     "::1", // loopback
     "2607:f8b0::1", // Google
   ]) {
-    assert.equal(isCloudflareIp(ip), false, `${ip} should NOT be a Cloudflare IPv6`);
+    assert.equal(
+      isCloudflareIp(ip),
+      false,
+      `${ip} should NOT be a Cloudflare IPv6`,
+    );
   }
 });
 
@@ -112,7 +126,12 @@ test("certProviderForDns: a proxied, cert-less domain moves onto cloudflare", ()
 });
 
 test("certProviderForDns: every other status leaves a cert-less domain alone", () => {
-  for (const status of ["valid", "pending", "misconfigured", "error"] as const) {
+  for (const status of [
+    "valid",
+    "pending",
+    "misconfigured",
+    "error",
+  ] as const) {
     assert.equal(
       certProviderForDns(status, "none"),
       "none",

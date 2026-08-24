@@ -1,9 +1,21 @@
 "use client";
 
 import * as React from "react";
-import { EditorView, keymap, lineNumbers, highlightActiveLine, highlightActiveLineGutter, placeholder as cmPlaceholder } from "@codemirror/view";
+import {
+  EditorView,
+  keymap,
+  lineNumbers,
+  highlightActiveLine,
+  highlightActiveLineGutter,
+  placeholder as cmPlaceholder,
+} from "@codemirror/view";
 import { EditorState, Compartment } from "@codemirror/state";
-import { defaultKeymap, history, historyKeymap, indentWithTab } from "@codemirror/commands";
+import {
+  defaultKeymap,
+  history,
+  historyKeymap,
+  indentWithTab,
+} from "@codemirror/commands";
 import {
   syntaxHighlighting,
   HighlightStyle,
@@ -12,11 +24,7 @@ import {
 } from "@codemirror/language";
 import { tags as t } from "@lezer/highlight";
 import { yaml as yamlLang } from "@codemirror/lang-yaml";
-import {
-  linter,
-  lintGutter,
-  type Diagnostic,
-} from "@codemirror/lint";
+import { linter, lintGutter, type Diagnostic } from "@codemirror/lint";
 import {
   autocompletion,
   completionKeymap,
@@ -112,8 +120,7 @@ const deploTheme = EditorView.theme({
     color: "var(--popover-foreground)",
     border: "1px solid var(--border)",
     borderRadius: "0.5rem",
-    boxShadow:
-      "0 4px 12px color-mix(in srgb, black 15%, transparent)",
+    boxShadow: "0 4px 12px color-mix(in srgb, black 15%, transparent)",
     overflow: "hidden",
   },
   ".cm-tooltip.cm-tooltip-lint": { padding: "0" },
@@ -123,8 +130,7 @@ const deploTheme = EditorView.theme({
     borderLeftWidth: "3px",
     borderLeftStyle: "solid",
     whiteSpace: "pre-wrap",
-    fontFamily:
-      "ui-sans-serif, system-ui, -apple-system, Segoe UI, sans-serif",
+    fontFamily: "ui-sans-serif, system-ui, -apple-system, Segoe UI, sans-serif",
     fontSize: "12px",
     lineHeight: "1.4",
   },
@@ -185,23 +191,42 @@ const deploTheme = EditorView.theme({
 
 /** Syntax highlighting in the site's neutral palette (no clashing brights). */
 const deploHighlight = HighlightStyle.define([
-  { tag: [t.definition(t.propertyName), t.propertyName], color: "var(--foreground)", fontWeight: "600" },
-  { tag: [t.keyword, t.operatorKeyword, t.bool, t.null], color: "var(--warning)" },
+  {
+    tag: [t.definition(t.propertyName), t.propertyName],
+    color: "var(--foreground)",
+    fontWeight: "600",
+  },
+  {
+    tag: [t.keyword, t.operatorKeyword, t.bool, t.null],
+    color: "var(--warning)",
+  },
   { tag: [t.string, t.special(t.string)], color: "var(--success)" },
   { tag: [t.number, t.integer, t.float], color: "var(--foreground)" },
-  { tag: [t.comment, t.lineComment, t.blockComment], color: "var(--muted-foreground)", fontStyle: "italic" },
-  { tag: [t.meta, t.punctuation, t.separator], color: "var(--muted-foreground)" },
+  {
+    tag: [t.comment, t.lineComment, t.blockComment],
+    color: "var(--muted-foreground)",
+    fontStyle: "italic",
+  },
+  {
+    tag: [t.meta, t.punctuation, t.separator],
+    color: "var(--muted-foreground)",
+  },
   { tag: [t.atom, t.variableName], color: "var(--foreground)" },
 ]);
 
 /** Convert one Deplo lint diagnostic to a CodeMirror Diagnostic with offsets. */
-function toCmDiagnostic(view: EditorView, d: LintDiagnostic): Diagnostic | null {
+function toCmDiagnostic(
+  view: EditorView,
+  d: LintDiagnostic,
+): Diagnostic | null {
   const doc = view.state.doc;
   const lineNo = Math.min(Math.max(d.line, 1), doc.lines);
   const line = doc.line(lineNo);
   // Highlight the whole line (minus leading indent) when no column, else from
   // the column to end of line — enough to make the marker findable.
-  const from = d.column ? Math.min(line.from + d.column - 1, line.to) : line.from;
+  const from = d.column
+    ? Math.min(line.from + d.column - 1, line.to)
+    : line.from;
   return {
     from,
     to: line.to,
@@ -211,13 +236,16 @@ function toCmDiagnostic(view: EditorView, d: LintDiagnostic): Diagnostic | null 
   };
 }
 
-const composeLinter = linter((view) => {
-  const source = view.state.doc.toString();
-  const diags = lintCompose(source);
-  return diags
-    .map((d) => toCmDiagnostic(view, d))
-    .filter((d): d is Diagnostic => d !== null);
-}, { delay: 250 });
+const composeLinter = linter(
+  (view) => {
+    const source = view.state.doc.toString();
+    const diags = lintCompose(source);
+    return diags
+      .map((d) => toCmDiagnostic(view, d))
+      .filter((d): d is Diagnostic => d !== null);
+  },
+  { delay: 250 },
+);
 
 export interface ComposeEditorProps {
   value: string;
@@ -232,7 +260,7 @@ export function ComposeEditor({
   value,
   onChange,
   onDiagnostics,
-  placeholder = "services:\n  app:\n    image: nginx:1.27\n    ports:\n      - \"8080:80\"",
+  placeholder = 'services:\n  app:\n    image: nginx:1.27\n    ports:\n      - "8080:80"',
   minHeight = 360,
 }: ComposeEditorProps) {
   const hostRef = React.useRef<HTMLDivElement | null>(null);

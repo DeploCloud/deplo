@@ -12,7 +12,11 @@ import { makeTestDb, type TestDb } from "../db/test-harness";
 import { __setTestDb, __resetTestDb } from "../db/client";
 import { runWithIdentity } from "../auth/request-context";
 import { seedIdentity, TEAM_A, TEAM_B, USER_1 } from "./identity-test-helpers";
-import { seedServer, seedApp, TRUNCATE_PROJECT_GRAPH } from "./app-graph-test-helpers";
+import {
+  seedServer,
+  seedApp,
+  TRUNCATE_PROJECT_GRAPH,
+} from "./app-graph-test-helpers";
 import { setAppComposeUpArgs } from "./apps";
 import { loadAppGraph } from "./app-graph-load";
 
@@ -59,8 +63,13 @@ test("flags are stored the way the deploy edge will send them", async () => {
   await seedApp(db, { id: "prj_1", teamId: TEAM_A });
   // Ragged whitespace in, canonical argv out — so the settings page shows the
   // command that actually runs, with no stray spacing to puzzle over.
-  await asUser1(() => setAppComposeUpArgs("prj_1", "  --pull   always \n --wait "));
-  assert.equal((await loadAppGraph("prj_1"))?.composeUpArgs, "--pull always --wait");
+  await asUser1(() =>
+    setAppComposeUpArgs("prj_1", "  --pull   always \n --wait "),
+  );
+  assert.equal(
+    (await loadAppGraph("prj_1"))?.composeUpArgs,
+    "--pull always --wait",
+  );
 });
 
 test("clearing goes back to the default command", async () => {
@@ -78,7 +87,8 @@ test("a flag that would repoint the command never reaches the column", async () 
   // The validation is here, not only in the form: the same value arrives from
   // the bearer API, and from there it would land in a host's argv.
   await assert.rejects(
-    () => asUser1(() => setAppComposeUpArgs("prj_1", "--force-recreate -p other")),
+    () =>
+      asUser1(() => setAppComposeUpArgs("prj_1", "--force-recreate -p other")),
     /Deplo's to set/,
   );
   await assert.rejects(

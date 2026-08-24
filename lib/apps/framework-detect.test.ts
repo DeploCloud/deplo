@@ -59,11 +59,17 @@ test("a meta-framework wins over the library it is built on", () => {
   // Every one of these repos also declares the base library; reporting React,
   // Vue or Vite for them would name the ingredient instead of the dish.
   assert.equal(
-    detectFramework(["package.json"], pkg({ next: "15.0.0", react: "19.0.0", express: "4.21.0" })),
+    detectFramework(
+      ["package.json"],
+      pkg({ next: "15.0.0", react: "19.0.0", express: "4.21.0" }),
+    ),
     "nextjs",
   );
   assert.equal(
-    detectFramework(["package.json"], pkg({ nuxt: "3.14.0", vue: "3.5.0", vite: "6.0.0" })),
+    detectFramework(
+      ["package.json"],
+      pkg({ nuxt: "3.14.0", vue: "3.5.0", vite: "6.0.0" }),
+    ),
     "nuxt",
   );
   assert.equal(
@@ -74,7 +80,10 @@ test("a meta-framework wins over the library it is built on", () => {
     "astro",
   );
   assert.equal(
-    detectFramework(["package.json"], pkg({ "@sveltejs/kit": "2.0.0" }, { svelte: "5.0.0", vite: "6.0.0" })),
+    detectFramework(
+      ["package.json"],
+      pkg({ "@sveltejs/kit": "2.0.0" }, { svelte: "5.0.0", vite: "6.0.0" }),
+    ),
     "sveltekit",
   );
 });
@@ -84,11 +93,17 @@ test("a bare Vite SPA is Vite, not the library it renders with", () => {
   // project is served by `vite preview` on 4173 — which is the reason the
   // catalog refuses to name them: the port would be a guess.
   assert.equal(
-    detectFramework(["package.json", "vite.config.ts"], pkg({ vue: "3.5.0" }, { vite: "6.0.0" })),
+    detectFramework(
+      ["package.json", "vite.config.ts"],
+      pkg({ vue: "3.5.0" }, { vite: "6.0.0" }),
+    ),
     "vite",
   );
   assert.equal(
-    detectFramework(["package.json"], pkg({ "solid-js": "1.9.0" }, { vite: "6.0.0" })),
+    detectFramework(
+      ["package.json"],
+      pkg({ "solid-js": "1.9.0" }, { vite: "6.0.0" }),
+    ),
     "vite",
   );
   assert.equal(frameworkById("vite")?.defaultPort, 4173);
@@ -104,7 +119,10 @@ test("a config file at the build root is enough on its own", () => {
 });
 
 test("a JS app with nothing recognisable is still named Node.js", () => {
-  assert.equal(detectFramework(["package.json", "server.js"], pkg({ pino: "9.0.0" })), "node");
+  assert.equal(
+    detectFramework(["package.json", "server.js"], pkg({ pino: "9.0.0" })),
+    "node",
+  );
   assert.equal(frameworkById("node")?.name, "Node.js");
 });
 
@@ -131,7 +149,10 @@ test("only the build root's own files count", () => {
     "next.config.js",
     "package.json",
   ]);
-  assert.equal(detectFramework(rootFileNames(tree, "apps/web"), null), "nextjs");
+  assert.equal(
+    detectFramework(rootFileNames(tree, "apps/web"), null),
+    "nextjs",
+  );
 });
 
 test("root-relative path lists are normalised the way trees actually arrive", () => {
@@ -140,7 +161,10 @@ test("root-relative path lists are normalised the way trees actually arrive", ()
     "vite.config.ts",
   ]);
   // A root that only PREFIX-matches another directory must not leak into it.
-  assert.deepEqual(rootFileNames(["apps/web-admin/package.json"], "apps/web"), []);
+  assert.deepEqual(
+    rootFileNames(["apps/web-admin/package.json"], "apps/web"),
+    [],
+  );
 });
 
 test("dependencies are read from both blocks and nowhere else", () => {

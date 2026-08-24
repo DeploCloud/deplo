@@ -114,7 +114,9 @@ export function ServerMaintenanceTab({ server }: { server: ServerSummary }) {
       setConfirm(null);
       // Not "restarted": the mutation returns once the restart is SCHEDULED,
       // because the restart ends the process that would have reported it done.
-      toast.success("Deplo is restarting — this page will be briefly unavailable");
+      toast.success(
+        "Deplo is restarting — this page will be briefly unavailable",
+      );
     });
   }
 
@@ -137,7 +139,11 @@ export function ServerMaintenanceTab({ server }: { server: ServerSummary }) {
             title="Apps and databases"
             description="Restarts everything Deplo runs here. Anything stopped or mid-deploy is left alone."
             action={
-              <Button variant="outline" onClick={() => setConfirm("workloads")} disabled={pending}>
+              <Button
+                variant="outline"
+                onClick={() => setConfirm("workloads")}
+                disabled={pending}
+              >
                 Restart all
               </Button>
             }
@@ -147,7 +153,11 @@ export function ServerMaintenanceTab({ server }: { server: ServerSummary }) {
             title="Traefik"
             description="The reverse proxy that routes traffic to every site on this server."
             action={
-              <Button variant="outline" onClick={() => setConfirm("traefik")} disabled={pending}>
+              <Button
+                variant="outline"
+                onClick={() => setConfirm("traefik")}
+                disabled={pending}
+              >
                 Restart Traefik
               </Button>
             }
@@ -161,7 +171,11 @@ export function ServerMaintenanceTab({ server }: { server: ServerSummary }) {
               title="Deplo panel"
               description="Restarts Deplo itself. Your deployed apps keep running."
               action={
-                <Button variant="outline" onClick={() => setConfirm("panel")} disabled={pending}>
+                <Button
+                  variant="outline"
+                  onClick={() => setConfirm("panel")}
+                  disabled={pending}
+                >
                   Restart Deplo
                 </Button>
               }
@@ -170,19 +184,26 @@ export function ServerMaintenanceTab({ server }: { server: ServerSummary }) {
         </CardContent>
       </Card>
 
-      <Dialog open={confirm === "workloads"} onOpenChange={(o) => !o && setConfirm(null)}>
+      <Dialog
+        open={confirm === "workloads"}
+        onOpenChange={(o) => !o && setConfirm(null)}
+      >
         <DialogContent>
           <DialogHeader>
             <DialogTitle>Restart everything on {server.name}?</DialogTitle>
             <DialogDescription>
               Every app and database Deplo runs on this server is stopped and
-              started again, one at a time. Each is briefly unreachable. Anything
-              already stopped stays stopped, and anything mid-deploy is left to
-              finish.
+              started again, one at a time. Each is briefly unreachable.
+              Anything already stopped stays stopped, and anything mid-deploy is
+              left to finish.
             </DialogDescription>
           </DialogHeader>
           <DialogFooter>
-            <Button variant="outline" onClick={() => setConfirm(null)} disabled={pending}>
+            <Button
+              variant="outline"
+              onClick={() => setConfirm(null)}
+              disabled={pending}
+            >
               Cancel
             </Button>
             <Button onClick={() => restartWorkloads()} disabled={pending}>
@@ -192,18 +213,25 @@ export function ServerMaintenanceTab({ server }: { server: ServerSummary }) {
         </DialogContent>
       </Dialog>
 
-      <Dialog open={confirm === "traefik"} onOpenChange={(o) => !o && setConfirm(null)}>
+      <Dialog
+        open={confirm === "traefik"}
+        onOpenChange={(o) => !o && setConfirm(null)}
+      >
         <DialogContent>
           <DialogHeader>
             <DialogTitle>Restart Traefik on {server.name}?</DialogTitle>
             <DialogDescription>
-              Traefik routes traffic to every site on this server, so all of them
-              are unreachable for the few seconds it takes to come back. The
-              containers themselves keep running.
+              Traefik routes traffic to every site on this server, so all of
+              them are unreachable for the few seconds it takes to come back.
+              The containers themselves keep running.
             </DialogDescription>
           </DialogHeader>
           <DialogFooter>
-            <Button variant="outline" onClick={() => setConfirm(null)} disabled={pending}>
+            <Button
+              variant="outline"
+              onClick={() => setConfirm(null)}
+              disabled={pending}
+            >
               Cancel
             </Button>
             <Button onClick={() => restartTraefik()} disabled={pending}>
@@ -213,7 +241,10 @@ export function ServerMaintenanceTab({ server }: { server: ServerSummary }) {
         </DialogContent>
       </Dialog>
 
-      <Dialog open={confirm === "panel"} onOpenChange={(o) => !o && setConfirm(null)}>
+      <Dialog
+        open={confirm === "panel"}
+        onOpenChange={(o) => !o && setConfirm(null)}
+      >
         <DialogContent>
           <DialogHeader>
             <DialogTitle>Restart Deplo?</DialogTitle>
@@ -224,7 +255,11 @@ export function ServerMaintenanceTab({ server }: { server: ServerSummary }) {
             </DialogDescription>
           </DialogHeader>
           <DialogFooter>
-            <Button variant="outline" onClick={() => setConfirm(null)} disabled={pending}>
+            <Button
+              variant="outline"
+              onClick={() => setConfirm(null)}
+              disabled={pending}
+            >
               Cancel
             </Button>
             <Button onClick={() => restartPanel()} disabled={pending}>

@@ -41,8 +41,9 @@ export function RebuildContainerCard({
       const res = await gqlAction(
         `mutation($id: String!) { rebuildApp(id: $id) { id latestDeployment { id } } }`,
         { id: appId },
-        (d: { rebuildApp: { latestDeployment: { id: string } | null } | null }) =>
-          d.rebuildApp?.latestDeployment?.id ?? null,
+        (d: {
+          rebuildApp: { latestDeployment: { id: string } | null } | null;
+        }) => d.rebuildApp?.latestDeployment?.id ?? null,
       );
       if (!res.ok) {
         toast.error(res.error);
@@ -71,10 +72,10 @@ export function RebuildContainerCard({
           container with a fresh one — a full deployment that bakes in your
           latest code, environment variables and settings. Attached volumes,
           domains and data are untouched; the current container keeps serving
-          until the new build is ready. Use it when the container looks stuck
-          or out of sync with its configuration. Cached layers are reused — to
-          build from scratch, clear the build cache first (Settings →
-          Deployment → Build &amp; Output → Advanced).
+          until the new build is ready. Use it when the container looks stuck or
+          out of sync with its configuration. Cached layers are reused — to
+          build from scratch, clear the build cache first (Settings → Deployment
+          → Build &amp; Output → Advanced).
         </CardDescription>
       </CardHeader>
       <CardFooter className="justify-end">

@@ -211,6 +211,7 @@ export function inAppScope(app: {
   const scope = narrowedScope();
   if (!scope) return true;
   if (scope.appIds.includes(app.id)) return true;
-  if (app.folderId != null && scope.folderIds.includes(app.folderId)) return true;
+  if (app.folderId != null && scope.folderIds.includes(app.folderId))
+    return true;
   return app.projectId != null && scope.projectIds.includes(app.projectId);
 }

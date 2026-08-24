@@ -42,12 +42,7 @@ import type { DestinationKind, LogLevel, S3Provider } from "../types";
  * `cleanup` are shared (with different wording — see LABEL/DETAIL below).
  */
 export type S3TestStepKey =
-  | "agent"
-  | "client"
-  | "bucket"
-  | "root"
-  | "write"
-  | "cleanup";
+  "agent" | "client" | "bucket" | "root" | "write" | "cleanup";
 
 export type S3TestStepStatus = "passed" | "failed" | "skipped";
 
@@ -119,12 +114,21 @@ export interface S3TestTarget {
  * scheme, derive TLS from it, and default to TLS when no scheme is given (the
  * safe default for a public S3). Mirrors `s3client.New`.
  */
-export function splitEndpoint(endpoint: string): { host: string; secure: boolean } {
+export function splitEndpoint(endpoint: string): {
+  host: string;
+  secure: boolean;
+} {
   const raw = endpoint.trim();
   if (raw.startsWith("https://"))
-    return { host: raw.slice("https://".length).replace(/\/+$/, ""), secure: true };
+    return {
+      host: raw.slice("https://".length).replace(/\/+$/, ""),
+      secure: true,
+    };
   if (raw.startsWith("http://"))
-    return { host: raw.slice("http://".length).replace(/\/+$/, ""), secure: false };
+    return {
+      host: raw.slice("http://".length).replace(/\/+$/, ""),
+      secure: false,
+    };
   return { host: raw.replace(/\/+$/, ""), secure: true };
 }
 
@@ -178,7 +182,8 @@ export function classifyFailedStep(
   )
     return "client";
   if (e.includes("write probe to bucket")) return "write";
-  if (e.includes("reach bucket") || e.includes("does not exist")) return "bucket";
+  if (e.includes("reach bucket") || e.includes("does not exist"))
+    return "bucket";
   return null;
 }
 
@@ -208,7 +213,9 @@ export function buildS3TestReport(opts: {
   // probe-file details fall back to the bare filename rather than reading
   // "the folder deplo manages/.deplo-store-check".
   const folder = target.path || "deplo's own backup folder on that server";
-  const probeFile = target.path ? `${target.path}/${STORE_PROBE_FILE}` : STORE_PROBE_FILE;
+  const probeFile = target.path
+    ? `${target.path}/${STORE_PROBE_FILE}`
+    : STORE_PROBE_FILE;
 
   // Which step to blame. No agent served the probe ⇒ it never reached the
   // destination at all.
@@ -222,11 +229,15 @@ export function buildS3TestReport(opts: {
     ? ["agent", "root", "write", "cleanup"]
     : ["agent", "client", "bucket", "write", "cleanup"];
   const LABEL: Record<S3TestStepKey, string> = {
-    agent: isServer ? "Reach the server" : "Pick a server to run the check from",
+    agent: isServer
+      ? "Reach the server"
+      : "Pick a server to run the check from",
     client: "Open a connection to the endpoint",
     bucket: "Check the bucket exists",
     root: "Open the backup folder",
-    write: isServer ? "Write a probe file to the folder" : "Write a probe file to the bucket",
+    write: isServer
+      ? "Write a probe file to the folder"
+      : "Write a probe file to the bucket",
     cleanup: "Remove the probe file",
   };
   const DETAIL: Record<S3TestStepKey, string> = {
@@ -265,7 +276,10 @@ export function buildS3TestReport(opts: {
     : failedAt === -1
       ? [step("agent", "passed")]
       : ORDER.map((key, i) =>
-          step(key, i < failedAt ? "passed" : i === failedAt ? "failed" : "skipped"),
+          step(
+            key,
+            i < failedAt ? "passed" : i === failedAt ? "failed" : "skipped",
+          ),
         );
 
   const lines: S3TestLogLine[] = [];
@@ -278,7 +292,10 @@ export function buildS3TestReport(opts: {
   for (const a of attempts) lines.push({ level: "warn", text: `skipped ${a}` });
   for (const step of steps) {
     if (step.status === "skipped") {
-      lines.push({ level: "debug", text: `${step.label} — not reached (${step.detail})` });
+      lines.push({
+        level: "debug",
+        text: `${step.label} — not reached (${step.detail})`,
+      });
       continue;
     }
     lines.push({ level: "command", text: step.detail });

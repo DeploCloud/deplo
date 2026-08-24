@@ -78,9 +78,17 @@ export const apiTemplateVariantSchema = z
     createdAt: z.iso.datetime(),
     description: z.string().min(20).max(20_000),
     slug: slugSchema,
-    logo: z.string().regex(/^\/images\/[a-z0-9]+(?:-[a-z0-9]+)*\/[a-z0-9]+(?:-[a-z0-9]+)*\/logo\.webp$/),
+    logo: z
+      .string()
+      .regex(
+        /^\/images\/[a-z0-9]+(?:-[a-z0-9]+)*\/[a-z0-9]+(?:-[a-z0-9]+)*\/logo\.webp$/,
+      ),
     images: z.array(
-      z.string().regex(/^\/images\/[a-z0-9]+(?:-[a-z0-9]+)*\/[a-z0-9]+(?:-[a-z0-9]+)*\/[1-9]\d*\.webp$/),
+      z
+        .string()
+        .regex(
+          /^\/images\/[a-z0-9]+(?:-[a-z0-9]+)*\/[a-z0-9]+(?:-[a-z0-9]+)*\/[1-9]\d*\.webp$/,
+        ),
     ),
     files: apiTemplateVariantFilesSchema,
   })
@@ -121,7 +129,9 @@ export const templatesResponseSchema = z
 export const templateAssetPathSchema = z.union([
   z
     .string()
-    .regex(/^\/images\/[a-z0-9]+(?:-[a-z0-9]+)*\/(?:logo|[a-z0-9]+(?:-[a-z0-9]+)*\/logo|[a-z0-9]+(?:-[a-z0-9]+)*\/[1-9]\d*)\.webp$/),
+    .regex(
+      /^\/images\/[a-z0-9]+(?:-[a-z0-9]+)*\/(?:logo|[a-z0-9]+(?:-[a-z0-9]+)*\/logo|[a-z0-9]+(?:-[a-z0-9]+)*\/[1-9]\d*)\.webp$/,
+    ),
   z
     .string()
     .regex(

@@ -48,7 +48,9 @@ const localIp = process.env.DEPLO_SERVER_IP ?? "";
  */
 async function busyServerIds(): Promise<Set<string>> {
   const rows = await getDb()
-    .select({ serverId: sql<string>`coalesce(${deployments.serverId}, ${apps.serverId})` })
+    .select({
+      serverId: sql<string>`coalesce(${deployments.serverId}, ${apps.serverId})`,
+    })
     .from(deployments)
     .innerJoin(apps, sql`${apps.id} = ${deployments.appId}`)
     .where(inArray(deployments.status, ["queued", "building"]));
@@ -83,11 +85,18 @@ console.log(
 let updated = 0;
 let skipped = 0;
 for (const [i, s] of order.entries()) {
-  const role = s.ip === localIp ? "agent 0 (control plane host)" : i === 0 ? "canary" : "remote";
+  const role =
+    s.ip === localIp
+      ? "agent 0 (control plane host)"
+      : i === 0
+        ? "canary"
+        : "remote";
   const label = `${s.name} (${s.ip}, ${role})`;
 
   if (busy.has(s.id)) {
-    console.log(`SKIP  ${label} — a deploy is in flight; an agent re-exec would drop it`);
+    console.log(
+      `SKIP  ${label} — a deploy is in flight; an agent re-exec would drop it`,
+    );
     skipped++;
     continue;
   }
@@ -97,7 +106,9 @@ for (const [i, s] of order.entries()) {
   try {
     before = (await agentPreflight(s.id)).agentVersion;
   } catch (e) {
-    console.log(`SKIP  ${label} — unreachable before the update: ${(e as Error).message}`);
+    console.log(
+      `SKIP  ${label} — unreachable before the update: ${(e as Error).message}`,
+    );
     skipped++;
     continue;
   }
@@ -111,10 +122,14 @@ for (const [i, s] of order.entries()) {
   try {
     const res = await selfUpdateServerAgent(s.id);
     target = res.version;
-    console.log(`  ... ${label}: ${before} -> ${res.version} (restarting=${res.restarting})`);
+    console.log(
+      `  ... ${label}: ${before} -> ${res.version} (restarting=${res.restarting})`,
+    );
   } catch (e) {
     if (e instanceof AgentUpdateUnsupportedError) {
-      console.log(`SKIP  ${label} — agent too old to self-update; re-run install-agent.sh there`);
+      console.log(
+        `SKIP  ${label} — agent too old to self-update; re-run install-agent.sh there`,
+      );
     } else if (e instanceof AgentUnreachableError) {
       console.log(`FAIL  ${label} — unreachable: ${e.message}`);
     } else {
@@ -170,5 +185,7 @@ for (const [i, s] of order.entries()) {
   updated++;
 }
 
-console.log(`\nDone: ${updated} updated, ${skipped} skipped/failed, ${order.length} considered.`);
+console.log(
+  `\nDone: ${updated} updated, ${skipped} skipped/failed, ${order.length} considered.`,
+);
 process.exit(0);

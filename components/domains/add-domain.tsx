@@ -53,9 +53,12 @@ export interface AddDomainProps {
 function composeServices(compose?: string | null): string[] {
   if (!compose || !compose.trim()) return [];
   try {
-    const doc = yaml.load(compose) as { services?: Record<string, unknown> } | undefined;
+    const doc = yaml.load(compose) as
+      { services?: Record<string, unknown> } | undefined;
     const svc = doc?.services;
-    return svc && typeof svc === "object" && !Array.isArray(svc) ? Object.keys(svc) : [];
+    return svc && typeof svc === "object" && !Array.isArray(svc)
+      ? Object.keys(svc)
+      : [];
   } catch {
     return [];
   }
@@ -92,7 +95,11 @@ export function AddDomain({ project, suggestedDomain }: AddDomainProps) {
   }
 
   function submit() {
-    const resolved = resolveDomainConfig(config, services.length > 0, name.trim());
+    const resolved = resolveDomainConfig(
+      config,
+      services.length > 0,
+      name.trim(),
+    );
     if (!resolved.ok) {
       toast.error(resolved.error);
       return;
@@ -191,9 +198,9 @@ export function AddDomain({ project, suggestedDomain }: AddDomainProps) {
           <DialogTitle>Add a domain</DialogTitle>
           <DialogDescription>
             Point a custom domain at{" "}
-            <span className="font-medium">{project.name}</span>. Deplo checks its
-            DNS as you add it — a domain already proxied through Cloudflare is
-            set up for HTTPS on its own.
+            <span className="font-medium">{project.name}</span>. Deplo checks
+            its DNS as you add it — a domain already proxied through Cloudflare
+            is set up for HTTPS on its own.
           </DialogDescription>
         </DialogHeader>
         <form className="grid gap-4" onSubmit={onSubmit}>
@@ -206,8 +213,9 @@ export function AddDomain({ project, suggestedDomain }: AddDomainProps) {
                     suggestedDomain ? (
                       <>
                         No domain? Generate a free{" "}
-                        <span className="font-mono">{suggestion}</span> that works
-                        with zero DNS setup. Click again for a different one.
+                        <span className="font-mono">{suggestion}</span> that
+                        works with zero DNS setup. Click again for a different
+                        one.
                       </>
                     ) : (
                       "The custom hostname to route to this app, e.g. app.example.com. Add its DNS record afterward to verify."

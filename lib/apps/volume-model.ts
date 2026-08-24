@@ -1,5 +1,9 @@
 import { hostVolumeName } from "../utils";
-import { MOUNT_PROPAGATIONS, type MountPropagation, type VolumeMount } from "../types";
+import {
+  MOUNT_PROPAGATIONS,
+  type MountPropagation,
+  type VolumeMount,
+} from "../types";
 
 /**
  * The pure model behind the Storage settings editor: what the three kinds of
@@ -101,7 +105,8 @@ export const VOLUME_KINDS: Record<VolumeKind, VolumeKindMeta> = {
     kind: "host",
     label: "Bind",
     summary: "A folder that already exists on the server",
-    examples: "Only when the data is already on that machine, or something outside deplo uses it too.",
+    examples:
+      "Only when the data is already on that machine, or something outside deplo uses it too.",
     tooltip:
       'Shares a folder from the server\'s own filesystem, outside deplo and visible to everything else on that machine. Only for data that is already there. Saving one needs the "Bind server folders" permission.',
     sourceLabel: "Path on the server",
@@ -149,7 +154,9 @@ export function containerWorkdir(
   rootDirectory: string | null | undefined,
 ): string | null {
   if (source === "docker-image" || source === "compose") return null;
-  const root = (rootDirectory || ".").replace(/^\.?\/+/, "").replace(/\/+$/, "");
+  const root = (rootDirectory || ".")
+    .replace(/^\.?\/+/, "")
+    .replace(/\/+$/, "");
   return !root || root === "." ? "/app" : `/app/${root}`;
 }
 
@@ -200,9 +207,14 @@ export const RESERVED_MOUNT_PREFIXES = [
  * File's source is a file deplo wrote inside the app's own files dir, and the
  * target is inside the app's own container.
  */
-export function reservedMountPath(mountPath: string, kind: VolumeKind): boolean {
+export function reservedMountPath(
+  mountPath: string,
+  kind: VolumeKind,
+): boolean {
   return RESERVED_MOUNT_PREFIXES.some((r) =>
-    kind === "app" ? mountPath === r : mountPath === r || mountPath.startsWith(r + "/"),
+    kind === "app"
+      ? mountPath === r
+      : mountPath === r || mountPath.startsWith(r + "/"),
   );
 }
 
@@ -230,7 +242,9 @@ export function mountOptions(m: {
 
 /** The propagation named in a mount line's option list, if any. Inverse of
  *  {@link mountOptions}, for the reroute path that reads the deployed stack. */
-export function parseMountPropagation(opts: string[]): MountPropagation | undefined {
+export function parseMountPropagation(
+  opts: string[],
+): MountPropagation | undefined {
   return MOUNT_PROPAGATIONS.find((p) => opts.includes(p));
 }
 
@@ -243,7 +257,10 @@ export function parseMountPropagation(opts: string[]): MountPropagation | undefi
  * `validateVolumes` normalises identically.
  */
 export function normalizeFilesPath(path: string | null | undefined): string {
-  return (path ?? "").trim().replace(/^\.\/+/, "").replace(/\/+$/, "");
+  return (path ?? "")
+    .trim()
+    .replace(/^\.\/+/, "")
+    .replace(/\/+$/, "");
 }
 
 /** The last segment of a path — `/srv/media` → `media`. Empty for `/`, `.`, `..`. */
@@ -316,7 +333,8 @@ export function effectiveMountPath(
   workdir?: string | null,
 ): string {
   return (
-    (v.mountPath ?? "").trim().replace(/\/+$/, "") || derivedMountPath(v, workdir)
+    (v.mountPath ?? "").trim().replace(/\/+$/, "") ||
+    derivedMountPath(v, workdir)
   );
 }
 
@@ -359,11 +377,15 @@ export function volumeProblem(
   if (kind === "host") {
     const hostPath = (v.hostPath ?? "").trim().replace(/\/+$/, "");
     if (!hostPath)
-      return { field: "source", message: "Add the folder's path on the server" };
+      return {
+        field: "source",
+        message: "Add the folder's path on the server",
+      };
     if (!hostPath.startsWith("/") || hostPath.length < 2)
       return {
         field: "source",
-        message: "The path on the server must start with a slash, like /srv/media",
+        message:
+          "The path on the server must start with a slash, like /srv/media",
       };
     if (/[\s:]/.test(hostPath))
       return {
@@ -375,14 +397,20 @@ export function volumeProblem(
   } else if (kind === "app") {
     const p = normalizeFilesPath(v.projectPath);
     if (!p)
-      return { field: "source", message: "Add the file's path in this app's Files" };
+      return {
+        field: "source",
+        message: "Add the file's path in this app's Files",
+      };
     if (p.startsWith("/"))
       return {
         field: "source",
         message: "Use a path relative to this app's Files, like config.toml",
       };
     if (/[\s:]/.test(p))
-      return { field: "source", message: 'The path cannot contain spaces or ":"' };
+      return {
+        field: "source",
+        message: 'The path cannot contain spaces or ":"',
+      };
     if (p.split("/").includes(".."))
       return { field: "source", message: 'The path cannot contain ".."' };
   } else {
@@ -393,7 +421,8 @@ export function volumeProblem(
     if (name && !VOLUME_NAME_RE.test(name))
       return {
         field: "source",
-        message: "Use lowercase letters, digits, - or _ , starting with a letter or digit",
+        message:
+          "Use lowercase letters, digits, - or _ , starting with a letter or digit",
       };
     if (name.length > VOLUME_NAME_MAX)
       return {
@@ -408,8 +437,14 @@ export function volumeProblem(
     // its "name it or place it" requirement lands — and with a working directory
     // to derive from, naming it is the shorter of the two.
     if (kind === "named" && workdir)
-      return { field: "source", message: "Give this storage a name, like uploads" };
-    return { field: "mountPath", message: "Add a path inside the app, like /data" };
+      return {
+        field: "source",
+        message: "Give this storage a name, like uploads",
+      };
+    return {
+      field: "mountPath",
+      message: "Add a path inside the app, like /data",
+    };
   }
   if (!mountPath.startsWith("/") || mountPath.length < 2)
     return {
@@ -456,7 +491,9 @@ export function volumeSetProblem(
       paths.add(key);
     }
     if (kindOf(v) === "named") {
-      const name = ((v.name ?? "").trim() || deriveVolumeName(path)).toLowerCase();
+      const name = (
+        (v.name ?? "").trim() || deriveVolumeName(path)
+      ).toLowerCase();
       if (name) {
         if (names.has(name)) return `Two volumes share the name ${name}`;
         names.add(name);
@@ -499,7 +536,8 @@ export function volumeReadout(
   const ro = v.readOnly ? " The app can read it but not change it." : "";
   if (kind === "host") {
     const from = (v.hostPath ?? "").trim();
-    if (!from || !at) return "Shares a folder that already exists on the server.";
+    if (!from || !at)
+      return "Shares a folder that already exists on the server.";
     // Stated only when it is ON: the default (a snapshot of what was mounted at
     // startup) is what every other kind does too, so saying it would be noise.
     //
@@ -516,7 +554,9 @@ export function volumeReadout(
           ? " Anything mounted inside it later shows up on both sides."
           : "";
     const stillWritable =
-      v.propagation && v.readOnly ? " What arrives that way stays writable." : "";
+      v.propagation && v.readOnly
+        ? " What arrives that way stays writable."
+        : "";
     return `Shares the server's ${from} at ${at} inside the app.${ro}${follows}${stillWritable}`;
   }
   if (kind === "app") {

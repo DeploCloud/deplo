@@ -86,7 +86,11 @@ export function EnvTableSkeleton({
               <TableRow key={i} className="hover:bg-transparent">
                 {/* Key (mono) */}
                 <TableCell>
-                  <Skeleton shimmer style={delay} className={cn("h-4", r.key)} />
+                  <Skeleton
+                    shimmer
+                    style={delay}
+                    className={cn("h-4", r.key)}
+                  />
                 </TableCell>
 
                 {/* Value (+ secret eye dot) */}
@@ -109,7 +113,11 @@ export function EnvTableSkeleton({
 
                 {/* Last modified ("3 days ago") */}
                 <TableCell>
-                  <Skeleton shimmer style={delay} className={cn("h-3", r.when)} />
+                  <Skeleton
+                    shimmer
+                    style={delay}
+                    className={cn("h-3", r.when)}
+                  />
                 </TableCell>
 
                 {/* Modified by (avatar + @username), or the em dash */}

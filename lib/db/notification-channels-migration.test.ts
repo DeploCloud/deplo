@@ -166,7 +166,11 @@ test("an enabled, configured type becomes an instance and keeps its alerts", asy
   assert.ok(discord, "discord should have become an instance");
   assert.equal(discord.enabled, true);
   assert.equal(discord.url, "https://discord.example/hook/tok");
-  assert.equal(discord.name, "", "nothing to name it after, so it starts unnamed");
+  assert.equal(
+    discord.name,
+    "",
+    "nothing to name it after, so it starts unnamed",
+  );
 
   const alerts = (
     await pg.query<{ alert_key: string; enabled: boolean }>(

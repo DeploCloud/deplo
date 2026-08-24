@@ -146,8 +146,7 @@ builder.mutationFields((t) => ({
       await mintMcpConnection({
         clientId: a.clientId,
         capabilities: (a.capabilities ?? undefined) as
-          | Parameters<typeof mintMcpConnection>[0]["capabilities"]
-          | undefined,
+          Parameters<typeof mintMcpConnection>[0]["capabilities"] | undefined,
         teamIds: a.teamIds ?? undefined,
         projectIds: a.projectIds ?? undefined,
         folderIds: a.folderIds ?? undefined,

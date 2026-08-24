@@ -22,7 +22,10 @@ test("a credential that only reaches this team gets the plain sentence", () => {
     activeTeamId: A.id,
     scoped: true,
   });
-  assert.match(text, /Every client using it loses access immediately, including/);
+  assert.match(
+    text,
+    /Every client using it loses access immediately, including/,
+  );
   assert.doesNotMatch(text, /too/);
 });
 
@@ -55,7 +58,10 @@ test("an unscoped token has no stored teams to name", () => {
     activeTeamId: A.id,
     scoped: false,
   });
-  assert.match(text, /Every client using it loses access immediately, including/);
+  assert.match(
+    text,
+    /Every client using it loses access immediately, including/,
+  );
 });
 
 test("joinNames reads like a sentence at every length", () => {

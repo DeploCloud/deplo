@@ -55,7 +55,9 @@ export function ContainerAttach({
 
   // One POST helper for both stdin bytes and resize frames — same session route.
   const post = React.useCallback(
-    (payload: { data: string } | { resize: { cols: number; rows: number } }) => {
+    (
+      payload: { data: string } | { resize: { cols: number; rows: number } },
+    ) => {
       const id = sessionId.current;
       if (!id) return;
       void fetch(base, {

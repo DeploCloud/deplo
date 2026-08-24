@@ -77,9 +77,18 @@ export async function GET(
   let session;
   try {
     const conn = await connectAgent(resolved.serverId);
-    const handle = conn.followLogs(databaseId, resolved.instance.name, tail, window);
-    session = logs.open(databaseId, user.id, resolved.instance.name, handle, () =>
-      conn.close(),
+    const handle = conn.followLogs(
+      databaseId,
+      resolved.instance.name,
+      tail,
+      window,
+    );
+    session = logs.open(
+      databaseId,
+      user.id,
+      resolved.instance.name,
+      handle,
+      () => conn.close(),
     );
   } catch {
     return Response.json({ error: "unreachable" }, { status: 503 });

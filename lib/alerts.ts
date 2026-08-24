@@ -88,7 +88,8 @@ export const ALERT_META: Record<AlertKey, AlertMeta> = {
   /* ---- Cron jobs ---- */
   cron_job_failed: {
     label: "Cron job failed",
-    description: "A scheduled command exited with an error, or its outcome is unknown.",
+    description:
+      "A scheduled command exited with an error, or its outcome is unknown.",
     keywords: "cron schedule scheduled task command error exit",
     // On by default: a job that fails at 03:00 and tells nobody is the exact
     // failure a cron manager exists to prevent. It also carries the `lost` case
@@ -146,13 +147,15 @@ export const ALERT_META: Record<AlertKey, AlertMeta> = {
   },
   server_unmanageable: {
     label: "Server cannot run apps",
-    description: "Deplo reached a server but cannot start or stop anything on it.",
+    description:
+      "Deplo reached a server but cannot start or stop anything on it.",
     keywords: "docker degraded warning host",
     defaultOn: true,
   },
   server_trust_changed: {
     label: "Server identity changed",
-    description: "A server presented a different identity than the one Deplo trusts.",
+    description:
+      "A server presented a different identity than the one Deplo trusts.",
     keywords: "certificate mtls security fingerprint",
     defaultOn: true,
   },
@@ -170,7 +173,8 @@ export const ALERT_META: Record<AlertKey, AlertMeta> = {
   },
   agent_certificate_failed: {
     label: "Server agent certificate not renewed",
-    description: "Deplo could not renew a server's certificate and will lose access to it.",
+    description:
+      "Deplo could not renew a server's certificate and will lose access to it.",
     keywords: "mtls expiry renewal security",
     defaultOn: true,
   },
@@ -182,7 +186,8 @@ export const ALERT_META: Record<AlertKey, AlertMeta> = {
   },
   teardown_abandoned: {
     label: "Leftover containers",
-    description: "Deplo stopped trying to remove the containers of something you deleted.",
+    description:
+      "Deplo stopped trying to remove the containers of something you deleted.",
     keywords: "orphan teardown delete stack volumes leftover",
     defaultOn: true,
   },

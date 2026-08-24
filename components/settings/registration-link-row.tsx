@@ -123,7 +123,9 @@ export function RegistrationLinkRow({
     <div
       className={cn(
         "rounded-lg border p-3",
-        expired ? "border-destructive/30 bg-destructive/[0.03]" : "border-border",
+        expired
+          ? "border-destructive/30 bg-destructive/[0.03]"
+          : "border-border",
       )}
     >
       <div className="flex items-start gap-3">
@@ -236,8 +238,9 @@ function Expiry({
         <>Expired {timeAgo(expiresAt)} — mint a new link</>
       ) : (
         <>
-          Expires in <span className="font-medium tabular-nums">{left.label}</span>{" "}
-          · {atClock(expiresAt)}
+          Expires in{" "}
+          <span className="font-medium tabular-nums">{left.label}</span> ·{" "}
+          {atClock(expiresAt)}
         </>
       )}
     </p>

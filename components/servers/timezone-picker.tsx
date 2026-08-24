@@ -5,7 +5,11 @@ import { Check, ChevronDown, Globe, Search } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "@/components/ui/popover";
 import { cn } from "@/lib/utils";
 
 /**
@@ -76,7 +80,10 @@ export function TimezonePicker({
   const { matches, hidden } = React.useMemo(() => {
     const q = query.trim().toLowerCase().replace(/\s+/g, "_");
     const hits = q ? zones.filter((z) => z.toLowerCase().includes(q)) : zones;
-    return { matches: hits.slice(0, MAX_ROWS), hidden: Math.max(0, hits.length - MAX_ROWS) };
+    return {
+      matches: hits.slice(0, MAX_ROWS),
+      hidden: Math.max(0, hits.length - MAX_ROWS),
+    };
   }, [zones, query]);
 
   function pick(zone: string) {
@@ -174,8 +181,10 @@ export function TimezonePicker({
                     zone === value ? "opacity-100" : "opacity-0",
                   )}
                 />
-                <span className="min-w-0 flex-1 truncate">{zone.replace(/_/g, " ")}</span>
-                <span className="shrink-0 font-mono text-xs tabular-nums text-muted-foreground">
+                <span className="min-w-0 flex-1 truncate">
+                  {zone.replace(/_/g, " ")}
+                </span>
+                <span className="shrink-0 font-mono text-xs text-muted-foreground tabular-nums">
                   {timeIn(zone, now)}
                 </span>
               </button>

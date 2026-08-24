@@ -98,7 +98,10 @@ export function MigrationLogDialog({
 /* One report line                                                    */
 /* ------------------------------------------------------------------ */
 
-const OUTCOME_ICON: Record<string, React.ComponentType<{ className?: string }>> = {
+const OUTCOME_ICON: Record<
+  string,
+  React.ComponentType<{ className?: string }>
+> = {
   created: Check,
   skipped: SkipForward,
   failed: TriangleAlert,

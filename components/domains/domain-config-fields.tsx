@@ -1,13 +1,7 @@
 "use client";
 
 import * as React from "react";
-import {
-  Cloud,
-  CornerDownRight,
-  Lock,
-  Route,
-  Signpost,
-} from "lucide-react";
+import { Cloud, CornerDownRight, Lock, Route, Signpost } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { FieldLabel } from "@/components/ui/info-tip";
 import { Switch } from "@/components/ui/switch";
@@ -315,12 +309,16 @@ function RoutePreview({
     // Named only once chosen — "the selected service" while nothing is selected
     // would be a sentence about a thing that isn't there.
     ...(service ? [service] : []),
-    port ? `port ${port}` : isCompose ? "port not set" : "the app’s default port",
+    port
+      ? `port ${port}`
+      : isCompose
+        ? "port not set"
+        : "the app’s default port",
   ].join(" · ");
 
   return (
     <div className="space-y-1 rounded-md bg-muted px-3 py-2">
-      <p className="break-all font-mono text-xs text-foreground">
+      <p className="font-mono text-xs break-all text-foreground">
         {scheme}://
         {servedHost || (
           <span className="text-muted-foreground">your-domain.com</span>
@@ -338,7 +336,7 @@ function RoutePreview({
         </span>
       </p>
       {paired && (
-        <p className="flex items-start gap-1.5 break-all text-xs text-muted-foreground">
+        <p className="flex items-start gap-1.5 text-xs break-all text-muted-foreground">
           <Signpost className="mt-px size-3 shrink-0" aria-hidden />
           <span className="min-w-0 break-words">
             <span className="font-mono">{redirectingHost}</span> answers a
@@ -369,7 +367,7 @@ function AdvancedGroup({
 }) {
   return (
     <fieldset className="space-y-3">
-      <legend className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+      <legend className="flex items-center gap-2 text-xs font-semibold tracking-wider text-muted-foreground uppercase">
         <Icon className="size-3.5" />
         {title}
       </legend>
@@ -472,7 +470,10 @@ export function DomainConfigFields({
           >
             Container
           </FieldLabel>
-          <Select value={state.service} onValueChange={(v) => set("service", v)}>
+          <Select
+            value={state.service}
+            onValueChange={(v) => set("service", v)}
+          >
             <SelectTrigger id={`${idPrefix}-service`}>
               <SelectValue placeholder="Select a container" />
             </SelectTrigger>
@@ -509,7 +510,7 @@ export function DomainConfigFields({
           placeholder="e.g. 8080"
           // Spinner-hiding lifted verbatim from `LimitField` — native arrows
           // collide with a mono value and nobody steps a port by one.
-          className="font-mono text-sm [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
+          className="[appearance:textfield] font-mono text-sm [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
         />
       </div>
 
@@ -522,7 +523,7 @@ export function DomainConfigFields({
           flash of the summary during the 200ms collapse animation. */}
       <Accordion type="single" collapsible className="border-t border-border">
         <AccordionItem value="advanced" className="border-none">
-          <AccordionTrigger className="group gap-3 rounded-md py-3 hover:no-underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+          <AccordionTrigger className="group gap-3 rounded-md py-3 hover:no-underline focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none">
             <span className="flex min-w-0 flex-1 items-center gap-3">
               {/* shrink-0 so the title never wraps to two lines while the
                   summary (which owns `truncate`) is what gives way. */}
@@ -583,8 +584,8 @@ export function DomainConfigFields({
                     <Cloud className="mt-px size-3.5 shrink-0" aria-hidden />
                     <span>
                       Selected automatically — this domain is proxied through
-                      Cloudflare, which issues its certificate. Change it only to
-                      give the origin a certificate of its own.
+                      Cloudflare, which issues its certificate. Change it only
+                      to give the origin a certificate of its own.
                     </span>
                   </p>
                 )}
@@ -654,9 +655,9 @@ export function DomainConfigFields({
                         Sends one of the two spellings of this site to the other
                         with a permanent redirect (301), so visitors and search
                         engines settle on a single address. Deplo adds the other
-                        hostname as a domain of this app — with its own DNS check
-                        and its own certificate — so it shows up in the list and
-                        can be removed there.
+                        hostname as a domain of this app — with its own DNS
+                        check and its own certificate — so it shows up in the
+                        list and can be removed there.
                       </>
                     }
                   >
@@ -689,9 +690,9 @@ export function DomainConfigFields({
                     // so this is a heads-up, not a chore list.
                     <p className="text-xs text-muted-foreground">
                       <span className="font-mono">{redirectingHost}</span> is
-                      added as a domain of this app. Point its DNS at this server
-                      too — it is checked automatically and appears in the list
-                      with its own status.
+                      added as a domain of this app. Point its DNS at this
+                      server too — it is checked automatically and appears in
+                      the list with its own status.
                     </p>
                   )}
                 </div>
@@ -718,7 +719,9 @@ export function DomainConfigFields({
                     onChange({
                       ...state,
                       path: e.target.value,
-                      stripPath: e.target.value.trim() ? state.stripPath : false,
+                      stripPath: e.target.value.trim()
+                        ? state.stripPath
+                        : false,
                     })
                   }
                   placeholder="/api"
@@ -742,8 +745,8 @@ export function DomainConfigFields({
                       info={
                         <>
                           Removes the internal path prefix from the request
-                          before forwarding, so the app receives the path without
-                          it (Traefik{" "}
+                          before forwarding, so the app receives the path
+                          without it (Traefik{" "}
                           <code className="font-mono">stripprefix</code>).
                         </>
                       }
@@ -759,7 +762,7 @@ export function DomainConfigFields({
                   {pathError ? (
                     <p className="text-xs text-muted-foreground">{pathError}</p>
                   ) : (
-                    <p className="break-all text-xs text-muted-foreground">
+                    <p className="text-xs break-all text-muted-foreground">
                       <span className="font-mono">{sampleIn}</span>
                       {" → "}
                       <span className="font-mono">{sampleOut}</span>

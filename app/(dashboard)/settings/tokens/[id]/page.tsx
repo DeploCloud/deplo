@@ -20,7 +20,9 @@ export async function generateMetadata(
 ) {
   const { id } = await props.params;
   const token = await getToken(id);
-  return { title: token ? `Settings · ${token.name}` : "Settings · API tokens" };
+  return {
+    title: token ? `Settings · ${token.name}` : "Settings · API tokens",
+  };
 }
 
 export default async function TokenPage(

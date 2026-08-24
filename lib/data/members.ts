@@ -41,7 +41,12 @@ import {
   passkey as passkeyTable,
   twoFactor as twoFactorTable,
 } from "../db/schema/auth";
-import { assertUser, getCurrentUser, revokeAllSessions, setUserPassword } from "../auth";
+import {
+  assertUser,
+  getCurrentUser,
+  revokeAllSessions,
+  setUserPassword,
+} from "../auth";
 import { assertPasswordPolicy } from "../password-policy";
 import { assertPasswordNotPwned } from "../pwned-password";
 import { recordActivity } from "./activity";
@@ -65,11 +70,7 @@ import {
 } from "./roles";
 import { boundedBy, withView } from "./folder-access";
 import { instancePublicBaseUrl } from "./instance-settings";
-import type {
-  Capability,
-  RegistrationLink,
-  Role,
-} from "../types";
+import type { Capability, RegistrationLink, Role } from "../types";
 
 /**
  * How long a freshly minted registration link stays usable. Expiry is automatic:
@@ -434,9 +435,15 @@ async function memberNodeIds(
   if (userIds.length === 0) return out;
   const [projects, folders, apps] = await Promise.all([
     db
-      .selectDistinct({ userId: projectGrantsTable.userId, id: projectGrantsTable.projectId })
+      .selectDistinct({
+        userId: projectGrantsTable.userId,
+        id: projectGrantsTable.projectId,
+      })
       .from(projectGrantsTable)
-      .innerJoin(projectsTable, eq(projectsTable.id, projectGrantsTable.projectId))
+      .innerJoin(
+        projectsTable,
+        eq(projectsTable.id, projectGrantsTable.projectId),
+      )
       .where(
         and(
           inArray(projectGrantsTable.userId, userIds),
@@ -444,7 +451,10 @@ async function memberNodeIds(
         ),
       ),
     db
-      .selectDistinct({ userId: folderGrantsTable.userId, id: folderGrantsTable.folderId })
+      .selectDistinct({
+        userId: folderGrantsTable.userId,
+        id: folderGrantsTable.folderId,
+      })
       .from(folderGrantsTable)
       .innerJoin(foldersTable, eq(foldersTable.id, folderGrantsTable.folderId))
       .where(
@@ -454,11 +464,17 @@ async function memberNodeIds(
         ),
       ),
     db
-      .selectDistinct({ userId: appGrantsTable.userId, id: appGrantsTable.appId })
+      .selectDistinct({
+        userId: appGrantsTable.userId,
+        id: appGrantsTable.appId,
+      })
       .from(appGrantsTable)
       .innerJoin(appsTable, eq(appsTable.id, appGrantsTable.appId))
       .where(
-        and(inArray(appGrantsTable.userId, userIds), eq(appsTable.teamId, teamId)),
+        and(
+          inArray(appGrantsTable.userId, userIds),
+          eq(appsTable.teamId, teamId),
+        ),
       ),
   ]);
   for (const r of [...projects, ...folders, ...apps])
@@ -819,8 +835,7 @@ export async function assertAdminCoverage(
         ),
       )
       .for("update");
-    const targetStillHolds =
-      nextCaps !== null && nextCaps.includes(cap);
+    const targetStillHolds = nextCaps !== null && nextCaps.includes(cap);
     const others = holders.filter((h) => h.userId !== targetUserId);
     if (others.length === 0 && !targetStillHolds) {
       throw new Error(
@@ -839,9 +854,11 @@ export async function updateMember(input: {
   role?: Role;
   capabilities?: Capability[];
 }): Promise<void> {
-  const { teamId, userId: actingUserId, membership } = await requireCapability(
-    "manage_members",
-  );
+  const {
+    teamId,
+    userId: actingUserId,
+    membership,
+  } = await requireCapability("manage_members");
   const actorIsOwner = membership.role === "owner";
   // A non-owner can't edit their OWN membership (mirrors removeMember): the only
   // self-edit that would matter to them is an escalation. Owners keep the
@@ -928,9 +945,11 @@ async function usernameOf(userId: string): Promise<string> {
 
 /** Remove a member from the active team (does not delete their account). */
 export async function removeMember(userId: string): Promise<void> {
-  const { teamId, userId: actingUserId, membership } = await requireCapability(
-    "manage_members",
-  );
+  const {
+    teamId,
+    userId: actingUserId,
+    membership,
+  } = await requireCapability("manage_members");
   const actorIsOwner = membership.role === "owner";
   if (userId === actingUserId)
     throw new Error("You can't remove yourself from the team");
@@ -968,9 +987,7 @@ export async function removeMember(userId: string): Promise<void> {
       .limit(1);
     username = u[0]?.username ?? "";
     // membership_capabilities cascades on the membership FK.
-    await tx
-      .delete(membershipsTable)
-      .where(eq(membershipsTable.id, m.id));
+    await tx.delete(membershipsTable).where(eq(membershipsTable.id, m.id));
   });
   await recordActivity(
     "member",
@@ -1158,7 +1175,11 @@ export async function updateUserAdmin(input: {
     // edit left once those are gone — the owner is an admin, so the two grant
     // flags are already implied for them (see hasGrant in membership.ts). One
     // rule, no partial states, and a UI message a non-expert can act on.
-    if (ownerUserId !== null && input.userId === ownerUserId && actingUserId !== ownerUserId)
+    if (
+      ownerUserId !== null &&
+      input.userId === ownerUserId &&
+      actingUserId !== ownerUserId
+    )
       throw new Error(
         "Only the instance owner can edit the instance owner's account",
       );
@@ -1188,12 +1209,17 @@ export async function updateUserAdmin(input: {
       })
       .from(usersTable)
       .where(
-        or(eq(usersTable.isInstanceAdmin, true), eq(usersTable.id, input.userId)),
+        or(
+          eq(usersTable.isInstanceAdmin, true),
+          eq(usersTable.id, input.userId),
+        ),
       )
       .for("update");
     const activeAdminsAfter = candidates.filter((x) => {
       const isAdmin =
-        x.id === target.id ? input.isInstanceAdmin : (x.isInstanceAdmin ?? false);
+        x.id === target.id
+          ? input.isInstanceAdmin
+          : (x.isInstanceAdmin ?? false);
       const isSuspended =
         x.id === target.id ? input.suspended : (x.suspended ?? false);
       return isAdmin && !isSuspended;
@@ -1231,7 +1257,8 @@ export async function updateUserAdmin(input: {
   )[0]!;
   await recordForEveryTeamOf(
     input.userId,
-    `Updated user @${target.username}` + (newPassword ? " (password reset)" : ""),
+    `Updated user @${target.username}` +
+      (newPassword ? " (password reset)" : ""),
   );
 }
 
@@ -1297,13 +1324,20 @@ export async function resetUserTwoFactor(userId: string): Promise<void> {
       "You can't reset your own two-factor here. Turn it off from Settings → Security, which asks for a code.",
     );
   const ownerUserId = await instanceOwnerUserId();
-  if (ownerUserId !== null && userId === ownerUserId && actingUserId !== ownerUserId)
+  if (
+    ownerUserId !== null &&
+    userId === ownerUserId &&
+    actingUserId !== ownerUserId
+  )
     throw new Error(
       "Only the instance owner can edit the instance owner's account",
     );
   const target = (
     await getDb()
-      .select({ username: usersTable.username, enabled: usersTable.twoFactorEnabled })
+      .select({
+        username: usersTable.username,
+        enabled: usersTable.twoFactorEnabled,
+      })
       .from(usersTable)
       .where(eq(usersTable.id, userId))
       .limit(1)
@@ -1352,7 +1386,11 @@ export async function resetUserPasskeys(userId: string): Promise<void> {
       "You can't remove your own passkeys here. Do it from Settings → Security, which asks for your password.",
     );
   const ownerUserId = await instanceOwnerUserId();
-  if (ownerUserId !== null && userId === ownerUserId && actingUserId !== ownerUserId)
+  if (
+    ownerUserId !== null &&
+    userId === ownerUserId &&
+    actingUserId !== ownerUserId
+  )
     throw new Error(
       "Only the instance owner can edit the instance owner's account",
     );
@@ -1369,8 +1407,7 @@ export async function resetUserPasskeys(userId: string): Promise<void> {
     .delete(passkeyTable)
     .where(eq(passkeyTable.userId, userId))
     .returning({ id: passkeyTable.id });
-  if (removed.length === 0)
-    throw new Error("That account has no passkeys");
+  if (removed.length === 0) throw new Error("That account has no passkeys");
 
   await recordForEveryTeamOf(
     userId,
@@ -1444,7 +1481,9 @@ export async function mintRegistrationLink(input: {
     // something an admin pre-bakes into a self-service registration link.
     for (const a of assignments) {
       if (a.role !== "member" && a.role !== "viewer")
-        throw new Error("A new user can only join a team as a member or viewer");
+        throw new Error(
+          "A new user can only join a team as a member or viewer",
+        );
     }
     // The minting admin may only place a new user into teams THEY belong to — an
     // instance admin is NOT implicitly a member of every team. The dialog only
@@ -1526,7 +1565,10 @@ export async function listRegistrationLinks(): Promise<RegistrationLinkDTO[]> {
         name: teamsTable.name,
       })
       .from(registrationLinkTeamsTable)
-      .innerJoin(teamsTable, eq(teamsTable.id, registrationLinkTeamsTable.teamId))
+      .innerJoin(
+        teamsTable,
+        eq(teamsTable.id, registrationLinkTeamsTable.teamId),
+      )
       .where(inArray(registrationLinkTeamsTable.linkId, linkIds))
       .orderBy(asc(teamsTable.name));
     for (const r of teamRows) {
@@ -1631,7 +1673,9 @@ export async function revokeRegistrationLink(id: string): Promise<void> {
 }
 
 /** True if a pending, unexpired registration link exists for the raw token. */
-export async function isRegistrationTokenValid(rawToken: string): Promise<boolean> {
+export async function isRegistrationTokenValid(
+  rawToken: string,
+): Promise<boolean> {
   const hash = sha256Hex(rawToken);
   const rows = await getDb()
     .select({ id: registrationLinksTable.id })

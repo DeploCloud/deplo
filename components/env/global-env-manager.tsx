@@ -83,10 +83,11 @@ export function GlobalEnvManager({
   // A deleted variable leaves the table on the click, instead of waiting out the
   // mutation and then the `router.refresh()` behind it — the window in which a
   // second click on the same row earned a "Not found".
-  const { visible: rows, remove, restore } = useOptimisticRemove(
-    vars,
-    (v) => v.id,
-  );
+  const {
+    visible: rows,
+    remove,
+    restore,
+  } = useOptimisticRemove(vars, (v) => v.id);
 
   // An instance-wide variable belongs to no project and no app, so this tab
   // filters on the three axes every variable has: what it is, who last touched
@@ -155,9 +156,13 @@ export function GlobalEnvManager({
               <TableRow>
                 <TableHead className="whitespace-nowrap">Key</TableHead>
                 <TableHead className="w-full">Value</TableHead>
-                <TableHead className="whitespace-nowrap">Last modified</TableHead>
+                <TableHead className="whitespace-nowrap">
+                  Last modified
+                </TableHead>
                 <TableHead className="whitespace-nowrap">Modified by</TableHead>
-                <TableHead className="whitespace-nowrap text-right">Actions</TableHead>
+                <TableHead className="text-right whitespace-nowrap">
+                  Actions
+                </TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -169,13 +174,17 @@ export function GlobalEnvManager({
                   <TableCell>
                     <EnvValueCell value={v.value} masked={v.masked} />
                   </TableCell>
-                  <TableCell className="whitespace-nowrap text-xs text-muted-foreground">
-                    <SimpleTooltip content={new Date(v.updatedAt).toLocaleString()}>
+                  <TableCell className="text-xs whitespace-nowrap text-muted-foreground">
+                    <SimpleTooltip
+                      content={new Date(v.updatedAt).toLocaleString()}
+                    >
                       <span>{timeAgo(v.updatedAt)}</span>
                     </SimpleTooltip>
                   </TableCell>
                   <TableCell>
-                    <EnvAuthorCell author={v.updatedBy ?? v.createdBy ?? null} />
+                    <EnvAuthorCell
+                      author={v.updatedBy ?? v.createdBy ?? null}
+                    />
                   </TableCell>
                   <TableCell className="text-right">
                     <div className="flex justify-end gap-1">
@@ -292,7 +301,9 @@ function GlobalEnvDialog({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent>
         <DialogHeader>
-          <DialogTitle>{editing ? "Edit variable" : "Add variable"}</DialogTitle>
+          <DialogTitle>
+            {editing ? "Edit variable" : "Add variable"}
+          </DialogTitle>
           <DialogDescription>
             Injected into every app of every team on this instance.
           </DialogDescription>
@@ -304,9 +315,9 @@ function GlobalEnvDialog({
                 htmlFor="ge-key"
                 info={
                   <>
-                    The environment variable name injected into deployments, e.g.{" "}
-                    <code className="font-mono">API_BASE_URL</code>. It can&apos;t
-                    be renamed after the variable is created.
+                    The environment variable name injected into deployments,
+                    e.g. <code className="font-mono">API_BASE_URL</code>. It
+                    can&apos;t be renamed after the variable is created.
                   </>
                 }
               >
@@ -352,7 +363,11 @@ function GlobalEnvDialog({
                   Encrypted at rest and never shown again.
                 </p>
               </div>
-              <Switch id="ge-secret" checked={secret} onCheckedChange={setSecret} />
+              <Switch
+                id="ge-secret"
+                checked={secret}
+                onCheckedChange={setSecret}
+              />
             </div>
           </div>
           <DialogFooter>

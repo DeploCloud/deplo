@@ -3,12 +3,7 @@
 import * as React from "react";
 import { History, Loader2 } from "lucide-react";
 
-import {
-  Card,
-  CardContent,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import {
   Table,
   TableBody,
@@ -83,15 +78,19 @@ export function CleanupHistory({
                 {runs.map((run) => (
                   <TableRow key={run.id}>
                     {hideServer ? null : (
-                      <TableCell className="font-medium">{run.serverName}</TableCell>
+                      <TableCell className="font-medium">
+                        {run.serverName}
+                      </TableCell>
                     )}
                     <TableCell className="text-muted-foreground capitalize">
                       {run.trigger}
                     </TableCell>
-                    <TableCell className="text-muted-foreground">{run.actor}</TableCell>
+                    <TableCell className="text-muted-foreground">
+                      {run.actor}
+                    </TableCell>
                     <TableCell>
                       {run.status === "running" ? (
-                        <span className="flex items-center gap-1.5 whitespace-nowrap text-xs text-muted-foreground">
+                        <span className="flex items-center gap-1.5 text-xs whitespace-nowrap text-muted-foreground">
                           <Loader2 className="size-3.5 animate-spin" />
                           {STATUS_LABELS.running}
                           <Elapsed startedAt={run.startedAt} />
@@ -104,7 +103,9 @@ export function CleanupHistory({
                       )}
                     </TableCell>
                     <TableCell className="text-right tabular-nums">
-                      {run.status === "success" ? formatBytes(run.reclaimedBytes) : "—"}
+                      {run.status === "success"
+                        ? formatBytes(run.reclaimedBytes)
+                        : "—"}
                     </TableCell>
                     <TableCell
                       className="whitespace-nowrap text-muted-foreground"

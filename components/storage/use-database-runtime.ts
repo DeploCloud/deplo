@@ -45,9 +45,14 @@ const DEFAULT_POLL_MS = 5_000;
 
 export function useDatabaseRuntime(
   databaseId: string,
-  { enabled = true, pollMs = DEFAULT_POLL_MS }: { enabled?: boolean; pollMs?: number } = {},
+  {
+    enabled = true,
+    pollMs = DEFAULT_POLL_MS,
+  }: { enabled?: boolean; pollMs?: number } = {},
 ): DatabaseRuntimeView | null {
-  const [runtime, setRuntime] = React.useState<DatabaseRuntimeView | null>(null);
+  const [runtime, setRuntime] = React.useState<DatabaseRuntimeView | null>(
+    null,
+  );
 
   React.useEffect(() => {
     if (!enabled) return;
@@ -59,7 +64,9 @@ export function useDatabaseRuntime(
       // so it resumes on its own when the tab returns.
       if (document.visibilityState === "visible") {
         try {
-          const data = await gql<Response>(DATABASE_RUNTIME_QUERY, { databaseId });
+          const data = await gql<Response>(DATABASE_RUNTIME_QUERY, {
+            databaseId,
+          });
           if (!cancelled) setRuntime(data.databaseRuntime);
         } catch {
           // A failed poll is not evidence about the container — keep the last

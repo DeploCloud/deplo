@@ -12,7 +12,11 @@ import {
 } from "../db/schema/control-plane";
 import { runWithIdentity } from "../auth/request-context";
 import { seedIdentity, TEAM_A, USER_1 } from "./identity-test-helpers";
-import { seedApp, seedServer, TRUNCATE_PROJECT_GRAPH } from "./app-graph-test-helpers";
+import {
+  seedApp,
+  seedServer,
+  TRUNCATE_PROJECT_GRAPH,
+} from "./app-graph-test-helpers";
 import { deleteEnvironment } from "./environments";
 
 /**
@@ -46,7 +50,9 @@ async function seedProjectWith(defaultId: string | null): Promise<void> {
   await pg.exec(`${TRUNCATE_PROJECT_GRAPH}
     truncate table environments, projects, membership_capabilities, memberships,
     users, teams restart identity cascade;`);
-  await seedIdentity(db, { users: [{ id: USER_1, teamId: TEAM_A, role: "owner" }] });
+  await seedIdentity(db, {
+    users: [{ id: USER_1, teamId: TEAM_A, role: "owner" }],
+  });
   await seedServer(db);
   await db.insert(projectsTable).values({
     id: PRC,
@@ -125,5 +131,8 @@ test("the default is undeletable, so a project always keeps one", async () => {
     .select()
     .from(environmentsTable)
     .where(eq(environmentsTable.projectId, PRC));
-  assert.deepEqual(left.map((e) => e.id), ["environ_prod"]);
+  assert.deepEqual(
+    left.map((e) => e.id),
+    ["environ_prod"],
+  );
 });

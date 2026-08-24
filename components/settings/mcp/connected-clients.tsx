@@ -47,10 +47,11 @@ export function ConnectedClients({
   const [revoke, setRevoke] = React.useState<McpConnectionDTO | null>(null);
   // The client leaves the list on the click — its credential is already gone by
   // the time the mutation answers.
-  const { visible: rows, remove, restore } = useOptimisticRemove(
-    connections,
-    (c) => c.id,
-  );
+  const {
+    visible: rows,
+    remove,
+    restore,
+  } = useOptimisticRemove(connections, (c) => c.id);
 
   return (
     <Card>

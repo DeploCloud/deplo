@@ -508,7 +508,7 @@ export function EnvFilters<T extends FilterableVar>({
       {/* The search gets first claim on the width but yields on a crowded row —
           a desktop caps it so six dropdowns still fit beside it. */}
       <div className="relative min-w-[11rem] flex-1 basis-full sm:basis-auto lg:max-w-[16rem]">
-        <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
+        <Search className="pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2 text-muted-foreground" />
         <Input
           value={state.q}
           onChange={(e) => onChange({ ...state, q: e.target.value })}
@@ -575,7 +575,9 @@ export function EnvFilters<T extends FilterableVar>({
         </SelectContent>
       </Select>
 
-      {actions && <div className="flex shrink-0 items-center gap-2">{actions}</div>}
+      {actions && (
+        <div className="flex shrink-0 items-center gap-2">{actions}</div>
+      )}
     </div>
   );
 }
@@ -693,7 +695,7 @@ function FacetOptionRow({
         </span>
       )}
       {count != null && (
-        <span className="ml-auto pl-2 text-xs tabular-nums text-muted-foreground">
+        <span className="ml-auto pl-2 text-xs text-muted-foreground tabular-nums">
           {count}
         </span>
       )}
@@ -740,7 +742,7 @@ export function FacetMenu<T>({
           title={facetTitle(facet, values)}
           className={cn(
             "flex h-9 min-w-0 flex-1 cursor-pointer items-center gap-1.5 rounded-md border border-input bg-transparent px-3 text-sm shadow-sm transition-colors",
-            "focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-1 focus:ring-offset-background",
+            "focus:ring-2 focus:ring-ring focus:ring-offset-1 focus:ring-offset-background focus:outline-none",
             "disabled:cursor-not-allowed disabled:opacity-50",
             on
               ? "border-primary/60 bg-primary/[0.06] text-foreground"
@@ -896,13 +898,16 @@ function FacetCombobox<T>({
   }
 
   return (
-    <Popover open={open} onOpenChange={(next) => (next ? setOpen(true) : close())}>
+    <Popover
+      open={open}
+      onOpenChange={(next) => (next ? setOpen(true) : close())}
+    >
       <PopoverAnchor asChild>
         <div ref={anchorRef} className="relative min-w-0 flex-1">
           {Icon && (
             <Icon
               className={cn(
-                "pointer-events-none absolute left-3 top-1/2 size-3.5 -translate-y-1/2",
+                "pointer-events-none absolute top-1/2 left-3 size-3.5 -translate-y-1/2",
                 on ? "text-foreground" : "text-muted-foreground",
               )}
             />
@@ -937,7 +942,7 @@ function FacetCombobox<T>({
                 "border-primary/60 bg-primary/[0.06] placeholder:text-foreground",
             )}
           />
-          <ChevronDown className="pointer-events-none absolute right-3 top-1/2 size-4 -translate-y-1/2 opacity-50" />
+          <ChevronDown className="pointer-events-none absolute top-1/2 right-3 size-4 -translate-y-1/2 opacity-50" />
         </div>
       </PopoverAnchor>
       <PopoverContent
@@ -963,7 +968,11 @@ function FacetCombobox<T>({
           }
         }}
       >
-        <div id={`${baseId}-listbox`} role="listbox" aria-multiselectable="true">
+        <div
+          id={`${baseId}-listbox`}
+          role="listbox"
+          aria-multiselectable="true"
+        >
           <button
             type="button"
             id={optionId(0)}

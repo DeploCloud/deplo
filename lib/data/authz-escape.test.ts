@@ -63,7 +63,11 @@ import { moveAppToProject } from "./projects";
 import { createRole, listRoles, resetRole, updateRole } from "./roles";
 import { createToken } from "./tokens";
 import { updateMember } from "./members";
-import { deployHookUrlMasked, revealDeployHook, verifyDeployHookToken } from "./deploy-hook";
+import {
+  deployHookUrlMasked,
+  revealDeployHook,
+  verifyDeployHookToken,
+} from "./deploy-hook";
 
 /**
  * ESCAPING YOUR OWN BOUNDARY — the three ways deplo hands out less than
@@ -175,8 +179,22 @@ beforeEach(async () => {
   });
   await seedServer(db);
   await db.insert(projectsTable).values([
-    { id: PRC_IN, teamId: TEAM_A, name: "In", slug: "in", createdAt: T0, updatedAt: T0 },
-    { id: PRC_OUT, teamId: TEAM_A, name: "Out", slug: "out", createdAt: T0, updatedAt: T0 },
+    {
+      id: PRC_IN,
+      teamId: TEAM_A,
+      name: "In",
+      slug: "in",
+      createdAt: T0,
+      updatedAt: T0,
+    },
+    {
+      id: PRC_OUT,
+      teamId: TEAM_A,
+      name: "Out",
+      slug: "out",
+      createdAt: T0,
+      updatedAt: T0,
+    },
   ]);
   await seedApp(db, { id: APP_IN, slug: "in-app", projectId: PRC_IN });
   await seedApp(db, { id: APP_OUT, slug: "out-app", projectId: PRC_OUT });
@@ -228,33 +246,35 @@ test("nor author one — a team-wide var reaches every app in the team", async (
   // Creating: the var would be injected into apps in `prc_out` too, at the
   // highest deploy precedence.
   await refused(
-    () => scoped(() =>
-      saveSharedVar({
-        key: "INJECTED",
-        value: "x",
-        type: "plain",
-        teamWide: true,
-        environmentIds: [],
-        projectIds: [],
-      }),
-    ),
+    () =>
+      scoped(() =>
+        saveSharedVar({
+          key: "INJECTED",
+          value: "x",
+          type: "plain",
+          teamWide: true,
+          environmentIds: [],
+          projectIds: [],
+        }),
+      ),
     "a narrowed token created a team-wide shared variable",
   );
 
   // Editing an existing one is the same escape with an extra step: rewriting a
   // value every out-of-scope app already consumes.
   await refused(
-    () => scoped(() =>
-      saveSharedVar({
-        id,
-        key: "STRIPE_KEY",
-        value: "sk_live_attacker",
-        type: "secret",
-        teamWide: true,
-        environmentIds: [],
-        projectIds: [],
-      }),
-    ),
+    () =>
+      scoped(() =>
+        saveSharedVar({
+          id,
+          key: "STRIPE_KEY",
+          value: "sk_live_attacker",
+          type: "secret",
+          teamWide: true,
+          environmentIds: [],
+          projectIds: [],
+        }),
+      ),
     "a narrowed token rewrote a team-wide shared variable",
   );
 
@@ -380,9 +400,15 @@ test("a narrowed token holds no move at all, in or out of its scope", async () =
   const fld = (await asUser(() => listFolders()))[0]!.id;
 
   for (const [what, call] of [
-    ["an app it doesn't reach, into a folder", () => moveAppToFolder(APP_OUT, fld)],
+    [
+      "an app it doesn't reach, into a folder",
+      () => moveAppToFolder(APP_OUT, fld),
+    ],
     ["its own app, into a folder", () => moveAppToFolder(APP_IN, fld)],
-    ["its own app, into an out-of-scope project", () => moveAppToProject(APP_IN, PRC_OUT)],
+    [
+      "its own app, into an out-of-scope project",
+      () => moveAppToProject(APP_IN, PRC_OUT),
+    ],
   ] as const) {
     await refused(() => scoped(call), `a narrowed token moved ${what}`);
   }
@@ -464,16 +490,20 @@ test("nor run, pause, edit or delete its schedule", async () => {
   const { backupId } = await dbBackup();
 
   await refused(() => scoped(() => runBackup(backupId)), "runBackup");
-  await refused(() => scoped(() => toggleBackup(backupId, false)), "toggleBackup");
   await refused(
-    () => scoped(() =>
-      updateBackup(backupId, {
-        name: "hijacked",
-        destinationId: DEST,
-        schedule: "0 4 * * *",
-        retentionCount: 1,
-      }),
-    ),
+    () => scoped(() => toggleBackup(backupId, false)),
+    "toggleBackup",
+  );
+  await refused(
+    () =>
+      scoped(() =>
+        updateBackup(backupId, {
+          name: "hijacked",
+          destinationId: DEST,
+          schedule: "0 4 * * *",
+          retentionCount: 1,
+        }),
+      ),
     "updateBackup",
   );
   await refused(() => scoped(() => deleteBackup(backupId)), "deleteBackup");
@@ -483,23 +513,25 @@ test("nor schedule a new dump of one, nor wipe its artifacts", async () => {
   await dbBackup();
 
   await refused(
-    () => scoped(() =>
-      createBackup({
-        name: "exfil",
-        targetKind: "database",
-        databaseId: DB,
-        destinationId: DEST,
-        schedule: "0 3 * * *",
-        retentionCount: 7,
-      }),
-    ),
+    () =>
+      scoped(() =>
+        createBackup({
+          name: "exfil",
+          targetKind: "database",
+          databaseId: DB,
+          destinationId: DEST,
+          schedule: "0 3 * * *",
+          retentionCount: 7,
+        }),
+      ),
     "a narrowed token scheduled a dump of an out-of-scope database",
   );
 
   await refused(
-    () => scoped(() =>
-      deleteAllBackupArtifacts({ kind: "database", targetId: DB }),
-    ),
+    () =>
+      scoped(() =>
+        deleteAllBackupArtifacts({ kind: "database", targetId: DB }),
+      ),
     "a narrowed token wiped an out-of-scope database's artifacts",
   );
 });
@@ -546,17 +578,18 @@ test("an APP backup inside the scope is still reachable — the guard is about d
 
   // ...and the app in the OTHER project is still refused, by the app gate.
   await refused(
-    () => scoped(() =>
-      createBackup({
-        name: "out-of-scope",
-        targetKind: "app",
-        databaseId: null,
-        appId: APP_OUT,
-        destinationId: DEST,
-        schedule: "0 3 * * *",
-        retentionCount: 7,
-      }),
-    ),
+    () =>
+      scoped(() =>
+        createBackup({
+          name: "out-of-scope",
+          targetKind: "app",
+          databaseId: null,
+          appId: APP_OUT,
+          destinationId: DEST,
+          schedule: "0 3 * * *",
+          retentionCount: 7,
+        }),
+      ),
     "a narrowed token scheduled a backup of an out-of-scope app",
   );
 });
@@ -566,7 +599,10 @@ test("an APP backup inside the scope is still reachable — the guard is about d
 /* ------------------------------------------------------------------ */
 
 /** The team's built-in Member role, as stored. */
-async function memberRole(): Promise<{ id: string; capabilities: Capability[] }> {
+async function memberRole(): Promise<{
+  id: string;
+  capabilities: Capability[];
+}> {
   const roles = await asUser(() => listRoles());
   const r = roles.find((x) => x.builtinKey === "member");
   assert.ok(r, "the Member default is seeded");
@@ -687,14 +723,13 @@ test("the masked hook URL is a mask, not a prefix of the secret", async () => {
   const secret = url.slice(url.lastIndexOf("/") + 1);
   const masked = await deployHookUrlMasked(APP_IN);
 
-  assert.ok(masked.startsWith(`https://deplo.test/api/apps/${APP_IN}/deploy-hook/`));
+  assert.ok(
+    masked.startsWith(`https://deplo.test/api/apps/${APP_IN}/deploy-hook/`),
+  );
   assert.ok(!masked.includes(secret), "the whole secret is absent");
   // Not even the first characters: a settings page renders this for anyone who
   // can read the app, including members without `configure_apps`.
-  assert.ok(
-    !masked.includes(secret.slice(0, 4)),
-    "nor its leading characters",
-  );
+  assert.ok(!masked.includes(secret.slice(0, 4)), "nor its leading characters");
 });
 
 /* ------------------------------------------------------------------ */
@@ -765,7 +800,8 @@ test("an owner's manage_roles token can't widen the role every member holds", as
     "a one-permission token authored an all-powerful role",
   );
   assert.deepEqual(
-    (await asUser(() => listRoles())).find((r) => r.id === member.id)?.capabilities,
+    (await asUser(() => listRoles())).find((r) => r.id === member.id)
+      ?.capabilities,
     member.capabilities,
     "the Member role is untouched",
   );
@@ -792,7 +828,10 @@ test("an owner's manage_members token can't promote anyone past itself", async (
   // And the role path, which refuses outright, agrees.
   const member = await memberRole();
   await refused(
-    () => asToken("manage_members", () => updateMember({ userId: "u_roles", roleId: member.id })),
+    () =>
+      asToken("manage_members", () =>
+        updateMember({ userId: "u_roles", roleId: member.id }),
+      ),
     "a one-permission token assigned a role richer than itself",
   );
 });

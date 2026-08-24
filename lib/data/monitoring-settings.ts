@@ -78,7 +78,9 @@ export async function isMetricsSavingEnabled(): Promise<boolean> {
  * gate as the cleanup policy. Turning it OFF also DROPS what is buffered: the
  * switch says "save", so off must mean nothing stays saved, not "stops growing".
  */
-export async function setSaveMetrics(enabled: boolean): Promise<MonitoringSettings> {
+export async function setSaveMetrics(
+  enabled: boolean,
+): Promise<MonitoringSettings> {
   const { teamId } = await requireCapability("manage_monitoring");
   const user = (await getCurrentUser())!;
 

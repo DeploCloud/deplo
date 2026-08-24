@@ -81,7 +81,10 @@ export async function seedServerRow(
   opts: Partial<Server> & { id: string },
 ): Promise<Server> {
   const server = makeServer(opts);
-  await db.insert(serversTable).values(serverToRow(server)).onConflictDoNothing();
+  await db
+    .insert(serversTable)
+    .values(serverToRow(server))
+    .onConflictDoNothing();
   return server;
 }
 

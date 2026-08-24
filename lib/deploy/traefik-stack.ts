@@ -86,7 +86,9 @@ export function withTraefikDashboard(
   // Our own labels always come off first, so enabling twice is idempotent and
   // disabling leaves whatever the operator added untouched. `traefik.enable` is
   // deliberately NOT treated as ours here — see the disable branch.
-  const kept = labels.filter((l) => !isOurs(l) && !l.startsWith("traefik.enable="));
+  const kept = labels.filter(
+    (l) => !isOurs(l) && !l.startsWith("traefik.enable="),
+  );
 
   if (!dashboard) {
     // The static flag comes out only when we put it there. The installer writes
@@ -94,14 +96,24 @@ export function withTraefikDashboard(
     // themselves (typically with `--api.insecure` on a loopback port) did, and
     // stripping it would take away a page Deplo never published.
     if (labels.includes(FLAG_MARKER)) {
-      setList(doc, service, "command", command.filter((c) => c !== DASHBOARD_FLAG));
+      setList(
+        doc,
+        service,
+        "command",
+        command.filter((c) => c !== DASHBOARD_FLAG),
+      );
     }
     // `traefik.enable=true` is ours only when nothing else on this container
     // needs it. The installer's Traefik carries no labels at all, so an orphan
     // enable is our leftover — but an operator who added their own route to this
     // container still needs it, and removing it would silently unpublish them.
     const needsEnable = kept.some((l) => l.startsWith("traefik."));
-    setList(doc, service, "labels", needsEnable ? ["traefik.enable=true", ...kept] : kept);
+    setList(
+      doc,
+      service,
+      "labels",
+      needsEnable ? ["traefik.enable=true", ...kept] : kept,
+    );
     return dump(doc);
   }
 
@@ -110,11 +122,14 @@ export function withTraefikDashboard(
     "A domain is required to publish the Traefik dashboard",
   );
   if (!dashboard.htpasswdUsers.trim())
-    throw new Error("Credentials are required to publish the Traefik dashboard");
+    throw new Error(
+      "Credentials are required to publish the Traefik dashboard",
+    );
 
   // Claim the flag only when we are the one adding it — a host that already had
   // it keeps it when the panel is turned off again.
-  const ourFlag = !command.includes(DASHBOARD_FLAG) || labels.includes(FLAG_MARKER);
+  const ourFlag =
+    !command.includes(DASHBOARD_FLAG) || labels.includes(FLAG_MARKER);
   if (!command.includes(DASHBOARD_FLAG)) command.push(DASHBOARD_FLAG);
   setList(doc, service, "command", command);
 
@@ -152,7 +167,9 @@ export function withTraefikDashboard(
 export function acmeEmail(currentYaml: string): string | null {
   const resolver = stackCertResolver(currentYaml);
   if (resolver === null) return null;
-  const command = listOf(traefikService(parseCompose(currentYaml)).get("command", true));
+  const command = listOf(
+    traefikService(parseCompose(currentYaml)).get("command", true),
+  );
   const flag = `--certificatesresolvers.${resolver}.acme.email=`;
   const found = command.find((c) => c.startsWith(flag));
   return found ? found.slice(flag.length) : "";
@@ -170,11 +187,14 @@ export function acmeEmail(currentYaml: string): string | null {
 export function stackCertResolver(currentYaml: string): string | null {
   let command: string[];
   try {
-    command = listOf(traefikService(parseCompose(currentYaml)).get("command", true));
+    command = listOf(
+      traefikService(parseCompose(currentYaml)).get("command", true),
+    );
   } catch {
     return null;
   }
-  if (!command.some((c) => c.startsWith("--certificatesresolvers."))) return null;
+  if (!command.some((c) => c.startsWith("--certificatesresolvers.")))
+    return null;
   return certResolver(command);
 }
 
@@ -192,7 +212,10 @@ export function stackCertResolver(currentYaml: string): string | null {
  */
 export function withAcmeEmail(currentYaml: string, email: string): string {
   const address = email.trim();
-  if (!address) throw new Error("Enter the email address certificates should be issued under");
+  if (!address)
+    throw new Error(
+      "Enter the email address certificates should be issued under",
+    );
 
   const doc = parseCompose(currentYaml);
   const service = traefikService(doc);
@@ -255,7 +278,8 @@ export function traefikCertificates(currentYaml: string): CustomCertificate[] {
   } catch {
     return [];
   }
-  const list = (parsed as { tls?: { certificates?: unknown } } | null)?.tls?.certificates;
+  const list = (parsed as { tls?: { certificates?: unknown } } | null)?.tls
+    ?.certificates;
   if (!Array.isArray(list)) return [];
   return list
     .map((entry) => {
@@ -339,8 +363,14 @@ export function withTraefikCertificates(
  * re-rendering it from the certificate list alone would delete whatever else
  * they put in it, silently, on the next install.
  */
-function certificateFile(current: unknown, certificates: CustomCertificate[]): string {
-  const entries = certificates.map((c) => ({ certFile: c.certPem, keyFile: c.keyPem }));
+function certificateFile(
+  current: unknown,
+  certificates: CustomCertificate[],
+): string {
+  const entries = certificates.map((c) => ({
+    certFile: c.certPem,
+    keyFile: c.keyPem,
+  }));
   const write = (doc: Document) => {
     doc.setIn(["tls", "certificates"], doc.createNode(entries));
     return doc.toString({ lineWidth: 0 });
@@ -447,7 +477,9 @@ function dropFileProvider(doc: Stack, service: YAMLMap, removed: string): void {
     service,
     "command",
     command.filter(
-      (c) => c !== `${FILE_DIRECTORY_FLAG}${DEPLO_DYNAMIC_DIR}` && c !== FILE_WATCH_FLAG,
+      (c) =>
+        c !== `${FILE_DIRECTORY_FLAG}${DEPLO_DYNAMIC_DIR}` &&
+        c !== FILE_WATCH_FLAG,
     ),
   );
 }
@@ -498,7 +530,8 @@ function readOnlyMountOver(service: YAMLMap, dir: string): string | null {
       target = scalar(entry.get("target", true));
       readOnly = entry.get("read_only") === true;
     }
-    if (readOnly && target && (dir === target || dir.startsWith(`${target}/`))) return target;
+    if (readOnly && target && (dir === target || dir.startsWith(`${target}/`)))
+      return target;
   }
   return null;
 }
@@ -605,7 +638,11 @@ export const DEFAULT_PANEL_TARGET = "http://deplo:3000";
 export function panelRoute(currentYaml: string): PanelRoute | null {
   let content: unknown;
   try {
-    content = parseCompose(currentYaml).getIn(["configs", PANEL_CONFIG, "content"]);
+    content = parseCompose(currentYaml).getIn([
+      "configs",
+      PANEL_CONFIG,
+      "content",
+    ]);
   } catch {
     return null;
   }
@@ -616,19 +653,26 @@ export function panelRoute(currentYaml: string): PanelRoute | null {
   } catch {
     return null;
   }
-  const http = (parsed as { http?: { routers?: Record<string, unknown>; services?: Record<string, unknown> } } | null)
-    ?.http;
+  const http = (
+    parsed as {
+      http?: {
+        routers?: Record<string, unknown>;
+        services?: Record<string, unknown>;
+      };
+    } | null
+  )?.http;
   const router = http?.routers?.[PANEL_ROUTER] as
-    | { rule?: unknown; tls?: { certResolver?: unknown } }
-    | undefined;
+    { rule?: unknown; tls?: { certResolver?: unknown } } | undefined;
   const target = (
     http?.services?.[PANEL_ROUTER] as
-      | { loadBalancer?: { servers?: { url?: unknown }[] } }
-      | undefined
+      { loadBalancer?: { servers?: { url?: unknown }[] } } | undefined
   )?.loadBalancer?.servers?.[0]?.url;
   if (!router || typeof target !== "string" || !target) return null;
 
-  const rule = typeof router.rule === "string" ? router.rule.match(/^Host\(`([^`]+)`\)$/) : null;
+  const rule =
+    typeof router.rule === "string"
+      ? router.rule.match(/^Host\(`([^`]+)`\)$/)
+      : null;
   if (!rule) return null;
   const resolver = router.tls?.certResolver;
   return {
@@ -666,7 +710,10 @@ export function panelRoute(currentYaml: string): PanelRoute | null {
  * all - measured, not assumed: an entrypoint redirection outranks EVERY router
  * on that entrypoint, including one at priority MaxInt32.
  */
-export function withPanelRoute(currentYaml: string, route: PanelRoute | null): string {
+export function withPanelRoute(
+  currentYaml: string,
+  route: PanelRoute | null,
+): string {
   const doc = parseCompose(currentYaml);
   const service = traefikService(doc);
   withRedirectFallback(doc, service);
@@ -687,7 +734,9 @@ export function withPanelRoute(currentYaml: string, route: PanelRoute | null): s
   );
   const target = route.target.trim();
   if (!target)
-    throw new Error("Deplo does not know where its proxy should send the panel on this server");
+    throw new Error(
+      "Deplo does not know where its proxy should send the panel on this server",
+    );
 
   mountDeploConfig(
     doc,
@@ -719,14 +768,21 @@ function panelFile(current: unknown, route: PanelRoute): string {
         // still terminates and serves a certificate the operator installed,
         // instead of ordering one from a resolver that does not exist.
         ...(route.https
-          ? { tls: route.certResolver ? { certResolver: route.certResolver } : {} }
+          ? {
+              tls: route.certResolver
+                ? { certResolver: route.certResolver }
+                : {},
+            }
           : {}),
       }),
     );
     doc.setIn(
       ["http", "services", PANEL_ROUTER],
       doc.createNode({
-        loadBalancer: { servers: [{ url: route.target }], passHostHeader: true },
+        loadBalancer: {
+          servers: [{ url: route.target }],
+          passHostHeader: true,
+        },
       }),
     );
     return doc.toString({ lineWidth: 0 });
@@ -782,7 +838,10 @@ function withRedirectFallback(doc: Stack, service: YAMLMap): void {
   const prefix = redirection.slice(0, redirection.indexOf(".to="));
   const priorityFlag = `${prefix}.priority=`;
   if (command.some((c) => c.startsWith(priorityFlag))) return;
-  setList(doc, service, "command", [...command, `${priorityFlag}${REDIRECT_PRIORITY}`]);
+  setList(doc, service, "command", [
+    ...command,
+    `${priorityFlag}${REDIRECT_PRIORITY}`,
+  ]);
 }
 
 /** Whether this stack currently publishes the dashboard, and on which host. */
@@ -794,10 +853,13 @@ export function traefikDashboardDomain(currentYaml: string): string | null {
     return null;
   }
   if (!service) return null;
-  if (!listOf(service.get("command", true)).includes(DASHBOARD_FLAG)) return null;
+  if (!listOf(service.get("command", true)).includes(DASHBOARD_FLAG))
+    return null;
   for (const label of listOf(service.get("labels", true))) {
     const m = label.match(
-      new RegExp(`^traefik\\.http\\.routers\\.${ROUTER}\\.rule=Host\\(\`([^\`]+)\`\\)$`),
+      new RegExp(
+        `^traefik\\.http\\.routers\\.${ROUTER}\\.rule=Host\\(\`([^\`]+)\`\\)$`,
+      ),
     );
     if (m) return m[1];
   }
@@ -848,7 +910,9 @@ function parseCompose(text: string): Stack {
       `Could not read this server's Traefik configuration: ${doc.errors[0].message}`,
     );
   if (!isMap(doc.contents))
-    throw new Error("This server's Traefik configuration is not a compose file");
+    throw new Error(
+      "This server's Traefik configuration is not a compose file",
+    );
   return doc;
 }
 
@@ -866,10 +930,16 @@ function traefikServiceNode(doc: Stack): YAMLMap | null {
     if (isMap(pair.value)) byName.set(scalar(pair.key), pair.value);
   }
   for (const svc of byName.values()) {
-    if (String(svc.get("container_name") ?? "") === TRAEFIK_CONTAINER) return svc;
+    if (String(svc.get("container_name") ?? "") === TRAEFIK_CONTAINER)
+      return svc;
   }
   for (const svc of byName.values()) {
-    if (String(svc.get("image") ?? "").toLowerCase().includes("traefik")) return svc;
+    if (
+      String(svc.get("image") ?? "")
+        .toLowerCase()
+        .includes("traefik")
+    )
+      return svc;
   }
   return byName.get("traefik") ?? null;
 }
@@ -877,7 +947,9 @@ function traefikServiceNode(doc: Stack): YAMLMap | null {
 function traefikService(doc: Stack): YAMLMap {
   const service = traefikServiceNode(doc);
   if (!service)
-    throw new Error("This server's Traefik configuration has no Traefik service in it");
+    throw new Error(
+      "This server's Traefik configuration has no Traefik service in it",
+    );
   return service;
 }
 
@@ -888,7 +960,8 @@ function traefikService(doc: Stack): YAMLMap {
  */
 function listOf(node: unknown): string[] {
   if (isSeq(node)) return node.items.map(scalar);
-  if (isMap(node)) return node.items.map((p) => `${scalar(p.key)}=${scalar(p.value)}`);
+  if (isMap(node))
+    return node.items.map((p) => `${scalar(p.key)}=${scalar(p.value)}`);
   if (isScalar(node)) return [String(node.value)];
   return [];
 }
@@ -912,7 +985,12 @@ function scalar(node: unknown): string {
  * changing the ACME email keep the paragraph written above the email flag. Only
  * genuinely new names get a fresh node, appended at the end.
  */
-function setList(doc: Stack, owner: YAMLMap, key: string, next: string[]): void {
+function setList(
+  doc: Stack,
+  owner: YAMLMap,
+  key: string,
+  next: string[],
+): void {
   const node = owner.get(key, true);
   if (isSeq(node)) {
     const pending = new Map<string, string[]>();

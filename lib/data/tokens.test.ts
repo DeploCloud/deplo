@@ -76,7 +76,10 @@ async function alsoMemberOfB(): Promise<void> {
   await db
     .insert(membershipCapabilities)
     .values(
-      ALL_CAPABILITIES.map((c) => ({ membershipId: "mem_user_1_b", capability: c })),
+      ALL_CAPABILITIES.map((c) => ({
+        membershipId: "mem_user_1_b",
+        capability: c,
+      })),
     );
 }
 
@@ -93,7 +96,10 @@ async function seedProject(id: string, teamId: string, name = id) {
 
 test("a scoped API token can't mint a token reaching a team outside its scope (M-2)", async () => {
   await alsoMemberOfB(); // USER_1 owns both TEAM_A and TEAM_B
-  const asScopedToken = <T>(scopeTeamIds: string[], fn: () => Promise<T>): Promise<T> =>
+  const asScopedToken = <T>(
+    scopeTeamIds: string[],
+    fn: () => Promise<T>,
+  ): Promise<T> =>
     runWithIdentity(
       {
         userId: USER_1,
@@ -119,7 +125,12 @@ test("a scoped API token can't mint a token reaching a team outside its scope (M
     // Reaching TEAM_B is outside the token's own scope, even though its human is
     // an owner there — the clamp bounds capabilities, this bounds reach.
     await assert.rejects(
-      () => createToken({ name: "into-B", capabilities: ["view"], teamIds: [TEAM_B] }),
+      () =>
+        createToken({
+          name: "into-B",
+          capabilities: ["view"],
+          teamIds: [TEAM_B],
+        }),
       /outside its own scope/i,
     );
     // An UNSCOPED token would reach every team the human belongs to.
@@ -159,7 +170,11 @@ test("createToken persists its own capability set, in catalog order, with the vi
     assert.equal(list.length, 1);
     assert.equal(list[0]!.id, token.id);
     assert.equal(list[0]!.prefix, raw.slice(0, 12));
-    assert.deepEqual(list[0]!.capabilities, ["view", "deploy_apps", "view_logs"]);
+    assert.deepEqual(list[0]!.capabilities, [
+      "view",
+      "deploy_apps",
+      "view_logs",
+    ]);
     assert.equal(list[0]!.scoped, false);
     assert.deepEqual(list[0]!.teamIds, []);
     assert.deepEqual(list[0]!.projectIds, []);
@@ -184,7 +199,10 @@ test("a token with no capabilities named is view-only, never everything", async 
 
 test("createToken rejects a blank name", async () => {
   await asUser1(async () => {
-    await assert.rejects(() => createToken({ name: "   " }), /Give the token a name/);
+    await assert.rejects(
+      () => createToken({ name: "   " }),
+      /Give the token a name/,
+    );
   });
 });
 
@@ -232,7 +250,10 @@ test("a retired coarse capability name still expands on the token path", async (
       capabilities: ["deploy" as never],
     });
     assert.ok(token.capabilities.includes("deploy_apps"));
-    assert.ok(token.capabilities.length > 2, "it expanded to more than the floor");
+    assert.ok(
+      token.capabilities.length > 2,
+      "it expanded to more than the floor",
+    );
   });
 });
 
@@ -358,14 +379,17 @@ test("instance admin is opt-in per token, and only an instance admin may grant i
 
 test("a non-admin can't edit a token that administers the instance", async () => {
   const id = await asUser1(
-    async () => (await createToken({ name: "Ops", instanceAdmin: true })).token.id,
+    async () =>
+      (await createToken({ name: "Ops", instanceAdmin: true })).token.id,
   );
   // Demote the actor to a plain manage_tokens holder, leaving the token in place.
   await pg.exec(`delete from membership_capabilities;`);
   await db.execute(
     `insert into membership_capabilities (membership_id, capability) values ('mem_${USER_1}', 'view'), ('mem_${USER_1}', 'manage_tokens')`,
   );
-  await db.execute(`update users set is_instance_admin = false where id = '${USER_1}'`);
+  await db.execute(
+    `update users set is_instance_admin = false where id = '${USER_1}'`,
+  );
 
   await asUser1(async () => {
     await assert.rejects(
@@ -374,7 +398,11 @@ test("a non-admin can't edit a token that administers the instance", async () =>
     );
   });
   const rows = await db.select().from(apiTokens).where(eq(apiTokens.id, id));
-  assert.equal(rows[0]!.instanceAdmin, true, "the bit was not silently cleared");
+  assert.equal(
+    rows[0]!.instanceAdmin,
+    true,
+    "the bit was not silently cleared",
+  );
   assert.equal(rows[0]!.name, "Ops");
 });
 
@@ -414,7 +442,10 @@ test("revokeToken deletes the row", async () => {
     await revokeToken(id);
     assert.equal((await listTokens()).length, 0);
   });
-  assert.equal((await db.select().from(apiTokens).where(eq(apiTokens.id, id))).length, 0);
+  assert.equal(
+    (await db.select().from(apiTokens).where(eq(apiTokens.id, id))).length,
+    0,
+  );
 });
 
 test("revoking a token scoped to this team alone deletes it", async () => {
@@ -553,8 +584,7 @@ test("a cross-team id hits nothing, and says so", async () => {
 test("listTokens shows the tokens you minted in your OTHER teams", async () => {
   await alsoMemberOfB();
   const id = await asUser1(
-    async () =>
-      (await createToken({ name: "CI", teamIds: [TEAM_A] })).token.id,
+    async () => (await createToken({ name: "CI", teamIds: [TEAM_A] })).token.id,
   );
   // Settings → API tokens is an account page with no team switcher on it, so a
   // token the active team filters out is one you cannot reach at all.
@@ -571,8 +601,7 @@ test("listTokens shows the tokens you minted in your OTHER teams", async () => {
 test("you can revoke your own token from a team it never reached", async () => {
   await alsoMemberOfB();
   const id = await asUser1(
-    async () =>
-      (await createToken({ name: "CI", teamIds: [TEAM_A] })).token.id,
+    async () => (await createToken({ name: "CI", teamIds: [TEAM_A] })).token.id,
   );
   await asUser1InB(() => revokeToken(id));
   assert.equal(
@@ -595,7 +624,11 @@ test("listTokens is scoped to the active team", async () => {
     await createToken({ name: "B-token" });
   });
   await asUser1(async () => {
-    assert.equal((await listTokens()).length, 0, "user_1 sees no team-B tokens");
+    assert.equal(
+      (await listTokens()).length,
+      0,
+      "user_1 sees no team-B tokens",
+    );
     await createToken({ name: "A-token" });
     assert.equal((await listTokens()).length, 1);
   });
@@ -716,7 +749,9 @@ test("an unrestricted token reaching a team the editor isn't in can only be revo
 
 test("the creator editing their own token is untouched by the cross-team bound", async () => {
   await pg.exec(TRUNCATE);
-  await seedIdentity(db, { users: [{ id: "u_creator", teamId: TEAM_A, role: "owner" }] });
+  await seedIdentity(db, {
+    users: [{ id: "u_creator", teamId: TEAM_A, role: "owner" }],
+  });
   await seedMembership("u_creator", TEAM_B, ["view"]);
 
   const { raw } = await runWithIdentity(
@@ -727,7 +762,11 @@ test("the creator editing their own token is untouched by the cross-team bound",
   // Unrestricted, so it reaches team B too — where the creator is read-only. The
   // edit stands, because the live clamp already answers for it there.
   await runWithIdentity({ userId: "u_creator", teamId: TEAM_A }, () =>
-    updateToken({ id: tokenId, name: "ci", capabilities: ["view", "delete_apps"] }),
+    updateToken({
+      id: tokenId,
+      name: "ci",
+      capabilities: ["view", "delete_apps"],
+    }),
   );
   const inB = await authenticateToken(raw, TEAM_B);
   const { currentCapabilities } = await import("../membership");

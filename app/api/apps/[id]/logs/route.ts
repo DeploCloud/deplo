@@ -48,7 +48,9 @@ function isCrossSite(request: NextRequest): boolean {
     return true;
   }
   const host =
-    request.headers.get("x-forwarded-host") ?? request.headers.get("host") ?? "";
+    request.headers.get("x-forwarded-host") ??
+    request.headers.get("host") ??
+    "";
   return originHost !== host;
 }
 
@@ -57,7 +59,10 @@ export async function GET(
   ctx: RouteContext<"/api/apps/[id]/logs">,
 ) {
   if (isCrossSite(request))
-    return Response.json({ error: "Cross-site request refused" }, { status: 403 });
+    return Response.json(
+      { error: "Cross-site request refused" },
+      { status: 403 },
+    );
 
   const user = await getCurrentUser();
   if (!user) return Response.json({ error: "Unauthorized" }, { status: 401 });

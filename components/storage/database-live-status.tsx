@@ -70,6 +70,8 @@ export function useLiveDatabase(): LiveDatabase | null {
 }
 
 /** The database's live status, falling back to a server-rendered value. */
-export function useLiveDatabaseStatus(fallback: DatabaseStatus): DatabaseStatus {
+export function useLiveDatabaseStatus(
+  fallback: DatabaseStatus,
+): DatabaseStatus {
   return useLiveDatabase()?.status ?? fallback;
 }

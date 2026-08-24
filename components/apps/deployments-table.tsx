@@ -280,10 +280,11 @@ export function DeploymentsTable({
   // or a whole filtered sweep. The rows the FILTERS see are the ones still
   // present; the dropdown options keep reading the full set so an option never
   // vanishes mid-interaction.
-  const { visible: remaining, remove, restore } = useOptimisticRemove(
-    deployments,
-    (d) => d.id,
-  );
+  const {
+    visible: remaining,
+    remove,
+    restore,
+  } = useOptimisticRemove(deployments, (d) => d.id);
   const [deleteSelectedOpen, setDeleteSelectedOpen] = React.useState(false);
   const [deleteAllOpen, setDeleteAllOpen] = React.useState(false);
   const [cancelAllOpen, setCancelAllOpen] = React.useState(false);
@@ -306,7 +307,8 @@ export function DeploymentsTable({
   const serverOptions = React.useMemo(() => {
     const m = new Map<string, string>();
     for (const d of deployments)
-      if (d.serverId && !m.has(d.serverId)) m.set(d.serverId, d.serverName ?? d.serverId);
+      if (d.serverId && !m.has(d.serverId))
+        m.set(d.serverId, d.serverName ?? d.serverId);
     return [...m]
       .map(([id, name]) => ({ id, name }))
       .sort((a, b) => a.name.localeCompare(b.name));
@@ -339,9 +341,7 @@ export function DeploymentsTable({
       ? serverFilter
       : null;
   const effectiveAppFilter =
-    appFilter && appOptions.some((s) => s.id === appFilter)
-      ? appFilter
-      : null;
+    appFilter && appOptions.some((s) => s.id === appFilter) ? appFilter : null;
   const effectiveStatusFilter =
     statusFilter && statusOptions.includes(statusFilter) ? statusFilter : null;
   const effectiveEnvFilter =
@@ -416,7 +416,8 @@ export function DeploymentsTable({
   );
   const selectedCount = effectiveSelected.length;
 
-  const allSelected = selectableIds.length > 0 && selectedCount === selectableIds.length;
+  const allSelected =
+    selectableIds.length > 0 && selectedCount === selectableIds.length;
   const someSelected = selectedCount > 0 && !allSelected;
 
   // The scope the bulk sweeps target: the app page pins one app; the global page
@@ -529,7 +530,9 @@ export function DeploymentsTable({
       (d) => d.deleteDeployments,
     );
     if (res.ok) {
-      toast.success(`Deleted ${res.data} deployment${res.data === 1 ? "" : "s"}`);
+      toast.success(
+        `Deleted ${res.data} deployment${res.data === 1 ? "" : "s"}`,
+      );
     } else {
       ids.forEach(restore);
     }
@@ -554,7 +557,9 @@ export function DeploymentsTable({
       (d) => d.deleteAllDeployments,
     );
     if (res.ok) {
-      toast.success(`Deleted ${res.data} deployment${res.data === 1 ? "" : "s"}`);
+      toast.success(
+        `Deleted ${res.data} deployment${res.data === 1 ? "" : "s"}`,
+      );
     } else {
       swept.forEach(restore);
     }
@@ -621,7 +626,9 @@ export function DeploymentsTable({
                 >
                   <CircleStop className="size-4" />
                   Stop all builds
-                  <span className="text-muted-foreground">({inProgressCount})</span>
+                  <span className="text-muted-foreground">
+                    ({inProgressCount})
+                  </span>
                 </Button>
               )}
               {selectableIds.length > 0 && (
@@ -655,7 +662,10 @@ export function DeploymentsTable({
               value={effectiveServerFilter ?? ALL}
               onValueChange={applyServerFilter}
             >
-              <SelectTrigger className="w-[170px]" aria-label="Filter by server">
+              <SelectTrigger
+                className="w-[170px]"
+                aria-label="Filter by server"
+              >
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
@@ -691,7 +701,10 @@ export function DeploymentsTable({
               value={effectiveStatusFilter ?? ALL}
               onValueChange={applyStatusFilter}
             >
-              <SelectTrigger className="w-[150px]" aria-label="Filter by status">
+              <SelectTrigger
+                className="w-[150px]"
+                aria-label="Filter by status"
+              >
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
@@ -772,7 +785,11 @@ export function DeploymentsTable({
                   >
                     <Checkbox
                       checked={
-                        allSelected ? true : someSelected ? "indeterminate" : false
+                        allSelected
+                          ? true
+                          : someSelected
+                            ? "indeterminate"
+                            : false
                       }
                       disabled={selectableIds.length === 0}
                       onCheckedChange={(v) => toggleAll(v === true)}
@@ -798,7 +815,9 @@ export function DeploymentsTable({
                   colSpan={colSpan}
                   className="py-8 text-center text-sm text-muted-foreground"
                 >
-                  {hasFilter ? "No deployments match the filters." : "No deployments."}
+                  {hasFilter
+                    ? "No deployments match the filters."
+                    : "No deployments."}
                 </TableCell>
               </TableRow>
             ) : (
@@ -831,7 +850,9 @@ export function DeploymentsTable({
                             <Checkbox
                               checked={checked}
                               disabled={inProgress}
-                              onCheckedChange={(v) => toggleRow(d.id, v === true)}
+                              onCheckedChange={(v) =>
+                                toggleRow(d.id, v === true)
+                              }
                               aria-label={`Select deployment ${d.commitSha}`}
                             />
                           </span>
@@ -861,7 +882,10 @@ export function DeploymentsTable({
                             exactly the question the history gets asked. */}
                         {d.rollbackOf ? (
                           <SimpleTooltip content="This deployment put the app back on an earlier build">
-                            <Badge variant="outline" className="gap-1 px-1.5 py-0 text-xs font-normal">
+                            <Badge
+                              variant="outline"
+                              className="gap-1 px-1.5 py-0 text-xs font-normal"
+                            >
                               <Undo2 className="size-3" />
                               Rollback
                             </Badge>
@@ -923,7 +947,9 @@ export function DeploymentsTable({
                     <TableCell>
                       <Badge
                         variant={
-                          d.environment === "production" ? "default" : "secondary"
+                          d.environment === "production"
+                            ? "default"
+                            : "secondary"
                         }
                         className="capitalize"
                       >
@@ -996,7 +1022,8 @@ export function DeploymentsTable({
       {pageCount > 1 && (
         <div className="flex flex-wrap items-center justify-between gap-3">
           <span className="text-sm text-muted-foreground">
-            Showing {pageStart + 1}–{Math.min(pageStart + PAGE_SIZE, visible.length)} of{" "}
+            Showing {pageStart + 1}–
+            {Math.min(pageStart + PAGE_SIZE, visible.length)} of{" "}
             {visible.length}
           </span>
           <div className="flex items-center gap-2">
@@ -1032,8 +1059,8 @@ export function DeploymentsTable({
           page and an app's own history get it. */}
       {selectedCount > 0 && (
         <div className="pointer-events-none fixed inset-x-0 bottom-6 z-40 flex justify-center px-6">
-          <div className="pointer-events-auto flex items-center gap-1 rounded-full border border-border bg-popover/95 py-1.5 pl-4 pr-1.5 shadow-lg backdrop-blur supports-[backdrop-filter]:bg-popover/80">
-            <span className="whitespace-nowrap text-sm font-medium">
+          <div className="pointer-events-auto flex items-center gap-1 rounded-full border border-border bg-popover/95 py-1.5 pr-1.5 pl-4 shadow-lg backdrop-blur supports-[backdrop-filter]:bg-popover/80">
+            <span className="text-sm font-medium whitespace-nowrap">
               {selectedCount} selected
             </span>
             <span className="mx-1.5 h-5 w-px bg-border" />

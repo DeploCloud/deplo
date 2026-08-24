@@ -4,13 +4,17 @@ import { getRole } from "@/lib/data/roles";
 import { listTeamScopeTree } from "@/lib/data/tokens";
 import { RoleEditor } from "@/components/settings/roles/role-editor";
 
-export async function generateMetadata(props: PageProps<"/settings/roles/[id]">) {
+export async function generateMetadata(
+  props: PageProps<"/settings/roles/[id]">,
+) {
   const { id } = await props.params;
   const role = await getRole(id);
   return { title: role ? `Settings · ${role.name}` : "Settings · Roles" };
 }
 
-export default async function RolePage(props: PageProps<"/settings/roles/[id]">) {
+export default async function RolePage(
+  props: PageProps<"/settings/roles/[id]">,
+) {
   const { id } = await props.params;
   const [role, canManage, tree] = await Promise.all([
     getRole(id),

@@ -77,7 +77,11 @@ export interface ContainerMetrics extends ContainerMetricsSample {
 }
 
 /** A "we couldn't measure" DTO — reachable? no. Never recorded to history. */
-function unavailable(id: string, ts: number, unsupported: boolean): ContainerMetrics {
+function unavailable(
+  id: string,
+  ts: number,
+  unsupported: boolean,
+): ContainerMetrics {
   return {
     id,
     online: false,
@@ -123,7 +127,11 @@ export function aggregateContainerStats(
   return aggregate(id, stats, ts);
 }
 
-function aggregate(id: string, stats: PbContainerStat[], ts: number): ContainerMetrics {
+function aggregate(
+  id: string,
+  stats: PbContainerStat[],
+  ts: number,
+): ContainerMetrics {
   const running = stats.filter((s) => s.running);
   const sum = (f: (s: PbContainerStat) => number) =>
     running.reduce((a, s) => a + f(s), 0);
@@ -192,7 +200,9 @@ function toSample(m: ContainerMetrics): ContainerMetricsSample {
  * cross-team metrics read: `loadTeamApp` returning null is the boundary, and it
  * matters more now than it did, because the buffer itself is not team-scoped.
  */
-export async function getAppMetrics(appId: string): Promise<ContainerMetrics | null> {
+export async function getAppMetrics(
+  appId: string,
+): Promise<ContainerMetrics | null> {
   const teamId = await requireActiveTeamId();
   // Per-app: a node grant REPLACES the team role inside the app (ADR-0016), so
   // `view_metrics` held elsewhere in the team is not permission to read this
@@ -279,4 +289,3 @@ export async function getDatabaseMetricsHistory(
  * `monitoring_settings.saveMetrics` singleton remains the master switch, applied
  * on the RECORD side. See lib/monitoring/supervisor.ts.
  */
-

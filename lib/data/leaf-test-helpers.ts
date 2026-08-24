@@ -53,7 +53,9 @@ const DEFAULT_TEAMS: SeedTeam[] = [
   { id: TEAM_A, slug: "alpha" },
   { id: TEAM_B, slug: "beta" },
 ];
-const DEFAULT_USERS: SeedUser[] = [{ id: USER_1, teamId: TEAM_A, role: "owner" }];
+const DEFAULT_USERS: SeedUser[] = [
+  { id: USER_1, teamId: TEAM_A, role: "owner" },
+];
 
 /**
  * Seed identity into the pglite FK roots. Defaults to two teams (alpha/beta) and

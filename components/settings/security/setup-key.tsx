@@ -37,7 +37,9 @@ export function SetupKey({ secret }: { secret: string }) {
   // dialog under the pointer that just clicked.
   const cover = React.useMemo(
     () =>
-      Array.from({ length: Math.ceil(secret.length / 4) }, () => "••••").join(" "),
+      Array.from({ length: Math.ceil(secret.length / 4) }, () => "••••").join(
+        " ",
+      ),
     [secret.length],
   );
 
@@ -97,7 +99,7 @@ export function SetupKey({ secret }: { secret: string }) {
           aria-hidden
           className={cn(
             "block px-3 py-2.5 font-mono text-xs leading-relaxed break-all",
-            "select-none text-muted-foreground/70",
+            "text-muted-foreground/70 select-none",
           )}
         >
           {cover}

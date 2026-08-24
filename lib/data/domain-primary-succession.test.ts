@@ -65,7 +65,9 @@ after(async () => {
 beforeEach(async () => {
   await pg.exec(`${TRUNCATE_PROJECT_GRAPH}
     truncate table users, teams restart identity cascade;`);
-  await seedIdentity(db, { users: [{ id: USER_1, teamId: TEAM_A, role: "owner" }] });
+  await seedIdentity(db, {
+    users: [{ id: USER_1, teamId: TEAM_A, role: "owner" }],
+  });
   await seedServer(db);
   await seedApp(db, { id: "prj_1", status: "active" });
   __setDnsResolve4ForTest(async () => [SERVER_IP]);
@@ -145,9 +147,28 @@ async function primaryName(): Promise<string | null> {
 
 test("deleting the primary hands the crown to the same service, not the oldest sibling", async () => {
   await seedDomains([
-    { id: "d_api", name: "api.example.com", service: "api", port: 4000, createdAt: T(1) },
-    { id: "d_www", name: "www.example.com", service: "web", port: 3000, createdAt: T(3) },
-    { id: "d_pri", name: "example.com", service: "web", port: 3000, primary: true, createdAt: T(2) },
+    {
+      id: "d_api",
+      name: "api.example.com",
+      service: "api",
+      port: 4000,
+      createdAt: T(1),
+    },
+    {
+      id: "d_www",
+      name: "www.example.com",
+      service: "web",
+      port: 3000,
+      createdAt: T(3),
+    },
+    {
+      id: "d_pri",
+      name: "example.com",
+      service: "web",
+      port: 3000,
+      primary: true,
+      createdAt: T(2),
+    },
   ]);
 
   await asUser1(() => removeDomain("d_pri"));
@@ -160,7 +181,13 @@ test("with no service (single-image app), the same PORT wins", async () => {
   await seedDomains([
     { id: "d_admin", name: "admin.example.com", port: 9000, createdAt: T(1) },
     { id: "d_alt", name: "alt.example.com", port: 3000, createdAt: T(3) },
-    { id: "d_pri", name: "example.com", port: 3000, primary: true, createdAt: T(2) },
+    {
+      id: "d_pri",
+      name: "example.com",
+      port: 3000,
+      primary: true,
+      createdAt: T(2),
+    },
   ]);
 
   await asUser1(() => removeDomain("d_pri"));
@@ -170,10 +197,34 @@ test("with no service (single-image app), the same PORT wins", async () => {
 
 test("all else equal, a routable host outranks a misconfigured one, then oldest wins", async () => {
   await seedDomains([
-    { id: "d_broken", name: "broken.example.com", port: 3000, status: "misconfigured", createdAt: T(1) },
-    { id: "d_ok", name: "ok.example.com", port: 3000, status: "valid", createdAt: T(3) },
-    { id: "d_ok2", name: "also.example.com", port: 3000, status: "valid", createdAt: T(4) },
-    { id: "d_pri", name: "example.com", port: 3000, primary: true, createdAt: T(2) },
+    {
+      id: "d_broken",
+      name: "broken.example.com",
+      port: 3000,
+      status: "misconfigured",
+      createdAt: T(1),
+    },
+    {
+      id: "d_ok",
+      name: "ok.example.com",
+      port: 3000,
+      status: "valid",
+      createdAt: T(3),
+    },
+    {
+      id: "d_ok2",
+      name: "also.example.com",
+      port: 3000,
+      status: "valid",
+      createdAt: T(4),
+    },
+    {
+      id: "d_pri",
+      name: "example.com",
+      port: 3000,
+      primary: true,
+      createdAt: T(2),
+    },
   ]);
 
   await asUser1(() => removeDomain("d_pri"));
@@ -183,7 +234,12 @@ test("all else equal, a routable host outranks a misconfigured one, then oldest 
 
 test("a misconfigured host still beats no primary at all", async () => {
   await seedDomains([
-    { id: "d_broken", name: "broken.example.com", status: "misconfigured", createdAt: T(1) },
+    {
+      id: "d_broken",
+      name: "broken.example.com",
+      status: "misconfigured",
+      createdAt: T(1),
+    },
     { id: "d_pri", name: "example.com", primary: true, createdAt: T(2) },
   ]);
 
@@ -209,8 +265,19 @@ test("deleting the LAST domain clears the URL — the card reads 'No domain yet'
 
 test("the heir's certificate provider decides the scheme", async () => {
   await seedDomains([
-    { id: "d_tls", name: "secure.example.com", certProvider: "letsencrypt", createdAt: T(3) },
-    { id: "d_pri", name: "example.com", primary: true, certProvider: "none", createdAt: T(2) },
+    {
+      id: "d_tls",
+      name: "secure.example.com",
+      certProvider: "letsencrypt",
+      createdAt: T(3),
+    },
+    {
+      id: "d_pri",
+      name: "example.com",
+      primary: true,
+      certProvider: "none",
+      createdAt: T(2),
+    },
   ]);
 
   await asUser1(() => removeDomain("d_pri"));
@@ -232,11 +299,15 @@ test("deleting a NON-primary domain leaves the primary and the URL alone", async
 
 test("the URL follows every other domain change too (add, rename, set-primary)", async () => {
   // The first domain of an app IS its canonical URL.
-  const first = await asUser1(() => addDomain("prj_1", "first.example.com", {}));
+  const first = await asUser1(() =>
+    addDomain("prj_1", "first.example.com", {}),
+  );
   assert.equal(await url(), "http://first.example.com");
 
   // A second one doesn't steal the crown...
-  const second = await asUser1(() => addDomain("prj_1", "second.example.com", {}));
+  const second = await asUser1(() =>
+    addDomain("prj_1", "second.example.com", {}),
+  );
   assert.equal(await url(), "http://first.example.com");
 
   // ...until it is made primary.
@@ -288,8 +359,14 @@ test("successorPrimary is pure, deterministic and null-safe", () => {
   // Equal rank ⇒ oldest, then name — never "whatever the table returned".
   const a = d({ name: "a.example.com", createdAt: T(2) });
   const b = d({ name: "b.example.com", createdAt: T(1) });
-  assert.equal(successorPrimary([a, b], { service: null, port: null })?.name, "b.example.com");
-  assert.equal(successorPrimary([b, a], { service: null, port: null })?.name, "b.example.com");
+  assert.equal(
+    successorPrimary([a, b], { service: null, port: null })?.name,
+    "b.example.com",
+  );
+  assert.equal(
+    successorPrimary([b, a], { service: null, port: null })?.name,
+    "b.example.com",
+  );
 });
 
 /* ------------------------------------------------------------------ */

@@ -87,7 +87,8 @@ test("pauseAbove pauses the producer at the bound and resumes on drain", async (
   // bound — reaching it is the signal, not exceeding it.
   s.push(0);
   assert.equal((await first).value, 0);
-  for (let i = 1; i <= 3; i++) assert.equal(s.push(i), true, `frame ${i} accepted`);
+  for (let i = 1; i <= 3; i++)
+    assert.equal(s.push(i), true, `frame ${i} accepted`);
   assert.equal(s.paused, false, "under the bound the producer runs free");
   assert.equal(s.push(4), true);
   assert.equal(s.paused, true, "at the bound the producer is paused");
@@ -141,7 +142,11 @@ test("maxQueued still drops the OLDEST — telemetry's contract is unchanged", a
   const gen = streamEvents<number>(s.asStream(), { maxQueued: 2 });
   const { first } = await prime(gen);
   for (let i = 0; i < 5; i++) s.push(i);
-  assert.equal(s.paused, false, "the drop-oldest mode must not pause the producer");
+  assert.equal(
+    s.paused,
+    false,
+    "the drop-oldest mode must not pause the producer",
+  );
   s.emit("end");
 
   const got = [(await first).value];

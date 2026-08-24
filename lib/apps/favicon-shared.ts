@@ -160,7 +160,12 @@ function locationScore(segments: readonly string[]): number {
   if (head === "static" || head === "assets") return 12;
   if (head === "app") return 14; // Next.js app-router icon.svg / favicon
   if (head === "src") return 8;
-  if (head === "www" || head === "web" || head === "client" || head === "frontend")
+  if (
+    head === "www" ||
+    head === "web" ||
+    head === "client" ||
+    head === "frontend"
+  )
     return 7;
   return 3;
 }
@@ -199,7 +204,9 @@ export function scoreFaviconPath(path: string, rootRel = ""): number | null {
   const rootSegs = rootRel ? segmentsOf(rootRel) : [];
   const insideRoot =
     rootSegs.length > 0 &&
-    rootSegs.every((seg, i) => segments[i]?.toLowerCase() === seg.toLowerCase());
+    rootSegs.every(
+      (seg, i) => segments[i]?.toLowerCase() === seg.toLowerCase(),
+    );
   const rootBonus = rootSegs.length > 0 ? (insideRoot ? 20 : -8) : 0;
 
   return extScore + locationScore(segments) + rootBonus - depthPenalty;

@@ -32,7 +32,11 @@ const BOUNDS: ReadonlyArray<readonly [number, number]> = [
  * `[min, max]`. Returns null when the field is malformed (the caller treats a
  * null field as an unparseable expression). `*` yields the full range.
  */
-function parseField(field: string, min: number, max: number): Set<number> | null {
+function parseField(
+  field: string,
+  min: number,
+  max: number,
+): Set<number> | null {
   const out = new Set<number>();
   for (const part of field.split(",")) {
     if (part.length === 0) return null;
@@ -147,7 +151,11 @@ export function cronMatches(expr: string, at: Date): boolean {
  * failing field jumps the cursor to the start of the next candidate unit —
  * month, day, hour — so a yearly cron resolves in a few hundred steps.
  */
-export function nextCronRun(expr: string, from: Date, limitDays = 366): Date | null {
+export function nextCronRun(
+  expr: string,
+  from: Date,
+  limitDays = 366,
+): Date | null {
   const c = parseCron(expr);
   if (!c) return null;
   // Start at the next whole minute: "next" is strictly after `from`, and a cron

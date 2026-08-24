@@ -111,9 +111,7 @@ export function rollUpAppCounts(
 }
 
 /** A team's folders (assembled) + live project/subfolder counts (one query each). */
-async function teamFoldersWithCounts(
-  teamId: string,
-): Promise<{
+async function teamFoldersWithCounts(teamId: string): Promise<{
   folders: Folder[];
   appCounts: Map<string, number>;
   subfolderCounts: Map<string, number>;
@@ -133,12 +131,16 @@ async function teamFoldersWithCounts(
     .where(eq(appsTable.teamId, teamId));
   const directCounts = new Map<string, number>();
   for (const r of projRows)
-    if (r.folderId) directCounts.set(r.folderId, (directCounts.get(r.folderId) ?? 0) + 1);
+    if (r.folderId)
+      directCounts.set(r.folderId, (directCounts.get(r.folderId) ?? 0) + 1);
   const appCounts = rollUpAppCounts(folders, directCounts);
   const subfolderCounts = new Map<string, number>();
   for (const f of folders)
     if (f.parentId)
-      subfolderCounts.set(f.parentId, (subfolderCounts.get(f.parentId) ?? 0) + 1);
+      subfolderCounts.set(
+        f.parentId,
+        (subfolderCounts.get(f.parentId) ?? 0) + 1,
+      );
   return { folders, appCounts, subfolderCounts };
 }
 
@@ -157,7 +159,8 @@ export const listFolders = cache(async function listFolders(): Promise<
   // Only surface folders the caller may SEE: the ones they own or hold a grant
   // on, or every folder when they're a super-user (admin / manage_team).
   const visible = await visibleFolderIds(teamId);
-  const granted = visible === "all" ? folders : folders.filter((f) => visible.has(f.id));
+  const granted =
+    visible === "all" ? folders : folders.filter((f) => visible.has(f.id));
   // …and then only the ones a narrowed API token reaches. Its `folderIds` are
   // already flattened, so a token given a parent folder sees the whole subtree.
   const seen = granted.filter((f) => inFolderScope(f.id));
@@ -189,7 +192,10 @@ export const listFolders = cache(async function listFolders(): Promise<
 /** Team-wide manual folder order (the `team_folder_order` junction), id→rank. */
 async function folderOrderRank(teamId: string): Promise<Map<string, number>> {
   const rows = await getDb()
-    .select({ folderId: teamFolderOrder.folderId, position: teamFolderOrder.position })
+    .select({
+      folderId: teamFolderOrder.folderId,
+      position: teamFolderOrder.position,
+    })
     .from(teamFolderOrder)
     .where(eq(teamFolderOrder.teamId, teamId));
   return new Map(rows.map((r) => [r.folderId, r.position] as const));
@@ -243,7 +249,10 @@ export async function createFolder(
   // creator can actually SEE — an unknown/foreign/invisible parent is rejected so
   // a stale client can't strand a subtree or nest under someone else's folder.
   if (parentId) {
-    if (!(await folderInTeam(parentId, teamId)) || !(await canSeeFolder(parentId)))
+    if (
+      !(await folderInTeam(parentId, teamId)) ||
+      !(await canSeeFolder(parentId))
+    )
       throw new Error("Parent folder not found");
   }
   const folder: Folder = {
@@ -269,13 +278,22 @@ export async function createFolder(
       .insert(teamFolderOrder)
       .values({ teamId, folderId: folder.id, position: next });
   });
-  await recordActivity("app", `Created folder ${folder.name}`, userName, null, teamId);
+  await recordActivity(
+    "app",
+    `Created folder ${folder.name}`,
+    userName,
+    null,
+    teamId,
+  );
   const { appCounts, subfolderCounts } = await teamFoldersWithCounts(teamId);
   return summarizeFolder(folder, appCounts, subfolderCounts);
 }
 
 /** True if a folder belongs to a team. */
-async function folderInTeam(folderId: string, teamId: string): Promise<boolean> {
+async function folderInTeam(
+  folderId: string,
+  teamId: string,
+): Promise<boolean> {
   const rows = await getDb()
     .select({ id: foldersTable.id })
     .from(foldersTable)
@@ -291,7 +309,10 @@ async function folderInTeam(folderId: string, teamId: string): Promise<boolean> 
 }
 
 export async function renameFolder(id: string, name: string): Promise<void> {
-  const { teamId, userName } = await requireFolderCapability(id, "organize_folders");
+  const { teamId, userName } = await requireFolderCapability(
+    id,
+    "organize_folders",
+  );
   const clean = cleanName(name);
   // No-op when unchanged (conditional UPDATE … RETURNING); verify existence only
   // when nothing changed so a rename-to-same-name doesn't error.
@@ -310,7 +331,13 @@ export async function renameFolder(id: string, name: string): Promise<void> {
     if (!(await folderInTeam(id, teamId))) throw new Error("Folder not found");
     return;
   }
-  await recordActivity("app", `Renamed folder to ${clean}`, userName, null, teamId);
+  await recordActivity(
+    "app",
+    `Renamed folder to ${clean}`,
+    userName,
+    null,
+    teamId,
+  );
 }
 
 /**
@@ -322,7 +349,10 @@ export async function setFolderColor(
   id: string,
   color: string | null,
 ): Promise<void> {
-  const { teamId, userName } = await requireFolderCapability(id, "organize_folders");
+  const { teamId, userName } = await requireFolderCapability(
+    id,
+    "organize_folders",
+  );
   const next = color ? normalizeHexColor(color) : null;
   const rows = await getDb()
     .select()
@@ -338,7 +368,9 @@ export async function setFolderColor(
     .where(eq(foldersTable.id, id));
   await recordActivity(
     "app",
-    next ? `Changed colour of folder ${f.name}` : `Cleared colour of folder ${f.name}`,
+    next
+      ? `Changed colour of folder ${f.name}`
+      : `Cleared colour of folder ${f.name}`,
     userName,
     null,
     teamId,
@@ -356,7 +388,10 @@ export async function moveFolder(
 ): Promise<void> {
   // Manage the moved folder itself, AND (when nesting) be able to see the
   // destination parent — so a user can't file a folder under one they can't use.
-  const { teamId, userName } = await requireFolderCapability(id, "organize_folders");
+  const { teamId, userName } = await requireFolderCapability(
+    id,
+    "organize_folders",
+  );
   if (parentId && !(await canSeeFolder(parentId)))
     throw new Error("Folder not found");
   const { folders } = await teamFoldersWithCounts(teamId);
@@ -368,7 +403,9 @@ export async function moveFolder(
     if (!parent) throw new Error("Folder not found");
     const blocked = descendantFolderIds(id, folders);
     if (blocked.has(parentId))
-      throw new Error("Can't move a folder into itself or one of its subfolders");
+      throw new Error(
+        "Can't move a folder into itself or one of its subfolders",
+      );
     if ((f.parentId ?? null) === parentId) return;
     msg = `Moved folder ${f.name} into ${parent.name}`;
   } else {
@@ -397,7 +434,10 @@ export async function deleteFolder(
   id: string,
   opts: { deleteApps?: boolean } = {},
 ): Promise<void> {
-  const { teamId, userName } = await requireFolderCapability(id, "delete_folders");
+  const { teamId, userName } = await requireFolderCapability(
+    id,
+    "delete_folders",
+  );
   // Before the folder row goes, while its apps still resolve THROUGH it
   // (ADR-0016) and their gate is the one the folder's own grants decide.
   // Imported lazily: apps.ts imports this module, so a static import would close
@@ -424,7 +464,9 @@ export async function deleteFolder(
     await tx
       .update(foldersTable)
       .set({ parentId: grandparent })
-      .where(and(eq(foldersTable.teamId, teamId), eq(foldersTable.parentId, id)));
+      .where(
+        and(eq(foldersTable.teamId, teamId), eq(foldersTable.parentId, id)),
+      );
     // The team_folder_order row CASCADEs when the folder row is deleted.
     await tx.delete(foldersTable).where(eq(foldersTable.id, id));
     return f.name;
@@ -450,7 +492,11 @@ export async function moveAppToFolder(
   const { teamId } = await requireAppCapability(appId, "move_apps");
   const userName = (await getCurrentUser())?.name ?? "Someone";
   const proj = await getDb()
-    .select({ id: appsTable.id, name: appsTable.name, folderId: appsTable.folderId })
+    .select({
+      id: appsTable.id,
+      name: appsTable.name,
+      folderId: appsTable.folderId,
+    })
     .from(appsTable)
     .where(and(eq(appsTable.id, appId), eq(appsTable.teamId, teamId)))
     .limit(1);
@@ -459,7 +505,8 @@ export async function moveAppToFolder(
   let msg = "";
   if (folderId) {
     // Filing INTO a folder needs `deploy` on that destination folder.
-    if (!(await folderInTeam(folderId, teamId))) throw new Error("Folder not found");
+    if (!(await folderInTeam(folderId, teamId)))
+      throw new Error("Folder not found");
     if (p.folderId === folderId) return;
     await requireFolderCapability(folderId, "move_apps");
     const f = await getDb()
@@ -517,7 +564,12 @@ export async function moveAppsToFolder(
       environmentId: appsTable.environmentId,
     })
     .from(appsTable)
-    .where(and(eq(appsTable.teamId, teamId), inArray(appsTable.id, [...new Set(appIds)])));
+    .where(
+      and(
+        eq(appsTable.teamId, teamId),
+        inArray(appsTable.id, [...new Set(appIds)]),
+      ),
+    );
   const toMove = owned
     .filter((p) => (p.folderId ?? null) !== folderId)
     .map((p) => p.id);
@@ -588,6 +640,8 @@ export async function reorderFolders(orderedIds: string[]): Promise<void> {
     if (next.length > 0)
       await tx
         .insert(teamFolderOrder)
-        .values(next.map((folderId, position) => ({ teamId, folderId, position })));
+        .values(
+          next.map((folderId, position) => ({ teamId, folderId, position })),
+        );
   });
 }

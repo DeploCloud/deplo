@@ -55,7 +55,10 @@ import {
   detectRepoFramework,
   detectTreeFramework,
 } from "../apps/framework-source";
-import { supportsFrameworkDetection, type FrameworkId } from "../apps/framework-catalog";
+import {
+  supportsFrameworkDetection,
+  type FrameworkId,
+} from "../apps/framework-catalog";
 import {
   appSlugFromDeployKey,
   deployImageRef,
@@ -176,7 +179,8 @@ async function setDep(
   if (patch.status !== undefined) set.status = patch.status;
   if (patch.environment !== undefined) set.environment = patch.environment;
   if (patch.commitSha !== undefined) set.commitSha = patch.commitSha;
-  if (patch.commitMessage !== undefined) set.commitMessage = patch.commitMessage;
+  if (patch.commitMessage !== undefined)
+    set.commitMessage = patch.commitMessage;
   if (patch.commitAuthor !== undefined) set.commitAuthor = patch.commitAuthor;
   if (patch.branch !== undefined) set.branch = patch.branch;
   if (patch.url !== undefined) set.url = patch.url;
@@ -221,8 +225,7 @@ type DeployTarget = {
   name: string;
   slug: string;
 } & (
-  | { kind: "app" }
-  | { kind: "preview"; previewId: string; prNumber: number }
+  { kind: "app" } | { kind: "preview"; previewId: string; prNumber: number }
 );
 
 /**
@@ -427,10 +430,17 @@ async function commitOutcome(
  * (see {@link sweepSupersededAppImages}). Runs after the deploy is already
  * `ready`; never throws, and only speaks up in the log when it freed something.
  */
-async function sweepAfterDeploy(depId: string, serverId: string): Promise<void> {
+async function sweepAfterDeploy(
+  depId: string,
+  serverId: string,
+): Promise<void> {
   const freed = await sweepSupersededAppImages(serverId);
   if (freed > 0) {
-    log(depId, "info", `Reclaimed ${formatBytes(freed)} from superseded app images`);
+    log(
+      depId,
+      "info",
+      `Reclaimed ${formatBytes(freed)} from superseded app images`,
+    );
   }
 }
 
@@ -467,7 +477,8 @@ export function noCacheForDeploy(build: {
   if (build.buildCacheClearPending) {
     return {
       noCache: true,
-      reason: "Build cache cleared — building from scratch, then caching again.",
+      reason:
+        "Build cache cleared — building from scratch, then caching again.",
     };
   }
   if (!build.buildCache) {
@@ -499,7 +510,10 @@ export async function consumeCacheClear(appId: string): Promise<void> {
  * importing data/apps' applyAutoLogoIfUnset to avoid a build↔apps import
  * cycle.)
  */
-async function setLogoIfUnset(appId: string, logo: string | null): Promise<void> {
+async function setLogoIfUnset(
+  appId: string,
+  logo: string | null,
+): Promise<void> {
   if (!logo) return;
   const updated = await getDb()
     .update(appsTable)
@@ -668,14 +682,18 @@ function autoDetectComposeLogo(
   if (currentLogo) return;
   void (async () => {
     // The files dir is already final at this point, so one look is enough.
-    const fromFiles = await detectAppFilesFavicon(serverId, slug).catch(() => null);
+    const fromFiles = await detectAppFilesFavicon(serverId, slug).catch(
+      () => null,
+    );
     if (fromFiles) {
       await setLogoIfUnset(appId, fromFiles);
       return;
     }
     if (!target) return;
     for (let attempt = 0; ; attempt++) {
-      const logo = await detectServedAppFavicon(serverId, target).catch(() => null);
+      const logo = await detectServedAppFavicon(serverId, target).catch(
+        () => null,
+      );
       if (logo) {
         await setLogoIfUnset(appId, logo);
         return;
@@ -732,12 +750,15 @@ async function appEnv(
   opts: { preview?: PreviewEnvContext | null } = {},
 ): Promise<Record<string, string>> {
   const preview = opts.preview ?? null;
-  const [vars, sharedVars, instanceGlobals, previewOverrides] = await Promise.all([
-    loadEnvVarsForApp(appId),
-    loadSharedVarsForApp(appId),
-    loadInstanceEnv(),
-    target === "preview" ? loadPreviewEnvOverrides(appId) : Promise.resolve([]),
-  ]);
+  const [vars, sharedVars, instanceGlobals, previewOverrides] =
+    await Promise.all([
+      loadEnvVarsForApp(appId),
+      loadSharedVarsForApp(appId),
+      loadInstanceEnv(),
+      target === "preview"
+        ? loadPreviewEnvOverrides(appId)
+        : Promise.resolve([]),
+    ]);
   const dropSecrets = Boolean(preview?.isFork);
   // `T extends { type: EnvEntryType }` rather than a cast: the cast is what let
   // two of the four layers arrive with no `type` at all and be kept as if they
@@ -801,12 +822,15 @@ async function appEnvKeys(
   opts: { preview?: PreviewEnvContext | null } = {},
 ): Promise<string[]> {
   const preview = opts.preview ?? null;
-  const [vars, sharedVars, instanceGlobals, previewOverrides] = await Promise.all([
-    loadEnvVarsForApp(appId),
-    loadSharedVarsForApp(appId),
-    loadInstanceEnv(),
-    target === "preview" ? loadPreviewEnvOverrides(appId) : Promise.resolve([]),
-  ]);
+  const [vars, sharedVars, instanceGlobals, previewOverrides] =
+    await Promise.all([
+      loadEnvVarsForApp(appId),
+      loadSharedVarsForApp(appId),
+      loadInstanceEnv(),
+      target === "preview"
+        ? loadPreviewEnvOverrides(appId)
+        : Promise.resolve([]),
+    ]);
   const dropSecrets = Boolean(preview?.isFork);
   // `T extends { type: EnvEntryType }` rather than a cast: the cast is what let
   // two of the four layers arrive with no `type` at all and be kept as if they
@@ -921,7 +945,9 @@ export function renderCompose(opts: {
   // single PORT the container is told to listen on. Skipped entirely for a
   // prebuilt image (injectPort=false): it deploys as-is and owns its own listen
   // address — see the injectPort docs above.
-  const env = injectPort ? { PORT: String(port), ...opts.env } : { ...opts.env };
+  const env = injectPort
+    ? { PORT: String(port), ...opts.env }
+    : { ...opts.env };
   // Traefik routing (TLS via Let's Encrypt), one router per distinct target
   // port. The global web->websecure redirect is configured on the proxy, so no
   // per-router middleware is needed here.
@@ -937,7 +963,12 @@ export function renderCompose(opts: {
       defaultPort: port,
       certResolver: certResolver(),
       ...(opts.basicAuthUsers
-        ? { basicAuth: { name: `${name}-basicauth`, users: opts.basicAuthUsers } }
+        ? {
+            basicAuth: {
+              name: `${name}-basicauth`,
+              users: opts.basicAuthUsers,
+            },
+          }
         : {}),
     }),
     "deplo.managed=true",
@@ -954,7 +985,9 @@ export function renderCompose(opts: {
   // output — so the reroute contract holds — but a user-controlled label value
   // (a Traefik middleware name, a basic-auth username) carrying a `"` or newline
   // is escaped instead of breaking out of the scalar and injecting service keys.
-  const labelsYaml = labels.map((l) => `      - ${JSON.stringify(l)}`).join("\n");
+  const labelsYaml = labels
+    .map((l) => `      - ${JSON.stringify(l)}`)
+    .join("\n");
   const envYaml = Object.keys(env).length
     ? "    environment:\n" +
       Object.entries(env)
@@ -988,7 +1021,9 @@ export function renderCompose(opts: {
   const topVolsYaml = namedVols.length
     ? "\nvolumes:\n" +
       namedVols
-        .map((v) => `  ${v.name}:\n    name: ${hostVolumeName(deployKey, v.name)}`)
+        .map(
+          (v) => `  ${v.name}:\n    name: ${hostVolumeName(deployKey, v.name)}`,
+        )
         .join("\n") +
       "\n"
     : "";
@@ -1012,7 +1047,6 @@ networks:
     external: true
 ${topVolsYaml}`;
 }
-
 
 /** A deployment status that is non-terminal — a build was in flight. */
 export function isInFlightStatus(s: Deployment["status"]): boolean {
@@ -1056,7 +1090,11 @@ export async function reconcileInFlightDeployments(): Promise<number> {
       .set({ status: "error" })
       .where(eq(deploymentsTable.status, "building"));
     for (const dep of orphaned) {
-      log(dep.id, "error", "Deployment interrupted by a control-plane restart and marked failed.");
+      log(
+        dep.id,
+        "error",
+        "Deployment interrupted by a control-plane restart and marked failed.",
+      );
     }
     await Promise.all(orphaned.map((d) => finalizeDeploymentLogs(d.id)));
     await db
@@ -1221,8 +1259,7 @@ export async function startDeployment(
     // build's commit rather than inventing one: the list has to keep saying which
     // code is live, and after a rollback that is the OLD commit.
     commitSha: rollback?.commitSha ?? "",
-    commitMessage:
-      rollback?.commitMessage || opts.commitMessage || "Deploy",
+    commitMessage: rollback?.commitMessage || opts.commitMessage || "Deploy",
     commitAuthor: rollback?.commitAuthor || opts.creator,
     branch,
     url,
@@ -1267,7 +1304,11 @@ export async function startDeployment(
     : await resolveBuildServerFor(project, deployServerId, depId);
   await getDb()
     .insert(deploymentsTable)
-    .values({ ...deploymentToRow(dep), serverId: deployServerId, buildServerId });
+    .values({
+      ...deploymentToRow(dep),
+      serverId: deployServerId,
+      buildServerId,
+    });
   await clearDeploymentLogs(depId);
   if (preview) {
     // A preview NEVER touches the App's row. Writing `apps.status` here would
@@ -1447,13 +1488,20 @@ async function explainBuildServer(
     );
   }
   const pinned = project.buildServerId;
-  if (!pinned || pinned === project.serverId || pinned === target.id) return null;
+  if (!pinned || pinned === project.serverId || pinned === target.id)
+    return null;
   // The pin did not apply. One extra lookup, only on this rare path, so the message
   // can name the actual reason instead of a shrug.
   const server = await getServerById(pinned);
   const reason =
-    server && server.hostArch !== target.hostArch ? "arch-mismatch" : "none-available";
-  return buildServerLogLine({ serverId: null, reason }, server?.name ?? pinned, target.name);
+    server && server.hostArch !== target.hostArch
+      ? "arch-mismatch"
+      : "none-available";
+  return buildServerLogLine(
+    { serverId: null, reason },
+    server?.name ?? pinned,
+    target.name,
+  );
 }
 
 /**
@@ -1468,7 +1516,9 @@ async function explainBuildServer(
  * server is down" ends up never firing for it.
  */
 function agentIsDown(e: unknown): boolean {
-  return e instanceof AgentUnavailableError || e instanceof AgentUnreachableError;
+  return (
+    e instanceof AgentUnavailableError || e instanceof AgentUnreachableError
+  );
 }
 
 /**
@@ -1552,7 +1602,10 @@ async function buildOnBuildServer(opts: {
     commitSha = built.commitSha;
   } catch (e) {
     if (agentIsDown(e)) {
-      console.error(`[deplo] build server ${opts.buildServerId} unavailable:`, e);
+      console.error(
+        `[deplo] build server ${opts.buildServerId} unavailable:`,
+        e,
+      );
       const why = agentDownReason(e);
       if (opts.buildFallbackLocal !== false) {
         opts.sink(
@@ -1586,7 +1639,10 @@ async function buildOnBuildServer(opts: {
     );
     return { outcome: "built", commitSha };
   } catch (e) {
-    console.error(`[deplo] image copy ${opts.buildServerId} -> ${opts.serverId} failed:`, e);
+    console.error(
+      `[deplo] image copy ${opts.buildServerId} -> ${opts.serverId} failed:`,
+      e,
+    );
     // AgentVolumeCopyUnsupportedError's text is ours ("update the agent on the
     // <side> server") and is the one thing worth repeating; anything else is a
     // transport error whose text is not safe to show.
@@ -1664,7 +1720,11 @@ async function tryAgent(opts: {
       .where(eq(appsTable.id, opts.project.id))
       .limit(1);
     if (stillExists.length === 0) {
-      log(opts.depId, "error", "App was deleted during the build — deploy aborted.");
+      log(
+        opts.depId,
+        "error",
+        "App was deleted during the build — deploy aborted.",
+      );
       return { outcome: "failed", commitSha: "" };
     }
     // The plan the TARGET runs, and the commit the BUILD resolved. Both are only
@@ -1681,9 +1741,11 @@ async function tryAgent(opts: {
         const leg = await buildOnBuildServer({
           ...opts,
           buildServerId: opts.buildServerId,
-          sink: (level: LogLine["level"], text: string) => log(opts.depId, level, text),
+          sink: (level: LogLine["level"], text: string) =>
+            log(opts.depId, level, text),
         });
-        if (leg.outcome === "failed") return { outcome: "failed", commitSha: leg.commitSha };
+        if (leg.outcome === "failed")
+          return { outcome: "failed", commitSha: leg.commitSha };
         if (leg.outcome === "built") {
           builtCommitSha = leg.commitSha;
           // The target now holds the image and runs it exactly as a ROLLBACK does:
@@ -1713,7 +1775,10 @@ async function tryAgent(opts: {
       // A release of an already-built image reports no commit - the build did, one
       // host ago. Prefer what the build resolved so the row still records the sha
       // that is actually running.
-      return { outcome: ready ? "agent" : "failed", commitSha: commitSha || builtCommitSha };
+      return {
+        outcome: ready ? "agent" : "failed",
+        commitSha: commitSha || builtCommitSha,
+      };
     } catch (e) {
       if (agentIsDown(e)) {
         // No in-process build path to fall back to: surface the unreachable agent
@@ -1762,9 +1827,7 @@ async function runDeployment(depId: string): Promise<void> {
   // `domain` is "" and the deploy proceeds UNROUTED (the build still runs; the
   // container just gets `traefik.enable=false`). A preview uses the host minted
   // when its pull request opened.
-  const domain = preview
-    ? preview.host
-    : await primaryDomainName(project.id);
+  const domain = preview ? preview.host : await primaryDomainName(project.id);
   // Production routes to every verified domain (primary first); a preview uses
   // only its own host (which is never a registered `domains` row — that would
   // leak it into the PRODUCTION router set and into the per-team certificate
@@ -1791,7 +1854,12 @@ async function runDeployment(depId: string): Promise<void> {
   const claimed = await getDb()
     .update(deploymentsTable)
     .set({ status: "building", startedAt: new Date(started).toISOString() })
-    .where(and(eq(deploymentsTable.id, depId), eq(deploymentsTable.status, "queued")))
+    .where(
+      and(
+        eq(deploymentsTable.id, depId),
+        eq(deploymentsTable.status, "queued"),
+      ),
+    )
     .returning({ id: deploymentsTable.id });
   if (claimed.length === 0) {
     await settleIfCanceled(depId, target);
@@ -1894,7 +1962,10 @@ async function runDeployment(depId: string): Promise<void> {
       // The owning agent runs the stack (it writes the mount files + env-file and
       // `compose up`s on its host), the host running Deplo included. The control
       // plane renders the stack YAML (buildComposeStack); the agent brings it up.
-      await deployComposeStackViaAgent({ ...composeOpts, serverId: runServerId });
+      await deployComposeStackViaAgent({
+        ...composeOpts,
+        serverId: runServerId,
+      });
       // Auto-set the display logo when the app has none yet — the compose-stack
       // arm of the same detection git/upload apps get. It reads the app's own
       // files AND, since a stack of prebuilt images keeps its favicon inside the
@@ -2013,7 +2084,13 @@ async function runDeployment(depId: string): Promise<void> {
     ): Promise<{ composeYaml: string; env: Record<string, string> }> => {
       const env = await appEnv(project.id, dep.environment, {
         preview: preview
-          ? { host: domain, url: dep.url, branch: dep.branch, prNumber: preview.prNumber, isFork: preview.isFork }
+          ? {
+              host: domain,
+              url: dep.url,
+              branch: dep.branch,
+              prNumber: preview.prNumber,
+              isFork: preview.isFork,
+            }
           : null,
       });
       const basicAuthUsers = await basicAuthUsersValue(project.id);
@@ -2064,11 +2141,19 @@ async function runDeployment(depId: string): Promise<void> {
       const { outcome } = await tryAgent({
         depId,
         serverId,
-    project: { id: project.id, deployKey, composeUpArgs: project.composeUpArgs },
+        project: {
+          id: project.id,
+          deployKey,
+          composeUpArgs: project.composeUpArgs,
+        },
         imageRef: treeOpts.imageRef,
         composeYaml,
         env,
-        plan: { kind: "dockerfile", buildDir, build: normalizeBuildConfig(project.build) },
+        plan: {
+          kind: "dockerfile",
+          buildDir,
+          build: normalizeBuildConfig(project.build),
+        },
         noCache,
         forceRecreate,
         ...buildServerOpts,
@@ -2102,7 +2187,8 @@ async function runDeployment(depId: string): Promise<void> {
     // deploy must not swallow the clear the user armed for the next real build).
     if (noCache && (plan.kind === "git" || plan.kind === "upload")) {
       log(depId, "info", noCacheReason);
-      if (project.build.buildCacheClearPending) await consumeCacheClear(project.id);
+      if (project.build.buildCacheClearPending)
+        await consumeCacheClear(project.id);
     }
     switch (plan.kind) {
       case "rollback": {
@@ -2123,12 +2209,20 @@ async function runDeployment(depId: string): Promise<void> {
         // the RUNNING CONTAINER UNTOUCHED - compose resolves images before it
         // replaces anything.
         imageRef = plan.image;
-        log(depId, "info", `Rolling back to the image from deployment ${plan.of}`);
+        log(
+          depId,
+          "info",
+          `Rolling back to the image from deployment ${plan.of}`,
+        );
         const { composeYaml, env } = await renderStack(imageRef);
         const { outcome } = await tryAgent({
           depId,
           serverId,
-          project: { id: project.id, deployKey, composeUpArgs: project.composeUpArgs },
+          project: {
+            id: project.id,
+            deployKey,
+            composeUpArgs: project.composeUpArgs,
+          },
           imageRef,
           composeYaml,
           env,
@@ -2145,7 +2239,11 @@ async function runDeployment(depId: string): Promise<void> {
         const { outcome } = await tryAgent({
           depId,
           serverId,
-    project: { id: project.id, deployKey, composeUpArgs: project.composeUpArgs },
+          project: {
+            id: project.id,
+            deployKey,
+            composeUpArgs: project.composeUpArgs,
+          },
           imageRef,
           composeYaml,
           env,
@@ -2161,12 +2259,21 @@ async function runDeployment(depId: string): Promise<void> {
         // GitHub API — the tree is cloned on the agent, not here) when the
         // app has none yet. Fire-and-forget so a GitHub round-trip never
         // delays the deploy.
-        autoDetectRepoLogo(project.id, project.logo, repo, project.build.rootDirectory);
+        autoDetectRepoLogo(
+          project.id,
+          project.logo,
+          repo,
+          project.build.rootDirectory,
+        );
         // Same read, same detached shape: name the framework backing the repo so
         // the app shows what it actually is (and its port default follows the
         // framework's own server). Only under the auto-detecting builders.
         if (canRecognizeFramework(project)) {
-          autoDetectRepoFramework(project.id, repo, project.build.rootDirectory);
+          autoDetectRepoFramework(
+            project.id,
+            repo,
+            project.build.rootDirectory,
+          );
         }
         // The OWNING AGENT clones the repo itself (PLAN Part B, D3), the host
         // running Deplo included, so the whole tree never crosses the wire — only
@@ -2217,7 +2324,11 @@ async function runDeployment(depId: string): Promise<void> {
         const attempt = await tryAgent({
           depId,
           serverId,
-    project: { id: project.id, deployKey, composeUpArgs: project.composeUpArgs },
+          project: {
+            id: project.id,
+            deployKey,
+            composeUpArgs: project.composeUpArgs,
+          },
           imageRef,
           composeYaml,
           env,
@@ -2308,7 +2419,9 @@ async function runDeployment(depId: string): Promise<void> {
           status: "active",
           // No domain ⇒ dep.url is "" ⇒ null productionUrl (the container ran but
           // is unrouted until a domain is added back).
-          ...(dep.environment === "production" ? { productionUrl: dep.url || null } : {}),
+          ...(dep.environment === "production"
+            ? { productionUrl: dep.url || null }
+            : {}),
         },
         { rollback: Boolean(dep.rollbackOf) },
       );
@@ -2331,7 +2444,11 @@ async function runDeployment(depId: string): Promise<void> {
           await completePendingAppMigration(project.id, (level, text) =>
             log(depId, level, text),
           ).catch((e) =>
-            log(depId, "warn", `data migration step failed: ${e instanceof Error ? e.message : String(e)}`),
+            log(
+              depId,
+              "warn",
+              `data migration step failed: ${e instanceof Error ? e.message : String(e)}`,
+            ),
           );
         }
         await sweepAfterDeploy(depId, serverId);
@@ -2518,7 +2635,11 @@ async function finishComposeStack(
         await completePendingAppMigration(project.id, (level, text) =>
           log(depId, level, text),
         ).catch((e) =>
-          log(depId, "warn", `data migration step failed: ${e instanceof Error ? e.message : String(e)}`),
+          log(
+            depId,
+            "warn",
+            `data migration step failed: ${e instanceof Error ? e.message : String(e)}`,
+          ),
         );
       }
       await sweepAfterDeploy(depId, opts.serverId);
@@ -2580,12 +2701,18 @@ async function deployComposeStackViaAgent(
   }
 
   const { stackYaml } = await prepareComposeStack(opts);
-  const env = await appEnv(project.id, opts.environment, { preview: opts.preview });
+  const env = await appEnv(project.id, opts.environment, {
+    preview: opts.preview,
+  });
 
   const { outcome } = await tryAgent({
     depId,
     serverId,
-    project: { id: project.id, deployKey, composeUpArgs: project.composeUpArgs ?? null },
+    project: {
+      id: project.id,
+      deployKey,
+      composeUpArgs: project.composeUpArgs ?? null,
+    },
     // A compose stack has no single image_ref (each service brings its own); the
     // agent neither builds nor pulls one. Pass an empty ref.
     imageRef: "",
@@ -2600,7 +2727,6 @@ async function deployComposeStackViaAgent(
   // tryAgent already logged the failure reason / unreachable-agent message.
   await finishComposeStack(opts, outcome === "agent");
 }
-
 
 /**
  * Hostnames to bake into a deploy's Traefik rule. Production routes to every
@@ -2643,7 +2769,10 @@ async function previewRouteTarget(
   if (!usesComposeStack(project)) return { service: null, port: previewPort };
   const primaryRow = await primaryDomainRow(project.id);
   if (primaryRow?.service) {
-    return { service: primaryRow.service, port: previewPort ?? primaryRow.port ?? null };
+    return {
+      service: primaryRow.service,
+      port: previewPort ?? primaryRow.port ?? null,
+    };
   }
   const detected = detectDefaultApp(project.compose ?? null);
   return {
@@ -2679,9 +2808,14 @@ async function routableForDeploy(
   // A preview routes only to its own host.
   if (environment !== "production") {
     return [
-      defaultRoute(primary, previewTarget?.service ?? null, previewTarget?.port ?? null, {
-        certProvider: previewCertProvider ?? "none",
-      }),
+      defaultRoute(
+        primary,
+        previewTarget?.service ?? null,
+        previewTarget?.port ?? null,
+        {
+          certProvider: previewCertProvider ?? "none",
+        },
+      ),
     ];
   }
   const [valid, fallback] = await Promise.all([
@@ -2844,12 +2978,21 @@ export function parseStackVolumes(
       const slash = afterRoot.indexOf("/");
       const projectPath = slash >= 0 ? afterRoot.slice(slash + 1) : "";
       if (projectPath) {
-        return [{ type: "app" as const, name: "", projectPath, mountPath, readOnly }];
+        return [
+          { type: "app" as const, name: "", projectPath, mountPath, readOnly },
+        ];
       }
     }
     if (source.startsWith("/")) {
       return [
-        { type: "host" as const, name: "", hostPath: source, mountPath, readOnly, ...prop },
+        {
+          type: "host" as const,
+          name: "",
+          hostPath: source,
+          mountPath,
+          readOnly,
+          ...prop,
+        },
       ];
     }
     return [{ name: source, mountPath, readOnly }];
@@ -2949,7 +3092,8 @@ export async function rerouteApp(
       // this a pure routing change — never a rebuild or a silent env/image change.
       const image = readStackImageFromYaml(current.yaml, name);
       if (!image) return "deferred"; // can't safely reroute without the running image
-      const env = readStackEnvFromYaml(current.yaml, name) ?? await appEnv(appId);
+      const env =
+        readStackEnvFromYaml(current.yaml, name) ?? (await appEnv(appId));
       // Volumes are read back from the stack (like image/env), NOT from
       // project.volumes — so a domain-only reroute keeps the running mounts and
       // never silently applies a volume edit the user hasn't redeployed.
@@ -3018,9 +3162,7 @@ export async function rerouteApp(
  * back from `/data/stacks/<slug>.yml`; that file exists only after a first
  * deploy. Returns `null` when there's nothing to show yet.
  */
-export async function renderAppStack(
-  appId: string,
-): Promise<string | null> {
+export async function renderAppStack(appId: string): Promise<string | null> {
   const project = await loadAppGraph(appId);
   if (!project) return null;
   // The App's OWN stack — a pull request preview has no compose preview surface.

@@ -169,7 +169,9 @@ export function FolderCard({
   // "3 apps · 2 folders" — the subfolder part only shows when nested.
   const countLabel =
     `${count} ${count === 1 ? "app" : "apps"}` +
-    (subCount > 0 ? ` · ${subCount} ${subCount === 1 ? "folder" : "folders"}` : "");
+    (subCount > 0
+      ? ` · ${subCount} ${subCount === 1 ? "folder" : "folders"}`
+      : "");
 
   // Start / stop / restart / redeploy every app in this folder, its subtree
   // included (the same apps `count` covers). Gated on the caller's caps HERE,
@@ -351,10 +353,7 @@ export function FolderCard({
             content="Delete the folder — its apps move back to the top level"
             side="left"
           >
-            <K.Item
-              variant="destructive"
-              onSelect={() => setDeleteOpen(true)}
-            >
+            <K.Item variant="destructive" onSelect={() => setDeleteOpen(true)}>
               <Trash2 className="size-4" />
               Delete
             </K.Item>
@@ -366,7 +365,10 @@ export function FolderCard({
       {canShare && (
         <>
           {canManageThisFolder && <K.Separator />}
-          <SimpleTooltip content="Share this folder with other members" side="left">
+          <SimpleTooltip
+            content="Share this folder with other members"
+            side="left"
+          >
             <K.Item onSelect={() => setShareOpen(true)}>
               <Share2 className="size-4" />
               Share folder…
@@ -380,28 +382,29 @@ export function FolderCard({
   // ⋯ menu: shown when the viewer may manage, share, or run the apps inside
   // (open is always available, but a bare card with no actions would be an
   // empty menu).
-  const actions = canManageThisFolder || canShare || bulk.available ? (
-    <div className="pointer-events-auto relative z-10 flex items-center gap-1">
-      {dragHandle}
-      <div
-        data-card-actions
-        onPointerDown={(e) => e.stopPropagation()}
-        onMouseDown={(e) => e.stopPropagation()}
-        onTouchStart={(e) => e.stopPropagation()}
-      >
-        <DropdownMenu>
-          <DropdownMenuTrigger asChild>
-            <Button variant="ghost" size="icon-sm" aria-label="Folder menu">
-              <MoreHorizontal className="size-4" />
-            </Button>
-          </DropdownMenuTrigger>
-          <DropdownMenuContent align="end" className="w-44">
-            {menu(DROPDOWN_KIT)}
-          </DropdownMenuContent>
-        </DropdownMenu>
+  const actions =
+    canManageThisFolder || canShare || bulk.available ? (
+      <div className="pointer-events-auto relative z-10 flex items-center gap-1">
+        {dragHandle}
+        <div
+          data-card-actions
+          onPointerDown={(e) => e.stopPropagation()}
+          onMouseDown={(e) => e.stopPropagation()}
+          onTouchStart={(e) => e.stopPropagation()}
+        >
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button variant="ghost" size="icon-sm" aria-label="Folder menu">
+                <MoreHorizontal className="size-4" />
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end" className="w-44">
+              {menu(DROPDOWN_KIT)}
+            </DropdownMenuContent>
+          </DropdownMenu>
+        </div>
       </div>
-    </div>
-  ) : null;
+    ) : null;
 
   const overlayLink = (
     <Link
@@ -416,127 +419,128 @@ export function FolderCard({
     />
   );
 
-  const dialogs = canManageThisFolder || canShare ? (
-    <>
-      {canManageThisFolder && (
-        <>
-      <Dialog
-        open={renameOpen}
-        onOpenChange={(o) => {
-          setRenameOpen(o);
-          if (!o) setName(folder.name);
-        }}
-      >
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Rename folder</DialogTitle>
-          </DialogHeader>
-          <form className="grid gap-4" onSubmit={onRenameSubmit}>
-            <div className="space-y-2">
-              <Label htmlFor={`rename-folder-${folder.id}`}>Folder name</Label>
-              <Input
-                id={`rename-folder-${folder.id}`}
-                value={name}
-                onChange={(e) => setName(e.target.value)}
-                autoFocus
-              />
-            </div>
-            <DialogFooter>
-              <Button
-                variant="outline"
-                onClick={() => setRenameOpen(false)}
-              >
-                Cancel
-              </Button>
-              <Button type="submit" disabled={!name.trim()}>
-                Save
-              </Button>
-            </DialogFooter>
-          </form>
-        </DialogContent>
-      </Dialog>
+  const dialogs =
+    canManageThisFolder || canShare ? (
+      <>
+        {canManageThisFolder && (
+          <>
+            <Dialog
+              open={renameOpen}
+              onOpenChange={(o) => {
+                setRenameOpen(o);
+                if (!o) setName(folder.name);
+              }}
+            >
+              <DialogContent>
+                <DialogHeader>
+                  <DialogTitle>Rename folder</DialogTitle>
+                </DialogHeader>
+                <form className="grid gap-4" onSubmit={onRenameSubmit}>
+                  <div className="space-y-2">
+                    <Label htmlFor={`rename-folder-${folder.id}`}>
+                      Folder name
+                    </Label>
+                    <Input
+                      id={`rename-folder-${folder.id}`}
+                      value={name}
+                      onChange={(e) => setName(e.target.value)}
+                      autoFocus
+                    />
+                  </div>
+                  <DialogFooter>
+                    <Button
+                      variant="outline"
+                      onClick={() => setRenameOpen(false)}
+                    >
+                      Cancel
+                    </Button>
+                    <Button type="submit" disabled={!name.trim()}>
+                      Save
+                    </Button>
+                  </DialogFooter>
+                </form>
+              </DialogContent>
+            </Dialog>
 
-      <Dialog
-        open={colorOpen}
-        onOpenChange={(o) => {
-          setColorOpen(o);
-          if (!o) setDraftColor(folder.color ?? null);
-        }}
-      >
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Folder colour</DialogTitle>
-          </DialogHeader>
-          <form className="grid gap-4" onSubmit={onColorSubmit}>
-            <FolderColorPicker
-              value={draftColor}
-              onChange={setDraftColor}
-              idPrefix={`folder-${folder.id}`}
-            />
-            <DialogFooter>
-              <Button
-                variant="outline"
-                onClick={() => setColorOpen(false)}
-              >
-                Cancel
-              </Button>
-              <Button type="submit">
-                Save
-              </Button>
-            </DialogFooter>
-          </form>
-        </DialogContent>
-      </Dialog>
+            <Dialog
+              open={colorOpen}
+              onOpenChange={(o) => {
+                setColorOpen(o);
+                if (!o) setDraftColor(folder.color ?? null);
+              }}
+            >
+              <DialogContent>
+                <DialogHeader>
+                  <DialogTitle>Folder colour</DialogTitle>
+                </DialogHeader>
+                <form className="grid gap-4" onSubmit={onColorSubmit}>
+                  <FolderColorPicker
+                    value={draftColor}
+                    onChange={setDraftColor}
+                    idPrefix={`folder-${folder.id}`}
+                  />
+                  <DialogFooter>
+                    <Button
+                      variant="outline"
+                      onClick={() => setColorOpen(false)}
+                    >
+                      Cancel
+                    </Button>
+                    <Button type="submit">Save</Button>
+                  </DialogFooter>
+                </form>
+              </DialogContent>
+            </Dialog>
 
-      <ConfirmAction
-        open={deleteOpen}
-        // The option is a per-delete decision, so it resets on close: reopening
-        // the dialog must never arrive with the apps already ticked for deletion.
-        onOpenChange={(o) => {
-          setDeleteOpen(o);
-          if (!o) setDeleteApps(false);
-        }}
-        title={`Delete ${folder.name}?`}
-        description={
-          deleteApps
-            ? "The folder and every app in it are deleted, containers and volumes included. This cannot be undone."
-            : "The folder is removed, but its apps are kept — they move back to the top level. This cannot be undone."
-        }
-        confirmLabel="Delete folder"
-        successMessage="Folder deleted"
-        optimistic
-        extra={
-          count > 0 && canDeleteApps ? (
-            <DeleteAppsOption
-              checked={deleteApps}
-              onChange={setDeleteApps}
-              count={count}
+            <ConfirmAction
+              open={deleteOpen}
+              // The option is a per-delete decision, so it resets on close: reopening
+              // the dialog must never arrive with the apps already ticked for deletion.
+              onOpenChange={(o) => {
+                setDeleteOpen(o);
+                if (!o) setDeleteApps(false);
+              }}
+              title={`Delete ${folder.name}?`}
+              description={
+                deleteApps
+                  ? "The folder and every app in it are deleted, containers and volumes included. This cannot be undone."
+                  : "The folder is removed, but its apps are kept — they move back to the top level. This cannot be undone."
+              }
+              confirmLabel="Delete folder"
+              successMessage="Folder deleted"
+              optimistic
+              extra={
+                count > 0 && canDeleteApps ? (
+                  <DeleteAppsOption
+                    checked={deleteApps}
+                    onChange={setDeleteApps}
+                    count={count}
+                  />
+                ) : undefined
+              }
+              onConfirm={async () => {
+                onDeleted?.();
+                const res = await gqlAction(
+                  `mutation($id: ID!, $deleteApps: Boolean) { deleteFolder(id: $id, deleteApps: $deleteApps) }`,
+                  { id: folder.id, deleteApps },
+                );
+                if (!res.ok) onRestored?.();
+                router.refresh();
+                return res;
+              }}
             />
-          ) : undefined
-        }
-        onConfirm={async () => {
-          onDeleted?.();
-          const res = await gqlAction(
-            `mutation($id: ID!, $deleteApps: Boolean) { deleteFolder(id: $id, deleteApps: $deleteApps) }`,
-            { id: folder.id, deleteApps },
-          );
-          if (!res.ok) onRestored?.();
-          router.refresh();
-          return res;
-        }}
-      />
-        </>
-      )}
-      {canShare && (
-        <ShareFolderDialog
-          folderId={folder.id}
-          folderName={folder.name}
-          open={shareOpen}
-          onOpenChange={setShareOpen}
-        />
-      )}
-    </>
-  ) : null;
+          </>
+        )}
+        {canShare && (
+          <ShareFolderDialog
+            folderId={folder.id}
+            folderName={folder.name}
+            open={shareOpen}
+            onOpenChange={setShareOpen}
+          />
+        )}
+      </>
+    ) : null;
 
   const cardInner =
     view === "list" ? (

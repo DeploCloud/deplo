@@ -89,9 +89,9 @@ export function BuildCachePanel({
             content={
               <>
                 Deplo reuses the Docker layers your last build produced on this
-                app&apos;s server, so a deploy that changes nothing takes seconds
-                instead of minutes. Turn it off when a build must pull fresh
-                dependencies every time — it makes every deploy slower.
+                app&apos;s server, so a deploy that changes nothing takes
+                seconds instead of minutes. Turn it off when a build must pull
+                fresh dependencies every time — it makes every deploy slower.
               </>
             }
           />

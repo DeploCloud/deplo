@@ -56,7 +56,7 @@ direction (owner feedback, 2026-07-07) rejects that shape:
   bypasses the legacy kind→target bridge in `resolveEnvEntries`). Project
   services without membership (legacy rows) keep the ADR-0008 kind bridge.
 - `service_environments` (runtime fan-out) is untouched: it records where a
-  service is *deployed*; `services.environment_id` records where it *lives*.
+  service is _deployed_; `services.environment_id` records where it _lives_.
   The per-environment deploy pipeline (ADR-0008 remainder) can consume both.
 - Project cards summarize `N services · M environments`; folder counts are gone
   from the project surface.

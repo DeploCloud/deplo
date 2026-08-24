@@ -1,6 +1,11 @@
 import "server-only";
 
-import { DEPLO_VERSION, DEPLO_REPO, isNewer, resolveExpectedAgentVersion } from "../version";
+import {
+  DEPLO_VERSION,
+  DEPLO_REPO,
+  isNewer,
+  resolveExpectedAgentVersion,
+} from "../version";
 import { requireInstanceAdmin } from "../membership";
 
 /** Result of checking the upstream GitHub repository for a newer release. */

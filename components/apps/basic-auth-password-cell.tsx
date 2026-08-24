@@ -78,14 +78,16 @@ export function BasicAuthPasswordCell({
         aria-pressed={revealed}
         aria-busy={pending}
         aria-label={
-          revealed ? `Hide ${username}'s password` : `Reveal ${username}'s password`
+          revealed
+            ? `Hide ${username}'s password`
+            : `Reveal ${username}'s password`
         }
         // No password in the title either — a tooltip is a DOM attribute, and the
         // whole point is that the value is nowhere in the DOM until revealed.
         title={revealed ? "Click to hide" : "Click to reveal"}
         className={cn(
           OUTER,
-          "group cursor-pointer text-left transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+          "group cursor-pointer text-left transition-colors focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none",
           revealed
             ? "ring-border/40 hover:bg-foreground/[0.03]"
             : "bg-foreground/[0.06] ring-border/50 hover:bg-foreground/[0.09]",
@@ -109,7 +111,7 @@ export function BasicAuthPasswordCell({
             />
           )}
           {revealed ? (
-            <code className="min-w-0 flex-1 select-text truncate font-mono text-xs text-foreground/90">
+            <code className="min-w-0 flex-1 truncate font-mono text-xs text-foreground/90 select-text">
               {value}
             </code>
           ) : (
@@ -117,7 +119,7 @@ export function BasicAuthPasswordCell({
             // carries the password while it is hidden.
             <code
               aria-hidden
-              className="min-w-0 flex-1 select-none truncate font-mono text-xs tracking-wider text-muted-foreground"
+              className="min-w-0 flex-1 truncate font-mono text-xs tracking-wider text-muted-foreground select-none"
             >
               {MASK}
             </code>

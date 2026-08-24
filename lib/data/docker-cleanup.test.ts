@@ -14,7 +14,12 @@ import {
 } from "../db/schema/control-plane";
 import { runWithIdentity } from "../auth/request-context";
 import { seedIdentity, TEAM_A, USER_1 } from "./identity-test-helpers";
-import { seedApp, seedPreview, seedServer, SERVER_1 } from "./app-graph-test-helpers";
+import {
+  seedApp,
+  seedPreview,
+  seedServer,
+  SERVER_1,
+} from "./app-graph-test-helpers";
 import { seedDatabase } from "./backup-test-helpers";
 import {
   seedCleanupPolicy,
@@ -85,7 +90,12 @@ beforeEach(async () => {
   await seedIdentity(db, {
     users: [
       { id: USER_1, teamId: TEAM_A, role: "owner" },
-      { id: USER_VIEWER, teamId: TEAM_A, role: "viewer", capabilities: ["view"] },
+      {
+        id: USER_VIEWER,
+        teamId: TEAM_A,
+        role: "viewer",
+        capabilities: ["view"],
+      },
       {
         id: USER_INFRA,
         teamId: TEAM_A,
@@ -128,13 +138,22 @@ const allRuns = () => db.select().from(runsTable);
 test("updateCleanupPolicy rejects an unparseable cron and writes nothing", async () => {
   await asOwner(async () => {
     await assert.rejects(
-      () => updateCleanupPolicy({ ...VALID_INPUT, scopes: [...VALID_INPUT.scopes], schedule: "every night" }),
+      () =>
+        updateCleanupPolicy({
+          ...VALID_INPUT,
+          scopes: [...VALID_INPUT.scopes],
+          schedule: "every night",
+        }),
       /not a valid cron expression/,
     );
   });
   // The rejection is the whole point: an accepted-but-unparseable cron never matches,
   // so the UI would report an enabled cleanup that silently never runs.
-  assert.equal((await db.select().from(policyTable)).length, 0, "no policy row was written");
+  assert.equal(
+    (await db.select().from(policyTable)).length,
+    0,
+    "no policy row was written",
+  );
 });
 
 /* ------------------------------------------------------------------ */
@@ -150,8 +169,16 @@ test("updateCleanupPolicy clamps minAgeHours and keepImagesPerApp into range", a
       keepImagesPerApp: 0,
     }),
   );
-  assert.equal(tooLow.minAgeHours, 0, "a negative age floors at 0 (no age filter)");
-  assert.equal(tooLow.keepImagesPerApp, 1, "keep-per-app floors at 1 — never zero images kept");
+  assert.equal(
+    tooLow.minAgeHours,
+    0,
+    "a negative age floors at 0 (no age filter)",
+  );
+  assert.equal(
+    tooLow.keepImagesPerApp,
+    1,
+    "keep-per-app floors at 1 — never zero images kept",
+  );
 
   const tooHigh = await asOwner(() =>
     updateCleanupPolicy({
@@ -224,7 +251,11 @@ test("getCleanupPolicy on a never-configured instance is ENABLED with every scop
   // stored policies off the old default too).
   assert.equal(policy.minAgeHours, 24);
   assert.equal(policy.keepImagesPerApp, 1);
-  assert.equal(policy.updatedAt, null, "a missing row is legible as 'never saved'");
+  assert.equal(
+    policy.updatedAt,
+    null,
+    "a missing row is legible as 'never saved'",
+  );
   assert.deepEqual(policy.excludedServerIds, []);
   // Every scope, `unused_app_images` included: its guardrails (keepImagesPerApp ≥ 1,
   // a referenced image is never a candidate) make the worst case a rebuild of an OLD
@@ -241,7 +272,11 @@ test("getCleanupPolicy on a never-configured instance is ENABLED with every scop
 test("a saved policy always wins over the defaults — an explicit disable survives", async () => {
   await seedCleanupPolicy(db, { enabled: false });
   const policy = await asOwner(() => getCleanupPolicy());
-  assert.equal(policy.enabled, false, "the operator's disable is never overridden");
+  assert.equal(
+    policy.enabled,
+    false,
+    "the operator's disable is never overridden",
+  );
 });
 
 /* ------------------------------------------------------------------ */
@@ -254,11 +289,16 @@ async function assertEveryEntryPointRefused() {
   await assert.rejects(() => getCleanupPolicy(), denied, "read of the policy");
   await assert.rejects(() => listCleanupRuns(), denied, "read of the history");
   await assert.rejects(
-    () => updateCleanupPolicy({ ...VALID_INPUT, scopes: [...VALID_INPUT.scopes] }),
+    () =>
+      updateCleanupPolicy({ ...VALID_INPUT, scopes: [...VALID_INPUT.scopes] }),
     denied,
     "write of the policy",
   );
-  await assert.rejects(() => runCleanupNow(SERVER_1), denied, "the sweep itself");
+  await assert.rejects(
+    () => runCleanupNow(SERVER_1),
+    denied,
+    "the sweep itself",
+  );
   await assert.rejects(
     () => setServerCleanupExcluded(SERVER_1, true),
     denied,
@@ -291,13 +331,19 @@ test("a server's own page toggles only ITS membership, never the whole list", as
     // not write a second row.
     await setServerCleanupExcluded(SERVER_1, true);
     const twice = await setServerCleanupExcluded(SERVER_1, true);
-    assert.deepEqual(twice.excludedServerIds.sort(), [SERVER_1, "srv_second"].sort());
+    assert.deepEqual(
+      twice.excludedServerIds.sort(),
+      [SERVER_1, "srv_second"].sort(),
+    );
   });
 });
 
 test("a per-host toggle for a server that does not exist is refused", async () => {
   await asOwner(async () => {
-    await assert.rejects(() => setServerCleanupExcluded("srv_nope", true), /Server not found/);
+    await assert.rejects(
+      () => setServerCleanupExcluded("srv_nope", true),
+      /Server not found/,
+    );
   });
 });
 
@@ -391,19 +437,34 @@ test("a second sweep is refused while one is already running on that host", asyn
 test("reconcileInFlightCleanupRuns fails a stranded run and leaves a fresh one alone", async () => {
   const stranded = new Date(Date.now() - 2 * 60 * 60_000).toISOString(); // 2h ago
   const fresh = new Date(Date.now() - 5 * 60_000).toISOString(); // 5min ago
-  await seedCleanupRun(db, { id: "dcr_stranded", status: "running", startedAt: stranded });
-  await seedCleanupRun(db, { id: "dcr_fresh", status: "running", startedAt: fresh });
+  await seedCleanupRun(db, {
+    id: "dcr_stranded",
+    status: "running",
+    startedAt: stranded,
+  });
+  await seedCleanupRun(db, {
+    id: "dcr_fresh",
+    status: "running",
+    startedAt: fresh,
+  });
 
   // Session-free by construction — a boot hook has no user to gate on.
   const flipped = await reconcileInFlightCleanupRuns();
-  assert.equal(flipped, 1, "only the run past the 90min orphan window is settled");
+  assert.equal(
+    flipped,
+    1,
+    "only the run past the 90min orphan window is settled",
+  );
 
   const [strandedRow] = await db
     .select()
     .from(runsTable)
     .where(eq(runsTable.id, "dcr_stranded"));
   assert.equal(strandedRow!.status, "failed");
-  assert.match(strandedRow!.error ?? "", /Interrupted by a control-plane restart/);
+  assert.match(
+    strandedRow!.error ?? "",
+    /Interrupted by a control-plane restart/,
+  );
   assert.ok(strandedRow!.finishedAt);
 
   // A sweep that is genuinely still in flight must survive: flipping it would let the
@@ -433,19 +494,31 @@ test("pruneCleanupRunHistory keeps the newest 3×servers and never a running row
       id: `dcr_t${i}`,
       startedAt: `2026-01-0${i + 1}T00:00:00.000Z`,
       items: [
-        { scope: "build_cache", reclaimedBytes: 1, itemsRemoved: 1, skipped: false, error: null },
+        {
+          scope: "build_cache",
+          reclaimedBytes: 1,
+          itemsRemoved: 1,
+          skipped: false,
+          error: null,
+        },
       ],
     });
   }
 
   const removed = await pruneCleanupRunHistory();
-  assert.equal(removed, 2, "t1 and t2 fall past the cap; the running row is immortal");
+  assert.equal(
+    removed,
+    2,
+    "t1 and t2 fall past the cap; the running row is immortal",
+  );
 
   const left = (await allRuns()).map((r) => r.id).sort();
   assert.deepEqual(left, ["dcr_stuck", "dcr_t3", "dcr_t4", "dcr_t5"]);
 
   // The deleted runs took their per-scope items with them (FK CASCADE) — no orphans.
-  const itemRuns = (await db.select().from(runItemsTable)).map((i) => i.runId).sort();
+  const itemRuns = (await db.select().from(runItemsTable))
+    .map((i) => i.runId)
+    .sort();
   assert.deepEqual(itemRuns, ["dcr_t3", "dcr_t4", "dcr_t5"]);
 });
 
@@ -468,7 +541,10 @@ test("the executor prunes after every sweep — even a failed one", async () => 
   const runs = await allRuns();
   assert.equal(runs.length, 3);
   const ids = runs.map((r) => r.id);
-  assert.ok(ids.includes("dcr_h5") && ids.includes("dcr_h6"), "the newest survivors");
+  assert.ok(
+    ids.includes("dcr_h5") && ids.includes("dcr_h6"),
+    "the newest survivors",
+  );
   assert.ok(
     runs.some((r) => r.status === "failed" && r.actor === USER_1),
     "the fresh failed run is the newest kept row",
@@ -500,10 +576,18 @@ test("sweepSupersededAppImages honors the policy's controls and never throws", a
   await pg.exec(TRUNCATE_CLEANUP);
   await seedCleanupPolicy(db, { scopes: ["unused_app_images"] });
   assert.equal(await sweepSupersededAppImages(SERVER_1), 0);
-  assert.equal((await allRuns()).length, 0, "the deploy-time sweep writes no history");
+  assert.equal(
+    (await allRuns()).length,
+    0,
+    "the deploy-time sweep writes no history",
+  );
   // The in-flight signal the scheduler reads must be cleaned up on every exit path —
   // a leaked id would exclude that host from the nightly sweep forever.
-  assert.deepEqual(serversWithDeploySweepInFlight(), [], "no sweep left in flight");
+  assert.deepEqual(
+    serversWithDeploySweepInFlight(),
+    [],
+    "no sweep left in flight",
+  );
 });
 
 /* ------------------------------------------------------------------ */

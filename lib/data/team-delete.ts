@@ -136,7 +136,11 @@ export interface TeardownPlan {
    * the team segment is in it, so it cannot reach another team's artifacts, and
    * two destinations of THIS team sharing one folder are both going anyway.
    */
-  backupSweeps?: { creds: DestinationWithSecrets; prefix: string; viaServerId: string }[];
+  backupSweeps?: {
+    creds: DestinationWithSecrets;
+    prefix: string;
+    viaServerId: string;
+  }[];
 }
 
 /**
@@ -155,7 +159,10 @@ export interface TeardownPlan {
  * which is what this path always needed - `teardownApp()` re-resolves the owning
  * server from rows that no longer exist.
  */
-export function teardownTeamResources(plan: TeardownPlan, tag = "team-delete"): void {
+export function teardownTeamResources(
+  plan: TeardownPlan,
+  tag = "team-delete",
+): void {
   void (async () => {
     // Backup artifacts first, while nothing else has had a chance to fail: they
     // are the only leftovers that can outlive the host itself (an S3 bucket does
@@ -168,7 +175,8 @@ export function teardownTeamResources(plan: TeardownPlan, tag = "team-delete"): 
           sweep.prefix,
           true,
         );
-        if (!r.ok) throw new Error(r.error || "the destination refused the delete");
+        if (!r.ok)
+          throw new Error(r.error || "the destination refused the delete");
       } catch (e) {
         console.warn(
           `[${tag}] could not remove the backups at ${sweep.creds.destination.name}: ` +
@@ -309,7 +317,11 @@ export async function deleteTeam(teamId: string): Promise<void> {
               isNull(appPreviewsTable.tornDownAt),
             ),
           )
-      ).map((r) => ({ id: r.id, deployKey: r.deployKey, serverId: r.serverId }));
+      ).map((r) => ({
+        id: r.id,
+        deployKey: r.deployKey,
+        serverId: r.serverId,
+      }));
       const databases = await db
         .select({
           id: databasesTable.id,
@@ -339,8 +351,7 @@ export async function deleteTeam(teamId: string): Promise<void> {
       // Any host will do for a BUCKET (the agent just needs network + creds); a
       // store destination routes to its own server regardless. With no server at
       // all there is nothing to dial and the sweep is skipped.
-      const viaServerId =
-        services[0]?.serverId ?? databases[0]?.serverId ?? "";
+      const viaServerId = services[0]?.serverId ?? databases[0]?.serverId ?? "";
       const destinationIds = (
         await db
           .select({ id: backupDestinationTable.id })
@@ -351,7 +362,10 @@ export async function deleteTeam(teamId: string): Promise<void> {
         await Promise.all(
           destinationIds.map(async (id) => {
             try {
-              const creds = await getDestinationWithSecretsForTeam(ctx.teamId, id);
+              const creds = await getDestinationWithSecretsForTeam(
+                ctx.teamId,
+                id,
+              );
               const via = creds.destination.serverId ?? viaServerId;
               if (!via) return null;
               return {

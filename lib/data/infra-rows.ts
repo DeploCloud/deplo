@@ -209,7 +209,8 @@ export function assembleServer(row: ServerRow): Server {
     };
   }
   if (row.lastSeenAt !== null) server.lastSeenAt = row.lastSeenAt;
-  if (row.statusCheckedAt !== null) server.statusCheckedAt = row.statusCheckedAt;
+  if (row.statusCheckedAt !== null)
+    server.statusCheckedAt = row.statusCheckedAt;
   if (row.statusMessage !== null) server.statusMessage = row.statusMessage;
   return server;
 }
@@ -268,7 +269,10 @@ export function githubInstallationToRow(
     accountType: i.accountType,
     avatarUrl: i.avatarUrl,
     createdAt: i.createdAt,
-  } satisfies Record<keyof GithubInstallation, unknown> as GithubInstallationInsert;
+  } satisfies Record<
+    keyof GithubInstallation,
+    unknown
+  > as GithubInstallationInsert;
 }
 
 /** Reassemble a `github_installation` row into a {@link GithubInstallation}. */

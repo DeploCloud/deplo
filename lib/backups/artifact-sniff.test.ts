@@ -33,11 +33,14 @@ function dumpLike(size = 8192): Buffer {
 /** Incompressible filler, so a gzip of it is bigger than one age chunk. */
 function bulky(size: number): Buffer {
   const buf = tarLike(size);
-  for (let i = 1024; i < size; i += 16) buf.write(i.toString(36).padEnd(15, "x"), i);
+  for (let i = 1024; i < size; i += 16)
+    buf.write(i.toString(36).padEnd(15, "x"), i);
   return buf;
 }
 
-async function encrypt(plain: Buffer): Promise<{ artifact: Buffer; key: string }> {
+async function encrypt(
+  plain: Buffer,
+): Promise<{ artifact: Buffer; key: string }> {
   const age = await import("age-encryption");
   const key = await age.generateX25519Identity();
   const encrypter = new age.Encrypter();
@@ -50,7 +53,11 @@ const DB = { kind: "database" as const, recoveryKey: "" };
 
 test("magic bytes: age vs gzip vs neither", () => {
   assert.equal(looksEncrypted(Buffer.from("age-encryption.org/v1\n...")), true);
-  assert.equal(looksEncrypted(Buffer.from("age-encryption")), false, "too short");
+  assert.equal(
+    looksEncrypted(Buffer.from("age-encryption")),
+    false,
+    "too short",
+  );
   assert.equal(looksGzip(zlib.gzipSync(Buffer.from("x"))), true);
   assert.equal(looksGzip(Buffer.from("PK\x03\x04")), false);
 });
@@ -93,13 +100,19 @@ test("an app archive uploaded onto a DATABASE is refused", async () => {
 
 test("an encrypted artifact with the right key passes and says so", async () => {
   const { artifact, key } = await encrypt(zlib.gzipSync(tarLike()));
-  const { encrypted } = await sniffArtifact(artifact, { kind: "app", recoveryKey: key });
+  const { encrypted } = await sniffArtifact(artifact, {
+    kind: "app",
+    recoveryKey: key,
+  });
   assert.equal(encrypted, true);
 });
 
 test("an encrypted artifact with no key at all is refused", async () => {
   const { artifact } = await encrypt(zlib.gzipSync(tarLike()));
-  await assert.rejects(() => sniffArtifact(artifact, APP), /Paste the recovery key/);
+  await assert.rejects(
+    () => sniffArtifact(artifact, APP),
+    /Paste the recovery key/,
+  );
 });
 
 test("a key that is not a key is told apart from a key that does not fit", async () => {
@@ -120,19 +133,33 @@ test("a big encrypted artifact is judged from its truncated head", async () => {
   // The real shape: only the first 128 KiB ever reaches the sniffer, so the last
   // age chunk it holds is cut in half and the gzip stream ends mid-stream.
   // Neither is a failure - one whole chunk is all the tar magic needs.
-  const { artifact, key } = await encrypt(zlib.gzipSync(bulky(4 * 1024 * 1024)));
-  assert.ok(artifact.length > SNIFF_HEAD_BYTES, "artifact must exceed the head");
+  const { artifact, key } = await encrypt(
+    zlib.gzipSync(bulky(4 * 1024 * 1024)),
+  );
+  assert.ok(
+    artifact.length > SNIFF_HEAD_BYTES,
+    "artifact must exceed the head",
+  );
   const head = artifact.subarray(0, SNIFF_HEAD_BYTES);
-  const { encrypted } = await sniffArtifact(head, { kind: "app", recoveryKey: key });
+  const { encrypted } = await sniffArtifact(head, {
+    kind: "app",
+    recoveryKey: key,
+  });
   assert.equal(encrypted, true);
 });
 
 test("a head too short to hold one age chunk decrypts to nothing and is refused", async () => {
   // Not a hazard, but it must fail CLOSED: with no plaintext there is no tar
   // magic, so an app restore is refused rather than waved through.
-  const { artifact, key } = await encrypt(zlib.gzipSync(bulky(4 * 1024 * 1024)));
+  const { artifact, key } = await encrypt(
+    zlib.gzipSync(bulky(4 * 1024 * 1024)),
+  );
   await assert.rejects(
-    () => sniffArtifact(artifact.subarray(0, 4096), { kind: "app", recoveryKey: key }),
+    () =>
+      sniffArtifact(artifact.subarray(0, 4096), {
+        kind: "app",
+        recoveryKey: key,
+      }),
     /not an app backup/,
   );
 });
@@ -140,6 +167,9 @@ test("a head too short to hold one age chunk decrypts to nothing and is refused"
 test("gzip that inflates past the cap is still judged, not swallowed", async () => {
   // 4 MiB of zeroes compress to a few KiB: the guard against a decompression
   // bomb must not also blind the tar check.
-  const { encrypted } = await sniffArtifact(zlib.gzipSync(tarLike(4 * 1024 * 1024)), APP);
+  const { encrypted } = await sniffArtifact(
+    zlib.gzipSync(tarLike(4 * 1024 * 1024)),
+    APP,
+  );
   assert.equal(encrypted, false);
 });

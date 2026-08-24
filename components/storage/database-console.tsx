@@ -56,7 +56,9 @@ export function DatabaseConsole({
     gqlAction(
       `query($databaseId: String!){ databaseShellLabel(databaseId: $databaseId) }`,
       { databaseId: id },
-      (d: { databaseShellLabel: string | null }) => ({ shell: d.databaseShellLabel }),
+      (d: { databaseShellLabel: string | null }) => ({
+        shell: d.databaseShellLabel,
+      }),
     ).then((res) => {
       if (!live || !res.ok || !res.data?.shell) return;
       setShellLabel(res.data.shell);

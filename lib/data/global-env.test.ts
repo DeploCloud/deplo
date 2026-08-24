@@ -66,24 +66,47 @@ const asMember = <T>(fn: () => Promise<T>): Promise<T> =>
 test("instance env requires an instance admin", async () => {
   await assert.rejects(
     asMember(() =>
-      upsertInstanceEnv({ key: "X", value: "1", targets: [...ALL], type: "plain" }),
+      upsertInstanceEnv({
+        key: "X",
+        value: "1",
+        targets: [...ALL],
+        type: "plain",
+      }),
     ),
     /instance admin/i,
   );
   // The owner (instance admin) can.
   await asUser1(() =>
-    upsertInstanceEnv({ key: "X", value: "1", targets: [...ALL], type: "plain" }),
+    upsertInstanceEnv({
+      key: "X",
+      value: "1",
+      targets: [...ALL],
+      type: "plain",
+    }),
   );
   const list = await asUser1(() => listInstanceEnv());
-  assert.deepEqual(list.map((v) => v.key), ["X"]);
+  assert.deepEqual(
+    list.map((v) => v.key),
+    ["X"],
+  );
 });
 
 test("instance upsert updates the existing var (no duplicate)", async () => {
   await asUser1(() =>
-    upsertInstanceEnv({ key: "K", value: "1", targets: ["production"], type: "plain" }),
+    upsertInstanceEnv({
+      key: "K",
+      value: "1",
+      targets: ["production"],
+      type: "plain",
+    }),
   );
   await asUser1(() =>
-    upsertInstanceEnv({ key: "K", value: "2", targets: [...ALL], type: "plain" }),
+    upsertInstanceEnv({
+      key: "K",
+      value: "2",
+      targets: [...ALL],
+      type: "plain",
+    }),
   );
   const list = await asUser1(() => listInstanceEnv());
   assert.equal(list.length, 1);
@@ -93,7 +116,12 @@ test("instance upsert updates the existing var (no duplicate)", async () => {
 
 test("a secret instance global is masked, and NOTHING reads it back", async () => {
   await asUser1(() =>
-    upsertInstanceEnv({ key: "SECRET", value: "s3cr3t", targets: [...ALL], type: "secret" }),
+    upsertInstanceEnv({
+      key: "SECRET",
+      value: "s3cr3t",
+      targets: [...ALL],
+      type: "secret",
+    }),
   );
   const list = await asUser1(() => listInstanceEnv());
   assert.equal(list[0]!.masked, true);
@@ -116,7 +144,12 @@ test("a secret instance global is masked, and NOTHING reads it back", async () =
 
 test("deleteInstanceEnv removes it", async () => {
   await asUser1(() =>
-    upsertInstanceEnv({ key: "GONE", value: "x", targets: [...ALL], type: "plain" }),
+    upsertInstanceEnv({
+      key: "GONE",
+      value: "x",
+      targets: [...ALL],
+      type: "plain",
+    }),
   );
   const [v] = await asUser1(() => listInstanceEnv());
   await asUser1(() => deleteInstanceEnv(v!.id));
@@ -125,7 +158,12 @@ test("deleteInstanceEnv removes it", async () => {
 
 test("an instance secret refuses every edit, targets included", async () => {
   await asUser1(() =>
-    upsertInstanceEnv({ key: "S", value: "real", targets: ["production"], type: "secret" }),
+    upsertInstanceEnv({
+      key: "S",
+      value: "real",
+      targets: ["production"],
+      type: "secret",
+    }),
   );
   // The MASK round-trip used to be the way to edit a secret's targets while
   // keeping its value. It is also what made the type flip free, so the whole
@@ -149,7 +187,9 @@ test("an instance secret refuses every edit, targets included", async () => {
 test("an omitted target set means every runtime", async () => {
   // The production/preview picker is gone from the UI (an App belongs
   // to exactly ONE Environment) — a write that names no target reaches them all.
-  await asUser1(() => upsertInstanceEnv({ key: "NOTARGET", value: "1", type: "plain" }));
+  await asUser1(() =>
+    upsertInstanceEnv({ key: "NOTARGET", value: "1", type: "plain" }),
+  );
   const [v] = await asUser1(() => listInstanceEnv());
   assert.deepEqual(v!.targets.sort(), [...ALL].sort());
 });
@@ -159,22 +199,42 @@ test("an edit that names no targets PRESERVES the stored ones", async () => {
   // not silently widen to every runtime on a value edit. (Plain: a secret takes
   // no edit at all.)
   await asUser1(() =>
-    upsertInstanceEnv({ key: "STRIPE", value: "live", targets: ["production"], type: "plain" }),
+    upsertInstanceEnv({
+      key: "STRIPE",
+      value: "live",
+      targets: ["production"],
+      type: "plain",
+    }),
   );
-  await asUser1(() => upsertInstanceEnv({ key: "STRIPE", value: "rotated", type: "plain" }));
+  await asUser1(() =>
+    upsertInstanceEnv({ key: "STRIPE", value: "rotated", type: "plain" }),
+  );
   const [v] = await asUser1(() => listInstanceEnv());
   assert.deepEqual(v!.targets, ["production"]);
   assert.equal(v!.value, "rotated");
   // An explicit set still replaces them.
   await asUser1(() =>
-    upsertInstanceEnv({ key: "STRIPE", value: "rotated", targets: [...ALL], type: "plain" }),
+    upsertInstanceEnv({
+      key: "STRIPE",
+      value: "rotated",
+      targets: [...ALL],
+      type: "plain",
+    }),
   );
-  assert.equal((await asUser1(() => listInstanceEnv()))[0]!.targets.length, ALL.length);
+  assert.equal(
+    (await asUser1(() => listInstanceEnv()))[0]!.targets.length,
+    ALL.length,
+  );
 });
 
 test("authorship is stamped on create and only updatedBy changes on edit", async () => {
   await asUser1(() =>
-    upsertInstanceEnv({ key: "A", value: "1", targets: [...ALL], type: "plain" }),
+    upsertInstanceEnv({
+      key: "A",
+      value: "1",
+      targets: [...ALL],
+      type: "plain",
+    }),
   );
   const [created] = await asUser1(() => listInstanceEnv());
   assert.equal(created!.createdBy?.id, USER_1);
@@ -195,10 +255,18 @@ test("authorship is stamped on create and only updatedBy changes on edit", async
 
 test("loadInstanceEnv returns instance globals (encrypted, targeted)", async () => {
   await asUser1(() =>
-    upsertInstanceEnv({ key: "INST", value: "i", targets: ["production"], type: "plain" }),
+    upsertInstanceEnv({
+      key: "INST",
+      value: "i",
+      targets: ["production"],
+      type: "plain",
+    }),
   );
   const globals = await loadInstanceEnv();
-  assert.deepEqual(globals.map((e) => e.key), ["INST"]);
+  assert.deepEqual(
+    globals.map((e) => e.key),
+    ["INST"],
+  );
   // The loader returns encrypted entries (decrypt happens at the deploy edge).
   assert.ok(globals[0]!.valueEnc.length > 0);
   assert.deepEqual(globals[0]!.targets, ["production"]);
@@ -207,8 +275,19 @@ test("loadInstanceEnv returns instance globals (encrypted, targeted)", async () 
 test("appEnvSnapshot (backup) includes instance globals + the app's own vars", async () => {
   await seedApp(db, { id: "prjX", teamId: TEAM_A, serverId: "srv_1" });
   await asUser1(async () => {
-    await upsertInstanceEnv({ key: "IG", value: "ival", targets: ["production"], type: "plain" });
-    await upsertEnv({ appId: "prjX", key: "OWN", value: "oval", targets: ["production"], type: "plain" });
+    await upsertInstanceEnv({
+      key: "IG",
+      value: "ival",
+      targets: ["production"],
+      type: "plain",
+    });
+    await upsertEnv({
+      appId: "prjX",
+      key: "OWN",
+      value: "oval",
+      targets: ["production"],
+      type: "plain",
+    });
   });
   const snap = await appEnvSnapshot("prjX");
   assert.equal(snap.IG, "ival", "instance global captured");

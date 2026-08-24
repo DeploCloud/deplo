@@ -66,9 +66,9 @@ export function RolesRail({
   return (
     <div className="space-y-2 lg:sticky lg:top-20 lg:max-h-[calc(100vh-6rem)] lg:overflow-y-auto">
       <div className="flex items-center justify-between gap-2 px-1">
-        <h2 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+        <h2 className="text-xs font-semibold tracking-wide text-muted-foreground uppercase">
           Roles
-          <span className="ml-1.5 tabular-nums text-muted-foreground/70">
+          <span className="ml-1.5 text-muted-foreground/70 tabular-nums">
             {roles.length}
           </span>
         </h2>
@@ -99,11 +99,13 @@ export function RolesRail({
                 <DropdownMenuItem
                   key={r.id}
                   className="cursor-pointer"
-                  onSelect={() => router.push(`/settings/roles/new?from=${r.id}`)}
+                  onSelect={() =>
+                    router.push(`/settings/roles/new?from=${r.id}`)
+                  }
                 >
                   <Copy className="size-4" />
                   <span className="min-w-0 flex-1 truncate">{r.name}</span>
-                  <span className="shrink-0 tabular-nums text-xs text-muted-foreground">
+                  <span className="shrink-0 text-xs text-muted-foreground tabular-nums">
                     {r.capabilities.filter((c) => c !== "view").length}
                   </span>
                 </DropdownMenuItem>
@@ -144,9 +146,14 @@ export function RolesRail({
               </span>
               <span className="min-w-0 flex-1">
                 <span className="flex items-center gap-1.5">
-                  <span className="truncate text-sm font-medium">{role.name}</span>
+                  <span className="truncate text-sm font-medium">
+                    {role.name}
+                  </span>
                   {role.locked && (
-                    <Lock className="size-3 shrink-0 text-muted-foreground" aria-label="Locked" />
+                    <Lock
+                      className="size-3 shrink-0 text-muted-foreground"
+                      aria-label="Locked"
+                    />
                   )}
                   {role.requireTwoFactor && (
                     <SimpleTooltip content="Holders must have two-factor authentication">
@@ -159,7 +166,7 @@ export function RolesRail({
                     </SimpleTooltip>
                   )}
                 </span>
-                <span className="block truncate text-xs tabular-nums text-muted-foreground">
+                <span className="block truncate text-xs text-muted-foreground tabular-nums">
                   {granted === 0 ? "View only" : `${granted} permissions`}
                   {role.memberCount > 0 &&
                     ` · ${role.memberCount} member${role.memberCount === 1 ? "" : "s"}`}

@@ -14,10 +14,18 @@ import type { LintDiagnostic, LintSeverity } from "@/lib/deploy/compose-lint";
 
 const META: Record<
   LintSeverity,
-  { icon: React.ComponentType<{ className?: string }>; tone: string; label: string }
+  {
+    icon: React.ComponentType<{ className?: string }>;
+    tone: string;
+    label: string;
+  }
 > = {
   error: { icon: CircleX, tone: "text-destructive", label: "error" },
-  warning: { icon: TriangleAlert, tone: "text-[var(--warning,#d97706)]", label: "warning" },
+  warning: {
+    icon: TriangleAlert,
+    tone: "text-[var(--warning,#d97706)]",
+    label: "warning",
+  },
   info: { icon: Info, tone: "text-muted-foreground", label: "hint" },
 };
 
@@ -46,7 +54,10 @@ export function ComposeLintSummary({
       <div className="flex items-center gap-3 text-xs font-medium">
         {(["error", "warning", "info"] as const).map((sev) =>
           counts[sev] > 0 ? (
-            <span key={sev} className={cn("flex items-center gap-1", META[sev].tone)}>
+            <span
+              key={sev}
+              className={cn("flex items-center gap-1", META[sev].tone)}
+            >
               {React.createElement(META[sev].icon, { className: "size-3.5" })}
               {counts[sev]} {META[sev].label}
               {counts[sev] > 1 ? "s" : ""}
@@ -62,7 +73,9 @@ export function ComposeLintSummary({
               key={`${d.rule}-${d.line}-${i}`}
               className="flex items-start gap-1.5 text-xs text-muted-foreground"
             >
-              <Icon className={cn("mt-0.5 size-3 shrink-0", META[d.severity].tone)} />
+              <Icon
+                className={cn("mt-0.5 size-3 shrink-0", META[d.severity].tone)}
+              />
               <span>
                 <span className="font-mono text-[10px] text-muted-foreground/70">
                   L{d.line}

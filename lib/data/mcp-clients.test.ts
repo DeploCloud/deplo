@@ -200,10 +200,7 @@ test("the minted capabilities are the ones the form submitted, never the client'
       [CLIENT],
     )
   ).rows as { capability: string }[];
-  assert.deepEqual(
-    caps.map((c) => c.capability).sort(),
-    ["view"],
-  );
+  assert.deepEqual(caps.map((c) => c.capability).sort(), ["view"]);
 });
 
 test("a connection is scoped to EXACTLY the active team, whoever the approver is", async () => {
@@ -331,7 +328,10 @@ test("another team may be granted, and then the connection really reaches it", a
       [CLIENT],
     )
   ).rows as { team_id: string }[];
-  assert.deepEqual(reach.map((r) => r.team_id), [TEAM_B]);
+  assert.deepEqual(
+    reach.map((r) => r.team_id),
+    [TEAM_B],
+  );
 });
 
 test("a team where you may not manage MCP access cannot be granted", async () => {
@@ -357,7 +357,9 @@ test("a team where you may not manage MCP access cannot be granted", async () =>
 
 test("a team with MCP switched off cannot be granted either", async () => {
   await grantOwnerIn(TEAM_B);
-  await pg.query(`update teams set mcp_enabled = false where id = $1`, [TEAM_B]);
+  await pg.query(`update teams set mcp_enabled = false where id = $1`, [
+    TEAM_B,
+  ]);
   await assert.rejects(
     as(OWNER, () =>
       mintMcpConnection({
@@ -392,7 +394,9 @@ test("the teams ticked by default are exactly the ones the mint would accept", a
 
 test("a team with MCP switched off is not ticked", async () => {
   await grantOwnerIn(TEAM_B);
-  await pg.query(`update teams set mcp_enabled = false where id = $1`, [TEAM_B]);
+  await pg.query(`update teams set mcp_enabled = false where id = $1`, [
+    TEAM_B,
+  ]);
   assert.deepEqual(await as(OWNER, listConnectableTeamIds), [TEAM_A]);
 });
 
@@ -456,7 +460,9 @@ test("approving needs manage_tokens as well, not only manage_mcp", async () => {
 test("the team kill switch blocks the DOOR, not only the request", async () => {
   // Otherwise turning MCP off leaves connections that resume the moment it
   // flips back, which is not what an operator turning it off believes.
-  await pg.query(`update teams set mcp_enabled = false where id = $1`, [TEAM_A]);
+  await pg.query(`update teams set mcp_enabled = false where id = $1`, [
+    TEAM_A,
+  ]);
   await assert.rejects(
     as(OWNER, () =>
       mintMcpConnection({ clientId: CLIENT, capabilities: ["view"] }),
@@ -481,7 +487,10 @@ test("an unmet two-factor policy refuses the approval", async () => {
 test("an unknown client mints nothing and confirms nothing", async () => {
   await assert.rejects(
     as(OWNER, () =>
-      mintMcpConnection({ clientId: "never-registered", capabilities: ["view"] }),
+      mintMcpConnection({
+        clientId: "never-registered",
+        capabilities: ["view"],
+      }),
     ),
     /not registered/i,
   );
@@ -489,9 +498,10 @@ test("an unknown client mints nothing and confirms nothing", async () => {
 });
 
 test("a disabled client cannot be approved", async () => {
-  await pg.query(`update oauth_client set disabled = true where client_id = $1`, [
-    CLIENT,
-  ]);
+  await pg.query(
+    `update oauth_client set disabled = true where client_id = $1`,
+    [CLIENT],
+  );
   await assert.rejects(
     as(OWNER, () =>
       mintMcpConnection({ clientId: CLIENT, capabilities: ["view"] }),
@@ -579,7 +589,10 @@ test("a connection never carries the other teams it reaches", async () => {
   assert.equal(row.teamId, TEAM_A);
   assert.ok(!json.includes(TEAM_B), "the other team's id leaked into the row");
   // Teams are seeded named after their slug.
-  assert.ok(!json.includes("beta"), "the other team's name leaked into the row");
+  assert.ok(
+    !json.includes("beta"),
+    "the other team's name leaked into the row",
+  );
 });
 
 test("revoking from one team disconnects the client from all of them", async () => {
@@ -732,7 +745,10 @@ test("the consent path never names instance administration in code", async () =>
     .replace(/\/\*[\s\S]*?\*\//g, "")
     .replace(/\/\/.*$/gm, "");
   for (const forbidden of ["instanceAdmin", "instance_admin"])
-    assert.ok(!code.includes(forbidden), `${forbidden} is reachable from consent`);
+    assert.ok(
+      !code.includes(forbidden),
+      `${forbidden} is reachable from consent`,
+    );
 });
 
 test("the connection appears in the API tokens list, marked", async () => {
@@ -767,9 +783,10 @@ async function bearer(name: string, userId = OWNER) {
 
 /** The stamp `/api/mcp` takes once a token really speaks the protocol. */
 async function markSpokeMcp(tokenId: string) {
-  await pg.query(`update api_tokens set mcp_last_used_at = now() where id = $1`, [
-    tokenId,
-  ]);
+  await pg.query(
+    `update api_tokens set mcp_last_used_at = now() where id = $1`,
+    [tokenId],
+  );
 }
 
 test("a bearer token that has spoken MCP is listed as a connection", async () => {

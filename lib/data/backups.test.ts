@@ -156,16 +156,24 @@ test("createBackup rejects an unknown target / foreign destination", async () =>
     await assert.rejects(
       () =>
         createBackup({
-          name: "x", targetKind: "database", databaseId: "db_missing",
-          destinationId: "s3_1", schedule: "0 3 * * *", retentionCount: 7,
+          name: "x",
+          targetKind: "database",
+          databaseId: "db_missing",
+          destinationId: "s3_1",
+          schedule: "0 3 * * *",
+          retentionCount: 7,
         }),
       /Database not found/,
     );
     await assert.rejects(
       () =>
         createBackup({
-          name: "x", targetKind: "database", databaseId: "db_1",
-          destinationId: "s3_missing", schedule: "0 3 * * *", retentionCount: 7,
+          name: "x",
+          targetKind: "database",
+          databaseId: "db_1",
+          destinationId: "s3_missing",
+          schedule: "0 3 * * *",
+          retentionCount: 7,
         }),
       /Select a destination/,
     );
@@ -175,48 +183,78 @@ test("createBackup rejects an unknown target / foreign destination", async () =>
 test("an unparseable cron is rejected, not stored — on create and on edit", async () => {
   // `cronMatches` treats a bad expression as "never matches", so storing one
   // would be a schedule the UI reports as enabled and that never fires.
-  await seedBackup(db, { id: "bkp_1", destinationId: "s3_1", databaseId: "db_1" });
+  await seedBackup(db, {
+    id: "bkp_1",
+    destinationId: "s3_1",
+    databaseId: "db_1",
+  });
   await asUser1(async () => {
     await assert.rejects(
       () =>
         createBackup({
-          name: "x", targetKind: "database", databaseId: "db_1",
-          destinationId: "s3_1", schedule: "every day at 3", retentionCount: 7,
+          name: "x",
+          targetKind: "database",
+          databaseId: "db_1",
+          destinationId: "s3_1",
+          schedule: "every day at 3",
+          retentionCount: 7,
         }),
       /not a valid cron expression/,
     );
     await assert.rejects(
       () =>
         updateBackup("bkp_1", {
-          name: "x", destinationId: "s3_1", schedule: "0 99 * * *", retentionCount: 7,
+          name: "x",
+          destinationId: "s3_1",
+          schedule: "0 99 * * *",
+          retentionCount: 7,
         }),
       /not a valid cron expression/,
     );
     // An OMITTED schedule is "didn't choose", not "chose something broken" — it
     // still falls back to the daily default.
     const dto = await createBackup({
-      name: "defaulted", targetKind: "database", databaseId: "db_1",
-      destinationId: "s3_1", schedule: "", retentionCount: 7,
+      name: "defaulted",
+      targetKind: "database",
+      databaseId: "db_1",
+      destinationId: "s3_1",
+      schedule: "",
+      retentionCount: 7,
     });
     assert.equal(dto.schedule, "0 3 * * *");
   });
-  const row = (await db.select().from(backupsTable).where(eq(backupsTable.id, "bkp_1")))[0]!;
-  assert.equal(row.schedule, "0 3 * * *", "the rejected edit must not have landed");
+  const row = (
+    await db.select().from(backupsTable).where(eq(backupsTable.id, "bkp_1"))
+  )[0]!;
+  assert.equal(
+    row.schedule,
+    "0 3 * * *",
+    "the rejected edit must not have landed",
+  );
 });
 
 test("toggleBackup / updateBackup / deleteBackup", async () => {
-  await seedBackup(db, { id: "bkp_1", destinationId: "s3_1", databaseId: "db_1" });
+  await seedBackup(db, {
+    id: "bkp_1",
+    destinationId: "s3_1",
+    databaseId: "db_1",
+  });
   await seedS3(db, { id: "s3_2", name: "second" });
   await asUser1(async () => {
     await toggleBackup("bkp_1", false);
     const updated = await updateBackup("bkp_1", {
-      name: "renamed", destinationId: "s3_2", schedule: "0 5 * * *", retentionCount: 30,
+      name: "renamed",
+      destinationId: "s3_2",
+      schedule: "0 5 * * *",
+      retentionCount: 30,
     });
     assert.equal(updated.name, "renamed");
     assert.equal(updated.destinationName, "second");
     assert.equal(updated.retentionCount, 30);
   });
-  const row = (await db.select().from(backupsTable).where(eq(backupsTable.id, "bkp_1")))[0]!;
+  const row = (
+    await db.select().from(backupsTable).where(eq(backupsTable.id, "bkp_1"))
+  )[0]!;
   assert.equal(row.enabled, false);
   assert.equal(row.schedule, "0 5 * * *");
 
@@ -230,12 +268,31 @@ test("toggleBackup / updateBackup / deleteBackup", async () => {
 
 test("listBackupRuns is newest-first by (startedAt, seq) — deterministic under a tie", async () => {
   // Three runs at the SAME instant; insertion order (seq) decides newest-first.
-  await seedRun(db, { id: "r1", destinationId: "s3_1", databaseId: "db_1", startedAt: T0 });
-  await seedRun(db, { id: "r2", destinationId: "s3_1", databaseId: "db_1", startedAt: T0 });
-  await seedRun(db, { id: "r3", destinationId: "s3_1", databaseId: "db_1", startedAt: T0 });
+  await seedRun(db, {
+    id: "r1",
+    destinationId: "s3_1",
+    databaseId: "db_1",
+    startedAt: T0,
+  });
+  await seedRun(db, {
+    id: "r2",
+    destinationId: "s3_1",
+    databaseId: "db_1",
+    startedAt: T0,
+  });
+  await seedRun(db, {
+    id: "r3",
+    destinationId: "s3_1",
+    databaseId: "db_1",
+    startedAt: T0,
+  });
   await asUser1(async () => {
     const runs = await listBackupRuns({ databaseId: "db_1" });
-    assert.deepEqual(runs.map((r) => r.id), ["r3", "r2", "r1"], "highest seq first");
+    assert.deepEqual(
+      runs.map((r) => r.id),
+      ["r3", "r2", "r1"],
+      "highest seq first",
+    );
   });
 });
 
@@ -245,7 +302,10 @@ test("backupDestinationsForTarget returns the distinct buckets a target ran to",
   await seedRun(db, { id: "r2", destinationId: "s3_1", databaseId: "db_1" });
   await seedRun(db, { id: "r3", destinationId: "s3_2", databaseId: "db_1" });
   await asUser1(async () => {
-    const dests = await backupDestinationsForTarget({ kind: "database", targetId: "db_1" });
+    const dests = await backupDestinationsForTarget({
+      kind: "database",
+      targetId: "db_1",
+    });
     assert.deepEqual([...dests].sort(), ["s3_1", "s3_2"]);
   });
 });
@@ -253,11 +313,37 @@ test("backupDestinationsForTarget returns the distinct buckets a target ran to",
 test("countBackupArtifacts counts only SUCCESSFUL runs of the given target", async () => {
   // Two stored artifacts (success), plus a failed + a running run that left no
   // object — and an artifact for a DIFFERENT target that must not leak in.
-  await seedRun(db, { id: "r_ok1", destinationId: "s3_1", databaseId: "db_1", status: "success" });
-  await seedRun(db, { id: "r_ok2", destinationId: "s3_1", databaseId: "db_1", status: "success" });
-  await seedRun(db, { id: "r_fail", destinationId: "s3_1", databaseId: "db_1", status: "failed" });
-  await seedRun(db, { id: "r_run", destinationId: "s3_1", databaseId: "db_1", status: "running" });
-  await seedRun(db, { id: "r_app", destinationId: "s3_1", appId: "prj_1", targetKind: "app", status: "success" });
+  await seedRun(db, {
+    id: "r_ok1",
+    destinationId: "s3_1",
+    databaseId: "db_1",
+    status: "success",
+  });
+  await seedRun(db, {
+    id: "r_ok2",
+    destinationId: "s3_1",
+    databaseId: "db_1",
+    status: "success",
+  });
+  await seedRun(db, {
+    id: "r_fail",
+    destinationId: "s3_1",
+    databaseId: "db_1",
+    status: "failed",
+  });
+  await seedRun(db, {
+    id: "r_run",
+    destinationId: "s3_1",
+    databaseId: "db_1",
+    status: "running",
+  });
+  await seedRun(db, {
+    id: "r_app",
+    destinationId: "s3_1",
+    appId: "prj_1",
+    targetKind: "app",
+    status: "success",
+  });
   await asUser1(async () => {
     assert.equal(
       await countBackupArtifacts({ kind: "database", targetId: "db_1" }),
@@ -275,10 +361,21 @@ test("countBackupArtifacts counts only SUCCESSFUL runs of the given target", asy
 test("countBackupArtifacts is 0 for a target with no stored artifacts", async () => {
   // A target that only ever failed has nothing in S3 → the delete dialog hides
   // its 'also delete backup artifacts' checkbox (the reported bug).
-  await seedRun(db, { id: "r_fail", destinationId: "s3_1", databaseId: "db_1", status: "failed" });
+  await seedRun(db, {
+    id: "r_fail",
+    destinationId: "s3_1",
+    databaseId: "db_1",
+    status: "failed",
+  });
   await asUser1(async () => {
-    assert.equal(await countBackupArtifacts({ kind: "database", targetId: "db_1" }), 0);
-    assert.equal(await countBackupArtifacts({ kind: "app", targetId: "prj_1" }), 0);
+    assert.equal(
+      await countBackupArtifacts({ kind: "database", targetId: "db_1" }),
+      0,
+    );
+    assert.equal(
+      await countBackupArtifacts({ kind: "app", targetId: "prj_1" }),
+      0,
+    );
   });
 });
 
@@ -292,7 +389,11 @@ test("runBackup records a failed run when the owning agent is unreachable", asyn
   // network, then the agent dial fails (the seeded server has no live agent) →
   // the terminal tx flips the run to `failed`. Proves BOTH short transactions run
   // around the (failed) agent call, with the dial OUTSIDE either tx.
-  await seedBackup(db, { id: "bkp_1", destinationId: "s3_1", databaseId: "db_1" });
+  await seedBackup(db, {
+    id: "bkp_1",
+    destinationId: "s3_1",
+    databaseId: "db_1",
+  });
   await asUser1(async () => {
     await assert.rejects(() => runBackup("bkp_1"));
     const runs = await listBackupRuns({ databaseId: "db_1" });
@@ -301,7 +402,9 @@ test("runBackup records a failed run when the owning agent is unreachable", asyn
     assert.ok(runs[0]!.finishedAt, "finishedAt stamped");
   });
   // The schedule's lastStatus settled to failed via the terminal transaction.
-  const b = (await db.select().from(backupsTable).where(eq(backupsTable.id, "bkp_1")))[0]!;
+  const b = (
+    await db.select().from(backupsTable).where(eq(backupsTable.id, "bkp_1"))
+  )[0]!;
   assert.equal(b.lastStatus, "failed");
   assert.ok(b.lastRunAt, "lastRunAt stamped by the start tx");
 });
@@ -311,7 +414,11 @@ test("runBackup records a failed run when the owning agent is unreachable", asyn
 /* ------------------------------------------------------------------ */
 
 test("reconcileInFlightBackupRuns flips stale running runs + stuck schedules to failed", async () => {
-  await seedBackup(db, { id: "bkp_1", destinationId: "s3_1", databaseId: "db_1" });
+  await seedBackup(db, {
+    id: "bkp_1",
+    destinationId: "s3_1",
+    databaseId: "db_1",
+  });
   await db
     .update(backupsTable)
     .set({ lastStatus: "running" })
@@ -320,30 +427,59 @@ test("reconcileInFlightBackupRuns flips stale running runs + stuck schedules to 
   // An OLD running run (orphaned by a restart) + a FRESH running run (genuinely
   // in flight — must be left alone).
   await seedRun(db, {
-    id: "r_old", destinationId: "s3_1", databaseId: "db_1", backupId: "bkp_1",
-    status: "running", startedAt: "2020-01-01T00:00:00.000Z", finishedAt: null,
+    id: "r_old",
+    destinationId: "s3_1",
+    databaseId: "db_1",
+    backupId: "bkp_1",
+    status: "running",
+    startedAt: "2020-01-01T00:00:00.000Z",
+    finishedAt: null,
   });
   await seedRun(db, {
-    id: "r_fresh", destinationId: "s3_1", databaseId: "db_1", backupId: "bkp_1",
-    status: "running", startedAt: new Date().toISOString(), finishedAt: null,
+    id: "r_fresh",
+    destinationId: "s3_1",
+    databaseId: "db_1",
+    backupId: "bkp_1",
+    status: "running",
+    startedAt: new Date().toISOString(),
+    finishedAt: null,
   });
 
   const n = await reconcileInFlightBackupRuns();
   assert.equal(n, 1, "exactly the orphaned run reconciled");
 
-  const old = (await db.select().from(backupRunsTable).where(eq(backupRunsTable.id, "r_old")))[0]!;
+  const old = (
+    await db
+      .select()
+      .from(backupRunsTable)
+      .where(eq(backupRunsTable.id, "r_old"))
+  )[0]!;
   assert.equal(old.status, "failed");
   assert.ok(old.finishedAt, "finishedAt stamped");
-  const fresh = (await db.select().from(backupRunsTable).where(eq(backupRunsTable.id, "r_fresh")))[0]!;
-  assert.equal(fresh.status, "running", "a genuinely in-flight run is untouched");
+  const fresh = (
+    await db
+      .select()
+      .from(backupRunsTable)
+      .where(eq(backupRunsTable.id, "r_fresh"))
+  )[0]!;
+  assert.equal(
+    fresh.status,
+    "running",
+    "a genuinely in-flight run is untouched",
+  );
 
-  const b = (await db.select().from(backupsTable).where(eq(backupsTable.id, "bkp_1")))[0]!;
+  const b = (
+    await db.select().from(backupsTable).where(eq(backupsTable.id, "bkp_1"))
+  )[0]!;
   assert.equal(b.lastStatus, "failed", "the stuck schedule settled");
 });
 
 test("reconcileInFlightBackupRuns is idempotent / a no-op with nothing stale", async () => {
   await seedRun(db, {
-    id: "r1", destinationId: "s3_1", databaseId: "db_1", status: "success",
+    id: "r1",
+    destinationId: "s3_1",
+    databaseId: "db_1",
+    status: "success",
   });
   assert.equal(await reconcileInFlightBackupRuns(), 0);
 });
@@ -392,7 +528,11 @@ test("a deleted target's runs stay findable, and the sweep stamps them", async (
     .select()
     .from(backupRunsTable)
     .where(eq(backupRunsTable.id, "r_1"));
-  assert.equal(again!.orphanedAt, stamped!.orphanedAt, "the clock is not reset");
+  assert.equal(
+    again!.orphanedAt,
+    stamped!.orphanedAt,
+    "the clock is not reset",
+  );
 });
 
 test("an artifact is only reclaimed once the keep window has elapsed", async () => {
@@ -450,7 +590,11 @@ test("the sweep never touches a LIVE target, however old its runs", async () => 
     .select()
     .from(backupRunsTable)
     .where(eq(backupRunsTable.id, "r_live"));
-  assert.equal(row!.orphanedAt, null, "a live app's artifacts are not the sweep's business");
+  assert.equal(
+    row!.orphanedAt,
+    null,
+    "a live app's artifacts are not the sweep's business",
+  );
 });
 
 /* ------------------------------------------------------------------ */
@@ -631,7 +775,6 @@ test("a run keeps the decrypted size apart from the stored one", async () => {
   });
 });
 
-
 /* ------------------------------------------------------------------ */
 /* Deleting one backup                                                 */
 /* ------------------------------------------------------------------ */
@@ -706,9 +849,15 @@ test("deleting a backup needs delete_backups, not manage_backups", async () => {
       objectKey: "",
     }),
   );
-  await runWithIdentity({ userId: USER_SCHEDULER, teamId: TEAM_A }, async () => {
-    await assert.rejects(() => deleteBackupRun("brun_guarded"), /permission/i);
-  });
+  await runWithIdentity(
+    { userId: USER_SCHEDULER, teamId: TEAM_A },
+    async () => {
+      await assert.rejects(
+        () => deleteBackupRun("brun_guarded"),
+        /permission/i,
+      );
+    },
+  );
   // Still there.
   await asUser1(async () => {
     assert.equal((await listBackupRuns({ appId: "prj_1" })).length, 1);

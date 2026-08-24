@@ -3,7 +3,14 @@
 import * as React from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { Boxes, FolderOpen, MoreHorizontal, Palette, Pencil, Trash2 } from "lucide-react";
+import {
+  Boxes,
+  FolderOpen,
+  MoreHorizontal,
+  Palette,
+  Pencil,
+  Trash2,
+} from "lucide-react";
 import { Card } from "@/components/ui/card";
 import {
   DropdownMenu,
@@ -128,8 +135,7 @@ export function ProjectContainerCard({
   // deleting the container, so a member who may tidy the grid isn't offered the
   // one click that destroys its contents.
   const canDeleteApps = caps.includes("delete_apps");
-  const countLabel =
-    `${s} ${s === 1 ? "app" : "apps"} · ${e} ${e === 1 ? "environment" : "environments"}`;
+  const countLabel = `${s} ${s === 1 ? "app" : "apps"} · ${e} ${e === 1 ? "environment" : "environments"}`;
 
   const tileStyle = shownColor
     ? { backgroundColor: shownColor, color: readableTextColor(shownColor) }
@@ -211,10 +217,7 @@ export function ProjectContainerCard({
             Change colour
           </K.Item>
           <K.Separator />
-          <K.Item
-            variant="destructive"
-            onSelect={() => setDeleteOpen(true)}
-          >
+          <K.Item variant="destructive" onSelect={() => setDeleteOpen(true)}>
             <Trash2 className="size-4" />
             Delete
           </K.Item>
@@ -295,7 +298,9 @@ export function ProjectContainerCard({
           </DialogHeader>
           <form className="grid gap-4" onSubmit={onRenameSubmit}>
             <div className="space-y-2">
-              <Label htmlFor={`rename-project-${project.id}`}>Project name</Label>
+              <Label htmlFor={`rename-project-${project.id}`}>
+                Project name
+              </Label>
               <Input
                 id={`rename-project-${project.id}`}
                 value={name}
@@ -432,7 +437,7 @@ export function ProjectContainerCard({
       <div
         aria-busy
         title="This is still being brought over by a migration"
-        className="pointer-events-none animate-pulse select-none opacity-70"
+        className="pointer-events-none animate-pulse opacity-70 select-none"
       >
         {card}
       </div>

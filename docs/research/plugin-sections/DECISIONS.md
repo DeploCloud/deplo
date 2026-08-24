@@ -21,11 +21,11 @@ Destination: an agreed **spec + ADR** (superseding parts of ADR-0005), ready to 
 
 ## Vocabulary (post-rename — use these exact terms)
 
-| Term | Meaning | Where it lives |
-| --- | --- | --- |
-| **Plugin** | Installable catalog container (ADR-0005, deferred by ADR-0013) | `lib/plugins/*`, `/plugins/<slug>`, `installed_plugins`, gated on `manage_infra` |
-| **App** | The deployable unit (was "Service"/"Project") | `lib/apps/*`, `lib/data/apps.ts`, `/apps/[slug]/*`, `appNav()`, `app_dev` |
-| **Project** | The container-folder (ADR-0009) | `prc_` prefix; no page of its own |
+| Term        | Meaning                                                        | Where it lives                                                                   |
+| ----------- | -------------------------------------------------------------- | -------------------------------------------------------------------------------- |
+| **Plugin**  | Installable catalog container (ADR-0005, deferred by ADR-0013) | `lib/plugins/*`, `/plugins/<slug>`, `installed_plugins`, gated on `manage_infra` |
+| **App**     | The deployable unit (was "Service"/"Project")                  | `lib/apps/*`, `lib/data/apps.ts`, `/apps/[slug]/*`, `appNav()`, `app_dev`        |
+| **Project** | The container-folder (ADR-0009)                                | `prc_` prefix; no page of its own                                                |
 
 The plugin repository lives at `../deplo-app-repository` and still speaks the **old** vocabulary
 throughout (README, `apps/<id>/`, "installable apps") — it needs a vocabulary pass.
@@ -50,7 +50,7 @@ ADR-0003, or ADR-0006.
    No per-plugin allowlist, no signatures, no manifest-declared tier. The operator vouches for the
    repository by configuring it.
 3. **A plugin never holds the agent CA.** It reaches agents through a **control-plane agent-proxy**,
-   inheriting `connectAgent(serverId)`'s multi-agent routing — so it reaches *every* server without
+   inheriting `connectAgent(serverId)`'s multi-agent routing — so it reaches _every_ server without
    holding any server's credentials, and adding a server just works.
    **ADR-0003 and ADR-0006 decision 10 are preserved:** the `DEPLO_SECRET`-derived CA key stays in
    exactly one process.
@@ -62,7 +62,7 @@ ADR-0003, or ADR-0006.
    automatically. The plugin forwards it to Deplo's GraphQL — a pure relay, holding no credential
    of its own — and
    the **viewer's own capabilities and folder-access are enforced natively**. The confused-deputy
-   problem dissolves: the plugin *is* the viewer.
+   problem dissolves: the plugin _is_ the viewer.
 5. **Unattended work → service token.** A standing, team-scoped, **`deploy`**-capable `deplo_`
    token minted at install. Used only where no viewer is present (deletion teardown, reconciliation).
 6. **No signed grant.** An earlier design minted a per-render `(viewer, app, exp)` HMAC grant. It is
@@ -73,11 +73,11 @@ ADR-0003, or ADR-0006.
 **Same-origin exposure.** Because a plugin section is same-origin with the dashboard, the plugin
 container **receives the session cookie of every viewer who opens its section** and can impersonate
 them with full authority for the life of that cookie. This is **knowingly accepted**, justified by
-trust-by-origin. It is why the iframe is *not* sandboxed to an opaque origin.
+trust-by-origin. It is why the iframe is _not_ sandboxed to an opaque origin.
 
 ## 3. Plugin-injected sections
 
-7. Plugins inject sections into the **App left-nav** (`appNav`), *not* the Project drill-in
+7. Plugins inject sections into the **App left-nav** (`appNav`), _not_ the Project drill-in
    (ADR-0009 gave Projects no page).
 8. **Declared statically in the manifest**: `sections[] { id, label, icon, path, visibleWhen? }`,
    validated by zod at install. The nav is therefore known without calling the plugin.
@@ -90,7 +90,7 @@ trust-by-origin. It is why the iframe is *not* sandboxed to an opaque origin.
 
 ## 4. Plugin runtime gains persistence
 
-11. The manifest gains **`volumes[]` — Deplo-managed *named* volumes only.** Never host paths: zero
+11. The manifest gains **`volumes[]` — Deplo-managed _named_ volumes only.** Never host paths: zero
     path-escape surface. (Apps gate host mounts behind `canMountHostVolumes`; plugins get no such
     grant.)
 12. The plugin **embeds its own store** on that volume and **generates its own encryption key**
@@ -103,14 +103,14 @@ trust-by-origin. It is why the iframe is *not* sandboxed to an opaque origin.
     `dev_ssh_user` records with encrypted passwords.
 14. **Core severs its dependence on dev state**:
     - `app_dev` leaves the App entity graph (`app-graph-load.ts`, `app-graph-rows.ts`);
-    - **`portFor`'s `dev?.port` read disappears** — the dev port becomes an *input* to core's render
+    - **`portFor`'s `dev?.port` read disappears** — the dev port becomes an _input_ to core's render
       op, so **ADR-0001's single port reader survives**;
     - the `devEligible` flag is removed across layout → nav-store → sidebar → breadcrumbs;
     - dev's GraphQL fields are deleted from the public schema.
-    - *Smaller than first assumed:* the `App` GraphQL type never exposed `dev`, the Overview has no
+    - _Smaller than first assumed:_ the `App` GraphQL type never exposed `dev`, the Overview has no
       dev coupling, and `components/apps/app-tabs.tsx` is dead code (zero importers).
 15. **Three core ops** the plugin calls (the app↔core seam):
-    - **`renderDevCompose(appId, devConfig) → opaque YAML`.** Core decrypts env *inside* the render,
+    - **`renderDevCompose(appId, devConfig) → opaque YAML`.** Core decrypts env _inside_ the render,
       so **the plugin never sees a plaintext secret**, and there stays exactly **one Traefik label
       grammar** (`traefikRouterLabels`) and **one port reader** (`portFor`).
       **ADR-0006 decision 6 preserved.**
@@ -140,7 +140,7 @@ trust-by-origin. It is why the iframe is *not* sandboxed to an opaque origin.
 
 20. **No state migration.** `app_dev` and `dev_ssh_user` are dropped.
     - **Workspaces survive** (they live on the agent's disk; dev seeding is clone-once into an
-      *empty* workspace) — so no uncommitted work is lost.
+      _empty_ workspace) — so no uncommitted work is lost.
     - **Preview URLs change** (the frozen `previewHost` is discarded and regenerated).
     - **SSH users are lost** → the removal release must **deprovision stale gateway accounts**.
     - **Orphaned `deplo-dev-*` containers** must be stopped by the removal release.
@@ -156,14 +156,14 @@ events + volumes + state. Its "one install per plugin per team" and "status is r
 
 **Preserved deliberately — say so explicitly:**
 ADR-0001 (the only port reader) · ADR-0002 (the store leads, the container is a disposable
-projection — the *store* just becomes the plugin's) · ADR-0003 + ADR-0006 dec. 10 (the CA stays in
+projection — the _store_ just becomes the plugin's) · ADR-0003 + ADR-0006 dec. 10 (the CA stays in
 one process) · ADR-0006 dec. 6 (one compose renderer, opaque YAML on the wire) · write-only secrets.
 
 ## Known defects to fold in
 
 - **`${secret:N}` rotates on reinstall.** `resolvePluginEnv` mints a fresh random value on every
   resolve, and `installed_plugins` persists no env — so a plugin's generated secret silently
-  rotates on reinstall. Harmless for a plugin that injects none; it would destroy a *stateful*
+  rotates on reinstall. Harmless for a plugin that injects none; it would destroy a _stateful_
   plugin's encrypted data. Sidestepped by keeping the plugin's key in its own volume, but it should
   be fixed or documented. (Carried into ADR-0013 §5 as a revival blocker.)
 - **A second, parallel section registry** exists at `lib/breadcrumb-model.ts` (`MAIN_SECTIONS`).

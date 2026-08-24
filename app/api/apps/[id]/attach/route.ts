@@ -52,7 +52,9 @@ function isCrossSite(request: NextRequest): boolean {
     return true;
   }
   const host =
-    request.headers.get("x-forwarded-host") ?? request.headers.get("host") ?? "";
+    request.headers.get("x-forwarded-host") ??
+    request.headers.get("host") ??
+    "";
   return originHost !== host;
 }
 
@@ -61,7 +63,10 @@ export async function GET(
   ctx: RouteContext<"/api/apps/[id]/attach">,
 ) {
   if (isCrossSite(request))
-    return Response.json({ error: "Cross-site request refused" }, { status: 403 });
+    return Response.json(
+      { error: "Cross-site request refused" },
+      { status: 403 },
+    );
 
   const user = await getCurrentUser();
   if (!user) return Response.json({ error: "Unauthorized" }, { status: 401 });
@@ -98,8 +103,13 @@ export async function GET(
   try {
     const conn = await connectAgent(resolved.server!.id);
     const handle = conn.attach(appId, resolved.instance.name, tty, cols, rows);
-    session = attach.open(appId, teamId, user.id, resolved.instance.name, handle, () =>
-      conn.close(),
+    session = attach.open(
+      appId,
+      teamId,
+      user.id,
+      resolved.instance.name,
+      handle,
+      () => conn.close(),
     );
   } catch {
     return Response.json({ error: "unreachable" }, { status: 503 });
@@ -200,10 +210,12 @@ export async function POST(
   }
   const sessionId = typeof body.sessionId === "string" ? body.sessionId : "";
   const data = typeof body.data === "string" ? body.data : "";
-  if (!sessionId) return Response.json({ error: "Missing sessionId" }, { status: 400 });
+  if (!sessionId)
+    return Response.json({ error: "Missing sessionId" }, { status: 400 });
 
   const session = attach.get(sessionId, appId);
-  if (!session) return Response.json({ error: "No such session" }, { status: 404 });
+  if (!session)
+    return Response.json({ error: "No such session" }, { status: 404 });
 
   // The GET authorised this session for one principal holding `deploy`. Re-check
   // both on every write — same user, still holding the capability — so a demoted
@@ -259,8 +271,12 @@ function parseResize(raw: unknown): { cols: number; rows: number } | null {
   const { cols, rows } = raw as { cols?: unknown; rows?: unknown };
   const c = Number(cols);
   const r = Number(rows);
-  if (!Number.isFinite(c) || !Number.isFinite(r) || c <= 0 || r <= 0) return null;
-  return { cols: Math.min(Math.floor(c), 500), rows: Math.min(Math.floor(r), 300) };
+  if (!Number.isFinite(c) || !Number.isFinite(r) || c <= 0 || r <= 0)
+    return null;
+  return {
+    cols: Math.min(Math.floor(c), 500),
+    rows: Math.min(Math.floor(r), 300),
+  };
 }
 
 export async function DELETE(

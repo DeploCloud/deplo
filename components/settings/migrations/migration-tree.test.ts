@@ -5,7 +5,12 @@ import { renderToStaticMarkup } from "react-dom/server";
 
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { MigrationTree, visible, type PortConflict } from "./migration-tree";
-import type { Placement, PlanProject, PlanService, ServerChoice } from "./types";
+import type {
+  Placement,
+  PlanProject,
+  PlanService,
+  ServerChoice,
+} from "./types";
 
 /**
  * The review tree's arithmetic, and which of its two placement columns exist.
@@ -23,7 +28,9 @@ import type { Placement, PlanProject, PlanService, ServerChoice } from "./types"
  * when the rows disagree and it therefore has no value to show.
  */
 
-function service(over: Partial<PlanService> & { sourceId: string }): PlanService {
+function service(
+  over: Partial<PlanService> & { sourceId: string },
+): PlanService {
   return {
     kind: "application",
     name: over.sourceId,
@@ -86,7 +93,11 @@ const PROJECTS: PlanProject[] = [
         name: "production",
         exists: false,
         services: [
-          service({ sourceId: "s-stack", kind: "compose", buildsFromSource: false }),
+          service({
+            sourceId: "s-stack",
+            kind: "compose",
+            buildsFromSource: false,
+          }),
           service({
             sourceId: "s-libsql",
             kind: "libsql",
@@ -298,7 +309,11 @@ test("a service Deplo never compiles gets a dash, not a picker", () => {
   // A compose stack and a database both deploy as they are. The tooltip that
   // says WHY is not asserted here: Radix renders its content only once open.
   for (const id of ["s-stack", "s-db"]) {
-    assert.equal(html.includes(`id="imp-build-${id}"`), false, `${id} got a picker`);
+    assert.equal(
+      html.includes(`id="imp-build-${id}"`),
+      false,
+      `${id} got a picker`,
+    );
     assert.ok(html.includes(`id="imp-nobuild-${id}"`), `${id} got no reason`);
   }
   assert.ok(html.includes(`id="imp-build-s-api"`), "a git app lost its picker");
@@ -312,7 +327,10 @@ test("the bulk control offers itself only when the rows disagree", () => {
 
   const split = toolbar(
     render([], {
-      placements: { ...homePlacements(), "s-api": { serverId: OTHER, buildServerId: null } },
+      placements: {
+        ...homePlacements(),
+        "s-api": { serverId: OTHER, buildServerId: null },
+      },
     }),
   );
   assert.match(split, /Place all on/);
@@ -397,7 +415,10 @@ test("a database says what it publishes, and only asks when that port is taken",
   assert.equal(/imp-port-s-db/.test(clean), false, "and nothing to fill in");
 
   const clash = render(["s-db"], {
-    placements: { ...homePlacements(), "s-db": { serverId: HOME, buildServerId: null, exposedPort: 25432 } },
+    placements: {
+      ...homePlacements(),
+      "s-db": { serverId: HOME, buildServerId: null, exposedPort: 25432 },
+    },
     portConflicts: {
       "s-db": { takenPort: 5432, serverName: "eu-main-1", invalid: false },
     },
@@ -412,7 +433,10 @@ test("a database says what it publishes, and only asks when that port is taken",
   // "Don't publish" is the same control turned off: no port field, and the row
   // no longer claims to publish anything.
   const off = render(["s-db"], {
-    placements: { ...homePlacements(), "s-db": { serverId: HOME, buildServerId: null, exposedPort: null } },
+    placements: {
+      ...homePlacements(),
+      "s-db": { serverId: HOME, buildServerId: null, exposedPort: null },
+    },
     portConflicts: {
       "s-db": { takenPort: 5432, serverName: "eu-main-1", invalid: false },
     },

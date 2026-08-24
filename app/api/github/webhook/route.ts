@@ -32,7 +32,9 @@ export async function POST(request: Request) {
     // No connected App matches this delivery's target id. Logged because an
     // operator staring at "auto-deploy never fires" has no other way to learn
     // the delivery was acknowledged-and-dropped here rather than at the filter.
-    console.warn(`[github-webhook] ignored: no connected App for appId=${appId}`);
+    console.warn(
+      `[github-webhook] ignored: no connected App for appId=${appId}`,
+    );
     return new Response("ignored", { status: 202 });
   }
 
@@ -44,7 +46,9 @@ export async function POST(request: Request) {
     // delivery then 401s. Name it so it isn't mistaken for a GitHub problem.
     console.warn(
       `[github-webhook] 401 invalid signature for app=${app.slug}` +
-        (secret ? "" : " (stored webhook secret is empty — DEPLO_SECRET changed?)"),
+        (secret
+          ? ""
+          : " (stored webhook secret is empty — DEPLO_SECRET changed?)"),
     );
     return new Response("invalid signature", { status: 401 });
   }
@@ -121,7 +125,11 @@ export async function POST(request: Request) {
   return new Response("ok", { status: 200 });
 }
 
-function verifySignature(body: string, secret: string, header: string): boolean {
+function verifySignature(
+  body: string,
+  secret: string,
+  header: string,
+): boolean {
   if (!header.startsWith("sha256=")) return false;
   const expected =
     "sha256=" + createHmac("sha256", secret).update(body).digest("hex");

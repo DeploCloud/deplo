@@ -18,6 +18,7 @@ storage. Today the entire backup feature is **stubbed**:
   can only target a `databaseId` — there is **no project backup**.
 
 The user wants:
+
 1. **Fully working end-to-end** backups & restore (real dumps, real S3 upload, real artifact
    listing, real restore).
 2. **Project backups** capturing: **persistent volumes + project files dir + compose/env
@@ -76,60 +77,61 @@ The user wants:
 
 ### Locked decisions (from the grilling)
 
-| Topic | Decision |
-| --- | --- |
-| Step 0 sequencing | **Prerequisite** — DB-on-agent before backups. |
-| DB provisioning RPC | **Reuse `Reroute`** (no `ProvisionStack`); lifecycle via `StartStack`/`StopStack`. |
-| DB delete | **`DestroyStack(removeVolumes: true)`** (one new proto flag; `down -v` + rm file). |
-| S3 transfer | **S3 client in the agent** (`minio-go`), multipart streaming, no temp file. |
-| DB restore overwrite | **Drop-and-recreate per engine, guaranteed by dump format** (pg `-Fc`/`--clean`, mysql `--add-drop-table`, mongo `--drop`). |
-| Project backup scope | **Named + compose-stack volumes (parsed from YAML) + files dir + compose/env snapshot; host mounts excluded.** |
-| Project restore | **Wipe + untar in-place, full data + config (Reroute snapshot), stop/start, typed-confirm, downtime+irreversibility surfaced, no auto-snapshot.** |
-| Scheduler | **`instrumentation.ts` tick + `globalThis` singleton; lease via Postgres advisory-lock/dedicated row** (degrades in-process in dev JSON-file). |
-| `BackupRun` storage | **Array in `DeploData`** (no SQL migration) + retention prune + per-target cap. |
-| `testS3` | Real, via new **`S3Check`** RPC on any agent advertising `backup`. |
-| `ListBackupArtifacts` | **Deferred** (BackupRun is the source of truth). |
-| Capability gating | `"backup"` in Hello + preflight + **`AgentBackupUnsupportedError`**. |
-| Target deletion | **Explicit choice**: keep S3 artifacts (default) or delete too (via `S3Delete`). |
-| Delivery order | **Control-plane first**, gated on capability; proto contract as ADR-0007 in parallel. |
+| Topic                 | Decision                                                                                                                                          |
+| --------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Step 0 sequencing     | **Prerequisite** — DB-on-agent before backups.                                                                                                    |
+| DB provisioning RPC   | **Reuse `Reroute`** (no `ProvisionStack`); lifecycle via `StartStack`/`StopStack`.                                                                |
+| DB delete             | **`DestroyStack(removeVolumes: true)`** (one new proto flag; `down -v` + rm file).                                                                |
+| S3 transfer           | **S3 client in the agent** (`minio-go`), multipart streaming, no temp file.                                                                       |
+| DB restore overwrite  | **Drop-and-recreate per engine, guaranteed by dump format** (pg `-Fc`/`--clean`, mysql `--add-drop-table`, mongo `--drop`).                       |
+| Project backup scope  | **Named + compose-stack volumes (parsed from YAML) + files dir + compose/env snapshot; host mounts excluded.**                                    |
+| Project restore       | **Wipe + untar in-place, full data + config (Reroute snapshot), stop/start, typed-confirm, downtime+irreversibility surfaced, no auto-snapshot.** |
+| Scheduler             | **`instrumentation.ts` tick + `globalThis` singleton; lease via Postgres advisory-lock/dedicated row** (degrades in-process in dev JSON-file).    |
+| `BackupRun` storage   | **Array in `DeploData`** (no SQL migration) + retention prune + per-target cap.                                                                   |
+| `testS3`              | Real, via new **`S3Check`** RPC on any agent advertising `backup`.                                                                                |
+| `ListBackupArtifacts` | **Deferred** (BackupRun is the source of truth).                                                                                                  |
+| Capability gating     | `"backup"` in Hello + preflight + **`AgentBackupUnsupportedError`**.                                                                              |
+| Target deletion       | **Explicit choice**: keep S3 artifacts (default) or delete too (via `S3Delete`).                                                                  |
+| Delivery order        | **Control-plane first**, gated on capability; proto contract as ADR-0007 in parallel.                                                             |
 
 ### Cross-repo contract (`../deplo-agent`, cannot build here)
 
-| RPC | Type | Status |
-| --- | --- | --- |
-| `Backup(BackupRequest) → stream BackupEvent` | server-stream | **done** (Step 2) |
-| `Restore(RestoreRequest) → stream RestoreEvent` | server-stream | **done** (Step 2) |
-| `S3Check(S3CheckRequest) → S3CheckResponse` | unary | **done** (Step 2) |
-| `S3Delete(S3DeleteRequest) → S3DeleteResponse` | unary | **done** (Step 2; backs retention + delete-with-artifacts) |
-| `DestroyStack` + `removeVolumes` field | unary | **done** (agent commit `0167147`) |
-| `"backup"` in `HelloResponse.capabilities` | — | **done** (Step 2) |
-| S3 client dependency (`minio-go`) | — | **done** (Step 2) |
+| RPC                                             | Type          | Status                                                     |
+| ----------------------------------------------- | ------------- | ---------------------------------------------------------- |
+| `Backup(BackupRequest) → stream BackupEvent`    | server-stream | **done** (Step 2)                                          |
+| `Restore(RestoreRequest) → stream RestoreEvent` | server-stream | **done** (Step 2)                                          |
+| `S3Check(S3CheckRequest) → S3CheckResponse`     | unary         | **done** (Step 2)                                          |
+| `S3Delete(S3DeleteRequest) → S3DeleteResponse`  | unary         | **done** (Step 2; backs retention + delete-with-artifacts) |
+| `DestroyStack` + `removeVolumes` field          | unary         | **done** (agent commit `0167147`)                          |
+| `"backup"` in `HelloResponse.capabilities`      | —             | **done** (Step 2)                                          |
+| S3 client dependency (`minio-go`)               | —             | **done** (Step 2)                                          |
 
 > `ProvisionStack` / `ListBackupArtifacts` from earlier drafts are **dropped/deferred**.
 > Step 2 also shipped the Go impl + unit/E2E tests in `../deplo-agent` and the
 > regenerated TS client ([lib/agent/gen/agent.ts](../../../lib/agent/gen/agent.ts))
-> + control-plane wiring ([agent-client.ts](../../../lib/infra/agent-client.ts):
-> `backup`/`restore`/`s3Check`/`s3Delete`, `BACKUP_DEADLINE_MS`,
-> `AgentBackupUnsupportedError`, `connectBackupAgent`/`mapBackupUnsupported`).
-> All six DB engines (postgres/mysql/mariadb/mongodb/redis/clickhouse) + the
-> **project-volume** round-trip are E2E-verified (overwrite proven). Step 2 also
-> fixed a pre-existing bug in [database-compose.ts](../../../lib/deploy/database-compose.ts):
-> the data volume was mounted at `/var/lib/<type>` for every engine, but redis
-> (`/data`), mongodb (`/data/db`) and mariadb (`/var/lib/mysql`) write elsewhere —
-> so their data wasn't persisted and a restore would land outside the volume. Now
-> mapped per-engine (`DB_DATA_DIRS`). The compose already sets
-> `restart: unless-stopped`, which the redis restore's reload depends on.
+>
+> - control-plane wiring ([agent-client.ts](../../../lib/infra/agent-client.ts):
+>   `backup`/`restore`/`s3Check`/`s3Delete`, `BACKUP_DEADLINE_MS`,
+>   `AgentBackupUnsupportedError`, `connectBackupAgent`/`mapBackupUnsupported`).
+>   All six DB engines (postgres/mysql/mariadb/mongodb/redis/clickhouse) + the
+>   **project-volume** round-trip are E2E-verified (overwrite proven). Step 2 also
+>   fixed a pre-existing bug in [database-compose.ts](../../../lib/deploy/database-compose.ts):
+>   the data volume was mounted at `/var/lib/<type>` for every engine, but redis
+>   (`/data`), mongodb (`/data/db`) and mariadb (`/var/lib/mysql`) write elsewhere —
+>   so their data wasn't persisted and a restore would land outside the volume. Now
+>   mapped per-engine (`DB_DATA_DIRS`). The compose already sets
+>   `restart: unless-stopped`, which the redis restore's reload depends on.
 
 ### Per-engine dump/restore format (the Backup⇄Restore contract)
 
-| Engine | Dump | Restore | Object ext |
-| --- | --- | --- | --- |
-| postgres | `pg_dump -Fc` | `pg_restore --clean --if-exists` | `.dump.gz` |
-| mysql / mariadb | `mysqldump --add-drop-table --databases` | `mysql` | `.sql.gz` |
-| mongodb | `mongodump --archive` | `mongorestore --drop --archive` | `.archive.gz` |
-| redis | `redis-cli --rdb -` (RDB to stdout) | file-swap + `SHUTDOWN NOSAVE` reload | `.rdb.gz` |
-| clickhouse | per-table `SHOW CREATE` + `FORMAT SQLInsert` → SQL script | `clickhouse-client --multiquery` | `.sql.gz` |
-| project | `tar` volumes + files + snapshot | wipe + untar + `Reroute` | `.tar.gz` |
+| Engine          | Dump                                                      | Restore                              | Object ext    |
+| --------------- | --------------------------------------------------------- | ------------------------------------ | ------------- |
+| postgres        | `pg_dump -Fc`                                             | `pg_restore --clean --if-exists`     | `.dump.gz`    |
+| mysql / mariadb | `mysqldump --add-drop-table --databases`                  | `mysql`                              | `.sql.gz`     |
+| mongodb         | `mongodump --archive`                                     | `mongorestore --drop --archive`      | `.archive.gz` |
+| redis           | `redis-cli --rdb -` (RDB to stdout)                       | file-swap + `SHUTDOWN NOSAVE` reload | `.rdb.gz`     |
+| clickhouse      | per-table `SHOW CREATE` + `FORMAT SQLInsert` → SQL script | `clickhouse-client --multiquery`     | `.sql.gz`     |
+| project         | `tar` volumes + files + snapshot                          | wipe + untar + `Reroute`             | `.tar.gz`     |
 
 > Object-key convention: `deplo/<teamId>/<kind>/<targetId>/<ISO-timestamp>.<ext>`.
 >
@@ -159,7 +161,7 @@ agent path serves both DB and project backups.
     default to the sole server when there is one). Stop reading `servers[0]`.
   - Replace local `provisionDatabase()` (`mkdir`+`writeFile`+`docker compose up`) with a
     `connectAgent(serverId).reroute({ slug: "db-<name>", composeYaml:
-    generateDatabaseCompose(...), env: {}, mounts: [] })` call. DB keeps DNS name `db-<name>`
+generateDatabaseCompose(...), env: {}, mounts: [] })` call. DB keeps DNS name `db-<name>`
     on the `deplo` network — connection strings unchanged.
   - `setDatabaseRunning()` → `startStack`/`stopStack`; `deleteDatabase()` →
     `destroyStack({ slug, removeVolumes: true })` (NEW flag). Drop the local
@@ -170,7 +172,7 @@ agent path serves both DB and project backups.
   `serverId` to `CreateDatabaseInput` (the `Database` type already exposes `serverId`).
 - **UI** ([components/storage/create-database.tsx](../../../components/storage/create-database.tsx)):
   add a **Server `<Select>`** (mirror the destination select in `create-backup.tsx`); pass
-  `servers` from [storage/page.tsx](../../../app/(dashboard)/storage/page.tsx) (it does NOT
+  `servers` from [storage/page.tsx](<../../../app/(dashboard)/storage/page.tsx>) (it does NOT
   fetch servers yet — add it).
 - **Agent-gated**: the `removeVolumes` flag must ship in `deplo-agent` `DestroyStack`; until
   then delete falls back to volume-orphaning `down` and we log it.
@@ -188,15 +190,19 @@ Extend [lib/types.ts](../../../lib/types.ts):
 - **New `BackupRun`** — one record per executed backup:
   ```ts
   interface BackupRun {
-    id: ID; teamId: ID; backupId: ID | null;   // null = ad-hoc run
+    id: ID;
+    teamId: ID;
+    backupId: ID | null; // null = ad-hoc run
     targetKind: "database" | "project";
-    databaseId: ID | null; projectId: ID | null;
+    databaseId: ID | null;
+    projectId: ID | null;
     destinationId: ID;
-    objectKey: string;        // deplo/<team>/<kind>/<target>/<ts>.<ext>
+    objectKey: string; // deplo/<team>/<kind>/<target>/<ts>.<ext>
     sizeBytes: number;
     status: "running" | "success" | "failed";
     error: string | null;
-    startedAt: string; finishedAt: string | null;
+    startedAt: string;
+    finishedAt: string | null;
   }
   ```
 - Add `backupRuns: BackupRun[]` to `DeploData` and seed it in `buildSeed()` so `normalize()`
@@ -224,7 +230,7 @@ In `../deplo-agent` add to `proto/agent.proto` + the Go impl, then **regenerate*
 - **`Backup(BackupRequest) → stream BackupEvent`** — `kind` (DATABASE|PROJECT); DB descriptor
   (`container`, `dbType`, `dbName`, `user`) OR project descriptor (`slug`, `volumeNames[]`,
   `includeFiles`, `composeYaml`, `envSnapshot`); plus `s3 { endpoint, region, bucket,
-  accessKey, secretKey, objectKey }`. DB → `docker exec` the engine's dump tool (per the
+accessKey, secretKey, objectKey }`. DB → `docker exec` the engine's dump tool (per the
   format table) piped to compression, streamed to S3 via **multipart PUT (`minio-go`)**.
   Project → `tar` the named + compose-stack volumes (throwaway helper container mounting
   them) + the files dir + the compose/env snapshot, compress, upload. Returns
@@ -260,6 +266,7 @@ the `removeVolumes` flag.
 > suite is green (355 tests).
 >
 > **What shipped:**
+>
 > - [lib/data/backups.ts](../../../lib/data/backups.ts): one `executeBackup`
 >   shared by `runBackup` (schedule) / `runProjectBackup` (ad-hoc) / Step 6
 >   scheduler — appends a `running` `BackupRun` BEFORE the dump (so a resolution or
@@ -286,7 +293,7 @@ the `removeVolumes` flag.
 >   `running` run). Retention + delete-with-artifacts are **destination-scoped**
 >   (a target with runs in two buckets doesn't lose the other bucket's records /
 >   orphan its objects), and a run record is dropped only once its object is
->   *confirmed* gone (a transient `S3Delete` failure retries next prune).
+>   _confirmed_ gone (a transient `S3Delete` failure retries next prune).
 > - [lib/data/s3.ts](../../../lib/data/s3.ts): `getS3WithSecrets` (decrypted
 >   creds, server-only) + `s3TargetFor` (the one destination→`S3Target` map, incl.
 >   per-provider `pathStyle`) + a REAL `testS3` via `S3Check` on the first
@@ -351,17 +358,17 @@ the `removeVolumes` flag.
   the slug/name to enable confirm) — used by every restore and by delete-with-artifacts.
 - **New project tab "Backups"**:
   - Route `app/(dashboard)/projects/[slug]/backups/page.tsx` (server component; mirror
-    [environment/page.tsx](../../../app/(dashboard)/projects/[slug]/environment/page.tsx)):
+    [environment/page.tsx](<../../../app/(dashboard)/projects/[slug]/environment/page.tsx>)):
     gate on `manage_infra`, fetch project + its backup schedules + `backupRuns` + team S3
     destinations; render a client manager. Note Next 16: `params` is a `Promise` — `await` it.
   - Register the tab in [project-tabs.tsx](../../../components/projects/project-tabs.tsx)
     (add a `canBackup`/`manage_infra` prop set from
-    [layout.tsx](../../../app/(dashboard)/projects/[slug]/layout.tsx) via `hasCapability`).
+    [layout.tsx](<../../../app/(dashboard)/projects/[slug]/layout.tsx>) via `hasCapability`).
   - `components/projects/project-backups.tsx`: "Back up now" (`runProjectBackup`), a schedule
     editor (reuse `createBackup` with `targetKind:"project"`), and an **artifacts table**
     (timestamp, size, status, **Restore** with the typed confirm; UI warns of downtime +
     irreversibility).
-- **Storage page** ([app/(dashboard)/storage/page.tsx](../../../app/(dashboard)/storage/page.tsx)):
+- **Storage page** ([app/(dashboard)/storage/page.tsx](<../../../app/(dashboard)/storage/page.tsx>)):
   - Fetch `servers` too.
   - `create-backup.tsx`: target-kind toggle (Database | Project) + project select.
   - `backup-row.tsx`: show target (db or project), real `lastStatus` (`running` spinner), a
@@ -381,6 +388,7 @@ the `removeVolumes` flag.
 > reviewed.
 >
 > **What shipped:**
+>
 > - [lib/backups/cron.ts](../../../lib/backups/cron.ts) (+ `cron.test.ts`): a
 >   dependency-free 5-field cron evaluator — `*`, lists, ranges, steps, `7==0`
 >   Sunday, and the Vixie DOM/DOW **union** rule. Pure + minute-precision UTC, so
@@ -389,7 +397,7 @@ the `removeVolumes` flag.
 >   malformed schedule can't crash the tick.
 > - [lib/backups/lease.ts](../../../lib/backups/lease.ts) (+ `lease.test.ts`):
 >   the cross-process mutex. Postgres path is one atomic `INSERT … ON CONFLICT DO
->   UPDATE … WHERE (owner = me OR heartbeat stale) RETURNING owner` — two
+UPDATE … WHERE (owner = me OR heartbeat stale) RETURNING owner` — two
 >   instances racing the same tick can never both win, and a crashed owner's lease
 >   (heartbeat older than `LEASE_STALE_MS` = 2h) is stealable so a dead run never
 >   blocks forever. The pure `canAcquire(...)` CAS rule is unit-tested; in dev (no
@@ -437,6 +445,7 @@ the `removeVolumes` flag.
 ## Files to create / modify (representative)
 
 **Create**
+
 - `app/(dashboard)/projects/[slug]/backups/page.tsx` ✅ (Step 5)
 - `components/projects/project-backups.tsx` ✅ (Step 5)
 - `lib/backups/scheduler.ts` + `lib/backups/cron.ts` + `lib/backups/lease.ts` ✅ (Step 6)
@@ -444,11 +453,12 @@ the `removeVolumes` flag.
 - `docs/adr/0007-…md` ✅ (done)
 
 **Modify**
+
 - `lib/types.ts` (Backup target fields, `BackupRun`, `DeploData.backupRuns`)
 - `lib/seed.ts` / `normalize()` path (seed `backupRuns`)
 - `lib/data/backups.ts`, `lib/data/s3.ts`, `lib/data/databases.ts`
 - `lib/infra/agent-client.ts` (backup/restore/s3Check/s3Delete + `destroyStack.removeVolumes`
-  + capability/error + `BACKUP_DEADLINE_MS`)
+  - capability/error + `BACKUP_DEADLINE_MS`)
 - `lib/agent/gen/agent.ts` (regenerated from the deplo-agent proto)
 - `lib/graphql/types/backup.ts`, `lib/graphql/types/database.ts`
 - `components/storage/{create-backup,backup-row,create-database}.tsx`
@@ -459,6 +469,7 @@ the `removeVolumes` flag.
 - `CONTEXT.md` ✅ (Database / Backup / Backup run terms added) + regenerated `schema.graphql`
 
 **Cross-repo (cannot build here)** — `../deplo-agent`
+
 - `Backup`, `Restore`, `S3Check`, `S3Delete` RPCs; `DestroyStack.removeVolumes`; `"backup"`
   Hello capability; `minio-go` dependency. Then `make proto` to regenerate the TS client.
 

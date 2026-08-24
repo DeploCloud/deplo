@@ -238,7 +238,8 @@ export async function writeAppFile(
 }
 
 /** What the Storage editor found at a File entry's path in this app's Files. */
-export type StorageFileState = "text" | "new" | "folder" | "binary" | "too-large";
+export type StorageFileState =
+  "text" | "new" | "folder" | "binary" | "too-large";
 
 /**
  * What a FAILED agent read of a File entry's path means, or null when the
@@ -440,14 +441,20 @@ async function syncAppMount(
     .select({ position: appMountsTable.position })
     .from(appMountsTable)
     .where(
-      and(eq(appMountsTable.appId, appId), eq(appMountsTable.filePath, filePath)),
+      and(
+        eq(appMountsTable.appId, appId),
+        eq(appMountsTable.filePath, filePath),
+      ),
     );
   if (rows.length === 0) return;
   if ("deleted" in change) {
     await db
       .delete(appMountsTable)
       .where(
-        and(eq(appMountsTable.appId, appId), eq(appMountsTable.filePath, filePath)),
+        and(
+          eq(appMountsTable.appId, appId),
+          eq(appMountsTable.filePath, filePath),
+        ),
       );
     return;
   }
@@ -459,7 +466,10 @@ async function syncAppMount(
     .update(appMountsTable)
     .set(patch)
     .where(
-      and(eq(appMountsTable.appId, appId), eq(appMountsTable.filePath, filePath)),
+      and(
+        eq(appMountsTable.appId, appId),
+        eq(appMountsTable.filePath, filePath),
+      ),
     );
 }
 

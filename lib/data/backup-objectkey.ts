@@ -51,7 +51,10 @@ export function artifactExt(
   return baseArtifactExt(kind, dbType) + (encrypted ? ".age" : "");
 }
 
-function baseArtifactExt(kind: BackupTargetKind, dbType?: DatabaseType | null): string {
+function baseArtifactExt(
+  kind: BackupTargetKind,
+  dbType?: DatabaseType | null,
+): string {
   if (kind === "app") return "tar.gz";
   switch (dbType) {
     case "postgres":
@@ -79,7 +82,10 @@ function baseArtifactExt(kind: BackupTargetKind, dbType?: DatabaseType | null): 
  * keys unique even then.
  */
 export function objectStamp(date: Date): string {
-  return date.toISOString().replace(/[-:]/g, "").replace(/\.\d+Z$/, "Z");
+  return date
+    .toISOString()
+    .replace(/[-:]/g, "")
+    .replace(/\.\d+Z$/, "Z");
 }
 
 /** The per-target folder. NOT a delete prefix — see the module doc. */

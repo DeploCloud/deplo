@@ -76,7 +76,10 @@ test("hashPassword: the stored form carries its own scrypt parameters", async ()
   assert.equal(parts[0], "scrypt");
   // Whatever the current cost is, it must be a number the verifier can read
   // back - and stronger than what node would have defaulted to.
-  assert.ok(Number(parts[1]) > 16384, `N=${parts[1]} must beat the old default`);
+  assert.ok(
+    Number(parts[1]) > 16384,
+    `N=${parts[1]} must beat the old default`,
+  );
   assert.ok(Number(parts[2]) >= 8);
   assert.ok(Number(parts[3]) >= 1);
 });
@@ -91,18 +94,31 @@ test("verifyPassword: accepts the right password and refuses the wrong one", asy
 test("verifyPassword: a hash written in the LEGACY format still verifies", async () => {
   const salt = randomBytes(16);
   const stored = legacyHash("hunter2", salt);
-  assert.equal(stored.split("$").length, 3, "the sample really is the old shape");
+  assert.equal(
+    stored.split("$").length,
+    3,
+    "the sample really is the old shape",
+  );
   assert.equal(await verifyPassword("hunter2", stored), true);
   assert.equal(await verifyPassword("hunter3", stored), false);
 });
 
 test("verifyPassword: garbage is refused, never thrown", async () => {
-  for (const junk of ["", "scrypt", "bcrypt$x$y", "scrypt$$", "scrypt$a$b$c$d$e$f"])
+  for (const junk of [
+    "",
+    "scrypt",
+    "bcrypt$x$y",
+    "scrypt$$",
+    "scrypt$a$b$c$d$e$f",
+  ])
     assert.equal(await verifyPassword("hunter2", junk), false, junk);
 });
 
 test("passwordNeedsRehash: true for a legacy hash, false for a fresh one", async () => {
-  assert.equal(passwordNeedsRehash(legacyHash("hunter2", randomBytes(16))), true);
+  assert.equal(
+    passwordNeedsRehash(legacyHash("hunter2", randomBytes(16))),
+    true,
+  );
   assert.equal(passwordNeedsRehash(await hashPassword("hunter2")), false);
 });
 
@@ -122,7 +138,10 @@ test("passwordNeedsRehash: an unparseable hash is not a rehash candidate", () =>
 });
 
 test("hashPassword: the same password twice gives different stored values", async () => {
-  assert.notEqual(await hashPassword("samepass"), await hashPassword("samepass"));
+  assert.notEqual(
+    await hashPassword("samepass"),
+    await hashPassword("samepass"),
+  );
 });
 
 /* ------------------------------------------------------------------ */
@@ -166,7 +185,9 @@ test("tryDecryptSecret: a round trip reports ok with the original value", () => 
 test("tryDecryptSecret: an EMPTY secret is ok, not a failure", () => {
   // The case no heuristic can recover: a legitimately blank variable has a
   // perfectly valid ciphertext, so "plaintext is empty" cannot mean "broken".
-  const sealed = underSecret("secret-one-aaaaaaaaaaaaaaaa", () => encryptSecret(""));
+  const sealed = underSecret("secret-one-aaaaaaaaaaaaaaaa", () =>
+    encryptSecret(""),
+  );
   const got = underSecret("secret-one-aaaaaaaaaaaaaaaa", () =>
     tryDecryptSecret(sealed),
   );
@@ -214,7 +235,9 @@ test("decryptSecretOrThrow: names the value and blames the right cause", () => {
 test("decryptSecretOrThrow: an empty stored value is returned, not thrown", () => {
   // Otherwise the strict variant would be unusable at the deploy edge, where a
   // blank variable is an ordinary thing for someone to have set.
-  const sealed = underSecret("secret-one-aaaaaaaaaaaaaaaa", () => encryptSecret(""));
+  const sealed = underSecret("secret-one-aaaaaaaaaaaaaaaa", () =>
+    encryptSecret(""),
+  );
   assert.equal(
     underSecret("secret-one-aaaaaaaaaaaaaaaa", () =>
       decryptSecretOrThrow(sealed, "The variable EMPTY_ONE"),

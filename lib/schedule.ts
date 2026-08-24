@@ -38,7 +38,10 @@ export type ScheduleMode =
   | "custom";
 
 /** A mode with fixed parameters, i.e. one cron string and nothing to configure. */
-type FixedMode = Exclude<ScheduleMode, "custom" | "daily" | "weekly" | "monthly">;
+type FixedMode = Exclude<
+  ScheduleMode,
+  "custom" | "daily" | "weekly" | "monthly"
+>;
 
 /**
  * The canonical expression for every fixed-interval mode. These are the only
@@ -194,7 +197,13 @@ export function partsFromCron(cron: string): ScheduleParts | null {
     const dow = intField(dowField, 0, 7);
     if (dow === null) return null;
     // Cron accepts both 0 and 7 for Sunday; the control only knows 0.
-    return { ...DEFAULT_PARTS, mode: "weekly", hour, minute, weekday: dow === 7 ? 0 : dow };
+    return {
+      ...DEFAULT_PARTS,
+      mode: "weekly",
+      hour,
+      minute,
+      weekday: dow === 7 ? 0 : dow,
+    };
   }
   if (dowField === "*") {
     const day = intField(domField, 1, MAX_MONTH_DAY);

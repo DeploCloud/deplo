@@ -178,7 +178,10 @@ export async function tokenIdsReaching(teamId: string): Promise<Set<string>> {
     db
       .select({ id: apiTokenProjects.tokenId })
       .from(apiTokenProjects)
-      .innerJoin(projectsTable, eq(projectsTable.id, apiTokenProjects.projectId))
+      .innerJoin(
+        projectsTable,
+        eq(projectsTable.id, apiTokenProjects.projectId),
+      )
       .where(eq(projectsTable.teamId, teamId)),
     db
       .select({ id: apiTokenFolders.tokenId })
@@ -204,7 +207,9 @@ export async function tokenIdsReaching(teamId: string): Promise<Set<string>> {
       ),
   ]);
   return new Set(
-    [...byTeam, ...byProject, ...byFolder, ...byApp, ...unscoped].map((r) => r.id),
+    [...byTeam, ...byProject, ...byFolder, ...byApp, ...unscoped].map(
+      (r) => r.id,
+    ),
   );
 }
 
@@ -256,7 +261,10 @@ export async function teamsReachedByTokens(
         name: teamsTable.name,
       })
       .from(apiTokenProjects)
-      .innerJoin(projectsTable, eq(projectsTable.id, apiTokenProjects.projectId))
+      .innerJoin(
+        projectsTable,
+        eq(projectsTable.id, apiTokenProjects.projectId),
+      )
       .innerJoin(teamsTable, eq(teamsTable.id, projectsTable.teamId))
       .where(inArray(apiTokenProjects.tokenId, ids)),
     db
@@ -286,7 +294,8 @@ export async function teamsReachedByTokens(
     if (list.some((t) => t.id === r.id)) continue;
     out.set(r.tokenId, [...list, { id: r.id, name: r.name }]);
   }
-  for (const list of out.values()) list.sort((a, b) => a.name.localeCompare(b.name));
+  for (const list of out.values())
+    list.sort((a, b) => a.name.localeCompare(b.name));
   return out;
 }
 
@@ -338,41 +347,43 @@ export async function listTokens(): Promise<ApiTokenDTO[]> {
 
   const ids = rows.map((r) => r.id);
   // Every junction in one query each — never per-token (PLAN §6 "batch-load").
-  const [reachedByToken, caps, teamRows, projRows, folderRows, appRows] = await Promise.all([
-    teamsReachedByTokens(ids),
-    getDb()
-      .select({
-        tokenId: apiTokenCapabilities.tokenId,
-        value: apiTokenCapabilities.capability,
-      })
-      .from(apiTokenCapabilities)
-      .where(inArray(apiTokenCapabilities.tokenId, ids)),
-    getDb()
-      .select({ tokenId: apiTokenTeams.tokenId, value: apiTokenTeams.teamId })
-      .from(apiTokenTeams)
-      .where(inArray(apiTokenTeams.tokenId, ids)),
-    getDb()
-      .select({
-        tokenId: apiTokenProjects.tokenId,
-        value: apiTokenProjects.projectId,
-      })
-      .from(apiTokenProjects)
-      .where(inArray(apiTokenProjects.tokenId, ids)),
-    getDb()
-      .select({
-        tokenId: apiTokenFolders.tokenId,
-        value: apiTokenFolders.folderId,
-      })
-      .from(apiTokenFolders)
-      .where(inArray(apiTokenFolders.tokenId, ids)),
-    getDb()
-      .select({ tokenId: apiTokenApps.tokenId, value: apiTokenApps.appId })
-      .from(apiTokenApps)
-      .where(inArray(apiTokenApps.tokenId, ids)),
-  ]);
+  const [reachedByToken, caps, teamRows, projRows, folderRows, appRows] =
+    await Promise.all([
+      teamsReachedByTokens(ids),
+      getDb()
+        .select({
+          tokenId: apiTokenCapabilities.tokenId,
+          value: apiTokenCapabilities.capability,
+        })
+        .from(apiTokenCapabilities)
+        .where(inArray(apiTokenCapabilities.tokenId, ids)),
+      getDb()
+        .select({ tokenId: apiTokenTeams.tokenId, value: apiTokenTeams.teamId })
+        .from(apiTokenTeams)
+        .where(inArray(apiTokenTeams.tokenId, ids)),
+      getDb()
+        .select({
+          tokenId: apiTokenProjects.tokenId,
+          value: apiTokenProjects.projectId,
+        })
+        .from(apiTokenProjects)
+        .where(inArray(apiTokenProjects.tokenId, ids)),
+      getDb()
+        .select({
+          tokenId: apiTokenFolders.tokenId,
+          value: apiTokenFolders.folderId,
+        })
+        .from(apiTokenFolders)
+        .where(inArray(apiTokenFolders.tokenId, ids)),
+      getDb()
+        .select({ tokenId: apiTokenApps.tokenId, value: apiTokenApps.appId })
+        .from(apiTokenApps)
+        .where(inArray(apiTokenApps.tokenId, ids)),
+    ]);
   const group = (rows: { tokenId: string; value: string }[]) => {
     const m = new Map<string, string[]>();
-    for (const r of rows) m.set(r.tokenId, [...(m.get(r.tokenId) ?? []), r.value]);
+    for (const r of rows)
+      m.set(r.tokenId, [...(m.get(r.tokenId) ?? []), r.value]);
     return m;
   };
   const capsById = group(caps);
@@ -397,9 +408,7 @@ export async function listTokens(): Promise<ApiTokenDTO[]> {
     homeTeamName: r.homeTeamName ?? "",
     // Chosen by the app at registration: free text, any length, shown in a badge.
     oauthClientName: r.oauthClientName?.slice(0, 80) ?? null,
-    capabilities: inCatalogOrder(
-      (capsById.get(r.id) ?? []) as Capability[],
-    ),
+    capabilities: inCatalogOrder((capsById.get(r.id) ?? []) as Capability[]),
     teamIds: teamsById.get(r.id) ?? [],
     projectIds: projectsById.get(r.id) ?? [],
     folderIds: foldersById.get(r.id) ?? [],
@@ -566,7 +575,10 @@ export async function buildScopeTree(
         position: environmentsTable.position,
       })
       .from(environmentsTable)
-      .innerJoin(projectsTable, eq(projectsTable.id, environmentsTable.projectId))
+      .innerJoin(
+        projectsTable,
+        eq(projectsTable.id, environmentsTable.projectId),
+      )
       .where(inArray(projectsTable.teamId, teamIds)),
   ]);
 
@@ -577,7 +589,8 @@ export async function buildScopeTree(
   const { folders: visibleFolders, apps: visibleApps } = opts.asCaller
     ? await visibleNodes(teamIds, folderRows, appRows)
     : { folders: null, apps: null };
-  const folderVisible = (id: string) => !visibleFolders || visibleFolders.has(id);
+  const folderVisible = (id: string) =>
+    !visibleFolders || visibleFolders.has(id);
   const appVisible = (id: string) => !visibleApps || visibleApps.has(id);
 
   const byName = (a: { name: string }, b: { name: string }) =>
@@ -601,7 +614,10 @@ export async function buildScopeTree(
   const subfoldersOf = new Map<string, typeof folderRows>();
   for (const f of folderRows)
     if (f.parentId && folderVisible(f.id))
-      subfoldersOf.set(f.parentId, [...(subfoldersOf.get(f.parentId) ?? []), f]);
+      subfoldersOf.set(f.parentId, [
+        ...(subfoldersOf.get(f.parentId) ?? []),
+        f,
+      ]);
 
   // Cycle-safe, like every other walk over this tree: a stale parent chain must
   // not hang the page.
@@ -621,7 +637,9 @@ export async function buildScopeTree(
       apps: (appsIn.get(f.id) ?? []).sort(byName),
     };
   };
-  const rootFolders = (predicate: (f: (typeof folderRows)[number]) => boolean) =>
+  const rootFolders = (
+    predicate: (f: (typeof folderRows)[number]) => boolean,
+  ) =>
     folderRows
       .filter((f) => !f.parentId && folderVisible(f.id) && predicate(f))
       .sort(byName)
@@ -741,7 +759,9 @@ function assertScopeWithinActingToken(
   const actingScope = currentIdentity()?.token?.scope;
   if (!actingScope) return;
   if (!scoped)
-    throw new Error("This API token is scoped, so it can't mint an unscoped token.");
+    throw new Error(
+      "This API token is scoped, so it can't mint an unscoped token.",
+    );
   const outside = scope.teamsReached.filter(
     (t) => !actingScope.teamIds.includes(t),
   );
@@ -761,7 +781,8 @@ export async function createToken(
     expiresAt?: string | null;
   } & TokenScopeInput,
 ): Promise<{ raw: string; token: ApiTokenDTO }> {
-  const { teamId, userId, membership } = await requireCapability("manage_tokens");
+  const { teamId, userId, membership } =
+    await requireCapability("manage_tokens");
   const name = cleanTokenName(input.name);
   const capabilities = withinActor(input.capabilities, membership, "token");
   const { scoped, instanceAdmin } = await validateScope(input);
@@ -895,7 +916,8 @@ export async function updateToken(
     expiresAt?: string | null;
   } & TokenScopeInput,
 ): Promise<void> {
-  const { teamId, userId, membership } = await requireCapability("manage_tokens");
+  const { teamId, userId, membership } =
+    await requireCapability("manage_tokens");
   const name = cleanTokenName(input.name);
   const { scoped, instanceAdmin } = await validateScope(input);
   const expiresAt =
@@ -1240,8 +1262,7 @@ export async function revokeToken(id: string): Promise<void> {
   // ANY team: their tokens page lists every token they minted, and a row you can
   // see but not revoke is a dead end, not a safeguard.
   const reachesHere = (await tokenIdsReaching(teamId)).has(id);
-  if (!reachesHere && row.userId !== userId)
-    throw new Error("Token not found");
+  if (!reachesHere && row.userId !== userId) throw new Error("Token not found");
 
   // Read the reach BEFORE the row goes: afterwards there is nothing left to ask.
   // (Also before any transaction - this helper queries on its own connection and
@@ -1272,7 +1293,14 @@ export async function revokeToken(id: string): Promise<void> {
     ? `Revoked ${gone[0].name}'s MCP access`
     : `Revoked the ${gone[0].name} API token`;
   for (const trailTeamId of trailTeamIds)
-    await recordActivity("member", what, actor, null, trailTeamId, "token_revoked");
+    await recordActivity(
+      "member",
+      what,
+      actor,
+      null,
+      trailTeamId,
+      "token_revoked",
+    );
 }
 
 /**
@@ -1401,7 +1429,10 @@ async function resolveScopeInput(
   const projectIds = [...new Set(input.projectIds ?? [])];
   const folderIds = [...new Set(input.folderIds ?? [])];
   const appIds = [...new Set(input.appIds ?? [])];
-  if (teamIds.length + projectIds.length + folderIds.length + appIds.length === 0)
+  if (
+    teamIds.length + projectIds.length + folderIds.length + appIds.length ===
+    0
+  )
     return {
       teamIds: [],
       projectIds: [],
@@ -1412,7 +1443,8 @@ async function resolveScopeInput(
 
   const mine = new Set((await teamsForUser(userId)).map((t) => t.id));
   for (const id of teamIds)
-    if (!mine.has(id)) throw new Error("You're not a member of one of those teams");
+    if (!mine.has(id))
+      throw new Error("You're not a member of one of those teams");
   const reached = new Set<string>(teamIds);
   // Refused rather than reinterpreted: `loadScope` lets the narrower tick win, so
   // accepting both would hand back a token that reads as whole-team and behaves
@@ -1431,7 +1463,10 @@ async function resolveScopeInput(
       .select({ id: projectsTable.id, teamId: projectsTable.teamId })
       .from(projectsTable)
       .where(inArray(projectsTable.id, projectIds));
-    if (rows.length !== projectIds.length || rows.some((r) => !mine.has(r.teamId)))
+    if (
+      rows.length !== projectIds.length ||
+      rows.some((r) => !mine.has(r.teamId))
+    )
       throw new Error("One of those projects isn't in a team you belong to");
     for (const r of rows) {
       narrower(r.teamId);
@@ -1443,7 +1478,10 @@ async function resolveScopeInput(
       .select({ id: foldersTable.id, teamId: foldersTable.teamId })
       .from(foldersTable)
       .where(inArray(foldersTable.id, folderIds));
-    if (rows.length !== folderIds.length || rows.some((r) => !mine.has(r.teamId)))
+    if (
+      rows.length !== folderIds.length ||
+      rows.some((r) => !mine.has(r.teamId))
+    )
       throw new Error("One of those folders isn't in a team you belong to");
     for (const r of rows) {
       narrower(r.teamId);
@@ -1480,7 +1518,9 @@ async function actorAcross(
   actor: Membership,
   teams: string[],
 ): Promise<Membership> {
-  const caps = new Set<Capability>(teams.length === 0 ? actor.capabilities : []);
+  const caps = new Set<Capability>(
+    teams.length === 0 ? actor.capabilities : [],
+  );
   for (const teamId of teams) {
     // A team whose two-factor policy this member has not met resolves NOTHING
     // for them there, and `membershipFor` says so by throwing. Either way it
@@ -1575,7 +1615,10 @@ async function loadScope(tokenId: string): Promise<TokenScope> {
     db
       .select({ id: projectsTable.id, teamId: projectsTable.teamId })
       .from(apiTokenProjects)
-      .innerJoin(projectsTable, eq(projectsTable.id, apiTokenProjects.projectId))
+      .innerJoin(
+        projectsTable,
+        eq(projectsTable.id, apiTokenProjects.projectId),
+      )
       .where(eq(apiTokenProjects.tokenId, tokenId)),
     db
       .select({

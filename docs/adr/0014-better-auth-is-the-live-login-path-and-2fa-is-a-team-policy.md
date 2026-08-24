@@ -12,7 +12,7 @@
 deplo had **no second factor anywhere**. A stolen password was total account compromise: apps,
 databases, secrets, servers. For a platform whose whole promise is that a non-expert can run
 production infrastructure without a shell, "your password is the only lock" is not a defensible
-posture — and a team lead who wants to *mandate* 2FA for their team had nothing to mandate.
+posture — and a team lead who wants to _mandate_ 2FA for their team had nothing to mandate.
 
 Better Auth (`better-auth`) had been in `package.json` and configured in `lib/auth/better-auth.ts`
 since the beginning, with a `drizzleAdapter`, its four tables in migration `0000`, and a route at
@@ -69,10 +69,10 @@ authorization model is the product, and handing it to a library would be the tai
 
 Two flags, both default `false`: `teams.require_two_factor` and `team_roles.require_two_factor`.
 
-Capabilities are a closed set of eight that answer *"may they do X"*. A 2FA mandate answers a
-different question: *"under what condition does any of it count"*. Modelling it as a capability
+Capabilities are a closed set of eight that answer _"may they do X"_. A 2FA mandate answers a
+different question: _"under what condition does any of it count"_. Modelling it as a capability
 would have meant a checkbox in the permission picker that grants nothing, and a capability whose
-absence is a *stronger* state than its presence. It sits outside the picker for that reason.
+absence is a _stronger_ state than its presence. It sits outside the picker for that reason.
 
 The Owner role keeps its edit lock and takes no per-role flag; the team-wide switch is how you
 cover owners. "2FA for owners but not members" is a narrow enough policy that it does not justify
@@ -86,7 +86,7 @@ path:
 - **`membershipFor(userId, teamId)`** — behind `requireMembership`, `requireCapability`,
   `hasCapability`, `currentCapabilities`, **and `authenticateToken`**. One guard, every mutation
   and every bearer request.
-- **`requireActiveTeamId()`** — every *read* in `lib/data/*` scopes itself here and never touches
+- **`requireActiveTeamId()`** — every _read_ in `lib/data/*` scopes itself here and never touches
   `membershipFor`. Without this second call a blocked member could still list apps, logs and
   variables: refused a write, but not a look. Closing only one of the two is the exact bug this
   feature could have shipped with, and `lib/two-factor.test.ts` asserts all three paths separately.

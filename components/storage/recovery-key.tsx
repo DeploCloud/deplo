@@ -149,7 +149,9 @@ export function RecoveryKeyNudge({
       <KeyRound className="mt-0.5 size-3.5 shrink-0 text-[var(--warning)]" />
       <span className="min-w-0 flex-1 space-y-0.5">
         <span className="block text-xs font-medium">{title}</span>
-        <span className="block text-xs text-muted-foreground">{description}</span>
+        <span className="block text-xs text-muted-foreground">
+          {description}
+        </span>
       </span>
     </button>
   );

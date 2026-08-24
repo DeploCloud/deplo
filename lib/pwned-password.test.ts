@@ -5,7 +5,10 @@ import { createHash } from "node:crypto";
 import { isPasswordPwned } from "./pwned-password";
 
 const PASSWORD = "Str0ng!pass";
-const SHA1 = createHash("sha1").update(PASSWORD, "utf8").digest("hex").toUpperCase();
+const SHA1 = createHash("sha1")
+  .update(PASSWORD, "utf8")
+  .digest("hex")
+  .toUpperCase();
 const PREFIX = SHA1.slice(0, 5);
 const SUFFIX = SHA1.slice(5);
 
@@ -42,7 +45,10 @@ test("isPasswordPwned: a listed suffix is a hit, and only the prefix is sent", a
 
 test("isPasswordPwned: an unlisted suffix is a miss", async () => {
   await withFetch(
-    () => body("0000000000000000000000000000000000A:2\nFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF:9\n"),
+    () =>
+      body(
+        "0000000000000000000000000000000000A:2\nFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF:9\n",
+      ),
     async () => {
       assert.equal(await isPasswordPwned(PASSWORD), false);
     },

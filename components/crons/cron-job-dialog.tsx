@@ -114,14 +114,18 @@ export function CronJobDialog({
   const [description, setDescription] = React.useState(job?.description ?? "");
   const [service, setService] = React.useState(job?.service ?? SERVICE_INHERIT);
   const [schedule, setSchedule] = React.useState(job?.schedule ?? "0 3 * * *");
-  const [timezone, setTimezone] = React.useState(() => job?.timezone ?? browserZone());
+  const [timezone, setTimezone] = React.useState(
+    () => job?.timezone ?? browserZone(),
+  );
   const [shell, setShell] = React.useState<string>(job?.shell ?? "sh");
   const [command, setCommand] = React.useState(job?.command ?? "");
   const [enabled, setEnabled] = React.useState(job?.enabled ?? true);
   const [timeoutMinutes, setTimeoutMinutes] = React.useState(
     String(Math.round((job?.timeoutSeconds ?? 3600) / 60)),
   );
-  const [maxAttempts, setMaxAttempts] = React.useState(String(job?.maxAttempts ?? 1));
+  const [maxAttempts, setMaxAttempts] = React.useState(
+    String(job?.maxAttempts ?? 1),
+  );
   const [overlap, setOverlap] = React.useState<string>(job?.overlap ?? "skip");
   const [keepRuns, setKeepRuns] = React.useState(String(job?.keepRuns ?? 50));
   const [workdir, setWorkdir] = React.useState(job?.workdir ?? "");
@@ -158,9 +162,7 @@ export function CronJobDialog({
       keepRuns: Number(keepRuns) || 50,
       workdir: workdir.trim(),
       user: user.trim(),
-      ...(envTouched
-        ? { env: env.filter((r) => r.key.trim() !== "") }
-        : {}),
+      ...(envTouched ? { env: env.filter((r) => r.key.trim() !== "") } : {}),
     };
     startTransition(async () => {
       const res = job
@@ -189,7 +191,10 @@ export function CronJobDialog({
         <form className="grid gap-4" onSubmit={submit}>
           <div className="grid gap-4 sm:grid-cols-2">
             <div className="space-y-2">
-              <FieldLabel htmlFor="cron-name" info="What this job is for, in a few words.">
+              <FieldLabel
+                htmlFor="cron-name"
+                info="What this job is for, in a few words."
+              >
                 Name
               </FieldLabel>
               <Input
@@ -214,7 +219,9 @@ export function CronJobDialog({
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value={SERVICE_INHERIT}>The app&apos;s own</SelectItem>
+                    <SelectItem value={SERVICE_INHERIT}>
+                      The app&apos;s own
+                    </SelectItem>
                     {services.map((s) => (
                       <SelectItem key={s} value={s}>
                         {s}
@@ -251,9 +258,7 @@ export function CronJobDialog({
               </div>
             }
           />
-          {dstWarning && (
-            <p className="text-xs text-warning">{dstWarning}</p>
-          )}
+          {dstWarning && <p className="text-xs text-warning">{dstWarning}</p>}
 
           <div className="space-y-2">
             <FieldLabel
@@ -279,15 +284,24 @@ export function CronJobDialog({
             >
               Enabled
             </FieldLabel>
-            <Switch id="cron-enabled" checked={enabled} onCheckedChange={setEnabled} />
+            <Switch
+              id="cron-enabled"
+              checked={enabled}
+              onCheckedChange={setEnabled}
+            />
           </div>
 
           <Accordion type="single" collapsible>
             <AccordionItem value="advanced" className="border-none">
-              <AccordionTrigger className="py-2 text-sm">Advanced</AccordionTrigger>
+              <AccordionTrigger className="py-2 text-sm">
+                Advanced
+              </AccordionTrigger>
               <AccordionContent className="space-y-4 pt-2">
                 <div className="space-y-2">
-                  <FieldLabel htmlFor="cron-description" info="A note for whoever reads this list next.">
+                  <FieldLabel
+                    htmlFor="cron-description"
+                    info="A note for whoever reads this list next."
+                  >
                     Description
                   </FieldLabel>
                   <Input
@@ -366,7 +380,10 @@ export function CronJobDialog({
                     />
                   </div>
                   <div className="space-y-2">
-                    <FieldLabel htmlFor="cron-keep" info="How many past runs to keep in the history.">
+                    <FieldLabel
+                      htmlFor="cron-keep"
+                      info="How many past runs to keep in the history."
+                    >
                       Runs kept
                     </FieldLabel>
                     <Input
@@ -379,7 +396,10 @@ export function CronJobDialog({
                     />
                   </div>
                   <div className="space-y-2">
-                    <FieldLabel htmlFor="cron-workdir" info="Where the command starts. Empty ⇒ the image's own.">
+                    <FieldLabel
+                      htmlFor="cron-workdir"
+                      info="Where the command starts. Empty ⇒ the image's own."
+                    >
                       Working directory
                     </FieldLabel>
                     <Input
@@ -391,7 +411,10 @@ export function CronJobDialog({
                     />
                   </div>
                   <div className="space-y-2">
-                    <FieldLabel htmlFor="cron-user" info="Who the command runs as. Empty ⇒ the image's own user.">
+                    <FieldLabel
+                      htmlFor="cron-user"
+                      info="Who the command runs as. Empty ⇒ the image's own user."
+                    >
                       User
                     </FieldLabel>
                     <Input
@@ -409,20 +432,24 @@ export function CronJobDialog({
                 {attempts > 1 && (
                   <p
                     className={
-                      overBudget ? "text-xs text-destructive" : "text-xs text-muted-foreground"
+                      overBudget
+                        ? "text-xs text-destructive"
+                        : "text-xs text-muted-foreground"
                     }
                   >
                     {attempts} attempts of {timeout} minutes could take up to{" "}
-                    {worstCaseHours % 1 === 0 ? worstCaseHours : worstCaseHours.toFixed(1)}{" "}
+                    {worstCaseHours % 1 === 0
+                      ? worstCaseHours
+                      : worstCaseHours.toFixed(1)}{" "}
                     hours.
-                    {overBudget ? " Lower the timeout or the attempts to fit in 24." : ""}
+                    {overBudget
+                      ? " Lower the timeout or the attempts to fit in 24."
+                      : ""}
                   </p>
                 )}
 
                 <div className="space-y-2">
-                  <FieldLabel
-                    info="Set only for this job, on top of the container's own. Values are write-only - they can be replaced, never read back."
-                  >
+                  <FieldLabel info="Set only for this job, on top of the container's own. Values are write-only - they can be replaced, never read back.">
                     Variables
                   </FieldLabel>
                   {env.map((row, i) => (
@@ -432,7 +459,9 @@ export function CronJobDialog({
                         onChange={(e) => {
                           setEnvTouched(true);
                           setEnv((rows) =>
-                            rows.map((r, j) => (j === i ? { ...r, key: e.target.value } : r)),
+                            rows.map((r, j) =>
+                              j === i ? { ...r, key: e.target.value } : r,
+                            ),
                           );
                         }}
                         placeholder="API_KEY"
@@ -443,7 +472,9 @@ export function CronJobDialog({
                         onChange={(e) => {
                           setEnvTouched(true);
                           setEnv((rows) =>
-                            rows.map((r, j) => (j === i ? { ...r, value: e.target.value } : r)),
+                            rows.map((r, j) =>
+                              j === i ? { ...r, value: e.target.value } : r,
+                            ),
                           );
                         }}
                         placeholder={job ? "Set a new value" : "value"}
@@ -478,8 +509,8 @@ export function CronJobDialog({
                   </Button>
                   {job && envTouched && (
                     <p className="mt-1 text-xs text-muted-foreground">
-                      Saving replaces every variable on this job. A row left empty
-                      is saved as an empty value.
+                      Saving replaces every variable on this job. A row left
+                      empty is saved as an empty value.
                     </p>
                   )}
                 </div>
@@ -488,7 +519,11 @@ export function CronJobDialog({
           </Accordion>
 
           <DialogFooter>
-            <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => onOpenChange(false)}
+            >
               Cancel
             </Button>
             <Button type="submit" disabled={pending || !canSave}>

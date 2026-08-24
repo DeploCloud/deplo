@@ -306,7 +306,8 @@ export const SETTINGS_NAV: NavSection[] = [
         label: "Deplo",
         href: "/settings/deplo",
         icon: SlidersHorizontal,
-        tooltip: "How this Deplo instance addresses itself & issues certificates",
+        tooltip:
+          "How this Deplo instance addresses itself & issues certificates",
         // Instance admins, like its neighbours: everything on it is one setting
         // for the whole instance, and applying it touches every host.
         requiresAdmin: true,

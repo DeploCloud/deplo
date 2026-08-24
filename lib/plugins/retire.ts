@@ -66,7 +66,9 @@ export async function retireInstalledPlugins(
       .delete(installedPluginsTable)
       .where(eq(installedPluginsTable.id, row.id));
     retired++;
-    console.log(`[deplo] retired installed plugin ${slug} (the feature is deferred — ADR-0013)`);
+    console.log(
+      `[deplo] retired installed plugin ${slug} (the feature is deferred — ADR-0013)`,
+    );
   }
   return retired;
 }

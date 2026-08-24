@@ -3,7 +3,16 @@
 import * as React from "react";
 import { toast } from "sonner";
 import { useRouter } from "next/navigation";
-import { Save, GitBranch, Container, FileText, Upload, Server as ServerIcon, Rocket, ChevronDown } from "lucide-react";
+import {
+  Save,
+  GitBranch,
+  Container,
+  FileText,
+  Upload,
+  Server as ServerIcon,
+  Rocket,
+  ChevronDown,
+} from "lucide-react";
 import { GitHubIcon } from "@/components/shared/brand-icons";
 import {
   Card,
@@ -34,7 +43,10 @@ import {
   GitSourcePicker,
   type GitSourceValue,
 } from "@/components/apps/git-source-picker";
-import { UploadInput, type CurrentUpload } from "@/components/apps/upload-input";
+import {
+  UploadInput,
+  type CurrentUpload,
+} from "@/components/apps/upload-input";
 import { UnsavedChangesGuard } from "@/components/apps/unsaved-changes-guard";
 import { BuildOutputCard } from "@/components/apps/settings/build-output-card";
 import { BuildCachePanel } from "@/components/apps/settings/build-cache-panel";
@@ -55,7 +67,10 @@ import {
   type SettingsServer,
 } from "@/components/apps/settings/settings-shared";
 import { CopyButton } from "@/components/shared/copy-button";
-import { hasBlockingErrors, type LintDiagnostic } from "@/lib/deploy/compose-lint";
+import {
+  hasBlockingErrors,
+  type LintDiagnostic,
+} from "@/lib/deploy/compose-lint";
 import type { GithubInstallationDTO } from "@/lib/data/github";
 import type {
   GitConnectionDTO,
@@ -258,7 +273,9 @@ export function DeploymentSettingsForm({
     branch: initialRepo?.branch ?? "main",
     connectionId: initialRepo?.connectionId ?? null,
   });
-  const [dockerImage, setDockerImage] = React.useState(initialDockerImage ?? "");
+  const [dockerImage, setDockerImage] = React.useState(
+    initialDockerImage ?? "",
+  );
 
   // Git deploy options (trigger type, watch paths, submodules) — persisted with
   // the repo via updateAppSource, so they share the Deploy Source card's Save.
@@ -371,7 +388,9 @@ export function DeploymentSettingsForm({
   // diverges and reads as dirty. (Sources with nothing to reconcile — non-github,
   // or github with no seeded repo — start baselined, so their first bubble is a
   // real user action.)
-  const ghBaselinedRef = React.useRef(!(initialSource === "github" && initialRepo));
+  const ghBaselinedRef = React.useRef(
+    !(initialSource === "github" && initialRepo),
+  );
   React.useEffect(() => {
     if (ghBaselinedRef.current) return;
     if (source !== "github" || !ghSelection) return;
@@ -696,12 +715,19 @@ export function DeploymentSettingsForm({
           <CardContent className="space-y-4">
             {/* Segmented control (app Tabs primitive, no panels — the
                 conditional inputs below render off the `source` state). */}
-            <Tabs value={source} onValueChange={(v) => setSource(v as DeploySource)}>
+            <Tabs
+              value={source}
+              onValueChange={(v) => setSource(v as DeploySource)}
+            >
               <TabsList className="h-auto flex-wrap justify-start gap-1">
                 {SOURCE_TABS.map((tab) => {
                   const Icon = tab.icon;
                   return (
-                    <TabsTrigger key={tab.id} value={tab.id} className="gap-1.5">
+                    <TabsTrigger
+                      key={tab.id}
+                      value={tab.id}
+                      className="gap-1.5"
+                    >
                       <Icon className="size-4" />
                       {tab.label}
                     </TabsTrigger>
@@ -761,7 +787,7 @@ export function DeploymentSettingsForm({
                 </p>
                 {webhook.url && (
                   <div className="mt-2 flex items-start gap-2 rounded-lg border border-border bg-muted/40 px-3 py-2">
-                    <code className="min-w-0 flex-1 break-all font-mono text-xs leading-relaxed">
+                    <code className="min-w-0 flex-1 font-mono text-xs leading-relaxed break-all">
                       {webhook.url}
                     </code>
                     <CopyButton
@@ -868,8 +894,8 @@ export function DeploymentSettingsForm({
                   info={
                     <>
                       Start typing to search registries; add{" "}
-                      <code className="font-mono">:</code> to pick a tag. A green
-                      check confirms the image exists.
+                      <code className="font-mono">:</code> to pick a tag. A
+                      green check confirms the image exists.
                     </>
                   }
                 >
@@ -928,13 +954,15 @@ export function DeploymentSettingsForm({
                   ))}
                 </SelectContent>
               </Select>
-              {serverId !== initialServerId && !(usesGithubApp && !ghSelection) && (
-                <p className="text-xs text-muted-foreground">
-                  Saving redeploys this app on the new server and copies its data
-                  (volumes and files) across. It&apos;s briefly offline during the
-                  copy; if the copy fails the old server is left intact.
-                </p>
-              )}
+              {serverId !== initialServerId &&
+                !(usesGithubApp && !ghSelection) && (
+                  <p className="text-xs text-muted-foreground">
+                    Saving redeploys this app on the new server and copies its
+                    data (volumes and files) across. It&apos;s briefly offline
+                    during the copy; if the copy fails the old server is left
+                    intact.
+                  </p>
+                )}
             </div>
           </CardContent>
           <CardFooter className="justify-between border-t border-border pt-4">
@@ -1026,10 +1054,12 @@ export function DeploymentSettingsForm({
                 appId={appId}
                 serverId={serverId}
                 serverName={
-                  servers.find((s) => s.id === serverId)?.name ?? "its own server"
+                  servers.find((s) => s.id === serverId)?.name ??
+                  "its own server"
                 }
                 serverArch={
-                  buildServerChoices.find((c) => c.id === serverId)?.hostArch ?? ""
+                  buildServerChoices.find((c) => c.id === serverId)?.hostArch ??
+                  ""
                 }
                 buildServerId={buildServerId}
                 buildFallbackLocal={buildFallbackLocal}

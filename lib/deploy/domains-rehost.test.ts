@@ -47,14 +47,20 @@ test("hexToIp is the inverse of ipToHex, and rejects non-hex / bad width", () =>
 });
 
 test("nipEmbeddedIp extracts the embedded IPv4 (and only an anchored nip host)", () => {
-  assert.equal(nipEmbeddedIp(`garage-charming-otter-${MASTER_HEX}.nip.io`), MASTER);
+  assert.equal(
+    nipEmbeddedIp(`garage-charming-otter-${MASTER_HEX}.nip.io`),
+    MASTER,
+  );
   assert.equal(
     nipEmbeddedIp(`web-ui-garage-bold-lynx-${MASTER_HEX}.nip.io`),
     MASTER,
   );
   assert.equal(nipEmbeddedIp("garage.example.com"), null);
   // Not anchored at the end (trailing path) → not a bare host, so null.
-  assert.equal(nipEmbeddedIp(`https://garage-x-y-${MASTER_HEX}.nip.io/x`), null);
+  assert.equal(
+    nipEmbeddedIp(`https://garage-x-y-${MASTER_HEX}.nip.io/x`),
+    null,
+  );
   // The random words are never mistaken for the hex IP (they aren't 8 hex
   // digits hanging off the trailing `-`).
   assert.equal(nipEmbeddedIp("garage-charming-otter.nip.io"), null);
@@ -136,7 +142,10 @@ test("rehostBlueprintHosts moves the whole garage-with-ui blueprint to the remot
     ],
   };
   const moved = rehostBlueprintHosts(baked, MASTER, REMOTE);
-  assert.equal(moved.autoDomain, `garage-s3-charming-otter-${REMOTE_HEX}.nip.io`);
+  assert.equal(
+    moved.autoDomain,
+    `garage-s3-charming-otter-${REMOTE_HEX}.nip.io`,
+  );
   assert.deepEqual(moved.extraDomains, [
     {
       service: "garage-webui",
@@ -157,7 +166,11 @@ test("rehostBlueprintHosts is a no-op when the project targets the master (same 
   const baked = {
     autoDomain: `app-warm-finch-${MASTER_HEX}.nip.io`,
     extraDomains: [
-      { service: "ui", port: 3000, host: `ui-app-warm-finch-${MASTER_HEX}.nip.io` },
+      {
+        service: "ui",
+        port: 3000,
+        host: `ui-app-warm-finch-${MASTER_HEX}.nip.io`,
+      },
     ],
     env: [{ key: "X", value: "1" }],
   };
@@ -169,7 +182,11 @@ test("rehostBlueprintHosts does not mutate its input", () => {
   const baked = {
     autoDomain: `app-warm-finch-${MASTER_HEX}.nip.io`,
     extraDomains: [
-      { service: "ui", port: 3000, host: `ui-app-warm-finch-${MASTER_HEX}.nip.io` },
+      {
+        service: "ui",
+        port: 3000,
+        host: `ui-app-warm-finch-${MASTER_HEX}.nip.io`,
+      },
     ],
     env: [{ key: "X", value: `http://app-warm-finch-${MASTER_HEX}.nip.io` }],
   };

@@ -2,7 +2,13 @@
 
 import * as React from "react";
 import { toast } from "sonner";
-import { Plus, RefreshCw, ShieldCheck, Trash2, TriangleAlert } from "lucide-react";
+import {
+  Plus,
+  RefreshCw,
+  ShieldCheck,
+  Trash2,
+  TriangleAlert,
+} from "lucide-react";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -42,10 +48,13 @@ type Certificate = {
   expiresInDays: number;
 };
 
-const CERT_FIELDS = "id subject domains issuer notBefore notAfter expired expiresInDays";
+const CERT_FIELDS =
+  "id subject domains issuer notBefore notAfter expired expiresInDays";
 
 export function ServerCertificatesTab({ server }: { server: ServerSummary }) {
-  const [certificates, setCertificates] = React.useState<Certificate[] | null>(null);
+  const [certificates, setCertificates] = React.useState<Certificate[] | null>(
+    null,
+  );
   const [error, setError] = React.useState<string | null>(null);
   const [loading, setLoading] = React.useState(true);
   const [adding, setAdding] = React.useState(false);
@@ -93,7 +102,8 @@ export function ServerCertificatesTab({ server }: { server: ServerSummary }) {
       if (!res.ok) return null;
       const now = res.data?.serverCertificates ?? [];
       const ids = new Set(before.map((c) => c.id));
-      const same = now.length === before.length && now.every((c) => ids.has(c.id));
+      const same =
+        now.length === before.length && now.every((c) => ids.has(c.id));
       if (same) return null;
       setCertificates(now);
       return now;
@@ -119,16 +129,23 @@ export function ServerCertificatesTab({ server }: { server: ServerSummary }) {
               <InfoTip content="Deplo issues free certificates automatically. Add one here only when you already have your own: a wildcard, a company CA, or a domain that cannot be verified over HTTP." />
             </CardTitle>
             <p className="mt-1 text-sm text-muted-foreground">
-              Certificates you provide yourself. To use one, set a domain&rsquo;s
-              certificate to &ldquo;Installed on the server&rdquo;.
+              Certificates you provide yourself. To use one, set a
+              domain&rsquo;s certificate to &ldquo;Installed on the
+              server&rdquo;.
             </p>
           </div>
           <div className="flex items-center gap-1">
             <Button variant="ghost" size="sm" onClick={load} disabled={loading}>
-              <RefreshCw className={loading ? "size-4 animate-spin" : "size-4"} />
+              <RefreshCw
+                className={loading ? "size-4 animate-spin" : "size-4"}
+              />
               Refresh
             </Button>
-            <Button size="sm" onClick={() => setAdding(true)} disabled={loading || !!error}>
+            <Button
+              size="sm"
+              onClick={() => setAdding(true)}
+              disabled={loading || !!error}
+            >
               <Plus className="size-4" />
               Add certificate
             </Button>
@@ -138,7 +155,10 @@ export function ServerCertificatesTab({ server }: { server: ServerSummary }) {
           {loading && !certificates ? (
             <div className="space-y-2">
               {Array.from({ length: 2 }).map((_, i) => (
-                <div key={i} className="h-16 animate-pulse rounded bg-muted/50" />
+                <div
+                  key={i}
+                  className="h-16 animate-pulse rounded bg-muted/50"
+                />
               ))}
             </div>
           ) : error ? (
@@ -155,8 +175,8 @@ export function ServerCertificatesTab({ server }: { server: ServerSummary }) {
             </div>
           ) : (
             <p className="text-sm text-muted-foreground">
-              No certificates of your own here. Domains on this server get a free
-              one from Let&rsquo;s Encrypt automatically.
+              No certificates of your own here. Domains on this server get a
+              free one from Let&rsquo;s Encrypt automatically.
             </p>
           )}
         </CardContent>
@@ -203,7 +223,9 @@ function CertificateRow({
     <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-2 rounded-lg border border-border p-3">
       <div className="min-w-0 space-y-1">
         <div className="flex flex-wrap items-center gap-2">
-          <span className="truncate text-sm font-medium">{certificate.subject}</span>
+          <span className="truncate text-sm font-medium">
+            {certificate.subject}
+          </span>
           {certificate.expired ? (
             <Badge variant="destructive" className="gap-1">
               <TriangleAlert className="size-3" />
@@ -214,7 +236,9 @@ function CertificateRow({
             // hand: nothing renews these, and nothing else will say so.
             <Badge variant="destructive" className="gap-1">
               <TriangleAlert className="size-3" />
-              {days <= 0 ? "Expires today" : `${days} day${days === 1 ? "" : "s"} left`}
+              {days <= 0
+                ? "Expires today"
+                : `${days} day${days === 1 ? "" : "s"} left`}
             </Badge>
           ) : (
             <Badge variant="muted">
@@ -225,7 +249,9 @@ function CertificateRow({
         <p className="truncate font-mono text-xs text-muted-foreground">
           {certificate.domains.join(", ") || "No domains"}
         </p>
-        <p className="text-xs text-muted-foreground">Issued by {certificate.issuer}</p>
+        <p className="text-xs text-muted-foreground">
+          Issued by {certificate.issuer}
+        </p>
       </div>
       <Button variant="ghost" size="sm" onClick={onRemove}>
         <Trash2 className="size-4" />
@@ -297,14 +323,18 @@ function AddCertificateDialog({
   }
 
   return (
-    <Dialog open={open} onOpenChange={(o) => !pending && (o ? onOpenChange(o) : done())}>
+    <Dialog
+      open={open}
+      onOpenChange={(o) => !pending && (o ? onOpenChange(o) : done())}
+    >
       <DialogContent className="sm:max-w-2xl">
         <DialogHeader>
           <DialogTitle>Add a certificate to {server.name}</DialogTitle>
           <DialogDescription>
             Paste the certificate and its private key. Then set a domain&rsquo;s
-            certificate to &ldquo;Installed on the server&rdquo; to serve it with
-            this one. The proxy restarts, so sites here blink for a few seconds.
+            certificate to &ldquo;Installed on the server&rdquo; to serve it
+            with this one. The proxy restarts, so sites here blink for a few
+            seconds.
           </DialogDescription>
         </DialogHeader>
         <form className="grid gap-4" onSubmit={submit}>
@@ -347,7 +377,12 @@ function AddCertificateDialog({
             />
           </div>
           <DialogFooter>
-            <Button type="button" variant="outline" onClick={done} disabled={pending}>
+            <Button
+              type="button"
+              variant="outline"
+              onClick={done}
+              disabled={pending}
+            >
               Cancel
             </Button>
             <Button
@@ -411,10 +446,15 @@ function RemoveCertificateDialog({
   }
 
   return (
-    <Dialog open={certificate !== null} onOpenChange={(o) => !pending && onOpenChange(o)}>
+    <Dialog
+      open={certificate !== null}
+      onOpenChange={(o) => !pending && onOpenChange(o)}
+    >
       <DialogContent>
         <DialogHeader>
-          <DialogTitle>Remove the certificate for {certificate?.subject}?</DialogTitle>
+          <DialogTitle>
+            Remove the certificate for {certificate?.subject}?
+          </DialogTitle>
           <DialogDescription>
             {certificate?.domains.join(", ")} fall back to a free Let&rsquo;s
             Encrypt certificate, which this server requests again once the proxy
@@ -423,7 +463,11 @@ function RemoveCertificateDialog({
           </DialogDescription>
         </DialogHeader>
         <DialogFooter>
-          <Button variant="outline" onClick={() => onOpenChange(false)} disabled={pending}>
+          <Button
+            variant="outline"
+            onClick={() => onOpenChange(false)}
+            disabled={pending}
+          >
             Cancel
           </Button>
           <Button variant="destructive" onClick={remove} disabled={pending}>

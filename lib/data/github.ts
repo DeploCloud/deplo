@@ -16,7 +16,11 @@ import {
 } from "./infra-rows";
 import { getCurrentUser } from "../auth";
 import { newId, nowIso } from "../ids";
-import { requireActiveTeamId, requireCapability, requireTeamWide } from "../membership";
+import {
+  requireActiveTeamId,
+  requireCapability,
+  requireTeamWide,
+} from "../membership";
 import { encryptSecret } from "../crypto";
 import { recordActivity } from "./activity";
 import type { GithubApp, GithubInstallation } from "../types";
@@ -69,7 +73,10 @@ function toInstallationDTO(
   };
 }
 
-function toAppDTO(app: GithubApp, installs: GithubInstallation[]): GithubAppDTO {
+function toAppDTO(
+  app: GithubApp,
+  installs: GithubInstallation[],
+): GithubAppDTO {
   return {
     id: app.id,
     appId: app.appId,
@@ -108,7 +115,9 @@ export async function listGithubApps(): Promise<GithubAppDTO[]> {
 }
 
 /** Installations of the active team's connected Apps (for repo source pickers). */
-export async function listGithubInstallations(): Promise<GithubInstallationDTO[]> {
+export async function listGithubInstallations(): Promise<
+  GithubInstallationDTO[]
+> {
   const teamId = await requireActiveTeamId();
   const rows = await getDb()
     .select({ install: githubInstallationTable, appName: githubAppsTable.name })
@@ -143,7 +152,13 @@ export async function createGithubApp(
     createdAt: nowIso(),
   };
   await getDb().insert(githubAppsTable).values(githubAppToRow(app));
-  await recordActivity("member", `Connected GitHub App ${app.name}`, user.name, null, membership.teamId);
+  await recordActivity(
+    "member",
+    `Connected GitHub App ${app.name}`,
+    user.name,
+    null,
+    membership.teamId,
+  );
   return app;
 }
 
@@ -164,7 +179,8 @@ export async function githubAppsPreviewReadiness(): Promise<
   await Promise.all(
     apps.map(async (a) => {
       const caps = await readAppCapabilities(a.id);
-      if (caps) out[a.id] = { ready: caps.previewReady, settingsUrl: caps.settingsUrl };
+      if (caps)
+        out[a.id] = { ready: caps.previewReady, settingsUrl: caps.settingsUrl };
     }),
   );
   return out;
@@ -253,9 +269,17 @@ export async function latestGithubApp(): Promise<GithubApp | null> {
     .from(githubAppsTable)
     .where(eq(githubAppsTable.teamId, teamId));
   // Most-recently-created: max createdAt, ties broken by id (deterministic).
-  const apps = rows.map(assembleGithubApp).sort((a, b) =>
-    a.createdAt < b.createdAt ? -1 : a.createdAt > b.createdAt ? 1 : a.id < b.id ? -1 : 1,
-  );
+  const apps = rows
+    .map(assembleGithubApp)
+    .sort((a, b) =>
+      a.createdAt < b.createdAt
+        ? -1
+        : a.createdAt > b.createdAt
+          ? 1
+          : a.id < b.id
+            ? -1
+            : 1,
+    );
   return apps[apps.length - 1] ?? null;
 }
 
@@ -277,5 +301,11 @@ export async function removeGithubApp(id: string): Promise<void> {
   // Deleting the app cascades its installations (github_installation.app_id FK is
   // ON DELETE CASCADE) — one DELETE replaces the old two-collection JSONB filter.
   await db.delete(githubAppsTable).where(eq(githubAppsTable.id, id));
-  await recordActivity("member", `Removed GitHub App ${app[0]!.name}`, user.name, null, membership.teamId);
+  await recordActivity(
+    "member",
+    `Removed GitHub App ${app[0]!.name}`,
+    user.name,
+    null,
+    membership.teamId,
+  );
 }

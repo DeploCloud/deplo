@@ -33,7 +33,9 @@ const COMPLETE_SETUP = /* GraphQL */ `
       email: $email
       password: $password
     ) {
-      viewer { id }
+      viewer {
+        id
+      }
     }
   }
 `;

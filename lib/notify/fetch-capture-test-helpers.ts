@@ -49,5 +49,10 @@ export function captureFetch(
     });
     return respond(url);
   }) as typeof fetch;
-  return { calls, restore: () => { globalThis.fetch = original; } };
+  return {
+    calls,
+    restore: () => {
+      globalThis.fetch = original;
+    },
+  };
 }

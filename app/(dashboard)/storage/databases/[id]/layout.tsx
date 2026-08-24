@@ -53,27 +53,30 @@ export default async function DatabaseLayout(
           full-bleed route DetailFrame drops both the measure and the header. */}
       <DetailFrame
         header={
-        <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-          <div className="flex items-center gap-3">
-            <DatabaseLogo type={db.type} logo={db.logo} size={44} />
-            <div>
-              <div className="flex items-center gap-2">
-                <h1 className="text-xl font-semibold tracking-tight">{db.name}</h1>
-                <DatabaseStatusBadge id={db.id} status={db.status} />
-              </div>
-              {/* Same slot the App header uses for its URL: a database has no
+          <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+            <div className="flex items-center gap-3">
+              <DatabaseLogo type={db.type} logo={db.logo} size={44} />
+              <div>
+                <div className="flex items-center gap-2">
+                  <h1 className="text-xl font-semibold tracking-tight">
+                    {db.name}
+                  </h1>
+                  <DatabaseStatusBadge id={db.id} status={db.status} />
+                </div>
+                {/* Same slot the App header uses for its URL: a database has no
                   domain, so it always says what it is (engine display name, not
                   the raw id — "PostgreSQL", never "postgres"). */}
-              <p className="text-sm text-muted-foreground">
-                {DB_NAMES[db.type] ?? titleCase(db.type)} database · v{db.version}
-              </p>
+                <p className="text-sm text-muted-foreground">
+                  {DB_NAMES[db.type] ?? titleCase(db.type)} database · v
+                  {db.version}
+                </p>
+              </div>
+            </div>
+            <div className="flex flex-wrap items-center gap-2">
+              <DatabaseControls id={db.id} status={db.status} />
+              <DatabaseRedeployButton id={db.id} />
             </div>
           </div>
-          <div className="flex flex-wrap items-center gap-2">
-            <DatabaseControls id={db.id} status={db.status} />
-            <DatabaseRedeployButton id={db.id} />
-          </div>
-        </div>
         }
       >
         {props.children}

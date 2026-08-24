@@ -397,7 +397,11 @@ function oauthProviderOptions() {
       user,
     }: {
       user: { id: string; name?: string | null; email?: string | null };
-    }) => ({ sub: user.id, name: user.name ?? null, email: user.email ?? null }),
+    }) => ({
+      sub: user.id,
+      name: user.name ?? null,
+      email: user.email ?? null,
+    }),
   };
 }
 
@@ -512,7 +516,9 @@ function createAuth(db: DrizzleClient) {
       // where the same check lives for setup, the registration link, the account
       // settings, the admin reset, basic auth and database passwords. Same
       // message from both so the refusal never reads like two different rules.
-      haveIBeenPwned({ customPasswordCompromisedMessage: PWNED_PASSWORD_MESSAGE }),
+      haveIBeenPwned({
+        customPasswordCompromisedMessage: PWNED_PASSWORD_MESSAGE,
+      }),
       // deplo as an OAuth 2.1 authorization server, so a web AI client can reach
       // `/api/mcp`. See the docblock above `oauthProviderOptions`.
       oauthProvider(oauthProviderOptions()),
@@ -563,7 +569,8 @@ export function resetAuth(): void {
 /** The auth instance, throwing rather than returning null. The login path needs it. */
 export function requireAuth(): NonNullable<ReturnType<typeof getAuth>> {
   const auth = getAuth();
-  if (!auth) throw new Error("Authentication is unavailable: no database configured");
+  if (!auth)
+    throw new Error("Authentication is unavailable: no database configured");
   return auth;
 }
 

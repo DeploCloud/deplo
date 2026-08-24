@@ -96,7 +96,14 @@ export interface BreadcrumbSegment {
   name: string;
   /** Where clicking the name navigates. */
   href: string;
-  kind: "overview" | "storage" | "folder" | "project" | "app" | "database" | "section";
+  kind:
+    | "overview"
+    | "storage"
+    | "folder"
+    | "project"
+    | "app"
+    | "database"
+    | "section";
   /** Sibling / child targets for the ▾ dropdown (empty ⇒ no dropdown). */
   items: DropItem[];
   /**
@@ -170,19 +177,22 @@ const MAIN_SECTIONS: {
 ];
 
 /** An app's settings subsections, in sidebar order (see appSettingsNav). */
-const SETTINGS_SUBS: { seg: string; label: string; requires?: keyof BreadcrumbCaps }[] =
-  [
-    { seg: "", label: "General" },
-    { seg: "deployments", label: "Deployments" },
-    // Listed for every app, GitHub or not — the page itself explains why it is
-    // closed to the ones that cannot use it, which is the whole point of the
-    // settings entry existing (the operational page is hidden instead).
-    { seg: "pull-requests", label: "Pull requests", requires: "managePreviews" },
-    { seg: "storage", label: "Storage" },
-    { seg: "resources", label: "Resources" },
-    { seg: "access", label: "Access", requires: "manageBasicAuth" },
-    { seg: "advanced", label: "Advanced" },
-  ];
+const SETTINGS_SUBS: {
+  seg: string;
+  label: string;
+  requires?: keyof BreadcrumbCaps;
+}[] = [
+  { seg: "", label: "General" },
+  { seg: "deployments", label: "Deployments" },
+  // Listed for every app, GitHub or not — the page itself explains why it is
+  // closed to the ones that cannot use it, which is the whole point of the
+  // settings entry existing (the operational page is hidden instead).
+  { seg: "pull-requests", label: "Pull requests", requires: "managePreviews" },
+  { seg: "storage", label: "Storage" },
+  { seg: "resources", label: "Resources" },
+  { seg: "access", label: "Access", requires: "manageBasicAuth" },
+  { seg: "advanced", label: "Advanced" },
+];
 
 const byNameThenId = (
   a: { label?: string; name?: string; id: string },
@@ -224,11 +234,11 @@ export function folderChainFor(
   const byId = new Map(folders.map((f) => [f.id, f] as const));
   const chain: BreadcrumbFolder[] = [];
   const seen = new Set<string>();
-  let cur = folderId ? byId.get(folderId) ?? null : null;
+  let cur = folderId ? (byId.get(folderId) ?? null) : null;
   while (cur && !seen.has(cur.id)) {
     seen.add(cur.id);
     chain.unshift(cur);
-    cur = cur.parentId ? byId.get(cur.parentId) ?? null : null;
+    cur = cur.parentId ? (byId.get(cur.parentId) ?? null) : null;
   }
   return chain;
 }
@@ -481,7 +491,8 @@ export function buildBreadcrumb(
       }),
     );
     const mainLabel =
-      MAIN_SECTIONS.find((s) => s.seg === mainSeg)?.label ?? capitalize(mainSeg);
+      MAIN_SECTIONS.find((s) => s.seg === mainSeg)?.label ??
+      capitalize(mainSeg);
     segments.push({
       key: "section-main",
       name: mainLabel,

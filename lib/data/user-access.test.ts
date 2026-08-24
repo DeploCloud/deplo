@@ -47,8 +47,11 @@ const FLD = "fld_prod";
 const FLD_OTHER = "fld_other_team";
 const APP = "prj_in_prod";
 
-const as = <T>(userId: string, fn: () => Promise<T>, teamId = TEAM_B): Promise<T> =>
-  runWithIdentity({ userId, teamId }, fn);
+const as = <T>(
+  userId: string,
+  fn: () => Promise<T>,
+  teamId = TEAM_B,
+): Promise<T> => runWithIdentity({ userId, teamId }, fn);
 
 before(async () => {
   ({ db, pg } = await makeTestDb());
@@ -154,16 +157,18 @@ test("granular mode keeps the role as the base and writes the node rows", async 
       teamId: TEAM_A,
       roleId: viewer.id,
       granular: true,
-      grants: [{ folderIds: [FLD], appIds: [APP], capabilities: ["manage_env"] }],
+      grants: [
+        { folderIds: [FLD], appIds: [APP], capabilities: ["manage_env"] },
+      ],
     }),
   );
   const teamA = after.find((a) => a.teamId === TEAM_A)!;
   assert.equal(teamA.granular, true);
   assert.equal(teamA.roleId, viewer.id, "the role still supplies the base");
-  assert.deepEqual(
-    teamA.nodes.map((n) => `${n.kind}:${n.nodeId}`).sort(),
-    [`app:${APP}`, `folder:${FLD}`],
-  );
+  assert.deepEqual(teamA.nodes.map((n) => `${n.kind}:${n.nodeId}`).sort(), [
+    `app:${APP}`,
+    `folder:${FLD}`,
+  ]);
   assert.ok(teamA.nodes[0].capabilities.includes("manage_env"));
 
   // Switching back to Role mode clears every node row — no silent leftovers.
@@ -257,7 +262,8 @@ test("the founder's crown is closed to an instance admin", async () => {
     /primary owner/i,
   );
   await assert.rejects(
-    () => as(ADMIN, () => removeUserFromTeam({ userId: FOUNDER, teamId: TEAM_A })),
+    () =>
+      as(ADMIN, () => removeUserFromTeam({ userId: FOUNDER, teamId: TEAM_A })),
     /primary owner/i,
   );
 });
@@ -307,16 +313,15 @@ test("only an instance admin may use this surface", async () => {
 
 test("add and remove a team, and removal takes the node grants with it", async () => {
   const member = (await rolesOfTeamA()).find((r) => r.builtinKey === "member")!;
-  const memberB = (await rolesOfTeamB()).find((r) => r.builtinKey === "member")!;
+  const memberB = (await rolesOfTeamB()).find(
+    (r) => r.builtinKey === "member",
+  )!;
 
   // DEV joins TEAM_B, gets a grant in TEAM_A, then leaves TEAM_A.
   const added = await as(ADMIN, () =>
     addUserToTeam({ userId: DEV, teamId: TEAM_B, roleId: memberB.id }),
   );
-  assert.deepEqual(
-    added.map((a) => a.teamId).sort(),
-    [TEAM_A, TEAM_B].sort(),
-  );
+  assert.deepEqual(added.map((a) => a.teamId).sort(), [TEAM_A, TEAM_B].sort());
   await as(ADMIN, () =>
     setUserTeamAccess({
       userId: DEV,
@@ -339,8 +344,12 @@ test("add and remove a team, and removal takes the node grants with it", async (
     "removal is what revokes every node grant at once",
   );
   assert.equal(
-    (await db.select().from(membershipsTable).where(eq(membershipsTable.userId, DEV)))
-      .length,
+    (
+      await db
+        .select()
+        .from(membershipsTable)
+        .where(eq(membershipsTable.userId, DEV))
+    ).length,
     1,
   );
 });
@@ -360,7 +369,11 @@ test("the change lands in the affected team's Activity", async () => {
     .select()
     .from(activitiesTable)
     .where(eq(activitiesTable.teamId, TEAM_A));
-  assert.equal(rows.length, 1, "logged in the team it affected, not the actor's");
+  assert.equal(
+    rows.length,
+    1,
+    "logged in the team it affected, not the actor's",
+  );
   assert.match(rows[0].message, /u_dev/);
   // And it is readable back on the target's own page.
   const feed = await as(ADMIN, () => listUserActivity(ADMIN, 10));
@@ -434,7 +447,8 @@ test("the team-side door takes its team from the actor, never from the input", a
     () =>
       as(
         ADMIN,
-        () => setMemberAccess({ userId: DEV, roleId: viewer.id, granular: false }),
+        () =>
+          setMemberAccess({ userId: DEV, roleId: viewer.id, granular: false }),
         TEAM_B,
       ),
     /not found|permission|not in this team/i,
@@ -447,9 +461,7 @@ test("an admin can't hand out what they don't hold on the node themselves", asyn
 
   // A second member of TEAM_A who may manage members but owns no folder and
   // holds no grant on FLD — which the founder owns.
-  await db.insert(
-    (await import("../db/schema/control-plane")).users,
-  ).values({
+  await db.insert((await import("../db/schema/control-plane")).users).values({
     id: "u_hr",
     email: "hr@example.io",
     username: "u_hr",
@@ -473,9 +485,13 @@ test("an admin can't hand out what they don't hold on the node themselves", asyn
       // Everything the Viewer role grants, so the ACTOR bound on the role
       // itself passes and the node bound below is what refuses. A caller can
       // only assign a role whose permissions they hold themselves.
-      ["view", "view_logs", "view_metrics", "view_activity", "manage_members"].map(
-        (capability) => ({ membershipId: "mem_hr", capability }),
-      ),
+      [
+        "view",
+        "view_logs",
+        "view_metrics",
+        "view_activity",
+        "manage_members",
+      ].map((capability) => ({ membershipId: "mem_hr", capability })),
     );
 
   // `manage_members` is the one capability this door asks for, and on its own it
@@ -526,29 +542,46 @@ test("manage_members alone cannot mint an owner, nor edit one", async () => {
 
   // A member manager who is not an owner. They hold everything the Viewer role
   // grants, so only the RANK is in question here.
-  await db.insert(
-    (await import("../db/schema/control-plane")).users,
-  ).values({
-    id: "u_hr2", email: "hr2@example.io", username: "u_hr2", name: "u_hr2",
-    role: "member", isInstanceAdmin: false, avatarColor: "#abc",
-    createdAt: T0, updatedAt: T0,
+  await db.insert((await import("../db/schema/control-plane")).users).values({
+    id: "u_hr2",
+    email: "hr2@example.io",
+    username: "u_hr2",
+    name: "u_hr2",
+    role: "member",
+    isInstanceAdmin: false,
+    avatarColor: "#abc",
+    createdAt: T0,
+    updatedAt: T0,
   });
   await db.insert(membershipsTable).values({
-    id: "mem_hr2", userId: "u_hr2", teamId: TEAM_A, role: "member", createdAt: T0,
+    id: "mem_hr2",
+    userId: "u_hr2",
+    teamId: TEAM_A,
+    role: "member",
+    createdAt: T0,
   });
   await db
     .insert((await import("../db/schema/control-plane")).membershipCapabilities)
     .values(
-      ["view", "view_logs", "view_metrics", "view_activity", "manage_members"].map(
-        (capability) => ({ membershipId: "mem_hr2", capability }),
-      ),
+      [
+        "view",
+        "view_logs",
+        "view_metrics",
+        "view_activity",
+        "manage_members",
+      ].map((capability) => ({ membershipId: "mem_hr2", capability })),
     );
 
   // The Owner role grants everything, which is more than they hold — refused on
   // the capability bound before the rank one is even reached.
   await assert.rejects(
     () =>
-      as("u_hr2", () => setMemberAccess({ userId: DEV, roleId: owner.id, granular: false }), TEAM_A),
+      as(
+        "u_hr2",
+        () =>
+          setMemberAccess({ userId: DEV, roleId: owner.id, granular: false }),
+        TEAM_A,
+      ),
     /you hold yourself|only an owner/i,
     "manage_members alone minted an owner",
   );
@@ -560,7 +593,12 @@ test("manage_members alone cannot mint an owner, nor edit one", async () => {
     .where(eq(membershipsTable.userId, DEV));
   await assert.rejects(
     () =>
-      as("u_hr2", () => setMemberAccess({ userId: DEV, roleId: viewer.id, granular: false }), TEAM_A),
+      as(
+        "u_hr2",
+        () =>
+          setMemberAccess({ userId: DEV, roleId: viewer.id, granular: false }),
+        TEAM_A,
+      ),
     /only an owner/i,
     "a non-owner demoted an owner",
   );

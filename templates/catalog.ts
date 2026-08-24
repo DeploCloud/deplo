@@ -99,8 +99,9 @@ function withAssetUrls(t: ApiTemplate): CatalogTemplate {
 export async function listCatalog(): Promise<CatalogTemplate[]> {
   const first = await getTemplates({ page: 1, limit: 100 });
   const rest = await Promise.all(
-    Array.from({ length: Math.max(0, first.pagination.totalPages - 1) }, (_, i) =>
-      getTemplates({ page: i + 2, limit: 100 }),
+    Array.from(
+      { length: Math.max(0, first.pagination.totalPages - 1) },
+      (_, i) => getTemplates({ page: i + 2, limit: 100 }),
     ),
   );
   return [first, ...rest].flatMap((page) => page.data).map(withAssetUrls);

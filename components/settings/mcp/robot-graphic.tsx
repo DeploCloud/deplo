@@ -192,7 +192,10 @@ export function RobotGraphic({
 
       {/* ---- the key, only while permissions are being chosen ---- */}
       {state === "key" && (
-        <g className="deplo-robot-key stroke-[var(--deplo-robot-ink)]" strokeWidth="2.5">
+        <g
+          className="deplo-robot-key stroke-[var(--deplo-robot-ink)]"
+          strokeWidth="2.5"
+        >
           <circle cx="76" cy="72" r="4.5" />
           <line x1="80" y1="72" x2="90" y2="72" strokeLinecap="round" />
           <line x1="86" y1="72" x2="86" y2="77" strokeLinecap="round" />

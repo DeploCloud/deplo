@@ -25,7 +25,9 @@ export const CronJobRef = builder.objectRef<CronJobDTO>("CronJob").implement({
     "schedule, in the job's own timezone. Running it produces a CronRun.",
   fields: (t) => ({
     id: t.exposeID("id"),
-    targetKind: t.exposeString("targetKind", { description: "app | database." }),
+    targetKind: t.exposeString("targetKind", {
+      description: "app | database.",
+    }),
     appId: t.exposeID("appId", { nullable: true }),
     databaseId: t.exposeID("databaseId", { nullable: true }),
     name: t.exposeString("name"),
@@ -39,7 +41,8 @@ export const CronJobRef = builder.objectRef<CronJobDTO>("CronJob").implement({
     }),
     schedule: t.exposeString("schedule", { description: "5-field cron." }),
     timezone: t.exposeString("timezone", {
-      description: "IANA zone the schedule is read in. NOT UTC unless you say so.",
+      description:
+        "IANA zone the schedule is read in. NOT UTC unless you say so.",
     }),
     shell: t.exposeString("shell", { description: "sh | bash." }),
     command: t.exposeString("command"),
@@ -107,14 +110,18 @@ export const CronRunRef = builder.objectRef<CronRunDTO>("CronRun").implement({
     startedAt: t.exposeString("startedAt"),
     finishedAt: t.exposeString("finishedAt", { nullable: true }),
     attempt: t.exposeInt("attempt", {
-      description: "0-based. The output below is this attempt's, not the first's.",
+      description:
+        "0-based. The output below is this attempt's, not the first's.",
     }),
     maxAttempts: t.exposeInt("maxAttempts"),
     retrying: t.exposeBoolean("retrying", {
-      description: "Running, but waiting out a retry backoff rather than executing.",
+      description:
+        "Running, but waiting out a retry backoff rather than executing.",
     }),
     exitCode: t.exposeInt("exitCode", { nullable: true }),
-    stdout: t.exposeString("stdout", { description: "Last 16 KiB - the tail." }),
+    stdout: t.exposeString("stdout", {
+      description: "Last 16 KiB - the tail.",
+    }),
     stderr: t.exposeString("stderr"),
     error: t.exposeString("error", {
       nullable: true,
@@ -170,12 +177,21 @@ const CronJobInputRef = builder.inputType("CronJobInput", {
       description: "Empty ⇒ the target's own container.",
     }),
     schedule: t.string({ required: false, description: "5-field cron." }),
-    timezone: t.string({ required: false, description: "IANA zone, e.g. Europe/Rome." }),
+    timezone: t.string({
+      required: false,
+      description: "IANA zone, e.g. Europe/Rome.",
+    }),
     shell: t.string({ required: false, description: "sh | bash." }),
     command: t.string({ required: false }),
     enabled: t.boolean({ required: false }),
-    timeoutSeconds: t.int({ required: false, description: "Per attempt, 1s to 24h." }),
-    maxAttempts: t.int({ required: false, description: "1 to 4. 1 means no retry." }),
+    timeoutSeconds: t.int({
+      required: false,
+      description: "Per attempt, 1s to 24h.",
+    }),
+    maxAttempts: t.int({
+      required: false,
+      description: "1 to 4. 1 means no retry.",
+    }),
     overlap: t.string({ required: false, description: "skip | allow." }),
     keepRuns: t.int({ required: false, description: "10 to 500." }),
     workdir: t.string({ required: false }),
@@ -200,7 +216,8 @@ builder.queryFields((t) => ({
   appCronJobs: t.field({
     type: CronJobsViewRef,
     authScopes: cronScope,
-    description: "An app's cron jobs, its master switch and its pickable services.",
+    description:
+      "An app's cron jobs, its master switch and its pickable services.",
     args: { appId: t.arg.id({ required: true }) },
     resolve: (_r, { appId }) => listAppCronJobs(String(appId)),
   }),
@@ -233,12 +250,19 @@ builder.mutationFields((t) => ({
       "Turn cron jobs on or off for one target. Off stops the schedule and keeps " +
       "the jobs; runs already in flight are left to finish.",
     args: {
-      targetKind: t.arg.string({ required: true, description: "app | database." }),
+      targetKind: t.arg.string({
+        required: true,
+        description: "app | database.",
+      }),
       targetId: t.arg.id({ required: true }),
       enabled: t.arg.boolean({ required: true }),
     },
     resolve: async (_r, { targetKind, targetId, enabled }) => {
-      await setCronEnabled(targetKind as CronTargetKind, String(targetId), enabled);
+      await setCronEnabled(
+        targetKind as CronTargetKind,
+        String(targetId),
+        enabled,
+      );
       return true;
     },
   }),
@@ -246,7 +270,10 @@ builder.mutationFields((t) => ({
     type: CronJobRef,
     authScopes: cronScope,
     args: {
-      targetKind: t.arg.string({ required: true, description: "app | database." }),
+      targetKind: t.arg.string({
+        required: true,
+        description: "app | database.",
+      }),
       targetId: t.arg.id({ required: true }),
       input: t.arg({ type: CronJobInputRef, required: true }),
     },

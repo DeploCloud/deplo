@@ -203,7 +203,10 @@ async function nodeGrantsFor(
         name: projectsTable.name,
       })
       .from(projectGrantsTable)
-      .innerJoin(projectsTable, eq(projectsTable.id, projectGrantsTable.projectId))
+      .innerJoin(
+        projectsTable,
+        eq(projectsTable.id, projectGrantsTable.projectId),
+      )
       .where(eq(projectGrantsTable.userId, userId)),
     db
       .select({
@@ -234,8 +237,12 @@ async function nodeGrantsFor(
   ) => {
     const team = byTeam.get(r.teamId) ?? new Map<string, AccessNodeGrant>();
     const key = `${kind}:${r.nodeId}`;
-    const node =
-      team.get(key) ?? { kind, nodeId: r.nodeId, name: r.name, capabilities: [] };
+    const node = team.get(key) ?? {
+      kind,
+      nodeId: r.nodeId,
+      name: r.name,
+      capabilities: [],
+    };
     node.capabilities = [...node.capabilities, r.capability as Capability];
     team.set(key, node);
     byTeam.set(r.teamId, team);
@@ -367,8 +374,11 @@ export async function setMemberAccess(input: {
    */
   capabilities?: Capability[];
 }): Promise<UserTeamAccessDTO[]> {
-  const { teamId, userId: actingUserId, membership } =
-    await requireCapability("manage_members");
+  const {
+    teamId,
+    userId: actingUserId,
+    membership,
+  } = await requireCapability("manage_members");
   await writeAccess(actingUserId, { ...input, teamId }, membership);
   // Their access in THIS team, which is the only one this door may answer for.
   return loadUserAccess(input.userId, teamId);
@@ -399,7 +409,10 @@ async function writeAccess(
   const assignment = await roleAssignment(db, input.teamId, input.roleId);
   const effective = memberCapabilities(assignment, input);
   // Their set is not the role's, so the role must stop rewriting it.
-  const customCapabilities = !sameCapabilities(effective, assignment.capabilities);
+  const customCapabilities = !sameCapabilities(
+    effective,
+    assignment.capabilities,
+  );
   if (actor) {
     const beyond = [...assignment.capabilities, ...effective].filter(
       (c) => !actor.capabilities.includes(c),
@@ -667,7 +680,11 @@ async function resolveGrants(
     ] as const) {
       if (ids.length === 0) continue;
       const table =
-        kind === "project" ? projectsTable : kind === "folder" ? foldersTable : appsTable;
+        kind === "project"
+          ? projectsTable
+          : kind === "folder"
+            ? foldersTable
+            : appsTable;
       const found = await db
         .select({ id: table.id })
         .from(table)
@@ -682,7 +699,10 @@ async function resolveGrants(
         // answers `[]` for every node outside the team being acted in.
         // Resolved BEFORE any transaction opens: it queries on its own
         // connection, and under pglite that would hang against an open one.
-        const mine = await nodeCapabilitiesFor(actingUserId, teamId, { kind, id });
+        const mine = await nodeCapabilitiesFor(actingUserId, teamId, {
+          kind,
+          id,
+        });
         if (mine.length === 0)
           // A node they can't reach answers exactly as one that isn't there:
           // the refusal must not confirm which private folders exist.
@@ -737,7 +757,10 @@ export async function clearNodeGrants(
   await tx
     .delete(appGrantsTable)
     .where(
-      and(eq(appGrantsTable.userId, userId), inArray(appGrantsTable.appId, appIds)),
+      and(
+        eq(appGrantsTable.userId, userId),
+        inArray(appGrantsTable.appId, appIds),
+      ),
     );
 }
 
@@ -758,12 +781,16 @@ async function writeNodeGrants(
     if (g.kind === "project") {
       await tx
         .insert(projectGrantsTable)
-        .values(caps.map((c) => ({ projectId: g.nodeId, userId, capability: c })))
+        .values(
+          caps.map((c) => ({ projectId: g.nodeId, userId, capability: c })),
+        )
         .onConflictDoNothing();
     } else if (g.kind === "folder") {
       await tx
         .insert(folderGrantsTable)
-        .values(caps.map((c) => ({ folderId: g.nodeId, userId, capability: c })))
+        .values(
+          caps.map((c) => ({ folderId: g.nodeId, userId, capability: c })),
+        )
         .onConflictDoNothing();
     } else {
       await tx

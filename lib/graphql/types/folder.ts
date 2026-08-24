@@ -66,23 +66,21 @@ export const FolderRef = builder.objectRef<FolderSummary>("Folder").implement({
 /* Folder grant (a shared user's per-folder access)                    */
 /* ------------------------------------------------------------------ */
 
-const FolderGrantRef = builder
-  .objectRef<FolderGrant>("FolderGrant")
-  .implement({
-    description:
-      "A user's access to a folder: the owner (isOwner=true, implicit) or a " +
-      "grantee the owner has shared it with, plus their effective capabilities.",
-    fields: (t) => ({
-      folderId: t.exposeID("folderId"),
-      userId: t.exposeID("userId"),
-      username: t.exposeString("username"),
-      name: t.exposeString("name"),
-      avatarColor: t.exposeString("avatarColor"),
-      avatarUrl: t.exposeString("avatarUrl", { nullable: true }),
-      capabilities: t.exposeStringList("capabilities"),
-      isOwner: t.exposeBoolean("isOwner"),
-    }),
-  });
+const FolderGrantRef = builder.objectRef<FolderGrant>("FolderGrant").implement({
+  description:
+    "A user's access to a folder: the owner (isOwner=true, implicit) or a " +
+    "grantee the owner has shared it with, plus their effective capabilities.",
+  fields: (t) => ({
+    folderId: t.exposeID("folderId"),
+    userId: t.exposeID("userId"),
+    username: t.exposeString("username"),
+    name: t.exposeString("name"),
+    avatarColor: t.exposeString("avatarColor"),
+    avatarUrl: t.exposeString("avatarUrl", { nullable: true }),
+    capabilities: t.exposeStringList("capabilities"),
+    isOwner: t.exposeBoolean("isOwner"),
+  }),
+});
 
 const FolderShareCandidateRef = builder
   .objectRef<{
@@ -130,7 +128,8 @@ builder.queryFields((t) => ({
     description:
       "The capabilities the caller may hand out on a folder (their own effective folder caps). Owner/admin only.",
     args: { folderId: t.arg.id({ required: true }) },
-    resolve: (_r, { folderId }) => grantableFolderCapabilities(String(folderId)),
+    resolve: (_r, { folderId }) =>
+      grantableFolderCapabilities(String(folderId)),
   }),
   folderShareCandidates: t.field({
     type: [FolderShareCandidateRef],
@@ -176,7 +175,11 @@ builder.mutationFields((t) => ({
       parentId: t.arg.id({ required: false }),
     },
     resolve: (_r, { name, color, parentId }) =>
-      createFolder(name, color ?? null, parentId != null ? String(parentId) : null),
+      createFolder(
+        name,
+        color ?? null,
+        parentId != null ? String(parentId) : null,
+      ),
   }),
   renameFolder: t.field({
     type: "Boolean",

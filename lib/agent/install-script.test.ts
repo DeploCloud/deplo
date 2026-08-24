@@ -22,9 +22,11 @@ import { __resetReleaseCacheForTests } from "./release";
 
 const FAKE = {
   tag: "v2.3.0",
-  amd64Url: "https://github.com/DeploCloud/deplo-agent/releases/download/v2.3.0/deplo-agent-linux-amd64",
+  amd64Url:
+    "https://github.com/DeploCloud/deplo-agent/releases/download/v2.3.0/deplo-agent-linux-amd64",
   amd64Sha: "a".repeat(64),
-  arm64Url: "https://github.com/DeploCloud/deplo-agent/releases/download/v2.3.0/deplo-agent-linux-arm64",
+  arm64Url:
+    "https://github.com/DeploCloud/deplo-agent/releases/download/v2.3.0/deplo-agent-linux-arm64",
   arm64Sha: "b".repeat(64),
 };
 
@@ -42,9 +44,18 @@ function stubReleaseFetch() {
         JSON.stringify({
           tag_name: FAKE.tag,
           assets: [
-            { name: "deplo-agent-linux-amd64", browser_download_url: FAKE.amd64Url },
-            { name: "deplo-agent-linux-arm64", browser_download_url: FAKE.arm64Url },
-            { name: "checksums.txt", browser_download_url: "https://example/checksums.txt" },
+            {
+              name: "deplo-agent-linux-amd64",
+              browser_download_url: FAKE.amd64Url,
+            },
+            {
+              name: "deplo-agent-linux-arm64",
+              browser_download_url: FAKE.arm64Url,
+            },
+            {
+              name: "checksums.txt",
+              browser_download_url: "https://example/checksums.txt",
+            },
           ],
         }),
         { status: 200, headers: { "content-type": "application/json" } },
@@ -96,7 +107,11 @@ test("renderInstallScript returns null when no release can be resolved", async (
   __resetReleaseCacheForTests();
   try {
     const script = await renderInstallScript();
-    assert.equal(script, null, "unresolvable release must 503 (null), not serve unverifiable installer");
+    assert.equal(
+      script,
+      null,
+      "unresolvable release must 503 (null), not serve unverifiable installer",
+    );
   } finally {
     globalThis.fetch = orig;
   }
@@ -108,7 +123,10 @@ test("rendered script does NOT contain an unsubstituted sentinel token", async (
   try {
     const script = await renderInstallScript();
     assert.ok(script);
-    assert.ok(!script!.includes("__AGENT_URL_AMD64__"), "still contains __AGENT_URL_AMD64__");
+    assert.ok(
+      !script!.includes("__AGENT_URL_AMD64__"),
+      "still contains __AGENT_URL_AMD64__",
+    );
     assert.ok(!script!.includes("__AGENT_SHA256_AMD64__"));
     assert.ok(!script!.includes("__AGENT_VERSION__"));
   } finally {
@@ -133,7 +151,10 @@ test("the self-guard PASSES on the rendered script (would-fire bug regression)",
 });
 
 test("the self-guard FIRES on the raw repo template", async () => {
-  const template = await readFile(join(process.cwd(), "install-agent.sh"), "utf8");
+  const template = await readFile(
+    join(process.cwd(), "install-agent.sh"),
+    "utf8",
+  );
   const url = shVar(template, "AGENT_URL_AMD64")!;
   assert.ok(
     guardMatches(url),
@@ -189,7 +210,10 @@ function poolBlock(script: string): string {
   // two DEFINITIONS being identical. install-agent.sh wraps its call in a
   // storage-only guard, which is a legitimate difference at the call site.
   const end = script.lastIndexOf("\n}\n", poolCallIndex(script)) + 3;
-  assert.ok(start >= 0 && end > start, "address-pool block not found in installer");
+  assert.ok(
+    start >= 0 && end > start,
+    "address-pool block not found in installer",
+  );
   return script
     .slice(start, end)
     .split("\n")
@@ -206,8 +230,14 @@ test("the address-pool step runs BEFORE anything creates a docker network", asyn
     assert.ok(agent);
     const configured = poolCallIndex(agent!);
     const firstNetwork = agent!.indexOf("docker network create deplo");
-    assert.ok(configured > 0, "install-agent.sh never calls configure_docker_address_pools");
-    assert.ok(firstNetwork > 0, "install-agent.sh no longer creates the deplo network?");
+    assert.ok(
+      configured > 0,
+      "install-agent.sh never calls configure_docker_address_pools",
+    );
+    assert.ok(
+      firstNetwork > 0,
+      "install-agent.sh no longer creates the deplo network?",
+    );
     assert.ok(
       configured < firstNetwork,
       "pools are configured AFTER the first network is created — the host stays capped at ~31 apps",
@@ -216,8 +246,14 @@ test("the address-pool step runs BEFORE anything creates a docker network", asyn
     const host = await readFile(join(process.cwd(), "install.sh"), "utf8");
     const hostConfigured = poolCallIndex(host);
     const hostNetwork = host.indexOf("docker network inspect deplo");
-    assert.ok(hostConfigured > 0, "install.sh never calls configure_docker_address_pools");
-    assert.ok(hostNetwork > 0, "install.sh no longer creates the deplo network?");
+    assert.ok(
+      hostConfigured > 0,
+      "install.sh never calls configure_docker_address_pools",
+    );
+    assert.ok(
+      hostNetwork > 0,
+      "install.sh no longer creates the deplo network?",
+    );
     assert.ok(
       hostConfigured < hostNetwork,
       "install.sh configures pools AFTER creating the deplo network — the step is a no-op",

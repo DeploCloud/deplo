@@ -290,8 +290,12 @@ export function AllAppsEnvManager({
     // the header next to it) still reads as a click.
     useSensor(MouseSensor, { activationConstraint: { distance: 5 } }),
     // Touch: a short hold, so a tap toggles and a swipe still scrolls the page.
-    useSensor(TouchSensor, { activationConstraint: { delay: 220, tolerance: 8 } }),
-    useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }),
+    useSensor(TouchSensor, {
+      activationConstraint: { delay: 220, tolerance: 8 },
+    }),
+    useSensor(KeyboardSensor, {
+      coordinateGetter: sortableKeyboardCoordinates,
+    }),
   );
 
   const sharedById = React.useMemo(
@@ -319,23 +323,19 @@ export function AllAppsEnvManager({
           ? (projectName.get(g.app.projectId) ?? "")
           : "";
         return [
-          ...g.vars.map(
-            (v): EnvRow => ({
-              ...v,
-              kind: "standalone",
-              app: g.app,
-              projectName: where,
-            }),
-          ),
-          ...(sharedByApp[g.app.id] ?? []).map(
-            (v): EnvRow => ({
-              ...v,
-              kind: "shared",
-              type: v.masked ? "secret" : "plain",
-              app: g.app,
-              projectName: where,
-            }),
-          ),
+          ...g.vars.map((v): EnvRow => ({
+            ...v,
+            kind: "standalone",
+            app: g.app,
+            projectName: where,
+          })),
+          ...(sharedByApp[g.app.id] ?? []).map((v): EnvRow => ({
+            ...v,
+            kind: "shared",
+            type: v.masked ? "secret" : "plain",
+            app: g.app,
+            projectName: where,
+          })),
         ];
       }),
     [groups, sharedByApp, projectName],
@@ -346,10 +346,11 @@ export function AllAppsEnvManager({
   // mutation and then the `router.refresh()` that reloads every app's variables.
   // The sections, the filter counts and the empty states all read `rows`, so
   // they agree with each other about what is left.
-  const { visible: rows, remove, restore } = useOptimisticRemove(
-    serverRows,
-    rowKey,
-  );
+  const {
+    visible: rows,
+    remove,
+    restore,
+  } = useOptimisticRemove(serverRows, rowKey);
 
   // This tab is the only place a variable is seen next to every OTHER app's, so
   // it is the only place WHERE the app lives is a filter: its project, and the
@@ -413,8 +414,17 @@ export function AllAppsEnvManager({
   // The app AND its project join the search haystack, so "storefront" surfaces
   // that app's variables rather than only the keys that spell it — and "acme"
   // surfaces every app of the Acme project.
-  const { state: filters, setState: setFilters, clear, shown, counts } =
-    useEnvFilters(rows, facets, (row) => `${row.app.name} ${row.projectName}`);
+  const {
+    state: filters,
+    setState: setFilters,
+    clear,
+    shown,
+    counts,
+  } = useEnvFilters(
+    rows,
+    facets,
+    (row) => `${row.app.name} ${row.projectName}`,
+  );
 
   // Back into sections — in the team's project order (the one the handles drag),
   // Standalone last. Sorting BY KEY is about the keys, not the apps: there the
@@ -733,8 +743,8 @@ function SortableSection({
       aria-label="Drag to reorder project"
       className={cn(
         "shrink-0 cursor-grab rounded-md p-1 text-muted-foreground/60 opacity-0 transition-opacity active:cursor-grabbing",
-        "hover:bg-accent hover:text-foreground group-hover:opacity-100",
-        "focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+        "group-hover:opacity-100 hover:bg-accent hover:text-foreground",
+        "focus-visible:opacity-100 focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none",
       )}
       {...attributes}
       {...listeners}
@@ -808,7 +818,7 @@ function ProjectSectionHeader({
         aria-controls={`vars-project-${section.id}`}
         className={cn(
           "flex min-w-0 flex-1 cursor-pointer items-center gap-3 rounded-md py-3 text-left",
-          "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+          "focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none",
         )}
       >
         <ChevronDown
@@ -880,7 +890,7 @@ function AppVarsCard({
           aria-controls={bodyId}
           className={cn(
             "flex min-w-0 flex-1 cursor-pointer items-center gap-3 rounded-md text-left",
-            "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+            "focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none",
           )}
         >
           <ChevronDown
@@ -894,7 +904,7 @@ function AppVarsCard({
           <span className="min-w-0">
             {/* CardTitle's own classes, on a <span>: it renders a <div>, and a
                 <div> can't legally live inside a <button>. */}
-            <span className="block truncate text-base font-semibold leading-none tracking-tight lg:text-lg">
+            <span className="block truncate text-base leading-none font-semibold tracking-tight lg:text-lg">
               {app.name}
             </span>
             {/* Where the app is reached, and — once the table is folded away —
@@ -927,9 +937,15 @@ function AppVarsCard({
                 <TableRow>
                   <TableHead className="whitespace-nowrap">Key</TableHead>
                   <TableHead className="w-full">Value</TableHead>
-                  <TableHead className="whitespace-nowrap">Last modified</TableHead>
-                  <TableHead className="whitespace-nowrap">Modified by</TableHead>
-                  <TableHead className="whitespace-nowrap text-right">Actions</TableHead>
+                  <TableHead className="whitespace-nowrap">
+                    Last modified
+                  </TableHead>
+                  <TableHead className="whitespace-nowrap">
+                    Modified by
+                  </TableHead>
+                  <TableHead className="text-right whitespace-nowrap">
+                    Actions
+                  </TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -942,13 +958,17 @@ function AppVarsCard({
                       <TableCell>
                         <EnvValueCell value={row.value} masked={row.masked} />
                       </TableCell>
-                      <TableCell className="whitespace-nowrap text-xs text-muted-foreground">
-                        <SimpleTooltip content={new Date(row.updatedAt).toLocaleString()}>
+                      <TableCell className="text-xs whitespace-nowrap text-muted-foreground">
+                        <SimpleTooltip
+                          content={new Date(row.updatedAt).toLocaleString()}
+                        >
                           <span>{timeAgo(row.updatedAt)}</span>
                         </SimpleTooltip>
                       </TableCell>
                       <TableCell>
-                        <EnvAuthorCell author={row.updatedBy ?? row.createdBy ?? null} />
+                        <EnvAuthorCell
+                          author={row.updatedBy ?? row.createdBy ?? null}
+                        />
                       </TableCell>
                       <TableCell className="text-right">
                         <div className="flex justify-end gap-1">
@@ -973,7 +993,10 @@ function AppVarsCard({
                       <TableCell className="font-mono text-xs font-medium">
                         <div className="flex items-center gap-2">
                           {row.key}
-                          <Badge variant="muted" className="gap-1 whitespace-nowrap text-[10px] font-normal">
+                          <Badge
+                            variant="muted"
+                            className="gap-1 text-[10px] font-normal whitespace-nowrap"
+                          >
                             <Share2 className="size-3" />
                             Shared
                           </Badge>
@@ -982,8 +1005,10 @@ function AppVarsCard({
                       <TableCell>
                         <EnvValueCell value={row.value} masked={row.masked} />
                       </TableCell>
-                      <TableCell className="whitespace-nowrap text-xs text-muted-foreground">
-                        <SimpleTooltip content={new Date(row.updatedAt).toLocaleString()}>
+                      <TableCell className="text-xs whitespace-nowrap text-muted-foreground">
+                        <SimpleTooltip
+                          content={new Date(row.updatedAt).toLocaleString()}
+                        >
                           <span>{timeAgo(row.updatedAt)}</span>
                         </SimpleTooltip>
                       </TableCell>

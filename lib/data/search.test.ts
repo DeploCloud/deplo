@@ -118,13 +118,17 @@ test("a team the caller is not a member of contributes nothing", async () => {
 
 test("case, separators and ids are all one match rule", async () => {
   const bySpaces = await asUser1(() => search("BETTER auth docs"));
-  assert.deepEqual(bySpaces.apps.map((a) => a.id), ["prj_a1"]);
+  assert.deepEqual(
+    bySpaces.apps.map((a) => a.id),
+    ["prj_a1"],
+  );
 
   // A pasted id finds its app in whichever team holds it.
   const byId = await asUser1(() => search("prj_b1"));
-  assert.deepEqual(byId.apps.map((a) => [a.id, a.team.slug]), [
-    ["prj_b1", "beta"],
-  ]);
+  assert.deepEqual(
+    byId.apps.map((a) => [a.id, a.team.slug]),
+    [["prj_b1", "beta"]],
+  );
 
   const blank = await asUser1(() => search("   "));
   assert.deepEqual(blank, { apps: [], databases: [] }, "blank finds nothing");
@@ -134,7 +138,10 @@ test("the same match filters one team's list", async () => {
   // `listApps(q)` and `search` have to agree about what a hit is, so the
   // in-team filter is the same rule and not a second one.
   const here = await asUser1(() => listApps("better auth"));
-  assert.deepEqual(here.map((a) => a.id), ["prj_a1"]);
+  assert.deepEqual(
+    here.map((a) => a.id),
+    ["prj_a1"],
+  );
 
   const there = await runWithIdentity({ userId: USER_1, teamId: TEAM_B }, () =>
     listApps("better auth"),

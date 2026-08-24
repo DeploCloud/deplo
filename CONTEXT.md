@@ -34,7 +34,7 @@ written from the role and re-written whenever that role changes; a membership wi
 `role_id` carries a hand-picked ("Custom") set that belongs to no role. The source of
 truth for what a user may do **in a team** — `User.role` is a legacy instance-wide label
 kept only for back-compat / defaults.
-_Avoid_: team user, role (a membership *has* a role; it is not one).
+_Avoid_: team user, role (a membership _has_ a role; it is not one).
 
 **Primary owner**:
 The one member who owns a **Team** — its founder "crown" (`teams.founder_user_id`), and
@@ -176,7 +176,7 @@ server**, listed and revocable under Settings → MCP Server. It registers itsel
 an OAuth 2.1 authorization server for exactly this), and approving its consent screen **mints an
 ordinary API token**: the access token it goes on to present is only a pointer at that row, so
 revoking the token stops it, and it appears in Settings → API tokens too, marked. What it may do is
-that token's **Capabilities**; the OAuth *scopes* it holds decide nothing (ADR-0022). A client that
+that token's **Capabilities**; the OAuth _scopes_ it holds decide nothing (ADR-0022). A client that
 has registered but has never been approved holds nothing and reaches nothing.
 _Avoid_: connector, OAuth app, integration, MCP client (that is the software talking the protocol,
 not the thing deplo has a row for), "connected app".
@@ -225,17 +225,17 @@ route (reserved for Traefik service routes).
 Something that happened at a known Deplo lifecycle point (e.g. a deployment succeeded or
 failed), emitted by the control plane and delivered **observe-only** to subscriber plugins —
 fire-and-forget with retries, never blocking. A plugin reacts by calling the capability-scoped
-API back; it can *observe and then act*, but it can **never veto or pause** a pipeline. This
+API back; it can _observe and then act_, but it can **never veto or pause** a pipeline. This
 is how a plugin "does things when something happens." Blocking gates (a true pre-deploy veto)
-are deliberately **out of scope** and reserved for a future ADR. *(Not built — deferred with
-the rest of the feature.)*
+are deliberately **out of scope** and reserved for a future ADR. _(Not built — deferred with
+the rest of the feature.)_
 _Avoid_: hook (implies blocking/in-process), webhook (that is the delivery mechanism, not
 the event), trigger.
 
 ### Structure
 
 **App**:
-The **deployable unit** (formerly *Project*, then *Service*, now **App** — the Project→Service step is [ADR-0008](../docs/adr/0008-projects-own-environments-services-are-the-deployable-unit.md)):
+The **deployable unit** (formerly _Project_, then _Service_, now **App** — the Project→Service step is [ADR-0008](../docs/adr/0008-projects-own-environments-services-are-the-deployable-unit.md)):
 a repository or template turned into a Docker stack `deplo-<slug>` fronted by Traefik.
 Owns its build config, source, domains, env vars, and deployments. It may sit at the
 team top level, inside a **Folder**, and/or belong to a
@@ -247,7 +247,7 @@ project (that is now the **container**), plugin (reserved for an installed **Plu
 component (a compose service inside one stack).
 
 **App status**:
-`apps.status` is **INTENT** — the last thing the control plane was *asked* to do — never an
+`apps.status` is **INTENT** — the last thing the control plane was _asked_ to do — never an
 observation of the host, which is exactly what separates it from **Server health**. Six
 values: **queued**, **building**, **active**, **error**, **stopping**, **idle**. There is no
 "stopped": `idle` **is** the stopped state, and "Stopped" is only the (grey) label it renders
@@ -255,14 +255,14 @@ with. What the UI shows is never the raw column — two folds sit on top of it, 
 direction**. **Downward** is live and never persisted: `displayStatus`
 ([`lib/apps/display-status.ts`](../lib/apps/display-status.ts)) folds an `active` App with a
 live runtime probe into **restarting** / **degraded** / **unhealthy** / **down**, because
-`active` is the only value that is a claim *about the host* and so the only one worth
+`active` is the only value that is a claim _about the host_ and so the only one worth
 contradicting. **Upward** is persisted and belongs to the telemetry stream:
 ([`lib/data/app-status-reconcile.ts`](../lib/data/app-status-reconcile.ts)) clears a stale
 `error` off an App whose containers a `StreamMetrics` frame proves are running — the one
 transition anything reconciles, guarded to Apps with no in-flight **Deployment**, no pending
 server move, and containers on the host that reported them. An App **absent** from a frame is
-**unknown, never failed**. Note that `error` means *the last deploy attempt failed*, which is
-a different fact from *the App is down*: a failed redeploy leaves the previous stack serving,
+**unknown, never failed**. Note that `error` means _the last deploy attempt failed_, which is
+a different fact from _the App is down_: a failed redeploy leaves the previous stack serving,
 and that gap is precisely what the upward reconcile closes.
 _Avoid_: "stopped" as a stored value (it is `idle`), reading `apps.status` as a live fact,
 adding a writer of the column whose guard is not in its own `WHERE`, treating an App missing
@@ -325,11 +325,12 @@ environment (the two-valued build axis).
 A **Template** is a one-click entry in the remote catalog (ADR-0023) Deplo turns into an App:
 a family that owns the name, logo, screenshots, category, links and long description. Each
 family holds one or more **variants**: the actually deployable unit, one `docker-compose.yml`
-+ `template.toml` with its own name and short description (`garage-s3` ships **Base** and
-**Web UI**). A single-variant family shows no chooser; the picked variant rides
-`?variant=<slug>` into `/new`. Nothing about either is stored on the created App.
-_Avoid_: edition, flavor, version, blueprint (that is the RESOLVED compose + env a variant
-produces, `lib/templates-blueprint.ts`), service (a compose service inside the stack).
+
+- `template.toml` with its own name and short description (`garage-s3` ships **Base** and
+  **Web UI**). A single-variant family shows no chooser; the picked variant rides
+  `?variant=<slug>` into `/new`. Nothing about either is stored on the created App.
+  _Avoid_: edition, flavor, version, blueprint (that is the RESOLVED compose + env a variant
+  produces, `lib/templates-blueprint.ts`), service (a compose service inside the stack).
 
 ### Runtimes
 
@@ -341,8 +342,8 @@ of the platform, on its own machine. Platform infrastructure, the moral
 sibling of the local Docker socket — **not an app and not a frontend**. The control plane
 (GraphQL/data/auth, which stays TypeScript) never reaches a remote Docker socket directly; it
 drives each agent over a **versioned gRPC contract** (`proto/agent.proto`) on **mTLS**, the
-*second system boundary* alongside the GraphQL UI contract. **The host running Deplo is an agent
-too** — installed, bootstrapped, pinned, and dialed over mTLS *exactly* like a remote (there is no
+_second system boundary_ alongside the GraphQL UI contract. **The host running Deplo is an agent
+too** — installed, bootstrapped, pinned, and dialed over mTLS _exactly_ like a remote (there is no
 in-process "local agent" and no `type: "localhost"`), so every server is one uniform execution path
 parameterised only by which agent. The compose
 is rendered control-plane-side and handed to the agent as **opaque YAML**; decrypted env
@@ -355,7 +356,7 @@ install — by an **HMAC over the bootstrap response keyed by the one-time token
 work). Because a remote agent's key must never leave the box, the agent **generates its own key
 and sends a CSR**; the control plane CA **signs the CSR** (it never sees the agent's private key).
 Health is **read live** (never a stored value that goes stale). See
-[ADR-0006](../docs/adr/0006-server-agent-is-a-per-host-go-binary.md). *(**Parts A + B + C + D
+[ADR-0006](../docs/adr/0006-server-agent-is-a-per-host-go-binary.md). _(**Parts A + B + C + D
 built — the full arc is complete**: the localhost server's deploy runs through the agent (Part A),
 and a **remote** agent is real (Part B) — call-home provisioning, remote routing with
 fingerprint-pinned mTLS, the **git source the agent clones itself**, and **reconnection/replay** so
@@ -382,7 +383,7 @@ capability and degrades with `AgentBackupUnsupportedError` until it ships
 Agent
 code in its own repo (**DeploCloud/deplo-agent**), contract in
 [`proto/agent.proto`](../proto/agent.proto), control-plane side in [`lib/agent/`](../lib/agent/) +
-[`lib/infra/agent-client.ts`](../lib/infra/agent-client.ts).)*
+[`lib/infra/agent-client.ts`](../lib/infra/agent-client.ts).)_
 _Avoid_: agent (ambiguous — say "server agent"), node, worker, runner (CI term), daemon
 (reserve for the Docker daemon it drives), deplo agent on the remote being a "second Deplo".
 
@@ -396,21 +397,21 @@ answered, Docker reachable), **warning** (agent up and trusted, but Docker is un
 nothing can deploy there), **error** (the peer answered but its agent is wrong — untrusted cert,
 unsupported contract, application error), **offline** (nothing answered, confirmed by a retry).
 The stored value is a **cache the UI must qualify**, never a **gate**: past a staleness window the
-Servers page renders it as *Unknown* rather than a confident stale green, and **nothing in the
+Servers page renders it as _Unknown_ rather than a confident stale green, and **nothing in the
 deploy path consults it** — the gate there is the mandatory live Hello pre-flight
 ([ADR-0006](../docs/adr/0006-server-agent-is-a-per-host-go-binary.md)). Probing is throttled and
 watermarked on probe-START time, and an inconclusive probe writes **nothing** (a fabricated
 check is the same lie as a stale badge). Written by the Servers page's on-load sweep, the
-per-server *Check status* button, and the metrics poll — all through the one recorder
+per-server _Check status_ button, and the metrics poll — all through the one recorder
 ([`lib/data/server-health.ts`](../lib/data/server-health.ts)), classified by
 [`lib/infra/server-health.ts`](../lib/infra/server-health.ts).
 _Avoid_: "the server is up/down" (say which of the five), treating **warning** as a soft
-**error** (it is a *deployability* verdict), gating anything on the stored status.
+**error** (it is a _deployability_ verdict), gating anything on the stored status.
 
 **Server readiness**:
-A **live, never-stored** answer to *"is this host's installation complete enough to deploy Apps
-to?"* — distinct from **Server health**, which answers *"can we reach and trust this agent right
-now?"*. A **readiness check** (Settings → Servers → a server's ⋯ menu → *Check readiness*) dials
+A **live, never-stored** answer to _"is this host's installation complete enough to deploy Apps
+to?"_ — distinct from **Server health**, which answers _"can we reach and trust this agent right
+now?"_. A **readiness check** (Settings → Servers → a server's ⋯ menu → _Check readiness_) dials
 the owning agent once and assembles a **readiness report**: rows grouped as **agent** (handshake,
 protocol, version, the platform features the binary supports), **docker** (the daemon answered),
 **routing** (a running Traefik container; host ports 80/443 bind-tested), **capacity** (disk
@@ -421,8 +422,8 @@ succeeds but the result is not fully usable, and **skip** means we could not eva
 agent too old to bind-test ports degrades to a skipped row — never a faked pass). The report is
 **NOT a sixth `ServerStatus`**, is **never persisted**, and **nothing gates on it** — the deploy
 gate is and stays the mandatory live Hello pre-flight (ADR-0006), and `servers.status` stays the
-health prober's alone. Its discipline is **honesty**: a Hello flag proves the agent *knows how to
-run* Nixpacks — not that the nixpacks binary is on the host (it is fetched on the first build) —
+health prober's alone. Its discipline is **honesty**: a Hello flag proves the agent _knows how to
+run_ Nixpacks — not that the nixpacks binary is on the host (it is fetched on the first build) —
 and Docker being unreachable forces the agent's Traefik answer false, so that row is **skipped**,
 not warned. Classified by [`lib/infra/server-readiness.ts`](../lib/infra/server-readiness.ts)
 (pure), orchestrated by [`lib/data/server-readiness.ts`](../lib/data/server-readiness.ts)
@@ -504,8 +505,8 @@ too), "GitLab app" (there is no registered application; it is a token).
 The per-app URL that starts a **Deployment** from outside Deplo — a CI job, a script, any
 sender that cannot speak GraphQL — `POST /api/apps/<id>/deploy-hook/<token>`. It carries
 **two** independent secrets, and neither is sufficient alone: the URL's last segment (per app,
-rotatable, stored encrypted so the operator can read their own link back) says *which* app, and
-an **API token** sent as `Authorization: Bearer deplo_…` says *who* — the deploy then runs
+rotatable, stored encrypted so the operator can read their own link back) says _which_ app, and
+an **API token** sent as `Authorization: Bearer deplo_…` says _who_ — the deploy then runs
 through the same gates the dashboard button does. Per-app `deploy_hook_enabled` is the kill
 switch. Distinct from **automatic deployments** (deploy-on-push), which a GitHub App or a
 **Git connection** drives by registering its own push webhook; an app with neither (a bare
@@ -619,7 +620,7 @@ covers both:
 
 Its `status` is `unverified` until someone runs the **connection test**, which is not a
 guess: a **server agent** probes for real — a bucket gets a head, a 0-byte `.deplo-s3check`
-write and a remove, so a read-only key reads as *failed*, not *connected*; a folder gets
+write and a remove, so a read-only key reads as _failed_, not _connected_; a folder gets
 resolved, marked, probe-written and measured for free space. The verdict is persisted with
 its reason (`last_test_*`), which is what lets the card say WHY it is red and the
 **connection log** (the destination's three-dot menu) show the whole probe sequence, the
@@ -678,23 +679,24 @@ the thing the product refuses to do. `servers.import_only`, the third specialise
 exclusive with the other two (`servers_role_exclusive` counts all three).
 It is the narrowest role there is, and the only one that is somebody else's machine: out of
 every deploy picker AND every build picker (it HAS Docker - it is the other platform's own host
+
 - so every check that reads `storage_only` alone would offer it, and a build ships an App's
-source and DECRYPTED env to the builder), never a **backup destination**, never swept by
-**Docker cleanup**, absent from **Monitoring** and from the fleet count, and refused by the
-host-management verbs. It is **born only from a migration**, granted to the one team
-running it (never `all_teams`), and `setServerRole` refuses it in BOTH directions:
-the installer put no Traefik, no shared `deplo` network and no `daemon.json` change on that
-host, and no database write can undo that - re-running the install command is the way in and
-the way out.
-It is also the ONLY server with a real agent-side uninstall: `SelfUninstall` removes the unit,
-the binary and the agent state dir (never Docker, never a container), and the control plane
-then forgets the row - the host-side `uninstall-agent.sh` stays the answer for an unreachable
-or already-de-trusted host ([ADR-0011](../docs/adr/0011-server-removal-is-trust-revocation-not-a-host-uninstall.md),
-which anticipated exactly this shape). Listed apart from the fleet on Settings → Servers, with
-one action: **Uninstall agent**.
-_Avoid_: import server (ambiguous with an import RUN), Dokploy host (that is the other
-platform's name for its own machine), source server (that is the volume-copy sense in
-`resolveSourceServer`).
+  source and DECRYPTED env to the builder), never a **backup destination**, never swept by
+  **Docker cleanup**, absent from **Monitoring** and from the fleet count, and refused by the
+  host-management verbs. It is **born only from a migration**, granted to the one team
+  running it (never `all_teams`), and `setServerRole` refuses it in BOTH directions:
+  the installer put no Traefik, no shared `deplo` network and no `daemon.json` change on that
+  host, and no database write can undo that - re-running the install command is the way in and
+  the way out.
+  It is also the ONLY server with a real agent-side uninstall: `SelfUninstall` removes the unit,
+  the binary and the agent state dir (never Docker, never a container), and the control plane
+  then forgets the row - the host-side `uninstall-agent.sh` stays the answer for an unreachable
+  or already-de-trusted host ([ADR-0011](../docs/adr/0011-server-removal-is-trust-revocation-not-a-host-uninstall.md),
+  which anticipated exactly this shape). Listed apart from the fleet on Settings → Servers, with
+  one action: **Uninstall agent**.
+  _Avoid_: import server (ambiguous with an import RUN), Dokploy host (that is the other
+  platform's name for its own machine), source server (that is the volume-copy sense in
+  `resolveSourceServer`).
 
 **Backup**:
 A **schedule**: a cron expression + **backup destination** + retention (**a count** — how many
@@ -706,7 +708,7 @@ _Avoid_: backup job (that is a run), snapshot (reserve for a point-in-time artif
 a run), dump (that is the DB-specific artifact contents).
 
 **Backup run**:
-One **executed** backup — the artifact record you restore *from*. A `BackupRun` row
+One **executed** backup — the artifact record you restore _from_. A `BackupRun` row
 (`running`→`success`/`failed`) carries the `objectKey`, size, and timestamps; the dump or
 archive itself lives **only** at the destination (a bucket, via multipart PUT, or a server's
 disk), never in the control plane. A run whose destination is another server relays its bytes
@@ -740,7 +742,7 @@ One **executed** cron job, retries included - a `cron_runs` row. Six statuses:
 a setting rather than at the command) · `skipped` (never started: the container was stopped,
 or the previous run was still going) · `lost` (Deplo could not find out how it ended - the
 agent restarted under it). `lost` is deliberately **not** `failed`: the command runs inside
-the *agent's* process, so a control-plane restart does not kill it, and a run we lost track
+the _agent's_ process, so a control-plane restart does not kill it, and a run we lost track
 of most likely succeeded.
 Retries live in the SAME row (`attempt`), so one scheduled fire is always one row and the
 stored output is the last attempt's.
@@ -805,7 +807,7 @@ A hostname routed to an app — one row per `(hostname, path)`, and the **sole**
 source the renderers read (`routableRoutes` ⇒ `traefikRouterLabels`). Carries its own DNS
 `status` (only `valid`/`cloudflare` are routed), certificate provider (opt-in; `none` ⇒
 plain HTTP), container port, compose service, optional path prefix and middleware chain.
-Exactly one domain per app is **primary** — the *canonical host*, the app's
+Exactly one domain per app is **primary** — the _canonical host_, the app's
 `productionUrl`.
 
 **Custom certificate**:
@@ -871,55 +873,56 @@ _Avoid_: alias, CNAME (a DNS record type, not a deplo concept), URL forwarding.
 An app has **one** container port — the image-baked `build.port` (`preview` reuses it) —
 read through the single `portFor(app)` accessor in `lib/deploy/ports.ts` (ADR-0001's
 choke point, kept through the collapse of the old per-target axis). A hostname's
-*effective port* — its per-domain override (single-image apps only) folded onto the
+_effective port_ — its per-domain override (single-image apps only) folded onto the
 default — comes from `effectivePortFor` in the same module.
 _Avoid_: port target (the old per-target axis died with dev mode), exposed port.
 
 **Volume**:
 Persistent storage a user mounts into an app from **Settings → Storage**, for **every**
-source — single-container (the `renderCompose` path) *and* **compose** stacks, which get
+source — single-container (the `renderCompose` path) _and_ **compose** stacks, which get
 the same editor plus the compose `service` each row mounts into (blank ⇒ the stack's
 default service; a name the compose lacks is a hard render error, never a silent remount).
 Nobody has to hand-write `volumes:` into their YAML to keep data. Stored on the app as
 `{ type, name, service, mountPath, readOnly }`. Three kinds — **UI name / stored `type`**,
 and the UI name is what every screen, tooltip and doc says:
- - **Volume** (`named`) — disk space deplo creates and keeps. The default.
- - **File** (`app`) — a file or folder from the app's own **Files** (its isolated files dir).
-   Its CONTENT is written from the Storage editor too (`appStorageFile` / `writeAppFile`,
-   over the agent) — not a copy in the database, the same file the Files tab shows — so an
-   entry never points at a path with nothing behind it. Files are written **before** the
-   rows, because Docker answers a missing bind source by inventing an empty *directory*.
- - **Bind** (`host`) — a folder that already exists on the server: outside deplo and shared
-   with everything else on the machine, so it needs the `canMountHostVolumes` grant. A Bind
-   is also the only kind with a **propagation** (`rslave` / `rshared`, absent ⇒ docker's
-   `rprivate`): without it the container keeps a SNAPSHOT of the submounts that existed when
-   it started, so a network disk, a FUSE share or a volume another container mounts inside
-   that folder never appears — silently, an empty folder rather than an error. The other two
-   kinds have no submounts (and docker rejects the option on a managed volume), so the field
-   is dropped for them on write.
-Only the **source** is ever required. `mountPath` left empty is **derived** —
-`derivedMountPath`: the storage lands in the app's own working directory under the name its
-source gives (`uploads` → `/app/uploads`, Files `conf/app.toml` → `/app/conf/app.toml`,
-`/srv/media` → `/app/media`) — and the editor sends that path explicitly, so the row stores
-what it previewed. Offered ONLY where `containerWorkdir` is a fact (anything deplo builds);
-a prebuilt image or a compose service picked its own, and mounting at an invented path is
-the silent failure — the app writes where it always did and the disk stays empty — so there
-the field stays required.
-The stored discriminants never change (a rename would be a migration for a caption); the
-label ⇄ `type` mapping and the copy live in `lib/apps/volume-model.ts`, which the server's
-`validateVolumes` shares constants with so the editor can't accept what the writer refuses.
-A **Volume**'s **on-host** name is namespaced per app at render time
-(`deplo-<slug>-<name>`, via `hostVolumeName`) — identical on both render paths, so an app
-that changes source keeps its data — and can never collide with or leak into another
-team's app on the shared daemon (the same isolation reason compose strips
-`container_name`). In a compose stack the app's own compose always wins: a service that
-already mounts that container path keeps its mount. Data survives redeploys and is never
-auto-deleted; removing a row just stops mounting it. A single-image reroute reads volumes
-back from the on-disk stack (like image/env), so a domain-only change never silently
-applies a pending volume edit; a compose stack is re-rendered from the app, so its
-reroute carries whatever Storage currently holds.
-_Avoid_: **named volume** / **app file** / **host path** (the old labels — "nobody knows
-what a named volume is" was exactly the problem; say Volume / File / Bind); **mount** as a
-synonym for Volume (reserve it for a template's bind-mounted **config files**,
-`app.mounts` — content-bearing, written next to the stack at deploy; a Volume carries no
-content); the `deplo-data` volume (Deplo's own data store).
+
+- **Volume** (`named`) — disk space deplo creates and keeps. The default.
+- **File** (`app`) — a file or folder from the app's own **Files** (its isolated files dir).
+  Its CONTENT is written from the Storage editor too (`appStorageFile` / `writeAppFile`,
+  over the agent) — not a copy in the database, the same file the Files tab shows — so an
+  entry never points at a path with nothing behind it. Files are written **before** the
+  rows, because Docker answers a missing bind source by inventing an empty _directory_.
+- **Bind** (`host`) — a folder that already exists on the server: outside deplo and shared
+  with everything else on the machine, so it needs the `canMountHostVolumes` grant. A Bind
+  is also the only kind with a **propagation** (`rslave` / `rshared`, absent ⇒ docker's
+  `rprivate`): without it the container keeps a SNAPSHOT of the submounts that existed when
+  it started, so a network disk, a FUSE share or a volume another container mounts inside
+  that folder never appears — silently, an empty folder rather than an error. The other two
+  kinds have no submounts (and docker rejects the option on a managed volume), so the field
+  is dropped for them on write.
+  Only the **source** is ever required. `mountPath` left empty is **derived** —
+  `derivedMountPath`: the storage lands in the app's own working directory under the name its
+  source gives (`uploads` → `/app/uploads`, Files `conf/app.toml` → `/app/conf/app.toml`,
+  `/srv/media` → `/app/media`) — and the editor sends that path explicitly, so the row stores
+  what it previewed. Offered ONLY where `containerWorkdir` is a fact (anything deplo builds);
+  a prebuilt image or a compose service picked its own, and mounting at an invented path is
+  the silent failure — the app writes where it always did and the disk stays empty — so there
+  the field stays required.
+  The stored discriminants never change (a rename would be a migration for a caption); the
+  label ⇄ `type` mapping and the copy live in `lib/apps/volume-model.ts`, which the server's
+  `validateVolumes` shares constants with so the editor can't accept what the writer refuses.
+  A **Volume**'s **on-host** name is namespaced per app at render time
+  (`deplo-<slug>-<name>`, via `hostVolumeName`) — identical on both render paths, so an app
+  that changes source keeps its data — and can never collide with or leak into another
+  team's app on the shared daemon (the same isolation reason compose strips
+  `container_name`). In a compose stack the app's own compose always wins: a service that
+  already mounts that container path keeps its mount. Data survives redeploys and is never
+  auto-deleted; removing a row just stops mounting it. A single-image reroute reads volumes
+  back from the on-disk stack (like image/env), so a domain-only change never silently
+  applies a pending volume edit; a compose stack is re-rendered from the app, so its
+  reroute carries whatever Storage currently holds.
+  _Avoid_: **named volume** / **app file** / **host path** (the old labels — "nobody knows
+  what a named volume is" was exactly the problem; say Volume / File / Bind); **mount** as a
+  synonym for Volume (reserve it for a template's bind-mounted **config files**,
+  `app.mounts` — content-bearing, written next to the stack at deploy; a Volume carries no
+  content); the `deplo-data` volume (Deplo's own data store).

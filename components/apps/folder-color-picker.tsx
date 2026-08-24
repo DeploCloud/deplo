@@ -113,7 +113,9 @@ export function FolderColorPicker({
           <input
             type="color"
             aria-label="Pick a custom colour"
-            value={value && isHexColor(value) ? normalizeHexColor(value) : "#3b82f6"}
+            value={
+              value && isHexColor(value) ? normalizeHexColor(value) : "#3b82f6"
+            }
             onChange={(e) => commitHex(e.target.value)}
             className="size-9 shrink-0 cursor-pointer rounded-md border border-border bg-transparent p-0.5"
           />

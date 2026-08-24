@@ -65,7 +65,10 @@ import {
 import { DestinationCombobox } from "@/components/storage/destination-combobox";
 import { RecoveryKeyNudge } from "@/components/storage/recovery-key";
 import { RestoreFromFile } from "@/components/storage/restore-from-file";
-import { OptimisticList, useOptimisticRow } from "@/components/shared/optimistic-list";
+import {
+  OptimisticList,
+  useOptimisticRow,
+} from "@/components/shared/optimistic-list";
 import { gqlAction } from "@/lib/graphql-client";
 import { DEFAULT_SCHEDULE, isValidSchedule } from "@/lib/schedule";
 import type { BackupDTO } from "@/lib/data/backups";
@@ -296,7 +299,9 @@ export function BackupsPanel({
         <div className="flex flex-col gap-3 rounded-lg border border-[var(--warning)]/30 bg-[var(--warning)]/5 p-4 sm:flex-row sm:items-center">
           <AlertTriangle className="size-5 shrink-0 text-[var(--warning)]" />
           <div className="min-w-0 flex-1">
-            <p className="text-sm font-medium">No backup destination configured</p>
+            <p className="text-sm font-medium">
+              No backup destination configured
+            </p>
             <p className="mt-1 text-sm text-muted-foreground">
               Pick a server to keep backups on, or connect an S3 bucket, and
               backups can run — completed artifacts then appear here.
@@ -449,9 +454,7 @@ function BackUpNow({
             </DialogTrigger>
           )}
         </TooltipTrigger>
-        <TooltipContent>
-          {blocked ?? "Run a one-off backup now"}
-        </TooltipContent>
+        <TooltipContent>{blocked ?? "Run a one-off backup now"}</TooltipContent>
       </Tooltip>
       <DialogContent>
         <DialogHeader>
@@ -518,7 +521,11 @@ const STEPS: { id: StepId; label: string }[] = [
  *  Storage wizard, minus its first step: here the target is the page. */
 const STEP_COPY: Record<
   StepId,
-  { icon: React.ComponentType<{ className?: string }>; title: string; blurb: string }
+  {
+    icon: React.ComponentType<{ className?: string }>;
+    title: string;
+    blurb: string;
+  }
 > = {
   destination: {
     icon: Archive,
@@ -663,9 +670,10 @@ function ScheduleBackup({
             steps={STEPS}
             current={step}
             reachable={(s) =>
-              STEPS.slice(0, STEPS.findIndex((x) => x.id === s)).every(
-                (x) => complete[x.id],
-              )
+              STEPS.slice(
+                0,
+                STEPS.findIndex((x) => x.id === s),
+              ).every((x) => complete[x.id])
             }
             onSelect={setStep}
           />
@@ -680,7 +688,9 @@ function ScheduleBackup({
                 <StepIcon className="size-5 text-primary" />
               </span>
               <h2 className="text-base font-semibold lg:text-lg">{title}</h2>
-              <p className="text-sm text-balance text-muted-foreground">{blurb}</p>
+              <p className="text-sm text-balance text-muted-foreground">
+                {blurb}
+              </p>
             </div>
 
             {step === "destination" ? (
@@ -711,7 +721,9 @@ function ScheduleBackup({
                     }))
                   }
                   timezone={fields.timezone}
-                  onTimezoneChange={(tz) => setFields((f) => ({ ...f, timezone: tz }))}
+                  onTimezoneChange={(tz) =>
+                    setFields((f) => ({ ...f, timezone: tz }))
+                  }
                   retention={fields.retention}
                   onRetentionChange={(count) =>
                     setFields((f) => ({ ...f, retention: count }))
@@ -733,12 +745,21 @@ function ScheduleBackup({
               Back
             </Button>
             <div className="flex gap-2">
-              <Button type="button" variant="outline" onClick={close} disabled={pending}>
+              <Button
+                type="button"
+                variant="outline"
+                onClick={close}
+                disabled={pending}
+              >
                 Cancel
               </Button>
               {step === "schedule" ? (
                 <Button type="submit" disabled={pending || !complete.schedule}>
-                  {pending ? <Loader2 className="size-4 animate-spin" /> : "Create schedule"}
+                  {pending ? (
+                    <Loader2 className="size-4 animate-spin" />
+                  ) : (
+                    "Create schedule"
+                  )}
                 </Button>
               ) : (
                 <Button type="submit" disabled={!complete.destination}>
@@ -905,14 +926,24 @@ function EditScheduleDialog({
           <BackupScheduleFields
             idPrefix="backup"
             schedule={fields.schedule}
-            onScheduleChange={(cron) => setFields((f) => ({ ...f, schedule: cron }))}
+            onScheduleChange={(cron) =>
+              setFields((f) => ({ ...f, schedule: cron }))
+            }
             timezone={fields.timezone}
-            onTimezoneChange={(tz) => setFields((f) => ({ ...f, timezone: tz }))}
+            onTimezoneChange={(tz) =>
+              setFields((f) => ({ ...f, timezone: tz }))
+            }
             retention={fields.retention}
-            onRetentionChange={(count) => setFields((f) => ({ ...f, retention: count }))}
+            onRetentionChange={(count) =>
+              setFields((f) => ({ ...f, retention: count }))
+            }
           />
           <DialogFooter>
-            <Button variant="outline" onClick={() => onOpenChange(false)} disabled={pending}>
+            <Button
+              variant="outline"
+              onClick={() => onOpenChange(false)}
+              disabled={pending}
+            >
               Cancel
             </Button>
             <Button
@@ -924,7 +955,11 @@ function EditScheduleDialog({
                 !isValidSchedule(fields.schedule)
               }
             >
-              {pending ? <Loader2 className="size-4 animate-spin" /> : "Save changes"}
+              {pending ? (
+                <Loader2 className="size-4 animate-spin" />
+              ) : (
+                "Save changes"
+              )}
             </Button>
           </DialogFooter>
         </form>
@@ -1001,7 +1036,8 @@ function ScheduleRow({
         <ScheduleLabel cron={schedule.schedule} timezone={schedule.timezone} />
       </TableCell>
       <TableCell className="text-muted-foreground">
-        {schedule.retentionCount} {schedule.retentionCount === 1 ? "backup" : "backups"}
+        {schedule.retentionCount}{" "}
+        {schedule.retentionCount === 1 ? "backup" : "backups"}
       </TableCell>
       <TableCell>
         {isRunning ? (
@@ -1171,12 +1207,7 @@ function PendingRunRow({
         </span>
       </TableCell>
       <TableCell className="text-right">
-        <RunActions
-          href={null}
-          running
-          ok={false}
-          canRestore={canRestore}
-        />
+        <RunActions href={null} running ok={false} canRestore={canRestore} />
       </TableCell>
     </TableRow>
   );
@@ -1413,9 +1444,9 @@ function RunRow({
               <span className="flex items-start gap-2 text-destructive">
                 <AlertTriangle className="mt-0.5 size-4 shrink-0" />
                 <span>
-                  This overwrites <strong>{target.name}</strong> in place with the
-                  backup from {timeAgo(run.startedAt)}. The {noun(target)} is
-                  stopped, its current data is wiped, and the snapshot is
+                  This overwrites <strong>{target.name}</strong> in place with
+                  the backup from {timeAgo(run.startedAt)}. The {noun(target)}{" "}
+                  is stopped, its current data is wiped, and the snapshot is
                   restored — there is downtime and the current state is{" "}
                   <strong>not recoverable</strong>.
                 </span>

@@ -1198,7 +1198,9 @@ export const apps = pgTable(
     // Build a pull request while it is still a draft. Off by default: a draft is
     // work in progress, and a container for it burns a slot nobody asked for.
     // The manual "Deploy a pull request" action is the per-case escape hatch.
-    previewBuildDrafts: boolean("preview_build_drafts").notNull().default(false),
+    previewBuildDrafts: boolean("preview_build_drafts")
+      .notNull()
+      .default(false),
     // Post (and keep updating) the one sticky comment carrying the preview URL.
     // On by default — the comment is where a reviewer actually looks — but it
     // needs `pull_requests: write` on the GitHub App, so an instance that will
@@ -1314,20 +1316,17 @@ export const appBuild = pgTable("app_build", {
  * this row while the parent `app_build` columns merge field-by-field (PLAN §2
  * Decision 15). All columns nullable — every settings field is optional.
  */
-export const appBuildMethodSettings = pgTable(
-  "app_build_method_settings",
-  {
-    appId: text("app_id")
-      .primaryKey()
-      .references(() => apps.id, { onDelete: "cascade" }),
-    dockerfilePath: text("dockerfile_path"),
-    dockerContextPath: text("docker_context_path"),
-    dockerBuildStage: text("docker_build_stage"),
-    railpackVersion: text("railpack_version"),
-    nixpacksPublishDirectory: text("nixpacks_publish_directory"),
-    staticSinglePageApp: boolean("static_single_page_app"),
-  },
-);
+export const appBuildMethodSettings = pgTable("app_build_method_settings", {
+  appId: text("app_id")
+    .primaryKey()
+    .references(() => apps.id, { onDelete: "cascade" }),
+  dockerfilePath: text("dockerfile_path"),
+  dockerContextPath: text("docker_context_path"),
+  dockerBuildStage: text("docker_build_stage"),
+  railpackVersion: text("railpack_version"),
+  nixpacksPublishDirectory: text("nixpacks_publish_directory"),
+  staticSinglePageApp: boolean("static_single_page_app"),
+});
 
 /**
  * [VolumeMount](../../types.ts) → ordered child. `type` NULLABLE (the
@@ -1424,9 +1423,12 @@ export const deployments = pgTable(
     // The preview this deploy belongs to, or NULL for production. `SET NULL`, not
     // cascade: destroying a preview must never delete the build history of what
     // it deployed.
-    previewId: text("preview_id").references((): AnyPgColumn => appPreviews.id, {
-      onDelete: "set null",
-    }),
+    previewId: text("preview_id").references(
+      (): AnyPgColumn => appPreviews.id,
+      {
+        onDelete: "set null",
+      },
+    ),
     // Denormalized pull-request number so the deployments list can still say
     // "PR #42" after the preview row is gone.
     prNumber: integer("pr_number"),
@@ -1673,7 +1675,9 @@ export const pendingTeardowns = pgTable(
     /** Human name for the Activity copy: by drain time the row it named is gone. */
     label: text("label").notNull(),
     /** NULL once the owning team is deleted, which is also "nowhere to report to". */
-    teamId: text("team_id").references(() => teams.id, { onDelete: "set null" }),
+    teamId: text("team_id").references(() => teams.id, {
+      onDelete: "set null",
+    }),
     attempts: integer("attempts").notNull().default(0),
     lastError: text("last_error").notNull().default(""),
     nextAttemptAt: isoTimestamptz("next_attempt_at").notNull(),
@@ -1924,10 +1928,7 @@ export const appBasicAuthUsers = pgTable(
     updatedAt: isoTimestamptz("updated_at").notNull(),
   },
   (t) => [
-    uniqueIndex("app_basic_auth_users_app_username_uq").on(
-      t.appId,
-      t.username,
-    ),
+    uniqueIndex("app_basic_auth_users_app_username_uq").on(t.appId, t.username),
     index("app_basic_auth_users_app_idx").on(t.appId),
   ],
 );
@@ -2219,7 +2220,10 @@ export const backupDestination = pgTable(
     resolvedPath: text("resolved_path"),
   },
   (t) => [
-    index("backup_destination_team_created_idx").on(t.teamId, t.createdAt.desc()),
+    index("backup_destination_team_created_idx").on(
+      t.teamId,
+      t.createdAt.desc(),
+    ),
     index("backup_destination_last_test_server_idx").on(t.lastTestServerId),
     index("backup_destination_server_idx").on(t.serverId),
     check(
@@ -2465,7 +2469,9 @@ export const cronJobs = pgTable(
     uniqueIndex("cron_jobs_app_name_uq").on(t.appId, t.name),
     uniqueIndex("cron_jobs_database_name_uq").on(t.databaseId, t.name),
     // The scheduler's scan: every tick reads the enabled jobs and nothing else.
-    index("cron_jobs_enabled_idx").on(t.enabled).where(sql`${t.enabled}`),
+    index("cron_jobs_enabled_idx")
+      .on(t.enabled)
+      .where(sql`${t.enabled}`),
     index("cron_jobs_team_idx").on(t.teamId),
   ],
 );
@@ -2924,7 +2930,9 @@ export const registries = pgTable(
     passwordEnc: text("password_enc").notNull(),
     createdAt: isoTimestamptz("created_at").notNull(),
   },
-  (t) => [index("registries_team_created_idx").on(t.teamId, t.createdAt.desc())],
+  (t) => [
+    index("registries_team_created_idx").on(t.teamId, t.createdAt.desc()),
+  ],
 );
 
 /**
@@ -2952,7 +2960,10 @@ export const installedPlugins = pgTable(
   (t) => [
     uniqueIndex("installed_plugins_team_catalog_uq").on(t.teamId, t.catalogId),
     uniqueIndex("installed_plugins_slug_uq").on(t.slug),
-    index("installed_plugins_team_created_idx").on(t.teamId, t.createdAt.desc()),
+    index("installed_plugins_team_created_idx").on(
+      t.teamId,
+      t.createdAt.desc(),
+    ),
   ],
 );
 

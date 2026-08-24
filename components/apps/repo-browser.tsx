@@ -159,7 +159,8 @@ export function RepoBrowser({
       setBranches(names);
       const want = preferred && names.includes(preferred) ? preferred : null;
       setBranch(
-        want ?? (names.includes(repo.defaultBranch) ? repo.defaultBranch : names[0]),
+        want ??
+          (names.includes(repo.defaultBranch) ? repo.defaultBranch : names[0]),
       );
     },
     [fetchBranches],
@@ -247,7 +248,9 @@ export function RepoBrowser({
   }
 
   const filtered = query
-    ? repos.filter((r) => r.fullName.toLowerCase().includes(query.toLowerCase()))
+    ? repos.filter((r) =>
+        r.fullName.toLowerCase().includes(query.toLowerCase()),
+      )
     : repos;
 
   if (selected && !browsing) {
@@ -263,7 +266,9 @@ export function RepoBrowser({
             <Avatar className="size-8">
               <AvatarImage src={avatarUrl} alt="" />
               <AvatarFallback className="text-[10px]">
-                {(avatarFallback ?? selected.fullName).slice(0, 2).toUpperCase()}
+                {(avatarFallback ?? selected.fullName)
+                  .slice(0, 2)
+                  .toUpperCase()}
               </AvatarFallback>
             </Avatar>
           )}
@@ -317,7 +322,7 @@ export function RepoBrowser({
           <Select value={branch} onValueChange={setBranch}>
             <SelectTrigger
               id={branchFieldId}
-              className="h-8 w-auto min-w-44 max-w-full bg-background"
+              className="h-8 w-auto max-w-full min-w-44 bg-background"
             >
               {/* `flex!` is load-bearing: SelectTrigger applies
                   `[&>span]:line-clamp-1` to its direct-child spans, whose
@@ -364,18 +369,18 @@ export function RepoBrowser({
         )}
       </div>
       <div className="relative">
-        <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
+        <Search className="pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2 text-muted-foreground" />
         <Input
           value={query}
           onChange={(e) => setQuery(e.target.value)}
           placeholder="Search repositories"
-          className="pl-9 pr-9"
+          className="pr-9 pl-9"
         />
         <Button
           type="button"
           variant="ghost"
           size="icon-sm"
-          className="absolute right-1 top-1/2 -translate-y-1/2 text-muted-foreground"
+          className="absolute top-1/2 right-1 -translate-y-1/2 text-muted-foreground"
           onClick={() => loadRepos(sourceId)}
           aria-label="Refresh repositories"
         >

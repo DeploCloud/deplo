@@ -10,7 +10,12 @@ import { LineEditor } from "./exec-line-editor";
 const PROMPT = "p$"; // visible width 3 with the trailing space
 
 function makeEditor({ cols = 40, rows = 10 } = {}) {
-  const term = new Terminal({ cols, rows, scrollback: 100, allowProposedApi: true });
+  const term = new Terminal({
+    cols,
+    rows,
+    scrollback: 100,
+    allowProposedApi: true,
+  });
   const submitted: string[] = [];
   const ed = new LineEditor(
     {

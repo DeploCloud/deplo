@@ -13,14 +13,20 @@ import type { Capability } from "./types";
  * both destroyed data rather than merely misreporting it.
  */
 
-const node = (kind: "project" | "folder" | "app", nodeId: string, ...caps: Capability[]) => ({
+const node = (
+  kind: "project" | "folder" | "app",
+  nodeId: string,
+  ...caps: Capability[]
+) => ({
   kind,
   nodeId,
   name: nodeId,
   capabilities: caps,
 });
 
-const selection = (over: Partial<Record<"projectIds" | "folderIds" | "appIds", string[]>> = {}) => ({
+const selection = (
+  over: Partial<Record<"projectIds" | "folderIds" | "appIds", string[]>> = {},
+) => ({
   teamIds: [],
   projectIds: over.projectIds ?? [],
   environmentIds: [],
@@ -44,7 +50,9 @@ test("two shares at different levels stay two, through a save", () => {
     false,
   );
   assert.equal(out.length, 2, "and two payload entries, not one flattened set");
-  const byCaps = new Map(out.map((g) => [[...g.capabilities].sort().join(","), g]));
+  const byCaps = new Map(
+    out.map((g) => [[...g.capabilities].sort().join(","), g]),
+  );
   assert.deepEqual(byCaps.get("manage_env,view")?.folderIds.sort(), [
     "fld_prod",
     "fld_stg",
@@ -79,7 +87,11 @@ test("unticking a node drops it, which is how a share is revoked", () => {
     false,
   );
   assert.equal(out.length, 1);
-  assert.deepEqual(out[0].appIds, [], "the untickled app is gone from the payload");
+  assert.deepEqual(
+    out[0].appIds,
+    [],
+    "the untickled app is gone from the payload",
+  );
 });
 
 test("nothing ticked writes nothing, and no group survives it", () => {
@@ -98,6 +110,10 @@ test("editing the permission list applies it to every node they hold", () => {
     ["view", "view_logs"],
     true,
   );
-  assert.equal(out.length, 1, "one set, because the admin just said what it is");
+  assert.equal(
+    out.length,
+    1,
+    "one set, because the admin just said what it is",
+  );
   assert.deepEqual(out[0].capabilities, ["view", "view_logs"]);
 });

@@ -59,7 +59,11 @@ export type {
 } from "../agent/gen/agent";
 import type { AttachHandle } from "./docker";
 import { streamEvents, pumpClientStream } from "./stream-events";
-import { getServerById, markServerSeen, observedTraefik } from "../data/servers";
+import {
+  getServerById,
+  markServerSeen,
+  observedTraefik,
+} from "../data/servers";
 import type { Server } from "../types";
 
 /**
@@ -422,7 +426,12 @@ export interface AgentConnection {
     path: string,
     wipeFirst: boolean,
     chunks: AsyncIterable<Buffer>,
-  ): Promise<{ ok: boolean; error: string; bytesWritten: number; sha256: string }>;
+  ): Promise<{
+    ok: boolean;
+    error: string;
+    bytesWritten: number;
+    sha256: string;
+  }>;
   /** Stream an app's host-side FILES DIR (a plain host directory, not a Docker
    *  volume) OUT of this host as a gzipped tar — the files-dir sibling of
    *  {@link exportVolume} for an app move. A missing dir yields an empty stream.
@@ -486,7 +495,7 @@ export interface AgentConnection {
    *  removed once every removal is done; the agent then exits, so this is the last
    *  thing it ever answers. Docker is never touched. Rejects with UNIMPLEMENTED on
    *  an agent without the `self-uninstall` capability. `deadlineMs` overrides the
- *  default RPC deadline, for the one attempt made while somebody is waiting. */
+   *  default RPC deadline, for the one attempt made while somebody is waiting. */
   selfUninstall(deadlineMs?: number): Promise<string[]>;
   /** Reclaim Docker disk on the host — a STRICT ALLOW-LIST, never a prune verb. The
    *  agent removes only what it can PROVE is unreferenced (a container-reference
@@ -584,7 +593,12 @@ export interface AgentConnection {
     store: StoreTarget,
     overwrite: boolean,
     chunks: AsyncIterable<Buffer>,
-  ): Promise<{ ok: boolean; error: string; bytesWritten: number; sha256: string }>;
+  ): Promise<{
+    ok: boolean;
+    error: string;
+    bytesWritten: number;
+    sha256: string;
+  }>;
   /** Restore from an artifact this host cannot reach: the header carries the kind,
    *  the descriptor and the age identity, then the artifact's bytes stream in.
    *  Yields RestoreEvents exactly like `restore`. */
@@ -598,7 +612,9 @@ export interface AgentConnection {
    *  "running" | "restarting" | "exited" | … . The one place the agent already
    *  tells the truth about a crash loop; ListInstances only carries a boolean.
    *  A compose stack's containers are not addressable by slug — `exists:false`. */
-  inspect(slug: string): Promise<{ exists: boolean; running: boolean; state: string }>;
+  inspect(
+    slug: string,
+  ): Promise<{ exists: boolean; running: boolean; state: string }>;
   /** Live `docker logs -f` as an output-only AttachHandle (reuses the SSE session
    *  plumbing). `write` is a no-op; `close()` cancels the stream + the grpc client.
    *
@@ -666,11 +682,19 @@ export interface AgentConnection {
   // ---- Part C: project config files ----
   listFiles(slug: string, path: string): Promise<AgentFileEntry[]>;
   readFile(slug: string, path: string): Promise<AgentFileContent>;
-  writeFile(slug: string, path: string, content: string): Promise<AgentFileEntry>;
+  writeFile(
+    slug: string,
+    path: string,
+    content: string,
+  ): Promise<AgentFileEntry>;
   uploadFile(slug: string, path: string, data: Buffer): Promise<AgentFileEntry>;
   createDir(slug: string, path: string): Promise<AgentFileEntry>;
   deleteFile(slug: string, path: string): Promise<boolean>;
-  renameFile(slug: string, path: string, newPath: string): Promise<AgentFileEntry>;
+  renameFile(
+    slug: string,
+    path: string,
+    newPath: string,
+  ): Promise<AgentFileEntry>;
   filesExist(slug: string): Promise<boolean>;
 
   close(): void;
@@ -922,8 +946,6 @@ function toAgentError(err: unknown): Error {
   return err instanceof Error ? err : new Error(String(err));
 }
 
-
-
 /** Why a log stream died, in the only vocabulary the browser is allowed to see. */
 export type LogsFailure = "unreachable" | "not-found" | "denied" | "failed";
 
@@ -963,7 +985,8 @@ async function resolveTarget(serverId: string): Promise<DialTarget> {
 
 /** Build a dial target for a provisioned agent (Part B). */
 async function remoteTarget(server: Server): Promise<DialTarget> {
-  const { issueControlPlaneClientCert, caCertPem, IPV4_RE } = await import("../agent/pki");
+  const { issueControlPlaneClientCert, caCertPem, IPV4_RE } =
+    await import("../agent/pki");
   const client = await issueControlPlaneClientCert();
   const agent = server.agent!;
   const host = server.ip || server.host;
@@ -980,7 +1003,11 @@ async function remoteTarget(server: Server): Promise<DialTarget> {
     // adds it as a DNS SAN, so verification still passes. The real trust anchor
     // is the exact-fingerprint pin in checkServerIdentity below, not the name.
     serverName: IPV4_RE.test(host) ? "localhost" : host,
-    clientCreds: { certPem: client.certPem, keyPem: client.keyPem, caPem: await caCertPem() },
+    clientCreds: {
+      certPem: client.certPem,
+      keyPem: client.keyPem,
+      caPem: await caCertPem(),
+    },
     pinnedFingerprint: agent.certFingerprint,
   };
 }
@@ -1071,8 +1098,6 @@ function dial(target: DialTarget): AgentConnection {
     // refused, and we have no reason to send one.
     "grpc.keepalive_permit_without_calls": 0,
   });
-
-
 
   /**
    * Adapt a gRPC server-stream of LogChunks into the output-only AttachHandle the
@@ -1208,9 +1233,15 @@ function dial(target: DialTarget): AgentConnection {
     };
   }
 
-  const filesDeadline = () => ({ deadline: new Date(Date.now() + FILES_TIMEOUT_MS) });
-  const consoleDeadline = () => ({ deadline: new Date(Date.now() + CONSOLE_TIMEOUT_MS) });
-  const metricsDeadline = () => ({ deadline: new Date(Date.now() + METRICS_TIMEOUT_MS) });
+  const filesDeadline = () => ({
+    deadline: new Date(Date.now() + FILES_TIMEOUT_MS),
+  });
+  const consoleDeadline = () => ({
+    deadline: new Date(Date.now() + CONSOLE_TIMEOUT_MS),
+  });
+  const metricsDeadline = () => ({
+    deadline: new Date(Date.now() + METRICS_TIMEOUT_MS),
+  });
   const mapInstance = (i: PbConsoleInstance): AgentConsoleInstance => ({
     name: i.name,
     service: i.service,
@@ -1259,7 +1290,10 @@ function dial(target: DialTarget): AgentConnection {
       return new Promise<HelloResponse>((resolve, reject) => {
         const deadline = new Date(Date.now() + timeoutMs);
         client.hello(
-          { contractVersion: ContractVersion.CONTRACT_VERSION_V1, controlPlaneVersion: "" },
+          {
+            contractVersion: ContractVersion.CONTRACT_VERSION_V1,
+            controlPlaneVersion: "",
+          },
           new Metadata(),
           { deadline },
           (err, resp) => (err ? reject(helloError(err)) : resolve(resp)),
@@ -1273,8 +1307,11 @@ function dial(target: DialTarget): AgentConnection {
         // can't finish measuring (host pinned by its own deploy/load) must fail
         // fast so the next tick can retry — not hang the poll for the full console
         // deadline and amplify a brief pin into a minute-long chart gap.
-        client.metrics({ dataDir }, new Metadata(), metricsDeadline(), (err, resp) =>
-          err ? reject(toAgentError(err)) : resolve(resp),
+        client.metrics(
+          { dataDir },
+          new Metadata(),
+          metricsDeadline(),
+          (err, resp) => (err ? reject(toAgentError(err)) : resolve(resp)),
         );
       });
     },
@@ -1307,7 +1344,9 @@ function dial(target: DialTarget): AgentConnection {
     },
     deploy(req: DeployRequest) {
       return streamEvents(
-        client.deploy(req, { deadline: new Date(Date.now() + DEPLOY_DEADLINE_MS) }),
+        client.deploy(req, {
+          deadline: new Date(Date.now() + DEPLOY_DEADLINE_MS),
+        }),
         { normalise: toAgentError },
       );
     },
@@ -1328,7 +1367,9 @@ function dial(target: DialTarget): AgentConnection {
           new Metadata(),
           { deadline: new Date(Date.now() + STACK_DEADLINE_MS) },
           (err, resp) =>
-            err ? reject(toAgentError(err)) : resolve({ ok: resp.ok, error: resp.error }),
+            err
+              ? reject(toAgentError(err))
+              : resolve({ ok: resp.ok, error: resp.error }),
         );
       });
     },
@@ -1339,18 +1380,26 @@ function dial(target: DialTarget): AgentConnection {
           new Metadata(),
           { deadline: new Date(Date.now() + STACK_DEADLINE_MS) },
           (err, resp) =>
-            err ? reject(toAgentError(err)) : resolve({ ok: resp.ok, error: resp.error }),
+            err
+              ? reject(toAgentError(err))
+              : resolve({ ok: resp.ok, error: resp.error }),
         );
       });
     },
-    destroyStack(slug: string, removeVolumes = false, reclaimVolumes: string[] = []) {
+    destroyStack(
+      slug: string,
+      removeVolumes = false,
+      reclaimVolumes: string[] = [],
+    ) {
       return new Promise<{ ok: boolean; error: string }>((resolve, reject) => {
         client.destroyStack(
           { slug, removeVolumes, reclaimVolumes },
           new Metadata(),
           { deadline: new Date(Date.now() + STACK_DEADLINE_MS) },
           (err, resp) =>
-            err ? reject(toAgentError(err)) : resolve({ ok: resp.ok, error: resp.error }),
+            err
+              ? reject(toAgentError(err))
+              : resolve({ ok: resp.ok, error: resp.error }),
         );
       });
     },
@@ -1474,7 +1523,11 @@ function dial(target: DialTarget): AgentConnection {
         }
       })();
     },
-    importHostPath(path: string, wipeFirst: boolean, chunks: AsyncIterable<Buffer>) {
+    importHostPath(
+      path: string,
+      wipeFirst: boolean,
+      chunks: AsyncIterable<Buffer>,
+    ) {
       return new Promise<{
         ok: boolean;
         error: string;
@@ -1519,7 +1572,11 @@ function dial(target: DialTarget): AgentConnection {
         }
       })();
     },
-    importFiles(slug: string, wipeFirst: boolean, chunks: AsyncIterable<Buffer>) {
+    importFiles(
+      slug: string,
+      wipeFirst: boolean,
+      chunks: AsyncIterable<Buffer>,
+    ) {
       // Client-streaming files-dir untar in — mirrors importVolume with a slug header.
       return new Promise<{ ok: boolean; error: string }>((resolve, reject) => {
         const call: ClientWritableStream<FilesChunk> = client.importFiles(
@@ -1587,26 +1644,32 @@ function dial(target: DialTarget): AgentConnection {
       );
     },
     readStack(slug: string) {
-      return new Promise<{ exists: boolean; yaml: string }>((resolve, reject) => {
-        client.readStack({ slug, removeVolumes: false, reclaimVolumes: [] }, (err, resp) =>
-          err
-            ? reject(toAgentError(err))
-            : resolve({ exists: resp.exists, yaml: resp.yaml }),
-        );
-      });
+      return new Promise<{ exists: boolean; yaml: string }>(
+        (resolve, reject) => {
+          client.readStack(
+            { slug, removeVolumes: false, reclaimVolumes: [] },
+            (err, resp) =>
+              err
+                ? reject(toAgentError(err))
+                : resolve({ exists: resp.exists, yaml: resp.yaml }),
+          );
+        },
+      );
     },
     checkPort(port: number) {
-      return new Promise<{ available: boolean; reason: string }>((resolve, reject) => {
-        client.checkPort(
-          { port },
-          new Metadata(),
-          { deadline: new Date(Date.now() + CHECK_PORT_DEADLINE_MS) },
-          (err, resp) =>
-            err
-              ? reject(toAgentError(err))
-              : resolve({ available: resp.available, reason: resp.reason }),
-        );
-      });
+      return new Promise<{ available: boolean; reason: string }>(
+        (resolve, reject) => {
+          client.checkPort(
+            { port },
+            new Metadata(),
+            { deadline: new Date(Date.now() + CHECK_PORT_DEADLINE_MS) },
+            (err, resp) =>
+              err
+                ? reject(toAgentError(err))
+                : resolve({ available: resp.available, reason: resp.reason }),
+          );
+        },
+      );
     },
     probeHttp(req: AgentProbeHttpRequest) {
       return new Promise<AgentProbeHttpResult>((resolve, reject) => {
@@ -1639,25 +1702,35 @@ function dial(target: DialTarget): AgentConnection {
       version: string,
       binaries: Record<string, { url: string; sha256: string }>,
     ) {
-      return new Promise<{ version: string; restarting: boolean }>((resolve, reject) => {
-        client.selfUpdate(
-          { version, binaries },
-          new Metadata(),
-          { deadline: new Date(Date.now() + SELF_UPDATE_TIMEOUT_MS) },
-          (err, resp) =>
-            err
-              ? reject(toAgentError(err))
-              : resolve({ version: resp.version, restarting: resp.restarting }),
-        );
-      });
+      return new Promise<{ version: string; restarting: boolean }>(
+        (resolve, reject) => {
+          client.selfUpdate(
+            { version, binaries },
+            new Metadata(),
+            { deadline: new Date(Date.now() + SELF_UPDATE_TIMEOUT_MS) },
+            (err, resp) =>
+              err
+                ? reject(toAgentError(err))
+                : resolve({
+                    version: resp.version,
+                    restarting: resp.restarting,
+                  }),
+          );
+        },
+      );
     },
     selfUninstall(deadlineMs?: number) {
       return new Promise<string[]>((resolve, reject) => {
         client.selfUninstall(
           {},
           new Metadata(),
-          { deadline: new Date(Date.now() + (deadlineMs ?? SELF_UNINSTALL_TIMEOUT_MS)) },
-          (err, resp) => (err ? reject(toAgentError(err)) : resolve(resp.removed)),
+          {
+            deadline: new Date(
+              Date.now() + (deadlineMs ?? SELF_UNINSTALL_TIMEOUT_MS),
+            ),
+          },
+          (err, resp) =>
+            err ? reject(toAgentError(err)) : resolve(resp.removed),
         );
       });
     },
@@ -1712,7 +1785,9 @@ function dial(target: DialTarget): AgentConnection {
     // ---- Backups: dump/restore to S3 + the S3 affordances (ADR-0007) ----
     backup(req: BackupRequest) {
       return streamEvents(
-        client.backup(req, { deadline: new Date(Date.now() + BACKUP_DEADLINE_MS) }),
+        client.backup(req, {
+          deadline: new Date(Date.now() + BACKUP_DEADLINE_MS),
+        }),
         // BOUNDED, like every other stream that can carry bytes. Under
         // `stream_out` this one IS the artifact: the frames are 1 MiB slices of
         // a relayed backup, and an unbounded queue would hold the whole thing in
@@ -1724,7 +1799,9 @@ function dial(target: DialTarget): AgentConnection {
     },
     restore(req: RestoreRequest) {
       return streamEvents(
-        client.restore(req, { deadline: new Date(Date.now() + BACKUP_DEADLINE_MS) }),
+        client.restore(req, {
+          deadline: new Date(Date.now() + BACKUP_DEADLINE_MS),
+        }),
         { normalise: toAgentError },
       );
     },
@@ -1735,7 +1812,9 @@ function dial(target: DialTarget): AgentConnection {
           new Metadata(),
           { deadline: new Date(Date.now() + S3_OP_DEADLINE_MS) },
           (err, resp) =>
-            err ? reject(toAgentError(err)) : resolve({ ok: resp.ok, error: resp.error }),
+            err
+              ? reject(toAgentError(err))
+              : resolve({ ok: resp.ok, error: resp.error }),
         );
       });
     },
@@ -1749,7 +1828,11 @@ function dial(target: DialTarget): AgentConnection {
             (err, resp) =>
               err
                 ? reject(toAgentError(err))
-                : resolve({ ok: resp.ok, error: resp.error, deleted: resp.deleted }),
+                : resolve({
+                    ok: resp.ok,
+                    error: resp.error,
+                    deleted: resp.deleted,
+                  }),
           );
         },
       );
@@ -1791,7 +1874,11 @@ function dial(target: DialTarget): AgentConnection {
             (err, resp) =>
               err
                 ? reject(toAgentError(err))
-                : resolve({ ok: resp.ok, error: resp.error, deleted: resp.deleted }),
+                : resolve({
+                    ok: resp.ok,
+                    error: resp.error,
+                    deleted: resp.deleted,
+                  }),
           );
         },
       );
@@ -1938,7 +2025,9 @@ function dial(target: DialTarget): AgentConnection {
           new Metadata(),
           consoleDeadline(),
           (err, resp) =>
-            err ? reject(toAgentError(err)) : resolve(resp.instances.map(mapInstance)),
+            err
+              ? reject(toAgentError(err))
+              : resolve(resp.instances.map(mapInstance)),
         );
       });
     },
@@ -1966,7 +2055,8 @@ function dial(target: DialTarget): AgentConnection {
           req,
           new Metadata(),
           { deadline: new Date(Date.now() + CRON_START_TIMEOUT_MS) },
-          (err, resp) => (err ? reject(toAgentError(err)) : resolve(resp.jobId)),
+          (err, resp) =>
+            err ? reject(toAgentError(err)) : resolve(resp.jobId),
         );
       });
     },
@@ -1996,7 +2086,8 @@ function dial(target: DialTarget): AgentConnection {
           { jobId },
           new Metadata(),
           { deadline: new Date(Date.now() + CRON_POLL_TIMEOUT_MS) },
-          (err, resp) => (err ? reject(toAgentError(err)) : resolve(resp.found)),
+          (err, resp) =>
+            err ? reject(toAgentError(err)) : resolve(resp.found),
         );
       });
     },
@@ -2006,7 +2097,8 @@ function dial(target: DialTarget): AgentConnection {
           { projectId: appId, container, image },
           new Metadata(),
           consoleDeadline(),
-          (err, resp) => (err ? reject(toAgentError(err)) : resolve(resp.label)),
+          (err, resp) =>
+            err ? reject(toAgentError(err)) : resolve(resp.label),
         );
       });
     },
@@ -2014,64 +2106,105 @@ function dial(target: DialTarget): AgentConnection {
     // ---- Part C: project config files ----
     listFiles(slug: string, path: string) {
       return new Promise<AgentFileEntry[]>((resolve, reject) => {
-        client.listFiles({ slug, path }, new Metadata(), filesDeadline(), (err, resp) =>
-          err ? reject(toAgentError(err)) : resolve(resp.entries.map(mapEntry)),
+        client.listFiles(
+          { slug, path },
+          new Metadata(),
+          filesDeadline(),
+          (err, resp) =>
+            err
+              ? reject(toAgentError(err))
+              : resolve(resp.entries.map(mapEntry)),
         );
       });
     },
     readFile(slug: string, path: string) {
       return new Promise<AgentFileContent>((resolve, reject) => {
-        client.readFile({ slug, path }, new Metadata(), filesDeadline(), (err, resp) =>
-          err
-            ? reject(toAgentError(err))
-            : resolve({
-                path: resp.path,
-                text: resp.reason ? null : resp.text,
-                size: Number(resp.size),
-                reason: (resp.reason || null) as AgentFileContent["reason"],
-              }),
+        client.readFile(
+          { slug, path },
+          new Metadata(),
+          filesDeadline(),
+          (err, resp) =>
+            err
+              ? reject(toAgentError(err))
+              : resolve({
+                  path: resp.path,
+                  text: resp.reason ? null : resp.text,
+                  size: Number(resp.size),
+                  reason: (resp.reason || null) as AgentFileContent["reason"],
+                }),
         );
       });
     },
     writeFile(slug: string, path: string, content: string) {
       return new Promise<AgentFileEntry>((resolve, reject) => {
-        client.writeFile({ slug, path, content }, new Metadata(), filesDeadline(), (err, resp) =>
-          err || !resp.entry ? reject(toAgentError(err ?? new Error("no entry"))) : resolve(mapEntry(resp.entry)),
+        client.writeFile(
+          { slug, path, content },
+          new Metadata(),
+          filesDeadline(),
+          (err, resp) =>
+            err || !resp.entry
+              ? reject(toAgentError(err ?? new Error("no entry")))
+              : resolve(mapEntry(resp.entry)),
         );
       });
     },
     uploadFile(slug: string, path: string, data: Buffer) {
       return new Promise<AgentFileEntry>((resolve, reject) => {
-        client.uploadFile({ slug, path, data }, new Metadata(), filesDeadline(), (err, resp) =>
-          err || !resp.entry ? reject(toAgentError(err ?? new Error("no entry"))) : resolve(mapEntry(resp.entry)),
+        client.uploadFile(
+          { slug, path, data },
+          new Metadata(),
+          filesDeadline(),
+          (err, resp) =>
+            err || !resp.entry
+              ? reject(toAgentError(err ?? new Error("no entry")))
+              : resolve(mapEntry(resp.entry)),
         );
       });
     },
     createDir(slug: string, path: string) {
       return new Promise<AgentFileEntry>((resolve, reject) => {
-        client.createDir({ slug, path }, new Metadata(), filesDeadline(), (err, resp) =>
-          err || !resp.entry ? reject(toAgentError(err ?? new Error("no entry"))) : resolve(mapEntry(resp.entry)),
+        client.createDir(
+          { slug, path },
+          new Metadata(),
+          filesDeadline(),
+          (err, resp) =>
+            err || !resp.entry
+              ? reject(toAgentError(err ?? new Error("no entry")))
+              : resolve(mapEntry(resp.entry)),
         );
       });
     },
     deleteFile(slug: string, path: string) {
       return new Promise<boolean>((resolve, reject) => {
-        client.deleteFile({ slug, path }, new Metadata(), filesDeadline(), (err, resp) =>
-          err ? reject(toAgentError(err)) : resolve(resp.ok),
+        client.deleteFile(
+          { slug, path },
+          new Metadata(),
+          filesDeadline(),
+          (err, resp) => (err ? reject(toAgentError(err)) : resolve(resp.ok)),
         );
       });
     },
     renameFile(slug: string, path: string, newPath: string) {
       return new Promise<AgentFileEntry>((resolve, reject) => {
-        client.renameFile({ slug, path, newPath }, new Metadata(), filesDeadline(), (err, resp) =>
-          err || !resp.entry ? reject(toAgentError(err ?? new Error("no entry"))) : resolve(mapEntry(resp.entry)),
+        client.renameFile(
+          { slug, path, newPath },
+          new Metadata(),
+          filesDeadline(),
+          (err, resp) =>
+            err || !resp.entry
+              ? reject(toAgentError(err ?? new Error("no entry")))
+              : resolve(mapEntry(resp.entry)),
         );
       });
     },
     filesExist(slug: string) {
       return new Promise<boolean>((resolve, reject) => {
-        client.filesExist({ slug }, new Metadata(), filesDeadline(), (err, resp) =>
-          err ? reject(toAgentError(err)) : resolve(resp.exists),
+        client.filesExist(
+          { slug },
+          new Metadata(),
+          filesDeadline(),
+          (err, resp) =>
+            err ? reject(toAgentError(err)) : resolve(resp.exists),
         );
       });
     },
@@ -2133,7 +2266,10 @@ export async function connectAgentAt(
       ...server,
       ip: overrides.ip ?? server.ip,
       host: overrides.host ?? server.host,
-      agent: { ...server.agent, port: overrides.agentPort ?? server.agent.port },
+      agent: {
+        ...server.agent,
+        port: overrides.agentPort ?? server.agent.port,
+      },
     }),
   );
 }
@@ -2397,7 +2533,10 @@ export async function connectBackupAgent(
           `server, then try again.`,
       );
     }
-    if (opts.s3Read && !hello.capabilities?.includes(BACKUP_S3_READ_CAPABILITY)) {
+    if (
+      opts.s3Read &&
+      !hello.capabilities?.includes(BACKUP_S3_READ_CAPABILITY)
+    ) {
       throw new AgentBackupStoreUnsupportedError(
         `The agent on this server is too old to read a backup back out of a ` +
           `bucket. Update the agent on this server, then try again.`,
@@ -2772,7 +2911,8 @@ export function compensateKeepPerSlug(
 ): DockerCleanupRequest {
   const perSlug = Object.values(req.keepPerSlug ?? {});
   if (perSlug.length === 0) return req;
-  if (hello.capabilities?.includes(CLEANUP_KEEP_PER_SLUG_CAPABILITY)) return req;
+  if (hello.capabilities?.includes(CLEANUP_KEEP_PER_SLUG_CAPABILITY))
+    return req;
   return {
     ...req,
     keepImagesPerApp: Math.max(req.keepImagesPerApp, ...perSlug),
@@ -2797,7 +2937,8 @@ export function dropUnsupportedScopes(
   req: DockerCleanupRequest,
   hello: HelloResponse,
 ): DockerCleanupRequest {
-  if (hello.capabilities?.includes(CLEANUP_LEFTOVER_FILES_CAPABILITY)) return req;
+  if (hello.capabilities?.includes(CLEANUP_LEFTOVER_FILES_CAPABILITY))
+    return req;
   const scopes = req.scopes.filter(
     (s) => s !== CleanupScope.CLEANUP_SCOPE_LEFTOVER_APP_FILES,
   );
@@ -2990,5 +3131,7 @@ export function restartControlPlaneOn(
   serverId: string,
   controlPlaneHint: string,
 ): Promise<RestartControlPlaneResponse> {
-  return withHostOps(serverId, (conn) => conn.restartControlPlane({ controlPlaneHint }));
+  return withHostOps(serverId, (conn) =>
+    conn.restartControlPlane({ controlPlaneHint }),
+  );
 }

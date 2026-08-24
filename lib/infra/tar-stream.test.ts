@@ -21,7 +21,9 @@ const OPTS = { maxEntryBytes: 1024 * 1024, maxScanBytes: 64 * 1024 * 1024 };
 /* ------------------------------------------------------------------ */
 
 test("readTarEntry: extracts the named entry's exact bytes", async () => {
-  const png = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0, 0, 1]);
+  const png = Buffer.from([
+    0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0, 0, 1,
+  ]);
   const archive = Buffer.concat([
     entry("files/index.html", "<html>hi</html>"),
     entry("files/favicon.png", png),
@@ -65,7 +67,10 @@ test("readTarEntry: a leading ./ on either side still matches", async () => {
   );
   const archive2 = Buffer.concat([entry("files/favicon.svg", "<svg/>"), END]);
   assert.deepEqual(
-    await readTarEntry(stream(archive2), { ...OPTS, name: "./files/favicon.svg" }),
+    await readTarEntry(stream(archive2), {
+      ...OPTS,
+      name: "./files/favicon.svg",
+    }),
     Buffer.from("<svg/>"),
   );
 });
@@ -105,7 +110,10 @@ test("readTarEntry: a PAX path with multibyte characters is sliced by BYTES", as
   const archive = Buffer.concat([
     entry(
       "PaxHeaders/0/favicon.png",
-      Buffer.concat([paxRecord("mtime", "1753900000"), paxRecord("path", long)]),
+      Buffer.concat([
+        paxRecord("mtime", "1753900000"),
+        paxRecord("path", long),
+      ]),
       { type: "x" },
     ),
     entry("favicon.png", "UNICODEICON"),
@@ -230,9 +238,13 @@ test("tarEntries: a corrupt header ends the scan instead of throwing", async () 
 });
 
 test("tarEntries: a truncated stream yields what it managed to read", async () => {
-  const full = Buffer.concat([entry("files/a.txt", "a"), entry("files/b.txt", "b")]);
+  const full = Buffer.concat([
+    entry("files/a.txt", "a"),
+    entry("files/b.txt", "b"),
+  ]);
   const names: string[] = [];
-  for await (const e of tarEntries(stream(full.subarray(0, 1100)))) names.push(e.name);
+  for await (const e of tarEntries(stream(full.subarray(0, 1100))))
+    names.push(e.name);
   assert.deepEqual(names, ["files/a.txt"]);
 });
 
@@ -242,7 +254,16 @@ test("readTarEntry: reads a REAL archive produced by tar(1), gzip included", asy
   // tar isn't installed rather than failing the suite.
   const dir = mkdtempSync(join(tmpdir(), "deplo-tar-test-"));
   try {
-    const deep = join(dir, "files", "web", "assets", "very", "deeply", "nested", "path");
+    const deep = join(
+      dir,
+      "files",
+      "web",
+      "assets",
+      "very",
+      "deeply",
+      "nested",
+      "path",
+    );
     mkdirSync(deep, { recursive: true });
     writeFileSync(join(dir, "files", "readme.txt"), "hello");
     const icon = Buffer.from([0, 0, 1, 0, 1, 0, 16, 16, 0, 0, 255, 254]);

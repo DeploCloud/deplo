@@ -155,13 +155,16 @@ export function StorageSettingsForm({
   const [pending, startTransition] = React.useTransition();
   const [revealProblems, setRevealProblems] = React.useState(false);
   /** File contents, by row id. A row appears here once its path has been read. */
-  const [files, setFiles] = React.useState<Record<string, StorageFileDraft>>({});
+  const [files, setFiles] = React.useState<Record<string, StorageFileDraft>>(
+    {},
+  );
 
   const currentVolumesKey = React.useMemo(
     () => volumesKey(volumes, containerWorkdir),
     [volumes, containerWorkdir],
   );
-  const [savedVolumesKey, setSavedVolumesKey] = React.useState(currentVolumesKey);
+  const [savedVolumesKey, setSavedVolumesKey] =
+    React.useState(currentVolumesKey);
 
   // Every File entry and the path it names right now — an entry that has not
   // been named yet is IN this list, with an empty path. Its content box is on
@@ -353,7 +356,8 @@ export function StorageSettingsForm({
           name: kindOf(v) === "named" ? v.name.trim() : "",
           projectPath:
             kindOf(v) === "app" ? normalizeFilesPath(v.projectPath) : undefined,
-          hostPath: kindOf(v) === "host" ? (v.hostPath ?? "").trim() : undefined,
+          hostPath:
+            kindOf(v) === "host" ? (v.hostPath ?? "").trim() : undefined,
           // Compose stacks only; the server ignores it elsewhere. Blank ⇒ the
           // stack's default service, resolved at render time.
           service: (v.service ?? "").trim() || undefined,
@@ -446,8 +450,8 @@ export function StorageSettingsForm({
             />
             <p className="mt-3 text-xs text-muted-foreground">
               Applied on the next production deploy. Removing an entry stops
-              mounting it — the data itself is never deleted automatically, and a
-              Volume is included in this app&apos;s backups.
+              mounting it — the data itself is never deleted automatically, and
+              a Volume is included in this app&apos;s backups.
             </p>
           </CardContent>
           <CardFooter className="justify-between border-t border-border pt-4">

@@ -157,10 +157,13 @@ export function UploadInput({
           <>
             <Upload className="mb-2 size-6 text-muted-foreground" />
             <p className="text-sm font-medium">
-              {shown ? "Replace with a new archive" : "Drop an archive or click to browse"}
+              {shown
+                ? "Replace with a new archive"
+                : "Drop an archive or click to browse"}
             </p>
             <p className="mt-1 text-xs text-muted-foreground">
-              .tar.gz, .tgz, .tar or .zip · up to {formatBytes(MAX_UPLOAD_BYTES)}
+              .tar.gz, .tgz, .tar or .zip · up to{" "}
+              {formatBytes(MAX_UPLOAD_BYTES)}
             </p>
           </>
         )}

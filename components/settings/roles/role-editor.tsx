@@ -12,12 +12,7 @@ import {
   Fingerprint,
   ShieldAlert,
 } from "lucide-react";
-import {
-  Card,
-  CardContent,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -70,8 +65,10 @@ export function RoleEditor({
     () => ({
       name: role?.name ?? (basedOn ? `${basedOn.name} copy` : ""),
       description: role?.description ?? basedOn?.description ?? "",
-      capabilities: role?.capabilities ?? basedOn?.capabilities ?? ["view" as Capability],
-      requireTwoFactor: role?.requireTwoFactor ?? basedOn?.requireTwoFactor ?? false,
+      capabilities: role?.capabilities ??
+        basedOn?.capabilities ?? ["view" as Capability],
+      requireTwoFactor:
+        role?.requireTwoFactor ?? basedOn?.requireTwoFactor ?? false,
       // Unrestricted shows as everything ticked, not as an empty tree: this is
       // the control an admin narrows, and starting it blank made "reaches the
       // whole team" look identical to "reaches nothing".
@@ -115,7 +112,9 @@ export function RoleEditor({
   const mutedCaps = React.useMemo(
     () =>
       scoped
-        ? ALL_CAPABILITIES.filter((c) => !PROJECT_SCOPED_CAPABILITIES.includes(c))
+        ? ALL_CAPABILITIES.filter(
+            (c) => !PROJECT_SCOPED_CAPABILITIES.includes(c),
+          )
         : [],
     [scoped],
   );
@@ -132,7 +131,10 @@ export function RoleEditor({
     if (readOnly || !name.trim()) return;
     startTransition(async () => {
       if (mode === "create") {
-        const res = await gqlAction<{ createRole: { id: string } }, { id: string }>(
+        const res = await gqlAction<
+          { createRole: { id: string } },
+          { id: string }
+        >(
           `mutation($input: CreateRoleInput!) { createRole(input: $input) { id } }`,
           {
             input: {
@@ -184,15 +186,18 @@ export function RoleEditor({
   }
 
   return (
-    <form className="grid items-start gap-6 xl:grid-cols-[minmax(0,1fr)_320px]" onSubmit={submit}>
+    <form
+      className="grid items-start gap-6 xl:grid-cols-[minmax(0,1fr)_320px]"
+      onSubmit={submit}
+    >
       <div className="space-y-4">
         {locked && (
           <div className="flex items-start gap-2.5 rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 py-2.5 text-sm text-amber-600 dark:text-amber-400">
             <Lock className="mt-0.5 size-4 shrink-0" />
             <p>
-              The Owner role always has every permission and can&apos;t be edited.
-              A team that could edit its way out of administering itself would have
-              no way back.
+              The Owner role always has every permission and can&apos;t be
+              edited. A team that could edit its way out of administering itself
+              would have no way back.
             </p>
           </div>
         )}
@@ -377,7 +382,9 @@ export function RoleEditor({
                   >
                     <span
                       className={
-                        n === 0 ? "text-muted-foreground/60" : "text-muted-foreground"
+                        n === 0
+                          ? "text-muted-foreground/60"
+                          : "text-muted-foreground"
                       }
                     >
                       {cat.label}
@@ -394,7 +401,10 @@ export function RoleEditor({
             </div>
 
             {twoFactor && (
-              <Badge variant="outline" className="w-full justify-center gap-1.5">
+              <Badge
+                variant="outline"
+                className="w-full justify-center gap-1.5"
+              >
                 <Fingerprint className="size-3" />
                 Two-factor required
               </Badge>
@@ -405,7 +415,9 @@ export function RoleEditor({
                 type="submit"
                 size="lg"
                 className="w-full"
-                disabled={pending || !name.trim() || (mode === "edit" && !dirty)}
+                disabled={
+                  pending || !name.trim() || (mode === "edit" && !dirty)
+                }
               >
                 {pending ? (
                   <Loader2 className="size-4 animate-spin" />
@@ -420,17 +432,21 @@ export function RoleEditor({
               </Button>
             )}
 
-            {mode === "edit" && canManage && role!.builtinKey && role!.modified && !locked && (
-              <Button
-                type="button"
-                variant="outline"
-                className="w-full"
-                onClick={() => setResetOpen(true)}
-              >
-                <RotateCcw className="size-4" />
-                Reset to default
-              </Button>
-            )}
+            {mode === "edit" &&
+              canManage &&
+              role!.builtinKey &&
+              role!.modified &&
+              !locked && (
+                <Button
+                  type="button"
+                  variant="outline"
+                  className="w-full"
+                  onClick={() => setResetOpen(true)}
+                >
+                  <RotateCcw className="size-4" />
+                  Reset to default
+                </Button>
+              )}
             {mode === "edit" && canManage && !role!.builtinKey && (
               <Button
                 type="button"
@@ -551,12 +567,17 @@ function sameScope(a: ScopeSelection, b: ScopeSelection): boolean {
 
 /** "2 projects and 1 app" — the one-line shape of a scope. */
 function describeScope(scope: ScopeSelection): string {
-  const plural = (n: number, one: string) => `${n} ${n === 1 ? one : `${one}s`}`;
+  const plural = (n: number, one: string) =>
+    `${n} ${n === 1 ? one : `${one}s`}`;
   const envs = scope.environmentIds ?? [];
   const parts = [
-    scope.projectIds.length > 0 ? plural(scope.projectIds.length, "project") : null,
+    scope.projectIds.length > 0
+      ? plural(scope.projectIds.length, "project")
+      : null,
     envs.length > 0 ? plural(envs.length, "environment") : null,
-    scope.folderIds.length > 0 ? plural(scope.folderIds.length, "folder") : null,
+    scope.folderIds.length > 0
+      ? plural(scope.folderIds.length, "folder")
+      : null,
     scope.appIds.length > 0 ? plural(scope.appIds.length, "app") : null,
   ].filter((p): p is string => p != null);
   if (parts.length <= 1) return parts[0] ?? "nothing";

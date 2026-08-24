@@ -28,7 +28,10 @@ export function folderHref(id: string, view: "grid" | "list" = "grid"): string {
 }
 
 /** Build the Overview URL that opens a project, preserving the list/grid view. */
-export function projectHref(id: string, view: "grid" | "list" = "grid"): string {
+export function projectHref(
+  id: string,
+  view: "grid" | "list" = "grid",
+): string {
   const params = new URLSearchParams();
   params.set("project", id);
   if (view === "list") params.set("view", "list");
@@ -52,7 +55,9 @@ export function placementHref(
 }
 
 /** The drill-in params, appended to a creation flow's URL (empty when top level). */
-function placementParams(p: OverviewPlacement | null | undefined): URLSearchParams {
+function placementParams(
+  p: OverviewPlacement | null | undefined,
+): URLSearchParams {
   const params = new URLSearchParams();
   if (p?.folderId) params.set("folder", p.folderId);
   else if (p?.projectId) {

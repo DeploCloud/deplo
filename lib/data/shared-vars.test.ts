@@ -83,8 +83,30 @@ beforeEach(async () => {
     updatedAt: T0,
   });
   await db.insert(environmentsTable).values([
-    { id: ENV_DEV, projectId: PRJ, name: "Development", slug: "development", kind: "development", gitBranch: "", isDefault: true, position: 0, createdAt: T0, updatedAt: T0 },
-    { id: ENV_PROD, projectId: PRJ, name: "Production", slug: "production", kind: "production", gitBranch: "", isDefault: false, position: 1, createdAt: T0, updatedAt: T0 },
+    {
+      id: ENV_DEV,
+      projectId: PRJ,
+      name: "Development",
+      slug: "development",
+      kind: "development",
+      gitBranch: "",
+      isDefault: true,
+      position: 0,
+      createdAt: T0,
+      updatedAt: T0,
+    },
+    {
+      id: ENV_PROD,
+      projectId: PRJ,
+      name: "Production",
+      slug: "production",
+      kind: "production",
+      gitBranch: "",
+      isDefault: false,
+      position: 1,
+      createdAt: T0,
+      updatedAt: T0,
+    },
   ]);
   // app_p lives in the project's Development environment; app_top is top-level.
   await seedApp(db, { id: "app_p", slug: "app-p", teamId: TEAM_A });
@@ -129,11 +151,12 @@ async function mkVar(input: {
 }
 
 test("create + list is decorated and team-scoped", async () => {
-  await asUser1(() =>
-    mkVar({ key: "TEAMWIDE", teamWide: true }),
-  );
+  await asUser1(() => mkVar({ key: "TEAMWIDE", teamWide: true }));
   const a = await asUser1(() => listSharedVars());
-  assert.deepEqual(a.map((v) => v.key), ["TEAMWIDE"]);
+  assert.deepEqual(
+    a.map((v) => v.key),
+    ["TEAMWIDE"],
+  );
   assert.equal(a[0]!.teamWide, true);
   // Another team sees nothing.
   assert.deepEqual(await asUser2(() => listSharedVars()), []);
@@ -231,7 +254,14 @@ test("an edit that names no targets PRESERVES the stored ones", async () => {
   // Linked to app_p so the deploy-loader assertion below has an injecting row
   // to read (a scope alone no longer injects — ADR-0012).
   const id = await asUser1(() =>
-    mkVar({ key: "STRIPE_LIVE_KEY", value: "live", type: "plain", targets: ["production"], teamWide: true, appIds: ["app_p"] }),
+    mkVar({
+      key: "STRIPE_LIVE_KEY",
+      value: "live",
+      type: "plain",
+      targets: ["production"],
+      teamWide: true,
+      appIds: ["app_p"],
+    }),
   );
   await asUser1(() =>
     saveSharedVar({
@@ -264,7 +294,10 @@ test("an edit that names no targets PRESERVES the stored ones", async () => {
       projectIds: [],
     }),
   );
-  assert.equal((await asUser1(() => listSharedVars()))[0]!.targets.length, ALL.length);
+  assert.equal(
+    (await asUser1(() => listSharedVars()))[0]!.targets.length,
+    ALL.length,
+  );
 });
 
 test("the appIds whole-set replace is folder-gated on every link it adds or removes", async () => {
@@ -281,7 +314,10 @@ test("the appIds whole-set replace is folder-gated on every link it adds or remo
     createdAt: T0,
     updatedAt: T0,
   });
-  await db.update(appsTable).set({ folderId: FLD }).where(eq(appsTable.id, "app_p"));
+  await db
+    .update(appsTable)
+    .set({ folderId: FLD })
+    .where(eq(appsTable.id, "app_p"));
 
   // ADD: user_3 has team manage_env but no access to FLD.
   await assert.rejects(
@@ -318,10 +354,14 @@ test("the appIds whole-set replace is folder-gated on every link it adds or remo
     asUser3(() => saveSharedVar(save([]))),
     /not found|permission/i,
   );
-  assert.deepEqual((await asUser1(() => listSharedVars()))[0]!.appIds, ["app_p"]);
+  assert.deepEqual((await asUser1(() => listSharedVars()))[0]!.appIds, [
+    "app_p",
+  ]);
   // An UNCHANGED link is not a new write — resending it doesn't need the grant.
   await asUser3(() => saveSharedVar(save(["app_p"])));
-  assert.deepEqual((await asUser1(() => listSharedVars()))[0]!.appIds, ["app_p"]);
+  assert.deepEqual((await asUser1(() => listSharedVars()))[0]!.appIds, [
+    "app_p",
+  ]);
   // The folder owner can unlink.
   await asUser1(() => saveSharedVar(save([])));
   assert.deepEqual((await asUser1(() => listSharedVars()))[0]!.appIds, []);
@@ -360,10 +400,14 @@ test("authorship: create stamps both columns, an edit only touches updatedBy", a
     avatarColor: "#abc",
   });
   assert.ok(
-    avatarUrl === null || /^https:\/\/gravatar\.com\/avatar\/[0-9a-f]{64}\?/.test(avatarUrl),
+    avatarUrl === null ||
+      /^https:\/\/gravatar\.com\/avatar\/[0-9a-f]{64}\?/.test(avatarUrl),
     `avatarUrl is a derived gravatar URL or nothing, got ${avatarUrl}`,
   );
-  assert.ok(!JSON.stringify(edited!.updatedBy).includes("@"), "no email anywhere");
+  assert.ok(
+    !JSON.stringify(edited!.updatedBy).includes("@"),
+    "no email anywhere",
+  );
 });
 
 test("linking a var to an app stamps the author (a scope change IS a modification)", async () => {
@@ -376,8 +420,12 @@ test("linking a var to an app stamps the author (a scope change IS a modificatio
 test("appIds shares with specific apps and whole-set replaces the link junction", async () => {
   // A var reaching apps ONLY through explicit links is legal (it is the shape
   // migration 0027 produced) — the wizard's "specific apps" scope mints it.
-  const id = await asUser1(() => mkVar({ key: "APPSCOPED", appIds: ["app_p"] }));
-  assert.deepEqual((await asUser1(() => listSharedVars()))[0]!.appIds, ["app_p"]);
+  const id = await asUser1(() =>
+    mkVar({ key: "APPSCOPED", appIds: ["app_p"] }),
+  );
+  assert.deepEqual((await asUser1(() => listSharedVars()))[0]!.appIds, [
+    "app_p",
+  ]);
   await asUser1(() =>
     saveSharedVar({
       id,
@@ -390,13 +438,19 @@ test("appIds shares with specific apps and whole-set replaces the link junction"
       appIds: ["app_top"],
     }),
   );
-  assert.deepEqual((await asUser1(() => listSharedVars()))[0]!.appIds, ["app_top"]);
+  assert.deepEqual((await asUser1(() => listSharedVars()))[0]!.appIds, [
+    "app_top",
+  ]);
 });
 
 test("appIds is filtered to the active team's apps", async () => {
   await seedApp(db, { id: "app_b", slug: "app-b", teamId: TEAM_B });
-  await asUser1(() => mkVar({ key: "FILTERED", teamWide: true, appIds: ["app_p", "app_b"] }));
-  assert.deepEqual((await asUser1(() => listSharedVars()))[0]!.appIds, ["app_p"]);
+  await asUser1(() =>
+    mkVar({ key: "FILTERED", teamWide: true, appIds: ["app_p", "app_b"] }),
+  );
+  assert.deepEqual((await asUser1(() => listSharedVars()))[0]!.appIds, [
+    "app_p",
+  ]);
 });
 
 test("an empty appIds set with no mode reaches nothing and is rejected", async () => {
@@ -574,7 +628,14 @@ test("deleteSharedVar removes it (and its scope + link rows cascade)", async () 
  * link set with nothing).
  */
 async function editValueLikeDialog(
-  dto: { id: string; key: string; value: string; teamWide: boolean; environmentIds: string[]; projectIds: string[] },
+  dto: {
+    id: string;
+    key: string;
+    value: string;
+    teamWide: boolean;
+    environmentIds: string[];
+    projectIds: string[];
+  },
   patch: { value?: string; type?: "plain" | "secret" } = {},
 ): Promise<void> {
   await saveSharedVar({
@@ -632,9 +693,18 @@ test("a value-only edit of a LINK-ONLY variable still saves (links count as reac
 
 test("a secret is frozen: the mask round-trip can no longer downgrade it", async () => {
   await asUser1(async () => {
-    await mkVar({ key: "SEC", value: "s3cret", type: "secret", teamWide: true });
+    await mkVar({
+      key: "SEC",
+      value: "s3cret",
+      type: "secret",
+      teamWide: true,
+    });
     const masked = await dtoOf("SEC");
-    assert.notEqual(masked.value, "s3cret", "the DTO never carries the plaintext");
+    assert.notEqual(
+      masked.value,
+      "s3cret",
+      "the DTO never carries the plaintext",
+    );
 
     // THE hole this test used to assert as correct: flip secret → plain without
     // touching the prefilled mask, and the row kept its ciphertext while the

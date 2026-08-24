@@ -123,12 +123,16 @@ export function ContainerConsole({
                     <span
                       className={cn(
                         "size-1.5 rounded-full",
-                        inst.running ? "bg-[var(--success)]" : "bg-muted-foreground/50"
+                        inst.running
+                          ? "bg-[var(--success)]"
+                          : "bg-muted-foreground/50",
                       )}
                     />
                     {inst.service}
                     {inst.exposed ? (
-                      <span className="text-[10px] text-muted-foreground">app</span>
+                      <span className="text-[10px] text-muted-foreground">
+                        app
+                      </span>
                     ) : null}
                   </span>
                 </SelectItem>
@@ -142,7 +146,7 @@ export function ContainerConsole({
           <span
             className={cn(
               "size-2 rounded-full",
-              active.running ? "bg-[var(--success)]" : "bg-muted-foreground/50"
+              active.running ? "bg-[var(--success)]" : "bg-muted-foreground/50",
             )}
           />
           {active.running ? "running" : "stopped"}
@@ -158,7 +162,9 @@ export function ContainerConsole({
             <Button
               size="sm"
               variant={mode === "attach" ? "secondary" : "ghost"}
-              onClick={() => setMode((m) => (m === "attach" ? "exec" : "attach"))}
+              onClick={() =>
+                setMode((m) => (m === "attach" ? "exec" : "attach"))
+              }
               className="h-7 gap-1.5 px-2 text-xs"
               aria-pressed={mode === "attach"}
             >

@@ -1,5 +1,9 @@
 import { getCurrentUser } from "@/lib/auth";
-import { hasCapability, isInstanceAdmin, reachesWholeTeam } from "@/lib/membership";
+import {
+  hasCapability,
+  isInstanceAdmin,
+  reachesWholeTeam,
+} from "@/lib/membership";
 import { listMembers } from "@/lib/data/members";
 import { PageHeader } from "@/components/shared/page-header";
 import { OutsideYourAccess } from "@/components/shared/outside-your-access";

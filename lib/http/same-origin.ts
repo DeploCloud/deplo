@@ -21,11 +21,16 @@ export function isCrossSite(request: NextRequest): boolean {
     return true;
   }
   const host =
-    request.headers.get("x-forwarded-host") ?? request.headers.get("host") ?? "";
+    request.headers.get("x-forwarded-host") ??
+    request.headers.get("host") ??
+    "";
   return originHost !== host;
 }
 
 /** The 403 a cross-site request gets. */
 export function crossSiteRefused(): Response {
-  return Response.json({ error: "Cross-site request refused" }, { status: 403 });
+  return Response.json(
+    { error: "Cross-site request refused" },
+    { status: 403 },
+  );
 }

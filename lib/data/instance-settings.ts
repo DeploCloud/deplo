@@ -1,7 +1,16 @@
 import "server-only";
 
 import { cache } from "react";
-import { and, count, countDistinct, eq, gt, gte, isNotNull, isNull } from "drizzle-orm";
+import {
+  and,
+  count,
+  countDistinct,
+  eq,
+  gt,
+  gte,
+  isNotNull,
+  isNull,
+} from "drizzle-orm";
 import { headers } from "next/headers";
 
 import { getDb } from "../db/client";
@@ -234,7 +243,10 @@ export async function logMaxDays(): Promise<number> {
  *  "keep 900 days" is the ceiling — not an error about a number nobody typed. */
 function clampLogMaxDays(days: number): number {
   return Number.isFinite(days)
-    ? Math.min(MAX_LOG_RANGE_DAYS, Math.max(MIN_LOG_RANGE_DAYS, Math.trunc(days)))
+    ? Math.min(
+        MAX_LOG_RANGE_DAYS,
+        Math.max(MIN_LOG_RANGE_DAYS, Math.trunc(days)),
+      )
     : DEFAULT_LOG_RANGE_DAYS;
 }
 
@@ -417,12 +429,15 @@ export async function getInstanceSettings(): Promise<InstanceSettings> {
  * host with shell metacharacters in it would be an injection into the operator's
  * own root shell. Same rule, same reason, as `lib/public-url.ts`.
  */
-export async function setPanelUrl(input: string | null): Promise<InstanceSettings> {
+export async function setPanelUrl(
+  input: string | null,
+): Promise<InstanceSettings> {
   await requireInstanceAdmin();
   const teamId = await requireActiveTeamId();
   const user = (await getCurrentUser())!;
 
-  const url = input === null || input.trim() === "" ? null : normalizePanelUrl(input);
+  const url =
+    input === null || input.trim() === "" ? null : normalizePanelUrl(input);
   // Read BEFORE the write, and not only for the log line: `rpId` is derived from
   // the address, so once it has moved there is no way to say how many
   // credentials it just invalidated. A trail that records the change without its
@@ -468,7 +483,9 @@ export function normalizePanelUrl(input: string): string {
   try {
     parsed = new URL(candidate);
   } catch {
-    throw new Error(`"${raw}" is not an address. Use a domain like deplo.example.com`);
+    throw new Error(
+      `"${raw}" is not an address. Use a domain like deplo.example.com`,
+    );
   }
   if (parsed.protocol !== "https:" && parsed.protocol !== "http:")
     throw new Error("The panel address must start with https:// or http://");
@@ -718,10 +735,20 @@ async function probePanel(url: string): Promise<PanelReachability> {
       signal: AbortSignal.timeout(6_000),
     });
     if (!res.ok)
-      return { url, ok: false, error: `${url} answered ${res.status}, it does not reach Deplo yet` };
-    const body = (await res.json().catch(() => null)) as { ok?: boolean } | null;
+      return {
+        url,
+        ok: false,
+        error: `${url} answered ${res.status}, it does not reach Deplo yet`,
+      };
+    const body = (await res.json().catch(() => null)) as {
+      ok?: boolean;
+    } | null;
     if (!body?.ok)
-      return { url, ok: false, error: `Something answered on ${url}, but it is not this Deplo` };
+      return {
+        url,
+        ok: false,
+        error: `Something answered on ${url}, but it is not this Deplo`,
+      };
     return { url, ok: true, error: null };
   } catch (e) {
     const reason = e instanceof Error ? e.message : String(e);
@@ -864,15 +891,15 @@ export async function setPanelHttps(enabled: boolean): Promise<PanelHttps> {
   // passkey outright - WebAuthn has no relying party on plain http.
   const lostPasskeys = enabled ? 0 : await passkeysBoundToThisAddress();
 
-  const { fetchHostInfo, applyTraefikConfig, withTraefikStackLock } = await import(
-    "../infra/agent-client"
-  );
+  const { fetchHostInfo, applyTraefikConfig, withTraefikStackLock } =
+    await import("../infra/agent-client");
   // Held across the read and the write: this rewrites the host's WHOLE stack
   // file, and so does installing a certificate on it. See withTraefikStackLock.
   const moved = await withTraefikStackLock(host.id, async () => {
     const info = await fetchHostInfo(host.id);
     const current =
-      panelRoute(info.traefikComposeYaml) ?? (await adoptPanelRoute(info.traefikComposeYaml));
+      panelRoute(info.traefikComposeYaml) ??
+      (await adoptPanelRoute(info.traefikComposeYaml));
     if (current.https === enabled) return null;
 
     const next: PanelRoute = {
@@ -886,7 +913,10 @@ export async function setPanelHttps(enabled: boolean): Promise<PanelHttps> {
     const res = await applyTraefikConfig(host.id, {
       composeYaml: withPanelRoute(info.traefikComposeYaml, next),
     });
-    if (!res.ok) throw new Error(res.error || "The proxy on this server refused the change");
+    if (!res.ok)
+      throw new Error(
+        res.error || "The proxy on this server refused the change",
+      );
     return next;
   });
 
@@ -940,7 +970,9 @@ async function adoptPanelRoute(currentYaml: string): Promise<PanelRoute> {
     // What it is being served as RIGHT NOW, so the caller's own
     // `current.https === enabled` check still means what it says.
     https: url.startsWith("https://"),
-    certResolver: url.startsWith("https://") ? stackCertResolver(currentYaml) : null,
+    certResolver: url.startsWith("https://")
+      ? stackCertResolver(currentYaml)
+      : null,
     target: DEFAULT_PANEL_TARGET,
   };
 }
@@ -1005,9 +1037,8 @@ async function movePanelRoute(url: string): Promise<void> {
   const host = await deploHostServer();
   if (!host) return;
 
-  const { fetchHostInfo, applyTraefikConfig, withTraefikStackLock } = await import(
-    "../infra/agent-client"
-  );
+  const { fetchHostInfo, applyTraefikConfig, withTraefikStackLock } =
+    await import("../infra/agent-client");
   const parsed = new URL(url);
   const domain = parsed.hostname;
   // The scheme in the address is not decoration: typing an http:// address is
@@ -1023,7 +1054,8 @@ async function movePanelRoute(url: string): Promise<void> {
       return;
     }
     const current = currentYaml ? panelRoute(currentYaml) : null;
-    if (!current || (current.domain === domain && current.https === https)) return;
+    if (!current || (current.domain === domain && current.https === https))
+      return;
 
     await moveWithRollback({
       from: current,
@@ -1038,7 +1070,10 @@ async function movePanelRoute(url: string): Promise<void> {
           composeYaml: withPanelRoute(currentYaml, route),
         });
         if (!res.ok)
-          throw new Error(res.error || "The proxy on this server refused the new panel address");
+          throw new Error(
+            res.error ||
+              "The proxy on this server refused the new panel address",
+          );
       },
       probe: () => probeUntilAnswers(url),
     });
@@ -1064,7 +1099,9 @@ export async function moveWithRollback(opts: {
   const reached = await opts.probe();
   if (reached.ok) return;
   await opts.apply(opts.from);
-  throw new Error(`${reached.error}. The panel is still on ${opts.from.domain}.`);
+  throw new Error(
+    `${reached.error}. The panel is still on ${opts.from.domain}.`,
+  );
 }
 
 /**
@@ -1114,16 +1151,22 @@ async function readAccounts(): Promise<CertificateAccount[]> {
         expiresInDays: null,
       };
       if (server.status === "provisioning")
-        return { ...base, email: null, unavailable: "This server has not finished setting up yet" };
+        return {
+          ...base,
+          email: null,
+          unavailable: "This server has not finished setting up yet",
+        };
       try {
         const info = await fetchHostInfo(server.id);
         if (!info.traefikComposeYaml)
           return {
             ...base,
             email: null,
-            unavailable: "Deplo did not install the proxy on this server, so it does not manage its certificates",
+            unavailable:
+              "Deplo did not install the proxy on this server, so it does not manage its certificates",
           };
-        const { describeStackCertificates } = await import("./server-certificates");
+        const { describeStackCertificates } =
+          await import("./server-certificates");
         const own = describeStackCertificates(info.traefikComposeYaml);
         const installed = {
           customCertificates: own.length,
@@ -1143,7 +1186,11 @@ async function readAccounts(): Promise<CertificateAccount[]> {
       } catch (e) {
         // An unreachable host is an answer about that host, not a failure of the
         // page: the other servers still report, and this one says why it did not.
-        return { ...base, email: null, unavailable: e instanceof Error ? e.message : String(e) };
+        return {
+          ...base,
+          email: null,
+          unavailable: e instanceof Error ? e.message : String(e),
+        };
       }
     }),
   );
@@ -1162,7 +1209,9 @@ async function readAccounts(): Promise<CertificateAccount[]> {
  * never goes dark all at once. Certificates already issued keep working; only
  * where the renewal notices go changes.
  */
-export async function setCertificateEmail(email: string): Promise<CertificateAccount[]> {
+export async function setCertificateEmail(
+  email: string,
+): Promise<CertificateAccount[]> {
   await requireInstanceAdmin();
   const teamId = await requireActiveTeamId();
   const user = (await getCurrentUser())!;
@@ -1171,9 +1220,8 @@ export async function setCertificateEmail(email: string): Promise<CertificateAcc
   if (!address.includes("@") || /\s/.test(address))
     throw new Error("Enter a valid email address");
 
-  const { fetchHostInfo, applyTraefikConfig, withTraefikStackLock } = await import(
-    "../infra/agent-client"
-  );
+  const { fetchHostInfo, applyTraefikConfig, withTraefikStackLock } =
+    await import("../infra/agent-client");
   const accounts = await readAccounts();
   let applied = 0;
 
@@ -1189,7 +1237,8 @@ export async function setCertificateEmail(email: string): Promise<CertificateAcc
         return applyTraefikConfig(account.serverId, { composeYaml: yamlText });
       });
       if (!res.ok) {
-        account.unavailable = res.error || `Could not apply the change on ${account.serverName}`;
+        account.unavailable =
+          res.error || `Could not apply the change on ${account.serverName}`;
         continue;
       }
       account.email = address;

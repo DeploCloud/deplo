@@ -1,7 +1,14 @@
 "use client";
 
 import * as React from "react";
-import { FileCode2, Boxes, Layers, FileText, RotateCcw, Wand2 } from "lucide-react";
+import {
+  FileCode2,
+  Boxes,
+  Layers,
+  FileText,
+  RotateCcw,
+  Wand2,
+} from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { FieldLabel } from "@/components/ui/info-tip";
@@ -139,7 +146,7 @@ function MethodCard({
       onClick={onSelect}
       className={cn(
         "flex items-start gap-3 rounded-lg border p-3 text-left transition-colors",
-        "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1 focus-visible:ring-offset-background",
+        "focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1 focus-visible:ring-offset-background focus-visible:outline-none",
         selected
           ? "border-primary bg-primary/[0.06] ring-1 ring-primary/60"
           : "border-border hover:border-foreground/20 hover:bg-muted/40",
@@ -205,7 +212,7 @@ function MethodSettings({
   const Icon = meta.icon;
   return (
     <div className="rounded-lg border border-border bg-muted/20 p-4">
-      <div className="mb-3 flex items-center gap-1.5 text-xs font-medium uppercase tracking-wide text-muted-foreground">
+      <div className="mb-3 flex items-center gap-1.5 text-xs font-medium tracking-wide text-muted-foreground uppercase">
         <Icon className="size-3.5" />
         {meta.name} options
       </div>
@@ -336,8 +343,8 @@ function FrameworkField({
           <>
             deplo reads your source on every deploy and names the framework
             itself. Change it only when it got that wrong — the pick sticks
-            through later deploys and sets the container port that framework&apos;s
-            server binds.
+            through later deploys and sets the container port that
+            framework&apos;s server binds.
           </>
         }
       >
@@ -377,19 +384,30 @@ function FrameworkField({
             onClick={() => onChange(null)}
           >
             <RotateCcw className="size-3.5" />
-            {detectedDef ? `Use detected (${detectedDef.name})` : "Back to automatic"}
+            {detectedDef
+              ? `Use detected (${detectedDef.name})`
+              : "Back to automatic"}
           </Button>
         )}
       </div>
       <p className="text-xs leading-snug text-muted-foreground">
         {overridden ? (
           detectedDef ? (
-            <>Your choice, kept through every deploy — deplo detected {detectedDef.name}.</>
+            <>
+              Your choice, kept through every deploy — deplo detected{" "}
+              {detectedDef.name}.
+            </>
           ) : (
-            <>Your choice, kept through every deploy — deplo didn&apos;t recognise a framework.</>
+            <>
+              Your choice, kept through every deploy — deplo didn&apos;t
+              recognise a framework.
+            </>
           )
         ) : current ? (
-          <>Read from your source on the last deploy, and re-checked on every one.</>
+          <>
+            Read from your source on the last deploy, and re-checked on every
+            one.
+          </>
         ) : (
           <>
             Nothing recognised yet. Pick one if you already know — otherwise the

@@ -108,9 +108,19 @@ test("listDatabases is team-scoped, newest-first, and masks the connection strin
 
   await asUser1(async () => {
     const list = await listDatabases();
-    assert.deepEqual(list.map((d) => d.id), ["db_new", "db_old"]);
-    assert.equal("connectionStringEnc" in list[0]!, false, "no secret in the DTO");
-    assert.ok(list[0]!.connectionStringMasked.includes("••••"), "password masked");
+    assert.deepEqual(
+      list.map((d) => d.id),
+      ["db_new", "db_old"],
+    );
+    assert.equal(
+      "connectionStringEnc" in list[0]!,
+      false,
+      "no secret in the DTO",
+    );
+    assert.ok(
+      list[0]!.connectionStringMasked.includes("••••"),
+      "password masked",
+    );
   });
 });
 
@@ -149,12 +159,18 @@ test("deleteDatabase refuses (deleting nothing) when the server can't be torn do
   );
 
   assert.equal(
-    (await db.select().from(databasesTable).where(eq(databasesTable.id, "db_1"))).length,
+    (
+      await db
+        .select()
+        .from(databasesTable)
+        .where(eq(databasesTable.id, "db_1"))
+    ).length,
     1,
     "the database row survives a refused delete",
   );
   assert.equal(
-    (await db.select().from(backupsTable).where(eq(backupsTable.id, "bkp_1"))).length,
+    (await db.select().from(backupsTable).where(eq(backupsTable.id, "bkp_1")))
+      .length,
     1,
     "its backup schedule survives too (nothing cascaded)",
   );
@@ -165,7 +181,12 @@ test("deleteDatabase cascades schedules and SET NULLs run history (no orphans)",
   const s3 = await seedS3(db, { id: "s3_1" });
   // A schedule targeting the db (CASCADE) + a run referencing it (SET NULL).
   await seedBackup(db, { id: "bkp_1", destinationId: s3, databaseId: "db_1" });
-  await seedRun(db, { id: "brun_1", destinationId: s3, databaseId: "db_1", backupId: "bkp_1" });
+  await seedRun(db, {
+    id: "brun_1",
+    destinationId: s3,
+    databaseId: "db_1",
+    backupId: "bkp_1",
+  });
 
   // `force` is the "this host is never coming back" path: the teardown still runs
   // (and fails — no agent), but its failure no longer blocks the record delete.
@@ -174,16 +195,25 @@ test("deleteDatabase cascades schedules and SET NULLs run history (no orphans)",
   await asUser1(() => deleteDatabase("db_1", { force: true }));
 
   assert.equal(
-    (await db.select().from(databasesTable).where(eq(databasesTable.id, "db_1"))).length,
+    (
+      await db
+        .select()
+        .from(databasesTable)
+        .where(eq(databasesTable.id, "db_1"))
+    ).length,
     0,
     "database row deleted",
   );
   assert.equal(
-    (await db.select().from(backupsTable).where(eq(backupsTable.id, "bkp_1"))).length,
+    (await db.select().from(backupsTable).where(eq(backupsTable.id, "bkp_1")))
+      .length,
     0,
     "dependent schedule CASCADE-deleted",
   );
-  const run = await db.select().from(backupRunsTable).where(eq(backupRunsTable.id, "brun_1"));
+  const run = await db
+    .select()
+    .from(backupRunsTable)
+    .where(eq(backupRunsTable.id, "brun_1"));
   assert.equal(run.length, 1, "run history survives");
   assert.equal(run[0]!.databaseId, null, "run.databaseId SET NULL");
 
@@ -307,7 +337,11 @@ test("updateDatabaseImage: set + clear round-trip, syntax rejected", async () =>
 });
 
 test("restart/redeploy/rebuild: gated while provisioning with the curated message", async () => {
-  await seedDatabase(db, { id: "db_prov", name: "prov", status: "provisioning" });
+  await seedDatabase(db, {
+    id: "db_prov",
+    name: "prov",
+    status: "provisioning",
+  });
   await asUser1(async () => {
     await assert.rejects(restartDatabase("db_prov"), /still provisioning/);
     await assert.rejects(redeployDatabase("db_prov"), /still provisioning/);
@@ -324,7 +358,11 @@ test("rebuildDatabase: unreachable agent fails clearly and leaves the row intact
     await assert.rejects(rebuildDatabase("db_rb"));
     const dto = await getDatabase("db_rb");
     assert.ok(dto, "row survives the failed rebuild");
-    assert.equal(dto.status, "running", "status untouched — nothing was torn down");
+    assert.equal(
+      dto.status,
+      "running",
+      "status untouched — nothing was torn down",
+    );
   });
 });
 
@@ -338,11 +376,16 @@ test("rebuild/redeploy refuse to render an undecryptable password (no empty-auth
   await db
     .update(databasesTable)
     // v1-shaped but the auth tag won't verify → tryDecryptSecret returns not-ok.
-    .set({ connectionStringEnc: "v1.AAAAAAAAAAAAAAAA.AAAAAAAAAAAAAAAAAAAAAA.AAAA" })
+    .set({
+      connectionStringEnc: "v1.AAAAAAAAAAAAAAAA.AAAAAAAAAAAAAAAAAAAAAA.AAAA",
+    })
     .where(eq(databasesTable.id, "db_undec"));
   await asUser1(async () => {
     await assert.rejects(rebuildDatabase("db_undec"), /could not be decrypted/);
-    await assert.rejects(redeployDatabase("db_undec"), /could not be decrypted/);
+    await assert.rejects(
+      redeployDatabase("db_undec"),
+      /could not be decrypted/,
+    );
     // Nothing was torn down or dialed — the row is exactly as seeded.
     assert.equal((await getDatabase("db_undec"))!.status, "running");
   });
@@ -380,7 +423,12 @@ test("focused mutations reject a member without manage_infra", async () => {
   await seedIdentity(db, {
     users: [
       { id: USER_1, teamId: TEAM_A, role: "owner" },
-      { id: "user_viewer", teamId: TEAM_A, role: "member", capabilities: ["view"] },
+      {
+        id: "user_viewer",
+        teamId: TEAM_A,
+        role: "member",
+        capabilities: ["view"],
+      },
     ],
   });
   await seedDatabase(db, { id: "db_cap", name: "cap" });
@@ -397,28 +445,49 @@ test("focused mutations reject a member without manage_infra", async () => {
 test("reorderDatabases persists a team order that listDatabases honours", async () => {
   // Three databases, created oldest→newest so the default sort is c, b, a.
   await seedDatabase(db, { id: "db_a", name: "aaa" });
-  await db.update(databasesTable).set({ createdAt: "2026-01-01T00:00:00.000Z" }).where(eq(databasesTable.id, "db_a"));
+  await db
+    .update(databasesTable)
+    .set({ createdAt: "2026-01-01T00:00:00.000Z" })
+    .where(eq(databasesTable.id, "db_a"));
   await seedDatabase(db, { id: "db_b", name: "bbb" });
-  await db.update(databasesTable).set({ createdAt: "2026-02-01T00:00:00.000Z" }).where(eq(databasesTable.id, "db_b"));
+  await db
+    .update(databasesTable)
+    .set({ createdAt: "2026-02-01T00:00:00.000Z" })
+    .where(eq(databasesTable.id, "db_b"));
   await seedDatabase(db, { id: "db_c", name: "ccc" });
-  await db.update(databasesTable).set({ createdAt: "2026-03-01T00:00:00.000Z" }).where(eq(databasesTable.id, "db_c"));
+  await db
+    .update(databasesTable)
+    .set({ createdAt: "2026-03-01T00:00:00.000Z" })
+    .where(eq(databasesTable.id, "db_c"));
 
   await asUser1(async () => {
     // Default: newest-first.
-    assert.deepEqual((await listDatabases()).map((d) => d.id), ["db_c", "db_b", "db_a"]);
+    assert.deepEqual(
+      (await listDatabases()).map((d) => d.id),
+      ["db_c", "db_b", "db_a"],
+    );
 
     // Persist an explicit order; listDatabases must follow it.
     await reorderDatabases(["db_a", "db_c", "db_b"]);
-    assert.deepEqual((await listDatabases()).map((d) => d.id), ["db_a", "db_c", "db_b"]);
+    assert.deepEqual(
+      (await listDatabases()).map((d) => d.id),
+      ["db_a", "db_c", "db_b"],
+    );
 
     // A partial order pins the listed ids first (in order); the omitted one
     // falls back to newest-first after them.
     await reorderDatabases(["db_b"]);
-    assert.deepEqual((await listDatabases()).map((d) => d.id), ["db_b", "db_c", "db_a"]);
+    assert.deepEqual(
+      (await listDatabases()).map((d) => d.id),
+      ["db_b", "db_c", "db_a"],
+    );
 
     // Unknown/foreign ids are dropped, not stored.
     await reorderDatabases(["db_nope", "db_a"]);
-    assert.deepEqual((await listDatabases()).map((d) => d.id), ["db_a", "db_c", "db_b"]);
+    assert.deepEqual(
+      (await listDatabases()).map((d) => d.id),
+      ["db_a", "db_c", "db_b"],
+    );
   });
 });
 
@@ -429,7 +498,10 @@ test("reorderDatabases self-heals on delete (FK cascade) and rejects without man
     await reorderDatabases(["db_y", "db_x"]);
     // Deleting an ordered database must not leave its id in the order table.
     await db.delete(databasesTable).where(eq(databasesTable.id, "db_y"));
-    assert.deepEqual((await listDatabases()).map((d) => d.id), ["db_x"]);
+    assert.deepEqual(
+      (await listDatabases()).map((d) => d.id),
+      ["db_x"],
+    );
   });
 
   // A member without manage_infra can't reorder.
@@ -438,13 +510,21 @@ test("reorderDatabases self-heals on delete (FK cascade) and rejects without man
   await seedIdentity(db, {
     users: [
       { id: USER_1, teamId: TEAM_A, role: "owner" },
-      { id: "user_viewer2", teamId: TEAM_A, role: "member", capabilities: ["view"] },
+      {
+        id: "user_viewer2",
+        teamId: TEAM_A,
+        role: "member",
+        capabilities: ["view"],
+      },
     ],
   });
   await seedDatabase(db, { id: "db_z", name: "zzz" });
-  await runWithIdentity({ userId: "user_viewer2", teamId: TEAM_A }, async () => {
-    await assert.rejects(reorderDatabases(["db_z"]));
-  });
+  await runWithIdentity(
+    { userId: "user_viewer2", teamId: TEAM_A },
+    async () => {
+      await assert.rejects(reorderDatabases(["db_z"]));
+    },
+  );
 });
 
 /* ------------------------------------------------------------------ */
@@ -470,7 +550,10 @@ test("renameDatabase changes only the display name — host and connection strin
       before?.connectionStringMasked,
       "connection string unaffected",
     );
-    assert.equal(await getConnectionString("db_r"), await getConnectionString("db_r"));
+    assert.equal(
+      await getConnectionString("db_r"),
+      await getConnectionString("db_r"),
+    );
   });
   const logged = await db.select().from(activitiesTable);
   assert.ok(
@@ -484,14 +567,23 @@ test("renameDatabase: validates, refuses a duplicate, no-ops on an unchanged nam
   await seedDatabase(db, { id: "db_n2", name: "beta" });
   await asUser1(async () => {
     await assert.rejects(renameDatabase("db_n1", "   "), /name is required/i);
-    await assert.rejects(renameDatabase("db_n1", "x".repeat(61)), /60 characters/);
+    await assert.rejects(
+      renameDatabase("db_n1", "x".repeat(61)),
+      /60 characters/,
+    );
     // The team-unique index reads as a sentence, not a raw pg violation.
-    await assert.rejects(renameDatabase("db_n1", "beta"), /already exists in this team/);
+    await assert.rejects(
+      renameDatabase("db_n1", "beta"),
+      /already exists in this team/,
+    );
 
     // Unchanged name: no write, and no activity row for a no-op Save.
     const activityBefore = (await db.select().from(activitiesTable)).length;
     await renameDatabase("db_n1", "alpha");
-    assert.equal((await db.select().from(activitiesTable)).length, activityBefore);
+    assert.equal(
+      (await db.select().from(activitiesTable)).length,
+      activityBefore,
+    );
   });
 });
 
@@ -524,7 +616,11 @@ test("updateDatabaseLogo: set, clear, validate, and stay team-scoped", async () 
       updateDatabaseLogo("db_l", "https://example.com/evil.svg"),
       /Unsupported logo image/,
     );
-    assert.equal((await getDatabase("db_l"))?.logo, png, "rejected value not stored");
+    assert.equal(
+      (await getDatabase("db_l"))?.logo,
+      png,
+      "rejected value not stored",
+    );
 
     // Clearing goes back to the engine mark.
     await updateDatabaseLogo("db_l", null);
@@ -595,12 +691,16 @@ test("rotationExecCommand: a hostile password never escapes its quotes", () => {
 test("rotationExecCommand: mariadb is driven by the mariadb client, mysql by mysql", () => {
   const base = { username: "app", dbName: "db_x" };
   const maria = rotationExecCommand(
-    { ...base, type: "mariadb" } as unknown as Parameters<typeof rotationExecCommand>[0],
+    { ...base, type: "mariadb" } as unknown as Parameters<
+      typeof rotationExecCommand
+    >[0],
     "old",
     "new",
   )!;
   const mysql = rotationExecCommand(
-    { ...base, type: "mysql" } as unknown as Parameters<typeof rotationExecCommand>[0],
+    { ...base, type: "mysql" } as unknown as Parameters<
+      typeof rotationExecCommand
+    >[0],
     "old",
     "new",
   )!;
@@ -785,9 +885,15 @@ test("hostPortsInUse reports claimed ports, and says so when it cannot ask", asy
   );
   try {
     await asUser1(async () => {
-      const res = await hostPortsInUse("srv_probe", [5432, 25500, 25501, 25501]);
+      const res = await hostPortsInUse(
+        "srv_probe",
+        [5432, 25500, 25501, 25501],
+      );
       assert.equal(res.checked, true);
-      assert.deepEqual(res.inUse.sort((a, b) => a - b), [5432, 25500]);
+      assert.deepEqual(
+        res.inUse.sort((a, b) => a - b),
+        [5432, 25500],
+      );
     });
   } finally {
     __setAgentConnectorForTest();
@@ -832,7 +938,11 @@ test("a config file may not be mounted inside the engine's data directory", () =
   // The same file one level up is the normal, correct thing to do.
   assert.equal(
     validateDatabaseMounts("postgres", [
-      { filePath: "postgresql.conf", content: "x", mountPath: "/etc/postgresql.conf" },
+      {
+        filePath: "postgresql.conf",
+        content: "x",
+        mountPath: "/etc/postgresql.conf",
+      },
     ]).length,
     1,
   );
@@ -853,7 +963,9 @@ test("a config file may not be mounted inside the engine's data directory", () =
 });
 
 test("a config file's two paths are each refused when they cannot work", () => {
-  const one = (m: Partial<{ filePath: string; content: string; mountPath: string }>) =>
+  const one = (
+    m: Partial<{ filePath: string; content: string; mountPath: string }>,
+  ) =>
     validateDatabaseMounts("postgres", [
       { filePath: "pg.conf", content: "", mountPath: "/etc/pg.conf", ...m },
     ]);
@@ -884,11 +996,15 @@ test("a config file's two paths are each refused when they cannot work", () => {
 // running engine reading its old configuration with the UI saying otherwise.
 test("saving config files reroutes the stack with them", async () => {
   await seedDatabase(db, { id: "db_cfg", name: "cfg" });
-  const sent: { yaml: string; mounts: { path: string; content: string }[] }[] = [];
+  const sent: { yaml: string; mounts: { path: string; content: string }[] }[] =
+    [];
   __setAgentConnectorForTest(
     async () =>
       ({
-        reroute: async (r: { composeYaml: string; mounts: { path: string; content: string }[] }) => {
+        reroute: async (r: {
+          composeYaml: string;
+          mounts: { path: string; content: string }[];
+        }) => {
           sent.push({ yaml: r.composeYaml, mounts: r.mounts });
           return { ok: true, error: "" };
         },
@@ -900,7 +1016,11 @@ test("saving config files reroutes the stack with them", async () => {
   try {
     await asUser1(async () => {
       await setDatabaseMounts("db_cfg", [
-        { filePath: "postgresql.conf", content: "shared_buffers = 1GB\n", mountPath: "/etc/postgresql.conf" },
+        {
+          filePath: "postgresql.conf",
+          content: "shared_buffers = 1GB\n",
+          mountPath: "/etc/postgresql.conf",
+        },
       ]);
       const saved = await getDatabase("db_cfg");
       assert.deepEqual(saved?.mounts, [
@@ -916,7 +1036,9 @@ test("saving config files reroutes the stack with them", async () => {
       { path: "postgresql.conf", content: "shared_buffers = 1GB\n" },
     ]);
     assert.ok(
-      sent[0]!.yaml.includes("/files/db-cfg/postgresql.conf:/etc/postgresql.conf"),
+      sent[0]!.yaml.includes(
+        "/files/db-cfg/postgresql.conf:/etc/postgresql.conf",
+      ),
       sent[0]!.yaml,
     );
 

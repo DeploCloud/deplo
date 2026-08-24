@@ -28,9 +28,13 @@ import type { BuildConfig } from "../types";
  * forces devDependencies in (`--include=dev` / `--prod=false`) so `next build`
  * & friends have what they need, while the image still RUNS as production.
  */
-export function generateDockerfile(build: BuildConfig, envKeys: string[] = []): string {
+export function generateDockerfile(
+  build: BuildConfig,
+  envKeys: string[] = [],
+): string {
   // This generated path is Node-only; honour a pinned runtimeVersion, else default.
-  const node = (build.runtimeVersion || "20").replace(/[^\d.]/g, "").split(".")[0] || "20";
+  const node =
+    (build.runtimeVersion || "20").replace(/[^\d.]/g, "").split(".")[0] || "20";
   const root = (build.rootDirectory || ".").replace(/^\.?\/?/, "") || ".";
   const workdir = root === "." || root === "" ? "/app" : `/app/${root}`;
   const installOverride = build.installCommand?.trim();
@@ -114,7 +118,9 @@ const AUTO_INSTALL_RUN = [
  * Dockerfile syntax), deduped and sorted. Exported for the deploy-request seam.
  */
 export function dockerfileEnvKeys(envKeys: string[]): string[] {
-  return [...new Set(envKeys.filter((k) => /^[A-Za-z_][A-Za-z0-9_]*$/.test(k)))].sort();
+  return [
+    ...new Set(envKeys.filter((k) => /^[A-Za-z_][A-Za-z0-9_]*$/.test(k))),
+  ].sort();
 }
 
 /** Render a shell command as a Dockerfile CMD exec array. */

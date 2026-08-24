@@ -4,7 +4,10 @@ import { getAppBySlug } from "@/lib/data/apps";
 import { deployHookUrlMasked } from "@/lib/data/deploy-hook";
 import { listBuildServerChoices, listServerChoices } from "@/lib/data/servers";
 import { listGithubInstallations } from "@/lib/data/github";
-import { appWebhookStatus, listGitConnections } from "@/lib/data/git-connections";
+import {
+  appWebhookStatus,
+  listGitConnections,
+} from "@/lib/data/git-connections";
 import { providerFor } from "@/lib/git/providers";
 import { SettingsSection } from "@/components/apps/settings/settings-shared";
 import { DeploymentSettingsForm } from "@/components/apps/settings/deployment-settings-form";

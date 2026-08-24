@@ -94,7 +94,9 @@ function parseChecksums(text: string): Map<string, string> {
  * global Symbol makes the bust visible to every graph in this process.
  */
 const CACHE_KEY = Symbol.for("deplo.agent.release.cache");
-type ReleaseCacheCell = { value: { at: number; release: AgentRelease | null } | null };
+type ReleaseCacheCell = {
+  value: { at: number; release: AgentRelease | null } | null;
+};
 const cacheCell: ReleaseCacheCell = ((globalThis as Record<symbol, unknown>)[
   CACHE_KEY
 ] ??= { value: null }) as ReleaseCacheCell;

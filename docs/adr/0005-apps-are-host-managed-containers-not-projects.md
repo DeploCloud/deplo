@@ -20,7 +20,7 @@
 
 Deplo lets a team install **apps** from a remote **app repository** to extend the platform
 (the first being the **MCP app**, a server exposing Deplo's GraphQL API to an LLM client).
-The obvious design — and the original plan — was *App = a team-owned project* deployed
+The obvious design — and the original plan — was _App = a team-owned project_ deployed
 through the normal pipeline, to inherit start/stop/logs/route/TLS "for free." We rejected
 that. An app is **not a project**: it never appears in the Projects tab, the project count,
 or the `projects` API. Instead an app reuses the **SSH-gateway pattern** — a container Deplo
@@ -59,10 +59,10 @@ app's container from being deleted out from under it from the Projects screen.
 
 - **App = project** (the plan's reuse bet): rejected — pollutes the Projects tab/count/API,
   lets the app's backing project and token be deleted/revoked from unrelated screens (orphan
-  + drift), and drags in per-app domains/TLS the MCP app doesn't need.
+  - drift), and drags in per-app domains/TLS the MCP app doesn't need.
 - **A wholly separate app runtime** (no reuse): rejected — would reimplement container
   create/start/stop/status that the SSH-gateway machinery already provides.
-- **Per-app domain + sslip.io + TLS**: rejected — an app only needs to be *reachable*, and a
+- **Per-app domain + sslip.io + TLS**: rejected — an app only needs to be _reachable_, and a
   path on Deplo's own host reuses its cert with zero new infrastructure.
 - **Next.js reverse-proxy for the app path**: rejected in favor of Traefik path labels — keeps
   long-lived MCP streaming traffic out of the control-plane process.

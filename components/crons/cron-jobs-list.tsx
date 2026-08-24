@@ -94,7 +94,10 @@ function LastStatus({ job }: { job: CronJobDTO }) {
   if (!job.lastStatus) {
     return <span className="text-xs text-muted-foreground">Never run</span>;
   }
-  const map: Record<string, { variant: "success" | "destructive" | "warning" | "muted"; label: string }> = {
+  const map: Record<
+    string,
+    { variant: "success" | "destructive" | "warning" | "muted"; label: string }
+  > = {
     succeeded: { variant: "success", label: "Succeeded" },
     failed: { variant: "destructive", label: "Failed" },
     timedout: { variant: "destructive", label: "Timed out" },
@@ -103,9 +106,16 @@ function LastStatus({ job }: { job: CronJobDTO }) {
     lost: { variant: "warning", label: "Unknown" },
     running: { variant: "warning", label: "Running" },
   };
-  const m = map[job.lastStatus] ?? { variant: "muted" as const, label: job.lastStatus };
+  const m = map[job.lastStatus] ?? {
+    variant: "muted" as const,
+    label: job.lastStatus,
+  };
   return (
-    <SimpleTooltip content={job.lastRunAt ? `Last run ${timeAgo(job.lastRunAt)}` : "Last run"}>
+    <SimpleTooltip
+      content={
+        job.lastRunAt ? `Last run ${timeAgo(job.lastRunAt)}` : "Last run"
+      }
+    >
       <Badge variant={m.variant} className="text-[10px] font-normal">
         {m.label}
       </Badge>
@@ -211,9 +221,13 @@ function CronJobRow({
                     second at hydration, which is all `suppressHydrationWarning`
                     covers here. */}
                 {nextRunAt !== null && (
-                  <span suppressHydrationWarning>· next {timeAgo(nextRunAt)}</span>
+                  <span suppressHydrationWarning>
+                    · next {timeAgo(nextRunAt)}
+                  </span>
                 )}
-                {job.service && <span className="font-mono">· {job.service}</span>}
+                {job.service && (
+                  <span className="font-mono">· {job.service}</span>
+                )}
               </p>
             </div>
           </button>
@@ -260,12 +274,18 @@ function CronJobRow({
         {open && (
           <div className="border-t border-border p-3">
             {job.description && (
-              <p className="mb-3 text-sm text-muted-foreground">{job.description}</p>
+              <p className="mb-3 text-sm text-muted-foreground">
+                {job.description}
+              </p>
             )}
             <pre className="mb-3 overflow-x-auto rounded-md bg-muted/40 p-2 font-mono text-xs">
               {job.command}
             </pre>
-            <CronRunHistory key={historyKey} jobId={job.id} canManage={canManage} />
+            <CronRunHistory
+              key={historyKey}
+              jobId={job.id}
+              canManage={canManage}
+            />
           </div>
         )}
       </div>
@@ -337,7 +357,8 @@ export function CronJobsList({
 
   const nextRuns = jobs.map((j) =>
     j.enabled
-      ? (nextCronRunInZone(j.schedule, new Date(now), j.timezone)?.getTime() ?? null)
+      ? (nextCronRunInZone(j.schedule, new Date(now), j.timezone)?.getTime() ??
+        null)
       : null,
   );
 
@@ -351,7 +372,8 @@ export function CronJobsList({
   const soonest = Math.min(...nextRuns.filter((n): n is number => n !== null));
   const lastSoonest = React.useRef(soonest);
   React.useEffect(() => {
-    const rolledOver = Number.isFinite(soonest) && lastSoonest.current !== soonest;
+    const rolledOver =
+      Number.isFinite(soonest) && lastSoonest.current !== soonest;
     lastSoonest.current = soonest;
     if (!rolledOver) return;
     const timer = setTimeout(() => router.refresh(), AFTER_FIRE_MS);

@@ -68,7 +68,7 @@ export function Sidebar({
       <div
         className={cn(
           "flex h-14 items-center",
-          collapsed ? "justify-center px-2" : "justify-between gap-2 pl-5 pr-2",
+          collapsed ? "justify-center px-2" : "justify-between gap-2 pr-2 pl-5",
         )}
       >
         <Link href="/" className="cursor-pointer" aria-label="Deplo home">
@@ -101,22 +101,22 @@ export function Sidebar({
       {/* Search */}
       <div className="px-3 pb-2">
         <form onSubmit={submitSearch} className="relative">
-          <Search className="pointer-events-none absolute left-2.5 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
+          <Search className="pointer-events-none absolute top-1/2 left-2.5 size-4 -translate-y-1/2 text-muted-foreground" />
           <Input
             ref={searchRef}
             value={query}
             onChange={(e) => setQuery(e.target.value)}
             placeholder="Search apps"
             aria-label="Search apps"
-            className="h-9 pl-8 pr-7"
+            className="h-9 pr-7 pl-8"
           />
-          <kbd className="pointer-events-none absolute right-2 top-1/2 hidden -translate-y-1/2 rounded border border-border bg-muted px-1.5 text-[10px] text-muted-foreground lg:inline">
+          <kbd className="pointer-events-none absolute top-1/2 right-2 hidden -translate-y-1/2 rounded border border-border bg-muted px-1.5 text-[10px] text-muted-foreground lg:inline">
             /
           </kbd>
         </form>
       </div>
 
-      <div className="flex-1 overflow-y-auto overflow-x-hidden">
+      <div className="flex-1 overflow-x-hidden overflow-y-auto">
         <SidebarNav
           collapsed={collapsed}
           capabilities={capabilities}
@@ -131,7 +131,7 @@ export function Sidebar({
         aria-orientation="vertical"
         aria-label="Resize sidebar"
         className={cn(
-          "absolute right-0 top-0 z-20 h-full w-1.5 cursor-col-resize touch-none transition-colors hover:bg-foreground/15",
+          "absolute top-0 right-0 z-20 h-full w-1.5 cursor-col-resize touch-none transition-colors hover:bg-foreground/15",
           dragging && "bg-foreground/25",
         )}
       />

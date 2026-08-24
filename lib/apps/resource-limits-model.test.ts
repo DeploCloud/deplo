@@ -42,13 +42,22 @@ test("null limits ⇒ every field blank", () => {
 test("CPU is shown in cores but round-trips to milli-CPUs", () => {
   assert.equal(resourcesToForm(mk({ cpuMilli: 500 })).cpuCores, "0.5");
   assert.equal(resourcesToForm(mk({ cpuMilli: 2000 })).cpuCores, "2");
-  assert.equal(formToLimitsInput({ ...EMPTY_RESOURCE_FORM, cpuCores: "0.5" }).cpuMilli, 500);
-  assert.equal(formToLimitsInput({ ...EMPTY_RESOURCE_FORM, cpuCores: "2" }).cpuMilli, 2000);
+  assert.equal(
+    formToLimitsInput({ ...EMPTY_RESOURCE_FORM, cpuCores: "0.5" }).cpuMilli,
+    500,
+  );
+  assert.equal(
+    formToLimitsInput({ ...EMPTY_RESOURCE_FORM, cpuCores: "2" }).cpuMilli,
+    2000,
+  );
 });
 
 test("empty strings clear a dimension (→ null)", () => {
   const input = formToLimitsInput(EMPTY_RESOURCE_FORM);
-  assert.equal(Object.values(input).every((v) => v === null), true);
+  assert.equal(
+    Object.values(input).every((v) => v === null),
+    true,
+  );
 });
 
 test("form → input round-trips a full ResourceLimits", () => {
@@ -95,7 +104,11 @@ test("dirty key is stable: a form built from saved limits matches its snapshot",
 
 test("preset detection matches Memory + CPU exactly", () => {
   const small = RESOURCE_PRESETS.find((p) => p.label === "Small")!;
-  const form = { ...EMPTY_RESOURCE_FORM, memoryMb: String(small.memoryMb), cpuCores: String(small.cpuCores) };
+  const form = {
+    ...EMPTY_RESOURCE_FORM,
+    memoryMb: String(small.memoryMb),
+    cpuCores: String(small.cpuCores),
+  };
   assert.equal(activeResourcePreset(form)?.label, "Small");
   // A tweaked memory value no longer matches any preset.
   assert.equal(activeResourcePreset({ ...form, memoryMb: "1000" }), undefined);

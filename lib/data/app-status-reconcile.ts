@@ -75,7 +75,9 @@ const IN_PROGRESS: Deployment["status"][] = ["queued", "building"];
  *    to `running` there. Keying strictly on `state` would silently switch this
  *    whole feature off for part of a mixed-version fleet.
  */
-export function telemetrySaysRunning(stats: readonly PbContainerStat[]): boolean {
+export function telemetrySaysRunning(
+  stats: readonly PbContainerStat[],
+): boolean {
   if (stats.length === 0) return false;
   if (stats.some((s) => s.state === "restarting")) return false;
   return stats.some((s) => (s.state ? s.state === "running" : s.running));

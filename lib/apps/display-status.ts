@@ -33,12 +33,7 @@ import type { AppStatus } from "@/lib/types";
  *  - `not_deployed` — nothing was ever built for this app, so it has never run.
  */
 export type DisplayStatus =
-  | AppStatus
-  | "restarting"
-  | "degraded"
-  | "unhealthy"
-  | "down"
-  | "not_deployed";
+  AppStatus | "restarting" | "degraded" | "unhealthy" | "down" | "not_deployed";
 
 /** The slice of {@link import("@/lib/data/console").AppRuntime} the fold needs. */
 export interface RuntimeSnapshot {

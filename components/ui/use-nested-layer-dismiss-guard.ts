@@ -50,20 +50,19 @@ export function useNestedLayerDismissGuard() {
       openAtPointerDownRef.current.some(
         (content) =>
           // Unmounted outright, or still mounted for an exit animation.
-          !content.isConnected ||
-          content.getAttribute("data-state") !== "open"
+          !content.isConnected || content.getAttribute("data-state") !== "open",
       ),
-    []
+    [],
   );
 }
 
 function openPopperContents(): Element[] {
   return Array.from(
-    document.querySelectorAll("[data-radix-popper-content-wrapper]")
+    document.querySelectorAll("[data-radix-popper-content-wrapper]"),
   )
     .map((wrapper) => wrapper.firstElementChild)
     .filter(
       (content): content is Element =>
-        content?.getAttribute("data-state") === "open"
+        content?.getAttribute("data-state") === "open",
     );
 }

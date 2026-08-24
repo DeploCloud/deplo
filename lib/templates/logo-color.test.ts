@@ -44,7 +44,10 @@ test("a small saturated mark outvotes the field it sits on", async () => {
     await logo([0, 0, 0, 255], [249, 115, 22, 255]), // #f97316 on black
   );
   assert.notEqual(hue, undefined);
-  assert.ok(apart(hue!, 51) <= 15, `expected an orange hue near 51, got ${hue}`);
+  assert.ok(
+    apart(hue!, 51) <= 15,
+    `expected an orange hue near 51, got ${hue}`,
+  );
 });
 
 test("transparent pixels do not vote", async () => {
@@ -52,9 +55,14 @@ test("transparent pixels do not vote", async () => {
   // underneath would be read as a real colour.
   assert.deepEqual(await analyseLogo(await logo([0, 0, 0, 0])), {});
   // And a mark on transparent padding still reads as the mark's colour.
-  const { hue } = await analyseLogo(await logo([0, 0, 0, 0], [34, 197, 94, 255]));
+  const { hue } = await analyseLogo(
+    await logo([0, 0, 0, 0], [34, 197, 94, 255]),
+  );
   assert.notEqual(hue, undefined);
-  assert.ok(apart(hue!, 149) <= 15, `expected a green hue near 149, got ${hue}`);
+  assert.ok(
+    apart(hue!, 149) <= 15,
+    `expected a green hue near 149, got ${hue}`,
+  );
 });
 
 test("a black wordmark asks for a plate on the dark theme", async () => {

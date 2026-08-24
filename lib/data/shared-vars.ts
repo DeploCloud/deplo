@@ -85,7 +85,10 @@ function scopeFor(m: {
 /** Every shared var of one team, stitched with its four junction sets. */
 async function loadSharedVarsForTeam(teamId: string): Promise<SharedVar[]> {
   const db = getDb();
-  const rows = await db.select().from(varsTable).where(eq(varsTable.teamId, teamId));
+  const rows = await db
+    .select()
+    .from(varsTable)
+    .where(eq(varsTable.teamId, teamId));
   if (rows.length === 0) return [];
   const ids = rows.map((r) => r.id);
   const [targets, envs, projs, apps] = await Promise.all([
@@ -104,10 +107,26 @@ async function loadSharedVarsForTeam(teamId: string): Promise<SharedVar[]> {
     }
     return m;
   };
-  const targetsBy = group(targets, (t) => t.varId, (t) => t.target as EnvTarget);
-  const envsBy = group(envs, (e) => e.varId, (e) => e.environmentId);
-  const projsBy = group(projs, (p) => p.varId, (p) => p.projectId);
-  const appsBy = group(apps, (a) => a.varId, (a) => a.appId);
+  const targetsBy = group(
+    targets,
+    (t) => t.varId,
+    (t) => t.target as EnvTarget,
+  );
+  const envsBy = group(
+    envs,
+    (e) => e.varId,
+    (e) => e.environmentId,
+  );
+  const projsBy = group(
+    projs,
+    (p) => p.varId,
+    (p) => p.projectId,
+  );
+  const appsBy = group(
+    apps,
+    (a) => a.varId,
+    (a) => a.appId,
+  );
   return rows.map((r) => ({
     id: r.id,
     teamId: r.teamId,
@@ -166,10 +185,17 @@ async function teamLookups(teamId: string): Promise<{
         projectName: projectsTable.name,
       })
       .from(environmentsTable)
-      .innerJoin(projectsTable, eq(environmentsTable.projectId, projectsTable.id))
+      .innerJoin(
+        projectsTable,
+        eq(environmentsTable.projectId, projectsTable.id),
+      )
       .where(eq(projectsTable.teamId, teamId)),
     db
-      .select({ id: projectsTable.id, name: projectsTable.name, slug: projectsTable.slug })
+      .select({
+        id: projectsTable.id,
+        name: projectsTable.name,
+        slug: projectsTable.slug,
+      })
       .from(projectsTable)
       .where(eq(projectsTable.teamId, teamId)),
     db
@@ -280,7 +306,11 @@ export interface AppSharedVarDTO {
  */
 function reachableFromApp(
   v: { appIds: string[]; projectIds: string[]; environmentIds: string[] },
-  app: { appId: string; projectId: string | null; environmentId: string | null },
+  app: {
+    appId: string;
+    projectId: string | null;
+    environmentId: string | null;
+  },
 ): boolean {
   return (
     v.appIds.includes(app.appId) ||
@@ -311,7 +341,9 @@ export async function listSharedVarsForApp(
   // reach the same part of the team, so they see the same variables.
   const vars = (await reachesWholeTeam())
     ? all
-    : all.filter((v) => reachableFromApp(v, { appId, projectId, environmentId }));
+    : all.filter((v) =>
+        reachableFromApp(v, { appId, projectId, environmentId }),
+      );
   // One identity query for every shared row on the app's Environment page.
   const authors = await loadUserIdentities(authorIds(vars));
   return vars
@@ -360,7 +392,9 @@ export interface AppliedSharedVarDTO {
  * "shared" rows on the aggregate App tab. One pass over the team's shared vars
  * (no per-app query fan-out).
  */
-export async function listAppliedSharedVarsByApp(): Promise<AppliedSharedVarDTO[]> {
+export async function listAppliedSharedVarsByApp(): Promise<
+  AppliedSharedVarDTO[]
+> {
   await requireTeamWide("shared variables");
   const { teamId } = await requireCapability("manage_env");
   const vars = await loadSharedVarsForTeam(teamId);
@@ -380,7 +414,12 @@ export async function listAppliedSharedVarsByApp(): Promise<AppliedSharedVarDTO[
           environmentId: appsTable.environmentId,
         })
         .from(appsTable)
-        .where(and(inArray(appsTable.id, linkedAppIds), eq(appsTable.teamId, teamId)))
+        .where(
+          and(
+            inArray(appsTable.id, linkedAppIds),
+            eq(appsTable.teamId, teamId),
+          ),
+        )
     : [];
   const reach = await appCapabilitiesForTeam(teamId, appRows);
   // A var linked to SEVERAL apps repeats below, so decrypt each value once here
@@ -430,7 +469,9 @@ async function replaceTargets(
   if (!targets) return;
   await tx.delete(targetsTable).where(eq(targetsTable.varId, varId));
   if (targets.length > 0)
-    await tx.insert(targetsTable).values(targets.map((target) => ({ varId, target })));
+    await tx
+      .insert(targetsTable)
+      .values(targets.map((target) => ({ varId, target })));
 }
 
 /** Whole-set replace of a var's environment/project junctions. */
@@ -443,9 +484,13 @@ async function insertScopeChildren(
   if (environmentIds.length > 0)
     await tx
       .insert(envJunction)
-      .values(environmentIds.map((environmentId) => ({ varId, environmentId })));
+      .values(
+        environmentIds.map((environmentId) => ({ varId, environmentId })),
+      );
   if (projectIds.length > 0)
-    await tx.insert(projJunction).values(projectIds.map((projectId) => ({ varId, projectId })));
+    await tx
+      .insert(projJunction)
+      .values(projectIds.map((projectId) => ({ varId, projectId })));
 }
 
 /**
@@ -460,7 +505,9 @@ async function replaceAppLinks(
   if (!appIds) return;
   await tx.delete(appJunction).where(eq(appJunction.varId, varId));
   if (appIds.length > 0)
-    await tx.insert(appJunction).values(appIds.map((appId) => ({ varId, appId })));
+    await tx
+      .insert(appJunction)
+      .values(appIds.map((appId) => ({ varId, appId })));
 }
 
 /**
@@ -520,7 +567,10 @@ export async function saveSharedVar(input: {
   const targets = input.targets?.length ? sanitizeTargets(input.targets) : null;
 
   // Keep only environments/projects/apps that belong to the active team.
-  const environmentIds = await filterTeamEnvironments(teamId, input.environmentIds);
+  const environmentIds = await filterTeamEnvironments(
+    teamId,
+    input.environmentIds,
+  );
   const projectIds = await filterTeamProjects(teamId, input.projectIds);
   const appIds = input.appIds
     ? await filterTeamApps(teamId, input.appIds)
@@ -551,7 +601,12 @@ export async function saveSharedVar(input: {
   // unsavable. When the caller sends `appIds` it OWNS the link set, so only the
   // incoming set counts — the stored links are about to be replaced by it.
   const reachesByLink = appIds ? appIds.length > 0 : storedLinks.length > 0;
-  if (!teamWide && environmentIds.length === 0 && projectIds.length === 0 && !reachesByLink)
+  if (
+    !teamWide &&
+    environmentIds.length === 0 &&
+    projectIds.length === 0 &&
+    !reachesByLink
+  )
     throw new Error("Share with at least one app, project, or the whole team");
 
   // The editor sends the MASK back unchanged when only the SCOPE changed on a
@@ -691,7 +746,10 @@ export async function setSharedVarAppLink(
   )
     throw new Error("Variable not found");
   if (linked) {
-    await getDb().insert(appJunction).values({ varId, appId }).onConflictDoNothing();
+    await getDb()
+      .insert(appJunction)
+      .values({ varId, appId })
+      .onConflictDoNothing();
   } else {
     await getDb()
       .delete(appJunction)
@@ -745,23 +803,36 @@ async function filterTeamEnvironments(
     .select({ id: environmentsTable.id })
     .from(environmentsTable)
     .innerJoin(projectsTable, eq(environmentsTable.projectId, projectsTable.id))
-    .where(and(inArray(environmentsTable.id, unique), eq(projectsTable.teamId, teamId)));
+    .where(
+      and(
+        inArray(environmentsTable.id, unique),
+        eq(projectsTable.teamId, teamId),
+      ),
+    );
   return rows.map((r) => r.id);
 }
 
 /** Keep only project ids that belong to the team. */
-async function filterTeamProjects(teamId: string, ids: string[]): Promise<string[]> {
+async function filterTeamProjects(
+  teamId: string,
+  ids: string[],
+): Promise<string[]> {
   const unique = [...new Set(ids)];
   if (unique.length === 0) return [];
   const rows = await getDb()
     .select({ id: projectsTable.id })
     .from(projectsTable)
-    .where(and(inArray(projectsTable.id, unique), eq(projectsTable.teamId, teamId)));
+    .where(
+      and(inArray(projectsTable.id, unique), eq(projectsTable.teamId, teamId)),
+    );
   return rows.map((r) => r.id);
 }
 
 /** Keep only app ids that belong to the team. */
-async function filterTeamApps(teamId: string, ids: string[]): Promise<string[]> {
+async function filterTeamApps(
+  teamId: string,
+  ids: string[],
+): Promise<string[]> {
   const unique = [...new Set(ids)];
   if (unique.length === 0) return [];
   const rows = await getDb()
@@ -815,7 +886,12 @@ export async function loadSharedVarsForApp(
   const targetRows = await db
     .select()
     .from(targetsTable)
-    .where(inArray(targetsTable.varId, rows.map((r) => r.id)));
+    .where(
+      inArray(
+        targetsTable.varId,
+        rows.map((r) => r.id),
+      ),
+    );
   const targetsBy = new Map<string, EnvTarget[]>();
   for (const t of targetRows) {
     const arr = targetsBy.get(t.varId) ?? [];

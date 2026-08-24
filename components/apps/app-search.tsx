@@ -78,7 +78,7 @@ export function AppSearch({
   return (
     <div className="flex items-center gap-2">
       <div className="relative flex-1">
-        <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
+        <Search className="pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2 text-muted-foreground" />
         <Input
           value={q}
           onChange={(e) => setQ(e.target.value)}
@@ -90,7 +90,10 @@ export function AppSearch({
       <Button
         variant={view === "grid" ? "outline" : "ghost"}
         size="icon"
-        className={cn("hidden sm:flex", view !== "grid" && "text-muted-foreground")}
+        className={cn(
+          "hidden sm:flex",
+          view !== "grid" && "text-muted-foreground",
+        )}
         aria-label="Grid view"
         aria-pressed={view === "grid"}
         onClick={() => selectView("grid")}
@@ -100,7 +103,10 @@ export function AppSearch({
       <Button
         variant={view === "list" ? "outline" : "ghost"}
         size="icon"
-        className={cn("hidden sm:flex", view !== "list" && "text-muted-foreground")}
+        className={cn(
+          "hidden sm:flex",
+          view !== "list" && "text-muted-foreground",
+        )}
         aria-label="List view"
         aria-pressed={view === "list"}
         onClick={() => selectView("list")}

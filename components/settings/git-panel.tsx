@@ -64,10 +64,7 @@ export interface GitProviderChoice {
 }
 
 /** Whether an App can drive pull request previews, and where to fix it. */
-type PreviewReadiness = Record<
-  string,
-  { ready: boolean; settingsUrl: string }
->;
+type PreviewReadiness = Record<string, { ready: boolean; settingsUrl: string }>;
 
 const GIT_FEEDBACK: Record<string, { ok: boolean; msg: string }> = {
   connected: { ok: true, msg: "GitHub App connected" },

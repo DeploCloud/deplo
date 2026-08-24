@@ -30,13 +30,24 @@ export function DatabaseImageSettings({ db }: { db: DatabaseDTO }) {
   const [pending, startTransition] = React.useTransition();
   const [version, setVersion] = React.useState(db.version);
   const [customImage, setCustomImage] = React.useState(db.customImage ?? "");
-  const [customCommand, setCustomCommand] = React.useState(db.customCommand ?? "");
+  const [customCommand, setCustomCommand] = React.useState(
+    db.customCommand ?? "",
+  );
 
   const saved = React.useMemo(
-    () => JSON.stringify([db.version, db.customImage ?? "", db.customCommand ?? ""]),
+    () =>
+      JSON.stringify([
+        db.version,
+        db.customImage ?? "",
+        db.customCommand ?? "",
+      ]),
     [db.version, db.customImage, db.customCommand],
   );
-  const current = JSON.stringify([version.trim(), customImage.trim(), customCommand.trim()]);
+  const current = JSON.stringify([
+    version.trim(),
+    customImage.trim(),
+    customCommand.trim(),
+  ]);
   const dirty = current !== saved;
 
   const redisCommandRisk =
@@ -72,7 +83,8 @@ export function DatabaseImageSettings({ db }: { db: DatabaseDTO }) {
         <CardTitle className="text-base">Image & command</CardTitle>
         <CardDescription>
           Override the engine image or its start command. Changes apply on the
-          next <strong className="font-medium text-foreground">Redeploy</strong>.
+          next <strong className="font-medium text-foreground">Redeploy</strong>
+          .
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-4">
@@ -88,7 +100,11 @@ export function DatabaseImageSettings({ db }: { db: DatabaseDTO }) {
               </p>
             </>
           ) : (
-            <DbVersionInput engine={db.type} value={version} onChange={setVersion} />
+            <DbVersionInput
+              engine={db.type}
+              value={version}
+              onChange={setVersion}
+            />
           )}
         </div>
 
@@ -122,7 +138,9 @@ export function DatabaseImageSettings({ db }: { db: DatabaseDTO }) {
                 <code className="font-mono">--requirepass</code>. Without it the
                 database has no password and the stored connection string and
                 backups will stop authenticating. Add{" "}
-                <code className="font-mono">--requirepass &lt;password&gt;</code>{" "}
+                <code className="font-mono">
+                  --requirepass &lt;password&gt;
+                </code>{" "}
                 unless you configure auth another way.
               </span>
             </p>

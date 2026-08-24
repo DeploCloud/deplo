@@ -34,7 +34,9 @@ export default async function AppPullRequestsPage(
   ]);
 
   const deployButton =
-    canDeploy && view.unavailable !== "not-github" && view.unavailable !== "no-installation" ? (
+    canDeploy &&
+    view.unavailable !== "not-github" &&
+    view.unavailable !== "no-installation" ? (
       <DeployPullRequestDialog appId={app.id} repoBranch={view.branch} />
     ) : null;
 
@@ -48,8 +50,8 @@ export default async function AppPullRequestsPage(
         <div>
           <h3 className="text-sm font-medium">Pull request previews</h3>
           <p className="mt-1 text-sm text-muted-foreground">
-            Every open pull request against {view.branch} gets its own deploy and
-            its own URL.
+            Every open pull request against {view.branch} gets its own deploy
+            and its own URL.
           </p>
         </div>
         {deployButton}
@@ -91,8 +93,8 @@ export default async function AppPullRequestsPage(
           <p className="mt-1 text-sm text-muted-foreground">
             Deplo needs the pull request event and permission to comment before
             it can build a preview when someone opens a pull request. It takes
-            one click on GitHub. You can still deploy a pull request by hand from
-            this page in the meantime.
+            one click on GitHub. You can still deploy a pull request by hand
+            from this page in the meantime.
           </p>
           <div className="mt-3 flex flex-wrap gap-2">
             {view.githubSettingsUrl && (

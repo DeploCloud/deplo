@@ -69,8 +69,11 @@ const VIEWER_A = "u_viewer_a";
 const APP_A = "app_a";
 const APP_B = "app_b";
 
-const as = <T>(userId: string, teamId: string, fn: () => Promise<T>): Promise<T> =>
-  runWithIdentity({ userId, teamId }, fn);
+const as = <T>(
+  userId: string,
+  teamId: string,
+  fn: () => Promise<T>,
+): Promise<T> => runWithIdentity({ userId, teamId }, fn);
 
 /** `user:$2b$<cost>$<salt+digest>` — the bcrypt htpasswd line Traefik parses. */
 const HTPASSWD_LINE = /^[^\s:,]+:\$2[aby]\$\d{2}\$[./A-Za-z0-9]{53}$/;
@@ -124,7 +127,11 @@ test("every mutation returns the owning app, so the edge can re-apply routing", 
 
 test("the rendered value is one htpasswd line per user, alphabetical, comma-joined", async () => {
   await as(OWNER_A, TEAM_A, async () => {
-    assert.equal(await basicAuthUsersValue(APP_A), "", "no users ⇒ no middleware");
+    assert.equal(
+      await basicAuthUsersValue(APP_A),
+      "",
+      "no users ⇒ no middleware",
+    );
     assert.equal(await appHasBasicAuth(APP_A), false);
 
     await addBasicAuthUser(APP_A, "zoe", "Pw-Zoe1!x");
@@ -141,7 +148,9 @@ test("the rendered value is one htpasswd line per user, alphabetical, comma-join
 });
 
 test("only this app's credentials are rendered — never another app's", async () => {
-  await as(OWNER_A, TEAM_A, () => addBasicAuthUser(APP_A, "alice", "Pw1!xxxxx"));
+  await as(OWNER_A, TEAM_A, () =>
+    addBasicAuthUser(APP_A, "alice", "Pw1!xxxxx"),
+  );
   await as(OWNER_B, TEAM_B, () => addBasicAuthUser(APP_B, "bob", "Pw1!xxxxx"));
 
   const a = await as(OWNER_A, TEAM_A, () => basicAuthUsersValue(APP_A));
@@ -176,7 +185,11 @@ test("changing a password replaces the rendered credential", async () => {
     const before = await basicAuthUsersValue(APP_A);
     await updateBasicAuthUserPassword(u.id, "Hunter3!x");
     const after = await basicAuthUsersValue(APP_A);
-    assert.notEqual(before, after, "the htpasswd hash must change with the password");
+    assert.notEqual(
+      before,
+      after,
+      "the htpasswd hash must change with the password",
+    );
     assert.match(after, HTPASSWD_LINE);
   });
 });

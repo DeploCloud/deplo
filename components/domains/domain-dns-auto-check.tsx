@@ -85,9 +85,14 @@ export function DomainDnsAutoCheck({
         const res = await gqlAction<{
           verifyDomain: { id: string; status: string };
         }>(
-          /* GraphQL */ `mutation($id: String!) {
-            verifyDomain(id: $id) { id status }
-          }`,
+          /* GraphQL */ `
+            mutation ($id: String!) {
+              verifyDomain(id: $id) {
+                id
+                status
+              }
+            }
+          `,
           { id: d.id },
         );
         if (cancelled) break;
@@ -143,7 +148,9 @@ export function DomainDnsAutoCheck({
       />
       <div className="space-y-0.5">
         <p className="font-medium">
-          {disabled ? "Waiting for DNS" : "Waiting for DNS — checked automatically"}
+          {disabled
+            ? "Waiting for DNS"
+            : "Waiting for DNS — checked automatically"}
         </p>
         <p className="text-muted-foreground">
           A domain starts routing once its DNS points at this server
@@ -166,9 +173,9 @@ export function DomainDnsAutoCheck({
             )
           ) : (
             <>
-              While you’re on this page deplo re-checks DNS every 30 seconds
-              and starts routing the moment the record resolves — no manual
-              step needed. Verify forces an immediate check.
+              While you’re on this page deplo re-checks DNS every 30 seconds and
+              starts routing the moment the record resolves — no manual step
+              needed. Verify forces an immediate check.
             </>
           )}
         </p>

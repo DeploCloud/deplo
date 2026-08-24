@@ -213,7 +213,9 @@ export function BasicAuthManager({
         open={deleting !== null}
         onOpenChange={(v) => !v && setDeleting(null)}
         title={
-          deleting ? `Delete the “${deleting.username}” login?` : "Delete login?"
+          deleting
+            ? `Delete the “${deleting.username}” login?`
+            : "Delete login?"
         }
         description={
           rows.length === 1
@@ -507,7 +509,7 @@ function BasicAuthDialog({
                     type="button"
                     onClick={() => setVisible((v) => !v)}
                     aria-label={visible ? "Hide password" : "Show password"}
-                    className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground transition-colors hover:text-foreground"
+                    className="absolute top-1/2 right-2 -translate-y-1/2 text-muted-foreground transition-colors hover:text-foreground"
                   >
                     {visible ? (
                       <EyeOff className="size-4" />

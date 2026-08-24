@@ -182,7 +182,10 @@ export async function listDeployments(filter?: {
 
   return rows
     .map((row) => ({ dep: assembleDeployment(row), rowServerId: row.serverId }))
-    .filter(({ dep }) => !filter?.environment || dep.environment === filter.environment)
+    .filter(
+      ({ dep }) =>
+        !filter?.environment || dep.environment === filter.environment,
+    )
     .filter(({ dep }) => !filter?.status || dep.status === filter.status)
     .map(({ dep, rowServerId }) => {
       const p = byId.get(dep.appId);
@@ -502,7 +505,9 @@ export async function rollbackDeployment(
       dockerImage: appsTable.dockerImage,
     })
     .from(appsTable)
-    .where(and(eq(appsTable.id, dep.appId), eq(appsTable.teamId, membership.teamId)))
+    .where(
+      and(eq(appsTable.id, dep.appId), eq(appsTable.teamId, membership.teamId)),
+    )
     .limit(1);
   if (!app) throw new Error("App not found");
 
@@ -751,7 +756,12 @@ async function removeDeploymentRows(
   if (rows.length === 0) return 0;
   const deleted = await getDb()
     .delete(deploymentsTable)
-    .where(inArray(deploymentsTable.id, rows.map((r) => r.id)))
+    .where(
+      inArray(
+        deploymentsTable.id,
+        rows.map((r) => r.id),
+      ),
+    )
     .returning({ id: deploymentsTable.id, appId: deploymentsTable.appId });
   const apps = new Set(deleted.map((d) => d.appId));
   // Deleting the latest deployment NULLs the app's pointer (FK set-null), so
@@ -941,7 +951,10 @@ async function cancelDeploymentRows(
     .set({ status: "canceled", buildDurationMs: elapsedBuildMs })
     .where(
       and(
-        inArray(deploymentsTable.id, rows.map((r) => r.id)),
+        inArray(
+          deploymentsTable.id,
+          rows.map((r) => r.id),
+        ),
         inArray(deploymentsTable.status, IN_PROGRESS),
       ),
     )
@@ -1002,7 +1015,6 @@ export async function cancelAllDeployments(
   const permitted = await folderPermittedRows(rows, "deploy_apps");
   return cancelDeploymentRows(permitted, membership.teamId, user.name);
 }
-
 
 // `listAppDeployments` lived here: an EXPORTED, ungated pass-through to
 // `loadDeploymentsForApp` that took an app id from anywhere and answered with

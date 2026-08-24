@@ -53,7 +53,8 @@ const DockerCleanupPolicyRef = builder
     fields: (t) => ({
       enabled: t.exposeBoolean("enabled"),
       schedule: t.exposeString("schedule", {
-        description: "5-field cron expression, evaluated in UTC. Rejected on save if it does not parse.",
+        description:
+          "5-field cron expression, evaluated in UTC. Rejected on save if it does not parse.",
       }),
       minAgeHours: t.exposeInt("minAgeHours", {
         description: "Only reclaim objects older than this. 0 = no age filter.",
@@ -67,7 +68,8 @@ const DockerCleanupPolicyRef = builder
       }),
       scopes: t.field({
         type: [DockerCleanupScopeEnum],
-        description: "What the sweep reclaims. Empty = nothing, and the policy cannot be enabled.",
+        description:
+          "What the sweep reclaims. Empty = nothing, and the policy cannot be enabled.",
         resolve: (p) => p.scopes,
       }),
       excludedServerIds: t.exposeStringList("excludedServerIds", {
@@ -104,21 +106,30 @@ const DockerCleanupRunRef = builder
       id: t.exposeID("id"),
       serverId: t.exposeID("serverId", {
         nullable: true,
-        description: "Null once the server is removed — `serverName` is what keeps the row readable.",
+        description:
+          "Null once the server is removed — `serverName` is what keeps the row readable.",
       }),
       serverName: t.exposeString("serverName"),
-      trigger: t.field({ type: DockerCleanupTriggerEnum, resolve: (r) => r.trigger }),
-      actor: t.exposeString("actor", {
-        description: 'The user who ran it, or "Scheduler" for a scheduled sweep.',
+      trigger: t.field({
+        type: DockerCleanupTriggerEnum,
+        resolve: (r) => r.trigger,
       }),
-      status: t.field({ type: DockerCleanupRunStatusEnum, resolve: (r) => r.status }),
+      actor: t.exposeString("actor", {
+        description:
+          'The user who ran it, or "Scheduler" for a scheduled sweep.',
+      }),
+      status: t.field({
+        type: DockerCleanupRunStatusEnum,
+        resolve: (r) => r.status,
+      }),
       error: t.exposeString("error", { nullable: true }),
       reclaimedBytes: t.exposeFloat("reclaimedBytes"),
       startedAt: t.exposeString("startedAt"),
       finishedAt: t.exposeString("finishedAt", { nullable: true }),
       items: t.field({
         type: [DockerCleanupRunItemRef],
-        description: "The per-scope breakdown, in the scope allow-list's order.",
+        description:
+          "The per-scope breakdown, in the scope allow-list's order.",
         resolve: (r) => r.items,
       }),
     }),
@@ -175,7 +186,10 @@ builder.queryFields((t) => ({
       }),
     },
     resolve: (_r, { serverId, limit }) =>
-      listCleanupRuns({ serverId: serverId ?? undefined, limit: limit ?? undefined }),
+      listCleanupRuns({
+        serverId: serverId ?? undefined,
+        limit: limit ?? undefined,
+      }),
   }),
 }));
 
@@ -189,7 +203,12 @@ builder.mutationFields((t) => ({
     authScopes: { instanceAdmin: true },
     description:
       "Save the instance-wide cleanup policy. The cron is rejected (not repaired) when it does not parse — an unparseable schedule is a cleanup that silently never runs while the UI says it is enabled. The numeric bounds are clamped instead: there is no dangerous value of 'keep N images', only an unhelpful one.",
-    args: { input: t.arg({ type: UpdateDockerCleanupPolicyInputType, required: true }) },
+    args: {
+      input: t.arg({
+        type: UpdateDockerCleanupPolicyInputType,
+        required: true,
+      }),
+    },
     resolve: (_r, { input }) =>
       updateCleanupPolicy({
         enabled: input.enabled,
@@ -211,7 +230,8 @@ builder.mutationFields((t) => ({
       serverId: t.arg.string({ required: true }),
       excluded: t.arg.boolean({ required: true }),
     },
-    resolve: (_r, { serverId, excluded }) => setServerCleanupExcluded(serverId, excluded),
+    resolve: (_r, { serverId, excluded }) =>
+      setServerCleanupExcluded(serverId, excluded),
   }),
   runDockerCleanupNow: t.field({
     type: DockerCleanupRunRef,
@@ -261,7 +281,10 @@ export async function* cleanupRunsStream(): AsyncGenerator<CleanupRunDTO[]> {
   yield await listCleanupRunsForSubscriber();
   // The payload carries nothing beyond "something changed" (the channel's key is a
   // constant), so each ping is answered with a fresh read rather than a diff.
-  for await (const _ping of pubSub.subscribe("cleanupRunsChanged", CLEANUP_RUNS_TOPIC)) {
+  for await (const _ping of pubSub.subscribe(
+    "cleanupRunsChanged",
+    CLEANUP_RUNS_TOPIC,
+  )) {
     yield await listCleanupRunsForSubscriber();
   }
 }

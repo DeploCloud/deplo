@@ -56,7 +56,10 @@ export const BackupDestinationRef = builder
       // One line naming where this points: the endpoint, or `<server> · <path>`.
       // Every picker and card shows this rather than assembling its own.
       where: t.string({ resolve: (d) => destinationWhereField(d) }),
-      status: t.field({ type: DestinationStatusEnum, resolve: (d) => d.status }),
+      status: t.field({
+        type: DestinationStatusEnum,
+        resolve: (d) => d.status,
+      }),
       createdAt: t.exposeString("createdAt"),
       // Last-test verdict, so a red badge can say WHY without opening the log.
       lastTestAt: t.exposeString("lastTestAt", { nullable: true }),
@@ -104,7 +107,9 @@ export const BackupDestinationRef = builder
       // Null until someone downloads the recovery key. Drives the nudge on the
       // card: an encrypted backup whose only key lives inside the thing that
       // might be lost is not a backup.
-      recoveryKeySavedAt: t.exposeString("recoveryKeySavedAt", { nullable: true }),
+      recoveryKeySavedAt: t.exposeString("recoveryKeySavedAt", {
+        nullable: true,
+      }),
     }),
   });
 
@@ -127,10 +132,15 @@ const BackupDestinationOptionRef = builder
       name: t.exposeString("name"),
       kind: t.field({ type: DestinationKindEnum, resolve: (d) => d.kind }),
       where: t.exposeString("where"),
-      status: t.field({ type: DestinationStatusEnum, resolve: (d) => d.status }),
+      status: t.field({
+        type: DestinationStatusEnum,
+        resolve: (d) => d.status,
+      }),
       serverId: t.exposeID("serverId", { nullable: true }),
       encrypted: t.exposeBoolean("encrypted"),
-      recoveryKeySavedAt: t.exposeString("recoveryKeySavedAt", { nullable: true }),
+      recoveryKeySavedAt: t.exposeString("recoveryKeySavedAt", {
+        nullable: true,
+      }),
     }),
   });
 
@@ -201,24 +211,23 @@ const S3TestStepStatusEnum = builder.enumType("S3TestStepStatus", {
   values: ["passed", "failed", "skipped"] as const,
 });
 
-const S3TestStepRef = builder
-  .objectRef<S3TestStep>("S3TestStep")
-  .implement({
-    description:
-      "One step of the fixed probe sequence the agent performs (pick a server, " +
-      "open the endpoint, head the bucket, write a probe file, remove it).",
-    fields: (t) => ({
-      key: t.exposeString("key"),
-      label: t.exposeString("label"),
-      detail: t.exposeString("detail"),
-      status: t.field({ type: S3TestStepStatusEnum, resolve: (s) => s.status }),
-    }),
-  });
+const S3TestStepRef = builder.objectRef<S3TestStep>("S3TestStep").implement({
+  description:
+    "One step of the fixed probe sequence the agent performs (pick a server, " +
+    "open the endpoint, head the bucket, write a probe file, remove it).",
+  fields: (t) => ({
+    key: t.exposeString("key"),
+    label: t.exposeString("label"),
+    detail: t.exposeString("detail"),
+    status: t.field({ type: S3TestStepStatusEnum, resolve: (s) => s.status }),
+  }),
+});
 
 const S3TestLogLineRef = builder
   .objectRef<S3TestLogLine>("S3TestLogLine")
   .implement({
-    description: "A line of the connection-test log, with the level to render it at.",
+    description:
+      "A line of the connection-test log, with the level to render it at.",
     fields: (t) => ({
       level: t.exposeString("level"),
       text: t.exposeString("text"),
@@ -342,7 +351,9 @@ builder.mutationFields((t) => ({
   createDestination: t.field({
     type: BackupDestinationRef,
     authScopes: { capability: "manage_backup_destinations" },
-    args: { input: t.arg({ type: CreateDestinationInputType, required: true }) },
+    args: {
+      input: t.arg({ type: CreateDestinationInputType, required: true }),
+    },
     resolve: (_r, { input }) =>
       createDestination({
         name: input.name,
@@ -406,7 +417,9 @@ builder.mutationFields((t) => ({
       deleteArtifacts: t.arg.boolean({ required: false }),
     },
     resolve: async (_r, { id, deleteArtifacts }) => {
-      await deleteDestination(id, { deleteArtifacts: deleteArtifacts ?? false });
+      await deleteDestination(id, {
+        deleteArtifacts: deleteArtifacts ?? false,
+      });
       return true;
     },
   }),

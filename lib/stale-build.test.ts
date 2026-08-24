@@ -21,7 +21,9 @@ test("recognises a chunk that the current build no longer has", () => {
 
   // Same failure, other bundlers/browsers.
   assert.equal(
-    isStaleBuildError(new Error("Loading chunk 493 failed. (missing: /_next/…)")),
+    isStaleBuildError(
+      new Error("Loading chunk 493 failed. (missing: /_next/…)"),
+    ),
     true,
   );
   assert.equal(
@@ -75,7 +77,9 @@ test("a real crash is never mistaken for a stale tab", () => {
   assert.equal(isStaleBuildError(new Error("Something went wrong")), false);
   assert.equal(isStaleBuildError(new TypeError("x is not a function")), false);
   assert.equal(
-    isStaleBuildError(new Error("You don't have permission to create databases")),
+    isStaleBuildError(
+      new Error("You don't have permission to create databases"),
+    ),
     false,
   );
   // A server error reaches the boundary as a digest-only Error.

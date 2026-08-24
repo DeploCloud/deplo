@@ -280,7 +280,8 @@ async function ingestFrame(
   // ABOVE the save-metrics gate, deliberately: that switch means "keep 16 minutes
   // of chart history in RAM", and turning charts off must never turn ALERTING
   // off. Free in the steady state — a Map lookup per metric, no query.
-  if (host) checkResourceThresholds(serverId, facts.serverName || serverId, host);
+  if (host)
+    checkResourceThresholds(serverId, facts.serverName || serverId, host);
   if (host && (await isMetricsSavingEnabled())) recordMetricsSample(host);
 
   // Group this host's containers by the App / Database they belong to. The
@@ -322,10 +323,14 @@ export function backoffFor(attempt: number): number {
 function sleep(ms: number, signal: AbortSignal): Promise<void> {
   return new Promise((resolve) => {
     const t = setTimeout(resolve, ms);
-    signal.addEventListener("abort", () => {
-      clearTimeout(t);
-      resolve();
-    }, { once: true });
+    signal.addEventListener(
+      "abort",
+      () => {
+        clearTimeout(t);
+        resolve();
+      },
+      { once: true },
+    );
   });
 }
 
@@ -440,7 +445,11 @@ async function runStreamLoop(
       // orders of magnitude under GAP_MS, so it never draws a band. But a clean
       // end within seconds of opening is a fast-failing agent, and re-dialling
       // it with no delay is a hot livelock — back off like the failure it is.
-      if (!signal.aborted && !state.stopping && Date.now() - openedAt < MIN_STREAM_MS) {
+      if (
+        !signal.aborted &&
+        !state.stopping &&
+        Date.now() - openedAt < MIN_STREAM_MS
+      ) {
         const delay = backoffFor(attempt);
         attempt = Math.min(attempt + 1, 16);
         await sleep(delay, signal);
@@ -508,7 +517,10 @@ async function runStreamLoop(
  * already shows for an agent lacking `container-stats`. That is honest, costs
  * nothing, and points at the fix.
  */
-async function runPollLoop(serverId: string, signal: AbortSignal): Promise<void> {
+async function runPollLoop(
+  serverId: string,
+  signal: AbortSignal,
+): Promise<void> {
   const entry = state.servers.get(serverId);
   if (entry) entry.mode = "poll";
 
@@ -562,9 +574,10 @@ export async function reconcileMetricsStreams(): Promise<void> {
     const mode: StreamMode = forcePollMode() ? "poll" : "stream";
     const entry: ServerStream = { mode, abort, loop: Promise.resolve() };
     state.servers.set(s.id, entry);
-    entry.loop = (mode === "poll"
-      ? runPollLoop(s.id, abort.signal)
-      : runStreamLoop(s.id, s.name, s.storageOnly, abort.signal)
+    entry.loop = (
+      mode === "poll"
+        ? runPollLoop(s.id, abort.signal)
+        : runStreamLoop(s.id, s.name, s.storageOnly, abort.signal)
     ).catch((e) => {
       console.warn(
         `[monitoring] stream loop for ${s.name} exited: ${e instanceof Error ? e.message : String(e)}`,

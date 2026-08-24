@@ -61,7 +61,10 @@ export function SidebarNav({
   // (Back to apps / dashboard) is the fallback when there's no such page
   // (a fresh load, a reload). Modified clicks (⌘/ctrl/shift/alt → new tab) fall
   // through to the href untouched.
-  function handleNavClick(item: NavItem, e: React.MouseEvent<HTMLAnchorElement>) {
+  function handleNavClick(
+    item: NavItem,
+    e: React.MouseEvent<HTMLAnchorElement>,
+  ) {
     if (
       item.back &&
       e.button === 0 &&
@@ -96,7 +99,8 @@ export function SidebarNav({
   // under /settings — the DB twin of the app nav swap.
   const dbId = pathname.match(/^\/storage\/databases\/([^/]+)/)?.[1] ?? null;
   const inDbSettings =
-    dbId != null && /^\/storage\/databases\/[^/]+\/settings(?:\/|$)/.test(pathname);
+    dbId != null &&
+    /^\/storage\/databases\/[^/]+\/settings(?:\/|$)/.test(pathname);
   // An app's own settings live one level deeper than its main nav, so the
   // sidebar swaps again once you're under /apps/<slug>/settings.
   const inAppSettings =
@@ -211,7 +215,8 @@ export function SidebarNav({
   const bgRect = useSlidingRect(
     navRef,
     () =>
-      navRef.current?.querySelector<HTMLElement>('[data-active="true"]') ?? null,
+      navRef.current?.querySelector<HTMLElement>('[data-active="true"]') ??
+      null,
     [pathname, signature],
   );
 
@@ -238,7 +243,7 @@ export function SidebarNav({
           {section.title && !collapsed ? (
             <div
               className={cn(
-                "px-3 pb-1 text-[11px] font-medium uppercase tracking-wider text-muted-foreground/70",
+                "px-3 pb-1 text-[11px] font-medium tracking-wider text-muted-foreground/70 uppercase",
                 i > 0 && "pt-3",
               )}
             >
@@ -303,7 +308,9 @@ export function SidebarNav({
                     href={item.href}
                     onClick={(e) => handleNavClick(item, e)}
                     aria-label={
-                      deployingTip ? `${item.label}, ${deployingTip}` : item.label
+                      deployingTip
+                        ? `${item.label}, ${deployingTip}`
+                        : item.label
                     }
                     data-active={active ? "true" : undefined}
                     className={cn(
@@ -332,7 +339,7 @@ export function SidebarNav({
                         // alone, in its corner, like any unread marker.
                         <StatusDot
                           status="building"
-                          className="absolute right-1 top-1"
+                          className="absolute top-1 right-1"
                         />
                       ) : (
                         <Badge

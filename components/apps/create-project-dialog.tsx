@@ -75,8 +75,8 @@ export function CreateProjectDialog({
           <DialogTitle>New project</DialogTitle>
           <DialogDescription>
             A project is an advanced folder: each of its environments holds its
-            own apps and its own shared variables. You can move apps
-            into it afterward.
+            own apps and its own shared variables. You can move apps into it
+            afterward.
           </DialogDescription>
         </DialogHeader>
         <form className="grid gap-4" onSubmit={onSubmit}>
@@ -91,10 +91,18 @@ export function CreateProjectDialog({
                 autoFocus
               />
             </div>
-            <FolderColorPicker value={color} onChange={setColor} idPrefix="new-project" />
+            <FolderColorPicker
+              value={color}
+              onChange={setColor}
+              idPrefix="new-project"
+            />
           </div>
           <DialogFooter>
-            <Button variant="outline" onClick={() => onOpenChange(false)} disabled={pending}>
+            <Button
+              variant="outline"
+              onClick={() => onOpenChange(false)}
+              disabled={pending}
+            >
               Cancel
             </Button>
             <Button type="submit" disabled={pending || !name.trim()}>
@@ -106,4 +114,3 @@ export function CreateProjectDialog({
     </Dialog>
   );
 }
-

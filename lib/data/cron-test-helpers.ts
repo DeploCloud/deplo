@@ -39,7 +39,10 @@ export interface SeedCronJobOpts {
 
 const T0 = "2026-01-01T00:00:00.000Z";
 
-export async function seedCronJob(db: TestDb, opts: SeedCronJobOpts): Promise<string> {
+export async function seedCronJob(
+  db: TestDb,
+  opts: SeedCronJobOpts,
+): Promise<string> {
   await db.insert(cronJobsTable).values({
     id: opts.id,
     teamId: opts.teamId ?? TEAM_A,
@@ -111,7 +114,10 @@ export async function enableCrons(
   id: string,
 ): Promise<void> {
   if (kind === "app") {
-    await db.update(appsTable).set({ cronEnabled: true }).where(eq(appsTable.id, id));
+    await db
+      .update(appsTable)
+      .set({ cronEnabled: true })
+      .where(eq(appsTable.id, id));
   } else {
     await db
       .update(databasesTable)
@@ -148,13 +154,21 @@ export interface FakeJobState {
  */
 export class FakeAgent {
   /** Containers the fake host is running, in ListInstances order. */
-  instances: { name: string; service: string; image: string; running: boolean }[] = [
-    { name: "deplo-web", service: "web", image: "img", running: true },
-  ];
+  instances: {
+    name: string;
+    service: string;
+    image: string;
+    running: boolean;
+  }[] = [{ name: "deplo-web", service: "web", image: "img", running: true }];
   /** job_id -> what PollJob answers. */
   jobs = new Map<string, FakeJobState>();
   /** Every StartJob it received, in order. */
-  started: { container: string; command: string; shell: string; env: string[] }[] = [];
+  started: {
+    container: string;
+    command: string;
+    shell: string;
+    env: string[];
+  }[] = [];
   killed: string[] = [];
   closed = 0;
   /** When set, connecting throws it - an unreachable or too-old agent. */
@@ -186,7 +200,12 @@ export class FakeAgent {
           health: "",
           restartCount: 0,
         })),
-      startJob: async (req: { container: string; command: string; shell: string; env: { name: string }[] }) => {
+      startJob: async (req: {
+        container: string;
+        command: string;
+        shell: string;
+        env: { name: string }[];
+      }) => {
         if (this.startError) throw this.startError;
         const id = `agentjob_${++this.seq}`;
         this.started.push({
@@ -225,7 +244,9 @@ export class FakeAgent {
       get(target, prop) {
         if (prop in target) return target[prop as keyof typeof target];
         if (typeof prop === "symbol" || prop === "then") return undefined;
-        throw new Error(`FakeAgent: the cron runner must not call ${String(prop)}`);
+        throw new Error(
+          `FakeAgent: the cron runner must not call ${String(prop)}`,
+        );
       },
     }) as unknown as AgentConnection;
   };

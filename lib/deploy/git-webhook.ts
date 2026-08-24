@@ -70,11 +70,13 @@ export function parsePushEvent(payload: RawPushPayload): GitPushEvent {
   const isTag = ref.startsWith("refs/tags/");
   const refName = ref.replace(/^refs\/(heads|tags)\//, "");
   const files = new Set<string>();
-  const collect = (c?: {
-    added?: string[];
-    modified?: string[];
-    removed?: string[];
-  } | null) => {
+  const collect = (
+    c?: {
+      added?: string[];
+      modified?: string[];
+      removed?: string[];
+    } | null,
+  ) => {
     for (const f of c?.added ?? []) files.add(f);
     for (const f of c?.modified ?? []) files.add(f);
     for (const f of c?.removed ?? []) files.add(f);
@@ -128,7 +130,9 @@ export function shouldAutoDeploy(
   if (cfg.skipUnchanged && ev.changedPaths.length > 0) {
     const root = normalizeRoot(cfg.rootDirectory);
     if (root && root !== ".") {
-      return ev.changedPaths.some((f) => pathMatchesGlob(normalizePath(f), root));
+      return ev.changedPaths.some((f) =>
+        pathMatchesGlob(normalizePath(f), root),
+      );
     }
   }
   return true;

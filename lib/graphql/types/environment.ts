@@ -44,7 +44,8 @@ builder.queryFields((t) => ({
     authScopes: { loggedIn: true },
     description: "The environments of a Project container, in display order.",
     args: { projectId: t.arg.id({ required: true }) },
-    resolve: (_r, { projectId }) => listEnvironmentsForProject(String(projectId)),
+    resolve: (_r, { projectId }) =>
+      listEnvironmentsForProject(String(projectId)),
   }),
 }));
 
@@ -96,7 +97,8 @@ builder.mutationFields((t) => ({
   setDefaultEnvironment: t.field({
     type: "Boolean",
     authScopes: environmentScope,
-    description: "Make an environment the project's default (unsets the previous one).",
+    description:
+      "Make an environment the project's default (unsets the previous one).",
     args: { id: t.arg.id({ required: true }) },
     resolve: async (_r, { id }) => {
       await setDefaultEnvironment(String(id));

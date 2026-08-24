@@ -84,7 +84,11 @@ test("a compose-stack app can save volumes (no longer refused)", async () => {
   });
   await asUser1(() =>
     setAppVolumes("prj_1", [
-      vol({ name: "pgdata", service: "db", mountPath: "/var/lib/postgresql/data" }),
+      vol({
+        name: "pgdata",
+        service: "db",
+        mountPath: "/var/lib/postgresql/data",
+      }),
     ]),
   );
   const app = await loadAppGraph("prj_1");
@@ -172,8 +176,21 @@ test("a host bind's propagation survives the write and the read back", async () 
   });
   await asUser1(() =>
     setAppVolumes("prj_1", [
-      vol({ type: "host", name: "neon", service: "web", hostPath: "/srv/neon_data", mountPath: "/srv/neon_data", propagation: "rslave" }),
-      vol({ type: "host", name: "plain", service: "web", hostPath: "/srv/plain", mountPath: "/plain" }),
+      vol({
+        type: "host",
+        name: "neon",
+        service: "web",
+        hostPath: "/srv/neon_data",
+        mountPath: "/srv/neon_data",
+        propagation: "rslave",
+      }),
+      vol({
+        type: "host",
+        name: "plain",
+        service: "web",
+        hostPath: "/srv/plain",
+        mountPath: "/plain",
+      }),
     ]),
   );
   const vols = (await loadAppGraph("prj_1"))!.volumes!;

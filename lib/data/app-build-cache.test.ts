@@ -77,7 +77,11 @@ test("saving other build settings leaves the cache setting alone", async () => {
     await updateAppBuild("prj_1", { buildCommand: "npm run build" });
   });
   const app = await loadAppGraph("prj_1");
-  assert.equal(app?.build.buildCache, false, "a build save clobbered the cache setting");
+  assert.equal(
+    app?.build.buildCache,
+    false,
+    "a build save clobbered the cache setting",
+  );
   assert.equal(app?.build.buildCommand, "npm run build");
 });
 
@@ -104,13 +108,19 @@ test("clearing twice before a deploy is still one armed clear", async () => {
     await clearAppBuildCache("prj_1");
     await clearAppBuildCache("prj_1");
   });
-  assert.equal((await loadAppGraph("prj_1"))?.build.buildCacheClearPending, true);
+  assert.equal(
+    (await loadAppGraph("prj_1"))?.build.buildCacheClearPending,
+    true,
+  );
 });
 
 test("another team's app cannot be touched", async () => {
   await seedApp(db, { id: "prj_other", teamId: TEAM_B });
   await asUser1(async () => {
-    await assert.rejects(() => clearAppBuildCache("prj_other"), /App not found/);
+    await assert.rejects(
+      () => clearAppBuildCache("prj_other"),
+      /App not found/,
+    );
     await assert.rejects(
       () => updateAppBuild("prj_other", { buildCache: false }),
       /App not found/,
@@ -126,15 +136,22 @@ test("another team's app cannot be touched", async () => {
 
 test("the deploy decides no-cache from the setting OR the armed clear", () => {
   assert.equal(
-    noCacheForDeploy({ buildCache: true, buildCacheClearPending: false }).noCache,
+    noCacheForDeploy({ buildCache: true, buildCacheClearPending: false })
+      .noCache,
     false,
   );
-  const off = noCacheForDeploy({ buildCache: false, buildCacheClearPending: false });
+  const off = noCacheForDeploy({
+    buildCache: false,
+    buildCacheClearPending: false,
+  });
   assert.equal(off.noCache, true);
   assert.match(off.reason, /off for this app/);
   // An armed clear beats the setting, and says so — "why was this build slow"
   // has two different answers and the log must not blur them.
-  const cleared = noCacheForDeploy({ buildCache: true, buildCacheClearPending: true });
+  const cleared = noCacheForDeploy({
+    buildCache: true,
+    buildCacheClearPending: true,
+  });
   assert.equal(cleared.noCache, true);
   assert.match(cleared.reason, /cleared/i);
 });
@@ -142,12 +159,22 @@ test("the deploy decides no-cache from the setting OR the armed clear", () => {
 test("a build spends the one-shot, so the next deploy caches again", async () => {
   await seedApp(db, { id: "prj_1", teamId: TEAM_A });
   await asUser1(() => clearAppBuildCache("prj_1"));
-  assert.equal((await loadAppGraph("prj_1"))?.build.buildCacheClearPending, true);
+  assert.equal(
+    (await loadAppGraph("prj_1"))?.build.buildCacheClearPending,
+    true,
+  );
   await consumeCacheClear("prj_1");
   const after = (await loadAppGraph("prj_1"))!.build;
   assert.equal(after.buildCacheClearPending, false);
-  assert.equal(after.buildCache, true, "spending the one-shot must not turn the cache off");
+  assert.equal(
+    after.buildCache,
+    true,
+    "spending the one-shot must not turn the cache off",
+  );
   // Idempotent: a second deploy consuming nothing is a no-op, not an error.
   await consumeCacheClear("prj_1");
-  assert.equal((await loadAppGraph("prj_1"))?.build.buildCacheClearPending, false);
+  assert.equal(
+    (await loadAppGraph("prj_1"))?.build.buildCacheClearPending,
+    false,
+  );
 });

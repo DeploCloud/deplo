@@ -53,7 +53,10 @@ export function dispatchAlert(alert: Alert): void {
 export async function dispatchAlertNow(alert: Alert): Promise<void> {
   try {
     // Dedupe FIRST: a suppressed alert must cost zero queries.
-    if (alert.dedupe && !shouldFire(alert.key, alert.dedupe.id, alert.dedupe.state))
+    if (
+      alert.dedupe &&
+      !shouldFire(alert.key, alert.dedupe.id, alert.dedupe.state)
+    )
       return;
     // Per channel, not per team: each one carries its own selection, so a room
     // subscribed to this key hears about it while a phone that is not stays quiet.
@@ -93,7 +96,10 @@ export function dispatchServerAlert(
   serverId: string,
   alert: Omit<Alert, "teamId">,
 ): void {
-  if (alert.dedupe && !shouldFire(alert.key, alert.dedupe.id, alert.dedupe.state))
+  if (
+    alert.dedupe &&
+    !shouldFire(alert.key, alert.dedupe.id, alert.dedupe.state)
+  )
     return;
   void (async () => {
     for (const teamId of await teamsForServerAlerts(serverId))
@@ -106,7 +112,10 @@ export function dispatchToTeams(
   teamIds: string[],
   alert: Omit<Alert, "teamId">,
 ): void {
-  if (alert.dedupe && !shouldFire(alert.key, alert.dedupe.id, alert.dedupe.state))
+  if (
+    alert.dedupe &&
+    !shouldFire(alert.key, alert.dedupe.id, alert.dedupe.state)
+  )
     return;
   void (async () => {
     for (const teamId of teamIds)

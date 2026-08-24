@@ -192,7 +192,9 @@ export function gqlSubscribe<TData = unknown>(
       // A gateway status or an HTML body means we never reached the app — the
       // proxy answered for a server that isn't there. Report it as an outage
       // rather than as a subscription that failed on its own merits.
-      const html = (res.headers.get("content-type") ?? "").includes("text/html");
+      const html = (res.headers.get("content-type") ?? "").includes(
+        "text/html",
+      );
       if (res.status >= 500 || html || !res.body) throw unreachable();
       throw new GraphQLRequestError(`Subscription failed (${res.status})`, []);
     }
@@ -218,7 +220,8 @@ export function gqlSubscribe<TData = unknown>(
         for (const line of frame.split("\n")) {
           if (line.startsWith(":")) continue; // keep-alive ping
           if (line.startsWith("event:")) event = line.slice(6).trim();
-          else if (line.startsWith("data:")) dataLines.push(line.slice(5).trim());
+          else if (line.startsWith("data:"))
+            dataLines.push(line.slice(5).trim());
         }
         if (event === "complete") return;
         if (event !== "next" || dataLines.length === 0) continue;

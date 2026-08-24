@@ -82,7 +82,9 @@ function usePortConflicts({
   plan: Plan;
   placements: Record<string, Placement>;
   /** The real setter: a suggestion lands after an await, so it must merge, not overwrite. */
-  setPlacements: React.Dispatch<React.SetStateAction<Record<string, Placement>>>;
+  setPlacements: React.Dispatch<
+    React.SetStateAction<Record<string, Placement>>
+  >;
   chosen: Set<string>;
   servers: ServerChoice[];
   /** False without the publish-ports grant: nothing can be published, so nothing is asked. */
@@ -123,7 +125,10 @@ function usePortConflicts({
       byServer.set(serverId, ports);
     }
     return JSON.stringify(
-      [...byServer].map(([id, ports]) => [id, [...ports].sort((a, b) => a - b)]),
+      [...byServer].map(([id, ports]) => [
+        id,
+        [...ports].sort((a, b) => a - b),
+      ]),
     );
   }, [dbs, placements, chosenPort]);
 
@@ -197,7 +202,8 @@ function usePortConflicts({
       const serverId = placements[s.sourceId]?.serverId;
       out[s.sourceId] = {
         takenPort: s.exposedPort,
-        serverName: servers.find((v) => v.id === serverId)?.name ?? "that server",
+        serverName:
+          servers.find((v) => v.id === serverId)?.name ?? "that server",
         invalid: clashes(
           s.sourceId,
           s.sourceServerId,
@@ -228,14 +234,17 @@ function usePortConflicts({
       for (const id of open) {
         const serverId = placements[id]?.serverId;
         if (!serverId) continue;
-        const res = await gqlAction<{ generateAvailableDbPort: number }, number>(
-          SUGGEST_PORT,
-          { serverId },
-          (d) => d.generateAvailableDbPort,
-        );
+        const res = await gqlAction<
+          { generateAvailableDbPort: number },
+          number
+        >(SUGGEST_PORT, { serverId }, (d) => d.generateAvailableDbPort);
         // Two databases suggested in one pass must not be handed the same port:
         // the server answers from what is live, and neither of them is.
-        if (res.ok && res.data != null && !picked.some(([, p]) => p === res.data)) {
+        if (
+          res.ok &&
+          res.data != null &&
+          !picked.some(([, p]) => p === res.data)
+        ) {
           picked.push([id, res.data]);
         }
       }
@@ -308,7 +317,9 @@ export function ReviewStep({
   servers: ServerChoice[];
   buildServers: ServerChoice[];
   placements: Record<string, Placement>;
-  setPlacements: React.Dispatch<React.SetStateAction<Record<string, Placement>>>;
+  setPlacements: React.Dispatch<
+    React.SetStateAction<Record<string, Placement>>
+  >;
   canExposePorts: boolean;
   /** Creating a team is instance-admin, like every other way of making one. */
   isInstanceAdmin: boolean;
@@ -344,14 +355,16 @@ export function ReviewStep({
       {!canExposePorts && ports.count > 0 && (
         <PortsNotice>
           You can&rsquo;t publish ports, so{" "}
-          {ports.count === 1 ? "1 database comes" : `${ports.count} databases come`}{" "}
+          {ports.count === 1
+            ? "1 database comes"
+            : `${ports.count} databases come`}{" "}
           over without public access.
         </PortsNotice>
       )}
       {ports.unreachable.length > 0 && (
         <PortsNotice>
-          Deplo can&rsquo;t check ports on {ports.unreachable.join(", ")}. Update the
-          agent there, or check them after the migration.
+          Deplo can&rsquo;t check ports on {ports.unreachable.join(", ")}.
+          Update the agent there, or check them after the migration.
         </PortsNotice>
       )}
 
@@ -430,8 +443,8 @@ export function ReviewStep({
                   {chosenNames.length}
                 </span>
               </SimpleTooltip>{" "}
-              {chosenNames.length === 1 ? "service is" : "services are"} stopped on
-              Dokploy when this starts, and not started again.
+              {chosenNames.length === 1 ? "service is" : "services are"} stopped
+              on Dokploy when this starts, and not started again.
             </p>
           </div>
         )}

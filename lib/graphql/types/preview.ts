@@ -76,7 +76,9 @@ export const AppPreviewsViewRef = builder
       branch: t.exposeString("branch", {
         description: "Pull requests must target this branch to get a preview.",
       }),
-      githubSettingsUrl: t.exposeString("githubSettingsUrl", { nullable: true }),
+      githubSettingsUrl: t.exposeString("githubSettingsUrl", {
+        nullable: true,
+      }),
       enabled: t.exposeBoolean("enabled"),
       baseDomain: t.exposeString("baseDomain", { nullable: true }),
       maxActive: t.exposeInt("maxActive"),
@@ -137,7 +139,8 @@ builder.queryFields((t) => ({
   appPreviews: t.field({
     type: AppPreviewsViewRef,
     authScopes: deployScope,
-    description: "Pull request previews for an app, plus why they may not work.",
+    description:
+      "Pull request previews for an app, plus why they may not work.",
     args: { appId: t.arg.id({ required: true }) },
     resolve: (_r, { appId }) => listAppPreviews(String(appId)),
   }),
@@ -174,7 +177,10 @@ const PreviewSettingsInput = builder.inputType("AppPreviewSettingsInput", {
     }),
     maxActive: t.int({ required: false }),
     ttlDays: t.int({ required: false }),
-    forkPolicy: t.string({ required: false, description: "deny | approve | allow." }),
+    forkPolicy: t.string({
+      required: false,
+      description: "deny | approve | allow.",
+    }),
     serverId: t.string({
       required: false,
       description: "Where previews run. Empty ⇒ the app's own server.",

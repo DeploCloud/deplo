@@ -134,10 +134,14 @@ test("the consent endpoint REFUSES a server-side call, and refuses it wordlessly
     })
     .then(
       () => null,
-      (e: unknown) => e as { message?: string; body?: { error_description?: string } },
+      (e: unknown) =>
+        e as { message?: string; body?: { error_description?: string } },
     );
 
-  assert.ok(thrown, "an in-process consent SUCCEEDED — re-read this test's note");
+  assert.ok(
+    thrown,
+    "an in-process consent SUCCEEDED — re-read this test's note",
+  );
   assert.equal(
     thrown!.body?.error_description,
     "request not found",
@@ -189,7 +193,10 @@ test("the signed authorization query survives Next's searchParams round trip", a
   });
   assert.equal(approved.status, 200, `consent refused (${approved.status})`);
   assert.ok(approved.url?.startsWith(REDIRECT), approved.url ?? "no url");
-  assert.ok(new URL(approved.url!).searchParams.get("code"), "no code returned");
+  assert.ok(
+    new URL(approved.url!).searchParams.get("code"),
+    "no code returned",
+  );
 });
 
 test("dropping the repeated keys is what broke it", async () => {
@@ -315,7 +322,10 @@ test("a moved panel leaves exactly one requestable audience", async () => {
   );
 
   await pg.query(`delete from oauth_resource where identifier = $1`, [stale]);
-  await pg.query(`update oauth_resource set disabled = false where identifier = $1`, [current]);
+  await pg.query(
+    `update oauth_resource set disabled = false where identifier = $1`,
+    [current],
+  );
 });
 
 test("the discovery documents agree on one issuer, and it resolves", async () => {
@@ -528,7 +538,10 @@ test("a code redeemed against a different redirect_uri is refused", async () => 
     client_id: clientId,
     redirect_uri: "https://client.test/other",
   });
-  assert.ok(!res.body.access_token, "the redirect_uri was not bound to the code");
+  assert.ok(
+    !res.body.access_token,
+    "the redirect_uri was not bound to the code",
+  );
 });
 
 /* ------------------------------------------------------------------ */
@@ -592,9 +605,10 @@ test("dynamic registration cannot grant itself a silent-approval flag", async ()
   const clientId = String(res.body.client_id);
   assert.notEqual(clientId, "chosen-by-the-attacker");
   const rows = (
-    await pg.query(`select skip_consent from oauth_client where client_id = $1`, [
-      clientId,
-    ])
+    await pg.query(
+      `select skip_consent from oauth_client where client_id = $1`,
+      [clientId],
+    )
   ).rows as { skip_consent: boolean | null }[];
   assert.ok(!rows[0]?.skip_consent, "a client registered itself as trusted");
 });
@@ -623,7 +637,10 @@ test("/sign-in/email is refused over HTTP, and the session it would mint never e
   const res = await requireAuth().handler(
     new Request("http://localhost/api/auth/sign-in/email", {
       method: "POST",
-      headers: { "content-type": "application/json", origin: "http://localhost" },
+      headers: {
+        "content-type": "application/json",
+        origin: "http://localhost",
+      },
       body: JSON.stringify({ email: EMAIL, password: PASSWORD }),
     }),
   );

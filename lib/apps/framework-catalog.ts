@@ -147,7 +147,11 @@ export const FRAMEWORKS: readonly FrameworkDefinition[] = [
     // lineage, and it is what a repo scaffolded today carries.
     id: "react-router",
     name: "React Router",
-    dependencies: ["@react-router/dev", "@react-router/node", "@react-router/serve"],
+    dependencies: [
+      "@react-router/dev",
+      "@react-router/node",
+      "@react-router/serve",
+    ],
     files: ["react-router.config.js", "react-router.config.ts"],
     defaultPort: 3000,
   },
@@ -197,7 +201,11 @@ export const FRAMEWORKS: readonly FrameworkDefinition[] = [
   {
     id: "qwik",
     name: "Qwik",
-    dependencies: ["@builder.io/qwik-city", "@builder.io/qwik", "@qwik.dev/core"],
+    dependencies: [
+      "@builder.io/qwik-city",
+      "@builder.io/qwik",
+      "@qwik.dev/core",
+    ],
     files: [],
     defaultPort: 3000,
   },
@@ -310,7 +318,7 @@ const BY_ID = new Map<string, FrameworkDefinition>(
 export function frameworkById(
   id: string | null | undefined,
 ): FrameworkDefinition | null {
-  return id ? BY_ID.get(id) ?? null : null;
+  return id ? (BY_ID.get(id) ?? null) : null;
 }
 
 /** Narrow an untrusted string to a catalog id. */

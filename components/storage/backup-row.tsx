@@ -104,7 +104,7 @@ export function BackupRow({
     startTransition(async () => {
       const res = await gqlAction(
         `mutation($id: String!, $enabled: Boolean!) { toggleBackup(id: $id, enabled: $enabled) }`,
-        { id: backup.id, enabled }
+        { id: backup.id, enabled },
       );
       if (!res.ok) toast.error(res.error);
       else router.refresh();
@@ -134,7 +134,8 @@ export function BackupRow({
         <ScheduleLabel cron={backup.schedule} timezone={backup.timezone} />
       </TableCell>
       <TableCell className="text-muted-foreground">
-        {backup.retentionCount} {backup.retentionCount === 1 ? "backup" : "backups"}
+        {backup.retentionCount}{" "}
+        {backup.retentionCount === 1 ? "backup" : "backups"}
       </TableCell>
       <TableCell>
         {backup.lastStatus === "never" ? (
@@ -257,7 +258,7 @@ export function BackupRow({
             hide();
             const res = await gqlAction(
               `mutation($id: String!) { deleteBackup(id: $id) }`,
-              { id: backup.id }
+              { id: backup.id },
             );
             if (!res.ok) restore();
             router.refresh();
@@ -317,7 +318,9 @@ function EditBackupDialog({
   // (via `key`) each time it opens, so these initial values are always fresh and
   // a cancelled edit never leaks stale input into the next open.
   const [name, setName] = React.useState(backup.name);
-  const [destinationId, setDestinationId] = React.useState(backup.destinationId);
+  const [destinationId, setDestinationId] = React.useState(
+    backup.destinationId,
+  );
   const [schedule, setSchedule] = React.useState(backup.schedule);
   const [timezone, setTimezone] = React.useState(backup.timezone || "UTC");
   const [retention, setRetention] = React.useState(backup.retentionCount);
@@ -335,8 +338,14 @@ function EditBackupDialog({
         `mutation($id: String!, $input: UpdateBackupInput!) { updateBackup(id: $id, input: $input) }`,
         {
           id: backup.id,
-          input: { name, destinationId, schedule, timezone, retentionCount: retention },
-        }
+          input: {
+            name,
+            destinationId,
+            schedule,
+            timezone,
+            retentionCount: retention,
+          },
+        },
       );
       if (res.ok) toast.success("Backup schedule updated");
       else {
@@ -354,9 +363,8 @@ function EditBackupDialog({
           <DialogTitle>Edit schedule</DialogTitle>
           <DialogDescription>
             Change this schedule&apos;s name, destination, frequency and
-            retention. The{" "}
-            {backup.targetKind === "app" ? "app" : "database"} it backs up
-            can&apos;t be changed.
+            retention. The {backup.targetKind === "app" ? "app" : "database"} it
+            backs up can&apos;t be changed.
           </DialogDescription>
         </DialogHeader>
         <form className="grid gap-4" onSubmit={onSubmit}>
@@ -407,10 +415,17 @@ function EditBackupDialog({
             <Button
               type="submit"
               disabled={
-                pending || !name.trim() || !destinationId || !isValidSchedule(schedule)
+                pending ||
+                !name.trim() ||
+                !destinationId ||
+                !isValidSchedule(schedule)
               }
             >
-              {pending ? <Loader2 className="size-4 animate-spin" /> : "Save changes"}
+              {pending ? (
+                <Loader2 className="size-4 animate-spin" />
+              ) : (
+                "Save changes"
+              )}
             </Button>
           </DialogFooter>
         </form>

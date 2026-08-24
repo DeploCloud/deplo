@@ -12,7 +12,8 @@ export const REVEAL_MASK = "••••••••••••";
 // ABSOLUTELY positioned, so a long value contributes zero intrinsic width — the
 // chip stays the same size whether covered or revealed, and the value just
 // truncates. `h-7` gives the out-of-flow box its height.
-const OUTER = "relative block h-7 w-full rounded-md align-middle ring-1 ring-inset";
+const OUTER =
+  "relative block h-7 w-full rounded-md align-middle ring-1 ring-inset";
 const INNER = "absolute inset-0 flex items-center gap-1.5 px-2";
 
 /**
@@ -111,7 +112,7 @@ export function RevealChip({
       title={revealed && value !== null ? value : "Click to reveal"}
       className={cn(
         OUTER,
-        "group cursor-pointer text-left transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+        "group cursor-pointer text-left transition-colors focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none",
         revealed
           ? "ring-border/40 hover:bg-foreground/[0.03]"
           : "bg-foreground/[0.06] ring-border/50 hover:bg-foreground/[0.09]",
@@ -137,7 +138,7 @@ export function RevealChip({
           />
         )}
         {revealed && value !== null ? (
-          <code className="min-w-0 flex-1 select-text truncate font-mono text-xs text-foreground/90">
+          <code className="min-w-0 flex-1 truncate font-mono text-xs text-foreground/90 select-text">
             {value}
           </code>
         ) : (
@@ -146,7 +147,7 @@ export function RevealChip({
           <code
             aria-hidden
             className={cn(
-              "min-w-0 flex-1 select-none truncate font-mono text-xs text-muted-foreground",
+              "min-w-0 flex-1 truncate font-mono text-xs text-muted-foreground select-none",
               placeholderClassName,
             )}
           >

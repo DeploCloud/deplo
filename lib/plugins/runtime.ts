@@ -125,7 +125,12 @@ export function renderPluginCompose(args: {
   const labels = traefikRouterLabels({
     baseKey: pluginService(slug),
     routes: [
-      { name: deploHost, port, pathPrefix: pluginPathPrefix(slug), stripPrefix: true },
+      {
+        name: deploHost,
+        port,
+        pathPrefix: pluginPathPrefix(slug),
+        stripPrefix: true,
+      },
     ],
     defaultPort: port,
     certResolver: certResolver(),
@@ -207,14 +212,31 @@ export async function startPluginStack(args: {
   );
   try {
     await docker(
-      ["compose", "-p", pluginService(slug), "-f", stackFile, "up", "-d", "--remove-orphans"],
+      [
+        "compose",
+        "-p",
+        pluginService(slug),
+        "-f",
+        stackFile,
+        "up",
+        "-d",
+        "--remove-orphans",
+      ],
       { timeout: 180_000 },
     );
   } catch (err) {
     if (!isReinstall) {
       // Roll back a fresh install so a failed pull/up leaves nothing behind.
       await docker(
-        ["compose", "-p", pluginService(slug), "-f", stackFile, "down", "--remove-orphans"],
+        [
+          "compose",
+          "-p",
+          pluginService(slug),
+          "-f",
+          stackFile,
+          "down",
+          "--remove-orphans",
+        ],
         { timeout: 60_000, noThrow: true },
       ).catch(() => {});
       await rm(stackFile, { force: true }).catch(() => {});
@@ -227,9 +249,12 @@ export async function startPluginStack(args: {
 export async function startPluginContainer(slug: string): Promise<void> {
   const stackFile = pluginStackFile(slug);
   if (await fileExists(stackFile)) {
-    await docker(["compose", "-p", pluginService(slug), "-f", stackFile, "start"], {
-      timeout: 60_000,
-    });
+    await docker(
+      ["compose", "-p", pluginService(slug), "-f", stackFile, "start"],
+      {
+        timeout: 60_000,
+      },
+    );
   } else {
     await docker(["start", pluginContainerName(slug)], { timeout: 30_000 });
   }
@@ -239,9 +264,12 @@ export async function startPluginContainer(slug: string): Promise<void> {
 export async function stopPluginContainer(slug: string): Promise<void> {
   const stackFile = pluginStackFile(slug);
   if (await fileExists(stackFile)) {
-    await docker(["compose", "-p", pluginService(slug), "-f", stackFile, "stop"], {
-      timeout: 60_000,
-    });
+    await docker(
+      ["compose", "-p", pluginService(slug), "-f", stackFile, "stop"],
+      {
+        timeout: 60_000,
+      },
+    );
   } else {
     await docker(["stop", pluginContainerName(slug)], { timeout: 30_000 });
   }
@@ -280,7 +308,15 @@ export async function destroyPluginContainer(slug: string): Promise<void> {
   const stackFile = pluginStackFile(slug);
   if (await fileExists(stackFile)) {
     await docker(
-      ["compose", "-p", pluginService(slug), "-f", stackFile, "down", "--remove-orphans"],
+      [
+        "compose",
+        "-p",
+        pluginService(slug),
+        "-f",
+        stackFile,
+        "down",
+        "--remove-orphans",
+      ],
       { timeout: 120_000, noThrow: true },
     ).catch(() => {});
   } else {

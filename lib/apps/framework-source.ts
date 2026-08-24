@@ -9,7 +9,10 @@ import { readGitCredential } from "../data/git-connections";
 import { providerFor, readProviderText } from "../git/providers";
 import { normalizeRootRel, resolveBuildDir } from "../deploy/source";
 import { isGithubRepo } from "./favicon-shared";
-import { supportsFrameworkDetection, type FrameworkId } from "./framework-catalog";
+import {
+  supportsFrameworkDetection,
+  type FrameworkId,
+} from "./framework-catalog";
 import {
   detectFramework,
   parsePackageManifest,

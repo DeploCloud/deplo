@@ -29,7 +29,10 @@ export default async function DatabaseConnectionSettingsPage(
   // live agent), so those are the only move targets — and neither a storage-only
   // host (runs nothing) nor a migration source (not our machine) is ever one.
   const dbServers = servers
-    .filter((s) => Boolean(s.agent?.certFingerprint) && !s.storageOnly && !s.importOnly)
+    .filter(
+      (s) =>
+        Boolean(s.agent?.certFingerprint) && !s.storageOnly && !s.importOnly,
+    )
     .map((s) => ({ id: s.id, name: s.name }));
 
   return (

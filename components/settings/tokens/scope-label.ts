@@ -48,7 +48,9 @@ export function scopeLabel(
 
   const parts: string[] = [];
   if (token.teamIds.length)
-    parts.push(`${token.teamIds.length} ${token.teamIds.length === 1 ? "team" : "teams"}`);
+    parts.push(
+      `${token.teamIds.length} ${token.teamIds.length === 1 ? "team" : "teams"}`,
+    );
   if (token.projectIds.length)
     parts.push(
       `${token.projectIds.length} ${token.projectIds.length === 1 ? "project" : "projects"}`,
@@ -58,6 +60,8 @@ export function scopeLabel(
       `${token.folderIds.length} ${token.folderIds.length === 1 ? "folder" : "folders"}`,
     );
   if (token.appIds.length)
-    parts.push(`${token.appIds.length} ${token.appIds.length === 1 ? "app" : "apps"}`);
+    parts.push(
+      `${token.appIds.length} ${token.appIds.length === 1 ? "app" : "apps"}`,
+    );
   return { text: parts.join(", "), empty: false };
 }

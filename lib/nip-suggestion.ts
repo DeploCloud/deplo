@@ -1,4 +1,8 @@
-import { uniqueNamesGenerator, adjectives, animals } from "unique-names-generator";
+import {
+  uniqueNamesGenerator,
+  adjectives,
+  animals,
+} from "unique-names-generator";
 
 /**
  * Regenerating a server-provided nip.io suggestion, in the BROWSER.

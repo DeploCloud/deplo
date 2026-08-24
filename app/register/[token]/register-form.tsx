@@ -36,7 +36,9 @@ const REGISTER = /* GraphQL */ `
       password: $password
       teamName: $teamName
     ) {
-      viewer { id }
+      viewer {
+        id
+      }
     }
   }
 `;
@@ -99,7 +101,9 @@ export function RegisterForm({
   return (
     <Card>
       <CardHeader>
-        <CardTitle className="text-xl lg:text-xl">Create your account</CardTitle>
+        <CardTitle className="text-xl lg:text-xl">
+          Create your account
+        </CardTitle>
         <CardDescription>
           {ownTeam
             ? "Pick a username and a team name to get started."

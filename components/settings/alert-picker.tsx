@@ -86,7 +86,7 @@ export function AlertPicker({
               what this list currently IS, it is not something you can press. */}
           <h3 className="text-sm font-medium">
             Alerts{" "}
-            <span className="font-normal tabular-nums text-muted-foreground">
+            <span className="font-normal text-muted-foreground tabular-nums">
               ({alerts.length}/{ALL_ALERTS.length})
             </span>
           </h3>
@@ -97,7 +97,7 @@ export function AlertPicker({
             <button
               type="button"
               onClick={() => write(new Set(DEFAULT_ALERTS))}
-              className="rounded font-medium transition-colors hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+              className="rounded font-medium transition-colors hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"
             >
               Reset to defaults
             </button>
@@ -111,7 +111,7 @@ export function AlertPicker({
             <button
               type="button"
               onClick={() => setMany(shown, false)}
-              className="rounded font-medium transition-colors hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+              className="rounded font-medium transition-colors hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"
             >
               Unselect all
             </button>
@@ -120,20 +120,20 @@ export function AlertPicker({
       </div>
 
       <div className="relative">
-        <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
+        <Search className="pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2 text-muted-foreground" />
         <Input
           value={query}
           onChange={(e) => setQuery(e.target.value)}
           placeholder="Search alerts"
           aria-label="Search alerts"
-          className="pl-9 pr-9"
+          className="pr-9 pl-9"
         />
         {query && (
           <button
             type="button"
             onClick={() => setQuery("")}
             aria-label="Clear the search"
-            className="absolute right-2.5 top-1/2 -translate-y-1/2 rounded p-0.5 text-muted-foreground transition-colors hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            className="absolute top-1/2 right-2.5 -translate-y-1/2 rounded p-0.5 text-muted-foreground transition-colors hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"
           >
             <X className="size-4" />
           </button>
@@ -171,7 +171,7 @@ export function AlertPicker({
                     <button
                       type="button"
                       onClick={() => setMany(cat.shown, !allShownOn)}
-                      className="ml-auto shrink-0 rounded text-xs font-medium text-muted-foreground transition-colors hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                      className="ml-auto shrink-0 rounded text-xs font-medium text-muted-foreground transition-colors hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"
                     >
                       {allShownOn ? "Unselect all" : "Select all"}
                     </button>
@@ -200,7 +200,7 @@ export function AlertPicker({
                           className="mt-0.5"
                         />
                         <span className="min-w-0">
-                          <span className="block text-sm font-medium leading-tight">
+                          <span className="block text-sm leading-tight font-medium">
                             {meta.label}
                           </span>
                           <span className="mt-1 block text-xs leading-snug text-muted-foreground">

@@ -41,9 +41,13 @@ function splitForCompletion(input: string): {
   const firstSlash = noDigest.indexOf("/");
   const lastSlash = noDigest.lastIndexOf("/");
   const colon = noDigest.lastIndexOf(":");
-  const isHostPortColon = colon !== -1 && firstSlash !== -1 && colon < firstSlash;
+  const isHostPortColon =
+    colon !== -1 && firstSlash !== -1 && colon < firstSlash;
   if (colon > lastSlash && !isHostPortColon) {
-    return { namePart: noDigest.slice(0, colon), tagPart: noDigest.slice(colon + 1) };
+    return {
+      namePart: noDigest.slice(0, colon),
+      tagPart: noDigest.slice(colon + 1),
+    };
   }
   return { namePart: noDigest, tagPart: null };
 }
@@ -76,9 +80,9 @@ export function ImageInput({
   const [suggestions, setSuggestions] = React.useState<Suggestion[]>([]);
   const [loading, setLoading] = React.useState(false);
   const [highlight, setHighlight] = React.useState(0);
-  const [existence, setExistence] = React.useState<Existence | "checking" | null>(
-    null,
-  );
+  const [existence, setExistence] = React.useState<
+    Existence | "checking" | null
+  >(null);
   const containerRef = React.useRef<HTMLDivElement | null>(null);
 
   const debouncedValue = useDebounced(value, 280);
@@ -149,7 +153,8 @@ export function ImageInput({
     const raw = debouncedValue.trim();
     const { tagPart } = splitForCompletion(raw);
     // Only validate when there's a concrete tag/digest to check.
-    const checkable = raw && !((tagPart === null && !raw.includes("@")) || tagPart === "");
+    const checkable =
+      raw && !((tagPart === null && !raw.includes("@")) || tagPart === "");
     const controller = new AbortController();
 
     async function validate() {
@@ -176,7 +181,10 @@ export function ImageInput({
   // Close the dropdown on outside click.
   React.useEffect(() => {
     function onClick(e: MouseEvent) {
-      if (containerRef.current && !containerRef.current.contains(e.target as Node)) {
+      if (
+        containerRef.current &&
+        !containerRef.current.contains(e.target as Node)
+      ) {
         setOpen(false);
       }
     }
@@ -213,7 +221,7 @@ export function ImageInput({
 
   return (
     <div ref={containerRef} className="relative">
-      <Container className="pointer-events-none absolute left-3 top-1/2 z-10 size-4 -translate-y-1/2 text-muted-foreground" />
+      <Container className="pointer-events-none absolute top-1/2 left-3 z-10 size-4 -translate-y-1/2 text-muted-foreground" />
       <Input
         id={id}
         value={value}
@@ -226,83 +234,84 @@ export function ImageInput({
         placeholder={placeholder}
         spellCheck={false}
         autoComplete="off"
-        className={cn("pl-9 pr-9 font-mono text-sm", className)}
+        className={cn("pr-9 pl-9 font-mono text-sm", className)}
       />
       <StatusBadge state={loading ? "checking" : existence} />
 
-      {open && (suggestions.length > 0 || loading || value.trim().length >= 2) && (
-        <div className="absolute z-50 mt-1 w-full overflow-hidden rounded-md border border-border bg-popover shadow-md">
-          {loading && (
-            <div className="flex items-center gap-2 px-3 py-2 text-xs text-muted-foreground">
-              <Loader2 className="size-3.5 animate-spin" />
-              Searching {mode === "tag" ? "tags" : "registry"}…
-            </div>
-          )}
-          {!loading && suggestions.length === 0 && (
-            <div className="px-3 py-2 text-xs text-muted-foreground">
-              {mode === "tag"
-                ? "No matching tags found."
-                : "No matches on Docker Hub. For other registries, type the full image (e.g. ghcr.io/owner/app) then add a “:” for tags."}
-            </div>
-          )}
-          {suggestions.length > 0 && (
-            <ul className="max-h-72 overflow-auto p-1">
-              {suggestions.map((s, i) => (
-                <li key={`${s.kind}:${s.value}`}>
-                  <button
-                    type="button"
-                    onMouseEnter={() => setHighlight(i)}
-                    onMouseDown={(e) => {
-                      e.preventDefault();
-                      choose(s);
-                    }}
-                    className={cn(
-                      "flex w-full items-center justify-between gap-2 rounded-sm px-2 py-1.5 text-left text-sm",
-                      i === highlight ? "bg-accent" : "hover:bg-accent/60",
-                    )}
-                  >
-                    <span className="flex min-w-0 items-center gap-2">
-                      <span className="truncate font-mono text-xs">
-                        {s.data.name}
+      {open &&
+        (suggestions.length > 0 || loading || value.trim().length >= 2) && (
+          <div className="absolute z-50 mt-1 w-full overflow-hidden rounded-md border border-border bg-popover shadow-md">
+            {loading && (
+              <div className="flex items-center gap-2 px-3 py-2 text-xs text-muted-foreground">
+                <Loader2 className="size-3.5 animate-spin" />
+                Searching {mode === "tag" ? "tags" : "registry"}…
+              </div>
+            )}
+            {!loading && suggestions.length === 0 && (
+              <div className="px-3 py-2 text-xs text-muted-foreground">
+                {mode === "tag"
+                  ? "No matching tags found."
+                  : "No matches on Docker Hub. For other registries, type the full image (e.g. ghcr.io/owner/app) then add a “:” for tags."}
+              </div>
+            )}
+            {suggestions.length > 0 && (
+              <ul className="max-h-72 overflow-auto p-1">
+                {suggestions.map((s, i) => (
+                  <li key={`${s.kind}:${s.value}`}>
+                    <button
+                      type="button"
+                      onMouseEnter={() => setHighlight(i)}
+                      onMouseDown={(e) => {
+                        e.preventDefault();
+                        choose(s);
+                      }}
+                      className={cn(
+                        "flex w-full items-center justify-between gap-2 rounded-sm px-2 py-1.5 text-left text-sm",
+                        i === highlight ? "bg-accent" : "hover:bg-accent/60",
+                      )}
+                    >
+                      <span className="flex min-w-0 items-center gap-2">
+                        <span className="truncate font-mono text-xs">
+                          {s.data.name}
+                        </span>
+                        {s.kind === "name" && s.data.official && (
+                          <span className="shrink-0 rounded bg-primary/10 px-1 text-[10px] font-medium text-primary">
+                            official
+                          </span>
+                        )}
                       </span>
-                      {s.kind === "name" && s.data.official && (
-                        <span className="shrink-0 rounded bg-primary/10 px-1 text-[10px] font-medium text-primary">
-                          official
+                      {s.kind === "name" && s.data.stars != null && (
+                        <span className="flex shrink-0 items-center gap-0.5 text-xs text-muted-foreground">
+                          <Star className="size-3" />
+                          {compactNumber(s.data.stars)}
                         </span>
                       )}
-                    </span>
-                    {s.kind === "name" && s.data.stars != null && (
-                      <span className="flex shrink-0 items-center gap-0.5 text-xs text-muted-foreground">
-                        <Star className="size-3" />
-                        {compactNumber(s.data.stars)}
-                      </span>
-                    )}
-                    {s.kind === "tag" && s.data.lastUpdated && (
-                      <span className="shrink-0 text-[10px] text-muted-foreground">
-                        {timeAgo(s.data.lastUpdated)}
-                      </span>
-                    )}
-                  </button>
-                </li>
-              ))}
-            </ul>
-          )}
-        </div>
-      )}
+                      {s.kind === "tag" && s.data.lastUpdated && (
+                        <span className="shrink-0 text-[10px] text-muted-foreground">
+                          {timeAgo(s.data.lastUpdated)}
+                        </span>
+                      )}
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
+        )}
     </div>
   );
 }
 
-function StatusBadge({
-  state,
-}: {
-  state: Existence | "checking" | null;
-}) {
+function StatusBadge({ state }: { state: Existence | "checking" | null }) {
   if (!state) return null;
   const base =
     "pointer-events-none absolute right-3 top-1/2 z-10 -translate-y-1/2";
   if (state === "checking") {
-    return <Loader2 className={cn(base, "size-4 animate-spin text-muted-foreground")} />;
+    return (
+      <Loader2
+        className={cn(base, "size-4 animate-spin text-muted-foreground")}
+      />
+    );
   }
   if (state === "exists") {
     return <Check className={cn(base, "size-4 text-[var(--success)]")} />;

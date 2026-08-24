@@ -74,10 +74,7 @@ function markMatches(text: string, term: string): React.ReactNode {
     if (hit === -1) break;
     if (hit > at) out.push(text.slice(at, hit));
     out.push(
-      <mark
-        key={hit}
-        className="rounded-[2px] bg-yellow-400/30 text-inherit"
-      >
+      <mark key={hit} className="rounded-[2px] bg-yellow-400/30 text-inherit">
         {text.slice(hit, hit + needle.length)}
       </mark>,
     );
@@ -137,8 +134,8 @@ export function LevelChip({
         // `self-start` + a fixed height is the whole fix: the chip never grows
         // with the line it labels. `leading-none` keeps the text centred in the
         // box rather than riding the row's line-height.
-        "inline-flex shrink-0 select-none items-center justify-center self-start rounded",
-        "text-[10px] font-semibold uppercase leading-none tracking-wide",
+        "inline-flex shrink-0 items-center justify-center self-start rounded select-none",
+        "text-[10px] leading-none font-semibold tracking-wide uppercase",
         LEVEL_BADGE_CLASS[level] ?? "bg-zinc-700/30 text-zinc-300",
         className,
       )}
@@ -208,7 +205,7 @@ export function LogRow({
     <div
       className={cn(
         // items-start, not the default stretch — see LevelChip.
-        "log-row group relative flex items-start gap-3 rounded-md py-px pl-3 pr-1.5",
+        "group relative flex items-start gap-3 rounded-md py-px pr-1.5 pl-3 log-row",
         "transition-colors",
         // The level's own faint wash, hover included. `info` supplies only the
         // neutral hover, so an ordinary line stays an ordinary line.
@@ -226,7 +223,7 @@ export function LogRow({
       />
 
       {time !== undefined && (
-        <span className="shrink-0 select-none self-start pt-px text-[11px] tabular-nums text-zinc-600">
+        <span className="shrink-0 self-start pt-px text-[11px] text-zinc-600 tabular-nums select-none">
           {time}
         </span>
       )}
@@ -241,8 +238,10 @@ export function LogRow({
 
       <span
         className={cn(
-          "min-w-0 flex-1 whitespace-pre-wrap break-words",
-          tintMessage ? LEVEL_TEXT_CLASS[level] ?? "text-zinc-300" : "text-zinc-300",
+          "min-w-0 flex-1 break-words whitespace-pre-wrap",
+          tintMessage
+            ? (LEVEL_TEXT_CLASS[level] ?? "text-zinc-300")
+            : "text-zinc-300",
         )}
       >
         {/*

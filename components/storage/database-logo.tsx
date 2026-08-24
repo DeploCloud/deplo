@@ -33,7 +33,9 @@ export function DatabaseLogo({
       src={logo ?? DB_LOGOS[type] ?? null}
       size={size}
       className={className}
-      fallback={<DatabaseIcon style={{ width: size * 0.5, height: size * 0.5 }} />}
+      fallback={
+        <DatabaseIcon style={{ width: size * 0.5, height: size * 0.5 }} />
+      }
     />
   );
 }

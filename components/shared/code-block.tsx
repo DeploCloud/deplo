@@ -28,7 +28,7 @@ export function CodeBlock({
       )}
       {/* Copy sits in the top-right; the scroll area below reserves room (pr-12)
           so a long first line never slides under it. */}
-      <div className="absolute right-2 top-2 z-10">
+      <div className="absolute top-2 right-2 z-10">
         <CopyButton value={code} />
       </div>
       {/* Bounded box that scrolls on BOTH axes — long lines scroll sideways and a
@@ -65,7 +65,7 @@ export function CommandLine({
         truncate ? "items-center" : "items-start",
       )}
     >
-      <span className="select-none font-mono text-sm leading-relaxed text-muted-foreground">
+      <span className="font-mono text-sm leading-relaxed text-muted-foreground select-none">
         $
       </span>
       {/* By default WRAP the command (break-all) instead of scrolling it: the
@@ -77,7 +77,7 @@ export function CommandLine({
       <code
         className={cn(
           "min-w-0 flex-1 font-mono text-sm leading-relaxed text-zinc-200",
-          truncate ? "truncate" : "whitespace-pre-wrap break-all",
+          truncate ? "truncate" : "break-all whitespace-pre-wrap",
         )}
       >
         {command}

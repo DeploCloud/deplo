@@ -3,7 +3,12 @@ import { Card, CardContent } from "@/components/ui/card";
 
 export default function Loading() {
   return (
-    <section className="space-y-4" role="status" aria-busy aria-label="Loading settings">
+    <section
+      className="space-y-4"
+      role="status"
+      aria-busy
+      aria-label="Loading settings"
+    >
       <Skeleton className="h-5 w-24" />
       <Card>
         <CardContent className="space-y-4 p-6">

@@ -22,7 +22,10 @@ process.env.DEPLO_AGENT_ADDR = "127.0.0.1:19443"; // avoid clashing with a real 
 const SLUG = "agent-e2e-demo";
 const NAME = `deplo-${SLUG}`;
 
-function sh(cmd: string, args: string[]): Promise<{ code: number; out: string }> {
+function sh(
+  cmd: string,
+  args: string[],
+): Promise<{ code: number; out: string }> {
   return new Promise((resolve) => {
     const c = spawn(cmd, args, { windowsHide: true });
     let out = "";
@@ -33,13 +36,21 @@ function sh(cmd: string, args: string[]): Promise<{ code: number; out: string }>
 }
 
 async function main() {
-  const { connectAgent, agentPreflight } = await import("../lib/infra/agent-client");
+  const { connectAgent, agentPreflight } =
+    await import("../lib/infra/agent-client");
   const { SourceKind, BuildKind } = await import("../lib/agent/gen/agent");
 
   console.log("== preflight (Hello over mTLS) ==");
   const hello = await agentPreflight("srv-local");
-  console.log("  agent:", hello.agentVersion, "docker:", hello.dockerAvailable, hello.dockerVersion);
-  if (!hello.dockerAvailable) throw new Error("agent reports docker unavailable");
+  console.log(
+    "  agent:",
+    hello.agentVersion,
+    "docker:",
+    hello.dockerAvailable,
+    hello.dockerVersion,
+  );
+  if (!hello.dockerAvailable)
+    throw new Error("agent reports docker unavailable");
 
   // A minimal Dockerfile build context, tar'd in memory (ustar, relative).
   const ctxDir = mkdtempSync(join(tmpdir(), "deplo-e2e-ctx-"));
@@ -78,7 +89,13 @@ networks:
       imageRef: `deplo/${SLUG}:e2e`,
       sourceKind: SourceKind.SOURCE_KIND_UPLOAD,
       buildKind: BuildKind.BUILD_KIND_DOCKERFILE,
-      dockerfile: { dockerfilePath: "Dockerfile", contextPath: ".", targetStage: "", generated: false, generatedDockerfile: "" },
+      dockerfile: {
+        dockerfilePath: "Dockerfile",
+        contextPath: ".",
+        targetStage: "",
+        generated: false,
+        generatedDockerfile: "",
+      },
       composeYaml,
       env: {},
       readyTimeoutMs: 60000,
@@ -88,8 +105,8 @@ networks:
       devWorkspaceSubdir: "",
       noBuildCache: false,
       forceRecreate: false,
-    composeUpArgs: [],
-    buildOnly: false,
+      composeUpArgs: [],
+      buildOnly: false,
     })) {
       if (ev.log) console.log(`  [${ev.log.level}] ${ev.log.text}`);
       if (ev.phase) console.log(`  -- phase ${ev.phase.phase}`);
@@ -122,11 +139,17 @@ networks:
 
 function tarToBytes(dir: string): Promise<Uint8Array> {
   return new Promise((resolve, reject) => {
-    const c = spawn("tar", ["--format=ustar", "-cf", "-", "-C", dir, "."], { windowsHide: true });
+    const c = spawn("tar", ["--format=ustar", "-cf", "-", "-C", dir, "."], {
+      windowsHide: true,
+    });
     const chunks: Buffer[] = [];
     c.stdout.on("data", (d: Buffer) => chunks.push(d));
     c.on("error", reject);
-    c.on("close", (code) => (code === 0 ? resolve(new Uint8Array(Buffer.concat(chunks))) : reject(new Error(`tar ${code}`))));
+    c.on("close", (code) =>
+      code === 0
+        ? resolve(new Uint8Array(Buffer.concat(chunks)))
+        : reject(new Error(`tar ${code}`)),
+    );
   });
 }
 

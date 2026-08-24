@@ -56,7 +56,9 @@ beforeEach(async () => {
   await pg.exec(`${TRUNCATE_BACKUPS}
     truncate table app_build_method_settings, app_build, apps, servers,
       users, teams restart identity cascade;`);
-  await seedIdentity(db, { users: [{ id: USER_1, teamId: TEAM_A, role: "owner" }] });
+  await seedIdentity(db, {
+    users: [{ id: USER_1, teamId: TEAM_A, role: "owner" }],
+  });
   await seedServer(db);
   await seedDatabase(db, { id: "db_x", name: "x" });
   await seedS3(db, { id: "s3_1" });
@@ -64,7 +66,10 @@ beforeEach(async () => {
 });
 
 /** Seed a due-every-minute schedule (overridable). Returns its id. */
-async function seedDue(id: string, over: Parameters<typeof seedBackup>[1] | object = {}) {
+async function seedDue(
+  id: string,
+  over: Parameters<typeof seedBackup>[1] | object = {},
+) {
   return seedBackup(db, {
     id,
     destinationId: "s3_1",
@@ -75,14 +80,19 @@ async function seedDue(id: string, over: Parameters<typeof seedBackup>[1] | obje
 }
 
 const runsFor = (backupId: string) =>
-  db.select().from(backupRunsTable).where(eq(backupRunsTable.backupId, backupId));
+  db
+    .select()
+    .from(backupRunsTable)
+    .where(eq(backupRunsTable.backupId, backupId));
 
 const NOW = new Date("2026-06-23T12:00:00Z");
 
 // The scheduler runs session-free; give the data layer a principal anyway so any
 // incidental cookie-free read has a team (the executor uses the schedule's teamId).
 const tick = (now: Date) =>
-  runWithIdentity({ userId: USER_1, teamId: TEAM_A }, () => scheduler.runSchedulerTick(now));
+  runWithIdentity({ userId: USER_1, teamId: TEAM_A }, () =>
+    scheduler.runSchedulerTick(now),
+  );
 
 test("a due, enabled schedule fires exactly once per tick", async () => {
   await seedDue("bkp_1");
@@ -113,7 +123,11 @@ test("dedup: two ticks in the same minute fire a schedule only once", async () =
   await tick(NOW);
   await tick(new Date(NOW.getTime() + 5_000)); // same minute
 
-  assert.equal((await runsFor("bkp_1")).length, 1, "second same-minute tick is deduped");
+  assert.equal(
+    (await runsFor("bkp_1")).length,
+    1,
+    "second same-minute tick is deduped",
+  );
 });
 
 test("a new minute fires the schedule again", async () => {
@@ -122,19 +136,31 @@ test("a new minute fires the schedule again", async () => {
   await tick(NOW);
   await tick(new Date(NOW.getTime() + 60_000)); // next minute
 
-  assert.equal((await runsFor("bkp_1")).length, 2, "a distinct minute re-fires");
+  assert.equal(
+    (await runsFor("bkp_1")).length,
+    2,
+    "a distinct minute re-fires",
+  );
 });
 
 test("the lease prevents a double-run: a tick that can't claim it does nothing", async () => {
   await seedDue("bkp_1");
 
   // Simulate another live instance already holding the scheduler lease.
-  const held = await lease.acquireLease(lease.BACKUP_SCHEDULER_LEASE, "another-instance", NOW);
+  const held = await lease.acquireLease(
+    lease.BACKUP_SCHEDULER_LEASE,
+    "another-instance",
+    NOW,
+  );
   assert.equal(held, true);
 
   await tick(NOW);
 
-  assert.equal((await runsFor("bkp_1")).length, 0, "no run fired while the lease is held elsewhere");
+  assert.equal(
+    (await runsFor("bkp_1")).length,
+    0,
+    "no run fired while the lease is held elsewhere",
+  );
 });
 
 test("a malformed cron in a schedule never fires and never throws", async () => {
@@ -157,7 +183,11 @@ test("a schedule fires on its own timezone's clock", async () => {
 
   // 03:00 UTC is 05:00 in Rome in summer: not this schedule's hour.
   await tick(new Date("2026-06-23T03:00:00Z"));
-  assert.equal((await runsFor("rome")).length, 0, "03:00 UTC is not 03:00 in Rome");
+  assert.equal(
+    (await runsFor("rome")).length,
+    0,
+    "03:00 UTC is not 03:00 in Rome",
+  );
 
   // 01:00 UTC is 03:00 in Rome, which is.
   await tick(new Date("2026-06-23T01:00:00Z"));

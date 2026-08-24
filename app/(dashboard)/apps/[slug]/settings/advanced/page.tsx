@@ -9,7 +9,10 @@ import { DangerSettings } from "@/components/apps/settings/danger-settings";
 import { RebuildContainerCard } from "@/components/apps/settings/rebuild-container-card";
 import { CronSettingsForm } from "@/components/crons/cron-settings-form";
 import { Button } from "@/components/ui/button";
-import { CapabilityFieldset, CapabilityTip } from "@/components/apps/app-capabilities";
+import {
+  CapabilityFieldset,
+  CapabilityTip,
+} from "@/components/apps/app-capabilities";
 import {
   Card,
   CardContent,

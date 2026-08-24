@@ -114,16 +114,19 @@ export function RegisterUserWizard({
       const res = await gqlAction<
         { myTeams: TeamOption[]; viewerTeam: { id: string } | null },
         { myTeams: TeamOption[]; activeTeamId: string | null }
-      >(
-        `query { myTeams { id name } viewerTeam { id } }`,
-        {},
-        (d) => ({ myTeams: d.myTeams, activeTeamId: d.viewerTeam?.id ?? null }),
-      );
+      >(`query { myTeams { id name } viewerTeam { id } }`, {}, (d) => ({
+        myTeams: d.myTeams,
+        activeTeamId: d.viewerTeam?.id ?? null,
+      }));
       if (cancelled) return;
       const myTeams = res.ok && res.data ? res.data.myTeams : [];
       const activeId = res.ok && res.data ? res.data.activeTeamId : null;
       setTeams(myTeams);
-      if (pinActiveTeam && activeId && myTeams.some((tm) => tm.id === activeId)) {
+      if (
+        pinActiveTeam &&
+        activeId &&
+        myTeams.some((tm) => tm.id === activeId)
+      ) {
         setChoice("existing_teams");
         setAssign({
           [activeId]: {
@@ -177,7 +180,8 @@ export function RegisterUserWizard({
     link: link !== null,
   };
   /** The step the primary button leads to, or null when it mints instead. */
-  const nextStep = step === "access" && choice === "existing_teams" ? "teams" : null;
+  const nextStep =
+    step === "access" && choice === "existing_teams" ? "teams" : null;
 
   function onSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -242,7 +246,9 @@ export function RegisterUserWizard({
       {/* Fixed height so the stepper and the footer hold their place instead of
           jumping between a two-card choice, a team list and a link. */}
       <DialogContent
-        selfManaged className="h-[min(92vh,34rem)] grid-rows-[auto_minmax(0,1fr)] overflow-hidden sm:max-w-lg">
+        selfManaged
+        className="h-[min(92vh,34rem)] grid-rows-[auto_minmax(0,1fr)] overflow-hidden sm:max-w-lg"
+      >
         <DialogHeader className="space-y-0 pr-8">
           <DialogTitle className="sr-only">Register a new user</DialogTitle>
           <DialogDescription className="sr-only">
@@ -266,7 +272,7 @@ export function RegisterUserWizard({
           onSubmit={onSubmit}
           className="grid min-h-0 grid-rows-[minmax(0,1fr)_auto] gap-4 overflow-hidden"
         >
-          <div className="flex flex-col overflow-y-auto focus-safe-scroll">
+          <div className="focus-safe-scroll flex flex-col overflow-y-auto">
             <div className="m-auto flex w-full max-w-sm shrink-0 flex-col gap-5 py-2">
               {step === "access" && (
                 <>
@@ -281,7 +287,11 @@ export function RegisterUserWizard({
                       You can change this later from their account page.
                     </p>
                   </div>
-                  <div role="radiogroup" aria-label="Access" className="space-y-2">
+                  <div
+                    role="radiogroup"
+                    aria-label="Access"
+                    className="space-y-2"
+                  >
                     <ChoiceCard
                       title="They get their own team"
                       blurb="They name and own a fresh team when they open the link."
@@ -308,7 +318,9 @@ export function RegisterUserWizard({
                     <span className="flex size-10 items-center justify-center rounded-full bg-primary/10">
                       <Users className="size-5 text-primary" />
                     </span>
-                    <h2 className="text-base font-semibold lg:text-lg">Which teams?</h2>
+                    <h2 className="text-base font-semibold lg:text-lg">
+                      Which teams?
+                    </h2>
                     <p className="text-sm text-balance text-muted-foreground">
                       They can be in more than one.
                       {selectedCount > 0 && ` ${selectedCount} selected.`}
@@ -316,7 +328,7 @@ export function RegisterUserWizard({
                   </div>
 
                   <div className="relative">
-                    <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
+                    <Search className="pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2 text-muted-foreground" />
                     <Input
                       value={teamQuery}
                       onChange={(e) => setTeamQuery(e.target.value)}
@@ -335,7 +347,10 @@ export function RegisterUserWizard({
                   <div className="space-y-2">
                     {loadingTeams &&
                       [0, 1].map((i) => (
-                        <div key={i} className="rounded-lg border border-border p-3">
+                        <div
+                          key={i}
+                          className="rounded-lg border border-border p-3"
+                        >
                           <div className="flex items-center gap-2">
                             <Skeleton shimmer className="size-4 rounded" />
                             <Skeleton shimmer className="size-5 rounded-full" />
@@ -378,7 +393,9 @@ export function RegisterUserWizard({
                                 avatarUrl={tm.avatarUrl}
                                 size="sm"
                               />
-                              <span className="text-sm font-medium">{tm.name}</span>
+                              <span className="text-sm font-medium">
+                                {tm.name}
+                              </span>
                             </label>
                             {/* Which of that team's two joinable default roles they
                                 land in. Fine-tuning permissions belongs on the
@@ -402,7 +419,7 @@ export function RegisterUserWizard({
                                       }))
                                     }
                                     className={cn(
-                                      "rounded-md border px-2.5 py-1 text-xs font-medium capitalize transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+                                      "rounded-md border px-2.5 py-1 text-xs font-medium capitalize transition-colors focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none",
                                       a.role === r
                                         ? "border-primary bg-primary/5 text-foreground"
                                         : "border-border text-muted-foreground hover:bg-accent",
@@ -426,15 +443,21 @@ export function RegisterUserWizard({
                     <span className="flex size-10 items-center justify-center rounded-full bg-primary/10">
                       <Link2 className="size-5 text-primary" />
                     </span>
-                    <h2 className="text-base font-semibold lg:text-lg">Share this link</h2>
+                    <h2 className="text-base font-semibold lg:text-lg">
+                      Share this link
+                    </h2>
                     <p className="text-sm text-balance text-muted-foreground">
                       It works once and expires in 24 hours
-                      {expiresAt ? ` — ${atClock(expiresAt)}` : ""}. You can copy
-                      it again from Settings &rarr; Users until then.
+                      {expiresAt ? ` — ${atClock(expiresAt)}` : ""}. You can
+                      copy it again from Settings &rarr; Users until then.
                     </p>
                   </div>
                   <div className="flex gap-2">
-                    <Input readOnly value={link} className="font-mono text-xs" />
+                    <Input
+                      readOnly
+                      value={link}
+                      className="font-mono text-xs"
+                    />
                     <Button
                       type="button"
                       variant="outline"

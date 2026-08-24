@@ -137,7 +137,10 @@ export function splitForCompletion(input: string): {
   const isHostPortColon =
     colon !== -1 && firstSlash !== -1 && colon < firstSlash;
   if (colon > slash && !isHostPortColon) {
-    return { namePart: noDigest.slice(0, colon), tagPart: noDigest.slice(colon + 1) };
+    return {
+      namePart: noDigest.slice(0, colon),
+      tagPart: noDigest.slice(colon + 1),
+    };
   }
   return { namePart: noDigest, tagPart: null };
 }

@@ -26,11 +26,14 @@ import {
   supportsFrameworkDetection,
 } from "@/lib/apps/framework-catalog";
 import { CommitLink } from "@/components/apps/commit-link";
-import { formatBuildDuration, repoCommitUrl, repoCredentialMissing, timeAgo } from "@/lib/utils";
+import {
+  formatBuildDuration,
+  repoCommitUrl,
+  repoCredentialMissing,
+  timeAgo,
+} from "@/lib/utils";
 
-export default async function AppOverview(
-  props: PageProps<"/apps/[slug]">,
-) {
+export default async function AppOverview(props: PageProps<"/apps/[slug]">) {
   const { slug } = await props.params;
   const project = await getAppBySlug(slug);
   if (!project) notFound();
@@ -69,7 +72,10 @@ export default async function AppOverview(
           the deploy would fail with nothing but `exit status 128` in the log,
           so say it here instead. Derived from the row - no query, no API call. */}
       {repoCredentialMissing(project) && project.repo && (
-        <RepoLinkNotice slug={slug} repoName={project.repo.repo || project.repo.url} />
+        <RepoLinkNotice
+          slug={slug}
+          repoName={project.repo.repo || project.repo.url}
+        />
       )}
 
       {/* Production hero */}

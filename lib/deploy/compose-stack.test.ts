@@ -38,7 +38,10 @@ function route(
 
 /** Build a stack from compose YAML + overrides and parse the result back. The
  * default routes `web` on the demo host (most tests have a single `web`). */
-function buildDoc(compose: string, extra: Partial<ComposeStackInput> = {}): Doc {
+function buildDoc(
+  compose: string,
+  extra: Partial<ComposeStackInput> = {},
+): Doc {
   const out = buildComposeStack({
     compose,
     name: "deplo-demo",
@@ -113,7 +116,9 @@ services:
   assert.ok(labels.includes("traefik.docker.network=deplo"));
   assert.ok(
     labels.some((l) =>
-      /^traefik\.http\.services\.deplo-demo-web-[^.]*\.loadbalancer\.server\.port=80$/.test(l),
+      /^traefik\.http\.services\.deplo-demo-web-[^.]*\.loadbalancer\.server\.port=80$/.test(
+        l,
+      ),
     ),
   );
   assert.ok((doc.services.web.networks as string[]).includes("deplo"));
@@ -272,7 +277,13 @@ services:
 test("a path-scoped route emits a PathPrefix rule + stripprefix middleware", () => {
   const doc = buildDoc(WEB_API_COMPOSE, {
     domainRoutes: [
-      { name: "app.1.2.3.4.nip.io", service: "api", port: 8080, pathPrefix: "/api", stripPrefix: true },
+      {
+        name: "app.1.2.3.4.nip.io",
+        service: "api",
+        port: 8080,
+        pathPrefix: "/api",
+        stripPrefix: true,
+      },
     ],
   });
   const api = labelsOf(doc.services.api);
@@ -285,7 +296,10 @@ test("a path-scoped route emits a PathPrefix rule + stripprefix middleware", () 
 /* ------------------------------------------------------------------ */
 
 test("detectDefaultApp prefers a service that publishes a port", () => {
-  assert.deepEqual(detectDefaultApp(WEB_API_COMPOSE), { service: "web", port: 80 });
+  assert.deepEqual(detectDefaultApp(WEB_API_COMPOSE), {
+    service: "web",
+    port: 80,
+  });
 });
 
 test("detectDefaultApp falls back to the first service on port 80", () => {
@@ -328,7 +342,9 @@ services:
     { filesDir: "/srv/stacks/files/demo" },
   );
   const vols = volsOf(doc.services.web as Svc & { volumes?: unknown });
-  assert.ok(vols.includes("/srv/stacks/files/demo/config.toml:/etc/app/config.toml"));
+  assert.ok(
+    vols.includes("/srv/stacks/files/demo/config.toml:/etc/app/config.toml"),
+  );
   // Nested path + the :ro flag survive the rewrite.
   assert.ok(vols.includes("/srv/stacks/files/demo/nested/dir:/data:ro"));
   // A named volume is untouched.
@@ -372,9 +388,7 @@ services:
 /* ------------------------------------------------------------------ */
 
 /** A volume mount row as Storage settings stores it. */
-function vol(
-  v: Partial<VolumeMount> & { mountPath: string },
-): VolumeMount {
+function vol(v: Partial<VolumeMount> & { mountPath: string }): VolumeMount {
   return { id: "vol_1", name: "data", readOnly: false, ...v };
 }
 
@@ -407,7 +421,9 @@ services:
   assert.deepEqual(volsOf(doc.services.db as Svc & { volumes?: unknown }), []);
   // The host name matches the single-container renderer's, so an app that
   // changes source keeps its data.
-  assert.deepEqual(topVolumes(doc), { uploads: { name: "deplo-demo-uploads" } });
+  assert.deepEqual(topVolumes(doc), {
+    uploads: { name: "deplo-demo-uploads" },
+  });
 });
 
 test("a volume mounts into the service it names, read-only flag included", () => {
@@ -421,8 +437,18 @@ services:
 `,
     {
       volumes: [
-        vol({ name: "pgdata", service: "db", mountPath: "/var/lib/postgresql/data" }),
-        vol({ id: "vol_2", name: "seed", service: "db", mountPath: "/seed", readOnly: true }),
+        vol({
+          name: "pgdata",
+          service: "db",
+          mountPath: "/var/lib/postgresql/data",
+        }),
+        vol({
+          id: "vol_2",
+          name: "seed",
+          service: "db",
+          mountPath: "/seed",
+          readOnly: true,
+        }),
       ],
     },
   );
@@ -463,8 +489,20 @@ services:
     {
       filesDir: "/srv/stacks/files/demo",
       volumes: [
-        vol({ id: "vol_1", type: "app", name: "conf", projectPath: "config.toml", mountPath: "/etc/app/config.toml" }),
-        vol({ id: "vol_2", type: "host", name: "media", hostPath: "/srv/media", mountPath: "/media" }),
+        vol({
+          id: "vol_1",
+          type: "app",
+          name: "conf",
+          projectPath: "config.toml",
+          mountPath: "/etc/app/config.toml",
+        }),
+        vol({
+          id: "vol_2",
+          type: "host",
+          name: "media",
+          hostPath: "/srv/media",
+          mountPath: "/media",
+        }),
       ],
     },
   );
@@ -485,7 +523,14 @@ services:
 `,
     {
       volumes: [
-        vol({ id: "vol_1", type: "host", name: "neon", hostPath: "/srv/neon", mountPath: "/srv/neon", propagation: "rslave" }),
+        vol({
+          id: "vol_1",
+          type: "host",
+          name: "neon",
+          hostPath: "/srv/neon",
+          mountPath: "/srv/neon",
+          propagation: "rslave",
+        }),
       ],
     },
   );
@@ -525,7 +570,11 @@ services:
   web:
     image: nginx
 `,
-        { volumes: [vol({ name: "data", service: "worker", mountPath: "/data" })] },
+        {
+          volumes: [
+            vol({ name: "data", service: "worker", mountPath: "/data" }),
+          ],
+        },
       ),
     /worker/,
   );
@@ -578,7 +627,10 @@ services:
   db:
     image: postgres
 `,
-    { envKeys: ["FOO", "BAR"], domainRoutes: [route("demo.1.2.3.4.nip.io", "web", 80)] },
+    {
+      envKeys: ["FOO", "BAR"],
+      domainRoutes: [route("demo.1.2.3.4.nip.io", "web", 80)],
+    },
   );
   // The user picked "every service" — both the app and the sidecar get the keys,
   // as bare names (no value), so each reads its value from the env-file.
@@ -649,7 +701,9 @@ services:
   const env = envOf(doc.services.web);
   // The hand-written interpolation wins; only the otherwise-missing DB_PASSWORD
   // is injected as a bare pass-through.
-  assert.ok(env.includes("DATABASE_URL=postgres://app:${DB_PASSWORD}@db:5432/app"));
+  assert.ok(
+    env.includes("DATABASE_URL=postgres://app:${DB_PASSWORD}@db:5432/app"),
+  );
   assert.ok(env.includes("DB_PASSWORD"));
 });
 
@@ -711,7 +765,9 @@ services:
 /* build.labels: tracking labels reach the IMAGES compose builds       */
 /* ------------------------------------------------------------------ */
 
-type BuildSvc = Svc & { build?: { context?: string; labels?: unknown } | string };
+type BuildSvc = Svc & {
+  build?: { context?: string; labels?: unknown } | string;
+};
 
 test("a service with `build:` gets the tracking labels ON THE IMAGE (build.labels)", () => {
   // Container labels don't reach the image config, which left compose-BUILT
@@ -974,7 +1030,9 @@ services:
   );
   assert.equal(doc.services.homeassistant.networks, undefined);
   assert.deepEqual(
-    labelsOf(doc.services.homeassistant).filter((l) => l.startsWith("traefik.")),
+    labelsOf(doc.services.homeassistant).filter((l) =>
+      l.startsWith("traefik."),
+    ),
     [],
   );
 });

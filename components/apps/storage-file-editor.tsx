@@ -86,8 +86,8 @@ export function StorageFileEditor({
       <Section label={label}>
         <Note icon={ShieldAlert} tone="warning">
           Writing this file needs the &quot;Manage files&quot; capability, which
-          your account doesn&apos;t have. An admin grants it in Settings → Users.
-          You can still say where the file goes.
+          your account doesn&apos;t have. An admin grants it in Settings →
+          Users. You can still say where the file goes.
         </Note>
       </Section>
     );

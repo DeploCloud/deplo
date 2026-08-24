@@ -4,7 +4,12 @@ import * as React from "react";
 import { usePathname } from "next/navigation";
 import { Menu, Settings } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { Sheet, SheetContent, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
+import {
+  Sheet,
+  SheetContent,
+  SheetTitle,
+  SheetTrigger,
+} from "@/components/ui/sheet";
 import { DeploLogo } from "@/components/logo";
 import { SidebarNav } from "./sidebar-nav";
 import { SidebarExpandButton } from "./sidebar";
@@ -44,7 +49,12 @@ export function Topbar({
       {/* Mobile menu */}
       <Sheet open={mobileOpen} onOpenChange={setMobileOpen}>
         <SheetTrigger asChild>
-          <Button variant="ghost" size="icon-sm" className="md:hidden" aria-label="Menu">
+          <Button
+            variant="ghost"
+            size="icon-sm"
+            className="md:hidden"
+            aria-label="Menu"
+          >
             <Menu className="size-5" />
           </Button>
         </SheetTrigger>
@@ -117,6 +127,6 @@ function breadcrumb(pathname: string): string {
   // Under /settings show the subsection (Account, Servers, …) rather than a
   // generic "Settings"; elsewhere use the top-level segment.
   const seg =
-    segs[0] === "settings" && segs.length > 1 ? segs[1] : segs[0] ?? "";
+    segs[0] === "settings" && segs.length > 1 ? segs[1] : (segs[0] ?? "");
   return seg.charAt(0).toUpperCase() + seg.slice(1);
 }

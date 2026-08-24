@@ -12,7 +12,10 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
-import { useConsoleAck, acknowledgeConsole } from "@/components/apps/console-ack";
+import {
+  useConsoleAck,
+  acknowledgeConsole,
+} from "@/components/apps/console-ack";
 
 /**
  * A one-time "know what you're doing" gate in front of the container console.
@@ -55,9 +58,9 @@ export function ConsoleWarningGate({
           </DialogTitle>
           <DialogDescription>
             This is a live terminal inside your running container. Commands and
-            keystrokes take effect for real — a wrong move here can break the app
-            or lose data. If you&apos;re not sure what you&apos;re doing, it&apos;s
-            safer to leave this page.
+            keystrokes take effect for real — a wrong move here can break the
+            app or lose data. If you&apos;re not sure what you&apos;re doing,
+            it&apos;s safer to leave this page.
           </DialogDescription>
         </DialogHeader>
         <DialogFooter>

@@ -104,10 +104,7 @@ async function loadChildrenByAppIds(
 /* ------------------------------------------------------------------ */
 
 /** Assemble a list of {@link App}s from their parent rows + batch-loaded children. */
-async function assembleApps(
-  db: DbReader,
-  rows: AppRow[],
-): Promise<App[]> {
+async function assembleApps(db: DbReader, rows: AppRow[]): Promise<App[]> {
   if (rows.length === 0) return [];
   const children = await loadChildrenByAppIds(
     db,
@@ -136,11 +133,7 @@ export async function loadAppGraphBySlug(
   slug: string,
   db: DbReader = getDb(),
 ): Promise<App | null> {
-  const rows = await db
-    .select()
-    .from(apps)
-    .where(eq(apps.slug, slug))
-    .limit(1);
+  const rows = await db.select().from(apps).where(eq(apps.slug, slug)).limit(1);
   if (rows.length === 0) return null;
   const [p] = await assembleApps(db, rows);
   return p ?? null;
@@ -151,10 +144,7 @@ export async function loadAppsByTeam(
   teamId: string,
   db: DbReader = getDb(),
 ): Promise<App[]> {
-  const rows = await db
-    .select()
-    .from(apps)
-    .where(eq(apps.teamId, teamId));
+  const rows = await db.select().from(apps).where(eq(apps.teamId, teamId));
   return assembleApps(db, rows);
 }
 
@@ -285,10 +275,7 @@ export async function loadDomainsForApp(
   appId: string,
   db: DbReader = getDb(),
 ): Promise<Domain[]> {
-  const rows = await db
-    .select()
-    .from(domains)
-    .where(eq(domains.appId, appId));
+  const rows = await db.select().from(domains).where(eq(domains.appId, appId));
   return assembleDomains(db, rows);
 }
 
@@ -297,13 +284,20 @@ export async function loadDomain(
   id: string,
   db: DbReader = getDb(),
 ): Promise<Domain | null> {
-  const rows = await db.select().from(domains).where(eq(domains.id, id)).limit(1);
+  const rows = await db
+    .select()
+    .from(domains)
+    .where(eq(domains.id, id))
+    .limit(1);
   const [d] = await assembleDomains(db, rows);
   return d ?? null;
 }
 
 /** Insert a {@link Domain} + its ordered middleware rows (the shared write seam). */
-export async function insertDomain(db: DbReader, domain: Domain): Promise<void> {
+export async function insertDomain(
+  db: DbReader,
+  domain: Domain,
+): Promise<void> {
   await db.insert(domains).values(domainToRow(domain));
   const mw = domainMiddlewaresToRows(domain);
   if (mw.length > 0) await db.insert(domainMiddlewares).values(mw);
@@ -351,10 +345,7 @@ export async function loadEnvVarsForApp(
   appId: string,
   db: DbReader = getDb(),
 ): Promise<EnvVar[]> {
-  const rows = await db
-    .select()
-    .from(envVars)
-    .where(eq(envVars.appId, appId));
+  const rows = await db.select().from(envVars).where(eq(envVars.appId, appId));
   return assembleEnvVars(db, rows);
 }
 
@@ -376,7 +367,11 @@ export async function loadEnvVar(
   id: string,
   db: DbReader = getDb(),
 ): Promise<EnvVar | null> {
-  const rows = await db.select().from(envVars).where(eq(envVars.id, id)).limit(1);
+  const rows = await db
+    .select()
+    .from(envVars)
+    .where(eq(envVars.id, id))
+    .limit(1);
   const [e] = await assembleEnvVars(db, rows);
   return e ?? null;
 }
@@ -387,7 +382,10 @@ export async function loadEnvVar(
  * env-var → row mapping (and the targets junction) lives in one place. Pass a `tx`
  * so it joins the caller's transaction.
  */
-export async function insertEnvVars(db: DbReader, vars: EnvVar[]): Promise<void> {
+export async function insertEnvVars(
+  db: DbReader,
+  vars: EnvVar[],
+): Promise<void> {
   if (vars.length === 0) return;
   await db.insert(envVars).values(vars.map(envVarToRow));
   const targets = vars.flatMap(envVarTargetsToRows);

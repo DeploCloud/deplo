@@ -6,12 +6,7 @@ import type { PGlite } from "@electric-sql/pglite";
 import { makeTestDb, type TestDb } from "../db/test-harness";
 import { __setTestDb, __resetTestDb } from "../db/client";
 import { runWithIdentity } from "../auth/request-context";
-import {
-  seedIdentity,
-  TEAM_A,
-  TEAM_B,
-  USER_1,
-} from "./identity-test-helpers";
+import { seedIdentity, TEAM_A, TEAM_B, USER_1 } from "./identity-test-helpers";
 import { seedServer, seedApp } from "./app-graph-test-helpers";
 import { seedDatabase } from "./backup-test-helpers";
 import {
@@ -133,13 +128,20 @@ test("getAppMetrics serves the newest buffered sample plus the breakdown cell", 
   assert.equal(m.online, true);
   assert.equal(m.cpu, 22, "the LIVE value is the newest point, not the oldest");
   assert.equal(m.unsupported, false);
-  assert.deepEqual(m.instances.map((i) => i.name), ["app-one-web-1"]);
+  assert.deepEqual(
+    m.instances.map((i) => i.name),
+    ["app-one-web-1"],
+  );
 });
 
 test("an app with nothing buffered yet reads offline, never a fabricated zero-sample", async () => {
   const m = await asOwner(() => getAppMetrics("prj_1"));
   assert.ok(m);
-  assert.equal(m.online, false, "no frame has arrived — that is an honest 'no data'");
+  assert.equal(
+    m.online,
+    false,
+    "no frame has arrived — that is an honest 'no data'",
+  );
   assert.deepEqual(m.instances, []);
 });
 
@@ -199,10 +201,19 @@ test("metrics HISTORY reads are team-scoped from both sides", async () => {
   recordContainerSample(sample("db_1", NOW));
   // Same team sees the buffered window…
   assert.equal((await asOwner(() => getAppMetricsHistory("prj_1"))).length, 1);
-  assert.equal((await asOwner(() => getDatabaseMetricsHistory("db_1"))).length, 1);
+  assert.equal(
+    (await asOwner(() => getDatabaseMetricsHistory("db_1"))).length,
+    1,
+  );
   // …another team gets an empty window (the row isn't theirs).
-  assert.equal((await asOtherTeam(() => getAppMetricsHistory("prj_1"))).length, 0);
-  assert.equal((await asOtherTeam(() => getDatabaseMetricsHistory("db_1"))).length, 0);
+  assert.equal(
+    (await asOtherTeam(() => getAppMetricsHistory("prj_1"))).length,
+    0,
+  );
+  assert.equal(
+    (await asOtherTeam(() => getDatabaseMetricsHistory("db_1"))).length,
+    0,
+  );
 });
 
 test("the app and database gates are not interchangeable", async () => {
@@ -213,5 +224,8 @@ test("the app and database gates are not interchangeable", async () => {
   assert.equal(await asOwner(() => getAppMetrics("db_1")), null);
   assert.equal(await asOwner(() => getDatabaseMetrics("prj_1")), null);
   assert.equal((await asOwner(() => getAppMetricsHistory("db_1"))).length, 0);
-  assert.equal((await asOwner(() => getDatabaseMetricsHistory("prj_1"))).length, 0);
+  assert.equal(
+    (await asOwner(() => getDatabaseMetricsHistory("prj_1"))).length,
+    0,
+  );
 });

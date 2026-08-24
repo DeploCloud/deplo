@@ -59,8 +59,11 @@ const APP_IN_PRC = "prj_in_container";
 
 const ROLE_CAPS: Capability[] = ["view", "deploy_apps"];
 
-const as = <T>(userId: string, fn: () => Promise<T>, teamId = TEAM_A): Promise<T> =>
-  runWithIdentity({ userId, teamId }, fn);
+const as = <T>(
+  userId: string,
+  fn: () => Promise<T>,
+  teamId = TEAM_A,
+): Promise<T> => runWithIdentity({ userId, teamId }, fn);
 
 /** DEV's effective set on a node, sorted for stable comparison. */
 const capsOn = (
@@ -76,7 +79,10 @@ beforeEach(async () => {
     app_build_method_settings, app_build, apps, folders, projects, servers,
     membership_capabilities, memberships, users, teams restart identity cascade;`);
   await seedIdentity(db, {
-    teams: [{ id: TEAM_A, slug: "team-a" }, { id: TEAM_B, slug: "team-b" }],
+    teams: [
+      { id: TEAM_A, slug: "team-a" },
+      { id: TEAM_B, slug: "team-b" },
+    ],
     users: [
       { id: ADMIN, teamId: TEAM_A, role: "owner" },
       {
@@ -145,7 +151,9 @@ const grantFolder = (folderId: string, caps: Capability[], userId = DEV) =>
     .values(caps.map((c) => ({ folderId, userId, capability: c })));
 
 const grantApp = (appId: string, caps: Capability[], userId = DEV) =>
-  db.insert(appGrantsTable).values(caps.map((c) => ({ appId, userId, capability: c })));
+  db
+    .insert(appGrantsTable)
+    .values(caps.map((c) => ({ appId, userId, capability: c })));
 
 const grantProject = (projectId: string, caps: Capability[], userId = DEV) =>
   db
@@ -167,11 +175,17 @@ test("a folder grant replaces the role inside it, and may exceed it", async () =
   );
 
   // Outside it, the role is untouched: deploy_apps back, manage_env gone.
-  assert.deepEqual(await capsOn({ kind: "app", id: APP_TOP }), ROLE_CAPS.sort());
+  assert.deepEqual(
+    await capsOn({ kind: "app", id: APP_TOP }),
+    ROLE_CAPS.sort(),
+  );
 });
 
 test("with no grant anywhere, a member falls through to their role", async () => {
-  assert.deepEqual(await capsOn({ kind: "app", id: APP_TOP }), ROLE_CAPS.sort());
+  assert.deepEqual(
+    await capsOn({ kind: "app", id: APP_TOP }),
+    ROLE_CAPS.sort(),
+  );
   // A folder they were never given stays invisible, which is what keeps folders private.
   assert.deepEqual(await capsOn({ kind: "folder", id: FLD_PROD }), []);
   assert.deepEqual(await capsOn({ kind: "app", id: APP_IN_PROD }), []);
@@ -215,7 +229,10 @@ test("a project grant governs the apps filed under it, and never hides them", as
   // With no grant at all a project-filed app is still reachable on the role alone:
   // unlike a folder, a Project has no privacy rule.
   await db.delete(projectGrantsTable);
-  assert.deepEqual(await capsOn({ kind: "app", id: APP_IN_PRC }), ROLE_CAPS.sort());
+  assert.deepEqual(
+    await capsOn({ kind: "app", id: APP_IN_PRC }),
+    ROLE_CAPS.sort(),
+  );
 });
 
 /**
@@ -259,7 +276,8 @@ test("a project grant that withholds move_apps stops the team-wide one", async (
     /permission to move/i,
   );
   assert.equal(
-    (await as(ADMIN, () => listApps())).find((a) => a.id === APP_IN_PRC)?.folderId,
+    (await as(ADMIN, () => listApps())).find((a) => a.id === APP_IN_PRC)
+      ?.folderId,
     null,
     "and the app stayed in its project",
   );
@@ -287,6 +305,9 @@ test("a grant in one team resolves to nothing in another", async () => {
 test("a super-user is unaffected by node grants", async () => {
   await grantFolder(FLD_PROD, ["view_logs"], ADMIN);
   const caps = await capsOn({ kind: "app", id: APP_IN_PROD }, ADMIN);
-  assert.ok(caps.includes("manage_members"), "the owner keeps their whole team set");
+  assert.ok(
+    caps.includes("manage_members"),
+    "the owner keeps their whole team set",
+  );
   assert.ok(caps.includes("deploy_apps"));
 });

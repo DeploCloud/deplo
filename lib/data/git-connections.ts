@@ -159,7 +159,8 @@ async function requireOwnCredential(
 ): Promise<GitCredential & { webhookSecret: string; teamId: string }> {
   const teamId = await requireActiveTeamId();
   const cred = await readGitCredential(connectionId);
-  if (!cred || cred.teamId !== teamId) throw new Error("Git connection not found");
+  if (!cred || cred.teamId !== teamId)
+    throw new Error("Git connection not found");
   return cred;
 }
 
@@ -224,10 +225,15 @@ export interface ConnectGitProviderInput {
  * TLS, exactly as a self-hosted MinIO is; `allowPrivate` is the instance-admin
  * escape its caller gates, mirroring `backup_destinations`.
  */
-async function cleanBaseUrl(raw: string, allowPrivate: boolean): Promise<string> {
+async function cleanBaseUrl(
+  raw: string,
+  allowPrivate: boolean,
+): Promise<string> {
   const trimmed = raw.trim();
   if (!trimmed) throw new Error("Enter the address of your git server");
-  const withScheme = /^https?:\/\//i.test(trimmed) ? trimmed : `https://${trimmed}`;
+  const withScheme = /^https?:\/\//i.test(trimmed)
+    ? trimmed
+    : `https://${trimmed}`;
   let u: URL;
   try {
     u = new URL(withScheme);
@@ -237,7 +243,8 @@ async function cleanBaseUrl(raw: string, allowPrivate: boolean): Promise<string>
   if (u.username || u.password) {
     throw new Error("Put the token in the token field, not in the address");
   }
-  if (!allowPrivate) await assertSafeOutboundUrl(u.origin, "Address", { allowHttp: true });
+  if (!allowPrivate)
+    await assertSafeOutboundUrl(u.origin, "Address", { allowHttp: true });
   return u.origin;
 }
 
@@ -256,7 +263,9 @@ export async function connectGitProvider(
   // An unrecognised provider degrades to plain git (credentials only) rather
   // than being stored verbatim: `provider` comes from a client request and it
   // decides which HTTP client we later point at the user's host.
-  const provider: GitProviderId = KNOWN_PROVIDERS.has(input.provider as GitProviderId)
+  const provider: GitProviderId = KNOWN_PROVIDERS.has(
+    input.provider as GitProviderId,
+  )
     ? (input.provider as GitProviderId)
     : "git";
   const adapter = providerFor(provider);
@@ -331,7 +340,10 @@ export async function updateGitConnection(
 
   const username = input.username?.trim() || current.username;
   const token = input.token?.trim() || current.token;
-  if (adapter.api && (token !== current.token || username !== current.username)) {
+  if (
+    adapter.api &&
+    (token !== current.token || username !== current.username)
+  ) {
     await adapter.api.whoami({ ...current, username, token });
   }
   const patch: Partial<typeof gitConnectionsTable.$inferInsert> = {
@@ -346,7 +358,10 @@ export async function updateGitConnection(
     .update(gitConnectionsTable)
     .set(patch)
     .where(
-      and(eq(gitConnectionsTable.id, id), eq(gitConnectionsTable.teamId, teamId)),
+      and(
+        eq(gitConnectionsTable.id, id),
+        eq(gitConnectionsTable.teamId, teamId),
+      ),
     )
     .returning();
   if (updated.length === 0) throw new Error("Git connection not found");
@@ -385,7 +400,10 @@ export async function removeGitConnection(id: string): Promise<number> {
       .select()
       .from(gitConnectionsTable)
       .where(
-        and(eq(gitConnectionsTable.id, id), eq(gitConnectionsTable.teamId, teamId)),
+        and(
+          eq(gitConnectionsTable.id, id),
+          eq(gitConnectionsTable.teamId, teamId),
+        ),
       )
       .limit(1)
   )[0];
@@ -396,16 +414,16 @@ export async function removeGitConnection(id: string): Promise<number> {
       .update(appsTable)
       .set({ repoConnectionId: null, autoDeploy: false, updatedAt: nowIso() })
       .where(
-        and(
-          eq(appsTable.repoConnectionId, id),
-          eq(appsTable.teamId, teamId),
-        ),
+        and(eq(appsTable.repoConnectionId, id), eq(appsTable.teamId, teamId)),
       )
       .returning({ id: appsTable.id });
     await tx
       .delete(gitConnectionsTable)
       .where(
-        and(eq(gitConnectionsTable.id, id), eq(gitConnectionsTable.teamId, teamId)),
+        and(
+          eq(gitConnectionsTable.id, id),
+          eq(gitConnectionsTable.teamId, teamId),
+        ),
       );
     return affected.length;
   });
@@ -436,7 +454,10 @@ export async function testGitConnection(id: string): Promise<GitConnectionDTO> {
     .update(gitConnectionsTable)
     .set(patch)
     .where(
-      and(eq(gitConnectionsTable.id, id), eq(gitConnectionsTable.teamId, teamId)),
+      and(
+        eq(gitConnectionsTable.id, id),
+        eq(gitConnectionsTable.teamId, teamId),
+      ),
     )
     .returning();
   if (updated.length === 0) throw new Error("Git connection not found");
@@ -540,7 +561,9 @@ const NOT_APPLICABLE: GitWebhookStatus = {
  * thrown - a token without the webhook scope should still save a working
  * repository, with the address to paste shown next to it.
  */
-export async function syncAppWebhook(repo: GitRepo | null): Promise<GitWebhookStatus> {
+export async function syncAppWebhook(
+  repo: GitRepo | null,
+): Promise<GitWebhookStatus> {
   if (!repo?.connectionId || !repo.repo) return NOT_APPLICABLE;
   const cred = await readGitCredential(repo.connectionId);
   if (!cred || !providerFor(cred.provider).api) return NOT_APPLICABLE;

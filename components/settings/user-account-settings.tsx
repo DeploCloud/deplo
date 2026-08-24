@@ -168,8 +168,7 @@ export function UserAccountSettings({
   const [confirmDelete, setConfirmDelete] = React.useState(false);
   const [confirmResetTwoFactor, setConfirmResetTwoFactor] =
     React.useState(false);
-  const [confirmResetPasskeys, setConfirmResetPasskeys] =
-    React.useState(false);
+  const [confirmResetPasskeys, setConfirmResetPasskeys] = React.useState(false);
   // Mirrors the server, like `suspended`: the reset applies on confirm rather
   // than waiting for Save changes, so it can only ever reflect what came back.
   const [twoFactorEnabled, setTwoFactorEnabled] = React.useState(false);
@@ -391,7 +390,7 @@ export function UserAccountSettings({
             className="shrink-0"
           />
           <div className="min-w-0">
-            <h2 className="flex flex-wrap items-center gap-2 text-base font-semibold leading-none tracking-tight lg:text-lg">
+            <h2 className="flex flex-wrap items-center gap-2 text-base leading-none font-semibold tracking-tight lg:text-lg">
               @{user.username}
               {/* The badges read the SAVED state, never the form: the header
                   says who this account is, the form below says what you are
@@ -450,10 +449,7 @@ export function UserAccountSettings({
                 value={createdAt ? timeAgo(createdAt) : "—"}
               />
               <Meta label="Teams" value={String(teamCount)} />
-              <Meta
-                label="Sign-in"
-                value={suspended ? "Blocked" : "Allowed"}
-              />
+              <Meta label="Sign-in" value={suspended ? "Blocked" : "Allowed"} />
             </div>
             {/* The chips need the fetch, but the seed already carries the
                 COUNT — so the row that is coming is held open (and the row
@@ -477,7 +473,7 @@ export function UserAccountSettings({
                       size="xs"
                     />
                     <span className="font-medium">{t.teamName}</span>
-                    <span className="capitalize text-muted-foreground">
+                    <span className="text-muted-foreground capitalize">
                       {t.role}
                     </span>
                   </span>
@@ -529,7 +525,7 @@ export function UserAccountSettings({
                   <AccordionTrigger className="py-1 text-xs text-muted-foreground hover:no-underline">
                     Advanced grants
                   </AccordionTrigger>
-                  <AccordionContent className="space-y-2 pb-1 pt-1">
+                  <AccordionContent className="space-y-2 pt-1 pb-1">
                     <ToggleRow
                       title="Publish ports"
                       info="Let a compose stack bind a port on the server itself, with a service's ports:. Public domains and routes don't need this."
@@ -546,8 +542,8 @@ export function UserAccountSettings({
                     />
                     {admin && (
                       <p className="text-xs text-muted-foreground">
-                        On because this account is an instance admin — these
-                        two only matter once that switch is off.
+                        On because this account is an instance admin — these two
+                        only matter once that switch is off.
                       </p>
                     )}
                   </AccordionContent>
@@ -697,7 +693,10 @@ export function UserAccountSettings({
                 the footer doesn't jump — the ConfirmAction idiom. */}
             <span className="grid place-items-center">
               <span
-                className={cn("col-start-1 row-start-1", pending && "invisible")}
+                className={cn(
+                  "col-start-1 row-start-1",
+                  pending && "invisible",
+                )}
               >
                 Save changes
               </span>

@@ -1,6 +1,10 @@
 import "server-only";
 
-import { execFile, spawn, type ChildProcessWithoutNullStreams } from "node:child_process";
+import {
+  execFile,
+  spawn,
+  type ChildProcessWithoutNullStreams,
+} from "node:child_process";
 // node-pty is a native module; it stays out of the bundle via
 // serverExternalPackages (next.config.ts) and is rebuilt for the runtime
 // (Node + musl) in the Dockerfile. Imported lazily inside attachContainerPty so
@@ -38,12 +42,18 @@ interface RunOpts {
 }
 
 /** Run `docker <args>`; rejects on non-zero exit. */
-export function docker(args: string[], opts: RunOpts = {}): Promise<ExecResult> {
+export function docker(
+  args: string[],
+  opts: RunOpts = {},
+): Promise<ExecResult> {
   return run("docker", args, opts);
 }
 
 /** Run `docker compose <args>` (v2 plugin). */
-export function compose(args: string[], opts: RunOpts = {}): Promise<ExecResult> {
+export function compose(
+  args: string[],
+  opts: RunOpts = {},
+): Promise<ExecResult> {
   return run("docker", ["compose", ...args], opts);
 }
 
@@ -68,7 +78,9 @@ function run(bin: string, args: string[], opts: RunOpts): Promise<ExecResult> {
             : null;
         if (err && numericExit === null) {
           reject(
-            new Error(`${bin} ${args.join(" ")} failed: ${stderr || err.message}`),
+            new Error(
+              `${bin} ${args.join(" ")} failed: ${stderr || err.message}`,
+            ),
           );
           return;
         }
@@ -265,7 +277,10 @@ const SHELL_CANDIDATES: { probe: string[]; run: string[] }[] = [
 ];
 
 const SHELL_TTL = 5 * 60_000;
-const shellCache = new Map<string, { plan: ShellPlan; image: string; at: number }>();
+const shellCache = new Map<
+  string,
+  { plan: ShellPlan; image: string; at: number }
+>();
 
 /**
  * Determine how to run commands in a container: via a detected shell, or raw
@@ -273,15 +288,22 @@ const shellCache = new Map<string, { plan: ShellPlan; image: string; at: number 
  * and cached (keyed by name; re-probes when the image changes or the TTL
  * lapses). A redeploy yields a new container name, so the cache self-expires.
  */
-async function resolveShellPlan(name: string, image: string): Promise<ShellPlan> {
+async function resolveShellPlan(
+  name: string,
+  image: string,
+): Promise<ShellPlan> {
   const hit = shellCache.get(name);
-  if (hit && hit.image === image && Date.now() - hit.at < SHELL_TTL) return hit.plan;
+  if (hit && hit.image === image && Date.now() - hit.at < SHELL_TTL)
+    return hit.plan;
 
   let plan: ShellPlan = { kind: "raw" };
   for (const c of SHELL_CANDIDATES) {
     let res: ExecResult;
     try {
-      res = await docker(["exec", name, ...c.probe], { timeout: 5_000, noThrow: true });
+      res = await docker(["exec", name, ...c.probe], {
+        timeout: 5_000,
+        noThrow: true,
+      });
     } catch {
       // Spawn failure / timeout / daemon unreachable: can't probe. Don't cache a
       // result that may be transient — treat as raw for this attempt only.
@@ -363,7 +385,8 @@ export async function execInContainer(
     return { ...res, rawMode: false };
   }
   const argv = splitArgv(command);
-  if (argv.length === 0) return { stdout: "", stderr: "", code: 0, rawMode: true };
+  if (argv.length === 0)
+    return { stdout: "", stderr: "", code: 0, rawMode: true };
   const res = await docker(["exec", nameOrId, ...argv], {
     timeout: 30_000,
     noThrow: true,
@@ -410,7 +433,10 @@ export async function inspectStdio(
       { timeout: 10_000 },
     );
     const [openStdin = "", tty = ""] = stdout.trim().split("\t");
-    return { openStdin: openStdin.trim() === "true", tty: tty.trim() === "true" };
+    return {
+      openStdin: openStdin.trim() === "true",
+      tty: tty.trim() === "true",
+    };
   } catch {
     return { openStdin: false, tty: false };
   }
@@ -517,11 +543,9 @@ export function attachContainer(name: string): AttachHandle {
  * is delivered and the follow ends when there is nothing more to stream.
  */
 export function followLogs(name: string, tail = 500): AttachHandle {
-  const child = spawn(
-    "docker",
-    ["logs", "-f", "--tail", String(tail), name],
-    { windowsHide: true },
-  ) as ChildProcessWithoutNullStreams;
+  const child = spawn("docker", ["logs", "-f", "--tail", String(tail), name], {
+    windowsHide: true,
+  }) as ChildProcessWithoutNullStreams;
 
   let closed = false;
   return {

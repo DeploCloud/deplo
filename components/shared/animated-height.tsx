@@ -58,7 +58,7 @@ export function AnimatedHeight({
       className={cn(
         "transition-[height] duration-300 ease-out motion-reduce:transition-none",
         scrolls
-          ? "max-h-[75vh] overflow-y-auto focus-safe-scroll"
+          ? "focus-safe-scroll max-h-[75vh] overflow-y-auto"
           : growing
             ? "overflow-hidden"
             : "overflow-visible",

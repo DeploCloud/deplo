@@ -106,7 +106,9 @@ test("setMcpSettings turns it off and back on", async () => {
     assert.deepEqual(await setMcpSettings({ enabled: false }), {
       enabled: false,
     });
-    assert.deepEqual(await setMcpSettings({ enabled: true }), { enabled: true });
+    assert.deepEqual(await setMcpSettings({ enabled: true }), {
+      enabled: true,
+    });
     await setMcpSettings({ enabled: false });
   });
 

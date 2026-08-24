@@ -72,9 +72,9 @@ export function SharedVarsManager({
 }) {
   // `wizard` is the scope editor (and the creator: `editing: null`); `editing` is
   // the small value form the pencil opens.
-  const [wizard, setWizard] = React.useState<{ editing: SharedVarDTO | null } | null>(
-    null,
-  );
+  const [wizard, setWizard] = React.useState<{
+    editing: SharedVarDTO | null;
+  } | null>(null);
   const [editing, setEditing] = React.useState<SharedVarDTO | null>(null);
   const [deleteId, setDeleteId] = React.useState<string | null>(null);
   const router = useRouter();
@@ -91,10 +91,11 @@ export function SharedVarsManager({
   // second click on the same row earned a "Not found". The facets read `rows`
   // too, so the project a deleted variable was the last to reach stops being
   // offered as a filter at the same moment.
-  const { visible: rows, remove, restore } = useOptimisticRemove(
-    vars,
-    (v) => v.id,
-  );
+  const {
+    visible: rows,
+    remove,
+    restore,
+  } = useOptimisticRemove(vars, (v) => v.id);
 
   // The whole point of this tab is WHO gets the variable, so that is what it
   // filters on: the sharing mode, and then the single project / environment /
@@ -192,14 +193,19 @@ export function SharedVarsManager({
 
   // Searching "storefront" finds the variables shared WITH storefront, not only
   // the keys that spell it.
-  const { state: filters, setState: setFilters, clear, shown, counts } =
-    useEnvFilters(rows, facets, (v) =>
-      [
-        ...v.projects.map((p) => p.name),
-        ...v.apps.map((a) => a.name),
-        ...v.environments.map((e) => `${e.projectName} ${e.name}`),
-      ].join(" "),
-    );
+  const {
+    state: filters,
+    setState: setFilters,
+    clear,
+    shown,
+    counts,
+  } = useEnvFilters(rows, facets, (v) =>
+    [
+      ...v.projects.map((p) => p.name),
+      ...v.apps.map((a) => a.name),
+      ...v.environments.map((e) => `${e.projectName} ${e.name}`),
+    ].join(" "),
+  );
 
   return (
     <div className="space-y-4">
@@ -250,9 +256,13 @@ export function SharedVarsManager({
                 <TableHead className="whitespace-nowrap">Key</TableHead>
                 <TableHead className="w-full">Value</TableHead>
                 <TableHead className="whitespace-nowrap">Shared with</TableHead>
-                <TableHead className="whitespace-nowrap">Last modified</TableHead>
+                <TableHead className="whitespace-nowrap">
+                  Last modified
+                </TableHead>
                 <TableHead className="whitespace-nowrap">Modified by</TableHead>
-                <TableHead className="whitespace-nowrap text-right">Actions</TableHead>
+                <TableHead className="text-right whitespace-nowrap">
+                  Actions
+                </TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -267,13 +277,17 @@ export function SharedVarsManager({
                   <TableCell>
                     <SharedWithChips v={v} />
                   </TableCell>
-                  <TableCell className="whitespace-nowrap text-xs text-muted-foreground">
-                    <SimpleTooltip content={new Date(v.updatedAt).toLocaleString()}>
+                  <TableCell className="text-xs whitespace-nowrap text-muted-foreground">
+                    <SimpleTooltip
+                      content={new Date(v.updatedAt).toLocaleString()}
+                    >
                       <span>{timeAgo(v.updatedAt)}</span>
                     </SimpleTooltip>
                   </TableCell>
                   <TableCell>
-                    <EnvAuthorCell author={v.updatedBy ?? v.createdBy ?? null} />
+                    <EnvAuthorCell
+                      author={v.updatedBy ?? v.createdBy ?? null}
+                    />
                   </TableCell>
                   <TableCell className="text-right">
                     <div className="flex justify-end gap-1">

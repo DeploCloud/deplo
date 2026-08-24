@@ -56,10 +56,19 @@ test("the stored discriminants are untouched by the renaming", () => {
 
 test("no kind's copy leaks the old jargon", () => {
   const text = Object.values(VOLUME_KINDS)
-    .map((k) => `${k.label} ${k.summary} ${k.tooltip} ${k.sourceLabel} ${k.sourceTooltip}`)
+    .map(
+      (k) =>
+        `${k.label} ${k.summary} ${k.tooltip} ${k.sourceLabel} ${k.sourceTooltip}`,
+    )
     .join(" ")
     .toLowerCase();
-  for (const banned of ["named volume", "app file", "host path", "bind mount", "docker"]) {
+  for (const banned of [
+    "named volume",
+    "app file",
+    "host path",
+    "bind mount",
+    "docker",
+  ]) {
     assert.ok(!text.includes(banned), `copy still says "${banned}"`);
   }
 });
@@ -95,25 +104,40 @@ test("deriveVolumeName turns a path into a docker-safe name", () => {
 test("a row left without a path lands in the app's own folder, named after its source", () => {
   // One rule for the three kinds, so "where does it go" has the same answer
   // whichever storage you picked.
-  assert.equal(derivedMountPath(vol({ name: "uploads", mountPath: "" }), "/app"), "/app/uploads");
   assert.equal(
-    derivedMountPath(vol({ type: "app", projectPath: "config.toml", mountPath: "" }), "/app"),
+    derivedMountPath(vol({ name: "uploads", mountPath: "" }), "/app"),
+    "/app/uploads",
+  );
+  assert.equal(
+    derivedMountPath(
+      vol({ type: "app", projectPath: "config.toml", mountPath: "" }),
+      "/app",
+    ),
     "/app/config.toml",
   );
   assert.equal(
-    derivedMountPath(vol({ type: "host", hostPath: "/srv/media", mountPath: "" }), "/app"),
+    derivedMountPath(
+      vol({ type: "host", hostPath: "/srv/media", mountPath: "" }),
+      "/app",
+    ),
     "/app/media",
   );
 });
 
 test("a File keeps the layout it had in the repo", () => {
   assert.equal(
-    derivedMountPath(vol({ type: "app", projectPath: "conf/app.toml" }), "/app"),
+    derivedMountPath(
+      vol({ type: "app", projectPath: "conf/app.toml" }),
+      "/app",
+    ),
     "/app/conf/app.toml",
   );
   // The `./` marker and a trailing slash normalise away first.
   assert.equal(
-    derivedMountPath(vol({ type: "app", projectPath: "./conf/app.toml" }), "/app"),
+    derivedMountPath(
+      vol({ type: "app", projectPath: "./conf/app.toml" }),
+      "/app",
+    ),
     "/app/conf/app.toml",
   );
   assert.equal(
@@ -125,7 +149,10 @@ test("a File keeps the layout it had in the repo", () => {
 test("the derived path keeps the name's case; only the volume's own name folds", () => {
   // A path inside a Linux container is case-sensitive: a Volume named `Uploads`
   // has to land on the folder the code actually writes to.
-  assert.equal(derivedMountPath(vol({ name: "Uploads", mountPath: "" }), "/app"), "/app/Uploads");
+  assert.equal(
+    derivedMountPath(vol({ name: "Uploads", mountPath: "" }), "/app"),
+    "/app/Uploads",
+  );
   assert.equal(
     namedVolumeTarget(vol({ name: "Uploads", mountPath: "" }), "shop", "/app"),
     "deplo-shop-uploads",
@@ -134,7 +161,10 @@ test("the derived path keeps the name's case; only the volume's own name folds",
 
 test("the derived path follows the app's root directory, like the workdir does", () => {
   assert.equal(
-    derivedMountPath(vol({ name: "uploads" }), containerWorkdir("github", "apps/web")),
+    derivedMountPath(
+      vol({ name: "uploads" }),
+      containerWorkdir("github", "apps/web"),
+    ),
     "/app/apps/web/uploads",
   );
 });
@@ -145,38 +175,71 @@ test("nothing is derived when deplo does not know the working directory", () => 
   // stays empty, the data is gone at the next deploy. The field is required
   // there instead.
   for (const workdir of [null, undefined, ""]) {
-    assert.equal(derivedMountPath(vol({ name: "uploads", mountPath: "" }), workdir), "");
+    assert.equal(
+      derivedMountPath(vol({ name: "uploads", mountPath: "" }), workdir),
+      "",
+    );
   }
   assert.equal(
-    derivedMountPath(vol({ name: "uploads" }), containerWorkdir("docker-image", null)),
+    derivedMountPath(
+      vol({ name: "uploads" }),
+      containerWorkdir("docker-image", null),
+    ),
     "",
   );
 });
 
 test("nothing is derived from a source that is still empty", () => {
   assert.equal(derivedMountPath(vol({ name: "", mountPath: "" }), "/app"), "");
-  assert.equal(derivedMountPath(vol({ type: "app", mountPath: "" }), "/app"), "");
-  assert.equal(derivedMountPath(vol({ type: "host", mountPath: "" }), "/app"), "");
+  assert.equal(
+    derivedMountPath(vol({ type: "app", mountPath: "" }), "/app"),
+    "",
+  );
+  assert.equal(
+    derivedMountPath(vol({ type: "host", mountPath: "" }), "/app"),
+    "",
+  );
   // A host path with no last segment has nothing to name it after.
-  assert.equal(derivedMountPath(vol({ type: "host", hostPath: "/", mountPath: "" }), "/app"), "");
+  assert.equal(
+    derivedMountPath(
+      vol({ type: "host", hostPath: "/", mountPath: "" }),
+      "/app",
+    ),
+    "",
+  );
 });
 
 test("what the user typed always wins over what deplo would derive", () => {
   assert.equal(
-    effectiveMountPath(vol({ name: "uploads", mountPath: "/var/lib/data" }), "/app"),
+    effectiveMountPath(
+      vol({ name: "uploads", mountPath: "/var/lib/data" }),
+      "/app",
+    ),
     "/var/lib/data",
   );
-  assert.equal(effectiveMountPath(vol({ name: "uploads", mountPath: "" }), "/app"), "/app/uploads");
+  assert.equal(
+    effectiveMountPath(vol({ name: "uploads", mountPath: "" }), "/app"),
+    "/app/uploads",
+  );
   // Trailing slashes are trimmed the same way on both routes.
-  assert.equal(effectiveMountPath(vol({ name: "u", mountPath: "/data/" }), "/app"), "/data");
+  assert.equal(
+    effectiveMountPath(vol({ name: "u", mountPath: "/data/" }), "/app"),
+    "/data",
+  );
 });
 
 /* ---- per-row validation -------------------------------------------- */
 
 test("a clean row of each kind has no problem", () => {
   assert.equal(volumeProblem(vol({ name: "uploads" })), null);
-  assert.equal(volumeProblem(vol({ type: "app", projectPath: "config.toml" })), null);
-  assert.equal(volumeProblem(vol({ type: "host", hostPath: "/srv/media" })), null);
+  assert.equal(
+    volumeProblem(vol({ type: "app", projectPath: "config.toml" })),
+    null,
+  );
+  assert.equal(
+    volumeProblem(vol({ type: "host", hostPath: "/srv/media" })),
+    null,
+  );
 });
 
 test("a blank name is fine — the server derives one", () => {
@@ -185,16 +248,29 @@ test("a blank name is fine — the server derives one", () => {
 
 test("the path inside the app must be absolute, clean and unreserved", () => {
   assert.equal(volumeProblem(vol({ mountPath: "" }))?.field, "mountPath");
-  assert.match(volumeProblem(vol({ mountPath: "data" }))!.message, /start with a slash/);
-  assert.match(volumeProblem(vol({ mountPath: "/my data" }))!.message, /spaces/);
-  assert.match(volumeProblem(vol({ mountPath: "/data:ro" }))!.message, /spaces/);
+  assert.match(
+    volumeProblem(vol({ mountPath: "data" }))!.message,
+    /start with a slash/,
+  );
+  assert.match(
+    volumeProblem(vol({ mountPath: "/my data" }))!.message,
+    /spaces/,
+  );
+  assert.match(
+    volumeProblem(vol({ mountPath: "/data:ro" }))!.message,
+    /spaces/,
+  );
   assert.match(volumeProblem(vol({ mountPath: "/a/../b" }))!.message, /"\.\."/);
 });
 
 test("every reserved system path is refused, as itself and as a parent", () => {
   for (const p of RESERVED_MOUNT_PREFIXES) {
     assert.match(volumeProblem(vol({ mountPath: p }))!.message, /system/, p);
-    assert.match(volumeProblem(vol({ mountPath: `${p}/inner` }))!.message, /system/, p);
+    assert.match(
+      volumeProblem(vol({ mountPath: `${p}/inner` }))!.message,
+      /system/,
+      p,
+    );
   }
   // A path that merely starts with the same letters is NOT reserved.
   assert.equal(volumeProblem(vol({ mountPath: "/etcetera" })), null);
@@ -214,7 +290,10 @@ test("a File may sit inside a system directory, but never replace one", () => {
 });
 
 test("a Bind wants an absolute server path", () => {
-  assert.match(volumeProblem(vol({ type: "host" }))!.message, /path on the server/);
+  assert.match(
+    volumeProblem(vol({ type: "host" }))!.message,
+    /path on the server/,
+  );
   assert.match(
     volumeProblem(vol({ type: "host", hostPath: "srv/media" }))!.message,
     /start with a slash/,
@@ -223,11 +302,17 @@ test("a Bind wants an absolute server path", () => {
     volumeProblem(vol({ type: "host", hostPath: "/srv/../etc" }))!.message,
     /"\.\."/,
   );
-  assert.equal(volumeProblem(vol({ type: "host", hostPath: "/srv/x" }))?.field, undefined);
+  assert.equal(
+    volumeProblem(vol({ type: "host", hostPath: "/srv/x" }))?.field,
+    undefined,
+  );
 });
 
 test("a File wants a relative path inside this app's Files", () => {
-  assert.match(volumeProblem(vol({ type: "app" }))!.message, /path in this app's Files/);
+  assert.match(
+    volumeProblem(vol({ type: "app" }))!.message,
+    /path in this app's Files/,
+  );
   assert.match(
     volumeProblem(vol({ type: "app", projectPath: "/abs" }))!.message,
     /relative/,
@@ -237,13 +322,19 @@ test("a File wants a relative path inside this app's Files", () => {
     /"\.\."/,
   );
   // The `./` marker the compose convention uses is accepted and stripped.
-  assert.equal(volumeProblem(vol({ type: "app", projectPath: "./config.toml" })), null);
+  assert.equal(
+    volumeProblem(vol({ type: "app", projectPath: "./config.toml" })),
+    null,
+  );
 });
 
 test("a Volume name must be docker-shaped and short", () => {
   assert.match(volumeProblem(vol({ name: "Bad Name" }))!.message, /lowercase/);
   assert.match(volumeProblem(vol({ name: "_leading" }))!.message, /lowercase/);
-  assert.match(volumeProblem(vol({ name: "a".repeat(41) }))!.message, /characters/);
+  assert.match(
+    volumeProblem(vol({ name: "a".repeat(41) }))!.message,
+    /characters/,
+  );
   // Case is folded before the check, so a capitalised name is accepted.
   assert.equal(volumeProblem(vol({ name: "Uploads" })), null);
 });
@@ -251,13 +342,22 @@ test("a Volume name must be docker-shaped and short", () => {
 test("the path inside the app is not required when deplo can derive one", () => {
   // The point of the whole derivation: an entry is complete once you have said
   // WHAT to keep. Where it goes is deplo's job unless you want it elsewhere.
-  assert.equal(volumeProblem(vol({ name: "uploads", mountPath: "" }), "/app"), null);
   assert.equal(
-    volumeProblem(vol({ type: "app", projectPath: "config.toml", mountPath: "" }), "/app"),
+    volumeProblem(vol({ name: "uploads", mountPath: "" }), "/app"),
     null,
   );
   assert.equal(
-    volumeProblem(vol({ type: "host", hostPath: "/srv/media", mountPath: "" }), "/app"),
+    volumeProblem(
+      vol({ type: "app", projectPath: "config.toml", mountPath: "" }),
+      "/app",
+    ),
+    null,
+  );
+  assert.equal(
+    volumeProblem(
+      vol({ type: "host", hostPath: "/srv/media", mountPath: "" }),
+      "/app",
+    ),
     null,
   );
 });
@@ -271,25 +371,35 @@ test("with no working directory to derive from, the path is still required", () 
 test("a Volume with neither a name nor a path is asked for the shorter one", () => {
   // With a working directory the name is enough on its own, so that is the
   // field the row points at; without one, only the path will do.
-  assert.equal(volumeProblem(vol({ name: "", mountPath: "" }), "/app")?.field, "source");
+  assert.equal(
+    volumeProblem(vol({ name: "", mountPath: "" }), "/app")?.field,
+    "source",
+  );
   assert.match(
     volumeProblem(vol({ name: "", mountPath: "" }), "/app")!.message,
     /name/,
   );
-  assert.equal(volumeProblem(vol({ name: "", mountPath: "" }), null)?.field, "mountPath");
+  assert.equal(
+    volumeProblem(vol({ name: "", mountPath: "" }), null)?.field,
+    "mountPath",
+  );
 });
 
 test("a derived path is validated exactly like a typed one", () => {
   // The rules apply to what gets STORED, not to what was typed.
   assert.match(
-    volumeProblem(vol({ name: "uploads", mountPath: "" }), "/usr/local")!.message,
+    volumeProblem(vol({ name: "uploads", mountPath: "" }), "/usr/local")!
+      .message,
     /system/,
   );
 });
 
 test("the problem names the field to ring, not just the message", () => {
   assert.equal(volumeProblem(vol({ mountPath: "nope" }))!.field, "mountPath");
-  assert.equal(volumeProblem(vol({ type: "host", hostPath: "nope" }))!.field, "source");
+  assert.equal(
+    volumeProblem(vol({ type: "host", hostPath: "nope" }))!.field,
+    "source",
+  );
   assert.equal(volumeProblem(vol({ name: "NO PE" }))!.field, "source");
 });
 
@@ -297,7 +407,10 @@ test("the problem names the field to ring, not just the message", () => {
 
 test("two mounts at the same path in the same service collide", () => {
   assert.match(
-    volumeSetProblem([vol({ id: "a", name: "x" }), vol({ id: "b", name: "y" })])!,
+    volumeSetProblem([
+      vol({ id: "a", name: "x" }),
+      vol({ id: "b", name: "y" }),
+    ])!,
     /share the path \/data/,
   );
 });
@@ -357,8 +470,20 @@ test("binds and files are exempt from the name collision rule", () => {
   // Neither has a docker volume name, so identical names are harmless.
   assert.equal(
     volumeSetProblem([
-      vol({ id: "a", type: "host", name: "same", hostPath: "/a", mountPath: "/one" }),
-      vol({ id: "b", type: "host", name: "same", hostPath: "/b", mountPath: "/two" }),
+      vol({
+        id: "a",
+        type: "host",
+        name: "same",
+        hostPath: "/a",
+        mountPath: "/one",
+      }),
+      vol({
+        id: "b",
+        type: "host",
+        name: "same",
+        hostPath: "/b",
+        mountPath: "/two",
+      }),
     ]),
     null,
   );
@@ -372,11 +497,17 @@ test("the readout says what will happen, per kind", () => {
     /deplo-shop-uploads/,
   );
   assert.match(
-    volumeReadout(vol({ type: "app", projectPath: "config.toml", mountPath: "/c" }), "shop"),
+    volumeReadout(
+      vol({ type: "app", projectPath: "config.toml", mountPath: "/c" }),
+      "shop",
+    ),
     /config\.toml in this app's Files/,
   );
   assert.match(
-    volumeReadout(vol({ type: "host", hostPath: "/srv/m", mountPath: "/m" }), "shop"),
+    volumeReadout(
+      vol({ type: "host", hostPath: "/srv/m", mountPath: "/m" }),
+      "shop",
+    ),
     /server's \/srv\/m/,
   );
 });
@@ -393,18 +524,40 @@ test("the readout says a propagated submount stays writable under :ro", () => {
   // carries its own mount options, so `:ro` covers the bound folder and NOT what
   // later appears inside it. The pair reads as "locked down" otherwise.
   const both = volumeReadout(
-    vol({ type: "host", hostPath: "/srv/m", mountPath: "/m", readOnly: true, propagation: "rslave" }),
+    vol({
+      type: "host",
+      hostPath: "/srv/m",
+      mountPath: "/m",
+      readOnly: true,
+      propagation: "rslave",
+    }),
     "shop",
   );
   assert.match(both, /read it but not change it/);
   assert.match(both, /stays writable/);
   // Neither half alone earns the caveat.
   assert.doesNotMatch(
-    volumeReadout(vol({ type: "host", hostPath: "/srv/m", mountPath: "/m", propagation: "rslave" }), "shop"),
+    volumeReadout(
+      vol({
+        type: "host",
+        hostPath: "/srv/m",
+        mountPath: "/m",
+        propagation: "rslave",
+      }),
+      "shop",
+    ),
     /stays writable/,
   );
   assert.doesNotMatch(
-    volumeReadout(vol({ type: "host", hostPath: "/srv/m", mountPath: "/m", readOnly: true }), "shop"),
+    volumeReadout(
+      vol({
+        type: "host",
+        hostPath: "/srv/m",
+        mountPath: "/m",
+        readOnly: true,
+      }),
+      "shop",
+    ),
     /stays writable/,
   );
 });
@@ -428,7 +581,11 @@ test("the readout states the derived path, because that is what will happen", ()
     /Keeps \/app\/uploads on a disk deplo manages/,
   );
   assert.match(
-    volumeReadout(vol({ type: "host", hostPath: "/srv/media", mountPath: "" }), "shop", "/app"),
+    volumeReadout(
+      vol({ type: "host", hostPath: "/srv/media", mountPath: "" }),
+      "shop",
+      "/app",
+    ),
     /Shares the server's \/srv\/media at \/app\/media/,
   );
 });
@@ -478,7 +635,12 @@ test("re-picking the current kind is not an edit", () => {
 });
 
 test("switching kind keeps the path inside the app and the read-only flag", () => {
-  const before = vol({ name: "u", mountPath: "/data", readOnly: true, id: "keep" });
+  const before = vol({
+    name: "u",
+    mountPath: "/data",
+    readOnly: true,
+    id: "keep",
+  });
   const after = switchKind(before, "app");
   // Those two answers mean the same thing for every kind.
   assert.equal(after.mountPath, "/data");
@@ -538,7 +700,10 @@ test("namedVolumeTarget gives the real on-host name a Volume will use", () => {
 
 test("namedVolumeTarget is null when there is nothing honest to show", () => {
   // Nothing to derive from yet.
-  assert.equal(namedVolumeTarget(vol({ name: "", mountPath: "" }), "shop"), null);
+  assert.equal(
+    namedVolumeTarget(vol({ name: "", mountPath: "" }), "shop"),
+    null,
+  );
   // A File's real source is <stacks>/files/<slug>, which the client cannot know,
   // and a Bind's target is the path the user just typed. Neither gets a line.
   assert.equal(
@@ -573,7 +738,10 @@ test("a path in Files normalises to one form, whatever the user typed", () => {
   assert.equal(normalizeFilesPath(undefined), "");
   // The same string the server's validateVolumes stores, so the editor's read of
   // a file's content and the saved row can never disagree about which file it is.
-  assert.equal(normalizeFilesPath("./config.toml"), normalizeFilesPath("config.toml"));
+  assert.equal(
+    normalizeFilesPath("./config.toml"),
+    normalizeFilesPath("config.toml"),
+  );
 });
 
 test("the path in Files is offered from the mount path's file name", () => {

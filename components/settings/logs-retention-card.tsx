@@ -41,7 +41,10 @@ export function LogsRetentionCard({ logMaxDays }: { logMaxDays: number }) {
   // mid-edit after a backspace.
   const parsed = Math.min(
     MAX_LOG_RANGE_DAYS,
-    Math.max(MIN_LOG_RANGE_DAYS, Math.trunc(Number(value) || MIN_LOG_RANGE_DAYS)),
+    Math.max(
+      MIN_LOG_RANGE_DAYS,
+      Math.trunc(Number(value) || MIN_LOG_RANGE_DAYS),
+    ),
   );
 
   function save() {

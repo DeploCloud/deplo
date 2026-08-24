@@ -117,16 +117,32 @@ beforeEach(async () => {
   await seedServer(db);
 
   await db.insert(projectsTable).values([
-    { id: PRC_IN, teamId: TEAM_A, name: "In", slug: "in", createdAt: T0, updatedAt: T0 },
-    { id: PRC_OUT, teamId: TEAM_A, name: "Out", slug: "out", createdAt: T0, updatedAt: T0 },
+    {
+      id: PRC_IN,
+      teamId: TEAM_A,
+      name: "In",
+      slug: "in",
+      createdAt: T0,
+      updatedAt: T0,
+    },
+    {
+      id: PRC_OUT,
+      teamId: TEAM_A,
+      name: "Out",
+      slug: "out",
+      createdAt: T0,
+      updatedAt: T0,
+    },
   ]);
   // FLD_IN owns a child, so the subtree rule has something to reach. Every
   // folder is owned by ADMIN, so DEV sees them only through the scope.
-  await db.insert(foldersTable).values([
-    folder(FLD_IN),
-    { ...folder(FLD_CHILD), parentId: FLD_IN },
-    folder(FLD_OUT),
-  ]);
+  await db
+    .insert(foldersTable)
+    .values([
+      folder(FLD_IN),
+      { ...folder(FLD_CHILD), parentId: FLD_IN },
+      folder(FLD_OUT),
+    ]);
   await seedApp(db, { id: APP_IN_PRC, projectId: PRC_IN });
   await seedApp(db, { id: APP_OUT_PRC, slug: "out-app", projectId: PRC_OUT });
   await seedApp(db, { id: APP_IN_FLD, folderId: FLD_IN });
@@ -145,14 +161,12 @@ beforeEach(async () => {
     scoped: false,
     createdAt: T0,
   });
-  await db
-    .insert(teamRoleCapabilitiesTable)
-    .values(
-      (["view", "deploy_apps"] as Capability[]).map((capability) => ({
-        roleId: ROLE,
-        capability,
-      })),
-    );
+  await db.insert(teamRoleCapabilitiesTable).values(
+    (["view", "deploy_apps"] as Capability[]).map((capability) => ({
+      roleId: ROLE,
+      capability,
+    })),
+  );
   await db
     .update(membershipsTable)
     .set({ roleId: ROLE })
@@ -165,11 +179,18 @@ async function scopeTo(opts: {
   folders?: string[];
   apps?: string[];
 }): Promise<void> {
-  await db.update(teamRolesTable).set({ scoped: true }).where(eq(teamRolesTable.id, ROLE));
+  await db
+    .update(teamRolesTable)
+    .set({ scoped: true })
+    .where(eq(teamRolesTable.id, ROLE));
   for (const id of opts.projects ?? [])
-    await db.insert(teamRoleScopeProjects).values({ roleId: ROLE, projectId: id });
+    await db
+      .insert(teamRoleScopeProjects)
+      .values({ roleId: ROLE, projectId: id });
   for (const id of opts.folders ?? [])
-    await db.insert(teamRoleScopeFolders).values({ roleId: ROLE, folderId: id });
+    await db
+      .insert(teamRoleScopeFolders)
+      .values({ roleId: ROLE, folderId: id });
   for (const id of opts.apps ?? [])
     await db.insert(teamRoleScopeApps).values({ roleId: ROLE, appId: id });
 }
@@ -234,7 +255,10 @@ test("naming one app reaches that app alone", async () => {
   await scopeTo({ apps: [APP_TOP] });
   assert.ok(await reaches({ kind: "app", id: APP_TOP }));
   assert.equal(await reaches({ kind: "app", id: APP_IN_PRC }), false);
-  assert.deepEqual((await as(DEV, () => listApps())).map((a) => a.id), [APP_TOP]);
+  assert.deepEqual(
+    (await as(DEV, () => listApps())).map((a) => a.id),
+    [APP_TOP],
+  );
 });
 
 test("naming one app keeps the project that holds it navigable", async () => {
@@ -333,12 +357,21 @@ test("an environment scope reaches one environment of a project", async () => {
 test("an environment grant is a rung of its own, beating the project it sits in", async () => {
   const envs = await import("../db/schema/control-plane");
   await db.insert(envs.environments).values({
-    id: "environ_stg", projectId: PRC_IN, name: "Staging", slug: "staging",
-    kind: "custom", gitBranch: "", isDefault: false, position: 1,
-    createdAt: T0, updatedAt: T0,
+    id: "environ_stg",
+    projectId: PRC_IN,
+    name: "Staging",
+    slug: "staging",
+    kind: "custom",
+    gitBranch: "",
+    isDefault: false,
+    position: 1,
+    createdAt: T0,
+    updatedAt: T0,
   });
   await seedApp(db, {
-    id: "prj_stg2", projectId: PRC_IN, environmentId: "environ_stg",
+    id: "prj_stg2",
+    projectId: PRC_IN,
+    environmentId: "environ_stg",
   });
   // The project says one thing…
   await db
@@ -348,7 +381,11 @@ test("an environment grant is a rung of its own, beating the project it sits in"
   // environment is more specific than the project it belongs to.
   await db
     .insert(envs.environmentGrants)
-    .values({ environmentId: "environ_stg", userId: DEV, capability: "manage_env" });
+    .values({
+      environmentId: "environ_stg",
+      userId: DEV,
+      capability: "manage_env",
+    });
 
   assert.deepEqual(await capsOn({ kind: "app", id: "prj_stg2" }), [
     "view",
@@ -418,7 +455,9 @@ test("limiting a role limits its holders, and clearing it gives them the team ba
   );
   assert.ok(await reaches({ kind: "app", id: APP_IN_PRC }));
   assert.equal(await reaches({ kind: "app", id: APP_OUT_PRC }), false);
-  const scoped = (await as(ADMIN, () => listRoles())).find((r) => r.id === ROLE)!;
+  const scoped = (await as(ADMIN, () => listRoles())).find(
+    (r) => r.id === ROLE,
+  )!;
   assert.deepEqual(scoped.scope?.projectIds, [PRC_IN]);
 
   // Clearing it is a widening, and the holders get the whole team back with no
@@ -500,7 +539,11 @@ test("the reads the dashboard layout makes still answer a scoped member", async 
   // the team's identity is a separate read from its settings.
   await as(DEV, async () => {
     const team = await getTeamIdentity();
-    assert.equal(team.id, TEAM_A, "the topbar must still be able to name the team");
+    assert.equal(
+      team.id,
+      TEAM_A,
+      "the topbar must still be able to name the team",
+    );
     await reachableCapabilities();
     await getBreadcrumbGraph();
     await listMyTeams();
@@ -530,7 +573,8 @@ test("the app pages a scoped member owns still load", async () => {
 });
 
 test("a scoped member can still pick where an app runs", async () => {
-  const { listServerChoices, listServersForCurrentTeam } = await import("./servers");
+  const { listServerChoices, listServersForCurrentTeam } =
+    await import("./servers");
   await scopeTo({ projects: [PRC_IN] });
 
   // `create_apps` keeps its meaning inside a scope, so the create page has to
@@ -575,7 +619,10 @@ test("no list read hands a scoped member anything outside their scope", async ()
     ],
     ["listActivity", async () => (await import("./activity")).listActivity()],
     ["listAllAppEnv", async () => (await import("./env")).listAllAppEnv()],
-    ["listDeployments", async () => (await import("./deployments")).listDeployments()],
+    [
+      "listDeployments",
+      async () => (await import("./deployments")).listDeployments(),
+    ],
     ["listDomains", async () => (await import("./domains")).listDomains()],
     [
       "projectContents",
@@ -603,17 +650,35 @@ test("the trail and the shared library are cut to what they reach", async () => 
   // An event on an out-of-scope app, and a TEAM-level one (a member added, a
   // role edited): the second has no app at all, and is the team's own history.
   await db.insert(activitiesTable).values([
-    { id: "act_out", teamId: TEAM_A, type: "app", message: "OUT-APP-EVENT",
-      actor: "someone", appId: APP_OUT_PRC, createdAt: T0 },
-    { id: "act_team", teamId: TEAM_A, type: "member", message: "TEAM-LEVEL-EVENT",
-      actor: "someone", appId: null, createdAt: T0 },
+    {
+      id: "act_out",
+      teamId: TEAM_A,
+      type: "app",
+      message: "OUT-APP-EVENT",
+      actor: "someone",
+      appId: APP_OUT_PRC,
+      createdAt: T0,
+    },
+    {
+      id: "act_team",
+      teamId: TEAM_A,
+      type: "member",
+      message: "TEAM-LEVEL-EVENT",
+      actor: "someone",
+      appId: null,
+      createdAt: T0,
+    },
   ]);
   // A team-wide PLAIN variable: only `secret` rows are masked, so its value is
   // returned in full to anyone who can list it.
   await as(ADMIN, () =>
     saveSharedVar({
-      key: "TEAM_WIDE", value: "PLAINTEXT-VALUE", type: "plain",
-      teamWide: true, environmentIds: [], projectIds: [],
+      key: "TEAM_WIDE",
+      value: "PLAINTEXT-VALUE",
+      type: "plain",
+      teamWide: true,
+      environmentIds: [],
+      projectIds: [],
     }),
   );
 
@@ -626,10 +691,15 @@ test("the trail and the shared library are cut to what they reach", async () => 
   );
 
   const trail = JSON.stringify(await as(DEV, () => listActivity()));
-  assert.ok(!trail.includes("OUT-APP-EVENT"), "the trail named an app they can't reach");
+  assert.ok(
+    !trail.includes("OUT-APP-EVENT"),
+    "the trail named an app they can't reach",
+  );
   assert.ok(!trail.includes("TEAM-LEVEL-EVENT"), "nor the team's own history");
 
-  const vars = JSON.stringify(await as(DEV, () => listSharedVarsForApp(APP_IN_PRC)));
+  const vars = JSON.stringify(
+    await as(DEV, () => listSharedVarsForApp(APP_IN_PRC)),
+  );
   assert.ok(
     !vars.includes("PLAINTEXT-VALUE"),
     "the team's shared library came back from an app inside the scope",
@@ -637,14 +707,22 @@ test("the trail and the shared library are cut to what they reach", async () => 
 });
 
 test("a backup schedule is reachable only through the app it belongs to", async () => {
-  const { seedBackup, seedDatabase, seedS3 } = await import("./backup-test-helpers");
+  const { seedBackup, seedDatabase, seedS3 } =
+    await import("./backup-test-helpers");
   const { listBackups, toggleBackup } = await import("./backups");
   await seedDatabase(db, { id: "db_main", name: "main" });
   await seedS3(db, { id: "s3_main" });
   await seedBackup(db, {
-    id: "bk_out", targetKind: "app", appId: APP_OUT_PRC, destinationId: "s3_main",
+    id: "bk_out",
+    targetKind: "app",
+    appId: APP_OUT_PRC,
+    destinationId: "s3_main",
   });
-  await seedBackup(db, { id: "bk_db", databaseId: "db_main", destinationId: "s3_main" });
+  await seedBackup(db, {
+    id: "bk_db",
+    databaseId: "db_main",
+    destinationId: "s3_main",
+  });
 
   await scopeTo({ projects: [PRC_IN] });
   await pg.exec(
@@ -659,8 +737,14 @@ test("a backup schedule is reachable only through the app it belongs to", async 
   );
   // `manage_backups` survives the clamp because it means something on an app,
   // so the team-wide capability check alone would have let this through.
-  await assert.rejects(() => as(DEV, () => toggleBackup("bk_db", false)), /not found/i);
-  await assert.rejects(() => as(DEV, () => toggleBackup("bk_out", false)), /not found/i);
+  await assert.rejects(
+    () => as(DEV, () => toggleBackup("bk_db", false)),
+    /not found/i,
+  );
+  await assert.rejects(
+    () => as(DEV, () => toggleBackup("bk_out", false)),
+    /not found/i,
+  );
 });
 
 test("a limited member creates and moves inside their scope, and nowhere else", async () => {
@@ -680,13 +764,23 @@ test("a limited member creates and moves inside their scope, and nowhere else", 
   // Creating inside the scope works; outside it answers as a project that is
   // not there. The create path is how anyone walks out of their own boundary.
   const made = await as(DEV, () =>
-    createApp({ name: "mine", source: "upload", repo: null, projectId: PRC_IN }),
+    createApp({
+      name: "mine",
+      source: "upload",
+      repo: null,
+      projectId: PRC_IN,
+    }),
   );
   assert.equal(made.projectId, PRC_IN);
   await assert.rejects(
     () =>
       as(DEV, () =>
-        createApp({ name: "theirs", source: "upload", repo: null, projectId: PRC_OUT }),
+        createApp({
+          name: "theirs",
+          source: "upload",
+          repo: null,
+          projectId: PRC_OUT,
+        }),
       ),
     /Project not found/,
     "an app was created inside a project the role does not reach",
@@ -700,7 +794,10 @@ test("a limited member creates and moves inside their scope, and nowhere else", 
 
   // Nor readable by name, nor enumerable through its environments.
   assert.equal(await as(DEV, () => getProjectBySlug("out")), null);
-  assert.deepEqual(await as(DEV, () => listEnvironmentsForProject(PRC_OUT)), []);
+  assert.deepEqual(
+    await as(DEV, () => listEnvironmentsForProject(PRC_OUT)),
+    [],
+  );
 });
 
 test("the live database stream refuses a scoped member, with no request to read", async () => {
@@ -721,7 +818,10 @@ test("the live database stream refuses a scoped member, with no request to read"
   );
 
   // The control: unscoped, the same call streams.
-  await db.update(teamRolesTable).set({ scoped: false }).where(eq(teamRolesTable.id, ROLE));
+  await db
+    .update(teamRolesTable)
+    .set({ scoped: false })
+    .where(eq(teamRolesTable.id, ROLE));
   const gen = databaseStatusStream("db_main", TEAM_A, DEV);
   const first = await gen.next();
   assert.equal(first.value?.id, "db_main");
@@ -743,7 +843,10 @@ test("nothing that belongs to the whole team is reachable through a point lookup
   assert.equal(await as(DEV, () => getServer("srv_1")), null);
 
   // The control: unscoped, both answer.
-  await db.update(teamRolesTable).set({ scoped: false }).where(eq(teamRolesTable.id, ROLE));
+  await db
+    .update(teamRolesTable)
+    .set({ scoped: false })
+    .where(eq(teamRolesTable.id, ROLE));
   assert.ok(await as(DEV, () => getDatabase("db_main")));
   assert.ok(await as(DEV, () => getServer("srv_1")));
 });
@@ -815,7 +918,9 @@ test("every team-wide read refuses a scoped member, in their own words", async (
 test("a scoped role cannot hold a team-wide capability, however it was authored", async () => {
   // Authored with the lot, including the three that lock a team out if nobody
   // holds them. The AUTHORED set is what the role editor shows.
-  await db.delete(teamRoleCapabilitiesTable).where(eq(teamRoleCapabilitiesTable.roleId, ROLE));
+  await db
+    .delete(teamRoleCapabilitiesTable)
+    .where(eq(teamRoleCapabilitiesTable.roleId, ROLE));
   const authored: Capability[] = [
     "view",
     "deploy_apps",
@@ -885,20 +990,32 @@ test("a backup RUN history is reachable only through the app it belongs to", asy
     await import("./backups");
   await seedS3(db, { id: "s3_main" });
   await seedBackup(db, {
-    id: "bk_out", targetKind: "app", appId: APP_OUT_PRC, destinationId: "s3_main",
+    id: "bk_out",
+    targetKind: "app",
+    appId: APP_OUT_PRC,
+    destinationId: "s3_main",
   });
   await seedBackup(db, {
-    id: "bk_in", targetKind: "app", appId: APP_IN_PRC, destinationId: "s3_main",
+    id: "bk_in",
+    targetKind: "app",
+    appId: APP_IN_PRC,
+    destinationId: "s3_main",
   });
   // REAL out-of-scope data to leak. A probe against an empty table proves
   // nothing, and asserting on one is how this shipped.
   await seedRun(db, {
-    id: "run_in", targetKind: "app", appId: APP_IN_PRC,
-    backupId: "bk_in", destinationId: "s3_main",
+    id: "run_in",
+    targetKind: "app",
+    appId: APP_IN_PRC,
+    backupId: "bk_in",
+    destinationId: "s3_main",
   });
   await seedRun(db, {
-    id: "run_out", targetKind: "app", appId: APP_OUT_PRC,
-    backupId: "bk_out", destinationId: "s3_main",
+    id: "run_out",
+    targetKind: "app",
+    appId: APP_OUT_PRC,
+    backupId: "bk_out",
+    destinationId: "s3_main",
   });
 
   await scopeTo({ projects: [PRC_IN] });
@@ -910,7 +1027,9 @@ test("a backup RUN history is reachable only through the app it belongs to", asy
   // The control FIRST: the app they do reach still answers, or a gate that
   // simply refuses everything would pass this test.
   assert.deepEqual(
-    (await as(DEV, () => listBackupRuns({ appId: APP_IN_PRC }))).map((r) => r.id),
+    (await as(DEV, () => listBackupRuns({ appId: APP_IN_PRC }))).map(
+      (r) => r.id,
+    ),
     ["run_in"],
   );
   // `backupTargetInScope` used to fall through to `appInTeam`, whose only scope
@@ -941,18 +1060,34 @@ test("a move cannot file an app anywhere the role does not reach", async () => {
   const { environments } = await import("../db/schema/control-plane");
   await db.insert(environments).values([
     {
-      id: "environ_prod", projectId: PRC_IN, name: "Production", slug: "production",
-      kind: "production", gitBranch: "", isDefault: true, position: 0,
-      createdAt: T0, updatedAt: T0,
+      id: "environ_prod",
+      projectId: PRC_IN,
+      name: "Production",
+      slug: "production",
+      kind: "production",
+      gitBranch: "",
+      isDefault: true,
+      position: 0,
+      createdAt: T0,
+      updatedAt: T0,
     },
     {
-      id: "environ_stg", projectId: PRC_IN, name: "Staging", slug: "staging",
-      kind: "custom", gitBranch: "", isDefault: false, position: 1,
-      createdAt: T0, updatedAt: T0,
+      id: "environ_stg",
+      projectId: PRC_IN,
+      name: "Staging",
+      slug: "staging",
+      kind: "custom",
+      gitBranch: "",
+      isDefault: false,
+      position: 1,
+      createdAt: T0,
+      updatedAt: T0,
     },
   ]);
   await seedApp(db, {
-    id: "prj_prod", projectId: PRC_IN, environmentId: "environ_prod",
+    id: "prj_prod",
+    projectId: PRC_IN,
+    environmentId: "environ_prod",
   });
 
   // Scoped by raw insert, like `scopeTo`: `move_apps` is not in
@@ -960,8 +1095,12 @@ test("a move cannot file an app anywhere the role does not reach", async () => {
   // clamp the verb away and the destination check would never be reached. A
   // holder gets it from a node grant instead (it IS in
   // NODE_GRANTABLE_CAPABILITIES), which is the shape this reproduces.
-  const { teamRoleScopeEnvironments } = await import("../db/schema/control-plane");
-  await db.update(teamRolesTable).set({ scoped: true }).where(eq(teamRolesTable.id, ROLE));
+  const { teamRoleScopeEnvironments } =
+    await import("../db/schema/control-plane");
+  await db
+    .update(teamRolesTable)
+    .set({ scoped: true })
+    .where(eq(teamRolesTable.id, ROLE));
   await db
     .insert(teamRoleScopeEnvironments)
     .values({ roleId: ROLE, environmentId: "environ_prod" });

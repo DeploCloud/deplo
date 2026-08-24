@@ -50,7 +50,9 @@ test("the app menu offers Pull requests only when previews are actually on", () 
   // Off ⇒ nothing to list. Turning the switch off destroys every live preview,
   // so the page cannot even be where you go to find leftovers — and the setting
   // that turns it back on lives under Settings, which is always reachable.
-  assert.ok(!labels(flags({ previewsEnabled: false })).includes("Pull requests"));
+  assert.ok(
+    !labels(flags({ previewsEnabled: false })).includes("Pull requests"),
+  );
 
   // Not a GitHub app ⇒ never, at any setting. Nothing else receives a
   // `pull_request` delivery, so the page could only ever be a dead end.
@@ -119,13 +121,18 @@ test("Cron jobs has no settings entry of its own - the switch is under Advanced"
   // Console: an opt-in feature does not get a permanent seat in the settings
   // menu of every app that will never turn it on.
   for (const nav of [appSettingsNav("blog"), databaseSettingsNav("db_1")]) {
-    assert.ok(!nav.flatMap((s) => s.items).some((i) => i.label === "Cron jobs"));
+    assert.ok(
+      !nav.flatMap((s) => s.items).some((i) => i.label === "Cron jobs"),
+    );
     assert.ok(nav.flatMap((s) => s.items).some((i) => i.label === "Advanced"));
   }
 });
 
 test("a database gets Cron jobs on the same rule", () => {
-  const dbLabels = (cronsEnabled: boolean, pathname = "/storage/databases/db_1") =>
+  const dbLabels = (
+    cronsEnabled: boolean,
+    pathname = "/storage/databases/db_1",
+  ) =>
     databaseNav("db_1", { pathname, consoleAcknowledged: false, cronsEnabled })
       .flatMap((s) => s.items)
       .map((i) => i.label);
@@ -133,7 +140,9 @@ test("a database gets Cron jobs on the same rule", () => {
   assert.ok(dbLabels(true).includes("Cron jobs"));
   assert.ok(!dbLabels(false).includes("Cron jobs"));
   // And it survives while open, like the app's.
-  assert.ok(dbLabels(false, "/storage/databases/db_1/cron-jobs").includes("Cron jobs"));
+  assert.ok(
+    dbLabels(false, "/storage/databases/db_1/cron-jobs").includes("Cron jobs"),
+  );
 });
 
 test("MCP Server is offered to either capability that opens half of it", () => {
@@ -146,7 +155,11 @@ test("MCP Server is offered to either capability that opens half of it", () => {
     (i) => i.href === "/settings/mcp",
   );
   assert.ok(mcp, "the MCP Server entry disappeared");
-  assert.equal(mcp.requires, undefined, "a single `requires` locks one of them out");
+  assert.equal(
+    mcp.requires,
+    undefined,
+    "a single `requires` locks one of them out",
+  );
   assert.deepEqual(mcp.requiresAny?.slice().sort(), [
     "manage_mcp",
     "manage_tokens",

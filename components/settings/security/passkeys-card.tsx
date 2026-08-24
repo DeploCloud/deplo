@@ -5,12 +5,7 @@ import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import { Fingerprint, Plus } from "lucide-react";
 
-import {
-  Card,
-  CardContent,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import {
   Table,
   TableBody,
@@ -225,11 +220,10 @@ function AddPasskeyDialog({
       };
     if (!passkeysSupported())
       return { ok: false as const, error: "This browser can't use passkeys." };
-    const options = await gqlAction<{ startPasskeyRegistration: unknown }, unknown>(
-      START,
-      { password },
-      (d) => d.startPasskeyRegistration,
-    );
+    const options = await gqlAction<
+      { startPasskeyRegistration: unknown },
+      unknown
+    >(START, { password }, (d) => d.startPasskeyRegistration);
     if (!options.ok) return options;
     let response: unknown;
     try {

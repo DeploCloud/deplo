@@ -50,14 +50,20 @@ export function TemplateRail({
 
   const scroll = (direction: -1 | 1) => {
     const el = ref.current;
-    if (el) el.scrollBy({ left: direction * el.clientWidth * 0.8, behavior: "smooth" });
+    if (el)
+      el.scrollBy({
+        left: direction * el.clientWidth * 0.8,
+        behavior: "smooth",
+      });
   };
 
   return (
     <section className="group/rail space-y-3">
       <div className="flex items-end justify-between gap-4">
         <div className="min-w-0">
-          <h2 className="text-base font-semibold tracking-tight lg:text-lg">{title}</h2>
+          <h2 className="text-base font-semibold tracking-tight lg:text-lg">
+            {title}
+          </h2>
           {subtitle && (
             <p className="mt-1 text-sm text-muted-foreground">{subtitle}</p>
           )}
@@ -79,7 +85,7 @@ export function TemplateRail({
       <div
         ref={ref}
         onScroll={measure}
-        className="scrollbar-none -mx-1 flex snap-x snap-mandatory gap-3 overflow-x-auto px-1 py-1"
+        className="-mx-1 scrollbar-none flex snap-x snap-mandatory gap-3 overflow-x-auto px-1 py-1"
       >
         {children}
       </div>

@@ -52,7 +52,11 @@ export function TargetCombobox({
     kind === "app" ? (
       <AppLogo logo={t.logo ?? null} size={20} />
     ) : (
-      <DatabaseLogo type={t.type ?? "postgres"} logo={t.logo ?? null} size={20} />
+      <DatabaseLogo
+        type={t.type ?? "postgres"}
+        logo={t.logo ?? null}
+        size={20}
+      />
     );
   return (
     <Combobox<BackupTargetOption>

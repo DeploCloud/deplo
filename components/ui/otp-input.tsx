@@ -157,7 +157,7 @@ export function OtpInput({
             }}
             className={cn(
               "h-13 w-11 rounded-lg border bg-transparent text-center font-mono text-xl tabular-nums transition-colors",
-              "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+              "focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none",
               "disabled:cursor-not-allowed disabled:opacity-50",
               invalid
                 ? "border-destructive text-destructive"

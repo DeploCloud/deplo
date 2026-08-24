@@ -191,13 +191,16 @@ const UpdateDatabaseInputType = builder.inputType("UpdateDatabaseInput", {
 // Expert overrides (Settings → Advanced). Absent field = leave unchanged;
 // explicit null = clear back to the derived/default value. Applied on the next
 // redeploy or settings-driven reroute — the row is truth, the container follows.
-const UpdateDatabaseImageInputType = builder.inputType("UpdateDatabaseImageInput", {
-  fields: (t) => ({
-    customImage: t.string({ required: false }),
-    customCommand: t.string({ required: false }),
-    version: t.string({ required: false }),
-  }),
-});
+const UpdateDatabaseImageInputType = builder.inputType(
+  "UpdateDatabaseImageInput",
+  {
+    fields: (t) => ({
+      customImage: t.string({ required: false }),
+      customCommand: t.string({ required: false }),
+      version: t.string({ required: false }),
+    }),
+  },
+);
 
 const HostPortCheckRef = builder
   .objectRef<{ checked: boolean; inUse: number[]; reason: string | null }>(
@@ -260,7 +263,8 @@ builder.queryFields((t) => ({
       serverId: t.arg.id({ required: true }),
       ports: t.arg.intList({ required: true }),
     },
-    resolve: (_r, { serverId, ports }) => hostPortsInUse(String(serverId), ports),
+    resolve: (_r, { serverId, ports }) =>
+      hostPortsInUse(String(serverId), ports),
   }),
 }));
 
@@ -585,7 +589,8 @@ export async function* databaseStatusStream(
   // it cannot resolve a user, which made this the one path where a limited
   // member was handed a database. A database belongs to no project, so anyone
   // whose role reaches only part of the team reaches none of them.
-  if (await memberScopeFor(userId, teamId)) throw new Error("Database not found");
+  if (await memberScopeFor(userId, teamId))
+    throw new Error("Database not found");
   const first = await getDatabaseForTeam(id, teamId);
   if (!first) throw new Error("Database not found");
 

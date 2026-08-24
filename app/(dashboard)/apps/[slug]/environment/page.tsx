@@ -13,7 +13,7 @@ import { EmptyState } from "@/components/shared/empty-state";
 export const metadata = { title: "Environment Variables" };
 
 export default async function AppEnvPage(
-  props: PageProps<"/apps/[slug]/environment">
+  props: PageProps<"/apps/[slug]/environment">,
 ) {
   const { slug } = await props.params;
   const project = await getAppBySlug(slug);
@@ -37,17 +37,19 @@ export default async function AppEnvPage(
     );
   }
 
-  const [vars, sharedVars, allSharedVars, previewOverrides] = await Promise.all([
-    listEnv(project.id),
-    listSharedVarsForApp(project.id),
-    // The full records back the value edit + "Shared with" chips a shared row now
-    // exposes here; narrow to the ones this app actually receives. Team-wide, so
-    // it stays behind the TEAM capability: someone whose `manage_env` comes from
-    // this app alone sees the app's own variables, not the team's library.
-    teamWideEnv ? listSharedVars() : Promise.resolve([]),
-    // Preview overrides only mean anything once preview deployments are on.
-    project.previewEnabled ? listPreviewEnvVars(project.id) : [],
-  ]);
+  const [vars, sharedVars, allSharedVars, previewOverrides] = await Promise.all(
+    [
+      listEnv(project.id),
+      listSharedVarsForApp(project.id),
+      // The full records back the value edit + "Shared with" chips a shared row now
+      // exposes here; narrow to the ones this app actually receives. Team-wide, so
+      // it stays behind the TEAM capability: someone whose `manage_env` comes from
+      // this app alone sees the app's own variables, not the team's library.
+      teamWideEnv ? listSharedVars() : Promise.resolve([]),
+      // Preview overrides only mean anything once preview deployments are on.
+      project.previewEnabled ? listPreviewEnvVars(project.id) : [],
+    ],
+  );
   const linkedIds = new Set(
     sharedVars.filter((v) => v.linked).map((v) => v.id),
   );

@@ -95,11 +95,7 @@ export interface GitProviderApi {
     ref: string,
     path: string,
   ): Promise<Buffer | null>;
-  verify(
-    secret: string,
-    headers: Headers,
-    rawBody: string,
-  ): VerifyResult;
+  verify(secret: string, headers: Headers, rawBody: string): VerifyResult;
   /** Every ref the delivery moved. Empty when it is not a push at all. */
   parsePush(headers: Headers, payload: unknown): ParsedPush[];
 }
@@ -441,7 +437,8 @@ function lastCommitMessage(
 /* ------------------------------------------------------------------ */
 
 const giAuth = (c: GitCredential) => ({ Authorization: `token ${c.token}` });
-const giRepo = (fullName: string) => `/api/v1/repos/${assertFullName(fullName)}`;
+const giRepo = (fullName: string) =>
+  `/api/v1/repos/${assertFullName(fullName)}`;
 
 const gitea: GitProviderApi = {
   async whoami(c) {
@@ -552,7 +549,9 @@ const gitea: GitProviderApi = {
     if (own) return sameSecret(own, hmacHex(secret, rawBody)) ? "ok" : "bad";
     const gh = headers.get("x-hub-signature-256");
     if (gh) {
-      return sameSecret(gh, `sha256=${hmacHex(secret, rawBody)}`) ? "ok" : "bad";
+      return sameSecret(gh, `sha256=${hmacHex(secret, rawBody)}`)
+        ? "ok"
+        : "bad";
     }
     return "bad";
   },
@@ -576,7 +575,8 @@ const gitea: GitProviderApi = {
       {
         event: parsePushEvent(p),
         repoFullName,
-        commitMessage: (p.head_commit?.message ?? "").split("\n")[0]?.trim() || "Push",
+        commitMessage:
+          (p.head_commit?.message ?? "").split("\n")[0]?.trim() || "Push",
         author: p.pusher?.username || p.pusher?.login || "gitea",
       },
     ];

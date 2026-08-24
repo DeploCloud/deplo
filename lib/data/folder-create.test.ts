@@ -34,8 +34,11 @@ after(async () => {
 const OWNER_A = "u_owner_a";
 const OWNER_B = "u_owner_b";
 
-const as = <T>(userId: string, teamId: string, fn: () => Promise<T>): Promise<T> =>
-  runWithIdentity({ userId, teamId }, fn);
+const as = <T>(
+  userId: string,
+  teamId: string,
+  fn: () => Promise<T>,
+): Promise<T> => runWithIdentity({ userId, teamId }, fn);
 
 beforeEach(async () => {
   await pg.exec(`truncate table
@@ -56,7 +59,11 @@ beforeEach(async () => {
 test("a folder created with a parent nests under it (parentId is set)", async () => {
   await as(OWNER_A, TEAM_A, async () => {
     const parent = await createFolder("Clients");
-    assert.equal(parent.parentId ?? null, null, "the parent is a top-level folder");
+    assert.equal(
+      parent.parentId ?? null,
+      null,
+      "the parent is a top-level folder",
+    );
 
     const child = await createFolder("Acme", null, parent.id);
     assert.equal(

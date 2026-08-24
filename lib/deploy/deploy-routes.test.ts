@@ -46,15 +46,14 @@ test("several path rows on one hostname all survive", () => {
     route("app.com", { port: 9000, pathPrefix: "/admin" }),
   ];
   const out = orderDeployRoutes(valid, "app.com");
-  assert.deepEqual(
-    out.map((r) => r.pathPrefix).sort(),
-    ["", "/admin", "/api"],
-  );
+  assert.deepEqual(out.map((r) => r.pathPrefix).sort(), ["", "/admin", "/api"]);
 });
 
 test("the primary row leads even when it is the one carrying the path", () => {
   // Only row is `app.com` + `/api` and it is primary: it must keep its path.
-  const valid = [route("app.com", { port: 8080, pathPrefix: "/api", stripPrefix: true })];
+  const valid = [
+    route("app.com", { port: 8080, pathPrefix: "/api", stripPrefix: true }),
+  ];
   const out = orderDeployRoutes(valid, "app.com");
   assert.equal(out.length, 1);
   assert.equal(out[0].pathPrefix, "/api");
@@ -79,7 +78,11 @@ test("a not-yet-valid primary is added as a synthetic route, never duplicated", 
     out.map((r) => r.name),
     ["app.com", "other.com"],
   );
-  assert.equal(out[0].pathPrefix, "", "the synthetic fallback routes the whole host");
+  assert.equal(
+    out[0].pathPrefix,
+    "",
+    "the synthetic fallback routes the whole host",
+  );
 });
 
 // An UNVERIFIED primary is still routed (so a brand-new app answers on it), and
@@ -102,7 +105,11 @@ test("an unverified primary keeps its OWN path/strip/port, not defaults", () => 
 });
 
 test("an unverified primary keeps its config alongside other valid rows", () => {
-  const stored = route("app.com", { port: 8080, pathPrefix: "/api", stripPrefix: true });
+  const stored = route("app.com", {
+    port: 8080,
+    pathPrefix: "/api",
+    stripPrefix: true,
+  });
   const out = orderDeployRoutes([route("other.com")], "app.com", stored);
   assert.deepEqual(
     out.map((r) => r.name),

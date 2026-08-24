@@ -206,7 +206,7 @@ const APPS_READ: McpToolDef[] = [
       "connection was granted - the only tool that is not scoped to one team. " +
       "Use it when you don't know where something lives: each hit says which " +
       "team it is in, which is the value to pass as `team` on the next call. " +
-      "Case and separators are ignored, so \"better auth\" finds " +
+      'Case and separators are ignored, so "better auth" finds ' +
       "`better-auth-docs`. At most 50 of each kind.",
     group: "Apps",
     requires: "view",
@@ -218,8 +218,29 @@ const APPS_READ: McpToolDef[] = [
     query: /* GraphQL */ `
       query McpFind($q: String!) {
         search(q: $q) {
-          apps { id name slug status productionUrl team { id name slug } }
-          databases { id name type status team { id name slug } }
+          apps {
+            id
+            name
+            slug
+            status
+            productionUrl
+            team {
+              id
+              name
+              slug
+            }
+          }
+          databases {
+            id
+            name
+            type
+            status
+            team {
+              id
+              name
+              slug
+            }
+          }
         }
       }
     `,
@@ -309,7 +330,9 @@ const APPS_READ: McpToolDef[] = [
     idempotent: true,
     input: z.object({ appId }),
     query: /* GraphQL */ `
-      mutation McpRenderCompose($appId: String!) { renderComposeStack(appId: $appId) }
+      mutation McpRenderCompose($appId: String!) {
+        renderComposeStack(appId: $appId)
+      }
     `,
   }),
 ];
@@ -374,7 +397,9 @@ const APPS_OPS: McpToolDef[] = [
     requires: "deploy_apps",
     input: z.object({ id: z.string().describe("The deployment's id.") }),
     query: /* GraphQL */ `
-      mutation McpCancelDeployment($id: String!) { cancelDeployment(id: $id) }
+      mutation McpCancelDeployment($id: String!) {
+        cancelDeployment(id: $id)
+      }
     `,
   }),
   tool({
@@ -415,7 +440,9 @@ const APPS_OPS: McpToolDef[] = [
     idempotent: true,
     input: z.object({ appId }),
     query: /* GraphQL */ `
-      mutation McpReloadApp($id: String!) { reloadApp(id: $id) }
+      mutation McpReloadApp($id: String!) {
+        reloadApp(id: $id)
+      }
     `,
     variables: (a) => ({ id: a.appId }),
   }),
@@ -435,8 +462,20 @@ const APPS_OPS: McpToolDef[] = [
       })
       .describe("Give exactly one of folderId or projectId."),
     query: /* GraphQL */ `
-      mutation McpBulkAppAction($action: BulkAppAction!, $folderId: ID, $projectId: ID) {
-        bulkAppAction(action: $action, folderId: $folderId, projectId: $projectId) { ok failed error }
+      mutation McpBulkAppAction(
+        $action: BulkAppAction!
+        $folderId: ID
+        $projectId: ID
+      ) {
+        bulkAppAction(
+          action: $action
+          folderId: $folderId
+          projectId: $projectId
+        ) {
+          ok
+          failed
+          error
+        }
       }
     `,
   }),
@@ -453,7 +492,11 @@ const APPS_OPS: McpToolDef[] = [
     }),
     query: /* GraphQL */ `
       mutation McpBulkRedeploy($folderId: ID, $projectId: ID) {
-        bulkRedeployApps(folderId: $folderId, projectId: $projectId) { ok failed error }
+        bulkRedeployApps(folderId: $folderId, projectId: $projectId) {
+          ok
+          failed
+          error
+        }
       }
     `,
   }),
@@ -537,7 +580,10 @@ const APPS_CONFIG: McpToolDef[] = [
     idempotent: true,
     input: z.object({
       appId,
-      buildMethod: z.string().optional().describe("e.g. nixpacks, railpack, dockerfile."),
+      buildMethod: z
+        .string()
+        .optional()
+        .describe("e.g. nixpacks, railpack, dockerfile."),
       buildCommand: z.string().optional(),
       installCommand: z.string().optional(),
       startCommand: z.string().optional(),
@@ -656,7 +702,9 @@ const APPS_CONFIG: McpToolDef[] = [
     destructive: true,
     input: z.object({ appId }),
     query: /* GraphQL */ `
-      mutation McpDeleteApp($id: String!) { deleteApp(id: $id) }
+      mutation McpDeleteApp($id: String!) {
+        deleteApp(id: $id)
+      }
     `,
     variables: (a) => ({ id: a.appId }),
   }),
@@ -683,7 +731,15 @@ const ENV: McpToolDef[] = [
     input: z.object({ appId }),
     query: /* GraphQL */ `
       query McpListEnv($appId: String!) {
-        env(appId: $appId) { id key value type isMasked targets updatedAt }
+        env(appId: $appId) {
+          id
+          key
+          value
+          type
+          isMasked
+          targets
+          updatedAt
+        }
       }
     `,
   }),
@@ -702,11 +758,18 @@ const ENV: McpToolDef[] = [
       secret: z
         .boolean()
         .optional()
-        .describe("Store masked (default true). Only set false for public values."),
+        .describe(
+          "Store masked (default true). Only set false for public values.",
+        ),
     }),
     query: /* GraphQL */ `
       mutation McpUpsertEnv($input: UpsertEnvInput!) {
-        upsertEnv(input: $input) { id key type isMasked }
+        upsertEnv(input: $input) {
+          id
+          key
+          type
+          isMasked
+        }
       }
     `,
     variables: (a) => ({
@@ -729,7 +792,9 @@ const ENV: McpToolDef[] = [
       id: z.string().describe("The variable's id, from list_env."),
     }),
     query: /* GraphQL */ `
-      mutation McpDeleteEnv($id: String!) { deleteEnv(id: $id) }
+      mutation McpDeleteEnv($id: String!) {
+        deleteEnv(id: $id)
+      }
     `,
   }),
   tool({
@@ -745,7 +810,10 @@ const ENV: McpToolDef[] = [
     }),
     query: /* GraphQL */ `
       mutation McpImportEnv($appId: String!, $blob: String!) {
-        importEnv(appId: $appId, blob: $blob) { added skippedSecrets }
+        importEnv(appId: $appId, blob: $blob) {
+          added
+          skippedSecrets
+        }
       }
     `,
   }),
@@ -832,7 +900,9 @@ const DOMAINS: McpToolDef[] = [
     idempotent: true,
     input: z.object({ id: z.string().describe("The domain's id.") }),
     query: /* GraphQL */ `
-      mutation McpSetPrimaryDomain($id: String!) { setPrimaryDomain(id: $id) }
+      mutation McpSetPrimaryDomain($id: String!) {
+        setPrimaryDomain(id: $id)
+      }
     `,
   }),
   tool({
@@ -844,7 +914,9 @@ const DOMAINS: McpToolDef[] = [
     destructive: true,
     input: z.object({ id: z.string().describe("The domain's id.") }),
     query: /* GraphQL */ `
-      mutation McpRemoveDomain($id: String!) { removeDomain(id: $id) }
+      mutation McpRemoveDomain($id: String!) {
+        removeDomain(id: $id)
+      }
     `,
   }),
 ];
@@ -991,7 +1063,9 @@ const DATABASES: McpToolDef[] = [
     destructive: true,
     input: z.object({ id: databaseId }),
     query: /* GraphQL */ `
-      mutation McpDeleteDatabase($id: String!) { deleteDatabase(id: $id) }
+      mutation McpDeleteDatabase($id: String!) {
+        deleteDatabase(id: $id)
+      }
     `,
   }),
 ];
@@ -1027,7 +1101,10 @@ const LOGS: McpToolDef[] = [
     query: "",
     run: async (a) => {
       const { appLogsSnapshot } = await import("../data/logs-snapshot");
-      return appLogsSnapshot(a.appId, { lines: a.lines, container: a.container });
+      return appLogsSnapshot(a.appId, {
+        lines: a.lines,
+        container: a.container,
+      });
     },
   }),
   tool({
@@ -1072,8 +1149,20 @@ const METRICS: McpToolDef[] = [
     query: /* GraphQL */ `
       query McpServerMetrics($serverId: String!) {
         serverMetrics(serverId: $serverId) {
-          serverId online cpu cpuCores memUsed memTotal memPct
-          diskUsed diskTotal diskPct load containers uptimeSec ts
+          serverId
+          online
+          cpu
+          cpuCores
+          memUsed
+          memTotal
+          memPct
+          diskUsed
+          diskTotal
+          diskPct
+          load
+          containers
+          uptimeSec
+          ts
         }
       }
     `,
@@ -1090,8 +1179,20 @@ const METRICS: McpToolDef[] = [
     query: /* GraphQL */ `
       query McpAppMetrics($appId: String!) {
         appMetrics(appId: $appId) {
-          id online cpu memUsed memLimit memPct netRx netTx
-          blockRead blockWrite pids containers running ts
+          id
+          online
+          cpu
+          memUsed
+          memLimit
+          memPct
+          netRx
+          netTx
+          blockRead
+          blockWrite
+          pids
+          containers
+          running
+          ts
         }
       }
     `,
@@ -1108,7 +1209,17 @@ const METRICS: McpToolDef[] = [
     query: /* GraphQL */ `
       query McpDatabaseMetrics($databaseId: String!) {
         databaseMetrics(databaseId: $databaseId) {
-          id online cpu memUsed memLimit memPct netRx netTx pids running ts
+          id
+          online
+          cpu
+          memUsed
+          memLimit
+          memPct
+          netRx
+          netTx
+          pids
+          running
+          ts
         }
       }
     `,
@@ -1133,8 +1244,19 @@ const BACKUPS: McpToolDef[] = [
     query: /* GraphQL */ `
       query McpListBackups {
         backups {
-          id name targetKind appId databaseId destinationId destinationName
-          schedule timezone enabled retentionCount lastRunAt lastStatus
+          id
+          name
+          targetKind
+          appId
+          databaseId
+          destinationId
+          destinationName
+          schedule
+          timezone
+          enabled
+          retentionCount
+          lastRunAt
+          lastStatus
         }
       }
     `,
@@ -1156,7 +1278,14 @@ const BACKUPS: McpToolDef[] = [
     query: /* GraphQL */ `
       query McpListBackupRuns($appId: String, $databaseId: String) {
         backupRuns(appId: $appId, databaseId: $databaseId) {
-          id backupId status startedAt finishedAt sizeBytes verified error
+          id
+          backupId
+          status
+          startedAt
+          finishedAt
+          sizeBytes
+          verified
+          error
         }
       }
     `,
@@ -1187,8 +1316,14 @@ const BACKUPS: McpToolDef[] = [
     requires: "manage_backups",
     input: z.object({ databaseId, destinationId: z.string() }),
     query: /* GraphQL */ `
-      mutation McpRunDatabaseBackup($databaseId: String!, $destinationId: String!) {
-        runDatabaseBackup(databaseId: $databaseId, destinationId: $destinationId)
+      mutation McpRunDatabaseBackup(
+        $databaseId: String!
+        $destinationId: String!
+      ) {
+        runDatabaseBackup(
+          databaseId: $databaseId
+          destinationId: $destinationId
+        )
       }
     `,
   }),
@@ -1204,7 +1339,9 @@ const BACKUPS: McpToolDef[] = [
       runId: z.string().describe("The backup run's id, from list_backup_runs."),
     }),
     query: /* GraphQL */ `
-      mutation McpRestoreBackup($runId: String!) { restoreBackup(runId: $runId) }
+      mutation McpRestoreBackup($runId: String!) {
+        restoreBackup(runId: $runId)
+      }
     `,
   }),
   tool({
@@ -1219,8 +1356,22 @@ const BACKUPS: McpToolDef[] = [
     query: /* GraphQL */ `
       query McpListDestinations {
         backupDestinations {
-          id name kind where status bucket endpoint region path
-          serverId serverName encrypted freeBytes totalBytes lastTestAt lastTestError
+          id
+          name
+          kind
+          where
+          status
+          bucket
+          endpoint
+          region
+          path
+          serverId
+          serverName
+          encrypted
+          freeBytes
+          totalBytes
+          lastTestAt
+          lastTestError
         }
       }
     `,
@@ -1303,7 +1454,13 @@ const CRON: McpToolDef[] = [
     input: z.object({ id: z.string().describe("The job's id.") }),
     query: /* GraphQL */ `
       mutation McpRunCronNow($id: ID!) {
-        runCronJobNow(id: $id) { id status startedAt finishedAt exitCode }
+        runCronJobNow(id: $id) {
+          id
+          status
+          startedAt
+          finishedAt
+          exitCode
+        }
       }
     `,
   }),
@@ -1316,7 +1473,9 @@ const CRON: McpToolDef[] = [
     destructive: true,
     input: z.object({ id: z.string() }),
     query: /* GraphQL */ `
-      mutation McpDeleteCronJob($id: ID!) { deleteCronJob(id: $id) }
+      mutation McpDeleteCronJob($id: ID!) {
+        deleteCronJob(id: $id)
+      }
     `,
   }),
 ];
@@ -1339,8 +1498,21 @@ const PREVIEWS: McpToolDef[] = [
     query: /* GraphQL */ `
       query McpListPreviews($appId: ID!) {
         appPreviews(appId: $appId) {
-          enabled autoDeploy maxActive unavailable
-          previews { id prNumber title author headBranch status url closed approved }
+          enabled
+          autoDeploy
+          maxActive
+          unavailable
+          previews {
+            id
+            prNumber
+            title
+            author
+            headBranch
+            status
+            url
+            closed
+            approved
+          }
         }
       }
     `,
@@ -1354,7 +1526,12 @@ const PREVIEWS: McpToolDef[] = [
     input: z.object({ appId, prNumber: z.number().int() }),
     query: /* GraphQL */ `
       mutation McpDeployPr($appId: ID!, $prNumber: Int!) {
-        deployPullRequest(appId: $appId, prNumber: $prNumber) { id prNumber status url }
+        deployPullRequest(appId: $appId, prNumber: $prNumber) {
+          id
+          prNumber
+          status
+          url
+        }
       }
     `,
   }),
@@ -1367,7 +1544,9 @@ const PREVIEWS: McpToolDef[] = [
     destructive: true,
     input: z.object({ id: z.string().describe("The preview's id.") }),
     query: /* GraphQL */ `
-      mutation McpDestroyPreview($id: ID!) { destroyPreview(id: $id) }
+      mutation McpDestroyPreview($id: ID!) {
+        destroyPreview(id: $id)
+      }
     `,
   }),
 ];
@@ -1389,7 +1568,14 @@ const ORGANIZATION: McpToolDef[] = [
     input: z.object({}),
     query: /* GraphQL */ `
       query McpListProjects {
-        projects { id slug name appCount environmentCount folderCount }
+        projects {
+          id
+          slug
+          name
+          appCount
+          environmentCount
+          folderCount
+        }
       }
     `,
   }),
@@ -1404,7 +1590,14 @@ const ORGANIZATION: McpToolDef[] = [
     input: z.object({}),
     query: /* GraphQL */ `
       query McpListFolders {
-        folders { id name parentId appCount subfolderCount color }
+        folders {
+          id
+          name
+          parentId
+          appCount
+          subfolderCount
+          color
+        }
       }
     `,
   }),
@@ -1420,7 +1613,14 @@ const ORGANIZATION: McpToolDef[] = [
     input: z.object({ projectId: z.string() }),
     query: /* GraphQL */ `
       query McpListEnvironments($projectId: ID!) {
-        environments(projectId: $projectId) { id slug name gitBranch isDefault kind }
+        environments(projectId: $projectId) {
+          id
+          slug
+          name
+          gitBranch
+          isDefault
+          kind
+        }
       }
     `,
   }),
@@ -1438,7 +1638,11 @@ const ORGANIZATION: McpToolDef[] = [
     }),
     query: /* GraphQL */ `
       mutation McpCreateFolder($name: String!, $parentId: ID, $color: String) {
-        createFolder(name: $name, parentId: $parentId, color: $color) { id name parentId }
+        createFolder(name: $name, parentId: $parentId, color: $color) {
+          id
+          name
+          parentId
+        }
       }
     `,
   }),
@@ -1497,7 +1701,15 @@ const TEAM: McpToolDef[] = [
     input: z.object({}),
     query: /* GraphQL */ `
       query McpListMembers {
-        members { userId username name role roleName isInstanceAdmin capabilities }
+        members {
+          userId
+          username
+          name
+          role
+          roleName
+          isInstanceAdmin
+          capabilities
+        }
       }
     `,
   }),
@@ -1515,7 +1727,14 @@ const TEAM: McpToolDef[] = [
     }),
     query: /* GraphQL */ `
       query McpActivity($limit: Int) {
-        activity(limit: $limit) { id type message actor appId createdAt }
+        activity(limit: $limit) {
+          id
+          type
+          message
+          actor
+          appId
+          createdAt
+        }
       }
     `,
   }),
@@ -1533,7 +1752,14 @@ const TEAM: McpToolDef[] = [
     idempotent: true,
     input: z.object({}),
     query: /* GraphQL */ `
-      query McpListTeams { myTeams { id name slug memberCount } }
+      query McpListTeams {
+        myTeams {
+          id
+          name
+          slug
+          memberCount
+        }
+      }
     `,
   }),
 ];
@@ -1554,7 +1780,13 @@ const FILES: McpToolDef[] = [
     input: z.object({ appId, path: z.string().optional() }),
     query: /* GraphQL */ `
       query McpListAppFiles($appId: String!, $path: String) {
-        appFiles(appId: $appId, path: $path) { name path kind size modifiedAt }
+        appFiles(appId: $appId, path: $path) {
+          name
+          path
+          kind
+          size
+          modifiedAt
+        }
       }
     `,
   }),
@@ -1569,7 +1801,12 @@ const FILES: McpToolDef[] = [
     input: z.object({ appId, path: z.string() }),
     query: /* GraphQL */ `
       query McpReadAppFile($appId: String!, $path: String!) {
-        appFile(appId: $appId, path: $path) { path text size reason }
+        appFile(appId: $appId, path: $path) {
+          path
+          text
+          size
+          reason
+        }
       }
     `,
   }),
@@ -1583,8 +1820,15 @@ const FILES: McpToolDef[] = [
     destructive: true,
     input: z.object({ appId, path: z.string(), content: z.string() }),
     query: /* GraphQL */ `
-      mutation McpWriteAppFile($appId: String!, $path: String!, $content: String!) {
-        writeAppFile(appId: $appId, path: $path, content: $content) { path size }
+      mutation McpWriteAppFile(
+        $appId: String!
+        $path: String!
+        $content: String!
+      ) {
+        writeAppFile(appId: $appId, path: $path, content: $content) {
+          path
+          size
+        }
       }
     `,
   }),
@@ -1673,8 +1917,19 @@ const SERVERS: McpToolDef[] = [
     query: /* GraphQL */ `
       mutation McpCheckServerReadiness($id: String!) {
         checkServerReadiness(id: $id) {
-          serverId serverName verdict summary checkedAt
-          checks { id label group severity detail hint }
+          serverId
+          serverName
+          verdict
+          summary
+          checkedAt
+          checks {
+            id
+            label
+            group
+            severity
+            detail
+            hint
+          }
         }
       }
     `,
@@ -1689,7 +1944,9 @@ const SERVERS: McpToolDef[] = [
     destructive: true,
     input: z.object({ id: serverId }),
     query: /* GraphQL */ `
-      mutation McpUpdateServerAgent($id: String!) { updateServerAgent(id: $id) }
+      mutation McpUpdateServerAgent($id: String!) {
+        updateServerAgent(id: $id)
+      }
     `,
   }),
   tool({
@@ -1704,8 +1961,13 @@ const SERVERS: McpToolDef[] = [
     query: /* GraphQL */ `
       mutation McpRestartServerWorkloads($id: String!) {
         restartServerWorkloads(id: $id) {
-          restarted skipped
-          failures { kind name error }
+          restarted
+          skipped
+          failures {
+            kind
+            name
+            error
+          }
         }
       }
     `,
@@ -1720,7 +1982,9 @@ const SERVERS: McpToolDef[] = [
     destructive: true,
     input: z.object({ id: serverId }),
     query: /* GraphQL */ `
-      mutation McpRestartServerTraefik($id: String!) { restartServerTraefik(id: $id) }
+      mutation McpRestartServerTraefik($id: String!) {
+        restartServerTraefik(id: $id)
+      }
     `,
   }),
   tool({
@@ -1734,7 +1998,13 @@ const SERVERS: McpToolDef[] = [
     query: /* GraphQL */ `
       mutation McpRunDockerCleanup($serverId: String!) {
         runDockerCleanupNow(serverId: $serverId) {
-          id serverId status startedAt finishedAt reclaimedBytes error
+          id
+          serverId
+          status
+          startedAt
+          finishedAt
+          reclaimedBytes
+          error
         }
       }
     `,

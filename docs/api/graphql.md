@@ -120,23 +120,23 @@ apps without being able to delete them, or read files without writing them. The
 full list is the `Capability` enum in [`schema.graphql`](../../schema.graphql);
 the ones you will meet most:
 
-| Capability                                          | Covers                                              |
-| --------------------------------------------------- | --------------------------------------------------- |
-| `create_apps` · `deploy_apps` · `control_apps`       | create an app · deploy/redeploy/cancel · start/stop  |
-| `rollback_apps`                                      | put an app back on a previous deployment             |
-| `configure_apps` · `delete_apps` · `move_apps`       | build & source settings · delete · folder/project/team |
-| `open_app_console`                                   | shell into a running container                       |
-| `manage_domains` · `manage_basic_auth`               | custom domains & routing · the edge password gate    |
-| `manage_env` · `reveal_secrets`                      | variables · reading back a database or basic-auth credential (an env secret has no reveal at all) |
-| `read_app_files` · `write_app_files`                 | browse/download · edit/upload/delete                 |
-| `create_folders` · `organize_folders` · `delete_folders` | the overview's folders                          |
-| `create_projects` · `organize_projects` · `delete_projects` · `manage_environments` | projects & their environments |
-| `create_databases` · `configure_databases` · `control_databases` · `delete_databases` · `open_database_console` | managed databases |
-| `manage_backups` · `restore_backups` · `manage_backup_destinations` | schedules & runs · restoring over live data · where backups are kept |
-| `manage_registries` · `manage_git` · `manage_tokens` · `manage_mcp` · `manage_notifications` | integrations & API access · whether AI agents may drive the team |
-| `view_logs` · `view_metrics` · `manage_monitoring` · `view_activity` | logs, monitoring, the audit trail    |
-| `manage_members` · `manage_roles`                    | who is in the team · what each role grants           |
-| `manage_team` · `delete_team`                        | team settings · deleting the team                    |
+| Capability                                                                                                      | Covers                                                                                            |
+| --------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------- |
+| `create_apps` · `deploy_apps` · `control_apps`                                                                  | create an app · deploy/redeploy/cancel · start/stop                                               |
+| `rollback_apps`                                                                                                 | put an app back on a previous deployment                                                          |
+| `configure_apps` · `delete_apps` · `move_apps`                                                                  | build & source settings · delete · folder/project/team                                            |
+| `open_app_console`                                                                                              | shell into a running container                                                                    |
+| `manage_domains` · `manage_basic_auth`                                                                          | custom domains & routing · the edge password gate                                                 |
+| `manage_env` · `reveal_secrets`                                                                                 | variables · reading back a database or basic-auth credential (an env secret has no reveal at all) |
+| `read_app_files` · `write_app_files`                                                                            | browse/download · edit/upload/delete                                                              |
+| `create_folders` · `organize_folders` · `delete_folders`                                                        | the overview's folders                                                                            |
+| `create_projects` · `organize_projects` · `delete_projects` · `manage_environments`                             | projects & their environments                                                                     |
+| `create_databases` · `configure_databases` · `control_databases` · `delete_databases` · `open_database_console` | managed databases                                                                                 |
+| `manage_backups` · `restore_backups` · `manage_backup_destinations`                                             | schedules & runs · restoring over live data · where backups are kept                              |
+| `manage_registries` · `manage_git` · `manage_tokens` · `manage_mcp` · `manage_notifications`                    | integrations & API access · whether AI agents may drive the team                                  |
+| `view_logs` · `view_metrics` · `manage_monitoring` · `view_activity`                                            | logs, monitoring, the audit trail                                                                 |
+| `manage_members` · `manage_roles`                                                                               | who is in the team · what each role grants                                                        |
+| `manage_team` · `delete_team`                                                                                   | team settings · deleting the team                                                                 |
 
 Three names from the old coarse model — `deploy`, `manage_infra` and
 `manage_files` — are still ACCEPTED on input (marked deprecated in the schema):
@@ -186,7 +186,7 @@ therefore not capped per team.
   `serverMetrics`, `appMetrics(appId)`/`databaseMetrics(databaseId)` (live per-container
   resource usage for the Monitoring tab) and their `*MetricsHistory` seeds,
   `detectRepoFramework(repo, buildMethod, …)` (names the JavaScript framework in a
-  GitHub repository *before* an App exists for it — what the new-app wizard shows
+  GitHub repository _before_ an App exists for it — what the new-app wizard shows
   while you pick a repo; an App carries the same answer on `App.framework`, re-derived
   by every deploy),
   `members`, `teamRoles` (the team's roles and exactly what each grants),
@@ -301,7 +301,10 @@ Redeploy an app:
 
 ```graphql
 mutation {
-  redeploy(appId: "prj_123") { id status }
+  redeploy(appId: "prj_123") {
+    id
+    status
+  }
 }
 ```
 
@@ -309,13 +312,19 @@ Create an app environment variable:
 
 ```graphql
 mutation {
-  upsertEnv(input: {
-    appId: "prj_123"
-    key: "DATABASE_URL"
-    value: "postgres://…"
-    targets: [production, preview]
-    type: secret
-  }) { id key isMasked }
+  upsertEnv(
+    input: {
+      appId: "prj_123"
+      key: "DATABASE_URL"
+      value: "postgres://…"
+      targets: [production, preview]
+      type: secret
+    }
+  ) {
+    id
+    key
+    isMasked
+  }
 }
 ```
 
@@ -331,11 +340,16 @@ ADR-0012: the link is what injects it, the scope only suggests):
 
 ```graphql
 mutation {
-  saveSharedVar(input: {
-    key: "API_BASE_URL"
-    value: "https://api.example.com"
-    type: plain
-  }) { id key }
+  saveSharedVar(
+    input: {
+      key: "API_BASE_URL"
+      value: "https://api.example.com"
+      type: plain
+    }
+  ) {
+    id
+    key
+  }
 }
 ```
 
@@ -346,7 +360,11 @@ query {
   apps {
     name
     status
-    latestDeployment { status createdAt commitMessage }
+    latestDeployment {
+      status
+      createdAt
+      commitMessage
+    }
   }
 }
 ```
@@ -356,16 +374,16 @@ query {
 A few endpoints stay REST because GraphQL is the wrong transport for them
 (binary upload and long-lived byte streams):
 
-| Endpoint                          | Why                              |
-| --------------------------------- | -------------------------------- |
-| `POST /api/apps/[id]/upload`  | multipart archive upload         |
-| `GET /api/apps/[id]/logs`     | Server-Sent-Events log stream    |
-| `GET /api/apps/[id]/attach`   | interactive console session      |
-| `GET /api/github/callback`        | GitHub App OAuth callback        |
-| `POST /api/github/webhook`        | GitHub webhook receiver          |
-| `POST /api/git/webhook/[token]`   | push receiver for every other provider — the token in the URL identifies the git connection, which says how to verify the delivery |
-| `POST /api/apps/[id]/deploy-hook/[token]` | deploy hook — a webhook sender posts a URL, it can't compose a query |
-| `POST /api/mcp`                   | the MCP server — JSON-RPC, not GraphQL (see below) |
+| Endpoint                                  | Why                                                                                                                                |
+| ----------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------- |
+| `POST /api/apps/[id]/upload`              | multipart archive upload                                                                                                           |
+| `GET /api/apps/[id]/logs`                 | Server-Sent-Events log stream                                                                                                      |
+| `GET /api/apps/[id]/attach`               | interactive console session                                                                                                        |
+| `GET /api/github/callback`                | GitHub App OAuth callback                                                                                                          |
+| `POST /api/github/webhook`                | GitHub webhook receiver                                                                                                            |
+| `POST /api/git/webhook/[token]`           | push receiver for every other provider — the token in the URL identifies the git connection, which says how to verify the delivery |
+| `POST /api/apps/[id]/deploy-hook/[token]` | deploy hook — a webhook sender posts a URL, it can't compose a query                                                               |
+| `POST /api/mcp`                           | the MCP server — JSON-RPC, not GraphQL (see below)                                                                                 |
 
 ### MCP server
 
@@ -412,7 +430,12 @@ with `setAppDeployHookEnabled`); the bearer token says who, and must itself HOLD
 the deploy runs through exactly the gates the dashboard button does. Answers `200` with the queued deployment:
 
 ```json
-{ "deploymentId": "dpl_…", "appId": "prj_123", "status": "queued", "url": "https://…" }
+{
+  "deploymentId": "dpl_…",
+  "appId": "prj_123",
+  "status": "queued",
+  "url": "https://…"
+}
 ```
 
 `401` — no/invalid API token. `403` — the hook is switched off, or the token (or the member it

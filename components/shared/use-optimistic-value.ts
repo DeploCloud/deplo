@@ -37,9 +37,7 @@ import {
  * already keeps what was typed in its own state — there the optimism is simply
  * not blocking the button and not holding the dialog open.
  */
-export function useOptimisticValue<T>(
-  serverValue: T,
-): [
+export function useOptimisticValue<T>(serverValue: T): [
   T,
   (
     next: T,

@@ -8,7 +8,11 @@ import { __setTestDb, __resetTestDb } from "../db/client";
 import { instanceSettings } from "../db/schema/control-plane";
 import { passkey, session } from "../db/schema/auth";
 import { runWithIdentity } from "../auth/request-context";
-import { seedIdentity, TRUNCATE_IDENTITY, TEAM_A } from "./identity-test-helpers";
+import {
+  seedIdentity,
+  TRUNCATE_IDENTITY,
+  TEAM_A,
+} from "./identity-test-helpers";
 import {
   getInstanceSettings,
   getPanelAddressImpact,
@@ -68,11 +72,20 @@ const asUser = <T>(userId: string, fn: () => Promise<T>): Promise<T> =>
   runWithIdentity({ userId, teamId: TEAM_A }, fn);
 
 test("a bare domain is stored as an https URL", () => {
-  assert.equal(normalizePanelUrl("deplo.example.com"), "https://deplo.example.com");
-  assert.equal(normalizePanelUrl("  deplo.example.com/  "), "https://deplo.example.com");
+  assert.equal(
+    normalizePanelUrl("deplo.example.com"),
+    "https://deplo.example.com",
+  );
+  assert.equal(
+    normalizePanelUrl("  deplo.example.com/  "),
+    "https://deplo.example.com",
+  );
   // An explicit http stays http: a bare IP with no proxy in front of it is a
   // real, if temporary, way to run this.
-  assert.equal(normalizePanelUrl("http://10.0.0.4:3000"), "http://10.0.0.4:3000");
+  assert.equal(
+    normalizePanelUrl("http://10.0.0.4:3000"),
+    "http://10.0.0.4:3000",
+  );
 });
 
 test("anything that could escape a shell, or carry credentials, is refused", () => {
@@ -86,14 +99,21 @@ test("anything that could escape a shell, or carry credentials, is refused", () 
     "ftp://deplo.example.com",
     "not a host",
   ]) {
-    assert.throws(() => normalizePanelUrl(bad), new RegExp("."), `must refuse ${bad}`);
+    assert.throws(
+      () => normalizePanelUrl(bad),
+      new RegExp("."),
+      `must refuse ${bad}`,
+    );
   }
 });
 
 test("the settings name the instance owner, and null when nobody holds it", async () => {
   // Unowned is an ordinary state (a pre-0038 instance that never backfilled), so
   // the read answers null instead of inventing an owner for the header to print.
-  assert.equal((await asUser(ADMIN, () => getInstanceSettings())).ownerName, null);
+  assert.equal(
+    (await asUser(ADMIN, () => getInstanceSettings())).ownerName,
+    null,
+  );
 
   await db.insert(instanceSettings).values({
     id: "default",
@@ -101,7 +121,10 @@ test("the settings name the instance owner, and null when nobody holds it", asyn
     updatedAt: new Date().toISOString(),
   });
   // `seedIdentity` writes the id into `name`, so this is the display name.
-  assert.equal((await asUser(ADMIN, () => getInstanceSettings())).ownerName, ADMIN);
+  assert.equal(
+    (await asUser(ADMIN, () => getInstanceSettings())).ownerName,
+    ADMIN,
+  );
 });
 
 test("only an instance admin can move the address", async () => {
@@ -109,7 +132,10 @@ test("only an instance admin can move the address", async () => {
     () => asUser(MEMBER, () => setPanelUrl("deplo.example.com")),
     /admin/i,
   );
-  await assert.rejects(() => asUser(MEMBER, () => getInstanceSettings()), /admin/i);
+  await assert.rejects(
+    () => asUser(MEMBER, () => getInstanceSettings()),
+    /admin/i,
+  );
 });
 
 test("a stored address wins over the one the box was installed with", async (t) => {
@@ -121,12 +147,18 @@ test("a stored address wins over the one the box was installed with", async (t) 
   });
 
   // Nothing stored: the install-time value is what Deplo hands out.
-  assert.equal(await asUser(ADMIN, () => instancePublicBaseUrl()), "https://installed.example.com");
+  assert.equal(
+    await asUser(ADMIN, () => instancePublicBaseUrl()),
+    "https://installed.example.com",
+  );
 
   const saved = await asUser(ADMIN, () => setPanelUrl("moved.example.com"));
   assert.equal(saved.panelUrl, "https://moved.example.com");
   assert.equal(saved.panelUrlSource, "stored");
-  assert.equal(await asUser(ADMIN, () => instancePublicBaseUrl()), "https://moved.example.com");
+  assert.equal(
+    await asUser(ADMIN, () => instancePublicBaseUrl()),
+    "https://moved.example.com",
+  );
 
   // Clearing it hands the answer back to the environment rather than leaving an
   // instance with no address at all.
@@ -166,7 +198,10 @@ async function seedPasskeyAndSession(rpId: string) {
   });
 }
 
-const withPanelUrl = async <T>(url: string, fn: () => Promise<T>): Promise<T> => {
+const withPanelUrl = async <T>(
+  url: string,
+  fn: () => Promise<T>,
+): Promise<T> => {
   const previous = process.env.DEPLO_PUBLIC_URL;
   process.env.DEPLO_PUBLIC_URL = url;
   const { setStoredPublicBaseUrl } = await import("../public-url");
@@ -188,7 +223,11 @@ test("an address that does not move counts nothing", async () => {
     );
     assert.equal(impact.hostChanges, false);
     assert.equal(impact.schemeChanges, false);
-    assert.equal(impact.passkeys, 0, "nothing is lost by saving the same address");
+    assert.equal(
+      impact.passkeys,
+      0,
+      "nothing is lost by saving the same address",
+    );
     assert.equal(impact.sessions, 0);
   });
 });
@@ -248,7 +287,10 @@ test("only an instance admin can ask what an address would break", async () => {
 
 test("how the panel is served is instance-admin only, both to read and to change", async () => {
   await assert.rejects(() => asUser(MEMBER, () => getPanelHttps()), /admin/i);
-  await assert.rejects(() => asUser(MEMBER, () => setPanelHttps(false)), /admin/i);
+  await assert.rejects(
+    () => asUser(MEMBER, () => setPanelHttps(false)),
+    /admin/i,
+  );
 });
 
 test("a Deplo whose own host is not added as a server says so, rather than failing", async () => {
@@ -258,7 +300,10 @@ test("a Deplo whose own host is not added as a server says so, rather than faili
   assert.equal(cert.domain, null);
   assert.equal(cert.enabled, false);
   assert.match(cert.unavailable ?? "", /not added here yet/i);
-  await assert.rejects(() => asUser(ADMIN, () => setPanelHttps(true)), /not added here yet/i);
+  await assert.rejects(
+    () => asUser(ADMIN, () => setPanelHttps(true)),
+    /not added here yet/i,
+  );
 });
 
 test("storing an address still works when there is no route of ours to move", async () => {
@@ -289,7 +334,8 @@ test("an address that does not answer puts the panel back where it was", async (
         probe: async () => ({
           url: "https://new.example.com",
           ok: false,
-          error: "https://new.example.com did not answer (getaddrinfo ENOTFOUND)",
+          error:
+            "https://new.example.com did not answer (getaddrinfo ENOTFOUND)",
         }),
       }),
     /did not answer[\s\S]*still on old\.example\.com/i,
@@ -307,7 +353,11 @@ test("an address that answers is kept, and nothing is put back", async () => {
     apply: async (route) => {
       applied.push(route.domain);
     },
-    probe: async () => ({ url: "https://new.example.com", ok: true, error: null }),
+    probe: async () => ({
+      url: "https://new.example.com",
+      ok: true,
+      error: null,
+    }),
   });
   assert.deepEqual(applied, ["new.example.com"]);
 });
@@ -316,7 +366,10 @@ test("no route of ours: only a panel with no domain at all is a refusal", () => 
   // A Deplo served straight on a port has nothing to route and nothing to
   // secure: it needs a domain first, and saying anything else sends the operator
   // to the wrong place.
-  assert.match(noRouteReason("http://203.0.113.10:3000") ?? "", /domain address/i);
+  assert.match(
+    noRouteReason("http://203.0.113.10:3000") ?? "",
+    /domain address/i,
+  );
   assert.match(noRouteReason("http://203.0.113.10") ?? "", /domain address/i);
   assert.match(noRouteReason("http://localhost:3000") ?? "", /domain address/i);
 

@@ -14,9 +14,8 @@ import { resolveLatestAgentRelease } from "@/lib/agent/release";
  * Integrity is still guaranteed by the script's checksum check, not by this hop.
  */
 export async function GET(req: Request) {
-  const arch = new URL(req.url).searchParams.get("arch") === "arm64"
-    ? "arm64"
-    : "amd64";
+  const arch =
+    new URL(req.url).searchParams.get("arch") === "arm64" ? "arm64" : "amd64";
   const release = await resolveLatestAgentRelease();
   const target = release?.binaries[arch]?.url;
   if (!target) {

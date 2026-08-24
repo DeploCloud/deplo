@@ -6,7 +6,12 @@ import type { PGlite } from "@electric-sql/pglite";
 import { makeTestDb, type TestDb } from "../db/test-harness";
 import { __setTestDb, __resetTestDb } from "../db/client";
 import { installedPlugins as installedPluginsTable } from "../db/schema/control-plane";
-import { seedIdentity, TEAM_A, TEAM_B, USER_1 } from "../data/leaf-test-helpers";
+import {
+  seedIdentity,
+  TEAM_A,
+  TEAM_B,
+  USER_1,
+} from "../data/leaf-test-helpers";
 import { retireInstalledPlugins } from "./retire";
 
 /**
@@ -41,7 +46,11 @@ beforeEach(async () => {
   });
 });
 
-async function seedPlugin(id: string, teamId: string, slug: string): Promise<void> {
+async function seedPlugin(
+  id: string,
+  teamId: string,
+  slug: string,
+): Promise<void> {
   await db.insert(installedPluginsTable).values({
     id,
     teamId,

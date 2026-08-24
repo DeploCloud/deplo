@@ -56,7 +56,10 @@ export function typeDigit(
   const digit = char.replace(/\D/g, "").slice(-1);
   if (!digit) return { value, caret: reachable(value, index, length) };
   const i = reachable(value, index, length);
-  const next = (value.slice(0, i) + digit + value.slice(i + 1)).slice(0, length);
+  const next = (value.slice(0, i) + digit + value.slice(i + 1)).slice(
+    0,
+    length,
+  );
   return { value: next, caret: Math.min(i + 1, length - 1) };
 }
 
@@ -67,7 +70,11 @@ export function typeDigit(
  * removes the last one. Either way the caret follows the deletion backwards,
  * which is what makes holding backspace clear the field.
  */
-export function backspace(value: string, index: number, length: number): OtpEdit {
+export function backspace(
+  value: string,
+  index: number,
+  length: number,
+): OtpEdit {
   const i = reachable(value, index, length);
   if (i < value.length)
     return { value: value.slice(0, i) + value.slice(i + 1), caret: i };

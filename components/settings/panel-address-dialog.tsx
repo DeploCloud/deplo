@@ -234,10 +234,7 @@ export function PanelAddressDialog({
           the drawn header can bleed to the edges; each section carries its own
           padding instead. */}
       <DialogContent className="gap-0 overflow-hidden p-0 sm:max-w-xl">
-        <form
-          className="grid grid-cols-[minmax(0,1fr)]"
-          onSubmit={onSubmit}
-        >
+        <form className="grid grid-cols-[minmax(0,1fr)]" onSubmit={onSubmit}>
           <div className="flex justify-center border-b border-border bg-muted/30 px-6 pt-7 pb-5">
             <PanelMoveGraphic />
           </div>
@@ -462,7 +459,12 @@ function PanelMoveGraphic() {
         strokeWidth="2"
         strokeLinecap="round"
       />
-      <circle cx="94" cy="56" r="4" className="deplo-move-packet fill-primary" />
+      <circle
+        cx="94"
+        cy="56"
+        r="4"
+        className="deplo-move-packet fill-primary"
+      />
 
       {/* The ring is drawn BEFORE the new window so it lands behind its
           strokes: an answer radiating from the address, not a lasso around

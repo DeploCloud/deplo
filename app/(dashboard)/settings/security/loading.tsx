@@ -23,53 +23,55 @@ export default function Loading() {
 
       <div className="space-y-4">
         <Card>
-        <CardHeader>
-          <div className="flex items-center gap-2">
-            <Skeleton className="size-4 rounded" />
-            <Skeleton className="h-5 w-20" />
-            <Skeleton className="size-3.5 rounded-full" />
-          </div>
-        </CardHeader>
+          <CardHeader>
+            <div className="flex items-center gap-2">
+              <Skeleton className="size-4 rounded" />
+              <Skeleton className="h-5 w-20" />
+              <Skeleton className="size-3.5 rounded-full" />
+            </div>
+          </CardHeader>
           <CardContent className="grid gap-4 sm:grid-cols-2">
-              <div className="space-y-2">
-                <Skeleton className="h-4 w-28" />
-                <Skeleton shimmer className="h-9 w-full rounded-md" />
-              </div>
-              <div className="space-y-2">
-                <Skeleton className="h-4 w-32" />
-                <Skeleton shimmer className="h-9 w-full rounded-md" />
-              </div>
+            <div className="space-y-2">
+              <Skeleton className="h-4 w-28" />
+              <Skeleton shimmer className="h-9 w-full rounded-md" />
+            </div>
+            <div className="space-y-2">
+              <Skeleton className="h-4 w-32" />
+              <Skeleton shimmer className="h-9 w-full rounded-md" />
+            </div>
           </CardContent>
         </Card>
 
         <Card>
-        <CardHeader>
-          <div className="flex items-center gap-2">
-            <Skeleton className="size-4 rounded" />
-            <Skeleton className="h-5 w-32" />
-            <Skeleton className="size-3.5 rounded-full" />
-          </div>
-        </CardHeader>
+          <CardHeader>
+            <div className="flex items-center gap-2">
+              <Skeleton className="size-4 rounded" />
+              <Skeleton className="h-5 w-32" />
+              <Skeleton className="size-3.5 rounded-full" />
+            </div>
+          </CardHeader>
           <CardContent>
             <Skeleton className="h-14 w-full rounded-lg" />
           </CardContent>
         </Card>
 
         <Card>
-        <CardHeader className="flex-row items-center justify-between gap-4 space-y-0">
-          <div className="flex items-center gap-2">
-            <Skeleton className="size-4 rounded" />
-            <Skeleton className="h-5 w-20" />
-            <Skeleton className="size-3.5 rounded-full" />
-          </div>
-          <Skeleton className="h-8 w-32 rounded-md" />
-        </CardHeader>
+          <CardHeader className="flex-row items-center justify-between gap-4 space-y-0">
+            <div className="flex items-center gap-2">
+              <Skeleton className="size-4 rounded" />
+              <Skeleton className="h-5 w-20" />
+              <Skeleton className="size-3.5 rounded-full" />
+            </div>
+            <Skeleton className="h-8 w-32 rounded-md" />
+          </CardHeader>
           <CardContent className="space-y-2">
             {Array.from({ length: 2 }).map((_, i) => (
               <Skeleton
                 key={i}
                 shimmer
-                style={{ ["--shimmer-delay" as string]: `-${(i * 0.09).toFixed(2)}s` }}
+                style={{
+                  ["--shimmer-delay" as string]: `-${(i * 0.09).toFixed(2)}s`,
+                }}
                 className="h-12 w-full rounded-lg"
               />
             ))}
@@ -77,19 +79,21 @@ export default function Loading() {
         </Card>
 
         <Card>
-        <CardHeader>
-          <div className="flex items-center gap-2">
-            <Skeleton className="size-4 rounded" />
-            <Skeleton className="h-5 w-24" />
-            <Skeleton className="size-3.5 rounded-full" />
-          </div>
-        </CardHeader>
+          <CardHeader>
+            <div className="flex items-center gap-2">
+              <Skeleton className="size-4 rounded" />
+              <Skeleton className="h-5 w-24" />
+              <Skeleton className="size-3.5 rounded-full" />
+            </div>
+          </CardHeader>
           <CardContent className="space-y-2">
             {Array.from({ length: 3 }).map((_, i) => (
               <Skeleton
                 key={i}
                 shimmer
-                style={{ ["--shimmer-delay" as string]: `-${(i * 0.09).toFixed(2)}s` }}
+                style={{
+                  ["--shimmer-delay" as string]: `-${(i * 0.09).toFixed(2)}s`,
+                }}
                 className="h-16 w-full rounded-lg"
               />
             ))}

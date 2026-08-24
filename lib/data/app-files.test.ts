@@ -44,7 +44,10 @@ test("resolveWithinRoot: resolves a real file inside the root", async () => {
     const abs = await resolveWithinRoot(root, "sub/config.toml");
     assert.ok(abs.endsWith(`${join("sub", "config.toml")}`));
     // The root itself ("" / ".") resolves to the root.
-    assert.equal(await resolveWithinRoot(root, ""), await resolveWithinRoot(root, "."));
+    assert.equal(
+      await resolveWithinRoot(root, ""),
+      await resolveWithinRoot(root, "."),
+    );
   } finally {
     await rm(root, { recursive: true, force: true });
   }
@@ -92,7 +95,9 @@ test("a path with nothing behind it reads as a new file, not a failure", () => {
   // has no files dir yet — all three are "there is nothing there to read", which
   // for an editor whose job is to CREATE that file is the normal case.
   const notFound = Object.assign(
-    new Error("read config.toml: open /data/stacks/files/shop/config.toml: no such file or directory"),
+    new Error(
+      "read config.toml: open /data/stacks/files/shop/config.toml: no such file or directory",
+    ),
     { code: 5 }, // grpc NOT_FOUND
   );
   assert.equal(storageFileStateForError(notFound), "new");
@@ -106,15 +111,22 @@ test("a directory at the entry's path is reported as a folder", () => {
 test("anything else stays an error — an unreachable server is not an empty file", () => {
   // Reporting "new" here would show an empty editor for a file we never read,
   // and the next save would overwrite it with whatever is on screen.
-  assert.equal(storageFileStateForError(new Error("14 UNAVAILABLE: no connection")), null);
   assert.equal(
-    storageFileStateForError(Object.assign(new Error("agent unreachable"), { code: 14 })),
+    storageFileStateForError(new Error("14 UNAVAILABLE: no connection")),
+    null,
+  );
+  assert.equal(
+    storageFileStateForError(
+      Object.assign(new Error("agent unreachable"), { code: 14 }),
+    ),
     null,
   );
   // A different INVALID_ARGUMENT (a rejected path, say) is not a folder.
   assert.equal(
     storageFileStateForError(
-      Object.assign(new Error("path escapes the project files directory"), { code: 3 }),
+      Object.assign(new Error("path escapes the project files directory"), {
+        code: 3,
+      }),
     ),
     null,
   );

@@ -42,7 +42,12 @@ export function DatabaseRedeployButton({
 
   return (
     <SimpleTooltip content="Re-apply settings by recreating the container — brief downtime, data volume preserved">
-      <Button variant={variant} size={size} onClick={redeploy} disabled={pending}>
+      <Button
+        variant={variant}
+        size={size}
+        onClick={redeploy}
+        disabled={pending}
+      >
         <RotateCcw className={pending ? "size-4 animate-spin" : "size-4"} />
         {pending ? "Redeploying…" : "Redeploy"}
       </Button>

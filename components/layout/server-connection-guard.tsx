@@ -137,7 +137,10 @@ function useAutoReconnect(): {
         );
         return;
       }
-      delay = Math.min(Math.round(delay * RECONNECT_BACKOFF), RECONNECT_MAX_DELAY_MS);
+      delay = Math.min(
+        Math.round(delay * RECONNECT_BACKOFF),
+        RECONNECT_MAX_DELAY_MS,
+      );
       scheduleNext(delay);
     };
 
@@ -207,17 +210,22 @@ function useBlockNavigationWhileDisconnected(active: boolean): void {
     if (!active) return;
 
     const notePaused = () =>
-      toast("Navigation and actions are paused while the server is unreachable.", {
-        id: NAV_BLOCK_TOAST_ID,
-        description: "You can stay on this page — it reloads itself once the server is back.",
-      });
+      toast(
+        "Navigation and actions are paused while the server is unreachable.",
+        {
+          id: NAV_BLOCK_TOAST_ID,
+          description:
+            "You can stay on this page — it reloads itself once the server is back.",
+        },
+      );
 
     // Is this click headed for an in-app route change we should hold back?
     const isInternalNavClick = (e: MouseEvent): boolean => {
       // Primary (0) and middle (1) buttons navigate — a middle-click opens a new
       // tab on the dead route. Right-click (2, context menu) and already-handled
       // clicks are left alone.
-      if ((e.button !== 0 && e.button !== 1) || e.defaultPrevented) return false;
+      if ((e.button !== 0 && e.button !== 1) || e.defaultPrevented)
+        return false;
       const target = e.target as Element | null;
       const anchor = target?.closest?.("a[href]") as HTMLAnchorElement | null;
       if (!anchor) return false;
@@ -225,7 +233,8 @@ function useBlockNavigationWhileDisconnected(active: boolean): void {
 
       const href = anchor.getAttribute("href") ?? "";
       // In-page anchors and non-http schemes aren't route changes.
-      if (href.startsWith("#") || /^(mailto:|tel:|blob:|data:)/i.test(href)) return false;
+      if (href.startsWith("#") || /^(mailto:|tel:|blob:|data:)/i.test(href))
+        return false;
 
       let url: URL;
       try {
@@ -304,15 +313,13 @@ function DisconnectedNotification() {
       };
 
   return createPortal(
-    <div
-      className="pointer-events-none fixed inset-x-0 bottom-0 z-[2147483647] flex justify-center p-4"
-    >
+    <div className="pointer-events-none fixed inset-x-0 bottom-0 z-[2147483647] flex justify-center p-4">
       <div
         role="status"
         aria-live="polite"
         aria-labelledby="server-connection-lost-title"
         aria-describedby="server-connection-lost-description"
-        className="pointer-events-auto relative isolate w-full max-w-sm animate-in fade-in-0 slide-in-from-bottom-4 duration-300"
+        className="pointer-events-auto relative isolate w-full max-w-sm animate-in duration-300 fade-in-0 slide-in-from-bottom-4"
       >
         {/* Red glow radiating from the centre outward behind the card. Its core
             sits behind the opaque card, so what shows is a soft halo bleeding out
@@ -335,7 +342,7 @@ function DisconnectedNotification() {
               className={`flex size-7 shrink-0 items-center justify-center rounded-lg border shadow-sm transition-colors duration-500 ${tone.core}`}
             >
               {restored ? (
-                <Wifi className="size-4 animate-in zoom-in-50 duration-300" />
+                <Wifi className="size-4 animate-in duration-300 zoom-in-50" />
               ) : (
                 <WifiOff className="size-4" />
               )}
@@ -370,7 +377,9 @@ function DisconnectedNotification() {
                 key={cycleKey}
                 aria-hidden
                 className="absolute inset-0 origin-left bg-primary-foreground/20 motion-reduce:hidden"
-                style={{ animation: `reconnect-progress ${cycleMs}ms linear forwards` }}
+                style={{
+                  animation: `reconnect-progress ${cycleMs}ms linear forwards`,
+                }}
               />
             )}
             <span className="relative z-10 inline-flex items-center gap-2">

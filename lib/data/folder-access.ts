@@ -102,7 +102,9 @@ async function folderRow(
       ownerUserId: foldersTable.ownerUserId,
     })
     .from(foldersTable)
-    .where(and(eq(foldersTable.id, folderId), eq(foldersTable.teamId, activeTeamId)))
+    .where(
+      and(eq(foldersTable.id, folderId), eq(foldersTable.teamId, activeTeamId)),
+    )
     .limit(1);
   const f = rows[0];
   return f ? { teamId: f.teamId, ownerUserId: f.ownerUserId ?? null } : null;
@@ -271,7 +273,8 @@ export async function visibleFolderIds(
   // scope clamps that capability away at the source, so this state should not
   // arise — and the sentinel is the one answer that would hand a limited member
   // every folder in the team, so it is checked here too rather than trusted.
-  if (!scope && (admin || (await holdsManageTeam(user.id, teamId)))) return "all";
+  if (!scope && (admin || (await holdsManageTeam(user.id, teamId))))
+    return "all";
   // Not a super-user and not a member ⇒ nothing visible.
   if (!admin && (await teamCapsFor(user.id, teamId)).length === 0)
     return new Set();
@@ -357,7 +360,11 @@ async function requireFolderOwnerOrAdmin(folderId: string): Promise<{
     if (!(await canSeeFolder(folderId))) throw new Error("Folder not found");
     throw new Error("Only the folder owner can share this folder");
   }
-  return { teamId: f.teamId, ownerUserId: f.ownerUserId ?? null, actingUserId: user.id };
+  return {
+    teamId: f.teamId,
+    ownerUserId: f.ownerUserId ?? null,
+    actingUserId: user.id,
+  };
 }
 
 /** Look up a user's public identity fields (for the grant DTOs). */

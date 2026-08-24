@@ -15,7 +15,10 @@ import { runWithIdentity } from "../auth/request-context";
 import { seedIdentity, TEAM_A, USER_1 } from "./identity-test-helpers";
 import { TRUNCATE_INFRA, seedServerRow } from "./infra-test-helpers";
 import { checkServerReadiness } from "./server-readiness";
-import { READINESS_DETAILS, READINESS_MESSAGES } from "../infra/server-readiness";
+import {
+  READINESS_DETAILS,
+  READINESS_MESSAGES,
+} from "../infra/server-readiness";
 import { __resetReleaseCacheForTests } from "../agent/release";
 
 /**
@@ -61,7 +64,8 @@ before(async () => {
   ({ db, pg } = await makeTestDb());
   __setTestDb(db);
   const orig = globalThis.fetch;
-  globalThis.fetch = (async () => new Response("", { status: 404 })) as typeof fetch;
+  globalThis.fetch = (async () =>
+    new Response("", { status: 404 })) as typeof fetch;
   restoreFetch = () => {
     globalThis.fetch = orig;
   };
@@ -96,28 +100,49 @@ const rawRow = async (id: string) =>
 test("checkServerReadiness is instance-admin only, and rejects BEFORE any dial", async () => {
   // Seeded PROVISIONED on purpose: if the gate leaked, the orchestrator would try to dial a
   // host that does not exist and this test would hang rather than fail quietly.
-  await seedServerRow(db, { id: "srv_1", status: "online", agent: agent("fp_1") });
+  await seedServerRow(db, {
+    id: "srv_1",
+    status: "online",
+    agent: agent("fp_1"),
+  });
 
-  await assert.rejects(() => asMember(() => checkServerReadiness("srv_1")), /instance admin/i);
+  await assert.rejects(
+    () => asMember(() => checkServerReadiness("srv_1")),
+    /instance admin/i,
+  );
 
   const row = await rawRow("srv_1");
   assert.equal(row.statusCheckedAt, null, "nothing was probed by a non-admin");
-  assert.equal(row.statusProbedAt, null, "and no throttle lease was taken either");
+  assert.equal(
+    row.statusProbedAt,
+    null,
+    "and no throttle lease was taken either",
+  );
 });
 
 test("checkServerReadiness rejects an unknown server id", async () => {
-  await assert.rejects(() => asAdmin(() => checkServerReadiness("srv_nope")), /not found/i);
+  await assert.rejects(
+    () => asAdmin(() => checkServerReadiness("srv_nope")),
+    /not found/i,
+  );
 });
 
 test("an unprovisioned server returns a `provisioning` report without dialing", async () => {
-  await seedServerRow(db, { id: "srv_new", name: "eu-west-1", status: "provisioning" });
+  await seedServerRow(db, {
+    id: "srv_new",
+    name: "eu-west-1",
+    status: "provisioning",
+  });
 
   const report = await asAdmin(() => checkServerReadiness("srv_new"));
 
   assert.equal(report.verdict, "provisioning");
   assert.equal(report.serverId, "srv_new");
   assert.equal(report.serverName, "eu-west-1");
-  assert.ok(!Number.isNaN(Date.parse(report.checkedAt)), "checkedAt is a real instant");
+  assert.ok(
+    !Number.isNaN(Date.parse(report.checkedAt)),
+    "checkedAt is a real instant",
+  );
   // Only the rows whose inputs we actually have: the bootstrap fact + the control-plane facts.
   // No wall of grey "skipped" agent/docker/routing rows for a host nobody has installed yet.
   assert.deepEqual(
@@ -171,7 +196,11 @@ test("a readiness check WRITES NOTHING — status, its timestamps and the heartb
   assert.equal(fresh.lastSeenAt, null, "no heartbeat was written");
 
   const revoked = await rawRow("srv_revoked");
-  assert.equal(revoked.status, "online", "a readiness check cannot demote a server");
+  assert.equal(
+    revoked.status,
+    "online",
+    "a readiness check cannot demote a server",
+  );
   assert.equal(revoked.statusMessage, null);
   assert.equal(revoked.statusCheckedAt, null);
   assert.equal(revoked.statusProbedAt, null);
@@ -198,7 +227,9 @@ test("grantedTeamCount comes from the real server_teams rows", async () => {
     .values({ serverId: "srv_locked", teamId: TEAM_A });
 
   const granted = await asAdmin(() => checkServerReadiness("srv_locked"));
-  const grantedAccess = granted.checks.find((c) => c.id === "config.teamAccess")!;
+  const grantedAccess = granted.checks.find(
+    (c) => c.id === "config.teamAccess",
+  )!;
   assert.equal(grantedAccess.severity, "info");
   assert.equal(grantedAccess.detail, READINESS_DETAILS.teamsSome(1));
   assert.equal(grantedAccess.detail, "1 team can deploy to this server.");

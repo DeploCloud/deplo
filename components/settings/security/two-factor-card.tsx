@@ -5,12 +5,7 @@ import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import { ShieldCheck, ShieldOff } from "lucide-react";
 
-import {
-  Card,
-  CardContent,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -79,11 +74,10 @@ export function TwoFactorCard({
   }
 
   async function regenerate() {
-    const res = await gqlAction<{ regenerateRecoveryCodes: string[] }, string[]>(
-      REGENERATE,
-      { password, code },
-      (d) => d.regenerateRecoveryCodes,
-    );
+    const res = await gqlAction<
+      { regenerateRecoveryCodes: string[] },
+      string[]
+    >(REGENERATE, { password, code }, (d) => d.regenerateRecoveryCodes);
     if (!res.ok) return res;
     setPassword("");
     setCode("");
@@ -138,7 +132,9 @@ export function TwoFactorCard({
             <div>
               <div className="flex items-center gap-2 text-sm font-medium">
                 {enabled ? "On" : "Off"}
-                {enabled && <Badge variant="secondary">Authenticator app</Badge>}
+                {enabled && (
+                  <Badge variant="secondary">Authenticator app</Badge>
+                )}
               </div>
               <p className="mt-1 text-sm text-muted-foreground">
                 {enabled
@@ -151,9 +147,7 @@ export function TwoFactorCard({
               </p>
             </div>
           </div>
-          {!enabled && (
-            <Button onClick={() => setWizard(true)}>Turn on</Button>
-          )}
+          {!enabled && <Button onClick={() => setWizard(true)}>Turn on</Button>}
         </div>
 
         {enabled && (

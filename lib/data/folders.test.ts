@@ -96,7 +96,11 @@ test("rollUpAppCounts credits every ancestor with its subtree's services", async
       ["d", 1],
     ]),
   );
-  assert.equal(totals.get("a"), 4, "1 direct + 2 in grandchild c + 1 in child d");
+  assert.equal(
+    totals.get("a"),
+    4,
+    "1 direct + 2 in grandchild c + 1 in child d",
+  );
   assert.equal(totals.get("b"), 2, "c's services bubble up through b");
   assert.equal(totals.get("c"), 2);
   assert.equal(totals.get("d"), 1);

@@ -62,7 +62,11 @@ const STEPS: { id: StepId; label: string }[] = [
 /** Per-step heading, icon and one line of orientation. */
 const COPY: Record<
   StepId,
-  { icon: React.ComponentType<{ className?: string }>; title: string; blurb: string }
+  {
+    icon: React.ComponentType<{ className?: string }>;
+    title: string;
+    blurb: string;
+  }
 > = {
   target: {
     icon: Boxes,
@@ -148,16 +152,14 @@ export function CreateBackup({
   // matters usually belongs to one. Databases still win the default when the
   // team has no apps at all, so the dialog never opens on an empty picker.
   const [targetKind, setTargetKind] = React.useState<TargetKind>(
-    services.length === 0 && databases.length > 0 ? "database" : "app"
+    services.length === 0 && databases.length > 0 ? "database" : "app",
   );
   const [databaseId, setDatabaseId] = React.useState<string>(
-    databases[0]?.id ?? ""
+    databases[0]?.id ?? "",
   );
-  const [appId, setAppId] = React.useState<string>(
-    services[0]?.id ?? ""
-  );
+  const [appId, setAppId] = React.useState<string>(services[0]?.id ?? "");
   const [destinationId, setDestinationId] = React.useState<string>(
-    destinations[0]?.id ?? ""
+    destinations[0]?.id ?? "",
   );
   const [schedule, setSchedule] = React.useState(DEFAULT_SCHEDULE);
   const [timezone, setTimezone] = React.useState(browserTimezone);
@@ -176,8 +178,9 @@ export function CreateBackup({
   const targetId = targetKind === "database" ? databaseId : appId;
   // The server the chosen target runs on — a destination on it is a same-disk copy.
   const targetServerId =
-    (targetKind === "database" ? databases : services).find((t) => t.id === targetId)
-      ?.serverId ?? null;
+    (targetKind === "database" ? databases : services).find(
+      (t) => t.id === targetId,
+    )?.serverId ?? null;
 
   /** What each step needs before the next one means anything. */
   const complete: Record<StepId, boolean> = {
@@ -221,7 +224,7 @@ export function CreateBackup({
             timezone,
             retentionCount: retention,
           },
-        }
+        },
       );
       if (res.ok) {
         toast.success("Backup schedule created");
@@ -266,8 +269,8 @@ export function CreateBackup({
         <DialogHeader className="space-y-0 pr-8">
           <DialogTitle className="sr-only">Schedule a backup</DialogTitle>
           <DialogDescription className="sr-only">
-            Periodically back up a database or an app to a backup destination, in
-            three steps.
+            Periodically back up a database or an app to a backup destination,
+            in three steps.
           </DialogDescription>
           <WizardStepper
             steps={STEPS}
@@ -275,9 +278,10 @@ export function CreateBackup({
             // Every answer here is the user's own and stays editable, so any step
             // whose predecessors are settled can be jumped back to.
             reachable={(s) =>
-              STEPS.slice(0, STEPS.findIndex((x) => x.id === s)).every(
-                (x) => complete[x.id],
-              )
+              STEPS.slice(
+                0,
+                STEPS.findIndex((x) => x.id === s),
+              ).every((x) => complete[x.id])
             }
             onSelect={setStep}
           />
@@ -422,12 +426,21 @@ export function CreateBackup({
               Back
             </Button>
             <div className="flex gap-2">
-              <Button type="button" variant="outline" onClick={close} disabled={pending}>
+              <Button
+                type="button"
+                variant="outline"
+                onClick={close}
+                disabled={pending}
+              >
                 Cancel
               </Button>
               {step === "schedule" ? (
                 <Button type="submit" disabled={pending || !complete.schedule}>
-                  {pending ? <Loader2 className="size-4 animate-spin" /> : "Create schedule"}
+                  {pending ? (
+                    <Loader2 className="size-4 animate-spin" />
+                  ) : (
+                    "Create schedule"
+                  )}
                 </Button>
               ) : (
                 <Button type="submit" disabled={!complete[step]}>

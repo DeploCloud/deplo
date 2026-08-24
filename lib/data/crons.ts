@@ -17,7 +17,11 @@ import { composeServiceNames } from "../deploy/compose-stack";
 import { newId, nowIso } from "../ids";
 import { requireActiveTeamId, requireCapability } from "../membership";
 import { invalidScheduleMessage, isValidSchedule } from "../schedule";
-import { canonicalTimeZone, dstSkipWarning, nextCronRunInZone } from "../crons/cron-tz";
+import {
+  canonicalTimeZone,
+  dstSkipWarning,
+  nextCronRunInZone,
+} from "../crons/cron-tz";
 import {
   cancelRun,
   loadInFlightRun,
@@ -157,7 +161,8 @@ function toJobDTO(r: JobRow, envKeys: string[], running: boolean): CronJobDTO {
     lastSuccessAt: r.lastSuccessAt,
     running,
     nextRunAt: r.enabled
-      ? (nextCronRunInZone(r.schedule, new Date(), r.timezone)?.toISOString() ?? null)
+      ? (nextCronRunInZone(r.schedule, new Date(), r.timezone)?.toISOString() ??
+        null)
       : null,
     envKeys,
     createdAt: r.createdAt,
@@ -218,7 +223,9 @@ async function gateDatabase(databaseId: string) {
   const rows = await getDb()
     .select({ id: databasesTable.id, cronEnabled: databasesTable.cronEnabled })
     .from(databasesTable)
-    .where(and(eq(databasesTable.id, databaseId), eq(databasesTable.teamId, teamId)))
+    .where(
+      and(eq(databasesTable.id, databaseId), eq(databasesTable.teamId, teamId)),
+    )
     .limit(1);
   if (rows.length === 0) throw new Error("Database not found");
   return { teamId, database: rows[0] };
@@ -285,7 +292,8 @@ function buildPatch(
   if (input.name !== undefined) {
     const name = input.name.trim();
     if (!name) throw new Error("Give the cron job a name");
-    if (name.length > 80) throw new Error("Keep the name to 80 characters or fewer");
+    if (name.length > 80)
+      throw new Error("Keep the name to 80 characters or fewer");
     patch.name = name;
   }
   if (input.description !== undefined) {
@@ -299,7 +307,8 @@ function buildPatch(
     // An invalid expression is accepted nowhere: the scheduler treats an
     // unparseable cron as "never matches", so storing one would leave a job the
     // UI calls enabled and that silently never runs.
-    if (!isValidSchedule(schedule)) throw new Error(invalidScheduleMessage(schedule));
+    if (!isValidSchedule(schedule))
+      throw new Error(invalidScheduleMessage(schedule));
     patch.schedule = schedule;
   }
   if (input.timezone !== undefined) {
@@ -321,7 +330,9 @@ function buildPatch(
     const command = input.command.trim();
     if (!command) throw new Error("Give the cron job a command to run");
     if (command.length > 8000) {
-      throw new Error("Keep the command under 8000 characters - put a long script in the image");
+      throw new Error(
+        "Keep the command under 8000 characters - put a long script in the image",
+      );
     }
     patch.command = command;
   }
@@ -334,7 +345,9 @@ function buildPatch(
   }
   if (input.keepRuns !== undefined) {
     if (input.keepRuns < MIN_KEEP_RUNS || input.keepRuns > MAX_KEEP_RUNS) {
-      throw new Error(`Keep between ${MIN_KEEP_RUNS} and ${MAX_KEEP_RUNS} runs of history`);
+      throw new Error(
+        `Keep between ${MIN_KEEP_RUNS} and ${MAX_KEEP_RUNS} runs of history`,
+      );
     }
     patch.keepRuns = Math.trunc(input.keepRuns);
   }
@@ -346,7 +359,9 @@ function buildPatch(
   if (input.workdir !== undefined) {
     const workdir = (input.workdir ?? "").trim();
     if (workdir && !/^\/[\w./@+-]*$/.test(workdir))
-      throw new Error("The working directory must be an absolute path inside the container");
+      throw new Error(
+        "The working directory must be an absolute path inside the container",
+      );
     patch.workdir = workdir || null;
   }
   if (input.user !== undefined) {
@@ -358,7 +373,10 @@ function buildPatch(
   }
 
   if (input.timeoutSeconds !== undefined) {
-    if (input.timeoutSeconds < 1 || input.timeoutSeconds > MAX_TIMEOUT_SECONDS) {
+    if (
+      input.timeoutSeconds < 1 ||
+      input.timeoutSeconds > MAX_TIMEOUT_SECONDS
+    ) {
       throw new Error("Keep the timeout between 1 second and 24 hours");
     }
     patch.timeoutSeconds = Math.trunc(input.timeoutSeconds);
@@ -396,7 +414,9 @@ function validateEnv(env: { key: string; value: string }[]): {
     const key = e.key.trim();
     if (!key) continue;
     if (!/^[A-Za-z_][A-Za-z0-9_]*$/.test(key)) {
-      throw new Error(`"${key}" is not a valid variable name - use letters, digits and underscores`);
+      throw new Error(
+        `"${key}" is not a valid variable name - use letters, digits and underscores`,
+      );
     }
     if (seen.has(key)) throw new Error(`"${key}" is listed twice`);
     seen.add(key);
@@ -406,7 +426,10 @@ function validateEnv(env: { key: string; value: string }[]): {
 }
 
 /** Replace a job's extra environment. Values are encrypted and never read back. */
-async function writeEnv(jobId: string, env: { key: string; value: string }[]): Promise<void> {
+async function writeEnv(
+  jobId: string,
+  env: { key: string; value: string }[],
+): Promise<void> {
   await getDb().delete(cronJobEnvTable).where(eq(cronJobEnvTable.jobId, jobId));
   if (env.length === 0) return;
   await getDb()
@@ -451,7 +474,10 @@ async function jobsFor(where: SQL): Promise<CronJobDTO[]> {
     .where(where)
     .orderBy(cronJobsTable.name);
   const ids = rows.map((r) => r.id);
-  const [keys, running] = await Promise.all([envKeysFor(ids), inFlightJobIds(ids)]);
+  const [keys, running] = await Promise.all([
+    envKeysFor(ids),
+    inFlightJobIds(ids),
+  ]);
   return rows.map((r) => toJobDTO(r, keys.get(r.id) ?? [], running.has(r.id)));
 }
 
@@ -462,22 +488,27 @@ async function inFlightJobIds(jobIds: string[]): Promise<Set<string>> {
     .selectDistinct({ jobId: cronRunsTable.jobId })
     .from(cronRunsTable)
     .where(
-      and(inArray(cronRunsTable.jobId, jobIds), eq(cronRunsTable.status, "running")),
+      and(
+        inArray(cronRunsTable.jobId, jobIds),
+        eq(cronRunsTable.status, "running"),
+      ),
     );
   return new Set(rows.map((r) => r.jobId));
 }
 
 /** An app's cron jobs, plus the switch and the services a job can target. */
-export const listAppCronJobs = cache(async (appId: string): Promise<CronJobsView> => {
-  const { app } = await gateApp(appId);
-  return {
-    targetKind: "app",
-    targetId: appId,
-    enabled: app.cronEnabled,
-    jobs: await jobsFor(eq(cronJobsTable.appId, appId)),
-    services: appServices(app.compose, app.slug),
-  };
-});
+export const listAppCronJobs = cache(
+  async (appId: string): Promise<CronJobsView> => {
+    const { app } = await gateApp(appId);
+    return {
+      targetKind: "app",
+      targetId: appId,
+      enabled: app.cronEnabled,
+      jobs: await jobsFor(eq(cronJobsTable.appId, appId)),
+      services: appServices(app.compose, app.slug),
+    };
+  },
+);
 
 /**
  * The compose services a job may pick, read from the app's own stack DOCUMENT
@@ -510,7 +541,10 @@ export const listDatabaseCronJobs = cache(
  * Gated on `manage_crons` and NOT on `view`, because stdout can contain anything
  * the command printed - including whatever was in the job's environment.
  */
-export async function listCronRuns(jobId: string, limit = 50): Promise<CronRunDTO[]> {
+export async function listCronRuns(
+  jobId: string,
+  limit = 50,
+): Promise<CronRunDTO[]> {
   await gateJob(jobId);
   const rows = await getDb()
     .select()
@@ -522,7 +556,10 @@ export async function listCronRuns(jobId: string, limit = 50): Promise<CronRunDT
 }
 
 /** The sentence to show under a schedule DST could skip, or null. */
-export function cronDstWarning(schedule: string, timezone: string): string | null {
+export function cronDstWarning(
+  schedule: string,
+  timezone: string,
+): string | null {
   return dstSkipWarning(schedule, timezone);
 }
 
@@ -564,7 +601,9 @@ export async function setCronEnabled(
   const rows = await getDb()
     .update(databasesTable)
     .set({ cronEnabled: enabled })
-    .where(and(eq(databasesTable.id, targetId), eq(databasesTable.teamId, teamId)))
+    .where(
+      and(eq(databasesTable.id, targetId), eq(databasesTable.teamId, teamId)),
+    )
     .returning({ name: databasesTable.name });
   if (rows.length === 0) throw new Error("Database not found");
   await recordActivity(
@@ -590,8 +629,10 @@ export async function createCronJob(
   // Required on create, optional on edit - so the patch builder is shared and the
   // requiredness lives in exactly one place.
   if (input.name === undefined) throw new Error("Give the cron job a name");
-  if (input.command === undefined) throw new Error("Give the cron job a command to run");
-  if (input.schedule === undefined) throw new Error("Give the cron job a schedule");
+  if (input.command === undefined)
+    throw new Error("Give the cron job a command to run");
+  if (input.schedule === undefined)
+    throw new Error("Give the cron job a schedule");
 
   const patch = buildPatch(input);
   const env = input.env ? validateEnv(input.env) : [];
@@ -658,9 +699,16 @@ function errorChainText(e: unknown): string {
 }
 
 async function oneJob(id: string): Promise<CronJobDTO | null> {
-  const rows = await getDb().select().from(cronJobsTable).where(eq(cronJobsTable.id, id)).limit(1);
+  const rows = await getDb()
+    .select()
+    .from(cronJobsTable)
+    .where(eq(cronJobsTable.id, id))
+    .limit(1);
   if (rows.length === 0) return null;
-  const [keys, running] = await Promise.all([envKeysFor([id]), inFlightJobIds([id])]);
+  const [keys, running] = await Promise.all([
+    envKeysFor([id]),
+    inFlightJobIds([id]),
+  ]);
   return toJobDTO(rows[0], keys.get(id) ?? [], running.has(id));
 }
 
@@ -719,7 +767,9 @@ export async function deleteCronJob(jobId: string): Promise<void> {
 export async function runCronJobNow(jobId: string): Promise<CronRunDTO> {
   const { job, teamId, targetEnabled } = await gateJob(jobId);
   if (!targetEnabled) {
-    throw new Error("Cron jobs are switched off here. Turn them on in Settings first.");
+    throw new Error(
+      "Cron jobs are switched off here. Turn them on in Settings first.",
+    );
   }
   const user = await getCurrentUser();
   const actor = user?.name ?? "Deplo";
@@ -727,7 +777,13 @@ export async function runCronJobNow(jobId: string): Promise<CronRunDTO> {
   if (!schedulable) throw new Error("Cron job not found");
 
   const r = await runJobNow(schedulable, actor);
-  await recordActivity("cron", `Ran cron job ${job.name}`, actor, job.appId, teamId);
+  await recordActivity(
+    "cron",
+    `Ran cron job ${job.name}`,
+    actor,
+    job.appId,
+    teamId,
+  );
   // Re-read: startAttempt may already have settled it (a stopped container is a
   // `skipped` run before this call returns), and the caller renders the outcome.
   const rows = await getDb()

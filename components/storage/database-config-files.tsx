@@ -67,7 +67,10 @@ const SUGGESTION: Record<string, { filePath: string; mountPath: string }> = {
   mysql: { filePath: "my.cnf", mountPath: "/etc/mysql/conf.d/my.cnf" },
   mariadb: { filePath: "my.cnf", mountPath: "/etc/mysql/conf.d/my.cnf" },
   mongodb: { filePath: "mongod.conf", mountPath: "/etc/mongod.conf" },
-  redis: { filePath: "redis.conf", mountPath: "/usr/local/etc/redis/redis.conf" },
+  redis: {
+    filePath: "redis.conf",
+    mountPath: "/usr/local/etc/redis/redis.conf",
+  },
   clickhouse: {
     filePath: "config.xml",
     mountPath: "/etc/clickhouse-server/config.d/config.xml",
@@ -81,7 +84,8 @@ function problemFor(row: Row, dataDir: string): string | null {
   if (!filePath) return "Give the file a name.";
   if (filePath.startsWith("/") || filePath.split("/").includes(".."))
     return 'The file name is relative, for example "postgresql.conf".';
-  if (/[\s:]/.test(filePath)) return 'A file name cannot contain spaces or ":".';
+  if (/[\s:]/.test(filePath))
+    return 'A file name cannot contain spaces or ":".';
   if (!mountPath.startsWith("/") || mountPath.length < 2)
     return "The path in the container must be absolute, like /etc/postgresql.conf.";
   if (/[\s:]/.test(mountPath.slice(1)))
@@ -181,7 +185,9 @@ export function DatabaseConfigFiles({
                   </FieldLabel>
                   <Input
                     value={row.filePath}
-                    onChange={(e) => update(row.key, { filePath: e.target.value })}
+                    onChange={(e) =>
+                      update(row.key, { filePath: e.target.value })
+                    }
                     placeholder={suggestion.filePath}
                     className="font-mono text-xs"
                   />
@@ -195,7 +201,9 @@ export function DatabaseConfigFiles({
                   </FieldLabel>
                   <Input
                     value={row.mountPath}
-                    onChange={(e) => update(row.key, { mountPath: e.target.value })}
+                    onChange={(e) =>
+                      update(row.key, { mountPath: e.target.value })
+                    }
                     placeholder={suggestion.mountPath}
                     className="font-mono text-xs"
                   />
@@ -203,7 +211,10 @@ export function DatabaseConfigFiles({
               </div>
 
               <div className="space-y-1.5">
-                <FieldLabel className="text-xs" info="What deplo writes into the file.">
+                <FieldLabel
+                  className="text-xs"
+                  info="What deplo writes into the file."
+                >
                   What&apos;s in the file
                 </FieldLabel>
                 <TextEditor
@@ -225,7 +236,9 @@ export function DatabaseConfigFiles({
                   type="button"
                   variant="ghost"
                   size="sm"
-                  onClick={() => setRows((rs) => rs.filter((r) => r.key !== row.key))}
+                  onClick={() =>
+                    setRows((rs) => rs.filter((r) => r.key !== row.key))
+                  }
                 >
                   <Trash2 className="size-3.5" />
                   Remove
@@ -242,7 +255,12 @@ export function DatabaseConfigFiles({
           onClick={() =>
             setRows((rs) => [
               ...rs,
-              { key: `row-${nextKey++}`, filePath: "", content: "", mountPath: "" },
+              {
+                key: `row-${nextKey++}`,
+                filePath: "",
+                content: "",
+                mountPath: "",
+              },
             ])
           }
         >

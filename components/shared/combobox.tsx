@@ -246,7 +246,7 @@ export function Combobox<T>({
           input looking like a broken control. */}
       <div ref={fieldRef} className="relative">
         {selected && renderLeading && (
-          <span className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2">
+          <span className="pointer-events-none absolute top-1/2 left-2.5 -translate-y-1/2">
             {renderLeading(selected)}
           </span>
         )}
@@ -285,7 +285,7 @@ export function Combobox<T>({
           onKeyDown={onKeyDown}
           className={cn("pr-9", selected && renderLeading && "pl-9")}
         />
-        <span className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground">
+        <span className="pointer-events-none absolute top-1/2 right-3 -translate-y-1/2 text-muted-foreground">
           {busy ? (
             <Loader2 className="size-4 animate-spin" />
           ) : (
@@ -331,7 +331,9 @@ export function Combobox<T>({
                         }}
                         className={cn(
                           "w-full space-y-0.5 rounded-sm px-2 py-1.5 text-left",
-                          i === activeIndex ? "bg-accent" : "hover:bg-accent/60",
+                          i === activeIndex
+                            ? "bg-accent"
+                            : "hover:bg-accent/60",
                         )}
                       >
                         {renderOption(item)}
@@ -343,7 +345,6 @@ export function Combobox<T>({
             </div>,
             host,
           )}
-
       </div>
 
       {/* Outside the field's positioning box on purpose (see above), so anything

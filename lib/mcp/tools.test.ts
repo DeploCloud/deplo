@@ -57,7 +57,10 @@ test("tool names are unique, snake_case, and unprefixed", () => {
     assert.match(t.name, /^[a-z][a-z0-9_]*$/, `${t.name} is not snake_case`);
     // Clients already namespace by server name; a `deplo_` prefix would read as
     // `mcp__deplo__deplo_list_apps` in the model's tool list.
-    assert.ok(!t.name.startsWith("deplo_"), `${t.name} is redundantly prefixed`);
+    assert.ok(
+      !t.name.startsWith("deplo_"),
+      `${t.name} is redundantly prefixed`,
+    );
   }
 });
 

@@ -53,7 +53,8 @@ const MEMBER = "member2";
 const OUTSIDER = "outsider3";
 
 /** A 1x1 WebP, as the picker would produce it. */
-const PICTURE = "data:image/webp;base64,UklGRhoAAABXRUJQVlA4TA0AAAAvAAAAEAcQERGIiP4H";
+const PICTURE =
+  "data:image/webp;base64,UklGRhoAAABXRUJQVlA4TA0AAAAvAAAAEAcQERGIiP4H";
 
 before(async () => {
   ({ db, pg } = await makeTestDb());
@@ -76,8 +77,11 @@ beforeEach(async () => {
   });
 });
 
-const as = <T>(userId: string, fn: () => Promise<T>, teamId = TEAM_A): Promise<T> =>
-  runWithIdentity({ userId, teamId }, fn);
+const as = <T>(
+  userId: string,
+  fn: () => Promise<T>,
+  teamId = TEAM_A,
+): Promise<T> => runWithIdentity({ userId, teamId }, fn);
 
 /** Put the owner in TEAM_B as well, so they have two teams to arrange. */
 const joinTeamB = (id: string) =>
@@ -123,7 +127,10 @@ test("an uploaded picture wins over Gravatar, and clearing gives it back", async
   assert.equal((await memberRow(MEMBER)).avatarUrl, PICTURE);
 
   await as(MEMBER, () => updateMyAvatar(null));
-  assert.match((await memberRow(MEMBER)).avatarUrl!, /^https:\/\/gravatar\.com\//);
+  assert.match(
+    (await memberRow(MEMBER)).avatarUrl!,
+    /^https:\/\/gravatar\.com\//,
+  );
 });
 
 test("a value that is not a plain image data-URI is refused, and stores nothing", async () => {
@@ -140,7 +147,10 @@ test("a value that is not a plain image data-URI is refused, and stores nothing"
     );
   }
   // Still their Gravatar: nothing was written by any of those.
-  assert.match((await memberRow(MEMBER)).avatarUrl!, /^https:\/\/gravatar\.com\//);
+  assert.match(
+    (await memberRow(MEMBER)).avatarUrl!,
+    /^https:\/\/gravatar\.com\//,
+  );
 });
 
 test("with the instance switch off, no Gravatar address is emitted anywhere", async () => {

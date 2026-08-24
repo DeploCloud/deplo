@@ -170,7 +170,8 @@ export const DeploymentRef = builder
         // A build log prints the app's build-time variables; `view_logs` is the
         // permission that names exactly this read (re-checked in `getLogs`).
         authScopes: { capability: "view_logs" },
-        description: "Build logs for this deployment (most recent lines, capped).",
+        description:
+          "Build logs for this deployment (most recent lines, capped).",
         // Cap the serialized payload so `apps { deployments { logs } }` can't
         // amplify into unbounded memory; the full stream is available live via
         // the SSE logs route.
@@ -224,109 +225,107 @@ const VolumeRef = builder.objectRef<VolumeMount>("Volume").implement({
   }),
 });
 
-export const AppRef = builder
-  .objectRef<AppSummary>("App")
-  .implement({
-    description: "A deployable application owned by a team.",
-    fields: (t) => ({
-      id: t.exposeID("id"),
-      name: t.exposeString("name"),
-      slug: t.exposeString("slug"),
-      teamId: t.exposeID("teamId"),
-      folderId: t.exposeID("folderId", { nullable: true }),
-      projectId: t.field({
-        type: "ID",
-        nullable: true,
-        description: "The Project container this app belongs to, if any.",
-        resolve: (p) => p.projectId ?? null,
-      }),
-      serverId: t.exposeID("serverId"),
-      buildServerId: t.id({
-        nullable: true,
-        description:
-          "The server that BUILDS this app's image, when that is not `serverId`. Null is Automatic: a build-only server if the fleet has one this team can reach and its architecture matches, otherwise build where the app runs. Setting it to `serverId` means 'always build on this app's own server'. Ignored by a compose stack and a docker-image source, neither of which Deplo builds.",
-        resolve: (p) => p.buildServerId ?? null,
-      }),
-      buildFallbackLocal: t.boolean({
-        description:
-          "Build on this app's own server when the build server cannot be reached, saying so in the deploy log. True by default. False fails the deploy instead, for whoever chose a small deploy server on purpose.",
-        resolve: (p) => p.buildFallbackLocal,
-      }),
-      logo: t.exposeString("logo", { nullable: true }),
-      dataCopyError: t.exposeString("dataCopyError", {
-        description:
-          "Why this app's data did not arrive, when a migration tried to copy it and could not. Empty for every app that was never migrated and every copy that worked. While it is set, deploying and starting this app are refused - its volumes are empty or half written - and `deployWithoutMigratedData` is how someone accepts that and unblocks it.",
-      }),
-      framework: t.string({
-        nullable: true,
-        description:
-          "The JavaScript framework backing this app " +
-          '("nextjs", "astro", "nestjs", …), or null when none was found or the ' +
-          "app doesn't build with one of the auto-detecting builders (Nixpacks / " +
-          "Railpack). Detected on every deploy, unless setAppFramework has " +
-          "corrected it — in which case that choice is what this returns.",
-        resolve: (p) => effectiveFramework(p),
-      }),
-      frameworkDetected: t.exposeString("framework", {
-        nullable: true,
-        description:
-          "What the LAST DEPLOY actually read from the source, ignoring any " +
-          "correction. Equals `framework` unless the user overrode it.",
-      }),
-      source: t.field({ type: DeploySourceEnum, resolve: (p) => p.source }),
-      dockerImage: t.exposeString("dockerImage", { nullable: true }),
-      compose: t.exposeString("compose", { nullable: true }),
-      volumes: t.field({
-        type: [VolumeRef],
-        description: "Persistent volumes mounted into this app.",
-        resolve: (p) => p.volumes ?? [],
-      }),
-      resources: t.field({
-        type: ResourceLimitsRef,
-        nullable: true,
-        description:
-          "Per-app resource caps applied at deploy time, or null when the app " +
-          "has no limits set.",
-        resolve: (p) => p.resources,
-      }),
-      productionUrl: t.exposeString("productionUrl", { nullable: true }),
-      status: t.field({ type: AppStatusEnum, resolve: (p) => p.status }),
-      autoDeploy: t.exposeBoolean("autoDeploy"),
-      deployHookEnabled: t.exposeBoolean("deployHookEnabled", {
-        description:
-          "Whether this app's deploy hook answers. The hook URL itself is never " +
-          "a field — read it back with revealAppDeployHook.",
-      }),
-      composeUpArgs: t.exposeString("composeUpArgs", {
-        nullable: true,
-        description:
-          "Extra flags this app appends to the `docker compose up` that brings " +
-          "it up, or null for the untouched command. Additive only — the flags " +
-          "that choose the project, stack file or env-file are refused.",
-      }),
-      rollbackKeep: t.exposeInt("rollbackKeep", {
-        description:
-          "How many previous deployments this app can be rolled back to (0-20, " +
-          "default 3). Retention: its server keeps this many of the app's images " +
-          "behind the running one. 0 means there is nothing to go back to.",
-      }),
-      domainCount: t.exposeInt("domainCount"),
-      createdAt: t.exposeString("createdAt"),
-      updatedAt: t.exposeString("updatedAt"),
-      latestDeployment: t.field({
-        type: DeploymentRef,
-        nullable: true,
-        resolve: (p) => p.latestDeployment,
-      }),
-      deployments: t.field({
-        type: [DeploymentRef],
-        description:
-          "The app's most recent deployments, newest first (capped so a nested " +
-          "query can't fan out over the whole history + per-deployment logs).",
-        resolve: (p) => listDeployments({ appId: p.id, limit: 100 }),
-      }),
+export const AppRef = builder.objectRef<AppSummary>("App").implement({
+  description: "A deployable application owned by a team.",
+  fields: (t) => ({
+    id: t.exposeID("id"),
+    name: t.exposeString("name"),
+    slug: t.exposeString("slug"),
+    teamId: t.exposeID("teamId"),
+    folderId: t.exposeID("folderId", { nullable: true }),
+    projectId: t.field({
+      type: "ID",
+      nullable: true,
+      description: "The Project container this app belongs to, if any.",
+      resolve: (p) => p.projectId ?? null,
     }),
-  });
+    serverId: t.exposeID("serverId"),
+    buildServerId: t.id({
+      nullable: true,
+      description:
+        "The server that BUILDS this app's image, when that is not `serverId`. Null is Automatic: a build-only server if the fleet has one this team can reach and its architecture matches, otherwise build where the app runs. Setting it to `serverId` means 'always build on this app's own server'. Ignored by a compose stack and a docker-image source, neither of which Deplo builds.",
+      resolve: (p) => p.buildServerId ?? null,
+    }),
+    buildFallbackLocal: t.boolean({
+      description:
+        "Build on this app's own server when the build server cannot be reached, saying so in the deploy log. True by default. False fails the deploy instead, for whoever chose a small deploy server on purpose.",
+      resolve: (p) => p.buildFallbackLocal,
+    }),
+    logo: t.exposeString("logo", { nullable: true }),
+    dataCopyError: t.exposeString("dataCopyError", {
+      description:
+        "Why this app's data did not arrive, when a migration tried to copy it and could not. Empty for every app that was never migrated and every copy that worked. While it is set, deploying and starting this app are refused - its volumes are empty or half written - and `deployWithoutMigratedData` is how someone accepts that and unblocks it.",
+    }),
+    framework: t.string({
+      nullable: true,
+      description:
+        "The JavaScript framework backing this app " +
+        '("nextjs", "astro", "nestjs", …), or null when none was found or the ' +
+        "app doesn't build with one of the auto-detecting builders (Nixpacks / " +
+        "Railpack). Detected on every deploy, unless setAppFramework has " +
+        "corrected it — in which case that choice is what this returns.",
+      resolve: (p) => effectiveFramework(p),
+    }),
+    frameworkDetected: t.exposeString("framework", {
+      nullable: true,
+      description:
+        "What the LAST DEPLOY actually read from the source, ignoring any " +
+        "correction. Equals `framework` unless the user overrode it.",
+    }),
+    source: t.field({ type: DeploySourceEnum, resolve: (p) => p.source }),
+    dockerImage: t.exposeString("dockerImage", { nullable: true }),
+    compose: t.exposeString("compose", { nullable: true }),
+    volumes: t.field({
+      type: [VolumeRef],
+      description: "Persistent volumes mounted into this app.",
+      resolve: (p) => p.volumes ?? [],
+    }),
+    resources: t.field({
+      type: ResourceLimitsRef,
+      nullable: true,
+      description:
+        "Per-app resource caps applied at deploy time, or null when the app " +
+        "has no limits set.",
+      resolve: (p) => p.resources,
+    }),
+    productionUrl: t.exposeString("productionUrl", { nullable: true }),
+    status: t.field({ type: AppStatusEnum, resolve: (p) => p.status }),
+    autoDeploy: t.exposeBoolean("autoDeploy"),
+    deployHookEnabled: t.exposeBoolean("deployHookEnabled", {
+      description:
+        "Whether this app's deploy hook answers. The hook URL itself is never " +
+        "a field — read it back with revealAppDeployHook.",
+    }),
+    composeUpArgs: t.exposeString("composeUpArgs", {
+      nullable: true,
+      description:
+        "Extra flags this app appends to the `docker compose up` that brings " +
+        "it up, or null for the untouched command. Additive only — the flags " +
+        "that choose the project, stack file or env-file are refused.",
+    }),
+    rollbackKeep: t.exposeInt("rollbackKeep", {
+      description:
+        "How many previous deployments this app can be rolled back to (0-20, " +
+        "default 3). Retention: its server keeps this many of the app's images " +
+        "behind the running one. 0 means there is nothing to go back to.",
+    }),
+    domainCount: t.exposeInt("domainCount"),
+    createdAt: t.exposeString("createdAt"),
+    updatedAt: t.exposeString("updatedAt"),
+    latestDeployment: t.field({
+      type: DeploymentRef,
+      nullable: true,
+      resolve: (p) => p.latestDeployment,
+    }),
+    deployments: t.field({
+      type: [DeploymentRef],
+      description:
+        "The app's most recent deployments, newest first (capped so a nested " +
+        "query can't fan out over the whole history + per-deployment logs).",
+      resolve: (p) => listDeployments({ appId: p.id, limit: 100 }),
+    }),
+  }),
+});
 
 /* ------------------------------------------------------------------ */
 /* Inputs                                                              */
@@ -444,7 +443,8 @@ const AppEnvInput = builder.inputType("AppEnvInput", {
 });
 
 const MountInput = builder.inputType("MountInput", {
-  description: "A config file a template materialises into its stack at deploy.",
+  description:
+    "A config file a template materialises into its stack at deploy.",
   fields: (t) => ({
     filePath: t.string({ required: true }),
     content: t.string({ required: true }),
@@ -524,7 +524,8 @@ const RecognizedFrameworkRef = builder
       "framework; the auto-detecting builders own that.",
     fields: (t) => ({
       id: t.exposeString("id", {
-        description: 'Stable id, e.g. "nextjs" — also the key for its brand mark.',
+        description:
+          'Stable id, e.g. "nextjs" — also the key for its brand mark.',
       }),
       name: t.exposeString("name", {
         description: 'Display name, e.g. "Next.js".',
@@ -759,7 +760,9 @@ builder.mutationFields((t) => ({
         // Remap the input's `settings` to the stored `methodSettings` shape so
         // method settings chosen at create time aren't silently dropped (see
         // updateAppBuild). buildConfigFor reads overrides.methodSettings.
-        build: input.build ? (remapBuildInput(input.build) as never) : undefined,
+        build: input.build
+          ? (remapBuildInput(input.build) as never)
+          : undefined,
         autoDeploy: input.autoDeploy ?? undefined,
         env: input.env?.map((e) => ({ key: e.key, value: e.value })),
         composeService: input.composeService ?? null,
@@ -773,7 +776,10 @@ builder.mutationFields((t) => ({
           : null,
         autoDomain: input.autoDomain ?? null,
         mounts: input.mounts
-          ? input.mounts.map((m) => ({ filePath: m.filePath, content: m.content }))
+          ? input.mounts.map((m) => ({
+              filePath: m.filePath,
+              content: m.content,
+            }))
           : null,
         folderId: input.folderId ?? null,
         projectId: input.projectId ?? null,
@@ -840,7 +846,7 @@ builder.mutationFields((t) => ({
     authScopes: { capability: "configure_apps" },
     description:
       "Correct the framework Deplo recognised in this app's source (a catalog " +
-      "id such as \"vite\"), or pass null to go back to trusting detection. The " +
+      'id such as "vite"), or pass null to go back to trusting detection. The ' +
       "correction survives every later deploy's re-detection.",
     args: {
       id: t.arg.string({ required: true }),

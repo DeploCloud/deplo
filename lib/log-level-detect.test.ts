@@ -70,7 +70,7 @@ test("a declared level wins over anything the message says", () => {
   expect({
     '{"level":"info","msg":"panic: recovered in handler"}': "info",
     "[INFO] Traceback capture is enabled": "info",
-    "level=debug msg=\"exit status 1 from probe\"": "debug",
+    'level=debug msg="exit status 1 from probe"': "debug",
   });
 });
 

@@ -95,7 +95,12 @@ const asUser1 = <T>(fn: () => Promise<T>): Promise<T> =>
 
 test("renameEnv moves the key in place, preserving value, type and identity", async () => {
   await asUser1(() =>
-    upsertEnv({ appId: "app_web", key: "OLD_NAME", value: "keepme", type: "plain" }),
+    upsertEnv({
+      appId: "app_web",
+      key: "OLD_NAME",
+      value: "keepme",
+      type: "plain",
+    }),
   );
   const before = (await asUser1(() => listEnv("app_web"))).find(
     (e) => e.key === "OLD_NAME",
@@ -104,7 +109,10 @@ test("renameEnv moves the key in place, preserving value, type and identity", as
   await asUser1(() => renameEnv(before.id, "new_name")); // trims + case-tolerant key rule
 
   const after = await asUser1(() => listEnv("app_web"));
-  assert.equal(after.some((e) => e.key === "OLD_NAME"), false);
+  assert.equal(
+    after.some((e) => e.key === "OLD_NAME"),
+    false,
+  );
   const renamed = after.find((e) => e.key === "new_name")!;
   // Same ROW — the value and type ride along, no new var was minted.
   assert.equal(renamed.id, before.id);

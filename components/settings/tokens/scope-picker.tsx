@@ -201,7 +201,11 @@ export function ScopePicker({
     emit({ teams, projects: p, environments: e, folders: f, apps: a });
   }
 
-  function toggleFolder(folder: ScopeTreeFolder, on: boolean, covered: boolean) {
+  function toggleFolder(
+    folder: ScopeTreeFolder,
+    on: boolean,
+    covered: boolean,
+  ) {
     if (disabled || covered) return;
     const p = new Set(projects);
     const f = new Set(folders);
@@ -268,9 +272,7 @@ export function ScopePicker({
         />
         {expanded && (
           <>
-            {folder.folders.map((child) =>
-              renderFolder(child, depth + 1, on),
-            )}
+            {folder.folders.map((child) => renderFolder(child, depth + 1, on))}
             {folder.apps.map((app) => (
               <Row
                 key={app.id}
@@ -345,20 +347,20 @@ export function ScopePicker({
       ) : (
         <>
           <div className="relative">
-            <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
+            <Search className="pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2 text-muted-foreground" />
             <Input
               value={query}
               onChange={(e) => setQuery(e.target.value)}
               placeholder="Search teams, projects, folders and apps"
               aria-label="Search what this can access"
-              className="pl-9 pr-9"
+              className="pr-9 pl-9"
             />
             {query && (
               <button
                 type="button"
                 onClick={() => setQuery("")}
                 aria-label="Clear the search"
-                className="absolute right-2 top-1/2 -translate-y-1/2 rounded p-1 text-muted-foreground transition-colors hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                className="absolute top-1/2 right-2 -translate-y-1/2 rounded p-1 text-muted-foreground transition-colors hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"
               >
                 <X className="size-3.5" />
               </button>
@@ -413,7 +415,8 @@ export function ScopePicker({
                           const projOn = teamOn || projects.has(project.id);
                           const projExpanded = isOpen(project.id);
                           const projHasChildren =
-                            project.folders.length > 0 || project.apps.length > 0;
+                            project.folders.length > 0 ||
+                            project.apps.length > 0;
                           return (
                             <div key={project.id}>
                               <Row
@@ -479,7 +482,9 @@ export function ScopePicker({
                                           }
                                           expandable={env.apps.length > 0}
                                           expanded={envExpanded}
-                                          onToggleExpand={() => toggleOpen(env.id)}
+                                          onToggleExpand={() =>
+                                            toggleOpen(env.id)
+                                          }
                                           id={`scope-env-${env.id}`}
                                         />
                                         {envExpanded &&
@@ -490,7 +495,9 @@ export function ScopePicker({
                                               mark={<AppMark logo={app.logo} />}
                                               label={app.name}
                                               meta={app.slug}
-                                              checked={envOn || apps.has(app.id)}
+                                              checked={
+                                                envOn || apps.has(app.id)
+                                              }
                                               disabled={disabled || envOn}
                                               onCheckedChange={(v) =>
                                                 toggleApp(app.id, v, envOn)
@@ -666,7 +673,13 @@ function openForSelection(
  * A team's picture, or its two-letter monogram — the same mark the topbar
  * switcher shows, so a team looks the same wherever it is named.
  */
-function TeamMark({ name, avatarUrl }: { name: string; avatarUrl?: string | null }) {
+function TeamMark({
+  name,
+  avatarUrl,
+}: {
+  name: string;
+  avatarUrl?: string | null;
+}) {
   return <TeamAvatar name={name} avatarUrl={avatarUrl} size="xs" />;
 }
 
@@ -687,7 +700,10 @@ function TintedMark({
   icon: Icon,
   color,
 }: {
-  icon: React.ComponentType<{ className?: string; style?: React.CSSProperties }>;
+  icon: React.ComponentType<{
+    className?: string;
+    style?: React.CSSProperties;
+  }>;
   color: string | null;
 }) {
   return (
@@ -777,10 +793,13 @@ function Row({
           onClick={onToggleExpand}
           aria-label={expanded ? `Collapse ${label}` : `Expand ${label}`}
           aria-expanded={expanded}
-          className="rounded text-muted-foreground transition-colors hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+          className="rounded text-muted-foreground transition-colors hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"
         >
           <ChevronRight
-            className={cn("size-4 transition-transform", expanded && "rotate-90")}
+            className={cn(
+              "size-4 transition-transform",
+              expanded && "rotate-90",
+            )}
           />
         </button>
       ) : (

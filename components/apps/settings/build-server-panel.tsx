@@ -68,7 +68,11 @@ export function BuildServerPanel({
   const router = useRouter();
   const [saving, startTransition] = React.useTransition();
   const [value, setValue] = React.useState(
-    buildServerId === null ? AUTOMATIC : buildServerId === serverId ? SELF : buildServerId,
+    buildServerId === null
+      ? AUTOMATIC
+      : buildServerId === serverId
+        ? SELF
+        : buildServerId,
   );
   const [fallback, setFallback] = React.useState(buildFallbackLocal);
 
@@ -115,7 +119,8 @@ export function BuildServerPanel({
   function pick(next: string) {
     setValue(next);
     save({
-      buildServerId: next === AUTOMATIC ? null : next === SELF ? serverId : next,
+      buildServerId:
+        next === AUTOMATIC ? null : next === SELF ? serverId : next,
       fallback,
     });
   }
@@ -123,13 +128,15 @@ export function BuildServerPanel({
   function toggleFallback(next: boolean) {
     setFallback(next);
     save({
-      buildServerId: value === AUTOMATIC ? null : value === SELF ? serverId : value,
+      buildServerId:
+        value === AUTOMATIC ? null : value === SELF ? serverId : value,
       fallback: next,
     });
   }
 
   // The fallback only means anything while a build actually happens elsewhere.
-  const buildsElsewhere = value !== SELF && (value !== AUTOMATIC || autoWouldUse);
+  const buildsElsewhere =
+    value !== SELF && (value !== AUTOMATIC || autoWouldUse);
 
   return (
     <div className="rounded-lg border border-border p-3">
@@ -141,10 +148,10 @@ export function BuildServerPanel({
             <InfoTip
               content={
                 <>
-                  Which server compiles this app. Building somewhere else keeps the
-                  server that runs it free of the load, and the finished image is
-                  copied over. Only servers with the same CPU architecture can build
-                  for this one.
+                  Which server compiles this app. Building somewhere else keeps
+                  the server that runs it free of the load, and the finished
+                  image is copied over. Only servers with the same CPU
+                  architecture can build for this one.
                 </>
               }
             />
@@ -165,7 +172,9 @@ export function BuildServerPanel({
           </SelectTrigger>
           <SelectContent>
             <SelectItem value={AUTOMATIC}>Automatic</SelectItem>
-            <SelectItem value={SELF}>{serverName} (this app&apos;s server)</SelectItem>
+            <SelectItem value={SELF}>
+              {serverName} (this app&apos;s server)
+            </SelectItem>
             {others.map((c) => (
               <SelectItem key={c.id} value={c.id} disabled={!compatible(c)}>
                 {c.name}
@@ -182,7 +191,9 @@ export function BuildServerPanel({
       {buildsElsewhere && (
         <div className="mt-3 flex items-center justify-between gap-3 border-t border-border pt-3">
           <div className="space-y-0.5">
-            <p className="text-sm font-medium">Build here if that server is down</p>
+            <p className="text-sm font-medium">
+              Build here if that server is down
+            </p>
             <p className="text-xs text-muted-foreground">
               {fallback
                 ? `A deploy still ships, building on ${serverName} instead.`

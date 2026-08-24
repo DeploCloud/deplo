@@ -112,8 +112,9 @@ export function BuildLogStream({
   // Live slot in the owning server's build queue while `queued`; null otherwise.
   // Seeded from the RSC payload so the banner shows a position without waiting on
   // the first poll, then refreshed by the poll below as the builds ahead finish.
-  const [queuePosition, setQueuePosition] =
-    React.useState<number | null>(initialQueuePosition);
+  const [queuePosition, setQueuePosition] = React.useState<number | null>(
+    initialQueuePosition,
+  );
   const [follow, setFollow] = React.useState(true);
 
   const scrollRef = React.useRef<HTMLDivElement>(null);
@@ -251,11 +252,7 @@ export function BuildLogStream({
   );
 
   return (
-    <div
-      className={
-        fill ? "flex min-h-0 flex-1 flex-col gap-2" : "space-y-2"
-      }
-    >
+    <div className={fill ? "flex min-h-0 flex-1 flex-col gap-2" : "space-y-2"}>
       {showQueueBanner && status === "queued" && logs.length === 0 && (
         <QueuedBanner position={queuePosition} />
       )}

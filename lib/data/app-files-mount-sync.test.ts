@@ -9,7 +9,11 @@ import { __setTestDb, __resetTestDb } from "../db/client";
 import { appMounts as appMountsTable } from "../db/schema/control-plane";
 import { runWithIdentity } from "../auth/request-context";
 import { seedIdentity, TEAM_A, USER_1 } from "./identity-test-helpers";
-import { seedServer, seedApp, TRUNCATE_PROJECT_GRAPH } from "./app-graph-test-helpers";
+import {
+  seedServer,
+  seedApp,
+  TRUNCATE_PROJECT_GRAPH,
+} from "./app-graph-test-helpers";
 import { __setAgentConnectorForTest } from "../infra/agent-client";
 import { writeAppFile, deleteAppFile, renameAppFile } from "./app-files";
 
@@ -46,7 +50,8 @@ before(async () => {
       ({
         writeFile: async (_s: string, path: string) => entry(path),
         deleteFile: async () => true,
-        renameFile: async (_s: string, _p: string, newPath: string) => entry(newPath),
+        renameFile: async (_s: string, _p: string, newPath: string) =>
+          entry(newPath),
         close: () => {},
       }) as unknown as Awaited<
         ReturnType<typeof import("../infra/agent-client").connectAgent>
@@ -63,7 +68,9 @@ after(async () => {
 beforeEach(async () => {
   await pg.exec(`${TRUNCATE_PROJECT_GRAPH}
     truncate table users, teams restart identity cascade;`);
-  await seedIdentity(db, { users: [{ id: USER_1, teamId: TEAM_A, role: "owner" }] });
+  await seedIdentity(db, {
+    users: [{ id: USER_1, teamId: TEAM_A, role: "owner" }],
+  });
   await seedServer(db);
   await seedApp(db, { id: "prj_web", slug: "web" });
   await db.insert(appMountsTable).values({
@@ -81,7 +88,9 @@ const mounts = () =>
   db.select().from(appMountsTable).where(eq(appMountsTable.appId, "prj_web"));
 
 test("editing a config file updates the copy the deploy writes back", async () => {
-  await asUser(() => writeAppFile("prj_web", "nginx.conf", "server { listen 8080; }\n"));
+  await asUser(() =>
+    writeAppFile("prj_web", "nginx.conf", "server { listen 8080; }\n"),
+  );
   assert.deepEqual(
     (await mounts()).map((m) => m.content),
     ["server { listen 8080; }\n"],
@@ -94,7 +103,9 @@ test("deleting one stops it coming back on the next deploy", async () => {
 });
 
 test("renaming one moves the row instead of resurrecting the old name", async () => {
-  await asUser(() => renameAppFile("prj_web", "nginx.conf", "conf.d/nginx.conf"));
+  await asUser(() =>
+    renameAppFile("prj_web", "nginx.conf", "conf.d/nginx.conf"),
+  );
   assert.deepEqual(
     (await mounts()).map((m) => m.filePath),
     ["conf.d/nginx.conf"],

@@ -18,7 +18,7 @@ const TabsList = React.forwardRef<
     ref={ref}
     className={cn(
       "inline-flex h-9 items-center justify-center gap-1 text-muted-foreground",
-      className
+      className,
     )}
     {...props}
   />
@@ -37,9 +37,9 @@ const TabsTrigger = React.forwardRef<
   <TabsPrimitive.Trigger
     ref={ref}
     className={cn(
-      "inline-flex cursor-pointer items-center justify-center whitespace-nowrap rounded-md px-3 py-1.5 text-sm font-medium transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-50 text-muted-foreground hover:text-foreground data-[state=active]:bg-accent data-[state=active]:text-foreground",
+      "inline-flex cursor-pointer items-center justify-center rounded-md px-3 py-1.5 text-sm font-medium whitespace-nowrap text-muted-foreground transition-all hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none disabled:pointer-events-none disabled:opacity-50 data-[state=active]:bg-accent data-[state=active]:text-foreground",
       TRIGGER_ICON,
-      className
+      className,
     )}
     {...props}
   />
@@ -53,8 +53,8 @@ const TabsContent = React.forwardRef<
   <TabsPrimitive.Content
     ref={ref}
     className={cn(
-      "mt-4 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
-      className
+      "mt-4 focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none",
+      className,
     )}
     {...props}
   />
@@ -71,7 +71,8 @@ function UnderlineTabsList({
   children,
   ...props
 }: React.ComponentPropsWithoutRef<typeof TabsPrimitive.List>) {
-  const listRef = React.useRef<React.ElementRef<typeof TabsPrimitive.List>>(null);
+  const listRef =
+    React.useRef<React.ElementRef<typeof TabsPrimitive.List>>(null);
   const rect = useSlidingRect(
     listRef,
     () =>
@@ -88,8 +89,8 @@ function UnderlineTabsList({
         // row that must keep every label on one line, and on a phone three of
         // them already outgrow the viewport. Bar hidden - swiping is the gesture,
         // and the labels themselves show there is more to reach.
-        "relative flex h-12 items-center gap-1 overflow-x-auto border-b border-border bg-transparent p-0 scrollbar-none",
-        className
+        "relative scrollbar-none flex h-12 items-center gap-1 overflow-x-auto border-b border-border bg-transparent p-0",
+        className,
       )}
       {...props}
     >
@@ -107,9 +108,9 @@ const UnderlineTabsTrigger = React.forwardRef<
   <TabsPrimitive.Trigger
     ref={ref}
     className={cn(
-      "inline-flex h-12 cursor-pointer items-center justify-center whitespace-nowrap rounded-md px-3 text-sm font-medium text-muted-foreground transition-colors hover:text-foreground focus-visible:outline-none data-[state=active]:text-foreground",
+      "inline-flex h-12 cursor-pointer items-center justify-center rounded-md px-3 text-sm font-medium whitespace-nowrap text-muted-foreground transition-colors hover:text-foreground focus-visible:outline-none data-[state=active]:text-foreground",
       TRIGGER_ICON,
-      className
+      className,
     )}
     {...props}
   />

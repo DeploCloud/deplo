@@ -155,14 +155,11 @@ async function pickNext(
       deployKey: deploymentsTable.deployKey,
     })
     .from(deploymentsTable)
-    .where(
-      and(
-        eq(laneKey, serverId),
-        eq(deploymentsTable.status, "queued"),
-      ),
-    )
+    .where(and(eq(laneKey, serverId), eq(deploymentsTable.status, "queued")))
     .orderBy(
-      asc(sql`case when ${deploymentsTable.environment} = 'production' then 0 else 1 end`),
+      asc(
+        sql`case when ${deploymentsTable.environment} = 'production' then 0 else 1 end`,
+      ),
       asc(deploymentsTable.createdAt),
       asc(deploymentsTable.seq),
     );
@@ -293,7 +290,10 @@ export async function startDeployQueue(): Promise<void> {
     .select({ id: deploymentsTable.id, appId: deploymentsTable.appId })
     .from(deploymentsTable)
     .where(
-      and(eq(deploymentsTable.status, "queued"), isNull(deploymentsTable.serverId)),
+      and(
+        eq(deploymentsTable.status, "queued"),
+        isNull(deploymentsTable.serverId),
+      ),
     );
   for (const o of orphans) {
     const svc = await db
@@ -337,9 +337,10 @@ export function __resetQueueForTest(): void {
 }
 
 /** Snapshot a server lane's in-flight accounting (test assertions only). */
-export function __laneSnapshotForTest(
-  serverId: string,
-): { running: string[]; busyApps: string[] } {
+export function __laneSnapshotForTest(serverId: string): {
+  running: string[];
+  busyApps: string[];
+} {
   const lane = lanes.get(serverId);
   return {
     running: lane ? [...lane.running] : [],

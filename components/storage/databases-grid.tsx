@@ -115,7 +115,9 @@ export function DatabasesGrid({
     () => new Map(databases.map((d) => [d.id, d] as const)),
     [databases],
   );
-  const ordered = order.map((id) => byId.get(id)).filter(Boolean) as DatabaseDTO[];
+  const ordered = order
+    .map((id) => byId.get(id))
+    .filter(Boolean) as DatabaseDTO[];
 
   const q = query.trim().toLowerCase();
   const filtering = q !== "" || engine !== "all" || status !== "all";
@@ -203,7 +205,9 @@ export function DatabasesGrid({
 
   const sensors = useSensors(
     useSensor(MouseSensor, { activationConstraint: { distance: 4 } }),
-    useSensor(TouchSensor, { activationConstraint: { delay: 200, tolerance: 6 } }),
+    useSensor(TouchSensor, {
+      activationConstraint: { delay: 200, tolerance: 6 },
+    }),
     useSensor(KeyboardSensor),
   );
 
@@ -261,8 +265,15 @@ export function DatabasesGrid({
             description="No database matches the current search and filters."
           />
         ) : reorderable ? (
-          <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={onDragEnd}>
-            <SortableContext items={filtered.map((d) => d.id)} strategy={rectSortingStrategy}>
+          <DndContext
+            sensors={sensors}
+            collisionDetection={closestCenter}
+            onDragEnd={onDragEnd}
+          >
+            <SortableContext
+              items={filtered.map((d) => d.id)}
+              strategy={rectSortingStrategy}
+            >
               <div className={gridClass(view)}>
                 {filtered.map((d) => (
                   <SortableCard
@@ -356,7 +367,8 @@ export function DatabasesGrid({
 const DELETE_DATABASE = `mutation($id: String!) { deleteDatabase(id: $id) }`;
 
 /** The multi-selection highlight, shared by both card wrappers below. */
-const SELECTED_RING = "ring-2 ring-primary ring-offset-2 ring-offset-background";
+const SELECTED_RING =
+  "ring-2 ring-primary ring-offset-2 ring-offset-background";
 
 /**
  * The bulk-actions bar: it floats at the bottom of the viewport whenever one or
@@ -388,8 +400,8 @@ function SelectionActionBar({
   if (count === 0) return null;
   return (
     <div className="pointer-events-none fixed inset-x-0 bottom-6 z-40 flex justify-center px-4">
-      <div className="pointer-events-auto flex items-center gap-1 rounded-full border border-border bg-popover/95 py-1.5 pl-4 pr-1.5 shadow-lg backdrop-blur supports-[backdrop-filter]:bg-popover/80">
-        <span className="whitespace-nowrap text-sm font-medium">
+      <div className="pointer-events-auto flex items-center gap-1 rounded-full border border-border bg-popover/95 py-1.5 pr-1.5 pl-4 shadow-lg backdrop-blur supports-[backdrop-filter]:bg-popover/80">
+        <span className="text-sm font-medium whitespace-nowrap">
           {count} selected
         </span>
         <span className="mx-1.5 h-5 w-px bg-border" />
@@ -473,7 +485,7 @@ function SelectableCard({
         onSelect(e);
       }}
       className={cn(
-        "touch-manipulation select-none rounded-xl",
+        "touch-manipulation rounded-xl select-none",
         selected && SELECTED_RING,
       )}
     >
@@ -511,7 +523,7 @@ function Toolbar({
   return (
     <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
       <div className="relative flex-1">
-        <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
+        <Search className="pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2 text-muted-foreground" />
         <Input
           value={query}
           onChange={(e) => onQuery(e.target.value)}
@@ -519,7 +531,10 @@ function Toolbar({
           className="pl-9"
         />
       </div>
-      <Select value={engine} onValueChange={(v) => onEngine(v as DatabaseType | "all")}>
+      <Select
+        value={engine}
+        onValueChange={(v) => onEngine(v as DatabaseType | "all")}
+      >
         <SelectTrigger className="w-full sm:w-40">
           <SelectValue placeholder="Engine" />
         </SelectTrigger>
@@ -535,7 +550,10 @@ function Toolbar({
           ))}
         </SelectContent>
       </Select>
-      <Select value={status} onValueChange={(v) => onStatus(v as DatabaseStatus | "all")}>
+      <Select
+        value={status}
+        onValueChange={(v) => onStatus(v as DatabaseStatus | "all")}
+      >
         <SelectTrigger className="w-full sm:w-36">
           <SelectValue placeholder="Status" />
         </SelectTrigger>
@@ -595,7 +613,10 @@ function SortableCard({
     ctrlKey: boolean;
     shiftKey: boolean;
   }) => boolean;
-  children: (opts: { handle: React.ReactNode; dragActive: boolean }) => React.ReactNode;
+  children: (opts: {
+    handle: React.ReactNode;
+    dragActive: boolean;
+  }) => React.ReactNode;
 }) {
   const {
     setNodeRef,
@@ -669,7 +690,7 @@ function SortableCard({
       ref={setActivatorNodeRef}
       type="button"
       aria-label="Drag to reorder"
-      className="cursor-grab rounded-md p-1 text-muted-foreground/60 opacity-0 transition-opacity hover:bg-accent hover:text-foreground focus-visible:opacity-100 group-hover:opacity-100 active:cursor-grabbing"
+      className="cursor-grab rounded-md p-1 text-muted-foreground/60 opacity-0 transition-opacity group-hover:opacity-100 hover:bg-accent hover:text-foreground focus-visible:opacity-100 active:cursor-grabbing"
       onClick={(e) => e.preventDefault()}
       onKeyDown={keyboardListener as React.KeyboardEventHandler}
       {...attributes}
@@ -685,7 +706,7 @@ function SortableCard({
       data-card-id={id}
       onClickCapture={onClickCapture}
       className={cn(
-        "touch-manipulation select-none rounded-xl [-webkit-touch-callout:none]",
+        "touch-manipulation rounded-xl select-none [-webkit-touch-callout:none]",
         selected && SELECTED_RING,
         isDragging && "relative z-10 opacity-80",
       )}

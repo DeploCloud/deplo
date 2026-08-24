@@ -232,7 +232,11 @@ test("rename to a pre-pointed host keeps the domain routable (checked at write)"
   const rows = await db.select().from(domainsTable);
   const renamed = rows.find((r) => r.id === d.id)!;
   assert.equal(renamed.name, "next.example.io");
-  assert.equal(renamed.status, "valid", "pre-pointed rename never drops routing");
+  assert.equal(
+    renamed.status,
+    "valid",
+    "pre-pointed rename never drops routing",
+  );
   assert.equal(renamed.ssl, true);
 });
 

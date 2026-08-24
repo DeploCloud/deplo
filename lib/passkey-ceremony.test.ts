@@ -87,7 +87,10 @@ async function registrationOptions(cookie: string) {
     asResponse: true,
   });
   assert.equal(res.status, 200, await res.clone().text());
-  const options = (await res.json()) as { challenge: string; rp: { id: string } };
+  const options = (await res.json()) as {
+    challenge: string;
+    rp: { id: string };
+  };
   // Both cookies travel on: the session says who, the challenge says which.
   return { options, cookie: `${cookie}; ${jar(res)}` };
 }
@@ -252,7 +255,11 @@ test("a challenge is single-use", async () => {
 
   await requireAuth().api.verifyPasskeyRegistration({
     body: {
-      response: authA.register({ challenge: options.challenge, origin: ORIGIN, rpId: RP_ID }),
+      response: authA.register({
+        challenge: options.challenge,
+        origin: ORIGIN,
+        rpId: RP_ID,
+      }),
       name: "First",
     },
     headers: new Headers({ cookie }),
@@ -263,7 +270,11 @@ test("a challenge is single-use", async () => {
     () =>
       requireAuth().api.verifyPasskeyRegistration({
         body: {
-          response: authB.register({ challenge: options.challenge, origin: ORIGIN, rpId: RP_ID }),
+          response: authB.register({
+            challenge: options.challenge,
+            origin: ORIGIN,
+            rpId: RP_ID,
+          }),
           name: "Second",
         },
         headers: new Headers({ cookie }),
@@ -487,8 +498,9 @@ test("a tampered signature is refused", async () => {
 test("the same authenticator is not offered a second registration", async () => {
   const { auth, sessionCookie } = await enrol();
   const { options } = await registrationOptions(sessionCookie);
-  const excluded = (options as unknown as { excludeCredentials: { id: string }[] })
-    .excludeCredentials;
+  const excluded = (
+    options as unknown as { excludeCredentials: { id: string }[] }
+  ).excludeCredentials;
   assert.deepEqual(
     excluded.map((c) => c.id),
     [auth.credentialId.toString("base64url")],

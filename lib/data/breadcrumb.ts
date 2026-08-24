@@ -86,14 +86,14 @@ export async function getBreadcrumbGraph(): Promise<BreadcrumbGraph> {
         }),
       )
       .map((s) => ({
-      id: s.id,
-      slug: s.slug,
-      name: s.name,
-      folderId: s.folderId ?? null,
-      projectId: s.projectId ?? null,
-      environmentId: s.environmentId ?? null,
-      logo: s.logo ?? null,
-    })),
+        id: s.id,
+        slug: s.slug,
+        name: s.name,
+        folderId: s.folderId ?? null,
+        projectId: s.projectId ?? null,
+        environmentId: s.environmentId ?? null,
+        logo: s.logo ?? null,
+      })),
     projects: projects.map((p) => ({ id: p.id, name: p.name })),
     databases: databaseRows.map((d) => ({
       id: d.id,

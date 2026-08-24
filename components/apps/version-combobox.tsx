@@ -134,7 +134,7 @@ export function VersionCombobox({
         className={cn("pr-9 font-mono text-xs", className)}
       />
       {loading && (
-        <Loader2 className="pointer-events-none absolute right-3 top-1/2 size-4 -translate-y-1/2 animate-spin text-muted-foreground" />
+        <Loader2 className="pointer-events-none absolute top-1/2 right-3 size-4 -translate-y-1/2 animate-spin text-muted-foreground" />
       )}
 
       {open && (loading || filtered.length > 0) && (

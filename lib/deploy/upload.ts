@@ -40,7 +40,10 @@ function appUploadDir(appId: string): string {
 }
 
 /** A Transform that fails the pipeline the instant the byte cap is exceeded. */
-function capBytes(maxBytes: number, errMsg: string = ARCHIVE_TOO_LARGE): Transform {
+function capBytes(
+  maxBytes: number,
+  errMsg: string = ARCHIVE_TOO_LARGE,
+): Transform {
   let seen = 0;
   return new Transform({
     transform(chunk: Buffer, _enc, cb) {
@@ -129,7 +132,9 @@ export async function pruneUploads(
   await Promise.all(
     entries
       .filter((name) => name !== keepId)
-      .map((name) => rm(join(root, name), { recursive: true, force: true }).catch(() => {})),
+      .map((name) =>
+        rm(join(root, name), { recursive: true, force: true }).catch(() => {}),
+      ),
   );
 }
 
@@ -291,9 +296,14 @@ async function zipDeclaredBytes(archivePath: string): Promise<number | null> {
   const lines: string[] = [];
   let code: number;
   try {
-    code = await spawnStream("unzip", ["-l", archivePath], (l) => lines.push(l), {
-      timeout: 60_000,
-    });
+    code = await spawnStream(
+      "unzip",
+      ["-l", archivePath],
+      (l) => lines.push(l),
+      {
+        timeout: 60_000,
+      },
+    );
   } catch {
     return null;
   }

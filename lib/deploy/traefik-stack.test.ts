@@ -67,7 +67,10 @@ const DASH = {
 };
 
 type Doc = {
-  services: Record<string, { command?: string[]; labels?: string[]; [k: string]: unknown }>;
+  services: Record<
+    string,
+    { command?: string[]; labels?: string[]; [k: string]: unknown }
+  >;
   [k: string]: unknown;
 };
 const parse = (s: string) => yaml.load(s) as Doc;
@@ -81,10 +84,16 @@ test("enabling the dashboard preserves every setting the host already had", () =
 
   // The install-time values that exist ONLY on that host.
   assert.ok(
-    commandOf(out).includes("--certificatesresolvers.letsencrypt.acme.email=ops@acme.com"),
+    commandOf(out).includes(
+      "--certificatesresolvers.letsencrypt.acme.email=ops@acme.com",
+    ),
     "the operator's ACME email must survive",
   );
-  assert.deepEqual(after.volumes, before.volumes, "the acme volume path must survive");
+  assert.deepEqual(
+    after.volumes,
+    before.volumes,
+    "the acme volume path must survive",
+  );
   assert.deepEqual(after.ports, before.ports);
   assert.deepEqual(after.networks, before.networks);
   assert.equal(after.image, "traefik:v3.7");
@@ -110,11 +119,15 @@ test("the dashboard route is published with mandatory basic auth", () => {
     ),
   );
   assert.ok(
-    labels.includes("traefik.http.routers.deplo-traefik-dashboard.service=api@internal"),
+    labels.includes(
+      "traefik.http.routers.deplo-traefik-dashboard.service=api@internal",
+    ),
     "the route must point at Traefik's own api@internal handler",
   );
   assert.ok(
-    labels.includes("traefik.http.routers.deplo-traefik-dashboard.entrypoints=websecure"),
+    labels.includes(
+      "traefik.http.routers.deplo-traefik-dashboard.entrypoints=websecure",
+    ),
   );
   // The auth middleware is not optional and must be ON the router: a dashboard
   // published without it exposes every route, service and cert on the host.
@@ -129,7 +142,10 @@ test("the dashboard route is published with mandatory basic auth", () => {
 
 test("the htpasswd hash is escaped for compose interpolation", async () => {
   const users = await htpasswdLine("admin", "correct horse battery staple");
-  const out = withTraefikDashboard(INSTALLED, { domain: "t.example.com", htpasswdUsers: users });
+  const out = withTraefikDashboard(INSTALLED, {
+    domain: "t.example.com",
+    htpasswdUsers: users,
+  });
   const auth = labelsOf(out).find((l) => l.includes(".basicauth.users="))!;
 
   // compose reads a single `$` as interpolation and would eat the hash, locking
@@ -148,7 +164,9 @@ test("the router uses the resolver this stack actually defines, not a guess", ()
   const custom = INSTALLED.replace(/letsencrypt/g, "cloudflare");
   const labels = labelsOf(withTraefikDashboard(custom, DASH));
   assert.ok(
-    labels.includes("traefik.http.routers.deplo-traefik-dashboard.tls.certresolver=cloudflare"),
+    labels.includes(
+      "traefik.http.routers.deplo-traefik-dashboard.tls.certresolver=cloudflare",
+    ),
   );
 });
 
@@ -163,7 +181,10 @@ test("enabling twice is idempotent — no duplicate flags or labels", () => {
 
 test("changing the domain replaces the route rather than adding a second one", () => {
   const first = withTraefikDashboard(INSTALLED, DASH);
-  const second = withTraefikDashboard(first, { ...DASH, domain: "proxy.example.com" });
+  const second = withTraefikDashboard(first, {
+    ...DASH,
+    domain: "proxy.example.com",
+  });
 
   const rules = labelsOf(second).filter((l) => l.includes(".rule=Host("));
   assert.equal(rules.length, 1, "two rules would leave the old hostname live");
@@ -189,7 +210,9 @@ test("disabling keeps labels the operator added themselves", () => {
   const labels = labelsOf(off);
 
   assert.ok(labels.includes("com.example.owner=platform-team"));
-  assert.ok(labels.includes("traefik.http.routers.mine.rule=Host(`mine.example.com`)"));
+  assert.ok(
+    labels.includes("traefik.http.routers.mine.rule=Host(`mine.example.com`)"),
+  );
   // Their route still needs traefik.enable, so it must NOT be swept up with ours.
   assert.ok(labels.includes("traefik.enable=true"));
   assert.ok(!labels.some((l) => l.includes("deplo-traefik-dashboard")));
@@ -232,7 +255,10 @@ test("editing the stack keeps the comments the operator wrote in it", () => {
   assert.equal(before, 6);
 
   assert.equal(commentsIn(withTraefikDashboard(HAND_MAINTAINED, DASH)), before);
-  assert.equal(commentsIn(withTraefikCertificates(HAND_MAINTAINED, [CERT])), before);
+  assert.equal(
+    commentsIn(withTraefikCertificates(HAND_MAINTAINED, [CERT])),
+    before,
+  );
   // Including the paragraph written above the flag being CHANGED: an entry keeps
   // its node (and its comment) when only its value moves.
   const remailed = withAcmeEmail(HAND_MAINTAINED, "certs@acme.com");
@@ -248,37 +274,57 @@ test("turning the panel off leaves a dashboard flag that was never ours", () => 
 
   // And after a full publish/unpublish cycle, THEIR flag is still there — it is
   // the loopback dashboard they were using before Deplo existed.
-  const cycled = withTraefikDashboard(withTraefikDashboard(HAND_MAINTAINED, DASH), null);
+  const cycled = withTraefikDashboard(
+    withTraefikDashboard(HAND_MAINTAINED, DASH),
+    null,
+  );
   assert.ok(commandOf(cycled).includes("--api.dashboard=true"));
   assert.ok(commandOf(cycled).includes("--api.insecure=true"));
   assert.deepEqual(labelsOf(cycled), [], "nothing of ours may linger either");
 
   // On a host where WE added the flag, we still take it back out (INSTALLED has
   // none of its own) — that is the case the marker label tells apart.
-  const installedCycle = withTraefikDashboard(withTraefikDashboard(INSTALLED, DASH), null);
+  const installedCycle = withTraefikDashboard(
+    withTraefikDashboard(INSTALLED, DASH),
+    null,
+  );
   assert.ok(!commandOf(installedCycle).includes("--api.dashboard=true"));
 });
 
 test("a domain or credentials cannot be omitted", () => {
   assert.throws(
-    () => withTraefikDashboard(INSTALLED, { domain: "  ", htpasswdUsers: "a:b" }),
+    () =>
+      withTraefikDashboard(INSTALLED, { domain: "  ", htpasswdUsers: "a:b" }),
     /domain is required/i,
   );
   assert.throws(
-    () => withTraefikDashboard(INSTALLED, { domain: "t.example.com", htpasswdUsers: "" }),
+    () =>
+      withTraefikDashboard(INSTALLED, {
+        domain: "t.example.com",
+        htpasswdUsers: "",
+      }),
     /credentials are required/i,
   );
 });
 
 test("refuses a file that is not a Traefik stack, rather than writing one", () => {
   assert.throws(() => withTraefikDashboard("", DASH), /not a compose file/i);
-  assert.throws(() => withTraefikDashboard("services:\n  web:\n    image: nginx\n", DASH), /no Traefik service/i);
-  assert.throws(() => withTraefikDashboard("{{ not yaml", DASH), /Could not read/i);
+  assert.throws(
+    () => withTraefikDashboard("services:\n  web:\n    image: nginx\n", DASH),
+    /no Traefik service/i,
+  );
+  assert.throws(
+    () => withTraefikDashboard("{{ not yaml", DASH),
+    /Could not read/i,
+  );
 });
 
 test("traefikDashboardDomain reports what the host is actually publishing", () => {
   assert.equal(traefikDashboardDomain(INSTALLED), null);
-  assert.equal(traefikDashboardDomain(withTraefikDashboard(INSTALLED, DASH)), "traefik.example.com");
+  assert.equal(
+    traefikDashboardDomain(withTraefikDashboard(INSTALLED, DASH)),
+    "traefik.example.com",
+  );
   // The static flag is what makes the dashboard exist; a leftover label without
   // it is not a live dashboard and must not be reported as one.
   const labelsOnly = INSTALLED.replace(
@@ -323,28 +369,47 @@ test("changing the email moves ONE flag and leaves the rest of the host alone", 
   );
   // Everything only that host knows survives: the storage path, the challenge,
   // the ports, the acme volume.
-  assert.ok(commandOf(out).includes("--certificatesresolvers.letsencrypt.acme.storage=/acme/acme.json"));
-  assert.ok(commandOf(out).includes("--certificatesresolvers.letsencrypt.acme.httpchallenge=true"));
+  assert.ok(
+    commandOf(out).includes(
+      "--certificatesresolvers.letsencrypt.acme.storage=/acme/acme.json",
+    ),
+  );
+  assert.ok(
+    commandOf(out).includes(
+      "--certificatesresolvers.letsencrypt.acme.httpchallenge=true",
+    ),
+  );
   assert.deepEqual(after.volumes, before.volumes);
   assert.deepEqual(after.ports, before.ports);
   assert.equal(after.image, before.image);
 });
 
 test("the resolver's real name is used, not the installer's default", () => {
-  const dnsResolver = INSTALLED.replace(/certificatesresolvers\.letsencrypt\./g, "certificatesresolvers.cloudflare.");
+  const dnsResolver = INSTALLED.replace(
+    /certificatesresolvers\.letsencrypt\./g,
+    "certificatesresolvers.cloudflare.",
+  );
   const out = withAcmeEmail(dnsResolver, "certs@example.com");
   assert.ok(
-    commandOf(out).includes("--certificatesresolvers.cloudflare.acme.email=certs@example.com"),
+    commandOf(out).includes(
+      "--certificatesresolvers.cloudflare.acme.email=certs@example.com",
+    ),
     "a flag on a resolver this host does not define would silently do nothing",
   );
-  assert.equal(commandOf(out).filter((c) => c.includes(".acme.email=")).length, 1);
+  assert.equal(
+    commandOf(out).filter((c) => c.includes(".acme.email=")).length,
+    1,
+  );
 });
 
 test("a proxy that issues no certificates refuses the setting instead of pretending", () => {
   const noAcme = INSTALLED.split("\n")
     .filter((l) => !l.includes("--certificatesresolvers."))
     .join("\n");
-  assert.throws(() => withAcmeEmail(noAcme, "certs@example.com"), /no Let's Encrypt resolver/i);
+  assert.throws(
+    () => withAcmeEmail(noAcme, "certs@example.com"),
+    /no Let's Encrypt resolver/i,
+  );
   assert.throws(() => withAcmeEmail(INSTALLED, "   "), /Enter the email/i);
 });
 
@@ -363,8 +428,14 @@ test("a proxy that issues no certificates refuses the setting instead of pretend
  *      refuses a second file provider, and a stack that will not start is a host
  *      with no routing at all.
  */
-const CERT = { certPem: "-----BEGIN CERTIFICATE-----\nAAA\n-----END CERTIFICATE-----\n", keyPem: "-----BEGIN PRIVATE KEY-----\nBBB\n-----END PRIVATE KEY-----\n" };
-const CERT2 = { certPem: "-----BEGIN CERTIFICATE-----\nCCC\n-----END CERTIFICATE-----\n", keyPem: "-----BEGIN PRIVATE KEY-----\nDDD\n-----END PRIVATE KEY-----\n" };
+const CERT = {
+  certPem: "-----BEGIN CERTIFICATE-----\nAAA\n-----END CERTIFICATE-----\n",
+  keyPem: "-----BEGIN PRIVATE KEY-----\nBBB\n-----END PRIVATE KEY-----\n",
+};
+const CERT2 = {
+  certPem: "-----BEGIN CERTIFICATE-----\nCCC\n-----END CERTIFICATE-----\n",
+  keyPem: "-----BEGIN PRIVATE KEY-----\nDDD\n-----END PRIVATE KEY-----\n",
+};
 
 test("an installed certificate survives the round trip through the stack file", () => {
   const out = withTraefikCertificates(INSTALLED, [CERT, CERT2]);
@@ -372,24 +443,42 @@ test("an installed certificate survives the round trip through the stack file", 
 
   // The file provider is what makes Traefik read it at all, and the file has to
   // land in the directory that provider watches.
-  assert.ok(commandOf(out).includes("--providers.file.directory=/deplo-dynamic"));
+  assert.ok(
+    commandOf(out).includes("--providers.file.directory=/deplo-dynamic"),
+  );
   assert.ok(commandOf(out).includes("--providers.file.watch=true"));
-  const doc = parse(out) as Doc & { configs?: Record<string, { content?: string }> };
-  const mount = (doc.services.traefik.configs as Array<{ source: string; target: string }>)[0];
+  const doc = parse(out) as Doc & {
+    configs?: Record<string, { content?: string }>;
+  };
+  const mount = (
+    doc.services.traefik.configs as Array<{ source: string; target: string }>
+  )[0];
   assert.equal(mount.source, "deplo-certificates");
   assert.equal(mount.target, "/deplo-dynamic/deplo-certificates.yml");
-  assert.ok(doc.configs?.["deplo-certificates"]?.content?.includes("BEGIN CERTIFICATE"));
+  assert.ok(
+    doc.configs?.["deplo-certificates"]?.content?.includes("BEGIN CERTIFICATE"),
+  );
 
   // Everything the host already had is still there, same rule as the dashboard.
-  assert.ok(commandOf(out).includes("--certificatesresolvers.letsencrypt.acme.email=ops@acme.com"));
-  assert.deepEqual(parse(out).services.traefik.volumes, parse(INSTALLED).services.traefik.volumes);
+  assert.ok(
+    commandOf(out).includes(
+      "--certificatesresolvers.letsencrypt.acme.email=ops@acme.com",
+    ),
+  );
+  assert.deepEqual(
+    parse(out).services.traefik.volumes,
+    parse(INSTALLED).services.traefik.volumes,
+  );
 });
 
 test("installing the same certificate twice replaces it rather than stacking", () => {
   const once = withTraefikCertificates(INSTALLED, [CERT]);
   const twice = withTraefikCertificates(once, [CERT]);
   assert.deepEqual(traefikCertificates(twice), [CERT]);
-  assert.equal(commandOf(twice).filter((c) => c.startsWith("--providers.file.")).length, 2);
+  assert.equal(
+    commandOf(twice).filter((c) => c.startsWith("--providers.file.")).length,
+    2,
+  );
 });
 
 test("removing the last certificate leaves the file as it was found", () => {
@@ -413,7 +502,10 @@ test("every write heals the entrypoint, not just the one that publishes the pane
   // with. Carrying the fix on each ordinary write is what heals an existing
   // fleet without re-installing every host by hand.
   const FLAG = "--entrypoints.web.http.redirections.entrypoint.priority=1";
-  assert.ok(!commandOf(INSTALLED).includes(FLAG), "the fixture must predate the flag");
+  assert.ok(
+    !commandOf(INSTALLED).includes(FLAG),
+    "the fixture must predate the flag",
+  );
 
   for (const [what, out] of [
     ["a certificate", withTraefikCertificates(INSTALLED, [CERT])],
@@ -421,9 +513,14 @@ test("every write heals the entrypoint, not just the one that publishes the pane
     ["the dashboard", withTraefikDashboard(INSTALLED, DASH)],
     ["the panel", withPanelRoute(INSTALLED, PANEL_ROUTE)],
   ] as const) {
-    assert.ok(commandOf(out).includes(FLAG), `${what} must heal the entrypoint too`);
+    assert.ok(
+      commandOf(out).includes(FLAG),
+      `${what} must heal the entrypoint too`,
+    );
     assert.equal(
-      commandOf(out).filter((c) => c.includes("redirections.entrypoint.priority")).length,
+      commandOf(out).filter((c) =>
+        c.includes("redirections.entrypoint.priority"),
+      ).length,
       1,
       `${what} must not stack the flag`,
     );
@@ -436,13 +533,23 @@ test("an operator's own file provider is reused, never a second one declared", (
     "      - --providers.docker=true\n      - --providers.file.directory=/etc/traefik/dynamic",
   );
   const out = withTraefikCertificates(custom, [CERT]);
-  assert.equal(commandOf(out).filter((c) => c.startsWith("--providers.file.directory=")).length, 1);
-  const mount = (parse(out).services.traefik.configs as Array<{ target: string }>)[0];
+  assert.equal(
+    commandOf(out).filter((c) => c.startsWith("--providers.file.directory="))
+      .length,
+    1,
+  );
+  const mount = (
+    parse(out).services.traefik.configs as Array<{ target: string }>
+  )[0];
   assert.equal(mount.target, "/etc/traefik/dynamic/deplo-certificates.yml");
 
   // Their flag is theirs: removing our certificate must not unload their config.
   const cleared = withTraefikCertificates(out, []);
-  assert.ok(commandOf(cleared).includes("--providers.file.directory=/etc/traefik/dynamic"));
+  assert.ok(
+    commandOf(cleared).includes(
+      "--providers.file.directory=/etc/traefik/dynamic",
+    ),
+  );
   assert.equal(traefikCertificates(cleared).length, 0);
 });
 
@@ -451,7 +558,10 @@ test("a proxy pinned to a single config file refuses instead of replacing it", (
     "      - --providers.docker=true",
     "      - --providers.docker=true\n      - --providers.file.filename=/etc/traefik/dynamic.yml",
   );
-  assert.throws(() => withTraefikCertificates(pinned, [CERT]), /single Traefik configuration file/i);
+  assert.throws(
+    () => withTraefikCertificates(pinned, [CERT]),
+    /single Traefik configuration file/i,
+  );
 });
 
 test("a config directory the operator mounted read-only refuses instead of taking the proxy down", () => {
@@ -477,7 +587,10 @@ test("a config directory the operator mounted read-only refuses instead of takin
 
   // And the read-only mounts every proxy has elsewhere are none of its business:
   // INSTALLED already carries `/var/run/docker.sock:…:ro`.
-  assert.equal(traefikCertificates(withTraefikCertificates(INSTALLED, [CERT])).length, 1);
+  assert.equal(
+    traefikCertificates(withTraefikCertificates(INSTALLED, [CERT])).length,
+    1,
+  );
 });
 
 test("a stack with no certificates of ours reports none", () => {
@@ -499,10 +612,12 @@ test("a proxy running as its own user keeps compose's default mode", () => {
   // serving its self-signed default - worse than a readable one.
   const asUser = INSTALLED.replace(
     "    container_name: deplo-traefik",
-    "    container_name: deplo-traefik\n    user: \"1000:1000\"",
+    '    container_name: deplo-traefik\n    user: "1000:1000"',
   );
-  const mount = (parse(withTraefikCertificates(asUser, [CERT])).services.traefik
-    .configs as Array<{ mode?: number }>)[0];
+  const mount = (
+    parse(withTraefikCertificates(asUser, [CERT])).services.traefik
+      .configs as Array<{ mode?: number }>
+  )[0];
   assert.equal(mount.mode, undefined);
 });
 
@@ -512,8 +627,12 @@ test("anything the operator added to our certificate file survives an install", 
   // certificates in it are ours to rewrite - re-rendering the whole file from the
   // certificate list would delete the rest, silently, on the next install.
   const first = withTraefikCertificates(INSTALLED, [CERT]);
-  const doc = parse(first) as Doc & { configs: Record<string, { content: string }> };
-  const content = parse(doc.configs["deplo-certificates"].content) as unknown as {
+  const doc = parse(first) as Doc & {
+    configs: Record<string, { content: string }>;
+  };
+  const content = parse(
+    doc.configs["deplo-certificates"].content,
+  ) as unknown as {
     tls: { certificates: unknown[]; options?: unknown };
     http?: unknown;
   };
@@ -523,9 +642,8 @@ test("anything the operator added to our certificate file survives an install", 
 
   const second = withTraefikCertificates(yaml.dump(doc), [CERT, CERT2]);
   const after = parse(
-    (parse(second) as Doc & { configs: Record<string, { content: string }> }).configs[
-      "deplo-certificates"
-    ].content,
+    (parse(second) as Doc & { configs: Record<string, { content: string }> })
+      .configs["deplo-certificates"].content,
   ) as unknown as { tls: { options?: unknown }; http?: unknown };
   assert.ok(after.tls.options, "a hand-added tls.options block must survive");
   assert.ok(after.http, "a hand-added http section must survive");
@@ -623,8 +741,8 @@ const PANEL_ROUTE = {
 /** The dynamic-config file our router lives in, parsed. */
 const panelFileOf = (s: string) =>
   yaml.load(
-    (parse(s) as Doc & { configs: Record<string, { content: string }> }).configs["deplo-panel"]
-      .content,
+    (parse(s) as Doc & { configs: Record<string, { content: string }> })
+      .configs["deplo-panel"].content,
   ) as {
     http: {
       routers: Record<string, Record<string, unknown>>;
@@ -638,15 +756,27 @@ test("the route install.sh seeds is the route the panel reads back", () => {
 });
 
 test("turning HTTPS off moves the panel to plain http, and back", () => {
-  const off = withPanelRoute(INSTALLED_WITH_PANEL, { ...PANEL_ROUTE, https: false, certResolver: null });
+  const off = withPanelRoute(INSTALLED_WITH_PANEL, {
+    ...PANEL_ROUTE,
+    https: false,
+    certResolver: null,
+  });
   const router = panelFileOf(off).http.routers["deplo-panel"];
 
   assert.deepEqual(router.entryPoints, ["web"]);
-  assert.equal(router.tls, undefined, "a router with no tls key terminates nothing");
+  assert.equal(
+    router.tls,
+    undefined,
+    "a router with no tls key terminates nothing",
+  );
   assert.equal(panelRoute(off)?.https, false);
 
   // And back, without the operator having to re-state where the panel lives.
-  const on = withPanelRoute(off, { ...panelRoute(off)!, https: true, certResolver: "letsencrypt" });
+  const on = withPanelRoute(off, {
+    ...panelRoute(off)!,
+    https: true,
+    certResolver: "letsencrypt",
+  });
   assert.deepEqual(panelRoute(on), PANEL_ROUTE);
 });
 
@@ -656,17 +786,36 @@ test("a plain-http panel outranks the entrypoint redirect, which is what makes i
   // Its own priority is the only lever, so publishing an http route pins it.
   // From a stack that does NOT have the flag - an install that predates it, which
   // is every existing one. Adding it is what makes the toggle work there at all.
-  assert.ok(!commandOf(INSTALLED).some((c) => c.includes("redirections.entrypoint.priority")));
-  const upgraded = withPanelRoute(INSTALLED, { ...PANEL_ROUTE, https: false, certResolver: null });
   assert.ok(
-    commandOf(upgraded).includes("--entrypoints.web.http.redirections.entrypoint.priority=1"),
+    !commandOf(INSTALLED).some((c) =>
+      c.includes("redirections.entrypoint.priority"),
+    ),
+  );
+  const upgraded = withPanelRoute(INSTALLED, {
+    ...PANEL_ROUTE,
+    https: false,
+    certResolver: null,
+  });
+  assert.ok(
+    commandOf(upgraded).includes(
+      "--entrypoints.web.http.redirections.entrypoint.priority=1",
+    ),
     "without this the panel answers 301 to an https it has no certificate for",
   );
 
-  const off = withPanelRoute(INSTALLED_WITH_PANEL, { ...PANEL_ROUTE, https: false, certResolver: null });
-  assert.ok(commandOf(off).includes("--entrypoints.web.http.redirections.entrypoint.priority=1"));
+  const off = withPanelRoute(INSTALLED_WITH_PANEL, {
+    ...PANEL_ROUTE,
+    https: false,
+    certResolver: null,
+  });
+  assert.ok(
+    commandOf(off).includes(
+      "--entrypoints.web.http.redirections.entrypoint.priority=1",
+    ),
+  );
   assert.equal(
-    commandOf(off).filter((c) => c.includes("redirections.entrypoint.priority")).length,
+    commandOf(off).filter((c) => c.includes("redirections.entrypoint.priority"))
+      .length,
     1,
     "applying twice must not stack the flag",
   );
@@ -680,16 +829,28 @@ test("an entrypoint the operator already ordered themselves is left alone", () =
     "redirections.entrypoint.priority=1",
     "redirections.entrypoint.priority=50",
   );
-  const off = withPanelRoute(pinned, { ...PANEL_ROUTE, https: false, certResolver: null });
-  const priorities = commandOf(off).filter((c) => c.includes("redirections.entrypoint.priority="));
-  assert.deepEqual(priorities, ["--entrypoints.web.http.redirections.entrypoint.priority=50"]);
+  const off = withPanelRoute(pinned, {
+    ...PANEL_ROUTE,
+    https: false,
+    certResolver: null,
+  });
+  const priorities = commandOf(off).filter((c) =>
+    c.includes("redirections.entrypoint.priority="),
+  );
+  assert.deepEqual(priorities, [
+    "--entrypoints.web.http.redirections.entrypoint.priority=50",
+  ]);
 });
 
 test("a proxy with no redirect at all gets no flag invented for it", () => {
   const noRedirect = INSTALLED_WITH_PANEL.split("\n")
     .filter((l) => !l.includes("redirections"))
     .join("\n");
-  const off = withPanelRoute(noRedirect, { ...PANEL_ROUTE, https: false, certResolver: null });
+  const off = withPanelRoute(noRedirect, {
+    ...PANEL_ROUTE,
+    https: false,
+    certResolver: null,
+  });
   assert.ok(!commandOf(off).some((c) => c.includes("redirections")));
   assert.equal(panelRoute(off)?.https, false);
 });
@@ -698,7 +859,10 @@ test("https with no resolver on the host still terminates TLS", () => {
   // A host whose proxy orders from nobody serves the certificate the operator
   // installed. Naming a resolver it does not define would have Traefik answer
   // with its self-signed default instead.
-  const out = withPanelRoute(INSTALLED_WITH_PANEL, { ...PANEL_ROUTE, certResolver: null });
+  const out = withPanelRoute(INSTALLED_WITH_PANEL, {
+    ...PANEL_ROUTE,
+    certResolver: null,
+  });
   assert.deepEqual(panelFileOf(out).http.routers["deplo-panel"].tls, {});
   assert.equal(panelRoute(out)?.https, true);
 });
@@ -707,9 +871,15 @@ test("a host that resolves certificates under another name keeps that name", () 
   // DNS-01 against a provider of the operator's own: pointing the panel at
   // `letsencrypt` would name a resolver this host does not define, and Traefik
   // answers that with its self-signed default.
-  const dns = INSTALLED_WITH_PANEL.replace(/certificatesresolvers\.letsencrypt/g, "certificatesresolvers.cloudflare");
+  const dns = INSTALLED_WITH_PANEL.replace(
+    /certificatesresolvers\.letsencrypt/g,
+    "certificatesresolvers.cloudflare",
+  );
   assert.equal(stackCertResolver(dns), "cloudflare");
-  const out = withPanelRoute(dns, { ...PANEL_ROUTE, certResolver: stackCertResolver(dns) });
+  const out = withPanelRoute(dns, {
+    ...PANEL_ROUTE,
+    certResolver: stackCertResolver(dns),
+  });
   assert.equal(panelRoute(out)?.certResolver, "cloudflare");
 });
 
@@ -722,12 +892,19 @@ test("a proxy that issues nothing at all reports no resolver", () => {
 });
 
 test("moving the panel's address rewrites only the rule", () => {
-  const moved = withPanelRoute(INSTALLED_WITH_PANEL, { ...PANEL_ROUTE, domain: "New.Example.COM" });
+  const moved = withPanelRoute(INSTALLED_WITH_PANEL, {
+    ...PANEL_ROUTE,
+    domain: "New.Example.COM",
+  });
   const route = panelRoute(moved);
   // Lower-cased: a Host() rule is matched case-sensitively by Traefik, and a
   // browser sends the host lower-case whatever the operator typed.
   assert.equal(route?.domain, "new.example.com");
-  assert.equal(route?.target, PANEL_ROUTE.target, "where the panel lives is not the operator's to retype");
+  assert.equal(
+    route?.target,
+    PANEL_ROUTE.target,
+    "where the panel lives is not the operator's to retype",
+  );
   assert.equal(route?.certResolver, "letsencrypt");
 });
 
@@ -772,11 +949,15 @@ test("certificates and the panel share one file provider without evicting each o
   const noPanel = withPanelRoute(withCert, null);
   assert.equal(panelRoute(noPanel), null);
   assert.deepEqual(traefikCertificates(noPanel), [CERT]);
-  assert.ok(commandOf(noPanel).includes("--providers.file.directory=/deplo-dynamic"));
+  assert.ok(
+    commandOf(noPanel).includes("--providers.file.directory=/deplo-dynamic"),
+  );
 
   // Only with both gone does the provider we added come back out.
   const bare = withTraefikCertificates(noPanel, []);
-  assert.ok(!commandOf(bare).some((c) => c.startsWith("--providers.file.directory=")));
+  assert.ok(
+    !commandOf(bare).some((c) => c.startsWith("--providers.file.directory=")),
+  );
   assert.ok(!commandOf(bare).includes("--providers.file.watch=true"));
 });
 
@@ -786,7 +967,10 @@ test("a middleware the operator added to the panel's file survives an edit", () 
     "        middlewares:\n          ipallowlist:\n            ipAllowList:\n              sourceRange:\n                - 10.0.0.0/8\n        services:",
   );
   const out = withPanelRoute(handEdited, { ...PANEL_ROUTE, https: false });
-  assert.ok(panelFileOf(out).http.middlewares, "a hand-added middleware must survive");
+  assert.ok(
+    panelFileOf(out).http.middlewares,
+    "a hand-added middleware must survive",
+  );
   assert.deepEqual(panelRoute(out)?.domain, PANEL_ROUTE.domain);
 });
 
@@ -794,16 +978,28 @@ test("publishing the panel preserves every setting the host already had", () => 
   const before = parse(INSTALLED).services.traefik;
   const out = withPanelRoute(INSTALLED, PANEL_ROUTE);
   const after = parse(out).services.traefik;
-  assert.deepEqual(after.volumes, before.volumes, "the acme volume path must survive");
+  assert.deepEqual(
+    after.volumes,
+    before.volumes,
+    "the acme volume path must survive",
+  );
   assert.deepEqual(after.ports, before.ports);
   assert.ok(
-    commandOf(out).includes("--certificatesresolvers.letsencrypt.acme.email=ops@acme.com"),
+    commandOf(out).includes(
+      "--certificatesresolvers.letsencrypt.acme.email=ops@acme.com",
+    ),
     "the operator's ACME email must survive",
   );
   assert.deepEqual(panelRoute(out), PANEL_ROUTE);
 });
 
 test("a panel route needs a domain and somewhere to send it", () => {
-  assert.throws(() => withPanelRoute(INSTALLED, { ...PANEL_ROUTE, domain: "  " }), /domain/i);
-  assert.throws(() => withPanelRoute(INSTALLED, { ...PANEL_ROUTE, target: "" }), /where/i);
+  assert.throws(
+    () => withPanelRoute(INSTALLED, { ...PANEL_ROUTE, domain: "  " }),
+    /domain/i,
+  );
+  assert.throws(
+    () => withPanelRoute(INSTALLED, { ...PANEL_ROUTE, target: "" }),
+    /where/i,
+  );
 });

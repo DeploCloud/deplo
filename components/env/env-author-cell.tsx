@@ -15,7 +15,9 @@ export function EnvAuthorCell({ author }: { author: VarAuthor | null }) {
   }
   const name = author.name.trim();
   return (
-    <SimpleTooltip content={name ? `${name} (@${author.username})` : `@${author.username}`}>
+    <SimpleTooltip
+      content={name ? `${name} (@${author.username})` : `@${author.username}`}
+    >
       <span className="flex w-fit items-center gap-2">
         <UserAvatar
           name={author.name}

@@ -110,7 +110,9 @@ export function AddServer({
         return;
       }
       if (!res.data) return;
-      toast.success(`${name || host} registered — run the install command on it`);
+      toast.success(
+        `${name || host} registered — run the install command on it`,
+      );
       setCommand(res.data.addServer.installCommand);
       router.refresh();
     });
@@ -152,7 +154,7 @@ export function AddServer({
             <div className="space-y-2">
               <Label>Install command (shown once)</Label>
               <CommandLine command={command} />
-              <p className="text-muted-foreground text-xs">
+              <p className="text-xs text-muted-foreground">
                 The command embeds a single-use token that expires in about an
                 hour. It is shown only now; if you lose it, re-mint one from the
                 server&rsquo;s menu.
@@ -163,16 +165,18 @@ export function AddServer({
                   server goes green either way. The Servers page probes for real on
                   load, so the check this needs already exists - what was missing
                   was telling anyone what to open. */}
-              <p className="text-muted-foreground text-xs">{AGENT_PORT_NOTICE}</p>
+              <p className="text-xs text-muted-foreground">
+                {AGENT_PORT_NOTICE}
+              </p>
               {/* Over plain http the installer AND its checksum travel on the same
                   unauthenticated channel, so anyone on the network path between the
                   two machines can replace what runs as root here. Nothing in the
                   command can fix that — the operator has to know. */}
               {command.includes("http://") ? (
-                <p className="text-warning text-xs">
-                  This panel is on an http address, so the installer is downloaded
-                  over an unencrypted connection. Give Deplo a domain with HTTPS
-                  before adding servers over an untrusted network.
+                <p className="text-xs text-warning">
+                  This panel is on an http address, so the installer is
+                  downloaded over an unencrypted connection. Give Deplo a domain
+                  with HTTPS before adding servers over an untrusted network.
                 </p>
               ) : null}
             </div>

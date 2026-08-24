@@ -36,7 +36,9 @@ export function TemplateMarkdown({ source }: { source: string }) {
           ),
           p: ({ children }) => <p>{children}</p>,
           strong: ({ children }) => (
-            <strong className="font-semibold text-foreground">{children}</strong>
+            <strong className="font-semibold text-foreground">
+              {children}
+            </strong>
           ),
           ul: ({ children }) => (
             <ul className="list-disc space-y-1 pl-5">{children}</ul>
@@ -71,7 +73,9 @@ export function TemplateMarkdown({ source }: { source: string }) {
           ),
           table: ({ children }) => (
             <div className="overflow-x-auto">
-              <table className="w-full border-collapse text-left">{children}</table>
+              <table className="w-full border-collapse text-left">
+                {children}
+              </table>
             </div>
           ),
           th: ({ children }) => (

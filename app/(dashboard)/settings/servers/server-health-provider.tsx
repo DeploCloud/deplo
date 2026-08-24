@@ -83,7 +83,10 @@ export interface ServerHealthState {
  * a server nobody has reached lately, and they must age out on exactly the same beat or
  * a card ends up showing a grey "Unknown" status next to a confident "Traefik on".
  */
-export function isObservationFresh(checkedAt: string | null, now: number | null): boolean {
+export function isObservationFresh(
+  checkedAt: string | null,
+  now: number | null,
+): boolean {
   // "Never observed" is deterministic — it does not depend on the clock — so it is
   // decided the same way on the server and the client, no hydration risk.
   if (!checkedAt) return false;
@@ -199,7 +202,8 @@ export function ServerHealthProvider({
       for (const row of rows) {
         const held = prev[row.id]?.checkedAt;
         const incoming = row.statusCheckedAt;
-        if (held && incoming && Date.parse(incoming) < Date.parse(held)) continue;
+        if (held && incoming && Date.parse(incoming) < Date.parse(held))
+          continue;
         next[row.id] = toState(row);
       }
       return next;
@@ -224,7 +228,9 @@ export function ServerHealthProvider({
       sweepInFlight.current = true;
       if (!quiet) setSweeping(true);
       try {
-        const res = await gqlAction<{ checkAllServerHealth: ServerHealthRow[] }>(CHECK_ALL, {
+        const res = await gqlAction<{
+          checkAllServerHealth: ServerHealthRow[];
+        }>(CHECK_ALL, {
           force: false,
         });
         if (!live) return;
@@ -235,7 +241,11 @@ export function ServerHealthProvider({
           // never to a confident stale value. The ambient sweep says that silently: a
           // toast every 20s on a broken network is noise the operator learns to dismiss,
           // and the greying chips already carry the message.
-          if (quiet) console.error("[deplo] ambient server-health sweep failed:", res.error);
+          if (quiet)
+            console.error(
+              "[deplo] ambient server-health sweep failed:",
+              res.error,
+            );
           else toast.error(res.error);
           return;
         }
@@ -271,10 +281,13 @@ export function ServerHealthProvider({
       const before = health[serverId]?.checkedAt ?? null;
       setChecking((c) => ({ ...c, [serverId]: true }));
       (async () => {
-        const res = await gqlAction<{ checkServerHealth: ServerHealthRow }>(CHECK_ONE, {
-          id: serverId,
-          force: true,
-        });
+        const res = await gqlAction<{ checkServerHealth: ServerHealthRow }>(
+          CHECK_ONE,
+          {
+            id: serverId,
+            force: true,
+          },
+        );
         setChecking((c) => ({ ...c, [serverId]: false }));
         if (!res.ok) {
           toast.error(res.error);
@@ -289,7 +302,8 @@ export function ServerHealthProvider({
         }
         // Say what we found, not "done" — the whole point of the button is the answer.
         if (row.status === "online") toast.success("Server is online");
-        else if (row.status === "provisioning") toast.info("Server is still provisioning");
+        else if (row.status === "provisioning")
+          toast.info("Server is still provisioning");
         else toast.warning(row.statusMessage ?? `Server is ${row.status}`);
       })();
     },
@@ -299,9 +313,12 @@ export function ServerHealthProvider({
   const checkAll = React.useCallback(() => {
     setSweeping(true);
     (async () => {
-      const res = await gqlAction<{ checkAllServerHealth: ServerHealthRow[] }>(CHECK_ALL, {
-        force: true,
-      });
+      const res = await gqlAction<{ checkAllServerHealth: ServerHealthRow[] }>(
+        CHECK_ALL,
+        {
+          force: true,
+        },
+      );
       setSweeping(false);
       if (!res.ok) {
         toast.error(res.error);
@@ -310,7 +327,9 @@ export function ServerHealthProvider({
       if (!res.data) return;
       const rows = res.data.checkAllServerHealth;
       merge(rows);
-      const bad = rows.filter((r) => r.status !== "online" && r.status !== "provisioning");
+      const bad = rows.filter(
+        (r) => r.status !== "online" && r.status !== "provisioning",
+      );
       toast.success(
         bad.length === 0
           ? "All servers are online"
@@ -337,6 +356,8 @@ export function ServerHealthProvider({
 export function useServerHealth(): HealthContext {
   const ctx = React.useContext(Ctx);
   if (!ctx)
-    throw new Error("useServerHealth must be used inside a <ServerHealthProvider>");
+    throw new Error(
+      "useServerHealth must be used inside a <ServerHealthProvider>",
+    );
   return ctx;
 }

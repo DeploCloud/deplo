@@ -44,7 +44,12 @@ test("readableTextColor picks the higher-contrast foreground (auto-contrast)", (
 });
 
 test("appTypeLabel names the App kind, tracking usesComposeStack", () => {
-  const base = { source: "github", compose: null, repo: null, dockerImage: null };
+  const base = {
+    source: "github",
+    compose: null,
+    repo: null,
+    dockerImage: null,
+  };
   assert.equal(appTypeLabel(base), "Application");
   assert.equal(appTypeLabel({ ...base, source: "git" }), "Application");
   assert.equal(
@@ -111,14 +116,17 @@ test("cn keeps a breakpoint-scoped size when a call site overrides the base one"
   // so the bare one is replaced and the lg: one survives - which is the ONLY
   // reason every card title grows on a wide screen without touching 55 files.
   const merged = cn(
-    "text-base lg:text-lg font-semibold leading-none tracking-tight",
-    "flex w-fit items-center gap-2 text-base"
+    "text-base leading-none font-semibold tracking-tight lg:text-lg",
+    "flex w-fit items-center gap-2 text-base",
   );
   assert.match(merged, /\blg:text-lg\b/);
   assert.match(merged, /\btext-base\b/);
 
   // A call site that pins BOTH sizes wins on both (the login/monitoring cards).
-  const pinned = cn("text-base lg:text-lg font-semibold", "text-2xl lg:text-2xl");
+  const pinned = cn(
+    "text-base font-semibold lg:text-lg",
+    "text-2xl lg:text-2xl",
+  );
   assert.doesNotMatch(pinned, /\blg:text-lg\b/);
   assert.doesNotMatch(pinned, /(^|\s)text-base(\s|$)/);
 });
@@ -128,7 +136,10 @@ test("pickerInstallationId never invents a GitHub App for an app that already ha
   // A NEW app asserts nothing yet, so opening on the first App is helpful.
   assert.equal(pickerInstallationId(undefined, insts), "gi_first");
   // A properly connected app opens on its OWN App.
-  assert.equal(pickerInstallationId({ installationId: "gi_real" }, insts), "gi_real");
+  assert.equal(
+    pickerInstallationId({ installationId: "gi_real" }, insts),
+    "gi_real",
+  );
   // An imported app: repo set, credential NULL. This used to answer "gi_first",
   // which is how the UI came to claim a connection the database never had.
   assert.equal(pickerInstallationId({ installationId: null }, insts), "");
@@ -143,7 +154,10 @@ test("only a row that claims a GitHub App it lacks is flagged", () => {
   // The real broken row: source github, both credential columns NULL.
   assert.equal(repoCredentialMissing({ source: "github", repo: bare }), true);
   assert.equal(
-    repoCredentialMissing({ source: "github", repo: { installationId: "gi_1" } }),
+    repoCredentialMissing({
+      source: "github",
+      repo: { installationId: "gi_1" },
+    }),
     false,
   );
   assert.equal(
@@ -154,6 +168,9 @@ test("only a row that claims a GitHub App it lacks is flagged", () => {
   // an anonymous clone of a PUBLIC repo deploys fine. Widening the predicate to
   // "no credential" would flag it, and a warning on a healthy app is noise.
   assert.equal(repoCredentialMissing({ source: "git", repo: bare }), false);
-  assert.equal(repoCredentialMissing({ source: "docker-image", repo: null }), false);
+  assert.equal(
+    repoCredentialMissing({ source: "docker-image", repo: null }),
+    false,
+  );
   assert.equal(repoCredentialMissing({ source: "github", repo: null }), false);
 });

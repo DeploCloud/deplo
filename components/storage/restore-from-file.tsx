@@ -11,7 +11,10 @@ import { Progress } from "@/components/ui/progress";
 import { FieldLabel } from "@/components/ui/info-tip";
 import { SimpleTooltip } from "@/components/ui/tooltip";
 import { ConfirmAction } from "@/components/shared/confirm-action";
-import { ARTIFACT_MAGIC_BYTES, looksEncrypted } from "@/lib/backups/artifact-format";
+import {
+  ARTIFACT_MAGIC_BYTES,
+  looksEncrypted,
+} from "@/lib/backups/artifact-format";
 import { uploadRestore } from "@/lib/backups/restore-upload-client";
 import { formatBytes } from "@/lib/utils";
 import type { ActionResult } from "@/lib/result";
@@ -109,7 +112,8 @@ export function RestoreFromFile({
           if (event.percent !== undefined) setPercent(event.percent);
           // Only the tail: this is a progress readout, not a log viewer, and the
           // agent's own log is where the whole run lives.
-          if (event.line) setLines((current) => [...current, event.line!].slice(-8));
+          if (event.line)
+            setLines((current) => [...current, event.line!].slice(-8));
         },
       );
       router.refresh();
@@ -140,15 +144,15 @@ export function RestoreFromFile({
           <span className="flex items-start gap-2 text-destructive">
             <AlertTriangle className="mt-0.5 size-4 shrink-0" />
             <span>
-              This overwrites <strong>{target.name}</strong> in place with the file
-              you upload. The {noun} is stopped, its current data is wiped, and the
-              current state is <strong>not recoverable</strong>.
+              This overwrites <strong>{target.name}</strong> in place with the
+              file you upload. The {noun} is stopped, its current data is wiped,
+              and the current state is <strong>not recoverable</strong>.
             </span>
           </span>
           {target.kind === "app" && (
             <span>
-              The volumes and files come from the file. The app keeps its current
-              settings.
+              The volumes and files come from the file. The app keeps its
+              current settings.
             </span>
           )}
         </span>

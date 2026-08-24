@@ -16,7 +16,9 @@ test("plain text passes through as one unstyled segment", () => {
 
 test("docker's warning line: ESC[33m colors the run, no escape bytes leak", () => {
   // The exact shape a `docker build` emits for its warnings summary.
-  const segs = parseAnsi(" \x1b[33m1 warning found (use docker --debug to expand):");
+  const segs = parseAnsi(
+    " \x1b[33m1 warning found (use docker --debug to expand):",
+  );
   assert.deepEqual(segs, [
     { text: " ", className: "" },
     {

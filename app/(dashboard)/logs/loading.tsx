@@ -1,6 +1,5 @@
 import { Skeleton } from "@/components/ui/skeleton";
 
-
 const LOG_LINES = [
   "w-3/4",
   "w-1/2",

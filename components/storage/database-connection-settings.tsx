@@ -70,7 +70,9 @@ function ExposureCard({
   const router = useRouter();
   const [pending, startTransition] = React.useTransition();
   const [exposed, setExposed] = React.useState(db.exposedPublicly);
-  const [port, setPort] = React.useState(db.exposedPort ? String(db.exposedPort) : "");
+  const [port, setPort] = React.useState(
+    db.exposedPort ? String(db.exposedPort) : "",
+  );
   const [serverId, setServerId] = React.useState(db.serverId);
   const [generatingPort, setGeneratingPort] = React.useState(false);
 
@@ -140,7 +142,9 @@ function ExposureCard({
         {canPickServer && (
           <div className="space-y-3 rounded-lg border border-border p-3">
             <div className="space-y-2">
-              <FieldLabel info="The host this database runs on.">Server</FieldLabel>
+              <FieldLabel info="The host this database runs on.">
+                Server
+              </FieldLabel>
               <Select value={serverId} onValueChange={setServerId}>
                 <SelectTrigger>
                   <SelectValue />
@@ -163,10 +167,11 @@ function ExposureCard({
                       Move {db.name} to {targetServerName}
                     </p>
                     <p className="text-muted-foreground">
-                      The database and its data are copied from {currentServerName}{" "}
-                      to {targetServerName}. It will be briefly offline while the
-                      data volume copies. If the copy fails the move is rolled back
-                      and the database stays on {currentServerName}.
+                      The database and its data are copied from{" "}
+                      {currentServerName} to {targetServerName}. It will be
+                      briefly offline while the data volume copies. If the copy
+                      fails the move is rolled back and the database stays on{" "}
+                      {currentServerName}.
                     </p>
                   </div>
                 </div>
@@ -206,7 +211,8 @@ function ExposureCard({
                   <>
                     Port clients connect to. Use a free unprivileged port
                     (1024–65535), or click Generate.
-                    {movingServer && " On a move it must be free on the new server too."}
+                    {movingServer &&
+                      " On a move it must be free on the new server too."}
                   </>
                 }
               >
@@ -217,7 +223,9 @@ function ExposureCard({
                   id="db-port"
                   inputMode="numeric"
                   value={port}
-                  onChange={(e) => setPort(e.target.value.replace(/[^0-9]/g, ""))}
+                  onChange={(e) =>
+                    setPort(e.target.value.replace(/[^0-9]/g, ""))
+                  }
                   placeholder="e.g. 25432"
                   aria-invalid={port !== "" && !portValid}
                   disabled={!canExposePorts}
@@ -307,7 +315,7 @@ function RotatePasswordCard({ db }: { db: DatabaseDTO }) {
               New connection string — shown once, copy it now.
             </p>
             <div className="flex items-center gap-2 rounded-md border border-border bg-secondary/40 px-2.5 py-1.5">
-              <code className="min-w-0 flex-1 overflow-x-auto whitespace-nowrap font-mono text-xs">
+              <code className="min-w-0 flex-1 overflow-x-auto font-mono text-xs whitespace-nowrap">
                 {newConn}
               </code>
               <CopyButton value={newConn} />
@@ -316,7 +324,11 @@ function RotatePasswordCard({ db }: { db: DatabaseDTO }) {
         )}
       </CardContent>
       <CardFooter className="justify-end">
-        <Button onClick={rotate} disabled={!running || pending} variant="outline">
+        <Button
+          onClick={rotate}
+          disabled={!running || pending}
+          variant="outline"
+        >
           {pending ? "Rotating…" : "Rotate password"}
         </Button>
       </CardFooter>

@@ -128,7 +128,7 @@ export function PermissionPicker({
             <button
               type="button"
               onClick={() => setMany(OPTIONAL, false)}
-              className="rounded font-medium transition-colors hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+              className="rounded font-medium transition-colors hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"
             >
               Clear all
             </button>
@@ -137,20 +137,20 @@ export function PermissionPicker({
       </div>
 
       <div className="relative">
-        <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
+        <Search className="pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2 text-muted-foreground" />
         <Input
           value={query}
           onChange={(e) => setQuery(e.target.value)}
           placeholder="Search permissions"
           aria-label="Search permissions"
-          className="pl-9 pr-9"
+          className="pr-9 pl-9"
         />
         {query && (
           <button
             type="button"
             onClick={() => setQuery("")}
             aria-label="Clear the search"
-            className="absolute right-2.5 top-1/2 -translate-y-1/2 rounded p-0.5 text-muted-foreground transition-colors hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            className="absolute top-1/2 right-2.5 -translate-y-1/2 rounded p-0.5 text-muted-foreground transition-colors hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"
           >
             <X className="size-4" />
           </button>
@@ -169,7 +169,7 @@ export function PermissionPicker({
             // window cannot push the dialog past its 85dvh cap and take the
             // footer with it — which is the whole reason this exists.
             scroll &&
-              "max-h-[min(24rem,40dvh)] overflow-y-auto focus-safe-scroll",
+              "focus-safe-scroll max-h-[min(24rem,40dvh)] overflow-y-auto",
           )}
         >
           {sections.map((cat) => {
@@ -195,7 +195,7 @@ export function PermissionPicker({
                     <button
                       type="button"
                       onClick={() => setMany(cat.shown, !allShownOn)}
-                      className="ml-auto shrink-0 rounded text-xs font-medium text-muted-foreground transition-colors hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                      className="ml-auto shrink-0 rounded text-xs font-medium text-muted-foreground transition-colors hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"
                     >
                       {allShownOn ? "Unselect all" : "Select all"}
                     </button>
@@ -211,7 +211,9 @@ export function PermissionPicker({
                         htmlFor={id}
                         className={cn(
                           "flex items-start gap-3 px-3 py-2.5 transition-colors",
-                          disabled ? "cursor-default" : "cursor-pointer hover:bg-accent",
+                          disabled
+                            ? "cursor-default"
+                            : "cursor-pointer hover:bg-accent",
                         )}
                       >
                         <Checkbox
@@ -225,7 +227,7 @@ export function PermissionPicker({
                           <span className="flex flex-wrap items-center gap-1.5">
                             <span
                               className={cn(
-                                "text-sm font-medium leading-tight",
+                                "text-sm leading-tight font-medium",
                                 silenced.has(cap) &&
                                   "text-muted-foreground line-through decoration-muted-foreground/60",
                               )}
@@ -276,12 +278,15 @@ export function PermissionPicker({
                 />
                 <span className="min-w-0">
                   <span className="flex flex-wrap items-center gap-1.5">
-                    <span className="text-sm font-medium leading-tight">
+                    <span className="text-sm leading-tight font-medium">
                       {CAPABILITY_META.view.label}
                     </span>
                     <SimpleTooltip content="Always granted: every member can see the team, so this one can't be taken away.">
                       <span className="leading-none text-muted-foreground">
-                        <Lock className="size-3.5" aria-label="Always granted" />
+                        <Lock
+                          className="size-3.5"
+                          aria-label="Always granted"
+                        />
                       </span>
                     </SimpleTooltip>
                   </span>

@@ -233,7 +233,8 @@ builder.mutationFields((t) => ({
         // `port` is tri-state in the patch (value / null clears / absent leaves):
         // only forward it when the arg was supplied.
         port: patch.port === undefined ? undefined : patch.port,
-        entrypoint: patch.entrypoint === undefined ? undefined : patch.entrypoint,
+        entrypoint:
+          patch.entrypoint === undefined ? undefined : patch.entrypoint,
         certProvider: patch.certProvider ?? undefined,
         middlewares: patch.middlewares ?? undefined,
         pathPrefix: patch.pathPrefix ?? undefined,
@@ -274,7 +275,8 @@ builder.mutationFields((t) => ({
   setPrimaryDomain: t.field({
     type: "Boolean",
     authScopes: { capability: "manage_domains" },
-    description: "Make this domain its app's primary (canonical) host. Returns true.",
+    description:
+      "Make this domain its app's primary (canonical) host. Returns true.",
     args: { id: t.arg.string({ required: true }) },
     resolve: async (_r, { id }) => {
       await applyRouting(await setPrimaryDomain(id));

@@ -1,13 +1,13 @@
 "use client";
 
 import * as React from "react";
-import { RefreshCw, CheckCircle2, ArrowUpRight, TriangleAlert } from "lucide-react";
 import {
-  Card,
-  CardContent,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card";
+  RefreshCw,
+  CheckCircle2,
+  ArrowUpRight,
+  TriangleAlert,
+} from "lucide-react";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { InfoTip } from "@/components/ui/info-tip";
 import { gqlAction } from "@/lib/graphql-client";

@@ -33,7 +33,7 @@ const PasskeyRef = builder.objectRef<PasskeyDTO>("Passkey").implement({
   fields: (t) => ({
     id: t.exposeString("id"),
     name: t.exposeString("name", {
-      description: "The label shown in the list, e.g. \"Chrome on macOS\".",
+      description: 'The label shown in the list, e.g. "Chrome on macOS".',
     }),
     createdAt: t.exposeString("createdAt", { nullable: true }),
     usableHere: t.exposeBoolean("usableHere", {
@@ -76,7 +76,8 @@ builder.mutationFields((t) => ({
   renamePasskey: t.field({
     type: "Boolean",
     authScopes: { loggedIn: true },
-    description: "Relabel a passkey. A label is not a credential, so no password.",
+    description:
+      "Relabel a passkey. A label is not a credential, so no password.",
     args: {
       id: t.arg.string({ required: true }),
       name: t.arg.string({ required: true }),

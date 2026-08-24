@@ -27,7 +27,7 @@ Consequences that bind every design and review decision:
 
 - **No feature may push Docker/SSH/YAML knowledge onto the user as a prerequisite.** If a flow
   only works when the user drops to a shell or hand-edits compose, it is unfinished, not done.
-  The escape hatch may exist for experts; the *happy path* must not need it.
+  The escape hatch may exist for experts; the _happy path_ must not need it.
 - **Every feature is tested exhaustively and judged on UX/DX**, not just "does it function."
   "Generally useful, obvious, and safe for a non-expert" is the bar. Half a feature that assumes
   operator expertise is a regression against the mission.
@@ -37,7 +37,7 @@ Consequences that bind every design and review decision:
   precondition.
 - **Every feature must earn its place in the UX and name its audience — one of exactly two.**
   Either it is **for the non-expert** (on by default, obvious, safe, delivers value with zero
-  configuration) or it is **for the expert** (*advanced mode*: opt-in, behind an "Advanced"
+  configuration) or it is **for the expert** (_advanced mode_: opt-in, behind an "Advanced"
   affordance, never on the first-run path). If you can't say which of the two a feature is for,
   it isn't designed yet.
 - **Design for a team, not a lone operator.** deplo's users are teams and companies as much as the
@@ -47,11 +47,11 @@ Consequences that bind every design and review decision:
   wants. This axis is orthogonal to non-expert/expert: every feature answers both.
 - **Don't build what nobody will realistically use.** Losing focus on deplo's principles looks
   exactly like a stream of individually-defensible features that, long-term, almost no one turns
-  on. Breadth is not the goal — being *far simpler than every competing self-hosted platform* is.
-  "a competitor has that setting too" is an argument *against* shipping it, not for.
+  on. Breadth is not the goal — being _far simpler than every competing self-hosted platform_ is.
+  "a competitor has that setting too" is an argument _against_ shipping it, not for.
 
-When weighing a design, ask: *would a competent developer who has never touched Docker or SSH
-succeed on the happy path, with the platform doing the operational heavy lifting?* If not,
+When weighing a design, ask: _would a competent developer who has never touched Docker or SSH
+succeed on the happy path, with the platform doing the operational heavy lifting?_ If not,
 reconsider.
 
 ### First run should sell the price tag, not a settings audit
@@ -157,7 +157,7 @@ route `UI → GraphQL → lib/data/* → connectAgent(serverId) → agent`.
   is a hard error, never a silent local build. New RPCs are additive (contract stays `V1`); gate
   host features behind Hello `capabilities[]`.
 - **Don't generalize the exceptions:** installed **Plugins** (ADR-0005) are host-managed containers
-  where Deplo *does* own the socket (`lib/plugins/runtime.ts`) — a Plugin is not an App. That
+  where Deplo _does_ own the socket (`lib/plugins/runtime.ts`) — a Plugin is not an App. That
   code is **dormant**: the feature is deferred (**ADR-0013**), so nothing installs a plugin and
   the only live caller is the boot sweep that removes ones an older version left behind. Don't
   wire anything new to it, and read ADR-0013 before reviving it — the return is expected to go
@@ -203,7 +203,7 @@ is remapped onto the control-plane `users` table. Deploy execution is the Go age
   hook (`lib/db/migrate.ts` → Drizzle migrator, idempotent, re-throws on failure); `db:migrate`
   stays available to apply them out-of-band.
 - **CI is `.github/workflows/ci.yml`** - lint, tests, `tsc --noEmit` and `bun audit
-  --audit-level=high` on every push/PR, plus a weekly audit run so a newly-published advisory
+--audit-level=high` on every push/PR, plus a weekly audit run so a newly-published advisory
   turns the repo red on its own. The tests job must keep `DEPLO_DATABASE_URL` **unset** (the
   suite is pglite in-process; a real URL makes the lease/scheduler tests bind to it and fail).
   The types job runs **`bunx next typegen` first**: `PageProps` / `LayoutProps` / `RouteContext`
@@ -355,12 +355,12 @@ Single endpoint `app/api/graphql/route.ts` (thin) → `lib/graphql/yoga.ts`. One
   minted before it existed still is). Enforced in `identityForTokenRow` — before the team is
   picked, before the membership read, before the usage stamp — so one comparison covers GraphQL,
   MCP and the deploy hook at once. A new token defaults to 90 days in the editor; nothing sweeps
-  an expired row, because the list has to be able to say *why* a credential stopped.
+  an expired row, because the list has to be able to say _why_ a credential stopped.
 - **`teams.mcp_enabled` defaults to FALSE for a new team** (migration 0106; existing teams keep
   whatever they have). A token is required either way, so this was never what made `/api/mcp`
   safe — but "may an AI agent act in this company's infrastructure" is a decision to make, not
   one to inherit from a default.
-- **id prefixes not to confuse:** `prc_` = Project *container*, `prj_` = **App** (the deployable
+- **id prefixes not to confuse:** `prc_` = Project _container_, `prj_` = **App** (the deployable
   app, legacy mint); `environ_` = Environment, `env_` = env-**var** row; `role_` = a team Role;
   `deplo_` = raw bearer secret (sha256 at rest).
 

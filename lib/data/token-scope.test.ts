@@ -70,7 +70,10 @@ const grant = (over: Partial<TokenGrant> = {}): TokenGrant => ({
 });
 
 /** As the scoped token. */
-const scoped = <T>(fn: () => Promise<T>, over?: Partial<TokenGrant>): Promise<T> =>
+const scoped = <T>(
+  fn: () => Promise<T>,
+  over?: Partial<TokenGrant>,
+): Promise<T> =>
   runWithIdentity({ userId: USER_1, teamId: TEAM_A, token: grant(over) }, fn);
 
 /** As the same user over a cookie session — the control for every assertion. */
@@ -90,12 +93,28 @@ after(async () => {
 beforeEach(async () => {
   await pg.exec(TRUNCATE_PROJECT_GRAPH);
   await pg.exec(TRUNCATE_IDENTITY);
-  await pg.exec(`truncate table projects, activities restart identity cascade;`);
+  await pg.exec(
+    `truncate table projects, activities restart identity cascade;`,
+  );
   await seedIdentity(db);
   await seedServer(db);
   await db.insert(projectsTable).values([
-    { id: PRC_IN, teamId: TEAM_A, name: "In", slug: "in", createdAt: T0, updatedAt: T0 },
-    { id: PRC_OUT, teamId: TEAM_A, name: "Out", slug: "out", createdAt: T0, updatedAt: T0 },
+    {
+      id: PRC_IN,
+      teamId: TEAM_A,
+      name: "In",
+      slug: "in",
+      createdAt: T0,
+      updatedAt: T0,
+    },
+    {
+      id: PRC_OUT,
+      teamId: TEAM_A,
+      name: "Out",
+      slug: "out",
+      createdAt: T0,
+      updatedAt: T0,
+    },
   ]);
   await seedApp(db, { id: "prj_in", slug: "in-app", projectId: PRC_IN });
   await seedApp(db, { id: "prj_out", slug: "out-app", projectId: PRC_OUT });
@@ -133,7 +152,11 @@ test("a mutation on an out-of-scope app fails with the SAME message as an unknow
       (e: Error) => e.message,
     ),
   ]);
-  assert.equal(outOfScope, unknown, "the scope must not be an existence oracle");
+  assert.equal(
+    outOfScope,
+    unknown,
+    "the scope must not be an existence oracle",
+  );
   assert.match(outOfScope, /not found/i);
 });
 
@@ -158,9 +181,15 @@ test("team-wide lists never mention an out-of-scope app", async () => {
       false,
     );
     const env = await listAllAppEnv();
-    assert.deepEqual(env.map((g) => g.app.id), ["prj_in"]);
+    assert.deepEqual(
+      env.map((g) => g.app.id),
+      ["prj_in"],
+    );
     const crumbs = await getBreadcrumbGraph();
-    assert.deepEqual(crumbs.apps.map((a) => a.id), ["prj_in"]);
+    assert.deepEqual(
+      crumbs.apps.map((a) => a.id),
+      ["prj_in"],
+    );
   });
 });
 
@@ -174,17 +203,23 @@ test("the activity feed drops other projects' apps AND the team-level rows", asy
   );
   assert.deepEqual(messages, ["in"]);
 
-  const all = await asUser(async () => (await listActivity()).map((a) => a.message));
+  const all = await asUser(async () =>
+    (await listActivity()).map((a) => a.message),
+  );
   assert.equal(all.length, 3);
 });
 
 test("projects, environments and folders follow the same scope", async () => {
   await scoped(async () => {
-    assert.deepEqual((await listProjects()).map((p) => p.id), [PRC_IN]);
+    assert.deepEqual(
+      (await listProjects()).map((p) => p.id),
+      [PRC_IN],
+    );
     assert.deepEqual(await projectContents(PRC_OUT), { folders: [], apps: [] });
-    assert.deepEqual((await projectContents(PRC_IN)).apps.map((a) => a.id), [
-      "prj_in",
-    ]);
+    assert.deepEqual(
+      (await projectContents(PRC_IN)).apps.map((a) => a.id),
+      ["prj_in"],
+    );
     assert.deepEqual(await listEnvironmentsForProject(PRC_OUT), []);
     // This fixture files nothing in a folder, so the project scope reaches none.
     assert.deepEqual(await listFolders(), []);
@@ -199,19 +234,16 @@ test("a bulk delete silently drops the ids the scope excludes", async () => {
 });
 
 test("a scope with no projects left reaches nothing at all", async () => {
-  const ids = await scoped(
-    async () => (await listApps()).map((a) => a.id),
-    {
-      scope: {
-        teamIds: [TEAM_A],
-        wholeTeamIds: [],
-        projectIds: [],
-        folderIds: [],
-        appIds: [],
-        appProjectIds: [],
-      },
+  const ids = await scoped(async () => (await listApps()).map((a) => a.id), {
+    scope: {
+      teamIds: [TEAM_A],
+      wholeTeamIds: [],
+      projectIds: [],
+      folderIds: [],
+      appIds: [],
+      appProjectIds: [],
     },
-  );
+  });
   assert.deepEqual(ids, []);
 });
 
@@ -268,7 +300,10 @@ test("the capability clamp keys on the (user, team) pair, and drops team-wide ca
 test("instance administration is opt-in per token, even for an admin's token", async () => {
   await scoped(
     async () => {
-      await assert.rejects(() => requireInstanceAdmin(), /Only an instance admin/);
+      await assert.rejects(
+        () => requireInstanceAdmin(),
+        /Only an instance admin/,
+      );
     },
     { scope: null },
   );

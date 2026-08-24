@@ -11,7 +11,8 @@ import { KEY_RE, parseEnv } from "@/components/env/env-parse";
 export type EnvRow = { key: string; value: string };
 
 /** The three columns every row of the key/value editor lines up on. */
-const GRID = "grid grid-cols-[minmax(0,1fr)_minmax(0,1.3fr)_2rem] items-center gap-2";
+const GRID =
+  "grid grid-cols-[minmax(0,1fr)_minmax(0,1.3fr)_2rem] items-center gap-2";
 
 /** The rows that carry a name - the ones a save would actually write. */
 export function filledRows(rows: EnvRow[]): EnvRow[] {
@@ -80,7 +81,7 @@ export function EnvRowsEditor({
         <div
           className={cn(
             GRID,
-            "bg-secondary/40 px-2 py-2 text-[11px] font-medium uppercase tracking-wide text-muted-foreground",
+            "bg-secondary/40 px-2 py-2 text-[11px] font-medium tracking-wide text-muted-foreground uppercase",
           )}
         >
           <span className="px-1.5">Key</span>

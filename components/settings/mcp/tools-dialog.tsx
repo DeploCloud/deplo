@@ -108,7 +108,7 @@ export function ToolsDialog({
             readable through any of them.
           </DialogDescription>
           <div className="relative mt-4">
-            <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
+            <Search className="pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2 text-muted-foreground" />
             <Input
               value={query}
               onChange={(e) => setQuery(e.target.value)}
@@ -119,7 +119,7 @@ export function ToolsDialog({
           </div>
         </DialogHeader>
 
-        <div className="min-h-0 overflow-y-auto focus-safe-scroll p-6 pt-4">
+        <div className="focus-safe-scroll min-h-0 overflow-y-auto p-6 pt-4">
           {shown === 0 ? (
             <p className="py-10 text-center text-sm text-muted-foreground">
               No tool matches {`"${query}"`}.
@@ -128,7 +128,7 @@ export function ToolsDialog({
             <div className="space-y-6">
               {groups.map(([group, list]) => (
                 <div key={group}>
-                  <h3 className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                  <h3 className="text-xs font-medium tracking-wide text-muted-foreground uppercase">
                     {group}
                   </h3>
                   <div className="mt-2 divide-y divide-border rounded-lg border border-border">

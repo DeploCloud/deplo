@@ -45,9 +45,8 @@ export function useOptimisticRemove<T>(
   /** Put a key back — the mutation behind the removal was refused. */
   restore: (key: string) => void;
 } {
-  const [removed, setRemoved] = React.useState<ReadonlySet<string>>(
-    NOTHING_REMOVED,
-  );
+  const [removed, setRemoved] =
+    React.useState<ReadonlySet<string>>(NOTHING_REMOVED);
 
   // Retire the keys the server has stopped serving. Adjusting state during
   // render is React's own derive-from-props escape hatch; an effect would run

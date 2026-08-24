@@ -111,7 +111,11 @@ test("git plan with a heavy method → its BuildKind + a BuildSpec, no dockerfil
   });
   assert.equal(req.sourceKind, SourceKind.SOURCE_KIND_GIT);
   assert.equal(req.buildKind, BuildKind.BUILD_KIND_NIXPACKS);
-  assert.equal(req.dockerfile, undefined, "heavy method does not send a dockerfile descriptor");
+  assert.equal(
+    req.dockerfile,
+    undefined,
+    "heavy method does not send a dockerfile descriptor",
+  );
   assert.equal(req.buildSpec?.method, "nixpacks");
   assert.equal(req.buildSpec?.installCommand, "npm ci");
   // Unpinned Nixpacks/Railpack default to a current Node major (see buildSpecFor).
@@ -144,7 +148,10 @@ test("git plan with a legacy/auto method embeds the env NAMES (not values) in th
   const body = req.dockerfile?.generatedDockerfile ?? "";
   assert.match(body, /ARG API_KEY\nENV API_KEY=\$API_KEY/);
   assert.match(body, /ARG PORT\nENV PORT=\$PORT/);
-  assert.ok(!body.includes("secret"), "env VALUE must not be baked into the Dockerfile");
+  assert.ok(
+    !body.includes("secret"),
+    "env VALUE must not be baked into the Dockerfile",
+  );
 });
 
 test("git plan with the static method → BUILD_KIND_STATIC + a BuildSpec", async () => {
@@ -185,7 +192,11 @@ test("an ordinary deploy asks for neither a cache-less build nor a recreate", as
 });
 
 test("no-cache and force-recreate ride the request independently", async () => {
-  const fresh = await buildDeployRequest({ ...base, plan: gitPlan, noCache: true });
+  const fresh = await buildDeployRequest({
+    ...base,
+    plan: gitPlan,
+    noCache: true,
+  });
   assert.equal(fresh.noBuildCache, true);
   assert.equal(fresh.forceRecreate, false);
 

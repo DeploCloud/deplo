@@ -80,7 +80,12 @@ beforeEach(async () => {
   await seedServer(db);
   await seedApp(db, { id: APP, teamId: TEAM_A, slug: "secretive" });
   await asOwner(async () => {
-    await upsertEnv({ appId: APP, key: "API_KEY", value: ENV_SECRET, type: "secret" });
+    await upsertEnv({
+      appId: APP,
+      key: "API_KEY",
+      value: ENV_SECRET,
+      type: "secret",
+    });
     await saveSharedVar({
       key: "SHARED_KEY",
       value: SHARED_SECRET,
@@ -187,12 +192,23 @@ test("no query returns a planted secret to a member without reveal_secrets", asy
     const body = await readAs(USER_M, doc);
     if (/"data":\{"[a-zA-Z]+":(?!null)/.test(body)) answered.push(name);
     if (name === "env" && body.includes("API_KEY")) sawTheVariable = true;
-    for (const secret of PLANTED) if (body.includes(secret)) leaks.push(`${name} → ${secret}`);
+    for (const secret of PLANTED)
+      if (body.includes(secret)) leaks.push(`${name} → ${secret}`);
   }
   // A sweep that reached nothing would pass while proving nothing.
-  assert.ok(answered.length > 10, `only ${answered.length} queries answered at all`);
-  assert.ok(sawTheVariable, "the sweep must reach the read that carries the secret");
-  assert.deepEqual(leaks, [], `a read handed back a secret: ${leaks.join(", ")}`);
+  assert.ok(
+    answered.length > 10,
+    `only ${answered.length} queries answered at all`,
+  );
+  assert.ok(
+    sawTheVariable,
+    "the sweep must reach the read that carries the secret",
+  );
+  assert.deepEqual(
+    leaks,
+    [],
+    `a read handed back a secret: ${leaks.join(", ")}`,
+  );
 });
 
 test("nor to a view-only member", async () => {
@@ -200,9 +216,14 @@ test("nor to a view-only member", async () => {
   const leaks: string[] = [];
   for (const { name, doc } of everyQueryDocument()) {
     const body = await readAs(USER_M, doc);
-    for (const secret of PLANTED) if (body.includes(secret)) leaks.push(`${name} → ${secret}`);
+    for (const secret of PLANTED)
+      if (body.includes(secret)) leaks.push(`${name} → ${secret}`);
   }
-  assert.deepEqual(leaks, [], `a read handed back a secret: ${leaks.join(", ")}`);
+  assert.deepEqual(
+    leaks,
+    [],
+    `a read handed back a secret: ${leaks.join(", ")}`,
+  );
 });
 
 test("the masked value is a mask, not the first characters of the secret", async () => {
@@ -217,7 +238,10 @@ test("the masked value is a mask, not the first characters of the secret", async
       secret.value.replace(/[^•*]/g, "").length > 0,
     `the mask "${secret.value}" reveals the head of the value`,
   );
-  assert.ok(!secret.value.includes(ENV_SECRET.slice(0, 8)), "no prefix of the value survives");
+  assert.ok(
+    !secret.value.includes(ENV_SECRET.slice(0, 8)),
+    "no prefix of the value survives",
+  );
 });
 
 test("an env secret has no reveal at all - every capability still gets the mask", async () => {
@@ -247,8 +271,9 @@ test("an env secret has no reveal at all - every capability still gets the mask"
     /cannot be edited/i,
     "forty permissions must not add up to reading a secret",
   );
-  const [after] = await runWithIdentity({ userId: USER_M, teamId: TEAM_A }, () =>
-    listEnv(APP),
+  const [after] = await runWithIdentity(
+    { userId: USER_M, teamId: TEAM_A },
+    () => listEnv(APP),
   );
   assert.equal(after.masked, true);
   assert.notEqual(after.value, ENV_SECRET);

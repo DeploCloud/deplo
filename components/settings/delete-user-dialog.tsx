@@ -40,9 +40,24 @@ const IMPACT_QUERY = /* GraphQL */ `
       username
       name
       blockedReason
-      soloTeams { teamId name appCount databaseCount otherMemberCount }
-      foundedTeams { teamId name appCount databaseCount otherMemberCount }
-      keptTeams { teamId name }
+      soloTeams {
+        teamId
+        name
+        appCount
+        databaseCount
+        otherMemberCount
+      }
+      foundedTeams {
+        teamId
+        name
+        appCount
+        databaseCount
+        otherMemberCount
+      }
+      keptTeams {
+        teamId
+        name
+      }
       createdAppCount
       ownedFolderCount
       ownedProjectCount
@@ -90,7 +105,8 @@ export function DeleteUserDialog({
   const [impact, setImpact] = React.useState<Impact | null>(null);
   const [failed, setFailed] = React.useState<string | null>(null);
   const [deleteCreatedApps, setDeleteCreatedApps] = React.useState(false);
-  const [deleteOwnedWorkspaces, setDeleteOwnedWorkspaces] = React.useState(false);
+  const [deleteOwnedWorkspaces, setDeleteOwnedWorkspaces] =
+    React.useState(false);
   const [deleteFoundedTeams, setDeleteFoundedTeams] = React.useState(false);
 
   // Read on open. The caller mounts this dialog only while it is open (and
@@ -183,7 +199,9 @@ export function DeleteUserDialog({
                       <>
                         {impact.soloTeams.length === 1 ? "It is" : "They are"}{" "}
                         empty, so only the team{" "}
-                        {impact.soloTeams.length === 1 ? "itself goes" : "rows go"}
+                        {impact.soloTeams.length === 1
+                          ? "itself goes"
+                          : "rows go"}
                         .
                       </>
                     ) : (
@@ -204,7 +222,8 @@ export function DeleteUserDialog({
                       >
                         <span className="truncate font-medium">{t.name}</span>
                         <span className="shrink-0 text-muted-foreground">
-                          {contentsLabel(t.appCount, t.databaseCount) || "empty"}
+                          {contentsLabel(t.appCount, t.databaseCount) ||
+                            "empty"}
                         </span>
                       </li>
                     ))}
@@ -237,7 +256,8 @@ export function DeleteUserDialog({
                           "app",
                         )} inside with them. Off ⇒ they are kept and become team-managed.`
                       : `${
-                          impact.ownedFolderCount + impact.ownedProjectCount === 1
+                          impact.ownedFolderCount + impact.ownedProjectCount ===
+                          1
                             ? "It is empty"
                             : "They are empty"
                         }. Off ⇒ kept, and team-managed from now on.`
@@ -420,12 +440,12 @@ function Option({
         className="mt-0.5"
       />
       <span className="min-w-0">
-        <span
-          className={cn("block font-medium", danger && "text-destructive")}
-        >
+        <span className={cn("block font-medium", danger && "text-destructive")}>
           {title}
         </span>
-        <span className="mt-1 block text-xs text-muted-foreground">{detail}</span>
+        <span className="mt-1 block text-xs text-muted-foreground">
+          {detail}
+        </span>
         {children}
       </span>
     </label>

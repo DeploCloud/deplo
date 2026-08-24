@@ -189,7 +189,8 @@ builder.mutationFields((t) => ({
   saveSharedVar: t.field({
     type: SharedVarRef,
     authScopes: { capability: "manage_env" },
-    description: "Create or update a shared variable; returns the saved entity.",
+    description:
+      "Create or update a shared variable; returns the saved entity.",
     args: { input: t.arg({ type: SaveSharedVarInputType, required: true }) },
     resolve: async (_r, { input }) => {
       const id = await saveSharedVar({

@@ -31,7 +31,10 @@ async function loadNodeVersions(): Promise<VersionItem[]> {
   return list.map((v: unknown) =>
     typeof v === "string"
       ? { value: v, label: v }
-      : { value: String((v as VersionItem).value), label: String((v as VersionItem).label) },
+      : {
+          value: String((v as VersionItem).value),
+          label: String((v as VersionItem).label),
+        },
   );
 }
 

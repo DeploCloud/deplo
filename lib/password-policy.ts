@@ -18,7 +18,10 @@ export const PASSWORD_MAX_LENGTH = 200;
  * weaker for it, and a list the user has to guess at is a bad field.
  */
 export const PASSWORD_RULES = [
-  { regex: new RegExp(`.{${PASSWORD_MIN_LENGTH},}`), text: `At least ${PASSWORD_MIN_LENGTH} characters` },
+  {
+    regex: new RegExp(`.{${PASSWORD_MIN_LENGTH},}`),
+    text: `At least ${PASSWORD_MIN_LENGTH} characters`,
+  },
   { regex: /[0-9]/, text: "At least 1 number" },
   { regex: /[a-z]/, text: "At least 1 lowercase letter" },
   { regex: /[A-Z]/, text: "At least 1 uppercase letter" },

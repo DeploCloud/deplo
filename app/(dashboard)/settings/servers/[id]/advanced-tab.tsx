@@ -116,7 +116,8 @@ export function ServerAdvancedTab({ server }: { server: ServerSummary }) {
       setReading(null);
       return;
     }
-    if (res.data) setReading({ info: res.data.checkServerHostInfo, readAt: Date.now() });
+    if (res.data)
+      setReading({ info: res.data.checkServerHostInfo, readAt: Date.now() });
   }, [server.id]);
 
   React.useEffect(() => {
@@ -143,7 +144,13 @@ export function ServerAdvancedTab({ server }: { server: ServerSummary }) {
 /* Host details                                                        */
 /* ------------------------------------------------------------------ */
 
-function Detail({ label, value }: { label: React.ReactNode; value: React.ReactNode }) {
+function Detail({
+  label,
+  value,
+}: {
+  label: React.ReactNode;
+  value: React.ReactNode;
+}) {
   return (
     <div className="flex flex-wrap items-baseline justify-between gap-2 border-b border-border py-2 last:border-0">
       <span className="text-sm text-muted-foreground">{label}</span>
@@ -308,7 +315,8 @@ function ServerClock({
       }
       // The mutation answers with a fresh reading, so the clock jumps to the new
       // zone without a second round trip.
-      if (res.data) onChanged({ info: res.data.setServerTimezone, readAt: Date.now() });
+      if (res.data)
+        onChanged({ info: res.data.setServerTimezone, readAt: Date.now() });
       toast.success(`Server time is now ${zone}`);
     });
   }
@@ -328,7 +336,8 @@ function ServerClock({
           Server time
         </CardTitle>
         <p className="mt-1 text-sm text-muted-foreground">
-          The clock this machine runs on. Deplo&apos;s own schedules stay on UTC.
+          The clock this machine runs on. Deplo&apos;s own schedules stay on
+          UTC.
         </p>
       </CardHeader>
       <CardContent>
@@ -341,8 +350,11 @@ function ServerClock({
               <div className="flex flex-wrap items-end justify-between gap-x-6 gap-y-3">
                 <div className="min-w-0">
                   <div className="flex items-baseline gap-1 font-mono tabular-nums">
-                    <span className="text-4xl font-semibold leading-none">
-                      {partsIn(hostNow, info, { hour: "2-digit", minute: "2-digit" })}
+                    <span className="text-4xl leading-none font-semibold">
+                      {partsIn(hostNow, info, {
+                        hour: "2-digit",
+                        minute: "2-digit",
+                      })}
                     </span>
                     {/* Seconds come from the instant itself: every current IANA
                         offset is a whole number of minutes, and asking Intl for
@@ -394,7 +406,10 @@ function ServerClock({
               now={hostNow ? hostNow.getTime() : nowMs}
             />
           </div>
-          <Button type="submit" disabled={pending || !info || !zone || zone === info?.timezone}>
+          <Button
+            type="submit"
+            disabled={pending || !info || !zone || zone === info?.timezone}
+          >
             Save timezone
           </Button>
         </form>
@@ -492,11 +507,15 @@ function TraefikPanel({
 }) {
   const router = useRouter();
   const [pending, startTransition] = React.useTransition();
-  const [enabled, setEnabled] = React.useState(Boolean(server.traefikDashboard));
+  const [enabled, setEnabled] = React.useState(
+    Boolean(server.traefikDashboard),
+  );
   const [domain, setDomain] = React.useState(
     server.traefikDashboard?.domain ?? server.suggestedTraefikDomain ?? "",
   );
-  const [username, setUsername] = React.useState(server.traefikDashboard?.username ?? "");
+  const [username, setUsername] = React.useState(
+    server.traefikDashboard?.username ?? "",
+  );
   const [password, setPassword] = React.useState("");
   const [confirming, setConfirming] = React.useState(false);
   // Set once we have applied something ourselves: from then on the stored row and
@@ -509,13 +528,17 @@ function TraefikPanel({
   // switch, the button and the link below all follow the host, and the row is
   // reduced to what it can actually answer for (the username). Before the first
   // reading lands there is nothing else to go on, so the row stands in.
-  const published = info ? info.traefikDashboardDomain : (server.traefikDashboard?.domain ?? null);
+  const published = info
+    ? info.traefikDashboardDomain
+    : (server.traefikDashboard?.domain ?? null);
   const recorded = server.traefikDashboard?.domain ?? null;
   const canManage = info?.traefikManaged ?? false;
   // The free hostname currently on offer. Seeded with the server's own (already
   // fresh) suggestion and re-rolled in the browser on every Generate, so the
   // tooltip always names the one the button would drop into the field.
-  const [suggested, setSuggested] = React.useState(server.suggestedTraefikDomain);
+  const [suggested, setSuggested] = React.useState(
+    server.suggestedTraefikDomain,
+  );
 
   // Adopt the host's answer whenever a fresh reading arrives. Adjusting state
   // during render is the supported pattern (ServerClock above does the same with
@@ -532,7 +555,9 @@ function TraefikPanel({
   // A password is required to publish, but an EDIT that only moves the domain
   // reuses the stored one — asking for it again would be a reason not to bother.
   const complete =
-    domain.trim() !== "" && username.trim() !== "" && (password !== "" || published !== null);
+    domain.trim() !== "" &&
+    username.trim() !== "" &&
+    (password !== "" || published !== null);
   // What Apply would actually change. Without this the button is armed on a host
   // with no panel, reading "Turn off panel" and recreating Traefik — every site
   // here blipping — to turn off something that was never on.
@@ -543,7 +568,11 @@ function TraefikPanel({
     : published !== null;
   // Named for what it will do to THIS host, not for the switch's position: with
   // nothing published, "Turn off panel" describes nothing that exists.
-  const actionLabel = !enabled ? "Turn off panel" : published ? "Update panel" : "Publish panel";
+  const actionLabel = !enabled
+    ? "Turn off panel"
+    : published
+      ? "Update panel"
+      : "Publish panel";
 
   function submit(e: React.FormEvent) {
     e.preventDefault();
@@ -564,7 +593,11 @@ function TraefikPanel({
         {
           id: server.id,
           input: enabled
-            ? { domain: next, username: username.trim(), password: password || null }
+            ? {
+                domain: next,
+                username: username.trim(),
+                password: password || null,
+              }
             : null,
         },
       );
@@ -575,7 +608,11 @@ function TraefikPanel({
       setConfirming(false);
       setPassword("");
       setApplied(true);
-      toast.success(enabled ? `Traefik panel published on ${next}` : "Traefik panel turned off");
+      toast.success(
+        enabled
+          ? `Traefik panel published on ${next}`
+          : "Traefik panel turned off",
+      );
       onChanged();
       router.refresh();
     });
@@ -611,13 +648,19 @@ function TraefikPanel({
               {info && published ? (
                 <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-border p-3">
                   <div className="min-w-0">
-                    <div className="text-sm font-medium">Live on this server</div>
+                    <div className="text-sm font-medium">
+                      Live on this server
+                    </div>
                     <p className="mt-1 truncate font-mono text-sm text-muted-foreground">
                       {published}
                     </p>
                   </div>
                   <Button variant="outline" asChild>
-                    <a href={`https://${published}`} target="_blank" rel="noreferrer">
+                    <a
+                      href={`https://${published}`}
+                      target="_blank"
+                      rel="noreferrer"
+                    >
                       <ExternalLink className="size-4" />
                       Open panel
                     </a>
@@ -658,8 +701,9 @@ function TraefikPanel({
                         info={
                           suggested ? (
                             <>
-                              No domain? <span className="font-mono">{suggested}</span>{" "}
-                              is filled in for you and works with zero DNS setup.
+                              No domain?{" "}
+                              <span className="font-mono">{suggested}</span> is
+                              filled in for you and works with zero DNS setup.
                               Click Generate for a different one.
                             </>
                           ) : (
@@ -737,7 +781,9 @@ function TraefikPanel({
 
               <Button
                 type="submit"
-                disabled={pending || !info || !changes || (enabled && !complete)}
+                disabled={
+                  pending || !info || !changes || (enabled && !complete)
+                }
               >
                 {pending ? "Applying" : actionLabel}
               </Button>
@@ -746,12 +792,17 @@ function TraefikPanel({
         </CardContent>
       </Card>
 
-      <Dialog open={confirming} onOpenChange={(o) => !o && setConfirming(false)}>
+      <Dialog
+        open={confirming}
+        onOpenChange={(o) => !o && setConfirming(false)}
+      >
         <DialogContent>
           <DialogHeader>
             {enabled ? (
               <>
-                <DialogTitle>Publish the Traefik panel on {domain.trim().toLowerCase()}?</DialogTitle>
+                <DialogTitle>
+                  Publish the Traefik panel on {domain.trim().toLowerCase()}?
+                </DialogTitle>
                 <DialogDescription>
                   Traefik has to restart to pick this up, so every site on{" "}
                   {server.name} is unreachable for a few seconds.{" "}
@@ -763,25 +814,31 @@ function TraefikPanel({
                   ) : (
                     <>
                       Make sure <strong>{domain.trim().toLowerCase()}</strong>{" "}
-                      already points at this server, or its certificate will not be
-                      issued.
+                      already points at this server, or its certificate will not
+                      be issued.
                     </>
                   )}
                 </DialogDescription>
               </>
             ) : (
               <>
-                <DialogTitle>Turn the Traefik panel off on {server.name}?</DialogTitle>
+                <DialogTitle>
+                  Turn the Traefik panel off on {server.name}?
+                </DialogTitle>
                 <DialogDescription>
-                  It stops answering on <strong>{published}</strong>. Traefik has
-                  to restart for that, so every site on this server is unreachable
-                  for a few seconds.
+                  It stops answering on <strong>{published}</strong>. Traefik
+                  has to restart for that, so every site on this server is
+                  unreachable for a few seconds.
                 </DialogDescription>
               </>
             )}
           </DialogHeader>
           <DialogFooter>
-            <Button variant="outline" onClick={() => setConfirming(false)} disabled={pending}>
+            <Button
+              variant="outline"
+              onClick={() => setConfirming(false)}
+              disabled={pending}
+            >
               Cancel
             </Button>
             <Button onClick={() => apply()} disabled={pending}>
@@ -805,7 +862,9 @@ function InstallCommand({ server }: { server: ServerSummary }) {
 
   function reissue() {
     startTransition(async () => {
-      const res = await gqlAction<{ reissueServerBootstrap: { installCommand: string } }>(
+      const res = await gqlAction<{
+        reissueServerBootstrap: { installCommand: string };
+      }>(
         `mutation ReissueServerBootstrap($id: String!) {
           reissueServerBootstrap(id: $id) { installCommand }
         }`,
@@ -834,13 +893,19 @@ function InstallCommand({ server }: { server: ServerSummary }) {
           </p>
         </CardHeader>
         <CardContent>
-          <Button variant="outline" onClick={() => reissue()} disabled={pending}>
+          <Button
+            variant="outline"
+            onClick={() => reissue()}
+            disabled={pending}
+          >
             {pending ? (
               <Loader2 className="size-4 animate-spin" />
             ) : (
               <KeyRound className="size-4" />
             )}
-            {server.provisioning ? "Show install command" : "Reissue install command"}
+            {server.provisioning
+              ? "Show install command"
+              : "Reissue install command"}
           </Button>
         </CardContent>
       </Card>
@@ -858,16 +923,16 @@ function InstallCommand({ server }: { server: ServerSummary }) {
           <DialogHeader>
             <DialogTitle>Install command for {server.name}</DialogTitle>
             <DialogDescription>
-              Run this once on the server. It installs Docker (if needed) and the
-              Deplo agent, which then calls home to finish provisioning.
+              Run this once on the server. It installs Docker (if needed) and
+              the Deplo agent, which then calls home to finish provisioning.
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-2">
             <Label>Install command (shown once)</Label>
             {command ? <CommandLine command={command} /> : null}
             <p className="mt-1 text-xs text-muted-foreground">
-              The command embeds a single-use token that expires in about an hour.
-              If you lose it, reissue another from here.
+              The command embeds a single-use token that expires in about an
+              hour. If you lose it, reissue another from here.
             </p>
           </div>
           <DialogFooter>
@@ -902,7 +967,9 @@ function ChangeAddress({ server }: { server: ServerSummary }) {
   const [pending, startTransition] = React.useTransition();
   const [open, setOpen] = React.useState(false);
   const [address, setAddress] = React.useState(server.host);
-  const [port, setPort] = React.useState(server.agentPort ? String(server.agentPort) : "");
+  const [port, setPort] = React.useState(
+    server.agentPort ? String(server.agentPort) : "",
+  );
   const [refusal, setRefusal] = React.useState<string | null>(null);
 
   function openDialog() {
@@ -932,7 +999,8 @@ function ChangeAddress({ server }: { server: ServerSummary }) {
       }
       setOpen(false);
       toast.success("Server address updated");
-      if (res.data?.updateServerAddress) toast.warning(res.data.updateServerAddress);
+      if (res.data?.updateServerAddress)
+        toast.warning(res.data.updateServerAddress);
       router.refresh();
     });
   }
@@ -946,8 +1014,8 @@ function ChangeAddress({ server }: { server: ServerSummary }) {
             <BetaChip />
           </div>
           <p className="mt-1 text-sm text-muted-foreground">
-            Where Deplo reaches this server&rsquo;s agent. Change it when the host
-            got a new IP or you moved it.
+            Where Deplo reaches this server&rsquo;s agent. Change it when the
+            host got a new IP or you moved it.
           </p>
         </div>
         <Button variant="outline" onClick={openDialog} disabled={pending}>
@@ -1013,8 +1081,8 @@ function ChangeAddress({ server }: { server: ServerSummary }) {
               <div className="rounded-md border border-destructive/40 bg-destructive/10 p-3 text-sm">
                 <p>{refusal}</p>
                 <p className="mt-1 text-muted-foreground">
-                  Save anyway if the host is not up at the new address yet - Deplo
-                  keeps checking its health there.
+                  Save anyway if the host is not up at the new address yet -
+                  Deplo keeps checking its health there.
                 </p>
               </div>
             )}
@@ -1072,7 +1140,8 @@ function DangerZone({ server }: { server: ServerSummary }) {
       if (!res.data) return;
       setConfirm(false);
       toast.success(`${server.name} removed — now clean up the host`);
-      if (res.data.removeServer.warning) toast.warning(res.data.removeServer.warning);
+      if (res.data.removeServer.warning)
+        toast.warning(res.data.removeServer.warning);
       setUninstall(res.data.removeServer.uninstallCommand);
     });
   }
@@ -1130,18 +1199,26 @@ function DangerZone({ server }: { server: ServerSummary }) {
             <DialogDescription>
               This revokes the agent&rsquo;s trust and forgets the server.{" "}
               <strong>It does not uninstall anything on the host</strong> — the
-              Deplo agent, Traefik on :80/:443 and the <code>deplo</code> network
-              all keep running there. We&rsquo;ll give you the command to remove
-              them as soon as it&rsquo;s gone. You can&rsquo;t remove a server
-              while apps or databases still live on it — move or delete those
-              first.
+              Deplo agent, Traefik on :80/:443 and the <code>deplo</code>{" "}
+              network all keep running there. We&rsquo;ll give you the command
+              to remove them as soon as it&rsquo;s gone. You can&rsquo;t remove
+              a server while apps or databases still live on it — move or delete
+              those first.
             </DialogDescription>
           </DialogHeader>
           <DialogFooter>
-            <Button variant="outline" onClick={() => setConfirm(false)} disabled={pending}>
+            <Button
+              variant="outline"
+              onClick={() => setConfirm(false)}
+              disabled={pending}
+            >
               Cancel
             </Button>
-            <Button variant="destructive" onClick={() => remove()} disabled={pending}>
+            <Button
+              variant="destructive"
+              onClick={() => remove()}
+              disabled={pending}
+            >
               {pending ? "Removing" : "Remove server"}
             </Button>
           </DialogFooter>
@@ -1163,8 +1240,9 @@ function DangerZone({ server }: { server: ServerSummary }) {
           <DialogHeader>
             <DialogTitle>Finish the cleanup on {server.name}</DialogTitle>
             <DialogDescription>
-              Deplo no longer trusts this server, but its agent is still installed
-              and running there. Run this on the host, as root, to remove it.
+              Deplo no longer trusts this server, but its agent is still
+              installed and running there. Run this on the host, as root, to
+              remove it.
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-2">
@@ -1176,9 +1254,9 @@ function DangerZone({ server }: { server: ServerSummary }) {
               Traefik&rsquo;s issued TLS certs), the <code>deplo-traefik</code>{" "}
               container and the <code>deplo</code> Docker network. It leaves
               Docker itself alone, and it does <strong>not</strong> delete your
-              data — app and database volumes, built images and <code>/data</code>{" "}
-              survive. Add <code>--purge-data</code> to delete those too; that is
-              irreversible.
+              data — app and database volumes, built images and{" "}
+              <code>/data</code> survive. Add <code>--purge-data</code> to
+              delete those too; that is irreversible.
             </p>
           </div>
           <DialogFooter>
@@ -1256,8 +1334,8 @@ function ServerRolePanel({ server }: { server: ServerSummary }) {
           <BetaChip />
         </CardTitle>
         <p className="mt-1 text-sm text-muted-foreground">
-          A build server compiles images for apps that run on your other servers,
-          so those can stay small.
+          A build server compiles images for apps that run on your other
+          servers, so those can stay small.
         </p>
       </CardHeader>
       <CardContent>
@@ -1303,8 +1381,8 @@ function ServerRolePanel({ server }: { server: ServerSummary }) {
           {role === "everything" && server.role === "build" && (
             <Badge variant="warning">
               This server has no proxy installed, so apps deployed here will run
-              but stay unreachable on their domains. Re-run the install command on
-              the host to add one.
+              but stay unreachable on their domains. Re-run the install command
+              on the host to add one.
             </Badge>
           )}
           <div>

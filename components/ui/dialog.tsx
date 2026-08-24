@@ -24,8 +24,8 @@ const DialogOverlay = React.forwardRef<
       // INHERIT — letting clicks fall through to background elements that opt
       // back in with pointer-events-auto (e.g. the cards' stretched-link
       // controls). Making the overlay capture pointer events blocks all of them.
-      "pointer-events-auto fixed inset-0 z-50 bg-black/70 backdrop-blur-sm data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0",
-      className
+      "pointer-events-auto fixed inset-0 z-50 bg-black/70 backdrop-blur-sm data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:animate-in data-[state=open]:fade-in-0",
+      className,
     )}
     {...props}
   />
@@ -46,97 +46,99 @@ const DialogContent = React.forwardRef<
      */
     selfManaged?: boolean;
   }
->((
-  {
-    className,
-    children,
-    hideClose,
-    selfManaged,
-    onInteractOutside,
-    onOpenAutoFocus,
-    ...props
-  },
-  ref,
-) => {
-  const nestedLayerJustDismissed = useNestedLayerDismissGuard();
-  const contentRef = React.useRef<HTMLDivElement | null>(null);
-  return (
-  <DialogPortal>
-    <DialogOverlay />
-    <DialogPrimitive.Content
-      ref={(node) => {
-        contentRef.current = node;
-        if (typeof ref === "function") ref(node);
-        else if (ref) ref.current = node;
-      }}
-      className={cn(
-        // grid-cols-[minmax(0,1fr)]: a grid item's automatic minimum size is its
-        // min-content width, so one wide child (an unwrapped <pre>, a long URL)
-        // would stretch the column past max-w-* and push the content out of the
-        // modal instead of scrolling inside it. Pinning the column to min 0 makes
-        // the child's own overflow-auto do its job.
-        "fixed left-[50%] top-[50%] z-50 grid grid-cols-[minmax(0,1fr)] w-full max-w-lg translate-x-[-50%] translate-y-[-50%] gap-4 border border-border bg-card p-6 shadow-2xl duration-200 data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 data-[state=closed]:zoom-out-95 data-[state=open]:zoom-in-95 rounded-xl",
-        // Centred with a translate and nothing bounding it, a dialog taller than
-        // the window used to run off BOTH edges at once - and Radix scroll-locks
-        // the page behind it, so neither end could be reached. Zooming in is all
-        // it takes.
-        //
-        // 85dvh, matching what the dialogs that already capped themselves chose:
-        // a modal that reaches within a few pixels of the viewport stops reading
-        // as a layer over the page and starts reading as the page. `dvh` rather
-        // than `vh` so a phone's collapsing browser chrome cannot hide the
-        // footer.
-        //
-        // `grid-rows-[minmax(0,1fr)]` as well as the cap: a grid row's automatic
-        // minimum size is its content, so the wrapper below would grow straight
-        // past the max-height and overflow the dialog instead of scrolling
-        // inside it. `min-h-0` on the item alone does not relax the TRACK.
-        !selfManaged && "max-h-[85dvh] grid-rows-[minmax(0,1fr)]",
-        className
-      )}
-      onInteractOutside={(event) => {
-        // Swallow the outside-dismiss when this gesture just closed a nested
-        // popper (Select/menu/popover); otherwise defer to the caller.
-        if (nestedLayerJustDismissed()) {
-          event.preventDefault();
-          return;
-        }
-        onInteractOutside?.(event);
-      }}
-      // Every modal in the app is this component, so none of them can open with
-      // a focus ring on an info icon or a tooltip already showing.
-      onOpenAutoFocus={(event) => {
-        onOpenAutoFocus?.(event);
-        overlayAutoFocus(event, contentRef.current);
-      }}
-      {...props}
-    >
-      {/* The scroll lives on a WRAPPER, not on the content itself: the close
+>(
+  (
+    {
+      className,
+      children,
+      hideClose,
+      selfManaged,
+      onInteractOutside,
+      onOpenAutoFocus,
+      ...props
+    },
+    ref,
+  ) => {
+    const nestedLayerJustDismissed = useNestedLayerDismissGuard();
+    const contentRef = React.useRef<HTMLDivElement | null>(null);
+    return (
+      <DialogPortal>
+        <DialogOverlay />
+        <DialogPrimitive.Content
+          ref={(node) => {
+            contentRef.current = node;
+            if (typeof ref === "function") ref(node);
+            else if (ref) ref.current = node;
+          }}
+          className={cn(
+            // grid-cols-[minmax(0,1fr)]: a grid item's automatic minimum size is its
+            // min-content width, so one wide child (an unwrapped <pre>, a long URL)
+            // would stretch the column past max-w-* and push the content out of the
+            // modal instead of scrolling inside it. Pinning the column to min 0 makes
+            // the child's own overflow-auto do its job.
+            "fixed top-[50%] left-[50%] z-50 grid w-full max-w-lg translate-x-[-50%] translate-y-[-50%] grid-cols-[minmax(0,1fr)] gap-4 rounded-xl border border-border bg-card p-6 shadow-2xl duration-200 data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=closed]:zoom-out-95 data-[state=open]:animate-in data-[state=open]:fade-in-0 data-[state=open]:zoom-in-95",
+            // Centred with a translate and nothing bounding it, a dialog taller than
+            // the window used to run off BOTH edges at once - and Radix scroll-locks
+            // the page behind it, so neither end could be reached. Zooming in is all
+            // it takes.
+            //
+            // 85dvh, matching what the dialogs that already capped themselves chose:
+            // a modal that reaches within a few pixels of the viewport stops reading
+            // as a layer over the page and starts reading as the page. `dvh` rather
+            // than `vh` so a phone's collapsing browser chrome cannot hide the
+            // footer.
+            //
+            // `grid-rows-[minmax(0,1fr)]` as well as the cap: a grid row's automatic
+            // minimum size is its content, so the wrapper below would grow straight
+            // past the max-height and overflow the dialog instead of scrolling
+            // inside it. `min-h-0` on the item alone does not relax the TRACK.
+            !selfManaged && "max-h-[85dvh] grid-rows-[minmax(0,1fr)]",
+            className,
+          )}
+          onInteractOutside={(event) => {
+            // Swallow the outside-dismiss when this gesture just closed a nested
+            // popper (Select/menu/popover); otherwise defer to the caller.
+            if (nestedLayerJustDismissed()) {
+              event.preventDefault();
+              return;
+            }
+            onInteractOutside?.(event);
+          }}
+          // Every modal in the app is this component, so none of them can open with
+          // a focus ring on an info icon or a tooltip already showing.
+          onOpenAutoFocus={(event) => {
+            onOpenAutoFocus?.(event);
+            overlayAutoFocus(event, contentRef.current);
+          }}
+          {...props}
+        >
+          {/* The scroll lives on a WRAPPER, not on the content itself: the close
           button below is absolutely positioned and would scroll away with the
           body, and `p-6` would go with it. The wrapper carries the grid + gap
           the content used to provide, so header / body / footer keep their
           rhythm. `focus-safe-scroll` is what stops a focused full-width field
           having its ring sliced by the clip. */}
-      {selfManaged ? (
-        children
-      ) : (
-        <div className="grid min-h-0 grid-cols-[minmax(0,1fr)] gap-4 overflow-y-auto focus-safe-scroll">
-          {children}
-        </div>
-      )}
-      {!hideClose && (
-        <DialogPrimitive.Close
-          type="button"
-          className="absolute right-4 top-4 cursor-pointer rounded-sm opacity-60 transition-opacity hover:opacity-100 focus:outline-none focus:ring-2 focus:ring-ring"
-        >
-          <X className="size-4" />
-          <span className="sr-only">Close</span>
-        </DialogPrimitive.Close>
-      )}
-    </DialogPrimitive.Content>
-  </DialogPortal>
-  );
-});
+          {selfManaged ? (
+            children
+          ) : (
+            <div className="focus-safe-scroll grid min-h-0 grid-cols-[minmax(0,1fr)] gap-4 overflow-y-auto">
+              {children}
+            </div>
+          )}
+          {!hideClose && (
+            <DialogPrimitive.Close
+              type="button"
+              className="absolute top-4 right-4 cursor-pointer rounded-sm opacity-60 transition-opacity hover:opacity-100 focus:ring-2 focus:ring-ring focus:outline-none"
+            >
+              <X className="size-4" />
+              <span className="sr-only">Close</span>
+            </DialogPrimitive.Close>
+          )}
+        </DialogPrimitive.Content>
+      </DialogPortal>
+    );
+  },
+);
 DialogContent.displayName = DialogPrimitive.Content.displayName;
 
 const DialogHeader = ({
@@ -157,7 +159,7 @@ const DialogFooter = ({
   <div
     className={cn(
       "flex flex-col-reverse gap-2 sm:flex-row sm:justify-end",
-      className
+      className,
     )}
     {...props}
   />
@@ -170,7 +172,10 @@ const DialogTitle = React.forwardRef<
 >(({ className, ...props }, ref) => (
   <DialogPrimitive.Title
     ref={ref}
-    className={cn("text-lg font-semibold leading-none tracking-tight", className)}
+    className={cn(
+      "text-lg leading-none font-semibold tracking-tight",
+      className,
+    )}
     {...props}
   />
 ));

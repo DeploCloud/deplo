@@ -59,7 +59,9 @@ services:
 volumes:
   dbdata: {}
 `;
-  assert.deepEqual(composeStackVolumeHostNames("shop", yaml), ["deplo-shop_dbdata"]);
+  assert.deepEqual(composeStackVolumeHostNames("shop", yaml), [
+    "deplo-shop_dbdata",
+  ]);
 });
 
 test("compose-stack: a null volume spec → deplo-<slug>_<key>", () => {
@@ -81,7 +83,9 @@ volumes:
   dbdata:
     name: my-pinned-volume
 `;
-  assert.deepEqual(composeStackVolumeHostNames("shop", yaml), ["my-pinned-volume"]);
+  assert.deepEqual(composeStackVolumeHostNames("shop", yaml), [
+    "my-pinned-volume",
+  ]);
 });
 
 test("compose-stack: external volume is referenced by key, never project-prefixed", () => {
@@ -94,7 +98,10 @@ volumes:
       name: legacy-vol
 `;
   // `external: true` with no name ⇒ the bare key; `external: { name }` ⇒ that name.
-  assert.deepEqual(composeStackVolumeHostNames("shop", yaml), ["shared", "legacy-vol"]);
+  assert.deepEqual(composeStackVolumeHostNames("shop", yaml), [
+    "shared",
+    "legacy-vol",
+  ]);
 });
 
 test("compose-stack: a user-pinned `deplo-` name is REFUSED (reserved namespace)", () => {
@@ -215,13 +222,19 @@ volumes:
 
 test("appMoveVolumeNames (compose): no volumes → empty", () => {
   assert.deepEqual(
-    appMoveVolumeNames(composeService("shop"), "services:\n  web:\n    image: nginx\n"),
+    appMoveVolumeNames(
+      composeService("shop"),
+      "services:\n  web:\n    image: nginx\n",
+    ),
     [],
   );
 });
 
 test("compose-stack: malformed YAML → empty (never throws)", () => {
-  assert.deepEqual(composeStackVolumeHostNames("shop", ":::not yaml:::\n  - ["), []);
+  assert.deepEqual(
+    composeStackVolumeHostNames("shop", ":::not yaml:::\n  - ["),
+    [],
+  );
   assert.deepEqual(composeStackVolumeHostNames("shop", ""), []);
 });
 
@@ -253,9 +266,24 @@ test("assertSafeVolumeNames rejects an interpolated compose name with guidance",
 
 test("assertSafeVolumeNames rejects names the agent's pattern forbids", () => {
   // Leading _/-/. and '..' are all rejected by ^[a-zA-Z0-9][a-zA-Z0-9_.-]*$.
-  assert.throws(() => assertSafeVolumeNames("shop", ["_shared"]), /valid Docker volume name/i);
-  assert.throws(() => assertSafeVolumeNames("shop", ["-legacy"]), /valid Docker volume name/i);
-  assert.throws(() => assertSafeVolumeNames("shop", [".hidden"]), /valid Docker volume name/i);
-  assert.throws(() => assertSafeVolumeNames("shop", ["a/b"]), /valid Docker volume name/i);
-  assert.throws(() => assertSafeVolumeNames("shop", ["a..b"]), /valid Docker volume name/i);
+  assert.throws(
+    () => assertSafeVolumeNames("shop", ["_shared"]),
+    /valid Docker volume name/i,
+  );
+  assert.throws(
+    () => assertSafeVolumeNames("shop", ["-legacy"]),
+    /valid Docker volume name/i,
+  );
+  assert.throws(
+    () => assertSafeVolumeNames("shop", [".hidden"]),
+    /valid Docker volume name/i,
+  );
+  assert.throws(
+    () => assertSafeVolumeNames("shop", ["a/b"]),
+    /valid Docker volume name/i,
+  );
+  assert.throws(
+    () => assertSafeVolumeNames("shop", ["a..b"]),
+    /valid Docker volume name/i,
+  );
 });

@@ -19,7 +19,11 @@ import { DirtyHint } from "@/components/apps/settings/settings-shared";
 import { frameworkById } from "@/lib/apps/framework-catalog";
 import { DEFAULT_NODE_MAJOR, usesDefaultNodeMajor } from "@/lib/frameworks";
 import { cn } from "@/lib/utils";
-import type { BuildConfig, BuildMethod, BuildMethodSettings } from "@/lib/types";
+import type {
+  BuildConfig,
+  BuildMethod,
+  BuildMethodSettings,
+} from "@/lib/types";
 
 /**
  * Build & Output — the card that answers "what happens between my code and a
@@ -194,7 +198,10 @@ export function BuildOutputCard({
                       placeholder="(auto-detected)"
                       value={build.buildCommand}
                       onChange={(e) =>
-                        setBuild((b) => ({ ...b, buildCommand: e.target.value }))
+                        setBuild((b) => ({
+                          ...b,
+                          buildCommand: e.target.value,
+                        }))
                       }
                     />
                   </div>
@@ -204,8 +211,8 @@ export function BuildOutputCard({
                     <FieldLabel
                       info={
                         <>
-                          Pins the Node.js major, kept in sync with the real Node
-                          releases.
+                          Pins the Node.js major, kept in sync with the real
+                          Node releases.
                           {usesDefaultNodeMajor(method)
                             ? ` Leave blank to use the default (Node ${DEFAULT_NODE_MAJOR}).`
                             : " Leave blank to auto-detect from your project."}
@@ -340,7 +347,7 @@ function Stage({
       {!last && (
         <span
           aria-hidden
-          className="absolute bottom-0 left-[0.875rem] top-8 w-px -translate-x-1/2 bg-border"
+          className="absolute top-8 bottom-0 left-[0.875rem] w-px -translate-x-1/2 bg-border"
         />
       )}
       <span className="relative z-10 mt-0.5 flex size-7 items-center justify-center rounded-full border border-border bg-background text-muted-foreground">
@@ -351,7 +358,9 @@ function Stage({
           <div className="min-w-0 space-y-0.5">
             <p className="text-sm font-medium">{title}</p>
             {hint && (
-              <p className="text-xs leading-snug text-muted-foreground">{hint}</p>
+              <p className="text-xs leading-snug text-muted-foreground">
+                {hint}
+              </p>
             )}
           </div>
           {action}

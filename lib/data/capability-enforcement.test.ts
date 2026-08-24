@@ -44,7 +44,11 @@ import { listEnv, upsertEnv } from "./env";
 import { deleteTeam } from "./team-delete";
 import { setFolderGrant } from "./folder-access";
 import { authenticateToken, createToken } from "./tokens";
-import { verifyDeployHookToken, revealDeployHook, owningTeamId } from "./deploy-hook";
+import {
+  verifyDeployHookToken,
+  revealDeployHook,
+  owningTeamId,
+} from "./deploy-hook";
 import { appInTeam } from "./app-graph-load";
 
 /**
@@ -168,13 +172,21 @@ const asToken = <T>(
     {
       userId,
       teamId: TEAM_A,
-      token: { id: "tok_t", capabilities, scope: null, instanceAdmin: false, ...over },
+      token: {
+        id: "tok_t",
+        capabilities,
+        scope: null,
+        instanceAdmin: false,
+        ...over,
+      },
     },
     fn,
   );
 
 /** Collapse a call into "refused" / "allowed" without caring how it said so. */
-async function outcome(fn: () => Promise<unknown>): Promise<"refused" | "allowed"> {
+async function outcome(
+  fn: () => Promise<unknown>,
+): Promise<"refused" | "allowed"> {
   try {
     await fn();
     return "allowed";
@@ -305,20 +317,36 @@ const deploymentsOf = async (appId: string) =>
 
 test("create_apps alone creates the app but ships nothing", async () => {
   const app = await as(CREATOR, () =>
-    createApp({ name: "Created", source: "docker-image", repo: null, dockerImage: "nginx:1.27" }),
+    createApp({
+      name: "Created",
+      source: "docker-image",
+      repo: null,
+      dockerImage: "nginx:1.27",
+    }),
   );
   assert.equal(
     (await deploymentsOf(app.id)).length,
     0,
     "creating an app must not be a way to deploy without deploy_apps",
   );
-  const row = (await db.select().from(appsTable).where(eq(appsTable.id, app.id)))[0]!;
-  assert.equal(row.status, "idle", "the app is born idle, waiting for someone who can ship it");
+  const row = (
+    await db.select().from(appsTable).where(eq(appsTable.id, app.id))
+  )[0]!;
+  assert.equal(
+    row.status,
+    "idle",
+    "the app is born idle, waiting for someone who can ship it",
+  );
 });
 
 test("create_apps + deploy_apps creates AND ships", async () => {
   const app = await as(DEPLOYER, () =>
-    createApp({ name: "Shipped", source: "docker-image", repo: null, dockerImage: "nginx:1.27" }),
+    createApp({
+      name: "Shipped",
+      source: "docker-image",
+      repo: null,
+      dockerImage: "nginx:1.27",
+    }),
   );
   assert.equal(
     (await deploymentsOf(app.id)).length,
@@ -371,7 +399,9 @@ test("create_apps is not permission to claim a hostname", async () => {
 test("a member without create_apps cannot create at all", async () => {
   await as(ENV_ONLY, async () => {
     assert.equal(
-      await outcome(() => createApp({ name: "Nope", source: "upload", repo: null })),
+      await outcome(() =>
+        createApp({ name: "Nope", source: "upload", repo: null }),
+      ),
       "refused",
     );
   });
@@ -392,7 +422,11 @@ test("nobody reads a secret back — not even the owner", async () => {
   for (const actor of [OWNER, ENV_ONLY]) {
     const [row] = await as(actor, () => listEnv(APP));
     assert.equal(row!.masked, true);
-    assert.notEqual(row!.value, "s3cr3t", `${actor} must not see the plaintext`);
+    assert.notEqual(
+      row!.value,
+      "s3cr3t",
+      `${actor} must not see the plaintext`,
+    );
   }
 
   // And the door that used to open it: relabel the row plain, keeping the
@@ -426,15 +460,15 @@ test("delete_team gates deleting the team, even for the founder", async () => {
     founderUserId: null,
     createdAt: T0,
   });
-  await db.insert(
-    (await import("../db/schema/control-plane")).memberships,
-  ).values({
-    id: "mem_second",
-    userId: OWNER,
-    teamId: "team_second",
-    role: "owner",
-    createdAt: T0,
-  });
+  await db
+    .insert((await import("../db/schema/control-plane")).memberships)
+    .values({
+      id: "mem_second",
+      userId: OWNER,
+      teamId: "team_second",
+      role: "owner",
+      createdAt: T0,
+    });
   // TEAM_A's founder, stripped of delete_team by a role edit.
   await db
     .update(teamsTable)
@@ -443,7 +477,9 @@ test("delete_team gates deleting the team, even for the founder", async () => {
   await pg.exec(
     `delete from membership_capabilities where capability = 'delete_team';`,
   );
-  await pg.exec(`update users set is_instance_admin = false where id = '${OWNER}';`);
+  await pg.exec(
+    `update users set is_instance_admin = false where id = '${OWNER}';`,
+  );
 
   await as(OWNER, async () => {
     assert.equal(
@@ -453,7 +489,8 @@ test("delete_team gates deleting the team, even for the founder", async () => {
     );
   });
   assert.ok(
-    (await db.select().from(teamsTable).where(eq(teamsTable.id, TEAM_A))).length === 1,
+    (await db.select().from(teamsTable).where(eq(teamsTable.id, TEAM_A)))
+      .length === 1,
     "the team survived",
   );
 });
@@ -485,28 +522,34 @@ test("a read-only token cannot delete its creator's team", async () => {
     founderUserId: null,
     createdAt: T0,
   });
-  await db.insert(
-    (await import("../db/schema/control-plane")).memberships,
-  ).values({
-    id: "mem_third",
-    userId: OWNER,
-    teamId: "team_third",
-    role: "owner",
-    createdAt: T0,
-  });
+  await db
+    .insert((await import("../db/schema/control-plane")).memberships)
+    .values({
+      id: "mem_third",
+      userId: OWNER,
+      teamId: "team_third",
+      role: "owner",
+      createdAt: T0,
+    });
   await db
     .update(teamsTable)
     .set({ founderUserId: OWNER })
     .where(eq(teamsTable.id, TEAM_A));
-  await pg.exec(`update users set is_instance_admin = false where id = '${OWNER}';`);
+  await pg.exec(
+    `update users set is_instance_admin = false where id = '${OWNER}';`,
+  );
 
-  await asToken(OWNER, ["view", "view_logs", "view_metrics", "view_activity"], async () => {
-    assert.equal(
-      await outcome(() => deleteTeam(TEAM_A)),
-      "refused",
-      "a Read only token minted by the founder must not be able to destroy the team",
-    );
-  });
+  await asToken(
+    OWNER,
+    ["view", "view_logs", "view_metrics", "view_activity"],
+    async () => {
+      assert.equal(
+        await outcome(() => deleteTeam(TEAM_A)),
+        "refused",
+        "a Read only token minted by the founder must not be able to destroy the team",
+      );
+    },
+  );
 });
 
 test("instance-admin is per-token: a plain token minted by an admin is not an admin", async () => {
@@ -525,13 +568,17 @@ test("instance-admin is per-token: a plain token minted by an admin is not an ad
   });
 
   // The control: over a session the instance admin administers it.
-  await as(OWNER, () => setFolderGrant("fld_private", CREATOR, ["deploy_apps"]));
+  await as(OWNER, () =>
+    setFolderGrant("fld_private", CREATOR, ["deploy_apps"]),
+  );
 
   // Everything EXCEPT manage_team, which makes any member a folder super-user in
   // its own right and would mask the question being asked.
   await asToken(OWNER, allBut("manage_team"), async () => {
     assert.equal(
-      await outcome(() => setFolderGrant("fld_private", DEPLOYER, ["deploy_apps"])),
+      await outcome(() =>
+        setFolderGrant("fld_private", DEPLOYER, ["deploy_apps"]),
+      ),
       "refused",
       "a token that was not given instance-admin cannot administer someone else's folder",
     );
@@ -565,8 +612,13 @@ test("a node grant reaches a token only through the token's own set", async () =
     createdAt: T0,
     updatedAt: T0,
   });
-  await db.update(appsTable).set({ folderId: "fld_shared" }).where(eq(appsTable.id, APP));
-  await as(OWNER, () => setFolderGrant("fld_shared", ENV_ONLY, ["deploy_apps", "view_logs"]));
+  await db
+    .update(appsTable)
+    .set({ folderId: "fld_shared" })
+    .where(eq(appsTable.id, APP));
+  await as(OWNER, () =>
+    setFolderGrant("fld_shared", ENV_ONLY, ["deploy_apps", "view_logs"]),
+  );
 
   // Over a session the grant applies in full.
   assert.equal((await as(ENV_ONLY, () => getLogs(DEP))).length, 1);
@@ -631,9 +683,10 @@ async function hookCall(
 ): Promise<"401" | "404" | "403-disabled" | "refused" | "deployed"> {
   // The route catches this throw and answers 401 with the reason (an unmet
   // two-factor policy is a refusal, not a crash).
-  const principal = await authenticateToken(raw, await owningTeamId(appId)).catch(
-    () => null,
-  );
+  const principal = await authenticateToken(
+    raw,
+    await owningTeamId(appId),
+  ).catch(() => null);
   if (!principal) return "401";
   const unreachable = await runWithIdentity(
     principal,
@@ -718,7 +771,10 @@ test("a suspended member's token stops working everywhere", async () => {
   await pg.exec(`update users set suspended = true where id = '${OWNER}';`);
 
   const principal = await authenticateToken(ci.raw, TEAM_A);
-  assert.ok(principal, "the row still resolves — the account check is downstream");
+  assert.ok(
+    principal,
+    "the row still resolves — the account check is downstream",
+  );
   await runWithIdentity(principal!, async () => {
     assert.equal(await outcome(() => redeploy(APP)), "refused");
     // And reads fail closed too, rather than answering as the suspended member.

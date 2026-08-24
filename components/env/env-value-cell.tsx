@@ -27,7 +27,8 @@ export function EnvValueCell({
 }) {
   const [revealed, setRevealed] = React.useState(false);
 
-  if (masked) return <RevealChip locked placeholderClassName="tracking-wider" />;
+  if (masked)
+    return <RevealChip locked placeholderClassName="tracking-wider" />;
 
   return (
     <RevealChip

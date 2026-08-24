@@ -111,6 +111,11 @@ test("a name that announces itself as public is never typed secret", async () =>
     assert.equal(isSecretKey(key), false, key);
 
   // And the ones that ARE secrets still are.
-  for (const key of ["DATABASE_URL", "API_KEY", "STRIPE_SECRET", "SMTP_PASSWORD"])
+  for (const key of [
+    "DATABASE_URL",
+    "API_KEY",
+    "STRIPE_SECRET",
+    "SMTP_PASSWORD",
+  ])
     assert.equal(isSecretKey(key), true, key);
 });

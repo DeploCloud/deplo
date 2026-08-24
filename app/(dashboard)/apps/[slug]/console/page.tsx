@@ -9,7 +9,7 @@ import { ConsoleWarningGate } from "@/components/apps/console-warning-gate";
 export const metadata = { title: "Console" };
 
 export default async function AppConsolePage(
-  props: PageProps<"/apps/[slug]/console">
+  props: PageProps<"/apps/[slug]/console">,
 ) {
   const { slug } = await props.params;
   const project = await getAppBySlug(slug);

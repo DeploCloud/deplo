@@ -31,8 +31,11 @@ const TAG = `deplo/${SLUG}:${Date.now().toString(16).slice(-12)}`;
 
 const servers = await listAllServers();
 // Two provisioned hosts of the SAME architecture; override with BUILDER/TARGET.
-const usable = servers.filter((s) => s.agent?.certFingerprint && !s.storageOnly);
-const builder = usable.find((s) => s.name === (process.env.BUILDER ?? "")) ?? usable[0];
+const usable = servers.filter(
+  (s) => s.agent?.certFingerprint && !s.storageOnly,
+);
+const builder =
+  usable.find((s) => s.name === (process.env.BUILDER ?? "")) ?? usable[0];
 const target =
   usable.find((s) => s.name === (process.env.TARGET ?? "")) ??
   usable.find((s) => s.id !== builder?.id);
@@ -47,13 +50,20 @@ const { mkdtempSync, writeFileSync } = await import("node:fs");
 const { tmpdir } = await import("node:os");
 const { join } = await import("node:path");
 const dir = mkdtempSync(join(tmpdir(), "bs-e2e-"));
-writeFileSync(join(dir, "Dockerfile"), "FROM scratch\nCOPY hello.txt /hello.txt\n");
+writeFileSync(
+  join(dir, "Dockerfile"),
+  "FROM scratch\nCOPY hello.txt /hello.txt\n",
+);
 writeFileSync(join(dir, "hello.txt"), "build server probe\n");
 
 const { spawnSync } = await import("node:child_process");
-const tarOut = spawnSync("tar", ["--format=ustar", "-cf", "-", "-C", dir, "."], {
-  maxBuffer: 64 * 1024 * 1024,
-});
+const tarOut = spawnSync(
+  "tar",
+  ["--format=ustar", "-cf", "-", "-C", dir, "."],
+  {
+    maxBuffer: 64 * 1024 * 1024,
+  },
+);
 const contextTar = new Uint8Array(tarOut.stdout);
 console.log(`context: ${contextTar.length} bytes`);
 
@@ -100,7 +110,10 @@ try {
   bconn.close();
 }
 console.log(`   ready=${ready}`);
-if (!ready) { console.log("BUILD FALLITA - mi fermo"); process.exit(1); }
+if (!ready) {
+  console.log("BUILD FALLITA - mi fermo");
+  process.exit(1);
+}
 
 console.log("\n== 2. RELAY builder -> target ==");
 const src = await connectAgent(builder.id);
@@ -109,7 +122,8 @@ let bytes = 0;
 try {
   bytes = await copyImageBetween(src, dst, TAG, true);
 } finally {
-  src.close(); dst.close();
+  src.close();
+  dst.close();
 }
 console.log(`   trasferiti ${bytes} byte`);
 
@@ -138,16 +152,24 @@ async function hasImage(serverId: string, tag: string): Promise<boolean> {
 const onTarget = await hasImage(target.id, TAG);
 console.log(`   target ha l'immagine: ${onTarget ? "SI" : "NO"}`);
 const onBuilder = await hasImage(builder.id, TAG);
-console.log(`   builder ha ancora l'immagine: ${onBuilder ? "SI (male)" : "NO (corretto)"}`);
+console.log(
+  `   builder ha ancora l'immagine: ${onBuilder ? "SI (male)" : "NO (corretto)"}`,
+);
 
 // Pulizia del target.
 const t3 = await connectAgent(target.id);
 try {
   for await (const _c of t3.exportImage(TAG, true)) void _c;
-} catch { /* gia' via */ } finally { t3.close(); }
+} catch {
+  /* gia' via */
+} finally {
+  t3.close();
+}
 const stillThere = await hasImage(target.id, TAG);
 console.log(`   pulizia target: ${stillThere ? "FALLITA" : "ok"}`);
 
 const pass = ready && bytes > 0 && onTarget && !onBuilder && !stillThere;
-console.log(`\n${pass ? "TUTTO OK" : "QUALCOSA NON TORNA"}: build su un host, immagine sull'altro, builder ripulito.`);
+console.log(
+  `\n${pass ? "TUTTO OK" : "QUALCOSA NON TORNA"}: build su un host, immagine sull'altro, builder ripulito.`,
+);
 process.exit(pass ? 0 : 1);

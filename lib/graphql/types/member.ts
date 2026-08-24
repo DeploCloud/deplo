@@ -482,7 +482,9 @@ builder.mutationFields((t) => ({
     authScopes: { instanceAdmin: true },
     description:
       "Mint a single-use registration link. Returns the absolute /register URL.",
-    args: { input: t.arg({ type: MintRegistrationLinkInputType, required: true }) },
+    args: {
+      input: t.arg({ type: MintRegistrationLinkInputType, required: true }),
+    },
     resolve: async (_r, { input }) => {
       const { link } = await mintRegistrationLink({
         mode: input.mode,

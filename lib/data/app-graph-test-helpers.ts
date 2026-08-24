@@ -59,7 +59,10 @@ async function appSlug(db: TestDb, appId: string): Promise<string> {
 }
 
 /** Seed the instance-wide server row a project's `server_id` FK references. */
-export async function seedServer(db: TestDb, id: string = SERVER_1): Promise<void> {
+export async function seedServer(
+  db: TestDb,
+  id: string = SERVER_1,
+): Promise<void> {
   await db
     .insert(serversTable)
     .values({
@@ -111,10 +114,7 @@ export interface SeedAppOpts {
 }
 
 /** Seed one project + its 1-to-1 build / method-settings rows. Returns the id. */
-export async function seedApp(
-  db: TestDb,
-  opts: SeedAppOpts,
-): Promise<string> {
+export async function seedApp(db: TestDb, opts: SeedAppOpts): Promise<string> {
   const teamId = opts.teamId ?? TEAM_A;
   const serverId = opts.serverId ?? SERVER_1;
   const build = buildConfigFor({});
@@ -157,7 +157,10 @@ export async function seedApp(
   };
   await db
     .insert(appsTable)
-    .values({ ...appToRow(project), createdByUserId: opts.createdByUserId ?? null });
+    .values({
+      ...appToRow(project),
+      createdByUserId: opts.createdByUserId ?? null,
+    });
   await db.insert(appBuildTable).values(buildToRow(project.id, build));
   await db
     .insert(appBuildMethodSettingsTable)
@@ -225,13 +228,11 @@ export async function seedDeployment(
     rollbackOf: opts.rollbackOf ?? null,
     creator: "Owner",
   };
-  await db
-    .insert(deploymentsTable)
-    .values({
-      ...deploymentToRow(dep),
-      serverId: opts.serverId ?? null,
-      buildServerId: opts.buildServerId ?? null,
-    });
+  await db.insert(deploymentsTable).values({
+    ...deploymentToRow(dep),
+    serverId: opts.serverId ?? null,
+    buildServerId: opts.buildServerId ?? null,
+  });
 }
 
 /** Seed a pull request preview row for an app. Defaults to an open, same-repo

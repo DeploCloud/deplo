@@ -72,7 +72,10 @@ function assemble(vars: VarRow[], targets: TargetRow[]): GlobalEnvVar[] {
     .sort((a, b) => a.key.localeCompare(b.key));
 }
 
-function toDTO(e: GlobalEnvVar, authors: Map<string, VarAuthor>): GlobalEnvVarDTO {
+function toDTO(
+  e: GlobalEnvVar,
+  authors: Map<string, VarAuthor>,
+): GlobalEnvVarDTO {
   const isSecret = e.type === "secret";
   return {
     id: e.id,
@@ -101,7 +104,12 @@ async function loadInstanceVars(): Promise<GlobalEnvVar[]> {
   const targets = await db
     .select()
     .from(instTargets)
-    .where(inArray(instTargets.envVarId, vars.map((v) => v.id)));
+    .where(
+      inArray(
+        instTargets.envVarId,
+        vars.map((v) => v.id),
+      ),
+    );
   return assemble(vars, targets);
 }
 
@@ -215,7 +223,10 @@ export async function upsertInstanceEnv(input: {
       await tx
         .insert(instTargets)
         .values(
-          (targets ?? [...ALL_ENV_TARGETS]).map((target) => ({ envVarId: id, target })),
+          (targets ?? [...ALL_ENV_TARGETS]).map((target) => ({
+            envVarId: id,
+            target,
+          })),
         );
     }
   });

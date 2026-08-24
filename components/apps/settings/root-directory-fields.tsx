@@ -32,11 +32,13 @@ export function RootDirectoryFields({
         Root Directory
       </FieldLabel>
       <div className="relative max-w-md">
-        <FolderTree className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
+        <FolderTree className="pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2 text-muted-foreground" />
         <Input
           id="root-directory"
           value={build.rootDirectory}
-          onChange={(e) => onBuildChange({ ...build, rootDirectory: e.target.value })}
+          onChange={(e) =>
+            onBuildChange({ ...build, rootDirectory: e.target.value })
+          }
           placeholder="./"
           disabled={disabled}
           className="pl-9 font-mono text-sm"

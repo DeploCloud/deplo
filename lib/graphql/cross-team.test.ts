@@ -37,13 +37,30 @@ import { type GraphQLContext } from "./context";
 import { runWithIdentity, type RequestIdentity } from "../auth/request-context";
 import { getCurrentUser } from "../auth";
 import { getActiveTeamId, reachableCapabilities } from "../membership";
-import { seedIdentity, TEAM_A, TEAM_B, USER_1 } from "../data/leaf-test-helpers";
-import { seedApp, seedServer, seedDeployment } from "../data/app-graph-test-helpers";
-import { seedDatabase, seedS3, seedBackup, seedRun } from "../data/backup-test-helpers";
+import {
+  seedIdentity,
+  TEAM_A,
+  TEAM_B,
+  USER_1,
+} from "../data/leaf-test-helpers";
+import {
+  seedApp,
+  seedServer,
+  seedDeployment,
+} from "../data/app-graph-test-helpers";
+import {
+  seedDatabase,
+  seedS3,
+  seedBackup,
+  seedRun,
+} from "../data/backup-test-helpers";
 import { ALL_CAPABILITIES } from "../types";
 import { eq } from "drizzle-orm";
 import { encryptSecret } from "../crypto";
-import { __setRunnerForTest, __resetQueueForTest } from "../deploy/deploy-queue";
+import {
+  __setRunnerForTest,
+  __resetQueueForTest,
+} from "../deploy/deploy-queue";
 
 /**
  * The CROSS-TEAM matrix: every mutation and every query of the public API,
@@ -135,48 +152,189 @@ async function seedAll(): Promise<void> {
   // Team A needs one of everything too, so a mutation that reads the ACTIVE
   // team first doesn't fail for an unrelated reason.
   await db.insert(projectsTable).values([
-    { id: "prc_a", teamId: TEAM_A, name: "A", slug: "a", createdAt: T0, updatedAt: T0 },
-    { id: B.project, teamId: TEAM_B, name: "B", slug: "b", createdAt: T0, updatedAt: T0 },
+    {
+      id: "prc_a",
+      teamId: TEAM_A,
+      name: "A",
+      slug: "a",
+      createdAt: T0,
+      updatedAt: T0,
+    },
+    {
+      id: B.project,
+      teamId: TEAM_B,
+      name: "B",
+      slug: "b",
+      createdAt: T0,
+      updatedAt: T0,
+    },
   ]);
   await db.insert(foldersTable).values([
     { id: "fld_a", teamId: TEAM_A, name: "A", createdAt: T0, updatedAt: T0 },
-    { id: B.folder, teamId: TEAM_B, name: "B", ownerUserId: B.user, createdAt: T0, updatedAt: T0 },
+    {
+      id: B.folder,
+      teamId: TEAM_B,
+      name: "B",
+      ownerUserId: B.user,
+      createdAt: T0,
+      updatedAt: T0,
+    },
   ]);
   await db.insert(environmentsTable).values([
-    { id: "environ_a", projectId: "prc_a", name: "Prod", slug: "prod", kind: "production", gitBranch: "", isDefault: true, position: 0, createdAt: T0, updatedAt: T0 },
-    { id: B.environment, projectId: B.project, name: "Prod", slug: "prod", kind: "production", gitBranch: "", isDefault: true, position: 0, createdAt: T0, updatedAt: T0 },
+    {
+      id: "environ_a",
+      projectId: "prc_a",
+      name: "Prod",
+      slug: "prod",
+      kind: "production",
+      gitBranch: "",
+      isDefault: true,
+      position: 0,
+      createdAt: T0,
+      updatedAt: T0,
+    },
+    {
+      id: B.environment,
+      projectId: B.project,
+      name: "Prod",
+      slug: "prod",
+      kind: "production",
+      gitBranch: "",
+      isDefault: true,
+      position: 0,
+      createdAt: T0,
+      updatedAt: T0,
+    },
   ]);
   await seedApp(db, { id: "prj_a_app", slug: "a-app", teamId: TEAM_A });
-  await seedApp(db, { id: B.app, slug: "b-app", teamId: TEAM_B, serverId: B.server });
-  await seedDeployment(db, { id: "dpl_a", appId: "prj_a_app", status: "ready" });
+  await seedApp(db, {
+    id: B.app,
+    slug: "b-app",
+    teamId: TEAM_B,
+    serverId: B.server,
+  });
+  await seedDeployment(db, {
+    id: "dpl_a",
+    appId: "prj_a_app",
+    status: "ready",
+  });
   await seedDeployment(db, { id: B.deployment, appId: B.app, status: "ready" });
   await seedDatabase(db, { id: "db_a", name: "a", teamId: TEAM_A });
-  await seedDatabase(db, { id: B.database, name: "b", teamId: TEAM_B, serverId: B.server });
+  await seedDatabase(db, {
+    id: B.database,
+    name: "b",
+    teamId: TEAM_B,
+    serverId: B.server,
+  });
   await seedS3(db, { id: "s3_a", teamId: TEAM_A });
   await seedS3(db, { id: B.s3, teamId: TEAM_B });
-  await seedBackup(db, { id: "bkp_a", teamId: TEAM_A, databaseId: "db_a", destinationId: "s3_a" });
-  await seedBackup(db, { id: B.backup, teamId: TEAM_B, databaseId: B.database, destinationId: B.s3 });
-  await seedRun(db, { id: "run_a", teamId: TEAM_A, backupId: "bkp_a", databaseId: "db_a", destinationId: "s3_a" });
-  await seedRun(db, { id: B.run, teamId: TEAM_B, backupId: B.backup, databaseId: B.database, destinationId: B.s3 });
+  await seedBackup(db, {
+    id: "bkp_a",
+    teamId: TEAM_A,
+    databaseId: "db_a",
+    destinationId: "s3_a",
+  });
+  await seedBackup(db, {
+    id: B.backup,
+    teamId: TEAM_B,
+    databaseId: B.database,
+    destinationId: B.s3,
+  });
+  await seedRun(db, {
+    id: "run_a",
+    teamId: TEAM_A,
+    backupId: "bkp_a",
+    databaseId: "db_a",
+    destinationId: "s3_a",
+  });
+  await seedRun(db, {
+    id: B.run,
+    teamId: TEAM_B,
+    backupId: B.backup,
+    databaseId: B.database,
+    destinationId: B.s3,
+  });
   await db.insert(registriesTable).values([
-    { id: "reg_a", teamId: TEAM_A, name: "a", type: "generic", registryUrl: "ghcr.io", username: "u", passwordEnc: encryptSecret("p"), createdAt: T0 },
-    { id: B.registry, teamId: TEAM_B, name: "b", type: "generic", registryUrl: "ghcr.io", username: "u", passwordEnc: encryptSecret("p"), createdAt: T0 },
+    {
+      id: "reg_a",
+      teamId: TEAM_A,
+      name: "a",
+      type: "generic",
+      registryUrl: "ghcr.io",
+      username: "u",
+      passwordEnc: encryptSecret("p"),
+      createdAt: T0,
+    },
+    {
+      id: B.registry,
+      teamId: TEAM_B,
+      name: "b",
+      type: "generic",
+      registryUrl: "ghcr.io",
+      username: "u",
+      passwordEnc: encryptSecret("p"),
+      createdAt: T0,
+    },
   ]);
   await db.insert(teamRolesTable).values([
-    { id: "role_a", teamId: TEAM_A, builtinKey: null, name: "Custom A", createdAt: T0 },
-    { id: B.role, teamId: TEAM_B, builtinKey: null, name: "Custom B", createdAt: T0 },
+    {
+      id: "role_a",
+      teamId: TEAM_A,
+      builtinKey: null,
+      name: "Custom A",
+      createdAt: T0,
+    },
+    {
+      id: B.role,
+      teamId: TEAM_B,
+      builtinKey: null,
+      name: "Custom B",
+      createdAt: T0,
+    },
   ]);
   await db.insert(teamRoleCapabilitiesTable).values([
     { roleId: "role_a", capability: "view" },
     { roleId: B.role, capability: "view" },
   ]);
   await db.insert(envVarsTable).values([
-    { id: "env_a", appId: "prj_a_app", key: "K", valueEnc: encryptSecret("v"), type: "plain", createdAt: T0, updatedAt: T0 },
-    { id: B.envVar, appId: B.app, key: "K", valueEnc: encryptSecret("v"), type: "plain", createdAt: T0, updatedAt: T0 },
+    {
+      id: "env_a",
+      appId: "prj_a_app",
+      key: "K",
+      valueEnc: encryptSecret("v"),
+      type: "plain",
+      createdAt: T0,
+      updatedAt: T0,
+    },
+    {
+      id: B.envVar,
+      appId: B.app,
+      key: "K",
+      valueEnc: encryptSecret("v"),
+      type: "plain",
+      createdAt: T0,
+      updatedAt: T0,
+    },
   ]);
   await db.insert(domainsTable).values([
-    { id: "dom_a", appId: "prj_a_app", name: "a.example.com", isPrimary: true, ssl: false, status: "valid", createdAt: T0 },
-    { id: B.domain, appId: B.app, name: "b.example.com", isPrimary: true, ssl: false, status: "valid", createdAt: T0 },
+    {
+      id: "dom_a",
+      appId: "prj_a_app",
+      name: "a.example.com",
+      isPrimary: true,
+      ssl: false,
+      status: "valid",
+      createdAt: T0,
+    },
+    {
+      id: B.domain,
+      appId: B.app,
+      name: "b.example.com",
+      isPrimary: true,
+      ssl: false,
+      status: "valid",
+      createdAt: T0,
+    },
   ]);
   // NOT an instance admin: instance administration is global by design, and a
   // global admin reaching another team is the feature, not the leak.
@@ -243,8 +401,10 @@ function literal(
   mutation: string,
   depth = 0,
 ): string {
-  if (isNonNullType(type)) return literal(type.ofType, argName, mutation, depth);
-  if (isListType(type)) return `[${literal(type.ofType, argName, mutation, depth)}]`;
+  if (isNonNullType(type))
+    return literal(type.ofType, argName, mutation, depth);
+  if (isListType(type))
+    return `[${literal(type.ofType, argName, mutation, depth)}]`;
   if (isEnumType(type)) return type.getValues()[0]?.name ?? "null";
   if (isScalarType(type)) {
     switch (type.name) {
@@ -332,7 +492,10 @@ const MUTATIONS = Object.values(schema.getMutationType()!.getFields())
     };
   });
 
-async function asOwnerOfA(): Promise<{ ctx: GraphQLContext; identity: RequestIdentity }> {
+async function asOwnerOfA(): Promise<{
+  ctx: GraphQLContext;
+  identity: RequestIdentity;
+}> {
   const identity: RequestIdentity = { userId: USER_1, teamId: TEAM_A };
   const ctx = await runWithIdentity(
     identity,
@@ -355,7 +518,10 @@ async function snapshotB(): Promise<string> {
     db.select().from(cp.folders).where(eq(cp.folders.teamId, TEAM_B)),
     db.select().from(cp.projects).where(eq(cp.projects.teamId, TEAM_B)),
     db.select().from(cp.databases).where(eq(cp.databases.teamId, TEAM_B)),
-    db.select().from(cp.backupDestination).where(eq(cp.backupDestination.teamId, TEAM_B)),
+    db
+      .select()
+      .from(cp.backupDestination)
+      .where(eq(cp.backupDestination.teamId, TEAM_B)),
     db.select().from(cp.backups).where(eq(cp.backups.teamId, TEAM_B)),
     db.select().from(cp.registries).where(eq(cp.registries.teamId, TEAM_B)),
     db.select().from(cp.teamRoles).where(eq(cp.teamRoles.teamId, TEAM_B)),
@@ -364,7 +530,10 @@ async function snapshotB(): Promise<string> {
     db.select().from(cp.envVars).where(eq(cp.envVars.appId, B.app)),
     db.select().from(cp.domains).where(eq(cp.domains.appId, B.app)),
     db.select().from(cp.deployments).where(eq(cp.deployments.appId, B.app)),
-    db.select().from(cp.environments).where(eq(cp.environments.projectId, B.project)),
+    db
+      .select()
+      .from(cp.environments)
+      .where(eq(cp.environments.projectId, B.project)),
   ]);
   return JSON.stringify(counts);
 }
@@ -394,7 +563,6 @@ test("no mutation touches another team's rows", async () => {
     `these mutations wrote to team B with team A's principal: ${touched.join(", ")}`,
   );
 });
-
 
 /* ------------------------------------------------------------------ */
 /* Reads: does any query hand back team B's data?                      */
@@ -474,10 +642,17 @@ test("no query hands back another team's data", async () => {
       continue;
     }
     if (result === "timeout") continue;
-    const res = result as { data?: unknown; errors?: readonly { message: string }[] };
-    const invalid = (res.errors ?? []).filter((e) => !(e as { path?: unknown }).path);
+    const res = result as {
+      data?: unknown;
+      errors?: readonly { message: string }[];
+    };
+    const invalid = (res.errors ?? []).filter(
+      (e) => !(e as { path?: unknown }).path,
+    );
     if (invalid.length > 0) {
-      leaks.push(`${q.name}: INVALID DOC — ${invalid.map((x) => x.message).join("; ")}`);
+      leaks.push(
+        `${q.name}: INVALID DOC — ${invalid.map((x) => x.message).join("; ")}`,
+      );
       continue;
     }
     const body = JSON.stringify(res.data ?? {});
@@ -508,7 +683,8 @@ test("no query hands back another team's data", async () => {
         new Promise((res) => setTimeout(() => res({}), 15_000)),
       ])) as { data?: unknown };
       const body = JSON.stringify(r.data ?? {});
-      for (const sentinel of SENTINELS) if (body.includes(sentinel)) seen.add(sentinel);
+      for (const sentinel of SENTINELS)
+        if (body.includes(sentinel)) seen.add(sentinel);
     } catch {
       /* ignore */
     }

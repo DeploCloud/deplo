@@ -101,7 +101,12 @@ beforeEach(async () => {
   await seedIdentity(db, {
     users: [
       { id: USER_1, teamId: TEAM_A, role: "owner" },
-      { id: "user_member", teamId: TEAM_A, role: "member", isInstanceAdmin: false },
+      {
+        id: "user_member",
+        teamId: TEAM_A,
+        role: "member",
+        isInstanceAdmin: false,
+      },
     ],
   });
   // RFC 5737 TEST-NET-1, and deliberately unprovisioned: the dial is refused
@@ -124,12 +129,17 @@ test("every entry point is instance-admin only", async () => {
     ["listServerCertificates", () => listServerCertificates(SERVER)],
     [
       "addServerCertificate",
-      () => addServerCertificate(SERVER, { certPem: GOOD_CERT, keyPem: GOOD_KEY }),
+      () =>
+        addServerCertificate(SERVER, { certPem: GOOD_CERT, keyPem: GOOD_KEY }),
     ],
     ["removeServerCertificate", () => removeServerCertificate(SERVER, "AB:CD")],
   ];
   for (const [name, call] of calls) {
-    await assert.rejects(() => asMember(call), /instance admin/i, `${name} must be gated`);
+    await assert.rejects(
+      () => asMember(call),
+      /instance admin/i,
+      `${name} must be gated`,
+    );
   }
 });
 
@@ -142,18 +152,27 @@ test("an unknown server is rejected, not dialed", async () => {
 
 test("a certificate and key that do not belong together are refused", async () => {
   await assert.rejects(
-    () => asAdmin(() => addServerCertificate(SERVER, { certPem: GOOD_CERT, keyPem: OTHER_KEY })),
+    () =>
+      asAdmin(() =>
+        addServerCertificate(SERVER, { certPem: GOOD_CERT, keyPem: OTHER_KEY }),
+      ),
     /does not belong/i,
   );
 });
 
 test("garbage is named as garbage, not reported as an unreachable host", async () => {
   await assert.rejects(
-    () => asAdmin(() => addServerCertificate(SERVER, { certPem: "hello", keyPem: GOOD_KEY })),
+    () =>
+      asAdmin(() =>
+        addServerCertificate(SERVER, { certPem: "hello", keyPem: GOOD_KEY }),
+      ),
     /not a certificate/i,
   );
   await assert.rejects(
-    () => asAdmin(() => addServerCertificate(SERVER, { certPem: GOOD_CERT, keyPem: "hello" })),
+    () =>
+      asAdmin(() =>
+        addServerCertificate(SERVER, { certPem: GOOD_CERT, keyPem: "hello" }),
+      ),
     /could not read that private key/i,
   );
 });
@@ -162,7 +181,10 @@ test("an expired certificate is refused before it reaches the host", async () =>
   await assert.rejects(
     () =>
       asAdmin(() =>
-        addServerCertificate(SERVER, { certPem: EXPIRED_CERT, keyPem: EXPIRED_KEY }),
+        addServerCertificate(SERVER, {
+          certPem: EXPIRED_CERT,
+          keyPem: EXPIRED_KEY,
+        }),
       ),
     /expired on 2021-01-01/i,
   );
@@ -172,7 +194,10 @@ test("a valid pair passes validation and only then dials the host", async () => 
   // The dial is what fails here (no pinned agent certificate), which is the
   // proof: the pair was accepted, so the next thing to go wrong is the network.
   await assert.rejects(
-    () => asAdmin(() => addServerCertificate(SERVER, { certPem: GOOD_CERT, keyPem: GOOD_KEY })),
+    () =>
+      asAdmin(() =>
+        addServerCertificate(SERVER, { certPem: GOOD_CERT, keyPem: GOOD_KEY }),
+      ),
     (e: Error) => !/certificate|private key/i.test(e.message),
   );
 });
@@ -203,7 +228,10 @@ test("a certificate dated in the future is refused, like an expired one", () => 
   return assert.rejects(
     () =>
       asAdmin(() =>
-        addServerCertificate(SERVER, { certPem: FUTURE_CERT, keyPem: FUTURE_KEY }),
+        addServerCertificate(SERVER, {
+          certPem: FUTURE_CERT,
+          keyPem: FUTURE_KEY,
+        }),
       ),
     /not valid until 2027-01-01/i,
   );
@@ -245,10 +273,16 @@ test("supersedes: a certificate replaces one whose every domain it covers", () =
   // The same domains: a renewal.
   assert.equal(supersedes(new Set(["a.com"]), installed(["a.com"])), true);
   // A name added to an existing certificate: the old one is strictly redundant.
-  assert.equal(supersedes(new Set(["a.com", "b.com"]), installed(["a.com"])), true);
+  assert.equal(
+    supersedes(new Set(["a.com", "b.com"]), installed(["a.com"])),
+    true,
+  );
   // A partial overlap keeps BOTH: evicting the old one would take away b.com,
   // which the new certificate does not cover.
-  assert.equal(supersedes(new Set(["a.com"]), installed(["a.com", "b.com"])), false);
+  assert.equal(
+    supersedes(new Set(["a.com"]), installed(["a.com", "b.com"])),
+    false,
+  );
   // Unrelated certificates never touch each other.
   assert.equal(supersedes(new Set(["a.com"]), installed(["z.com"])), false);
   // A certificate naming nothing is never claimed to be covered.

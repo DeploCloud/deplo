@@ -154,8 +154,8 @@ function SelectionActionBar({
   if (selection.count === 0) return null;
   return (
     <div className="pointer-events-none fixed inset-x-0 bottom-6 z-40 flex justify-center px-4">
-      <div className="pointer-events-auto flex items-center gap-1 rounded-full border border-border bg-popover/95 py-1.5 pl-4 pr-1.5 shadow-lg backdrop-blur supports-[backdrop-filter]:bg-popover/80">
-        <span className="whitespace-nowrap text-sm font-medium">
+      <div className="pointer-events-auto flex items-center gap-1 rounded-full border border-border bg-popover/95 py-1.5 pr-1.5 pl-4 shadow-lg backdrop-blur supports-[backdrop-filter]:bg-popover/80">
+        <span className="text-sm font-medium whitespace-nowrap">
           {selection.count} selected
         </span>
         <span className="mx-1.5 h-5 w-px bg-border" />
@@ -504,9 +504,7 @@ function SortableGrid({
   // move (into a folder or a project container) round-trips. Cleared whenever
   // the visible projection actually changes (the refresh landing, or navigating
   // in/out of a folder/project) — see the render-time reset below.
-  const [movedIds, setMovedIds] = React.useState<Set<string>>(
-    () => new Set(),
-  );
+  const [movedIds, setMovedIds] = React.useState<Set<string>>(() => new Set());
   // The card's own move menu drives the same optimistic hide the drag does.
   const hideMoved = React.useCallback(
     (id: string) => setMovedIds((prev) => new Set(prev).add(id)),
@@ -594,9 +592,7 @@ function SortableGrid({
   const items = React.useMemo(() => {
     const ordered = order
       .map((id) => byId.get(id))
-      .filter(
-        (p): p is AppSummary => p != null && !movedIds.has(p.id),
-      );
+      .filter((p): p is AppSummary => p != null && !movedIds.has(p.id));
     const known = new Set(order);
     return [
       ...ordered,
@@ -606,13 +602,12 @@ function SortableGrid({
 
   const activeIsFolder = activeId !== null && folderIdSet.has(activeId);
   const activeIsProject = activeId !== null && projectIdSet.has(activeId);
-  const activeIsApp =
-    activeId !== null && !activeIsFolder && !activeIsProject;
+  const activeIsApp = activeId !== null && !activeIsFolder && !activeIsProject;
   // The actual card behind the floating drag clone (the lifted card that tracks
   // the cursor).
-  const activeFolder = activeId ? folderById.get(activeId) ?? null : null;
-  const activeProject = activeId ? projectById.get(activeId) ?? null : null;
-  const activeApp = activeIsApp ? byId.get(activeId!) ?? null : null;
+  const activeFolder = activeId ? (folderById.get(activeId) ?? null) : null;
+  const activeProject = activeId ? (projectById.get(activeId) ?? null) : null;
+  const activeApp = activeIsApp ? (byId.get(activeId!) ?? null) : null;
   // A dragged app hovering a container it can be dropped INTO (a folder or
   // a project card) → it shrinks (scale-0) as a preview of being absorbed; it
   // grows back the moment it leaves.
@@ -715,8 +710,12 @@ function SortableGrid({
   // Whether "Delete all apps" has anything to delete: a selected folder or
   // project that actually holds apps (both counts cover their whole subtree).
   const selectionHasNestedApps =
-    folderItems.some((f) => selectedFolderIds.includes(f.id) && f.appCount > 0) ||
-    projectItems.some((p) => selectedProjectIds.includes(p.id) && p.appCount > 0);
+    folderItems.some(
+      (f) => selectedFolderIds.includes(f.id) && f.appCount > 0,
+    ) ||
+    projectItems.some(
+      (p) => selectedProjectIds.includes(p.id) && p.appCount > 0,
+    );
 
   function bulkMoveTo(folderId: string | null) {
     const ids = selectedAppIds;
@@ -816,11 +815,7 @@ function SortableGrid({
     }),
   );
 
-  function persistReorder(
-    mutation: string,
-    ids: string[],
-    revert: () => void,
-  ) {
+  function persistReorder(mutation: string, ids: string[], revert: () => void) {
     startTransition(async () => {
       const res = await gqlAction(mutation, { ids });
       if (res.ok) router.refresh();
@@ -858,7 +853,10 @@ function SortableGrid({
     const dest = openFolder?.parentId ?? null;
     setMovedIds((prev) => new Set(prev).add(folderId));
     startTransition(async () => {
-      const res = await gqlAction(MOVE_FOLDER, { id: folderId, parentId: dest });
+      const res = await gqlAction(MOVE_FOLDER, {
+        id: folderId,
+        parentId: dest,
+      });
       if (res.ok) {
         toast.success("Moved out of folder");
         router.refresh();
@@ -883,7 +881,9 @@ function SortableGrid({
         projectId,
       });
       if (res.ok) {
-        toast.success(projectId ? "Moved into project" : "Moved out of project");
+        toast.success(
+          projectId ? "Moved into project" : "Moved out of project",
+        );
         router.refresh();
       } else {
         toast.error(res.error);
@@ -913,9 +913,7 @@ function SortableGrid({
       );
       const failed = results.find((r) => !r.ok);
       if (!failed) {
-        toast.success(
-          `Moved ${ids.length} app${ids.length === 1 ? "" : "s"}`,
-        );
+        toast.success(`Moved ${ids.length} app${ids.length === 1 ? "" : "s"}`);
         clearSelection();
       } else {
         toast.error(failed.error);
@@ -947,11 +945,7 @@ function SortableGrid({
   // Reorder a whole multi-selection together: lift every selected project out of
   // the order (keeping their relative order) and re-insert the block at the drop
   // target — so a marquee/ctrl-selected group can be repositioned in one drag.
-  function reorderAppGroup(
-    activeId: string,
-    overId: string,
-    selIds: string[],
-  ) {
+  function reorderAppGroup(activeId: string, overId: string, selIds: string[]) {
     const selSet = new Set(selIds);
     if (selSet.has(overId)) return; // dropped onto a group member → no-op
     const rest = order.filter((id) => !selSet.has(id));
@@ -1016,8 +1010,7 @@ function SortableGrid({
           ...args,
           droppableContainers: args.droppableContainers.filter(
             (c) =>
-              folderIdSet.has(String(c.id)) ||
-              String(c.id) === UNGROUP_DROP_ID,
+              folderIdSet.has(String(c.id)) || String(c.id) === UNGROUP_DROP_ID,
           ),
         });
       }
@@ -1161,7 +1154,7 @@ function SortableGrid({
           onPointerDown={onCanvasPointerDown}
           // select-none so sweeping a marquee across the section labels /
           // breadcrumb doesn't also start a native text selection.
-          className="relative min-h-[60vh] select-none space-y-6"
+          className="relative min-h-[60vh] space-y-6 select-none"
         >
           {/* Imperatively positioned by the selection hook during a drag (no
               per-pointermove re-render); hidden when idle. */}
@@ -1273,9 +1266,7 @@ function SortableGrid({
                       dragActive={dragActive}
                       folders={allFolders}
                       canMoveApps={canMoveApps}
-                      environments={
-                        canMoveApps ? environments : undefined
-                      }
+                      environments={canMoveApps ? environments : undefined}
                       onDeleted={() => onDeleted([p.id])}
                       onMoved={() => hideMoved(p.id)}
                       onMoveFailed={() => revealMoved(p.id)}
@@ -1331,7 +1322,7 @@ function SortableGrid({
             />
             {/* Dragging a multi-selection → a badge with how many move together. */}
             {activeIsSelectedMulti && (
-              <span className="absolute -right-2 -top-2 flex h-6 min-w-6 items-center justify-center rounded-full bg-primary px-1.5 text-xs font-semibold text-primary-foreground shadow-md ring-2 ring-background">
+              <span className="absolute -top-2 -right-2 flex h-6 min-w-6 items-center justify-center rounded-full bg-primary px-1.5 text-xs font-semibold text-primary-foreground shadow-md ring-2 ring-background">
                 {selectionCount}
               </span>
             )}
@@ -1397,7 +1388,7 @@ function DroppableBreadcrumb({
       ref={setNodeRef}
       className={cn(
         "flex flex-wrap items-center gap-2 rounded-md px-1 py-1 transition-colors",
-        dragging && "ring-1 ring-dashed ring-border",
+        dragging && "ring-dashed ring-1 ring-border",
         isOver && "bg-primary/10 ring-1 ring-primary/40",
       )}
     >
@@ -1475,9 +1466,7 @@ function SortableItem({
   // rendered still reaches these listeners through the React tree (portals move
   // the DOM node, not the React parent), and must never pick the card up under
   // the backdrop. See lib/portal-event-scope.ts.
-  const pointerDragListeners = scopeListenersToSubtree(
-    rawPointerDragListeners,
-  );
+  const pointerDragListeners = scopeListenersToSubtree(rawPointerDragListeners);
   // Drop the draggable's role="button" (and its role-only ARIA companions) from
   // the wrapper: it also hosts the ⋯ menu button, and a button must not nest one.
   const {
@@ -1540,7 +1529,7 @@ function SortableItem({
       ref={setActivatorNodeRef}
       type="button"
       aria-label="Drag to move or reorder"
-      className="cursor-grab rounded-md p-1 text-muted-foreground/60 opacity-0 transition-opacity hover:bg-accent hover:text-foreground focus-visible:opacity-100 group-hover:opacity-100 active:cursor-grabbing"
+      className="cursor-grab rounded-md p-1 text-muted-foreground/60 opacity-0 transition-opacity group-hover:opacity-100 hover:bg-accent hover:text-foreground focus-visible:opacity-100 active:cursor-grabbing"
       onClick={(e) => e.preventDefault()}
       onKeyDown={keyboardListener as React.KeyboardEventHandler}
       {...attributes}
@@ -1559,8 +1548,8 @@ function SortableItem({
       className={cn(
         // Suppress the native long-press callout / text selection so a touch
         // drag isn't preempted by the browser's own link/selection UI.
-        "touch-manipulation select-none rounded-xl [-webkit-touch-callout:none]",
-        "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background",
+        "touch-manipulation rounded-xl select-none [-webkit-touch-callout:none]",
+        "focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background focus-visible:outline-none",
         // Multi-selection highlight (marquee / ctrl+click).
         selected && "ring-2 ring-primary ring-offset-2 ring-offset-background",
         // Only the stacking lives on the outer node — the translate dnd-kit

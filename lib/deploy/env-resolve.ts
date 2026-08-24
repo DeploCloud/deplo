@@ -111,7 +111,8 @@ export function resolveEnvEntries(
 ): { key: string; valueEnc: string }[] {
   const out: { key: string; valueEnc: string }[] = [];
   for (const e of instanceGlobals) {
-    if (e.targets.includes(target)) out.push({ key: e.key, valueEnc: e.valueEnc });
+    if (e.targets.includes(target))
+      out.push({ key: e.key, valueEnc: e.valueEnc });
   }
   for (const e of envVars) {
     if (e.appId === appId && e.targets.includes(target)) {
@@ -119,7 +120,8 @@ export function resolveEnvEntries(
     }
   }
   for (const e of sharedVars) {
-    if (e.targets.includes(target)) out.push({ key: e.key, valueEnc: e.valueEnc });
+    if (e.targets.includes(target))
+      out.push({ key: e.key, valueEnc: e.valueEnc });
   }
   // Defaulted to `[]`, so every production caller is byte-identical.
   if (target === "preview") {

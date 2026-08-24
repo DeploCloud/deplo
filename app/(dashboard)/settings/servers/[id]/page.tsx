@@ -5,7 +5,11 @@ import { ArrowLeft, Server as ServerIcon } from "lucide-react";
 import { DeploMark } from "@/components/logo";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { getServerById, getServerTeamIds, serverRole } from "@/lib/data/servers";
+import {
+  getServerById,
+  getServerTeamIds,
+  serverRole,
+} from "@/lib/data/servers";
 import { listAllTeamsForAdmin } from "@/lib/data/teams";
 import { getCleanupPolicy, listCleanupRuns } from "@/lib/data/docker-cleanup";
 import { isInstanceAdmin } from "@/lib/membership";
@@ -25,12 +29,17 @@ import {
   agentUpdateAvailable,
 } from "@/lib/version";
 import type { TeamOption } from "@/components/servers/server-team-access";
-import { ServerHealthProvider, type ServerHealthState } from "../server-health-provider";
+import {
+  ServerHealthProvider,
+  type ServerHealthState,
+} from "../server-health-provider";
 import { ServerHealthChip } from "../server-health-chip";
 import { CheckStatusButton } from "../check-status-button";
 import { ServerDetailTabs } from "./server-detail-tabs";
 
-export async function generateMetadata(props: PageProps<"/settings/servers/[id]">) {
+export async function generateMetadata(
+  props: PageProps<"/settings/servers/[id]">,
+) {
   const { id } = await props.params;
   const server = await getServerById(id).catch(() => null);
   return { title: server ? `${serverLabel(server)} · Servers` : "Server" };
@@ -46,7 +55,9 @@ export async function generateMetadata(props: PageProps<"/settings/servers/[id]"
  * from the database; the live answers — health, readiness, what the hardware is —
  * are fetched client-side, per tab, once the page is already on screen.
  */
-export default async function ServerDetailPage(props: PageProps<"/settings/servers/[id]">) {
+export default async function ServerDetailPage(
+  props: PageProps<"/settings/servers/[id]">,
+) {
   // Instance-admin, like the list page and for the same reason: this view spans
   // servers restricted to other teams, and every action on it is host-wide.
   if (!(await isInstanceAdmin())) notFound();
@@ -60,13 +71,14 @@ export default async function ServerDetailPage(props: PageProps<"/settings/serve
   // its card in the list instead.
   if (server.importOnly) notFound();
 
-  const [expectedAgentVersion, teamIds, teamsRaw, policy, runs] = await Promise.all([
-    resolveExpectedAgentVersion(),
-    getServerTeamIds(id),
-    listAllTeamsForAdmin(),
-    getCleanupPolicy(),
-    listCleanupRuns({ serverId: id }),
-  ]);
+  const [expectedAgentVersion, teamIds, teamsRaw, policy, runs] =
+    await Promise.all([
+      resolveExpectedAgentVersion(),
+      getServerTeamIds(id),
+      listAllTeamsForAdmin(),
+      getCleanupPolicy(),
+      listCleanupRuns({ serverId: id }),
+    ]);
 
   // Fills in capacity specs for a server that has never been measured, reusing
   // the same helper the list page uses; no per-second polling.
@@ -106,7 +118,12 @@ export default async function ServerDetailPage(props: PageProps<"/settings/serve
           readable width like the App pages do, rather than the wide list shell. */}
       <div className="mx-auto w-full max-w-5xl space-y-6">
         <div className="space-y-3">
-          <Button variant="ghost" size="sm" className="-ml-2 h-8 text-muted-foreground" asChild>
+          <Button
+            variant="ghost"
+            size="sm"
+            className="-ml-2 h-8 text-muted-foreground"
+            asChild
+          >
             <Link href="/settings/servers">
               <ArrowLeft className="size-4" />
               Servers
@@ -129,10 +146,15 @@ export default async function ServerDetailPage(props: PageProps<"/settings/serve
             )}
             <ServerHealthChip serverId={server.id} fallback={seed[server.id]} />
             <div className="ml-auto">
-              <CheckStatusButton serverId={server.id} serverName={serverLabel(hydrated)} />
+              <CheckStatusButton
+                serverId={server.id}
+                serverName={serverLabel(hydrated)}
+              />
             </div>
           </div>
-          <p className="mt-1 font-mono text-xs text-muted-foreground">{hydrated.ip}</p>
+          <p className="mt-1 font-mono text-xs text-muted-foreground">
+            {hydrated.ip}
+          </p>
         </div>
 
         <ServerDetailTabs

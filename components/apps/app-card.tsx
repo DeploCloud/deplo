@@ -263,7 +263,8 @@ export function AppCard({
         `mutation($appId: ID!, $folderId: ID) { moveAppToFolder(appId: $appId, folderId: $folderId) }`,
         { appId: project.id, folderId },
       );
-      if (res.ok) toast.success(folderId ? "Moved to folder" : "Moved out of folder");
+      if (res.ok)
+        toast.success(folderId ? "Moved to folder" : "Moved out of folder");
       else {
         onMoveFailed?.();
         toast.error(res.error);
@@ -324,10 +325,7 @@ export function AppCard({
           </K.Item>
         </SimpleTooltip>
       ) : stopped ? (
-        <SimpleTooltip
-          content="Start this app's stopped container"
-          side="left"
-        >
+        <SimpleTooltip content="Start this app's stopped container" side="left">
           <K.Item
             onSelect={() =>
               act(
@@ -342,10 +340,7 @@ export function AppCard({
           </K.Item>
         </SimpleTooltip>
       ) : (
-        <SimpleTooltip
-          content="Stop this app's running container"
-          side="left"
-        >
+        <SimpleTooltip content="Stop this app's running container" side="left">
           <K.Item
             onSelect={() =>
               act(
@@ -446,9 +441,7 @@ export function AppCard({
             >
               <K.Item
                 onSelect={() => moveTo(f.id)}
-                disabled={
-                  !can("move_apps") || f.id === project.folderId
-                }
+                disabled={!can("move_apps") || f.id === project.folderId}
               >
                 {f.name}
               </K.Item>
@@ -471,16 +464,10 @@ export function AppCard({
           }
         >
           {environments.map((e) => (
-            <SimpleTooltip
-              key={e.id}
-              content={`Move to ${e.name}`}
-              side="left"
-            >
+            <SimpleTooltip key={e.id} content={`Move to ${e.name}`} side="left">
               <K.Item
                 onSelect={() => moveToEnvironment(e.id)}
-                disabled={
-                  !can("move_apps") || e.id === project.environmentId
-                }
+                disabled={!can("move_apps") || e.id === project.environmentId}
               >
                 {e.name}
               </K.Item>
@@ -536,7 +523,7 @@ export function AppCard({
           single gap-1 then spaces all three icons identically. Going from
           display:none → flex restarts the enter animation, so the handle slides
           + fades in each time it reveals. */}
-      <span className="hidden items-center animate-in fade-in-0 slide-in-from-right-2 duration-200 group-hover:flex focus-within:flex">
+      <span className="hidden animate-in items-center duration-200 fade-in-0 slide-in-from-right-2 group-hover:flex focus-within:flex">
         {dragHandle}
       </span>
       <div
@@ -658,7 +645,7 @@ export function AppCard({
               )}
             </div>
           ) : (
-            <span className="hidden whitespace-nowrap text-xs text-muted-foreground md:inline">
+            <span className="hidden text-xs whitespace-nowrap text-muted-foreground md:inline">
               No deployments yet
             </span>
           )}
@@ -684,7 +671,9 @@ export function AppCard({
             <div className="flex min-w-0 flex-1 items-center gap-3">
               <AppLogo logo={project.logo} size={36} />
               <div className="min-w-0 flex-1">
-                <span className="block truncate font-medium">{project.name}</span>
+                <span className="block truncate font-medium">
+                  {project.name}
+                </span>
                 {/* See the list view above: URL when there is one, else the
                     App's kind, exactly as its management header reads. */}
                 <p className="mt-1 truncate text-xs text-muted-foreground">
@@ -719,7 +708,9 @@ export function AppCard({
                 {project.repo ? (
                   // Git deploy: real branch + repo on the same line.
                   <>
-                    <span className="shrink-0 text-muted-foreground/40">on</span>
+                    <span className="shrink-0 text-muted-foreground/40">
+                      on
+                    </span>
                     <GitBranch className="size-3 shrink-0" />
                     <span className="min-w-0 truncate">{dep.branch}</span>
                     <span className="shrink-0 text-muted-foreground/40">·</span>
@@ -730,7 +721,9 @@ export function AppCard({
                   // project IS (e.g. "Compose") where the repo would be.
                   identity && (
                     <>
-                      <span className="shrink-0 text-muted-foreground/40">·</span>
+                      <span className="shrink-0 text-muted-foreground/40">
+                        ·
+                      </span>
                       {identity}
                     </>
                   )
@@ -763,7 +756,7 @@ export function AppCard({
       <div
         aria-busy
         title="This is still being brought over by a migration"
-        className="pointer-events-none animate-pulse select-none opacity-70"
+        className="pointer-events-none animate-pulse opacity-70 select-none"
       >
         {cardInner}
       </div>

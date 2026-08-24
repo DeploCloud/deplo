@@ -15,7 +15,11 @@ import { makeTestDb, type TestDb } from "../db/test-harness";
 import { __setTestDb, __resetTestDb } from "../db/client";
 import { runWithIdentity } from "../auth/request-context";
 import { seedIdentity, TEAM_A, TEAM_B, USER_1 } from "./identity-test-helpers";
-import { seedServer, seedApp, TRUNCATE_PROJECT_GRAPH } from "./app-graph-test-helpers";
+import {
+  seedServer,
+  seedApp,
+  TRUNCATE_PROJECT_GRAPH,
+} from "./app-graph-test-helpers";
 import { projects as projectsTable } from "../db/schema/control-plane";
 import { createToken } from "./tokens";
 
@@ -57,7 +61,12 @@ beforeEach(async () => {
       { id: USER_1, teamId: TEAM_A, role: "owner" },
       { id: "user_2", teamId: TEAM_B, role: "owner" },
       // In TEAM_A, but read-only: the hook is a `configure_apps` surface.
-      { id: "user_viewer", teamId: TEAM_A, role: "member", capabilities: ["view"] },
+      {
+        id: "user_viewer",
+        teamId: TEAM_A,
+        role: "member",
+        capabilities: ["view"],
+      },
     ],
   });
   await seedServer(db);
@@ -86,7 +95,10 @@ test("no app carries a live hook token until someone opens it", async () => {
   );
 
   const url = await asUser1(() => revealDeployHook("prj_1"));
-  assert.match(url, /^https:\/\/deplo\.test\/api\/apps\/prj_1\/deploy-hook\/.+/);
+  assert.match(
+    url,
+    /^https:\/\/deplo\.test\/api\/apps\/prj_1\/deploy-hook\/.+/,
+  );
   assert.deepEqual(await verifyDeployHookToken("prj_1", tokenOf(url)), {
     ok: true,
     teamId: TEAM_A,
@@ -193,12 +205,25 @@ test("a member without configure_apps can't open the hook", async () => {
  * whether its hook is switched on.
  */
 test("an app outside the token's project scope answers the same 404 as an unknown app", async () => {
-  const { POST } = await import(
-    "../../app/api/apps/[id]/deploy-hook/[token]/route"
-  );
+  const { POST } =
+    await import("../../app/api/apps/[id]/deploy-hook/[token]/route");
   await db.insert(projectsTable).values([
-    { id: "prc_in", teamId: TEAM_A, name: "In", slug: "in", createdAt: T0, updatedAt: T0 },
-    { id: "prc_out", teamId: TEAM_A, name: "Out", slug: "out", createdAt: T0, updatedAt: T0 },
+    {
+      id: "prc_in",
+      teamId: TEAM_A,
+      name: "In",
+      slug: "in",
+      createdAt: T0,
+      updatedAt: T0,
+    },
+    {
+      id: "prc_out",
+      teamId: TEAM_A,
+      name: "Out",
+      slug: "out",
+      createdAt: T0,
+      updatedAt: T0,
+    },
   ]);
   await seedApp(db, { id: "prj_out", slug: "out-app", projectId: "prc_out" });
   // The hook is deliberately OFF: that is the branch that used to answer 403.

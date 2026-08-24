@@ -43,11 +43,7 @@ export function RegistryGraphic({ className }: { className?: string }) {
           under the whale reads as a shelf (which is Backup artifacts), while two
           offset ones read as water. Static - the whale moves, the sea does not,
           so there is one moving idea and not two competing ones. */}
-      <g
-        className="stroke-border"
-        strokeWidth="2.5"
-        strokeLinecap="round"
-      >
+      <g className="stroke-border" strokeWidth="2.5" strokeLinecap="round">
         <line x1="20" y1="74" x2="58" y2="74" />
         <line x1="66" y1="74" x2="100" y2="74" />
         <line x1="34" y1="82" x2="62" y2="82" />

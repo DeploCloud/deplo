@@ -47,7 +47,7 @@ export function ConfettiBurst({
         "pointer-events-none motion-reduce:hidden",
         rain
           ? "deplo-confetti-rain fixed inset-0 overflow-hidden"
-          : "absolute left-1/2 top-1/2 size-0",
+          : "absolute top-1/2 left-1/2 size-0",
         className,
       )}
     >

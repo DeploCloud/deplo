@@ -6,7 +6,11 @@ test("the override stands while the server still serves the old value", () => {
   const override = { base: "api", value: "api-v2" };
   // The mutation resolved, but the RSC refresh carrying the new name has not.
   const settled = settleOverride(override, "api");
-  assert.equal(settled, override, "must return the SAME object — a new one re-renders forever");
+  assert.equal(
+    settled,
+    override,
+    "must return the SAME object — a new one re-renders forever",
+  );
   assert.equal(overrideValue(settled, "api"), "api-v2");
 });
 

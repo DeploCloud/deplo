@@ -83,9 +83,7 @@ export function AppLiveStatusProvider({
   }, [initial.slug]);
 
   return (
-    <LiveAppContext.Provider value={live}>
-      {children}
-    </LiveAppContext.Provider>
+    <LiveAppContext.Provider value={live}>{children}</LiveAppContext.Provider>
   );
 }
 

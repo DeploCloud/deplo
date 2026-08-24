@@ -10,12 +10,7 @@ import {
   FolderTree,
   ShieldCheck,
 } from "lucide-react";
-import {
-  Card,
-  CardContent,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { UserAvatar } from "@/components/shared/user-avatar";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -151,14 +146,20 @@ function MemberCard({
             {isFounder && (
               <SimpleTooltip content="Primary owner — created this team; can't be removed or demoted">
                 <span className="shrink-0 leading-none">
-                  <Crown className="size-3.5 text-amber-500" aria-label="Primary owner" />
+                  <Crown
+                    className="size-3.5 text-amber-500"
+                    aria-label="Primary owner"
+                  />
                 </span>
               </SimpleTooltip>
             )}
             {member.isInstanceAdmin && (
               <SimpleTooltip content="Instance admin — platform-wide administrator">
                 <span className="shrink-0 leading-none">
-                  <ShieldCheck className="size-3.5 text-sky-500" aria-label="Instance admin" />
+                  <ShieldCheck
+                    className="size-3.5 text-sky-500"
+                    aria-label="Instance admin"
+                  />
                 </span>
               </SimpleTooltip>
             )}
@@ -212,7 +213,10 @@ function MemberCard({
         {/* And the third thing: whether an admin moved THIS person away from
             what their role gives. Coloured, because it is the only one of the
             three that says "somebody made an exception here". */}
-        <AccessDeltaBadge delta={member.accessDelta} roleName={member.roleName} />
+        <AccessDeltaBadge
+          delta={member.accessDelta}
+          roleName={member.roleName}
+        />
       </div>
     </div>
   );
@@ -225,7 +229,7 @@ function MemberCard({
   return (
     <Link
       href={`/settings/members/${member.userId}`}
-      className="group block h-full rounded-lg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+      className="group block h-full rounded-lg focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"
       aria-label={`Manage @${member.username}`}
     >
       {inner}

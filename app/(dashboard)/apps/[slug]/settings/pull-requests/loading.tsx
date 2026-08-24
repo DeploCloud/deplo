@@ -1,5 +1,10 @@
 import { Skeleton } from "@/components/ui/skeleton";
-import { Card, CardContent, CardFooter, CardHeader } from "@/components/ui/card";
+import {
+  Card,
+  CardContent,
+  CardFooter,
+  CardHeader,
+} from "@/components/ui/card";
 import { SectionLabel } from "@/components/apps/settings/settings-skeletons";
 
 /** Pull request preview settings: the switch card, then the fields card. */

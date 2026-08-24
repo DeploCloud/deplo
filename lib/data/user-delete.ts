@@ -299,9 +299,8 @@ export async function getDeleteUserImpact(
     soloTeams: solo.map(shape),
     foundedTeams: founded.map(shape),
     keptTeams: kept.map((t) => ({ teamId: t.teamId, name: t.name })),
-    createdAppCount: (
-      await createdAppRows(db, userId, survivingTeamIds)
-    ).length,
+    createdAppCount: (await createdAppRows(db, userId, survivingTeamIds))
+      .length,
     ownedFolderCount: ownedFolders.length,
     ownedProjectCount: ownedProjects.length,
     ownedAppCount: (
@@ -383,7 +382,9 @@ async function appsInWorkspaces(
   if (folderIds.length === 0 && projectIds.length === 0) return [];
   const scopes = [
     folderIds.length > 0 ? inArray(appsTable.folderId, folderIds) : undefined,
-    projectIds.length > 0 ? inArray(appsTable.projectId, projectIds) : undefined,
+    projectIds.length > 0
+      ? inArray(appsTable.projectId, projectIds)
+      : undefined,
   ].filter((c) => c !== undefined);
   return db
     .select({
@@ -472,155 +473,176 @@ export async function deleteUser(
   const { userId: actingUserId } = await requireInstanceAdmin();
   const actor = (await getCurrentUser())!;
 
-  const { result, plan, healedTeams } = await getDb().transaction(async (tx) => {
-    const target = (
-      await tx
-        .select({ id: usersTable.id, username: usersTable.username })
-        .from(usersTable)
-        .where(eq(usersTable.id, userId))
-        .for("update")
-        .limit(1)
-    )[0];
-    if (!target) throw new Error("User not found");
+  const { result, plan, healedTeams } = await getDb().transaction(
+    async (tx) => {
+      const target = (
+        await tx
+          .select({ id: usersTable.id, username: usersTable.username })
+          .from(usersTable)
+          .where(eq(usersTable.id, userId))
+          .for("update")
+          .limit(1)
+      )[0];
+      if (!target) throw new Error("User not found");
 
-    const blocked = await blockedReasonFor(userId, actingUserId, tx);
-    if (blocked) throw new Error(blocked);
+      const blocked = await blockedReasonFor(userId, actingUserId, tx);
+      if (blocked) throw new Error(blocked);
 
-    // No "keep one active admin" check is needed here, unlike `updateUserAdmin`:
-    // the caller passed `requireInstanceAdmin` (so they ARE an active instance
-    // admin — a suspended account can't authenticate at all) and cannot be the
-    // target (blocked above), so an active admin always survives this delete by
-    // construction.
+      // No "keep one active admin" check is needed here, unlike `updateUserAdmin`:
+      // the caller passed `requireInstanceAdmin` (so they ARE an active instance
+      // admin — a suspended account can't authenticate at all) and cannot be the
+      // target (blocked above), so an active admin always survives this delete by
+      // construction.
 
-    const teams = await teamsAroundUser(tx, userId);
-    const teamsToDelete = teams.filter(
-      (t) => isSoloTeam(t) || (options.deleteFoundedTeams && t.isFounder),
-    );
-    const deletedTeamIds = teamsToDelete.map((t) => t.teamId);
-    const survivingTeamIds = teams
-      .filter((t) => !deletedTeamIds.includes(t.teamId))
-      .map((t) => t.teamId);
+      const teams = await teamsAroundUser(tx, userId);
+      const teamsToDelete = teams.filter(
+        (t) => isSoloTeam(t) || (options.deleteFoundedTeams && t.isFounder),
+      );
+      const deletedTeamIds = teamsToDelete.map((t) => t.teamId);
+      const survivingTeamIds = teams
+        .filter((t) => !deletedTeamIds.includes(t.teamId))
+        .map((t) => t.teamId);
 
-    // ---- snapshot the stacks that lose their records in this transaction ----
-    const teamApps = deletedTeamIds.length
-      ? await tx
-          .select({
-            id: appsTable.id,
-            slug: appsTable.slug,
-            serverId: appsTable.serverId,
-          })
-          .from(appsTable)
-          .where(inArray(appsTable.teamId, deletedTeamIds))
-      : [];
-    const teamDatabases = deletedTeamIds.length
-      ? await tx
-          .select({
-            id: databasesTable.id,
-            host: databasesTable.host,
-            serverId: databasesTable.serverId,
-          })
-          .from(databasesTable)
-          .where(inArray(databasesTable.teamId, deletedTeamIds))
-      : [];
-    const teamPlugins = deletedTeamIds.length
-      ? await tx
-          .select({
-            slug: installedPluginsTable.slug,
-            catalogId: installedPluginsTable.catalogId,
-            teamId: installedPluginsTable.teamId,
-          })
-          .from(installedPluginsTable)
-          .where(inArray(installedPluginsTable.teamId, deletedTeamIds))
-      : [];
-    const teamSlugById = new Map(teamsToDelete.map((t) => [t.teamId, t.slug]));
-
-    const ownedFolders = options.deleteOwnedWorkspaces
-      ? await ownedFolderIds(tx, userId, survivingTeamIds)
-      : [];
-    const ownedProjects = options.deleteOwnedWorkspaces
-      ? await ownedProjectIds(tx, userId, survivingTeamIds)
-      : [];
-    // Individually deleted apps: the ones they created (if asked) plus the ones
-    // living in a folder/Project they own (if asked). De-duplicated by id — the
-    // two sets overlap for anyone who works inside their own folder.
-    const looseApps = new Map<string, { id: string; slug: string; serverId: string }>();
-    if (options.deleteCreatedApps)
-      for (const a of await createdAppRows(tx, userId, survivingTeamIds))
-        looseApps.set(a.id, a);
-    for (const a of await appsInWorkspaces(
-      tx,
-      ownedFolders,
-      ownedProjects,
-      survivingTeamIds,
-    ))
-      looseApps.set(a.id, a);
-
-    // Snapshot the live pull request preview stacks of every app about to be
-    // deleted: the FK cascade below drops their rows, and with them the only
-    // record that those containers and volumes exist on a host.
-    const doomedAppIds = [...teamApps.map((a) => a.id), ...looseApps.keys()];
-    const previewStacks = doomedAppIds.length
-      ? (
-          await tx
+      // ---- snapshot the stacks that lose their records in this transaction ----
+      const teamApps = deletedTeamIds.length
+        ? await tx
             .select({
-              id: appPreviewsTable.id,
-              deployKey: appPreviewsTable.deployKey,
-              // Previews may be pinned to their own machine: that is where the
-              // stack is, so that is the host that has to be dialed.
-              serverId: sql<string>`coalesce(${appsTable.previewServerId}, ${appsTable.serverId})`,
+              id: appsTable.id,
+              slug: appsTable.slug,
+              serverId: appsTable.serverId,
             })
-            .from(appPreviewsTable)
-            .innerJoin(appsTable, eq(appsTable.id, appPreviewsTable.appId))
-            .where(
-              and(
-                inArray(appPreviewsTable.appId, doomedAppIds),
-                isNull(appPreviewsTable.tornDownAt),
-              ),
-            )
-        ).map((r) => ({ id: r.id, deployKey: r.deployKey, serverId: r.serverId }))
-      : [];
+            .from(appsTable)
+            .where(inArray(appsTable.teamId, deletedTeamIds))
+        : [];
+      const teamDatabases = deletedTeamIds.length
+        ? await tx
+            .select({
+              id: databasesTable.id,
+              host: databasesTable.host,
+              serverId: databasesTable.serverId,
+            })
+            .from(databasesTable)
+            .where(inArray(databasesTable.teamId, deletedTeamIds))
+        : [];
+      const teamPlugins = deletedTeamIds.length
+        ? await tx
+            .select({
+              slug: installedPluginsTable.slug,
+              catalogId: installedPluginsTable.catalogId,
+              teamId: installedPluginsTable.teamId,
+            })
+            .from(installedPluginsTable)
+            .where(inArray(installedPluginsTable.teamId, deletedTeamIds))
+        : [];
+      const teamSlugById = new Map(
+        teamsToDelete.map((t) => [t.teamId, t.slug]),
+      );
 
-    // ---- the writes ----
-    if (looseApps.size > 0)
-      await tx.delete(appsTable).where(inArray(appsTable.id, [...looseApps.keys()]));
-    // After their apps are gone: an owned folder/Project row is dropped outright
-    // (its child folders re-parent to the team root via the FK's SET NULL, and
-    // any app someone ELSE put inside orphans to the root rather than dying).
-    if (ownedFolders.length > 0)
-      await tx.delete(foldersTable).where(inArray(foldersTable.id, ownedFolders));
-    if (ownedProjects.length > 0)
-      await tx.delete(projectsTable).where(inArray(projectsTable.id, ownedProjects));
-    // One DELETE per team — the FK CASCADEs drop everything team-scoped, exactly
-    // as deleteTeam does.
-    if (deletedTeamIds.length > 0)
-      await tx.delete(teamsTable).where(inArray(teamsTable.id, deletedTeamIds));
-    // The account itself: memberships, folder/Project grants and API tokens
-    // CASCADE; the crown, folder/Project ownership and every authorship column
-    // go SET NULL.
-    await tx.delete(usersTable).where(eq(usersTable.id, userId));
+      const ownedFolders = options.deleteOwnedWorkspaces
+        ? await ownedFolderIds(tx, userId, survivingTeamIds)
+        : [];
+      const ownedProjects = options.deleteOwnedWorkspaces
+        ? await ownedProjectIds(tx, userId, survivingTeamIds)
+        : [];
+      // Individually deleted apps: the ones they created (if asked) plus the ones
+      // living in a folder/Project they own (if asked). De-duplicated by id — the
+      // two sets overlap for anyone who works inside their own folder.
+      const looseApps = new Map<
+        string,
+        { id: string; slug: string; serverId: string }
+      >();
+      if (options.deleteCreatedApps)
+        for (const a of await createdAppRows(tx, userId, survivingTeamIds))
+          looseApps.set(a.id, a);
+      for (const a of await appsInWorkspaces(
+        tx,
+        ownedFolders,
+        ownedProjects,
+        survivingTeamIds,
+      ))
+        looseApps.set(a.id, a);
 
-    const healed = await healCriticalCapabilities(tx, survivingTeamIds);
+      // Snapshot the live pull request preview stacks of every app about to be
+      // deleted: the FK cascade below drops their rows, and with them the only
+      // record that those containers and volumes exist on a host.
+      const doomedAppIds = [...teamApps.map((a) => a.id), ...looseApps.keys()];
+      const previewStacks = doomedAppIds.length
+        ? (
+            await tx
+              .select({
+                id: appPreviewsTable.id,
+                deployKey: appPreviewsTable.deployKey,
+                // Previews may be pinned to their own machine: that is where the
+                // stack is, so that is the host that has to be dialed.
+                serverId: sql<string>`coalesce(${appsTable.previewServerId}, ${appsTable.serverId})`,
+              })
+              .from(appPreviewsTable)
+              .innerJoin(appsTable, eq(appsTable.id, appPreviewsTable.appId))
+              .where(
+                and(
+                  inArray(appPreviewsTable.appId, doomedAppIds),
+                  isNull(appPreviewsTable.tornDownAt),
+                ),
+              )
+          ).map((r) => ({
+            id: r.id,
+            deployKey: r.deployKey,
+            serverId: r.serverId,
+          }))
+        : [];
 
-    return {
-      healedTeams: healed.map(
-        (id) => teams.find((t) => t.teamId === id)?.name ?? id,
-      ),
-      result: {
-        username: target.username,
-        teamsDeleted: deletedTeamIds.length,
-        appsDeleted: teamApps.length + looseApps.size,
-        databasesDeleted: teamDatabases.length,
-      },
-      plan: {
-        services: [...teamApps, ...looseApps.values()],
-        previewStacks,
-        databases: teamDatabases,
-        appSlugs: teamPlugins.map(
-          (p) => p.slug || pluginSlug(p.catalogId, teamSlugById.get(p.teamId) ?? ""),
+      // ---- the writes ----
+      if (looseApps.size > 0)
+        await tx
+          .delete(appsTable)
+          .where(inArray(appsTable.id, [...looseApps.keys()]));
+      // After their apps are gone: an owned folder/Project row is dropped outright
+      // (its child folders re-parent to the team root via the FK's SET NULL, and
+      // any app someone ELSE put inside orphans to the root rather than dying).
+      if (ownedFolders.length > 0)
+        await tx
+          .delete(foldersTable)
+          .where(inArray(foldersTable.id, ownedFolders));
+      if (ownedProjects.length > 0)
+        await tx
+          .delete(projectsTable)
+          .where(inArray(projectsTable.id, ownedProjects));
+      // One DELETE per team — the FK CASCADEs drop everything team-scoped, exactly
+      // as deleteTeam does.
+      if (deletedTeamIds.length > 0)
+        await tx
+          .delete(teamsTable)
+          .where(inArray(teamsTable.id, deletedTeamIds));
+      // The account itself: memberships, folder/Project grants and API tokens
+      // CASCADE; the crown, folder/Project ownership and every authorship column
+      // go SET NULL.
+      await tx.delete(usersTable).where(eq(usersTable.id, userId));
+
+      const healed = await healCriticalCapabilities(tx, survivingTeamIds);
+
+      return {
+        healedTeams: healed.map(
+          (id) => teams.find((t) => t.teamId === id)?.name ?? id,
         ),
-      } satisfies TeardownPlan,
-    };
-  });
+        result: {
+          username: target.username,
+          teamsDeleted: deletedTeamIds.length,
+          appsDeleted: teamApps.length + looseApps.size,
+          databasesDeleted: teamDatabases.length,
+        },
+        plan: {
+          services: [...teamApps, ...looseApps.values()],
+          previewStacks,
+          databases: teamDatabases,
+          appSlugs: teamPlugins.map(
+            (p) =>
+              p.slug ||
+              pluginSlug(p.catalogId, teamSlugById.get(p.teamId) ?? ""),
+          ),
+        } satisfies TeardownPlan,
+      };
+    },
+  );
 
   // Containers, volumes and uploads — best-effort, detached, from the snapshot.
   if (plan.services.length || plan.databases.length || plan.appSlugs.length)

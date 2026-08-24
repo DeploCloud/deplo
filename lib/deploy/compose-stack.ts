@@ -334,8 +334,15 @@ function traefikLabels(opts: {
    * and prepended to this router's chain). Absent ⇒ no auth. */
   basicAuth?: { name: string; users: string };
 }): string[] {
-  const { router, domains, port, pathPrefix, stripPrefix, redirectTo, basicAuth } =
-    opts;
+  const {
+    router,
+    domains,
+    port,
+    pathPrefix,
+    stripPrefix,
+    redirectTo,
+    basicAuth,
+  } = opts;
   // One router named `router`, serving every host in `domains` on `port` (a
   // single OR-rule). Default grouping with all hosts at the default port folds
   // them into the one `baseKey` router — `alwaysService` forces the explicit
@@ -389,7 +396,9 @@ function stripTraefikLabels(svc: App): void {
     );
   } else if (svc.labels && typeof svc.labels === "object") {
     const kept: Record<string, unknown> = {};
-    for (const [k, v] of Object.entries(svc.labels as Record<string, unknown>)) {
+    for (const [k, v] of Object.entries(
+      svc.labels as Record<string, unknown>,
+    )) {
       if (!isTraefik(k)) kept[k] = v;
     }
     svc.labels = kept;
@@ -411,7 +420,9 @@ function mergeLabels(svc: App, add: string[]): void {
       if (typeof l === "string" && !incoming.has(keyOf(l))) existing.push(l);
     }
   } else if (svc.labels && typeof svc.labels === "object") {
-    for (const [k, v] of Object.entries(svc.labels as Record<string, unknown>)) {
+    for (const [k, v] of Object.entries(
+      svc.labels as Record<string, unknown>,
+    )) {
       if (!incoming.has(k)) existing.push(`${k}=${String(v)}`);
     }
   }
@@ -537,7 +548,9 @@ type StackMount = {
  */
 function mergeVolumes(svc: App, mounts: StackMount[]): void {
   if (mounts.length === 0) return;
-  const existing: unknown[] = Array.isArray(svc.volumes) ? [...svc.volumes] : [];
+  const existing: unknown[] = Array.isArray(svc.volumes)
+    ? [...svc.volumes]
+    : [];
   const declared = new Set(
     existing.map(containerPathOf).filter((p): p is string => p !== null),
   );
@@ -626,9 +639,9 @@ function injectAppVolumes(
   const fallback = detectExpose(services)?.service ?? Object.keys(services)[0];
   // Existing top-level volume keys — ours must not collide with a key the user
   // already declared (that would silently re-point their volume at our mount).
-  const topLevel = (doc.volumes && typeof doc.volumes === "object"
-    ? doc.volumes
-    : {}) as Record<string, unknown>;
+  const topLevel = (
+    doc.volumes && typeof doc.volumes === "object" ? doc.volumes : {}
+  ) as Record<string, unknown>;
   const takenKeys = new Set(Object.keys(topLevel));
   // Per-service mount lists, so a service is rewritten once with all of its
   // volumes (and the existing-wins check sees the authored compose, not our own
@@ -895,9 +908,9 @@ export function buildComposeStack(input: ComposeStackInput): string {
   }
 
   // Declare the external deplo network at the top level.
-  const networks = (doc.networks && typeof doc.networks === "object"
-    ? doc.networks
-    : {}) as Record<string, unknown>;
+  const networks = (
+    doc.networks && typeof doc.networks === "object" ? doc.networks : {}
+  ) as Record<string, unknown>;
   networks[NETWORK] = { external: true };
   doc.networks = networks;
 

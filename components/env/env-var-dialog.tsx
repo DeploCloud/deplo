@@ -221,7 +221,11 @@ function EditForm({
             <SecretRow secret={secret} onChange={setSecret} />
           </div>
           <DialogFooter>
-            <Button variant="outline" onClick={() => onOpenChange(false)} disabled={pending}>
+            <Button
+              variant="outline"
+              onClick={() => onOpenChange(false)}
+              disabled={pending}
+            >
               Cancel
             </Button>
             <Button type="submit" disabled={pending || !keyValid}>
@@ -322,8 +326,10 @@ function AddDialog({
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent
-        selfManaged className="flex max-h-[85vh] flex-col gap-0 overflow-hidden p-0 sm:max-w-xl">
-        <DialogHeader className="px-6 pb-4 pt-6">
+        selfManaged
+        className="flex max-h-[85vh] flex-col gap-0 overflow-hidden p-0 sm:max-w-xl"
+      >
+        <DialogHeader className="px-6 pt-6 pb-4">
           <DialogTitle>Add environment variables</DialogTitle>
           <DialogDescription>
             Add variables to this app, or link existing shared variables.
@@ -408,7 +414,13 @@ function AddDialog({
  *  ~14rem, so the body gets the rest. */
 const PANEL_BODY_MAX = "max-h-[calc(85vh-14rem)]";
 
-function StandaloneTab({ appId, onDone }: { appId: string; onDone: () => void }) {
+function StandaloneTab({
+  appId,
+  onDone,
+}: {
+  appId: string;
+  onDone: () => void;
+}) {
   const [rows, setRows] = React.useState<EnvRow[]>([{ key: "", value: "" }]);
   const [secret, setSecret] = React.useState(false);
   const router = useRouter();
@@ -479,15 +491,17 @@ function StandaloneTab({ appId, onDone }: { appId: string; onDone: () => void })
   return (
     <form onSubmit={onSubmit}>
       {/* The body — the only thing that scrolls. */}
-      <div className={cn("space-y-4 overflow-y-auto px-6 py-4", PANEL_BODY_MAX)}>
+      <div
+        className={cn("space-y-4 overflow-y-auto px-6 py-4", PANEL_BODY_MAX)}
+      >
         <EnvRowsEditor rows={rows} onChange={setRows} />
 
         {filled.length > 1 ? (
           <p className="flex items-start gap-2 rounded-lg border border-border bg-secondary/30 px-3 py-2.5 text-xs text-muted-foreground">
             <Info className="mt-px size-3.5 shrink-0" />
             <span>
-              Pasted variables are added as plain — flip individual ones to secret
-              from the table.
+              Pasted variables are added as plain — flip individual ones to
+              secret from the table.
             </span>
           </p>
         ) : (
@@ -564,7 +578,9 @@ function SharedTab({
 
   return (
     <>
-      <div className={cn("space-y-3 overflow-y-auto px-6 py-4", PANEL_BODY_MAX)}>
+      <div
+        className={cn("space-y-3 overflow-y-auto px-6 py-4", PANEL_BODY_MAX)}
+      >
         {vars === null ? (
           <p className="py-10 text-center text-sm text-muted-foreground">
             Loading…
@@ -579,7 +595,7 @@ function SharedTab({
         ) : (
           <>
             <div className="relative">
-              <Search className="pointer-events-none absolute left-2.5 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
+              <Search className="pointer-events-none absolute top-1/2 left-2.5 size-4 -translate-y-1/2 text-muted-foreground" />
               <Input
                 value={query}
                 onChange={(e) => setQuery(e.target.value)}
@@ -595,7 +611,7 @@ function SharedTab({
               // Same table grammar as the Standalone tab: a labelled header, one
               // row per variable, no card floating loose inside a card.
               <div className="divide-y divide-border overflow-hidden rounded-lg border border-border">
-                <div className="flex items-center justify-between bg-secondary/40 px-3 py-2 text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
+                <div className="flex items-center justify-between bg-secondary/40 px-3 py-2 text-[11px] font-medium tracking-wide text-muted-foreground uppercase">
                   <span>Shared variable</span>
                   <span aria-hidden />
                 </div>
@@ -666,7 +682,9 @@ function SharedVarLinkRow({
   return (
     <div className="flex items-center justify-between gap-3 px-3 py-2.5 transition-colors hover:bg-accent/30">
       <div className="min-w-0 space-y-1">
-        <p className="truncate font-mono text-xs font-medium">{sharedVar.key}</p>
+        <p className="truncate font-mono text-xs font-medium">
+          {sharedVar.key}
+        </p>
         <div className="flex flex-wrap items-center gap-1.5">
           {linked && (
             <Badge variant="muted" className="gap-1 text-[10px] font-normal">
@@ -709,4 +727,3 @@ function SharedVarLinkRow({
 /* ------------------------------------------------------------------ */
 /* Shared bits                                                         */
 /* ------------------------------------------------------------------ */
-

@@ -74,7 +74,9 @@ export function GeneralSettingsForm({
   // image is validated (type + size) before reading so we never inline an
   // oversized blob into the app document.
   function pickLogo(file: File) {
-    if (!LOGO_IMAGE_TYPES.includes(file.type as (typeof LOGO_IMAGE_TYPES)[number])) {
+    if (
+      !LOGO_IMAGE_TYPES.includes(file.type as (typeof LOGO_IMAGE_TYPES)[number])
+    ) {
       toast.error("Unsupported image — use PNG, JPEG, WebP, GIF or SVG");
       return;
     }
@@ -150,9 +152,7 @@ export function GeneralSettingsForm({
         <CardContent className="space-y-6 pt-6">
           {/* Logo */}
           <div className="space-y-3">
-            <FieldLabel
-              info="Shown for this app on the dashboard. Set automatically from this app's own favicon — replace it any time"
-            >
+            <FieldLabel info="Shown for this app on the dashboard. Set automatically from this app's own favicon — replace it any time">
               Logo
             </FieldLabel>
             <div className="flex flex-wrap items-center gap-4">

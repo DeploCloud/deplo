@@ -179,7 +179,9 @@ export function PreviewSettingsForm(props: PreviewSettingsFormProps) {
         { appId: props.appId, input: { enabled: v } },
       );
       if (res.ok) {
-        toast.success(v ? "Pull request previews are on" : "Pull request previews are off");
+        toast.success(
+          v ? "Pull request previews are on" : "Pull request previews are off",
+        );
         router.refresh();
       } else {
         setEnabled(!v);
@@ -240,7 +242,9 @@ export function PreviewSettingsForm(props: PreviewSettingsFormProps) {
           {/* 2 — what comes out: the address, the ceiling, when it rebuilds. */}
           <Card>
             <CardHeader>
-              <CardTitle className="text-base">How previews are built</CardTitle>
+              <CardTitle className="text-base">
+                How previews are built
+              </CardTitle>
             </CardHeader>
             <CardContent className="space-y-4">
               <div className="grid gap-1.5">
@@ -412,9 +416,13 @@ export function PreviewSettingsForm(props: PreviewSettingsFormProps) {
                         <SelectValue />
                       </SelectTrigger>
                       <SelectContent>
-                        <SelectItem value="approve">Wait for approval</SelectItem>
+                        <SelectItem value="approve">
+                          Wait for approval
+                        </SelectItem>
                         <SelectItem value="deny">Ignore them</SelectItem>
-                        <SelectItem value="allow">Build them automatically</SelectItem>
+                        <SelectItem value="allow">
+                          Build them automatically
+                        </SelectItem>
                       </SelectContent>
                     </Select>
                   </div>

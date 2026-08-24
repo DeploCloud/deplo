@@ -205,7 +205,7 @@ export function AddMemberDialog({
           {!picked ? (
             <div className="space-y-3">
               <div className="relative">
-                <Search className="absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
+                <Search className="absolute top-1/2 left-3 size-4 -translate-y-1/2 text-muted-foreground" />
                 <Input
                   value={query}
                   onChange={(e) => setQuery(e.target.value)}
@@ -216,7 +216,7 @@ export function AddMemberDialog({
               </div>
               {/* Shows ~3 rows (the most recent users) and scrolls for the rest.
                   focus-safe-scroll keeps the rows' focus ring out of the clip. */}
-              <div className="min-h-24 max-h-44 space-y-1 overflow-y-auto focus-safe-scroll">
+              <div className="focus-safe-scroll max-h-44 min-h-24 space-y-1 overflow-y-auto">
                 {searching && (
                   <div className="space-y-1" aria-hidden>
                     {[0, 1, 2].map((i) => (
@@ -224,7 +224,10 @@ export function AddMemberDialog({
                         key={i}
                         className="flex items-center gap-3 px-2 py-2"
                       >
-                        <Skeleton shimmer className="size-8 shrink-0 rounded-full" />
+                        <Skeleton
+                          shimmer
+                          className="size-8 shrink-0 rounded-full"
+                        />
                         <div className="flex flex-1 flex-col gap-1.5">
                           <Skeleton shimmer className="h-3.5 w-28 rounded" />
                           <Skeleton shimmer className="h-3 w-20 rounded" />
@@ -292,7 +295,9 @@ export function AddMemberDialog({
                       <UserPlus className="size-4" />
                     </span>
                     <span className="flex flex-col">
-                      <span className="text-sm font-medium">Create a new user</span>
+                      <span className="text-sm font-medium">
+                        Create a new user
+                      </span>
                       <span className="text-xs text-muted-foreground">
                         Register someone who isn&apos;t on Deplo yet
                       </span>
@@ -327,7 +332,11 @@ export function AddMemberDialog({
                     )}
                   </div>
                 </div>
-                <Button variant="ghost" size="sm" onClick={() => setPicked(null)}>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => setPicked(null)}
+                >
                   Change
                 </Button>
               </div>

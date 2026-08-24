@@ -6,12 +6,7 @@ import {
 } from "@/lib/data/teams";
 import { canDeleteTeam } from "@/lib/data/team-delete";
 import { PageHeader } from "@/components/shared/page-header";
-import {
-  Card,
-  CardContent,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { InfoTip } from "@/components/ui/info-tip";
 import { ThemeToggle } from "@/components/layout/theme-toggle";
 import { TeamForm } from "@/components/settings/team-form";

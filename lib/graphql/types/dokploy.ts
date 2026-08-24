@@ -82,7 +82,10 @@ const PlanServiceRef = builder
         nullable: true,
         description: "app or database, or null when Deplo has no equivalent.",
       }),
-      status: t.field({ type: DokployPlanStatusEnum, resolve: (s) => s.status }),
+      status: t.field({
+        type: DokployPlanStatusEnum,
+        resolve: (s) => s.status,
+      }),
       sourceServerId: t.exposeString("sourceServerId", {
         description:
           "The Dokploy server it runs on. Empty string means Dokploy's own host, which has no server row over there.",
@@ -111,7 +114,8 @@ const PlanServiceRef = builder
           "The icon this service would arrive with, as an inline data-URI, or null when it has none. Already validated against what Deplo will store, so a client can render it as-is.",
       }),
       notes: t.exposeStringList("notes", {
-        description: "What will not come across, or will need a look afterwards.",
+        description:
+          "What will not come across, or will need a look afterwards.",
       }),
     }),
   });
@@ -204,11 +208,15 @@ const ImportItemRef = builder
   .implement({
     fields: (t) => ({
       path: t.exposeString("path", {
-        description: "Where it was on Dokploy: `Project / Environment / service`.",
+        description:
+          "Where it was on Dokploy: `Project / Environment / service`.",
       }),
       sourceKind: t.exposeString("sourceKind"),
       sourceName: t.exposeString("sourceName"),
-      outcome: t.field({ type: DokployOutcomeEnum, resolve: (i) => i.outcome as never }),
+      outcome: t.field({
+        type: DokployOutcomeEnum,
+        resolve: (i) => i.outcome as never,
+      }),
       targetKind: t.exposeString("targetKind", { nullable: true }),
       targetId: t.exposeString("targetId", { nullable: true }),
       message: t.exposeString("message", { nullable: true }),
@@ -226,7 +234,8 @@ const ImportRunRef = builder
       orgName: t.exposeString("orgName", { nullable: true }),
       actor: t.exposeString("actor"),
       status: t.exposeString("status", {
-        description: "running | done | failed. A run left open by a closed tab is failed as `Interrupted` by the next one.",
+        description:
+          "running | done | failed. A run left open by a closed tab is failed as `Interrupted` by the next one.",
       }),
       created: t.exposeInt("created"),
       skipped: t.exposeInt("skipped"),
@@ -267,7 +276,10 @@ const InviteRef = builder.objectRef<DokployInvite>("DokployInvite").implement({
       description:
         "The single-use registration link to send them, or null when they were added directly.",
     }),
-    outcome: t.field({ type: DokployOutcomeEnum, resolve: (i) => i.outcome as never }),
+    outcome: t.field({
+      type: DokployOutcomeEnum,
+      resolve: (i) => i.outcome as never,
+    }),
     message: t.exposeString("message", { nullable: true }),
   }),
 });
@@ -312,7 +324,10 @@ const DataMoveServiceRef = builder
         description:
           "Still up on Dokploy. Moving the data stops it, which is the point of a cutover.",
       }),
-      volumes: t.field({ type: [DataMoveVolumeRef], resolve: (s) => s.volumes }),
+      volumes: t.field({
+        type: [DataMoveVolumeRef],
+        resolve: (s) => s.volumes,
+      }),
       notes: t.exposeStringList("notes"),
     }),
   });
@@ -424,7 +439,7 @@ builder.subscriptionFields((t) => ({
     type: ImportRunRef,
     nullable: true,
     description:
-      "Emits the migration this team currently has in flight, or null when there is none. Fires once immediately, then whenever a run starts, moves on or ends - it is what the header chip and the wizard's watching panel read. Deliberately NOT gated on `create_projects`: \"somebody is moving a platform into this team right now\" is a warning every member needs.",
+      'Emits the migration this team currently has in flight, or null when there is none. Fires once immediately, then whenever a run starts, moves on or ends - it is what the header chip and the wizard\'s watching panel read. Deliberately NOT gated on `create_projects`: "somebody is moving a platform into this team right now" is a warning every member needs.',
     authScopes: { loggedIn: true },
     subscribe: (_root, _args, ctx) => activeMigrationStream(ctx.teamId),
     resolve: (run) => run,

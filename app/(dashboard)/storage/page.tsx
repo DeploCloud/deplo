@@ -143,7 +143,10 @@ export default async function StoragePage(props: PageProps<"/storage">) {
   // A storage-only host runs nothing, so it can never provision a database; nor
   // can a migration source, which is another platform's machine.
   const dbServers = servers
-    .filter((s) => Boolean(s.agent?.certFingerprint) && !s.storageOnly && !s.importOnly)
+    .filter(
+      (s) =>
+        Boolean(s.agent?.certFingerprint) && !s.storageOnly && !s.importOnly,
+    )
     .map((s) => ({ id: s.id, name: s.name }));
   // serverId → name, so a card can show which host each database runs on.
   const serverNames = Object.fromEntries(servers.map((s) => [s.id, s.name]));
@@ -277,17 +280,17 @@ export default async function StoragePage(props: PageProps<"/storage">) {
                     row is dropped server-side before the artifacts are swept. */}
                 <OptimisticList>
                   {destinations.map((dest) => (
-                  <DestinationCard
-                    key={dest.id}
-                    dest={{
-                      ...dest,
-                      where: destinationWhere(dest),
-                      freeBytes: dest.lastFreeBytes,
-                      totalBytes: dest.lastTotalBytes,
-                      encrypted: Boolean(dest.ageRecipient),
-                    }}
-                    canManage={canManageDestinations}
-                  />
+                    <DestinationCard
+                      key={dest.id}
+                      dest={{
+                        ...dest,
+                        where: destinationWhere(dest),
+                        freeBytes: dest.lastFreeBytes,
+                        totalBytes: dest.lastTotalBytes,
+                        encrypted: Boolean(dest.ageRecipient),
+                      }}
+                      canManage={canManageDestinations}
+                    />
                   ))}
                 </OptimisticList>
                 <PendingCards />

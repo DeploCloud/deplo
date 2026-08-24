@@ -106,10 +106,11 @@ test("signAgentCsr: a CSR-signed agent cert chains to the CA and uses control-pl
   // The agent generates its own Ed25519 key pair and a PKCS#10 CSR (the remote
   // bootstrap: its private key NEVER leaves the agent). The CSR carries a SAN
   // the agent should NOT get to choose; the control plane overrides it.
-  const agentKeys = await webcrypto.subtle.generateKey({ name: "Ed25519" }, true, [
-    "sign",
-    "verify",
-  ]);
+  const agentKeys = await webcrypto.subtle.generateKey(
+    { name: "Ed25519" },
+    true,
+    ["sign", "verify"],
+  );
   const csr = await x509.Pkcs10CertificateRequestGenerator.create({
     name: "CN=deplo-agent",
     keys: agentKeys as CryptoKeyPair,
@@ -124,7 +125,11 @@ test("signAgentCsr: a CSR-signed agent cert chains to the CA and uses control-pl
   const signed = await signAgentCsr(csr.toString("pem"), ["10.20.30.40"]);
   const ca = new X509Certificate(signed.caPem);
   const leaf = new X509Certificate(signed.certPem);
-  assert.equal(leaf.checkIssued(ca), true, "CSR-signed leaf must chain to the CA");
+  assert.equal(
+    leaf.checkIssued(ca),
+    true,
+    "CSR-signed leaf must chain to the CA",
+  );
   assert.equal(leaf.verify(ca.publicKey), true, "CA signature must verify");
   // SANs come from the control plane's `hosts`, not the CSR's claim.
   assert.match(leaf.subjectAltName ?? "", /10\.20\.30\.40/);
@@ -140,8 +145,14 @@ test("signAgentCsr: a CSR-signed agent cert chains to the CA and uses control-pl
 test("signAgentCsr: rejects a CSR whose self-signature does not verify", async () => {
   // A CSR signed by key A but presenting key B's public key (proof-of-possession
   // failure) must be refused before any cert is minted.
-  const a = await webcrypto.subtle.generateKey({ name: "Ed25519" }, true, ["sign", "verify"]);
-  const b = await webcrypto.subtle.generateKey({ name: "Ed25519" }, true, ["sign", "verify"]);
+  const a = await webcrypto.subtle.generateKey({ name: "Ed25519" }, true, [
+    "sign",
+    "verify",
+  ]);
+  const b = await webcrypto.subtle.generateKey({ name: "Ed25519" }, true, [
+    "sign",
+    "verify",
+  ]);
   const good = await x509.Pkcs10CertificateRequestGenerator.create({
     name: "CN=deplo-agent",
     keys: a as CryptoKeyPair,
@@ -153,7 +164,10 @@ test("signAgentCsr: rejects a CSR whose self-signature does not verify", async (
   der[der.length - 1] ^= 0xff; // corrupt the trailing signature byte
   void b;
   await assert.rejects(
-    () => signAgentCsr(new x509.Pkcs10CertificateRequest(der).toString("pem"), ["1.2.3.4"]),
+    () =>
+      signAgentCsr(new x509.Pkcs10CertificateRequest(der).toString("pem"), [
+        "1.2.3.4",
+      ]),
     /self-signature/i,
   );
 });
@@ -213,7 +227,9 @@ test("the CSR-signed agent cert completes a real mTLS handshake with the control
       },
       (sock) => sock.end("ok"),
     );
-    srv.on("tlsClientError", (e) => reject(new Error("agent rejected client: " + e.message)));
+    srv.on("tlsClientError", (e) =>
+      reject(new Error("agent rejected client: " + e.message)),
+    );
     srv.listen(0, "127.0.0.1", () => {
       const { port } = srv.address() as { port: number };
       const cli = tls.connect(
@@ -226,7 +242,12 @@ test("the CSR-signed agent cert completes a real mTLS handshake with the control
           ca: client.caPem,
           rejectUnauthorized: true,
         },
-        () => assert.equal(cli.authorized, true, "client must trust the CSR-signed agent"),
+        () =>
+          assert.equal(
+            cli.authorized,
+            true,
+            "client must trust the CSR-signed agent",
+          ),
       );
       cli.on("data", () => {
         cli.end();
@@ -283,7 +304,10 @@ test("the agent refuses a client that presents no CA-signed cert", async () => {
       cli.on("error", () => cli.destroy());
       cli.on("secureConnect", () => cli.destroy());
       // Safety net so a hung handshake fails loudly instead of timing out.
-      setTimeout(() => reject(new Error("server never rejected the client")), 4000).unref();
+      setTimeout(
+        () => reject(new Error("server never rejected the client")),
+        4000,
+      ).unref();
     });
   });
 });

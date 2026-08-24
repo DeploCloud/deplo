@@ -101,7 +101,12 @@ test("createAccountWithTeam writes user + team + owner membership with caps", as
 test("createAccountWithTeam rejects a duplicate username / email / team name", async () => {
   await createAccountWithTeam(ACCOUNT);
   await assert.rejects(
-    () => createAccountWithTeam({ ...ACCOUNT, email: "other@x.io", teamName: "Other" }),
+    () =>
+      createAccountWithTeam({
+        ...ACCOUNT,
+        email: "other@x.io",
+        teamName: "Other",
+      }),
     /username is taken/,
   );
   await assert.rejects(
@@ -127,9 +132,18 @@ test("createAccountWithTeam rejects a duplicate username / email / team name", a
 test("createAccountWithTeams joins existing teams with per-team roles + caps, owning none", async () => {
   await seedIdentity(db); // TEAM_A (alpha) + TEAM_B (beta) exist
   const { user, activeTeamId } = await createAccountWithTeams(
-    { username: "joiner", name: "Joiner", email: "joiner@x.io", password: "Passw0rd!1" },
+    {
+      username: "joiner",
+      name: "Joiner",
+      email: "joiner@x.io",
+      password: "Passw0rd!1",
+    },
     [
-      { teamId: TEAM_A, role: "member", capabilities: capabilitiesForRole("member") },
+      {
+        teamId: TEAM_A,
+        role: "member",
+        capabilities: capabilitiesForRole("member"),
+      },
       { teamId: TEAM_B, role: "viewer", capabilities: ["view"] },
     ],
   );
@@ -162,9 +176,18 @@ test("createAccountWithTeams skips teams deleted before use, and fails if none r
   await seedIdentity(db);
   // One real team + one already-gone team → user joins only the survivor.
   const { user } = await createAccountWithTeams(
-    { username: "partial", name: "Partial", email: "p@x.io", password: "Passw0rd!1" },
+    {
+      username: "partial",
+      name: "Partial",
+      email: "p@x.io",
+      password: "Passw0rd!1",
+    },
     [
-      { teamId: TEAM_A, role: "member", capabilities: capabilitiesForRole("member") },
+      {
+        teamId: TEAM_A,
+        role: "member",
+        capabilities: capabilitiesForRole("member"),
+      },
       { teamId: "team_gone", role: "member", capabilities: [] },
     ],
   );
@@ -179,7 +202,12 @@ test("createAccountWithTeams skips teams deleted before use, and fails if none r
   await assert.rejects(
     () =>
       createAccountWithTeams(
-        { username: "ghost", name: "Ghost", email: "g@x.io", password: "Passw0rd!1" },
+        {
+          username: "ghost",
+          name: "Ghost",
+          email: "g@x.io",
+          password: "Passw0rd!1",
+        },
         [{ teamId: "team_gone", role: "member", capabilities: [] }],
       ),
     /no longer exist/,
@@ -196,8 +224,19 @@ test("createAccountWithTeams consumes the registration link (single-use); a spen
   const rawToken = await seedRegistrationLink(db);
   const join = (username: string) =>
     createAccountWithTeams(
-      { username, name: username, email: `${username}@reg.io`, password: "Passw0rd!1" },
-      [{ teamId: TEAM_A, role: "member", capabilities: capabilitiesForRole("member") }],
+      {
+        username,
+        name: username,
+        email: `${username}@reg.io`,
+        password: "Passw0rd!1",
+      },
+      [
+        {
+          teamId: TEAM_A,
+          role: "member",
+          capabilities: capabilitiesForRole("member"),
+        },
+      ],
       { guard: (tx) => consumeRegistrationLink(tx, rawToken, username) },
     );
   await join("first"); // consumes the link
@@ -246,7 +285,9 @@ test("registration link is single-use: two concurrent registrations, exactly one
       .where(eq(registrationLinksTable.id, "reg_1"))
   )[0]!;
   assert.equal(link.status, "used");
-  assert.ok(link.usedByUsername === "racer_a" || link.usedByUsername === "racer_b");
+  assert.ok(
+    link.usedByUsername === "racer_a" || link.usedByUsername === "racer_b",
+  );
 });
 
 test("registration link consume rejects an expired link", async () => {
@@ -274,17 +315,26 @@ test("registration link consume rejects an expired link", async () => {
 
 test("login reads the RELATIONAL password — a relational password change is seen immediately (stale-password regression)", async () => {
   await seedIdentity(db, {
-    users: [{ id: USER_1, teamId: TEAM_A, role: "owner", password: "Oldpass!1" }],
+    users: [
+      { id: USER_1, teamId: TEAM_A, role: "owner", password: "Oldpass!1" },
+    ],
   });
   const email = `${USER_1}@example.io`;
 
   // The OLD password authenticates before any change.
-  assert.equal((await login(email, "wrongpass")).ok, false, "wrong password rejected");
+  assert.equal(
+    (await login(email, "wrongpass")).ok,
+    false,
+    "wrong password rejected",
+  );
   await assertLoginAccepts(email, "Oldpass!1");
 
   // Change the password through the relational data layer.
   await runWithIdentity({ userId: USER_1, teamId: TEAM_A }, async () => {
-    await changePassword({ currentPassword: "Oldpass!1", newPassword: "Newpass!2" });
+    await changePassword({
+      currentPassword: "Oldpass!1",
+      newPassword: "Newpass!2",
+    });
   });
 
   // The OLD password must now FAIL and the NEW one succeed — proving login reads
@@ -300,7 +350,13 @@ test("login reads the RELATIONAL password — a relational password change is se
 test("login refuses a suspended account", async () => {
   await seedIdentity(db, {
     users: [
-      { id: USER_1, teamId: TEAM_A, role: "owner", password: "Passw0rd!1", suspended: true },
+      {
+        id: USER_1,
+        teamId: TEAM_A,
+        role: "owner",
+        password: "Passw0rd!1",
+        suspended: true,
+      },
     ],
   });
   const res = await login(`${USER_1}@example.io`, "Passw0rd!1");
@@ -311,7 +367,13 @@ test("login refuses a suspended account", async () => {
 test("a WRONG password on a suspended account is the GENERIC error, not an enumeration oracle", async () => {
   await seedIdentity(db, {
     users: [
-      { id: USER_1, teamId: TEAM_A, role: "owner", password: "Passw0rd!1", suspended: true },
+      {
+        id: USER_1,
+        teamId: TEAM_A,
+        role: "owner",
+        password: "Passw0rd!1",
+        suspended: true,
+      },
     ],
   });
   // The "suspended" message is revealed only to someone who proves the password;
@@ -331,7 +393,10 @@ test("a WRONG password on a suspended account is the GENERIC error, not an enume
  * it throws the cookie-scope error. (A wrong password returns ok:false before any
  * cookie write and never throws.)
  */
-async function assertLoginAccepts(email: string, password: string): Promise<void> {
+async function assertLoginAccepts(
+  email: string,
+  password: string,
+): Promise<void> {
   try {
     const res = await login(email, password);
     // If it returned without throwing, it must NOT be the invalid-credentials path.
@@ -388,6 +453,9 @@ test("first-run setup: two concurrent owner claims, exactly one wins", async () 
 
 test("first-run setup: a second owner claim after one succeeds is refused", async () => {
   await setupOwner("owner_first");
-  await assert.rejects(() => setupOwner("owner_second"), /already been completed/);
+  await assert.rejects(
+    () => setupOwner("owner_second"),
+    /already been completed/,
+  );
   assert.equal((await db.select().from(usersTable)).length, 1);
 });

@@ -59,10 +59,10 @@ test("walk: collects favicons from the root and from nested dirs", async () => {
     "site/public": [{ name: "favicon.svg", kind: "file", size: 700 }],
   });
   const found = await collectAgentFaviconCandidates(lister, "web");
-  assert.deepEqual(
-    found.map((f) => f.path).sort(),
-    ["favicon.ico", "site/public/favicon.svg"],
-  );
+  assert.deepEqual(found.map((f) => f.path).sort(), [
+    "favicon.ico",
+    "site/public/favicon.svg",
+  ]);
   // The shared ranker then picks the scalable one over the root .ico.
   assert.equal(pickBestFavicon(found)?.path, "site/public/favicon.svg");
 });
@@ -157,7 +157,11 @@ test("walk: bounds the number of directories it opens", async () => {
   }
   const lister = fakeLister(tree);
   await collectAgentFaviconCandidates(lister, "web");
-  assert.equal(lister.calls.length <= 48, true, `listed ${lister.calls.length} dirs`);
+  assert.equal(
+    lister.calls.length <= 48,
+    true,
+    `listed ${lister.calls.length} dirs`,
+  );
 });
 
 test("walk: a directory that fails to list is skipped, not fatal", async () => {
@@ -215,7 +219,10 @@ function fakeReader(opts: {
     exportFiles() {
       used.push("exportFiles");
       const tar = buildTar(
-        Object.entries(opts.files).map(([path, bytes]) => [`files/${path}`, bytes]),
+        Object.entries(opts.files).map(([path, bytes]) => [
+          `files/${path}`,
+          bytes,
+        ]),
       );
       return tarStream(gzipSync(tar), 4096);
     },
@@ -223,7 +230,9 @@ function fakeReader(opts: {
 }
 
 test("read: an SVG comes back over the text RPC, no tar", async () => {
-  const svg = Buffer.from('<svg xmlns="http://www.w3.org/2000/svg"><rect/></svg>');
+  const svg = Buffer.from(
+    '<svg xmlns="http://www.w3.org/2000/svg"><rect/></svg>',
+  );
   const conn = fakeReader({ files: { "public/favicon.svg": svg } });
   assert.deepEqual(
     await readFilesDirBytes(conn, "web", "public/favicon.svg"),
@@ -258,12 +267,19 @@ test("read: an SVG the agent withholds still comes out of the tar", async () => 
     files: { "public/favicon.svg": svg },
     withholdText: true,
   });
-  assert.deepEqual(await readFilesDirBytes(conn, "web", "public/favicon.svg"), svg);
+  assert.deepEqual(
+    await readFilesDirBytes(conn, "web", "public/favicon.svg"),
+    svg,
+  );
 });
 
 test("read: a binary icon comes out of the tar", async () => {
-  const png = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0, 1, 2]);
-  const conn = fakeReader({ files: { "favicon.png": png, "other.txt": Buffer.from("x") } });
+  const png = Buffer.from([
+    0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0, 1, 2,
+  ]);
+  const conn = fakeReader({
+    files: { "favicon.png": png, "other.txt": Buffer.from("x") },
+  });
   assert.deepEqual(await readFilesDirBytes(conn, "web", "favicon.png"), png);
   // No pointless text read for a format that can never come back as text.
   assert.deepEqual(conn.used, ["hello", "exportFiles"]);
@@ -280,7 +296,10 @@ test("read: an agent without files-copy reads nothing binary (and no stream)", a
 
 test("read: a file missing from the archive yields null", async () => {
   const conn = fakeReader({ files: { "favicon.png": Buffer.from([1, 2, 3]) } });
-  assert.equal(await readFilesDirBytes(conn, "web", "public/favicon.png"), null);
+  assert.equal(
+    await readFilesDirBytes(conn, "web", "public/favicon.png"),
+    null,
+  );
 });
 
 /* ------------------------------------------------------------------ */
@@ -288,7 +307,9 @@ test("read: a file missing from the archive yields null", async () => {
 /* a compose stack of prebuilt images keeps its favicon in the image.   */
 /* ------------------------------------------------------------------ */
 
-const PNG_BYTES = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 1, 2]);
+const PNG_BYTES = Buffer.from([
+  0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 1, 2,
+]);
 const ICO_BYTES = Buffer.from([0x00, 0x00, 0x01, 0x00, 1, 0, 16, 16]);
 
 /** One canned HTTP response. */
@@ -362,7 +383,10 @@ test("served: takes the icon the page declares, over the /favicon.ico fallback",
 
 test("served: an app that declares nothing still gets /favicon.ico tried", async () => {
   const conn = fakeProber({
-    "/": { contentType: "text/html", body: Buffer.from("<html><head></head></html>") },
+    "/": {
+      contentType: "text/html",
+      body: Buffer.from("<html><head></head></html>"),
+    },
     "/favicon.ico": { contentType: "image/x-icon", body: ICO_BYTES },
   });
   const found = await detectServedFaviconVia(conn, TARGET);
@@ -375,7 +399,10 @@ test("served: an API that serves no HTML at all still gets /favicon.ico tried", 
     "/": { contentType: "application/json", body: Buffer.from("{}") },
     "/favicon.ico": { contentType: "image/x-icon", body: ICO_BYTES },
   });
-  assert.equal((await detectServedFaviconVia(conn, TARGET))?.path, "/favicon.ico");
+  assert.equal(
+    (await detectServedFaviconVia(conn, TARGET))?.path,
+    "/favicon.ico",
+  );
 });
 
 test("served: follows the redirect apps put in front of their home page", async () => {
@@ -387,7 +414,10 @@ test("served: follows the redirect apps put in front of their home page", async 
     },
     "/static/f.png": { contentType: "image/png", body: PNG_BYTES },
   });
-  assert.equal((await detectServedFaviconVia(conn, TARGET))?.path, "/static/f.png");
+  assert.equal(
+    (await detectServedFaviconVia(conn, TARGET))?.path,
+    "/static/f.png",
+  );
 });
 
 test("served: a redirect off this app is not followed", async () => {
@@ -397,7 +427,10 @@ test("served: a redirect off this app is not followed", async () => {
   });
   // The home page is abandoned, but the app's own well-known path is still ours
   // to ask for.
-  assert.equal((await detectServedFaviconVia(conn, TARGET))?.path, "/favicon.ico");
+  assert.equal(
+    (await detectServedFaviconVia(conn, TARGET))?.path,
+    "/favicon.ico",
+  );
   assert.ok(!conn.asked.some((p) => p.includes("google")));
 });
 
@@ -422,7 +455,11 @@ test("served: moves on to the next candidate when one is missing or oversized", 
       ),
     },
     // Truncated => the agent cut it at the logo cap, so we hold a fragment.
-    "/huge.svg": { contentType: "image/svg+xml", body: Buffer.from("<svg"), truncated: true },
+    "/huge.svg": {
+      contentType: "image/svg+xml",
+      body: Buffer.from("<svg"),
+      truncated: true,
+    },
     // `/gone.png` is absent from the map => the probe throws (404/refused).
     "/ok.png": { contentType: "image/png", body: PNG_BYTES },
   });
@@ -445,7 +482,10 @@ test("served: an icon the page inlined needs no request", async () => {
 });
 
 test("served: an agent too old to probe reports no icon, not an error", async () => {
-  const conn = fakeProber({ "/favicon.ico": { body: ICO_BYTES } }, { capabilities: ["metrics"] });
+  const conn = fakeProber(
+    { "/favicon.ico": { body: ICO_BYTES } },
+    { capabilities: ["metrics"] },
+  );
   assert.equal(await detectServedFaviconVia(conn, TARGET), null);
   assert.deepEqual(conn.asked, []);
 });
@@ -463,7 +503,10 @@ test("served: a path-routed app is read under the prefix it actually serves on",
     },
     "/api/icon.png": { contentType: "image/png", body: PNG_BYTES },
   });
-  const found = await detectServedFaviconVia(conn, { ...TARGET, basePath: "/api" });
+  const found = await detectServedFaviconVia(conn, {
+    ...TARGET,
+    basePath: "/api",
+  });
   assert.equal(found?.path, "/api/icon.png");
 });
 
@@ -487,8 +530,20 @@ test("target: the primary domain decides the service, port and Host header", asy
   const target = servedIconTarget(
     APP,
     [
-      { name: "api.example.com", service: "api", port: 4000, pathPrefix: "", stripPrefix: false },
-      { name: "shop.example.com", service: "web", port: 80, pathPrefix: "", stripPrefix: false },
+      {
+        name: "api.example.com",
+        service: "api",
+        port: 4000,
+        pathPrefix: "",
+        stripPrefix: false,
+      },
+      {
+        name: "shop.example.com",
+        service: "web",
+        port: 80,
+        pathPrefix: "",
+        stripPrefix: false,
+      },
     ],
     "shop.example.com",
   );
@@ -514,7 +569,15 @@ test("target: an app with no domain yet is still reachable, via the compose defa
 test("target: a route with no port takes the service's own compose port", async () => {
   const target = servedIconTarget(
     APP,
-    [{ name: "x.example.com", service: "api", port: null, pathPrefix: "", stripPrefix: false }],
+    [
+      {
+        name: "x.example.com",
+        service: "api",
+        port: null,
+        pathPrefix: "",
+        stripPrefix: false,
+      },
+    ],
     "x.example.com",
   );
   assert.equal(target?.port, 4000);
@@ -522,18 +585,34 @@ test("target: a route with no port takes the service's own compose port", async 
 
 test("target: a stripped path prefix never reaches the container", async () => {
   const routes = [
-    { name: "x.example.com", service: "web", port: 80, pathPrefix: "/api", stripPrefix: true },
+    {
+      name: "x.example.com",
+      service: "web",
+      port: 80,
+      pathPrefix: "/api",
+      stripPrefix: true,
+    },
   ];
   assert.equal(servedIconTarget(APP, routes, "x.example.com")?.basePath, "");
   assert.equal(
-    servedIconTarget(APP, [{ ...routes[0], stripPrefix: false }], "x.example.com")?.basePath,
+    servedIconTarget(
+      APP,
+      [{ ...routes[0], stripPrefix: false }],
+      "x.example.com",
+    )?.basePath,
     "/api",
   );
 });
 
 test("target: null when there is no service to talk to at all", async () => {
-  assert.equal(servedIconTarget({ id: "p", slug: "s", compose: null }, [], ""), null);
-  assert.equal(servedIconTarget({ id: "p", slug: "s", compose: "nonsense: ["}, [], ""), null);
+  assert.equal(
+    servedIconTarget({ id: "p", slug: "s", compose: null }, [], ""),
+    null,
+  );
+  assert.equal(
+    servedIconTarget({ id: "p", slug: "s", compose: "nonsense: [" }, [], ""),
+    null,
+  );
 });
 
 test("served: an icon URL that redirects within the app is followed", async () => {
@@ -542,11 +621,18 @@ test("served: an icon URL that redirects within the app is followed", async () =
     // A hashed-asset rewrite in front of the well-known path — ordinary, and
     // giving up on it would cost the icon.
     "/favicon.ico": { status: 301, location: "/assets/favicon.a1b2.ico" },
-    "/assets/favicon.a1b2.ico": { contentType: "image/x-icon", body: ICO_BYTES },
+    "/assets/favicon.a1b2.ico": {
+      contentType: "image/x-icon",
+      body: ICO_BYTES,
+    },
   });
   const found = await detectServedFaviconVia(conn, TARGET);
   assert.equal(found?.path, "/assets/favicon.a1b2.ico");
-  assert.deepEqual(conn.asked, ["/", "/favicon.ico", "/assets/favicon.a1b2.ico"]);
+  assert.deepEqual(conn.asked, [
+    "/",
+    "/favicon.ico",
+    "/assets/favicon.a1b2.ico",
+  ]);
 });
 
 test("served: a redirect loop cannot turn the search into a crawl", async () => {

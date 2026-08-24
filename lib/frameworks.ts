@@ -21,7 +21,9 @@ export const DEFAULT_NODE_MAJOR = "24";
 /** Whether a build method runs an auto-detecting Node builder that honours
  * {@link DEFAULT_NODE_MAJOR} (Nixpacks / Railpack). The Dockerfile family and the
  * static builder keep their own version handling. */
-export function usesDefaultNodeMajor(method: BuildConfig["buildMethod"]): boolean {
+export function usesDefaultNodeMajor(
+  method: BuildConfig["buildMethod"],
+): boolean {
   return method === "nixpacks" || method === "railpack";
 }
 
@@ -31,7 +33,9 @@ export function usesDefaultNodeMajor(method: BuildConfig["buildMethod"]): boolea
  * language and build steps); the caller overrides `buildMethod`, `methodSettings`
  * and `port` from the UI.
  */
-export function buildConfigFor(overrides: Partial<BuildConfig> = {}): BuildConfig {
+export function buildConfigFor(
+  overrides: Partial<BuildConfig> = {},
+): BuildConfig {
   return {
     buildMethod: overrides.buildMethod ?? "nixpacks",
     methodSettings: {

@@ -48,7 +48,9 @@ after(async () => {
 beforeEach(async () => {
   await pg.exec(`${TRUNCATE_PROJECT_GRAPH}
     truncate table registration_links, membership_capabilities, memberships, users, teams restart identity cascade;`);
-  await seedIdentity(db, { users: [{ id: USER_1, teamId: TEAM_A, role: "owner" }] });
+  await seedIdentity(db, {
+    users: [{ id: USER_1, teamId: TEAM_A, role: "owner" }],
+  });
   await seedServer(db); // SERVER_1, "everything", dockerVersion set by the seeder
 });
 
@@ -110,10 +112,12 @@ test("a backups-only server with no Docker is pinned to that role", async () => 
   await db
     .update((await import("../db/schema/control-plane")).servers)
     .set({ storageOnly: true, buildOnly: false, dockerVersion: "" })
-    .where((await import("drizzle-orm")).eq(
-      (await import("../db/schema/control-plane")).servers.id,
-      SERVER_1,
-    ));
+    .where(
+      (await import("drizzle-orm")).eq(
+        (await import("../db/schema/control-plane")).servers.id,
+        SERVER_1,
+      ),
+    );
   await asOwner(async () => {
     for (const role of ["everything", "build"] as const) {
       await assert.rejects(

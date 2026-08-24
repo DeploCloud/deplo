@@ -6,7 +6,11 @@ import { getCurrentUser } from "../auth";
 import { getDb } from "../db/client";
 import { registries as registriesTable } from "../db/schema/control-plane";
 import { newId, nowIso } from "../ids";
-import { requireActiveTeamId, requireCapability, requireTeamWide } from "../membership";
+import {
+  requireActiveTeamId,
+  requireCapability,
+  requireTeamWide,
+} from "../membership";
 import { recordActivity } from "./activity";
 import { encryptSecret } from "../crypto";
 import type { RegistryType } from "../types";
@@ -62,7 +66,9 @@ export async function addRegistry(input: {
   const user = (await getCurrentUser())!;
   const name = input.name.trim();
   if (!name) throw new Error("Enter a name");
-  const registryUrl = (input.registryUrl?.trim() || REGISTRY_HOSTS[input.type]).trim();
+  const registryUrl = (
+    input.registryUrl?.trim() || REGISTRY_HOSTS[input.type]
+  ).trim();
   if (!registryUrl) throw new Error("Enter the registry host");
   if (!input.username.trim()) throw new Error("Enter a username");
   if (!input.password) throw new Error("Enter a password or access token");
@@ -79,7 +85,13 @@ export async function addRegistry(input: {
       passwordEnc: encryptSecret(input.password),
       createdAt: nowIso(),
     });
-  await recordActivity("member", `Added registry ${name}`, user.name, null, membership.teamId);
+  await recordActivity(
+    "member",
+    `Added registry ${name}`,
+    user.name,
+    null,
+    membership.teamId,
+  );
 }
 
 export async function deleteRegistry(id: string): Promise<void> {
@@ -88,12 +100,28 @@ export async function deleteRegistry(id: string): Promise<void> {
   const rows = await getDb()
     .select({ name: registriesTable.name })
     .from(registriesTable)
-    .where(and(eq(registriesTable.id, id), eq(registriesTable.teamId, membership.teamId)))
+    .where(
+      and(
+        eq(registriesTable.id, id),
+        eq(registriesTable.teamId, membership.teamId),
+      ),
+    )
     .limit(1);
   const r = rows[0];
   if (!r) throw new Error("Registry not found");
   await getDb()
     .delete(registriesTable)
-    .where(and(eq(registriesTable.id, id), eq(registriesTable.teamId, membership.teamId)));
-  await recordActivity("member", `Removed registry ${r.name}`, user.name, null, membership.teamId);
+    .where(
+      and(
+        eq(registriesTable.id, id),
+        eq(registriesTable.teamId, membership.teamId),
+      ),
+    );
+  await recordActivity(
+    "member",
+    `Removed registry ${r.name}`,
+    user.name,
+    null,
+    membership.teamId,
+  );
 }

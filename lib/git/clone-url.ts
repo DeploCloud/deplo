@@ -88,7 +88,10 @@ export async function resolveCloneUrl(repo: GitRepo): Promise<string> {
  * Pure, and it THROWS with the sentence the deploy log shows: a preview that
  * cannot say which code it would run must not run any.
  */
-export function forkCloneUrl(baseRepoUrl: string, headCloneUrl: string): string {
+export function forkCloneUrl(
+  baseRepoUrl: string,
+  headCloneUrl: string,
+): string {
   const fail = (why: string): never => {
     throw new Error(
       `This pull request comes from a fork and Deplo will not clone it: ${why}.`,

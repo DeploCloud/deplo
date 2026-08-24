@@ -17,7 +17,7 @@ The gap is not an oversight that a bigger RPC would close. It is structural:
   (There is no `ListStacks` RPC — a stack the control plane cannot name from Postgres is invisible
   to it forever.)
 - **Everything that actually survives a removal has no RPC behind it at all**: the `deplo-agent`
-  binary, its systemd unit, `/var/lib/deplo-agent` (the mTLS materials *and* Traefik's
+  binary, its systemd unit, `/var/lib/deplo-agent` (the mTLS materials _and_ Traefik's
   `acme.json`), the `deplo-traefik` container holding `:80`/`:443`, the `deplo` Docker network,
   the SSH gateway, images built as `deplo/<slug>`, `/data/stacks`, and Docker itself — all of
   which `install-agent.sh` put there, host-side, **before any RPC existed**.
@@ -26,7 +26,7 @@ The gap is not an oversight that a bigger RPC would close. It is structural:
   it would leave a window where a failed removal has already destroyed the host's containers.
 
 Two further defects sat in the same function. `databases.server_id` is `RESTRICT`
-([`lib/db/schema/control-plane.ts`](../../lib/db/schema/control-plane.ts)), but only *apps* were
+([`lib/db/schema/control-plane.ts`](../../lib/db/schema/control-plane.ts)), but only _apps_ were
 checked — so removing a server that hosted a database surfaced a raw Postgres foreign-key
 violation to the operator. And the trust revoke ran **before** the block, so a removal that was
 then refused had already, permanently, de-trusted the server it declined to remove.
@@ -36,7 +36,7 @@ then refused had already, permanently, de-trusted the server it declined to remo
 **Removing a server is trust revocation plus forgetting. It never touches the host, and it says
 so.**
 
-1. **Block first, with zero side effects.** Apps *and* databases still on the server block the
+1. **Block first, with zero side effects.** Apps _and_ databases still on the server block the
    removal, each with a message that names them. Nothing is written until the guards pass.
 2. **Revoke trust, then delete — and restore the pin if the delete fails.** A server that is
    still in the table yet can never be dialed again is the worst of both states.

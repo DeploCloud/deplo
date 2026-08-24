@@ -72,7 +72,11 @@ function agentVersionFields(
   return { agentVersion, expectedAgentVersion: expected };
 }
 
-function unavailable(serverId: string, expected: string, server?: Server): ServerMetrics {
+function unavailable(
+  serverId: string,
+  expected: string,
+  server?: Server,
+): ServerMetrics {
   const facts = hostFacts();
   return {
     serverId,
@@ -107,7 +111,10 @@ function unavailable(serverId: string, expected: string, server?: Server): Serve
  * poll per viewer. Acceptable at current scale; a connection pool is a Part C+
  * optimisation (TODO) if the fleet/viewer count makes the churn matter.
  */
-async function measureRemote(server: Server, expected: string): Promise<ServerMetrics> {
+async function measureRemote(
+  server: Server,
+  expected: string,
+): Promise<ServerMetrics> {
   // Watermark for any health we learn on this poll — see recordServerHealth.
   const observedAt = nowIso();
   const conn = await connectAgent(server.id);
@@ -187,7 +194,10 @@ async function measureRemote(server: Server, expected: string): Promise<ServerMe
   }
 }
 
-async function metricsFor(server: Server, expected: string): Promise<ServerMetrics> {
+async function metricsFor(
+  server: Server,
+  expected: string,
+): Promise<ServerMetrics> {
   try {
     return await measureRemote(server, expected);
   } catch {
@@ -207,7 +217,9 @@ async function metricsFor(server: Server, expected: string): Promise<ServerMetri
   }
 }
 
-export async function getServerMetrics(serverId: string): Promise<ServerMetrics> {
+export async function getServerMetrics(
+  serverId: string,
+): Promise<ServerMetrics> {
   // `view_metrics` is what the permission catalog promises ("see live and
   // historical usage"), enforced here and not only in the resolver.
   await requireCapability("view_metrics");
@@ -229,7 +241,9 @@ export async function getServerMetrics(serverId: string): Promise<ServerMetrics>
  * them empty. Team-scoped exactly like {@link getServerMetrics}; empty when saving
  * is off (the switch drops the buffers) or nothing has been sampled yet.
  */
-export async function getServerMetricsHistory(serverId: string): Promise<ServerMetrics[]> {
+export async function getServerMetricsHistory(
+  serverId: string,
+): Promise<ServerMetrics[]> {
   // Soft (empty) rather than a throw: this one seeds a chart on page load.
   if (!(await hasCapability("view_metrics"))) return [];
   const server = await getServer(serverId);
@@ -261,10 +275,7 @@ function withSpecTimeout<T>(p: Promise<T>, ms = 4000): Promise<T> {
   const timeout = new Promise<never>((_, reject) => {
     timer = setTimeout(() => reject(new Error("spec measure timed out")), ms);
   });
-  return Promise.race([
-    p.finally(() => clearTimeout(timer)),
-    timeout,
-  ]);
+  return Promise.race([p.finally(() => clearTimeout(timer)), timeout]);
 }
 
 /**

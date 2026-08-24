@@ -55,7 +55,9 @@ beforeEach(async () => {
   __resetDeploymentLogBuffers();
   await pg.exec(`${TRUNCATE_PROJECT_GRAPH}
     truncate table users, teams restart identity cascade;`);
-  await seedIdentity(db, { users: [{ id: USER_1, teamId: TEAM_A, role: "owner" }] });
+  await seedIdentity(db, {
+    users: [{ id: USER_1, teamId: TEAM_A, role: "owner" }],
+  });
   await seedServer(db);
 });
 
@@ -79,16 +81,41 @@ test("reconcile errors orphaned building deploys but leaves queued durable", asy
   const n = await reconcileInFlightDeployments();
   assert.equal(n, 1, "only the one BUILDING deploy is reconciled to error");
 
-  const deps = await db.select().from(deploymentsTable).orderBy(asc(deploymentsTable.id));
+  const deps = await db
+    .select()
+    .from(deploymentsTable)
+    .orderBy(asc(deploymentsTable.id));
   const byId = new Map(deps.map((d) => [d.id, d]));
-  assert.equal(byId.get("dpl_a")!.status, "error", "orphaned building -> error");
-  assert.equal(byId.get("dpl_b")!.status, "queued", "queued is durable — left for re-drain");
+  assert.equal(
+    byId.get("dpl_a")!.status,
+    "error",
+    "orphaned building -> error",
+  );
+  assert.equal(
+    byId.get("dpl_b")!.status,
+    "queued",
+    "queued is durable — left for re-drain",
+  );
   assert.equal(byId.get("dpl_c")!.status, "ready", "ready is untouched");
 
-  const proj1 = await db.select().from(appsTable).where(eq(appsTable.id, "prj_1"));
-  assert.equal(proj1[0]!.status, "error", "the mid-build project settles off building");
-  const proj2 = await db.select().from(appsTable).where(eq(appsTable.id, "prj_2"));
-  assert.equal(proj2[0]!.status, "queued", "the queued project stays queued for re-drain");
+  const proj1 = await db
+    .select()
+    .from(appsTable)
+    .where(eq(appsTable.id, "prj_1"));
+  assert.equal(
+    proj1[0]!.status,
+    "error",
+    "the mid-build project settles off building",
+  );
+  const proj2 = await db
+    .select()
+    .from(appsTable)
+    .where(eq(appsTable.id, "prj_2"));
+  assert.equal(
+    proj2[0]!.status,
+    "queued",
+    "the queued project stays queued for re-drain",
+  );
 
   // Only the errored (building) deployment got an interrupted-log line.
   const logsA = await db
@@ -101,7 +128,11 @@ test("reconcile errors orphaned building deploys but leaves queued durable", asy
     .select()
     .from(deploymentLogs)
     .where(eq(deploymentLogs.deploymentId, "dpl_b"));
-  assert.equal(logsB.length, 0, "the durable queued deploy is not logged as interrupted");
+  assert.equal(
+    logsB.length,
+    0,
+    "the durable queued deploy is not logged as interrupted",
+  );
 });
 
 test("reconcile is idempotent — a second run finds nothing", async () => {

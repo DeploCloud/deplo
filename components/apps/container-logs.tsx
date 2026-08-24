@@ -235,7 +235,9 @@ export function ContainerLogs({
     }
     parseRef.current = { text, parsedTo: from, lines: acc };
     const partial = text.slice(from);
-    const tailLevel: LogLevel = acc.length ? acc[acc.length - 1]!.level : "info";
+    const tailLevel: LogLevel = acc.length
+      ? acc[acc.length - 1]!.level
+      : "info";
     setLines(partial ? [...acc, classifyLine(partial, tailLevel)] : [...acc]);
   }, []);
   // Consecutive auto-reattaches; reset by any manual action or new output.
@@ -734,8 +736,8 @@ export function ContainerLogs({
 
         {(status === "live" || busy) && output === "" && !failure ? (
           <p className="mt-1 text-[11px] text-zinc-500">
-            No output yet — new log lines will appear here as the container emits
-            them.
+            No output yet — new log lines will appear here as the container
+            emits them.
           </p>
         ) : null}
 

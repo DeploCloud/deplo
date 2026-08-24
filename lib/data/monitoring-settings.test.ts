@@ -61,7 +61,12 @@ beforeEach(async () => {
   await seedIdentity(db, {
     users: [
       { id: USER_1, teamId: TEAM_A, role: "owner" },
-      { id: USER_VIEWER, teamId: TEAM_A, role: "viewer", capabilities: ["view"] },
+      {
+        id: USER_VIEWER,
+        teamId: TEAM_A,
+        role: "viewer",
+        capabilities: ["view"],
+      },
     ],
   });
   await seedServer(db);
@@ -77,10 +82,7 @@ const asViewer = <T>(fn: () => Promise<T>): Promise<T> =>
   runWithIdentity({ userId: USER_VIEWER, teamId: TEAM_A }, fn);
 
 /** A minimal online measurement at `ts` (override any field). */
-function sample(
-  ts: number,
-  over: Partial<ServerMetrics> = {},
-): ServerMetrics {
+function sample(ts: number, over: Partial<ServerMetrics> = {}): ServerMetrics {
   return {
     serverId: SERVER_1,
     online: true,

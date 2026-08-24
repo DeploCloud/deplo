@@ -54,7 +54,11 @@ import {
 import { loadDomainsForApp } from "./app-graph-load";
 import { nipDomain, nipEmbeddedIp } from "../deploy/domains";
 import { upsertEnv, listEnv } from "./env";
-import { saveSharedVar, setSharedVarAppLink, listSharedVars } from "./shared-vars";
+import {
+  saveSharedVar,
+  setSharedVarAppLink,
+  listSharedVars,
+} from "./shared-vars";
 
 /**
  * Step 4 app-graph data-layer tests (relational-store PLAN §3 cut-set (c) /
@@ -107,11 +111,24 @@ test("deleteApp cascades every child + shared-var link (no orphans)", async () =
   await seedApp(db, { id: "prj_2", status: "active" });
   await seedDeployment(db, { id: "dpl_1", appId: "prj_1" });
   // A log line on prj_1's deployment.
-  await db.insert(deploymentLogs).values({ deploymentId: "dpl_1", ts: "2026-01-01T00:00:00.000Z", level: "info", text: "x" });
+  await db
+    .insert(deploymentLogs)
+    .values({
+      deploymentId: "dpl_1",
+      ts: "2026-01-01T00:00:00.000Z",
+      level: "info",
+      text: "x",
+    });
 
   await asUser1(async () => {
     // An env var + a domain on prj_1.
-    await upsertEnv({ appId: "prj_1", key: "K", value: "v", targets: ["production"], type: "plain" });
+    await upsertEnv({
+      appId: "prj_1",
+      key: "K",
+      value: "v",
+      targets: ["production"],
+      type: "plain",
+    });
     await addDomain("prj_1", "app.example.io", {});
     // A shared var linked to BOTH apps (the orphan the old bug leaked).
     await saveSharedVar({
@@ -131,14 +148,38 @@ test("deleteApp cascades every child + shared-var link (no orphans)", async () =
 
   // prj_1 and ALL its children are gone; prj_2 untouched.
   assert.equal((await db.select({ n: count() }).from(appsTable))[0]!.n, 1);
-  assert.equal((await db.select({ n: count() }).from(deploymentsTable))[0]!.n, 0, "deployments cascade");
-  assert.equal((await db.select({ n: count() }).from(deploymentLogs))[0]!.n, 0, "logs cascade");
-  assert.equal((await db.select({ n: count() }).from(envVarsTable))[0]!.n, 0, "env vars cascade");
-  assert.equal((await db.select({ n: count() }).from(envVarTargetsTable))[0]!.n, 0, "env targets cascade");
-  assert.equal((await db.select({ n: count() }).from(domainsTable))[0]!.n, 0, "domains cascade");
+  assert.equal(
+    (await db.select({ n: count() }).from(deploymentsTable))[0]!.n,
+    0,
+    "deployments cascade",
+  );
+  assert.equal(
+    (await db.select({ n: count() }).from(deploymentLogs))[0]!.n,
+    0,
+    "logs cascade",
+  );
+  assert.equal(
+    (await db.select({ n: count() }).from(envVarsTable))[0]!.n,
+    0,
+    "env vars cascade",
+  );
+  assert.equal(
+    (await db.select({ n: count() }).from(envVarTargetsTable))[0]!.n,
+    0,
+    "env targets cascade",
+  );
+  assert.equal(
+    (await db.select({ n: count() }).from(domainsTable))[0]!.n,
+    0,
+    "domains cascade",
+  );
   // The per-app link to prj_1 is GONE (cascaded); the prj_2 link survives.
   const links = await db.select().from(sharedEnvVarApps);
-  assert.deepEqual(links.map((l) => l.appId), ["prj_2"], "dead link cascaded, live one kept");
+  assert.deepEqual(
+    links.map((l) => l.appId),
+    ["prj_2"],
+    "dead link cascaded, live one kept",
+  );
 });
 
 /* ------------------------------------------------------------------ */
@@ -171,7 +212,10 @@ test("an app being deleted is locked, unlisted, and finished at boot", async () 
     // The READ side drops it too: a card nobody can use, that only the next
     // navigation would ever clear, is worse than one that leaves at once.
     const listed = await listApps();
-    assert.deepEqual(listed.map((p) => p.id), ["prj_2"]);
+    assert.deepEqual(
+      listed.map((p) => p.id),
+      ["prj_2"],
+    );
     // A multi-select that happens to include it deletes the others anyway.
     assert.equal(await deleteApps(["prj_1", "prj_2"]), 1);
   });
@@ -242,14 +286,20 @@ test("reorderApps writes the team_app_order junction; dead ids drop", async () =
     .from(teamAppOrder)
     .where(eq(teamAppOrder.teamId, TEAM_A))
     .orderBy(teamAppOrder.position);
-  assert.deepEqual(rows.map((r) => [r.appId, r.position]), [
-    ["prj_2", 0],
-    ["prj_1", 1],
-  ]);
+  assert.deepEqual(
+    rows.map((r) => [r.appId, r.position]),
+    [
+      ["prj_2", 0],
+      ["prj_1", 1],
+    ],
+  );
   // listApps honours the manual order.
   await asUser1(async () => {
     const list = await listApps();
-    assert.deepEqual(list.map((p) => p.id), ["prj_2", "prj_1"]);
+    assert.deepEqual(
+      list.map((p) => p.id),
+      ["prj_2", "prj_1"],
+    );
   });
 });
 
@@ -283,7 +333,10 @@ test("env vars + targets round-trip through the relational layer", async () => {
     assert.deepEqual([...list[0]!.targets].sort(), ["preview", "production"]);
   });
   // The value is stored encrypted (not plaintext).
-  const rows = await db.select().from(envVarsTable).where(eq(envVarsTable.appId, "prj_1"));
+  const rows = await db
+    .select()
+    .from(envVarsTable)
+    .where(eq(envVarsTable.appId, "prj_1"));
   assert.notEqual(rows[0]!.valueEnc, "s3cret");
 });
 
@@ -314,7 +367,12 @@ test("an edit that names no targets PRESERVES the stored ones", async () => {
       targets: ["production"],
       type: "plain",
     });
-    await upsertEnv({ appId: "prj_1", key: "STRIPE", value: "rotated", type: "plain" });
+    await upsertEnv({
+      appId: "prj_1",
+      key: "STRIPE",
+      value: "rotated",
+      type: "plain",
+    });
     const [v] = await listEnv("prj_1");
     assert.deepEqual(v!.targets, ["production"]);
     // An explicit set still replaces them.
@@ -386,9 +444,15 @@ test("shared-var link attach/detach toggles the junction", async () => {
     varId = (await listSharedVars())[0]!.id;
     await setSharedVarAppLink(varId, "prj_1", true);
   });
-  assert.equal((await db.select({ n: count() }).from(sharedEnvVarApps))[0]!.n, 1);
+  assert.equal(
+    (await db.select({ n: count() }).from(sharedEnvVarApps))[0]!.n,
+    1,
+  );
   await asUser1(() => setSharedVarAppLink(varId, "prj_1", false));
-  assert.equal((await db.select({ n: count() }).from(sharedEnvVarApps))[0]!.n, 0);
+  assert.equal(
+    (await db.select({ n: count() }).from(sharedEnvVarApps))[0]!.n,
+    0,
+  );
 });
 
 /* ------------------------------------------------------------------ */
@@ -409,10 +473,18 @@ test("two concurrent same-name createApp calls both succeed with distinct slugs"
   );
   // Both persisted, with DISTINCT slugs (the second retried past the unique
   // violation onto the next free suffix).
-  assert.notEqual(a.slug, b.slug, "concurrent same-name creates get distinct slugs");
+  assert.notEqual(
+    a.slug,
+    b.slug,
+    "concurrent same-name creates get distinct slugs",
+  );
   const rows = await db.select({ slug: appsTable.slug }).from(appsTable);
   assert.equal(rows.length, 2);
-  assert.equal(new Set(rows.map((r) => r.slug)).size, 2, "two unique slugs persisted");
+  assert.equal(
+    new Set(rows.map((r) => r.slug)).size,
+    2,
+    "two unique slugs persisted",
+  );
 });
 
 /* ------------------------------------------------------------------ */
@@ -431,7 +503,12 @@ test("uniqueAutoDomainName never returns a host that already exists globally", a
       assert.ok(!taken.has(name), `generated a duplicate: ${name}`);
       taken.add(name);
       // Persist it so the NEXT call must avoid it too (global check).
-      await ensureExtraDomain("prj_u", name, { port: 80, service: null, slug: "uniq", ip: IP });
+      await ensureExtraDomain("prj_u", name, {
+        port: 80,
+        service: null,
+        slug: "uniq",
+        ip: IP,
+      });
     }
   });
   // Every persisted domain name is distinct.
@@ -446,17 +523,35 @@ test("ensureExtraDomain regenerates (not skips) when the template host collides 
   // App A claims a host.
   const shared = `shared-charming-otter-${"01020304"}.nip.io`;
   await asUser1(() =>
-    ensureExtraDomain("prj_a", shared, { port: 80, service: "web", slug: "alpha", ip: IP }),
+    ensureExtraDomain("prj_a", shared, {
+      port: 80,
+      service: "web",
+      slug: "alpha",
+      ip: IP,
+    }),
   );
   // App B is handed the SAME host by its (hypothetical) template — it must
   // get a fresh unique host, NOT silently skip and NOT duplicate A's host.
   await asUser1(() =>
-    ensureExtraDomain("prj_b", shared, { port: 80, service: "web", slug: "beta", ip: IP }),
+    ensureExtraDomain("prj_b", shared, {
+      port: 80,
+      service: "web",
+      slug: "beta",
+      ip: IP,
+    }),
   );
   const bDomains = await loadDomainsForApp("prj_b");
   assert.equal(bDomains.length, 1, "B got a domain (regenerated, not dropped)");
-  assert.notEqual(bDomains[0].name, shared, "B did not reuse A's colliding host");
-  assert.equal(nipEmbeddedIp(bDomains[0].name), IP, "B's host still encodes the IP");
+  assert.notEqual(
+    bDomains[0].name,
+    shared,
+    "B did not reuse A's colliding host",
+  );
+  assert.equal(
+    nipEmbeddedIp(bDomains[0].name),
+    IP,
+    "B's host still encodes the IP",
+  );
   // A keeps the original; the two never share a name.
   const aDomains = await loadDomainsForApp("prj_a");
   assert.equal(aDomains[0].name, shared);
@@ -466,11 +561,25 @@ test("ensureExtraDomain is idempotent on the SAME project (re-run does not dupli
   await seedApp(db, { id: "prj_c", slug: "gamma" });
   const host = `gamma-bold-lynx-${"01020304"}.nip.io`;
   await asUser1(async () => {
-    await ensureExtraDomain("prj_c", host, { port: 80, service: "web", slug: "gamma", ip: IP });
-    await ensureExtraDomain("prj_c", host, { port: 80, service: "web", slug: "gamma", ip: IP });
+    await ensureExtraDomain("prj_c", host, {
+      port: 80,
+      service: "web",
+      slug: "gamma",
+      ip: IP,
+    });
+    await ensureExtraDomain("prj_c", host, {
+      port: 80,
+      service: "web",
+      slug: "gamma",
+      ip: IP,
+    });
   });
   const rows = await loadDomainsForApp("prj_c");
-  assert.equal(rows.length, 1, "the same host on the same project is not duplicated");
+  assert.equal(
+    rows.length,
+    1,
+    "the same host on the same project is not duplicated",
+  );
   assert.equal(rows[0].name, host);
 });
 
@@ -497,14 +606,30 @@ test("a template's displaced domain gets an address of its own, not silence", as
   );
 
   const rows = await loadDomainsForApp(app.id);
-  assert.equal(rows.length, 2, "both services the template publishes got a host");
+  assert.equal(
+    rows.length,
+    2,
+    "both services the template publishes got a host",
+  );
   const primary = rows.find((d) => d.primary)!;
-  assert.equal(primary.name, main, "the marked primary keeps the generated main host");
+  assert.equal(
+    primary.name,
+    main,
+    "the marked primary keeps the generated main host",
+  );
   assert.equal(primary.service, "garage-webui");
   assert.equal(primary.port, 3909);
   const extra = rows.find((d) => !d.primary)!;
-  assert.notEqual(extra.name, main, "the displaced entry did not vanish onto the primary's host");
-  assert.equal(nipEmbeddedIp(extra.name), serverIp, "its regenerated host points at the same server");
+  assert.notEqual(
+    extra.name,
+    main,
+    "the displaced entry did not vanish onto the primary's host",
+  );
+  assert.equal(
+    nipEmbeddedIp(extra.name),
+    serverIp,
+    "its regenerated host points at the same server",
+  );
   assert.equal(extra.service, "garage");
   assert.equal(extra.port, 3900);
 });
@@ -515,12 +640,22 @@ test("ensureAutoDomain regenerates when its `preferred` host belongs to another 
   const preferred = `pref-keen-puma-${"01020304"}.nip.io`;
   // X claims `preferred` as its primary.
   const xName = await asUser1(() =>
-    ensureAutoDomain("prj_x", { slug: "xeno", ip: IP, preferred, defaultPort: 80 }),
+    ensureAutoDomain("prj_x", {
+      slug: "xeno",
+      ip: IP,
+      preferred,
+      defaultPort: 80,
+    }),
   );
   assert.equal(xName, preferred);
   // Y is given the SAME preferred — it must regenerate a distinct primary.
   const yName = await asUser1(() =>
-    ensureAutoDomain("prj_y", { slug: "yeti", ip: IP, preferred, defaultPort: 80 }),
+    ensureAutoDomain("prj_y", {
+      slug: "yeti",
+      ip: IP,
+      preferred,
+      defaultPort: 80,
+    }),
   );
   assert.notEqual(yName, preferred, "Y regenerated rather than colliding");
   assert.equal(nipEmbeddedIp(yName), IP);
@@ -566,7 +701,11 @@ test("a path row on an already-verified hostname inherits its DNS status (and ro
 
     // Both rows reach the router, and the path row keeps its full config.
     const routes = await routableRoutes("prj_1");
-    assert.equal(routes.length, 2, "both the whole-host and the /api row route");
+    assert.equal(
+      routes.length,
+      2,
+      "both the whole-host and the /api row route",
+    );
     const path = routes.find((r) => r.pathPrefix === "/api");
     assert.ok(path, "the /api route must be present");
     assert.equal(path.stripPrefix, true);
@@ -579,9 +718,15 @@ test("a path row on an UNVERIFIED hostname stays pending (DNS is still unproven)
   await seedApp(db, { id: "prj_1", status: "active" });
   await asUser1(async () => {
     // No verified sibling for this hostname ⇒ the DNS really is unchecked.
-    const d = await addDomain("prj_1", "fresh.example.io", { pathPrefix: "/api" });
+    const d = await addDomain("prj_1", "fresh.example.io", {
+      pathPrefix: "/api",
+    });
     assert.equal(d.status, "pending");
-    assert.deepEqual(await routableRoutes("prj_1"), [], "unproven host is not routed");
+    assert.deepEqual(
+      await routableRoutes("prj_1"),
+      [],
+      "unproven host is not routed",
+    );
   });
 });
 
@@ -593,7 +738,11 @@ test("addDomain without a certProvider is born WITHOUT a certificate (`none`)", 
   await seedApp(db, { id: "prj_1", status: "active" });
   await asUser1(async () => {
     const plain = await addDomain("prj_1", "plain.example.io", {});
-    assert.equal(plain.certProvider, "none", "omitted provider ⇒ no certificate");
+    assert.equal(
+      plain.certProvider,
+      "none",
+      "omitted provider ⇒ no certificate",
+    );
     // An explicit choice is stored verbatim — opting in still works.
     const secure = await addDomain("prj_1", "secure.example.io", {
       certProvider: "letsencrypt",
@@ -625,7 +774,11 @@ test("auto domains are born plain-HTTP unless the blueprint opted into TLS", asy
   });
   const plain = await loadDomainsForApp("prj_1");
   assert.equal(plain.length, 1);
-  assert.equal(plain[0].certProvider, "none", "stored explicitly, not left absent");
+  assert.equal(
+    plain[0].certProvider,
+    "none",
+    "stored explicitly, not left absent",
+  );
   assert.equal(plain[0].ssl, false, "ssl mirrors the cert-less birth");
   const tls = await loadDomainsForApp("prj_2");
   assert.equal(tls.length, 2);

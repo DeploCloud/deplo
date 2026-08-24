@@ -91,7 +91,11 @@ import { addExistingMember, mintRegistrationLink } from "./members";
 import { createApp, setAppVolumes, updateAppResources } from "./apps";
 import { writeAppFile } from "./app-files";
 import { createCronJob } from "./crons";
-import { createDatabase, isValidExposePort, setDatabaseMounts } from "./databases";
+import {
+  createDatabase,
+  isValidExposePort,
+  setDatabaseMounts,
+} from "./databases";
 import {
   type DomainPatch,
   addDomain,
@@ -109,7 +113,11 @@ import {
   listServersForTeam,
   uninstallMigrationSource,
 } from "./servers";
-import { deploHostSelfAddresses, isDeploHostServer, resolveServerIp } from "../deploy/domains";
+import {
+  deploHostSelfAddresses,
+  isDeploHostServer,
+  resolveServerIp,
+} from "../deploy/domains";
 import { saveSharedVar } from "./shared-vars";
 import { recordActivity } from "./activity";
 import { runAsMigration } from "./migration-guard";
@@ -342,10 +350,15 @@ export async function assertImportGate(): Promise<{ teamId: string }> {
  * not dial. Same shape as `connectGitProvider`: the private-address escape hatch
  * asserts instance admin AT the decision, never inherits it from a caller.
  */
-export async function credentialFor(input: ConnectInput): Promise<DokployCredential> {
+export async function credentialFor(
+  input: ConnectInput,
+): Promise<DokployCredential> {
   const baseUrl = normalizeDokployBaseUrl(input.url);
   if (input.allowPrivate) await requireInstanceAdmin();
-  else await assertSafeOutboundUrl(baseUrl, "Dokploy address", { allowHttp: true });
+  else
+    await assertSafeOutboundUrl(baseUrl, "Dokploy address", {
+      allowHttp: true,
+    });
   const apiKey = input.apiKey.trim();
   if (!apiKey) throw new Error("Paste the Dokploy API key");
   return { baseUrl, apiKey };
@@ -517,142 +530,148 @@ export async function scanDokploy(input: ConnectInput): Promise<DokployPlan> {
         list.map((svc, index) => ({ svc, index })),
         5,
         async ({ svc, index }) => {
-        const line: PlanService = {
-          sourceId: svc.id,
-          kind: svc.kind,
-          // Replaced by the detail row's name below; the id is what a service whose
-          // detail cannot be read is called, since it is all Dokploy gave us.
-          name: svc.name || svc.id,
-          targetKind:
-            svc.kind === "compose" || svc.kind === "application"
-              ? "app"
-              : deploEngineFor(svc.kind)
-                ? "database"
-                : null,
-          status: "new",
-          sourceServerId: svc.serverId,
-          // Only a repository source ever reaches the builder; every other kind
-          // flips this below or leaves it false.
-          buildsFromSource: false,
-          engine: deploEngineFor(svc.kind as DokployDbKind),
-          exposedPort: null,
-          domains: [],
-          logo: null,
-          notes: [],
-        };
-        // An engine Deplo does not have is settled here, without a detail call:
-        // asking about a libsql row we can do nothing with would turn a plain
-        // fact into an HTTP 404 in the report.
-        if (line.targetKind === null) {
-          line.status = "unsupported";
-          // Its NAME is still worth one call. `project.all` gives a database
-          // nothing but its id, so the line otherwise reads
-          // "jiNnZQIEqsTkIARVHq0He has no equivalent here" - true, and useless to
-          // the person who has to decide what to do about it. A refusal here
-          // changes nothing: the id stands, as it did before.
-          line.name = await nameOfService(c, svc);
-          line.notes.push(`Deplo has no ${svc.kind} engine.`);
-          services[index] = line;
-          return;
-        }
-
-        let detail: DokployApplication | DokployCompose | DokployDatabase;
-        try {
-          detail = await loadService(c, svc);
-        } catch (e) {
-          line.status = "unsupported";
-          line.notes.push(
-            e instanceof Error ? e.message : "Dokploy would not return this service.",
-          );
-          services[index] = line;
-          return;
-        }
-
-        // The detail row is the first place a name is guaranteed: `project.all`
-        // gives a database nothing but its id, so until now this line may have had
-        // no name at all.
-        line.name = nameOf(detail, svc);
-        line.logo = mapLogo((detail as DokployApplication).icon);
-
-        if (line.targetKind === "database") {
-          const key = line.name.trim().toLowerCase();
-          if (existing.databases.has(key)) line.status = "exists";
-          const mappedDb = mapDatabase(svc.kind as DokployDbKind, {
-            ...(detail as DokployDatabase),
-            name: line.name,
-          });
-          // The port the review needs to talk about. Carried whatever the caller
-          // may do with it - this describes the SOURCE, and whether it can be
-          // published here is a separate fact the review states once at the top -
-          // so a screen with no port controls can still say how many databases
-          // are about to lose theirs.
-          line.exposedPort = mappedDb.value?.exposedPort ?? null;
-          line.notes.push(...mappedDb.notes);
-          services[index] = line;
-          return;
-        }
-
-        // Apps: name is unique per (project, environment) for our purposes.
-        const homeKey = existingEnv ? `${existingEnv}:${line.name.trim().toLowerCase()}` : null;
-        if (homeKey && existing.apps.has(homeKey)) line.status = "exists";
-
-        const isCompose = svc.kind === "compose";
-        const domains = mapDomains(
-          (detail as DokployApplication).domains,
-          { isCompose },
-        );
-        line.domains = domains.value.map((d) => d.host);
-        line.notes.push(...domains.notes);
-        // Said BEFORE anyone presses import, because it is the one thing about a
-        // migrated app that is not the same afterwards: the address. The route
-        // survives; the name cannot (it carries the source server's IP).
-        for (const host of new Set(
-          domains.value.filter((d) => d.generated).map((d) => d.host),
-        ))
-          line.notes.push(
-            `${host} is Dokploy's own temporary address - Deplo cannot take it, so this app gets a temporary address of Deplo's instead, with the same routes.`,
-          );
-        for (const host of line.domains)
-          if (foreignHosts.has(host))
-            line.notes.push(
-              `${host} is already routed by another team on this Deplo, so this app gets an address of Deplo's instead - same routes.`,
-            );
-
-        if (isCompose) {
-          const yamlText = (detail as DokployCompose).composeFile ?? "";
-          const adapted = adaptComposeForDeplo(yamlText);
-          const blocked = composeBlockers(adapted.compose, {
-            mayMountHost,
-            mayExposePorts,
-          });
-          if (!yamlText.trim())
-            line.notes.push(
-              "The compose file lives in a git repository - Deplo will try to fetch the resolved file at import time.",
-            );
-          line.notes.push(...adapted.changes);
-          line.notes.push(...composeAdvice(adapted.compose));
-          if (blocked.length > 0 && line.status === "new") {
-            line.status = "needs_grant";
-            line.notes.push(...blocked);
+          const line: PlanService = {
+            sourceId: svc.id,
+            kind: svc.kind,
+            // Replaced by the detail row's name below; the id is what a service whose
+            // detail cannot be read is called, since it is all Dokploy gave us.
+            name: svc.name || svc.id,
+            targetKind:
+              svc.kind === "compose" || svc.kind === "application"
+                ? "app"
+                : deploEngineFor(svc.kind)
+                  ? "database"
+                  : null,
+            status: "new",
+            sourceServerId: svc.serverId,
+            // Only a repository source ever reaches the builder; every other kind
+            // flips this below or leaves it false.
+            buildsFromSource: false,
+            engine: deploEngineFor(svc.kind as DokployDbKind),
+            exposedPort: null,
+            domains: [],
+            logo: null,
+            notes: [],
+          };
+          // An engine Deplo does not have is settled here, without a detail call:
+          // asking about a libsql row we can do nothing with would turn a plain
+          // fact into an HTTP 404 in the report.
+          if (line.targetKind === null) {
+            line.status = "unsupported";
+            // Its NAME is still worth one call. `project.all` gives a database
+            // nothing but its id, so the line otherwise reads
+            // "jiNnZQIEqsTkIARVHq0He has no equivalent here" - true, and useless to
+            // the person who has to decide what to do about it. A refusal here
+            // changes nothing: the id stands, as it did before.
+            line.name = await nameOfService(c, svc);
+            line.notes.push(`Deplo has no ${svc.kind} engine.`);
+            services[index] = line;
+            return;
           }
-        } else {
-          const app = detail as DokployApplication;
-          // The same call the notes come from: a git source is the only one Deplo
-          // builds, so this costs nothing beyond keeping the result.
-          const src = mapSource(app);
-          line.buildsFromSource = src.value.kind === "git";
-          line.notes.push(...src.notes);
-          line.notes.push(...mapBuildSettings(app).notes);
-          line.notes.push(...portNotes(app));
-          line.notes.push(...unsupportedNotes(app));
-          if ((app.mounts ?? []).some((m) => m.type === "bind") && !mayMountHost) {
-            line.status = line.status === "exists" ? "exists" : "needs_grant";
+
+          let detail: DokployApplication | DokployCompose | DokployDatabase;
+          try {
+            detail = await loadService(c, svc);
+          } catch (e) {
+            line.status = "unsupported";
             line.notes.push(
-              "Has a bind mount of a host folder, which needs the host-volumes grant - without it the app still comes across, that one folder does not.",
+              e instanceof Error
+                ? e.message
+                : "Dokploy would not return this service.",
             );
+            services[index] = line;
+            return;
           }
-        }
-        services[index] = line;
+
+          // The detail row is the first place a name is guaranteed: `project.all`
+          // gives a database nothing but its id, so until now this line may have had
+          // no name at all.
+          line.name = nameOf(detail, svc);
+          line.logo = mapLogo((detail as DokployApplication).icon);
+
+          if (line.targetKind === "database") {
+            const key = line.name.trim().toLowerCase();
+            if (existing.databases.has(key)) line.status = "exists";
+            const mappedDb = mapDatabase(svc.kind as DokployDbKind, {
+              ...(detail as DokployDatabase),
+              name: line.name,
+            });
+            // The port the review needs to talk about. Carried whatever the caller
+            // may do with it - this describes the SOURCE, and whether it can be
+            // published here is a separate fact the review states once at the top -
+            // so a screen with no port controls can still say how many databases
+            // are about to lose theirs.
+            line.exposedPort = mappedDb.value?.exposedPort ?? null;
+            line.notes.push(...mappedDb.notes);
+            services[index] = line;
+            return;
+          }
+
+          // Apps: name is unique per (project, environment) for our purposes.
+          const homeKey = existingEnv
+            ? `${existingEnv}:${line.name.trim().toLowerCase()}`
+            : null;
+          if (homeKey && existing.apps.has(homeKey)) line.status = "exists";
+
+          const isCompose = svc.kind === "compose";
+          const domains = mapDomains((detail as DokployApplication).domains, {
+            isCompose,
+          });
+          line.domains = domains.value.map((d) => d.host);
+          line.notes.push(...domains.notes);
+          // Said BEFORE anyone presses import, because it is the one thing about a
+          // migrated app that is not the same afterwards: the address. The route
+          // survives; the name cannot (it carries the source server's IP).
+          for (const host of new Set(
+            domains.value.filter((d) => d.generated).map((d) => d.host),
+          ))
+            line.notes.push(
+              `${host} is Dokploy's own temporary address - Deplo cannot take it, so this app gets a temporary address of Deplo's instead, with the same routes.`,
+            );
+          for (const host of line.domains)
+            if (foreignHosts.has(host))
+              line.notes.push(
+                `${host} is already routed by another team on this Deplo, so this app gets an address of Deplo's instead - same routes.`,
+              );
+
+          if (isCompose) {
+            const yamlText = (detail as DokployCompose).composeFile ?? "";
+            const adapted = adaptComposeForDeplo(yamlText);
+            const blocked = composeBlockers(adapted.compose, {
+              mayMountHost,
+              mayExposePorts,
+            });
+            if (!yamlText.trim())
+              line.notes.push(
+                "The compose file lives in a git repository - Deplo will try to fetch the resolved file at import time.",
+              );
+            line.notes.push(...adapted.changes);
+            line.notes.push(...composeAdvice(adapted.compose));
+            if (blocked.length > 0 && line.status === "new") {
+              line.status = "needs_grant";
+              line.notes.push(...blocked);
+            }
+          } else {
+            const app = detail as DokployApplication;
+            // The same call the notes come from: a git source is the only one Deplo
+            // builds, so this costs nothing beyond keeping the result.
+            const src = mapSource(app);
+            line.buildsFromSource = src.value.kind === "git";
+            line.notes.push(...src.notes);
+            line.notes.push(...mapBuildSettings(app).notes);
+            line.notes.push(...portNotes(app));
+            line.notes.push(...unsupportedNotes(app));
+            if (
+              (app.mounts ?? []).some((m) => m.type === "bind") &&
+              !mayMountHost
+            ) {
+              line.status = line.status === "exists" ? "exists" : "needs_grant";
+              line.notes.push(
+                "Has a bind mount of a host folder, which needs the host-volumes grant - without it the app still comes across, that one folder does not.",
+              );
+            }
+          }
+          services[index] = line;
         },
       );
 
@@ -843,7 +862,9 @@ async function planMachines(
     if (!a) return null;
     const hit =
       mine.find(
-        (s) => s.ip?.trim().toLowerCase() === a || s.host?.trim().toLowerCase() === a,
+        (s) =>
+          s.ip?.trim().toLowerCase() === a ||
+          s.host?.trim().toLowerCase() === a,
       ) ??
       // The same-machine case, which the wizard has a toggle for: the other
       // platform runs on the box Deplo runs on. The addresses rarely match in
@@ -935,7 +956,9 @@ async function teamMemberIds(teamId: string): Promise<string[]> {
   const rows = await getDb().execute<{ user_id: string }>(
     sql`select user_id from memberships where team_id = ${teamId}`,
   );
-  const list = Array.isArray(rows) ? rows : ((rows as { rows?: unknown[] }).rows ?? []);
+  const list = Array.isArray(rows)
+    ? rows
+    : ((rows as { rows?: unknown[] }).rows ?? []);
   return (list as { user_id: string }[]).map((r) => r.user_id);
 }
 
@@ -1033,8 +1056,13 @@ const UNINSTALL_DRAIN_BATCH = 8;
  * That is not a failure to retry, it is a decision to leave to a person, so it
  * writes its `manual` line and schedules nothing.
  */
-async function removeMigrationSources(runId: string, teamId: string): Promise<void> {
-  const sources = (await listServersForTeam(teamId)).filter((s) => s.importOnly);
+async function removeMigrationSources(
+  runId: string,
+  teamId: string,
+): Promise<void> {
+  const sources = (await listServersForTeam(teamId)).filter(
+    (s) => s.importOnly,
+  );
   if (sources.length === 0) return;
 
   const stranded = await getDb()
@@ -1113,7 +1141,12 @@ async function attemptSourceUninstall(
 ): Promise<void> {
   let error = "";
   try {
-    const res = await uninstallMigrationSource(source.id, actor, teamId, deadlineMs);
+    const res = await uninstallMigrationSource(
+      source.id,
+      actor,
+      teamId,
+      deadlineMs,
+    );
     error = res.removed ? "" : (res.error ?? "the agent is still installed");
   } catch (e) {
     error = e instanceof Error ? e.message : String(e);
@@ -1122,7 +1155,8 @@ async function attemptSourceUninstall(
 
   const attempts = source.attempts + 1;
   if (attempts < UNINSTALL_ATTEMPTS) {
-    const wait = UNINSTALL_BACKOFF_MS[Math.min(attempts, UNINSTALL_BACKOFF_MS.length) - 1];
+    const wait =
+      UNINSTALL_BACKOFF_MS[Math.min(attempts, UNINSTALL_BACKOFF_MS.length) - 1];
     await getDb()
       .update(serversTable)
       .set({
@@ -1136,7 +1170,11 @@ async function attemptSourceUninstall(
 
   await getDb()
     .update(serversTable)
-    .set({ uninstallAttempts: attempts, uninstallError: error, uninstallNextAt: null })
+    .set({
+      uninstallAttempts: attempts,
+      uninstallError: error,
+      uninstallNextAt: null,
+    })
     .where(eq(serversTable.id, source.id));
   if (source.runId) {
     await appendRunItem(source.runId, {
@@ -1255,7 +1293,10 @@ export async function ownRun(runId: string, teamId: string): Promise<boolean> {
 /** Recount the run's totals from its items, so the history is right even if the
  *  tab that started the import never came back. Exported for the data cutover,
  *  whose rows land in the same run. */
-export async function refreshCounts(runId: string, teamId: string): Promise<void> {
+export async function refreshCounts(
+  runId: string,
+  teamId: string,
+): Promise<void> {
   const rows = await getDb()
     .select({ outcome: itemsTable.outcome })
     .from(itemsTable)
@@ -1391,7 +1432,8 @@ async function markMigrating(
   runId: string,
   row: { targetKind: string | null; targetId: string | null },
 ): Promise<void> {
-  const table = MIGRATING_TABLES[row.targetKind as keyof typeof MIGRATING_TABLES];
+  const table =
+    MIGRATING_TABLES[row.targetKind as keyof typeof MIGRATING_TABLES];
   if (!table || !row.targetId) return;
   await getDb()
     .update(table)
@@ -1473,10 +1515,16 @@ async function runImportDokployProject(
 
   const projects = await listDokployProjects(c);
   const source = projects.find((p) => p.projectId === input.projectId);
-  if (!source) throw new Error("That project is no longer on the Dokploy instance.");
+  if (!source)
+    throw new Error("That project is no longer on the Dokploy instance.");
 
   const report = new Report(input.runId).at(source.name);
-  const serverMap = await resolveServers(teamId, input.servers ?? [], report, source.name);
+  const serverMap = await resolveServers(
+    teamId,
+    input.servers ?? [],
+    report,
+    source.name,
+  );
   // Per SERVICE, and it wins over the per-host mapping: the review screen places
   // apps one by one, and the host mapping is what a caller falls back to.
   const placed = await resolvePlacements(
@@ -1501,7 +1549,10 @@ async function runImportDokployProject(
   const hostOfMachine = async (sourceServerId: string) => {
     if (!machineHosts)
       machineHosts = new Map(
-        (await dokployMachines(c, teamId)).map((m) => [m.sourceId, m.deploServerId]),
+        (await dokployMachines(c, teamId)).map((m) => [
+          m.sourceId,
+          m.deploServerId,
+        ]),
       );
     return machineHosts.get(sourceServerId) ?? null;
   };
@@ -1514,7 +1565,9 @@ async function runImportDokployProject(
   const targetServerFor = async (given: string | undefined) => {
     if (given) return given;
     if (soleServer === undefined) {
-      const usable = (await listServersForTeam(teamId)).filter(canHostWorkloads);
+      const usable = (await listServersForTeam(teamId)).filter(
+        canHostWorkloads,
+      );
       soleServer = usable.length === 1 ? usable[0].id : null;
     }
     return soleServer ?? undefined;
@@ -1522,7 +1575,11 @@ async function runImportDokployProject(
 
   const projectId = await ensureProject(source, report);
   if (!projectId)
-    return { projectName: source.name, ...tally(report.items), items: report.items };
+    return {
+      projectName: source.name,
+      ...tally(report.items),
+      items: report.items,
+    };
 
   // What the caller picked, or everything. A service left out is left out
   // SILENTLY: it is a choice made on the review screen, not an event, and a
@@ -1573,7 +1630,8 @@ async function runImportDokployProject(
           sourceName: svc.name || svc.id,
           outcome: "failed",
           targetKind,
-          message: e instanceof Error ? e.message : "Dokploy would not return it.",
+          message:
+            e instanceof Error ? e.message : "Dokploy would not return it.",
         });
         continue;
       }
@@ -1607,7 +1665,8 @@ async function runImportDokployProject(
             {
               projectId,
               environmentId,
-              serverId: placed.get(svc.id)?.serverId ?? serverMap.get(svc.serverId),
+              serverId:
+                placed.get(svc.id)?.serverId ?? serverMap.get(svc.serverId),
               buildServerId: placed.get(svc.id)?.buildServerId ?? null,
             },
             svcReport,
@@ -1618,19 +1677,27 @@ async function runImportDokployProject(
           const serverId = await targetServerFor(
             placement?.serverId ?? serverMap.get(svc.serverId),
           );
-          await importDatabaseService(c, svc, detail as DokployDatabase, name, {
-            serverId,
-            // The port the review settled on, or the source's own when it said
-            // nothing. `null` is a decision ("publish nothing"), not a silence.
-            exposedPort: placement?.exposedPort,
-            mayExposePorts,
-            // Whether the machine this database runs on over there IS the machine
-            // it is about to run on here - the one case where the port it wants is
-            // held by the very container we are importing, and stopping that frees
-            // it. False when that Dokploy machine maps to no server of ours.
-            sourceIsTargetHost:
-              serverId != null && (await hostOfMachine(svc.serverId)) === serverId,
-          }, svcReport);
+          await importDatabaseService(
+            c,
+            svc,
+            detail as DokployDatabase,
+            name,
+            {
+              serverId,
+              // The port the review settled on, or the source's own when it said
+              // nothing. `null` is a decision ("publish nothing"), not a silence.
+              exposedPort: placement?.exposedPort,
+              mayExposePorts,
+              // Whether the machine this database runs on over there IS the machine
+              // it is about to run on here - the one case where the port it wants is
+              // held by the very container we are importing, and stopping that frees
+              // it. False when that Dokploy machine maps to no server of ours.
+              sourceIsTargetHost:
+                serverId != null &&
+                (await hostOfMachine(svc.serverId)) === serverId,
+            },
+            svcReport,
+          );
         }
       } catch (e) {
         await svcReport.add({
@@ -1646,7 +1713,8 @@ async function runImportDokployProject(
 
     // `project.all` is a projection: an environment's variable blob is ALWAYS
     // null there, however much it holds, so this asks for the row itself.
-    const envBlob = env.env ?? (await getEnvironment(c, env.environmentId))?.env ?? null;
+    const envBlob =
+      env.env ?? (await getEnvironment(c, env.environmentId))?.env ?? null;
     await importSharedVars(envBlob, {
       teamId,
       label: `${source.name} / ${env.name}`,
@@ -1680,7 +1748,11 @@ async function runImportDokployProject(
     teamId,
   );
 
-  return { projectName: source.name, ...tally(report.items), items: report.items };
+  return {
+    projectName: source.name,
+    ...tally(report.items),
+    items: report.items,
+  };
 }
 
 function tally(items: ImportItemDTO[]): {
@@ -1708,7 +1780,9 @@ async function resolveServers(
   projectName: string,
 ): Promise<Map<string, string | undefined>> {
   const usable = new Set(
-    (await listServersForTeam(teamId)).filter(canHostWorkloads).map((s) => s.id),
+    (await listServersForTeam(teamId))
+      .filter(canHostWorkloads)
+      .map((s) => s.id),
   );
   const out = new Map<string, string | undefined>();
   for (const { from, to } of choices) {
@@ -1909,11 +1983,16 @@ async function ensureEnvironment(
 }
 
 /** Every app currently filed under a project, for the shared-var link set. */
-async function appIdsInProject(teamId: string, projectId: string): Promise<string[]> {
+async function appIdsInProject(
+  teamId: string,
+  projectId: string,
+): Promise<string[]> {
   const rows = await getDb()
     .select({ id: appsTable.id })
     .from(appsTable)
-    .where(and(eq(appsTable.teamId, teamId), eq(appsTable.projectId, projectId)));
+    .where(
+      and(eq(appsTable.teamId, teamId), eq(appsTable.projectId, projectId)),
+    );
   return rows.map((r) => r.id);
 }
 
@@ -1971,9 +2050,9 @@ async function importAppService(
   // Env: the service's own blob, plus its build args, which deplo passes to the
   // build as ordinary variables (agent >= 1.9.0) rather than as a second channel.
   const envEntries = parseEnvBlob(detail.env);
-  const argEntries = parseEnvBlob((detail as DokployApplication).buildArgs).filter(
-    (a) => !envEntries.some((e) => e.key === a.key),
-  );
+  const argEntries = parseEnvBlob(
+    (detail as DokployApplication).buildArgs,
+  ).filter((a) => !envEntries.some((e) => e.key === a.key));
   // Every migrated variable comes across PLAIN, whatever it is called. The
   // heuristic that guesses "secret" from a key name exists for someone typing a
   // variable into Deplo; here it would mask values that were readable on the
@@ -2064,9 +2143,8 @@ async function importAppService(
     // so the stack would come up looking for a file that is not there. Asked
     // only when there is an env_file to care about.
     if (/^\s*env_file\s*:/m.test(compose) && home.serverId) {
-      const { serverSupports, COMPOSE_PROJECTDIR_CAPABILITY } = await import(
-        "../infra/agent-client"
-      );
+      const { serverSupports, COMPOSE_PROJECTDIR_CAPABILITY } =
+        await import("../infra/agent-client");
       if (!(await serverSupports(home.serverId, COMPOSE_PROJECTDIR_CAPABILITY)))
         notes.push(
           "Its compose file names an `env_file`, which needs a newer agent on this server than the one running there. Update the server's agent under Servers before deploying.",
@@ -2109,7 +2187,9 @@ async function importAppService(
       // deplo will not take). The app is still worth creating: its variables,
       // domains, mounts and limits are the part that takes an afternoon to retype.
       source = "upload";
-      notes.push("Set the source under the app's Source settings before deploying.");
+      notes.push(
+        "Set the source under the app's Source settings before deploying.",
+      );
     }
     const mappedBuild = mapBuildSettings(app);
     notes.push(...mappedBuild.notes);
@@ -2162,12 +2242,13 @@ async function importAppService(
     // port 53 would arrive published on a public host nobody asked for, routed
     // at whatever port happened to be first in its compose.
     noAutoDomain: domains.value.length === 0,
-    composeService: isCompose ? primary?.service ?? null : null,
-    composePort: isCompose ? primary?.port ?? null : null,
+    composeService: isCompose ? (primary?.service ?? null) : null,
+    composePort: isCompose ? (primary?.port ?? null) : null,
     // `app_mounts` is materialised by the compose deploy and by nothing else, so
     // a single-image app's config files are written below instead - storing them
     // here would be a row nobody ever turns back into a file.
-    mounts: isCompose && mounts.value.files.length > 0 ? mounts.value.files : null,
+    mounts:
+      isCompose && mounts.value.files.length > 0 ? mounts.value.files : null,
     // The icon comes across with everything else. Dokploy stores it inline, which
     // is what deplo stores too, so there is nothing to fetch - and an app that had
     // one over there arriving with the generic glyph here is the kind of detail
@@ -2213,7 +2294,12 @@ async function importAppService(
         entrypoint: domainsTable.entrypoint,
       })
       .from(domainsTable)
-      .where(and(eq(domainsTable.appId, created.id), eq(domainsTable.isPrimary, true)));
+      .where(
+        and(
+          eq(domainsTable.appId, created.id),
+          eq(domainsTable.isPrimary, true),
+        ),
+      );
     const row = landed[0];
     if (row && row.name.toLowerCase() !== primary.host) {
       // The address changed - because it was a throwaway, or because the real
@@ -2278,7 +2364,11 @@ async function importAppService(
       const landed = await addImportedDomains(
         created.id,
         toRehost.map(importedRoute),
-        { slug: created.slug, ip: resolveServerIp(server ?? undefined), seed: rehosted },
+        {
+          slug: created.slug,
+          ip: resolveServerIp(server ?? undefined),
+          seed: rehosted,
+        },
       );
       const wasThrowaway = new Set(
         rest.filter((d) => d.generated).map((d) => d.host),
@@ -2423,12 +2513,17 @@ async function importAppService(
   // A host bind needs the host-volumes grant, and setAppVolumes refuses the WHOLE
   // set over one of them - which used to drop the app's named volumes with it.
   // Leave the bind behind, keep the storage that needs no grant, and say so.
-  if (volumes.some((v) => v.type === "host") && !(await canMountHostVolumes())) {
+  if (
+    volumes.some((v) => v.type === "host") &&
+    !(await canMountHostVolumes())
+  ) {
     notes.push(
       `You don't have permission to mount host folders, so ${volumes
         .filter((v) => v.type === "host")
         .map((v) => v.hostPath)
-        .join(", ")} did not come across. An admin turns it on with "Bind server folders" in Settings → Users.`,
+        .join(
+          ", ",
+        )} did not come across. An admin turns it on with "Bind server folders" in Settings → Users.`,
     );
     volumes = volumes.filter((v) => v.type !== "host");
   }
@@ -2525,7 +2620,13 @@ async function importAppService(
     }
   }
 
-  await importCrons(c, isCompose ? "compose" : "application", svc.id, created.id, notes);
+  await importCrons(
+    c,
+    isCompose ? "compose" : "application",
+    svc.id,
+    created.id,
+    notes,
+  );
 
   await report.notes(svc.kind, name, notes, target, svc.id);
   return created.id;
@@ -2541,7 +2642,9 @@ async function importAppService(
  */
 function rewriteHosts(value: string, hosts: Map<string, string>): string {
   let out = value;
-  for (const [from, to] of [...hosts].sort((a, b) => b[0].length - a[0].length)) {
+  for (const [from, to] of [...hosts].sort(
+    (a, b) => b[0].length - a[0].length,
+  )) {
     if (!from) continue;
     out = out.replace(
       new RegExp(from.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"), "gi"),
@@ -2713,13 +2816,16 @@ async function importDatabaseService(
   // different port, or none at all - and without the grant nothing can be
   // published whatever anyone chose.
   const sourcePort = spec.exposedPort ?? null;
-  const chosenPort = opts.exposedPort !== undefined ? opts.exposedPort : sourcePort;
+  const chosenPort =
+    opts.exposedPort !== undefined ? opts.exposedPort : sourcePort;
   if (!opts.mayExposePorts && chosenPort != null)
     notes.push(
       `Port ${chosenPort} was not published: you don't have permission to publish ports.`,
     );
   else if (chosenPort == null && sourcePort != null)
-    notes.push(`Port ${sourcePort} was not published, as chosen during the import.`);
+    notes.push(
+      `Port ${sourcePort} was not published, as chosen during the import.`,
+    );
   const publishPort = opts.mayExposePorts ? chosenPort : null;
   const withPort =
     publishPort != null
@@ -2942,7 +3048,8 @@ async function importSharedVars(
         sourceName: key,
         outcome: "failed",
         targetKind: "shared-var",
-        message: e instanceof Error ? e.message : "Could not create the variable.",
+        message:
+          e instanceof Error ? e.message : "Could not create the variable.",
       });
     }
   }
@@ -3158,9 +3265,7 @@ export async function revertDokployImport(
   return runAsMigration(() => runRevertDokployImport(runId));
 }
 
-async function runRevertDokployImport(
-  runId: string,
-): Promise<RevertResultDTO> {
+async function runRevertDokployImport(runId: string): Promise<RevertResultDTO> {
   const { teamId } = await assertImportGate();
   if (!(await ownRun(runId, teamId))) throw new Error("Migration not found");
 
@@ -3176,7 +3281,9 @@ async function runRevertDokployImport(
 
   const idsOf = (kind: string) => [
     ...new Set(
-      rows.filter((r) => r.targetKind === kind && r.targetId).map((r) => r.targetId!),
+      rows
+        .filter((r) => r.targetKind === kind && r.targetId)
+        .map((r) => r.targetId!),
     ),
   ];
   const nameOf = (id: string) =>
@@ -3332,7 +3439,11 @@ export async function listDokployImports(): Promise<ImportRunDTO[]> {
     .where(eq(runsTable.teamId, teamId));
   return rows
     .sort((a, b) =>
-      a.startedAt === b.startedAt ? b.seq - a.seq : a.startedAt < b.startedAt ? 1 : -1,
+      a.startedAt === b.startedAt
+        ? b.seq - a.seq
+        : a.startedAt < b.startedAt
+          ? 1
+          : -1,
     )
     .map(toRunDTO);
 }

@@ -51,9 +51,7 @@ const BUDGET_MS = 8000;
 type Sharp = (typeof import("sharp"))["default"];
 let sharpModule: Promise<Sharp | null> | undefined;
 function loadSharp(): Promise<Sharp | null> {
-  sharpModule ??= import("sharp")
-    .then((m) => m.default)
-    .catch(() => null);
+  sharpModule ??= import("sharp").then((m) => m.default).catch(() => null);
   return sharpModule;
 }
 
@@ -151,7 +149,8 @@ export async function analyseLogo(bytes: Buffer): Promise<LogoAccent> {
   }
 
   let winner = 0;
-  for (let i = 1; i < BUCKETS; i += 1) if (weights[i] > weights[winner]) winner = i;
+  for (let i = 1; i < BUCKETS; i += 1)
+    if (weights[i] > weights[winner]) winner = i;
   const hasHue =
     coloured >= MIN_COLOURED_PIXELS &&
     total > 0 &&

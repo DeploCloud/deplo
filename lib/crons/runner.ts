@@ -78,7 +78,8 @@ export const STALE_CLAIM_MS = 120_000;
  * Same shape as the agent's own `traefikApply` override: production never touches
  * it, and the default is the real thing.
  */
-let connectFn: (serverId: string) => Promise<AgentConnection> = connectCronAgent;
+let connectFn: (serverId: string) => Promise<AgentConnection> =
+  connectCronAgent;
 
 /** Test-only: swap the agent connector. */
 export function __setCronConnector(
@@ -191,8 +192,12 @@ function assembleTarget(r: {
 }): CronTarget | null {
   return targetOf(
     r.job,
-    r.appSlug && r.appServerId ? { slug: r.appSlug, serverId: r.appServerId } : null,
-    r.dbHost && r.dbServerId ? { host: r.dbHost, serverId: r.dbServerId } : null,
+    r.appSlug && r.appServerId
+      ? { slug: r.appSlug, serverId: r.appServerId }
+      : null,
+    r.dbHost && r.dbServerId
+      ? { host: r.dbHost, serverId: r.dbServerId }
+      : null,
   );
 }
 
@@ -227,7 +232,10 @@ export async function listSchedulableJobs(): Promise<SchedulableJob[]> {
     .where(
       and(
         eq(cronJobsTable.enabled, true),
-        or(eq(appsTable.cronEnabled, true), eq(databasesTable.cronEnabled, true)),
+        or(
+          eq(appsTable.cronEnabled, true),
+          eq(databasesTable.cronEnabled, true),
+        ),
       ),
     );
   const out: SchedulableJob[] = [];
@@ -300,11 +308,17 @@ export async function settle(
       agentJobId: null,
       nextAttemptAt: null,
       ...(fields.exitCode !== undefined ? { exitCode: fields.exitCode } : {}),
-      ...(fields.stdout !== undefined ? { stdout: tailOutput(fields.stdout) } : {}),
-      ...(fields.stderr !== undefined ? { stderr: tailOutput(fields.stderr) } : {}),
+      ...(fields.stdout !== undefined
+        ? { stdout: tailOutput(fields.stdout) }
+        : {}),
+      ...(fields.stderr !== undefined
+        ? { stderr: tailOutput(fields.stderr) }
+        : {}),
       ...(fields.error !== undefined ? { error: fields.error } : {}),
     })
-    .where(and(eq(cronRunsTable.id, r.run.id), eq(cronRunsTable.status, "running")))
+    .where(
+      and(eq(cronRunsTable.id, r.run.id), eq(cronRunsTable.status, "running")),
+    )
     .returning({ id: cronRunsTable.id });
   if (done.length === 0) return false; // somebody else settled it first
 
@@ -396,7 +410,12 @@ export async function settleOrRetry(
         stderr: tailOutput(fields.stderr ?? ""),
         error: fields.error ?? null,
       })
-      .where(and(eq(cronRunsTable.id, r.run.id), eq(cronRunsTable.status, "running")));
+      .where(
+        and(
+          eq(cronRunsTable.id, r.run.id),
+          eq(cronRunsTable.status, "running"),
+        ),
+      );
     return;
   }
   await settle(r, status, fields, at);
@@ -407,7 +426,10 @@ export async function settleOrRetry(
  * timestamp: two runs can share a start minute, and `seq` is the only total
  * order the table has.
  */
-export async function pruneRuns(jobId: string, keepRuns: number): Promise<void> {
+export async function pruneRuns(
+  jobId: string,
+  keepRuns: number,
+): Promise<void> {
   await getDb().execute(sql`
     delete from ${cronRunsTable}
     where ${cronRunsTable.jobId} = ${jobId}
@@ -424,7 +446,9 @@ export async function pruneRuns(jobId: string, keepRuns: number): Promise<void> 
 /* ------------------------------------------------------------------ */
 
 /** The job's extra environment, decrypted at the edge and never before. */
-async function jobEnv(jobId: string): Promise<{ name: string; value: string }[]> {
+async function jobEnv(
+  jobId: string,
+): Promise<{ name: string; value: string }[]> {
   const rows = await getDb()
     .select({ key: cronJobEnvTable.key, valueEnc: cronJobEnvTable.valueEnc })
     .from(cronJobEnvTable)
@@ -514,13 +538,23 @@ export async function startAttempt(
     await getDb()
       .update(cronRunsTable)
       .set({ agentJobId, container: container.name, nextAttemptAt: null })
-      .where(and(eq(cronRunsTable.id, r.run.id), eq(cronRunsTable.status, "running")));
+      .where(
+        and(
+          eq(cronRunsTable.id, r.run.id),
+          eq(cronRunsTable.status, "running"),
+        ),
+      );
 
     // Wait out a command that is already over rather than leaving it "Running"
     // until the next tick. See {@link quickFinishPolls}.
     const started: InFlightRun = {
       ...r,
-      run: { ...r.run, agentJobId, container: container.name, nextAttemptAt: null },
+      run: {
+        ...r.run,
+        agentJobId,
+        container: container.name,
+        nextAttemptAt: null,
+      },
     };
     // On the run's own clock, not the wall clock: every timestamp in this module
     // is stamped from `at`, and a deadline judged against a different one reads a
@@ -531,8 +565,11 @@ export async function startAttempt(
       elapsed += ms;
       // A poll that throws here changes nothing: the command is launched, and
       // the reaper owns it from the next tick on.
-      const inFlight = await reapOne(conn, started, new Date(at.getTime() + elapsed))
-        .catch(() => false);
+      const inFlight = await reapOne(
+        conn,
+        started,
+        new Date(at.getTime() + elapsed),
+      ).catch(() => false);
       if (!inFlight) return;
     }
   } catch (e) {
@@ -542,7 +579,8 @@ export async function startAttempt(
 
 function agentMessage(e: unknown): string {
   if (e instanceof AgentCronUnsupportedError) return e.message;
-  if (e instanceof AgentUnreachableError) return `The server could not be reached: ${e.message}`;
+  if (e instanceof AgentUnreachableError)
+    return `The server could not be reached: ${e.message}`;
   return e instanceof Error ? e.message : String(e);
 }
 
@@ -599,7 +637,9 @@ export async function reapInFlightRuns(
         try {
           await reapOne(conn, r, now);
         } catch (e) {
-          console.warn(`[crons] reaping run ${r.run.id} failed: ${agentMessage(e)}`);
+          console.warn(
+            `[crons] reaping run ${r.run.id} failed: ${agentMessage(e)}`,
+          );
         }
       }
     } finally {
@@ -711,7 +751,10 @@ async function reapOne(
 /* ------------------------------------------------------------------ */
 
 /** Is another run of this job still going? The overlap question. */
-async function hasOtherRunningRun(jobId: string, exceptId: string): Promise<boolean> {
+async function hasOtherRunningRun(
+  jobId: string,
+  exceptId: string,
+): Promise<boolean> {
   const rows = await getDb()
     .select({ id: cronRunsTable.id })
     .from(cronRunsTable)
@@ -759,7 +802,8 @@ export async function claimRun(
       actor: opts.actor,
       scheduledFor: scheduledFor.toISOString(),
       dedupeKey:
-        opts.dedupeKey ?? dedupeKeyFor(job.schedule, scheduledFor, job.timezone),
+        opts.dedupeKey ??
+        dedupeKeyFor(job.schedule, scheduledFor, job.timezone),
       startedAt: now,
       attempt: 0,
       // Frozen at insert: editing the job mid-flight must not move the deadline
@@ -814,7 +858,10 @@ export async function fireDueJobs(
       );
       if (!r) continue; // already fired for this minute
 
-      if (job.overlap === "skip" && (await hasOtherRunningRun(job.id, r.run.id))) {
+      if (
+        job.overlap === "skip" &&
+        (await hasOtherRunningRun(job.id, r.run.id))
+      ) {
         await settle(
           r,
           "skipped",
@@ -846,7 +893,9 @@ export async function fireDueJobs(
  * Load one job with its target, for the manual "Run now" path. Returns null when
  * the job is gone or its target is.
  */
-export async function loadSchedulableJob(jobId: string): Promise<SchedulableJob | null> {
+export async function loadSchedulableJob(
+  jobId: string,
+): Promise<SchedulableJob | null> {
   const rows = await getDb()
     .select(targetColumns)
     .from(cronJobsTable)
@@ -904,7 +953,12 @@ export async function runJobNow(
     schedulable.job.overlap === "skip" &&
     (await hasOtherRunningRun(schedulable.job.id, r.run.id))
   ) {
-    await settle(r, "skipped", { error: "The previous run was still in progress." }, at);
+    await settle(
+      r,
+      "skipped",
+      { error: "The previous run was still in progress." },
+      at,
+    );
     return r;
   }
 
@@ -947,14 +1001,18 @@ export async function cancelRun(r: InFlightRun, actor: string): Promise<void> {
 }
 
 /** One in-flight run by id, for the cancel path. */
-export async function loadInFlightRun(runId: string): Promise<InFlightRun | null> {
+export async function loadInFlightRun(
+  runId: string,
+): Promise<InFlightRun | null> {
   const rows = await getDb()
     .select({ run: cronRunsTable, ...targetColumns })
     .from(cronRunsTable)
     .innerJoin(cronJobsTable, eq(cronJobsTable.id, cronRunsTable.jobId))
     .leftJoin(appsTable, eq(appsTable.id, cronJobsTable.appId))
     .leftJoin(databasesTable, eq(databasesTable.id, cronJobsTable.databaseId))
-    .where(and(eq(cronRunsTable.id, runId), eq(cronRunsTable.status, "running")))
+    .where(
+      and(eq(cronRunsTable.id, runId), eq(cronRunsTable.status, "running")),
+    )
     .limit(1);
   const r = rows[0];
   if (!r) return null;

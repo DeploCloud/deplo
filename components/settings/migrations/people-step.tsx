@@ -160,7 +160,11 @@ function PersonCard({
       <div className="mt-auto border-t border-border pt-3">
         {invite?.link ? (
           <div className="flex items-center gap-2">
-            <Input readOnly value={invite.link} className="h-8 min-w-0 flex-1" />
+            <Input
+              readOnly
+              value={invite.link}
+              className="h-8 min-w-0 flex-1"
+            />
             <CopyButton value={invite.link} />
           </div>
         ) : invite ? (

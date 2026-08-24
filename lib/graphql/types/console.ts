@@ -142,7 +142,8 @@ const AppRuntimeRef = builder.objectRef<AppRuntime>("AppRuntime").implement({
         "created is not there to be counted as stopped.",
     }),
     unreachable: t.exposeBoolean("unreachable", {
-      description: "The agent did not answer: the counts are unknown, not zero.",
+      description:
+        "The agent did not answer: the counts are unknown, not zero.",
     }),
     containers: t.field({
       type: [RuntimeContainerRef],
@@ -251,7 +252,8 @@ builder.queryFields((t) => ({
     type: ConsoleInfoRef,
     nullable: true,
     authScopes: { loggedIn: true },
-    description: "Attachable container + default target for a database's console.",
+    description:
+      "Attachable container + default target for a database's console.",
     args: { databaseId: t.arg.string({ required: true }) },
     resolve: (_r, { databaseId }) => getDatabaseConsoleInfo(databaseId),
   }),
@@ -299,8 +301,9 @@ builder.mutationFields((t) => ({
     description:
       "Run a command in the database's live container (docker exec). Gated on " +
       "manage_infra — arbitrary code execution inside infrastructure.",
-    args: { input: t.arg({ type: ExecDatabaseConsoleInputType, required: true }) },
-    resolve: (_r, { input }) =>
-      execInDatabase(input.databaseId, input.command),
+    args: {
+      input: t.arg({ type: ExecDatabaseConsoleInputType, required: true }),
+    },
+    resolve: (_r, { input }) => execInDatabase(input.databaseId, input.command),
   }),
 }));

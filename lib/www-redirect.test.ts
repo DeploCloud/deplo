@@ -64,7 +64,9 @@ test("scheme, case, trailing dot and slash are normalised away", () => {
 
 test("no counterpart row ⇒ none", () => {
   assert.equal(
-    deriveWwwRedirect("example.com", [{ name: "example.com", redirectTo: null }]),
+    deriveWwwRedirect("example.com", [
+      { name: "example.com", redirectTo: null },
+    ]),
     "none",
   );
 });

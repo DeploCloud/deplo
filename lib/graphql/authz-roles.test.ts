@@ -55,7 +55,9 @@ after(async () => {
 
 beforeEach(async () => {
   await pg.exec(TRUNCATE_IDENTITY);
-  await pg.exec(`truncate table team_roles, activities restart identity cascade;`);
+  await pg.exec(
+    `truncate table team_roles, activities restart identity cascade;`,
+  );
   await seedIdentity(db, {
     users: [
       { id: USER_1, teamId: TEAM_A, role: "owner" },
@@ -147,7 +149,11 @@ test("a hand-picked capability set is not a role, and a role edit doesn't touch 
   );
   await asOwner(() => updateMember({ userId: USER_M, roleId: role.id }));
   await asOwner(() =>
-    updateMember({ userId: USER_M, role: "member", capabilities: ["view_logs"] }),
+    updateMember({
+      userId: USER_M,
+      role: "member",
+      capabilities: ["view_logs"],
+    }),
   );
   assert.deepEqual(await effectiveCaps(), ["view", "view_logs"]);
 
@@ -198,7 +204,8 @@ test("a role from another team can't be assigned into this one", async () => {
     createdAt: "2026-01-01T00:00:00.000Z",
   });
   await assert.rejects(
-    () => asOwner(() => updateMember({ userId: USER_M, roleId: "role_foreign" })),
+    () =>
+      asOwner(() => updateMember({ userId: USER_M, roleId: "role_foreign" })),
     /not found|role/i,
     "a cross-team role id must hit nothing",
   );

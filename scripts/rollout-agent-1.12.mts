@@ -38,7 +38,12 @@ const ORDER = [
   "srv_3667cf1973005952", // eu-main-1 (agent 0 — LAST)
 ];
 /** Capabilities the control plane relies on; one disappearing = release regression. */
-const REQUIRED_CAPS = ["self-update", "backup", "docker-cleanup", "container-stats"];
+const REQUIRED_CAPS = [
+  "self-update",
+  "backup",
+  "docker-cleanup",
+  "container-stats",
+];
 
 async function inFlightDeploys(serverId: string): Promise<number> {
   const rows = await getDb()
@@ -71,11 +76,15 @@ async function updateOne(serverId: string, name: string): Promise<void> {
 
   const hello = await agentPreflight(serverId);
   if (hello.agentVersion !== TARGET) {
-    throw new Error(`${name}: Hello says ${hello.agentVersion}, want ${TARGET} — STOP the rollout`);
+    throw new Error(
+      `${name}: Hello says ${hello.agentVersion}, want ${TARGET} — STOP the rollout`,
+    );
   }
   const missing = REQUIRED_CAPS.filter((c) => !hello.capabilities.includes(c));
   if (missing.length > 0) {
-    throw new Error(`${name}: capabilities disappeared: ${missing.join(", ")} — STOP the rollout`);
+    throw new Error(
+      `${name}: capabilities disappeared: ${missing.join(", ")} — STOP the rollout`,
+    );
   }
   await markServerSeen(serverId, hello.agentVersion);
 

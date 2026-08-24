@@ -76,10 +76,30 @@ export const ENGINE_CREDS: Record<
   DatabaseType,
   { username: boolean; userDefault: string; dbName: boolean; password: boolean }
 > = {
-  postgres: { username: true, userDefault: "app", dbName: true, password: true },
+  postgres: {
+    username: true,
+    userDefault: "app",
+    dbName: true,
+    password: true,
+  },
   mysql: { username: true, userDefault: "app", dbName: true, password: true },
   mariadb: { username: true, userDefault: "app", dbName: true, password: true },
-  mongodb: { username: true, userDefault: "app", dbName: false, password: true },
-  clickhouse: { username: true, userDefault: "app", dbName: true, password: true },
-  redis: { username: false, userDefault: "default", dbName: false, password: true },
+  mongodb: {
+    username: true,
+    userDefault: "app",
+    dbName: false,
+    password: true,
+  },
+  clickhouse: {
+    username: true,
+    userDefault: "app",
+    dbName: true,
+    password: true,
+  },
+  redis: {
+    username: false,
+    userDefault: "default",
+    dbName: false,
+    password: true,
+  },
 };

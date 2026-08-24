@@ -39,7 +39,10 @@ const DEFAULT_TIMEOUT = 8000;
 /** Private / loopback / link-local IPv4, incl. 169.254.169.254 (cloud metadata). */
 function isPrivateIPv4(addr: string): boolean {
   const o = addr.split(".").map(Number);
-  if (o.length !== 4 || o.some((n) => !Number.isInteger(n) || n < 0 || n > 255)) {
+  if (
+    o.length !== 4 ||
+    o.some((n) => !Number.isInteger(n) || n < 0 || n > 255)
+  ) {
     return true;
   }
   return (
@@ -75,7 +78,9 @@ function isPrivateIPv6(addr: string): boolean {
   if (n.slice(0, 7).every((v) => v === 0)) return n[7] <= 1; // "::" and "::1"
   if (n.slice(0, 5).every((v) => v === 0) && n[5] === 0xffff) {
     // Hex-form IPv4-mapped ("::ffff:7f00:1").
-    return isPrivateIPv4(`${n[6] >> 8}.${n[6] & 255}.${n[7] >> 8}.${n[7] & 255}`);
+    return isPrivateIPv4(
+      `${n[6] >> 8}.${n[6] & 255}.${n[7] >> 8}.${n[7] & 255}`,
+    );
   }
   if ((n[0] & 0xffc0) === 0xfe80) return true; // link-local fe80::/10
   if ((n[0] & 0xfe00) === 0xfc00) return true; // ULA fc00::/7 (covers fd00::/8)
@@ -108,7 +113,8 @@ async function isPublicHttpsUrl(url: string): Promise<boolean> {
   // URL() canonicalizes exotic IPv4 spellings (hex/octal/decimal) for us;
   // IPv6 literals keep their brackets in `hostname`.
   const host = parsed.hostname.replace(/^\[|\]$/g, "").toLowerCase();
-  if (!host || host === "localhost" || host.endsWith(".localhost")) return false;
+  if (!host || host === "localhost" || host.endsWith(".localhost"))
+    return false;
   if (isIP(host)) return !isPrivateAddress(host);
   try {
     const addrs = await lookup(host, { all: true });
@@ -239,7 +245,10 @@ async function dockerHubTags(
   )}/tags?${params.toString()}`;
   const { body } = await fetchJson<HubTagsResponse>(url);
   if (!body?.results) return [];
-  return body.results.map((t) => ({ name: t.name, lastUpdated: t.last_updated }));
+  return body.results.map((t) => ({
+    name: t.name,
+    lastUpdated: t.last_updated,
+  }));
 }
 
 /** A parsed `WWW-Authenticate: Bearer realm=…,service=…` challenge. */
@@ -373,7 +382,9 @@ export async function checkImageExists(
 
   const reference = parsed.digest ?? parsed.tag;
   const registryHost =
-    parsed.registry === DOCKER_HUB_REGISTRY ? "registry-1.docker.io" : parsed.registry;
+    parsed.registry === DOCKER_HUB_REGISTRY
+      ? "registry-1.docker.io"
+      : parsed.registry;
 
   const token = await ociToken(registryHost, parsed.repository);
   const manifestUrl = `https://${registryHost}/v2/${encodeRepoPath(
@@ -384,21 +395,18 @@ export async function checkImageExists(
   const ctrl = new AbortController();
   const t = setTimeout(() => ctrl.abort(), DEFAULT_TIMEOUT);
   try {
-    const res = await fetch(
-      manifestUrl,
-      {
-        method: "HEAD",
-        headers: {
-          "User-Agent": UA,
-          Accept: MANIFEST_ACCEPT,
-          ...ociAuthHeaders(token),
-        },
-        signal: ctrl.signal,
-        cache: "no-store",
-        // Never follow a 3xx off the checked host (SSRF: 302 → private target).
-        redirect: "manual",
+    const res = await fetch(manifestUrl, {
+      method: "HEAD",
+      headers: {
+        "User-Agent": UA,
+        Accept: MANIFEST_ACCEPT,
+        ...ociAuthHeaders(token),
       },
-    );
+      signal: ctrl.signal,
+      cache: "no-store",
+      // Never follow a 3xx off the checked host (SSRF: 302 → private target).
+      redirect: "manual",
+    });
     if (res.status >= 300 && res.status < 400) return { status: "unknown" };
     if (res.ok) {
       return {

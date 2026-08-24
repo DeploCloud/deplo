@@ -2,7 +2,10 @@ import "server-only";
 
 import { and, asc, count, eq, sql } from "drizzle-orm";
 import { getDb } from "../db/client";
-import { currentIdentity, requirePersonalSession } from "../auth/request-context";
+import {
+  currentIdentity,
+  requirePersonalSession,
+} from "../auth/request-context";
 import {
   memberships as membershipsTable,
   membershipCapabilities as membershipCapabilitiesTable,
@@ -87,7 +90,12 @@ export async function getTeamIdentity(): Promise<
   // The picture belongs here and not only on the full row: this is what the
   // topbar switcher's TRIGGER renders, which is the single most-seen avatar in
   // the product. `getTeam` is a team-wide read a limited member is refused.
-  return { id: t.id, name: t.name, slug: t.slug, avatarUrl: teamAvatarUrl(t.image) };
+  return {
+    id: t.id,
+    name: t.name,
+    slug: t.slug,
+    avatarUrl: teamAvatarUrl(t.image),
+  };
 }
 
 /** The active team, settings included. A team-wide read. */
@@ -141,23 +149,25 @@ export async function listMyTeams(): Promise<
     .groupBy(membershipsTable.teamId);
   const countByTeam = new Map(counts.map((c) => [c.teamId, Number(c.n)]));
 
-  return teams
-    .map((t) => ({
-      ...t,
-      role: roleByTeam.get(t.id) ?? "member",
-      memberCount: countByTeam.get(t.id) ?? 0,
-    }))
-    // NULLS LAST, stable within each group: a team the user has never dragged
-    // keeps the order `teamsForUser` already returned it in, so somebody who
-    // never touches this sees no change at all.
-    .sort((a, b) => {
-      const pa = positionByTeam.get(a.id);
-      const pb = positionByTeam.get(b.id);
-      if (pa == null && pb == null) return 0;
-      if (pa == null) return 1;
-      if (pb == null) return -1;
-      return pa - pb;
-    });
+  return (
+    teams
+      .map((t) => ({
+        ...t,
+        role: roleByTeam.get(t.id) ?? "member",
+        memberCount: countByTeam.get(t.id) ?? 0,
+      }))
+      // NULLS LAST, stable within each group: a team the user has never dragged
+      // keeps the order `teamsForUser` already returned it in, so somebody who
+      // never touches this sees no change at all.
+      .sort((a, b) => {
+        const pa = positionByTeam.get(a.id);
+        const pb = positionByTeam.get(b.id);
+        if (pa == null && pb == null) return 0;
+        if (pa == null) return 1;
+        if (pb == null) return -1;
+        return pa - pb;
+      })
+  );
 }
 
 /**
@@ -280,9 +290,7 @@ export async function updateTeamAvatar(image: string | null): Promise<Team> {
   if (rows[0])
     await recordActivity(
       "member",
-      next
-        ? `Changed the team picture`
-        : `Removed the team picture`,
+      next ? `Changed the team picture` : `Removed the team picture`,
       (await assertUser()).name,
       null,
       teamId,
@@ -407,21 +415,25 @@ export async function createTeam(input: { name: string }): Promise<Team> {
       role: "owner",
       createdAt: now,
     });
-    await tx
-      .insert(membershipCapabilitiesTable)
-      .values(
-        capabilitiesForRole("owner").map((c) => ({
-          membershipId,
-          capability: c,
-        })),
-      );
+    await tx.insert(membershipCapabilitiesTable).values(
+      capabilitiesForRole("owner").map((c) => ({
+        membershipId,
+        capability: c,
+      })),
+    );
     return t;
   });
   // Team ordering moved to the team_app_order/team_folder_order junctions
   // (cut-set c); a new team starts with no order rows. The JSONB stub is retired.
   // Switch the active team to the freshly created one.
   await setActiveTeam(team.id);
-  await recordActivity("member", `Created team ${team.name}`, user.name, null, team.id);
+  await recordActivity(
+    "member",
+    `Created team ${team.name}`,
+    user.name,
+    null,
+    team.id,
+  );
   return team;
 }
 

@@ -97,13 +97,18 @@ export interface AppEnvGroup {
 }
 
 /** The primary domain hostname of each given app, for the ones that have one. */
-async function loadPrimaryDomains(appIds: string[]): Promise<Map<string, string>> {
+async function loadPrimaryDomains(
+  appIds: string[],
+): Promise<Map<string, string>> {
   if (appIds.length === 0) return new Map();
   const rows = await getDb()
     .select({ appId: domainsTable.appId, name: domainsTable.name })
     .from(domainsTable)
     .where(
-      and(inArray(domainsTable.appId, appIds), eq(domainsTable.isPrimary, true)),
+      and(
+        inArray(domainsTable.appId, appIds),
+        eq(domainsTable.isPrimary, true),
+      ),
     );
   return new Map(rows.map((r) => [r.appId, r.name]));
 }
@@ -189,10 +194,7 @@ export async function upsertEnv(input: {
       .select({ id: envVarsTable.id, type: envVarsTable.type })
       .from(envVarsTable)
       .where(
-        and(
-          eq(envVarsTable.appId, input.appId),
-          eq(envVarsTable.key, key),
-        ),
+        and(eq(envVarsTable.appId, input.appId), eq(envVarsTable.key, key)),
       )
       .limit(1);
     if (existing.length > 0) {
@@ -215,7 +217,9 @@ export async function upsertEnv(input: {
         .where(eq(envVarsTable.id, varId));
       // Whole-set replace of the targets junction — only when the caller sent one.
       if (targets) {
-        await tx.delete(envVarTargetsTable).where(eq(envVarTargetsTable.envVarId, varId));
+        await tx
+          .delete(envVarTargetsTable)
+          .where(eq(envVarTargetsTable.envVarId, varId));
         await tx
           .insert(envVarTargetsTable)
           .values(targets.map((target) => ({ envVarId: varId, target })));
@@ -247,7 +251,10 @@ export async function upsertEnv(input: {
  * and its key moved in place, so its value, targets, type and authorship all ride
  * along untouched. Returns the owning app so the caller can reload the entity.
  */
-export async function renameEnv(id: string, newKeyRaw: string): Promise<string> {
+export async function renameEnv(
+  id: string,
+  newKeyRaw: string,
+): Promise<string> {
   const user = (await getCurrentUser())!;
   const newKey = newKeyRaw.trim();
   if (!KEY_RE.test(newKey)) throw new Error("Invalid variable name");
@@ -257,21 +264,26 @@ export async function renameEnv(id: string, newKeyRaw: string): Promise<string> 
   const { userId } = await requireAppCapability(existing.appId, "manage_env");
   // A secret is frozen whole, key included: "cannot be edited" that still let you
   // rename it would be a promise kept in one field only.
-  if (existing.type === "secret") throw new Error(secretImmutable(existing.key));
+  if (existing.type === "secret")
+    throw new Error(secretImmutable(existing.key));
   if (existing.key === newKey) return existing.appId; // no-op rename
   // Guard the `env_vars_app_key_uq (appId, key)` uniqueness with a readable message
   // instead of leaking the raw constraint violation the DB would otherwise throw.
   const clash = await getDb()
     .select({ id: envVarsTable.id })
     .from(envVarsTable)
-    .where(and(eq(envVarsTable.appId, existing.appId), eq(envVarsTable.key, newKey)))
+    .where(
+      and(eq(envVarsTable.appId, existing.appId), eq(envVarsTable.key, newKey)),
+    )
     .limit(1);
   if (clash.length > 0)
     throw new Error(`A variable named ${newKey} already exists on this app`);
   await getDb()
     .update(envVarsTable)
     .set({ key: newKey, updatedByUserId: userId, updatedAt: nowIso() })
-    .where(and(eq(envVarsTable.id, id), eq(envVarsTable.appId, existing.appId)));
+    .where(
+      and(eq(envVarsTable.id, id), eq(envVarsTable.appId, existing.appId)),
+    );
   await recordActivity(
     "env",
     `Renamed env var ${existing.key} → ${newKey}`,
@@ -401,9 +413,7 @@ export async function setAppEnv(
     }
     if (created.length > 0) await insertEnvVars(tx, created);
     // Drop variables removed in the editor (their targets CASCADE).
-    const removed = existing
-      .filter((e) => !wanted.has(e.key))
-      .map((e) => e.id);
+    const removed = existing.filter((e) => !wanted.has(e.key)).map((e) => e.id);
     if (removed.length > 0)
       await tx.delete(envVarsTable).where(inArray(envVarsTable.id, removed));
   });

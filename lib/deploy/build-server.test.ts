@@ -1,7 +1,11 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 
-import { pickBuildServer, canBuildFor, buildServerLogLine } from "./build-server";
+import {
+  pickBuildServer,
+  canBuildFor,
+  buildServerLogLine,
+} from "./build-server";
 import type { Server } from "../types";
 
 /**
@@ -48,7 +52,10 @@ const app = (buildServerId: string | null = null) => ({
 });
 
 test("no build server in the fleet leaves the deploy exactly as it was", () => {
-  const choice = pickBuildServer(app(), TARGET, [TARGET, srv({ id: "srv_other" })]);
+  const choice = pickBuildServer(app(), TARGET, [
+    TARGET,
+    srv({ id: "srv_other" }),
+  ]);
   assert.deepEqual(choice, { serverId: null, reason: "none-available" });
 });
 
@@ -94,15 +101,21 @@ test("a mismatched architecture is refused, not warned about", () => {
     reason: "none-available",
   });
   // Pinned, the same refusal gets its own reason so the log can say WHY.
-  assert.deepEqual(pickBuildServer(app("srv_build"), TARGET, [TARGET, builder]), {
-    serverId: null,
-    reason: "arch-mismatch",
-  });
+  assert.deepEqual(
+    pickBuildServer(app("srv_build"), TARGET, [TARGET, builder]),
+    {
+      serverId: null,
+      reason: "arch-mismatch",
+    },
+  );
 });
 
 test("an agent too old to report its architecture is never used as a builder", () => {
   const builder = srv({ id: "srv_build", buildOnly: true, hostArch: "" });
-  assert.equal(pickBuildServer(app(), TARGET, [TARGET, builder]).serverId, null);
+  assert.equal(
+    pickBuildServer(app(), TARGET, [TARGET, builder]).serverId,
+    null,
+  );
   // And a target of unknown arch is equally unsafe to build FOR.
   const unknownTarget = srv({ id: "srv_app", hostArch: "" });
   const known = srv({ id: "srv_build", buildOnly: true, hostArch: "amd64" });
@@ -115,7 +128,10 @@ test("an agent too old to report its architecture is never used as a builder", (
 test("an offline or still-provisioning builder is skipped before it is dialed", () => {
   for (const status of ["offline", "provisioning"] as const) {
     const builder = srv({ id: "srv_build", buildOnly: true, status });
-    assert.equal(pickBuildServer(app(), TARGET, [TARGET, builder]).serverId, null);
+    assert.equal(
+      pickBuildServer(app(), TARGET, [TARGET, builder]).serverId,
+      null,
+    );
   }
 });
 
@@ -147,12 +163,19 @@ test("the least busy builder wins, and ties break on creation order", () => {
     createdAt: "2026-02-01T00:00:00.000Z",
   });
   assert.equal(
-    pickBuildServer(app(), TARGET, [TARGET, a, b], new Map([["srv_a", 3]])).serverId,
+    pickBuildServer(app(), TARGET, [TARGET, a, b], new Map([["srv_a", 3]]))
+      .serverId,
     "srv_b",
   );
   // A tie must be DETERMINISTIC: two deploys racing must not depend on map order.
-  assert.equal(pickBuildServer(app(), TARGET, [TARGET, b, a]).serverId, "srv_a");
-  assert.equal(pickBuildServer(app(), TARGET, [TARGET, a, b]).serverId, "srv_a");
+  assert.equal(
+    pickBuildServer(app(), TARGET, [TARGET, b, a]).serverId,
+    "srv_a",
+  );
+  assert.equal(
+    pickBuildServer(app(), TARGET, [TARGET, a, b]).serverId,
+    "srv_a",
+  );
 });
 
 test("a pin to a server this team lost access to degrades instead of failing", () => {
@@ -160,13 +183,20 @@ test("a pin to a server this team lost access to degrades instead of failing", (
   // The app still has to deploy, so this becomes "build where it runs" plus a
   // warning, never an error and never a silent substitution of another builder.
   const otherBuilder = srv({ id: "srv_build", buildOnly: true });
-  const choice = pickBuildServer(app("srv_gone"), TARGET, [TARGET, otherBuilder]);
+  const choice = pickBuildServer(app("srv_gone"), TARGET, [
+    TARGET,
+    otherBuilder,
+  ]);
   assert.deepEqual(choice, { serverId: null, reason: "none-available" });
 });
 
 test("the deploy log is silent for the default and loud when a setting did not apply", () => {
   assert.equal(
-    buildServerLogLine({ serverId: null, reason: "own-server" }, "b", "eu-main-1"),
+    buildServerLogLine(
+      { serverId: null, reason: "own-server" },
+      "b",
+      "eu-main-1",
+    ),
     null,
   );
   const ok = buildServerLogLine(
@@ -178,7 +208,11 @@ test("the deploy log is silent for the default and loud when a setting did not a
   assert.match(ok!.text, /eu-build-1/);
   assert.match(ok!.text, /eu-main-1/);
   for (const reason of ["arch-mismatch", "none-available"] as const) {
-    const warn = buildServerLogLine({ serverId: null, reason }, "eu-build-1", "eu-main-1");
+    const warn = buildServerLogLine(
+      { serverId: null, reason },
+      "eu-build-1",
+      "eu-main-1",
+    );
     assert.equal(warn?.level, "warn");
     assert.match(warn!.text, /eu-main-1/);
   }

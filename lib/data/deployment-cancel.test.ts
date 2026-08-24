@@ -57,8 +57,11 @@ const SVC2 = "prj_svc2";
 // SERVER_1 (the seed default), SVC2 on SERVER_2.
 const SERVER_2 = "srv_2";
 
-const as = <T>(userId: string, teamId: string, fn: () => Promise<T>): Promise<T> =>
-  runWithIdentity({ userId, teamId }, fn);
+const as = <T>(
+  userId: string,
+  teamId: string,
+  fn: () => Promise<T>,
+): Promise<T> => runWithIdentity({ userId, teamId }, fn);
 
 beforeEach(async () => {
   await pg.exec(TRUNCATE_PROJECT_GRAPH);
@@ -76,12 +79,25 @@ beforeEach(async () => {
   await seedServer(db); // SERVER_1 (default)
   await seedServer(db, SERVER_2);
   await seedApp(db, { id: SVC, teamId: TEAM_A, serverId: SERVER_1 });
-  await seedApp(db, { id: SVC2, teamId: TEAM_A, slug: "svc2", serverId: SERVER_2 });
+  await seedApp(db, {
+    id: SVC2,
+    teamId: TEAM_A,
+    slug: "svc2",
+    serverId: SERVER_2,
+  });
   await seedDeployment(db, { id: "dep_ready", appId: SVC, status: "ready" });
   await seedDeployment(db, { id: "dep_error", appId: SVC, status: "error" });
-  await seedDeployment(db, { id: "dep_canceled", appId: SVC, status: "canceled" });
+  await seedDeployment(db, {
+    id: "dep_canceled",
+    appId: SVC,
+    status: "canceled",
+  });
   await seedDeployment(db, { id: "dep_queued", appId: SVC, status: "queued" });
-  await seedDeployment(db, { id: "dep_building", appId: SVC, status: "building" });
+  await seedDeployment(db, {
+    id: "dep_building",
+    appId: SVC,
+    status: "building",
+  });
 });
 
 /** Ids currently in `canceled`, sorted — the terminal state cancel flips rows to. */

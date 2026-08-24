@@ -17,12 +17,7 @@ import {
   AccordionItem,
   AccordionTrigger,
 } from "@/components/ui/accordion";
-import {
-  Card,
-  CardContent,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { UserAvatar } from "@/components/shared/user-avatar";
 import { Button } from "@/components/ui/button";
@@ -105,7 +100,9 @@ export function TokenEditor({
     () => ({
       name: token?.name ?? "",
       capabilities:
-        token?.capabilities ?? preset?.capabilities ?? (["view"] as Capability[]),
+        token?.capabilities ??
+        preset?.capabilities ??
+        (["view"] as Capability[]),
       scope: {
         teamIds: token?.teamIds ?? [],
         projectIds: token?.projectIds ?? [],
@@ -231,7 +228,10 @@ export function TokenEditor({
     );
 
   return (
-    <form className="grid items-start gap-6 lg:grid-cols-[minmax(0,1fr)_320px]" onSubmit={submit}>
+    <form
+      className="grid items-start gap-6 lg:grid-cols-[minmax(0,1fr)_320px]"
+      onSubmit={submit}
+    >
       <div className="min-w-0 space-y-6">
         <Card>
           <CardHeader>
@@ -263,7 +263,11 @@ export function TokenEditor({
               >
                 Expires
               </FieldLabel>
-              <Select value={expiry} onValueChange={setExpiry} disabled={readOnly}>
+              <Select
+                value={expiry}
+                onValueChange={setExpiry}
+                disabled={readOnly}
+              >
                 <SelectTrigger id="token-expiry" className="w-full">
                   <SelectValue />
                 </SelectTrigger>
@@ -306,13 +310,14 @@ export function TokenEditor({
                         </p>
                         <p className="mt-1 text-xs text-muted-foreground">
                           Lets this token administer the whole instance — every
-                          user, every team and every server — not just this team.
-                          Only turn it on for a token that manages Deplo itself.
+                          user, every team and every server — not just this
+                          team. Only turn it on for a token that manages Deplo
+                          itself.
                         </p>
                         {scoped && (
                           <p className="mt-1 text-xs text-muted-foreground">
-                            A token limited to projects can&apos;t administer the
-                            instance.
+                            A token limited to projects can&apos;t administer
+                            the instance.
                           </p>
                         )}
                       </div>
@@ -373,7 +378,9 @@ export function TokenEditor({
               </div>
               {mode === "create" && (
                 <div className="flex items-center gap-3">
-                  <dt className="shrink-0 text-muted-foreground">Started from</dt>
+                  <dt className="shrink-0 text-muted-foreground">
+                    Started from
+                  </dt>
                   <dd className="min-w-0 flex-1 truncate text-right font-medium">
                     {preset ? preset.name : "Nothing (blank)"}
                   </dd>
@@ -403,27 +410,27 @@ export function TokenEditor({
                 </dd>
               </div>
               {mode === "edit" && (
-                  <div className="flex items-center gap-3">
-                    <dt className="flex shrink-0 items-center gap-1 text-muted-foreground">
-                      Acts as
-                      <InfoTip
-                        content={`A token can never do more than the member who created it. If ${
-                          token!.createdByUsername ?? "they"
-                        } loses a permission, this token loses it too.`}
+                <div className="flex items-center gap-3">
+                  <dt className="flex shrink-0 items-center gap-1 text-muted-foreground">
+                    Acts as
+                    <InfoTip
+                      content={`A token can never do more than the member who created it. If ${
+                        token!.createdByUsername ?? "they"
+                      } loses a permission, this token loses it too.`}
+                    />
+                  </dt>
+                  <dd className="flex min-w-0 flex-1 items-center justify-end gap-1.5 truncate text-right font-medium">
+                    {token!.createdByUsername && (
+                      <UserAvatar
+                        username={token!.createdByUsername}
+                        avatarColor={token!.createdByAvatarColor}
+                        avatarUrl={token!.createdByAvatarUrl}
+                        size="sm"
                       />
-                    </dt>
-                    <dd className="flex min-w-0 flex-1 items-center justify-end gap-1.5 truncate text-right font-medium">
-                      {token!.createdByUsername && (
-                        <UserAvatar
-                          username={token!.createdByUsername}
-                          avatarColor={token!.createdByAvatarColor}
-                          avatarUrl={token!.createdByAvatarUrl}
-                          size="sm"
-                        />
-                      )}
-                      {token!.createdByUsername ?? "—"}
-                    </dd>
-                  </div>
+                    )}
+                    {token!.createdByUsername ?? "—"}
+                  </dd>
+                </div>
               )}
             </dl>
 
@@ -437,7 +444,9 @@ export function TokenEditor({
                   >
                     <span
                       className={
-                        n === 0 ? "text-muted-foreground/60" : "text-muted-foreground"
+                        n === 0
+                          ? "text-muted-foreground/60"
+                          : "text-muted-foreground"
                       }
                     >
                       {cat.label}
@@ -454,13 +463,19 @@ export function TokenEditor({
             </div>
 
             {scoped && (
-              <Badge variant="outline" className="w-full justify-center gap-1.5">
+              <Badge
+                variant="outline"
+                className="w-full justify-center gap-1.5"
+              >
                 <FolderTree className="size-3" />
                 Limited access
               </Badge>
             )}
             {instanceAdmin && (
-              <Badge variant="outline" className="w-full justify-center gap-1.5">
+              <Badge
+                variant="outline"
+                className="w-full justify-center gap-1.5"
+              >
                 <ServerCog className="size-3" />
                 Instance admin
               </Badge>
@@ -471,7 +486,9 @@ export function TokenEditor({
                 type="submit"
                 size="lg"
                 className="w-full"
-                disabled={pending || !name.trim() || (mode === "edit" && !dirty)}
+                disabled={
+                  pending || !name.trim() || (mode === "edit" && !dirty)
+                }
               >
                 {pending ? (
                   <Loader2 className="size-4 animate-spin" />
@@ -563,7 +580,8 @@ function describeScope(scope: ScopeSelection, tree: ScopeTreeTeam[]): string {
   const parts: string[] = [];
   const n = (v: number, one: string) => `${v} ${v === 1 ? one : `${one}s`}`;
   if (scope.teamIds.length) parts.push(n(scope.teamIds.length, "team"));
-  if (scope.projectIds.length) parts.push(n(scope.projectIds.length, "project"));
+  if (scope.projectIds.length)
+    parts.push(n(scope.projectIds.length, "project"));
   if (scope.folderIds.length) parts.push(n(scope.folderIds.length, "folder"));
   if (scope.appIds.length) parts.push(n(scope.appIds.length, "app"));
   return parts.join(", ");

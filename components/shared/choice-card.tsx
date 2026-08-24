@@ -44,7 +44,7 @@ export function ChoiceCard({
       onClick={onSelect}
       className={cn(
         "flex w-full items-start gap-3 rounded-lg border p-3 text-left transition-colors",
-        "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1 focus-visible:ring-offset-background",
+        "focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1 focus-visible:ring-offset-background focus-visible:outline-none",
         "disabled:cursor-not-allowed disabled:opacity-50",
         selected
           ? "border-primary bg-primary/[0.06] ring-1 ring-primary/60"

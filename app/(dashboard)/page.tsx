@@ -113,10 +113,12 @@ export default async function OverviewPage(props: PageProps<"/">) {
   //    the toolbar). The view mirrors a folder view — just its apps;
   //  - otherwise (top level): projects, top-level folders, ungrouped apps.
   const openFolder =
-    !query && folderId ? folders.find((f) => f.id === folderId) ?? null : null;
+    !query && folderId
+      ? (folders.find((f) => f.id === folderId) ?? null)
+      : null;
   const openProject =
     !query && !openFolder && projectId
-      ? projects.find((p) => p.id === projectId) ?? null
+      ? (projects.find((p) => p.id === projectId) ?? null)
       : null;
 
   // The open project's environments and the selected one (?env= param, falling
@@ -192,7 +194,7 @@ export default async function OverviewPage(props: PageProps<"/">) {
     while (cur && !seen.has(cur.id)) {
       seen.add(cur.id);
       folderPath.unshift({ id: cur.id, name: cur.name });
-      cur = cur.parentId ? folderById.get(cur.parentId) ?? null : null;
+      cur = cur.parentId ? (folderById.get(cur.parentId) ?? null) : null;
     }
   }
   // An open project is its own (single-segment) trail.
@@ -259,7 +261,9 @@ export default async function OverviewPage(props: PageProps<"/">) {
       <div className="order-2 space-y-6 lg:order-2">
         <Card>
           <CardHeader className="pb-3">
-            <CardTitle className="text-sm lg:text-sm">Recent activity</CardTitle>
+            <CardTitle className="text-sm lg:text-sm">
+              Recent activity
+            </CardTitle>
           </CardHeader>
           <CardContent className="space-y-3">
             {activity.length === 0 && (

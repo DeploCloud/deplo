@@ -106,7 +106,10 @@ export function stackFilesDir(deployKey: string): string {
  * Only a source Deplo BUILDS gets one. A prebuilt `docker-image` source runs the
  * registry ref the user gave it, and a compose stack has no single image at all.
  */
-export function deployImageRef(deployKey: string, deploymentId: string): string {
+export function deployImageRef(
+  deployKey: string,
+  deploymentId: string,
+): string {
   return `deplo/${deployKey}:${deploymentId.slice(0, 12)}`;
 }
 

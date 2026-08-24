@@ -61,7 +61,10 @@ export async function GET(
     // proxy log and a script all read "you sent a bad request" for a run that
     // exists and a permission the caller does not have.
     const message = e instanceof Error ? e.message : String(e);
-    return Response.json({ error: message }, { status: statusForBackupError(message) });
+    return Response.json(
+      { error: message },
+      { status: statusForBackupError(message) },
+    );
   }
 
   const body = new ReadableStream<Uint8Array>({

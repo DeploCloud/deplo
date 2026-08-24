@@ -12,7 +12,10 @@ test("only an explicit refusal blocks a deploy - everything else fails open", ()
     isRefusal(new Error("GitLab request failed (403): insufficient scope")),
     true,
   );
-  assert.equal(isRefusal(new Error("Gitea request failed (404): not found")), true);
+  assert.equal(
+    isRefusal(new Error("Gitea request failed (404): not found")),
+    true,
+  );
 
   // A bad minute at the provider must NEVER fail a deploy that would have
   // worked: this check explains a failure, it must not invent one.

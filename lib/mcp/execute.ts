@@ -75,7 +75,9 @@ export async function runGraphql(
   // the guard is here because a null one must mean "resolve nothing" rather than
   // "run unattributed" — `runWithIdentity` has no null form, and the data layer's
   // own gates refuse an anonymous caller anyway.
-  const value = await (ctx.identity ? runWithIdentity(ctx.identity, run) : run());
+  const value = await (ctx.identity
+    ? runWithIdentity(ctx.identity, run)
+    : run());
   const error = value.errors?.[0]?.message;
   return { data: value.data ?? null, error };
 }

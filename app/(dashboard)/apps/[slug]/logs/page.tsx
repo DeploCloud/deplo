@@ -57,7 +57,9 @@ export default async function AppLogsPage(
         initialStreamable={!!info?.streamable}
         initialSupportsTimeline={!!info?.supportsTimeline}
         initialLogMaxDays={info?.logMaxDays ?? DEFAULT_LOG_RANGE_DAYS}
-        latestDeployment={latest ? { id: latest.id, status: latest.status } : null}
+        latestDeployment={
+          latest ? { id: latest.id, status: latest.status } : null
+        }
         initialBuildLogs={buildLogs}
       />
     </div>

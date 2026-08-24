@@ -20,7 +20,11 @@ import {
   TEAM_B,
   USER_1,
 } from "./identity-test-helpers";
-import { seedApp, seedServer, TRUNCATE_PROJECT_GRAPH } from "./app-graph-test-helpers";
+import {
+  seedApp,
+  seedServer,
+  TRUNCATE_PROJECT_GRAPH,
+} from "./app-graph-test-helpers";
 import { moveAppToFolder, moveAppsToFolder } from "./folders";
 import { moveAppToProject, moveAppToEnvironment } from "./projects";
 import { transferAppToTeam, appTransferInfo } from "./app-transfer";
@@ -73,7 +77,12 @@ beforeEach(async () => {
       { id: USER_1, teamId: TEAM_A, role: "owner" },
       // The subject: one permission, in both teams (the transfer needs a
       // membership on the far side too).
-      { id: MOVER, teamId: TEAM_A, role: "member", capabilities: ["view", "move_apps"] },
+      {
+        id: MOVER,
+        teamId: TEAM_A,
+        role: "member",
+        capabilities: ["view", "move_apps"],
+      },
       { id: `${MOVER}_b`, teamId: TEAM_B, role: "owner" },
     ],
   });
@@ -85,8 +94,22 @@ beforeEach(async () => {
   );
   await seedServer(db);
   await db.insert(foldersTable).values([
-    { id: MY_FOLDER, teamId: TEAM_A, name: "Mine", ownerUserId: MOVER, createdAt: T0, updatedAt: T0 },
-    { id: THEIR_FOLDER, teamId: TEAM_A, name: "Theirs", ownerUserId: USER_1, createdAt: T0, updatedAt: T0 },
+    {
+      id: MY_FOLDER,
+      teamId: TEAM_A,
+      name: "Mine",
+      ownerUserId: MOVER,
+      createdAt: T0,
+      updatedAt: T0,
+    },
+    {
+      id: THEIR_FOLDER,
+      teamId: TEAM_A,
+      name: "Theirs",
+      ownerUserId: USER_1,
+      createdAt: T0,
+      updatedAt: T0,
+    },
   ]);
   await db.insert(projectsTable).values({
     id: PROJECT,
@@ -97,8 +120,28 @@ beforeEach(async () => {
     updatedAt: T0,
   });
   await db.insert(environmentsTable).values([
-    { id: ENV_MAIN, projectId: PROJECT, name: "production", slug: "production", kind: "production", isDefault: true, position: 0, createdAt: T0, updatedAt: T0 },
-    { id: ENV_SIDE, projectId: PROJECT, name: "staging", slug: "staging", kind: "preview", isDefault: false, position: 1, createdAt: T0, updatedAt: T0 },
+    {
+      id: ENV_MAIN,
+      projectId: PROJECT,
+      name: "production",
+      slug: "production",
+      kind: "production",
+      isDefault: true,
+      position: 0,
+      createdAt: T0,
+      updatedAt: T0,
+    },
+    {
+      id: ENV_SIDE,
+      projectId: PROJECT,
+      name: "staging",
+      slug: "staging",
+      kind: "preview",
+      isDefault: false,
+      position: 1,
+      createdAt: T0,
+      updatedAt: T0,
+    },
   ]);
   await seedApp(db, { id: APP, teamId: TEAM_A, slug: "movable" });
   await seedApp(db, { id: APP_2, teamId: TEAM_A, slug: "movable-2" });
@@ -109,7 +152,9 @@ const asMover = <T>(fn: () => Promise<T>, teamId = TEAM_A): Promise<T> =>
 
 /** Give the subject a different set (always keeping the `view` floor). */
 async function setCaps(caps: Capability[]): Promise<void> {
-  await pg.exec(`delete from membership_capabilities where membership_id = 'mem_${MOVER}';`);
+  await pg.exec(
+    `delete from membership_capabilities where membership_id = 'mem_${MOVER}';`,
+  );
   const wanted = new Set<Capability>([...caps, "view"]);
   const values = ALL_CAPABILITIES.filter((c) => wanted.has(c))
     .map((c) => `('mem_${MOVER}', '${c}')`)
@@ -138,7 +183,11 @@ async function placementOf(appId = APP) {
 
 test("move_apps alone files an app into a folder and pulls it back out", async () => {
   await asMover(() => moveAppToFolder(APP, MY_FOLDER));
-  assert.equal((await placementOf()).folderId, MY_FOLDER, "the app landed in the folder");
+  assert.equal(
+    (await placementOf()).folderId,
+    MY_FOLDER,
+    "the app landed in the folder",
+  );
 
   await asMover(() => moveAppToFolder(APP, null));
   assert.equal((await placementOf()).folderId, null, "and came back out");
@@ -148,7 +197,11 @@ test("move_apps alone moves an app into a project, between its environments, and
   await asMover(() => moveAppToProject(APP, PROJECT));
   const filed = await placementOf();
   assert.equal(filed.projectId, PROJECT);
-  assert.equal(filed.environmentId, ENV_MAIN, "entering a project lands in its default environment");
+  assert.equal(
+    filed.environmentId,
+    ENV_MAIN,
+    "entering a project lands in its default environment",
+  );
 
   await asMover(() => moveAppToEnvironment(APP, ENV_SIDE));
   assert.equal((await placementOf()).environmentId, ENV_SIDE);
@@ -156,7 +209,11 @@ test("move_apps alone moves an app into a project, between its environments, and
   await asMover(() => moveAppToProject(APP, null));
   const out = await placementOf();
   assert.equal(out.projectId, null);
-  assert.equal(out.environmentId, null, "leaving the project leaves its environment too");
+  assert.equal(
+    out.environmentId,
+    null,
+    "leaving the project leaves its environment too",
+  );
 });
 
 test("move_apps alone moves a whole selection at once", async () => {
@@ -227,7 +284,11 @@ test("a transfer to another team also needs manage_env - the variables travel wi
 
   await setCaps(["move_apps", "manage_env"]);
   await asMover(() => transferAppToTeam(APP, TEAM_B));
-  assert.equal((await placementOf()).teamId, TEAM_B, "with both, the app lands in the other team");
+  assert.equal(
+    (await placementOf()).teamId,
+    TEAM_B,
+    "with both, the app lands in the other team",
+  );
 });
 
 test("a team the mover doesn't belong to is not a destination", async () => {

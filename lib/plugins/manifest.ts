@@ -44,7 +44,10 @@ export const PluginListingSchema = z.object({
     .min(1)
     .max(64)
     // Slug-safe: the id seeds the container name and the plugin-path slug.
-    .regex(/^[a-z0-9-]+$/, "plugin id must be lowercase letters, digits and dashes"),
+    .regex(
+      /^[a-z0-9-]+$/,
+      "plugin id must be lowercase letters, digits and dashes",
+    ),
   name: z.string().min(1).max(120),
   description: z.string().max(2000).default(""),
   version: z.string().min(1).max(64),
@@ -64,7 +67,10 @@ export const PluginEnvVarSchema = z.object({
     .string()
     .min(1)
     .max(256)
-    .regex(/^[A-Za-z_][A-Za-z0-9_]*$/, "env key must be a valid shell identifier"),
+    .regex(
+      /^[A-Za-z_][A-Za-z0-9_]*$/,
+      "env key must be a valid shell identifier",
+    ),
   value: z.string().max(4096),
 });
 
@@ -83,7 +89,10 @@ export const PluginManifestSchema = z.object({
     .string()
     .min(1)
     .max(64)
-    .regex(/^[a-z0-9-]+$/, "plugin id must be lowercase letters, digits and dashes"),
+    .regex(
+      /^[a-z0-9-]+$/,
+      "plugin id must be lowercase letters, digits and dashes",
+    ),
   name: z.string().min(1).max(120),
   version: z.string().min(1).max(64),
   /** The runnable image ref. Opaque — handed to docker, never parsed/eval'd. */

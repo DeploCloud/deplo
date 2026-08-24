@@ -119,11 +119,7 @@ export async function hostMetrics(dataDir = "/"): Promise<HostMetrics> {
     diskPct: disk.total > 0 ? +((disk.used / disk.total) * 100).toFixed(1) : 0,
     netRx: Math.max(0, net2.rx - net1.rx),
     netTx: Math.max(0, net2.tx - net1.tx),
-    load: [
-      +load[0].toFixed(2),
-      +load[1].toFixed(2),
-      +load[2].toFixed(2),
-    ],
+    load: [+load[0].toFixed(2), +load[1].toFixed(2), +load[2].toFixed(2)],
     uptimeSec: Math.floor(os.uptime()),
   };
 }

@@ -158,7 +158,9 @@ export async function sendWebPushTo(
   // not a failure.
   if (subs.length === 0) {
     if (userId)
-      throw new Error("This browser is not registered for push notifications yet");
+      throw new Error(
+        "This browser is not registered for push notifications yet",
+      );
     return;
   }
 
@@ -208,7 +210,8 @@ export async function sendWebPushTo(
   );
   results.forEach((r, i) => {
     if (r.status !== "rejected") return;
-    const status = (r.reason as { statusCode?: number } | undefined)?.statusCode;
+    const status = (r.reason as { statusCode?: number } | undefined)
+      ?.statusCode;
     // 404/410: the browser is gone for good. Anything else may be transient.
     if (status === 404 || status === 410) gone.push(subs[i].endpoint);
   });

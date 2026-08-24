@@ -55,7 +55,10 @@ export function UpdateBanner() {
       <Sparkles className="size-4 shrink-0 text-[var(--success)]" />
       <span className="min-w-0 truncate">
         Deplo <span className="font-medium">{info.latest}</span> is available
-        <span className="text-muted-foreground"> — you have v{info.current}</span>
+        <span className="text-muted-foreground">
+          {" "}
+          — you have v{info.current}
+        </span>
       </span>
       <a
         href={info.url ?? "#"}

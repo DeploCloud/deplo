@@ -16,10 +16,7 @@ import type { DatabaseStatus } from "@/lib/types";
  *  - `down`       — believed running, nothing actually up
  */
 export type DatabaseDisplayStatus =
-  | DatabaseStatus
-  | "restarting"
-  | "unhealthy"
-  | "down";
+  DatabaseStatus | "restarting" | "unhealthy" | "down";
 
 export function databaseDisplayStatus(
   status: DatabaseStatus,

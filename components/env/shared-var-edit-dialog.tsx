@@ -122,8 +122,8 @@ function SharedVarEditForm({
         <DialogHeader>
           <DialogTitle>Edit shared variable</DialogTitle>
           <DialogDescription>
-            Update this variable&apos;s name or value. Who receives it doesn&apos;t
-            change.
+            Update this variable&apos;s name or value. Who receives it
+            doesn&apos;t change.
           </DialogDescription>
         </DialogHeader>
         <form className="grid gap-4" onSubmit={onSubmit}>
@@ -187,7 +187,8 @@ function SharedVarEditForm({
               <div>
                 <p className="text-sm font-medium">Secret</p>
                 <p className="mt-1 text-xs text-muted-foreground">
-                  Hide the value in the UI after saving. It can never be read back.
+                  Hide the value in the UI after saving. It can never be read
+                  back.
                 </p>
               </div>
               <Switch checked={secret} onCheckedChange={setSecret} />

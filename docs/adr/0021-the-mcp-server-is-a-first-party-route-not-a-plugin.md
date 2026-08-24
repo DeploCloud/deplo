@@ -2,7 +2,7 @@
 
 - **Status**: Accepted — 2026-08-12.
 - **Amends**: [ADR-0013](0013-plugins-are-deferred-and-the-mcp-plugin-is-withdrawn.md), decision 3
-  ("the MCP plugin is withdrawn entirely"). That withdrawal stands: the *plugin* is gone and is not
+  ("the MCP plugin is withdrawn entirely"). That withdrawal stands: the _plugin_ is gone and is not
   coming back in that shape. This ADR records what replaces it and why the four objections that
   killed it do not apply to a route.
 - **Builds on**: [ADR-0015](0015-an-api-token-is-a-principal-with-its-own-capabilities.md) — the
@@ -13,7 +13,7 @@
 
 Every AI coding agent now speaks the Model Context Protocol, and deplo already has the API an agent
 needs — 306 GraphQL root fields behind bearer tokens with 45 fine-grained Capabilities. What it did
-not have was a way for an agent to *find* them: every client had to hand-write GraphQL against a
+not have was a way for an agent to _find_ them: every client had to hand-write GraphQL against a
 4,000-line schema.
 
 An MCP server shipped once, in August 2026, and was withdrawn eleven days before this one. It was a
@@ -21,12 +21,12 @@ An MCP server shipped once, in August 2026, and was withdrawn eleven days before
 defaulted to a private dev box, reached through a nav entry every `manage_infra` holder saw on first
 run. ADR-0013 named four reasons it did not hold up. None of them is about MCP:
 
-| ADR-0013's objection | Why it does not apply here |
-|---|---|
-| A settings surface on the first-run path | One entry inside `/settings`, gated on a Capability most members do not hold. Nothing on the first-run path, no nav section, no catalog. |
-| Nobody was going to install it | Nothing to install. The endpoint exists; connecting is one copied line. |
-| The catalog defaulted to a private host | There is no catalog and no outbound call. |
-| The runtime owned the Docker socket | No container and no socket. The route runs in the control plane and reaches hosts the way everything else does — `lib/data/*` → `connectAgent`, ADR-0006 unbroken. |
+| ADR-0013's objection                     | Why it does not apply here                                                                                                                                         |
+| ---------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| A settings surface on the first-run path | One entry inside `/settings`, gated on a Capability most members do not hold. Nothing on the first-run path, no nav section, no catalog.                           |
+| Nobody was going to install it           | Nothing to install. The endpoint exists; connecting is one copied line.                                                                                            |
+| The catalog defaulted to a private host  | There is no catalog and no outbound call.                                                                                                                          |
+| The runtime owned the Docker socket      | No container and no socket. The route runs in the control plane and reaches hosts the way everything else does — `lib/data/*` → `connectAgent`, ADR-0006 unbroken. |
 
 The remaining ADR-0013 constraint, "who is it for", is answered plainly: **the expert audience**,
 behind an opt-in surface, off the first-run path — while the connect flow itself is built to the
@@ -91,9 +91,9 @@ non-expert bar, because copying one line is the whole product here.
 
 - **Revive the plugin**: rejected — it is the shape ADR-0013 withdrew, and the objections about the
   socket and the catalog are structural, not cosmetic.
-- **One `graphql` passthrough tool** (query string in, JSON out): rejected as the *only* surface —
+- **One `graphql` passthrough tool** (query string in, JSON out): rejected as the _only_ surface —
   it never goes stale, but it makes the model author GraphQL against a 4,000-line schema, burns
-  context on the SDL and produces bad errors on smaller models. Reconsider as an *additional*
+  context on the SDL and produces bad errors on smaller models. Reconsider as an _additional_
   escape hatch if the curated set proves too narrow.
 - **Generating tools from the schema** (`lib/graphql/introspect.ts` already lifts every field's
   description and scope): rejected — it would expose all 306 root fields, `reveal*` and

@@ -164,21 +164,27 @@ builder.mutationFields((t) => ({
       code: t.arg.string({ required: false }),
     },
     resolve: async (_r, { userId, password, code }) => {
-      await transferTeamOwnership({ userId, password, code: code ?? undefined });
+      await transferTeamOwnership({
+        userId,
+        password,
+        code: code ?? undefined,
+      });
       return true;
     },
   }),
   createTeam: t.field({
     type: TeamRef,
     authScopes: { loggedIn: true },
-    description: "Create a new team; the viewer becomes its owner and it is made active.",
+    description:
+      "Create a new team; the viewer becomes its owner and it is made active.",
     args: { name: t.arg.string({ required: true }) },
     resolve: (_r, { name }) => createTeam({ name }),
   }),
   switchTeam: t.field({
     type: "Boolean",
     authScopes: { loggedIn: true },
-    description: "Switch the active team (sets a cookie server-side). Returns true.",
+    description:
+      "Switch the active team (sets a cookie server-side). Returns true.",
     args: { teamId: t.arg.string({ required: true }) },
     resolve: async (_r, { teamId }) => {
       await switchTeam(teamId);

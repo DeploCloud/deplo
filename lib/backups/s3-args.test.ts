@@ -15,7 +15,9 @@ test("every allowed flag passes with either boolean", () => {
   }
   // And several at once, which is how a broken gateway usually needs them.
   assert.equal(
-    validateS3Args("--s3-sign-accept-encoding=false --s3-force-path-style=true"),
+    validateS3Args(
+      "--s3-sign-accept-encoding=false --s3-force-path-style=true",
+    ),
     null,
   );
 });
@@ -65,5 +67,8 @@ test("too many flags is refused before the allowlist is even consulted", () => {
     { length: S3_ARGS_MAX_TOKENS + 1 },
     () => "--s3-force-path-style=true",
   ).join(" ");
-  assert.match(validateS3Args(many) ?? "", /is the most a destination can take/);
+  assert.match(
+    validateS3Args(many) ?? "",
+    /is the most a destination can take/,
+  );
 });

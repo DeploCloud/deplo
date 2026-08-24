@@ -147,7 +147,12 @@ function parseTomlBool(value: string): boolean {
 interface ParsedToml {
   variables: BlueprintEnv[];
   configEnv: BlueprintEnv[];
-  domains: { serviceName: string; port: number; host: string; primary: boolean }[];
+  domains: {
+    serviceName: string;
+    port: number;
+    host: string;
+    primary: boolean;
+  }[];
   mounts: BlueprintMount[];
 }
 
@@ -160,7 +165,12 @@ interface ParsedToml {
 function parseToml(toml: string): ParsedToml {
   const variables: BlueprintEnv[] = [];
   const configEnv: BlueprintEnv[] = [];
-  const domains: { serviceName: string; port: number; host: string; primary: boolean }[] = [];
+  const domains: {
+    serviceName: string;
+    port: number;
+    host: string;
+    primary: boolean;
+  }[] = [];
   const mounts: BlueprintMount[] = [];
 
   const lines = toml.split(/\r?\n/);
@@ -390,12 +400,11 @@ export function getTemplateBlueprint(
       const orderedDomains = primary
         ? [primary, ...domains.filter((d) => d !== primary)]
         : domains;
-      exposes = orderedDomains
-        .map((d) => ({
-          service: d.serviceName,
-          port: d.port,
-          host: d.host ? substituteRefs(d.host, vars, domain) : undefined,
-        }));
+      exposes = orderedDomains.map((d) => ({
+        service: d.serviceName,
+        port: d.port,
+        host: d.host ? substituteRefs(d.host, vars, domain) : undefined,
+      }));
       expose = exposes[0] ?? null;
 
       mounts = parsed.mounts

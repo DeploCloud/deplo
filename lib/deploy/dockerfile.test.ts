@@ -34,7 +34,10 @@ test("generateDockerfile declares each env key as ARG+ENV before the build steps
   const df = generateDockerfile(build(), ["NEXT_PUBLIC_API", "DATABASE_URL"]);
   const argIdx = df.indexOf("ARG DATABASE_URL\nENV DATABASE_URL=$DATABASE_URL");
   assert.notEqual(argIdx, -1, `missing ARG/ENV pair in:\n${df}`);
-  assert.match(df, /ARG NEXT_PUBLIC_API\nENV NEXT_PUBLIC_API=\$NEXT_PUBLIC_API/);
+  assert.match(
+    df,
+    /ARG NEXT_PUBLIC_API\nENV NEXT_PUBLIC_API=\$NEXT_PUBLIC_API/,
+  );
   // Declarations come before the first RUN (install), so both install and
   // build commands see the vars.
   assert.ok(argIdx < df.indexOf("RUN "), "ARG/ENV must precede the RUN steps");
@@ -74,8 +77,14 @@ test("default path installs from manifests BEFORE copying the source", () => {
   assert.ok(installRun !== -1, `missing auto-install RUN in:\n${df}`);
   assert.ok(sourceCopy !== -1, `missing source COPY in:\n${df}`);
   // manifests → install → source, in that order.
-  assert.ok(manifestCopy < installRun, "manifests must be copied before install");
-  assert.ok(installRun < sourceCopy, "install must run before the source is copied");
+  assert.ok(
+    manifestCopy < installRun,
+    "manifests must be copied before install",
+  );
+  assert.ok(
+    installRun < sourceCopy,
+    "install must run before the source is copied",
+  );
 });
 
 /**
@@ -85,9 +94,21 @@ test("default path installs from manifests BEFORE copying the source", () => {
  */
 test("default install forces devDependencies in for every manager", () => {
   const df = generateDockerfile(build());
-  assert.match(df, /npm ci --include=dev/, "npm-with-lockfile must keep dev deps");
-  assert.match(df, /npm install --include=dev/, "npm-no-lockfile must keep dev deps");
-  assert.match(df, /pnpm install --frozen-lockfile --prod=false/, "pnpm must keep dev deps");
+  assert.match(
+    df,
+    /npm ci --include=dev/,
+    "npm-with-lockfile must keep dev deps",
+  );
+  assert.match(
+    df,
+    /npm install --include=dev/,
+    "npm-no-lockfile must keep dev deps",
+  );
+  assert.match(
+    df,
+    /pnpm install --frozen-lockfile --prod=false/,
+    "pnpm must keep dev deps",
+  );
 });
 
 /**
@@ -110,13 +131,21 @@ test("pnpm is gated behind a pinned packageManager", () => {
  * the auto-detect/dev-dep machinery layered on top.
  */
 test("a custom installCommand copies the source first and runs verbatim", () => {
-  const df = generateDockerfile(build({ installCommand: "pnpm i --frozen-lockfile" }));
+  const df = generateDockerfile(
+    build({ installCommand: "pnpm i --frozen-lockfile" }),
+  );
   const sourceCopy = df.indexOf("COPY . .");
   const installRun = df.indexOf("RUN pnpm i --frozen-lockfile");
   assert.ok(sourceCopy !== -1 && installRun !== -1, `unexpected shape:\n${df}`);
   assert.ok(sourceCopy < installRun, "custom install must see the full source");
-  assert.ok(!df.includes("--include=dev"), "custom install must not inherit auto-detect flags");
-  assert.ok(!df.includes("grep -q"), "custom install must not inherit the manager probe");
+  assert.ok(
+    !df.includes("--include=dev"),
+    "custom install must not inherit auto-detect flags",
+  );
+  assert.ok(
+    !df.includes("grep -q"),
+    "custom install must not inherit the manager probe",
+  );
 });
 
 /**

@@ -26,7 +26,10 @@ const SLUG = "agent-c-e2e";
 const NAME = `deplo-${SLUG}`;
 const PROJECT_ID = "prj_c_e2e";
 
-function sh(cmd: string, args: string[]): Promise<{ code: number; out: string }> {
+function sh(
+  cmd: string,
+  args: string[],
+): Promise<{ code: number; out: string }> {
   return new Promise((resolve) => {
     const c = spawn(cmd, args, { windowsHide: true });
     let out = "";
@@ -50,19 +53,24 @@ function check(name: string, ok: boolean, detail = "") {
 }
 
 async function main() {
-  const { connectAgent, agentPreflight } = await import("../lib/infra/agent-client");
+  const { connectAgent, agentPreflight } =
+    await import("../lib/infra/agent-client");
   const { SourceKind, BuildKind } = await import("../lib/agent/gen/agent");
 
   console.log("== preflight ==");
   const hello = await agentPreflight("srv-local");
-  if (!hello.dockerAvailable) throw new Error("agent reports docker unavailable");
+  if (!hello.dockerAvailable)
+    throw new Error("agent reports docker unavailable");
 
   // Deploy a labelled, shell-bearing, running container so the console RPCs have
   // a real target. (Label is what assertOwned checks; busybox gives /bin/sh.)
   const ctxDir = mkdtempSync(join(tmpdir(), "deplo-c-ctx-"));
   writeFileSync(
     join(ctxDir, "Dockerfile"),
-    ["FROM busybox:latest", `CMD ["sh","-c","while true; do sleep 1; done"]`].join("\n") + "\n",
+    [
+      "FROM busybox:latest",
+      `CMD ["sh","-c","while true; do sleep 1; done"]`,
+    ].join("\n") + "\n",
   );
   const tar = await tarToBytes(ctxDir);
   const composeYaml = `services:
@@ -90,7 +98,13 @@ networks:
         imageRef: `deplo/${SLUG}:e2e`,
         sourceKind: SourceKind.SOURCE_KIND_UPLOAD,
         buildKind: BuildKind.BUILD_KIND_DOCKERFILE,
-        dockerfile: { dockerfilePath: "Dockerfile", contextPath: ".", targetStage: "", generated: false, generatedDockerfile: "" },
+        dockerfile: {
+          dockerfilePath: "Dockerfile",
+          contextPath: ".",
+          targetStage: "",
+          generated: false,
+          generatedDockerfile: "",
+        },
         composeYaml,
         env: {},
         readyTimeoutMs: 60000,
@@ -100,16 +114,20 @@ networks:
         devWorkspaceSubdir: "",
         noBuildCache: false,
         forceRecreate: false,
-    composeUpArgs: [],
-    buildOnly: false,
+        composeUpArgs: [],
+        buildOnly: false,
       })) {
-        if (ev.result && !ev.result.ready) throw new Error("deploy failed: " + ev.result.error);
+        if (ev.result && !ev.result.ready)
+          throw new Error("deploy failed: " + ev.result.error);
       }
     } finally {
       conn.close();
     }
   }
-  const running = (await sh("docker", ["inspect", "-f", "{{.State.Running}}", NAME])).out.trim() === "true";
+  const running =
+    (
+      await sh("docker", ["inspect", "-f", "{{.State.Running}}", NAME])
+    ).out.trim() === "true";
   check("target container running", running);
 
   // ---- ListInstances ----
@@ -118,9 +136,15 @@ networks:
     const conn = await connectAgent("srv-local");
     try {
       const instances = await conn.listInstances(PROJECT_ID, SLUG, "");
-      check("lists exactly the project container", instances.length === 1 && instances[0].name === NAME,
-        JSON.stringify(instances.map((i) => i.name)));
-      check("reports running + user/workdir", instances[0]?.running === true && instances[0]?.workdir !== "");
+      check(
+        "lists exactly the project container",
+        instances.length === 1 && instances[0].name === NAME,
+        JSON.stringify(instances.map((i) => i.name)),
+      );
+      check(
+        "reports running + user/workdir",
+        instances[0]?.running === true && instances[0]?.workdir !== "",
+      );
     } finally {
       conn.close();
     }
@@ -131,9 +155,23 @@ networks:
   {
     const conn = await connectAgent("srv-local");
     try {
-      const ok = await conn.exec(PROJECT_ID, NAME, "echo hello-c-e2e", `deplo/${SLUG}:e2e`);
-      check("exec zero-exit returns stdout", ok.code === 0 && ok.stdout.includes("hello-c-e2e"), JSON.stringify(ok));
-      const nz = await conn.exec(PROJECT_ID, NAME, "false", `deplo/${SLUG}:e2e`);
+      const ok = await conn.exec(
+        PROJECT_ID,
+        NAME,
+        "echo hello-c-e2e",
+        `deplo/${SLUG}:e2e`,
+      );
+      check(
+        "exec zero-exit returns stdout",
+        ok.code === 0 && ok.stdout.includes("hello-c-e2e"),
+        JSON.stringify(ok),
+      );
+      const nz = await conn.exec(
+        PROJECT_ID,
+        NAME,
+        "false",
+        `deplo/${SLUG}:e2e`,
+      );
       check("exec non-zero exit is reported, not thrown", nz.code !== 0);
       // assertOwned negative: a wrong project_id must be PermissionDenied.
       let denied = false;
@@ -153,7 +191,11 @@ networks:
   {
     const conn = await connectAgent("srv-local");
     try {
-      const label = await conn.shellLabel(PROJECT_ID, NAME, `deplo/${SLUG}:e2e`);
+      const label = await conn.shellLabel(
+        PROJECT_ID,
+        NAME,
+        `deplo/${SLUG}:e2e`,
+      );
       check("shell label is /bin/sh for busybox", label === "/bin/sh", label);
     } finally {
       conn.close();
@@ -168,8 +210,18 @@ networks:
     // instead run a short-lived labelled container that prints, and tail it).
     const logName = `deplo-${SLUG}-logger`;
     await sh("docker", ["rm", "-f", logName]);
-    await sh("docker", ["run", "-d", "--name", logName, "--label", `deplo.project=${PROJECT_ID}`,
-      "busybox:latest", "sh", "-c", "for i in 1 2 3; do echo LOGLINE-$i; sleep 0.3; done; sleep 5"]);
+    await sh("docker", [
+      "run",
+      "-d",
+      "--name",
+      logName,
+      "--label",
+      `deplo.project=${PROJECT_ID}`,
+      "busybox:latest",
+      "sh",
+      "-c",
+      "for i in 1 2 3; do echo LOGLINE-$i; sleep 0.3; done; sleep 5",
+    ]);
     await sleep(500);
     const conn = await connectAgent("srv-local");
     const handle = conn.followLogs(PROJECT_ID, logName, 100);
@@ -178,7 +230,11 @@ networks:
     await sleep(1500);
     handle.close();
     conn.close();
-    check("FollowLogs streamed the container output", buf.includes("LOGLINE-1") && buf.includes("LOGLINE-3"), JSON.stringify(buf));
+    check(
+      "FollowLogs streamed the container output",
+      buf.includes("LOGLINE-1") && buf.includes("LOGLINE-3"),
+      JSON.stringify(buf),
+    );
     await sh("docker", ["rm", "-f", logName]);
   }
 
@@ -188,8 +244,19 @@ networks:
     // A container reading stdin and echoing it back, attachable over pipes.
     const attName = `deplo-${SLUG}-att`;
     await sh("docker", ["rm", "-f", attName]);
-    await sh("docker", ["run", "-d", "-i", "--name", attName, "--label", `deplo.project=${PROJECT_ID}`,
-      "busybox:latest", "sh", "-c", "cat"]); // cat echoes stdin -> stdout
+    await sh("docker", [
+      "run",
+      "-d",
+      "-i",
+      "--name",
+      attName,
+      "--label",
+      `deplo.project=${PROJECT_ID}`,
+      "busybox:latest",
+      "sh",
+      "-c",
+      "cat",
+    ]); // cat echoes stdin -> stdout
     await sleep(400);
     const conn = await connectAgent("srv-local");
     const handle = conn.attach(PROJECT_ID, attName, false, 80, 24);
@@ -200,7 +267,11 @@ networks:
     await sleep(800);
     handle.close();
     conn.close();
-    check("Attach echoed stdin back through the container", out.includes("ping-attach"), JSON.stringify(out));
+    check(
+      "Attach echoed stdin back through the container",
+      out.includes("ping-attach"),
+      JSON.stringify(out),
+    );
     await sh("docker", ["rm", "-f", attName]);
   }
 
@@ -210,7 +281,11 @@ networks:
     const conn = await connectAgent("srv-local");
     try {
       const m = await conn.metrics("");
-      check("Metrics returns sane host data", m.cpuCores > 0 && Number(m.memTotal) > 0, JSON.stringify({ cores: m.cpuCores, mem: String(m.memTotal) }));
+      check(
+        "Metrics returns sane host data",
+        m.cpuCores > 0 && Number(m.memTotal) > 0,
+        JSON.stringify({ cores: m.cpuCores, mem: String(m.memTotal) }),
+      );
     } finally {
       conn.close();
     }
@@ -222,11 +297,20 @@ networks:
     const conn = await connectAgent("srv-local");
     try {
       const w = await conn.writeFile(SLUG, "conf/app.yml", "key: value\n");
-      check("WriteFile creates a nested file", w.path === "conf/app.yml" && w.kind === "file");
+      check(
+        "WriteFile creates a nested file",
+        w.path === "conf/app.yml" && w.kind === "file",
+      );
       const r = await conn.readFile(SLUG, "conf/app.yml");
-      check("ReadFile returns the text", r.text === "key: value\n" && r.reason === null);
+      check(
+        "ReadFile returns the text",
+        r.text === "key: value\n" && r.reason === null,
+      );
       const ls = await conn.listFiles(SLUG, "");
-      check("ListFiles shows the conf dir", ls.some((e) => e.name === "conf" && e.kind === "dir"));
+      check(
+        "ListFiles shows the conf dir",
+        ls.some((e) => e.name === "conf" && e.kind === "dir"),
+      );
       const mv = await conn.renameFile(SLUG, "conf/app.yml", "conf/app2.yml");
       check("RenameFile moves within the sandbox", mv.path === "conf/app2.yml");
       const exists = await conn.filesExist(SLUG);
@@ -267,8 +351,7 @@ function killLocalAgent(): void {
   try {
     const key = Symbol.for("deplo.localAgent.supervisor");
     const st = (globalThis as Record<symbol, unknown>)[key] as
-      | { proc?: { kill?: (s?: string) => void } | null }
-      | undefined;
+      { proc?: { kill?: (s?: string) => void } | null } | undefined;
     st?.proc?.kill?.("SIGKILL");
   } catch {
     /* best-effort */
@@ -277,11 +360,17 @@ function killLocalAgent(): void {
 
 function tarToBytes(dir: string): Promise<Uint8Array> {
   return new Promise((resolve, reject) => {
-    const c = spawn("tar", ["--format=ustar", "-cf", "-", "-C", dir, "."], { windowsHide: true });
+    const c = spawn("tar", ["--format=ustar", "-cf", "-", "-C", dir, "."], {
+      windowsHide: true,
+    });
     const chunks: Buffer[] = [];
     c.stdout.on("data", (d: Buffer) => chunks.push(d));
     c.on("error", reject);
-    c.on("close", (code) => (code === 0 ? resolve(new Uint8Array(Buffer.concat(chunks))) : reject(new Error(`tar ${code}`))));
+    c.on("close", (code) =>
+      code === 0
+        ? resolve(new Uint8Array(Buffer.concat(chunks)))
+        : reject(new Error(`tar ${code}`)),
+    );
   });
 }
 

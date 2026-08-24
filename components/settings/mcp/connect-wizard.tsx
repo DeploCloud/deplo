@@ -43,7 +43,12 @@ import { presetIdFor, TOKEN_PRESETS } from "@/lib/token-presets";
 import { cn } from "@/lib/utils";
 import type { Capability } from "@/lib/types";
 import type { ScopeTreeTeam } from "@/lib/data/tokens";
-import { AGENTS, TOKEN_PLACEHOLDER, type AgentDef, type AgentId } from "./agents";
+import {
+  AGENTS,
+  TOKEN_PLACEHOLDER,
+  type AgentDef,
+  type AgentId,
+} from "./agents";
 import { RobotGraphic, type RobotState } from "./robot-graphic";
 import { ConfettiBurst } from "@/components/shared/confetti-burst";
 import { ToolsDialog, type McpToolSummary } from "./tools-dialog";
@@ -351,7 +356,7 @@ function WizardRun({
     <div className="mx-auto grid max-w-5xl gap-8 xl:grid-cols-[minmax(0,1fr)_24rem] xl:gap-12">
       {/* First in the DOM on a phone, where the picture on top reads as a
           heading; last on a wide screen, where it belongs on the right. */}
-      <div className="relative order-first flex justify-center xl:order-last xl:sticky xl:top-24 xl:self-start">
+      <div className="relative order-first flex justify-center xl:sticky xl:top-24 xl:order-last xl:self-start">
         {/* Drawn in the chosen agent's own colour — the same hue its card wears
             when selected, so the picture and the tick agree. */}
         <RobotGraphic
@@ -461,7 +466,10 @@ function WizardRun({
                         : `${caps.length} selected`}
                     </span>
                   </SummaryRow>
-                  <SummaryRow label="Access" onClick={() => setEditing("access")}>
+                  <SummaryRow
+                    label="Access"
+                    onClick={() => setEditing("access")}
+                  >
                     <span className="truncate text-sm">
                       {
                         scopeLabel(
@@ -625,7 +633,9 @@ function WizardRun({
       >
         <DialogContent className="sm:max-w-3xl">
           <DialogHeader>
-            <DialogTitle>What {agent?.label ?? "this agent"} may do</DialogTitle>
+            <DialogTitle>
+              What {agent?.label ?? "this agent"} may do
+            </DialogTitle>
             <DialogDescription className="mt-1">
               Start from a template, then tick exactly what it needs.
             </DialogDescription>
@@ -813,8 +823,7 @@ function AgentCard({
   // Shown but refused, with the reason — the two branches need different
   // capabilities, and hiding half the grid would leave a reader wondering
   // whether deplo supports their agent at all.
-  const blocked =
-    agent.kind === "web" ? !canManageMcp : !canManageTokens;
+  const blocked = agent.kind === "web" ? !canManageMcp : !canManageTokens;
   const note =
     agent.kind === "web"
       ? "Needs the permission to manage MCP access."
@@ -835,7 +844,7 @@ function AgentCard({
       style={veil.style}
       className={cn(
         "flex w-full items-start gap-3 rounded-lg border p-3 text-left transition-colors",
-        "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1 focus-visible:ring-offset-background",
+        "focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1 focus-visible:ring-offset-background focus-visible:outline-none",
         "disabled:cursor-not-allowed disabled:opacity-50",
         // The ring still carries "chosen": the wash says which brand, not which
         // state, and on a card with no brand there would be nothing to say it.
@@ -1020,7 +1029,9 @@ function SummaryRow({
       className="flex w-full cursor-pointer items-center gap-3 p-3 text-left transition-colors hover:bg-accent"
     >
       <span className="shrink-0 text-sm text-muted-foreground">{label}</span>
-      <span className="ml-auto flex min-w-0 items-center gap-2">{children}</span>
+      <span className="ml-auto flex min-w-0 items-center gap-2">
+        {children}
+      </span>
       <Pencil className="size-3.5 shrink-0 text-muted-foreground" />
     </button>
   );

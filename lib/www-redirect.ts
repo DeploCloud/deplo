@@ -39,16 +39,55 @@ export type WwwRedirect = "none" | "toThis" | "toCounterpart";
  * so an unlisted suffix costs the user one manually-added domain, not a
  * failure. */
 const TWO_LABEL_SUFFIXES = new Set([
-  "co.uk", "org.uk", "me.uk", "ac.uk", "gov.uk", "ltd.uk", "plc.uk",
-  "co.jp", "or.jp", "ne.jp", "ac.jp",
-  "co.kr", "or.kr",
-  "com.au", "net.au", "org.au", "edu.au",
-  "com.br", "net.br", "org.br",
-  "com.mx", "com.ar", "com.co", "com.pe", "com.uy", "com.ve", "com.ec",
-  "com.tr", "com.cn", "com.tw", "com.hk", "com.sg", "com.my", "com.ph",
-  "com.pl", "com.ua", "com.ru", "com.es", "com.pt", "com.gr",
-  "co.nz", "net.nz", "org.nz",
-  "co.za", "co.in", "co.il", "co.th", "co.id", "co.at",
+  "co.uk",
+  "org.uk",
+  "me.uk",
+  "ac.uk",
+  "gov.uk",
+  "ltd.uk",
+  "plc.uk",
+  "co.jp",
+  "or.jp",
+  "ne.jp",
+  "ac.jp",
+  "co.kr",
+  "or.kr",
+  "com.au",
+  "net.au",
+  "org.au",
+  "edu.au",
+  "com.br",
+  "net.br",
+  "org.br",
+  "com.mx",
+  "com.ar",
+  "com.co",
+  "com.pe",
+  "com.uy",
+  "com.ve",
+  "com.ec",
+  "com.tr",
+  "com.cn",
+  "com.tw",
+  "com.hk",
+  "com.sg",
+  "com.my",
+  "com.ph",
+  "com.pl",
+  "com.ua",
+  "com.ru",
+  "com.es",
+  "com.pt",
+  "com.gr",
+  "co.nz",
+  "net.nz",
+  "org.nz",
+  "co.za",
+  "co.in",
+  "co.il",
+  "co.th",
+  "co.id",
+  "co.at",
 ]);
 
 /** Hosts whose `www.` variant is never meaningful: the zero-config wildcard-DNS
@@ -88,7 +127,9 @@ export function wwwCounterpart(host: string): string | null {
   if (/^[0-9.]+$/.test(h)) return null;
   if (h.startsWith("www.")) {
     const bare = h.slice(4);
-    return bare.split(".").length >= 2 && !isWildcardDnsHost(bare) ? bare : null;
+    return bare.split(".").length >= 2 && !isWildcardDnsHost(bare)
+      ? bare
+      : null;
   }
   if (isWildcardDnsHost(h)) return null;
   const labels = h.split(".");
@@ -119,7 +160,8 @@ export function deriveWwwRedirect(
   const counterpart = wwwCounterpart(h);
   if (!counterpart) return "none";
   const self = domains.find((d) => clean(d.name) === h);
-  if (self && clean(self.redirectTo ?? "") === counterpart) return "toCounterpart";
+  if (self && clean(self.redirectTo ?? "") === counterpart)
+    return "toCounterpart";
   const other = domains.find((d) => clean(d.name) === counterpart);
   if (other && clean(other.redirectTo ?? "") === h) return "toThis";
   return "none";

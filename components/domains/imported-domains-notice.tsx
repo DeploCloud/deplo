@@ -92,7 +92,7 @@ export function ImportedDomainsNotice({
           type="button"
           variant="ghost"
           size="sm"
-          className="-mr-1.5 -mt-0.5 shrink-0"
+          className="-mt-0.5 -mr-1.5 shrink-0"
           onClick={dismiss}
           disabled={pending}
           aria-label="Dismiss"

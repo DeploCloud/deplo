@@ -167,7 +167,8 @@ async function callAs(
 // that is by refusing to admit the resource exists - the deliberate non-oracle.
 const REFUSED =
   /not authorized|don't have permission|only the folder owner|only an instance admin|not a member|only its primary owner|not found/i;
-const refused = (messages: string[]): boolean => messages.some((m) => REFUSED.test(m));
+const refused = (messages: string[]): boolean =>
+  messages.some((m) => REFUSED.test(m));
 
 /**
  * One `loggedIn` mutation, the capability that must admit it, and the arguments
@@ -308,7 +309,10 @@ test("a view-only member still owns their own account and sessions", async () =>
 
 test("switching to a team you don't belong to is refused", async () => {
   await setCaps(ALL_CAPABILITIES);
-  const messages = await callAs(USER_M, `mutation { switchTeam(teamId: "${TEAM_B}") }`);
+  const messages = await callAs(
+    USER_M,
+    `mutation { switchTeam(teamId: "${TEAM_B}") }`,
+  );
   assert.ok(
     refused(messages),
     `switchTeam crossed a team boundary: ${messages.join("; ") || "no error at all"}`,

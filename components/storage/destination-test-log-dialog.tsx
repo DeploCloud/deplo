@@ -1,13 +1,7 @@
 "use client";
 
 import * as React from "react";
-import {
-  Check,
-  CircleDashed,
-  Loader2,
-  PlugZap,
-  X,
-} from "lucide-react";
+import { Check, CircleDashed, Loader2, PlugZap, X } from "lucide-react";
 import {
   Dialog,
   DialogContent,
@@ -194,10 +188,15 @@ function Verdict({ report }: { report: S3TestReportView }) {
       label: "Ran on",
       value: report.serverName || "no server answered",
     },
-    { label: "When", value: report.startedAt ? timeAgo(report.startedAt) : "never" },
+    {
+      label: "When",
+      value: report.startedAt ? timeAgo(report.startedAt) : "never",
+    },
     {
       label: "Took",
-      value: report.durationMs ? `${(report.durationMs / 1000).toFixed(2)}s` : "—",
+      value: report.durationMs
+        ? `${(report.durationMs / 1000).toFixed(2)}s`
+        : "—",
     },
   ];
   return (
@@ -205,7 +204,9 @@ function Verdict({ report }: { report: S3TestReportView }) {
       <div>
         <p className="text-xs text-muted-foreground">Result</p>
         <Badge
-          variant={report.never ? "warning" : report.ok ? "success" : "destructive"}
+          variant={
+            report.never ? "warning" : report.ok ? "success" : "destructive"
+          }
           className="mt-1"
         >
           {report.never ? "Not tested yet" : report.ok ? "Reachable" : "Failed"}
@@ -243,7 +244,9 @@ function Steps({ steps }: { steps: S3TestReportView["steps"] }) {
           const Icon = STEP_ICON[s.status];
           return (
             <li key={s.key} className="flex items-start gap-3">
-              <Icon className={cn("mt-0.5 size-4 shrink-0", STEP_CLASS[s.status])} />
+              <Icon
+                className={cn("mt-0.5 size-4 shrink-0", STEP_CLASS[s.status])}
+              />
               <div className="min-w-0">
                 <p
                   className={cn(
@@ -277,7 +280,7 @@ function Section({
   return (
     <div className="space-y-2">
       <div className="flex items-baseline gap-2">
-        <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+        <p className="text-xs font-semibold tracking-wider text-muted-foreground uppercase">
           {title}
         </p>
         {hint && <p className="text-xs text-muted-foreground/70">{hint}</p>}

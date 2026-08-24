@@ -12,7 +12,12 @@ import { seedIdentity, TEAM_A, USER_1 } from "./identity-test-helpers";
 import { TRUNCATE_PROJECT_GRAPH, seedApp } from "./app-graph-test-helpers";
 import { seedDatabase, seedDestination } from "./backup-test-helpers";
 import { seedServerRow } from "./infra-test-helpers";
-import { getServerById, removeServer, addServer, uninstallServerAgent } from "./servers";
+import {
+  getServerById,
+  removeServer,
+  addServer,
+  uninstallServerAgent,
+} from "./servers";
 import { __setAgentConnectorForTest } from "../infra/agent-client";
 
 /**
@@ -68,7 +73,12 @@ beforeEach(async () => {
   await seedIdentity(db, {
     users: [
       { id: USER_1, teamId: TEAM_A, role: "owner" },
-      { id: "user_member", teamId: TEAM_A, role: "member", isInstanceAdmin: false },
+      {
+        id: "user_member",
+        teamId: TEAM_A,
+        role: "member",
+        isInstanceAdmin: false,
+      },
     ],
   });
   await seedServerRow(db, {
@@ -180,7 +190,11 @@ test("a clean removal deletes the row and returns the host-side uninstall comman
 test("warns (but does not block) when an App is mid-move OFF the server", async () => {
   // The App lives on OTHER now, but its volumes are still on SERVER — that is what
   // migrate_from_server_id means, and it is SET NULL when SERVER is deleted.
-  const appId = await seedApp(db, { id: "prj_api", slug: "api", serverId: OTHER });
+  const appId = await seedApp(db, {
+    id: "prj_api",
+    slug: "api",
+    serverId: OTHER,
+  });
   await db
     .update(appsTable)
     .set({ migrateFromServerId: SERVER })
@@ -188,7 +202,11 @@ test("warns (but does not block) when an App is mid-move OFF the server", async 
 
   const result = await asAdmin(() => removeServer(SERVER));
 
-  assert.equal(await getServerById(SERVER), null, "the removal still goes through");
+  assert.equal(
+    await getServerById(SERVER),
+    null,
+    "the removal still goes through",
+  );
   assert.ok(result.warning, "a stranded-volume hazard must be surfaced");
   assert.match(result.warning!, /api/);
   assert.match(result.warning!, /mid-move/i);
@@ -198,7 +216,12 @@ test("refuses to remove the host running Deplo itself", async () => {
   // Registered under the very address this instance answers on — that IS the
   // control-plane box. Removing it revokes the trust Deplo needs to reach its own
   // server and forgets the row, with no in-product way back.
-  await seedServerRow(db, { id: "srv_self", name: "this-host", ip: SELF_IP, host: SELF_IP });
+  await seedServerRow(db, {
+    id: "srv_self",
+    name: "this-host",
+    ip: SELF_IP,
+    host: SELF_IP,
+  });
 
   await assert.rejects(
     () => asAdmin(() => removeServer("srv_self")),
@@ -208,7 +231,10 @@ test("refuses to remove the host running Deplo itself", async () => {
       return true;
     },
   );
-  assert.ok(await getServerById("srv_self"), "the row must survive the refusal");
+  assert.ok(
+    await getServerById("srv_self"),
+    "the row must survive the refusal",
+  );
 });
 
 test("the Deplo-host refusal fires BEFORE any side effect", async () => {
@@ -263,7 +289,6 @@ test("only an instance admin can remove a server", async () => {
   assert.ok(await getServerById(SERVER), "the server row must survive");
 });
 
-
 /* ------------------------------------------------------------------ */
 /* Uninstalling a MIGRATION SOURCE                                      */
 /* ------------------------------------------------------------------ */
@@ -293,7 +318,10 @@ function fakeAgent(opts: { capabilities?: string[]; fail?: Error } = {}) {
     selfUninstall: async () => {
       calls.uninstall++;
       if (opts.fail) throw opts.fail;
-      return ["/etc/systemd/system/deplo-agent.service", "/var/lib/deplo-agent"];
+      return [
+        "/etc/systemd/system/deplo-agent.service",
+        "/var/lib/deplo-agent",
+      ];
     },
     close: () => {},
   };
@@ -329,8 +357,16 @@ test("uninstalling a migration source removes the agent, then the row", async ()
     assert.equal(res.removed, true);
     assert.equal(res.error, null);
     assert.match(res.uninstallCommand, /uninstall-agent\.sh/);
-    assert.equal(calls.uninstall, 1, "the agent was never asked to uninstall itself");
-    assert.equal(await getServerById(id), null, "the row outlived the uninstall");
+    assert.equal(
+      calls.uninstall,
+      1,
+      "the agent was never asked to uninstall itself",
+    );
+    assert.equal(
+      await getServerById(id),
+      null,
+      "the row outlived the uninstall",
+    );
   } finally {
     __setAgentConnectorForTest();
   }
@@ -346,7 +382,10 @@ test("an agent that cannot uninstall itself KEEPS the row, and hands over the co
     assert.match(res.error ?? "", /too old/i);
     assert.match(res.uninstallCommand, /uninstall-agent\.sh --yes|--yes/);
     assert.equal(calls.uninstall, 0, "an unsupported agent must not be called");
-    assert.ok(await getServerById(id), "the row must survive a failed uninstall");
+    assert.ok(
+      await getServerById(id),
+      "the row must survive a failed uninstall",
+    );
   } finally {
     __setAgentConnectorForTest();
   }
@@ -369,7 +408,11 @@ test("a blocked removal fails BEFORE the host is touched", async () => {
       () => asAdmin(() => uninstallServerAgent(id)),
       /backup destinations/i,
     );
-    assert.equal(calls.hello, 0, "the agent was dialed despite a blocking guard");
+    assert.equal(
+      calls.hello,
+      0,
+      "the agent was dialed despite a blocking guard",
+    );
     assert.ok(await getServerById(id), "the row must survive");
   } finally {
     __setAgentConnectorForTest();
@@ -381,7 +424,11 @@ test("a registration whose install command was never run is simply forgotten", a
   // this is the ONLY way that row can leave, now that a migration source has no
   // management page.
   const { server } = await asAdmin(() =>
-    addServer({ name: "never-installed", host: "192.0.2.60", importOnly: true }),
+    addServer({
+      name: "never-installed",
+      host: "192.0.2.60",
+      importOnly: true,
+    }),
   );
   const calls = fakeAgent();
   try {
@@ -416,7 +463,10 @@ test("only an instance admin can uninstall an agent", async () => {
 
 test("a migration source cannot be registered on a machine Deplo already stands on", async () => {
   await assert.rejects(
-    () => asAdmin(() => addServer({ name: "same-box", host: SELF_IP, importOnly: true })),
+    () =>
+      asAdmin(() =>
+        addServer({ name: "same-box", host: SELF_IP, importOnly: true }),
+      ),
     /machine Deplo itself runs on/i,
     "the Deplo host was accepted as a migration source",
   );
@@ -424,7 +474,10 @@ test("a migration source cannot be registered on a machine Deplo already stands 
   // clear that agent's materials and re-bootstrap it as a migration source, and
   // the uninstall would then take a real server off the fleet.
   await assert.rejects(
-    () => asAdmin(() => addServer({ name: "again", host: REMOTE_IP, importOnly: true })),
+    () =>
+      asAdmin(() =>
+        addServer({ name: "again", host: REMOTE_IP, importOnly: true }),
+      ),
     /already registered at that address/i,
   );
 });

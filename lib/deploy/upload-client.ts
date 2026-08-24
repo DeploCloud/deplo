@@ -57,7 +57,8 @@ export function uploadArchive(
 
     if (onProgress) {
       xhr.upload.onprogress = (e) => {
-        if (e.lengthComputable) onProgress(Math.round((e.loaded / e.total) * 100));
+        if (e.lengthComputable)
+          onProgress(Math.round((e.loaded / e.total) * 100));
       };
     }
     xhr.onload = () => {

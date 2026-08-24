@@ -43,8 +43,9 @@ export async function* streamEvents<E>(
 ): AsyncGenerator<E, void, unknown> {
   const maxQueued = opts.maxQueued ?? 0;
   const pauseAbove = opts.pauseAbove ?? 0;
-  const normalise = opts.normalise ?? ((e: unknown) =>
-    e instanceof Error ? e : new Error(String(e)));
+  const normalise =
+    opts.normalise ??
+    ((e: unknown) => (e instanceof Error ? e : new Error(String(e))));
   const queue: E[] = [];
   let done = false;
   let paused = false;
@@ -111,7 +112,11 @@ export async function* streamEvents<E>(
  *    break instead of committing a truncated artifact.
  */
 export function pumpClientStream<T>(
-  call: { write(v: T): boolean; end(): void; cancel(): void } & NodeJS.EventEmitter,
+  call: {
+    write(v: T): boolean;
+    end(): void;
+    cancel(): void;
+  } & NodeJS.EventEmitter,
   headerFrame: T,
   chunks: AsyncIterable<Buffer>,
   dataFrame: (data: Buffer) => T,
@@ -154,4 +159,3 @@ export function pumpClientStream<T>(
     }
   })();
 }
-

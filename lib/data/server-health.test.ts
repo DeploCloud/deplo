@@ -124,7 +124,11 @@ test("a late-landing older probe cannot overwrite a newer observation", async ()
   await seedServerRow(db, { id: "srv_1", status: "online", agent: AGENT });
 
   await recordServerHealth("srv_1", { status: "online", message: null }, T2); // newer
-  await recordServerHealth("srv_1", { status: "offline", message: "stale" }, T1); // older
+  await recordServerHealth(
+    "srv_1",
+    { status: "offline", message: "stale" },
+    T1,
+  ); // older
 
   const stored = (await getServerById("srv_1"))!;
   assert.equal(stored.status, "online", "the older probe was ignored");
@@ -132,13 +136,25 @@ test("a late-landing older probe cannot overwrite a newer observation", async ()
 });
 
 test("a successful probe also refreshes the heartbeat; a failed one does not", async () => {
-  await seedServerRow(db, { id: "srv_up", status: "online", agent: agent("fp_up") });
-  await seedServerRow(db, { id: "srv_down", status: "online", agent: agent("fp_down") });
+  await seedServerRow(db, {
+    id: "srv_up",
+    status: "online",
+    agent: agent("fp_up"),
+  });
+  await seedServerRow(db, {
+    id: "srv_down",
+    status: "online",
+    agent: agent("fp_down"),
+  });
 
   await recordServerHealth("srv_up", { status: "online", message: null }, T1);
   await recordServerHealth("srv_down", { status: "offline", message: "x" }, T1);
 
-  assert.equal((await getServerById("srv_up"))!.lastSeenAt, T1, "agent answered = a sighting");
+  assert.equal(
+    (await getServerById("srv_up"))!.lastSeenAt,
+    T1,
+    "agent answered = a sighting",
+  );
   assert.equal(
     (await getServerById("srv_down"))!.lastSeenAt,
     undefined,
@@ -154,8 +170,15 @@ test("claimProbe advances the throttle lease but NEVER the freshness watermark",
 
   assert.equal(await claimProbe("srv_1", true), true);
 
-  const [row] = await getDb().select().from(serversTable).where(eq(serversTable.id, "srv_1"));
-  assert.equal(row.statusCheckedAt, null, "the observation timestamp was NOT touched");
+  const [row] = await getDb()
+    .select()
+    .from(serversTable)
+    .where(eq(serversTable.id, "srv_1"));
+  assert.equal(
+    row.statusCheckedAt,
+    null,
+    "the observation timestamp was NOT touched",
+  );
   assert.notEqual(row.statusProbedAt, null, "but the throttle lease WAS taken");
 });
 
@@ -170,7 +193,11 @@ test("a fresh observation suppresses a redundant ambient claim", async () => {
     agent: AGENT,
     statusCheckedAt: justNow,
   });
-  assert.equal(await claimProbe("srv_1", false), false, "a fresh observation is enough");
+  assert.equal(
+    await claimProbe("srv_1", false),
+    false,
+    "a fresh observation is enough",
+  );
 });
 
 test("a trust-revoked server (empty-string fingerprint) is fenced out like an unprovisioned one", async () => {
@@ -182,8 +209,16 @@ test("a trust-revoked server (empty-string fingerprint) is fenced out like an un
     agent: { port: 9443, certFingerprint: "", certPem: "", version: "1.0" },
   });
 
-  assert.equal(await claimProbe("srv_revoked", true), false, "no lease on a revoked row");
-  await recordServerHealth("srv_revoked", { status: "offline", message: "x" }, T1);
+  assert.equal(
+    await claimProbe("srv_revoked", true),
+    false,
+    "no lease on a revoked row",
+  );
+  await recordServerHealth(
+    "srv_revoked",
+    { status: "offline", message: "x" },
+    T1,
+  );
   assert.equal(
     (await getServerById("srv_revoked"))!.status,
     "online",
@@ -194,8 +229,16 @@ test("a trust-revoked server (empty-string fingerprint) is fenced out like an un
 test("the throttle collapses a burst of page loads into ONE dial", async () => {
   await seedServerRow(db, { id: "srv_1", status: "online", agent: AGENT });
 
-  assert.equal(await claimProbe("srv_1", false), true, "first caller wins the claim");
-  assert.equal(await claimProbe("srv_1", false), false, "second caller is throttled");
+  assert.equal(
+    await claimProbe("srv_1", false),
+    true,
+    "first caller wins the claim",
+  );
+  assert.equal(
+    await claimProbe("srv_1", false),
+    false,
+    "second caller is throttled",
+  );
   assert.equal(await claimProbe("srv_1", false), false, "and so is the third");
 });
 
@@ -213,9 +256,21 @@ test("a forced check bypasses the ambient throttle but still respects a floor", 
     statusCheckedAt: eightSecondsAgo,
   });
 
-  assert.equal(await claimProbe("srv_1", false), false, "the ambient sweep is throttled");
-  assert.equal(await claimProbe("srv_1", true), true, "the operator's button is not");
-  assert.equal(await claimProbe("srv_1", true), false, "but even it can't hammer the host");
+  assert.equal(
+    await claimProbe("srv_1", false),
+    false,
+    "the ambient sweep is throttled",
+  );
+  assert.equal(
+    await claimProbe("srv_1", true),
+    true,
+    "the operator's button is not",
+  );
+  assert.equal(
+    await claimProbe("srv_1", true),
+    false,
+    "but even it can't hammer the host",
+  );
 });
 
 test("claimProbe never claims an agent-less server, forced or not", async () => {
@@ -228,16 +283,29 @@ test("claimProbe never claims an agent-less server, forced or not", async () => 
 test("both health checks are instance-admin only, and reject BEFORE any dial", async () => {
   await seedServerRow(db, { id: "srv_1", status: "online", agent: AGENT });
 
-  await assert.rejects(() => asMember(() => checkServerHealth("srv_1")), /instance admin/i);
-  await assert.rejects(() => asMember(() => checkAllServerHealth()), /instance admin/i);
+  await assert.rejects(
+    () => asMember(() => checkServerHealth("srv_1")),
+    /instance admin/i,
+  );
+  await assert.rejects(
+    () => asMember(() => checkAllServerHealth()),
+    /instance admin/i,
+  );
 
   // The gate fired before the prober could claim anything.
   const stored = (await getServerById("srv_1"))!;
-  assert.equal(stored.statusCheckedAt, undefined, "no probe was claimed by a non-admin");
+  assert.equal(
+    stored.statusCheckedAt,
+    undefined,
+    "no probe was claimed by a non-admin",
+  );
 });
 
 test("checkServerHealth rejects an unknown server id", async () => {
-  await assert.rejects(() => asAdmin(() => checkServerHealth("srv_nope")), /not found/i);
+  await assert.rejects(
+    () => asAdmin(() => checkServerHealth("srv_nope")),
+    /not found/i,
+  );
 });
 
 test("checkAllServerHealth passes unprovisioned servers through untouched", async () => {

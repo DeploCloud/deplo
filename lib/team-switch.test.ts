@@ -44,7 +44,10 @@ test("leaves an App page for the Overview", () => {
 
 test("leaves a Database page for Storage, not the Overview", () => {
   assert.equal(teamSwitchDestination("/storage/databases/db_1"), "/storage");
-  assert.equal(teamSwitchDestination("/storage/databases/db_1/logs"), "/storage");
+  assert.equal(
+    teamSwitchDestination("/storage/databases/db_1/logs"),
+    "/storage",
+  );
   assert.equal(
     teamSwitchDestination("/storage/databases/db_1/settings/connection"),
     "/storage",

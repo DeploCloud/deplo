@@ -48,7 +48,12 @@ beforeEach(async () => {
   await seedIdentity(db, {
     users: [
       { id: USER_1, teamId: TEAM_A, role: "owner" },
-      { id: "user_member", teamId: TEAM_A, role: "member", isInstanceAdmin: false },
+      {
+        id: "user_member",
+        teamId: TEAM_A,
+        role: "member",
+        isInstanceAdmin: false,
+      },
     ],
   });
   await seedServerRow(db, {
@@ -92,7 +97,11 @@ test("refuses a blank address and an out-of-range port", async () => {
   await assert.rejects(
     () =>
       asAdmin(() =>
-        updateServerAddress({ id: BARE, address: "192.0.2.20", agentPort: 70000 }),
+        updateServerAddress({
+          id: BARE,
+          address: "192.0.2.20",
+          agentPort: 70000,
+        }),
       ),
     /Agent port/,
   );
@@ -112,7 +121,9 @@ test("verify-first: an unanswered probe refuses and writes NOTHING", async () =>
   // Loopback, not TEST-NET: the probe must FAIL, and a connection refused is
   // instant where a non-routable SYN sits out the whole Hello deadline.
   await assert.rejects(() =>
-    asAdmin(() => updateServerAddress({ id: PROVISIONED, address: "127.0.0.2" })),
+    asAdmin(() =>
+      updateServerAddress({ id: PROVISIONED, address: "127.0.0.2" }),
+    ),
   );
   const server = await asAdmin(() => getServerById(PROVISIONED));
   assert.equal(server?.ip, DEAD_LOCAL);

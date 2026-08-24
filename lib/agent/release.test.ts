@@ -23,7 +23,12 @@ interface FetchStub {
   checksumsStatus?: number;
 }
 
-function stub({ release, releaseStatus = 200, checksums, checksumsStatus = 200 }: FetchStub) {
+function stub({
+  release,
+  releaseStatus = 200,
+  checksums,
+  checksumsStatus = 200,
+}: FetchStub) {
   const orig = globalThis.fetch;
   globalThis.fetch = (async (input: RequestInfo | URL) => {
     const url = String(input);
@@ -47,9 +52,18 @@ test("resolves version (v stripped) and per-arch url+sha from checksums.txt", as
     release: {
       tag_name: "v1.4.2",
       assets: [
-        { name: "deplo-agent-linux-amd64", browser_download_url: "https://x/amd64" },
-        { name: "deplo-agent-linux-arm64", browser_download_url: "https://x/arm64" },
-        { name: "checksums.txt", browser_download_url: "https://x/checksums.txt" },
+        {
+          name: "deplo-agent-linux-amd64",
+          browser_download_url: "https://x/amd64",
+        },
+        {
+          name: "deplo-agent-linux-arm64",
+          browser_download_url: "https://x/arm64",
+        },
+        {
+          name: "checksums.txt",
+          browser_download_url: "https://x/checksums.txt",
+        },
       ],
     },
     checksums:
@@ -61,8 +75,14 @@ test("resolves version (v stripped) and per-arch url+sha from checksums.txt", as
     const rel = await resolveLatestAgentRelease();
     assert.ok(rel);
     assert.equal(rel!.version, "1.4.2");
-    assert.deepEqual(rel!.binaries.amd64, { url: "https://x/amd64", sha256: "a".repeat(64) });
-    assert.deepEqual(rel!.binaries.arm64, { url: "https://x/arm64", sha256: "b".repeat(64) });
+    assert.deepEqual(rel!.binaries.amd64, {
+      url: "https://x/amd64",
+      sha256: "a".repeat(64),
+    });
+    assert.deepEqual(rel!.binaries.arm64, {
+      url: "https://x/arm64",
+      sha256: "b".repeat(64),
+    });
   } finally {
     restore();
   }
@@ -73,8 +93,14 @@ test("a single published arch is fine; the missing one is null", async () => {
     release: {
       tag_name: "2.0.0",
       assets: [
-        { name: "deplo-agent-linux-amd64", browser_download_url: "https://x/amd64" },
-        { name: "checksums.txt", browser_download_url: "https://x/checksums.txt" },
+        {
+          name: "deplo-agent-linux-amd64",
+          browser_download_url: "https://x/amd64",
+        },
+        {
+          name: "checksums.txt",
+          browser_download_url: "https://x/checksums.txt",
+        },
       ],
     },
     checksums: `${"c".repeat(64)}  deplo-agent-linux-amd64\n`,
@@ -83,7 +109,10 @@ test("a single published arch is fine; the missing one is null", async () => {
   try {
     const rel = await resolveLatestAgentRelease();
     assert.ok(rel);
-    assert.deepEqual(rel!.binaries.amd64, { url: "https://x/amd64", sha256: "c".repeat(64) });
+    assert.deepEqual(rel!.binaries.amd64, {
+      url: "https://x/amd64",
+      sha256: "c".repeat(64),
+    });
     assert.equal(rel!.binaries.arm64, null);
   } finally {
     restore();
@@ -94,7 +123,12 @@ test("null when the checksums asset is absent (can't pin integrity)", async () =
   const restore = stub({
     release: {
       tag_name: "1.0.0",
-      assets: [{ name: "deplo-agent-linux-amd64", browser_download_url: "https://x/amd64" }],
+      assets: [
+        {
+          name: "deplo-agent-linux-amd64",
+          browser_download_url: "https://x/amd64",
+        },
+      ],
     },
   });
   __resetReleaseCacheForTests();
@@ -120,8 +154,14 @@ test("null when an asset has no matching checksum line", async () => {
     release: {
       tag_name: "1.0.0",
       assets: [
-        { name: "deplo-agent-linux-amd64", browser_download_url: "https://x/amd64" },
-        { name: "checksums.txt", browser_download_url: "https://x/checksums.txt" },
+        {
+          name: "deplo-agent-linux-amd64",
+          browser_download_url: "https://x/amd64",
+        },
+        {
+          name: "checksums.txt",
+          browser_download_url: "https://x/checksums.txt",
+        },
       ],
     },
     checksums: `${"d".repeat(64)}  some-other-file\n`,
@@ -154,19 +194,30 @@ function countingStub(version: () => string) {
         JSON.stringify({
           tag_name: `v${v}`,
           assets: [
-            { name: "deplo-agent-linux-amd64", browser_download_url: "https://x/amd64" },
-            { name: "checksums.txt", browser_download_url: "https://x/checksums.txt" },
+            {
+              name: "deplo-agent-linux-amd64",
+              browser_download_url: "https://x/amd64",
+            },
+            {
+              name: "checksums.txt",
+              browser_download_url: "https://x/checksums.txt",
+            },
           ],
         }),
         { status: 200 },
       );
     }
     if (url.includes("checksums")) {
-      return new Response(`${"a".repeat(64)}  deplo-agent-linux-amd64\n`, { status: 200 });
+      return new Response(`${"a".repeat(64)}  deplo-agent-linux-amd64\n`, {
+        status: 200,
+      });
     }
     throw new Error(`unexpected fetch: ${url}`);
   }) as typeof fetch;
-  return { hits: () => releaseHits, restore: () => void (globalThis.fetch = orig) };
+  return {
+    hits: () => releaseHits,
+    restore: () => void (globalThis.fetch = orig),
+  };
 }
 
 test("memo coalesces repeated resolves within the TTL (one GitHub hit)", async () => {

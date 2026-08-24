@@ -81,7 +81,9 @@ test("the founder deletes the team; cascades take the memberships", async () => 
   await seedIdentity(db);
   await addMembership(USER_1, TEAM_B);
 
-  await runWithIdentity({ userId: USER_1, teamId: TEAM_A }, () => deleteTeam(TEAM_A));
+  await runWithIdentity({ userId: USER_1, teamId: TEAM_A }, () =>
+    deleteTeam(TEAM_A),
+  );
 
   assert.equal(await teamExists(TEAM_A), false);
   assert.equal(await teamExists(TEAM_B), true);
@@ -109,7 +111,9 @@ test("an assigned owner (not the founder, not an admin) is rejected", async () =
   await addMembership(USER_2, TEAM_B);
 
   await assert.rejects(
-    runWithIdentity({ userId: USER_2, teamId: TEAM_A }, () => deleteTeam(TEAM_A)),
+    runWithIdentity({ userId: USER_2, teamId: TEAM_A }, () =>
+      deleteTeam(TEAM_A),
+    ),
     /don't have permission to delete this team/,
   );
   assert.equal(await teamExists(TEAM_A), true);
@@ -128,7 +132,9 @@ test("an instance-admin member who is not the founder may delete", async () => {
   });
   await addMembership(USER_2, TEAM_B);
 
-  await runWithIdentity({ userId: USER_2, teamId: TEAM_A }, () => deleteTeam(TEAM_A));
+  await runWithIdentity({ userId: USER_2, teamId: TEAM_A }, () =>
+    deleteTeam(TEAM_A),
+  );
   assert.equal(await teamExists(TEAM_A), false);
 });
 
@@ -136,7 +142,9 @@ test("the caller's only team can't be deleted", async () => {
   await seedIdentity(db); // USER_1 is a member of TEAM_A only
 
   await assert.rejects(
-    runWithIdentity({ userId: USER_1, teamId: TEAM_A }, () => deleteTeam(TEAM_A)),
+    runWithIdentity({ userId: USER_1, teamId: TEAM_A }, () =>
+      deleteTeam(TEAM_A),
+    ),
     /only team/,
   );
   assert.equal(await teamExists(TEAM_A), true);
@@ -187,7 +195,9 @@ test("on a legacy team with no founder, any owner may delete", async () => {
   });
   await addMembership(USER_1, TEAM_B);
 
-  await runWithIdentity({ userId: USER_1, teamId: TEAM_A }, () => deleteTeam(TEAM_A));
+  await runWithIdentity({ userId: USER_1, teamId: TEAM_A }, () =>
+    deleteTeam(TEAM_A),
+  );
   assert.equal(await teamExists(TEAM_A), false);
 });
 
@@ -215,7 +225,9 @@ test("a team with a database, a backup destination, schedules and run history de
       values ('run_1', '${TEAM_A}', 'bak_1', 'database', 'db_x', null, 's3_1', 'db_x', 'k', 1, 'success', '${T0}');
   `);
 
-  await runWithIdentity({ userId: USER_1, teamId: TEAM_A }, () => deleteTeam(TEAM_A));
+  await runWithIdentity({ userId: USER_1, teamId: TEAM_A }, () =>
+    deleteTeam(TEAM_A),
+  );
 
   assert.equal(await teamExists(TEAM_A), false);
   for (const [table, id] of [
@@ -283,7 +295,9 @@ test("a deleted team's stacks are queued for teardown, with no team left to name
   `);
   await seedApp(db, { id: "prj_1", teamId: TEAM_A, slug: "blink" });
 
-  await runWithIdentity({ userId: USER_1, teamId: TEAM_A }, () => deleteTeam(TEAM_A));
+  await runWithIdentity({ userId: USER_1, teamId: TEAM_A }, () =>
+    deleteTeam(TEAM_A),
+  );
 
   // The teardown runs behind the response; the enqueue is its first act.
   let rows: { deploy_key: string; team_id: string | null }[] = [];

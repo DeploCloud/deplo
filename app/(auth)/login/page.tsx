@@ -24,7 +24,9 @@ import {
 const LOGIN = /* GraphQL */ `
   mutation Login($email: String!, $password: String!) {
     login(email: $email, password: $password) {
-      viewer { id }
+      viewer {
+        id
+      }
       requiresTwoFactor
     }
   }
@@ -39,7 +41,9 @@ const PASSKEY_CHALLENGE = /* GraphQL */ `
 const VERIFY_PASSKEY = /* GraphQL */ `
   mutation VerifyPasskeyLogin($response: JSON!) {
     verifyPasskeyLogin(response: $response) {
-      viewer { id }
+      viewer {
+        id
+      }
     }
   }
 `;
@@ -47,7 +51,9 @@ const VERIFY_PASSKEY = /* GraphQL */ `
 const VERIFY_2FA = /* GraphQL */ `
   mutation VerifyTwoFactorLogin($code: String!, $recoveryCode: Boolean) {
     verifyTwoFactorLogin(code: $code, recoveryCode: $recoveryCode) {
-      viewer { id }
+      viewer {
+        id
+      }
     }
   }
 `;
@@ -105,10 +111,13 @@ export default function LoginPage() {
     setError(null);
     startTransition(async () => {
       try {
-        const res = await gql<{ login: { requiresTwoFactor: boolean } }>(LOGIN, {
-          email,
-          password,
-        });
+        const res = await gql<{ login: { requiresTwoFactor: boolean } }>(
+          LOGIN,
+          {
+            email,
+            password,
+          },
+        );
         if (res.login.requiresTwoFactor) {
           setStep("code");
           return;
@@ -198,9 +207,11 @@ export default function LoginPage() {
 
   if (step === "code")
     return (
-      <Card className="bg-transparent! border-transparent!">
+      <Card className="border-transparent! bg-transparent!">
         <CardHeader>
-          <CardTitle className="text-2xl lg:text-2xl">Two-factor authentication</CardTitle>
+          <CardTitle className="text-2xl lg:text-2xl">
+            Two-factor authentication
+          </CardTitle>
           <CardDescription>
             {useRecovery
               ? "Enter one of the recovery codes you saved when you turned this on."
@@ -275,7 +286,7 @@ export default function LoginPage() {
     );
 
   return (
-    <Card className="bg-transparent! border-transparent!">
+    <Card className="border-transparent! bg-transparent!">
       <CardHeader>
         <CardTitle className="text-2xl lg:text-2xl">Welcome back.</CardTitle>
         <CardDescription>

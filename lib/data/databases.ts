@@ -116,7 +116,9 @@ function cleanDatabaseName(raw: string): string {
   const trimmed = raw.trim();
   if (!trimmed) throw new Error("Database name is required.");
   if (trimmed.length > DB_NAME_MAX)
-    throw new Error(`Database name must be ${DB_NAME_MAX} characters or fewer.`);
+    throw new Error(
+      `Database name must be ${DB_NAME_MAX} characters or fewer.`,
+    );
   return trimmed;
 }
 
@@ -158,7 +160,10 @@ function isDuplicateNameError(e: unknown): boolean {
  * connection-string URL, so we keep it to `_`.
  */
 function sanitizeDbIdentifier(raw: string): string | null {
-  const cleaned = raw.trim().toLowerCase().replace(/[^a-z0-9_]/g, "_");
+  const cleaned = raw
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9_]/g, "_");
   if (!cleaned || /^[0-9]/.test(cleaned)) return null;
   return cleaned.slice(0, 63); // postgres identifier limit; also under mysql's 64
 }
@@ -222,7 +227,10 @@ async function resolveTeamServer(teamId: string, serverId?: string) {
  * when the server's agent is too old to probe ports, so the UI can say "update the
  * agent" rather than silently letting a collision through at provision time.
  */
-async function isHostPortFree(serverId: string, port: number): Promise<boolean> {
+async function isHostPortFree(
+  serverId: string,
+  port: number,
+): Promise<boolean> {
   const conn = await connectAgent(serverId);
   try {
     const res = await conn.checkPort(port);
@@ -322,7 +330,10 @@ export async function hostPortsInUse(
       return {
         checked: false,
         inUse: [],
-        reason: e instanceof Error ? e.message : "Deplo could not check ports on this server.",
+        reason:
+          e instanceof Error
+            ? e.message
+            : "Deplo could not check ports on this server.",
       };
     }
   }
@@ -400,7 +411,11 @@ async function mountsByDatabase(
     .orderBy(databaseMountsTable.databaseId, databaseMountsTable.position);
   for (const r of rows) {
     const list = out.get(r.databaseId) ?? [];
-    list.push({ filePath: r.filePath, content: r.content, mountPath: r.mountPath });
+    list.push({
+      filePath: r.filePath,
+      content: r.content,
+      mountPath: r.mountPath,
+    });
     out.set(r.databaseId, list);
   }
   return out;
@@ -415,7 +430,9 @@ function toDTO(db: Database): DatabaseDTO {
   const { connectionStringEnc, ...rest } = db;
   return {
     ...rest,
-    connectionStringMasked: maskConnectionString(decryptSecret(connectionStringEnc)),
+    connectionStringMasked: maskConnectionString(
+      decryptSecret(connectionStringEnc),
+    ),
   };
 }
 
@@ -578,9 +595,15 @@ export async function reorderDatabases(orderedIds: string[]): Promise<void> {
       .delete(teamDatabaseOrder)
       .where(eq(teamDatabaseOrder.teamId, teamId));
     if (next.length > 0) {
-      await tx.insert(teamDatabaseOrder).values(
-        next.map((databaseId, position) => ({ teamId, databaseId, position })),
-      );
+      await tx
+        .insert(teamDatabaseOrder)
+        .values(
+          next.map((databaseId, position) => ({
+            teamId,
+            databaseId,
+            position,
+          })),
+        );
     }
   });
 }
@@ -709,7 +732,9 @@ export async function createDatabase(input: {
   const nameTaken = await getDb()
     .select({ id: databasesTable.id })
     .from(databasesTable)
-    .where(and(eq(databasesTable.teamId, teamId), eq(databasesTable.name, name)))
+    .where(
+      and(eq(databasesTable.teamId, teamId), eq(databasesTable.name, name)),
+    )
     .limit(1);
   if (nameTaken.length > 0)
     throw new Error(`A database named "${name}" already exists in this team.`);
@@ -749,7 +774,9 @@ export async function createDatabase(input: {
   let exposedPort: number | null = null;
   if (exposed) {
     if (input.exposedPort == null)
-      throw new Error("A host port is required to expose the database publicly");
+      throw new Error(
+        "A host port is required to expose the database publicly",
+      );
     if (!isValidExposePort(input.exposedPort))
       throw new Error(
         `Port ${input.exposedPort} is invalid — choose an unprivileged port (${MIN_USER_PORT}-${MAX_PORT})`,
@@ -774,8 +801,8 @@ export async function createDatabase(input: {
   const username =
     input.type === "redis"
       ? "default"
-      : (input.username ? sanitizeDbIdentifier(input.username) : null) ??
-        defaultUserFor(input.type);
+      : ((input.username ? sanitizeDbIdentifier(input.username) : null) ??
+        defaultUserFor(input.type));
   const dbName =
     (input.dbName ? sanitizeDbIdentifier(input.dbName) : null) ?? service;
   const password =
@@ -921,7 +948,10 @@ function renderDatabaseStackYaml(db: Database, password: string): string {
  * agent's host now (Step 0). The DB keeps its `db-<name>` DNS name on the shared
  * `deplo` network, so connection strings are unchanged.
  */
-async function provisionDatabase(db: Database, password: string): Promise<void> {
+async function provisionDatabase(
+  db: Database,
+  password: string,
+): Promise<void> {
   const yaml = renderDatabaseStackYaml(db, password);
   // Run the provision under the DB's lifecycle lock so a concurrent delete can't
   // interleave: a delete issued during provisioning WAITS here, then tears down a
@@ -938,7 +968,8 @@ async function provisionDatabase(db: Database, password: string): Promise<void> 
         env: {},
         mounts: mountFilesFor(db),
       });
-      if (!res.ok) throw new Error(res.error || "agent failed to provision the database");
+      if (!res.ok)
+        throw new Error(res.error || "agent failed to provision the database");
     } finally {
       conn.close();
     }
@@ -971,7 +1002,7 @@ async function databaseExists(id: string): Promise<boolean> {
 
 export async function setDatabaseRunning(
   id: string,
-  running: boolean
+  running: boolean,
 ): Promise<void> {
   const teamId = (await requireCapability("control_databases")).teamId;
   const db = await loadDatabase(id, teamId);
@@ -1004,7 +1035,10 @@ export async function setDatabaseRunning(
         ? await conn.startStack(host)
         : await conn.stopStack(host);
       if (!res.ok)
-        throw new Error(res.error || `agent failed to ${running ? "start" : "stop"} the database`);
+        throw new Error(
+          res.error ||
+            `agent failed to ${running ? "start" : "stop"} the database`,
+        );
     } finally {
       conn.close();
     }
@@ -1108,15 +1142,15 @@ export async function updateDatabase(
   let newExposedPort: number | null = null;
   if (exposed) {
     if (input.exposedPort == null)
-      throw new Error("A host port is required to expose the database publicly");
+      throw new Error(
+        "A host port is required to expose the database publicly",
+      );
     if (!isValidExposePort(input.exposedPort))
       throw new Error(
         `Port ${input.exposedPort} is invalid — choose an unprivileged port (${MIN_USER_PORT}-${MAX_PORT})`,
       );
     const reusingOwnPort =
-      !movingFrom &&
-      db.exposedPublicly &&
-      db.exposedPort === input.exposedPort;
+      !movingFrom && db.exposedPublicly && db.exposedPort === input.exposedPort;
     if (!reusingOwnPort)
       await assertHostPortAvailable(targetServer, input.exposedPort, db.id);
     newExposedPort = input.exposedPort;
@@ -1429,7 +1463,10 @@ export async function deleteDatabase(
     try {
       const reason = await teardownDatabaseStack(db);
       if (reason)
-        failure = { why: `${where} could not remove it: ${reason}`, retry: "Try again" };
+        failure = {
+          why: `${where} could not remove it: ${reason}`,
+          retry: "Try again",
+        };
     } catch (e) {
       failure = {
         why: `${where} could not be reached (${e instanceof Error ? e.message : String(e)})`,
@@ -1468,7 +1505,7 @@ export async function deleteDatabase(
       "database",
       failure
         ? `Deleted database ${db.name} from Deplo, but ${failure.why}. Deplo ` +
-          `will retry the teardown of its container and volume on ${where}.`
+            `will retry the teardown of its container and volume on ${where}.`
         : `Deleted database ${db.name}`,
       user.name,
       null,
@@ -1506,7 +1543,9 @@ export async function renameDatabase(id: string, name: string): Promise<void> {
   const taken = await getDb()
     .select({ id: databasesTable.id })
     .from(databasesTable)
-    .where(and(eq(databasesTable.teamId, teamId), eq(databasesTable.name, clean)))
+    .where(
+      and(eq(databasesTable.teamId, teamId), eq(databasesTable.name, clean)),
+    )
     .limit(1);
   if (taken.length > 0)
     throw new Error(`A database named "${clean}" already exists in this team.`);
@@ -1518,7 +1557,9 @@ export async function renameDatabase(id: string, name: string): Promise<void> {
       .where(and(eq(databasesTable.id, id), eq(databasesTable.teamId, teamId)));
   } catch (e) {
     if (isDuplicateNameError(e))
-      throw new Error(`A database named "${clean}" already exists in this team.`);
+      throw new Error(
+        `A database named "${clean}" already exists in this team.`,
+      );
     throw e;
   }
   // The header, the grid card and every live status badge read the name off the
@@ -1549,7 +1590,8 @@ export async function updateDatabaseLogo(
   const { membership } = await requireCapability("configure_databases");
   const user = (await getCurrentUser())!;
   const next = logo?.trim() ? logo.trim() : null;
-  if (next && !isValidLogoValue(next)) throw new Error("Unsupported logo image");
+  if (next && !isValidLogoValue(next))
+    throw new Error("Unsupported logo image");
 
   // Conditional, team-scoped UPDATE … RETURNING: distinguishes "changed" from
   // "unchanged" without a second read, exactly like updateAppLogo.
@@ -1606,7 +1648,10 @@ export async function updateDatabaseResources(
     .update(databasesTable)
     .set(resourceLimitsToRow(cleaned))
     .where(
-      and(eq(databasesTable.id, id), eq(databasesTable.teamId, membership.teamId)),
+      and(
+        eq(databasesTable.id, id),
+        eq(databasesTable.teamId, membership.teamId),
+      ),
     )
     .returning({ id: databasesTable.id });
   if (updated.length === 0) throw new Error("Not found");
@@ -1679,7 +1724,10 @@ export async function updateDatabaseImage(
     .update(databasesTable)
     .set(patch)
     .where(
-      and(eq(databasesTable.id, id), eq(databasesTable.teamId, membership.teamId)),
+      and(
+        eq(databasesTable.id, id),
+        eq(databasesTable.teamId, membership.teamId),
+      ),
     )
     .returning({ id: databasesTable.id });
   if (updated.length === 0) throw new Error("Not found");
@@ -1724,13 +1772,18 @@ export function validateDatabaseMounts(
   const seenMount = new Set<string>();
   const out: DatabaseMount[] = [];
   for (const m of raw) {
-    const filePath = (m.filePath ?? "").trim().replace(/^\.\/+/, "").replace(/\/+$/, "");
+    const filePath = (m.filePath ?? "")
+      .trim()
+      .replace(/^\.\/+/, "")
+      .replace(/\/+$/, "");
     if (!filePath || filePath.startsWith("/"))
       throw new Error(
         `The file name must be relative, for example "postgresql.conf": "${m.filePath}"`,
       );
     if (/[\s:]/.test(filePath))
-      throw new Error(`A file name cannot contain spaces or ":": "${m.filePath}"`);
+      throw new Error(
+        `A file name cannot contain spaces or ":": "${m.filePath}"`,
+      );
     if (filePath.split("/").includes(".."))
       throw new Error(`A file name cannot contain "..": "${m.filePath}"`);
 
@@ -1740,7 +1793,9 @@ export function validateDatabaseMounts(
         `The path in the container must be absolute, with no spaces or ":": "${m.mountPath}"`,
       );
     if (mountPath.split("/").includes(".."))
-      throw new Error(`The path in the container cannot contain "..": "${m.mountPath}"`);
+      throw new Error(
+        `The path in the container cannot contain "..": "${m.mountPath}"`,
+      );
     if (mountPath === dataDir || mountPath.startsWith(dataDir + "/"))
       throw new Error(
         `${mountPath} is inside this engine's data directory (${dataDir}). A file there would be stored with the data and backed up with it - put the configuration somewhere else.`,
@@ -1750,7 +1805,8 @@ export function validateDatabaseMounts(
     if (Buffer.byteLength(content, "utf8") > MAX_MOUNT_BYTES)
       throw new Error(`${filePath} is too large to save (1 MiB max).`);
 
-    if (seenFile.has(filePath)) throw new Error(`Duplicate file name: "${filePath}"`);
+    if (seenFile.has(filePath))
+      throw new Error(`Duplicate file name: "${filePath}"`);
     if (seenMount.has(mountPath))
       throw new Error(`Duplicate path in the container: "${mountPath}"`);
     seenFile.add(filePath);
@@ -1859,7 +1915,8 @@ export async function restartDatabase(id: string): Promise<void> {
     const conn = await connectAgent(cur.serverId);
     try {
       const stop = await conn.stopStack(cur.host);
-      if (!stop.ok) throw new Error(stop.error || "agent failed to stop the database");
+      if (!stop.ok)
+        throw new Error(stop.error || "agent failed to stop the database");
       const start = await conn.startStack(cur.host);
       if (!start.ok)
         throw new Error(start.error || "agent failed to start the database");
@@ -1986,7 +2043,9 @@ export async function rebuildDatabase(id: string): Promise<void> {
           .set({ status: "error" })
           .where(eq(databasesTable.id, id));
         publishDatabaseChanged(id);
-        throw new Error(up.error || "agent failed to re-provision the database");
+        throw new Error(
+          up.error || "agent failed to re-provision the database",
+        );
       }
     } finally {
       conn.close();
@@ -2146,7 +2205,9 @@ export async function rotateDatabasePassword(
     if (cur.status !== "running")
       throw new Error("Start the database before rotating its password.");
 
-    const oldPassword = parseConnectionPassword(decryptSecret(cur.connectionStringEnc));
+    const oldPassword = parseConnectionPassword(
+      decryptSecret(cur.connectionStringEnc),
+    );
     // No refusal for a quote in the CURRENT password any more: the command is
     // built with `shellQuote`, which carries any byte, so a database created
     // with one is rotatable like every other. It used to be a dead end.
@@ -2184,7 +2245,9 @@ export async function rotateDatabasePassword(
     const exposedHostPort =
       cur.exposedPublicly && cur.exposedPort != null ? cur.exposedPort : null;
     const server =
-      exposedHostPort != null ? await resolveTeamServer(teamId, cur.serverId) : null;
+      exposedHostPort != null
+        ? await resolveTeamServer(teamId, cur.serverId)
+        : null;
     newConn = buildConnectionString({
       type: cur.type,
       username: cur.username,
@@ -2198,7 +2261,10 @@ export async function rotateDatabasePassword(
       .set({ connectionStringEnc: encryptSecret(newConn) })
       .where(eq(databasesTable.id, id));
 
-    const updated: Database = { ...cur, connectionStringEnc: encryptSecret(newConn) };
+    const updated: Database = {
+      ...cur,
+      connectionStringEnc: encryptSecret(newConn),
+    };
     const yaml = renderDatabaseStackYaml(updated, newPassword);
     const conn = await connectAgent(cur.serverId);
     try {

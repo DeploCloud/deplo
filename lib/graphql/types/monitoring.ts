@@ -215,7 +215,8 @@ builder.queryFields((t) => ({
     type: ContainerMetricsRef,
     nullable: true,
     authScopes: { capability: "view_metrics" },
-    description: "A fresh live per-container metrics snapshot for one database.",
+    description:
+      "A fresh live per-container metrics snapshot for one database.",
     args: { databaseId: t.arg.string({ required: true }) },
     resolve: (_r, { databaseId }) => getDatabaseMetrics(databaseId),
   }),

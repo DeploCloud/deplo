@@ -114,7 +114,10 @@ export function repoCommitUrl(
   const slug = githubRepoSlug(repo);
   if (slug) return `https://github.com/${slug}/commit/${commit}`;
   const path = COMMIT_PATH[repo.provider ?? ""];
-  const base = repo.url?.trim().replace(/\.git$/i, "").replace(/\/+$/, "");
+  const base = repo.url
+    ?.trim()
+    .replace(/\.git$/i, "")
+    .replace(/\/+$/, "");
   if (!path || !base || !/^https?:\/\//i.test(base)) return null;
   return `${base}${path}${commit}`;
 }
@@ -149,9 +152,14 @@ function githubRepoSlug(repo: {
   url?: string | null;
 }): string | null {
   const clean = (s: string) =>
-    s.trim().replace(/\.git$/i, "").replace(/^\/+|\/+$/g, "");
+    s
+      .trim()
+      .replace(/\.git$/i, "")
+      .replace(/^\/+|\/+$/g, "");
   if (repo.provider === "github" && repo.repo?.trim()) return clean(repo.repo);
-  const m = repo.url?.trim().match(/github\.com[/:]([^/]+\/[^/]+?)(?:\.git)?\/?$/i);
+  const m = repo.url
+    ?.trim()
+    .match(/github\.com[/:]([^/]+\/[^/]+?)(?:\.git)?\/?$/i);
   return m ? clean(m[1]) : null;
 }
 

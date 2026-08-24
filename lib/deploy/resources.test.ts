@@ -88,7 +88,10 @@ test("ulimits is emitted only for the sub-limits that are set", () => {
   assert.deepEqual(resourceLimitsToComposeKeys(mk({ nofile: 1024 })).ulimits, {
     nofile: 1024,
   });
-  assert.equal(resourceLimitsToComposeKeys(mk({ cpuMilli: 1000 })).ulimits, undefined);
+  assert.equal(
+    resourceLimitsToComposeKeys(mk({ cpuMilli: 1000 })).ulimits,
+    undefined,
+  );
 });
 
 /* ---- renderResourceLimitsYaml --------------------------------------- */
@@ -108,7 +111,10 @@ test("YAML fragment indents nested maps correctly and re-parses", () => {
   assert.match(frag, /^ {4}ulimits:$/m);
   assert.match(frag, /^ {6}nofile: 1024$/m);
   // The fragment is valid YAML on its own (indentation is internally consistent).
-  const parsed = yaml.load(frag.replace(/^ {4}/gm, "")) as Record<string, unknown>;
+  const parsed = yaml.load(frag.replace(/^ {4}/gm, "")) as Record<
+    string,
+    unknown
+  >;
   assert.equal(parsed.mem_limit, "512m");
   assert.deepEqual(parsed.storage_opt, { size: "10G" });
 });
@@ -149,7 +155,13 @@ test("renderCompose is byte-identical when there are no limits", () => {
 test("renderCompose emits the limit keys and the stack still parses", () => {
   const yamlStr = renderCompose({
     ...base,
-    resources: mk({ memoryMb: 512, cpuMilli: 500, pidsLimit: 100, nofile: 1024, storageGb: 10 }),
+    resources: mk({
+      memoryMb: 512,
+      cpuMilli: 500,
+      pidsLimit: 100,
+      nofile: 1024,
+      storageGb: 10,
+    }),
   });
   const doc = yaml.load(yamlStr) as {
     services: Record<string, Record<string, unknown>>;

@@ -80,7 +80,10 @@ export function ComposeArgsPanel({
   }
 
   return (
-    <form onSubmit={save} className="space-y-3 rounded-lg border border-border p-3">
+    <form
+      onSubmit={save}
+      className="space-y-3 rounded-lg border border-border p-3"
+    >
       <div className="space-y-0.5">
         <p className="flex items-center gap-1.5 text-sm font-medium">
           Extra compose flags
@@ -90,8 +93,8 @@ export function ComposeArgsPanel({
                 Deplo builds the command that starts your app. These flags are
                 added to the end of it — the project, the stack file and the
                 env-file stay Deplo&apos;s, so a flag here can never point the
-                command at another app. Applied on every deploy and every routing
-                change.
+                command at another app. Applied on every deploy and every
+                routing change.
               </>
             }
           />
@@ -128,14 +131,16 @@ export function ComposeArgsPanel({
       {/* The command as the owning server will run it: Deplo's part muted, yours
           in full contrast. Scrolls on its own so a long flag never widens the card. */}
       <div className="overflow-x-auto rounded-md border border-border bg-muted/30 px-3 py-2">
-        <code className="flex items-baseline gap-1.5 whitespace-pre font-mono text-[0.7rem] leading-relaxed">
+        <code className="flex items-baseline gap-1.5 font-mono text-[0.7rem] leading-relaxed whitespace-pre">
           <Terminal
             aria-hidden
             className="size-3 shrink-0 translate-y-px text-muted-foreground/70"
           />
           <span className="text-muted-foreground/70">{base}</span>
           {extra.length > 0 && !error && (
-            <span className="font-medium text-foreground">{extra.join(" ")}</span>
+            <span className="font-medium text-foreground">
+              {extra.join(" ")}
+            </span>
           )}
         </code>
       </div>

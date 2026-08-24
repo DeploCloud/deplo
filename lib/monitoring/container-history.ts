@@ -49,7 +49,8 @@ const STATE_KEY = Symbol.for("deplo.monitoring.container-history");
 const g = globalThis as unknown as {
   [STATE_KEY]?: Map<string, ContainerMetricsSample[]>;
 };
-const buffers: Map<string, ContainerMetricsSample[]> = (g[STATE_KEY] ??= new Map());
+const buffers: Map<string, ContainerMetricsSample[]> = (g[STATE_KEY] ??=
+  new Map());
 
 /** Drop samples older than the window from the FRONT of one buffer, in place. */
 function evict(buf: ContainerMetricsSample[], now: number): void {
@@ -81,7 +82,9 @@ export function recordContainerSample(sample: ContainerMetricsSample): void {
  *  read returns now: under the telemetry stream the supervisor is already writing
  *  this buffer every cadence, so dialling the agent again inside a read would be
  *  a second, redundant measurement of something we just measured. */
-export function latestContainerSample(id: string): ContainerMetricsSample | null {
+export function latestContainerSample(
+  id: string,
+): ContainerMetricsSample | null {
   const buf = buffers.get(id);
   return buf && buf.length > 0 ? buf[buf.length - 1] : null;
 }
@@ -99,8 +102,9 @@ const INSTANCES_KEY = Symbol.for("deplo.monitoring.container-instances");
 const gi = globalThis as unknown as {
   [INSTANCES_KEY]?: Map<string, ContainerInstanceMetrics[]>;
 };
-const instances: Map<string, ContainerInstanceMetrics[]> = (gi[INSTANCES_KEY] ??=
-  new Map());
+const instances: Map<string, ContainerInstanceMetrics[]> = (gi[
+  INSTANCES_KEY
+] ??= new Map());
 
 /** Replace one resource's live breakdown (the supervisor calls this per frame). */
 export function recordContainerInstances(
@@ -111,7 +115,9 @@ export function recordContainerInstances(
 }
 
 /** The last known breakdown for one resource — empty before the first frame. */
-export function latestContainerInstances(id: string): ContainerInstanceMetrics[] {
+export function latestContainerInstances(
+  id: string,
+): ContainerInstanceMetrics[] {
   return instances.get(id) ?? [];
 }
 

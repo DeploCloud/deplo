@@ -46,8 +46,11 @@ const SVC = "prj_svc";
 const SVC2 = "prj_svc2";
 const SERVER_2 = "srv_2";
 
-const as = <T>(userId: string, teamId: string, fn: () => Promise<T>): Promise<T> =>
-  runWithIdentity({ userId, teamId }, fn);
+const as = <T>(
+  userId: string,
+  teamId: string,
+  fn: () => Promise<T>,
+): Promise<T> => runWithIdentity({ userId, teamId }, fn);
 
 // Distinct, increasing createdAt so FIFO order is deterministic on its own.
 const at = (n: number) => `2026-01-01T00:00:0${n}.000Z`;
@@ -77,9 +80,27 @@ beforeEach(async () => {
 });
 
 test("positions queued builds oldest-first (1 = next to build)", async () => {
-  await seedDeployment(db, { id: "d1", appId: SVC, status: "queued", createdAt: at(1), serverId: SERVER_1 });
-  await seedDeployment(db, { id: "d2", appId: SVC, status: "queued", createdAt: at(2), serverId: SERVER_1 });
-  await seedDeployment(db, { id: "d3", appId: SVC, status: "queued", createdAt: at(3), serverId: SERVER_1 });
+  await seedDeployment(db, {
+    id: "d1",
+    appId: SVC,
+    status: "queued",
+    createdAt: at(1),
+    serverId: SERVER_1,
+  });
+  await seedDeployment(db, {
+    id: "d2",
+    appId: SVC,
+    status: "queued",
+    createdAt: at(2),
+    serverId: SERVER_1,
+  });
+  await seedDeployment(db, {
+    id: "d3",
+    appId: SVC,
+    status: "queued",
+    createdAt: at(3),
+    serverId: SERVER_1,
+  });
   await as(OWNER, TEAM_A, async () => {
     assert.equal(await getQueuePosition("d1"), 1);
     assert.equal(await getQueuePosition("d2"), 2);
@@ -88,9 +109,27 @@ test("positions queued builds oldest-first (1 = next to build)", async () => {
 });
 
 test("counts only queued rows ahead — a building/ready one doesn't shift it", async () => {
-  await seedDeployment(db, { id: "d_building", appId: SVC, status: "building", createdAt: at(1), serverId: SERVER_1 });
-  await seedDeployment(db, { id: "d_ready", appId: SVC, status: "ready", createdAt: at(2), serverId: SERVER_1 });
-  await seedDeployment(db, { id: "d_queued", appId: SVC, status: "queued", createdAt: at(3), serverId: SERVER_1 });
+  await seedDeployment(db, {
+    id: "d_building",
+    appId: SVC,
+    status: "building",
+    createdAt: at(1),
+    serverId: SERVER_1,
+  });
+  await seedDeployment(db, {
+    id: "d_ready",
+    appId: SVC,
+    status: "ready",
+    createdAt: at(2),
+    serverId: SERVER_1,
+  });
+  await seedDeployment(db, {
+    id: "d_queued",
+    appId: SVC,
+    status: "queued",
+    createdAt: at(3),
+    serverId: SERVER_1,
+  });
   assert.equal(
     await as(OWNER, TEAM_A, () => getQueuePosition("d_queued")),
     1,
@@ -99,8 +138,18 @@ test("counts only queued rows ahead — a building/ready one doesn't shift it", 
 });
 
 test("a non-queued deployment has no position", async () => {
-  await seedDeployment(db, { id: "d_ready", appId: SVC, status: "ready", serverId: SERVER_1 });
-  await seedDeployment(db, { id: "d_building", appId: SVC, status: "building", serverId: SERVER_1 });
+  await seedDeployment(db, {
+    id: "d_ready",
+    appId: SVC,
+    status: "ready",
+    serverId: SERVER_1,
+  });
+  await seedDeployment(db, {
+    id: "d_building",
+    appId: SVC,
+    status: "building",
+    serverId: SERVER_1,
+  });
   await as(OWNER, TEAM_A, async () => {
     assert.equal(await getQueuePosition("d_ready"), null);
     assert.equal(await getQueuePosition("d_building"), null);
@@ -109,21 +158,63 @@ test("a non-queued deployment has no position", async () => {
 });
 
 test("position is scoped to the owning server", async () => {
-  await seedDeployment(db, { id: "s1a", appId: SVC, status: "queued", createdAt: at(1), serverId: SERVER_1 });
-  await seedDeployment(db, { id: "s1b", appId: SVC, status: "queued", createdAt: at(2), serverId: SERVER_1 });
-  await seedDeployment(db, { id: "s2a", appId: SVC2, status: "queued", createdAt: at(1), serverId: SERVER_2 });
-  await seedDeployment(db, { id: "s2b", appId: SVC2, status: "queued", createdAt: at(2), serverId: SERVER_2 });
+  await seedDeployment(db, {
+    id: "s1a",
+    appId: SVC,
+    status: "queued",
+    createdAt: at(1),
+    serverId: SERVER_1,
+  });
+  await seedDeployment(db, {
+    id: "s1b",
+    appId: SVC,
+    status: "queued",
+    createdAt: at(2),
+    serverId: SERVER_1,
+  });
+  await seedDeployment(db, {
+    id: "s2a",
+    appId: SVC2,
+    status: "queued",
+    createdAt: at(1),
+    serverId: SERVER_2,
+  });
+  await seedDeployment(db, {
+    id: "s2b",
+    appId: SVC2,
+    status: "queued",
+    createdAt: at(2),
+    serverId: SERVER_2,
+  });
   await as(OWNER, TEAM_A, async () => {
-    assert.equal(await getQueuePosition("s1b"), 2, "only SERVER_1's queue counts");
-    assert.equal(await getQueuePosition("s2a"), 1, "SERVER_2 is a separate queue");
+    assert.equal(
+      await getQueuePosition("s1b"),
+      2,
+      "only SERVER_1's queue counts",
+    );
+    assert.equal(
+      await getQueuePosition("s2a"),
+      1,
+      "SERVER_2 is a separate queue",
+    );
   });
 });
 
 test("falls back to the app's server when the row's server_id is null", async () => {
   // Legacy rows predate the denormalized server_id → effective server is the
   // app's (SERVER_1), and they must still form a single ordered queue.
-  await seedDeployment(db, { id: "legacy_ahead", appId: SVC, status: "queued", createdAt: at(1) });
-  await seedDeployment(db, { id: "legacy_target", appId: SVC, status: "queued", createdAt: at(2) });
+  await seedDeployment(db, {
+    id: "legacy_ahead",
+    appId: SVC,
+    status: "queued",
+    createdAt: at(1),
+  });
+  await seedDeployment(db, {
+    id: "legacy_target",
+    appId: SVC,
+    status: "queued",
+    createdAt: at(2),
+  });
   assert.equal(
     await as(OWNER, TEAM_A, () => getQueuePosition("legacy_target")),
     2,
@@ -131,7 +222,12 @@ test("falls back to the app's server when the row's server_id is null", async ()
 });
 
 test("a caller can't read another team's queue position (isolation)", async () => {
-  await seedDeployment(db, { id: "d_queued", appId: SVC, status: "queued", serverId: SERVER_1 });
+  await seedDeployment(db, {
+    id: "d_queued",
+    appId: SVC,
+    status: "queued",
+    serverId: SERVER_1,
+  });
   assert.equal(
     await as(OWNER_B, TEAM_B, () => getQueuePosition("d_queued")),
     null,

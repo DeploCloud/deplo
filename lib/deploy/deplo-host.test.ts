@@ -70,7 +70,10 @@ test("matches the server row's host when only the host (not ip) carries the addr
 
 test("an IPv4 DEPLO_PUBLIC_URL host also identifies the Deplo host", () => {
   withEnv(
-    { DEPLO_SERVER_IP: undefined, DEPLO_PUBLIC_URL: "https://203.0.113.10:3000" },
+    {
+      DEPLO_SERVER_IP: undefined,
+      DEPLO_PUBLIC_URL: "https://203.0.113.10:3000",
+    },
     () => {
       const self = deploHostSelfAddresses();
       assert.ok(self.has("203.0.113.10"));
@@ -81,12 +84,18 @@ test("an IPv4 DEPLO_PUBLIC_URL host also identifies the Deplo host", () => {
 
 test("a hostname-valued DEPLO_PUBLIC_URL matches a host registered under that hostname", () => {
   withEnv(
-    { DEPLO_SERVER_IP: undefined, DEPLO_PUBLIC_URL: "https://Deplo.Example.COM" },
+    {
+      DEPLO_SERVER_IP: undefined,
+      DEPLO_PUBLIC_URL: "https://Deplo.Example.COM",
+    },
     () => {
       const self = deploHostSelfAddresses();
       // Lower-cased, so a case-different row still matches.
       assert.equal(
-        isDeploHostServer({ ip: "198.51.100.7", host: "deplo.example.com" }, self),
+        isDeploHostServer(
+          { ip: "198.51.100.7", host: "deplo.example.com" },
+          self,
+        ),
         true,
       );
     },
@@ -106,19 +115,13 @@ test("matching is case-insensitive and tolerant of surrounding whitespace", () =
 test("an empty self-address set never classifies any server as the Deplo host", () => {
   // No self-signal matches this remote's address, so it stays a plain remote even
   // when the set is non-empty from NIC detection.
-  withEnv(
-    { DEPLO_SERVER_IP: undefined, DEPLO_PUBLIC_URL: undefined },
-    () => {
-      const self = deploHostSelfAddresses();
-      assert.equal(
-        isDeploHostServer({ ip: "198.51.100.250", host: "" }, self),
-        false,
-      );
-      // And an explicitly empty set short-circuits to false regardless of the row.
-      assert.equal(
-        isDeploHostServer({ ip: "198.51.100.250" }, new Set()),
-        false,
-      );
-    },
-  );
+  withEnv({ DEPLO_SERVER_IP: undefined, DEPLO_PUBLIC_URL: undefined }, () => {
+    const self = deploHostSelfAddresses();
+    assert.equal(
+      isDeploHostServer({ ip: "198.51.100.250", host: "" }, self),
+      false,
+    );
+    // And an explicitly empty set short-circuits to false regardless of the row.
+    assert.equal(isDeploHostServer({ ip: "198.51.100.250" }, new Set()), false);
+  });
 });

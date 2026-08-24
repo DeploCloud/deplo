@@ -28,7 +28,9 @@ export default function Loading() {
           <Skeleton
             key={i}
             shimmer
-            style={{ ["--shimmer-delay" as string]: `-${(i * 0.09).toFixed(2)}s` }}
+            style={{
+              ["--shimmer-delay" as string]: `-${(i * 0.09).toFixed(2)}s`,
+            }}
             className="h-[5.5rem] w-full rounded-xl"
           />
         ))}

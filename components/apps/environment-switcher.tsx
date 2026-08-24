@@ -82,10 +82,11 @@ export function EnvironmentSwitcher({
 
   // A deleted environment leaves the switcher on the click, so the menu never
   // offers one that is already gone.
-  const { visible: envs, remove, restore } = useOptimisticRemove(
-    environments,
-    (e) => e.id,
-  );
+  const {
+    visible: envs,
+    remove,
+    restore,
+  } = useOptimisticRemove(environments, (e) => e.id);
 
   const selected = envs.find((e) => e.id === selectedId);
 
@@ -205,7 +206,7 @@ export function EnvironmentSwitcher({
                       <button
                         type="button"
                         aria-label={`Manage ${e.name}`}
-                        className="flex size-7 shrink-0 items-center justify-center rounded-sm text-muted-foreground outline-none transition-colors hover:bg-accent hover:text-foreground focus:bg-accent data-[state=open]:bg-accent"
+                        className="flex size-7 shrink-0 items-center justify-center rounded-sm text-muted-foreground transition-colors outline-none hover:bg-accent hover:text-foreground focus:bg-accent data-[state=open]:bg-accent"
                       >
                         <MoreHorizontal className="size-4" />
                       </button>

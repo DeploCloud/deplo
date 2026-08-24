@@ -52,11 +52,7 @@ export function DatabaseGraphic({ className }: { className?: string }) {
 
       {/* The database that is not there: dashed, sitting ON the ground, with the
           one band that separates a drum from a plain cylinder. */}
-      <g
-        className="stroke-ring"
-        strokeWidth="2"
-        strokeDasharray="5 4"
-      >
+      <g className="stroke-ring" strokeWidth="2" strokeDasharray="5 4">
         <ellipse cx="60" cy="40" rx="16" ry="5.5" />
         <path d="M44 40 L44 64.5" />
         <path d="M76 40 L76 64.5" />

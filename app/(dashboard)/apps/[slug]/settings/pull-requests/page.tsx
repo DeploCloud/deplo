@@ -68,8 +68,8 @@ export default async function AppPullRequestsSettingsPage(
                   : project.source === "compose"
                     ? "a compose file"
                     : "a plain Git URL"}
-              , so Deplo never receives its pull requests. Connect it to a GitHub
-              repository and these settings turn on.
+              , so Deplo never receives its pull requests. Connect it to a
+              GitHub repository and these settings turn on.
             </p>
             <div>
               <Button asChild variant="outline" size="sm">
@@ -104,7 +104,9 @@ export default async function AppPullRequestsSettingsPage(
               activeCount={
                 view.previews.filter(
                   (p) =>
-                    !p.closed && p.status !== "evicted" && p.status !== "blocked",
+                    !p.closed &&
+                    p.status !== "evicted" &&
+                    p.status !== "blocked",
                 ).length
               }
             />

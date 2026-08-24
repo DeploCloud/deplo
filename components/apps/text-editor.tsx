@@ -78,7 +78,10 @@ const editorHighlight = HighlightStyle.define([
     color: "var(--foreground)",
     fontWeight: "600",
   },
-  { tag: [t.keyword, t.operatorKeyword, t.bool, t.null], color: "var(--warning)" },
+  {
+    tag: [t.keyword, t.operatorKeyword, t.bool, t.null],
+    color: "var(--warning)",
+  },
   { tag: [t.string, t.special(t.string)], color: "var(--success)" },
   { tag: [t.number, t.integer, t.float], color: "var(--foreground)" },
   {
@@ -86,7 +89,10 @@ const editorHighlight = HighlightStyle.define([
     color: "var(--muted-foreground)",
     fontStyle: "italic",
   },
-  { tag: [t.meta, t.punctuation, t.separator], color: "var(--muted-foreground)" },
+  {
+    tag: [t.meta, t.punctuation, t.separator],
+    color: "var(--muted-foreground)",
+  },
 ]);
 
 export function TextEditor({

@@ -28,7 +28,10 @@ const SLUG = "agent-compose-e2e";
 const PROJECT_ID = "prj_compose_e2e";
 const COMPOSE_PROJECT = `deplo-${SLUG}`;
 
-function sh(cmd: string, args: string[]): Promise<{ code: number; out: string }> {
+function sh(
+  cmd: string,
+  args: string[],
+): Promise<{ code: number; out: string }> {
   return new Promise((resolve) => {
     const c = spawn(cmd, args, { windowsHide: true });
     let out = "";
@@ -51,12 +54,14 @@ function check(name: string, ok: boolean, detail = "") {
 }
 
 async function main() {
-  const { connectAgent, agentPreflight } = await import("../lib/infra/agent-client");
+  const { connectAgent, agentPreflight } =
+    await import("../lib/infra/agent-client");
   const { SourceKind, BuildKind } = await import("../lib/agent/gen/agent");
 
   console.log("== preflight ==");
   const hello = await agentPreflight("srv-local");
-  if (!hello.dockerAvailable) throw new Error("agent reports docker unavailable");
+  if (!hello.dockerAvailable)
+    throw new Error("agent reports docker unavailable");
   check(
     "agent advertises deploy.compose.multi",
     hello.capabilities.includes("deploy.compose.multi"),
@@ -121,12 +126,13 @@ networks:
         devWorkspaceSubdir: "",
         noBuildCache: false,
         forceRecreate: false,
-    composeUpArgs: [],
-    buildOnly: false,
+        composeUpArgs: [],
+        buildOnly: false,
       })) {
         if (ev.log) console.log(`  [${ev.log.level}] ${ev.log.text}`);
         if (ev.result) {
-          if (!ev.result.ready) throw new Error("deploy failed: " + ev.result.error);
+          if (!ev.result.ready)
+            throw new Error("deploy failed: " + ev.result.error);
           ready = true;
         }
       }
@@ -139,19 +145,50 @@ networks:
   // Both services run, discoverable by the deplo.slug label (NOT by a
   // deplo-<slug> container name — the whole point of the label-based wait).
   const ids = (
-    await sh("docker", ["ps", "-q", "--filter", `label=deplo.slug=${SLUG}`, "--filter", "status=running"])
-  ).out.trim().split("\n").filter(Boolean);
-  check("both services are running and labelled deplo.slug", ids.length === 2, `count=${ids.length}`);
+    await sh("docker", [
+      "ps",
+      "-q",
+      "--filter",
+      `label=deplo.slug=${SLUG}`,
+      "--filter",
+      "status=running",
+    ])
+  ).out
+    .trim()
+    .split("\n")
+    .filter(Boolean);
+  check(
+    "both services are running and labelled deplo.slug",
+    ids.length === 2,
+    `count=${ids.length}`,
+  );
 
   // The mount file the control plane carried was materialised AND bind-mounted in.
   const webName = (
-    await sh("docker", ["ps", "--filter", `label=deplo.slug=${SLUG}`, "--format", "{{.Names}}"])
-  ).out.split("\n").map((s) => s.trim()).find((n) => n.includes("web"));
+    await sh("docker", [
+      "ps",
+      "--filter",
+      `label=deplo.slug=${SLUG}`,
+      "--format",
+      "{{.Names}}",
+    ])
+  ).out
+    .split("\n")
+    .map((s) => s.trim())
+    .find((n) => n.includes("web"));
   check("found the web container", Boolean(webName), webName ?? "(none)");
   if (webName) {
     const out = (await sh("docker", ["exec", webName, "cat", "/tmp/out"])).out;
-    check("bind-mounted template file is present in the container", out.includes("MOUNTED_OK"), out);
-    check("env-file ${VAR} was interpolated by compose", out.includes("greeting=hello-from-env-file"), out);
+    check(
+      "bind-mounted template file is present in the container",
+      out.includes("MOUNTED_OK"),
+      out,
+    );
+    check(
+      "env-file ${VAR} was interpolated by compose",
+      out.includes("greeting=hello-from-env-file"),
+      out,
+    );
   }
 
   // Lifecycle: stop/start/destroy route through the agent and work for the stack
@@ -175,7 +212,13 @@ networks:
   check("destroy removed every service", afterDestroy === "", afterDestroy);
 
   // Teardown.
-  await sh("docker", ["compose", "-p", COMPOSE_PROJECT, "down", "--remove-orphans"]);
+  await sh("docker", [
+    "compose",
+    "-p",
+    COMPOSE_PROJECT,
+    "down",
+    "--remove-orphans",
+  ]);
   rmSync(DATA, { recursive: true, force: true });
   killLocalAgent();
 
@@ -187,8 +230,7 @@ function killLocalAgent(): void {
   try {
     const key = Symbol.for("deplo.localAgent.supervisor");
     const st = (globalThis as Record<symbol, unknown>)[key] as
-      | { proc?: { kill?: (s?: string) => void } | null }
-      | undefined;
+      { proc?: { kill?: (s?: string) => void } | null } | undefined;
     st?.proc?.kill?.("SIGKILL");
   } catch {
     /* best-effort */

@@ -281,7 +281,11 @@ async function relayBackup(
     // premise that they own no object. Throwing cancels the call instead, so the
     // destination's write dies with its temp file.
     const bytes = (async function* () {
-      for await (const ev of src.backup({ ...base, streamOut: true, s3: undefined })) {
+      for await (const ev of src.backup({
+        ...base,
+        streamOut: true,
+        s3: undefined,
+      })) {
         if (ev.result) {
           source.result = {
             ok: ev.result.ok,
@@ -301,7 +305,11 @@ async function relayBackup(
 
     let landed: Awaited<ReturnType<AgentConnection["writeStoreFile"]>>;
     try {
-      landed = await sink.writeStoreFile(storeTargetFor(dest, objectKey), false, bytes);
+      landed = await sink.writeStoreFile(
+        storeTargetFor(dest, objectKey),
+        false,
+        bytes,
+      );
     } catch (e) {
       // Our own abort: report the SOURCE's reason, which is the one that
       // explains anything. Any other error is a genuine transport failure.
@@ -415,7 +423,8 @@ export async function restoreFromDestination(
       database: target.database,
       project: target.project,
       s3: dest.kind === "s3" ? s3TargetFor(creds, objectKey) : undefined,
-      store: dest.kind === "server" ? storeTargetFor(dest, objectKey) : undefined,
+      store:
+        dest.kind === "server" ? storeTargetFor(dest, objectKey) : undefined,
       // The identity travels on BOTH kinds now that a bucket artifact is
       // encrypted too. Empty on a destination created before that, whose objects
       // are plaintext — the agent then skips the age layer.
@@ -521,13 +530,22 @@ export async function openUploadRestore(
 }
 
 async function consumeRestore(
-  events: AsyncGenerator<{ result?: { ok: boolean; error: string } }, void, unknown>,
+  events: AsyncGenerator<
+    { result?: { ok: boolean; error: string } },
+    void,
+    unknown
+  >,
 ): Promise<{ ok: boolean; error: string }> {
   let result: { ok: boolean; error: string } | null = null;
   for await (const ev of events) {
     if (ev.result) result = { ok: ev.result.ok, error: ev.result.error };
   }
-  return result ?? { ok: false, error: "the agent ended the restore without a result" };
+  return (
+    result ?? {
+      ok: false,
+      error: "the agent ended the restore without a result",
+    }
+  );
 }
 
 /**
@@ -577,7 +595,10 @@ export async function deleteManyFromDestination(
       try {
         out.push(
           dest.kind === "server"
-            ? await conn.storeDelete(storeTargetFor(dest, t.key), t.prefix ?? false)
+            ? await conn.storeDelete(
+                storeTargetFor(dest, t.key),
+                t.prefix ?? false,
+              )
             : await conn.s3Delete(s3TargetFor(creds, t.key), t.prefix ?? false),
         );
       } catch (e) {
@@ -620,7 +641,10 @@ export async function openArtifactDownload(
    *  only be hashed as it goes past, so a mismatch ends the stream in an error
    *  after bytes have arrived. Both refuse; only one can refuse in time. */
   expectedSha256 = "",
-): Promise<{ chunks: AsyncGenerator<Buffer, void, unknown>; close: () => void }> {
+): Promise<{
+  chunks: AsyncGenerator<Buffer, void, unknown>;
+  close: () => void;
+}> {
   const dest = creds.destination;
   const store = dest.kind === "server";
   // The agent decrypts on the way out (that is what `ageIdentity` asks for), so

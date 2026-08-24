@@ -104,7 +104,11 @@ async function mcp(
     cookie?: string;
     toolArgs?: Record<string, unknown>;
   } = {},
-): Promise<{ status: number; headers: Headers; body: Record<string, unknown> }> {
+): Promise<{
+  status: number;
+  headers: Headers;
+  body: Record<string, unknown>;
+}> {
   const tool = opts.tool ?? "whoami";
   const headers: Record<string, string> = {
     "content-type": "application/json",
@@ -184,8 +188,7 @@ async function connect(
   });
   const { token } = await runWithIdentity(
     { userId: USER_1, teamId: TEAM_A },
-    () =>
-      createToken({ name: "Test AI client", capabilities, teamIds }),
+    () => createToken({ name: "Test AI client", capabilities, teamIds }),
   );
   await pg.query(`update api_tokens set oauth_client_id = $1 where id = $2`, [
     flow.clientId,
@@ -353,7 +356,10 @@ test("an unauthenticated authorize sends the signed query to the login page", as
   });
   assert.match(String(res.location), /^\/login\?/, String(res.location));
   const sent = new URLSearchParams(res.oauthQuery ?? "");
-  assert.ok(sent.get("client_id"), "no client_id for the login page to resume on");
+  assert.ok(
+    sent.get("client_id"),
+    "no client_id for the login page to resume on",
+  );
   assert.ok(sent.get("sig"), "no signature for the login page to resume on");
 });
 
@@ -365,7 +371,10 @@ test("a deplo_ token still reaches its tools and resolves as its creator", async
   const { raw } = await mintToken(["view"]);
   const res = await mcp(raw);
   assert.equal(res.status, 200);
-  assert.ok(JSON.stringify(res.body).includes(USER_1), JSON.stringify(res.body));
+  assert.ok(
+    JSON.stringify(res.body).includes(USER_1),
+    JSON.stringify(res.body),
+  );
 });
 
 test("a deplo_ token without the capability cannot reach the tool", async () => {
@@ -381,7 +390,9 @@ test("a deplo_ token without the capability cannot reach the tool", async () => 
 
 test("the team kill switch refuses with the sentence that names the setting", async () => {
   const { raw } = await mintToken(["view"]);
-  await pg.query(`update teams set mcp_enabled = false where id = $1`, [TEAM_A]);
+  await pg.query(`update teams set mcp_enabled = false where id = $1`, [
+    TEAM_A,
+  ]);
   const res = await mcp(raw);
   assert.equal(res.status, 403);
   assert.match(String(res.body.error), /Settings → MCP Server/);
@@ -430,7 +441,9 @@ test("a call the kill switch refuses does not stamp it", async () => {
   // A token the team just turned away is not a connected client, and listing it
   // as one would put an agent on that screen the moment MCP was switched off.
   const { raw, token } = await mintToken(["view"]);
-  await pg.query(`update teams set mcp_enabled = false where id = $1`, [TEAM_A]);
+  await pg.query(`update teams set mcp_enabled = false where id = $1`, [
+    TEAM_A,
+  ]);
   assert.equal((await mcp(raw)).status, 403);
   // Long enough that a stamp taken before the gate would have landed by now.
   await new Promise((r) => setTimeout(r, 150));
@@ -483,7 +496,10 @@ test("the 401 carries a resource_metadata URL that actually resolves", async () 
   assert.equal(doc.status, 200);
   const body = (await doc.json()) as { resource: string };
   assert.equal(body.resource, RESOURCE);
-  assert.equal(match![1], `https://deplo.test/.well-known/oauth-protected-resource/api/mcp`);
+  assert.equal(
+    match![1],
+    `https://deplo.test/.well-known/oauth-protected-resource/api/mcp`,
+  );
 });
 
 test("the challenge names no team, user or token", async () => {
@@ -593,9 +609,10 @@ test("disabling the client stops the next request", async () => {
   // The plugin's own token lookup never reads this column; deplo's join does.
   const conn = await connect(["view"]);
   assert.equal((await mcp(conn.accessToken)).status, 200);
-  await pg.query(`update oauth_client set disabled = true where client_id = $1`, [
-    conn.clientId,
-  ]);
+  await pg.query(
+    `update oauth_client set disabled = true where client_id = $1`,
+    [conn.clientId],
+  );
   assert.equal((await mcp(conn.accessToken)).status, 401);
 });
 
@@ -609,7 +626,9 @@ test("an expired access token stops the next request", async () => {
 
 test("the team kill switch stops an OAuth connection too", async () => {
   const conn = await connect(["view"]);
-  await pg.query(`update teams set mcp_enabled = false where id = $1`, [TEAM_A]);
+  await pg.query(`update teams set mcp_enabled = false where id = $1`, [
+    TEAM_A,
+  ]);
   assert.equal((await mcp(conn.accessToken)).status, 403);
 });
 
@@ -644,7 +663,10 @@ test("X-Deplo-Team cannot move an OAuth connection to a team it was not granted"
   assert.equal(res.status, 200);
   const text = JSON.stringify(res.body);
   assert.ok(text.includes(TEAM_A), text);
-  assert.ok(!text.includes(TEAM_B), "the header moved the connection to team B");
+  assert.ok(
+    !text.includes(TEAM_B),
+    "the header moved the connection to team B",
+  );
 });
 
 test("a connection whose scope names two teams still resolves in the one it was approved for", async () => {
@@ -701,7 +723,10 @@ test("a deplo_ token still honours X-Deplo-Team", async () => {
   );
   const res = await mcp(raw, { team: "beta" });
   assert.equal(res.status, 200);
-  assert.ok(JSON.stringify(res.body).includes(TEAM_B), JSON.stringify(res.body));
+  assert.ok(
+    JSON.stringify(res.body).includes(TEAM_B),
+    JSON.stringify(res.body),
+  );
 });
 
 test("a tool that runs outside GraphQL resolves the same identity", async () => {

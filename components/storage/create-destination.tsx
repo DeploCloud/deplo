@@ -46,12 +46,36 @@ import type { DestinationKind, S3Provider } from "@/lib/types";
 
 // Inlined (lib/data/destinations is server-only and cannot be imported here).
 const PROVIDERS: { id: S3Provider; name: string; endpointHint: string }[] = [
-  { id: "aws", name: "Amazon S3", endpointHint: "https://s3.us-east-1.amazonaws.com" },
-  { id: "cloudflare-r2", name: "Cloudflare R2", endpointHint: "https://<account>.r2.cloudflarestorage.com" },
-  { id: "backblaze-b2", name: "Backblaze B2", endpointHint: "https://s3.us-west-001.backblazeb2.com" },
-  { id: "digitalocean", name: "DigitalOcean Spaces", endpointHint: "https://fra1.digitaloceanspaces.com" },
-  { id: "wasabi", name: "Wasabi", endpointHint: "https://s3.eu-central-1.wasabisys.com" },
-  { id: "minio", name: "MinIO (self-hosted)", endpointHint: "https://minio.example.com" },
+  {
+    id: "aws",
+    name: "Amazon S3",
+    endpointHint: "https://s3.us-east-1.amazonaws.com",
+  },
+  {
+    id: "cloudflare-r2",
+    name: "Cloudflare R2",
+    endpointHint: "https://<account>.r2.cloudflarestorage.com",
+  },
+  {
+    id: "backblaze-b2",
+    name: "Backblaze B2",
+    endpointHint: "https://s3.us-west-001.backblazeb2.com",
+  },
+  {
+    id: "digitalocean",
+    name: "DigitalOcean Spaces",
+    endpointHint: "https://fra1.digitaloceanspaces.com",
+  },
+  {
+    id: "wasabi",
+    name: "Wasabi",
+    endpointHint: "https://s3.eu-central-1.wasabisys.com",
+  },
+  {
+    id: "minio",
+    name: "MinIO (self-hosted)",
+    endpointHint: "https://minio.example.com",
+  },
   { id: "other", name: "Other S3-compatible", endpointHint: "https://..." },
 ];
 
@@ -132,8 +156,9 @@ export function CreateDestination({
           .join(" · ") || "Nothing set";
 
   const hint = PROVIDERS.find((p) => p.id === provider)!.endpointHint;
-  const setField = (k: keyof typeof s3) => (e: React.ChangeEvent<HTMLInputElement>) =>
-    setS3((f) => ({ ...f, [k]: e.target.value }));
+  const setField =
+    (k: keyof typeof s3) => (e: React.ChangeEvent<HTMLInputElement>) =>
+      setS3((f) => ({ ...f, [k]: e.target.value }));
 
   // The button asks for everything the SERVER asks for. It used to check only
   // the bucket, so a form missing its keys closed, failed, and reopened with the
@@ -165,13 +190,23 @@ export function CreateDestination({
     // verified. The whole form is kept aside: this is the create most likely to
     // be rejected (a wrong key, a folder that is not empty), and retyping six
     // fields would be the worst possible answer.
-    const typed = { kind, name, serverId, path, provider, allowPrivate, s3Args, ...s3 };
+    const typed = {
+      kind,
+      name,
+      serverId,
+      path,
+      provider,
+      allowPrivate,
+      s3Args,
+      ...s3,
+    };
     const serverName = servers.find((s) => s.id === typed.serverId)?.name ?? "";
     setOpen(false);
     reset();
     create(
       {
-        label: typed.name || (typed.kind === "server" ? serverName : typed.bucket),
+        label:
+          typed.name || (typed.kind === "server" ? serverName : typed.bucket),
         note: "Checking destination",
       },
       () =>
@@ -214,7 +249,8 @@ export function CreateDestination({
           if (data?.createDestination.id)
             offerRecoveryKey(
               data.createDestination.id,
-              typed.name || (typed.kind === "server" ? serverName : typed.bucket),
+              typed.name ||
+                (typed.kind === "server" ? serverName : typed.bucket),
             );
         },
         onError: () => {
@@ -314,7 +350,9 @@ export function CreateDestination({
                 id="destination-name"
                 value={name}
                 onChange={(e) => setName(e.target.value)}
-                placeholder={kind === "server" ? "Nightly backups" : "Backups bucket"}
+                placeholder={
+                  kind === "server" ? "Nightly backups" : "Backups bucket"
+                }
               />
             </div>
 
@@ -322,7 +360,7 @@ export function CreateDestination({
               <ServerFields
                 servers={servers}
                 serverId={serverId}
-              onServerChange={setServerId}
+                onServerChange={setServerId}
               />
             ) : (
               <>
@@ -363,18 +401,27 @@ export function CreateDestination({
                       info={
                         <>
                           The bucket&apos;s region. Use{" "}
-                          <code className="font-mono">auto</code> for providers like
-                          Cloudflare R2 that don&apos;t require a specific region.
+                          <code className="font-mono">auto</code> for providers
+                          like Cloudflare R2 that don&apos;t require a specific
+                          region.
                         </>
                       }
                     >
                       Region
                     </FieldLabel>
-                    <Input value={s3.region} onChange={setField("region")} placeholder="auto" />
+                    <Input
+                      value={s3.region}
+                      onChange={setField("region")}
+                      placeholder="auto"
+                    />
                   </div>
                   <div className="space-y-2">
                     <Label>Bucket</Label>
-                    <Input value={s3.bucket} onChange={setField("bucket")} placeholder="my-bucket" />
+                    <Input
+                      value={s3.bucket}
+                      onChange={setField("bucket")}
+                      placeholder="my-bucket"
+                    />
                   </div>
                 </div>
                 <div className="space-y-2">
@@ -441,7 +488,9 @@ export function CreateDestination({
                           <label className="flex cursor-pointer items-start gap-2.5 rounded-lg border border-border p-3 text-sm">
                             <Checkbox
                               checked={allowPrivate}
-                              onCheckedChange={(v) => setAllowPrivate(v === true)}
+                              onCheckedChange={(v) =>
+                                setAllowPrivate(v === true)
+                              }
                               className="mt-0.5"
                             />
                             <span>
@@ -449,9 +498,10 @@ export function CreateDestination({
                                 This bucket is on my own network
                               </span>
                               <span className="mt-1 block text-xs text-muted-foreground">
-                                Allows a private address like 10.0.0.5 or a hostname that
-                                resolves to one. Off by default so a mistyped endpoint
-                                cannot reach inside your network.
+                                Allows a private address like 10.0.0.5 or a
+                                hostname that resolves to one. Off by default so
+                                a mistyped endpoint cannot reach inside your
+                                network.
                               </span>
                             </span>
                           </label>
@@ -483,7 +533,9 @@ export function CreateDestination({
                             spellCheck={false}
                           />
                           {argsError ? (
-                            <p className="text-xs text-destructive">{argsError}</p>
+                            <p className="text-xs text-destructive">
+                              {argsError}
+                            </p>
                           ) : (
                             <p className="text-xs text-muted-foreground">
                               {Object.keys(S3_ARGS_ALLOWED).length} flags are
@@ -503,7 +555,11 @@ export function CreateDestination({
             )}
           </AnimatedHeight>
           <DialogFooter>
-            <Button type="button" variant="outline" onClick={() => setOpen(false)}>
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => setOpen(false)}
+            >
               Cancel
             </Button>
             <Button type="submit" disabled={!valid}>
@@ -562,4 +618,3 @@ function ServerFields({
     </div>
   );
 }
-

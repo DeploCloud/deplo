@@ -47,7 +47,8 @@ export async function transferTeamOwnership(input: {
   code?: string;
 }): Promise<void> {
   requirePersonalSession("team ownership");
-  const { teamId, userId: actingUserId } = await requireCapability("manage_team");
+  const { teamId, userId: actingUserId } =
+    await requireCapability("manage_team");
   const actor = await assertUser();
   if (input.userId === actingUserId)
     throw new Error("You already own this team");

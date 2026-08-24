@@ -59,7 +59,9 @@ export function planDeploySource(project: SourcePlanApp): SourcePlan {
 /** Normalise a user-supplied rootDirectory to a clean forward-slash relative
  * path: backslashes → slashes, a leading `./` or `/` stripped. `""`/`"."`/unset
  * all mean "the tree root". Pure. */
-export function normalizeRootRel(rootDirectory: string | null | undefined): string {
+export function normalizeRootRel(
+  rootDirectory: string | null | undefined,
+): string {
   return (rootDirectory || ".").replace(/\\/g, "/").replace(/^\.?\/?/, "");
 }
 

@@ -62,7 +62,10 @@ export const TAR_END = Buffer.alloc(BLOCK * 2, 0);
 
 /** A complete archive from `[name, data]` pairs. */
 export function buildTar(files: [string, Buffer | string][]): Buffer {
-  return Buffer.concat([...files.map(([name, data]) => tarEntry(name, data)), TAR_END]);
+  return Buffer.concat([
+    ...files.map(([name, data]) => tarEntry(name, data)),
+    TAR_END,
+  ]);
 }
 
 /** Feed a buffer as an async stream, optionally sliced into small chunks. */

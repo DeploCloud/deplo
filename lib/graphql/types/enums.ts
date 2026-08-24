@@ -78,7 +78,14 @@ export const EnvTargetEnum = builder.enumType("EnvTarget", {
 });
 
 export const DatabaseTypeEnum = builder.enumType("DatabaseType", {
-  values: ["postgres", "mysql", "mariadb", "mongodb", "redis", "clickhouse"] as const,
+  values: [
+    "postgres",
+    "mysql",
+    "mariadb",
+    "mongodb",
+    "redis",
+    "clickhouse",
+  ] as const,
 });
 
 // The one enum in this module carrying per-value descriptions, because one of

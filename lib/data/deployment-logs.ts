@@ -275,7 +275,9 @@ export async function clearDeploymentLogs(depId: string): Promise<void> {
   // Wait for the prior chain to settle (it self-drops on the epoch mismatch),
   // then DELETE the persisted rows.
   await b.chain;
-  await getDb().delete(deploymentLogs).where(eq(deploymentLogs.deploymentId, depId));
+  await getDb()
+    .delete(deploymentLogs)
+    .where(eq(deploymentLogs.deploymentId, depId));
   evictIfIdle(depId);
 }
 

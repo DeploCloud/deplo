@@ -64,9 +64,9 @@ const SCOPES: { id: CleanupScopeId; label: string; info: React.ReactNode }[] = [
     label: "Build cache",
     info: (
       <>
-        The Docker daemon&apos;s BuildKit cache, what makes a redeploy reuse the last
-        build instead of repeating it. Removing it costs nothing but a slower next
-        build; no app, image or volume is touched.
+        The Docker daemon&apos;s BuildKit cache, what makes a redeploy reuse the
+        last build instead of repeating it. Removing it costs nothing but a
+        slower next build; no app, image or volume is touched.
       </>
     ),
   },
@@ -75,8 +75,9 @@ const SCOPES: { id: CleanupScopeId; label: string; info: React.ReactNode }[] = [
     label: "Dangling images",
     info: (
       <>
-        Untagged layers left by rebuilds. Anything a container references is never
-        dangling, so a <strong>stopped</strong> app keeps the image it needs.
+        Untagged layers left by rebuilds. Anything a container references is
+        never dangling, so a <strong>stopped</strong> app keeps the image it
+        needs.
       </>
     ),
   },
@@ -85,8 +86,9 @@ const SCOPES: { id: CleanupScopeId; label: string; info: React.ReactNode }[] = [
     label: "Orphaned build caches",
     info: (
       <>
-        Abandoned buildkit volumes, often the biggest win on a full host. Removed
-        only if it holds a <code>buildkitd.lock</code>, so your data is safe.
+        Abandoned buildkit volumes, often the biggest win on a full host.
+        Removed only if it holds a <code>buildkitd.lock</code>, so your data is
+        safe.
       </>
     ),
   },
@@ -95,9 +97,9 @@ const SCOPES: { id: CleanupScopeId; label: string; info: React.ReactNode }[] = [
     label: "Unused app images",
     info: (
       <>
-        Old images no container, running <em>or</em> stopped, references. Also swept
-        right after each deploy. Removed ones come back only by rebuilding; the newest
-        per app is always kept.
+        Old images no container, running <em>or</em> stopped, references. Also
+        swept right after each deploy. Removed ones come back only by
+        rebuilding; the newest per app is always kept.
       </>
     ),
   },
@@ -107,8 +109,8 @@ const SCOPES: { id: CleanupScopeId; label: string; info: React.ReactNode }[] = [
     info: (
       <>
         The config files of apps and databases that were deleted. Judged against
-        everything this Deplo still knows about, so a live app keeps its files even
-        while it is moving between servers.
+        everything this Deplo still knows about, so a live app keeps its files
+        even while it is moving between servers.
       </>
     ),
   },
@@ -185,12 +187,15 @@ export function ServerCleanupTab({
         // host, so it keeps its own rows and ignores the rest.
         setRuns(next.filter((r) => r.serverId === server.id));
         for (const run of next) {
-          if (run.status === "running" || !startedHere.current.has(run.id)) continue;
+          if (run.status === "running" || !startedHere.current.has(run.id))
+            continue;
           startedHere.current.delete(run.id);
           if (run.status === "failed") {
             toast.error(run.error || `Cleanup failed on ${run.serverName}`);
           } else {
-            toast.success(`Reclaimed ${formatBytes(run.reclaimedBytes)} on ${run.serverName}`);
+            toast.success(
+              `Reclaimed ${formatBytes(run.reclaimedBytes)} on ${run.serverName}`,
+            );
           }
         }
       },
@@ -305,8 +310,8 @@ export function ServerCleanupTab({
             Reclaim disk now
           </CardTitle>
           <p className="mt-1 text-sm text-muted-foreground">
-            Frees build cache and unused images on this server. Your apps, their data
-            and their networks are never touched.
+            Frees build cache and unused images on this server. Your apps, their
+            data and their networks are never touched.
           </p>
         </CardHeader>
         <CardContent>
@@ -325,8 +330,15 @@ export function ServerCleanupTab({
             {/* A wrapping span keeps the tooltip reachable: a disabled button
                 swallows pointer events. */}
             <span tabIndex={0}>
-              <Button onClick={runNow} disabled={dirty || nothingSelected || sweeping || saving}>
-                {sweeping ? <Loader2 className="size-4 animate-spin" /> : <Brush className="size-4" />}
+              <Button
+                onClick={runNow}
+                disabled={dirty || nothingSelected || sweeping || saving}
+              >
+                {sweeping ? (
+                  <Loader2 className="size-4 animate-spin" />
+                ) : (
+                  <Brush className="size-4" />
+                )}
                 {sweeping ? "Cleaning up" : "Clean up now"}
               </Button>
             </span>
@@ -358,7 +370,9 @@ export function ServerCleanupTab({
               <Checkbox
                 id="cleanup-enabled"
                 checked={form.enabled}
-                onCheckedChange={(v) => setForm((f) => ({ ...f, enabled: v === true }))}
+                onCheckedChange={(v) =>
+                  setForm((f) => ({ ...f, enabled: v === true }))
+                }
               />
               <FieldLabel
                 htmlFor="cleanup-enabled"
@@ -375,9 +389,9 @@ export function ServerCleanupTab({
                   htmlFor="cleanup-schedule"
                   info={
                     <>
-                      Standard 5-field cron expression, <strong>evaluated in UTC</strong> -
-                      there is no per-server timezone. <code>0 4 * * *</code> is daily at
-                      04:00 UTC.
+                      Standard 5-field cron expression,{" "}
+                      <strong>evaluated in UTC</strong> - there is no per-server
+                      timezone. <code>0 4 * * *</code> is daily at 04:00 UTC.
                     </>
                   }
                 >
@@ -386,7 +400,9 @@ export function ServerCleanupTab({
                 <Input
                   id="cleanup-schedule"
                   value={form.schedule}
-                  onChange={(e) => setForm((f) => ({ ...f, schedule: e.target.value }))}
+                  onChange={(e) =>
+                    setForm((f) => ({ ...f, schedule: e.target.value }))
+                  }
                   className="font-mono text-xs"
                   placeholder="0 4 * * *"
                   autoComplete="off"
@@ -406,7 +422,9 @@ export function ServerCleanupTab({
                   min={0}
                   max={8760}
                   value={form.minAgeHours}
-                  onChange={(e) => setForm((f) => ({ ...f, minAgeHours: e.target.value }))}
+                  onChange={(e) =>
+                    setForm((f) => ({ ...f, minAgeHours: e.target.value }))
+                  }
                 />
               </div>
               <div className="space-y-2">
@@ -422,7 +440,9 @@ export function ServerCleanupTab({
                   min={1}
                   max={20}
                   value={form.keepImagesPerApp}
-                  onChange={(e) => setForm((f) => ({ ...f, keepImagesPerApp: e.target.value }))}
+                  onChange={(e) =>
+                    setForm((f) => ({ ...f, keepImagesPerApp: e.target.value }))
+                  }
                 />
               </div>
             </div>

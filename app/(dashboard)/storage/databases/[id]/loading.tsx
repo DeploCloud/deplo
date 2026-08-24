@@ -3,7 +3,12 @@ import { Card, CardContent } from "@/components/ui/card";
 
 export default function Loading() {
   return (
-    <div className="space-y-5" role="status" aria-busy aria-label="Loading database">
+    <div
+      className="space-y-5"
+      role="status"
+      aria-busy
+      aria-label="Loading database"
+    >
       <Card>
         <CardContent className="space-y-4 p-5">
           <Skeleton className="h-8 w-full rounded-md" />

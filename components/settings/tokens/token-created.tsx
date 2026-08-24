@@ -44,7 +44,7 @@ export function TokenCreated({
       </div>
 
       <div className="flex items-center gap-2 rounded-md border border-border bg-secondary/40 px-3 py-2">
-        <code className="min-w-0 flex-1 overflow-x-auto whitespace-nowrap font-mono text-xs">
+        <code className="min-w-0 flex-1 overflow-x-auto font-mono text-xs whitespace-nowrap">
           {raw}
         </code>
         <CopyButton value={raw} />

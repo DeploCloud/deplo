@@ -13,12 +13,7 @@ import {
 } from "./backup-rows";
 import { encryptSecret } from "../crypto";
 import type { TestDb } from "../db/test-harness";
-import type {
-  Backup,
-  BackupRun,
-  Database,
-  BackupDestination,
-} from "../types";
+import type { Backup, BackupRun, Database, BackupDestination } from "../types";
 import { TEAM_A } from "./identity-test-helpers";
 import { SERVER_1 } from "./app-graph-test-helpers";
 
@@ -123,9 +118,15 @@ export async function seedDatabase(
   };
   await db.insert(databasesTable).values(databaseToRow(row));
   if (row.mounts.length > 0) {
-    await db.insert(databaseMountsTable).values(
-      row.mounts.map((m, position) => ({ databaseId: row.id, position, ...m })),
-    );
+    await db
+      .insert(databaseMountsTable)
+      .values(
+        row.mounts.map((m, position) => ({
+          databaseId: row.id,
+          position,
+          ...m,
+        })),
+      );
   }
   return row.id;
 }

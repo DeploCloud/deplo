@@ -1,10 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import {
-  groupRowsByProject,
-  TOP_LEVEL,
-  TOP_LEVEL_NAME,
-} from "./env-grouping";
+import { groupRowsByProject, TOP_LEVEL, TOP_LEVEL_NAME } from "./env-grouping";
 
 type Row = {
   key: string;
@@ -64,7 +60,10 @@ test("apps outside a project land in the Standalone section", () => {
   assert.equal(sections[0].id, TOP_LEVEL);
   assert.equal(sections[0].name, TOP_LEVEL_NAME);
   assert.equal(sections[0].color, null);
-  assert.deepEqual(sections[0].apps[0].rows.map((r) => r.key), ["A"]);
+  assert.deepEqual(
+    sections[0].apps[0].rows.map((r) => r.key),
+    ["A"],
+  );
 });
 
 test("sections follow the project order given, whatever order the rows arrive in", () => {
@@ -74,11 +73,10 @@ test("sections follow the project order given, whatever order the rows arrive in
     [row("A", LOOSE), row("B", ADMIN), row("C", STOREFRONT)],
     PROJECTS,
   );
-  assert.deepEqual(sections.map((s) => s.id), [
-    "prc_shop",
-    "prc_tools",
-    TOP_LEVEL,
-  ]);
+  assert.deepEqual(
+    sections.map((s) => s.id),
+    ["prc_shop", "prc_tools", TOP_LEVEL],
+  );
 
   // Drag "Internal Tools" above "Acme Shop" (the caller re-orders `projects`)
   // and the sections follow — that IS the reorder.
@@ -86,11 +84,10 @@ test("sections follow the project order given, whatever order the rows arrive in
     [row("A", LOOSE), row("B", ADMIN), row("C", STOREFRONT)],
     [PROJECTS[1], PROJECTS[0]],
   );
-  assert.deepEqual(dragged.map((s) => s.id), [
-    "prc_tools",
-    "prc_shop",
-    TOP_LEVEL,
-  ]);
+  assert.deepEqual(
+    dragged.map((s) => s.id),
+    ["prc_tools", "prc_shop", TOP_LEVEL],
+  );
 });
 
 test("byName sorts the app cards A→Z; the sections keep the project order", () => {
@@ -101,15 +98,14 @@ test("byName sorts the app cards A→Z; the sections keep the project order", ()
     [PROJECTS[1], PROJECTS[0]],
     { byName: true },
   );
-  assert.deepEqual(sections.map((s) => s.name), [
-    "Internal Tools",
-    "Acme Shop",
-    TOP_LEVEL_NAME,
-  ]);
-  assert.deepEqual(sections[1].apps.map((a) => a.app.name), [
-    "api",
-    "storefront",
-  ]);
+  assert.deepEqual(
+    sections.map((s) => s.name),
+    ["Internal Tools", "Acme Shop", TOP_LEVEL_NAME],
+  );
+  assert.deepEqual(
+    sections[1].apps.map((a) => a.app.name),
+    ["api", "storefront"],
+  );
 });
 
 test("a project the caller never passed still keeps its apps on the page", () => {
@@ -118,7 +114,10 @@ test("a project the caller never passed still keeps its apps on the page", () =>
   assert.equal(sections.length, 1);
   assert.equal(sections[0].id, "prc_gone");
   assert.equal(sections[0].name, "Project");
-  assert.deepEqual(sections[0].apps[0].rows.map((r) => r.key), ["A"]);
+  assert.deepEqual(
+    sections[0].apps[0].rows.map((r) => r.key),
+    ["A"],
+  );
 });
 
 test("an unranked project sits after the ordered ones, before Standalone", () => {
@@ -127,11 +126,10 @@ test("an unranked project sits after the ordered ones, before Standalone", () =>
     [row("A", LOOSE), row("B", orphan), row("C", ADMIN)],
     PROJECTS,
   );
-  assert.deepEqual(sections.map((s) => s.id), [
-    "prc_tools",
-    "prc_gone",
-    TOP_LEVEL,
-  ]);
+  assert.deepEqual(
+    sections.map((s) => s.id),
+    ["prc_tools", "prc_gone", TOP_LEVEL],
+  );
 });
 
 test("no rows means no sections — an empty card is never rendered", () => {

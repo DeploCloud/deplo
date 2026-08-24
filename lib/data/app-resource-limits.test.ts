@@ -30,7 +30,10 @@ import { loadAppGraph } from "./app-graph-load";
 
 test("cleanResourceLimits: empty input ⇒ every dimension uncapped", () => {
   const r = cleanResourceLimits({});
-  assert.equal(Object.values(r).every((v) => v === null), true);
+  assert.equal(
+    Object.values(r).every((v) => v === null),
+    true,
+  );
 });
 
 test("cleanResourceLimits: a valid full set passes through", () => {
@@ -58,7 +61,10 @@ test("cleanResourceLimits: rejects non-integers and out-of-range values", () => 
   assert.throws(() => cleanResourceLimits({ memoryMb: 12.5 }), /whole number/);
   assert.throws(() => cleanResourceLimits({ memoryMb: 3 }), /at least 6/);
   assert.throws(() => cleanResourceLimits({ cpuShares: 1 }), /at least 2/);
-  assert.throws(() => cleanResourceLimits({ oomScoreAdj: 5000 }), /at most 1000/);
+  assert.throws(
+    () => cleanResourceLimits({ oomScoreAdj: 5000 }),
+    /at most 1000/,
+  );
 });
 
 test("cleanResourceLimits: cross-field coherence (Docker's own rules)", () => {
@@ -68,7 +74,10 @@ test("cleanResourceLimits: cross-field coherence (Docker's own rules)", () => {
     /reservation can't exceed/i,
   );
   // swap needs a memory limit, and must be ≥ it
-  assert.throws(() => cleanResourceLimits({ swapMb: 512 }), /before a swap limit/i);
+  assert.throws(
+    () => cleanResourceLimits({ swapMb: 512 }),
+    /before a swap limit/i,
+  );
   assert.throws(
     () => cleanResourceLimits({ memoryMb: 1024, swapMb: 512 }),
     /at least the memory limit/i,

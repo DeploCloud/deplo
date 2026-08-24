@@ -14,7 +14,11 @@ import {
   type ReadinessProbe,
   type ReadinessReport,
 } from "./server-readiness";
-import { ContractVersion, type HelloResponse, type HostMetrics } from "../agent/gen/agent";
+import {
+  ContractVersion,
+  type HelloResponse,
+  type HostMetrics,
+} from "../agent/gen/agent";
 import type { Server } from "../types";
 
 /**
@@ -106,7 +110,12 @@ function srv(over: Partial<Server> = {}): Server {
     hostArch: "amd64",
     deployConcurrency: 1,
     createdAt: "2026-07-01T00:00:00.000Z",
-    agent: { port: 9443, certFingerprint: "fp_1", certPem: "pem", version: "1.1.0" },
+    agent: {
+      port: 9443,
+      certFingerprint: "fp_1",
+      certPem: "pem",
+      version: "1.1.0",
+    },
     ...over,
   };
 }
@@ -125,7 +134,8 @@ function probe(over: Partial<ReadinessProbe> = {}): ReadinessProbe {
   };
 }
 
-const byId = (r: ReadinessReport, id: string) => r.checks.find((c) => c.id === id)!;
+const byId = (r: ReadinessReport, id: string) =>
+  r.checks.find((c) => c.id === id)!;
 const countOf = (r: ReadinessReport, sev: ReadinessCheck["severity"]) =>
   r.checks.filter((c) => c.severity === sev).length;
 
@@ -149,14 +159,19 @@ test("a fully-installed host is `ready` — every check passed", () => {
 /* ------------------------------------------------------------------ */
 
 test("no agent yet → `provisioning`, and we never pretend to have dialed", () => {
-  const r = classifyServerReadiness(probe({ server: srv({ agent: undefined }) }));
+  const r = classifyServerReadiness(
+    probe({ server: srv({ agent: undefined }) }),
+  );
   assert.equal(r.verdict, "provisioning");
   assert.deepEqual(
     r.checks.map((c) => c.id),
     ["agent.bootstrap", "config.teamAccess", "config.deployConcurrency"],
   );
   assert.equal(byId(r, "agent.bootstrap").severity, "warn");
-  assert.equal(byId(r, "agent.bootstrap").detail, READINESS_MESSAGES.notProvisioned);
+  assert.equal(
+    byId(r, "agent.bootstrap").detail,
+    READINESS_MESSAGES.notProvisioned,
+  );
 });
 
 test("a trust-revoked server (certFingerprint: '') is fenced exactly like an unprovisioned one", () => {
@@ -182,7 +197,10 @@ test("an unreachable agent produces ONE failed row, not a wall of grey skips", (
   const r = classifyServerReadiness(
     probe({
       hello: null,
-      helloError: new AgentUnreachableError("no connection", GrpcStatus.UNAVAILABLE),
+      helloError: new AgentUnreachableError(
+        "no connection",
+        GrpcStatus.UNAVAILABLE,
+      ),
       port80: { kind: "skipped" },
       port443: { kind: "skipped" },
       metrics: null,
@@ -206,7 +224,10 @@ test("a deadline overrun says so specifically", () => {
   const r = classifyServerReadiness(
     probe({
       hello: null,
-      helloError: new AgentUnreachableError("deadline", GrpcStatus.DEADLINE_EXCEEDED),
+      helloError: new AgentUnreachableError(
+        "deadline",
+        GrpcStatus.DEADLINE_EXCEEDED,
+      ),
     }),
   );
   assert.equal(byId(r, "agent.hello").detail, READINESS_MESSAGES.timedOut);
@@ -242,7 +263,11 @@ test("an application-level gRPC error is the generic agent error", () => {
 
 test("a contract mismatch fails the protocol row and trusts NOTHING else the agent said", () => {
   const r = classifyServerReadiness(
-    probe({ hello: hello({ contractVersion: ContractVersion.CONTRACT_VERSION_UNSPECIFIED }) }),
+    probe({
+      hello: hello({
+        contractVersion: ContractVersion.CONTRACT_VERSION_UNSPECIFIED,
+      }),
+    }),
   );
   assert.equal(byId(r, "agent.hello").severity, "pass");
   assert.equal(byId(r, "agent.contract").severity, "fail");
@@ -271,16 +296,25 @@ test("a report NEVER leaks the pinned fingerprint or the dial address, in ANY fa
     classifyServerReadiness(
       probe({
         hello: null,
-        helloError: new AgentUnreachableError(raw, GrpcStatus.UNAVAILABLE, true),
+        helloError: new AgentUnreachableError(
+          raw,
+          GrpcStatus.UNAVAILABLE,
+          true,
+        ),
       }),
-    ),
-    classifyServerReadiness(
-      probe({ hello: null, helloError: new AgentUnreachableError(raw, GrpcStatus.UNAVAILABLE) }),
     ),
     classifyServerReadiness(
       probe({
         hello: null,
-        helloError: Object.assign(new Error(raw), { code: GrpcStatus.INTERNAL }),
+        helloError: new AgentUnreachableError(raw, GrpcStatus.UNAVAILABLE),
+      }),
+    ),
+    classifyServerReadiness(
+      probe({
+        hello: null,
+        helloError: Object.assign(new Error(raw), {
+          code: GrpcStatus.INTERNAL,
+        }),
       }),
     ),
   ];
@@ -290,11 +324,17 @@ test("a report NEVER leaks the pinned fingerprint or the dial address, in ANY fa
     for (const c of r.checks) {
       for (const s of [c.detail, c.hint ?? ""]) {
         assert.ok(!/fingerprint/i.test(s), `leaked the word fingerprint: ${s}`);
-        assert.ok(!/deadbeefcafe|0badf00d/i.test(s), `leaked cert material: ${s}`);
+        assert.ok(
+          !/deadbeefcafe|0badf00d/i.test(s),
+          `leaked cert material: ${s}`,
+        );
         assert.ok(!/10\.4\.2\.9|9443/.test(s), `leaked the dial address: ${s}`);
       }
       if (c.severity === "fail")
-        assert.ok(closed.includes(c.detail), `failure detail escaped the closed set: ${c.detail}`);
+        assert.ok(
+          closed.includes(c.detail),
+          `failure detail escaped the closed set: ${c.detail}`,
+        );
     }
     assert.ok(!/deadbeefcafe|0badf00d|9443/.test(r.summary));
   }
@@ -309,9 +349,15 @@ test("Docker down fails the engine row AND SKIPS Traefik — the agent forces tr
     probe({ hello: hello({ dockerAvailable: false, traefikRunning: false }) }),
   );
   assert.equal(byId(r, "docker.available").severity, "fail");
-  assert.equal(byId(r, "docker.available").detail, READINESS_MESSAGES.dockerDown);
+  assert.equal(
+    byId(r, "docker.available").detail,
+    READINESS_MESSAGES.dockerDown,
+  );
   assert.equal(byId(r, "routing.traefik").severity, "skip");
-  assert.equal(byId(r, "routing.traefik").detail, READINESS_MESSAGES.traefikUnknown);
+  assert.equal(
+    byId(r, "routing.traefik").detail,
+    READINESS_MESSAGES.traefikUnknown,
+  );
   assert.equal(r.verdict, "not_ready");
 });
 
@@ -326,7 +372,10 @@ test("Traefik being down (with Docker up) is a WARN, never a fail — a DB/worke
     }),
   );
   assert.equal(byId(r, "routing.traefik").severity, "warn");
-  assert.equal(byId(r, "routing.traefik").detail, READINESS_MESSAGES.traefikDown);
+  assert.equal(
+    byId(r, "routing.traefik").detail,
+    READINESS_MESSAGES.traefikDown,
+  );
   assert.equal(r.verdict, "degraded");
   assert.equal(countOf(r, "fail"), 0);
 });
@@ -334,15 +383,24 @@ test("Traefik being down (with Docker up) is a WARN, never a fail — a DB/worke
 test("Traefik up + both web ports held → both port rows pass", () => {
   const r = classifyServerReadiness(probe());
   assert.equal(byId(r, "routing.port80").severity, "pass");
-  assert.equal(byId(r, "routing.port80").detail, READINESS_DETAILS.portHeldWithTraefik(80));
+  assert.equal(
+    byId(r, "routing.port80").detail,
+    READINESS_DETAILS.portHeldWithTraefik(80),
+  );
   assert.equal(byId(r, "routing.port443").severity, "pass");
-  assert.equal(byId(r, "routing.port443").detail, READINESS_DETAILS.portHeldWithTraefik(443));
+  assert.equal(
+    byId(r, "routing.port443").detail,
+    READINESS_DETAILS.portHeldWithTraefik(443),
+  );
 });
 
 test("Traefik up but :80 free → warn: it is up and not publishing the web ports", () => {
   const r = classifyServerReadiness(probe({ port80: { kind: "free" } }));
   assert.equal(byId(r, "routing.port80").severity, "warn");
-  assert.equal(byId(r, "routing.port80").detail, READINESS_DETAILS.portFreeWithTraefik(80));
+  assert.equal(
+    byId(r, "routing.port80").detail,
+    READINESS_DETAILS.portFreeWithTraefik(80),
+  );
   assert.equal(byId(r, "routing.port443").severity, "pass");
   // NOT the install-Traefik hint: Traefik is already up, and "Normal for a database-only or
   // worker host" would invite the operator to dismiss the one row explaining the 404s.
@@ -352,9 +410,14 @@ test("Traefik up but :80 free → warn: it is up and not publishing the web port
 
 test("Traefik down but :80 held → warn: another process owns the web port, so Traefik cannot bind it", () => {
   // The report's most valuable finding: the classic broken install.
-  const r = classifyServerReadiness(probe({ hello: hello({ traefikRunning: false }) }));
+  const r = classifyServerReadiness(
+    probe({ hello: hello({ traefikRunning: false }) }),
+  );
   assert.equal(byId(r, "routing.port80").severity, "warn");
-  assert.equal(byId(r, "routing.port80").detail, READINESS_DETAILS.portHeldNoTraefik(80));
+  assert.equal(
+    byId(r, "routing.port80").detail,
+    READINESS_DETAILS.portHeldNoTraefik(80),
+  );
   assert.equal(byId(r, "routing.port80").hint, READINESS_HINTS.freeWebPort);
 });
 
@@ -367,7 +430,10 @@ test("Traefik down + :80 free is INFO, not a second warn — the Traefik row alr
     }),
   );
   assert.equal(byId(r, "routing.port80").severity, "info");
-  assert.equal(byId(r, "routing.port80").detail, READINESS_DETAILS.portFreeNoTraefik(80));
+  assert.equal(
+    byId(r, "routing.port80").detail,
+    READINESS_DETAILS.portFreeNoTraefik(80),
+  );
   assert.equal(byId(r, "routing.port443").severity, "info");
   // Exactly one warn: the Traefik row itself.
   assert.equal(countOf(r, "warn"), 1);
@@ -381,14 +447,23 @@ test("CheckPort unsupported → both port rows skip, and a skip NEVER moves the 
   // "We didn't look" is not "it's broken" — degrading to a skipped row is the honest answer,
   // and it must not cost the operator a red banner.
   const r = classifyServerReadiness(
-    probe({ port80: { kind: "unsupported" }, port443: { kind: "unsupported" } }),
+    probe({
+      port80: { kind: "unsupported" },
+      port443: { kind: "unsupported" },
+    }),
   );
   assert.equal(r.verdict, "ready");
   assert.equal(byId(r, "routing.port80").severity, "skip");
-  assert.equal(byId(r, "routing.port80").detail, READINESS_DETAILS.portUnsupported(80));
+  assert.equal(
+    byId(r, "routing.port80").detail,
+    READINESS_DETAILS.portUnsupported(80),
+  );
   assert.equal(byId(r, "routing.port80").hint, READINESS_HINTS.updateAgent);
   assert.equal(byId(r, "routing.port443").severity, "skip");
-  assert.equal(byId(r, "routing.port443").detail, READINESS_DETAILS.portUnsupported(443));
+  assert.equal(
+    byId(r, "routing.port443").detail,
+    READINESS_DETAILS.portUnsupported(443),
+  );
 });
 
 /* ------------------------------------------------------------------ */
@@ -397,24 +472,36 @@ test("CheckPort unsupported → both port rows skip, and a skip NEVER moves the 
 
 test("an agent missing deploy.nixpacks warns on THAT row only", () => {
   const caps = ALL_CAPS.filter((c) => c !== "deploy.nixpacks");
-  const r = classifyServerReadiness(probe({ hello: hello({ capabilities: caps }) }));
+  const r = classifyServerReadiness(
+    probe({ hello: hello({ capabilities: caps }) }),
+  );
   assert.equal(byId(r, "build.nixpacks").severity, "warn");
-  assert.equal(byId(r, "build.nixpacks").detail, READINESS_DETAILS.buildMissing("Nixpacks"));
+  assert.equal(
+    byId(r, "build.nixpacks").detail,
+    READINESS_DETAILS.buildMissing("Nixpacks"),
+  );
   assert.equal(byId(r, "build.nixpacks").hint, READINESS_HINTS.updateAgent);
-  const others = r.checks.filter((c) => c.group === "build" && c.id !== "build.nixpacks");
+  const others = r.checks.filter(
+    (c) => c.group === "build" && c.id !== "build.nixpacks",
+  );
   assert.equal(others.length, BUILD_METHODS.length - 1);
   assert.ok(others.every((c) => c.severity === "pass"));
   assert.equal(r.verdict, "degraded");
 });
 
 test("an agent with NO capability list gets one honest skip, not seven fabricated warns", () => {
-  const r = classifyServerReadiness(probe({ hello: hello({ capabilities: [] }) }));
+  const r = classifyServerReadiness(
+    probe({ hello: hello({ capabilities: [] }) }),
+  );
   const build = r.checks.filter((c) => c.group === "build");
   assert.equal(build.length, 1);
   assert.equal(build[0].id, "build.unknown");
   assert.equal(build[0].severity, "skip");
   assert.equal(byId(r, "agent.features").severity, "skip");
-  assert.equal(byId(r, "agent.features").detail, READINESS_MESSAGES.featuresUnknown);
+  assert.equal(
+    byId(r, "agent.features").detail,
+    READINESS_MESSAGES.featuresUnknown,
+  );
 });
 
 /* ------------------------------------------------------------------ */
@@ -426,14 +513,18 @@ test("disk headroom: 20% passes, 92% warns, 97% fails the whole report", () => {
   assert.equal(byId(ok, "capacity.disk").severity, "pass");
 
   const low = classifyServerReadiness(
-    probe({ metrics: metrics({ diskPct: 92, diskUsed: 92 * GB, diskTotal: 100 * GB }) }),
+    probe({
+      metrics: metrics({ diskPct: 92, diskUsed: 92 * GB, diskTotal: 100 * GB }),
+    }),
   );
   assert.equal(byId(low, "capacity.disk").severity, "warn");
   assert.equal(byId(low, "capacity.disk").hint, READINESS_HINTS.freeDisk);
   assert.equal(low.verdict, "degraded");
 
   const critical = classifyServerReadiness(
-    probe({ metrics: metrics({ diskPct: 97, diskUsed: 97 * GB, diskTotal: 100 * GB }) }),
+    probe({
+      metrics: metrics({ diskPct: 97, diskUsed: 97 * GB, diskTotal: 100 * GB }),
+    }),
   );
   assert.equal(byId(critical, "capacity.disk").severity, "fail");
   assert.equal(critical.verdict, "not_ready");
@@ -444,14 +535,20 @@ test("diskTotal === 0 means statfs FAILED — that is a skip, never '0% used'", 
     probe({ metrics: metrics({ diskTotal: 0, diskUsed: 0, diskPct: 0 }) }),
   );
   assert.equal(byId(r, "capacity.disk").severity, "skip");
-  assert.equal(byId(r, "capacity.disk").detail, READINESS_MESSAGES.diskUnmeasured);
+  assert.equal(
+    byId(r, "capacity.disk").detail,
+    READINESS_MESSAGES.diskUnmeasured,
+  );
   assert.equal(r.verdict, "ready");
 });
 
 test("no metrics at all → the disk row is skipped, and says so", () => {
   const r = classifyServerReadiness(probe({ metrics: null }));
   assert.equal(byId(r, "capacity.disk").severity, "skip");
-  assert.equal(byId(r, "capacity.disk").detail, READINESS_MESSAGES.metricsUnavailable);
+  assert.equal(
+    byId(r, "capacity.disk").detail,
+    READINESS_MESSAGES.metricsUnavailable,
+  );
 });
 
 test("an unset disk_pct (proto3 default 0) is classified from used/total — never a green 98%-full pass", () => {
@@ -460,9 +557,15 @@ test("an unset disk_pct (proto3 default 0) is classified from used/total — nev
   // the used/total fallback rendered a nearly-full host as `pass`.
   for (const diskPct of [0, Number.NaN]) {
     const r = classifyServerReadiness(
-      probe({ metrics: metrics({ diskPct, diskUsed: 98 * GB, diskTotal: 100 * GB }) }),
+      probe({
+        metrics: metrics({ diskPct, diskUsed: 98 * GB, diskTotal: 100 * GB }),
+      }),
     );
-    assert.equal(byId(r, "capacity.disk").severity, "fail", `diskPct=${diskPct}`);
+    assert.equal(
+      byId(r, "capacity.disk").severity,
+      "fail",
+      `diskPct=${diskPct}`,
+    );
     assert.equal(r.verdict, "not_ready");
   }
 });
@@ -470,14 +573,26 @@ test("an unset disk_pct (proto3 default 0) is classified from used/total — nev
 test("the disk percentage shown is the one classified — a fraction never crosses a threshold on display", () => {
   // 94.7 must not render "95% full" (the documented hard-fail number) next to a warn icon.
   const warn = classifyServerReadiness(
-    probe({ metrics: metrics({ diskPct: 94.7, diskUsed: 94.7 * GB, diskTotal: 100 * GB }) }),
+    probe({
+      metrics: metrics({
+        diskPct: 94.7,
+        diskUsed: 94.7 * GB,
+        diskTotal: 100 * GB,
+      }),
+    }),
   );
   assert.equal(byId(warn, "capacity.disk").severity, "warn");
   assert.match(byId(warn, "capacity.disk").detail, /is 94% full/);
 
   // ...and 89.7 must not render "90% full" (the warn number) next to a green tick.
   const ok = classifyServerReadiness(
-    probe({ metrics: metrics({ diskPct: 89.7, diskUsed: 89.7 * GB, diskTotal: 100 * GB }) }),
+    probe({
+      metrics: metrics({
+        diskPct: 89.7,
+        diskUsed: 89.7 * GB,
+        diskTotal: 100 * GB,
+      }),
+    }),
   );
   assert.equal(byId(ok, "capacity.disk").severity, "pass");
   assert.match(byId(ok, "capacity.disk").detail, /is 89% full/);
@@ -492,14 +607,20 @@ test("a restricted server with zero team grants can never receive a deploy → F
     probe({ server: srv({ allTeams: false }), grantedTeamCount: 0 }),
   );
   assert.equal(byId(none, "config.teamAccess").severity, "fail");
-  assert.equal(byId(none, "config.teamAccess").detail, READINESS_MESSAGES.noTeamAccess);
+  assert.equal(
+    byId(none, "config.teamAccess").detail,
+    READINESS_MESSAGES.noTeamAccess,
+  );
   assert.equal(none.verdict, "not_ready");
 
   const some = classifyServerReadiness(
     probe({ server: srv({ allTeams: false }), grantedTeamCount: 2 }),
   );
   assert.equal(byId(some, "config.teamAccess").severity, "info");
-  assert.equal(byId(some, "config.teamAccess").detail, "2 teams can deploy to this server.");
+  assert.equal(
+    byId(some, "config.teamAccess").detail,
+    "2 teams can deploy to this server.",
+  );
   assert.equal(some.verdict, "ready");
 });
 
@@ -520,22 +641,40 @@ test("a `fail` outranks `provisioning` — an unreachable, ungranted server is N
 
 test("agent version: reported as a neutral fact, never as 'you are behind'", () => {
   // An older version is NOT a finding: nothing here compares against a release.
-  const older = classifyServerReadiness(probe({ hello: hello({ agentVersion: "1.0.0" }) }));
+  const older = classifyServerReadiness(
+    probe({ hello: hello({ agentVersion: "1.0.0" }) }),
+  );
   assert.equal(byId(older, "agent.version").severity, "pass");
-  assert.equal(byId(older, "agent.version").detail, READINESS_DETAILS.versionRunning("1.0.0"));
+  assert.equal(
+    byId(older, "agent.version").detail,
+    READINESS_DETAILS.versionRunning("1.0.0"),
+  );
   assert.equal(byId(older, "agent.version").hint, undefined);
 
   const current = classifyServerReadiness(probe());
   assert.equal(byId(current, "agent.version").severity, "pass");
-  assert.equal(byId(current, "agent.version").detail, READINESS_DETAILS.versionRunning("1.1.0"));
+  assert.equal(
+    byId(current, "agent.version").detail,
+    READINESS_DETAILS.versionRunning("1.1.0"),
+  );
 
-  const dev = classifyServerReadiness(probe({ hello: hello({ agentVersion: "dev" }) }));
+  const dev = classifyServerReadiness(
+    probe({ hello: hello({ agentVersion: "dev" }) }),
+  );
   assert.equal(byId(dev, "agent.version").severity, "info");
-  assert.equal(byId(dev, "agent.version").detail, READINESS_DETAILS.versionUncomparable("dev"));
+  assert.equal(
+    byId(dev, "agent.version").detail,
+    READINESS_DETAILS.versionUncomparable("dev"),
+  );
 
-  const missing = classifyServerReadiness(probe({ hello: hello({ agentVersion: "" }) }));
+  const missing = classifyServerReadiness(
+    probe({ hello: hello({ agentVersion: "" }) }),
+  );
   assert.equal(byId(missing, "agent.version").severity, "info");
-  assert.equal(byId(missing, "agent.version").detail, READINESS_DETAILS.versionUnreported);
+  assert.equal(
+    byId(missing, "agent.version").detail,
+    READINESS_DETAILS.versionUnreported,
+  );
 });
 
 /* ------------------------------------------------------------------ */
@@ -550,12 +689,30 @@ test("readinessVerdict: fail beats everything, skips alone leave `ready`, provis
     severity,
     detail: "d",
   });
-  assert.equal(readinessVerdict([row("fail"), row("warn")], { provisioning: false }), "not_ready");
-  assert.equal(readinessVerdict([row("fail")], { provisioning: true }), "not_ready");
-  assert.equal(readinessVerdict([row("skip"), row("pass")], { provisioning: false }), "ready");
-  assert.equal(readinessVerdict([row("warn")], { provisioning: true }), "provisioning");
-  assert.equal(readinessVerdict([row("warn")], { provisioning: false }), "degraded");
-  assert.equal(readinessVerdict([row("info"), row("pass")], { provisioning: false }), "ready");
+  assert.equal(
+    readinessVerdict([row("fail"), row("warn")], { provisioning: false }),
+    "not_ready",
+  );
+  assert.equal(
+    readinessVerdict([row("fail")], { provisioning: true }),
+    "not_ready",
+  );
+  assert.equal(
+    readinessVerdict([row("skip"), row("pass")], { provisioning: false }),
+    "ready",
+  );
+  assert.equal(
+    readinessVerdict([row("warn")], { provisioning: true }),
+    "provisioning",
+  );
+  assert.equal(
+    readinessVerdict([row("warn")], { provisioning: false }),
+    "degraded",
+  );
+  assert.equal(
+    readinessVerdict([row("info"), row("pass")], { provisioning: false }),
+    "ready",
+  );
 });
 
 /* ------------------------------------------------------------------ */
@@ -567,7 +724,9 @@ test("a supported build method NEVER claims the tool is installed on the host", 
   // to run a Nixpacks build; the nixpacks binary is downloaded on the first such build. If
   // someone rewrites this copy to say "Nixpacks installed", this test fails — on purpose.
   const r = classifyServerReadiness(probe());
-  const passes = r.checks.filter((c) => c.group === "build" && c.severity === "pass");
+  const passes = r.checks.filter(
+    (c) => c.group === "build" && c.severity === "pass",
+  );
   assert.equal(passes.length, BUILD_METHODS.length);
   for (const c of passes) {
     assert.ok(
@@ -589,7 +748,10 @@ test("a `ready` report with skipped rows NEVER claims 'every check passed'", () 
   // A skip must not move the verdict ("we didn't look" is not "it's broken") — but it must not
   // be laundered into a pass by the one sentence the operator actually reads either.
   const ports = classifyServerReadiness(
-    probe({ port80: { kind: "unsupported" }, port443: { kind: "unsupported" } }),
+    probe({
+      port80: { kind: "unsupported" },
+      port443: { kind: "unsupported" },
+    }),
   );
   assert.equal(ports.verdict, "ready");
   assert.ok(!/every check passed/.test(ports.summary), ports.summary);
@@ -618,8 +780,14 @@ test("the Traefik row states what it OBSERVED, and never promises routing works"
   // The signal is a substring match over running containers' image/name — it matches a
   // bring-your-own proxy, and cannot see whether the container is on the `deplo` network app
   // routers are pinned to. The copy may not turn that into a guarantee.
-  const detail = byId(classifyServerReadiness(probe()), "routing.traefik").detail;
-  assert.ok(!/\bso apps\b/i.test(detail), `promised a routing outcome: ${detail}`);
+  const detail = byId(
+    classifyServerReadiness(probe()),
+    "routing.traefik",
+  ).detail;
+  assert.ok(
+    !/\bso apps\b/i.test(detail),
+    `promised a routing outcome: ${detail}`,
+  );
   assert.match(detail, /cannot verify/i);
 });
 

@@ -17,7 +17,9 @@ export async function generateMetadata(
   if (!(await hasCapability("manage_members"))) return { title: "Settings" };
   const { id } = await props.params;
   const member = (await listMembers()).find((m) => m.userId === id);
-  return { title: member ? `Settings · @${member.username}` : "Settings · Members" };
+  return {
+    title: member ? `Settings · @${member.username}` : "Settings · Members",
+  };
 }
 
 /**

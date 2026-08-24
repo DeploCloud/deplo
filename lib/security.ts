@@ -77,9 +77,11 @@ export async function rateLimit(
     // pglite the array itself. Both are handled rather than picked, because the
     // suite runs on one and production on the other - a limiter that silently
     // returned "allowed" under pglite would test as working and not be.
-    const rows = (Array.isArray(result)
-      ? result
-      : ((result as { rows?: unknown[] })?.rows ?? [])) as {
+    const rows = (
+      Array.isArray(result)
+        ? result
+        : ((result as { rows?: unknown[] })?.rows ?? [])
+    ) as {
       count: number | string;
       retry_after: number | string;
     }[];
@@ -107,7 +109,9 @@ export async function rateLimit(
  */
 export async function sweepRateLimits(): Promise<void> {
   try {
-    await getDb().execute(sql`delete from rate_limits where "reset_at" <= now()`);
+    await getDb().execute(
+      sql`delete from rate_limits where "reset_at" <= now()`,
+    );
   } catch {
     // Housekeeping. A failure here costs disk, never correctness.
   }

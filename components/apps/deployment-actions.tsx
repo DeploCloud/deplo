@@ -159,92 +159,95 @@ export function DeploymentActions({
   const detailHref = `/apps/${appSlug}/deployments/${id}`;
   return (
     <>
-    <div className="flex items-center justify-end gap-0.5">
-      <SimpleTooltip content="Open this deployment — build logs & details">
-        <Button variant="ghost" size="icon-sm" asChild>
-          <Link href={detailHref} aria-label="Open deployment">
-            <ScrollText className="size-4" />
-          </Link>
-        </Button>
-      </SimpleTooltip>
-
-      {url && (
-        <SimpleTooltip content="Open the live app in a new tab">
+      <div className="flex items-center justify-end gap-0.5">
+        <SimpleTooltip content="Open this deployment — build logs & details">
           <Button variant="ghost" size="icon-sm" asChild>
-            <a
-              href={url}
-              target="_blank"
-              rel="noopener noreferrer"
-              aria-label="Visit live app"
-            >
-              <ExternalLink className="size-4" />
-            </a>
+            <Link href={detailHref} aria-label="Open deployment">
+              <ScrollText className="size-4" />
+            </Link>
           </Button>
         </SimpleTooltip>
-      )}
 
-      <DropdownMenu>
-        <DropdownMenuTrigger asChild>
-          <Button
-            variant="ghost"
-            size="icon-sm"
-            aria-label="Deployment actions"
-            disabled={pending}
-          >
-            <MoreHorizontal className="size-4" />
-          </Button>
-        </DropdownMenuTrigger>
-        <DropdownMenuContent align="end" className="w-52">
-          <DropdownMenuItem onClick={redeploy} disabled={pending || !canDeploy}>
-            <RotateCw className="size-4" />
-            Redeploy
-          </DropdownMenuItem>
-          {canRollback && (
-            <DropdownMenuItem
-              onSelect={() => setRollbackOpen(true)}
-              disabled={pending || !canRollbackApps}
-            >
-              <Undo2 className="size-4" />
-              Rollback
-            </DropdownMenuItem>
-          )}
-          {pullRequestUrl && (
-            <DropdownMenuItem asChild>
-              <a href={pullRequestUrl} target="_blank" rel="noreferrer">
-                <GitPullRequest className="size-4" />
-                Open pull request
+        {url && (
+          <SimpleTooltip content="Open the live app in a new tab">
+            <Button variant="ghost" size="icon-sm" asChild>
+              <a
+                href={url}
+                target="_blank"
+                rel="noopener noreferrer"
+                aria-label="Visit live app"
+              >
+                <ExternalLink className="size-4" />
               </a>
+            </Button>
+          </SimpleTooltip>
+        )}
+
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <Button
+              variant="ghost"
+              size="icon-sm"
+              aria-label="Deployment actions"
+              disabled={pending}
+            >
+              <MoreHorizontal className="size-4" />
+            </Button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="end" className="w-52">
+            <DropdownMenuItem
+              onClick={redeploy}
+              disabled={pending || !canDeploy}
+            >
+              <RotateCw className="size-4" />
+              Redeploy
             </DropdownMenuItem>
-          )}
-          {canCancel && (
-            <>
-              <DropdownMenuSeparator />
+            {canRollback && (
               <DropdownMenuItem
-                variant="destructive"
-                onClick={cancel}
-                disabled={pending || !canDeploy}
+                onSelect={() => setRollbackOpen(true)}
+                disabled={pending || !canRollbackApps}
               >
-                <Ban className="size-4" />
-                {isBuilding ? "Stop build" : "Cancel deploy"}
+                <Undo2 className="size-4" />
+                Rollback
               </DropdownMenuItem>
-            </>
-          )}
-          {canDelete && isTerminal && (
-            <>
-              <DropdownMenuSeparator />
-              <DropdownMenuItem
-                variant="destructive"
-                onSelect={() => setDeleteOpen(true)}
-                disabled={pending}
-              >
-                <Trash2 className="size-4" />
-                Delete
+            )}
+            {pullRequestUrl && (
+              <DropdownMenuItem asChild>
+                <a href={pullRequestUrl} target="_blank" rel="noreferrer">
+                  <GitPullRequest className="size-4" />
+                  Open pull request
+                </a>
               </DropdownMenuItem>
-            </>
-          )}
-        </DropdownMenuContent>
-      </DropdownMenu>
-    </div>
+            )}
+            {canCancel && (
+              <>
+                <DropdownMenuSeparator />
+                <DropdownMenuItem
+                  variant="destructive"
+                  onClick={cancel}
+                  disabled={pending || !canDeploy}
+                >
+                  <Ban className="size-4" />
+                  {isBuilding ? "Stop build" : "Cancel deploy"}
+                </DropdownMenuItem>
+              </>
+            )}
+            {canDelete && isTerminal && (
+              <>
+                <DropdownMenuSeparator />
+                <DropdownMenuItem
+                  variant="destructive"
+                  onSelect={() => setDeleteOpen(true)}
+                  disabled={pending}
+                >
+                  <Trash2 className="size-4" />
+                  Delete
+                </DropdownMenuItem>
+              </>
+            )}
+          </DropdownMenuContent>
+        </DropdownMenu>
+      </div>
       <RollbackDialog
         open={rollbackOpen}
         onOpenChange={setRollbackOpen}

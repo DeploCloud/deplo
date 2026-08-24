@@ -64,7 +64,10 @@ export function ShellFrame({
 
   return (
     <div
-      className={cn("flex w-full", full ? "h-dvh overflow-hidden" : "min-h-screen")}
+      className={cn(
+        "flex w-full",
+        full ? "h-dvh overflow-hidden" : "min-h-screen",
+      )}
     >
       {sidebar}
       <div className="flex min-w-0 flex-1 flex-col">

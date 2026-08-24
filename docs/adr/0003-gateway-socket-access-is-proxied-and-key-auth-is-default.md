@@ -32,10 +32,11 @@ control-plane container — a re-escalation path).
    `docker exec` requires `CONTAINERS=1`+`POST=1`, which simultaneously permits
    `POST /containers/create`, `/start`, and `PUT /containers/{id}/archive` (`docker cp` →
    host-fs write). So the sidecar ships our **own HAProxy default-deny allowlist**
-   (`socket-filter.cfg`) that permits *only* `GET /_ping`, `GET /version`,
+   (`socket-filter.cfg`) that permits _only_ `GET /_ping`, `GET /version`,
    `GET /containers/{id}/json`, `POST /containers/{id}/exec`, and the `/exec/{id}/*`
    endpoints — nothing that can create, start, copy into, or run a container. This is
    what actually makes the which-verb layer real.
+
 2. **Key auth is the default; password auth is an explicit per-user opt-in.** Password
    on a public port is a brute-force target; `MaxAuthTries`/`LoginGraceTime` still apply
    when a user opts into a password.
@@ -51,6 +52,6 @@ control-plane container — a re-escalation path).
   (they share the `/containers` path family). The allowlist is a small, auditable config.
 - The proxy gates verbs, not target containers, so the wrapper still must guarantee the
   exec target is the user's own dev container (and never the control-plane container) —
-  e.g. the allowlist permits `exec` into *any* container id; only the wrapper restricts
-  *which* id.
+  e.g. the allowlist permits `exec` into _any_ container id; only the wrapper restricts
+  _which_ id.
 - Password-only users are possible but never the default path the UI steers toward.

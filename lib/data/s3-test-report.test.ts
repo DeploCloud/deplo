@@ -78,18 +78,20 @@ test("splitEndpoint derives TLS from the scheme and defaults to https", () => {
 
 test("endpointUrl always spells the scheme out", () => {
   assert.equal(endpointUrl("s3.example.com"), "https://s3.example.com");
-  assert.equal(endpointUrl("http://minio.local:9000"), "http://minio.local:9000");
+  assert.equal(
+    endpointUrl("http://minio.local:9000"),
+    "http://minio.local:9000",
+  );
 });
 
 /* ---- step classification ------------------------------------------- */
 
 test("classifyFailedStep reads the agent's own message prefixes", () => {
+  assert.equal(classifyFailedStep('reach bucket "b": Access Denied'), "bucket");
   assert.equal(
-    classifyFailedStep('reach bucket "b": Access Denied'),
-    "bucket",
-  );
-  assert.equal(
-    classifyFailedStep('bucket "b" does not exist (or the credentials cannot see it)'),
+    classifyFailedStep(
+      'bucket "b" does not exist (or the credentials cannot see it)',
+    ),
     "bucket",
   );
   assert.equal(
@@ -97,7 +99,9 @@ test("classifyFailedStep reads the agent's own message prefixes", () => {
     "write",
   );
   assert.equal(
-    classifyFailedStep('s3: cannot resolve endpoint host "nope.invalid": no such host'),
+    classifyFailedStep(
+      's3: cannot resolve endpoint host "nope.invalid": no such host',
+    ),
     "client",
   );
   assert.equal(
@@ -110,7 +114,10 @@ test("classifyFailedStep reads the agent's own message prefixes", () => {
 });
 
 test("classifyFailedStep blames NO step for a message it cannot place", () => {
-  assert.equal(classifyFailedStep("something entirely new from minio-go"), null);
+  assert.equal(
+    classifyFailedStep("something entirely new from minio-go"),
+    null,
+  );
   assert.equal(classifyFailedStep(""), null);
 });
 
@@ -124,9 +131,15 @@ test("a passing probe marks every step passed and ends on success", () => {
   assert.ok(r.steps.every((s) => s.status === "passed"));
   assert.equal(r.lines.at(-1)?.level, "success");
   // The write probe names the reserved key it round-trips.
-  assert.match(statusOf(r, "write") ? r.steps[3].detail : "", /\.deplo-s3check/);
+  assert.match(
+    statusOf(r, "write") ? r.steps[3].detail : "",
+    /\.deplo-s3check/,
+  );
   // Nothing red anywhere.
-  assert.equal(r.lines.some((l) => l.level === "error"), false);
+  assert.equal(
+    r.lines.some((l) => l.level === "error"),
+    false,
+  );
 });
 
 test("the passing report still says the cleanup delete is best effort", () => {
@@ -151,13 +164,18 @@ test("a read-only key fails at the WRITE step, with the earlier steps passed", (
   // Never claim the step after the failure ran.
   assert.equal(statusOf(r, "cleanup"), "skipped");
   // The agent's words appear VERBATIM in the log.
-  assert.ok(r.lines.some((l) => l.text === 'write probe to bucket "deplo-backups": Access Denied.'));
+  assert.ok(
+    r.lines.some(
+      (l) => l.text === 'write probe to bucket "deplo-backups": Access Denied.',
+    ),
+  );
 });
 
 test("a missing bucket fails at the BUCKET step and skips the write", () => {
   const r = report({
     ok: false,
-    error: 'bucket "deplo-backups" does not exist (or the credentials cannot see it)',
+    error:
+      'bucket "deplo-backups" does not exist (or the credentials cannot see it)',
   });
   assert.equal(statusOf(r, "bucket"), "failed");
   assert.equal(statusOf(r, "write"), "skipped");
@@ -185,13 +203,18 @@ test("no agent to run the probe is a verdict, blamed on the agent step", () => {
 });
 
 test("an unplaceable failure claims only the step we can vouch for", () => {
-  const r = report({ ok: false, error: "minio: unexpected EOF from the future" });
+  const r = report({
+    ok: false,
+    error: "minio: unexpected EOF from the future",
+  });
   // The agent answered, so that much is known; nothing else is asserted.
   assert.deepEqual(
     r.steps.map((s) => [s.key, s.status]),
     [["agent", "passed"]],
   );
-  assert.ok(r.lines.some((l) => l.text === "minio: unexpected EOF from the future"));
+  assert.ok(
+    r.lines.some((l) => l.text === "minio: unexpected EOF from the future"),
+  );
 });
 
 test("servers skipped on the way are logged as warnings", () => {
@@ -213,7 +236,10 @@ test("a never-tested destination reports `never`, not a failure", () => {
   assert.equal(r.steps.length, 0);
   // It still offers the reproduce commands (they need no verdict).
   assert.match(r.command, /head-bucket/);
-  assert.equal(r.lines.some((l) => l.level === "error"), false);
+  assert.equal(
+    r.lines.some((l) => l.level === "error"),
+    false,
+  );
 });
 
 /* ---- the reproduce commands ---------------------------------------- */
@@ -284,7 +310,9 @@ test("a non-AWS provider is told to use path-style addressing; AWS is not", () =
  * problem: it tells the reader deplo went looking for a bucket, which is not
  * what happened, and the reproduce block is unrunnable.
  */
-const serverReport = (over: Partial<Parameters<typeof buildS3TestReport>[0]> = {}) =>
+const serverReport = (
+  over: Partial<Parameters<typeof buildS3TestReport>[0]> = {},
+) =>
   buildS3TestReport({
     target: serverTarget,
     ok: true,
@@ -301,11 +329,17 @@ test("a server destination reports the folder sequence, never S3", () => {
     r.steps.map((s) => s.key),
     ["agent", "root", "write", "cleanup"],
   );
-  const text = [...r.lines.map((l) => l.text), ...r.steps.map((s) => `${s.label} ${s.detail}`)]
+  const text = [
+    ...r.lines.map((l) => l.text),
+    ...r.steps.map((s) => `${s.label} ${s.detail}`),
+  ]
     .join("\n")
     .toLowerCase();
   for (const word of ["bucket", "endpoint", "s3", "putobject", "region"])
-    assert.ok(!text.includes(word), `report should not mention "${word}": ${text}`);
+    assert.ok(
+      !text.includes(word),
+      `report should not mention "${word}": ${text}`,
+    );
   assert.match(text, /\/var\/lib\/deplo\/backups/);
 });
 
@@ -326,13 +360,22 @@ test("a folder probe blames the step the agent's own message names", () => {
     "root",
   );
   assert.equal(
-    classifyFailedStep("cannot write to /mnt/ro: read-only file system", "server"),
+    classifyFailedStep(
+      "cannot write to /mnt/ro: read-only file system",
+      "server",
+    ),
     "write",
   );
   // Unrecognised ⇒ blame nothing, exactly as on the S3 side.
-  assert.equal(classifyFailedStep("something new from the agent", "server"), null);
+  assert.equal(
+    classifyFailedStep("something new from the agent", "server"),
+    null,
+  );
   // And an S3 message must not be read with the folder rules.
-  assert.equal(classifyFailedStep('write probe to bucket "b": Access Denied'), "write");
+  assert.equal(
+    classifyFailedStep('write probe to bucket "b": Access Denied'),
+    "write",
+  );
 });
 
 test("a read-only folder fails at the write step, with the root already passed", () => {
@@ -344,11 +387,17 @@ test("a read-only folder fails at the write step, with the root already passed",
   assert.equal(statusOf(r, "root"), "passed");
   assert.equal(statusOf(r, "write"), "failed");
   assert.equal(statusOf(r, "cleanup"), "skipped");
-  assert.ok(r.lines.some((l) => l.level === "error" && l.text.includes("read-only")));
+  assert.ok(
+    r.lines.some((l) => l.level === "error" && l.text.includes("read-only")),
+  );
 });
 
 test("an unreachable storage server blames reaching the server, not the folder", () => {
-  const r = serverReport({ ok: false, error: "agent unreachable", serverName: "" });
+  const r = serverReport({
+    ok: false,
+    error: "agent unreachable",
+    serverName: "",
+  });
   assert.equal(statusOf(r, "agent"), "failed");
   assert.equal(statusOf(r, "root"), "skipped");
   assert.match(r.steps[0].detail, /did not run the check/);
@@ -367,7 +416,10 @@ test("an untested managed folder admits it does not know the path yet", () => {
   const bare = { ...serverTarget, path: "" };
   // No invented path anywhere: the agent picks it, and deplo learns it from the
   // first successful check.
-  assert.ok(!reproduceCommand(bare).includes("/var/lib/deplo"), reproduceCommand(bare));
+  assert.ok(
+    !reproduceCommand(bare).includes("/var/lib/deplo"),
+    reproduceCommand(bare),
+  );
   assert.match(reproduceCommand(bare), /FOLDER=\s/);
   const r = emptyS3TestReport(bare);
   assert.equal(r.never, true);

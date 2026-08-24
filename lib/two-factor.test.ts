@@ -135,7 +135,10 @@ async function enableTotp(
 }
 
 /** Enrol `USER_1` fully (enable + verify) and return their backup codes. */
-async function enrolUser1(): Promise<{ cookie: string; backupCodes: string[] }> {
+async function enrolUser1(): Promise<{
+  cookie: string;
+  backupCodes: string[];
+}> {
   const auth = requireAuth();
   const cookie = await signIn(EMAIL_1, PASSWORD);
   const headers = new Headers({ cookie });
@@ -250,9 +253,13 @@ test("a backup code works exactly once", async () => {
 
   // A backup code answers the LOGIN challenge, so it needs the short-lived
   // two-factor cookie that the password step hands back — not a session cookie.
-  const challenge = async () => new Headers({ cookie: await signIn(EMAIL_1, PASSWORD) });
+  const challenge = async () =>
+    new Headers({ cookie: await signIn(EMAIL_1, PASSWORD) });
 
-  await auth.api.verifyBackupCode({ body: { code }, headers: await challenge() });
+  await auth.api.verifyBackupCode({
+    body: { code },
+    headers: await challenge(),
+  });
   await assert.rejects(
     async () =>
       auth.api.verifyBackupCode({ body: { code }, headers: await challenge() }),
@@ -264,7 +271,10 @@ test("verifyTwoFactorCode reports the plugin's own message on a bad code", async
   await enrolUser1();
   const res = await verifyTwoFactorCode("000000", "totp");
   assert.equal(res.ok, false);
-  assert.ok((res.error ?? "").length > 0, "the reason is surfaced, not swallowed");
+  assert.ok(
+    (res.error ?? "").length > 0,
+    "the reason is surfaced, not swallowed",
+  );
 });
 
 /* ------------------------------------------------------------------ */
@@ -275,7 +285,10 @@ test("a team mandate blocks mutations, reads AND the bearer API", async () => {
   // Mint the token BEFORE the mandate exists: the point is that an already-issued
   // token stops working, not that minting one is blocked (it is, but that is just
   // requireCapability again).
-  const raw = await asUser(USER_1, async () => (await createToken({ name: "CI" })).raw);
+  const raw = await asUser(
+    USER_1,
+    async () => (await createToken({ name: "CI" })).raw,
+  );
   await requireForTeam();
 
   // Mutations.
@@ -315,7 +328,10 @@ test("the same member passes every gate once enrolled", async () => {
     assert.equal(ctx.userId, USER_1);
   });
 
-  const raw = await asUser(USER_1, async () => (await createToken({ name: "CI" })).raw);
+  const raw = await asUser(
+    USER_1,
+    async () => (await createToken({ name: "CI" })).raw,
+  );
   const principal = await authenticateToken(raw);
   assert.equal(principal?.userId, USER_1);
   assert.equal(principal?.teamId, TEAM_A);

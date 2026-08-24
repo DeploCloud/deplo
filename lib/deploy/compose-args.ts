@@ -68,7 +68,9 @@ export function validateComposeUpArgs(raw: string): string | null {
       return `"${token.slice(0, 20)}…" is longer than ${COMPOSE_UP_ARGS_MAX_TOKEN_LENGTH} characters.`;
     if (!TOKEN_RE.test(token))
       return `"${token}" isn't a plain flag or value. Write each one separately, with no quotes, and no shell syntax — the command is run directly, not through a shell.`;
-    const name = token.includes("=") ? token.slice(0, token.indexOf("=")) : token;
+    const name = token.includes("=")
+      ? token.slice(0, token.indexOf("="))
+      : token;
     if (DENIED.has(name))
       return `"${name}" is Deplo's to set — it decides which stack comes up. Everything else is yours.`;
   }
@@ -90,7 +92,8 @@ export function composeUpCommandPreview(opts: {
 }): string {
   const stack = `/data/stacks/${opts.slug}.yml`;
   const parts = ["docker", "compose", "-p", `deplo-${opts.slug}`, "-f", stack];
-  if (opts.usesEnvFile) parts.push("--env-file", `/data/stacks/${opts.slug}.env`);
+  if (opts.usesEnvFile)
+    parts.push("--env-file", `/data/stacks/${opts.slug}.env`);
   parts.push("up", "-d", "--remove-orphans", ...opts.extra);
   return parts.join(" ");
 }

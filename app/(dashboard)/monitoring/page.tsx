@@ -32,13 +32,15 @@ export default async function MonitoringPage() {
       </div>
     );
 
-  const [servers, initialMetrics, settings, canManageInfra] = await Promise.all([
-    listServers(),
-    getInitialServerMetrics(),
-    getMonitoringSettings(),
-    // Cosmetic gate for the "save metrics" switch; the mutation enforces it.
-    hasCapability("manage_monitoring"),
-  ]);
+  const [servers, initialMetrics, settings, canManageInfra] = await Promise.all(
+    [
+      listServers(),
+      getInitialServerMetrics(),
+      getMonitoringSettings(),
+      // Cosmetic gate for the "save metrics" switch; the mutation enforces it.
+      hasCapability("manage_monitoring"),
+    ],
+  );
 
   return (
     <div className="space-y-6">

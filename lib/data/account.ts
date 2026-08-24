@@ -109,10 +109,7 @@ export async function updateEmail(input: {
     )
     .limit(1);
   if (dup[0]) throw new Error("An account with this email already exists");
-  await db
-    .update(usersTable)
-    .set({ email })
-    .where(eq(usersTable.id, user.id));
+  await db.update(usersTable).set({ email }).where(eq(usersTable.id, user.id));
 }
 
 /** Change the current user's password, after verifying the current one. */

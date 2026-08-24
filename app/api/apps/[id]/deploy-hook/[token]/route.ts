@@ -48,9 +48,10 @@ export async function GET() {
     {
       error:
         "Method not allowed. A deploy hook is triggered with POST, and the call " +
-        'must carry an API token: `Authorization: Bearer deplo_…`. Create one in ' +
+        "must carry an API token: `Authorization: Bearer deplo_…`. Create one in " +
         "Settings → API tokens.",
-      example: 'curl -X POST -H "Authorization: Bearer deplo_your_token" <this url>',
+      example:
+        'curl -X POST -H "Authorization: Bearer deplo_your_token" <this url>',
     },
     { status: 405, headers: { Allow: "POST" } },
   );

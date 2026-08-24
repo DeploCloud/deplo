@@ -62,7 +62,12 @@ async function seedTeam(opts: { suspendOwner?: boolean } = {}) {
     teams: [{ id: TEAM_A, slug: "alpha", founderUserId: FOUNDER }],
     users: [
       { id: FOUNDER, teamId: TEAM_A, role: "owner" },
-      { id: OWNER, teamId: TEAM_A, role: "owner", suspended: opts.suspendOwner },
+      {
+        id: OWNER,
+        teamId: TEAM_A,
+        role: "owner",
+        suspended: opts.suspendOwner,
+      },
       { id: MEMBER, teamId: TEAM_A, role: "member" },
     ],
   });
@@ -203,9 +208,10 @@ test("after the transfer, protection follows the crown", async () => {
   await asUser(OWNER, async () => {
     // The new founder is protected by the guard that used to protect FOUNDER.
     await assert.rejects(
-      () => runWithIdentity({ userId: FOUNDER, teamId: TEAM_A }, () =>
-        removeMember(OWNER),
-      ),
+      () =>
+        runWithIdentity({ userId: FOUNDER, teamId: TEAM_A }, () =>
+          removeMember(OWNER),
+        ),
       /primary owner can't be removed/,
     );
     // And the ex-founder is now an ordinary owner: removable by the new one.

@@ -19,11 +19,12 @@ import {
 const cred = { baseUrl: "http://dokploy.test:3000", apiKey: "k" };
 
 function answers(body: unknown): void {
-  __setDokployFetchForTest(async () =>
-    new Response(JSON.stringify(body), {
-      status: 200,
-      headers: { "content-type": "application/json" },
-    }),
+  __setDokployFetchForTest(
+    async () =>
+      new Response(JSON.stringify(body), {
+        status: 200,
+        headers: { "content-type": "application/json" },
+      }),
   );
 }
 
@@ -48,7 +49,10 @@ test("a real compose comes through, however Dokploy wraps it", async (t) => {
   answers("services:\n  web:\n    image: nginx\n");
   assert.match((await getConvertedCompose(cred, "c1")) ?? "", /^services:/);
 
-  answers({ compose: "null", resolved: "services:\n  web:\n    image: nginx\n" });
+  answers({
+    compose: "null",
+    resolved: "services:\n  web:\n    image: nginx\n",
+  });
   assert.match((await getConvertedCompose(cred, "c1")) ?? "", /^services:/);
 });
 
@@ -66,14 +70,19 @@ test("a connection failure says which one it was", () => {
   assert.match(withCode("CERT_HAS_EXPIRED"), /certificate/);
 
   const timeout = describeDokployTransportError(
-    Object.assign(new Error("The operation was aborted"), { name: "TimeoutError" }),
+    Object.assign(new Error("The operation was aborted"), {
+      name: "TimeoutError",
+    }),
     "https://dokploy.test",
   );
   assert.match(timeout, /did not answer within/);
 
   // Even an unrecognised one names the address instead of saying "fetch failed".
   assert.match(
-    describeDokployTransportError(new TypeError("fetch failed"), "https://dokploy.test"),
+    describeDokployTransportError(
+      new TypeError("fetch failed"),
+      "https://dokploy.test",
+    ),
     /Could not reach Dokploy at https:\/\/dokploy\.test/,
   );
 });
@@ -81,7 +90,9 @@ test("a connection failure says which one it was", () => {
 test("a failure raised by the transport reaches the caller readable", async (t) => {
   t.after(__resetDokployFetchForTest);
   __setDokployFetchForTest(async () => {
-    throw Object.assign(new TypeError("fetch failed"), { cause: { code: "ECONNREFUSED" } });
+    throw Object.assign(new TypeError("fetch failed"), {
+      cause: { code: "ECONNREFUSED" },
+    });
   });
   await assert.rejects(listProjects(cred), /Nothing is listening/);
   // The compose call still swallows: a stack Dokploy cannot resolve is a report
@@ -90,5 +101,8 @@ test("a failure raised by the transport reaches the caller readable", async (t) 
 });
 
 test("the address keeps rejecting a key smuggled into it", () => {
-  assert.throws(() => normalizeDokployBaseUrl("https://user:pass@dokploy.test"), /API key field/);
+  assert.throws(
+    () => normalizeDokployBaseUrl("https://user:pass@dokploy.test"),
+    /API key field/,
+  );
 });

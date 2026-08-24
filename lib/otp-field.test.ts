@@ -85,7 +85,11 @@ test("pasting a whole code fills every box", () => {
 
 test("pasting tolerates the separators and whitespace people actually paste", () => {
   for (const raw of ["123 456", "123-456", " 123456\n", "code: 123456"])
-    assert.equal(pasteDigits("", 0, raw, L).value, "123456", `paste of ${JSON.stringify(raw)}`);
+    assert.equal(
+      pasteDigits("", 0, raw, L).value,
+      "123456",
+      `paste of ${JSON.stringify(raw)}`,
+    );
 });
 
 test("an overlong paste is truncated, not refused", () => {
@@ -103,7 +107,11 @@ test("pasting mid-field overwrites from the caret", () => {
 });
 
 test("the caret never moves past the first empty box", () => {
-  assert.equal(moveCaret("123", 2, 1, L), 3, "one past the last digit is legal");
+  assert.equal(
+    moveCaret("123", 2, 1, L),
+    3,
+    "one past the last digit is legal",
+  );
   assert.equal(moveCaret("123", 3, 1, L), 3, "but no further");
   assert.equal(moveCaret("123", 0, -1, L), 0, "and never before the first");
   assert.equal(moveCaret("123456", 5, 1, L), 5, "nor past the last box");
@@ -112,7 +120,11 @@ test("the caret never moves past the first empty box", () => {
 test("caretFor is where focus lands after any external change", () => {
   assert.equal(caretFor("", L), 0);
   assert.equal(caretFor("123", L), 3);
-  assert.equal(caretFor("123456", L), 5, "a full field keeps focus on the last box");
+  assert.equal(
+    caretFor("123456", L),
+    5,
+    "a full field keeps focus on the last box",
+  );
 });
 
 test("the model works at other lengths", () => {
@@ -138,5 +150,8 @@ test("replacing a digit is still a keystroke, not a fill", () => {
 });
 
 test("a single digit into an empty box behaves the same either way", () => {
-  assert.deepEqual(typeOrFill("12", 2, "3", true, L), typeDigit("12", 2, "3", L));
+  assert.deepEqual(
+    typeOrFill("12", 2, "3", true, L),
+    typeDigit("12", 2, "3", L),
+  );
 });

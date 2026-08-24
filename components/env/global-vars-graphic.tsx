@@ -63,11 +63,7 @@ export function GlobalVarsGraphic({ className }: { className?: string }) {
         <rect x="44" y="52" width="32" height="30" rx="5" />
         <rect x="82" y="52" width="32" height="30" rx="5" />
       </g>
-      <g
-        strokeWidth="3"
-        strokeLinecap="round"
-        className="stroke-border"
-      >
+      <g strokeWidth="3" strokeLinecap="round" className="stroke-border">
         <line x1="13" y1="60" x2="24" y2="60" />
         <line x1="51" y1="60" x2="62" y2="60" />
         <line x1="89" y1="60" x2="100" y2="60" />

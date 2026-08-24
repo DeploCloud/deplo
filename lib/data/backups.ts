@@ -1,6 +1,15 @@
 import "server-only";
 
-import { and, count, desc, eq, inArray, isNotNull, isNull, lt } from "drizzle-orm";
+import {
+  and,
+  count,
+  desc,
+  eq,
+  inArray,
+  isNotNull,
+  isNull,
+  lt,
+} from "drizzle-orm";
 
 import { getDb } from "../db/client";
 import {
@@ -141,7 +150,9 @@ async function destinationExists(id: string, teamId: string): Promise<boolean> {
   const rows = await getDb()
     .select({ id: destinationTable.id })
     .from(destinationTable)
-    .where(and(eq(destinationTable.id, id), eq(destinationTable.teamId, teamId)))
+    .where(
+      and(eq(destinationTable.id, id), eq(destinationTable.teamId, teamId)),
+    )
     .limit(1);
   return rows.length > 0;
 }
@@ -151,7 +162,9 @@ async function destinationNameFor(id: string, teamId: string): Promise<string> {
   const rows = await getDb()
     .select({ name: destinationTable.name })
     .from(destinationTable)
-    .where(and(eq(destinationTable.id, id), eq(destinationTable.teamId, teamId)))
+    .where(
+      and(eq(destinationTable.id, id), eq(destinationTable.teamId, teamId)),
+    )
     .limit(1);
   return rows[0]?.name ?? "";
 }
@@ -189,9 +202,9 @@ export async function listBackups(): Promise<BackupDTO[]> {
 }
 
 /** Drop the schedules a project-scoped caller can't reach. Inert when unscoped. */
-async function filterBackupsToScope<T extends { targetKind: BackupTargetKind; appId: string | null }>(
-  rows: T[],
-): Promise<T[]> {
+async function filterBackupsToScope<
+  T extends { targetKind: BackupTargetKind; appId: string | null },
+>(rows: T[]): Promise<T[]> {
   // Either principal: a narrowed token and a member on a limited role reach the
   // same part of the team, so they see the same schedules — and a DATABASE
   // schedule belongs to neither, which is why the filter drops every row whose
@@ -223,7 +236,9 @@ async function filterBackupsToScope<T extends { targetKind: BackupTargetKind; ap
   );
   return rows.filter(
     (r) =>
-      r.targetKind === "app" && r.appId && (reach.get(r.appId)?.length ?? 0) > 0,
+      r.targetKind === "app" &&
+      r.appId &&
+      (reach.get(r.appId)?.length ?? 0) > 0,
   );
 }
 
@@ -283,7 +298,8 @@ function normalizeTimezone(tz: string | null | undefined): string {
   const raw = (tz ?? "").trim();
   if (!raw) return "UTC";
   const canonical = canonicalTimeZone(raw);
-  if (!canonical) throw new Error(`"${raw}" is not a timezone Deplo recognises`);
+  if (!canonical)
+    throw new Error(`"${raw}" is not a timezone Deplo recognises`);
   return canonical;
 }
 
@@ -324,12 +340,14 @@ export async function createBackup(input: {
     // they can't schedule a dump of one either — same answer their own reads
     // give (`loadDatabase`), and the same one for a narrowed token and a member
     // on a limited role.
-    if (!(await reachesWholeTeam()) || !(await databaseNameFor(databaseId, teamId)))
+    if (
+      !(await reachesWholeTeam()) ||
+      !(await databaseNameFor(databaseId, teamId))
+    )
       throw new Error("Database not found");
   } else {
     if (!appId) throw new Error("Select a project to back up");
-    if (!(await loadTeamApp(appId, teamId)))
-      throw new Error("App not found");
+    if (!(await loadTeamApp(appId, teamId))) throw new Error("App not found");
   }
 
   const b: Backup = {
@@ -410,7 +428,9 @@ function databaseDescriptor(db: Database): DatabaseDescriptor {
 }
 
 /** Map the structural project descriptor to the wire protobuf shape. */
-function toWireProjectDescriptor(d: ProjectBackupDescriptor): ProjectDescriptor {
+function toWireProjectDescriptor(
+  d: ProjectBackupDescriptor,
+): ProjectDescriptor {
   return {
     slug: d.slug,
     volumeNames: d.volumeNames,
@@ -456,7 +476,12 @@ async function resolveTarget(
     const dbRows = await getDb()
       .select()
       .from(databasesTable)
-      .where(and(eq(databasesTable.id, databaseId), eq(databasesTable.teamId, teamId)))
+      .where(
+        and(
+          eq(databasesTable.id, databaseId),
+          eq(databasesTable.teamId, teamId),
+        ),
+      )
       .limit(1);
     if (!dbRows[0]) throw new Error("Database not found");
     const db = assembleDatabase(dbRows[0]);
@@ -569,10 +594,17 @@ async function executeBackup(
   // "Stop" can reach this dump for exactly as long as it is running.
   const abort = new AbortController();
   backupRunsInFlight.set(runId, abort);
-  let creds: Awaited<ReturnType<typeof getDestinationWithSecretsForTeam>> | null = null;
+  let creds: Awaited<
+    ReturnType<typeof getDestinationWithSecretsForTeam>
+  > | null = null;
   try {
     creds = await getDestinationWithSecretsForTeam(teamId, opts.destinationId);
-    const target = await resolveTarget(teamId, opts.kind, opts.databaseId, opts.appId);
+    const target = await resolveTarget(
+      teamId,
+      opts.kind,
+      opts.databaseId,
+      opts.appId,
+    );
     label = target.label;
     activityAppId = target.appId;
     targetServerId = target.serverId;
@@ -611,7 +643,8 @@ async function executeBackup(
       objectKey,
       abort.signal,
     );
-    if (!result.ok) failure = result.error || "the agent reported a failed backup";
+    if (!result.ok)
+      failure = result.error || "the agent reported a failed backup";
 
     // Retention runs on success only (a failed run wrote no object). Best-effort:
     // a prune failure must never fail the backup the operator asked for.
@@ -671,7 +704,12 @@ async function executeBackup(
     const updated = await tx
       .update(backupRunsTable)
       .set(set)
-      .where(and(eq(backupRunsTable.id, runId), eq(backupRunsTable.status, "running")))
+      .where(
+        and(
+          eq(backupRunsTable.id, runId),
+          eq(backupRunsTable.status, "running"),
+        ),
+      )
       .returning();
     // The record can be gone (deleting a target sweeps its run history, and a
     // backup can be in flight when that happens) or no longer `running` (it was
@@ -689,7 +727,10 @@ async function executeBackup(
     if (opts.backupId) {
       await tx
         .update(backupsTable)
-        .set({ lastRunAt: finishedAt, lastStatus: failure ? "failed" : "success" })
+        .set({
+          lastRunAt: finishedAt,
+          lastStatus: failure ? "failed" : "success",
+        })
         .where(eq(backupsTable.id, opts.backupId));
     }
     return assembleBackupRun(updated[0]!);
@@ -792,7 +833,9 @@ async function pruneRetention(
   // A failed run owns no object — its record can always be dropped. A successful
   // run's record is dropped only once its object is confirmed gone.
   const removable = new Set(
-    doomed.filter((r) => r.status !== "success" || !r.objectKey).map((r) => r.id),
+    doomed
+      .filter((r) => r.status !== "success" || !r.objectKey)
+      .map((r) => r.id),
   );
   const toDelete = doomed.filter((r) => r.status === "success" && r.objectKey);
   if (toDelete.length) {
@@ -969,7 +1012,8 @@ async function runAdHocBackup(
   const teamId = membership.teamId;
   const user = (await getCurrentUser())!;
   if (kind === "app") {
-    if (!(await loadTeamApp(targetId, teamId))) throw new Error("App not found");
+    if (!(await loadTeamApp(targetId, teamId)))
+      throw new Error("App not found");
   } else if (
     // A principal who reaches only part of the team can't see any database, so
     // they can't dump one either — the same answer their own reads give.
@@ -1048,15 +1092,22 @@ export async function downloadBackupArtifact(runId: string): Promise<{
   const runRows = await getDb()
     .select()
     .from(backupRunsTable)
-    .where(and(eq(backupRunsTable.id, runId), eq(backupRunsTable.teamId, teamId)))
+    .where(
+      and(eq(backupRunsTable.id, runId), eq(backupRunsTable.teamId, teamId)),
+    )
     .limit(1);
   if (!runRows[0]) throw new Error("Backup run not found");
   const run = assembleBackupRun(runRows[0]);
   if (run.status !== "success")
-    throw new Error("This backup did not complete successfully and cannot be downloaded");
+    throw new Error(
+      "This backup did not complete successfully and cannot be downloaded",
+    );
   await requireBackupCapability(run, "restore_backups");
 
-  const creds = await getDestinationWithSecretsForTeam(teamId, run.destinationId);
+  const creds = await getDestinationWithSecretsForTeam(
+    teamId,
+    run.destinationId,
+  );
   const target = await downloadTargetFor(run, teamId);
   const label = target.label;
 
@@ -1072,7 +1123,12 @@ export async function downloadBackupArtifact(runId: string): Promise<{
     throw new Error(
       "No server on this instance can reach the destination this backup is kept in",
     );
-  const opened = await openArtifactDownload(creds, via, run.objectKey, run.sha256 ?? "");
+  const opened = await openArtifactDownload(
+    creds,
+    via,
+    run.objectKey,
+    run.sha256 ?? "",
+  );
 
   // Recorded HERE, when the stream opens, not when it finishes — and worded for
   // that instant. The audit-relevant fact is that this person was handed the
@@ -1116,10 +1172,16 @@ async function downloadTargetFor(
       .select({ name: databasesTable.name, serverId: databasesTable.serverId })
       .from(databasesTable)
       .where(
-        and(eq(databasesTable.id, run.databaseId), eq(databasesTable.teamId, teamId)),
+        and(
+          eq(databasesTable.id, run.databaseId),
+          eq(databasesTable.teamId, teamId),
+        ),
       )
       .limit(1);
-    return { label: rows[0]?.name ?? "database", serverId: rows[0]?.serverId ?? null };
+    return {
+      label: rows[0]?.name ?? "database",
+      serverId: rows[0]?.serverId ?? null,
+    };
   }
   const app = run.appId ? await loadAppGraph(run.appId) : null;
   return { label: app?.name ?? "app", serverId: app?.serverId ?? null };
@@ -1138,7 +1200,9 @@ function downloadFilename(label: string, run: BackupRun): string {
       .replace(/[^a-z0-9]+/g, "-")
       .replace(/^-|-$/g, "") || "backup";
   const stamp = run.startedAt.replace(/[:.]/g, "-").replace(/-\d{3}Z$/, "Z");
-  const ext = run.objectKey.replace(/^.*?\.(?=[a-z])/, "").replace(/\.age$/, "");
+  const ext = run.objectKey
+    .replace(/^.*?\.(?=[a-z])/, "")
+    .replace(/\.age$/, "");
   return `${slug}-${stamp}.${ext || "gz"}`;
 }
 
@@ -1157,17 +1221,24 @@ export async function restoreBackup(runId: string): Promise<void> {
   const runRows = await getDb()
     .select()
     .from(backupRunsTable)
-    .where(and(eq(backupRunsTable.id, runId), eq(backupRunsTable.teamId, teamId)))
+    .where(
+      and(eq(backupRunsTable.id, runId), eq(backupRunsTable.teamId, teamId)),
+    )
     .limit(1);
   if (!runRows[0]) throw new Error("Backup run not found");
   const run = assembleBackupRun(runRows[0]);
   if (run.status !== "success")
-    throw new Error("This backup did not complete successfully and cannot be restored");
+    throw new Error(
+      "This backup did not complete successfully and cannot be restored",
+    );
   // Restore is destructive (stop → wipe → untar), so it is gated exactly like the
   // backup it replays — on the run's own target.
   await requireBackupCapability(run, "restore_backups");
 
-  const creds = await getDestinationWithSecretsForTeam(teamId, run.destinationId);
+  const creds = await getDestinationWithSecretsForTeam(
+    teamId,
+    run.destinationId,
+  );
   const target = await resolveTarget(
     teamId,
     run.targetKind,
@@ -1187,40 +1258,41 @@ export async function restoreBackup(runId: string): Promise<void> {
       ? withKeyedLock(`app-lifecycle:${target.appId}`, fn)
       : fn();
   await withLifecycleLock(async () => {
-  try {
-    // Say what is happening BEFORE it starts. The agent stops the stack, wipes it
-    // and untars the snapshot, so for the whole restore the host honestly reports
-    // nothing running — which the status derivation, correctly for every other
-    // case, painted as a red "Not running" and then "Degraded". Persisted rather
-    // than local so it survives a reload and every client sees it, exactly like
-    // `stopping`; `setAppStatus` publishes it to the live subscription.
-    if (run.targetKind === "app" && target.appId)
-      await setAppStatus(target.appId, "restoring");
-    const result = await restoreFromDestination(
-      creds,
-      {
-        serverId: target.serverId,
-        kind: run.targetKind,
-        database: target.database,
-        project: target.project,
-      },
-      run.objectKey,
-      // The agent refuses an artifact that no longer hashes to what we recorded
-      // when we wrote it. Empty for a run older than integrity checking, which
-      // skips the check — see the warning the caller surfaces for those.
-      run.sha256 ?? "",
-    );
-    if (!result.ok) failure = result.error || "the agent reported a failed restore";
-  } catch (e) {
-    failure = (mapBackupUnsupported(e) as Error).message;
-  } finally {
-    // The agent's app restore ends in a Reroute, so a clean run leaves the stack
-    // up. A failed one leaves it in whatever state the failure found it: "error"
-    // is the honest answer, and the telemetry reconciler promotes it back to
-    // "active" on its own if the containers are in fact running.
-    if (run.targetKind === "app" && target.appId)
-      await setAppStatus(target.appId, failure ? "error" : "active");
-  }
+    try {
+      // Say what is happening BEFORE it starts. The agent stops the stack, wipes it
+      // and untars the snapshot, so for the whole restore the host honestly reports
+      // nothing running — which the status derivation, correctly for every other
+      // case, painted as a red "Not running" and then "Degraded". Persisted rather
+      // than local so it survives a reload and every client sees it, exactly like
+      // `stopping`; `setAppStatus` publishes it to the live subscription.
+      if (run.targetKind === "app" && target.appId)
+        await setAppStatus(target.appId, "restoring");
+      const result = await restoreFromDestination(
+        creds,
+        {
+          serverId: target.serverId,
+          kind: run.targetKind,
+          database: target.database,
+          project: target.project,
+        },
+        run.objectKey,
+        // The agent refuses an artifact that no longer hashes to what we recorded
+        // when we wrote it. Empty for a run older than integrity checking, which
+        // skips the check — see the warning the caller surfaces for those.
+        run.sha256 ?? "",
+      );
+      if (!result.ok)
+        failure = result.error || "the agent reported a failed restore";
+    } catch (e) {
+      failure = (mapBackupUnsupported(e) as Error).message;
+    } finally {
+      // The agent's app restore ends in a Reroute, so a clean run leaves the stack
+      // up. A failed one leaves it in whatever state the failure found it: "error"
+      // is the honest answer, and the telemetry reconciler promotes it back to
+      // "active" on its own if the containers are in fact running.
+      if (run.targetKind === "app" && target.appId)
+        await setAppStatus(target.appId, failure ? "error" : "active");
+    }
   });
 
   await recordActivity(
@@ -1333,7 +1405,10 @@ export async function prepareUploadRestore(input: {
 
   // Same gate as restoring a recorded run, and for the same reason: this
   // overwrites live data. For an app it also carries the folder grant.
-  await requireBackupCapability({ targetKind: input.kind, appId }, "restore_backups");
+  await requireBackupCapability(
+    { targetKind: input.kind, appId },
+    "restore_backups",
+  );
 
   const noun = input.kind === "app" ? "app" : "database";
   const lockKey = `${teamId} ${input.targetId}`;
@@ -1371,7 +1446,11 @@ export async function prepareUploadRestore(input: {
       ? { ageIdentity: input.recoveryKey.trim(), chunks: uploaded }
       : await wrapPlaintextUpload(uploaded);
 
-    opened = await openUploadRestore(target, wrapped.ageIdentity, wrapped.chunks);
+    opened = await openUploadRestore(
+      target,
+      wrapped.ageIdentity,
+      wrapped.chunks,
+    );
     // Only once the agent has the request: a dial that fails must not leave an
     // app parked on "restoring" with nothing running to move it off.
     if (target.appId) await setAppStatus(target.appId, "restoring");
@@ -1428,7 +1507,8 @@ export async function prepareUploadRestore(input: {
           if (ev.result) {
             settled = true;
             if (!ev.result.ok)
-              failure = ev.result.error || "the agent reported a failed restore";
+              failure =
+                ev.result.error || "the agent reported a failed restore";
           }
           yield ev;
         }
@@ -1564,7 +1644,12 @@ export async function listBackupRuns(filter: {
   const teamId = await requireActiveTeamId();
   // A run history is reachable only through a target the caller can reach: an
   // out-of-scope app, or any database, yields nothing for a scoped token.
-  if (!(await backupTargetInScope(filter.appId ? "app" : "database", filter.appId ?? filter.databaseId ?? "")))
+  if (
+    !(await backupTargetInScope(
+      filter.appId ? "app" : "database",
+      filter.appId ?? filter.databaseId ?? "",
+    ))
+  )
     return [];
   // Exactly one of appId/databaseId selects the target; neither ⇒ no runs.
   const targetWhere = filter.appId
@@ -1693,7 +1778,9 @@ export async function cancelBackupRun(runId: string): Promise<boolean> {
   const runRows = await getDb()
     .select()
     .from(backupRunsTable)
-    .where(and(eq(backupRunsTable.id, runId), eq(backupRunsTable.teamId, teamId)))
+    .where(
+      and(eq(backupRunsTable.id, runId), eq(backupRunsTable.teamId, teamId)),
+    )
     .limit(1);
   if (!runRows[0]) throw new Error("Backup not found");
   const run = assembleBackupRun(runRows[0]);
@@ -1709,7 +1796,9 @@ export async function cancelBackupRun(runId: string): Promise<boolean> {
       error: `Canceled by ${user.name}`,
       finishedAt: nowIso(),
     })
-    .where(and(eq(backupRunsTable.id, runId), eq(backupRunsTable.status, "running")))
+    .where(
+      and(eq(backupRunsTable.id, runId), eq(backupRunsTable.status, "running")),
+    )
     .returning({ id: backupRunsTable.id });
   if (stopped.length === 0) return false;
 
@@ -1719,7 +1808,9 @@ export async function cancelBackupRun(runId: string): Promise<boolean> {
     await getDb()
       .update(backupsTable)
       .set({ lastStatus: "canceled" })
-      .where(and(eq(backupsTable.id, run.backupId), eq(backupsTable.teamId, teamId)));
+      .where(
+        and(eq(backupsTable.id, run.backupId), eq(backupsTable.teamId, teamId)),
+      );
 
   // Only this process can hold the stream. One that does not (it restarted, or
   // another instance owns the run) still settles the record above, and
@@ -1772,7 +1863,9 @@ export async function deleteBackupRun(runId: string): Promise<void> {
   const runRows = await getDb()
     .select()
     .from(backupRunsTable)
-    .where(and(eq(backupRunsTable.id, runId), eq(backupRunsTable.teamId, teamId)))
+    .where(
+      and(eq(backupRunsTable.id, runId), eq(backupRunsTable.teamId, teamId)),
+    )
     .limit(1);
   if (!runRows[0]) throw new Error("Backup not found");
   const run = assembleBackupRun(runRows[0]);
@@ -1784,7 +1877,10 @@ export async function deleteBackupRun(runId: string): Promise<void> {
   // Only a successful run owns a file. A failed one never wrote anything, so its
   // record goes on its own with nothing to delete first.
   if (run.objectKey && run.status === "success") {
-    const creds = await getDestinationWithSecretsForTeam(teamId, run.destinationId);
+    const creds = await getDestinationWithSecretsForTeam(
+      teamId,
+      run.destinationId,
+    );
     // The DESTINATION decides which agent holds the bytes, never the workload's
     // host: an artifact on another server's disk would otherwise be looked for on
     // the app's own, come back "no such file", and leave the file behind while
@@ -1805,7 +1901,9 @@ export async function deleteBackupRun(runId: string): Promise<void> {
 
   await getDb()
     .delete(backupRunsTable)
-    .where(and(eq(backupRunsTable.id, runId), eq(backupRunsTable.teamId, teamId)));
+    .where(
+      and(eq(backupRunsTable.id, runId), eq(backupRunsTable.teamId, teamId)),
+    );
 
   await recordActivity(
     "backup",
@@ -1848,12 +1946,19 @@ export async function deleteBackupArtifacts(input: {
   // be here: a caller-supplied targetId must be one this request can reach.
   if (!(await backupTargetInScope(input.kind, input.targetId)))
     throw new Error("Not found");
-  const creds = await getDestinationWithSecretsForTeam(teamId, input.destinationId);
+  const creds = await getDestinationWithSecretsForTeam(
+    teamId,
+    input.destinationId,
+  );
 
   // Every run this target has in this destination. A `running` one is in flight
   // and owns no committed artifact yet; a failed one owns none at all.
   const runs = await getDb()
-    .select({ id: backupRunsTable.id, objectKey: backupRunsTable.objectKey, status: backupRunsTable.status })
+    .select({
+      id: backupRunsTable.id,
+      objectKey: backupRunsTable.objectKey,
+      status: backupRunsTable.status,
+    })
     .from(backupRunsTable)
     .where(
       and(
@@ -1862,7 +1967,9 @@ export async function deleteBackupArtifacts(input: {
         runTargetWhere(input.kind, input.targetId),
       ),
     );
-  const withArtifacts = runs.filter((r) => r.status === "success" && r.objectKey);
+  const withArtifacts = runs.filter(
+    (r) => r.status === "success" && r.objectKey,
+  );
 
   // The deletes (RPC) run BEFORE the record delete — outside any tx.
   // `input.serverId` is the TARGET's host and is only a fallback here: for a
@@ -1935,8 +2042,7 @@ export async function countBackupArtifacts(input: {
   targetId: string;
 }): Promise<number> {
   const teamId = await requireActiveTeamId();
-  if (!(await backupTargetInScope(input.kind, input.targetId)))
-    return 0;
+  if (!(await backupTargetInScope(input.kind, input.targetId))) return 0;
   const [row] = await getDb()
     .select({ n: count() })
     .from(backupRunsTable)
@@ -1960,13 +2066,15 @@ export async function backupDestinationsForTarget(input: {
   targetId: string;
 }): Promise<string[]> {
   const teamId = await requireActiveTeamId();
-  if (!(await backupTargetInScope(input.kind, input.targetId)))
-    return [];
+  if (!(await backupTargetInScope(input.kind, input.targetId))) return [];
   const rows = await getDb()
     .selectDistinct({ destinationId: backupRunsTable.destinationId })
     .from(backupRunsTable)
     .where(
-      and(eq(backupRunsTable.teamId, teamId), runTargetWhere(input.kind, input.targetId)),
+      and(
+        eq(backupRunsTable.teamId, teamId),
+        runTargetWhere(input.kind, input.targetId),
+      ),
     );
   return rows.map((r) => r.destinationId);
 }
@@ -1998,12 +2106,12 @@ export async function deleteAllBackupArtifacts(input: {
   const { teamId } =
     input.kind === "app"
       ? await requireAppCapability(input.targetId, "delete_apps")
-      // `delete_databases`, matching `deleteDatabase` — NOT `manage_backups`.
-      // This wipes every restore point a database has, with no undo, and
-      // `manage_backups` says "create, edit, disable and run backup schedules"
-      // and is handed out on that reading. Whoever may destroy the database may
-      // destroy its backups; nobody else.
-      : await requireCapability("delete_databases");
+      : // `delete_databases`, matching `deleteDatabase` — NOT `manage_backups`.
+        // This wipes every restore point a database has, with no undo, and
+        // `manage_backups` says "create, edit, disable and run backup schedules"
+        // and is handed out on that reading. Whoever may destroy the database may
+        // destroy its backups; nobody else.
+        await requireCapability("delete_databases");
   // `manage_backups` survives the project clamp, so the database branch above
   // would otherwise let a narrowed token wipe a target it can't reach. Mirrors
   // the check in {@link deleteBackupArtifacts}.
@@ -2177,13 +2285,21 @@ export async function sweepOrphanedBackupArtifacts(): Promise<number> {
     // A record with no artifact (a failed run, or one that never got a key) is
     // dropped outright: there is nothing on any disk to confirm.
     const removable = new Set(
-      runs.filter((r) => r.status !== "success" || !r.objectKey).map((r) => r.id),
+      runs
+        .filter((r) => r.status !== "success" || !r.objectKey)
+        .map((r) => r.id),
     );
-    const withArtifacts = runs.filter((r) => r.status === "success" && r.objectKey);
+    const withArtifacts = runs.filter(
+      (r) => r.status === "success" && r.objectKey,
+    );
     if (withArtifacts.length > 0) {
       try {
-        const creds = await getDestinationWithSecretsForTeam(teamId, destinationId);
-        const via = creds.destination.serverId ?? (await anyBackupCapableServer());
+        const creds = await getDestinationWithSecretsForTeam(
+          teamId,
+          destinationId,
+        );
+        const via =
+          creds.destination.serverId ?? (await anyBackupCapableServer());
         if (!via) {
           console.warn(
             `[backups] orphan sweep found no server able to reach destination ` +
@@ -2214,7 +2330,9 @@ export async function sweepOrphanedBackupArtifacts(): Promise<number> {
         .where(inArray(backupRunsTable.id, [...removable]));
   }
   if (reclaimed > 0)
-    console.log(`[deplo] reclaimed ${reclaimed} backup artifact(s) of deleted targets`);
+    console.log(
+      `[deplo] reclaimed ${reclaimed} backup artifact(s) of deleted targets`,
+    );
   return reclaimed;
 }
 
@@ -2266,7 +2384,9 @@ export async function reconcileInFlightBackupRuns(): Promise<number> {
       });
 
     const orphanedBackupIds = [
-      ...new Set(flipped.map((r) => r.backupId).filter((id): id is string => !!id)),
+      ...new Set(
+        flipped.map((r) => r.backupId).filter((id): id is string => !!id),
+      ),
     ];
     // A schedule stuck on `lastStatus:"running"` for an orphaned run settles too.
     if (orphanedBackupIds.length > 0) {
@@ -2305,6 +2425,9 @@ export async function reconcileInFlightBackupRuns(): Promise<number> {
 function formatBytes(n: number): string {
   if (n <= 0) return "0 B";
   const units = ["B", "KB", "MB", "GB", "TB"];
-  const i = Math.min(units.length - 1, Math.floor(Math.log(n) / Math.log(1024)));
+  const i = Math.min(
+    units.length - 1,
+    Math.floor(Math.log(n) / Math.log(1024)),
+  );
   return `${(n / Math.pow(1024, i)).toFixed(i === 0 ? 0 : 1)} ${units[i]}`;
 }

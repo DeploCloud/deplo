@@ -41,7 +41,9 @@ pgTypes.setTypeParser(TIMESTAMPTZ_OID, isoTimestampParser);
 pgTypes.setTypeParser(TIMESTAMP_OID, isoTimestampParser);
 
 export function databaseUrl(): string | undefined {
-  return process.env.DEPLO_DATABASE_URL || process.env.DATABASE_URL || undefined;
+  return (
+    process.env.DEPLO_DATABASE_URL || process.env.DATABASE_URL || undefined
+  );
 }
 
 export function isPostgresEnabled(): boolean {
@@ -69,7 +71,7 @@ if (!isPostgresEnabled() && !isTestEnv()) {
   throw new Error(
     "DEPLO_DATABASE_URL is required. Deplo uses PostgreSQL as its only " +
       "control-plane data store; set DEPLO_DATABASE_URL (or DATABASE_URL) to " +
-      "a Postgres connection string."
+      "a Postgres connection string.",
   );
 }
 
@@ -82,7 +84,7 @@ export function getPool(): Pool {
     throw new Error(
       "DEPLO_DATABASE_URL is required. Deplo uses PostgreSQL as its only " +
         "control-plane data store; set DEPLO_DATABASE_URL (or DATABASE_URL) to " +
-        "a Postgres connection string."
+        "a Postgres connection string.",
     );
   }
   pool = new Pool({

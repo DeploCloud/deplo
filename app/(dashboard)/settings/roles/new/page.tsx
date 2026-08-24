@@ -6,7 +6,9 @@ import { RoleEditor } from "@/components/settings/roles/role-editor";
 
 export const metadata = { title: "Settings · New role" };
 
-export default async function NewRolePage(props: PageProps<"/settings/roles/new">) {
+export default async function NewRolePage(
+  props: PageProps<"/settings/roles/new">,
+) {
   const sp = await props.searchParams;
   const from = Array.isArray(sp.from) ? sp.from[0] : sp.from;
   const canManage = await hasCapability("manage_roles");
@@ -20,7 +22,5 @@ export default async function NewRolePage(props: PageProps<"/settings/roles/new"
     listTeamScopeTree(),
   ]);
 
-  return (
-    <RoleEditor mode="create" basedOn={basedOn} canManage tree={tree} />
-  );
+  return <RoleEditor mode="create" basedOn={basedOn} canManage tree={tree} />;
 }

@@ -6,7 +6,12 @@ import { getDb } from "../db/client";
 import { apps as appsTable } from "../db/schema/control-plane";
 import { getCurrentUser } from "../auth";
 import { nowIso } from "../ids";
-import { constantTimeEquals, decryptSecret, encryptSecret, randomToken } from "../crypto";
+import {
+  constantTimeEquals,
+  decryptSecret,
+  encryptSecret,
+  randomToken,
+} from "../crypto";
 import { instancePublicBaseUrl } from "./instance-settings";
 import { recordActivity } from "./activity";
 import { appInTeam } from "./app-graph-load";
@@ -83,7 +88,9 @@ export async function revealDeployHook(appId: string): Promise<string> {
   const [row] = await getDb()
     .select({ tokenEnc: appsTable.deployHookTokenEnc })
     .from(appsTable)
-    .where(and(eq(appsTable.id, appId), eq(appsTable.teamId, membership.teamId)))
+    .where(
+      and(eq(appsTable.id, appId), eq(appsTable.teamId, membership.teamId)),
+    )
     .limit(1);
   if (!row) throw new Error("App not found");
 
@@ -133,7 +140,9 @@ export async function setDeployHookEnabled(
   const updated = await getDb()
     .update(appsTable)
     .set({ deployHookEnabled: value, updatedAt: nowIso() })
-    .where(and(eq(appsTable.id, appId), eq(appsTable.teamId, membership.teamId)))
+    .where(
+      and(eq(appsTable.id, appId), eq(appsTable.teamId, membership.teamId)),
+    )
     .returning({ id: appsTable.id });
   if (updated.length === 0) throw new Error("App not found");
   await recordActivity(
@@ -161,7 +170,9 @@ export type DeployHookRejection = "not-found" | "disabled" | "bad-token";
 export async function verifyDeployHookToken(
   appId: string,
   token: string,
-): Promise<{ ok: true; teamId: string } | { ok: false; reason: DeployHookRejection }> {
+): Promise<
+  { ok: true; teamId: string } | { ok: false; reason: DeployHookRejection }
+> {
   const [row] = await getDb()
     .select({
       teamId: appsTable.teamId,

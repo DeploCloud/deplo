@@ -14,8 +14,8 @@ The goal is real multi-server: each project picks a server, and the build **and*
 on that server — without installing the Deplo app (let alone a second frontend) on every box.
 The host-coupled half of the platform (Docker exec, the build pipeline, log/console streaming,
 host metrics) must move to the target; the data/policy/API half (GraphQL, Drizzle, auth,
-multi-tenancy) must not. This ADR records *what the remote unit of execution is* and *where the
-seam falls*. The full design and phasing live in
+multi-tenancy) must not. This ADR records _what the remote unit of execution is_ and _where the
+seam falls_. The full design and phasing live in
 [`docs/research/server-agent/PLAN.md`](../research/server-agent/PLAN.md); the eight decisions
 below are referenced there as D1–D8.
 
@@ -26,14 +26,14 @@ localhost deploy through the agent; Part B makes a remote agent real: call-home 
 remote `agent-client` routing with cert fingerprint pinning, the GIT source (the agent clones
 itself, D3), and reconnection/replay (D5). Part C moves the per-server **observability +
 lifecycle + files** surface onto the owning agent. Part D moves the last per-host singletons —
-**dev containers + the SSH gateway + the VS Code tunnel** — agent-side (below). *(Jul 2026:
+**dev containers + the SSH gateway + the VS Code tunnel** — agent-side (below). _(Jul 2026:
 dev mode was later removed from the product; Part D's dev/gateway/tunnel surface is no longer
-called by the control plane, its RPCs staying dormant in the additive-only V1 contract.)*
+called by the control plane, its RPCs staying dormant in the additive-only V1 contract.)_
 Two refinements
 emerged while building Part B and are recorded here:
 
 - **The trust direction inverts for a remote agent.** Part A's control plane minted the agent's
-  cert *and key* and wrote both to the agent's disk — possible only because the agent was local.
+  cert _and key_ and wrote both to the agent's disk — possible only because the agent was local.
   A remote agent's private key must never leave the remote, so the agent **generates its own key
   and sends a CSR** during call-home; the control plane CA **signs the CSR** (`signAgentCsr`,
   [`lib/agent/pki.ts`](../../lib/agent/pki.ts)) and pins the resulting cert's fingerprint. The
@@ -134,7 +134,7 @@ the gateway-config sentinel substitution.
 
 3. **The control plane stays TypeScript.** GraphQL, the `lib/data/` layer, auth, tokens, and
    multi-tenancy are untouched in language. The ~47k-line TS codebase and the GraphQL schema
-   (already the UI's contract) are reused, not rewritten. The agent absorbs the *host-coupled*
+   (already the UI's contract) are reused, not rewritten. The agent absorbs the _host-coupled_
    code, not the API. Authoritative state — `Deployment` rows, project state, env vars — stays
    in the control-plane store.
 
@@ -156,7 +156,7 @@ the gateway-config sentinel substitution.
    rides the same seam; its Files tab is gated to localhost projects until then). Until then the
    two coexist on the host — deploys flow agent → control plane → pubsub, while log-tailing/
    console/file-editing still hit the local Docker socket / local `fs`. The plan does **not**
-   claim the first phase unifies localhost and remote; it unifies only *deploy*.
+   claim the first phase unifies localhost and remote; it unifies only _deploy_.
 
 6. **The control plane renders the compose; the agent receives opaque YAML (D2).**
    `renderCompose` ([`lib/deploy/build.ts`](../../lib/deploy/build.ts)) stays the single source
@@ -168,7 +168,7 @@ the gateway-config sentinel substitution.
    control plane decrypts at the deploy edge ([`lib/deploy/build.ts`](../../lib/deploy/build.ts)) and sends
    the resolved plaintext map inside the deploy request over mTLS. The master key lives in
    exactly one place. The container needs plaintext to run regardless, so the only real variable
-   is *where the master key lives* — one place beats every-server, on both simplicity and blast
+   is _where the master key lives_ — one place beats every-server, on both simplicity and blast
    radius. The agent writes secrets to `0600` files and does not persist them beyond the stack's
    lifetime.
 
@@ -182,7 +182,7 @@ the gateway-config sentinel substitution.
 9. **The control plane stays a single process (D8).** The in-process pubsub singleton
    ([`lib/graphql/pubsub.ts`](../../lib/graphql/pubsub.ts)) and the log/attach session registries
    ([`lib/logs/session.ts`](../../lib/logs/session.ts), [`lib/attach/session.ts`](../../lib/attach/session.ts))
-   are kept as-is for the whole rollout. The agent moves *execution* off-box without making the
+   are kept as-is for the whole rollout. The agent moves _execution_ off-box without making the
    control plane horizontally scalable. **Horizontal scaling of the control plane is out of
    scope**; if ever needed, pubsub + sessions must be externalized (e.g. Redis) or pinned with
    sticky routing — a separate workstream the agent does not address.
@@ -217,7 +217,7 @@ the gateway-config sentinel substitution.
   TS codebase and the GraphQL schema that is already the UI's contract, for a language change
   the API layer does not need. Only the host-coupled execution layer becomes Go, and only
   because it ships per-server.
-- **A second frontend / full Deplo app on each remote**: rejected — the remote needs to *execute*,
+- **A second frontend / full Deplo app on each remote**: rejected — the remote needs to _execute_,
   not to be administered. One headless binary, one unchanged Next.js UI.
 - **Agent renders the compose from inputs**: rejected — would port fragile render logic
   (routing labels, the byte-identical-reroute contract) to Go and require keeping two renderers
@@ -225,7 +225,7 @@ the gateway-config sentinel substitution.
 - **Per-agent data-key + ciphertext on the wire**: rejected — spreads the master key across
   every remote host (larger attack surface) for no real gain, since the container needs
   plaintext to run regardless. The key stays in one place.
-- **Build once, push to a registry, agents pull**: rejected *for now* — solves a problem (same
+- **Build once, push to a registry, agents pull**: rejected _for now_ — solves a problem (same
   project on many servers; bit-identical images) that does not exist today, at the cost of
   standing up and securing registry infrastructure. The source descriptor leaves the door open
   for it later.
@@ -243,7 +243,7 @@ the gateway-config sentinel substitution.
   that isn't already inside that blast radius. Reconsider only under an explicit compliance
   mandate.
 - **Public-CA (Let's Encrypt) trust for the first agent↔control-plane contact**: rejected as the
-  *primary* path — operators commonly reach the control plane by bare IP with no public domain,
+  _primary_ path — operators commonly reach the control plane by bare IP with no public domain,
   where no public cert exists; fingerprint pinning works identically with or without a domain and
   matches the cert-pinning the agent uses for mTLS anyway.
 - **Stored, push-only server `status`**: rejected as the source of truth — it is the documented

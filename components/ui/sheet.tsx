@@ -22,8 +22,8 @@ const SheetOverlay = React.forwardRef<
       // pointer-events-auto so the overlay reliably captures clicks instead of
       // inheriting `pointer-events: none` from <body> while the sheet is open
       // (see the note in dialog.tsx) — keeps background controls non-clickable.
-      "pointer-events-auto fixed inset-0 z-50 bg-black/70 backdrop-blur-sm data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0",
-      className
+      "pointer-events-auto fixed inset-0 z-50 bg-black/70 backdrop-blur-sm data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:animate-in data-[state=open]:fade-in-0",
+      className,
     )}
     {...props}
     ref={ref}
@@ -32,7 +32,7 @@ const SheetOverlay = React.forwardRef<
 SheetOverlay.displayName = SheetPrimitive.Overlay.displayName;
 
 const sheetVariants = cva(
-  "fixed z-50 gap-4 bg-sidebar p-0 shadow-lg transition ease-in-out data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:duration-300 data-[state=open]:duration-300",
+  "fixed z-50 gap-4 bg-sidebar p-0 shadow-lg transition ease-in-out data-[state=closed]:animate-out data-[state=closed]:duration-300 data-[state=open]:animate-in data-[state=open]:duration-300",
   {
     variants: {
       side: {
@@ -45,64 +45,67 @@ const sheetVariants = cva(
       },
     },
     defaultVariants: { side: "left" },
-  }
+  },
 );
 
 interface SheetContentProps
-  extends React.ComponentPropsWithoutRef<typeof SheetPrimitive.Content>,
+  extends
+    React.ComponentPropsWithoutRef<typeof SheetPrimitive.Content>,
     VariantProps<typeof sheetVariants> {}
 
 const SheetContent = React.forwardRef<
   React.ElementRef<typeof SheetPrimitive.Content>,
   SheetContentProps
->((
-  {
-    side = "left",
-    className,
-    children,
-    onInteractOutside,
-    onOpenAutoFocus,
-    ...props
+>(
+  (
+    {
+      side = "left",
+      className,
+      children,
+      onInteractOutside,
+      onOpenAutoFocus,
+      ...props
+    },
+    ref,
+  ) => {
+    const nestedLayerJustDismissed = useNestedLayerDismissGuard();
+    const contentRef = React.useRef<HTMLDivElement | null>(null);
+    return (
+      <SheetPortal>
+        <SheetOverlay />
+        <SheetPrimitive.Content
+          ref={(node) => {
+            contentRef.current = node;
+            if (typeof ref === "function") ref(node);
+            else if (ref) ref.current = node;
+          }}
+          className={cn(sheetVariants({ side }), className)}
+          onInteractOutside={(event) => {
+            // Don't let the gesture that closed a nested popper (Select/menu/
+            // popover) also close the Sheet. See use-nested-layer-dismiss-guard.
+            if (nestedLayerJustDismissed()) {
+              event.preventDefault();
+              return;
+            }
+            onInteractOutside?.(event);
+          }}
+          // Same surface rules as a Dialog — it is the same Radix primitive.
+          onOpenAutoFocus={(event) => {
+            onOpenAutoFocus?.(event);
+            overlayAutoFocus(event, contentRef.current);
+          }}
+          {...props}
+        >
+          <SheetPrimitive.Close className="absolute top-4 right-4 cursor-pointer rounded-sm opacity-70 transition-opacity hover:opacity-100 focus:outline-none">
+            <X className="size-5" />
+            <span className="sr-only">Close</span>
+          </SheetPrimitive.Close>
+          {children}
+        </SheetPrimitive.Content>
+      </SheetPortal>
+    );
   },
-  ref,
-) => {
-  const nestedLayerJustDismissed = useNestedLayerDismissGuard();
-  const contentRef = React.useRef<HTMLDivElement | null>(null);
-  return (
-  <SheetPortal>
-    <SheetOverlay />
-    <SheetPrimitive.Content
-      ref={(node) => {
-        contentRef.current = node;
-        if (typeof ref === "function") ref(node);
-        else if (ref) ref.current = node;
-      }}
-      className={cn(sheetVariants({ side }), className)}
-      onInteractOutside={(event) => {
-        // Don't let the gesture that closed a nested popper (Select/menu/
-        // popover) also close the Sheet. See use-nested-layer-dismiss-guard.
-        if (nestedLayerJustDismissed()) {
-          event.preventDefault();
-          return;
-        }
-        onInteractOutside?.(event);
-      }}
-      // Same surface rules as a Dialog — it is the same Radix primitive.
-      onOpenAutoFocus={(event) => {
-        onOpenAutoFocus?.(event);
-        overlayAutoFocus(event, contentRef.current);
-      }}
-      {...props}
-    >
-      <SheetPrimitive.Close className="absolute right-4 top-4 cursor-pointer rounded-sm opacity-70 transition-opacity hover:opacity-100 focus:outline-none">
-        <X className="size-5" />
-        <span className="sr-only">Close</span>
-      </SheetPrimitive.Close>
-      {children}
-    </SheetPrimitive.Content>
-  </SheetPortal>
-  );
-});
+);
 SheetContent.displayName = SheetPrimitive.Content.displayName;
 
 const SheetTitle = React.forwardRef<
@@ -111,7 +114,10 @@ const SheetTitle = React.forwardRef<
 >(({ className, ...props }, ref) => (
   <SheetPrimitive.Title
     ref={ref}
-    className={cn("text-base lg:text-lg text-foreground font-semibold", className)}
+    className={cn(
+      "text-base font-semibold text-foreground lg:text-lg",
+      className,
+    )}
     {...props}
   />
 ));

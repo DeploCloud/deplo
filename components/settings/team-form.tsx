@@ -27,14 +27,13 @@ export function TeamForm({
   const [name, setName] = React.useState(initialName);
   const [slug, setSlug] = React.useState(initialSlug);
 
-  const dirty =
-    name.trim() !== initialName || slug.trim() !== initialSlug;
+  const dirty = name.trim() !== initialName || slug.trim() !== initialSlug;
 
   function save() {
     startTransition(async () => {
       const res = await gqlAction(
         `mutation($input: UpdateTeamInput!) { updateTeam(input: $input) { id } }`,
-        { input: { name, slug } }
+        { input: { name, slug } },
       );
       if (res.ok) {
         toast.success("Team updated");

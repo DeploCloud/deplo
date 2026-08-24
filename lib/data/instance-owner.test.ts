@@ -80,7 +80,10 @@ async function seedOwnedInstance() {
 }
 
 /** The full input shape; every field is required by updateUserAdmin. */
-const edit = (userId: string, patch: Partial<Parameters<typeof updateUserAdmin>[0]> = {}) => ({
+const edit = (
+  userId: string,
+  patch: Partial<Parameters<typeof updateUserAdmin>[0]> = {},
+) => ({
   userId,
   isInstanceAdmin: true,
   suspended: false,

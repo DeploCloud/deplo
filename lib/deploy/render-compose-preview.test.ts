@@ -41,7 +41,12 @@ const BASE = {
   // the host volume name and the per-stack files dir — are exercised.
   volumes: [
     { name: "data", mountPath: "/app/data" },
-    { type: "app" as const, name: "cfg", projectPath: "conf.yml", mountPath: "/etc/app.yml" },
+    {
+      type: "app" as const,
+      name: "cfg",
+      projectPath: "conf.yml",
+      mountPath: "/etc/app.yml",
+    },
   ],
 };
 
@@ -62,7 +67,11 @@ test("a production render names everything after the app slug, and nothing else"
 });
 
 test("omitting trackingId is byte-identical to passing the app id", () => {
-  const implicit = renderCompose({ ...BASE, name: "deplo-blog", deployKey: "blog" });
+  const implicit = renderCompose({
+    ...BASE,
+    name: "deplo-blog",
+    deployKey: "blog",
+  });
   const explicit = renderCompose({
     ...BASE,
     name: "deplo-blog",
@@ -136,7 +145,9 @@ test("a compose stack isolates its volumes and labels the same way", () => {
     deployKey: "blog",
     appId: "prj_1",
     domainRoutes: [],
-    volumes: [{ id: "vol_1", name: "data", mountPath: "/data", readOnly: false }],
+    volumes: [
+      { id: "vol_1", name: "data", mountPath: "/data", readOnly: false },
+    ],
   });
   assert.match(production, /deplo-blog-data/);
   assert.match(production, /deplo\.project=prj_1/);
@@ -150,7 +161,9 @@ test("a compose stack isolates its volumes and labels the same way", () => {
     appId: "prj_1",
     trackingId: "prv_1",
     domainRoutes: [],
-    volumes: [{ id: "vol_1", name: "data", mountPath: "/data", readOnly: false }],
+    volumes: [
+      { id: "vol_1", name: "data", mountPath: "/data", readOnly: false },
+    ],
   });
   assert.match(preview, /deplo-blog__pr-42-data/);
   assert.doesNotMatch(preview, /deplo-blog-data/);
@@ -199,7 +212,8 @@ test("a compose preview emits a router that names a service", () => {
   });
 
   assert.ok(
-    yaml.includes("traefik.enable=true") || yaml.includes("traefik.http.routers."),
+    yaml.includes("traefik.enable=true") ||
+      yaml.includes("traefik.http.routers."),
     "the preview must carry Traefik router labels, or nobody can reach it",
   );
   assert.ok(
@@ -245,7 +259,13 @@ test("a preview publishes no host ports, so two of them can coexist", () => {
     appId: "prj_1",
     trackingId: "prv_3",
     domainRoutes: [
-      { name: "h.nip.io", service: "web", port: 80, pathPrefix: "", stripPrefix: false },
+      {
+        name: "h.nip.io",
+        service: "web",
+        port: 80,
+        pathPrefix: "",
+        stripPrefix: false,
+      },
     ],
   });
   assert.ok(

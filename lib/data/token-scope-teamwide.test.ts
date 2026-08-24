@@ -80,7 +80,9 @@ after(async () => {
 
 beforeEach(async () => {
   await pg.exec(TRUNCATE_IDENTITY);
-  await pg.exec(`truncate table projects, api_tokens restart identity cascade;`);
+  await pg.exec(
+    `truncate table projects, api_tokens restart identity cascade;`,
+  );
   await seedIdentity(db);
   await db.insert(projectsTable).values({
     id: PRC,

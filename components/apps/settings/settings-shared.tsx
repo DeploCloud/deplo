@@ -25,9 +25,9 @@ export function SettingsSection({
   info?: React.ReactNode;
 }) {
   return (
-    <div className="flex items-center gap-2 ">
+    <div className="flex items-center gap-2">
       <Icon className="size-4 text-muted-foreground" />
-      <h2 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+      <h2 className="text-xs font-semibold tracking-wider text-muted-foreground uppercase">
         {title}
       </h2>
       {info != null && <InfoTip content={info} />}

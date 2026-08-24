@@ -122,7 +122,9 @@ export function ChartCard({
       <CardHeader className="pb-3">
         <CardTitle className="text-sm lg:text-sm">{title}</CardTitle>
         {caption && (
-          <p className="text-xs text-muted-foreground tabular-nums">{caption}</p>
+          <p className="text-xs text-muted-foreground tabular-nums">
+            {caption}
+          </p>
         )}
       </CardHeader>
       <CardContent>{children}</CardContent>

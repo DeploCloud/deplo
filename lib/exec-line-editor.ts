@@ -226,11 +226,10 @@ export class LineEditor {
     if (d.charCodeAt(0) === 0x1b) return;
 
     // Printable input (keystroke or paste) inserts at the caret.
-    const printable = [...d].filter((ch) => ch >= " " && ch !== "\x7f").join("");
+    const printable = [...d]
+      .filter((ch) => ch >= " " && ch !== "\x7f")
+      .join("");
     if (!printable) return;
-    this.repaint(
-      l.slice(0, c) + printable + l.slice(c),
-      c + printable.length,
-    );
+    this.repaint(l.slice(0, c) + printable + l.slice(c), c + printable.length);
   }
 }

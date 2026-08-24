@@ -273,11 +273,19 @@ test("schema: the load-bearing constraints from PLAN §2 are present", async () 
   // that adds a fourth role and forgets to widen it would let a host be two
   // things at once, and `serverRole` would silently answer with whichever it
   // checks first.
-  assert.ok(checks.has("servers_role_exclusive"), "server role exclusivity check");
+  assert.ok(
+    checks.has("servers_role_exclusive"),
+    "server role exclusivity check",
+  );
 });
 
 test("schema: the append-only tables carry a bigint identity seq", async () => {
-  for (const table of ["activities", "deployments", "backup_runs", "cron_runs"]) {
+  for (const table of [
+    "activities",
+    "deployments",
+    "backup_runs",
+    "cron_runs",
+  ]) {
     const r = await pg.query<{ is_identity: string; data_type: string }>(
       `select is_identity, data_type from information_schema.columns
         where table_schema='public' and table_name=$1 and column_name='seq'`,

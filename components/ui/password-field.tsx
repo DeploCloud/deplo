@@ -83,7 +83,7 @@ export function PasswordField({
           aria-pressed={visible}
           aria-controls={fieldId}
           disabled={disabled}
-          className="absolute inset-y-0 end-0 flex h-full w-9 items-center justify-center rounded-e-md text-muted-foreground/80 outline-none transition-colors hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-50"
+          className="absolute inset-y-0 end-0 flex h-full w-9 items-center justify-center rounded-e-md text-muted-foreground/80 transition-colors outline-none hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-50"
         >
           {visible ? (
             <EyeOff className="size-3.5" aria-hidden="true" />
@@ -128,9 +128,15 @@ export function PasswordField({
               {rules.map((rule) => (
                 <li key={rule.text} className="flex items-center gap-1.5">
                   {rule.met ? (
-                    <Check className="size-3.5 text-emerald-500" aria-hidden="true" />
+                    <Check
+                      className="size-3.5 text-emerald-500"
+                      aria-hidden="true"
+                    />
                   ) : (
-                    <X className="size-3.5 text-muted-foreground/60" aria-hidden="true" />
+                    <X
+                      className="size-3.5 text-muted-foreground/60"
+                      aria-hidden="true"
+                    />
                   )}
                   <span
                     className={cn(

@@ -66,13 +66,9 @@ async function toWebCryptoKeys(node: KeyObject): Promise<CryptoKeyPair> {
     type: "spki",
   }) as Buffer;
   const alg = { name: "Ed25519" };
-  const privateKey = await crypto.subtle.importKey(
-    "pkcs8",
-    pkcs8,
-    alg,
-    true,
-    ["sign"],
-  );
+  const privateKey = await crypto.subtle.importKey("pkcs8", pkcs8, alg, true, [
+    "sign",
+  ]);
   const publicKey = await crypto.subtle.importKey("spki", spki, alg, true, [
     "verify",
   ]);
@@ -139,9 +135,7 @@ export interface CertBundle {
   caPem: string;
 }
 
-type SanEntry =
-  | { type: "dns"; value: string }
-  | { type: "ip"; value: string };
+type SanEntry = { type: "dns"; value: string } | { type: "ip"; value: string };
 
 /**
  * The validity window for every minted leaf — server, client, or CSR-signed

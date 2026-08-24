@@ -55,14 +55,33 @@ async function makeCsr(): Promise<string> {
   return csr.toString("pem");
 }
 
-async function seedProvisioning(tokenHash: string, expiresAt: string): Promise<void> {
+async function seedProvisioning(
+  tokenHash: string,
+  expiresAt: string,
+): Promise<void> {
   await db.insert(serversTable).values(
     serverToRow({
-      id: "srv_p", name: "p", host: "10.0.0.1", type: "remote", status: "provisioning",
-      ip: "10.0.0.1", dockerVersion: "", traefikEnabled: false, cpuCores: 0, memoryMb: 0,
-      diskGb: 0, cpuUsage: 0, memoryUsage: 0, diskUsage: 0, allTeams: true,
-      storageOnly: false, buildOnly: false, importOnly: false, hostArch: "amd64",
-      uninstallPending: false, uninstallError: "",
+      id: "srv_p",
+      name: "p",
+      host: "10.0.0.1",
+      type: "remote",
+      status: "provisioning",
+      ip: "10.0.0.1",
+      dockerVersion: "",
+      traefikEnabled: false,
+      cpuCores: 0,
+      memoryMb: 0,
+      diskGb: 0,
+      cpuUsage: 0,
+      memoryUsage: 0,
+      diskUsage: 0,
+      allTeams: true,
+      storageOnly: false,
+      buildOnly: false,
+      importOnly: false,
+      hostArch: "amd64",
+      uninstallPending: false,
+      uninstallError: "",
       deployConcurrency: 1,
       createdAt: "2026-01-01T00:00:00.000Z",
       bootstrap: { tokenHash, expiresAt, usedAt: null },
@@ -75,7 +94,11 @@ test("completeBootstrap provisions a server and pins its agent cert", async () =
   await seedProvisioning(stored.tokenHash, stored.expiresAt);
   const csrPem = await makeCsr();
 
-  const result = await completeBootstrap({ token: rawToken, csrPem, agentPort: 9443 });
+  const result = await completeBootstrap({
+    token: rawToken,
+    csrPem,
+    agentPort: 9443,
+  });
   assert.ok(result.certPem.includes("BEGIN CERTIFICATE"));
   assert.ok(result.caPem.includes("BEGIN CERTIFICATE"));
 
@@ -114,9 +137,17 @@ test("completeBootstrap is single-use: two concurrent call-homes, exactly one wi
 test("completeBootstrap rejects an already-consumed token (sequential)", async () => {
   const { rawToken, stored } = mintBootstrap();
   await seedProvisioning(stored.tokenHash, stored.expiresAt);
-  await completeBootstrap({ token: rawToken, csrPem: await makeCsr(), agentPort: 9443 });
+  await completeBootstrap({
+    token: rawToken,
+    csrPem: await makeCsr(),
+    agentPort: 9443,
+  });
   await assert.rejects(
-    completeBootstrap({ token: rawToken, csrPem: await makeCsr(), agentPort: 9443 }),
+    completeBootstrap({
+      token: rawToken,
+      csrPem: await makeCsr(),
+      agentPort: 9443,
+    }),
     /already been used|already consumed/,
   );
 });

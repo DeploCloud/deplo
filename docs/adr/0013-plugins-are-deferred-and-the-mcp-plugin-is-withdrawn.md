@@ -2,7 +2,7 @@
 
 - **Status**: Accepted — 2026-08-01.
 - **Supersedes in part**: [ADR-0005](0005-apps-are-host-managed-containers-not-projects.md).
-  Its *shape* decisions (a plugin is a host-managed container, never an App; it is served on a
+  Its _shape_ decisions (a plugin is a host-managed container, never an App; it is served on a
   path under Deplo's own host; status is read live) stand and are what a revival starts from.
   Everything it says about the **MCP plugin** — the stateless relay, the caller token, the
   install flow — is withdrawn, because that plugin no longer exists.
@@ -15,7 +15,7 @@ Plugins shipped as a full vertical slice: a nav entry, a `/plugins` page, a cata
 a remote repository, four `manage_infra` GraphQL mutations, a host-container runtime, and one
 published plugin — an **MCP server** relaying Deplo's GraphQL API to an LLM client.
 
-Measured against the core mission it does not hold up *yet*:
+Measured against the core mission it does not hold up _yet_:
 
 - **It was a settings surface on the first-run path.** A nav entry every `manage_infra` holder
   sees, leading to a page whose only content was one plugin from one repository. First launch is
@@ -32,7 +32,7 @@ Measured against the core mission it does not hold up *yet*:
 
 None of that says the feature is wrong — the plugin-sections research (trusted tier, injected
 App sections, plugin-owned state) is the most promising direction deplo has for extensibility.
-It says the feature is not *finished*, and an unfinished feature costs more visible than hidden.
+It says the feature is not _finished_, and an unfinished feature costs more visible than hidden.
 
 ## Decision
 
@@ -55,7 +55,7 @@ It says the feature is not *finished*, and an unfinished feature costs more visi
 3. **The MCP plugin is withdrawn entirely.** Its connect dialog, its special-casing in the UI,
    its plan document and every mention of it in the vocabulary are gone. `MCP_BEARER` never
    existed and the **caller token** was only ever the ordinary `deplo_` API token, which survives
-   under that name (CONTEXT.md → *API token*) because the external GraphQL API still uses it.
+   under that name (CONTEXT.md → _API token_) because the external GraphQL API still uses it.
 
 4. **A leftover install is retired automatically.** `lib/plugins/retire.ts`, called from the
    `instrumentation.ts` boot hook, tears down any installed plugin's container, stack file and
@@ -69,7 +69,7 @@ It says the feature is not *finished*, and an unfinished feature costs more visi
    - **Agent or socket.** ADR-0006 says every host-coupled action routes through the server
      agent; the current runtime does not. A plugin that can only run on the Deplo host is not
      multi-tenant-safe and does not survive a managed offering. Prefer the agent.
-   - **Who it is for.** Under the two-audience rule a plugin catalog is an *expert* surface: it
+   - **Who it is for.** Under the two-audience rule a plugin catalog is an _expert_ surface: it
      belongs behind an Advanced affordance, never on the first-run path.
    - **`${secret:N}` rotates on reinstall** (`resolvePluginEnv` mints a fresh value and nothing
      persists the resolved env). Harmless for a stateless plugin, destructive for a stateful one.

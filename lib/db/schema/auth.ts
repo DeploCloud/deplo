@@ -441,8 +441,9 @@ export const oauthResource = pgTable("oauth_resource", {
   signingKeyId: text("signing_key_id"),
   allowedScopes: text("allowed_scopes").array(),
   customClaims: jsonb("custom_claims"),
-  dpopBoundAccessTokensRequired: boolean("dpop_bound_access_tokens_required")
-    .default(false),
+  dpopBoundAccessTokensRequired: boolean(
+    "dpop_bound_access_tokens_required",
+  ).default(false),
   disabled: boolean("disabled").default(false),
   createdAt: timestamp("created_at"),
   updatedAt: timestamp("updated_at"),

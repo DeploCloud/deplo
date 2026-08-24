@@ -64,8 +64,7 @@ function composeServices(compose?: string | null): string[] {
   if (!compose || !compose.trim()) return [];
   try {
     const doc = yaml.load(compose) as
-      | { services?: Record<string, unknown> }
-      | undefined;
+      { services?: Record<string, unknown> } | undefined;
     const svc = doc?.services;
     return svc && typeof svc === "object" && !Array.isArray(svc)
       ? Object.keys(svc)
@@ -198,7 +197,11 @@ export function DomainRow({
       toast.error("Enter a valid domain name");
       return;
     }
-    const resolved = resolveDomainConfig(config, services.length > 0, trimmedName);
+    const resolved = resolveDomainConfig(
+      config,
+      services.length > 0,
+      trimmedName,
+    );
     if (!resolved.ok) {
       toast.error(resolved.error);
       return;
@@ -388,9 +391,7 @@ export function DomainRow({
                     ? "This domain doesn’t resolve yet."
                     : "This domain’s DNS doesn’t point here."}{" "}
                   Add an{" "}
-                  <span className="font-medium text-foreground">
-                    A record
-                  </span>{" "}
+                  <span className="font-medium text-foreground">A record</span>{" "}
                   for{" "}
                   <span className="font-mono text-foreground">
                     {domain.name}
@@ -412,9 +413,9 @@ export function DomainRow({
                   ? "This domain doesn’t resolve yet."
                   : "This domain’s DNS doesn’t point here."}{" "}
                 Point its{" "}
-                <span className="font-medium text-foreground">A record</span>{" "}
-                at the IP of the server this app is deployed on (unique to
-                that server). It’s re-checked automatically.
+                <span className="font-medium text-foreground">A record</span> at
+                the IP of the server this app is deployed on (unique to that
+                server). It’s re-checked automatically.
               </span>
             )}
           </div>
@@ -521,9 +522,14 @@ export function DomainRow({
                     const res = await gqlAction<{
                       verifyDomain: { id: string; status: string };
                     }>(
-                      /* GraphQL */ `mutation($id: String!) {
-                        verifyDomain(id: $id) { id status }
-                      }`,
+                      /* GraphQL */ `
+                        mutation ($id: String!) {
+                          verifyDomain(id: $id) {
+                            id
+                            status
+                          }
+                        }
+                      `,
                       { id: domain.id },
                     );
                     if (!res.ok) {
@@ -573,7 +579,9 @@ export function DomainRow({
                 // A misconfigured domain has no working DNS to this server, so it
                 // can't be the canonical host — disabled here, and the server
                 // rejects it too.
-                disabled={pending || !canManage || domain.status === "misconfigured"}
+                disabled={
+                  pending || !canManage || domain.status === "misconfigured"
+                }
               >
                 <Star className="size-4" />
                 Set as primary
@@ -618,8 +626,8 @@ export function DomainRow({
               <DialogDescription>
                 Routing for{" "}
                 <span className="font-medium">{domain.serviceName}</span>.
-                Changes apply instantly when the app is running,
-                otherwise on the next deploy.
+                Changes apply instantly when the app is running, otherwise on
+                the next deploy.
               </DialogDescription>
             </DialogHeader>
             <form className="grid gap-4" onSubmit={onSubmitEdit}>

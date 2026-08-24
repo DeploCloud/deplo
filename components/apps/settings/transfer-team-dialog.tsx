@@ -151,8 +151,8 @@ export function TransferTeamDialog({
 
           {failed && (
             <p className="text-sm text-muted-foreground">
-              Couldn&apos;t load the teams that can take this app. Close this and
-              try again.
+              Couldn&apos;t load the teams that can take this app. Close this
+              and try again.
             </p>
           )}
 
@@ -180,7 +180,11 @@ export function TransferTeamDialog({
                   {info.targets.map((t) => (
                     <SelectItem key={t.id} value={t.id}>
                       <span className="flex items-center gap-2">
-                        <TeamAvatar name={t.name} avatarUrl={t.avatarUrl} size="sm" />
+                        <TeamAvatar
+                          name={t.name}
+                          avatarUrl={t.avatarUrl}
+                          size="sm"
+                        />
                         {t.name}
                       </span>
                     </SelectItem>
@@ -195,8 +199,8 @@ export function TransferTeamDialog({
               {blocked ? (
                 <li className="text-destructive">
                   {target.name} can&apos;t use the server this app runs on (
-                  {info.serverName}). An instance admin grants a team access to a
-                  server in Settings → Servers.
+                  {info.serverName}). An instance admin grants a team access to
+                  a server in Settings → Servers.
                 </li>
               ) : (
                 <>
@@ -208,16 +212,24 @@ export function TransferTeamDialog({
                   )}
                   {info.sharedVarCount > 0 && (
                     <li>
-                      {plural(info.sharedVarCount, "shared variable", "shared variables")}{" "}
+                      {plural(
+                        info.sharedVarCount,
+                        "shared variable",
+                        "shared variables",
+                      )}{" "}
                       stop being injected — they belong to this team. The change
                       applies on the next deploy.
                     </li>
                   )}
                   {info.backupCount > 0 && (
                     <li>
-                      {plural(info.backupCount, "backup schedule", "backup schedules")}{" "}
-                      are removed: they write to this team&apos;s storage. Backups
-                      already taken stay here.
+                      {plural(
+                        info.backupCount,
+                        "backup schedule",
+                        "backup schedules",
+                      )}{" "}
+                      are removed: they write to this team&apos;s storage.
+                      Backups already taken stay here.
                     </li>
                   )}
                   {info.githubConnected &&

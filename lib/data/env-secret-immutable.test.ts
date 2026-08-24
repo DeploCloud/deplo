@@ -23,13 +23,7 @@ import {
   TRUNCATE_IDENTITY,
   USER_1,
 } from "./identity-test-helpers";
-import {
-  importEnv,
-  listEnv,
-  renameEnv,
-  setAppEnv,
-  upsertEnv,
-} from "./env";
+import { importEnv, listEnv, renameEnv, setAppEnv, upsertEnv } from "./env";
 import { listInstanceEnv, upsertInstanceEnv } from "./global-env";
 import { listSharedVars, saveSharedVar } from "./shared-vars";
 import { listPreviewEnvVars, setPreviewEnvVar } from "./previews";
@@ -114,17 +108,26 @@ test("upsertEnv refuses to edit a secret, and the value survives the refusal", a
 });
 
 test("upsertEnv still PROMOTES a plain var to secret", async () => {
-  await as1(() => upsertEnv({ appId: APP, key: "TOKEN", value: "v1", type: "plain" }));
+  await as1(() =>
+    upsertEnv({ appId: APP, key: "TOKEN", value: "v1", type: "plain" }),
+  );
   // Editing a plain var is ordinary work, including hardening it.
-  await as1(() => upsertEnv({ appId: APP, key: "TOKEN", value: "v2", type: "plain" }));
-  await as1(() => upsertEnv({ appId: APP, key: "TOKEN", value: "v2", type: "secret" }));
+  await as1(() =>
+    upsertEnv({ appId: APP, key: "TOKEN", value: "v2", type: "plain" }),
+  );
+  await as1(() =>
+    upsertEnv({ appId: APP, key: "TOKEN", value: "v2", type: "secret" }),
+  );
   const [row] = await as1(() => listEnv(APP));
   assert.equal(row!.type, "secret");
   assert.equal(row!.masked, true);
   assert.equal(await storedValue("TOKEN"), "v2");
   // And the ratchet only turns one way.
   await assert.rejects(
-    () => as1(() => upsertEnv({ appId: APP, key: "TOKEN", value: MASK, type: "plain" })),
+    () =>
+      as1(() =>
+        upsertEnv({ appId: APP, key: "TOKEN", value: MASK, type: "plain" }),
+      ),
     /cannot be edited/i,
   );
 });
@@ -146,13 +149,14 @@ test("importEnv skips a key that is already a secret, and counts it", async () =
   );
   assert.deepEqual(res, { added: 2, skippedSecrets: 1 });
   const list = await as1(() => listEnv(APP));
-  assert.deepEqual(
-    list.map((v) => v.key).sort(),
-    ["API_KEY", "DEBUG", "PORT"],
-  );
+  assert.deepEqual(list.map((v) => v.key).sort(), ["API_KEY", "DEBUG", "PORT"]);
   const secret = list.find((v) => v.key === "API_KEY")!;
   assert.equal(secret.type, "secret", "not downgraded by the import");
-  assert.equal(await storedValue("API_KEY"), "s3cr3t", "not overwritten either");
+  assert.equal(
+    await storedValue("API_KEY"),
+    "s3cr3t",
+    "not overwritten either",
+  );
 });
 
 test("setAppEnv leaves a secret alone whatever value arrives", async () => {
@@ -205,7 +209,11 @@ test("saveSharedVar refuses a value, key or type change on a secret", async () =
     await assert.rejects(
       () => as1(() => saveSharedVar(attempt)),
       /cannot be edited/i,
-      JSON.stringify({ type: attempt.type, value: attempt.value, key: attempt.key }),
+      JSON.stringify({
+        type: attempt.type,
+        value: attempt.value,
+        key: attempt.key,
+      }),
     );
   }
   const [v] = await as1(() => listSharedVars());
@@ -247,7 +255,10 @@ test("upsertInstanceEnv refuses to edit a secret", async () => {
     upsertInstanceEnv({ key: "GLOBAL", value: "g", type: "secret" }),
   );
   await assert.rejects(
-    () => as1(() => upsertInstanceEnv({ key: "GLOBAL", value: MASK, type: "plain" })),
+    () =>
+      as1(() =>
+        upsertInstanceEnv({ key: "GLOBAL", value: MASK, type: "plain" }),
+      ),
     /cannot be edited/i,
   );
   const [v] = await as1(() => listInstanceEnv());

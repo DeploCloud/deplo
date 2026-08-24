@@ -114,7 +114,10 @@ test("expired sessions are left out — a revoke button for them would be theatr
   await seedSession({ id: "live", userId: USER_1 });
   await seedSession({ id: "dead", userId: USER_1, expiresInMs: -HOUR });
   const rows = await asUser(USER_1, listMySessions);
-  assert.deepEqual(rows.map((r) => r.id), ["live"]);
+  assert.deepEqual(
+    rows.map((r) => r.id),
+    ["live"],
+  );
 });
 
 test("rows are most recently seen first, and describe the device", async () => {
@@ -127,7 +130,10 @@ test("rows are most recently seen first, and describe the device", async () => {
     seenAgoMs: HOUR,
   });
   const rows = await asUser(USER_1, listMySessions);
-  assert.deepEqual(rows.map((r) => r.id), ["recent", "old"]);
+  assert.deepEqual(
+    rows.map((r) => r.id),
+    ["recent", "old"],
+  );
   assert.equal(rows[0]!.label, "Chrome on macOS");
   assert.equal(rows[0]!.device, "desktop");
   assert.equal(rows[0]!.ipAddress, "203.0.113.7");
@@ -155,7 +161,10 @@ test("revoking one session deletes exactly that row", async () => {
     .select({ id: sessionTable.id })
     .from(sessionTable)
     .where(eq(sessionTable.userId, USER_1));
-  assert.deepEqual(left.map((r) => r.id), ["keep"]);
+  assert.deepEqual(
+    left.map((r) => r.id),
+    ["keep"],
+  );
 });
 
 test("another user's session id cannot be revoked, and reveals nothing", async () => {
@@ -192,7 +201,10 @@ test("revokeOtherSessions never touches another account", async () => {
     .select({ id: sessionTable.id })
     .from(sessionTable)
     .where(eq(sessionTable.userId, USER_2));
-  assert.deepEqual(others.map((r) => r.id), ["theirs"]);
+  assert.deepEqual(
+    others.map((r) => r.id),
+    ["theirs"],
+  );
 });
 
 test("revokeOtherSessions on an account with none is a no-op returning 0", async () => {
@@ -232,7 +244,11 @@ test("a real sign-in stamps the device onto the session row", async () => {
       "",
     ),
   );
-  assert.equal(row.label, "Chrome on macOS", "the device is named, not Unknown");
+  assert.equal(
+    row.label,
+    "Chrome on macOS",
+    "the device is named, not Unknown",
+  );
   assert.equal(row.device, "desktop");
   assert.equal(row.ipAddress, "203.0.113.9");
 });

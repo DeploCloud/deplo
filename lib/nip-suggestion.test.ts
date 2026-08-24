@@ -33,7 +33,12 @@ test("a label with hyphens in it stays whole", () => {
 });
 
 test("anything that is not a suggestion comes back untouched", () => {
-  for (const name of ["traefik.example.com", "", "not-a-nip-host.nip.io", "brave-otter"]) {
+  for (const name of [
+    "traefik.example.com",
+    "",
+    "not-a-nip-host.nip.io",
+    "brave-otter",
+  ]) {
     assert.equal(regenerateNipDomain(name), name);
   }
 });

@@ -33,7 +33,9 @@ export function DatabaseDanger({ db }: { db: DatabaseDTO }) {
   return (
     <Card className="border-destructive/40">
       <CardHeader>
-        <CardTitle className="text-base text-destructive">Danger Zone</CardTitle>
+        <CardTitle className="text-base text-destructive">
+          Danger Zone
+        </CardTitle>
         <CardDescription>
           These actions erase data and cannot be undone. Each asks you to type
           the database name first.
@@ -46,8 +48,8 @@ export function DatabaseDanger({ db }: { db: DatabaseDTO }) {
             <p className="text-sm text-muted-foreground">
               Wipe the data volume and provision a fresh, empty database from
               the current settings — same engine, version and credentials, so
-              the connection string keeps working. All data is erased; restore
-              a backup afterwards to bring data back.
+              the connection string keeps working. All data is erased; restore a
+              backup afterwards to bring data back.
             </p>
           </div>
           <ConfirmAction
@@ -81,7 +83,11 @@ export function DatabaseDanger({ db }: { db: DatabaseDTO }) {
               including any backup schedules attached to it.
             </p>
           </div>
-          <Button variant="destructive" size="sm" onClick={() => setDeleteOpen(true)}>
+          <Button
+            variant="destructive"
+            size="sm"
+            onClick={() => setDeleteOpen(true)}
+          >
             <Trash2 className="size-4" />
             Delete
           </Button>

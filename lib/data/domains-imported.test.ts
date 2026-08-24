@@ -14,7 +14,11 @@ import { __setTestDb, __resetTestDb } from "../db/client";
 import { domains as domainsTable } from "../db/schema/control-plane";
 import { runWithIdentity } from "../auth/request-context";
 import { seedIdentity, TEAM_A, USER_1 } from "./identity-test-helpers";
-import { seedServer, seedApp, TRUNCATE_PROJECT_GRAPH } from "./app-graph-test-helpers";
+import {
+  seedServer,
+  seedApp,
+  TRUNCATE_PROJECT_GRAPH,
+} from "./app-graph-test-helpers";
 import {
   addImportedDomains,
   dismissImportedDomains,
@@ -53,7 +57,9 @@ after(async () => {
 beforeEach(async () => {
   await pg.exec(`${TRUNCATE_PROJECT_GRAPH}
     truncate table users, teams restart identity cascade;`);
-  await seedIdentity(db, { users: [{ id: USER_1, teamId: TEAM_A, role: "owner" }] });
+  await seedIdentity(db, {
+    users: [{ id: USER_1, teamId: TEAM_A, role: "owner" }],
+  });
   await seedServer(db);
   await seedApp(db, { id: "prj_web", slug: "web" });
 });
@@ -95,7 +101,11 @@ test("each source host is re-hosted once, keeping its whole route", async () => 
   assert.equal(all.length, 2);
   for (const d of all) {
     assert.match(d.name, /\.nip\.io$/, "Deplo mints its own temporary address");
-    assert.equal(d.status, "valid", "a nip.io host resolves here by construction");
+    assert.equal(
+      d.status,
+      "valid",
+      "a nip.io host resolves here by construction",
+    );
     assert.equal(d.isPrimary, false);
   }
   // The label carries the service, so which is which is readable in the list.
@@ -122,11 +132,12 @@ test("two routes on the same source host share one new address", async () => {
   );
   const all = await rows();
   assert.equal(all.length, 2);
-  assert.equal(new Set(all.map((d) => d.name)).size, 1, "one hostname, two rows");
-  assert.deepEqual(
-    all.map((d) => d.pathPrefix ?? "").sort(),
-    ["", "/api"],
+  assert.equal(
+    new Set(all.map((d) => d.name)).size,
+    1,
+    "one hostname, two rows",
   );
+  assert.deepEqual(all.map((d) => d.pathPrefix ?? "").sort(), ["", "/api"]);
 });
 
 // The app's primary is minted by createApp before the import can speak, so the
@@ -159,13 +170,20 @@ test("a row whose source host already landed joins that address", async () => {
   );
   const all = await rows();
   assert.equal(all.length, 2);
-  assert.equal(new Set(all.map((d) => d.name)).size, 1, "no second address minted");
+  assert.equal(
+    new Set(all.map((d) => d.name)).size,
+    1,
+    "no second address minted",
+  );
 });
 
 // Re-running an interrupted import must not stack duplicates.
 test("re-running writes nothing the second time", async () => {
   const routes = [route({ sourceHost: "web-abc.sslip.io" })];
-  const first = await addImportedDomains("prj_web", routes, { slug: "web", ip: IP });
+  const first = await addImportedDomains("prj_web", routes, {
+    slug: "web",
+    ip: IP,
+  });
   const seed = new Map(first);
   await addImportedDomains("prj_web", routes, { slug: "web", ip: IP, seed });
   assert.equal((await rows()).length, 1);
@@ -178,6 +196,12 @@ test("dismissing clears the provenance and keeps the addresses", async () => {
     dismissImportedDomains("prj_web"),
   );
   const after = await rows();
-  assert.deepEqual(after.map((d) => d.importedFrom), [null]);
-  assert.deepEqual(after.map((d) => d.name), before.map((d) => d.name));
+  assert.deepEqual(
+    after.map((d) => d.importedFrom),
+    [null],
+  );
+  assert.deepEqual(
+    after.map((d) => d.name),
+    before.map((d) => d.name),
+  );
 });

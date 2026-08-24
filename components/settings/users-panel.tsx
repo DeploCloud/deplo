@@ -15,12 +15,7 @@ import {
   ChevronRight,
   Trash2,
 } from "lucide-react";
-import {
-  Card,
-  CardContent,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -56,10 +51,11 @@ export function UsersPanel({
   // A revoked link leaves the list on the click — the row is dead server-side
   // the moment the mutation is sent, and a live Revoke on a dead link is only
   // good for a red "Not found".
-  const { visible: liveLinks, remove, restore } = useOptimisticRemove(
-    links,
-    (l) => l.id,
-  );
+  const {
+    visible: liveLinks,
+    remove,
+    restore,
+  } = useOptimisticRemove(links, (l) => l.id);
   const pendingLinks = liveLinks.filter((l) => l.status === "pending");
   // `?user=<id>` opens that account's editor on arrival — the deep link a
   // member's page uses, since accounts are instance-wide and edited here.
@@ -277,7 +273,9 @@ function UserRow({
             >
               <DropdownMenuItem
                 disabled={isSelf || ownerLocked || pending}
-                onSelect={() => flip({ isInstanceAdmin: !user.isInstanceAdmin })}
+                onSelect={() =>
+                  flip({ isInstanceAdmin: !user.isInstanceAdmin })
+                }
               >
                 {user.isInstanceAdmin ? (
                   <ShieldOff className="size-4" />
@@ -407,4 +405,3 @@ function UserRow({
     </>
   );
 }
-

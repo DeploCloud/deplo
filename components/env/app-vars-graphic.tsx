@@ -33,11 +33,7 @@ export function AppVarsGraphic({ className }: { className?: string }) {
         <rect x="44" y="22" width="32" height="46" rx="5" />
         <rect x="82" y="22" width="32" height="46" rx="5" />
       </g>
-      <g
-        strokeWidth="3"
-        strokeLinecap="round"
-        className="stroke-border"
-      >
+      <g strokeWidth="3" strokeLinecap="round" className="stroke-border">
         <line x1="13" y1="32" x2="25" y2="32" />
         <line x1="51" y1="32" x2="63" y2="32" />
         <line x1="89" y1="32" x2="101" y2="32" />

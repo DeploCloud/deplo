@@ -78,8 +78,18 @@ export function PullRequestGraphic({
           {/* Two commits, in the order they would arrive. Sixteen units apart so
               they stay two dots at every size — at 4.5 radius anything tighter
               fuses into one blob. */}
-          <circle cx="80" cy="46" r="4.5" className="deplo-pr-commit-1 fill-primary" />
-          <circle cx="80" cy="62" r="4.5" className="deplo-pr-commit-2 fill-primary" />
+          <circle
+            cx="80"
+            cy="46"
+            r="4.5"
+            className="deplo-pr-commit-1 fill-primary"
+          />
+          <circle
+            cx="80"
+            cy="62"
+            r="4.5"
+            className="deplo-pr-commit-2 fill-primary"
+          />
 
           {/* The merge point, the only thing that turns green: it is the moment
               the work lands, and the one beat worth colouring differently. */}

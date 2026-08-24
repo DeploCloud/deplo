@@ -156,7 +156,8 @@ export function VolumeFields({
   // service: a row still naming the old one has to stay fixable here.
   const pickService =
     composeServices.length > 1 ||
-    (composeServices.length > 0 && volumes.some((v) => (v.service ?? "") !== ""));
+    (composeServices.length > 0 &&
+      volumes.some((v) => (v.service ?? "") !== ""));
 
   // Rows the user has actually edited. An entry added a second ago is not "wrong"
   // for being empty, so its problems stay silent until it is touched — it shows
@@ -192,7 +193,9 @@ export function VolumeFields({
   }
 
   if (volumes.length === 0) {
-    return <EmptyPicker onAdd={add} canMountHostVolumes={canMountHostVolumes} />;
+    return (
+      <EmptyPicker onAdd={add} canMountHostVolumes={canMountHostVolumes} />
+    );
   }
 
   return (
@@ -251,8 +254,7 @@ function IdentityLine({
       ? (mount.hostPath ?? "").trim()
       : kind === "app"
         ? (mount.projectPath ?? "").trim()
-        : (mount.name ?? "").trim() ||
-          (path ? deriveVolumeName(path) : "");
+        : (mount.name ?? "").trim() || (path ? deriveVolumeName(path) : "");
   const shown = kind === "app" && source ? `Files/${source}` : source;
   const dim = "text-muted-foreground/60";
   return (
@@ -348,7 +350,7 @@ function MountRow({
           onClick={onToggle}
           aria-expanded={expanded}
           aria-label={`Edit this ${meta.label}`}
-          className="flex min-w-0 flex-1 items-center gap-3 px-4 py-3 text-left transition-colors hover:bg-muted/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-inset"
+          className="flex min-w-0 flex-1 items-center gap-3 px-4 py-3 text-left transition-colors hover:bg-muted/40 focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none focus-visible:ring-inset"
         >
           <Badge variant={meta.chip} className="shrink-0 gap-1.5">
             <Icon className="size-3" />
@@ -558,7 +560,8 @@ function MountRow({
                       Keep up with the server (rslave)
                     </SelectItem>
                     <SelectItem value="rshared">
-                      Keep up, and let the server see this app&apos;s own (rshared)
+                      Keep up, and let the server see this app&apos;s own
+                      (rshared)
                     </SelectItem>
                   </SelectContent>
                 </Select>
@@ -597,11 +600,13 @@ function MountRow({
                 {meta.targetLabel && target && (
                   <p className="flex flex-wrap items-center gap-x-2 gap-y-1 pl-[1.125rem] text-xs text-muted-foreground">
                     {meta.targetLabel}
-                    <code className="min-w-0 break-all rounded bg-background px-1.5 py-0.5 font-mono text-foreground">
+                    <code className="min-w-0 rounded bg-background px-1.5 py-0.5 font-mono break-all text-foreground">
                       {target}
                     </code>
                     <CopyButton value={target} />
-                    {!mount.name.trim() && <span>(name taken from the path)</span>}
+                    {!mount.name.trim() && (
+                      <span>(name taken from the path)</span>
+                    )}
                     <InfoTip content="The name deplo gives this storage on the server. It belongs to this app alone, so nothing else can read it or overwrite it. It is included in this app's backups." />
                   </p>
                 )}
@@ -636,7 +641,7 @@ function KindCard({
       onClick={onSelect}
       className={cn(
         "flex h-full items-start gap-2.5 rounded-lg border p-3 text-left transition-colors",
-        "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1 focus-visible:ring-offset-background",
+        "focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1 focus-visible:ring-offset-background focus-visible:outline-none",
         selected
           ? "border-primary bg-primary/[0.06] ring-1 ring-primary/60"
           : "border-border hover:border-foreground/20 hover:bg-muted/40",
@@ -747,8 +752,8 @@ function EmptyPicker({
         </span>
         <p className="text-sm font-medium">No storage yet</p>
         <p className="max-w-md text-xs text-muted-foreground">
-          Everything this app writes is thrown away when it redeploys, unless you
-          keep it here. Pick where the data should live:
+          Everything this app writes is thrown away when it redeploys, unless
+          you keep it here. Pick where the data should live:
         </p>
       </div>
       {/* Volume and File are the two a normal app wants; they get the room. Bind
@@ -776,7 +781,9 @@ function EmptyPicker({
                   </Badge>
                 )}
               </span>
-              <span className="text-xs text-muted-foreground">{meta.summary}</span>
+              <span className="text-xs text-muted-foreground">
+                {meta.summary}
+              </span>
               <span className="text-xs text-muted-foreground/70">
                 {meta.examples}
               </span>
@@ -836,10 +843,10 @@ function AddMenu({
                     <Badge variant="warning">Permission</Badge>
                   )}
                 </span>
-                <span className="block whitespace-normal text-xs text-muted-foreground">
+                <span className="block text-xs whitespace-normal text-muted-foreground">
                   {meta.summary}
                 </span>
-                <span className="block whitespace-normal text-xs text-muted-foreground/70">
+                <span className="block text-xs whitespace-normal text-muted-foreground/70">
                   {meta.examples}
                 </span>
               </span>

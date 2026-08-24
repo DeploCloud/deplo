@@ -65,7 +65,9 @@ test("vars from a different app are ignored", () => {
 
 test("a linked shared var reaches a runtime only when it targets it", () => {
   const s = [shared("SHARED", ["production"])];
-  assert.deepEqual(keys(resolveEnvEntries("production", APP, [], s)), ["SHARED"]);
+  assert.deepEqual(keys(resolveEnvEntries("production", APP, [], s)), [
+    "SHARED",
+  ]);
   assert.deepEqual(resolveEnvEntries("preview", APP, [], s), []);
 });
 
@@ -124,7 +126,10 @@ test("within the shared layer, the later entry wins on a key collision", () => {
     "production",
     APP,
     [],
-    [shared("K", ["production"], "older"), shared("K", ["production"], "newer")],
+    [
+      shared("K", ["production"], "older"),
+      shared("K", ["production"], "newer"),
+    ],
   );
   assert.equal(fold(out)["K"], "enc(newer)");
 });
@@ -159,9 +164,14 @@ test("a preview override beats the app's own var AND a linked shared var", () =>
 });
 
 test("an override can introduce a key that exists nowhere else", () => {
-  const out = resolveEnvEntries("preview", APP, [], [], [], [
-    { key: "PREVIEW_ONLY", valueEnc: "enc(v)", type: "plain" as const },
-  ]);
+  const out = resolveEnvEntries(
+    "preview",
+    APP,
+    [],
+    [],
+    [],
+    [{ key: "PREVIEW_ONLY", valueEnc: "enc(v)", type: "plain" as const }],
+  );
   assert.deepEqual(keys(out), ["PREVIEW_ONLY"]);
 });
 

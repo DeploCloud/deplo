@@ -54,10 +54,12 @@ export function uploadRestore(
       `/api/backups/restore-upload?${param}=${encodeURIComponent(target.id)}`,
     );
     xhr.setRequestHeader("Content-Type", "application/octet-stream");
-    if (recoveryKey.trim()) xhr.setRequestHeader("X-Recovery-Key", recoveryKey.trim());
+    if (recoveryKey.trim())
+      xhr.setRequestHeader("X-Recovery-Key", recoveryKey.trim());
 
     xhr.upload.onprogress = (e) => {
-      if (e.lengthComputable) onEvent({ percent: Math.round((e.loaded / e.total) * 100) });
+      if (e.lengthComputable)
+        onEvent({ percent: Math.round((e.loaded / e.total) * 100) });
     };
 
     // The response is NDJSON that arrives while the restore runs, so it is read
@@ -78,7 +80,8 @@ export function uploadRestore(
             error?: string;
             text?: string;
           };
-          if (typeof message.ok === "boolean") verdict = { ok: message.ok, error: message.error };
+          if (typeof message.ok === "boolean")
+            verdict = { ok: message.ok, error: message.error };
           else if (message.text) onEvent({ line: message.text });
         } catch {
           // A half-written line cannot happen (we cut on newlines), so this is a
@@ -108,7 +111,8 @@ export function uploadRestore(
       }
       // A refusal never streams: it is one JSON object with the message.
       try {
-        const message = (JSON.parse(xhr.responseText) as { error?: string })?.error;
+        const message = (JSON.parse(xhr.responseText) as { error?: string })
+          ?.error;
         if (message) {
           reject(new Error(message));
           return;

@@ -24,7 +24,6 @@ const LINES: [string, string][] = [
   ["w-12", "w-11/12"],
 ];
 
-
 export default function Loading() {
   return (
     <div

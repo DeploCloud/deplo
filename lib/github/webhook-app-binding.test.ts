@@ -8,11 +8,7 @@ import { makeTestDb, type TestDb } from "../db/test-harness";
 import { __setTestDb, __resetTestDb, getDb } from "../db/client";
 import { encryptSecret } from "../crypto";
 import { deployments as deploymentsTable } from "../db/schema/control-plane";
-import {
-  seedIdentity,
-  TEAM_A,
-  TEAM_B,
-} from "../data/identity-test-helpers";
+import { seedIdentity, TEAM_A, TEAM_B } from "../data/identity-test-helpers";
 import {
   seedApp,
   seedServer,

@@ -107,8 +107,8 @@ export function DeployHookPanel({
                 <>
                   A URL that deploys this app when something POSTs to it — a
                   webhook from your git provider, a CI job, a script. The call
-                  also has to carry an API token, so the URL on its own can&apos;t
-                  deploy anything.
+                  also has to carry an API token, so the URL on its own
+                  can&apos;t deploy anything.
                 </>
               }
             />
@@ -142,7 +142,10 @@ export function DeployHookPanel({
               if (v !== null) setRevealed(true);
             });
           }}
-          labels={{ reveal: "Reveal deploy hook URL", hide: "Hide deploy hook URL" }}
+          labels={{
+            reveal: "Reveal deploy hook URL",
+            hide: "Hide deploy hook URL",
+          }}
         />
         <CopyResolved resolve={resolve} />
         <ConfirmAction
@@ -176,7 +179,8 @@ export function DeployHookPanel({
       <p className="flex items-start gap-1.5 text-xs text-muted-foreground">
         <ShieldCheck className="mt-px size-3.5 shrink-0" />
         <span>
-          Calls need an API token that holds <strong>Deploy apps</strong>, sent as{" "}
+          Calls need an API token that holds <strong>Deploy apps</strong>, sent
+          as{" "}
           <code className="font-mono text-[0.7rem]">
             Authorization: Bearer deplo_…
           </code>
@@ -186,8 +190,8 @@ export function DeployHookPanel({
             className="underline underline-offset-2 hover:text-foreground"
           >
             API tokens
-          </Link>
-          {" "}— the <strong>Deploy hook &amp; CI</strong> template is exactly this.
+          </Link>{" "}
+          — the <strong>Deploy hook &amp; CI</strong> template is exactly this.
           Revoking it stops every hook call made with it.
         </span>
       </p>

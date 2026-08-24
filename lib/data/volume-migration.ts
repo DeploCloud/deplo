@@ -29,7 +29,10 @@ import {
 
 /** Stop a stack on a specific server, throwing on failure (a move can't proceed if
  *  the stack won't quiesce — its data would change under the copy). */
-export async function stopStackOn(serverId: string, slug: string): Promise<void> {
+export async function stopStackOn(
+  serverId: string,
+  slug: string,
+): Promise<void> {
   const conn = await connectAgent(serverId);
   try {
     const r = await conn.stopStack(slug);
@@ -40,7 +43,10 @@ export async function stopStackOn(serverId: string, slug: string): Promise<void>
 }
 
 /** Start a stack on a specific server, throwing on failure. */
-export async function startStackOn(serverId: string, slug: string): Promise<void> {
+export async function startStackOn(
+  serverId: string,
+  slug: string,
+): Promise<void> {
   const conn = await connectAgent(serverId);
   try {
     const r = await conn.startStack(slug);
@@ -79,7 +85,8 @@ export async function destroyStackOn(
  */
 function attributeCopyError(e: unknown, what?: string): Error {
   const asSource = mapVolumeCopyUnsupported(e, "source");
-  if (asSource.constructor.name === "AgentVolumeCopyUnsupportedError") return asSource;
+  if (asSource.constructor.name === "AgentVolumeCopyUnsupportedError")
+    return asSource;
   // A source that is not there is the agent doing its job (it refuses rather than
   // creating an empty volume and calling it a copy) — but it reached the report as
   // `5 NOT_FOUND: … docker: Error response from daemon`, which reads like a broken
@@ -187,7 +194,12 @@ export async function copyVolumeBetween(
     }
   })();
 
-  let res: { ok: boolean; error: string; bytesWritten?: number; sha256?: string };
+  let res: {
+    ok: boolean;
+    error: string;
+    bytesWritten?: number;
+    sha256?: string;
+  };
   // Both cross-checks are OPTIONAL by version, not by importance: an agent older
   // than the fields answers 0 and "", which is "not reported" - reading a 0 as
   // "wrote nothing" would fail every copy on the fleet that has not updated yet.
@@ -215,7 +227,11 @@ export async function copyVolumeBetween(
     throw new Error(
       `the copy of "${volumeName}" arrived corrupted: ${bytes} bytes sent, digest ${res.sha256} received instead of ${digest}`,
     );
-  if (res.bytesWritten != null && res.bytesWritten > 0 && res.bytesWritten !== bytes)
+  if (
+    res.bytesWritten != null &&
+    res.bytesWritten > 0 &&
+    res.bytesWritten !== bytes
+  )
     throw new Error(
       `the copy of "${volumeName}" was truncated: ${bytes} bytes sent, ${res.bytesWritten} written`,
     );
@@ -251,7 +267,8 @@ export async function copyHostPathBetween(
   } catch (e) {
     throw attributeCopyError(e, `The directory "${sourcePath}"`);
   }
-  if (seen <= EMPTY_ARCHIVE_CEILING) return { bytes: 0, sha256: "", empty: true };
+  if (seen <= EMPTY_ARCHIVE_CEILING)
+    return { bytes: 0, sha256: "", empty: true };
 
   const hash = createHash("sha256");
   let bytes = 0;
@@ -263,14 +280,21 @@ export async function copyHostPathBetween(
     }
   })();
 
-  let res: { ok: boolean; error: string; bytesWritten?: number; sha256?: string };
+  let res: {
+    ok: boolean;
+    error: string;
+    bytesWritten?: number;
+    sha256?: string;
+  };
   try {
     res = await dest.importHostPath(targetPath, true, counted);
   } catch (e) {
     throw attributeCopyError(e);
   }
   if (!res.ok)
-    throw new Error(res.error || `agent failed to import the directory "${targetPath}"`);
+    throw new Error(
+      res.error || `agent failed to import the directory "${targetPath}"`,
+    );
 
   const digest = hash.digest("hex");
   if (bytes <= EMPTY_ARCHIVE_CEILING)
@@ -281,7 +305,11 @@ export async function copyHostPathBetween(
     throw new Error(
       `the copy of "${sourcePath}" arrived corrupted: ${bytes} bytes sent, digest ${res.sha256} received instead of ${digest}`,
     );
-  if (res.bytesWritten != null && res.bytesWritten > 0 && res.bytesWritten !== bytes)
+  if (
+    res.bytesWritten != null &&
+    res.bytesWritten > 0 &&
+    res.bytesWritten !== bytes
+  )
     throw new Error(
       `the copy of "${sourcePath}" was truncated: ${bytes} bytes sent, ${res.bytesWritten} written`,
     );
@@ -307,7 +335,9 @@ export async function copyFilesBetween(
     throw attributeCopyError(e);
   }
   if (!res.ok)
-    throw new Error(res.error || `agent failed to import the files dir for "${slug}"`);
+    throw new Error(
+      res.error || `agent failed to import the files dir for "${slug}"`,
+    );
 }
 
 /**
@@ -336,7 +366,9 @@ export async function copyImageBetween(
     throw attributeCopyError(e);
   }
   if (!res.ok)
-    throw new Error(res.error || `agent failed to load the image "${imageRef}"`);
+    throw new Error(
+      res.error || `agent failed to load the image "${imageRef}"`,
+    );
   return res.bytesWritten;
 }
 

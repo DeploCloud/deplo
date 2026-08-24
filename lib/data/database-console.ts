@@ -1,6 +1,10 @@
 import "server-only";
 
-import { hasCapability, requireActiveTeamId, requireCapability } from "../membership";
+import {
+  hasCapability,
+  requireActiveTeamId,
+  requireCapability,
+} from "../membership";
 import { loadDatabaseForTeam } from "./databases";
 import {
   connectAgent,
@@ -163,7 +167,11 @@ function displayFallback(db: Database): ConsoleInstance {
 
 async function listForDisplay(
   db: Database,
-): Promise<{ instances: ConsoleInstance[]; real: boolean; unreachable: boolean }> {
+): Promise<{
+  instances: ConsoleInstance[];
+  real: boolean;
+  unreachable: boolean;
+}> {
   try {
     const instances = await listDatabaseInstances(db);
     return instances.length
@@ -171,7 +179,11 @@ async function listForDisplay(
       : { instances: [displayFallback(db)], real: false, unreachable: false };
   } catch (e) {
     if (e instanceof AgentUnreachableError)
-      return { instances: [displayFallback(db)], real: false, unreachable: true };
+      return {
+        instances: [displayFallback(db)],
+        real: false,
+        unreachable: true,
+      };
     throw e;
   }
 }
@@ -194,7 +206,9 @@ export async function getDatabaseConsoleInfo(
 }
 
 /** Logs page info for a database — same shape as an app's LogsInfo. */
-export async function getDatabaseLogsInfo(id: string): Promise<LogsInfo | null> {
+export async function getDatabaseLogsInfo(
+  id: string,
+): Promise<LogsInfo | null> {
   const teamId = await requireActiveTeamId();
   const db = await loadDatabaseForTeam(id, teamId);
   if (!db) return null;
@@ -248,7 +262,10 @@ export async function resolveDatabaseAttachTarget(
   target?: string,
 ): Promise<
   | { ok: true; instance: ConsoleInstance; serverId: string }
-  | { ok: false; reason: "not-found" | "no-instance" | "stopped" | "unreachable" }
+  | {
+      ok: false;
+      reason: "not-found" | "no-instance" | "stopped" | "unreachable";
+    }
 > {
   const { teamId } = await requireCapability("open_database_console");
   const db = await loadDatabaseForTeam(id, teamId);
@@ -282,7 +299,10 @@ export async function resolveDatabaseLogsTarget(
   target?: string,
 ): Promise<
   | { ok: true; instance: ConsoleInstance; serverId: string }
-  | { ok: false; reason: "not-found" | "no-instance" | "unreachable" | "forbidden" }
+  | {
+      ok: false;
+      reason: "not-found" | "no-instance" | "unreachable" | "forbidden";
+    }
 > {
   const teamId = await requireActiveTeamId();
   const db = await loadDatabaseForTeam(id, teamId);
@@ -299,9 +319,7 @@ export async function resolveDatabaseLogsTarget(
       return { ok: false, reason: "unreachable" };
     throw e;
   }
-  const pick = target
-    ? instances.find((i) => i.name === target)
-    : instances[0];
+  const pick = target ? instances.find((i) => i.name === target) : instances[0];
   if (!pick) return { ok: false, reason: "no-instance" };
   return { ok: true, instance: pick, serverId: db.serverId };
 }
@@ -331,7 +349,8 @@ export async function execInDatabase(
   try {
     const instances = await listDatabaseInstances(db);
     const pick = instances.find((i) => i.running) ?? instances[0];
-    if (!pick) return { output: "! no container on the host — redeploy the database" };
+    if (!pick)
+      return { output: "! no container on the host — redeploy the database" };
 
     const conn = await connectAgent(db.serverId);
     let res;
@@ -342,7 +361,8 @@ export async function execInDatabase(
     }
 
     if (isDockerLevelStderr(res.stderr)) {
-      const reason = res.stderr.trim() || `docker exec failed (exit ${res.code})`;
+      const reason =
+        res.stderr.trim() || `docker exec failed (exit ${res.code})`;
       return { output: `! ${reason}` };
     }
     const body = [res.stdout, res.stderr]

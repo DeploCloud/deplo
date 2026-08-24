@@ -76,7 +76,9 @@ const validJob = {
 /* ---- Gates ------------------------------------------------------- */
 
 test("another team cannot read or write this team's cron jobs", async () => {
-  const id = await asOwner(async () => (await crons.createCronJob("app", "prj_1", validJob)).id);
+  const id = await asOwner(
+    async () => (await crons.createCronJob("app", "prj_1", validJob)).id,
+  );
 
   // An app id from another team must read as "not found", never as "denied" -
   // the gate is not an oracle for which ids exist.
@@ -85,11 +87,20 @@ test("another team cannot read or write this team's cron jobs", async () => {
     /not found/i,
   );
   await assert.rejects(
-    () => asOtherTeam(() => crons.updateCronJob(id, { command: "curl evil.example" })),
+    () =>
+      asOtherTeam(() =>
+        crons.updateCronJob(id, { command: "curl evil.example" }),
+      ),
     /not found/i,
   );
-  await assert.rejects(() => asOtherTeam(() => crons.deleteCronJob(id)), /not found/i);
-  await assert.rejects(() => asOtherTeam(() => crons.listCronRuns(id)), /not found/i);
+  await assert.rejects(
+    () => asOtherTeam(() => crons.deleteCronJob(id)),
+    /not found/i,
+  );
+  await assert.rejects(
+    () => asOtherTeam(() => crons.listCronRuns(id)),
+    /not found/i,
+  );
 });
 
 test("a database job needs database-console access as well", async () => {
@@ -107,8 +118,13 @@ test("a database job needs database-console access as well", async () => {
 });
 
 test("without manage_crons nothing is readable or writable", async () => {
-  await db.execute(`delete from membership_capabilities where capability = 'manage_crons'`);
-  await assert.rejects(() => asOwner(() => crons.listAppCronJobs("prj_1")), /permission|not found/i);
+  await db.execute(
+    `delete from membership_capabilities where capability = 'manage_crons'`,
+  );
+  await assert.rejects(
+    () => asOwner(() => crons.listAppCronJobs("prj_1")),
+    /permission|not found/i,
+  );
   await assert.rejects(
     () => asOwner(() => crons.createCronJob("app", "prj_1", validJob)),
     /permission|not found/i,
@@ -121,7 +137,13 @@ test("an unparseable schedule is refused, not stored", async () => {
   // The scheduler treats an unparseable cron as "never matches", so storing one
   // would leave a job the UI calls enabled that silently never runs.
   await assert.rejects(
-    () => asOwner(() => crons.createCronJob("app", "prj_1", { ...validJob, schedule: "every night" })),
+    () =>
+      asOwner(() =>
+        crons.createCronJob("app", "prj_1", {
+          ...validJob,
+          schedule: "every night",
+        }),
+      ),
     /not a valid cron expression/,
   );
   assert.equal((await db.select().from(cronJobsTable)).length, 0);
@@ -129,22 +151,37 @@ test("an unparseable schedule is refused, not stored", async () => {
 
 test("a timezone is validated against Intl, not trusted", async () => {
   await assert.rejects(
-    () => asOwner(() => crons.createCronJob("app", "prj_1", { ...validJob, timezone: "Mars/Olympus" })),
+    () =>
+      asOwner(() =>
+        crons.createCronJob("app", "prj_1", {
+          ...validJob,
+          timezone: "Mars/Olympus",
+        }),
+      ),
     /is not a timezone/,
   );
   const job = await asOwner(() =>
-    crons.createCronJob("app", "prj_1", { ...validJob, timezone: "  Europe/Rome  " }),
+    crons.createCronJob("app", "prj_1", {
+      ...validJob,
+      timezone: "  Europe/Rome  ",
+    }),
   );
   assert.equal(job.timezone, "Europe/Rome");
 });
 
 test("name and command are required and trimmed", async () => {
   await assert.rejects(
-    () => asOwner(() => crons.createCronJob("app", "prj_1", { ...validJob, name: "   " })),
+    () =>
+      asOwner(() =>
+        crons.createCronJob("app", "prj_1", { ...validJob, name: "   " }),
+      ),
     /Give the cron job a name/,
   );
   await assert.rejects(
-    () => asOwner(() => crons.createCronJob("app", "prj_1", { ...validJob, command: "" })),
+    () =>
+      asOwner(() =>
+        crons.createCronJob("app", "prj_1", { ...validJob, command: "" }),
+      ),
     /a command to run/,
   );
 });
@@ -173,13 +210,19 @@ test("timeout x attempts is clamped to 24 hours", async () => {
   );
   // Each on its own is fine.
   await asOwner(() =>
-    crons.createCronJob("app", "prj_1", { ...validJob, timeoutSeconds: 24 * 3600 }),
+    crons.createCronJob("app", "prj_1", {
+      ...validJob,
+      timeoutSeconds: 24 * 3600,
+    }),
   );
 });
 
 test("the clamp reads the STORED value when only one side is edited", async () => {
   const job = await asOwner(() =>
-    crons.createCronJob("app", "prj_1", { ...validJob, timeoutSeconds: 12 * 3600 }),
+    crons.createCronJob("app", "prj_1", {
+      ...validJob,
+      timeoutSeconds: 12 * 3600,
+    }),
   );
   // 12h is fine alone; asking for 3 attempts of it is 36 hours.
   await assert.rejects(
@@ -199,7 +242,10 @@ test("retention, attempts and shell are bounded", async () => {
     [{ ...validJob, timeoutSeconds: 0 }, /between 1 second and 24 hours/],
   ];
   for (const [input, message] of bad) {
-    await assert.rejects(() => asOwner(() => crons.createCronJob("app", "prj_1", input)), message);
+    await assert.rejects(
+      () => asOwner(() => crons.createCronJob("app", "prj_1", input)),
+      message,
+    );
   }
 });
 
@@ -217,7 +263,10 @@ test("job variables are encrypted and have no read path", async () => {
   assert.equal(JSON.stringify(job).includes("s3cr3t"), false);
 
   // And what is at rest is ciphertext.
-  const rows = await db.select().from(cronJobEnv).where(eq(cronJobEnv.jobId, job.id));
+  const rows = await db
+    .select()
+    .from(cronJobEnv)
+    .where(eq(cronJobEnv.jobId, job.id));
   assert.equal(rows.length, 1);
   assert.notEqual(rows[0].valueEnc, "s3cr3t");
 });
@@ -250,7 +299,8 @@ test("editing the environment replaces it wholesale", async () => {
   );
   assert.deepEqual(updated.envKeys, ["C"]);
   assert.equal(
-    (await db.select().from(cronJobEnv).where(eq(cronJobEnv.jobId, job.id))).length,
+    (await db.select().from(cronJobEnv).where(eq(cronJobEnv.jobId, job.id)))
+      .length,
     1,
   );
 });
@@ -279,12 +329,16 @@ test("nextRunAt is computed in the job's zone, and only while enabled", async ()
   // 03:00 Rome is never 03:00Z - that is the whole point of storing the zone.
   assert.equal(new Date(job.nextRunAt!).getUTCHours() === 3, false);
 
-  const off = await asOwner(() => crons.updateCronJob(job.id, { enabled: false }));
+  const off = await asOwner(() =>
+    crons.updateCronJob(job.id, { enabled: false }),
+  );
   assert.equal(off.nextRunAt, null);
 });
 
 test("the master switch is per target and leaves the jobs alone", async () => {
-  const job = await asOwner(() => crons.createCronJob("app", "prj_1", validJob));
+  const job = await asOwner(() =>
+    crons.createCronJob("app", "prj_1", validJob),
+  );
   await asOwner(() => crons.setCronEnabled("app", "prj_1", false));
 
   const view = await asOwner(() => crons.listAppCronJobs("prj_1"));
@@ -301,7 +355,9 @@ test("a deleted job takes its history with it", async () => {
 });
 
 test("a job says whether a run is in flight right now", async () => {
-  const job = await asOwner(() => crons.createCronJob("app", "prj_1", validJob));
+  const job = await asOwner(() =>
+    crons.createCronJob("app", "prj_1", validJob),
+  );
   assert.equal(
     (await asOwner(() => crons.listAppCronJobs("prj_1"))).jobs[0].running,
     false,
@@ -346,7 +402,9 @@ test("Run now answers with a skipped run while one is in flight", async () => {
 test("Run now refuses while the master switch is off", async () => {
   // The page is hidden when the switch is off, so the API must not be the one
   // way around the opt-in.
-  const job = await asOwner(() => crons.createCronJob("app", "prj_1", validJob));
+  const job = await asOwner(() =>
+    crons.createCronJob("app", "prj_1", validJob),
+  );
   await asOwner(() => crons.setCronEnabled("app", "prj_1", false));
   await assert.rejects(
     () => asOwner(() => crons.runCronJobNow(job.id)),

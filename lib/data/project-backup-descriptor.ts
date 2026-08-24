@@ -59,7 +59,13 @@ export async function appEnvSnapshot(
     loadInstanceEnv(),
   ]);
   const out: Record<string, string> = {};
-  for (const e of resolveEnvEntries("production", appId, vars, sharedVars, instanceGlobals)) {
+  for (const e of resolveEnvEntries(
+    "production",
+    appId,
+    vars,
+    sharedVars,
+    instanceGlobals,
+  )) {
     // Strict: this descriptor is what a RESTORE writes back as the app's real
     // `.env`, so a value that silently became "" would not break the backup -
     // it would break the recovery, months later, at the worst possible moment.
@@ -153,7 +159,9 @@ export function composeStackVolumeHostNames(
   const volumes = (doc as { volumes?: unknown } | null)?.volumes;
   if (!volumes || typeof volumes !== "object") return [];
   const names: string[] = [];
-  for (const [key, spec] of Object.entries(volumes as Record<string, unknown>)) {
+  for (const [key, spec] of Object.entries(
+    volumes as Record<string, unknown>,
+  )) {
     const s = (spec ?? {}) as {
       name?: unknown;
       external?: unknown;
@@ -258,7 +266,9 @@ export function appMoveVolumeNames(
   // BY Deplo — they must move with the app, not trip the reserved-name guard.
   const own = new Set(namedVolumeHostNames(slug, project.volumes));
   const names: string[] = [];
-  for (const [key, spec] of Object.entries(volumes as Record<string, unknown>)) {
+  for (const [key, spec] of Object.entries(
+    volumes as Record<string, unknown>,
+  )) {
     const s = (spec ?? {}) as { name?: unknown; external?: unknown };
     // Skip external volumes — Deplo doesn't own them, so a move must not relocate
     // them (they stay the operator's responsibility on whatever host declares them).

@@ -138,7 +138,11 @@ const APP = {
 
 test("faviconSourceKind: a compose stack is scanned on its own server", () => {
   assert.equal(
-    faviconSourceKind({ ...APP, source: "compose", compose: "services:\n  web:\n" }),
+    faviconSourceKind({
+      ...APP,
+      source: "compose",
+      compose: "services:\n  web:\n",
+    }),
     "app-files",
   );
 });
@@ -159,7 +163,11 @@ test("faviconSourceKind: compose wins over a repo the app no longer builds from"
 
 test("faviconSourceKind: a legacy template app (compose, no repo/image) is app-files", () => {
   assert.equal(
-    faviconSourceKind({ ...APP, source: "docker-image", compose: "services: {}" }),
+    faviconSourceKind({
+      ...APP,
+      source: "docker-image",
+      compose: "services: {}",
+    }),
     "app-files",
   );
 });
@@ -207,7 +215,11 @@ test("faviconSourceKind: an upload is scanned from its archive", () => {
 
 test("faviconSourceKind: a prebuilt image alone has no files to scan", () => {
   assert.equal(
-    faviconSourceKind({ ...APP, source: "docker-image", dockerImage: "nginx:latest" }),
+    faviconSourceKind({
+      ...APP,
+      source: "docker-image",
+      dockerImage: "nginx:latest",
+    }),
     "none",
   );
 });

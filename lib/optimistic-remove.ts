@@ -28,7 +28,8 @@ export function retainRemoved(
   presentKeys: Iterable<string>,
 ): ReadonlySet<string> {
   if (removed.size === 0) return removed;
-  const present = presentKeys instanceof Set ? presentKeys : new Set(presentKeys);
+  const present =
+    presentKeys instanceof Set ? presentKeys : new Set(presentKeys);
   const kept = [...removed].filter((key) => present.has(key));
   if (kept.length === removed.size) return removed;
   return kept.length === 0 ? NOTHING_REMOVED : new Set(kept);

@@ -196,7 +196,10 @@ export async function POST(request: Request) {
 
   let identity;
   try {
-    identity = await authenticateToken(raw, request.headers.get("x-deplo-team"));
+    identity = await authenticateToken(
+      raw,
+      request.headers.get("x-deplo-team"),
+    );
   } catch (e) {
     // An unmet two-factor policy THROWS rather than returning null. Surfacing it
     // as the 401 body beats a 500 that tells the operator nothing.

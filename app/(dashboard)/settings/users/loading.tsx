@@ -32,14 +32,16 @@ export default function Loading() {
           <Skeleton className="h-8 w-28 rounded-md" />
         </CardHeader>
         <CardContent className="space-y-2">
-            {Array.from({ length: 6 }).map((_, i) => (
-              <Skeleton
-                key={i}
-                shimmer
-                style={{ ["--shimmer-delay" as string]: `-${(i * 0.09).toFixed(2)}s` }}
-                className="h-[4.25rem] w-full rounded-lg"
-              />
-            ))}
+          {Array.from({ length: 6 }).map((_, i) => (
+            <Skeleton
+              key={i}
+              shimmer
+              style={{
+                ["--shimmer-delay" as string]: `-${(i * 0.09).toFixed(2)}s`,
+              }}
+              className="h-[4.25rem] w-full rounded-lg"
+            />
+          ))}
         </CardContent>
       </Card>
     </div>

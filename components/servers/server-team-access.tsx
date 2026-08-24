@@ -62,9 +62,7 @@ export function ServerTeamAccess({
           description="Only the teams you pick"
           selected={!value.allTeams}
           disabled={disabled}
-          onSelect={() =>
-            onChange({ allTeams: false, teamIds: value.teamIds })
-          }
+          onSelect={() => onChange({ allTeams: false, teamIds: value.teamIds })}
         />
       </div>
 

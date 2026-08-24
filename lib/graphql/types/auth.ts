@@ -117,9 +117,14 @@ async function checkLimits(
   checks: { key: string; limit: number; windowMs: number }[],
 ): Promise<string | null> {
   const results = await Promise.all(
-    checks.map((c) => rateLimit(c.key, { limit: c.limit, windowMs: c.windowMs })),
+    checks.map((c) =>
+      rateLimit(c.key, { limit: c.limit, windowMs: c.windowMs }),
+    ),
   );
-  const worst = results.reduce((w, r) => (r.ok ? w : Math.max(w, r.retryAfterSec)), 0);
+  const worst = results.reduce(
+    (w, r) => (r.ok ? w : Math.max(w, r.retryAfterSec)),
+    0,
+  );
   return worst > 0 ? `Too many attempts. Try again in ${worst}s.` : null;
 }
 
@@ -153,7 +158,10 @@ const setupSchema = z.object({
   teamName: z.string().min(1, "Workspace name is required").max(80),
   name: z.string().trim().min(1, "Your name is required").max(80),
   email: z.string().email("Enter a valid email"),
-  password: z.string().min(8, "Password must be at least 8 characters").max(200),
+  password: z
+    .string()
+    .min(8, "Password must be at least 8 characters")
+    .max(200),
 });
 
 const registerSchema = z.object({
@@ -297,7 +305,11 @@ builder.mutationFields((t) => ({
       // resolves, which is also why no failed-login notice is sent from here:
       // there is no address to warn.
       const limited = await checkLimits([
-        { key: await clientKey("passkey-verify"), limit: 10, windowMs: 15 * 60_000 },
+        {
+          key: await clientKey("passkey-verify"),
+          limit: 10,
+          windowMs: 15 * 60_000,
+        },
       ]);
       if (limited) throw new Error(limited);
       const res = await verifyPasskeyLogin(response);

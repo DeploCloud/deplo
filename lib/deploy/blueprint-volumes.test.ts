@@ -46,5 +46,9 @@ test("no blueprint compose uses the legacy files/ convention or a .. escape", ()
       }
     }
   }
-  assert.deepEqual(offenders, [], `blueprints must use the ./ convention:\n${offenders.join("\n")}`);
+  assert.deepEqual(
+    offenders,
+    [],
+    `blueprints must use the ./ convention:\n${offenders.join("\n")}`,
+  );
 });

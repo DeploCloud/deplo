@@ -22,7 +22,7 @@ export default function Loading() {
       </div>
 
       {/* Tab bar */}
-      <div className="flex gap-6 border-b border-border pb-3 pt-2">
+      <div className="flex gap-6 border-b border-border pt-2 pb-3">
         <Skeleton className="h-5 w-20" />
         <Skeleton className="h-5 w-20" />
       </div>

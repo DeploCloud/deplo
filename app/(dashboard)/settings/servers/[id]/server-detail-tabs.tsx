@@ -25,12 +25,7 @@ import {
   UnderlineTabsList,
   UnderlineTabsTrigger,
 } from "@/components/ui/tabs";
-import {
-  Card,
-  CardContent,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import {
   Dialog,
   DialogContent,
@@ -139,7 +134,11 @@ export function ServerDetailTabs({
     // rather than `router.replace`, which would re-render this page on the server
     // — every read it does, DNS resolution included — for a query parameter the
     // client already has the panels for. `useSearchParams` still sees it.
-    window.history.replaceState(null, "", s ? `?${s}` : window.location.pathname);
+    window.history.replaceState(
+      null,
+      "",
+      s ? `?${s}` : window.location.pathname,
+    );
   }
 
   return (
@@ -175,7 +174,11 @@ export function ServerDetailTabs({
         <OverviewTab server={server} />
       </TabsContent>
       <TabsContent value="access" className="space-y-4 pt-4">
-        <AccessTab server={server} teams={teams} accessTeamIds={accessTeamIds} />
+        <AccessTab
+          server={server}
+          teams={teams}
+          accessTeamIds={accessTeamIds}
+        />
       </TabsContent>
       <TabsContent value="certificates" className="space-y-4 pt-4">
         <ServerCertificatesTab server={server} />
@@ -245,9 +248,7 @@ function OverviewTab({ server }: { server: ServerSummary }) {
       }
       setConfirmUpdate(false);
       const version = res.data?.updateServerAgent;
-      toast.success(
-        version ? `Agent updated to v${version}` : "Agent updated",
-      );
+      toast.success(version ? `Agent updated to v${version}` : "Agent updated");
       router.refresh();
     });
   }
@@ -261,8 +262,18 @@ function OverviewTab({ server }: { server: ServerSummary }) {
           value={num(server.cpuCores)}
           unit={server.cpuCores === 1 ? "core" : "cores"}
         />
-        <Spec icon={MemoryStick} label="Memory" value={num(ramGb)} unit="GB RAM" />
-        <Spec icon={HardDrive} label="Disk" value={num(server.diskGb)} unit="GB" />
+        <Spec
+          icon={MemoryStick}
+          label="Memory"
+          value={num(ramGb)}
+          unit="GB RAM"
+        />
+        <Spec
+          icon={HardDrive}
+          label="Disk"
+          value={num(server.diskGb)}
+          unit="GB"
+        />
         <Spec
           icon={Boxes}
           label="Docker"
@@ -323,18 +334,25 @@ function OverviewTab({ server }: { server: ServerSummary }) {
               Update agent on {server.name}?
             </DialogTitle>
             <DialogDescription>
-              Updates the agent to <strong>v{server.expectedAgentVersion}</strong>{" "}
-              over its existing secure connection. Its certificates are not
-              reissued, so the server stays online with the same identity. Takes a
-              few seconds while the agent swaps its binary and reconnects.
+              Updates the agent to{" "}
+              <strong>v{server.expectedAgentVersion}</strong> over its existing
+              secure connection. Its certificates are not reissued, so the
+              server stays online with the same identity. Takes a few seconds
+              while the agent swaps its binary and reconnects.
             </DialogDescription>
           </DialogHeader>
           <DialogFooter>
-            <Button variant="outline" onClick={() => setConfirmUpdate(false)} disabled={pending}>
+            <Button
+              variant="outline"
+              onClick={() => setConfirmUpdate(false)}
+              disabled={pending}
+            >
               Cancel
             </Button>
             <Button onClick={() => update()} disabled={pending}>
-              {pending ? "Updating" : `Update to v${server.expectedAgentVersion}`}
+              {pending
+                ? "Updating"
+                : `Update to v${server.expectedAgentVersion}`}
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -362,7 +380,9 @@ function AccessTab({
     allTeams: server.allTeams,
     teamIds: accessTeamIds,
   });
-  const [concurrency, setConcurrency] = React.useState(String(server.deployConcurrency));
+  const [concurrency, setConcurrency] = React.useState(
+    String(server.deployConcurrency),
+  );
 
   function saveAccess(e: React.FormEvent) {
     e.preventDefault();
@@ -401,7 +421,9 @@ function AccessTab({
       return;
     }
     startTransition(async () => {
-      const res = await gqlAction<{ setServerDeployConcurrency: { id: string } }>(
+      const res = await gqlAction<{
+        setServerDeployConcurrency: { id: string };
+      }>(
         `mutation SetServerDeployConcurrency($id: String!, $concurrency: Int!) {
           setServerDeployConcurrency(id: $id, concurrency: $concurrency) { id }
         }`,
@@ -452,7 +474,6 @@ function AccessTab({
         </CardContent>
       </Card>
 
-
       <Card>
         <CardHeader>
           <CardTitle className="flex items-center gap-2 text-base">
@@ -460,8 +481,8 @@ function AccessTab({
             Build concurrency
           </CardTitle>
           <p className="mt-1 text-sm text-muted-foreground">
-            How many deployments this server runs at the same time. Extra deploys
-            wait in a queue; other servers are unaffected.
+            How many deployments this server runs at the same time. Extra
+            deploys wait in a queue; other servers are unaffected.
           </p>
         </CardHeader>
         <CardContent>
@@ -486,7 +507,9 @@ function AccessTab({
             </div>
             <Button
               type="submit"
-              disabled={pending || concurrency === String(server.deployConcurrency)}
+              disabled={
+                pending || concurrency === String(server.deployConcurrency)
+              }
             >
               {pending ? "Saving" : "Save"}
             </Button>

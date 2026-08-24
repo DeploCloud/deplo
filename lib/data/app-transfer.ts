@@ -114,7 +114,10 @@ export interface AppTransferInfo {
 function repoOwner(repo: string | null, url: string | null): string | null {
   const fromRepo = repo?.split("/")[0]?.trim();
   if (fromRepo) return fromRepo.toLowerCase();
-  const path = url?.replace(/^https?:\/\/[^/]+\//, "").split("/")[0]?.trim();
+  const path = url
+    ?.replace(/^https?:\/\/[^/]+\//, "")
+    .split("/")[0]
+    ?.trim();
   return path ? path.toLowerCase() : null;
 }
 
@@ -177,7 +180,10 @@ export const appTransferInfo = cache(
         ),
       )
       .where(
-        and(eq(membershipsTable.userId, userId), ne(membershipsTable.teamId, teamId)),
+        and(
+          eq(membershipsTable.userId, userId),
+          ne(membershipsTable.teamId, teamId),
+        ),
       )
       .orderBy(asc(teamsTable.name));
     const candidateIds = candidates.map((c) => c.id);
@@ -429,7 +435,8 @@ export async function transferAppToTeam(
   // a token for the same host says nothing about whether it can read this repo.
   // It is always dropped, and the destination team re-picks its own connection.
   const connectionDropped = Boolean(app.repoConnectionId);
-  const githubDropped = Boolean(app.repoInstallationId) && installationId === null;
+  const githubDropped =
+    Boolean(app.repoInstallationId) && installationId === null;
 
   // The app's lifecycle lock — the same one a deploy and a delete take — so the
   // hand-over can't interleave with a bring-up of the very stack it re-homes.
@@ -477,7 +484,9 @@ export async function transferAppToTeam(
       // as that team's history (its destination, its audit trail).
       await tx
         .delete(backupsTable)
-        .where(and(eq(backupsTable.appId, appId), eq(backupsTable.teamId, teamId)));
+        .where(
+          and(eq(backupsTable.appId, appId), eq(backupsTable.teamId, teamId)),
+        );
       // Cron jobs carry BOTH team_id and app_id, like backups — and, like them,
       // point at the SOURCE team and run the SOURCE team's command in the
       // container. But a transfer REWRITES app.teamId rather than deleting the
@@ -488,7 +497,9 @@ export async function transferAppToTeam(
       // them here; cron_runs and cron_job_env cascade off the job.
       await tx
         .delete(cronJobsTable)
-        .where(and(eq(cronJobsTable.appId, appId), eq(cronJobsTable.teamId, teamId)));
+        .where(
+          and(eq(cronJobsTable.appId, appId), eq(cronJobsTable.teamId, teamId)),
+        );
       // An API token SCOPED to this app is the source team's credential, and its
       // reach is derived live from `apps.teamId` — so a surviving row would follow
       // the app into the destination team and show up in ITS "tokens reaching this
@@ -512,7 +523,10 @@ export async function transferAppToTeam(
         .update(backupRunsTable)
         .set({ appId: null })
         .where(
-          and(eq(backupRunsTable.appId, appId), eq(backupRunsTable.teamId, teamId)),
+          and(
+            eq(backupRunsTable.appId, appId),
+            eq(backupRunsTable.teamId, teamId),
+          ),
         );
       // Keep the source team's log entries, drop the pointer: those rows must not
       // deep-link members into an app their team no longer owns.

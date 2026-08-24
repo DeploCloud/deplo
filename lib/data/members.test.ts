@@ -80,7 +80,9 @@ test("mintRegistrationLink refuses an owner role for an existing-teams assignmen
       asOwner(() =>
         mintRegistrationLink({
           mode: "existing_teams",
-          teamAssignments: [{ teamId: TEAM_A, role: "owner", capabilities: [] }],
+          teamAssignments: [
+            { teamId: TEAM_A, role: "owner", capabilities: [] },
+          ],
         }),
       ),
     /member or viewer/,
@@ -115,7 +117,9 @@ test("mintRegistrationLink stamps an automatic 24h expiry", async () => {
   // Mint runs to completion under node:test: the share URL is built from the
   // instance's stored panel address (lib/data/instance-settings), which degrades
   // to the configured DEPLO_PUBLIC_URL rather than demanding request headers.
-  const { link } = await asOwner(() => mintRegistrationLink({ mode: "own_team" }));
+  const { link } = await asOwner(() =>
+    mintRegistrationLink({ mode: "own_team" }),
+  );
   const after = Date.now();
   assert.match(link, /\/register\//, "the share URL carries the raw token");
 
@@ -142,7 +146,10 @@ test("mintRegistrationLink keeps the token readable back, and the hash still mat
     })
     .from(registrationLinksTable);
 
-  assert.ok(row!.tokenEnc, "the token is kept encrypted so it can be shown again");
+  assert.ok(
+    row!.tokenEnc,
+    "the token is kept encrypted so it can be shown again",
+  );
   const token = decryptSecret(row!.tokenEnc!);
   assert.notEqual(token, "", "and it decrypts");
   // The pair has to stay consistent: the HASH is what /register looks the link up
@@ -154,7 +161,11 @@ test("mintRegistrationLink keeps the token readable back, and the hash still mat
 test("revealRegistrationLink refuses a link that can no longer be used", async () => {
   await seedIdentity(db);
   await db.insert(registrationLinksTable).values([
-    { ...linkRow("reg_used", "used-token", 12), status: "used", usedByUsername: "bob" },
+    {
+      ...linkRow("reg_used", "used-token", 12),
+      status: "used",
+      usedByUsername: "bob",
+    },
     { ...linkRow("reg_revoked", "revoked-token", 12), status: "revoked" },
     linkRow("reg_expired", "expired-token", -1),
     // Pending and alive, but minted before token_enc existed (migration 0048).
@@ -168,13 +179,22 @@ test("revealRegistrationLink refuses a link that can no longer be used", async (
       () => revealRegistrationLink("reg_used"),
       /already used by @bob/,
     );
-    await assert.rejects(() => revealRegistrationLink("reg_revoked"), /revoked/);
-    await assert.rejects(() => revealRegistrationLink("reg_expired"), /expired/);
+    await assert.rejects(
+      () => revealRegistrationLink("reg_revoked"),
+      /revoked/,
+    );
+    await assert.rejects(
+      () => revealRegistrationLink("reg_expired"),
+      /expired/,
+    );
     await assert.rejects(
       () => revealRegistrationLink("reg_legacy"),
       /before links could be shown again/,
     );
-    await assert.rejects(() => revealRegistrationLink("reg_nope"), /not found/i);
+    await assert.rejects(
+      () => revealRegistrationLink("reg_nope"),
+      /not found/i,
+    );
   });
 });
 
@@ -182,7 +202,12 @@ test("revealRegistrationLink is instance-admin only", async () => {
   await seedIdentity(db, {
     users: [
       { id: USER_1, teamId: TEAM_A, role: "owner" },
-      { id: "user_plain", teamId: TEAM_A, role: "member", isInstanceAdmin: false },
+      {
+        id: "user_plain",
+        teamId: TEAM_A,
+        role: "member",
+        isInstanceAdmin: false,
+      },
     ],
   });
   await db.insert(registrationLinksTable).values(linkRow("reg_1", "raw", 12));
@@ -244,12 +269,21 @@ test("updateMember edits caps but assertAdminCoverage blocks dropping the last m
   await seedIdentity(db, {
     users: [
       { id: USER_1, teamId: TEAM_A, role: "owner" },
-      { id: "mgr", teamId: TEAM_A, role: "member", capabilities: ["view", "manage_members", "manage_team"] },
+      {
+        id: "mgr",
+        teamId: TEAM_A,
+        role: "member",
+        capabilities: ["view", "manage_members", "manage_team"],
+      },
     ],
   });
   await asOwner(async () => {
     // Demote mgr to view-only: owner still holds both critical caps, so allowed.
-    await updateMember({ userId: "mgr", role: "member", capabilities: ["view"] });
+    await updateMember({
+      userId: "mgr",
+      role: "member",
+      capabilities: ["view"],
+    });
     const mgrMembership = (
       await db
         .select({ id: membershipsTable.id })
@@ -260,7 +294,10 @@ test("updateMember edits caps but assertAdminCoverage blocks dropping the last m
       .select({ c: membershipCapabilitiesTable.capability })
       .from(membershipCapabilitiesTable)
       .where(eq(membershipCapabilitiesTable.membershipId, mgrMembership.id));
-    assert.deepEqual(caps.map((r) => r.c), ["view"]);
+    assert.deepEqual(
+      caps.map((r) => r.c),
+      ["view"],
+    );
   });
 });
 
@@ -271,8 +308,18 @@ test("two concurrent demotions of manage_members holders — coverage invariant 
   await seedIdentity(db, {
     users: [
       { id: USER_1, teamId: TEAM_A, role: "owner" },
-      { id: "m1", teamId: TEAM_A, role: "member", capabilities: ["view", "manage_members"] },
-      { id: "m2", teamId: TEAM_A, role: "member", capabilities: ["view", "manage_members"] },
+      {
+        id: "m1",
+        teamId: TEAM_A,
+        role: "member",
+        capabilities: ["view", "manage_members"],
+      },
+      {
+        id: "m2",
+        teamId: TEAM_A,
+        role: "member",
+        capabilities: ["view", "manage_members"],
+      },
     ],
   });
   await asOwner(async () => {
@@ -304,7 +351,12 @@ test("removeMember keeps the team covered; removing the sole non-owner manager w
   await seedIdentity(db, {
     users: [
       { id: USER_1, teamId: TEAM_A, role: "owner" },
-      { id: "m1", teamId: TEAM_A, role: "member", capabilities: ["view", "manage_members", "manage_team"] },
+      {
+        id: "m1",
+        teamId: TEAM_A,
+        role: "member",
+        capabilities: ["view", "manage_members", "manage_team"],
+      },
     ],
   });
   await asOwner(async () => {
@@ -329,9 +381,17 @@ test("listMembers marks the founder as the primary owner; assigned owners are no
   await asOwner(async () => {
     const members = await listMembers();
     const byId = new Map(members.map((m) => [m.userId, m]));
-    assert.equal(byId.get(USER_1)!.isPrimaryOwner, true, "founder wears the crown");
+    assert.equal(
+      byId.get(USER_1)!.isPrimaryOwner,
+      true,
+      "founder wears the crown",
+    );
     assert.equal(byId.get("co")!.role, "owner");
-    assert.equal(byId.get("co")!.isPrimaryOwner, false, "assigned owner is not");
+    assert.equal(
+      byId.get("co")!.isPrimaryOwner,
+      false,
+      "assigned owner is not",
+    );
     assert.equal(byId.get("m1")!.isPrimaryOwner, false);
     // The founder is an instance admin by seed default; the others opted out.
     assert.equal(byId.get(USER_1)!.isInstanceAdmin, true);
@@ -353,7 +413,12 @@ test("the founder (primary owner) can't be removed or demoted — even by anothe
       /primary owner can't be removed/,
     );
     await assert.rejects(
-      () => updateMember({ userId: USER_1, role: "member", capabilities: ["view"] }),
+      () =>
+        updateMember({
+          userId: USER_1,
+          role: "member",
+          capabilities: ["view"],
+        }),
       /primary owner's role and permissions can't be changed/,
     );
   });
@@ -409,9 +474,13 @@ test("a non-owner manager cannot act on owners or grant the owner role", async (
   });
   await asUser("mgr", async () => {
     // Can't remove or edit an (assigned) owner.
-    await assert.rejects(() => removeMember("co"), /Only an owner can remove another owner/);
     await assert.rejects(
-      () => updateMember({ userId: "co", role: "member", capabilities: ["view"] }),
+      () => removeMember("co"),
+      /Only an owner can remove another owner/,
+    );
+    await assert.rejects(
+      () =>
+        updateMember({ userId: "co", role: "member", capabilities: ["view"] }),
       /Only an owner can change another owner/,
     );
     // Can't promote a member to owner.
@@ -425,7 +494,11 @@ test("a non-owner manager cannot act on owners or grant the owner role", async (
       /Only an owner can add another owner/,
     );
     // But managing a plain member is fine.
-    await updateMember({ userId: "m1", role: "viewer", capabilities: ["view"] });
+    await updateMember({
+      userId: "m1",
+      role: "viewer",
+      capabilities: ["view"],
+    });
   });
 });
 
@@ -439,7 +512,11 @@ test("an owner can add another (assigned) owner; they are not the founder", asyn
   await asOwner(async () => {
     const m = await addExistingMember({ userId: "cand", role: "owner" });
     assert.equal(m.role, "owner");
-    assert.equal(m.isPrimaryOwner, false, "an added owner never inherits the crown");
+    assert.equal(
+      m.isPrimaryOwner,
+      false,
+      "an added owner never inherits the crown",
+    );
     const members = await listMembers();
     const cand = members.find((x) => x.userId === "cand")!;
     assert.equal(cand.role, "owner");
@@ -479,13 +556,20 @@ test("two concurrent active-admin demotions — at least one active admin always
   const activeAdmins = await db
     .select({ id: usersTable.id })
     .from(usersTable)
-    .where(and(eq(usersTable.isInstanceAdmin, true), eq(usersTable.suspended, false)));
+    .where(
+      and(
+        eq(usersTable.isInstanceAdmin, true),
+        eq(usersTable.suspended, false),
+      ),
+    );
   assert.equal(activeAdmins.length, 1, "exactly one active admin remains");
 });
 
 test("updateUserAdmin refuses to demote the only active admin", async () => {
   await seedIdentity(db, {
-    users: [{ id: "admin1", teamId: TEAM_A, role: "owner", isInstanceAdmin: true }],
+    users: [
+      { id: "admin1", teamId: TEAM_A, role: "owner", isInstanceAdmin: true },
+    ],
   });
   await runWithIdentity({ userId: "admin1", teamId: TEAM_A }, async () => {
     await assert.rejects(
@@ -549,8 +633,18 @@ test("searchUsers offers colleagues, and a stranger only by exact username", asy
       // The actor: owner of A, and also in B. NOT an instance admin, which is
       // the whole point — an admin keeps the full roster on purpose.
       { id: USER_1, teamId: TEAM_A, role: "owner", isInstanceAdmin: false },
-      { id: "u_colleague", teamId: TEAM_B, role: "member", isInstanceAdmin: false },
-      { id: "u_stranger", teamId: "team_c", role: "owner", isInstanceAdmin: false },
+      {
+        id: "u_colleague",
+        teamId: TEAM_B,
+        role: "member",
+        isInstanceAdmin: false,
+      },
+      {
+        id: "u_stranger",
+        teamId: "team_c",
+        role: "owner",
+        isInstanceAdmin: false,
+      },
     ],
   });
   // Put the actor in B too, so `u_colleague` shares a team with them.

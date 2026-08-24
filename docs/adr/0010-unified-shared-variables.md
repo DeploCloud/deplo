@@ -12,13 +12,13 @@
 The platform had grown **five** separate environment-variable systems, surfaced as
 five tabs on `/variables` and a dedicated "Shared groups" button on every app:
 
-| System | Storage | How it reached an app |
-|---|---|---|
-| Per-app standalone | `env_vars` | the app owns the row |
-| Shared **groups** | `shared_env_groups` (+ vars/apps/targets) | a per-app junction |
-| Environment-scoped | `environment_env_vars` | the app's `environment_id` membership |
-| Team globals | `team_global_env_vars` | every app in the team |
-| Instance globals | `instance_env_vars` | every app of every team (admin) |
+| System             | Storage                                   | How it reached an app                 |
+| ------------------ | ----------------------------------------- | ------------------------------------- |
+| Per-app standalone | `env_vars`                                | the app owns the row                  |
+| Shared **groups**  | `shared_env_groups` (+ vars/apps/targets) | a per-app junction                    |
+| Environment-scoped | `environment_env_vars`                    | the app's `environment_id` membership |
+| Team globals       | `team_global_env_vars`                    | every app in the team                 |
+| Instance globals   | `instance_env_vars`                       | every app of every team (admin)       |
 
 Three of these are really "one variable, shared to several apps," modelled three
 different ways — confusing to use and to reason about. Product direction: collapse the
@@ -34,9 +34,9 @@ model matching Vercel / Railway / Cloudflare.
    - **environment** (`shared_env_var_environments`) — apps whose `apps.environment_id` ∈ the set;
    - **project** (`shared_env_var_projects`, a whitelist) — apps whose `apps.project_id` ∈ the set;
    - **per-app link** (`shared_env_var_apps`) — an explicit link attached from the app UI.
-   At least one **mode** is required (enforced in the data layer). An orthogonal
-   `shared_env_var_targets` (production/preview/development) gates the runtime, defaulting
-   to all three.
+     At least one **mode** is required (enforced in the data layer). An orthogonal
+     `shared_env_var_targets` (production/preview/development) gates the runtime, defaulting
+     to all three.
 
 2. **In-scope vars auto-apply.** A newly created app in a shared environment/project/team
    inherits the variable with no extra step. The app's "Shared" tab additionally links a
@@ -63,7 +63,7 @@ back without random ids:
 - **environment var → environment-mode** with `targets = all three` (reproduces the old
   membership = every-runtime behaviour);
 - **shared-group var-key → per-app-link** (links = the group's apps; targets = the group's,
-  or all three when it had none). Mapping to a *link* is what preserves both the exact
+  or all three when it had none). Mapping to a _link_ is what preserves both the exact
   attached-app set AND the "overrides app-own" precedence.
 
 Parity is asserted by `lib/db/shared-env-migration.test.ts` (replays to 0027, seeds the old
@@ -77,6 +77,6 @@ per target) and `lib/deploy/env-resolve.test.ts` (the precedence unit parity).
   linked from the Add-variable modal's "Shared" tab.
 - `lib/data/shared-env.ts`, `lib/data/environment-env.ts`, and their GraphQL modules are
   removed; `lib/data/shared-vars.ts` owns the unified model. `global-env.ts` is instance-only.
-- Behaviour change (deliberate): the three modes now auto-apply to *future* apps in scope,
+- Behaviour change (deliberate): the three modes now auto-apply to _future_ apps in scope,
   where a shared group previously required attaching each app. Existing links are preserved,
   so nothing loses a variable at migration time.

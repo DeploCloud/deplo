@@ -48,8 +48,9 @@ export function DatabaseOverview({
           <div>
             <p className="font-medium">Redeploy to enable live tools</p>
             <p className="mt-1 text-muted-foreground">
-              This database was created before live status, logs and the terminal
-              were available. Click <strong className="font-medium text-foreground">Redeploy</strong>{" "}
+              This database was created before live status, logs and the
+              terminal were available. Click{" "}
+              <strong className="font-medium text-foreground">Redeploy</strong>{" "}
               above to enable them — the data volume is preserved.
             </p>
           </div>
@@ -111,7 +112,13 @@ export function DatabaseOverview({
   );
 }
 
-function Field({ label, children }: { label: string; children: React.ReactNode }) {
+function Field({
+  label,
+  children,
+}: {
+  label: string;
+  children: React.ReactNode;
+}) {
   return (
     <div>
       <dt className="text-xs text-muted-foreground">{label}</dt>

@@ -54,13 +54,19 @@ beforeEach(async () => {
   __resetDeploymentLogBuffers();
   await pg.exec(`${TRUNCATE_PROJECT_GRAPH}
     truncate table users, teams restart identity cascade;`);
-  await seedIdentity(db, { users: [{ id: USER_1, teamId: TEAM_A, role: "owner" }] });
+  await seedIdentity(db, {
+    users: [{ id: USER_1, teamId: TEAM_A, role: "owner" }],
+  });
   await seedServer(db);
   await seedApp(db, { id: "prj_1", status: "building" });
   await seedDeployment(db, { id: "dpl_1", appId: "prj_1", status: "building" });
 });
 
-const line = (text: string): LogLine => ({ ts: "2026-01-01T00:00:00.000Z", level: "info", text });
+const line = (text: string): LogLine => ({
+  ts: "2026-01-01T00:00:00.000Z",
+  level: "info",
+  text,
+});
 
 test("final flush persists every enqueued line, in order", async () => {
   appendLog("dpl_1", line("one"));
@@ -73,7 +79,10 @@ test("final flush persists every enqueued line, in order", async () => {
     .from(deploymentLogs)
     .where(eq(deploymentLogs.deploymentId, "dpl_1"))
     .orderBy(asc(deploymentLogs.id));
-  assert.deepEqual(rows.map((r) => r.text), ["one", "two", "three"]);
+  assert.deepEqual(
+    rows.map((r) => r.text),
+    ["one", "two", "three"],
+  );
 });
 
 test("loadDeploymentLogs flushes pending lines then reads them back", async () => {
@@ -81,7 +90,10 @@ test("loadDeploymentLogs flushes pending lines then reads them back", async () =
   appendLog("dpl_1", line("b"));
   // No explicit finalize — loadDeploymentLogs must flush first.
   const logs = await loadDeploymentLogs("dpl_1");
-  assert.deepEqual(logs.map((l) => l.text), ["a", "b"]);
+  assert.deepEqual(
+    logs.map((l) => l.text),
+    ["a", "b"],
+  );
 });
 
 test("a buffer that fills flushes immediately (no waiting for the timer)", async () => {
@@ -89,7 +101,10 @@ test("a buffer that fills flushes immediately (no waiting for the timer)", async
   for (let i = 0; i < 250; i++) appendLog("dpl_1", line(`L${i}`));
   // Give the immediate flush its microtask/await turn.
   await finalizeDeploymentLogs("dpl_1");
-  assert.equal((await db.select({ n: count() }).from(deploymentLogs))[0]!.n, 250);
+  assert.equal(
+    (await db.select({ n: count() }).from(deploymentLogs))[0]!.n,
+    250,
+  );
 });
 
 test("clear drains-then-DELETEs and a late flush can't resurrect cleared lines", async () => {
@@ -115,8 +130,14 @@ test("clear drains-then-DELETEs and a late flush can't resurrect cleared lines",
   // A fresh build can append again from an empty stream.
   appendLog("dpl_1", line("new-1"));
   await finalizeDeploymentLogs("dpl_1");
-  const rows = await db.select().from(deploymentLogs).where(eq(deploymentLogs.deploymentId, "dpl_1"));
-  assert.deepEqual(rows.map((r) => r.text), ["new-1"]);
+  const rows = await db
+    .select()
+    .from(deploymentLogs)
+    .where(eq(deploymentLogs.deploymentId, "dpl_1"));
+  assert.deepEqual(
+    rows.map((r) => r.text),
+    ["new-1"],
+  );
 });
 
 test("flushes for different deployments don't interleave", async () => {
@@ -124,11 +145,28 @@ test("flushes for different deployments don't interleave", async () => {
   appendLog("dpl_1", line("a1"));
   appendLog("dpl_2", line("b1"));
   appendLog("dpl_1", line("a2"));
-  await Promise.all([finalizeDeploymentLogs("dpl_1"), finalizeDeploymentLogs("dpl_2")]);
-  const one = await db.select().from(deploymentLogs).where(eq(deploymentLogs.deploymentId, "dpl_1")).orderBy(asc(deploymentLogs.id));
-  const two = await db.select().from(deploymentLogs).where(eq(deploymentLogs.deploymentId, "dpl_2")).orderBy(asc(deploymentLogs.id));
-  assert.deepEqual(one.map((r) => r.text), ["a1", "a2"]);
-  assert.deepEqual(two.map((r) => r.text), ["b1"]);
+  await Promise.all([
+    finalizeDeploymentLogs("dpl_1"),
+    finalizeDeploymentLogs("dpl_2"),
+  ]);
+  const one = await db
+    .select()
+    .from(deploymentLogs)
+    .where(eq(deploymentLogs.deploymentId, "dpl_1"))
+    .orderBy(asc(deploymentLogs.id));
+  const two = await db
+    .select()
+    .from(deploymentLogs)
+    .where(eq(deploymentLogs.deploymentId, "dpl_2"))
+    .orderBy(asc(deploymentLogs.id));
+  assert.deepEqual(
+    one.map((r) => r.text),
+    ["a1", "a2"],
+  );
+  assert.deepEqual(
+    two.map((r) => r.text),
+    ["b1"],
+  );
 });
 
 test("a failed flush retries IN ORDER (no inversion across two failed batches)", async () => {
@@ -179,7 +217,11 @@ test("a failed flush retries IN ORDER (no inversion across two failed batches)",
     ...Array.from({ length: 200 }, (_, i) => `A${i}`),
     ...Array.from({ length: 200 }, (_, i) => `B${i}`),
   ];
-  assert.deepEqual(rows.map((r) => r.text), expected, "enqueue order preserved across retries");
+  assert.deepEqual(
+    rows.map((r) => r.text),
+    expected,
+    "enqueue order preserved across retries",
+  );
 });
 
 /**
@@ -190,7 +232,11 @@ test("a failed flush retries IN ORDER (no inversion across two failed batches)",
  * The caps are shrunk here so the proof costs a handful of rows, not 20k.
  */
 test("the per-line and per-deployment log caps hold, and a read can't reset the budget", async () => {
-  await seedDeployment(db, { id: "dpl_cap", appId: "prj_1", status: "building" });
+  await seedDeployment(db, {
+    id: "dpl_cap",
+    appId: "prj_1",
+    status: "building",
+  });
   __setLogCapsForTest(5, 20);
   try {
     // Per line: the HEAD is kept (that's where a compiler error is) and marked.
@@ -212,7 +258,10 @@ test("the per-line and per-deployment log caps hold, and a read can't reset the 
     // Clearing (a rebuild of the same deployment) starts a fresh budget.
     await clearDeploymentLogs("dpl_cap");
     appendLog("dpl_cap", line("fresh"));
-    assert.deepEqual((await loadDeploymentLogs("dpl_cap")).map((r) => r.text), ["fresh"]);
+    assert.deepEqual(
+      (await loadDeploymentLogs("dpl_cap")).map((r) => r.text),
+      ["fresh"],
+    );
   } finally {
     __resetLogCapsForTest();
   }

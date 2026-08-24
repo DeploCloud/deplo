@@ -67,7 +67,10 @@ const SRV_B = "srv_b";
  * fence silently drops writes onto one — so a bare `seedServer` would make every
  * assertion below pass vacuously.
  */
-async function seedEnrolledServer(id: string, createdAt: string): Promise<void> {
+async function seedEnrolledServer(
+  id: string,
+  createdAt: string,
+): Promise<void> {
   await db
     .insert(serversTable)
     .values({
@@ -113,7 +116,9 @@ beforeEach(async () => {
   await pg.exec(
     `truncate table deployments, apps, databases, monitoring_settings, servers, activities, users, teams restart identity cascade;`,
   );
-  await seedIdentity(db, { users: [{ id: USER_1, teamId: TEAM_A, role: "owner" }] });
+  await seedIdentity(db, {
+    users: [{ id: USER_1, teamId: TEAM_A, role: "owner" }],
+  });
   clearMetricsHistory();
   clearContainerHistory();
   __resetMonitoringSettingsMemo();
@@ -324,7 +329,9 @@ async function statusCheckedAt(id: string): Promise<string | null> {
 /** An App's stored status + the timestamp that proves whether it was WRITTEN.
  *  `updatedAt` is the write detector: every writer of the column sets it, so an
  *  unmoved value is proof no UPDATE matched this row. */
-async function appRow(id: string): Promise<{ status: string; updatedAt: string }> {
+async function appRow(
+  id: string,
+): Promise<{ status: string; updatedAt: string }> {
   const [row] = await db
     .select({ status: appsTable.status, updatedAt: appsTable.updatedAt })
     .from(appsTable)
@@ -367,15 +374,29 @@ test("a server with an enrolled agent runs in STREAM mode and its frames land in
   await seedApp(db, { id: "prj_1", slug: "app-one", serverId: SRV_A });
 
   const feed = new Feed();
-  __setMetricsConnectorForTest(async () => ({ conn: feed.connection(), hello: hello() }));
+  __setMetricsConnectorForTest(async () => ({
+    conn: feed.connection(),
+    hello: hello(),
+  }));
 
   startMetricsStreams();
-  await waitFor(() => __streamModes()[SRV_A] === "stream", "srv_a to enter stream mode");
+  await waitFor(
+    () => __streamModes()[SRV_A] === "stream",
+    "srv_a to enter stream mode",
+  );
   await feed.send(frame([containerStat("prj_1", "app-one-web-1", 7)]));
 
   assert.equal(__streamModes()[SRV_A], "stream");
-  assert.equal(getMetricsHistory(SRV_A).length, 1, "the host half of the frame is buffered");
-  assert.equal(getContainerHistory("prj_1").length, 1, "and the container half too");
+  assert.equal(
+    getMetricsHistory(SRV_A).length,
+    1,
+    "the host half of the frame is buffered",
+  );
+  assert.equal(
+    getContainerHistory("prj_1").length,
+    1,
+    "and the container half too",
+  );
 });
 
 test("a server whose agent predates the stream demotes to POLL alone — the fleet keeps streaming", async () => {
@@ -387,12 +408,16 @@ test("a server whose agent predates the stream demotes to POLL alone — the fle
 
   const feed = new Feed();
   __setMetricsConnectorForTest(async (serverId: string) => {
-    if (serverId === SRV_A) throw new AgentMetricsStreamUnsupportedError("too old");
+    if (serverId === SRV_A)
+      throw new AgentMetricsStreamUnsupportedError("too old");
     return { conn: feed.connection(), hello: hello() };
   });
 
   startMetricsStreams();
-  await waitFor(() => __streamModes()[SRV_A] === "poll", "srv_a to demote to poll");
+  await waitFor(
+    () => __streamModes()[SRV_A] === "poll",
+    "srv_a to demote to poll",
+  );
   assert.equal(
     __streamModes()[SRV_B],
     "stream",
@@ -423,7 +448,11 @@ test("DEPLO_MONITORING_FORCE_POLL=1 forces EVERY server to poll — the producti
   );
 
   assert.deepEqual(__streamModes(), { [SRV_A]: "poll", [SRV_B]: "poll" });
-  assert.equal(dialled, 0, "no stream connection may be opened while forced to poll");
+  assert.equal(
+    dialled,
+    0,
+    "no stream connection may be opened while forced to poll",
+  );
 });
 
 /* ------------------------------------------------------------------ */
@@ -436,7 +465,10 @@ test("one host frame demuxes to the right App and Database by projectId", async 
   await seedDatabase(db, { id: "db_1", serverId: SRV_A });
 
   const feed = new Feed();
-  __setMetricsConnectorForTest(async () => ({ conn: feed.connection(), hello: hello() }));
+  __setMetricsConnectorForTest(async () => ({
+    conn: feed.connection(),
+    hello: hello(),
+  }));
   startMetricsStreams();
   await waitFor(() => __streamModes()[SRV_A] === "stream", "srv_a to stream");
 
@@ -473,7 +505,10 @@ test("a container with an EMPTY projectId is ignored, never guessed at from its 
   await seedApp(db, { id: "prj_1", slug: "app-one", serverId: SRV_A });
 
   const feed = new Feed();
-  __setMetricsConnectorForTest(async () => ({ conn: feed.connection(), hello: hello() }));
+  __setMetricsConnectorForTest(async () => ({
+    conn: feed.connection(),
+    hello: hello(),
+  }));
   startMetricsStreams();
   await waitFor(() => __streamModes()[SRV_A] === "stream", "srv_a to stream");
 
@@ -484,8 +519,16 @@ test("a container with an EMPTY projectId is ignored, never guessed at from its 
     ]),
   );
 
-  assert.equal(getContainerHistory("prj_1").length, 0, "the name must not be a demux key");
-  assert.equal(getContainerHistory("").length, 0, "and the empty id is not a bucket either");
+  assert.equal(
+    getContainerHistory("prj_1").length,
+    0,
+    "the name must not be a demux key",
+  );
+  assert.equal(
+    getContainerHistory("").length,
+    0,
+    "and the empty id is not a bucket either",
+  );
   assert.deepEqual(latestContainerInstances("prj_1"), []);
   // The HOST half of the same frame is unaffected: one unattributable stat costs
   // one stat, never the frame.
@@ -501,14 +544,21 @@ test("the master switch gates HOST history only; container history keeps flowing
   await seedApp(db, { id: "prj_1", slug: "app-one", serverId: SRV_A });
 
   const feed = new Feed();
-  __setMetricsConnectorForTest(async () => ({ conn: feed.connection(), hello: hello() }));
+  __setMetricsConnectorForTest(async () => ({
+    conn: feed.connection(),
+    hello: hello(),
+  }));
   startMetricsStreams();
   await waitFor(() => __streamModes()[SRV_A] === "stream", "srv_a to stream");
 
   await feed.send(frame([containerStat("prj_1", "app-one-web-1", 4)]));
 
   assert.equal(getMetricsHistory(SRV_A).length, 0, "host history is off");
-  assert.equal(getContainerHistory("prj_1").length, 1, "container history is not");
+  assert.equal(
+    getContainerHistory("prj_1").length,
+    1,
+    "container history is not",
+  );
 });
 
 /* ------------------------------------------------------------------ */
@@ -597,8 +647,9 @@ test("HEALTH_WRITE_MS stays under the prober's 15s THROTTLE_MS, or the prober si
   // So model the jitter and assert the EFFECTIVE period, not the constant.
   const EARLY_FRAME_TOLERANCE_MS = 100;
   const effectivePeriod =
-    Math.ceil((HEALTH_WRITE_MS + EARLY_FRAME_TOLERANCE_MS) / STREAM_INTERVAL_MS) *
-    STREAM_INTERVAL_MS;
+    Math.ceil(
+      (HEALTH_WRITE_MS + EARLY_FRAME_TOLERANCE_MS) / STREAM_INTERVAL_MS,
+    ) * STREAM_INTERVAL_MS;
   assert.ok(
     effectivePeriod < PROBER_THROTTLE_MS,
     `HEALTH_WRITE_MS (${HEALTH_WRITE_MS}) at a ${STREAM_INTERVAL_MS}ms cadence writes every ` +
@@ -625,7 +676,10 @@ test("health is written AT MOST once per 10s and AT LEAST once per 15s under a 5
 
   try {
     const feed = new Feed();
-    __setMetricsConnectorForTest(async () => ({ conn: feed.connection(), hello: hello() }));
+    __setMetricsConnectorForTest(async () => ({
+      conn: feed.connection(),
+      hello: hello(),
+    }));
     startMetricsStreams();
     // Wait for the CONNECT-time health write, not merely for the mode: that write
     // is where `lastHealthWriteAt` is seeded, so advancing the clock before it
@@ -703,7 +757,10 @@ test("health is written AT MOST once per 10s and AT LEAST once per 15s under a 5
 async function streamingServer(id = SRV_A): Promise<Feed> {
   await seedEnrolledServer(id, "2026-01-01T00:00:00.000Z");
   const feed = new Feed();
-  __setMetricsConnectorForTest(async () => ({ conn: feed.connection(), hello: hello() }));
+  __setMetricsConnectorForTest(async () => ({
+    conn: feed.connection(),
+    hello: hello(),
+  }));
   startMetricsStreams();
   await waitFor(() => __streamModes()[id] === "stream", `${id} to stream`);
   return feed;
@@ -711,11 +768,19 @@ async function streamingServer(id = SRV_A): Promise<Feed> {
 
 test("a frame reporting a RUNNING container clears a stale `error` — the reboot incident", async () => {
   await seedEnrolledServer(SRV_A, "2026-01-01T00:00:00.000Z");
-  await seedApp(db, { id: "prj_1", slug: "app-one", serverId: SRV_A, status: "error" });
+  await seedApp(db, {
+    id: "prj_1",
+    slug: "app-one",
+    serverId: SRV_A,
+    status: "error",
+  });
   const before = await appRow("prj_1");
 
   const feed = new Feed();
-  __setMetricsConnectorForTest(async () => ({ conn: feed.connection(), hello: hello() }));
+  __setMetricsConnectorForTest(async () => ({
+    conn: feed.connection(),
+    hello: hello(),
+  }));
   const pings = countPings("prj_1");
   try {
     startMetricsStreams();
@@ -727,9 +792,20 @@ test("a frame reporting a RUNNING container clears a stale `error` — the reboo
     await feed.send(frame([containerStat("prj_1", "app-one-web-1", 7)]));
 
     const after = await appRow("prj_1");
-    assert.equal(after.status, "active", "a running container must refute a stored `error`");
-    assert.notEqual(after.updatedAt, before.updatedAt, "the correction is persisted, not folded at read time");
-    await waitFor(() => pings.count() >= 1, "an appChanged ping for the corrected App");
+    assert.equal(
+      after.status,
+      "active",
+      "a running container must refute a stored `error`",
+    );
+    assert.notEqual(
+      after.updatedAt,
+      before.updatedAt,
+      "the correction is persisted, not folded at read time",
+    );
+    await waitFor(
+      () => pings.count() >= 1,
+      "an appChanged ping for the corrected App",
+    );
   } finally {
     pings.stop();
   }
@@ -747,17 +823,33 @@ test("only `error` is ever promoted — active/idle/stopping/queued/building are
   //  - `idle` — the deliberate stop. If `restart: unless-stopped` brings a
   //    container back, "running" is the FAILURE and `idle` is the truth. This is
   //    the one status where telemetry cannot tell success from failure.
-  const untouchable = ["active", "idle", "stopping", "queued", "building"] as const;
+  const untouchable = [
+    "active",
+    "idle",
+    "stopping",
+    "queued",
+    "building",
+  ] as const;
   await seedEnrolledServer(SRV_A, "2026-01-01T00:00:00.000Z");
   for (const status of untouchable) {
-    await seedApp(db, { id: `prj_${status}`, slug: status, serverId: SRV_A, status });
+    await seedApp(db, {
+      id: `prj_${status}`,
+      slug: status,
+      serverId: SRV_A,
+      status,
+    });
   }
   const before = new Map(
-    await Promise.all(untouchable.map(async (s) => [s, await appRow(`prj_${s}`)] as const)),
+    await Promise.all(
+      untouchable.map(async (s) => [s, await appRow(`prj_${s}`)] as const),
+    ),
   );
 
   const feed = new Feed();
-  __setMetricsConnectorForTest(async () => ({ conn: feed.connection(), hello: hello() }));
+  __setMetricsConnectorForTest(async () => ({
+    conn: feed.connection(),
+    hello: hello(),
+  }));
   startMetricsStreams();
   await waitFor(() => __streamModes()[SRV_A] === "stream", "srv_a to stream");
 
@@ -767,7 +859,11 @@ test("only `error` is ever promoted — active/idle/stopping/queued/building are
 
   for (const status of untouchable) {
     const after = await appRow(`prj_${status}`);
-    assert.equal(after.status, status, `\`${status}\` must not be rewritten by telemetry`);
+    assert.equal(
+      after.status,
+      status,
+      `\`${status}\` must not be rewritten by telemetry`,
+    );
     assert.equal(
       after.updatedAt,
       before.get(status)!.updatedAt,
@@ -782,8 +878,18 @@ test("an App with a deployment in flight is NOT touched, even from `error`", asy
   // for the deploy queue to re-drain — so `status='error'` WITH a live deployment
   // is a reachable state, and the old container is still running throughout it.
   const feed = await streamingServer();
-  await seedApp(db, { id: "prj_q", slug: "queued-one", serverId: SRV_A, status: "error" });
-  await seedApp(db, { id: "prj_b", slug: "building-one", serverId: SRV_A, status: "error" });
+  await seedApp(db, {
+    id: "prj_q",
+    slug: "queued-one",
+    serverId: SRV_A,
+    status: "error",
+  });
+  await seedApp(db, {
+    id: "prj_b",
+    slug: "building-one",
+    serverId: SRV_A,
+    status: "error",
+  });
   await seedDeployment(db, { id: "dpl_q", appId: "prj_q", status: "queued" });
   await seedDeployment(db, { id: "dpl_b", appId: "prj_b", status: "building" });
   const beforeQ = await appRow("prj_q");
@@ -798,7 +904,11 @@ test("an App with a deployment in flight is NOT touched, even from `error`", asy
 
   const afterQ = await appRow("prj_q");
   const afterB = await appRow("prj_b");
-  assert.equal(afterQ.status, "error", "a queued deployment owns this App's status");
+  assert.equal(
+    afterQ.status,
+    "error",
+    "a queued deployment owns this App's status",
+  );
   assert.equal(afterB.status, "error", "so does a building one");
   assert.equal(afterQ.updatedAt, beforeQ.updatedAt);
   assert.equal(afterB.updatedAt, beforeB.updatedAt);
@@ -809,22 +919,49 @@ test("an App ABSENT from the frame is never written — absence is unknown, not 
   // restarting, container not created yet). Writing a status from that would
   // invent an outage out of silence.
   const feed = await streamingServer();
-  await seedApp(db, { id: "prj_seen", slug: "seen", serverId: SRV_A, status: "error" });
-  await seedApp(db, { id: "prj_absent", slug: "absent", serverId: SRV_A, status: "error" });
+  await seedApp(db, {
+    id: "prj_seen",
+    slug: "seen",
+    serverId: SRV_A,
+    status: "error",
+  });
+  await seedApp(db, {
+    id: "prj_absent",
+    slug: "absent",
+    serverId: SRV_A,
+    status: "error",
+  });
   const before = await appRow("prj_absent");
 
   // A frame that carries the OTHER App only, so the reconcile provably ran.
   await feed.send(frame([containerStat("prj_seen", "seen-web-1", 5)]));
 
-  assert.equal((await appRow("prj_seen")).status, "active", "the reconcile did run");
+  assert.equal(
+    (await appRow("prj_seen")).status,
+    "active",
+    "the reconcile did run",
+  );
   const after = await appRow("prj_absent");
-  assert.equal(after.status, "error", "an App nothing reported on must be left alone");
-  assert.equal(after.updatedAt, before.updatedAt, "and must not be written at all");
+  assert.equal(
+    after.status,
+    "error",
+    "an App nothing reported on must be left alone",
+  );
+  assert.equal(
+    after.updatedAt,
+    before.updatedAt,
+    "and must not be written at all",
+  );
 });
 
 test("an empty frame writes nothing — a host with no containers is not a host of failed Apps", async () => {
   const feed = await streamingServer();
-  await seedApp(db, { id: "prj_1", slug: "app-one", serverId: SRV_A, status: "error" });
+  await seedApp(db, {
+    id: "prj_1",
+    slug: "app-one",
+    serverId: SRV_A,
+    status: "error",
+  });
   const before = await appRow("prj_1");
 
   await feed.send(frame([]));
@@ -839,7 +976,12 @@ test("a crash-looping container is NOT promoted — `restarting` vetoes the whol
   // than `active`. Promoting would only hand it to `displayStatus` to re-demote to
   // "restarting", flipping the badge through a state that was never true.
   const feed = await streamingServer();
-  await seedApp(db, { id: "prj_loop", slug: "loop", serverId: SRV_A, status: "error" });
+  await seedApp(db, {
+    id: "prj_loop",
+    slug: "loop",
+    serverId: SRV_A,
+    status: "error",
+  });
 
   await feed.send(
     frame([
@@ -861,11 +1003,19 @@ test("a crash-looping container is NOT promoted — `restarting` vetoes the whol
 
 test("a container that exists but is EXITED does not promote", async () => {
   const feed = await streamingServer();
-  await seedApp(db, { id: "prj_dead", slug: "dead", serverId: SRV_A, status: "error" });
+  await seedApp(db, {
+    id: "prj_dead",
+    slug: "dead",
+    serverId: SRV_A,
+    status: "error",
+  });
 
   await feed.send(
     frame([
-      containerStat("prj_dead", "dead-web-1", 0, { state: "exited", running: false }),
+      containerStat("prj_dead", "dead-web-1", 0, {
+        state: "exited",
+        running: false,
+      }),
     ]),
   );
 
@@ -878,7 +1028,12 @@ test("an App mid server-MOVE is skipped — the old host's containers are not ev
   // would be acting on one of two conflicting truths.
   const feed = await streamingServer();
   await seedEnrolledServer(SRV_B, "2026-01-01T00:00:01.000Z");
-  await seedApp(db, { id: "prj_mv", slug: "moving", serverId: SRV_A, status: "error" });
+  await seedApp(db, {
+    id: "prj_mv",
+    slug: "moving",
+    serverId: SRV_A,
+    status: "error",
+  });
   await db
     .update(appsTable)
     .set({ migrateFromServerId: SRV_B })
@@ -888,7 +1043,11 @@ test("an App mid server-MOVE is skipped — the old host's containers are not ev
   await feed.send(frame([containerStat("prj_mv", "moving-web-1", 6)]));
 
   const after = await appRow("prj_mv");
-  assert.equal(after.status, "error", "a pending migration marker suspends the reconcile");
+  assert.equal(
+    after.status,
+    "error",
+    "a pending migration marker suspends the reconcile",
+  );
   assert.equal(after.updatedAt, before.updatedAt);
 });
 
@@ -898,11 +1057,18 @@ test("a frame is only authority over the Apps ITS OWN host runs", async () => {
   // where it no longer lives.
   const feed = await streamingServer(SRV_A);
   await seedEnrolledServer(SRV_B, "2026-01-01T00:00:01.000Z");
-  await seedApp(db, { id: "prj_elsewhere", slug: "elsewhere", serverId: SRV_B, status: "error" });
+  await seedApp(db, {
+    id: "prj_elsewhere",
+    slug: "elsewhere",
+    serverId: SRV_B,
+    status: "error",
+  });
   const before = await appRow("prj_elsewhere");
 
   // SRV_A's frame carries a container still labelled for an App that now lives on SRV_B.
-  await feed.send(frame([containerStat("prj_elsewhere", "elsewhere-web-1", 9)]));
+  await feed.send(
+    frame([containerStat("prj_elsewhere", "elsewhere-web-1", 9)]),
+  );
 
   const after = await appRow("prj_elsewhere");
   assert.equal(after.status, "error");
@@ -914,7 +1080,12 @@ test("a Database id in the frame never touches an App — and is not an error ei
   // `apps`, so they need no special case — but that must be true, not assumed.
   const feed = await streamingServer();
   await seedDatabase(db, { id: "db_1", serverId: SRV_A });
-  await seedApp(db, { id: "prj_1", slug: "app-one", serverId: SRV_A, status: "error" });
+  await seedApp(db, {
+    id: "prj_1",
+    slug: "app-one",
+    serverId: SRV_A,
+    status: "error",
+  });
 
   await feed.send(
     frame([
@@ -924,7 +1095,11 @@ test("a Database id in the frame never touches an App — and is not an error ei
   );
 
   assert.equal((await appRow("prj_1")).status, "active");
-  assert.equal(getContainerHistory("db_1").length, 1, "the database still buffers metrics");
+  assert.equal(
+    getContainerHistory("db_1").length,
+    1,
+    "the database still buffers metrics",
+  );
 });
 
 test("NOTHING is written when nothing changed — across many frames and many reconcile windows", async () => {
@@ -938,7 +1113,12 @@ test("NOTHING is written when nothing changed — across many frames and many re
   const pings = countPings("prj_ok");
   try {
     const feed = await streamingServer();
-    await seedApp(db, { id: "prj_ok", slug: "ok", serverId: SRV_A, status: "active" });
+    await seedApp(db, {
+      id: "prj_ok",
+      slug: "ok",
+      serverId: SRV_A,
+      status: "active",
+    });
     const before = await appRow("prj_ok");
 
     // Step the clock a full reconcile window per frame, so the guarded UPDATE
@@ -971,12 +1151,20 @@ test("a corrected App is written and published EXACTLY once, not once per frame"
   const pings = countPings("prj_1");
   try {
     const feed = await streamingServer();
-    await seedApp(db, { id: "prj_1", slug: "app-one", serverId: SRV_A, status: "error" });
+    await seedApp(db, {
+      id: "prj_1",
+      slug: "app-one",
+      serverId: SRV_A,
+      status: "error",
+    });
 
     await feed.send(frame([containerStat("prj_1", "app-one-web-1", 5)]));
     const corrected = await appRow("prj_1");
     assert.equal(corrected.status, "active");
-    await waitFor(() => pings.count() === 1, "exactly one ping for the correction");
+    await waitFor(
+      () => pings.count() === 1,
+      "exactly one ping for the correction",
+    );
 
     for (let i = 0; i < 5; i++) {
       clock += APP_STATUS_RECONCILE_MS;
@@ -1005,12 +1193,20 @@ test("the reconcile runs on its OWN clock, not the frame's", async () => {
 
   try {
     const feed = await streamingServer();
-    await seedApp(db, { id: "prj_1", slug: "app-one", serverId: SRV_A, status: "active" });
+    await seedApp(db, {
+      id: "prj_1",
+      slug: "app-one",
+      serverId: SRV_A,
+      status: "active",
+    });
 
     // Frame 1 consumes the connect-time free reconcile.
     await feed.send(frame([containerStat("prj_1", "app-one-web-1", 5)]));
 
-    await db.update(appsTable).set({ status: "error" }).where(eq(appsTable.id, "prj_1"));
+    await db
+      .update(appsTable)
+      .set({ status: "error" })
+      .where(eq(appsTable.id, "prj_1"));
 
     clock += STREAM_INTERVAL_MS; // one cadence — well inside the window
     await feed.send(frame([containerStat("prj_1", "app-one-web-1", 5)]));
@@ -1053,19 +1249,36 @@ test("APP_STATUS_RECONCILE_MS is slower than the frame cadence but still self-he
 /* ------------------------------------------------------------------ */
 
 test("telemetrySaysRunning: what counts as proof an App is up", () => {
-  const c = (over: Partial<ContainerStat>) => containerStat("prj_1", "x", 0, over);
+  const c = (over: Partial<ContainerStat>) =>
+    containerStat("prj_1", "x", 0, over);
 
-  assert.equal(telemetrySaysRunning([]), false, "an empty bucket is not an answer");
-  assert.equal(telemetrySaysRunning([c({ state: "running" })]), true);
-  assert.equal(telemetrySaysRunning([c({ state: "exited", running: false })]), false);
-  assert.equal(telemetrySaysRunning([c({ state: "created", running: false })]), false);
   assert.equal(
-    telemetrySaysRunning([c({ state: "running" }), c({ state: "restarting", running: false })]),
+    telemetrySaysRunning([]),
+    false,
+    "an empty bucket is not an answer",
+  );
+  assert.equal(telemetrySaysRunning([c({ state: "running" })]), true);
+  assert.equal(
+    telemetrySaysRunning([c({ state: "exited", running: false })]),
+    false,
+  );
+  assert.equal(
+    telemetrySaysRunning([c({ state: "created", running: false })]),
+    false,
+  );
+  assert.equal(
+    telemetrySaysRunning([
+      c({ state: "running" }),
+      c({ state: "restarting", running: false }),
+    ]),
     false,
     "a restarting sibling vetoes the whole App",
   );
   assert.equal(
-    telemetrySaysRunning([c({ state: "running" }), c({ state: "exited", running: false })]),
+    telemetrySaysRunning([
+      c({ state: "running" }),
+      c({ state: "exited", running: false }),
+    ]),
     true,
     "a partially-up stack is still up — `displayStatus` is what calls that degraded",
   );

@@ -24,7 +24,8 @@
  */
 
 /** What the agent found at the entry's path. Mirrors `AppStorageFile.state`. */
-export type StorageFileState = "text" | "new" | "folder" | "binary" | "too-large";
+export type StorageFileState =
+  "text" | "new" | "folder" | "binary" | "too-large";
 
 /**
  * One File entry's content, as the Storage form holds it.
@@ -90,7 +91,14 @@ export function storageFileDraft(
 
 /** The placeholder while a read is in flight. */
 export function loadingFileDraft(path: string): StorageFileDraft {
-  return { path, status: "loading", saved: "", draft: "", exists: false, message: "" };
+  return {
+    path,
+    status: "loading",
+    saved: "",
+    draft: "",
+    exists: false,
+    message: "",
+  };
 }
 
 /**
@@ -105,12 +113,29 @@ export function loadingFileDraft(path: string): StorageFileDraft {
  * unsaved draft.
  */
 export function unpathedFileDraft(text: string): StorageFileDraft {
-  return { path: "", status: "editable", saved: "", draft: text, exists: false, message: "" };
+  return {
+    path: "",
+    status: "editable",
+    saved: "",
+    draft: text,
+    exists: false,
+    message: "",
+  };
 }
 
 /** A read that failed for a real reason (an unreachable server, above all). */
-export function failedFileDraft(path: string, message: string): StorageFileDraft {
-  return { path, status: "error", saved: "", draft: "", exists: false, message };
+export function failedFileDraft(
+  path: string,
+  message: string,
+): StorageFileDraft {
+  return {
+    path,
+    status: "error",
+    saved: "",
+    draft: "",
+    exists: false,
+    message,
+  };
 }
 
 /**

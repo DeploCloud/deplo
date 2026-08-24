@@ -115,13 +115,17 @@ export async function runPreviewReaperTick(
     for (const p of retry) {
       // Re-heartbeat between teardowns: one tick must not hold the lease for an
       // hour because twenty hosts were slow.
-      if (!(await acquireLease(PREVIEW_REAPER_LEASE, state.owner, new Date()))) return;
+      if (!(await acquireLease(PREVIEW_REAPER_LEASE, state.owner, new Date())))
+        return;
       await teardownPreviewStack(p).catch(() => false);
     }
 
     for (const p of expired) {
-      if (!(await acquireLease(PREVIEW_REAPER_LEASE, state.owner, new Date()))) return;
-      await closePreview(p.id, "no activity on the pull request").catch(() => false);
+      if (!(await acquireLease(PREVIEW_REAPER_LEASE, state.owner, new Date())))
+        return;
+      await closePreview(p.id, "no activity on the pull request").catch(
+        () => false,
+      );
     }
 
     // The missed-`closed`-webhook net, last because it is the only networked
@@ -130,7 +134,8 @@ export async function runPreviewReaperTick(
     const open = await openPreviewsForStateCheck(STATE_CHECK_BATCH);
     for (const p of open) {
       if (!p.installationId || !p.repo) continue;
-      if (!(await acquireLease(PREVIEW_REAPER_LEASE, state.owner, new Date()))) return;
+      if (!(await acquireLease(PREVIEW_REAPER_LEASE, state.owner, new Date())))
+        return;
       const upstream = await getPullRequestState(
         p.installationId,
         p.repo,

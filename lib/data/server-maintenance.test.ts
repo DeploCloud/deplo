@@ -6,7 +6,10 @@ import { eq } from "drizzle-orm";
 
 import { makeTestDb, type TestDb } from "../db/test-harness";
 import { __setTestDb, __resetTestDb } from "../db/client";
-import { servers as serversTable, teams as teamsTable } from "../db/schema/control-plane";
+import {
+  servers as serversTable,
+  teams as teamsTable,
+} from "../db/schema/control-plane";
 import { runWithIdentity } from "../auth/request-context";
 import { seedIdentity, TEAM_A, USER_1 } from "./identity-test-helpers";
 import { TRUNCATE_PROJECT_GRAPH, seedApp } from "./app-graph-test-helpers";
@@ -66,15 +69,30 @@ beforeEach(async () => {
   await seedIdentity(db, {
     users: [
       { id: USER_1, teamId: TEAM_A, role: "owner" },
-      { id: "user_member", teamId: TEAM_A, role: "member", isInstanceAdmin: false },
+      {
+        id: "user_member",
+        teamId: TEAM_A,
+        role: "member",
+        isInstanceAdmin: false,
+      },
     ],
   });
   // Deliberately UNPROVISIONED (no pinned cert). resolveTarget rejects such a
   // server before opening a socket, so "the dial fails" here costs nothing —
   // seeding a cert would make every call actually dial REMOTE_IP, which is
   // unrouted and would hang the suite on a connect timeout rather than refuse.
-  await seedServerRow(db, { id: REMOTE, name: "remote-1", ip: REMOTE_IP, host: REMOTE_IP });
-  await seedServerRow(db, { id: SELF, name: "this-host", ip: SELF_IP, host: SELF_IP });
+  await seedServerRow(db, {
+    id: REMOTE,
+    name: "remote-1",
+    ip: REMOTE_IP,
+    host: REMOTE_IP,
+  });
+  await seedServerRow(db, {
+    id: SELF,
+    name: "this-host",
+    ip: SELF_IP,
+    host: SELF_IP,
+  });
 });
 
 const asAdmin = <T>(fn: () => Promise<T>): Promise<T> =>
@@ -129,8 +147,14 @@ test("every entry point is instance-admin only", async () => {
 });
 
 test("an unknown server is rejected, not dialed", async () => {
-  await assert.rejects(() => asAdmin(() => serverHostInfo("srv_nope")), /not found/i);
-  await assert.rejects(() => asAdmin(() => restartServerWorkloads("srv_nope")), /not found/i);
+  await assert.rejects(
+    () => asAdmin(() => serverHostInfo("srv_nope")),
+    /not found/i,
+  );
+  await assert.rejects(
+    () => asAdmin(() => restartServerWorkloads("srv_nope")),
+    /not found/i,
+  );
 });
 
 /* ------------------------------------------------------------------ */
@@ -138,10 +162,24 @@ test("an unknown server is rejected, not dialed", async () => {
 /* ------------------------------------------------------------------ */
 
 test("the dashboard cannot be published without a domain, a username AND a password", async () => {
-  const cases: Array<[string, { domain: string; username: string; password: string }, RegExp]> = [
-    ["no domain", { domain: "   ", username: "admin", password: "pw" }, /domain/i],
-    ["no username", { domain: "t.example.com", username: " ", password: "pw" }, /username/i],
-    ["no password", { domain: "t.example.com", username: "admin", password: "" }, /password/i],
+  const cases: Array<
+    [string, { domain: string; username: string; password: string }, RegExp]
+  > = [
+    [
+      "no domain",
+      { domain: "   ", username: "admin", password: "pw" },
+      /domain/i,
+    ],
+    [
+      "no username",
+      { domain: "t.example.com", username: " ", password: "pw" },
+      /username/i,
+    ],
+    [
+      "no password",
+      { domain: "t.example.com", username: "admin", password: "" },
+      /password/i,
+    ],
   ];
   for (const [name, input, expected] of cases) {
     await assert.rejects(
@@ -183,7 +221,11 @@ test("a complete request reaches the host, and stores nothing when the host refu
     ),
   );
   const row = await dashboardRow();
-  assert.equal(row.domain, null, "nothing may be stored until the host confirms");
+  assert.equal(
+    row.domain,
+    null,
+    "nothing may be stored until the host confirms",
+  );
   assert.equal(row.enc, null);
 });
 
@@ -196,7 +238,9 @@ test("an existing password is reused when an edit only moves the domain", async 
       traefikDashboardDomain: "old.example.com",
       traefikDashboardUser: "admin",
       // A real ciphertext, so the decrypt path is what is exercised.
-      traefikDashboardPasswordEnc: (await import("../crypto")).encryptSecret("hunter2"),
+      traefikDashboardPasswordEnc: (await import("../crypto")).encryptSecret(
+        "hunter2",
+      ),
     })
     .where(eq(serversTable.id, REMOTE));
 
@@ -228,7 +272,15 @@ test("a bogus timezone is rejected before the host is dialed", async () => {
   // "+05:30" is the subtle one: Intl ACCEPTS a bare UTC offset, but it is not a
   // zone and no host has a file for it, so letting it through would turn a typo
   // into an error from the box instead of from the field that produced it.
-  for (const bad of ["", "   ", "Mars/Olympus", "../../etc/passwd", "UTC+1", "+05:30", "-08:00"]) {
+  for (const bad of [
+    "",
+    "   ",
+    "Mars/Olympus",
+    "../../etc/passwd",
+    "UTC+1",
+    "+05:30",
+    "-08:00",
+  ]) {
     await assert.rejects(
       () => asAdmin(() => setServerTimezone(REMOTE, bad)),
       /not a timezone/i,
@@ -255,11 +307,20 @@ test("an alias reaches the host as its canonical name", async () => {
 test("a real IANA zone passes validation and goes on to the host", async () => {
   // Rejected by the unreachable agent, NOT by the validator — which is what says
   // the name was accepted. "Europe/Rome" is the case in the UI's own copy.
-  for (const good of ["Europe/Rome", "America/Argentina/Salta", "UTC", "Asia/Kathmandu"]) {
+  for (const good of [
+    "Europe/Rome",
+    "America/Argentina/Salta",
+    "UTC",
+    "Asia/Kathmandu",
+  ]) {
     await assert.rejects(
       () => asAdmin(() => setServerTimezone(REMOTE, good)),
       (e: Error) => {
-        assert.doesNotMatch(e.message, /not a timezone/i, `${good} must be accepted`);
+        assert.doesNotMatch(
+          e.message,
+          /not a timezone/i,
+          `${good} must be accepted`,
+        );
         return true;
       },
     );
@@ -287,11 +348,31 @@ test("only the host running Deplo can restart the Deplo panel", async () => {
 
 test("restarting workloads skips the stopped ones and never touches another server's", async () => {
   // seedApp names an App after its id, so the report below is keyed on those.
-  await seedApp(db, { id: "prj_live", slug: "live", serverId: REMOTE, status: "active" });
-  await seedApp(db, { id: "prj_off", slug: "off", serverId: REMOTE, status: "idle" });
+  await seedApp(db, {
+    id: "prj_live",
+    slug: "live",
+    serverId: REMOTE,
+    status: "active",
+  });
+  await seedApp(db, {
+    id: "prj_off",
+    slug: "off",
+    serverId: REMOTE,
+    status: "idle",
+  });
   // On a DIFFERENT server: a whole-server restart must be exactly that.
-  await seedApp(db, { id: "prj_other", slug: "other", serverId: SELF, status: "active" });
-  await seedDatabase(db, { id: "db_live", name: "pg", serverId: REMOTE, status: "running" });
+  await seedApp(db, {
+    id: "prj_other",
+    slug: "other",
+    serverId: SELF,
+    status: "active",
+  });
+  await seedDatabase(db, {
+    id: "db_live",
+    name: "pg",
+    serverId: REMOTE,
+    status: "running",
+  });
 
   const report = await asAdmin(() => restartServerWorkloads(REMOTE));
 
@@ -300,12 +381,22 @@ test("restarting workloads skips the stopped ones and never touches another serv
   // different action than the one the operator pressed.
   assert.equal(report.skipped, 1);
   assert.equal(report.restarted, 0);
-  assert.equal(report.failures.length, 2, "each live workload is reported on its own");
+  assert.equal(
+    report.failures.length,
+    2,
+    "each live workload is reported on its own",
+  );
   const names = report.failures.map((f) => f.name).sort();
   assert.deepEqual(names, ["pg", "prj_live"]);
-  assert.ok(!names.includes("prj_other"), "another server's workloads must not be touched");
+  assert.ok(
+    !names.includes("prj_other"),
+    "another server's workloads must not be touched",
+  );
   // Both kinds are covered, not just Apps — a database is a stack on this host too.
-  assert.deepEqual(report.failures.map((f) => f.kind).sort(), ["app", "database"]);
+  assert.deepEqual(report.failures.map((f) => f.kind).sort(), [
+    "app",
+    "database",
+  ]);
   // A failure carries the host's own words rather than invented copy.
   assert.ok(report.failures.every((f) => f.error));
 });
@@ -319,20 +410,59 @@ test("a failed deploy is restarted; a deploy in flight is left to finish", async
   // `error` means the last DEPLOY failed, which routinely leaves the PREVIOUS
   // stack up and serving. Treating it as stopped skipped exactly the apps an
   // operator presses this button to fix, and called them "already stopped".
-  await seedApp(db, { id: "prj_err", slug: "err", serverId: REMOTE, status: "error" });
+  await seedApp(db, {
+    id: "prj_err",
+    slug: "err",
+    serverId: REMOTE,
+    status: "error",
+  });
   // Mid-deploy: stopping the stack out from under its own `compose up` is how a
   // whole-server restart leaves a half-built app behind. It comes up on its own.
-  await seedApp(db, { id: "prj_build", slug: "build", serverId: REMOTE, status: "building" });
-  await seedApp(db, { id: "prj_queued", slug: "queued", serverId: REMOTE, status: "queued" });
-  await seedApp(db, { id: "prj_stopping", slug: "stopping", serverId: REMOTE, status: "stopping" });
+  await seedApp(db, {
+    id: "prj_build",
+    slug: "build",
+    serverId: REMOTE,
+    status: "building",
+  });
+  await seedApp(db, {
+    id: "prj_queued",
+    slug: "queued",
+    serverId: REMOTE,
+    status: "queued",
+  });
+  await seedApp(db, {
+    id: "prj_stopping",
+    slug: "stopping",
+    serverId: REMOTE,
+    status: "stopping",
+  });
   // Databases get the same treatment: `error` is restartable, mid-create is not.
-  await seedDatabase(db, { id: "db_err", name: "pg-err", serverId: REMOTE, status: "error" });
-  await seedDatabase(db, { id: "db_new", name: "pg-new", serverId: REMOTE, status: "provisioning" });
-  await seedDatabase(db, { id: "db_off", name: "pg-off", serverId: REMOTE, status: "stopped" });
+  await seedDatabase(db, {
+    id: "db_err",
+    name: "pg-err",
+    serverId: REMOTE,
+    status: "error",
+  });
+  await seedDatabase(db, {
+    id: "db_new",
+    name: "pg-new",
+    serverId: REMOTE,
+    status: "provisioning",
+  });
+  await seedDatabase(db, {
+    id: "db_off",
+    name: "pg-off",
+    serverId: REMOTE,
+    status: "stopped",
+  });
 
   const report = await asAdmin(() => restartServerWorkloads(REMOTE));
 
-  assert.equal(report.skipped, 5, "building, queued, stopping, provisioning, stopped");
+  assert.equal(
+    report.skipped,
+    5,
+    "building, queued, stopping, provisioning, stopped",
+  );
   assert.deepEqual(
     report.failures.map((f) => f.name).sort(),
     ["pg-err", "prj_err"],
@@ -344,6 +474,12 @@ test("host details obey the team's two-factor policy, like every action here", a
   // The policy gate lives in requireActiveTeamId, and every mutation on this page
   // already goes through it. A read that skipped it would hand a locked-out member
   // every host's hardware, disk and clock.
-  await db.update(teamsTable).set({ requireTwoFactor: true }).where(eq(teamsTable.id, TEAM_A));
-  await assert.rejects(() => asAdmin(() => serverHostInfo(REMOTE)), /two-factor/i);
+  await db
+    .update(teamsTable)
+    .set({ requireTwoFactor: true })
+    .where(eq(teamsTable.id, TEAM_A));
+  await assert.rejects(
+    () => asAdmin(() => serverHostInfo(REMOTE)),
+    /two-factor/i,
+  );
 });

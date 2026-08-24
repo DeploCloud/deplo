@@ -103,7 +103,11 @@ test("adding a domain with www:toThis registers the counterpart as a redirect", 
   const www = await byName("www.example.com");
   assert.ok(www, "the counterpart is added as a domain of the app");
   assert.equal(www.redirectTo, "example.com");
-  assert.equal(www.primary, false, "a redirecting host is never the canonical one");
+  assert.equal(
+    www.primary,
+    false,
+    "a redirecting host is never the canonical one",
+  );
   // Provenance: only a companion Deplo generated may be deleted when the pair is
   // broken, so it is marked as one.
   assert.equal(www.source, "redirect");
@@ -137,7 +141,10 @@ test("pairing an app's only domain leaves the canonical host primary", async () 
 
 test("www:toCounterpart makes www serve and moves primary (and the URL) with it", async () => {
   const d = await asUser1(() =>
-    addDomain("prj_1", "example.com", { port: 3000, certProvider: "letsencrypt" }),
+    addDomain("prj_1", "example.com", {
+      port: 3000,
+      certProvider: "letsencrypt",
+    }),
   );
   await asUser1(() => updateDomain(d.id, { www: "toCounterpart" }));
 
@@ -229,7 +236,11 @@ test("removing the canonical host frees a user's own hostname instead of deletin
 
   const www = await byName("www.example.com");
   assert.ok(www);
-  assert.equal(www.redirectTo, null, "it stops pointing at a hostname that is gone");
+  assert.equal(
+    www.redirectTo,
+    null,
+    "it stops pointing at a hostname that is gone",
+  );
   assert.equal(www.primary, true, "and inherits the canonical role");
   assert.equal(await productionUrl(), "http://www.example.com");
 });
@@ -275,7 +286,9 @@ test("a path-routed domain refuses the pairing (a 301 answers for a whole host)"
 test("a hostname another app already routes is refused, not stolen", async () => {
   await seedApp(db, { id: "prj_2", slug: "other", status: "active" });
   await asUser1(() => addDomain("prj_2", "www.example.com", { port: 3000 }));
-  const d = await asUser1(() => addDomain("prj_1", "example.com", { port: 3000 }));
+  const d = await asUser1(() =>
+    addDomain("prj_1", "example.com", { port: 3000 }),
+  );
   await assert.rejects(
     () => asUser1(() => updateDomain(d.id, { www: "toThis" })),
     /already routed by another app/,

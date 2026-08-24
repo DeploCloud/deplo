@@ -61,7 +61,9 @@ beforeEach(async () => {
   __resetQueueForTest();
   await pg.exec(`${TRUNCATE_PROJECT_GRAPH}
     truncate table users, teams restart identity cascade;`);
-  await seedIdentity(db, { users: [{ id: USER_1, teamId: TEAM_A, role: "owner" }] });
+  await seedIdentity(db, {
+    users: [{ id: USER_1, teamId: TEAM_A, role: "owner" }],
+  });
 });
 
 /** A controllable deploy runner: records dispatch order and lets the test settle
@@ -134,19 +136,38 @@ test("concurrency 1: one deploy at a time per server, FIFO", async () => {
   await seedServer(db, SRV_A);
   await seedApp(db, { id: "svc_x", serverId: SRV_A, status: "queued" });
   await seedApp(db, { id: "svc_y", serverId: SRV_A, status: "queued" });
-  await seedDeployment(db, { id: "d_x", appId: "svc_x", serverId: SRV_A, status: "queued", createdAt: "2026-01-01T00:00:01.000Z" });
-  await seedDeployment(db, { id: "d_y", appId: "svc_y", serverId: SRV_A, status: "queued", createdAt: "2026-01-01T00:00:02.000Z" });
+  await seedDeployment(db, {
+    id: "d_x",
+    appId: "svc_x",
+    serverId: SRV_A,
+    status: "queued",
+    createdAt: "2026-01-01T00:00:01.000Z",
+  });
+  await seedDeployment(db, {
+    id: "d_y",
+    appId: "svc_y",
+    serverId: SRV_A,
+    status: "queued",
+    createdAt: "2026-01-01T00:00:02.000Z",
+  });
 
   enqueueDeployment({ depId: "d_x", serverId: SRV_A, appId: "svc_x" });
   enqueueDeployment({ depId: "d_y", serverId: SRV_A, appId: "svc_y" });
 
   await waitFor(() => started.length === 1, "first deploy started");
   await settle();
-  assert.deepEqual(started, ["d_x"], "only the oldest runs; the second waits for the slot");
+  assert.deepEqual(
+    started,
+    ["d_x"],
+    "only the oldest runs; the second waits for the slot",
+  );
   assert.equal(await statusOf("d_y"), "queued", "second deploy still queued");
 
   await finish("d_x");
-  await waitFor(() => started.length === 2, "second deploy started after first finished");
+  await waitFor(
+    () => started.length === 2,
+    "second deploy started after first finished",
+  );
   assert.deepEqual(started, ["d_x", "d_y"]);
 });
 
@@ -157,14 +178,28 @@ test("deploys on different servers run in parallel", async () => {
   await seedServer(db, SRV_B);
   await seedApp(db, { id: "svc_a", serverId: SRV_A, status: "queued" });
   await seedApp(db, { id: "svc_b", serverId: SRV_B, status: "queued" });
-  await seedDeployment(db, { id: "d_a", appId: "svc_a", serverId: SRV_A, status: "queued" });
-  await seedDeployment(db, { id: "d_b", appId: "svc_b", serverId: SRV_B, status: "queued" });
+  await seedDeployment(db, {
+    id: "d_a",
+    appId: "svc_a",
+    serverId: SRV_A,
+    status: "queued",
+  });
+  await seedDeployment(db, {
+    id: "d_b",
+    appId: "svc_b",
+    serverId: SRV_B,
+    status: "queued",
+  });
 
   enqueueDeployment({ depId: "d_a", serverId: SRV_A, appId: "svc_a" });
   enqueueDeployment({ depId: "d_b", serverId: SRV_B, appId: "svc_b" });
 
   await waitFor(() => started.length === 2, "both deploys started");
-  assert.deepEqual([...started].sort(), ["d_a", "d_b"], "one on each server, concurrently");
+  assert.deepEqual(
+    [...started].sort(),
+    ["d_a", "d_b"],
+    "one on each server, concurrently",
+  );
   await finish("d_a");
   await finish("d_b");
 });
@@ -183,25 +218,58 @@ test("two deploys of one app never overlap, even in different lanes", async () =
   await seedApp(db, { id: "svc_x", serverId: SRV_A, status: "queued" });
   // Same app, same stack (one deploy key), but routed to two different builders.
   await seedDeployment(db, {
-    id: "b1", appId: "svc_x", serverId: SRV_A, buildServerId: SRV_A,
-    status: "queued", createdAt: "2026-01-01T00:00:01.000Z",
+    id: "b1",
+    appId: "svc_x",
+    serverId: SRV_A,
+    buildServerId: SRV_A,
+    status: "queued",
+    createdAt: "2026-01-01T00:00:01.000Z",
   });
   await seedDeployment(db, {
-    id: "b2", appId: "svc_x", serverId: SRV_A, buildServerId: SRV_B,
-    status: "queued", createdAt: "2026-01-01T00:00:02.000Z",
+    id: "b2",
+    appId: "svc_x",
+    serverId: SRV_A,
+    buildServerId: SRV_B,
+    status: "queued",
+    createdAt: "2026-01-01T00:00:02.000Z",
   });
 
-  enqueueDeployment({ depId: "b1", serverId: SRV_A, appId: "svc_x", buildServerId: SRV_A });
-  enqueueDeployment({ depId: "b2", serverId: SRV_A, appId: "svc_x", buildServerId: SRV_B });
+  enqueueDeployment({
+    depId: "b1",
+    serverId: SRV_A,
+    appId: "svc_x",
+    buildServerId: SRV_A,
+  });
+  enqueueDeployment({
+    depId: "b2",
+    serverId: SRV_A,
+    appId: "svc_x",
+    buildServerId: SRV_B,
+  });
 
   await waitFor(() => started.length === 1, "the first one starts");
   await settle();
-  assert.deepEqual(started, ["b1"], "only the older deploy runs; the newer waits its turn");
-  assert.equal(await statusOf("b2"), "queued", "held back despite a free lane on the other builder");
+  assert.deepEqual(
+    started,
+    ["b1"],
+    "only the older deploy runs; the newer waits its turn",
+  );
+  assert.equal(
+    await statusOf("b2"),
+    "queued",
+    "held back despite a free lane on the other builder",
+  );
 
   await finish("b1");
-  await waitFor(() => started.includes("b2"), "b2 runs once b1 releases the stack");
-  assert.deepEqual(started, ["b1", "b2"], "strict order preserved across lanes");
+  await waitFor(
+    () => started.includes("b2"),
+    "b2 runs once b1 releases the stack",
+  );
+  assert.deepEqual(
+    started,
+    ["b1", "b2"],
+    "strict order preserved across lanes",
+  );
   await finish("b2");
 });
 
@@ -215,12 +283,19 @@ test("a preview and a production deploy of one app do run in parallel", async ()
   await setConcurrency(SRV_A, 2);
   await seedApp(db, { id: "svc_x", serverId: SRV_A, status: "queued" });
   await seedDeployment(db, {
-    id: "prod", appId: "svc_x", serverId: SRV_A, status: "queued",
+    id: "prod",
+    appId: "svc_x",
+    serverId: SRV_A,
+    status: "queued",
     createdAt: "2026-01-01T00:00:01.000Z",
   });
   await seedDeployment(db, {
-    id: "prev", appId: "svc_x", serverId: SRV_A, status: "queued",
-    deployKey: "svc_x__pr-7", environment: "preview",
+    id: "prev",
+    appId: "svc_x",
+    serverId: SRV_A,
+    status: "queued",
+    deployKey: "svc_x__pr-7",
+    environment: "preview",
     createdAt: "2026-01-01T00:00:02.000Z",
   });
 
@@ -242,9 +317,27 @@ test("concurrency 2: two distinct services run, but never two of the same servic
   await seedApp(db, { id: "svc_y", serverId: SRV_A, status: "queued" });
   // Two queued deploys for the SAME app x, plus one for y. (Seeded directly —
   // the enqueue-time collapse lives in startDeployment, not the queue.)
-  await seedDeployment(db, { id: "x1", appId: "svc_x", serverId: SRV_A, status: "queued", createdAt: "2026-01-01T00:00:01.000Z" });
-  await seedDeployment(db, { id: "x2", appId: "svc_x", serverId: SRV_A, status: "queued", createdAt: "2026-01-01T00:00:02.000Z" });
-  await seedDeployment(db, { id: "y1", appId: "svc_y", serverId: SRV_A, status: "queued", createdAt: "2026-01-01T00:00:03.000Z" });
+  await seedDeployment(db, {
+    id: "x1",
+    appId: "svc_x",
+    serverId: SRV_A,
+    status: "queued",
+    createdAt: "2026-01-01T00:00:01.000Z",
+  });
+  await seedDeployment(db, {
+    id: "x2",
+    appId: "svc_x",
+    serverId: SRV_A,
+    status: "queued",
+    createdAt: "2026-01-01T00:00:02.000Z",
+  });
+  await seedDeployment(db, {
+    id: "y1",
+    appId: "svc_y",
+    serverId: SRV_A,
+    status: "queued",
+    createdAt: "2026-01-01T00:00:03.000Z",
+  });
 
   enqueueDeployment({ depId: "x1", serverId: SRV_A, appId: "svc_x" });
   enqueueDeployment({ depId: "x2", serverId: SRV_A, appId: "svc_x" });
@@ -252,11 +345,22 @@ test("concurrency 2: two distinct services run, but never two of the same servic
 
   await waitFor(() => started.length === 2, "two slots filled");
   await settle();
-  assert.deepEqual(started, ["x1", "y1"], "x1 + y1 run; x2 waits though a slot rule would allow it (same service as x1)");
-  assert.equal(await statusOf("x2"), "queued", "the second same-service deploy is held back");
+  assert.deepEqual(
+    started,
+    ["x1", "y1"],
+    "x1 + y1 run; x2 waits though a slot rule would allow it (same service as x1)",
+  );
+  assert.equal(
+    await statusOf("x2"),
+    "queued",
+    "the second same-service deploy is held back",
+  );
 
   await finish("x1");
-  await waitFor(() => started.includes("x2"), "x2 runs once x1 (its service) frees");
+  await waitFor(
+    () => started.includes("x2"),
+    "x2 runs once x1 (its service) frees",
+  );
   assert.deepEqual(started, ["x1", "y1", "x2"]);
   await finish("y1");
   await finish("x2");
@@ -268,15 +372,30 @@ test("a canceled queued deploy is skipped by the drain", async () => {
   await seedServer(db, SRV_A);
   await seedApp(db, { id: "svc_x", serverId: SRV_A, status: "queued" });
   await seedApp(db, { id: "svc_y", serverId: SRV_A, status: "queued" });
-  await seedDeployment(db, { id: "d1", appId: "svc_x", serverId: SRV_A, status: "queued", createdAt: "2026-01-01T00:00:01.000Z" });
-  await seedDeployment(db, { id: "d2", appId: "svc_y", serverId: SRV_A, status: "queued", createdAt: "2026-01-01T00:00:02.000Z" });
+  await seedDeployment(db, {
+    id: "d1",
+    appId: "svc_x",
+    serverId: SRV_A,
+    status: "queued",
+    createdAt: "2026-01-01T00:00:01.000Z",
+  });
+  await seedDeployment(db, {
+    id: "d2",
+    appId: "svc_y",
+    serverId: SRV_A,
+    status: "queued",
+    createdAt: "2026-01-01T00:00:02.000Z",
+  });
 
   enqueueDeployment({ depId: "d1", serverId: SRV_A, appId: "svc_x" });
   enqueueDeployment({ depId: "d2", serverId: SRV_A, appId: "svc_y" });
   await waitFor(() => started.length === 1, "d1 started");
 
   // Cancel d2 while it waits (mimics cancelDeployment's conditional flip).
-  await db.update(deploymentsTable).set({ status: "canceled" }).where(eq(deploymentsTable.id, "d2"));
+  await db
+    .update(deploymentsTable)
+    .set({ status: "canceled" })
+    .where(eq(deploymentsTable.id, "d2"));
 
   await finish("d1");
   await settle();
@@ -291,15 +410,30 @@ test("startDeployQueue re-drains an existing queued backlog on boot", async () =
   await seedApp(db, { id: "svc_x", serverId: SRV_A, status: "queued" });
   await seedApp(db, { id: "svc_y", serverId: SRV_A, status: "queued" });
   // Rows exist as `queued` (a restart mid-backlog) — nothing enqueued this run.
-  await seedDeployment(db, { id: "b1", appId: "svc_x", serverId: SRV_A, status: "queued", createdAt: "2026-01-01T00:00:01.000Z" });
-  await seedDeployment(db, { id: "b2", appId: "svc_y", serverId: SRV_A, status: "queued", createdAt: "2026-01-01T00:00:02.000Z" });
+  await seedDeployment(db, {
+    id: "b1",
+    appId: "svc_x",
+    serverId: SRV_A,
+    status: "queued",
+    createdAt: "2026-01-01T00:00:01.000Z",
+  });
+  await seedDeployment(db, {
+    id: "b2",
+    appId: "svc_y",
+    serverId: SRV_A,
+    status: "queued",
+    createdAt: "2026-01-01T00:00:02.000Z",
+  });
 
   await startDeployQueue();
   await waitFor(() => started.length === 1, "boot drain started the oldest");
   await settle();
   assert.deepEqual(started, ["b1"], "concurrency 1: only the oldest, in order");
   await finish("b1");
-  await waitFor(() => started.length === 2, "second drained after the first finished");
+  await waitFor(
+    () => started.length === 2,
+    "second drained after the first finished",
+  );
   assert.deepEqual(started, ["b1", "b2"]);
 });
 
@@ -311,14 +445,24 @@ test("startDeployQueue backfills a queued row missing its serverId", async () =>
   // A pre-migration straggler: queued but no denormalized server_id.
   await seedDeployment(db, { id: "old", appId: "svc_x", status: "queued" });
   assert.equal(
-    (await db.select({ s: deploymentsTable.serverId }).from(deploymentsTable).where(eq(deploymentsTable.id, "old")))[0]?.s,
+    (
+      await db
+        .select({ s: deploymentsTable.serverId })
+        .from(deploymentsTable)
+        .where(eq(deploymentsTable.id, "old"))
+    )[0]?.s,
     null,
   );
 
   await startDeployQueue();
   await waitFor(() => started.length === 1, "backfilled row got drained");
   assert.deepEqual(started, ["old"]);
-  const backfilled = (await db.select({ s: deploymentsTable.serverId }).from(deploymentsTable).where(eq(deploymentsTable.id, "old")))[0]?.s;
+  const backfilled = (
+    await db
+      .select({ s: deploymentsTable.serverId })
+      .from(deploymentsTable)
+      .where(eq(deploymentsTable.id, "old"))
+  )[0]?.s;
   assert.equal(backfilled, SRV_A, "server_id resolved from the owning service");
   await finish("old");
 });
@@ -329,16 +473,33 @@ test("startDeployment supersedes an older still-queued deploy of the same servic
   await seedServer(db, SRV_A);
   await seedApp(db, { id: "svc_x", serverId: SRV_A, status: "queued" });
   // An older deploy is already sitting queued (its slot never came free).
-  await seedDeployment(db, { id: "old", appId: "svc_x", serverId: SRV_A, status: "queued", createdAt: "2026-01-01T00:00:01.000Z" });
+  await seedDeployment(db, {
+    id: "old",
+    appId: "svc_x",
+    serverId: SRV_A,
+    status: "queued",
+    createdAt: "2026-01-01T00:00:01.000Z",
+  });
 
   // A new trigger arrives: it must cancel the older queued deploy (supersede) and
   // enqueue the fresh one so the same tree isn't rebuilt twice.
-  const fresh = await startDeployment("svc_x", { creator: "Owner", commitMessage: "newer" });
+  const fresh = await startDeployment("svc_x", {
+    creator: "Owner",
+    commitMessage: "newer",
+  });
 
-  assert.equal(await statusOf("old"), "canceled", "the older queued deploy is superseded");
+  assert.equal(
+    await statusOf("old"),
+    "canceled",
+    "the older queued deploy is superseded",
+  );
   assert.notEqual(fresh, "old");
   await waitFor(() => started.includes(fresh), "the new deploy runs");
-  assert.deepEqual(started, [fresh], "only the fresh deploy is dispatched, not the superseded one");
+  assert.deepEqual(
+    started,
+    [fresh],
+    "only the fresh deploy is dispatched, not the superseded one",
+  );
   await finish(fresh);
 });
 
@@ -349,8 +510,20 @@ test("deploy_concurrency is clamped to at least 1", async () => {
   await setConcurrency(SRV_A, 0); // nonsensical — must clamp to 1, not stall
   await seedApp(db, { id: "svc_x", serverId: SRV_A, status: "queued" });
   await seedApp(db, { id: "svc_y", serverId: SRV_A, status: "queued" });
-  await seedDeployment(db, { id: "c1", appId: "svc_x", serverId: SRV_A, status: "queued", createdAt: "2026-01-01T00:00:01.000Z" });
-  await seedDeployment(db, { id: "c2", appId: "svc_y", serverId: SRV_A, status: "queued", createdAt: "2026-01-01T00:00:02.000Z" });
+  await seedDeployment(db, {
+    id: "c1",
+    appId: "svc_x",
+    serverId: SRV_A,
+    status: "queued",
+    createdAt: "2026-01-01T00:00:01.000Z",
+  });
+  await seedDeployment(db, {
+    id: "c2",
+    appId: "svc_y",
+    serverId: SRV_A,
+    status: "queued",
+    createdAt: "2026-01-01T00:00:02.000Z",
+  });
 
   enqueueDeployment({ depId: "c1", serverId: SRV_A, appId: "svc_x" });
   enqueueDeployment({ depId: "c2", serverId: SRV_A, appId: "svc_y" });

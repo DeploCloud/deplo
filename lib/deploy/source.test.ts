@@ -13,8 +13,19 @@ import {
 } from "./source";
 import type { GitRepo, UploadArchive } from "../types";
 
-const repo: GitRepo = { provider: "git", url: "https://x/y", repo: "x/y", branch: "main" };
-const upload: UploadArchive = { id: "u1", filename: "a.tar.gz", path: "/p", size: 1, uploadedAt: "now" };
+const repo: GitRepo = {
+  provider: "git",
+  url: "https://x/y",
+  repo: "x/y",
+  branch: "main",
+};
+const upload: UploadArchive = {
+  id: "u1",
+  filename: "a.tar.gz",
+  path: "/p",
+  size: 1,
+  uploadedAt: "now",
+};
 
 // ---- planDeploySource: which source a deployment builds from ----
 
@@ -24,7 +35,9 @@ test("docker-image needs an image set, and carries it", () => {
     { kind: "docker-image", image: "nginx:1" },
   );
   // docker-image source with no image falls through to none.
-  assert.deepEqual(planDeploySource({ source: "docker-image" }), { kind: "none" });
+  assert.deepEqual(planDeploySource({ source: "docker-image" }), {
+    kind: "none",
+  });
 });
 
 test("git wins when a repo is present, and carries the repo", () => {
@@ -82,7 +95,11 @@ test("isExplicitRoot: only a real subdirectory counts", () => {
 test("resolveBuildDir: no rootDirectory → the tree root", async () => {
   const root = await mkdtemp(join(tmpdir(), "deplo-src-"));
   try {
-    const got = await resolveBuildDir({ root, rootDirectory: "", failOnMissing: true });
+    const got = await resolveBuildDir({
+      root,
+      rootDirectory: "",
+      failOnMissing: true,
+    });
     assert.equal(got, await realpath(root));
   } finally {
     await rm(root, { recursive: true, force: true });
@@ -93,7 +110,11 @@ test("resolveBuildDir: existing subdirectory is contained and returned", async (
   const root = await mkdtemp(join(tmpdir(), "deplo-src-"));
   try {
     await mkdir(join(root, "apps", "web"), { recursive: true });
-    const got = await resolveBuildDir({ root, rootDirectory: "apps/web", failOnMissing: true });
+    const got = await resolveBuildDir({
+      root,
+      rootDirectory: "apps/web",
+      failOnMissing: true,
+    });
     assert.equal(got, await realpath(join(root, "apps", "web")));
   } finally {
     await rm(root, { recursive: true, force: true });
@@ -104,8 +125,15 @@ test("resolveBuildDir: explicit-but-missing root hard-fails when failOnMissing",
   const root = await mkdtemp(join(tmpdir(), "deplo-src-"));
   try {
     await assert.rejects(
-      () => resolveBuildDir({ root, rootDirectory: "nope", failOnMissing: true, notFoundMessage: "boom" }),
-      (e: unknown) => e instanceof RootDirectoryNotFound && /boom/.test((e as Error).message),
+      () =>
+        resolveBuildDir({
+          root,
+          rootDirectory: "nope",
+          failOnMissing: true,
+          notFoundMessage: "boom",
+        }),
+      (e: unknown) =>
+        e instanceof RootDirectoryNotFound && /boom/.test((e as Error).message),
     );
   } finally {
     await rm(root, { recursive: true, force: true });
@@ -115,7 +143,11 @@ test("resolveBuildDir: explicit-but-missing root hard-fails when failOnMissing",
 test("resolveBuildDir: explicit-but-missing root falls back silently when !failOnMissing (upload)", async () => {
   const root = await mkdtemp(join(tmpdir(), "deplo-src-"));
   try {
-    const got = await resolveBuildDir({ root, rootDirectory: "nope", failOnMissing: false });
+    const got = await resolveBuildDir({
+      root,
+      rootDirectory: "nope",
+      failOnMissing: false,
+    });
     assert.equal(got, await realpath(root)); // upload behaviour: build the root
   } finally {
     await rm(root, { recursive: true, force: true });
@@ -128,7 +160,11 @@ test("resolveBuildDir: a symlink escaping the tree is rejected (contained to roo
   try {
     // Plant a symlink inside the tree pointing OUT of it.
     await symlink(outside, join(root, "escape"));
-    const got = await resolveBuildDir({ root, rootDirectory: "escape", failOnMissing: false });
+    const got = await resolveBuildDir({
+      root,
+      rootDirectory: "escape",
+      failOnMissing: false,
+    });
     // safeBuildDir refuses the escape and falls back to the canonical root.
     assert.equal(got, await realpath(root));
   } finally {

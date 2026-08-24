@@ -86,7 +86,8 @@ export function parseEnvBlob(blob: string | null | undefined): {
       value = value.slice(1, -1);
     if (!KEY_RE.test(key)) continue;
     // Last one wins, like a shell sourcing the file twice.
-    if (seen.has(key)) out[out.findIndex((e) => e.key === key)] = { key, value };
+    if (seen.has(key))
+      out[out.findIndex((e) => e.key === key)] = { key, value };
     else {
       seen.add(key);
       out.push({ key, value });
@@ -127,7 +128,9 @@ function dokployNetworkKeys(doc: { networks?: unknown }): Set<string> {
   const declared = doc.networks;
   if (!declared || typeof declared !== "object" || Array.isArray(declared))
     return keys;
-  for (const [key, raw] of Object.entries(declared as Record<string, unknown>)) {
+  for (const [key, raw] of Object.entries(
+    declared as Record<string, unknown>,
+  )) {
     if (key === DOKPLOY_NETWORK) keys.add(key);
     if (!raw || typeof raw !== "object" || Array.isArray(raw)) continue;
     const n = raw as Record<string, unknown>;
@@ -227,7 +230,9 @@ export function adaptComposeForDeplo(source: string): {
           if (idx <= 0) return v;
           const rewritten = deploFilesPath(v.slice(0, idx));
           if (rewritten == null) return v;
-          changes.push(`${v.slice(0, idx)} now points at Deplo's files directory.`);
+          changes.push(
+            `${v.slice(0, idx)} now points at Deplo's files directory.`,
+          );
           return `${rewritten}${v.slice(idx)}`;
         }
         if (v && typeof v === "object" && !Array.isArray(v)) {
@@ -254,7 +259,9 @@ export function adaptComposeForDeplo(source: string): {
     const rewritten = deploFilesPath(target.value);
     if (rewritten == null) continue;
     target.set(rewritten);
-    changes.push(`${target.value} now points at Deplo's files directory (${where}).`);
+    changes.push(
+      `${target.value} now points at Deplo's files directory (${where}).`,
+    );
   }
 
   if (changes.length === 0) return { compose: source, changes: [] };
@@ -296,7 +303,12 @@ export function retargetPlatformEnvFiles(
     return { compose: source, changes: [] };
 
   const have = new Set(
-    carried.map((f) => f.trim().replace(/^\.\/+/, "").replace(/^\/+/, "")),
+    carried.map((f) =>
+      f
+        .trim()
+        .replace(/^\.\/+/, "")
+        .replace(/^\/+/, ""),
+    ),
   );
   const changes: string[] = [];
   const retarget = (value: string): string | null => {
@@ -363,9 +375,7 @@ interface FileRef {
  * Returned as setters rather than paths so the caller rewrites in place without
  * a second walk of the same document.
  */
-function topLevelFileRefs(
-  doc: Record<string, unknown>,
-): [string, FileRef][] {
+function topLevelFileRefs(doc: Record<string, unknown>): [string, FileRef][] {
   const out: [string, FileRef][] = [];
   const push = (
     where: string,
@@ -376,36 +386,53 @@ function topLevelFileRefs(
     if (typeof value !== "string") return;
     out.push([
       where,
-      { value, set: (next) => ((holder as Record<string | number, unknown>)[key] = next) },
+      {
+        value,
+        set: (next) =>
+          ((holder as Record<string | number, unknown>)[key] = next),
+      },
     ]);
   };
 
   const services = doc.services;
   if (services && typeof services === "object" && !Array.isArray(services))
-    for (const [name, raw] of Object.entries(services as Record<string, unknown>)) {
+    for (const [name, raw] of Object.entries(
+      services as Record<string, unknown>,
+    )) {
       if (!raw || typeof raw !== "object" || Array.isArray(raw)) continue;
       const svc = raw as Record<string, unknown>;
-      if (typeof svc.env_file === "string") push(`${name}.env_file`, svc, "env_file");
+      if (typeof svc.env_file === "string")
+        push(`${name}.env_file`, svc, "env_file");
       else if (Array.isArray(svc.env_file))
         svc.env_file.forEach((entry, i) => {
-          if (typeof entry === "string") push(`${name}.env_file`, svc.env_file as never, i);
+          if (typeof entry === "string")
+            push(`${name}.env_file`, svc.env_file as never, i);
           else if (entry && typeof entry === "object")
             push(`${name}.env_file`, entry as Record<string, unknown>, "path");
         });
-      if (typeof svc.label_file === "string") push(`${name}.label_file`, svc, "label_file");
+      if (typeof svc.label_file === "string")
+        push(`${name}.label_file`, svc, "label_file");
       else if (Array.isArray(svc.label_file))
         svc.label_file.forEach((entry, i) => {
-          if (typeof entry === "string") push(`${name}.label_file`, svc.label_file as never, i);
+          if (typeof entry === "string")
+            push(`${name}.label_file`, svc.label_file as never, i);
         });
       if (typeof svc.build === "string") push(`${name}.build`, svc, "build");
-      else if (svc.build && typeof svc.build === "object" && !Array.isArray(svc.build))
+      else if (
+        svc.build &&
+        typeof svc.build === "object" &&
+        !Array.isArray(svc.build)
+      )
         push(`${name}.build`, svc.build as Record<string, unknown>, "context");
     }
 
   for (const block of ["secrets", "configs"] as const) {
     const declared = doc[block];
-    if (!declared || typeof declared !== "object" || Array.isArray(declared)) continue;
-    for (const [name, raw] of Object.entries(declared as Record<string, unknown>)) {
+    if (!declared || typeof declared !== "object" || Array.isArray(declared))
+      continue;
+    for (const [name, raw] of Object.entries(
+      declared as Record<string, unknown>,
+    )) {
       if (!raw || typeof raw !== "object" || Array.isArray(raw)) continue;
       push(`${block}.${name}`, raw as Record<string, unknown>, "file");
     }
@@ -453,7 +480,10 @@ export function mapBuildSettings(
 ): Mapped<Partial<BuildConfig>> {
   const notes: string[] = [];
   const buildMethod = BUILD_METHOD[app.buildType] ?? "nixpacks";
-  if (app.buildType === "heroku_buildpacks" || app.buildType === "paketo_buildpacks")
+  if (
+    app.buildType === "heroku_buildpacks" ||
+    app.buildType === "paketo_buildpacks"
+  )
     notes.push(
       `Built with ${app.buildType.replace("_", " ")} on Dokploy. Set to Nixpacks - check the build.`,
     );
@@ -468,7 +498,8 @@ export function mapBuildSettings(
   // builder to a version this app never asked for, out of what is really just the
   // other platform's column default.
   if (buildMethod === "dockerfile") {
-    if (app.dockerfile?.trim()) methodSettings.dockerfilePath = app.dockerfile.trim();
+    if (app.dockerfile?.trim())
+      methodSettings.dockerfilePath = app.dockerfile.trim();
     if (app.dockerContextPath?.trim())
       methodSettings.dockerContextPath = app.dockerContextPath.trim();
     if (app.dockerBuildStage?.trim())
@@ -484,7 +515,8 @@ export function mapBuildSettings(
   } else if (buildMethod === "nixpacks" && publish) {
     methodSettings.nixpacksPublishDirectory = publish;
   }
-  if (Object.keys(methodSettings).length > 0) build.methodSettings = methodSettings;
+  if (Object.keys(methodSettings).length > 0)
+    build.methodSettings = methodSettings;
 
   const root = buildPathFor(app);
   if (root) build.rootDirectory = root;
@@ -598,7 +630,9 @@ export function mapResources(row: {
     ["CPU limit", row.cpuLimit, cpuMilli],
   ] as const)
     if (raw?.trim() && parsed == null)
-      notes.push(`${label} "${raw.trim()}" is not a value Deplo can read - set it by hand.`);
+      notes.push(
+        `${label} "${raw.trim()}" is not a value Deplo can read - set it by hand.`,
+      );
 
   // Dokploy's cpuReservation is a swarm scheduling hint with no deplo column.
   if (row.cpuReservation?.trim())
@@ -609,11 +643,15 @@ export function mapResources(row: {
   // A reservation above the limit is what deplo's own validator refuses; drop it
   // rather than lose the limit too.
   const reservation =
-    memoryReservationMb != null && memoryMb != null && memoryReservationMb > memoryMb
+    memoryReservationMb != null &&
+    memoryMb != null &&
+    memoryReservationMb > memoryMb
       ? null
       : memoryReservationMb;
   if (reservation !== memoryReservationMb)
-    notes.push("Memory reservation is above the limit on Dokploy - not imported.");
+    notes.push(
+      "Memory reservation is above the limit on Dokploy - not imported.",
+    );
 
   if (memoryMb == null && reservation == null && cpuMilli == null)
     return { value: null, notes };
@@ -677,7 +715,9 @@ export function mapSource(app: DokployApplication): Mapped<MappedSource> {
       return { value: { kind: "none" }, notes };
     }
     if (!IMAGE_REF_RE.test(image)) {
-      notes.push(`Image reference "${truncate(image, 80)}" is not one Deplo accepts - set it by hand.`);
+      notes.push(
+        `Image reference "${truncate(image, 80)}" is not one Deplo accepts - set it by hand.`,
+      );
       return { value: { kind: "none" }, notes };
     }
     // A private pull can be configured two ways over there: a registry ENTITY, or
@@ -708,7 +748,9 @@ export function mapSource(app: DokployApplication): Mapped<MappedSource> {
 
   const repo = cloneTarget(app);
   if (!repo) {
-    notes.push("Could not work out the repository from Dokploy - set the source by hand.");
+    notes.push(
+      "Could not work out the repository from Dokploy - set the source by hand.",
+    );
     return { value: { kind: "none" }, notes };
   }
 
@@ -782,7 +824,8 @@ export function cloneTarget(
       };
     }
     case "bitbucket": {
-      const slug = a.bitbucketRepositorySlug?.trim() || a.bitbucketRepository?.trim();
+      const slug =
+        a.bitbucketRepositorySlug?.trim() || a.bitbucketRepository?.trim();
       if (!a.bitbucketOwner || !slug) return null;
       return {
         provider: "bitbucket",
@@ -828,8 +871,7 @@ export function repoNameFromUrl(url: string): string {
  * Carrying one over would point at the old VPS and ask Let's Encrypt for a
  * certificate on a name we do not control. deplo mints its own instead.
  */
-const THROWAWAY_HOST_RE =
-  /(^|\.)(traefik\.me|sslip\.io|nip\.io|localhost)$/i;
+const THROWAWAY_HOST_RE = /(^|\.)(traefik\.me|sslip\.io|nip\.io|localhost)$/i;
 
 export function isThrowawayHost(host: string): boolean {
   return THROWAWAY_HOST_RE.test(host.trim().toLowerCase());
@@ -903,7 +945,9 @@ export function mapDomains(
       );
     const port = d.port ?? opts.fallbackPort ?? null;
     if (opts.isCompose && port == null)
-      notes.push(`${host} has no container port set - Deplo needs one for a compose stack.`);
+      notes.push(
+        `${host} has no container port set - Deplo needs one for a compose stack.`,
+      );
 
     out.push({
       host,
@@ -911,8 +955,9 @@ export function mapDomains(
       pathPrefix,
       stripPrefix: pathPrefix ? d.stripPath === true : false,
       certProvider,
-      entrypoint: d.https === false && certProvider === "none" ? "web" : "websecure",
-      service: opts.isCompose ? (d.serviceName?.trim() || null) : null,
+      entrypoint:
+        d.https === false && certProvider === "none" ? "web" : "websecure",
+      service: opts.isCompose ? d.serviceName?.trim() || null : null,
       generated: isThrowawayHost(host),
     });
   }
@@ -1030,7 +1075,9 @@ export function mapMounts(
         .replace(/^\/+|\/+$/g, "");
       const wanted = declared || fileNameFromMountPath(mountPath ?? "");
       if (!wanted || wanted.split("/").includes("..")) {
-        notes.push("A file mount has no usable path on Dokploy - not imported.");
+        notes.push(
+          "A file mount has no usable path on Dokploy - not imported.",
+        );
         continue;
       }
       const name = uniqueFilePath(wanted, usedFiles);
@@ -1038,7 +1085,11 @@ export function mapMounts(
         notes.push(
           `Two file mounts are both called ${wanted}, so one of them is ${name} in this app's Files.`,
         );
-      files.push({ filePath: name, content: m.content ?? "", mountPath: mountPath ?? "" });
+      files.push({
+        filePath: name,
+        content: m.content ?? "",
+        mountPath: mountPath ?? "",
+      });
       // Only an application needs the pairing: a compose stack already binds the
       // file in its own YAML, and a second mount for it would fight that one.
       if (!opts.isCompose && mountPath)
@@ -1056,7 +1107,10 @@ export function mapMounts(
       continue;
     }
     if (m.type === "volume") {
-      const base = volumeLabel(m.volumeName ?? "", volumeLabel(mountPath, "data"));
+      const base = volumeLabel(
+        m.volumeName ?? "",
+        volumeLabel(mountPath, "data"),
+      );
       let name = base;
       for (let i = 2; used.has(name); i++) name = `${base}-${i}`;
       used.add(name);
@@ -1066,7 +1120,9 @@ export function mapMounts(
     // bind
     const hostPath = m.hostPath?.trim();
     if (!hostPath) {
-      notes.push(`Bind mount at ${mountPath} has no host path on Dokploy - not imported.`);
+      notes.push(
+        `Bind mount at ${mountPath} has no host path on Dokploy - not imported.`,
+      );
       continue;
     }
     volumes.push({
@@ -1230,7 +1286,9 @@ export function mapDatabase(
     notes.push(
       `This database bind-mounts ${binds.length === 1 ? "a folder" : "folders"} from its host on Dokploy (${binds
         .map((m) => m.hostPath || m.mountPath)
-        .join(", ")}). Deplo databases have no host mounts - move what is in there another way.`,
+        .join(
+          ", ",
+        )}). Deplo databases have no host mounts - move what is in there another way.`,
     );
 
   // mysql and mariadb keep TWO credentials on Dokploy - an application user and
@@ -1390,7 +1448,10 @@ export function sourceBindMountsFrom(inspect: {
     const dest = m.Destination?.trim();
     if (!hostPath || !dest || seen.has(dest)) continue;
     seen.add(dest);
-    out.push({ hostPath: normalizePath(hostPath), mountPath: normalizePath(dest) });
+    out.push({
+      hostPath: normalizePath(hostPath),
+      mountPath: normalizePath(dest),
+    });
   }
   return out;
 }
@@ -1399,7 +1460,11 @@ export function sourceBindMountsFrom(inspect: {
  *  exactly like `declaredSourceVolumes` is for its named ones. */
 export function declaredSourceBindMounts(
   mounts?:
-    | { type?: string | null; hostPath?: string | null; mountPath?: string | null }[]
+    | {
+        type?: string | null;
+        hostPath?: string | null;
+        mountPath?: string | null;
+      }[]
     | null,
 ): HostMount[] {
   const out: HostMount[] = [];
@@ -1410,7 +1475,10 @@ export function declaredSourceBindMounts(
     const dest = m.mountPath?.trim();
     if (!hostPath || !dest || seen.has(dest)) continue;
     seen.add(dest);
-    out.push({ hostPath: normalizePath(hostPath), mountPath: normalizePath(dest) });
+    out.push({
+      hostPath: normalizePath(hostPath),
+      mountPath: normalizePath(dest),
+    });
   }
   return out;
 }
@@ -1426,7 +1494,8 @@ export function pairHostMounts(
   source: HostMount[],
   target: HostMount[],
 ): { sourcePath: string; targetPath: string; mountPath: string }[] {
-  const out: { sourcePath: string; targetPath: string; mountPath: string }[] = [];
+  const out: { sourcePath: string; targetPath: string; mountPath: string }[] =
+    [];
   for (const s of source) {
     const hit = target.find((t) => t.mountPath === s.mountPath);
     if (!hit) continue;
@@ -1469,7 +1538,11 @@ export function declaredSourceVolumes(input: {
   kind: string;
   appName: string;
   mounts?:
-    | { type?: string | null; volumeName?: string | null; mountPath?: string | null }[]
+    | {
+        type?: string | null;
+        volumeName?: string | null;
+        mountPath?: string | null;
+      }[]
     | null;
   composeFile?: string | null;
 }): NamedVolume[] {
@@ -1551,7 +1624,10 @@ export function pairVolumes(
     // named it, and nothing on this side could ever correspond to it. Saying so
     // on every mongo (which declares /data/configdb) is noise in a report whose
     // whole value is that every line means something.
-    if (!pairs.some((p) => p.sourceVolume === s.name) && !isAnonymousVolume(s.name))
+    if (
+      !pairs.some((p) => p.sourceVolume === s.name) &&
+      !isAnonymousVolume(s.name)
+    )
       notes.push(
         `${s.name} is mounted at ${s.mountPath} on Dokploy, but no volume of this app mounts that path.`,
       );
@@ -1610,7 +1686,8 @@ export function composeVolumeMounts(compose: string): NamedVolume[] {
     return [];
   }
   const declared = doc?.volumes;
-  if (!declared || typeof declared !== "object" || Array.isArray(declared)) return [];
+  if (!declared || typeof declared !== "object" || Array.isArray(declared))
+    return [];
   const aliases = new Set(Object.keys(declared as Record<string, unknown>));
   const out: NamedVolume[] = [];
   const seen = new Set<string>();
@@ -1654,7 +1731,10 @@ export function portNotes(app: DokployApplication): string[] {
   const ports = app.ports ?? [];
   if (ports.length === 0) return [];
   const list = ports
-    .map((p) => `${p.publishedPort}->${p.targetPort}${p.protocol ? `/${p.protocol}` : ""}`)
+    .map(
+      (p) =>
+        `${p.publishedPort}->${p.targetPort}${p.protocol ? `/${p.protocol}` : ""}`,
+    )
     .join(", ");
   return [
     `Published host ports on Dokploy (${list}). Deplo routes apps through its proxy instead - use a domain, or a compose stack if the port must be published.`,

@@ -101,7 +101,9 @@ export async function sendEmail(
     });
   } catch (e) {
     // Rewrapped so the reason survives `mask-error.ts` (see the module docblock).
-    throw new Error(e instanceof Error ? e.message : "The SMTP server refused it");
+    throw new Error(
+      e instanceof Error ? e.message : "The SMTP server refused it",
+    );
   }
 }
 

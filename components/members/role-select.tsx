@@ -93,7 +93,7 @@ export function RoleSelect({
               aria-pressed={selected}
               onClick={() => onChange(role.id)}
               className={cn(
-                "flex w-full items-center gap-3 rounded-lg border px-3 py-2.5 text-left transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+                "flex w-full items-center gap-3 rounded-lg border px-3 py-2.5 text-left transition-colors focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none",
                 selected
                   ? "border-primary bg-primary/5"
                   : "border-border hover:bg-accent",
@@ -112,7 +112,7 @@ export function RoleSelect({
               <span className="min-w-0 flex-1">
                 <span className="flex items-center gap-2">
                   <span className="text-sm font-medium">{role.name}</span>
-                  <span className="text-[11px] tabular-nums text-muted-foreground">
+                  <span className="text-[11px] text-muted-foreground tabular-nums">
                     {optional === 0
                       ? "View only"
                       : `${optional} permission${optional === 1 ? "" : "s"}`}

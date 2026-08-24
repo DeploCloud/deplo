@@ -49,10 +49,26 @@ const TYPE_META: Record<
   RegistryType,
   { label: string; host: string; userPlaceholder: string }
 > = {
-  ghcr: { label: "GitHub (ghcr.io)", host: "ghcr.io", userPlaceholder: "github-username" },
-  dockerhub: { label: "Docker Hub", host: "docker.io", userPlaceholder: "docker-username" },
-  gitlab: { label: "GitLab", host: "registry.gitlab.com", userPlaceholder: "gitlab-username" },
-  generic: { label: "Generic / self-hosted", host: "", userPlaceholder: "username" },
+  ghcr: {
+    label: "GitHub (ghcr.io)",
+    host: "ghcr.io",
+    userPlaceholder: "github-username",
+  },
+  dockerhub: {
+    label: "Docker Hub",
+    host: "docker.io",
+    userPlaceholder: "docker-username",
+  },
+  gitlab: {
+    label: "GitLab",
+    host: "registry.gitlab.com",
+    userPlaceholder: "gitlab-username",
+  },
+  generic: {
+    label: "Generic / self-hosted",
+    host: "",
+    userPlaceholder: "username",
+  },
 };
 
 /**
@@ -84,10 +100,11 @@ function RegistriesBody({ registries }: { registries: RegistryDTO[] }) {
   const [deleting, setDeleting] = React.useState<RegistryDTO | null>(null);
   // The card leaves the grid on the click and comes back only if the server
   // refuses; nothing here is worth a spinner in front of a confirm dialog.
-  const { visible: rows, remove, restore } = useOptimisticRemove(
-    registries,
-    (r) => r.id,
-  );
+  const {
+    visible: rows,
+    remove,
+    restore,
+  } = useOptimisticRemove(registries, (r) => r.id);
   const { pending } = usePendingCreate();
 
   return (
@@ -258,100 +275,103 @@ function AddRegistryDialog({
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent>
-      <DialogHeader>
-        <DialogTitle>Add registry</DialogTitle>
-        <DialogDescription>
-          Use an access token where possible instead of a password.
-        </DialogDescription>
-      </DialogHeader>
-      <form className="grid gap-4" onSubmit={onSubmit}>
-        <div className="space-y-4">
-          <div className="space-y-2">
-            <Label>Name</Label>
-            <Input
-              value={name}
-              onChange={(e) => setName(e.target.value)}
-              placeholder="My registry"
-            />
-          </div>
-          <div className="grid gap-4 sm:grid-cols-2">
+        <DialogHeader>
+          <DialogTitle>Add registry</DialogTitle>
+          <DialogDescription>
+            Use an access token where possible instead of a password.
+          </DialogDescription>
+        </DialogHeader>
+        <form className="grid gap-4" onSubmit={onSubmit}>
+          <div className="space-y-4">
             <div className="space-y-2">
-              <FieldLabel info="The registry provider. Selecting one sets the default host and a matching username placeholder.">
-                Type
-              </FieldLabel>
-              <Select value={type} onValueChange={(v) => setType(v as RegistryType)}>
-                <SelectTrigger>
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  {(Object.keys(TYPE_META) as RegistryType[]).map((t) => (
-                    <SelectItem key={t} value={t}>
-                      {/* The mark rides into the trigger too: Radix clones the
+              <Label>Name</Label>
+              <Input
+                value={name}
+                onChange={(e) => setName(e.target.value)}
+                placeholder="My registry"
+              />
+            </div>
+            <div className="grid gap-4 sm:grid-cols-2">
+              <div className="space-y-2">
+                <FieldLabel info="The registry provider. Selecting one sets the default host and a matching username placeholder.">
+                  Type
+                </FieldLabel>
+                <Select
+                  value={type}
+                  onValueChange={(v) => setType(v as RegistryType)}
+                >
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {(Object.keys(TYPE_META) as RegistryType[]).map((t) => (
+                      <SelectItem key={t} value={t}>
+                        {/* The mark rides into the trigger too: Radix clones the
                           selected item's children into SelectValue, so the
                           chosen registry keeps its logo once the menu closes. */}
-                      <span className="flex items-center gap-2">
-                        <RegistryMark type={t} className="size-5" />
-                        {TYPE_META[t].label}
-                      </span>
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+                        <span className="flex items-center gap-2">
+                          <RegistryMark type={t} className="size-5" />
+                          {TYPE_META[t].label}
+                        </span>
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-2">
+                <FieldLabel
+                  info={
+                    <>
+                      Hostname of the registry to authenticate against, such as{" "}
+                      <code className="font-mono">ghcr.io</code>. Leave blank to
+                      use the selected provider&apos;s default host.
+                    </>
+                  }
+                >
+                  Registry host
+                </FieldLabel>
+                <Input
+                  value={registryUrl}
+                  onChange={(e) => setRegistryUrl(e.target.value)}
+                  placeholder={meta.host || "registry.example.com"}
+                  className="font-mono text-sm"
+                />
+              </div>
             </div>
             <div className="space-y-2">
-              <FieldLabel
-                info={
-                  <>
-                    Hostname of the registry to authenticate against, such as{" "}
-                    <code className="font-mono">ghcr.io</code>. Leave blank to use
-                    the selected provider&apos;s default host.
-                  </>
-                }
-              >
-                Registry host
+              <FieldLabel info="The account name used to sign in to the selected registry.">
+                Username
               </FieldLabel>
               <Input
-                value={registryUrl}
-                onChange={(e) => setRegistryUrl(e.target.value)}
-                placeholder={meta.host || "registry.example.com"}
+                value={username}
+                onChange={(e) => setUsername(e.target.value)}
+                placeholder={meta.userPlaceholder}
+                className="font-mono text-sm"
+              />
+            </div>
+            <div className="space-y-2">
+              <Label>Password or access token</Label>
+              <Input
+                type="password"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                placeholder="••••••••"
                 className="font-mono text-sm"
               />
             </div>
           </div>
-          <div className="space-y-2">
-            <FieldLabel info="The account name used to sign in to the selected registry.">
-              Username
-            </FieldLabel>
-            <Input
-              value={username}
-              onChange={(e) => setUsername(e.target.value)}
-              placeholder={meta.userPlaceholder}
-              className="font-mono text-sm"
-            />
-          </div>
-          <div className="space-y-2">
-            <Label>Password or access token</Label>
-            <Input
-              type="password"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              placeholder="••••••••"
-              className="font-mono text-sm"
-            />
-          </div>
-        </div>
-        <DialogFooter>
-          <Button variant="outline" onClick={() => onOpenChange(false)}>
-            Cancel
-          </Button>
-          <Button
-            type="submit"
-            disabled={!name.trim() || !username.trim() || !password}
-          >
-            Add registry
-          </Button>
-        </DialogFooter>
-      </form>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => onOpenChange(false)}>
+              Cancel
+            </Button>
+            <Button
+              type="submit"
+              disabled={!name.trim() || !username.trim() || !password}
+            >
+              Add registry
+            </Button>
+          </DialogFooter>
+        </form>
       </DialogContent>
     </Dialog>
   );

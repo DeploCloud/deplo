@@ -205,7 +205,10 @@ function paxPath(data: Buffer): string | null {
     if (!Number.isSafeInteger(length) || length <= 0) break;
     const end = offset + length;
     if (end > data.length || space + 1 >= end) break;
-    const record = data.subarray(space + 1, end).toString("utf8").replace(/\n$/, "");
+    const record = data
+      .subarray(space + 1, end)
+      .toString("utf8")
+      .replace(/\n$/, "");
     const eq = record.indexOf("=");
     if (eq > 0 && record.slice(0, eq) === "path") return record.slice(eq + 1);
     offset = end;
@@ -276,7 +279,8 @@ export async function* tarEntries(
         const name: string =
           overrideName ??
           (header.prefix ? `${header.prefix}/${header.name}` : header.name);
-        const meta = header.type === "x" || header.type === "X" || header.type === "L";
+        const meta =
+          header.type === "x" || header.type === "X" || header.type === "L";
         state = {
           kind: "data",
           name,
@@ -288,7 +292,8 @@ export async function* tarEntries(
             ? header.size <= MAX_META_BYTES
               ? []
               : null
-            : isRegularFile(header.type) && wantBytes({ name, size: header.size })
+            : isRegularFile(header.type) &&
+                wantBytes({ name, size: header.size })
               ? []
               : null,
         };
@@ -308,7 +313,12 @@ export async function* tarEntries(
         if (state.padding > 0) break;
       }
 
-      const entry: { name: string; size: number; type: string; bytes: Buffer | null } = {
+      const entry: {
+        name: string;
+        size: number;
+        type: string;
+        bytes: Buffer | null;
+      } = {
         name: state.name,
         size: state.size,
         type: state.type,
@@ -367,7 +377,8 @@ export async function readTarEntry(
     read: (e) =>
       normalizeEntryName(e.name) === wanted && e.size <= opts.maxEntryBytes,
   })) {
-    if (entry.bytes && normalizeEntryName(entry.name) === wanted) return entry.bytes;
+    if (entry.bytes && normalizeEntryName(entry.name) === wanted)
+      return entry.bytes;
   }
   return null;
 }

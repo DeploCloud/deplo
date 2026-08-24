@@ -1,6 +1,9 @@
 import { Lock } from "lucide-react";
 import { listAllAppEnv } from "@/lib/data/env";
-import { listSharedVars, listAppliedSharedVarsByApp } from "@/lib/data/shared-vars";
+import {
+  listSharedVars,
+  listAppliedSharedVarsByApp,
+} from "@/lib/data/shared-vars";
 import type { AppliedSharedVarDTO } from "@/lib/data/shared-vars";
 import { listInstanceEnv } from "@/lib/data/global-env";
 import { listProjects } from "@/lib/data/projects";
@@ -34,7 +37,10 @@ export default async function VariablesPage(props: PageProps<"/variables">) {
   if (!(await hasCapability("manage_env"))) {
     return (
       <div className="space-y-6">
-        <PageHeader title="Variables" description="App & shared environment variables." />
+        <PageHeader
+          title="Variables"
+          description="App & shared environment variables."
+        />
         <EmptyState
           icon={Lock}
           title="No access to variables"
@@ -95,7 +101,11 @@ export default async function VariablesPage(props: PageProps<"/variables">) {
     team: "app",
   };
   const tab = rawTab ? (legacy[rawTab] ?? rawTab) : "app";
-  const allowedTabs = new Set(["app", "shared", ...(admin ? ["instance"] : [])]);
+  const allowedTabs = new Set([
+    "app",
+    "shared",
+    ...(admin ? ["instance"] : []),
+  ]);
   const defaultTab = allowedTabs.has(tab) ? tab : "app";
 
   return (
@@ -114,7 +124,9 @@ export default async function VariablesPage(props: PageProps<"/variables">) {
           <UnderlineTabsTrigger value="app">All</UnderlineTabsTrigger>
           <UnderlineTabsTrigger value="shared">Shared</UnderlineTabsTrigger>
           {admin && (
-            <UnderlineTabsTrigger value="instance">All teams</UnderlineTabsTrigger>
+            <UnderlineTabsTrigger value="instance">
+              All teams
+            </UnderlineTabsTrigger>
           )}
         </UnderlineTabsList>
 

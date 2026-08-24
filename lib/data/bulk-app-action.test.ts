@@ -132,12 +132,7 @@ test("a project acts on every environment, and on nothing outside it", async () 
     const res = await bulkAppAction("stop", { projectId: project.id });
     assert.equal(res.failed, 3);
     assert.deepEqual(
-      await touched([
-        "svc_prod",
-        "svc_staging",
-        "svc_legacy",
-        "svc_blog",
-      ]),
+      await touched(["svc_prod", "svc_staging", "svc_legacy", "svc_blog"]),
       ["svc_legacy", "svc_prod", "svc_staging"],
       "the other project is untouched",
     );

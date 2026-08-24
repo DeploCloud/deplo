@@ -51,7 +51,9 @@ function isCrossSite(request: NextRequest): boolean {
     return true;
   }
   const host =
-    request.headers.get("x-forwarded-host") ?? request.headers.get("host") ?? "";
+    request.headers.get("x-forwarded-host") ??
+    request.headers.get("host") ??
+    "";
   return originHost !== host;
 }
 
@@ -71,14 +73,18 @@ export async function POST(
   ctx: RouteContext<"/api/apps/[id]/upload">,
 ) {
   if (isCrossSite(request))
-    return Response.json({ error: "Cross-site request refused" }, { status: 403 });
+    return Response.json(
+      { error: "Cross-site request refused" },
+      { status: 403 },
+    );
 
   const user = await getCurrentUser();
   if (!user) return Response.json({ error: "Unauthorized" }, { status: 401 });
 
   const { id: appId } = await ctx.params;
   const project = await getAppById(appId);
-  if (!project) return Response.json({ error: "App not found" }, { status: 404 });
+  if (!project)
+    return Response.json({ error: "App not found" }, { status: 404 });
 
   // Gate BEFORE any bytes hit disk: setAppUpload re-checks `deploy` (plus the
   // folder gate), but only after a potentially 512 MiB stream has already been
@@ -87,7 +93,9 @@ export async function POST(
     await requireAppCapability(appId, "deploy_apps");
   } catch (err) {
     const message =
-      err instanceof Error ? err.message : "You don't have permission to deploy";
+      err instanceof Error
+        ? err.message
+        : "You don't have permission to deploy";
     return Response.json({ error: message }, { status: 403 });
   }
 

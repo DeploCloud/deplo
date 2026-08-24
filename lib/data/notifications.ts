@@ -194,7 +194,9 @@ export function parseChannelInput(raw: unknown): NotificationChannelInput {
   const i = (raw ?? {}) as Partial<NotificationChannelInput>;
   const kind = str(i.kind) as NotificationChannel;
   if (!ALL_CHANNELS.includes(kind)) throw new Error("Unknown channel type");
-  const wanted = new Set(Array.isArray(i.alerts) ? (i.alerts as unknown[]) : []);
+  const wanted = new Set(
+    Array.isArray(i.alerts) ? (i.alerts as unknown[]) : [],
+  );
   const secrets = (i.secrets ?? {}) as NonNullable<
     NotificationChannelInput["secrets"]
   >;
@@ -453,7 +455,11 @@ function emailChannelFor(row: ChannelRow): AlertChannel | string {
     return {
       kind: "email",
       to: row.target,
-      config: { provider: "resend", apiKey: decryptSecret(row.secret2Enc), from },
+      config: {
+        provider: "resend",
+        apiKey: decryptSecret(row.secret2Enc),
+        from,
+      },
     };
   }
   if (!row.smtpHost) return "Add an SMTP host first";
@@ -545,7 +551,10 @@ export async function sendTestNotification(channelId: string): Promise<void> {
   // One button press is one outbound request to an address the presser chose, so
   // it is counted like every other sensitive action. Without this the settings
   // page is a request generator anybody with the capability can hold down.
-  if (!(await rateLimit(`notify-test:${userId}`, { limit: 10, windowMs: 60_000 })).ok)
+  if (
+    !(await rateLimit(`notify-test:${userId}`, { limit: 10, windowMs: 60_000 }))
+      .ok
+  )
     throw new Error("Too many test alerts. Wait a minute and try again.");
   const row = await channelRow(teamId, channelId);
   if (!row) throw new Error("Channel not found");

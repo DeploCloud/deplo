@@ -42,8 +42,22 @@ export function TeamTargetGraphic({ className }: { className?: string }) {
         strokeWidth="2.5"
       />
       {/* Three, because two reads as a pair and four as a crowd. */}
-      <rect x="13" y="26" width="6" height="9" rx="1.5" className="fill-primary" />
-      <rect x="21" y="26" width="6" height="9" rx="1.5" className="fill-muted-foreground" />
+      <rect
+        x="13"
+        y="26"
+        width="6"
+        height="9"
+        rx="1.5"
+        className="fill-primary"
+      />
+      <rect
+        x="21"
+        y="26"
+        width="6"
+        height="9"
+        rx="1.5"
+        className="fill-muted-foreground"
+      />
       <rect x="29" y="26" width="6" height="9" rx="1.5" className="fill-ring" />
     </svg>
   );

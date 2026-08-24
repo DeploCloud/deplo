@@ -147,8 +147,7 @@ export function useBulkAppActions({
     if (ok === 0) {
       return {
         ok: false as const,
-        error:
-          error ?? "None of these apps are yours to act on.",
+        error: error ?? "None of these apps are yours to act on.",
       };
     }
     router.refresh();

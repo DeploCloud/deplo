@@ -65,7 +65,8 @@ const LINK_TAG_RE = /<link\b[^>]*>/gi;
 // An unquoted value runs to the next space or `>` — including any `=` inside it,
 // which is how browsers tokenize `href=/i.png?v=1&t=2` and therefore what a page
 // author gets away with writing.
-const ATTR_RE = /([a-zA-Z_:][-a-zA-Z0-9_:.]*)\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s"'>][^\s>]*))/g;
+const ATTR_RE =
+  /([a-zA-Z_:][-a-zA-Z0-9_:.]*)\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s"'>][^\s>]*))/g;
 
 /**
  * Every icon `<link>` a document declares, in document order.
@@ -85,7 +86,8 @@ export function parseIconLinks(html: string): IconLink[] {
       attrs[m[1].toLowerCase()] = decodeEntities(m[2] ?? m[3] ?? m[4] ?? "");
     }
     const rel = (attrs.rel ?? "").toLowerCase().split(/\s+/).filter(Boolean);
-    if (!rel.some((r) => r === "icon" || r.startsWith("apple-touch-icon"))) continue;
+    if (!rel.some((r) => r === "icon" || r.startsWith("apple-touch-icon")))
+      continue;
     const href = (attrs.href ?? "").trim();
     if (!href) continue;
     out.push({
@@ -103,7 +105,15 @@ export function parseIconLinks(html: string): IconLink[] {
  * alone rather than half-decoded into something else. */
 function decodeEntities(s: string): string {
   return s.replace(/&(amp|lt|gt|quot|#39|apos);/g, (_, e) =>
-    e === "amp" ? "&" : e === "lt" ? "<" : e === "gt" ? ">" : e === "quot" ? '"' : "'",
+    e === "amp"
+      ? "&"
+      : e === "lt"
+        ? "<"
+        : e === "gt"
+          ? ">"
+          : e === "quot"
+            ? '"'
+            : "'",
   );
 }
 
@@ -212,11 +222,14 @@ export function resolveIconHref(
       return null;
     }
     if (url.protocol !== "http:" && url.protocol !== "https:") return null;
-    if (!opts.host || url.hostname.toLowerCase() !== opts.host.toLowerCase()) return null;
+    if (!opts.host || url.hostname.toLowerCase() !== opts.host.toLowerCase())
+      return null;
     const path = cleanPath(url.pathname + url.search);
     return path ? { kind: "path", path } : null;
   }
-  const path = cleanPath(raw.startsWith("/") ? raw : joinPath(opts.basePath, raw));
+  const path = cleanPath(
+    raw.startsWith("/") ? raw : joinPath(opts.basePath, raw),
+  );
   return path ? { kind: "path", path } : null;
 }
 
@@ -258,7 +271,8 @@ export function iconCandidates(
   const seen = new Set<string>();
   const push = (c: IconCandidate | null): void => {
     if (!c) return;
-    const key = c.kind === "path" ? c.path : `inline:${c.mime}:${c.bytes.length}`;
+    const key =
+      c.kind === "path" ? c.path : `inline:${c.mime}:${c.bytes.length}`;
     if (seen.has(key)) return;
     seen.add(key);
     out.push(c);
@@ -270,7 +284,9 @@ export function iconCandidates(
     if (out.length >= MAX_ICON_FETCHES - 1) break;
   }
   const fallback = cleanPath(
-    opts.basePath ? joinPath(opts.basePath, DEFAULT_FAVICON_PATH) : DEFAULT_FAVICON_PATH,
+    opts.basePath
+      ? joinPath(opts.basePath, DEFAULT_FAVICON_PATH)
+      : DEFAULT_FAVICON_PATH,
   );
   if (fallback) push({ kind: "path", path: fallback });
   return out.slice(0, MAX_ICON_FETCHES);
@@ -302,7 +318,11 @@ function normalizeImageMime(mime: string): string | null {
 }
 
 /** Whether bytes start with the given ASCII signature. */
-function startsWith(bytes: Uint8Array, sig: readonly number[], at = 0): boolean {
+function startsWith(
+  bytes: Uint8Array,
+  sig: readonly number[],
+  at = 0,
+): boolean {
   return sig.every((b, i) => bytes[at + i] === b);
 }
 
@@ -321,10 +341,18 @@ export function sniffImageMime(bytes: Uint8Array): string | null {
   if (startsWith(bytes, [0xff, 0xd8, 0xff])) return "image/jpeg";
   if (startsWith(bytes, [0x47, 0x49, 0x46, 0x38])) return "image/gif";
   // RIFF....WEBP
-  if (startsWith(bytes, [0x52, 0x49, 0x46, 0x46]) && startsWith(bytes, [0x57, 0x45, 0x42, 0x50], 8))
+  if (
+    startsWith(bytes, [0x52, 0x49, 0x46, 0x46]) &&
+    startsWith(bytes, [0x57, 0x45, 0x42, 0x50], 8)
+  )
     return "image/webp";
   // ICO / CUR: a 2-byte zero, then the type, then a non-zero image count.
-  if (bytes[0] === 0 && bytes[1] === 0 && (bytes[2] === 1 || bytes[2] === 2) && bytes[3] === 0)
+  if (
+    bytes[0] === 0 &&
+    bytes[1] === 0 &&
+    (bytes[2] === 1 || bytes[2] === 2) &&
+    bytes[3] === 0
+  )
     return "image/x-icon";
   return null;
 }
@@ -355,7 +383,9 @@ export function imageMimeFor(
   // either the server or the URL says SVG *and* the bytes really are one — an
   // HTML error page served as `image/svg+xml` fails the second half.
   if (declared === "image/svg+xml" || byExtension === "image/svg+xml") {
-    const text = new TextDecoder("utf-8", { fatal: false }).decode(bytes.slice(0, 1024));
+    const text = new TextDecoder("utf-8", { fatal: false }).decode(
+      bytes.slice(0, 1024),
+    );
     return looksLikeSvg(text) ? "image/svg+xml" : null;
   }
   return null;

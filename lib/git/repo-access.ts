@@ -105,7 +105,9 @@ export async function repoCloneRefusal(repo: GitRepo): Promise<string | null> {
     // ONLY a 404 counts here. Unauthenticated GitHub answers 403 for rate
     // limiting, which is a statement about us, not about this repository - and
     // this instance is known to exhaust that limit.
-    const is404 = /\(404\)/.test(e instanceof Error ? e.message : String(e ?? ""));
+    const is404 = /\(404\)/.test(
+      e instanceof Error ? e.message : String(e ?? ""),
+    );
     return is404
       ? `${full} is not visible to an anonymous clone - it is private or gone, and this app has no GitHub App linked. Link one under the app's Deploy source settings.`
       : null;

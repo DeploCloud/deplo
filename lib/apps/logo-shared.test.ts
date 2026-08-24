@@ -1,9 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import {
-  isValidLogoValue,
-  MAX_LOGO_STRING_LEN,
-} from "./logo-shared";
+import { isValidLogoValue, MAX_LOGO_STRING_LEN } from "./logo-shared";
 
 test("isValidLogoValue: accepts a png image data-URI", () => {
   assert.equal(isValidLogoValue("data:image/png;base64,iVBORw0KGgo="), true);
@@ -61,4 +58,3 @@ test("isValidLogoValue: rejects an empty or malformed data-URI", () => {
   assert.equal(isValidLogoValue("data:image/png;base64,"), false);
   assert.equal(isValidLogoValue("data:image/png,notbase64"), false);
 });
-

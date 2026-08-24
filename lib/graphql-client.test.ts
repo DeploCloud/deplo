@@ -20,14 +20,16 @@ import {
  */
 
 const HTML_ERROR_PAGE =
-  '<!DOCTYPE html>\n<html><head><title>502 Bad Gateway</title></head><body>Web server is down</body></html>';
+  "<!DOCTYPE html>\n<html><head><title>502 Bad Gateway</title></head><body>Web server is down</body></html>";
 
 const realFetch = globalThis.fetch;
 /** Every URL the stub was asked for, in order. */
 let requested: string[] = [];
 
 /** Install a fetch stub; `/api/health` always fails so the guard can latch. */
-function stubFetch(handler: (url: string) => Promise<Response> | Response): void {
+function stubFetch(
+  handler: (url: string) => Promise<Response> | Response,
+): void {
   requested = [];
   globalThis.fetch = (async (input: RequestInfo | URL) => {
     const url = typeof input === "string" ? input : String(input);
@@ -56,11 +58,12 @@ afterEach(async () => {
 });
 
 test("a proxy's HTML error page never surfaces as a JSON parse error", async () => {
-  stubFetch(() =>
-    new Response(HTML_ERROR_PAGE, {
-      status: 502,
-      headers: { "content-type": "text/html" },
-    }),
+  stubFetch(
+    () =>
+      new Response(HTML_ERROR_PAGE, {
+        status: 502,
+        headers: { "content-type": "text/html" },
+      }),
   );
 
   await assert.rejects(
@@ -87,7 +90,9 @@ test("a network-level failure carries the custom message", async () => {
 
   await assert.rejects(
     () => gql("{ me { id } }"),
-    (e: unknown) => e instanceof ServerUnreachableError && e.message === SERVER_UNREACHABLE_MESSAGE,
+    (e: unknown) =>
+      e instanceof ServerUnreachableError &&
+      e.message === SERVER_UNREACHABLE_MESSAGE,
   );
 });
 
@@ -101,7 +106,10 @@ test("a failed request tells the connection guard, so the notification comes up"
   // latch (two failed pings) is observable without waiting out its retry delay.
   await checkServerConnection();
   assert.equal(getServerConnectionSnapshot(), "disconnected");
-  assert.ok(requested.includes("/api/health"), "the guard must have pinged health");
+  assert.ok(
+    requested.includes("/api/health"),
+    "the guard must have pinged health",
+  );
 });
 
 test("once paused, an interaction is refused without touching the network", async () => {
@@ -112,8 +120,10 @@ test("once paused, an interaction is refused without touching the network", asyn
 
   const before = requested.length;
   await assert.rejects(
-    () => gql("mutation { redeploy(appId: \"prj_1\") { id } }"),
-    (e: unknown) => e instanceof ServerUnreachableError && e.message === SERVER_UNREACHABLE_MESSAGE,
+    () => gql('mutation { redeploy(appId: "prj_1") { id } }'),
+    (e: unknown) =>
+      e instanceof ServerUnreachableError &&
+      e.message === SERVER_UNREACHABLE_MESSAGE,
   );
   assert.equal(requested.length, before, "no request may leave while paused");
 });
@@ -121,22 +131,29 @@ test("once paused, an interaction is refused without touching the network", asyn
 test("gqlAction boxes the paused message for the toast call sites", async () => {
   stubFetch(() => new Response(HTML_ERROR_PAGE, { status: 504 }));
 
-  const res = await gqlAction("mutation { deleteApp(id: \"prj_1\") }");
+  const res = await gqlAction('mutation { deleteApp(id: "prj_1") }');
   assert.equal(res.ok, false);
   assert.equal(res.ok === false && res.error, SERVER_UNREACHABLE_MESSAGE);
 });
 
 test("a real GraphQL error still reaches the user verbatim", async () => {
   stubFetch(() =>
-    jsonResponse({ errors: [{ message: "You don't have permission to deploy" }] }),
+    jsonResponse({
+      errors: [{ message: "You don't have permission to deploy" }],
+    }),
   );
 
   await assert.rejects(
-    () => gql("mutation { redeploy(appId: \"prj_1\") { id } }"),
+    () => gql('mutation { redeploy(appId: "prj_1") { id } }'),
     (e: unknown) =>
-      e instanceof GraphQLRequestError && e.message === "You don't have permission to deploy",
+      e instanceof GraphQLRequestError &&
+      e.message === "You don't have permission to deploy",
   );
-  assert.equal(getServerConnectionSnapshot(), "connected", "a server answer is not an outage");
+  assert.equal(
+    getServerConnectionSnapshot(),
+    "connected",
+    "a server answer is not an outage",
+  );
 });
 
 test("an aborted request stays an abort, not an outage", async () => {

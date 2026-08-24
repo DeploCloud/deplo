@@ -16,10 +16,7 @@ import {
   placementHref,
   templatesHref,
 } from "@/lib/overview-links";
-import {
-  getTemplateVariant,
-  templateLogoDataUri,
-} from "@/templates/catalog";
+import { getTemplateVariant, templateLogoDataUri } from "@/templates/catalog";
 
 export const metadata = { title: "New App" };
 
@@ -43,8 +40,12 @@ export default async function NewAppPage(props: PageProps<"/new">) {
     );
 
   const params = await props.searchParams;
-  const templateId = Array.isArray(params.template) ? params.template[0] : params.template;
-  const variantId = Array.isArray(params.variant) ? params.variant[0] : params.variant;
+  const templateId = Array.isArray(params.template)
+    ? params.template[0]
+    : params.template;
+  const variantId = Array.isArray(params.variant)
+    ? params.variant[0]
+    : params.variant;
   const repoParam = Array.isArray(params.repo) ? params.repo[0] : params.repo;
 
   // The Overview drill-in this wizard was opened from (?folder= / ?project= &
@@ -52,13 +53,16 @@ export default async function NewAppPage(props: PageProps<"/new">) {
   // resolved against what this caller can actually see, so a stale or foreign
   // id degrades to "top level" instead of erroring on deploy — and the data
   // layer re-authorizes the destination on create either way.
-  const placement = await resolveOverviewPlacement(placementFromSearchParams(params));
+  const placement = await resolveOverviewPlacement(
+    placementFromSearchParams(params),
+  );
 
   // The catalogue is a remote service: an unknown slug, a stale link or a
   // service having a bad day must not take the whole wizard down.
-  const template = templateId && variantId
-    ? await getTemplateVariant(templateId, variantId).catch(() => null)
-    : null;
+  const template =
+    templateId && variantId
+      ? await getTemplateVariant(templateId, variantId).catch(() => null)
+      : null;
   if ((templateId || variantId) && !template)
     return (
       <EmptyState
@@ -86,7 +90,9 @@ export default async function NewAppPage(props: PageProps<"/new">) {
     : null;
   // Apps store their logo inline, so the catalog's remote image is fetched once
   // here: the icon then survives the catalog going away.
-  const logo = template ? await templateLogoDataUri(template.variant.logo) : null;
+  const logo = template
+    ? await templateLogoDataUri(template.variant.logo)
+    : null;
   const servers = await listServerChoices();
   const installations = await listGithubInstallations();
   const connections = await listGitConnections();
@@ -102,9 +108,7 @@ export default async function NewAppPage(props: PageProps<"/new">) {
         >
           <Link
             href={
-              template
-                ? templatesHref(placement)
-                : placementHref(placement)
+              template ? templatesHref(placement) : placementHref(placement)
             }
           >
             <ArrowLeft className="size-4" />

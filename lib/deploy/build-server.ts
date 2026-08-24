@@ -29,7 +29,10 @@ import type { App, Server } from "../types";
  *  operator never has to guess which machine compiled their app. */
 export type BuildServerChoice =
   | { serverId: string; reason: "pinned" | "automatic" }
-  | { serverId: null; reason: "own-server" | "none-available" | "arch-mismatch" };
+  | {
+      serverId: null;
+      reason: "own-server" | "none-available" | "arch-mismatch";
+    };
 
 /**
  * The pure decision. `candidates` is every server the app's team can reach.
@@ -78,7 +81,9 @@ export function pickBuildServer(
     return { serverId: null, reason: "none-available" };
   }
 
-  const usable = candidates.filter((s) => s.buildOnly && canBuildFor(s, target));
+  const usable = candidates.filter(
+    (s) => s.buildOnly && canBuildFor(s, target),
+  );
   if (usable.length === 0) return { serverId: null, reason: "none-available" };
 
   // Fewest builds in flight, and on a tie the one added first. Deterministic on
@@ -108,7 +113,10 @@ export function pickBuildServer(
  * a builder that dies between this read and the dial is what the fallback is for.
  */
 export function canBuildFor(
-  builder: Pick<Server, "id" | "status" | "storageOnly" | "importOnly" | "hostArch">,
+  builder: Pick<
+    Server,
+    "id" | "status" | "storageOnly" | "importOnly" | "hostArch"
+  >,
   target: Pick<Server, "id" | "hostArch">,
 ): boolean {
   if (builder.id === target.id) return false;
@@ -117,7 +125,8 @@ export function canBuildFor(
   // exactly why it must be named here: a build ships this app's source and its
   // decrypted env to the builder, and that machine is not ours.
   if (builder.importOnly) return false;
-  if (builder.status === "offline" || builder.status === "provisioning") return false;
+  if (builder.status === "offline" || builder.status === "provisioning")
+    return false;
   return builder.hostArch !== "" && builder.hostArch === target.hostArch;
 }
 
@@ -154,7 +163,8 @@ export async function resolveBuildServer(
     );
   const inFlight = new Map<string, number>();
   for (const r of rows) {
-    if (r.serverId) inFlight.set(r.serverId, (inFlight.get(r.serverId) ?? 0) + 1);
+    if (r.serverId)
+      inFlight.set(r.serverId, (inFlight.get(r.serverId) ?? 0) + 1);
   }
   return pickBuildServer(app, target, candidates, inFlight);
 }

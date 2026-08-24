@@ -91,7 +91,9 @@ test("manifest: a bad env key (not a shell identifier) is rejected", () => {
 const CTX = { deploGraphqlUrl: "https://deplo.example.com/api/graphql" };
 
 test("resolvePluginEnv: substitutes ${deplo_graphql_url}", () => {
-  const env: PluginEnvVar[] = [{ key: "DEPLO_GRAPHQL_URL", value: "${deplo_graphql_url}" }];
+  const env: PluginEnvVar[] = [
+    { key: "DEPLO_GRAPHQL_URL", value: "${deplo_graphql_url}" },
+  ];
   assert.deepEqual(resolvePluginEnv(env, CTX), {
     DEPLO_GRAPHQL_URL: "https://deplo.example.com/api/graphql",
   });
@@ -103,7 +105,9 @@ test("resolvePluginEnv: a value with no placeholder passes through verbatim", ()
 });
 
 test("resolvePluginEnv: substitutes inside a larger string", () => {
-  const env: PluginEnvVar[] = [{ key: "URL", value: "prefix-${deplo_graphql_url}-suffix" }];
+  const env: PluginEnvVar[] = [
+    { key: "URL", value: "prefix-${deplo_graphql_url}-suffix" },
+  ];
   assert.equal(
     resolvePluginEnv(env, CTX).URL,
     "prefix-https://deplo.example.com/api/graphql-suffix",

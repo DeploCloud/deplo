@@ -111,7 +111,11 @@ export function TwoFactorLockScreen({
                     disabled={switching}
                     onClick={() => void switchTeam(t.id)}
                   >
-                    <TeamAvatar name={t.name} avatarUrl={t.avatarUrl} size="sm" />
+                    <TeamAvatar
+                      name={t.name}
+                      avatarUrl={t.avatarUrl}
+                      size="sm"
+                    />
                     {t.name}
                   </Button>
                 ))}

@@ -38,14 +38,16 @@ export const AccessNodeGrantRef = builder
 export const UserTeamAccessRef = builder
   .objectRef<UserTeamAccessDTO>("UserTeamAccess")
   .implement({
-    description: "What one person can do in one team, as an instance admin sets it.",
+    description:
+      "What one person can do in one team, as an instance admin sets it.",
     fields: (t) => ({
       teamId: t.exposeID("teamId"),
       teamName: t.exposeString("teamName"),
       roleId: t.exposeID("roleId", { nullable: true }),
       roleName: t.exposeString("roleName", { nullable: true }),
       rank: t.exposeString("rank", {
-        description: "`owner` outranks everyone; anything else ranks as a member.",
+        description:
+          "`owner` outranks everyone; anything else ranks as a member.",
       }),
       granular: t.exposeBoolean("granular", {
         description:
@@ -53,7 +55,8 @@ export const UserTeamAccessRef = builder
       }),
       baseCapabilities: t.field({
         type: [CapabilityEnum],
-        description: "The set on the membership - their own when they hold one, else their role's.",
+        description:
+          "The set on the membership - their own when they hold one, else their role's.",
         resolve: (a) => a.baseCapabilities,
       }),
       customCapabilities: t.exposeBoolean("customCapabilities", {
@@ -127,7 +130,9 @@ builder.mutationFields((t) => ({
     authScopes: { instanceAdmin: true },
     description:
       "Set one person's role and per-node overrides in one team. Whole-set replace: node grants not sent are removed.",
-    args: { input: t.arg({ type: SetUserTeamAccessInputType, required: true }) },
+    args: {
+      input: t.arg({ type: SetUserTeamAccessInputType, required: true }),
+    },
     resolve: (_root, { input }) =>
       setUserTeamAccess({
         userId: input.userId,

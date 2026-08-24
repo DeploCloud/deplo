@@ -88,27 +88,27 @@ export function DangerSettings({
             </p>
           </div>
           {canDelete ? (
-          <DeleteWithArtifacts
-            trigger={
-              <Button variant="destructive" size="sm">
-                <Trash2 className="size-4" />
-                Delete App
-              </Button>
-            }
-            targetKind="app"
-            targetId={appId}
-            targetName={name}
-            title={`Delete ${name}?`}
-            description="This permanently removes the app, its data, deployments, domains, environment variables and every backup it has stored. This cannot be undone."
-            confirmLabel="Delete app"
-            successMessage="App deleted"
-            deleteMutation={() =>
-              gqlAction(`mutation($id: String!) { deleteApp(id: $id) }`, {
-                id: appId,
-              })
-            }
-            onDeleted={() => router.push("/")}
-          />
+            <DeleteWithArtifacts
+              trigger={
+                <Button variant="destructive" size="sm">
+                  <Trash2 className="size-4" />
+                  Delete App
+                </Button>
+              }
+              targetKind="app"
+              targetId={appId}
+              targetName={name}
+              title={`Delete ${name}?`}
+              description="This permanently removes the app, its data, deployments, domains, environment variables and every backup it has stored. This cannot be undone."
+              confirmLabel="Delete app"
+              successMessage="App deleted"
+              deleteMutation={() =>
+                gqlAction(`mutation($id: String!) { deleteApp(id: $id) }`, {
+                  id: appId,
+                })
+              }
+              onDeleted={() => router.push("/")}
+            />
           ) : (
             <CapabilityTip cap="delete_apps">
               <Button variant="destructive" size="sm" disabled>

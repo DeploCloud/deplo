@@ -113,7 +113,10 @@ const readOnlyTokenInAlpha = {
 
 test("a read-only token can't rename a folder in ANOTHER team its creator owns", async () => {
   await assert.rejects(
-    () => runWithIdentity(readOnlyTokenInAlpha, () => renameFolder(FOLDER_B, "pwned")),
+    () =>
+      runWithIdentity(readOnlyTokenInAlpha, () =>
+        renameFolder(FOLDER_B, "pwned"),
+      ),
     /not found|permission/i,
   );
   assert.ok(
@@ -129,10 +132,15 @@ test("nor delete it, nor recolour it", async () => {
   );
   await assert.rejects(
     () =>
-      runWithIdentity(readOnlyTokenInAlpha, () => setFolderColor(FOLDER_B, "#ff0000")),
+      runWithIdentity(readOnlyTokenInAlpha, () =>
+        setFolderColor(FOLDER_B, "#ff0000"),
+      ),
     /not found|permission/i,
   );
-  const rows = await db.select().from(foldersTable).where(eq(foldersTable.id, FOLDER_B));
+  const rows = await db
+    .select()
+    .from(foldersTable)
+    .where(eq(foldersTable.id, FOLDER_B));
   assert.equal(rows.length, 1, "the folder was deleted by a read-only token");
 });
 
@@ -223,12 +231,15 @@ test("nor hand out standing capabilities on it to a beta member", async () => {
 
 test("nor read the folder's grant list, nor its share candidates", async () => {
   await assert.rejects(
-    () => runWithIdentity(readOnlyTokenInAlpha, () => listFolderGrants(FOLDER_B)),
+    () =>
+      runWithIdentity(readOnlyTokenInAlpha, () => listFolderGrants(FOLDER_B)),
     /not found|permission|owner/i,
   );
   await assert.rejects(
     () =>
-      runWithIdentity(readOnlyTokenInAlpha, () => folderShareCandidates(FOLDER_B)),
+      runWithIdentity(readOnlyTokenInAlpha, () =>
+        folderShareCandidates(FOLDER_B),
+      ),
     /not found|permission|owner/i,
   );
 });

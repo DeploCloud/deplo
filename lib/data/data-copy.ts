@@ -32,7 +32,10 @@ import { requireAppCapability } from "./node-access";
  */
 
 /** What a refused start says, everywhere it is refused. */
-export function assertDataCopyIntact(name: string, dataCopyError: string): void {
+export function assertDataCopyIntact(
+  name: string,
+  dataCopyError: string,
+): void {
   if (!dataCopyError) return;
   throw new Error(
     `${name}'s data did not come across: ${dataCopyError}. Starting it now would ` +
@@ -78,7 +81,9 @@ export async function markDataCopyFailed(
  * factory reset that made the empty volume the intended state. Same
  * no-gate/no-throw contract as {@link markDataCopyFailed}.
  */
-export async function clearDataCopyError(target: DataCopyTarget): Promise<void> {
+export async function clearDataCopyError(
+  target: DataCopyTarget,
+): Promise<void> {
   try {
     if (target.kind === "app")
       await getDb()
@@ -106,7 +111,9 @@ export async function clearDataCopyError(target: DataCopyTarget): Promise<void> 
  * overrode, and the marker is cleared team-scoped like every other row-targeting
  * write.
  */
-export async function acceptDataCopyLoss(target: DataCopyTarget): Promise<void> {
+export async function acceptDataCopyLoss(
+  target: DataCopyTarget,
+): Promise<void> {
   const user = (await getCurrentUser())!;
   if (target.kind === "app") {
     const { membership } = await requireAppCapability(target.id, "deploy_apps");
@@ -114,7 +121,10 @@ export async function acceptDataCopyLoss(target: DataCopyTarget): Promise<void> 
       .update(appsTable)
       .set({ dataCopyError: "", updatedAt: nowIso() })
       .where(
-        and(eq(appsTable.id, target.id), eq(appsTable.teamId, membership.teamId)),
+        and(
+          eq(appsTable.id, target.id),
+          eq(appsTable.teamId, membership.teamId),
+        ),
       )
       .returning({ name: appsTable.name });
     if (!row) throw new Error("App not found");
@@ -131,10 +141,7 @@ export async function acceptDataCopyLoss(target: DataCopyTarget): Promise<void> 
     .update(databasesTable)
     .set({ dataCopyError: "" })
     .where(
-      and(
-        eq(databasesTable.id, target.id),
-        eq(databasesTable.teamId, teamId),
-      ),
+      and(eq(databasesTable.id, target.id), eq(databasesTable.teamId, teamId)),
     )
     .returning({ name: databasesTable.name });
   if (!row) throw new Error("Database not found");

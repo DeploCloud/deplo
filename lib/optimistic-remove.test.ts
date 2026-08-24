@@ -13,8 +13,15 @@ const serverKeys = (...keys: string[]) => keys;
 test("a hidden key survives while the server still serves it", () => {
   const removed = new Set(["standalone:a"]);
   // The refresh has not landed yet — the row is still in the RSC payload.
-  const kept = retainRemoved(removed, serverKeys("standalone:a", "standalone:b"));
-  assert.equal(kept, removed, "must return the SAME set — a new one re-renders forever");
+  const kept = retainRemoved(
+    removed,
+    serverKeys("standalone:a", "standalone:b"),
+  );
+  assert.equal(
+    kept,
+    removed,
+    "must return the SAME set — a new one re-renders forever",
+  );
 });
 
 test("a hidden key retires as soon as the server stops serving it", () => {
@@ -27,7 +34,10 @@ test("a hidden key retires as soon as the server stops serving it", () => {
 test("two deletes in flight settle one at a time", () => {
   const removed = new Set(["standalone:a", "standalone:b"]);
   // The first delete's refresh lands; the second one's has not.
-  const afterFirst = retainRemoved(removed, serverKeys("standalone:b", "standalone:c"));
+  const afterFirst = retainRemoved(
+    removed,
+    serverKeys("standalone:b", "standalone:c"),
+  );
   assert.deepEqual([...afterFirst], ["standalone:b"]);
   // The second lands too.
   const afterSecond = retainRemoved(afterFirst, serverKeys("standalone:c"));
@@ -59,7 +69,10 @@ test("nothing hidden hands the very same list back", () => {
 test("hidden rows drop out of the list, the rest keep their order", () => {
   const rows = [{ id: "a" }, { id: "b" }, { id: "c" }];
   const visible = withoutRemoved(rows, new Set(["b"]), (r) => r.id);
-  assert.deepEqual(visible.map((r) => r.id), ["a", "c"]);
+  assert.deepEqual(
+    visible.map((r) => r.id),
+    ["a", "c"],
+  );
 });
 
 test("a child's key is matched against the id its row hides", () => {
@@ -70,11 +83,22 @@ test("a child's key is matched against the id its row hides", () => {
   assert.equal(childKey({ key: ".0:$dom_123" }), "dom_123");
   // A placeholder with no key of its own can never be hidden by an id.
   assert.equal(childKey({ key: null }), "");
-  assert.equal(childKey({ key: ".1" }), ".1", "no key of its own, matches no id");
-  assert.equal(childKey({ key: "dom_123" }), "dom_123", "already bare, left alone");
+  assert.equal(
+    childKey({ key: ".1" }),
+    ".1",
+    "no key of its own, matches no id",
+  );
+  assert.equal(
+    childKey({ key: "dom_123" }),
+    "dom_123",
+    "already bare, left alone",
+  );
 });
 
 test("hiding every row leaves an empty list — the table's empty state", () => {
   const rows = [{ id: "a" }, { id: "b" }];
-  assert.deepEqual(withoutRemoved(rows, new Set(["a", "b"]), (r) => r.id), []);
+  assert.deepEqual(
+    withoutRemoved(rows, new Set(["a", "b"]), (r) => r.id),
+    [],
+  );
 });

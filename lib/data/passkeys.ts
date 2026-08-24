@@ -159,7 +159,9 @@ export async function finishPasskeyRegistration(input: {
     await getDb()
       .update(passkeyTable)
       .set({ rpId })
-      .where(and(eq(passkeyTable.id, row.id), eq(passkeyTable.userId, user.id)));
+      .where(
+        and(eq(passkeyTable.id, row.id), eq(passkeyTable.userId, user.id)),
+      );
   const sessionId = await currentSessionId();
   if (sessionId) await markSessionAuthMethod(sessionId, user.id, "passkey");
   await announce(user.id, user.username, `Added the ${name} passkey`);
@@ -225,7 +227,11 @@ export async function deletePasskey(input: {
 
   const name = await getDb().transaction(async (tx) => {
     const mine = await tx
-      .select({ id: passkeyTable.id, name: passkeyTable.name, rpId: passkeyTable.rpId })
+      .select({
+        id: passkeyTable.id,
+        name: passkeyTable.name,
+        rpId: passkeyTable.rpId,
+      })
       .from(passkeyTable)
       .where(eq(passkeyTable.userId, user.id))
       .for("update");

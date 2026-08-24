@@ -85,7 +85,9 @@ export function DatabaseGeneralSettings({ db }: { db: DatabaseDTO }) {
   // Read a picked image into a base64 data-URI and persist it. Validated (type +
   // size) before reading, so an oversized blob is never inlined into the row.
   function pickLogo(file: File) {
-    if (!LOGO_IMAGE_TYPES.includes(file.type as (typeof LOGO_IMAGE_TYPES)[number])) {
+    if (
+      !LOGO_IMAGE_TYPES.includes(file.type as (typeof LOGO_IMAGE_TYPES)[number])
+    ) {
       toast.error("Unsupported image — use PNG, JPEG, WebP, GIF or SVG");
       return;
     }
@@ -114,7 +116,9 @@ export function DatabaseGeneralSettings({ db }: { db: DatabaseDTO }) {
         <CardContent className="space-y-6 pt-6">
           {/* Logo */}
           <div className="space-y-3">
-            <FieldLabel info={`Shown for this database on the dashboard. Defaults to the ${engine} logo — upload an image to use your own`}>
+            <FieldLabel
+              info={`Shown for this database on the dashboard. Defaults to the ${engine} logo — upload an image to use your own`}
+            >
               Logo
             </FieldLabel>
             <div className="flex flex-wrap items-center gap-4">

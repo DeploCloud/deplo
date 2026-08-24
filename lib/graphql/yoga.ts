@@ -42,7 +42,9 @@ const identityPlugin: Plugin<GraphQLContext> = {
 };
 
 function isAsyncIterable(v: unknown): v is AsyncIterable<unknown> {
-  return typeof (v as AsyncIterable<unknown>)?.[Symbol.asyncIterator] === "function";
+  return (
+    typeof (v as AsyncIterable<unknown>)?.[Symbol.asyncIterator] === "function"
+  );
 }
 
 /**
@@ -136,12 +138,20 @@ export const yoga = createYoga({
   fetchAPI: { Response },
   graphiql: {
     title: "Deplo API",
-    defaultQuery: /* GraphQL */ `# Welcome to the Deplo GraphQL API.
-# Browser requests use your session cookie automatically.
-# External clients send:  Authorization: Bearer deplo_xxx
-query Me {
-  me { id username name role isInstanceAdmin }
-  apiContext
-}`,
+    defaultQuery: /* GraphQL */ `
+      # Welcome to the Deplo GraphQL API.
+      # Browser requests use your session cookie automatically.
+      # External clients send:  Authorization: Bearer deplo_xxx
+      query Me {
+        me {
+          id
+          username
+          name
+          role
+          isInstanceAdmin
+        }
+        apiContext
+      }
+    `,
   },
 });

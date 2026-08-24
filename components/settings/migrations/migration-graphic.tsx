@@ -61,11 +61,7 @@ export function DokployMark({ className }: { className?: string }) {
 }
 
 export type MigrationState =
-  | "connect"
-  | "install"
-  | "review"
-  | "moving"
-  | "done";
+  "connect" | "install" | "review" | "moving" | "done";
 
 const LABEL: Record<MigrationState, string> = {
   connect: "A Dokploy server and a Deplo server, not yet linked",
@@ -269,11 +265,7 @@ function Machine({
         rx="7"
         stroke={ink}
         className={
-          brand
-            ? undefined
-            : dim
-              ? "stroke-border"
-              : "stroke-muted-foreground"
+          brand ? undefined : dim ? "stroke-border" : "stroke-muted-foreground"
         }
         strokeWidth="2.5"
       />
@@ -336,11 +328,7 @@ function Socket({
       rx="2"
       stroke={brand ? `url(#${BRAND_GRADIENT})` : undefined}
       className={
-        brand
-          ? undefined
-          : lit
-            ? "stroke-[var(--success)]"
-            : "stroke-ring"
+        brand ? undefined : lit ? "stroke-[var(--success)]" : "stroke-ring"
       }
       fill="var(--background)"
       strokeWidth="2.5"

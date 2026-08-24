@@ -140,7 +140,12 @@ test("the team's shared-variable library stays closed to a node-only holder", as
 
 test("the aggregate Variables tab shows the granted app and no other", async () => {
   await as(ADMIN, () =>
-    upsertEnv({ appId: APP_ELSEWHERE, key: "OTHER", value: "1", type: "plain" }),
+    upsertEnv({
+      appId: APP_ELSEWHERE,
+      key: "OTHER",
+      value: "1",
+      type: "plain",
+    }),
   );
   await as(DEV, () =>
     upsertEnv({ appId: APP_IN_PROD, key: "MINE", value: "1", type: "plain" }),

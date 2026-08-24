@@ -147,7 +147,10 @@ export async function listServersForTeam(teamId: string): Promise<Server[]> {
     .select()
     .from(serversTable)
     .where(
-      or(eq(serversTable.allTeams, true), inArray(serversTable.id, grantedToTeam)),
+      or(
+        eq(serversTable.allTeams, true),
+        inArray(serversTable.id, grantedToTeam),
+      ),
     )
     .orderBy(asc(serversTable.createdAt));
   return rows.map(assembleServer);
@@ -233,7 +236,9 @@ export function canHostWorkloads(s: Server): boolean {
  * answers OK writes an Activity line claiming Deplo just operated another
  * platform's machine, which is worse than the refusal.
  */
-export function assertNotMigrationSource(s: Pick<Server, "name" | "importOnly">): void {
+export function assertNotMigrationSource(
+  s: Pick<Server, "name" | "importOnly">,
+): void {
   if (s.importOnly)
     throw new Error(
       `${s.name} is a migration source - Deplo only reads from it, it does not run it.`,
@@ -385,7 +390,9 @@ export interface AddServerResult {
  * `online`. The old `sshUser`/`sshPort` fields are gone — the call-home model
  * never uses them (PLAN P1).
  */
-export async function addServer(input: AddServerInput): Promise<AddServerResult> {
+export async function addServer(
+  input: AddServerInput,
+): Promise<AddServerResult> {
   await requireInstanceAdmin();
   const teamId = await requireActiveTeamId();
   const user = (await getCurrentUser())!;
@@ -455,7 +462,13 @@ export async function addServer(input: AddServerInput): Promise<AddServerResult>
         .insert(serverTeamsTable)
         .values(teamIds.map((teamId) => ({ serverId: server.id, teamId })));
   });
-  await recordActivity("member", `Connected server ${server.name}`, user.name, null, teamId);
+  await recordActivity(
+    "member",
+    `Connected server ${server.name}`,
+    user.name,
+    null,
+    teamId,
+  );
 
   return {
     server,
@@ -494,7 +507,8 @@ async function assertImportHostIsNew(host: string): Promise<void> {
     );
   const a = host.trim().toLowerCase();
   const clash = (await listAllServers()).find(
-    (s) => s.ip?.trim().toLowerCase() === a || s.host?.trim().toLowerCase() === a,
+    (s) =>
+      s.ip?.trim().toLowerCase() === a || s.host?.trim().toLowerCase() === a,
   );
   if (clash)
     throw new Error(
@@ -548,7 +562,9 @@ export async function ensureDeploHostServer(): Promise<void> {
   if (!ip) return;
 
   const self = deploHostSelfAddresses();
-  const existing = (await listAllServers()).find((s) => isDeploHostServer(s, self));
+  const existing = (await listAllServers()).find((s) =>
+    isDeploHostServer(s, self),
+  );
   const stored = storedBootstrapFor(rawToken);
 
   if (existing) {
@@ -637,7 +653,13 @@ export async function reissueBootstrap(id: string): Promise<AddServerResult> {
   // already-trusted server that window can silently replace its agent cert. Like
   // addServer/removeServer, leave an audit trail so a re-issue against a live box
   // is never invisible (the operator-gated act is logged, not hidden).
-  await recordActivity("member", `Reissued install command for server ${server.name}`, user.name, null, teamId);
+  await recordActivity(
+    "member",
+    `Reissued install command for server ${server.name}`,
+    user.name,
+    null,
+    teamId,
+  );
   return {
     server: fresh,
     installCommand: installCommand({
@@ -846,7 +868,13 @@ async function removeServerRow(
         `${e instanceof Error ? e.message : String(e)}`,
     );
   }
-  await recordActivity("member", `Removed server ${server.name}`, user.name, null, teamId);
+  await recordActivity(
+    "member",
+    `Removed server ${server.name}`,
+    user.name,
+    null,
+    teamId,
+  );
   if (abandoned > 0)
     await recordActivity(
       "member",
@@ -917,7 +945,9 @@ export interface ServerUninstall {
  * honest outcome: the machine still has an agent on it, and pretending otherwise
  * by deleting the row would strand a running agent nobody can see.
  */
-export async function uninstallServerAgent(id: string): Promise<ServerUninstall> {
+export async function uninstallServerAgent(
+  id: string,
+): Promise<ServerUninstall> {
   await requireInstanceAdmin();
   const teamId = await requireActiveTeamId();
   const user = (await getCurrentUser())!;
@@ -966,7 +996,8 @@ export async function uninstallMigrationSource(
 
   if (server.agent?.certFingerprint) {
     try {
-      const { selfUninstallServerAgent } = await import("../infra/agent-client");
+      const { selfUninstallServerAgent } =
+        await import("../infra/agent-client");
       const removed = await selfUninstallServerAgent(id, deadlineMs);
       await recordActivity(
         "member",
@@ -1044,16 +1075,24 @@ export async function updateServerAddress(
   if (!address) throw new Error("Address is required");
   if (
     input.agentPort != null &&
-    (!Number.isInteger(input.agentPort) || input.agentPort < 1 || input.agentPort > 65535)
+    (!Number.isInteger(input.agentPort) ||
+      input.agentPort < 1 ||
+      input.agentPort > 65535)
   )
     throw new Error("Agent port must be between 1 and 65535");
   const port = input.agentPort ?? server.agent?.port ?? DEFAULT_AGENT_PORT;
-  if (address === server.host && address === server.ip && port === (server.agent?.port ?? port))
+  if (
+    address === server.host &&
+    address === server.ip &&
+    port === (server.agent?.port ?? port)
+  )
     return { warning: null };
 
   let warning: string | null = null;
   if (server.agent?.certFingerprint) {
-    const sans = [...new Set([address, server.ip, server.host].filter(Boolean))];
+    const sans = [
+      ...new Set([address, server.ip, server.host].filter(Boolean)),
+    ];
     try {
       const { renewAgentCert } = await import("../agent/cert-renewal");
       await renewAgentCert(server.id, sans);
@@ -1088,7 +1127,9 @@ export async function updateServerAddress(
       ...(input.keepHost ? {} : { host: address }),
       ip: address,
       // Meaningless before an agent exists - bootstrap sets it when one calls home.
-      ...(server.agent && input.agentPort != null ? { agentPort: input.agentPort } : {}),
+      ...(server.agent && input.agentPort != null
+        ? { agentPort: input.agentPort }
+        : {}),
     })
     .where(eq(serversTable.id, input.id))
     .returning({ id: serversTable.id });
@@ -1121,7 +1162,9 @@ export async function updateServerAddress(
  * AgentUpdateUnsupportedError (the GraphQL layer turns that into a clear message
  * telling the operator to re-run the installer for now).
  */
-export async function updateServerAgent(id: string): Promise<{ version: string }> {
+export async function updateServerAgent(
+  id: string,
+): Promise<{ version: string }> {
   await requireInstanceAdmin();
   const teamId = await requireActiveTeamId();
   const user = (await getCurrentUser())!;
@@ -1132,7 +1175,9 @@ export async function updateServerAgent(id: string): Promise<{ version: string }
   // there is removing it. Reachable from MCP, so the refusal lives here.
   assertNotMigrationSource(server);
   if (!server.agent?.certFingerprint)
-    throw new Error("This server is not provisioned yet — finish provisioning before updating its agent");
+    throw new Error(
+      "This server is not provisioned yet — finish provisioning before updating its agent",
+    );
 
   // Lazy-import for the same reason removeServer does: keep the grpc agent-client
   // (and its deps) out of modules that never reach an agent. The seam resolves the
@@ -1292,7 +1337,10 @@ export async function setServerTeams(
       }
     }
 
-    await tx.update(serversTable).set({ allTeams }).where(eq(serversTable.id, id));
+    await tx
+      .update(serversTable)
+      .set({ allTeams })
+      .where(eq(serversTable.id, id));
     await tx.delete(serverTeamsTable).where(eq(serverTeamsTable.serverId, id));
     if (teamIds.length > 0)
       await tx
@@ -1386,7 +1434,10 @@ export function serverRole(
  *
  * Instance-admin, like every server mutation - servers are shared cross-team infra.
  */
-export async function setServerRole(id: string, role: ServerRole): Promise<Server> {
+export async function setServerRole(
+  id: string,
+  role: ServerRole,
+): Promise<Server> {
   await requireInstanceAdmin();
   const teamId = await requireActiveTeamId();
   const user = (await getCurrentUser())!;
@@ -1491,7 +1542,8 @@ export async function completeBootstrap(
   // on the row, plus a self-reported host only if it matches (defence in depth).
   const dialHosts = [server.ip, server.host].filter(Boolean);
   const signed = await signBootstrapCsr(call.csrPem, dialHosts);
-  const port = call.agentPort && call.agentPort > 0 ? call.agentPort : DEFAULT_AGENT_PORT;
+  const port =
+    call.agentPort && call.agentPort > 0 ? call.agentPort : DEFAULT_AGENT_PORT;
 
   // Atomic consume + pin: the conditional UPDATE only fires while the token is
   // still unused, so concurrent call-homes can't both provision (the loser
@@ -1565,7 +1617,8 @@ export async function markServerSeen(
     // atomic UPDATE — a NULL `agent_port` (unprovisioned) leaves the version NULL.
     if (agentVersion)
       set.agentVersion = sql`case when ${serversTable.agentPort} is not null then ${agentVersion} else ${serversTable.agentVersion} end`;
-    if (typeof traefikRunning === "boolean") set.traefikEnabled = traefikRunning;
+    if (typeof traefikRunning === "boolean")
+      set.traefikEnabled = traefikRunning;
     // The Docker engine version the agent reports on its Hello — born "" at
     // registration and only known live, so persist it here (guard on non-empty so
     // a missing/Docker-unreachable Hello never blanks a good value). Drives the

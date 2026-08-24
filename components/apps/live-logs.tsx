@@ -192,7 +192,9 @@ export function LiveLogs({
  * above the pane for a banner, so `LogNoticeChip` renders this in the toolbar
  * instead, headline visible and paragraph one click away.
  */
-export function runtimeNotice(runtime: AppRuntimeView | null): LogNotice | null {
+export function runtimeNotice(
+  runtime: AppRuntimeView | null,
+): LogNotice | null {
   if (!runtime || runtime.unreachable || runtime.total === 0) return null;
 
   if (runtime.missing.length > 0) {

@@ -78,7 +78,11 @@ test("the role rides as an env prefix INSIDE the elevated shell", () => {
   // would be silently dropped and the host would install as an ordinary server -
   // with Traefik, the shared network and a rewritten daemon.json on a machine
   // Deplo is only borrowing.
-  const base = { baseUrl: "https://deplo.example.com", rawToken: "tok123", fingerprint: "" };
+  const base = {
+    baseUrl: "https://deplo.example.com",
+    rawToken: "tok123",
+    fingerprint: "",
+  };
   const cases = [
     [{ ...base, storageOnly: true }, "DEPLO_STORAGE_ONLY=1"],
     [{ ...base, buildOnly: true }, "DEPLO_BUILD_ONLY=1"],
@@ -86,12 +90,21 @@ test("the role rides as an env prefix INSIDE the elevated shell", () => {
   ] as const;
   for (const [opts, env] of cases) {
     const cmd = installCommand(opts);
-    assert.match(cmd, new RegExp(`sudo ${env} bash`), `${env} is not inside the sudo`);
+    assert.match(
+      cmd,
+      new RegExp(`sudo ${env} bash`),
+      `${env} is not inside the sudo`,
+    );
   }
 
   // Exactly one of them, ever: the three roles are exclusive, and a command
   // carrying two would leave the host's shape up to the script's branch order.
-  const all = installCommand({ ...base, storageOnly: true, buildOnly: true, importOnly: true });
+  const all = installCommand({
+    ...base,
+    storageOnly: true,
+    buildOnly: true,
+    importOnly: true,
+  });
   assert.equal(
     (all.match(/DEPLO_[A-Z_]+_ONLY=1/g) ?? []).length,
     1,

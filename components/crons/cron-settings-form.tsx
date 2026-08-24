@@ -31,7 +31,11 @@ import { gqlAction } from "@/lib/graphql-client";
 
 const SET_ENABLED = /* GraphQL */ `
   mutation ($targetKind: String!, $targetId: ID!, $enabled: Boolean!) {
-    setCronEnabled(targetKind: $targetKind, targetId: $targetId, enabled: $enabled)
+    setCronEnabled(
+      targetKind: $targetKind
+      targetId: $targetId
+      enabled: $enabled
+    )
   }
 `;
 

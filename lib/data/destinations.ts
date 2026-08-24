@@ -63,11 +63,10 @@ import type {
  * lives inside the thing that might be lost is not a backup.
  */
 
-export interface DestinationDTO
-  extends Omit<
-    BackupDestination,
-    "accessKeyEnc" | "secretKeyEnc" | "ageIdentityEnc"
-  > {
+export interface DestinationDTO extends Omit<
+  BackupDestination,
+  "accessKeyEnc" | "secretKeyEnc" | "ageIdentityEnc"
+> {
   accessKeyMasked: string | null;
   /** Name of the server holding the artifacts (`server` kind), for the card. */
   serverName: string | null;
@@ -132,7 +131,10 @@ export function destinationWhere(d: DestinationDTO): string {
   return path ? `${server} · ${path}` : server;
 }
 
-function toDTO(d: BackupDestination, serverName: string | null): DestinationDTO {
+function toDTO(
+  d: BackupDestination,
+  serverName: string | null,
+): DestinationDTO {
   const { accessKeyEnc, secretKeyEnc, ageIdentityEnc, ...rest } = d;
   void secretKeyEnc;
   void ageIdentityEnc;
@@ -143,13 +145,41 @@ function toDTO(d: BackupDestination, serverName: string | null): DestinationDTO 
   };
 }
 
-export const S3_PROVIDERS: { id: S3Provider; name: string; endpointHint: string }[] = [
-  { id: "aws", name: "Amazon S3", endpointHint: "https://s3.<region>.amazonaws.com" },
-  { id: "cloudflare-r2", name: "Cloudflare R2", endpointHint: "https://<account>.r2.cloudflarestorage.com" },
-  { id: "backblaze-b2", name: "Backblaze B2", endpointHint: "https://s3.<region>.backblazeb2.com" },
-  { id: "digitalocean", name: "DigitalOcean Spaces", endpointHint: "https://<region>.digitaloceanspaces.com" },
-  { id: "wasabi", name: "Wasabi", endpointHint: "https://s3.<region>.wasabisys.com" },
-  { id: "minio", name: "MinIO (self-hosted)", endpointHint: "https://minio.example.com" },
+export const S3_PROVIDERS: {
+  id: S3Provider;
+  name: string;
+  endpointHint: string;
+}[] = [
+  {
+    id: "aws",
+    name: "Amazon S3",
+    endpointHint: "https://s3.<region>.amazonaws.com",
+  },
+  {
+    id: "cloudflare-r2",
+    name: "Cloudflare R2",
+    endpointHint: "https://<account>.r2.cloudflarestorage.com",
+  },
+  {
+    id: "backblaze-b2",
+    name: "Backblaze B2",
+    endpointHint: "https://s3.<region>.backblazeb2.com",
+  },
+  {
+    id: "digitalocean",
+    name: "DigitalOcean Spaces",
+    endpointHint: "https://<region>.digitaloceanspaces.com",
+  },
+  {
+    id: "wasabi",
+    name: "Wasabi",
+    endpointHint: "https://s3.<region>.wasabisys.com",
+  },
+  {
+    id: "minio",
+    name: "MinIO (self-hosted)",
+    endpointHint: "https://minio.example.com",
+  },
   { id: "other", name: "Other S3-compatible", endpointHint: "https://..." },
 ];
 
@@ -225,7 +255,10 @@ export async function getDestinationWithSecretsForTeam(
       ? decryptSecretOrThrow(d.secretKeyEnc, "This destination's secret key")
       : "",
     ageIdentity: d.ageIdentityEnc
-      ? decryptSecretOrThrow(d.ageIdentityEnc, "This destination's recovery key")
+      ? decryptSecretOrThrow(
+          d.ageIdentityEnc,
+          "This destination's recovery key",
+        )
       : "",
   };
 }
@@ -268,7 +301,10 @@ export async function getDestinationWithSecrets(
  * lives, so the executor, the connectivity check, and the retention pruner can't
  * drift on it.
  */
-export function s3TargetFor(s: DestinationWithSecrets, objectKey: string): S3Target {
+export function s3TargetFor(
+  s: DestinationWithSecrets,
+  objectKey: string,
+): S3Target {
   const d = s.destination;
   return {
     endpoint: d.endpoint ?? "",
@@ -573,7 +609,9 @@ async function serverDestinationFields(input: CreateDestinationInput) {
   if (path) {
     await requireInstanceAdmin();
     if (!path.startsWith("/"))
-      throw new Error("The backup folder must be an absolute path, like /mnt/backups");
+      throw new Error(
+        "The backup folder must be an absolute path, like /mnt/backups",
+      );
   }
 
   const { identity, recipient } = await generateAgeKeypair();
@@ -605,7 +643,10 @@ async function serverDestinationFields(input: CreateDestinationInput) {
  * Imported lazily so the crypto library is not pulled into every module that
  * merely reads a destination.
  */
-async function generateAgeKeypair(): Promise<{ identity: string; recipient: string }> {
+async function generateAgeKeypair(): Promise<{
+  identity: string;
+  recipient: string;
+}> {
   const age = await import("age-encryption");
   const identity = await age.generateX25519Identity();
   const recipient = await age.identityToRecipient(identity);
@@ -648,7 +689,9 @@ export async function ensureDefaultDestination(): Promise<void> {
   const claimed = await getDb()
     .update(teamsTable)
     .set({ backupDefaultSeededAt: nowIso() })
-    .where(and(eq(teamsTable.id, teamId), isNull(teamsTable.backupDefaultSeededAt)))
+    .where(
+      and(eq(teamsTable.id, teamId), isNull(teamsTable.backupDefaultSeededAt)),
+    )
     .returning({ id: teamsTable.id });
   if (claimed.length === 0) return;
   const release = () =>
@@ -690,7 +733,9 @@ export async function ensureDefaultDestination(): Promise<void> {
       await release();
       return;
     }
-    const name = isDeploHostServer(server, self) ? "This server" : serverLabel(server);
+    const name = isDeploHostServer(server, self)
+      ? "This server"
+      : serverLabel(server);
 
     const { identity, recipient } = await generateAgeKeypair();
     const d: BackupDestination = {
@@ -747,7 +792,9 @@ export async function ensureDefaultDestination(): Promise<void> {
  * The status is persisted from the live result (`connected` on success, `error`
  * otherwise) so the badge reflects reality, never a fake success.
  */
-export async function testDestination(id: string): Promise<DestinationTestResult> {
+export async function testDestination(
+  id: string,
+): Promise<DestinationTestResult> {
   const teamId = (await requireCapability("manage_backup_destinations")).teamId;
   const cur = await loadDestination(id, teamId);
   if (!cur) throw new Error("Not found");
@@ -880,7 +927,9 @@ async function probeAndRecord(
     .where(and(eq(destTable.id, id), eq(destTable.teamId, teamId)))
     .returning();
   if (updated.length === 0) throw new Error("Not found");
-  const destination = (await withServerNames([assembleDestination(updated[0]!)]))[0]!;
+  const destination = (
+    await withServerNames([assembleDestination(updated[0]!)])
+  )[0]!;
 
   return {
     destination,
@@ -1045,8 +1094,15 @@ async function checkOnAnyBackupAgent(
       // transport drop → try the next; otherwise it's a real probe failure.
       const mapped = mapBackupUnsupported(e);
       if (mapped instanceof AgentUnreachableError) lastUnreachable = mapped;
-      else if (mapped.name === "AgentBackupUnsupportedError") lastUnsupported = mapped;
-      else return { ok: false, error: mapped.message, serverId: server.id, attempts };
+      else if (mapped.name === "AgentBackupUnsupportedError")
+        lastUnsupported = mapped;
+      else
+        return {
+          ok: false,
+          error: mapped.message,
+          serverId: server.id,
+          attempts,
+        };
       attempts.push(`${serverLabel(server)} — ${mapped.message}`);
     } finally {
       conn.close();
@@ -1054,8 +1110,12 @@ async function checkOnAnyBackupAgent(
   }
   // Nothing answered: prefer the actionable "update the agent" when at least one
   // server was reachable-but-too-old; else report unreachable.
-  throw lastUnsupported ?? lastUnreachable ?? new AgentUnreachableError(
-    "No backup-capable agent could verify the bucket.",
+  throw (
+    lastUnsupported ??
+    lastUnreachable ??
+    new AgentUnreachableError(
+      "No backup-capable agent could verify the bucket.",
+    )
   );
 }
 
@@ -1076,7 +1136,12 @@ async function checkOnAnyBackupAgent(
  */
 export async function revealRecoveryKey(
   id: string,
-): Promise<{ name: string; recipient: string; identity: string; where: string }> {
+): Promise<{
+  name: string;
+  recipient: string;
+  identity: string;
+  where: string;
+}> {
   const { teamId } = await requireCapability("manage_backup_destinations");
   const d = await loadDestination(id, teamId);
   if (!d) throw new Error("Not found");
@@ -1161,12 +1226,17 @@ export async function destinationRemovalImpact(id: string): Promise<{
   const [sched] = await getDb()
     .select({ n: count() })
     .from(backupsTable)
-    .where(and(eq(backupsTable.destinationId, id), eq(backupsTable.teamId, teamId)));
+    .where(
+      and(eq(backupsTable.destinationId, id), eq(backupsTable.teamId, teamId)),
+    );
   const [runs] = await getDb()
     .select({ n: count() })
     .from(backupRunsTable)
     .where(
-      and(eq(backupRunsTable.destinationId, id), eq(backupRunsTable.teamId, teamId)),
+      and(
+        eq(backupRunsTable.destinationId, id),
+        eq(backupRunsTable.teamId, teamId),
+      ),
     );
   const [stored] = await getDb()
     .select({ n: count() })
@@ -1219,7 +1289,9 @@ export async function deleteDestination(
           eq(backupRunsTable.status, "success"),
         ),
       );
-    const keys = runs.filter((r) => r.objectKey).map((r) => ({ key: r.objectKey }));
+    const keys = runs
+      .filter((r) => r.objectKey)
+      .map((r) => ({ key: r.objectKey }));
     if (keys.length > 0) {
       // Imported HERE rather than at the top: backup-transport imports this
       // module for `destinationServerId` / `s3TargetFor`, so a static import back
@@ -1251,11 +1323,19 @@ export async function deleteDestination(
     await tx
       .delete(backupRunsTable)
       .where(
-        and(eq(backupRunsTable.destinationId, id), eq(backupRunsTable.teamId, teamId)),
+        and(
+          eq(backupRunsTable.destinationId, id),
+          eq(backupRunsTable.teamId, teamId),
+        ),
       );
     await tx
       .delete(backupsTable)
-      .where(and(eq(backupsTable.destinationId, id), eq(backupsTable.teamId, teamId)));
+      .where(
+        and(
+          eq(backupsTable.destinationId, id),
+          eq(backupsTable.teamId, teamId),
+        ),
+      );
     await tx
       .delete(destTable)
       .where(and(eq(destTable.id, id), eq(destTable.teamId, teamId)));

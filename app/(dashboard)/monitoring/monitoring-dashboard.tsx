@@ -69,7 +69,9 @@ export function MonitoringDashboard({
   // draw a fake dip to 0. The server-side buffer only ever admits real
   // measurements, so an outage arrives here as widened spacing (an honest gap),
   // never as a row of zeros.
-  const [history, setHistory] = React.useState<Record<string, ServerMetrics[]>>({});
+  const [history, setHistory] = React.useState<Record<string, ServerMetrics[]>>(
+    {},
+  );
   // A render clock, advanced by the read loop below, so staleness can assert
   // itself even when reads stop succeeding (nothing else would re-render).
   const [now, setNow] = React.useState<number>(() => Date.now());
@@ -258,8 +260,8 @@ export function MonitoringDashboard({
           <ServerOff className="size-8 text-muted-foreground" />
           <p className="font-medium">No servers connected</p>
           <p className="max-w-sm text-sm text-muted-foreground">
-            Add a server from Settings → Servers (start with this host) and run its
-            install command to see live metrics here.
+            Add a server from Settings → Servers (start with this host) and run
+            its install command to see live metrics here.
           </p>
         </CardContent>
       </Card>
@@ -417,7 +419,12 @@ export function MonitoringDashboard({
                 windowMs={windowMs}
                 points={points}
                 series={[
-                  { key: "cpu", label: "CPU", color: "var(--chart-1)", fill: true },
+                  {
+                    key: "cpu",
+                    label: "CPU",
+                    color: "var(--chart-1)",
+                    fill: true,
+                  },
                 ]}
                 ariaLabel={`CPU usage over time, currently ${cur.cpu.toFixed(1)}%`}
               />
@@ -432,7 +439,12 @@ export function MonitoringDashboard({
                 windowMs={windowMs}
                 points={points}
                 series={[
-                  { key: "mem", label: "Memory", color: "var(--chart-1)", fill: true },
+                  {
+                    key: "mem",
+                    label: "Memory",
+                    color: "var(--chart-1)",
+                    fill: true,
+                  },
                 ]}
                 ariaLabel={`Memory usage over time, currently ${cur.memPct.toFixed(1)}%`}
               />
@@ -469,8 +481,16 @@ export function MonitoringDashboard({
           {/* Info strip */}
           <Card>
             <CardContent className="grid grid-cols-2 gap-4 py-4 sm:grid-cols-4">
-              <InfoItem icon={Clock} label="Uptime" value={fmtUptime(cur.uptimeSec)} />
-              <InfoItem icon={Boxes} label="Containers" value={`${cur.containers}`} />
+              <InfoItem
+                icon={Clock}
+                label="Uptime"
+                value={fmtUptime(cur.uptimeSec)}
+              />
+              <InfoItem
+                icon={Boxes}
+                label="Containers"
+                value={`${cur.containers}`}
+              />
               <InfoItem
                 icon={Gauge}
                 label="Load (1/5/15m)"
@@ -543,7 +563,9 @@ function ChartCard({
       <CardHeader className="pb-3">
         <CardTitle className="text-sm lg:text-sm">{title}</CardTitle>
         {caption && (
-          <p className="text-xs text-muted-foreground tabular-nums">{caption}</p>
+          <p className="text-xs text-muted-foreground tabular-nums">
+            {caption}
+          </p>
         )}
       </CardHeader>
       <CardContent>{children}</CardContent>

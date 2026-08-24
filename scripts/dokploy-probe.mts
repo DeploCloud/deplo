@@ -63,7 +63,9 @@ if (!url || !apiKey) {
 const c: DokployCredential = { baseUrl: normalizeDokployBaseUrl(url), apiKey };
 
 console.log(`source      ${c.baseUrl}`);
-console.log(`organization ${(await activeOrganizationName(c)) ?? "(not reported)"}`);
+console.log(
+  `organization ${(await activeOrganizationName(c)) ?? "(not reported)"}`,
+);
 
 const servers = await listServers(c).catch(() => []);
 console.log(
@@ -123,7 +125,11 @@ for (const p of await listProjects(c)) {
 
 /** What the import would make of one service. Pure functions only - this writes
  *  nothing anywhere and is the cheapest way to check a mapping against real data. */
-function describe(kind: string, row: Record<string, unknown>, name: string): void {
+function describe(
+  kind: string,
+  row: Record<string, unknown>,
+  name: string,
+): void {
   const say = (label: string, value: unknown) =>
     console.log(`        ${label.padEnd(12)} ${value}`);
   const notes: string[] = [];
@@ -134,11 +140,17 @@ function describe(kind: string, row: Record<string, unknown>, name: string): voi
     const args = parseEnvBlob(detail.buildArgs).filter(
       (a) => !env.some((e) => e.key === a.key),
     );
-    say("env", `${env.length} var(s)${args.length ? ` + ${args.length} build arg(s)` : ""}`);
+    say(
+      "env",
+      `${env.length} var(s)${args.length ? ` + ${args.length} build arg(s)` : ""}`,
+    );
     const interpolated = envNeedsInterpolation([...env, ...args]);
-    if (interpolated.length) notes.push(`\${{...}} in ${interpolated.join(", ")}`);
+    if (interpolated.length)
+      notes.push(`\${{...}} in ${interpolated.join(", ")}`);
 
-    const domains = mapDomains(detail.domains, { isCompose: kind === "compose" });
+    const domains = mapDomains(detail.domains, {
+      isCompose: kind === "compose",
+    });
     say(
       "domains",
       domains.value.length === 0
@@ -168,16 +180,29 @@ function describe(kind: string, row: Record<string, unknown>, name: string): voi
 
     if (kind === "compose") {
       const yamlText = (detail.composeFile ?? "").trim();
-      say("compose", yamlText ? `${yamlText.length} bytes inline` : "IN A GIT REPO (fetched at import)");
+      say(
+        "compose",
+        yamlText
+          ? `${yamlText.length} bytes inline`
+          : "IN A GIT REPO (fetched at import)",
+      );
       if (yamlText) {
         const adapted = adaptComposeForDeplo(yamlText);
-        say("rewrites", adapted.changes.length ? adapted.changes.join(" ") : "none needed");
+        say(
+          "rewrites",
+          adapted.changes.length ? adapted.changes.join(" ") : "none needed",
+        );
         const gates: string[] = [];
-        if (composeUsesExternalMerge(adapted.compose)) gates.push("extends/include (REFUSED)");
-        if (composePublishesPorts(adapted.compose)) gates.push("publishes ports (grant)");
-        if (composeHasHostBindMount(adapted.compose)) gates.push("host bind mount (grant)");
-        if (composeNeedsHostPrivileges(adapted.compose)) gates.push("host privileges (grant)");
-        if (composeJoinsForeignNetwork(adapted.compose)) gates.push("foreign network (grant)");
+        if (composeUsesExternalMerge(adapted.compose))
+          gates.push("extends/include (REFUSED)");
+        if (composePublishesPorts(adapted.compose))
+          gates.push("publishes ports (grant)");
+        if (composeHasHostBindMount(adapted.compose))
+          gates.push("host bind mount (grant)");
+        if (composeNeedsHostPrivileges(adapted.compose))
+          gates.push("host privileges (grant)");
+        if (composeJoinsForeignNetwork(adapted.compose))
+          gates.push("foreign network (grant)");
         say("gates", gates.length ? gates.join(", ") : "clean");
       }
     } else {
@@ -193,7 +218,11 @@ function describe(kind: string, row: Record<string, unknown>, name: string): voi
       notes.push(...source.notes);
       const build = mapBuildSettings(detail);
       say("build", JSON.stringify(build.value));
-      notes.push(...build.notes, ...portNotes(detail), ...unsupportedNotes(detail));
+      notes.push(
+        ...build.notes,
+        ...portNotes(detail),
+        ...unsupportedNotes(detail),
+      );
     }
   } else {
     const engine = deploEngineFor(kind as DokployDbKind);

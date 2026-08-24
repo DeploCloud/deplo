@@ -219,11 +219,18 @@ async function sourceServices(c: DokployCredential): Promise<SourceService[]> {
   // {applicationId, name, applicationStatus} and a database as {postgresId} and
   // nothing else. `appName` — the label every container of the service carries,
   // and the whole basis of finding its volumes — is only ever on the detail row.
-  const stubs: { kind: string; id: string; projectName: string; environmentName: string }[] =
-    [];
+  const stubs: {
+    kind: string;
+    id: string;
+    projectName: string;
+    environmentName: string;
+  }[] = [];
   for (const p of await listDokployProjects(c))
     for (const env of p.environments ?? []) {
-      const where = { projectName: p.name ?? "", environmentName: env.name ?? "" };
+      const where = {
+        projectName: p.name ?? "",
+        environmentName: env.name ?? "",
+      };
       for (const a of env.applications ?? [])
         stubs.push({ kind: "application", id: a.applicationId, ...where });
       for (const s of env.compose ?? [])
@@ -253,7 +260,10 @@ async function sourceServices(c: DokployCredential): Promise<SourceService[]> {
           appName,
           mounts: detail.mounts,
           composeFile:
-            "composeFile" in detail ? ((detail as { composeFile?: string | null }).composeFile ?? null) : null,
+            "composeFile" in detail
+              ? ((detail as { composeFile?: string | null }).composeFile ??
+                null)
+              : null,
         }),
         declaredBindMounts: declaredSourceBindMounts(detail.mounts),
       };
@@ -389,7 +399,10 @@ async function runTargets(
     .from(itemsTable)
     .where(eq(itemsTable.runId, runId));
 
-  const out = new Map<string, { targetKind: "app" | "database"; targetId: string }>();
+  const out = new Map<
+    string,
+    { targetKind: "app" | "database"; targetId: string }
+  >();
   for (const r of rows) {
     if (r.outcome !== "created" || !r.sourceId || !r.targetId) continue;
     if (r.targetKind !== "app" && r.targetKind !== "database") continue;
@@ -458,7 +471,9 @@ async function landedFor(
       compose: appsTable.compose,
     })
     .from(appsTable)
-    .where(and(eq(appsTable.id, target.targetId), eq(appsTable.teamId, teamId)));
+    .where(
+      and(eq(appsTable.id, target.targetId), eq(appsTable.teamId, teamId)),
+    );
   const hit = rows[0];
   if (!hit) return null;
 
@@ -565,7 +580,9 @@ export async function planDokployDataMove(
     // has to be read - not the cutover, with the old platform already down. Having
     // a server row is not enough: it has to ANSWER, for the reason
     // `sourceAgentReachable` spells out.
-    const sourceServer = machines.find((m) => m.sourceId === svc.serverId)?.deploServerId;
+    const sourceServer = machines.find(
+      (m) => m.sourceId === svc.serverId,
+    )?.deploServerId;
     const reachable = sourceServer ? await agentAnswers(sourceServer) : false;
 
     out.push({
@@ -597,7 +614,11 @@ export async function planDokployDataMove(
       notes: [
         ...state.notes,
         ...paired.notes,
-        ...(reachable ? [] : [sourceServer ? UNREACHABLE_SOURCE_AGENT : UNREACHABLE_SOURCE_HOST]),
+        ...(reachable
+          ? []
+          : [
+              sourceServer ? UNREACHABLE_SOURCE_AGENT : UNREACHABLE_SOURCE_HOST,
+            ]),
       ],
     });
   }
@@ -626,7 +647,10 @@ export interface MoveInput extends ConnectInput {
  * went wrong. Grey "Stopped" is both true and the state whose button is Start,
  * which is exactly what the copy's own note tells the user to press.
  */
-async function recordStoppedForCopy(landed: Landed, teamId: string): Promise<void> {
+async function recordStoppedForCopy(
+  landed: Landed,
+  teamId: string,
+): Promise<void> {
   if (landed.targetKind === "database") {
     await getDb()
       .update(databasesTable)
@@ -645,7 +669,9 @@ async function recordStoppedForCopy(landed: Landed, teamId: string): Promise<voi
   await getDb()
     .update(appsTable)
     .set({ status: "idle", updatedAt: nowIso() })
-    .where(and(eq(appsTable.id, landed.targetId), eq(appsTable.teamId, teamId)));
+    .where(
+      and(eq(appsTable.id, landed.targetId), eq(appsTable.teamId, teamId)),
+    );
 }
 
 /**
@@ -685,7 +711,8 @@ async function runMoveDokployServiceData(
   const svc = (await sourceServices(c)).find(
     (s) => s.kind === input.sourceKind && s.id === input.sourceId,
   );
-  if (!svc) throw new Error("That service is no longer on the Dokploy instance.");
+  if (!svc)
+    throw new Error("That service is no longer on the Dokploy instance.");
 
   const target = (await runTargets(input.runId)).get(svc.id);
   const landed = target ? await landedFor(teamId, target) : null;
@@ -731,7 +758,8 @@ async function runMoveDokployServiceData(
   // arrived whole when its data never left the old machine.
   const binds = pairHostMounts(state.hostMounts, landed.hostMounts);
   const mayCopyHostPaths =
-    binds.length === 0 || ((await isInstanceAdmin()) && (await canMountHostVolumes()));
+    binds.length === 0 ||
+    ((await isInstanceAdmin()) && (await canMountHostVolumes()));
 
   if (paired.value.length === 0 && binds.length === 0) {
     // Nothing to copy means nothing is stopped either: a cutover that would move
@@ -897,7 +925,10 @@ async function runMoveDokployServiceData(
       // Same machine, same path: the directory the app will read IS the one the old
       // platform wrote. Copying it over itself would be a wipe followed by a
       // restore of what was just wiped - all risk, no movement.
-      if (sourceServerId === landed.targetServerId && bind.sourcePath === bind.targetPath) {
+      if (
+        sourceServerId === landed.targetServerId &&
+        bind.sourcePath === bind.targetPath
+      ) {
         await appendRunItem(input.runId, {
           path,
           sourceKind: "volume",
@@ -1048,14 +1079,20 @@ const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
  * replace. Untarring under a live initialisation produces a directory that is half
  * one cluster and half another - which starts, and is corrupt.
  */
-async function waitForProvision(databaseId: string, teamId: string): Promise<boolean> {
+async function waitForProvision(
+  databaseId: string,
+  teamId: string,
+): Promise<boolean> {
   const deadline = Date.now() + PROVISION_WAIT_MS;
   for (;;) {
     const rows = await getDb()
       .select({ status: databasesTable.status })
       .from(databasesTable)
       .where(
-        and(eq(databasesTable.id, databaseId), eq(databasesTable.teamId, teamId)),
+        and(
+          eq(databasesTable.id, databaseId),
+          eq(databasesTable.teamId, teamId),
+        ),
       );
     const status = rows[0]?.status;
     if (!status) return false;
@@ -1080,7 +1117,10 @@ async function waitForProvision(databaseId: string, teamId: string): Promise<boo
 const CONTENT_COUNT: Partial<
   Record<
     DatabaseType,
-    (a: { username: string; dbName: string }) => { command: string; noun: string }
+    (a: { username: string; dbName: string }) => {
+      command: string;
+      noun: string;
+    }
   >
 > = {
   postgres: (a) => ({
@@ -1207,7 +1247,9 @@ async function setDatabaseRunningAfterCopy(
   await getDb()
     .update(databasesTable)
     .set({ status: "running" })
-    .where(and(eq(databasesTable.id, databaseId), eq(databasesTable.teamId, teamId)));
+    .where(
+      and(eq(databasesTable.id, databaseId), eq(databasesTable.teamId, teamId)),
+    );
   publishDatabaseChanged(databaseId);
 }
 
@@ -1236,8 +1278,7 @@ async function resolveSourceServer(
     throw new Error(
       "Dokploy no longer lists the machine this service runs on, so Deplo cannot tell which host holds its data.",
     );
-  if (!machine.deploServerId)
-    throw new Error(UNREACHABLE_SOURCE_HOST);
+  if (!machine.deploServerId) throw new Error(UNREACHABLE_SOURCE_HOST);
   const usable = (await listServersForTeam(teamId)).some(
     (s) => s.id === machine.deploServerId && !s.storageOnly,
   );

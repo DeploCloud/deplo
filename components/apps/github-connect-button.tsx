@@ -18,47 +18,50 @@ import { gqlAction } from "@/lib/graphql-client";
 export function useGithubConnect() {
   const [pending, startTransition] = React.useTransition();
 
-  const connect = React.useCallback((org?: string) => {
-    // Call sites pass this straight to onClick/onSelect, so the first argument
-    // is often an Event: anything that is not an org name means "my account".
-    const owner = typeof org === "string" && org.trim() ? org.trim() : null;
-    startTransition(async () => {
-      const res = await gqlAction<
-        {
-          startGithubConnect: {
-            actionUrl: string;
-            manifest: string;
-            state: string;
-          } | null;
-        },
-        { actionUrl: string; manifest: string; state: string } | null
-      >(
-        `mutation ($org: String) { startGithubConnect(org: $org) { actionUrl manifest state } }`,
-        { org: owner },
-        (d) => d.startGithubConnect,
-      );
-      if (!res.ok || !res.data) {
-        toast.error(res.ok ? "Could not start GitHub connect" : res.error);
-        return;
-      }
-      const { actionUrl, manifest, state } = res.data;
-      const form = document.createElement("form");
-      form.method = "POST";
-      form.action = actionUrl;
-      for (const [name, value] of [
-        ["manifest", manifest],
-        ["state", state],
-      ] as const) {
-        const input = document.createElement("input");
-        input.type = "hidden";
-        input.name = name;
-        input.value = value;
-        form.appendChild(input);
-      }
-      document.body.appendChild(form);
-      form.submit();
-    });
-  }, [startTransition]);
+  const connect = React.useCallback(
+    (org?: string) => {
+      // Call sites pass this straight to onClick/onSelect, so the first argument
+      // is often an Event: anything that is not an org name means "my account".
+      const owner = typeof org === "string" && org.trim() ? org.trim() : null;
+      startTransition(async () => {
+        const res = await gqlAction<
+          {
+            startGithubConnect: {
+              actionUrl: string;
+              manifest: string;
+              state: string;
+            } | null;
+          },
+          { actionUrl: string; manifest: string; state: string } | null
+        >(
+          `mutation ($org: String) { startGithubConnect(org: $org) { actionUrl manifest state } }`,
+          { org: owner },
+          (d) => d.startGithubConnect,
+        );
+        if (!res.ok || !res.data) {
+          toast.error(res.ok ? "Could not start GitHub connect" : res.error);
+          return;
+        }
+        const { actionUrl, manifest, state } = res.data;
+        const form = document.createElement("form");
+        form.method = "POST";
+        form.action = actionUrl;
+        for (const [name, value] of [
+          ["manifest", manifest],
+          ["state", state],
+        ] as const) {
+          const input = document.createElement("input");
+          input.type = "hidden";
+          input.name = name;
+          input.value = value;
+          form.appendChild(input);
+        }
+        document.body.appendChild(form);
+        form.submit();
+      });
+    },
+    [startTransition],
+  );
 
   return { connect, pending };
 }

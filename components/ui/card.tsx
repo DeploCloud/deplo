@@ -9,7 +9,7 @@ const Card = React.forwardRef<
     ref={ref}
     className={cn(
       "rounded-xl border border-border bg-card text-card-foreground shadow-sm",
-      className
+      className,
     )}
     {...props}
   />
@@ -42,8 +42,8 @@ const CardTitle = React.forwardRef<
     // on the modifier, so a call site's bare `text-base` never eats it) and it
     // is the only size the ~16 headers that pass no className ever get.
     className={cn(
-      "text-base lg:text-lg font-semibold leading-none tracking-tight",
-      className
+      "text-base leading-none font-semibold tracking-tight lg:text-lg",
+      className,
     )}
     {...props}
   />

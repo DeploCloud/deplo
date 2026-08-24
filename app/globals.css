@@ -328,7 +328,10 @@
   transition: opacity 200ms ease-out;
   background-image: linear-gradient(
     to top,
-    oklch(var(--tpl-veil-l) var(--tpl-veil-c, 0.16) var(--tpl-hue, 0) / var(--tpl-veil-a))
+    oklch(
+        var(--tpl-veil-l) var(--tpl-veil-c, 0.16) var(--tpl-hue, 0) /
+          var(--tpl-veil-a)
+      )
       0%,
     oklch(var(--tpl-veil-l) var(--tpl-veil-c, 0.16) var(--tpl-hue, 0) / 0) 72%
   );
@@ -2724,7 +2727,6 @@
   --deplo-robot-l: 0.78;
   --deplo-robot-c: 0.14;
 }
-
 
 /* The API tokens empty state cuts a key and turns it in a lock
    (components/settings/tokens/token-graphic.tsx): the bow draws, the shaft

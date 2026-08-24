@@ -74,7 +74,9 @@ export async function sniffArtifact(
         "the destination.",
     );
 
-  const compressed = encrypted ? await decryptHead(head, opts.recoveryKey) : head;
+  const compressed = encrypted
+    ? await decryptHead(head, opts.recoveryKey)
+    : head;
   const unpacked = await gunzipHead(compressed);
   const isTar = looksTar(unpacked);
 
@@ -177,7 +179,8 @@ function gunzipHead(compressed: Buffer): Promise<Buffer> {
     const gun = zlib.createGunzip();
     // Whichever of the three ends us first wins; a promise settles once, so the
     // stragglers are no-ops. `destroy()` on a full head is the usual one.
-    const done = () => resolve(Buffer.concat(parts).subarray(0, UNPACKED_LIMIT));
+    const done = () =>
+      resolve(Buffer.concat(parts).subarray(0, UNPACKED_LIMIT));
     gun.on("data", (chunk: Buffer) => {
       parts.push(chunk);
       total += chunk.length;

@@ -34,7 +34,9 @@ test("the two agent-down errors are unrelated classes, so one instanceof is not 
  * every way a host can be down has to answer true.
  */
 function agentIsDown(e: unknown): boolean {
-  return e instanceof AgentUnavailableError || e instanceof AgentUnreachableError;
+  return (
+    e instanceof AgentUnavailableError || e instanceof AgentUnreachableError
+  );
 }
 
 test("every agent-down error is recognised as down", () => {
@@ -73,7 +75,11 @@ function agentDownReason(e: unknown): string {
 test("a transport error's address never reaches the deploy log", () => {
   const raw = "14 UNAVAILABLE: No connection established to 10.0.0.5:9443";
   const reason = agentDownReason(new AgentUnreachableError(raw));
-  assert.doesNotMatch(reason, /10\.0\.0\.5/, "the host address must not be echoed");
+  assert.doesNotMatch(
+    reason,
+    /10\.0\.0\.5/,
+    "the host address must not be echoed",
+  );
   assert.doesNotMatch(reason, /9443/, "nor the agent port");
   assert.ok(reason.length > 0, "but the reader still gets a reason");
 });
@@ -89,11 +95,18 @@ test("our own curated messages DO survive - they carry no address", () => {
 // up, which is precisely the thing that is fine.
 test("a certificate failure does not read as a dead host", () => {
   const dead = new AgentUnreachableError("14 UNAVAILABLE: connection refused");
-  const untrusted = new AgentUnreachableError("14 UNAVAILABLE: handshake", 14, true);
+  const untrusted = new AgentUnreachableError(
+    "14 UNAVAILABLE: handshake",
+    14,
+    true,
+  );
 
   assert.match(agentDownReason(dead), /did not answer/);
   assert.match(agentDownReason(untrusted), /certificate/);
   assert.doesNotMatch(agentDownReason(untrusted), /did not answer/);
   // And it still says nothing an operator should not see.
-  assert.doesNotMatch(agentDownReason(untrusted), /UNAVAILABLE|handshake|\d+\.\d+\.\d+\.\d+/);
+  assert.doesNotMatch(
+    agentDownReason(untrusted),
+    /UNAVAILABLE|handshake|\d+\.\d+\.\d+\.\d+/,
+  );
 });

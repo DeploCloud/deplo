@@ -47,7 +47,12 @@ import { CleanupScope } from "../lib/agent/gen/agent";
 const TARGET = "1.25.0";
 const KEEP_PER_SLUG_CAP = "cleanup.keep-per-slug";
 /** Capabilities the control plane relies on; one disappearing = a regression. */
-const REQUIRED_CAPS = ["self-update", "backup", "docker-cleanup", "container-stats"];
+const REQUIRED_CAPS = [
+  "self-update",
+  "backup",
+  "docker-cleanup",
+  "container-stats",
+];
 /** Probe without touching any agent binary (the BEFORE half of §7). */
 const probeOnly = process.argv.includes("--probe-only");
 /**
@@ -75,7 +80,9 @@ async function inFlightDeploys(serverId: string): Promise<number> {
 }
 
 /** The map the sweep really sends for this host: rollback depth + the live one. */
-async function keepPerSlugFor(serverId: string): Promise<Record<string, number>> {
+async function keepPerSlugFor(
+  serverId: string,
+): Promise<Record<string, number>> {
   const rows = await getDb()
     .select({ slug: apps.slug, keep: apps.rollbackKeep })
     .from(apps)
@@ -121,9 +128,15 @@ async function probe(serverId: string, name: string): Promise<void> {
   const a = await dryRunImages(serverId, 1, {});
   const b = await dryRunImages(serverId, 1, map);
   const c = await dryRunImages(serverId, raised, {});
-  console.log(`[${name}]   A scalar-1        would remove ${a.count} (${a.bytes} B)`);
-  console.log(`[${name}]   B per-slug        would remove ${b.count} (${b.bytes} B)`);
-  console.log(`[${name}]   C raised scalar=${raised}  would remove ${c.count} (${c.bytes} B)`);
+  console.log(
+    `[${name}]   A scalar-1        would remove ${a.count} (${a.bytes} B)`,
+  );
+  console.log(
+    `[${name}]   B per-slug        would remove ${b.count} (${b.bytes} B)`,
+  );
+  console.log(
+    `[${name}]   C raised scalar=${raised}  would remove ${c.count} (${c.bytes} B)`,
+  );
 
   // Only meaningful once the agent reads the map; before the update B == A by
   // construction (the field is ignored), which is itself worth seeing printed.
@@ -138,7 +151,9 @@ async function probe(serverId: string, name: string): Promise<void> {
     );
   }
   if (capable && b.count > a.count) {
-    throw new Error(`${name}: per-slug removes MORE than scalar-1 - STOP the rollout`);
+    throw new Error(
+      `${name}: per-slug removes MORE than scalar-1 - STOP the rollout`,
+    );
   }
 }
 
@@ -158,27 +173,40 @@ async function updateOne(serverId: string, name: string): Promise<void> {
 
   const hello = await agentPreflight(serverId);
   if (hello.agentVersion !== TARGET) {
-    throw new Error(`${name}: Hello says ${hello.agentVersion}, want ${TARGET} - STOP the rollout`);
+    throw new Error(
+      `${name}: Hello says ${hello.agentVersion}, want ${TARGET} - STOP the rollout`,
+    );
   }
   const missing = REQUIRED_CAPS.filter((c) => !hello.capabilities.includes(c));
   if (missing.length > 0) {
-    throw new Error(`${name}: capabilities disappeared: ${missing.join(", ")} - STOP the rollout`);
+    throw new Error(
+      `${name}: capabilities disappeared: ${missing.join(", ")} - STOP the rollout`,
+    );
   }
   if (!hello.capabilities.includes(KEEP_PER_SLUG_CAP)) {
-    throw new Error(`${name}: on ${TARGET} but not advertising ${KEEP_PER_SLUG_CAP} - STOP`);
+    throw new Error(
+      `${name}: on ${TARGET} but not advertising ${KEEP_PER_SLUG_CAP} - STOP`,
+    );
   }
   await markServerSeen(serverId, hello.agentVersion, hello.traefikRunning);
-  console.log(`[${name}] OK on ${hello.agentVersion}, docker=${hello.dockerAvailable}`);
+  console.log(
+    `[${name}] OK on ${hello.agentVersion}, docker=${hello.dockerAvailable}`,
+  );
 }
 
 async function main(): Promise<void> {
   const local = process.env.DEPLO_SERVER_IP ?? "";
-  const servers = (await listAllServers()).filter((s) => Boolean(s.agent?.certFingerprint));
+  const servers = (await listAllServers()).filter((s) =>
+    Boolean(s.agent?.certFingerprint),
+  );
   // Canary = the remote with the fewest Apps: if the binary is bad the control
   // plane is still up to observe it and the blast radius is one host.
   const counts = new Map<string, number>();
-  for (const row of await getDb().select({ serverId: apps.serverId }).from(apps)) {
-    if (row.serverId) counts.set(row.serverId, (counts.get(row.serverId) ?? 0) + 1);
+  for (const row of await getDb()
+    .select({ serverId: apps.serverId })
+    .from(apps)) {
+    if (row.serverId)
+      counts.set(row.serverId, (counts.get(row.serverId) ?? 0) + 1);
   }
   const remotes = servers
     .filter((s) => s.ip !== local)
@@ -188,7 +216,9 @@ async function main(): Promise<void> {
   for (const [i, s] of order.entries()) {
     const role = s.ip === local ? "agent 0" : i === 0 ? "canary" : "remote";
     if (only && s.name !== only) continue;
-    console.log(`--- ${s.name} (${s.ip}, ${role}, ${counts.get(s.id) ?? 0} apps)`);
+    console.log(
+      `--- ${s.name} (${s.ip}, ${role}, ${counts.get(s.id) ?? 0} apps)`,
+    );
     if (probeOnly) {
       await probe(s.id, s.name);
       continue;

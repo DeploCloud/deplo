@@ -38,6 +38,9 @@ export function settleOverride<T>(
 }
 
 /** What to render: the override while it stands, the server's value otherwise. */
-export function overrideValue<T>(override: ValueOverride<T>, serverValue: T): T {
+export function overrideValue<T>(
+  override: ValueOverride<T>,
+  serverValue: T,
+): T {
   return override ? override.value : serverValue;
 }

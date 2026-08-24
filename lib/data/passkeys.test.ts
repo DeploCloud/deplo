@@ -330,7 +330,11 @@ test("removing a passkey is recorded in every team the person is in", async () =
     const rows = await activityFor(team);
     assert.equal(rows.length, 1, `one row in ${team}`);
     assert.match(rows[0]!.message, /Removed the Laptop passkey/);
-    assert.equal(rows[0]!.actor, USER_1, "attributed to the person, not to deplo");
+    assert.equal(
+      rows[0]!.actor,
+      USER_1,
+      "attributed to the person, not to deplo",
+    );
   }
 });
 
@@ -407,7 +411,10 @@ test("clearing someone's passkeys touches nothing else", async () => {
 
   assert.equal((await passkeyRows(USER_2)).length, 0);
   const [u] = await db
-    .select({ tfa: usersTable.twoFactorEnabled, suspended: usersTable.suspended })
+    .select({
+      tfa: usersTable.twoFactorEnabled,
+      suspended: usersTable.suspended,
+    })
     .from(usersTable)
     .where(eq(usersTable.id, USER_2));
   assert.equal(u?.tfa, true, "their authenticator app is not collateral");
@@ -430,7 +437,6 @@ test("a passkey does not outlive its user", async () => {
     .where(eq(passkeyTable.id, "pk-theirs"));
   assert.equal(left.length, 0, "the FK cascade is what makes this true");
 });
-
 
 /* ------------------------------------------------------------------ */
 /* 10. Registration cannot be forged                                   */

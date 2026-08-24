@@ -50,7 +50,9 @@ export function ExecTerminal({
    * `execDatabaseConsole`. Default: the app `execConsole` mutation for
    * `appId`/`containerName`. Must resolve to the same ActionResult contract.
    */
-  exec?: (command: string) => Promise<ActionResult<{ output: string; detach?: boolean }>>;
+  exec?: (
+    command: string,
+  ) => Promise<ActionResult<{ output: string; detach?: boolean }>>;
 }) {
   const term = React.useRef<XtermApi | null>(null);
   const editor = React.useRef<LineEditor | null>(null);
@@ -160,7 +162,11 @@ export function ExecTerminal({
   return (
     <>
       <div className="h-[420px] bg-[#0a0a0a] p-2">
-        <XtermView onReady={onReady} onData={onData} className="h-full w-full" />
+        <XtermView
+          onReady={onReady}
+          onData={onData}
+          className="h-full w-full"
+        />
       </div>
       {closed ? (
         <div className="flex items-center gap-2 border-t border-border bg-secondary/20 px-3 py-2">

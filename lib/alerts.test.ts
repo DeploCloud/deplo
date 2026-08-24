@@ -43,7 +43,11 @@ test("every alert is in exactly one category, and no category invents one", () =
         `category ${cat.key} lists ${key}, which is not an alert`,
       );
       const already = seen.get(key);
-      assert.equal(already, undefined, `${key} is in ${already} and ${cat.key}`);
+      assert.equal(
+        already,
+        undefined,
+        `${key} is in ${already} and ${cat.key}`,
+      );
       seen.set(key, cat.key);
     }
   for (const key of ALL_ALERTS)

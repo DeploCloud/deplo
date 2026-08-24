@@ -20,7 +20,11 @@ import {
 import { newId, nowIso } from "../ids";
 import { getCurrentUser } from "../auth";
 import { recordActivity } from "./activity";
-import { requireActiveTeamId, requireCapability, requireTeamWide } from "../membership";
+import {
+  requireActiveTeamId,
+  requireCapability,
+  requireTeamWide,
+} from "../membership";
 import {
   BUILTIN_ROLE_KEYS,
   CAPABILITY_META,
@@ -35,7 +39,12 @@ import {
 import { withView } from "./folder-access";
 import { appCapabilitiesForTeam, nodeCapabilitiesFor } from "./node-access";
 import { memberScopeFor } from "./node-scope";
-import { ALL_CAPABILITIES, type Capability, type Membership, type Role } from "../types";
+import {
+  ALL_CAPABILITIES,
+  type Capability,
+  type Membership,
+  type Role,
+} from "../types";
 
 /**
  * Team roles — the named capability sets a member is assigned.
@@ -154,7 +163,9 @@ export async function ensureTeamRoles(
     if (inserted.length === 0) continue;
     await db
       .insert(teamRoleCapabilitiesTable)
-      .values(capabilitiesForRole(key).map((c) => ({ roleId: id, capability: c })));
+      .values(
+        capabilitiesForRole(key).map((c) => ({ roleId: id, capability: c })),
+      );
     byKey.set(key, id);
   }
 
@@ -177,10 +188,7 @@ async function adoptMatchingMemberships(
     .select({ id: membershipsTable.id, role: membershipsTable.role })
     .from(membershipsTable)
     .where(
-      and(
-        eq(membershipsTable.teamId, teamId),
-        isNull(membershipsTable.roleId),
-      ),
+      and(eq(membershipsTable.teamId, teamId), isNull(membershipsTable.roleId)),
     );
   if (rows.length === 0) return;
   const roleIds = [...byKey.values()];
@@ -215,7 +223,10 @@ async function adoptMatchingMemberships(
           .map((r) => r.id)
       : [],
   );
-  const caps = await capabilitiesByMembership(db, rows.map((r) => r.id));
+  const caps = await capabilitiesByMembership(
+    db,
+    rows.map((r) => r.id),
+  );
   for (const m of rows) {
     const targetId = byKey.get(m.role as Role);
     if (!targetId) continue;
@@ -313,7 +324,9 @@ export async function listRoles(): Promise<TeamRoleDTO[]> {
   const scopedIds = rows.filter((r) => r.scoped).map((r) => r.id);
   const scopeByRole = await loadRoleScopes(db, scopedIds);
   const countByRole = new Map(
-    counts.filter((c) => c.roleId).map((c) => [c.roleId as string, Number(c.n)]),
+    counts
+      .filter((c) => c.roleId)
+      .map((c) => [c.roleId as string, Number(c.n)]),
   );
 
   const dtos = rows.map((r) => {
@@ -351,7 +364,9 @@ export async function listRoles(): Promise<TeamRoleDTO[]> {
   // Defaults in their canonical order (Owner, Member, Viewer), then the team's
   // own roles oldest-first — the order the Roles page reads top to bottom.
   const rank = (d: TeamRoleDTO) =>
-    d.builtinKey ? BUILTIN_ROLE_KEYS.indexOf(d.builtinKey) : BUILTIN_ROLE_KEYS.length;
+    d.builtinKey
+      ? BUILTIN_ROLE_KEYS.indexOf(d.builtinKey)
+      : BUILTIN_ROLE_KEYS.length;
   return dtos.sort((a, b) => rank(a) - rank(b));
 }
 
@@ -575,7 +590,10 @@ export async function loadRoleScopes(
   if (roleIds.length === 0) return out;
   const [projects, environments, folders, apps] = await Promise.all([
     db
-      .select({ roleId: teamRoleScopeProjects.roleId, id: teamRoleScopeProjects.projectId })
+      .select({
+        roleId: teamRoleScopeProjects.roleId,
+        id: teamRoleScopeProjects.projectId,
+      })
       .from(teamRoleScopeProjects)
       .where(inArray(teamRoleScopeProjects.roleId, roleIds)),
     db
@@ -586,7 +604,10 @@ export async function loadRoleScopes(
       .from(teamRoleScopeEnvironments)
       .where(inArray(teamRoleScopeEnvironments.roleId, roleIds)),
     db
-      .select({ roleId: teamRoleScopeFolders.roleId, id: teamRoleScopeFolders.folderId })
+      .select({
+        roleId: teamRoleScopeFolders.roleId,
+        id: teamRoleScopeFolders.folderId,
+      })
       .from(teamRoleScopeFolders)
       .where(inArray(teamRoleScopeFolders.roleId, roleIds)),
     db
@@ -595,9 +616,12 @@ export async function loadRoleScopes(
       .where(inArray(teamRoleScopeApps.roleId, roleIds)),
   ]);
   const at = (roleId: string) => {
-    const cur =
-      out.get(roleId) ??
-      { projectIds: [], environmentIds: [], folderIds: [], appIds: [] };
+    const cur = out.get(roleId) ?? {
+      projectIds: [],
+      environmentIds: [],
+      folderIds: [],
+      appIds: [],
+    };
     out.set(roleId, cur);
     return cur;
   };
@@ -666,7 +690,9 @@ async function resolveRoleScope(
         environmentId: appsTable.environmentId,
       })
       .from(appsTable)
-      .where(and(inArray(appsTable.id, out.appIds), eq(appsTable.teamId, teamId)));
+      .where(
+        and(inArray(appsTable.id, out.appIds), eq(appsTable.teamId, teamId)),
+      );
     if (rows.length !== out.appIds.length)
       throw new Error("One of those isn't in this team any more");
     const reach = await appCapabilitiesForTeam(
@@ -687,7 +713,10 @@ async function resolveRoleScope(
     ["folder", out.folderIds],
   ] as const) {
     for (const id of ids) {
-      const mine = await nodeCapabilitiesFor(actingUserId, teamId, { kind, id });
+      const mine = await nodeCapabilitiesFor(actingUserId, teamId, {
+        kind,
+        id,
+      });
       if (mine.length === 0)
         throw new Error("One of those isn't in this team any more");
     }
@@ -703,7 +732,10 @@ async function resolveRoleScope(
         teamId: projectsTable.teamId,
       })
       .from(environmentsTable)
-      .innerJoin(projectsTable, eq(projectsTable.id, environmentsTable.projectId))
+      .innerJoin(
+        projectsTable,
+        eq(projectsTable.id, environmentsTable.projectId),
+      )
       .where(inArray(environmentsTable.id, out.environmentIds));
     if (envs.length !== out.environmentIds.length)
       throw new Error("One of those isn't in this team any more");
@@ -736,7 +768,9 @@ async function writeRoleScope(
   await tx
     .delete(teamRoleScopeFolders)
     .where(eq(teamRoleScopeFolders.roleId, roleId));
-  await tx.delete(teamRoleScopeApps).where(eq(teamRoleScopeApps.roleId, roleId));
+  await tx
+    .delete(teamRoleScopeApps)
+    .where(eq(teamRoleScopeApps.roleId, roleId));
   if (!scope) return;
   if (scope.projectIds.length)
     await tx
@@ -746,7 +780,10 @@ async function writeRoleScope(
     await tx
       .insert(teamRoleScopeEnvironments)
       .values(
-        scope.environmentIds.map((environmentId) => ({ roleId, environmentId })),
+        scope.environmentIds.map((environmentId) => ({
+          roleId,
+          environmentId,
+        })),
       );
   if (scope.folderIds.length)
     await tx
@@ -830,7 +867,9 @@ async function roleInTeam(
       requireTwoFactor: teamRolesTable.requireTwoFactor,
     })
     .from(teamRolesTable)
-    .where(and(eq(teamRolesTable.id, roleId), eq(teamRolesTable.teamId, teamId)))
+    .where(
+      and(eq(teamRolesTable.id, roleId), eq(teamRolesTable.teamId, teamId)),
+    )
     .limit(1);
   const role = rows[0];
   if (!role) throw new Error("Role not found");
@@ -921,8 +960,7 @@ async function assertNameFree(
     .from(teamRolesTable)
     .where(eq(teamRolesTable.teamId, teamId));
   const clash = rows.find(
-    (r) =>
-      r.id !== exceptRoleId && r.name.toLowerCase() === name.toLowerCase(),
+    (r) => r.id !== exceptRoleId && r.name.toLowerCase() === name.toLowerCase(),
   );
   if (clash) throw new Error(`This team already has a role called “${name}”`);
 }
@@ -980,7 +1018,8 @@ export async function createRole(input: {
   /** What the role reaches. Absent or null = the whole team. */
   scope?: RoleScopeInput | null;
 }): Promise<TeamRoleDTO> {
-  const { teamId, userId, membership } = await requireCapability("manage_roles");
+  const { teamId, userId, membership } =
+    await requireCapability("manage_roles");
   const name = cleanRoleName(input.name);
   const description = cleanDescription(input.description);
   const capabilities = withinActor(input.capabilities, membership);
@@ -995,18 +1034,16 @@ export async function createRole(input: {
   const createdAt = nowIso();
   await db.transaction(async (tx) => {
     await assertNameFree(tx, teamId, name, null);
-    await tx
-      .insert(teamRolesTable)
-      .values({
-        id,
-        teamId,
-        builtinKey: null,
-        name,
-        description,
-        requireTwoFactor,
-        scoped: scope !== null,
-        createdAt,
-      });
+    await tx.insert(teamRolesTable).values({
+      id,
+      teamId,
+      builtinKey: null,
+      name,
+      description,
+      requireTwoFactor,
+      scoped: scope !== null,
+      createdAt,
+    });
     await tx
       .insert(teamRoleCapabilitiesTable)
       .values(capabilities.map((c) => ({ roleId: id, capability: c })));
@@ -1048,7 +1085,8 @@ export async function updateRole(input: {
   /** What the role REACHES. Absent leaves it as it is; `null` clears it. */
   scope?: RoleScopeInput | null;
 }): Promise<void> {
-  const { teamId, userId, membership } = await requireCapability("manage_roles");
+  const { teamId, userId, membership } =
+    await requireCapability("manage_roles");
   const name = cleanRoleName(input.name);
   const description = cleanDescription(input.description);
   // ABSENT MEANS "LEAVE IT ALONE" on every optional axis, which `scope` below
@@ -1129,7 +1167,8 @@ export async function updateRole(input: {
 
 /** Restore a default role to exactly what deplo ships. Built-ins only. */
 export async function resetRole(id: string): Promise<void> {
-  const { teamId, userId, membership } = await requireCapability("manage_roles");
+  const { teamId, userId, membership } =
+    await requireCapability("manage_roles");
   // A reset restores the shipped default, and no shipped default is limited —
   // so it CLEARS the scope, which makes it a widening. An actor whose own role
   // reaches part of the team must not be able to perform it: the reset button

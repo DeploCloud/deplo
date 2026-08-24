@@ -64,8 +64,7 @@ function dayLabel(iso: string, now: Date): string {
     weekday: "long",
     month: "long",
     day: "numeric",
-    year:
-      date.getFullYear() === now.getFullYear() ? undefined : "numeric",
+    year: date.getFullYear() === now.getFullYear() ? undefined : "numeric",
   });
 }
 
@@ -111,7 +110,7 @@ export default async function ActivityPage() {
             <div className="space-y-8">
               {groups.map((group) => (
                 <section key={group.label} className="space-y-4">
-                  <h2 className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                  <h2 className="text-xs font-medium tracking-wide text-muted-foreground uppercase">
                     {group.label}
                   </h2>
 
@@ -119,7 +118,7 @@ export default async function ActivityPage() {
                     {/* Vertical timeline connector */}
                     <span
                       aria-hidden
-                      className="absolute left-[18px] top-2 bottom-2 w-px bg-border"
+                      className="absolute top-2 bottom-2 left-[18px] w-px bg-border"
                     />
 
                     {group.items.map((activity) => {

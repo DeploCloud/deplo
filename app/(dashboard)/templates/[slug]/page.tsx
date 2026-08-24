@@ -34,7 +34,11 @@ import {
   type OverviewPlacement,
 } from "@/lib/overview-links";
 import { templateAccent, templateAccents } from "@/lib/templates/logo-color";
-import { getTemplate, listCatalog, templateAssetUrl } from "@/templates/catalog";
+import {
+  getTemplate,
+  listCatalog,
+  templateAssetUrl,
+} from "@/templates/catalog";
 import { defaultVariant } from "@/templates/types";
 
 /** How many siblings the Related rail carries. */
@@ -46,7 +50,9 @@ export async function generateMetadata(props: PageProps<"/templates/[slug]">) {
   return { title: template ? template.name : "Template" };
 }
 
-export default async function TemplatePage(props: PageProps<"/templates/[slug]">) {
+export default async function TemplatePage(
+  props: PageProps<"/templates/[slug]">,
+) {
   const [{ slug }, searchParams] = await Promise.all([
     props.params,
     props.searchParams,
@@ -95,7 +101,11 @@ export default async function TemplatePage(props: PageProps<"/templates/[slug]">
 
   const catalog = await listCatalog().catch(() => []);
   const related = catalog
-    .filter((t) => t.slug !== template.slug && defaultVariant(t).category.slug === variant.category.slug)
+    .filter(
+      (t) =>
+        t.slug !== template.slug &&
+        defaultVariant(t).category.slug === variant.category.slug,
+    )
     .slice(0, RELATED);
   const relatedAccents = await templateAccents(related);
 

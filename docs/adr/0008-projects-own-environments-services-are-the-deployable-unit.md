@@ -18,8 +18,8 @@
 
 ## Context
 
-Today the tenancy tree is **Team → Folder(s) → Project**, where a **Project** is the *deployable
-app* (server, framework, source, one production stack + one dev container, deployments, domains,
+Today the tenancy tree is **Team → Folder(s) → Project**, where a **Project** is the _deployable
+app_ (server, framework, source, one production stack + one dev container, deployments, domains,
 env vars). "Environment" is **not an entity** — it is the fixed enum
 `EnvTarget = production | preview | development` ([lib/types.ts:750](../../lib/types.ts#L750)) woven
 through three pure seams — env selection ([env-resolve.ts](../../lib/deploy/env-resolve.ts)),
@@ -27,8 +27,8 @@ ports ([ports.ts](../../lib/deploy/ports.ts)), and the deployment axis
 (`deployments.environment`) — plus the dev-container renderer ([dev.ts](../../lib/deploy/dev.ts)).
 
 We want the **Railway model**: a top-level, folder-like **container** that owns a customizable set
-of **Environments** (default Development / Preview / Production), each a *fully isolated deploy
-target* — its own containers, URL(s), git branch, and env vars. Folders live inside the container;
+of **Environments** (default Development / Preview / Production), each a _fully isolated deploy
+target_ — its own containers, URL(s), git branch, and env vars. Folders live inside the container;
 the container cannot nest in another container. Adoption is **additive** — existing top-level
 folders and un-grouped apps keep working with no forced migration.
 
@@ -45,9 +45,9 @@ and the glossary. The target tree is **Team → Project (container) → Folder(s
 - **IDs stay.** `newId("prj")` keeps minting Service ids ([lib/ids.ts](../../lib/ids.ts) prefixes are
   opaque — nothing parses them), so no PK/FK **value** rewrite. Existing `prj_…` rows remain Services.
 - **The rename is entity-aware, never a blind `sed`.** Two words are already overloaded and must be
-  left alone: (a) `domains.ts` uses **"service"** for *compose* services
+  left alone: (a) `domains.ts` uses **"service"** for _compose_ services
   (`composeServiceNames`, `RoutableDomain.service`, `domains.service`) — untouched; (b) the enum
-  value **"development"** and `Deployment.environment` collide with the new *Environment* entity —
+  value **"development"** and `Deployment.environment` collide with the new _Environment_ entity —
   disambiguated per Decision 3.
 
 ### 2. New entity: **Project** (the container)
@@ -55,7 +55,7 @@ and the glossary. The target tree is **Team → Project (container) → Folder(s
 A top-level, team-scoped, **folder-like** grouping — modeled on [`folders`](../../lib/db/schema/control-plane.ts#L159)
 (name, `color`, `owner_user_id` + per-container **grants**, team-wide ordering) — that additionally
 **owns Environments**. New tables `projects`, `project_grants`, `team_project_order` (the names are
-*reclaimed* after the Service rename frees them). New id prefix **`prc`**. A Project has **no
+_reclaimed_ after the Service rename frees them). New id prefix **`prc`**. A Project has **no
 `parent_id`** (Projects never nest). The owner+grants authorization is cloned verbatim from
 [folder-access.ts](../../lib/data/folder-access.ts); creating a Project needs the **`deploy`**
 capability, exactly like a folder.
@@ -105,8 +105,8 @@ domain set. Git branch resolves from the Environment.
 ### 6. Additive / legacy coexistence
 
 A Service with **no Project** has no Environment rows → it keeps **today's single-runtime behavior**
-(bare `deplo-<slug>`, the `EnvTarget` enum, one production stack + one dev container) — an *implicit
-Production*. When a Service joins a Project, its live runtime is adopted as the **Production**
+(bare `deplo-<slug>`, the `EnvTarget` enum, one production stack + one dev container) — an _implicit
+Production_. When a Service joins a Project, its live runtime is adopted as the **Production**
 environment (bare `<slug>` preserved → zero churn), and it gains the project's other environments.
 
 ### 7. The Development environment IS the dev container
@@ -155,9 +155,9 @@ will emit `DROP+CREATE` (data loss).
   (+6 child tables), all `project_id→service_id` FKs, indexes, `team_project_order→team_service_order`,
   `backups.target_kind 'project'→'service'` (CHECK + data + code literals). Rename types, data-layer
   files/functions, GraphQL types/ops, UI routes (`/projects→/services`), `components/projects→
-  components/services`, inline GraphQL strings, pubsub channel, copy. Keep `newId("prj")`, the
+components/services`, inline GraphQL strings, pubsub channel, copy. Keep `newId("prj")`, the
   `deplo.project` label, and `deplo-<slug>` naming. Fix the `isUniqueViolation(e,"projects_slug_uq")`
-  string coupling. *Verify*: `bun test` (esp. `schema.test.ts`, `curated-examples.test.ts`),
+  string coupling. _Verify_: `bun test` (esp. `schema.test.ts`, `curated-examples.test.ts`),
   typecheck, drive the app.
 - **Phase 2 — Project container (additive, no environments yet).** Migration `0016`: `projects`,
   `project_grants`, `team_project_order` + `folders.project_id` / `services.project_id`. New
@@ -165,17 +165,17 @@ will emit `DROP+CREATE` (data loss).
   `folder-access.ts`); `moveFolderToProject` / `moveServiceToProject`. GraphQL module reclaiming
   `projects`/`project`/`createProject`. UI: `/projects` index + `/projects/[projectSlug]` detail
   reusing `ProjectsGrid` scoped to the container, `project-container-card.tsx`, "New project" menu.
-  *Verify*: create a project, move a folder/service in, reorder, share.
+  _Verify_: create a project, move a folder/service in, reorder, share.
 - **Phase 3 — Environments + pipeline rewire (sub-phased).** `environments` + `service_environments`
-  + per-env config; seed 3 on create (backfill existing projects). `deployments.environment→
-  environment_id`; env-var scoping → environment (+ kind fallback). Pipeline: per-env deploy key
-  (Production = bare `<slug>`), env-parameterized `env-resolve`/`ports`/`routing`/`domains`, per-env
-  branch; Environment CRUD + `?env=` switcher; Development-as-dev-container. *Verify*: deploy one
-  service to two environments → isolated containers/URLs, per-env vars.
+  - per-env config; seed 3 on create (backfill existing projects). `deployments.environment→
+environment_id`; env-var scoping → environment (+ kind fallback). Pipeline: per-env deploy key
+    (Production = bare `<slug>`), env-parameterized `env-resolve`/`ports`/`routing`/`domains`, per-env
+    branch; Environment CRUD + `?env=` switcher; Development-as-dev-container. _Verify_: deploy one
+    service to two environments → isolated containers/URLs, per-env vars.
 
 ## Proposed glossary (CONTEXT.md)
 
-- **Service** — the deployable app (formerly *Project*): server, framework, source, deployments,
+- **Service** — the deployable app (formerly _Project_): server, framework, source, deployments,
   domains, env vars, one runtime **per environment**. _Avoid_: project (now the container), app
   (reserved for an installed App), component.
 - **Project** — a top-level, team-scoped, folder-like **container** that owns **Environments** and

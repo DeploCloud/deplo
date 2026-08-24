@@ -58,7 +58,11 @@ import type { GitRepo, UploadArchive } from "../types";
  * `mime` is passed when the SOURCE knew the type — a served icon, whose bytes
  * were sniffed — and beats the extension, which a served URL may not even have
  * (`/icon?v=2`). A file on disk has only its name, so it falls back to that. */
-function toLogoDataUri(bytes: Buffer, path: string, mime?: string): string | null {
+function toLogoDataUri(
+  bytes: Buffer,
+  path: string,
+  mime?: string,
+): string | null {
   if (bytes.length === 0 || bytes.length > MAX_LOGO_BYTES) return null;
   const type = mime ?? mimeForFaviconPath(path);
   if (!type) return null;
@@ -159,7 +163,11 @@ async function collectTreeCandidates(root: string): Promise<FaviconFile[]> {
   const out: FaviconFile[] = [];
   const stack: string[] = [""]; // dirs relative to root; "" is the root itself
   let dirsWalked = 0;
-  while (stack.length > 0 && dirsWalked < MAX_DIRS_WALKED && out.length < MAX_CANDIDATES) {
+  while (
+    stack.length > 0 &&
+    dirsWalked < MAX_DIRS_WALKED &&
+    out.length < MAX_CANDIDATES
+  ) {
     const rel = stack.pop()!;
     dirsWalked++;
     let dir;
@@ -369,7 +377,10 @@ export async function detectAppFavicon(
         : null;
     case "upload":
       return project.upload
-        ? detectUploadFavicon(project.upload, project.build.rootDirectory ?? null)
+        ? detectUploadFavicon(
+            project.upload,
+            project.build.rootDirectory ?? null,
+          )
         : null;
     default:
       return null;

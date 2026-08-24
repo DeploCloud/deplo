@@ -15,7 +15,10 @@ import { requireActiveTeamId, requireInstanceAdmin } from "../membership";
 import { getCurrentUser } from "../auth";
 import { encryptSecret, decryptSecret, htpasswdLine } from "../crypto";
 import { isDeploHostServer } from "../deploy/domains";
-import { withTraefikDashboard, traefikDashboardDomain } from "../deploy/traefik-stack";
+import {
+  withTraefikDashboard,
+  traefikDashboardDomain,
+} from "../deploy/traefik-stack";
 import { assertPasswordNotPwned } from "../pwned-password";
 import { assertPasswordPolicy } from "../password-policy";
 import { recordActivity } from "./activity";
@@ -114,7 +117,9 @@ export async function serverHostInfo(id: string): Promise<ServerHostInfo> {
   if (!server) throw new Error("Server not found");
 
   const { fetchHostInfo } = await import("../infra/agent-client");
-  const info = await fetchHostInfo(id, { controlPlaneHint: controlPlaneHint() });
+  const info = await fetchHostInfo(id, {
+    controlPlaneHint: controlPlaneHint(),
+  });
   return toHostInfo(info);
 }
 
@@ -147,7 +152,9 @@ export async function setServerTimezone(
     );
 
   const { setHostTimezone } = await import("../infra/agent-client");
-  const info = await setHostTimezone(id, tz, { controlPlaneHint: controlPlaneHint() });
+  const info = await setHostTimezone(id, tz, {
+    controlPlaneHint: controlPlaneHint(),
+  });
   await recordActivity(
     "member",
     `Set the timezone on ${server.name} to ${tz}`,
@@ -190,7 +197,9 @@ export function canonicalTimezone(input: string): string | null {
   if (!tz) return null;
   let resolved: string;
   try {
-    resolved = new Intl.DateTimeFormat("en-US", { timeZone: tz }).resolvedOptions().timeZone;
+    resolved = new Intl.DateTimeFormat("en-US", {
+      timeZone: tz,
+    }).resolvedOptions().timeZone;
   } catch {
     return null;
   }
@@ -217,7 +226,9 @@ export function canonicalTimezone(input: string): string | null {
  * Failures are collected per workload instead of aborting: on a host where one
  * stack is wedged, the other twenty should still come back.
  */
-export async function restartServerWorkloads(id: string): Promise<ServerRestartReport> {
+export async function restartServerWorkloads(
+  id: string,
+): Promise<ServerRestartReport> {
   await requireInstanceAdmin();
   const teamId = await requireActiveTeamId();
   const user = (await getCurrentUser())!;
@@ -234,11 +245,19 @@ export async function restartServerWorkloads(id: string): Promise<ServerRestartR
     // that. What the host is actually running is the agent's business, and it
     // says so by failing the stop.
     db
-      .select({ slug: appsTable.slug, name: appsTable.name, status: appsTable.status })
+      .select({
+        slug: appsTable.slug,
+        name: appsTable.name,
+        status: appsTable.status,
+      })
       .from(appsTable)
       .where(eq(appsTable.serverId, id)),
     db
-      .select({ host: databasesTable.host, name: databasesTable.name, status: databasesTable.status })
+      .select({
+        host: databasesTable.host,
+        name: databasesTable.name,
+        status: databasesTable.status,
+      })
       .from(databasesTable)
       .where(eq(databasesTable.serverId, id)),
   ]);
@@ -331,10 +350,14 @@ const LEAVE_ALONE_APP_STATUSES: ReadonlySet<string> = new Set<AppStatus>([
 
 /** The same call for databases: `stopped` is down, `provisioning` is mid-create
  *  (there is no stack yet). `error` is restartable for the same reason as above. */
-const LEAVE_ALONE_DB_STATUSES: ReadonlySet<string> = new Set(["stopped", "provisioning"]);
+const LEAVE_ALONE_DB_STATUSES: ReadonlySet<string> = new Set([
+  "stopped",
+  "provisioning",
+]);
 
 /** An error's own words, for a report the operator reads. */
-const reason = (e: unknown): string => (e instanceof Error ? e.message : String(e));
+const reason = (e: unknown): string =>
+  e instanceof Error ? e.message : String(e);
 
 /**
  * Restart the host's Traefik. Not a config change: the stack file is untouched,
@@ -352,8 +375,15 @@ export async function restartServerTraefik(id: string): Promise<void> {
   const res = await applyTraefikConfig(id, { restartOnly: true });
   // The agent reports a refusal (a Traefik it did not install) as ok:false with
   // a reason — surface that verbatim rather than inventing copy for it.
-  if (!res.ok) throw new Error(res.error || `Could not restart Traefik on ${server.name}`);
-  await recordActivity("member", `Restarted Traefik on ${server.name}`, user.name, null, teamId);
+  if (!res.ok)
+    throw new Error(res.error || `Could not restart Traefik on ${server.name}`);
+  await recordActivity(
+    "member",
+    `Restarted Traefik on ${server.name}`,
+    user.name,
+    null,
+    teamId,
+  );
 }
 
 /**
@@ -381,7 +411,13 @@ export async function restartDeploPanel(id: string): Promise<void> {
     throw new Error(res.error || "Deplo could not be restarted on this host");
   // Recorded BEFORE the restart lands (it is scheduled a moment out), so the
   // trail survives the process going away mid-request.
-  await recordActivity("member", `Restarted the Deplo panel`, user.name, null, teamId);
+  await recordActivity(
+    "member",
+    `Restarted the Deplo panel`,
+    user.name,
+    null,
+    teamId,
+  );
 }
 
 /**
@@ -437,15 +473,21 @@ export async function setServerTraefikDashboard(
   // Validate BEFORE dialing. A request missing a password must be refused on its
   // own merits, not after a round trip that may itself fail — otherwise the
   // operator gets "server unreachable" for a form they simply filled in wrong.
-  let credentials: { domain: string; username: string; password: string } | null = null;
+  let credentials: {
+    domain: string;
+    username: string;
+    password: string;
+  } | null = null;
   if (input) {
     const domain = input.domain.trim().toLowerCase();
     const username = input.username.trim();
-    if (!domain) throw new Error("Enter the domain the Traefik panel should answer on");
+    if (!domain)
+      throw new Error("Enter the domain the Traefik panel should answer on");
     if (!username) throw new Error("Enter a username for the Traefik panel");
     // A username with a colon would split the htpasswd line and silently create a
     // different account than the one the operator typed.
-    if (username.includes(":")) throw new Error("A username cannot contain a colon");
+    if (username.includes(":"))
+      throw new Error("A username cannot contain a colon");
     // Only a freshly typed one: an edit that keeps the stored password must not
     // be refused for a credential that is already published. Both gates, in the
     // same order every other chosen password gets them — the panel lists every
@@ -467,9 +509,8 @@ export async function setServerTraefikDashboard(
     credentials = { domain, username, password };
   }
 
-  const { fetchHostInfo, applyTraefikConfig, withTraefikStackLock } = await import(
-    "../infra/agent-client"
-  );
+  const { fetchHostInfo, applyTraefikConfig, withTraefikStackLock } =
+    await import("../infra/agent-client");
 
   const stored = credentials
     ? {
@@ -510,7 +551,10 @@ export async function setServerTraefikDashboard(
     if (composeYaml === current.traefikComposeYaml) return false;
     const res = await applyTraefikConfig(id, { composeYaml });
     if (!res.ok)
-      throw new Error(res.error || `Could not apply the Traefik configuration on ${server.name}`);
+      throw new Error(
+        res.error ||
+          `Could not apply the Traefik configuration on ${server.name}`,
+      );
     return true;
   });
 

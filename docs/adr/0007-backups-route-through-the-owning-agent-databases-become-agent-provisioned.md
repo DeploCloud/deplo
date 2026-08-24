@@ -18,7 +18,7 @@ Two facts about the platform shape every decision:
 - **Databases are still LOCAL.** `createDatabase()` hardcodes `read().servers[0]` and calls
   `docker(["compose", … "up","-d"])` directly, even though `Database.serverId` already
   exists. This is the last deploy-adjacent surface that bypasses the agent boundary — and a
-  backup that dumps a DB must reach that DB through *its owning agent* anyway, so the two
+  backup that dumps a DB must reach that DB through _its owning agent_ anyway, so the two
   problems share a path.
 
 When we examined the existing agent stack RPCs against this need, two things the original
@@ -61,7 +61,7 @@ calling it with `removeVolumes` unset.
   `pg_dump -Fc` + `pg_restore --clean --if-exists`, MySQL `mysqldump --add-drop-table` +
   `mysql`, Mongo `mongodump` + `mongorestore --drop`. Project restore: stop stack → wipe +
   untar volumes + files → `Reroute` the snapshotted compose/env (which also restarts the
-  stack) — a **full restore of data *and* config**.
+  stack) — a **full restore of data _and_ config**.
 - `S3Check(...)` — a HEAD/list to make `testS3()` real, run on any reachable agent that
   advertises `backup`.
 - `S3Delete(...)` — delete objects by key/prefix. **Required, not optional**: it backs both

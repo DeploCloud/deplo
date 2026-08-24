@@ -89,7 +89,12 @@ const PR = {
 /** A github-source app with previews on. */
 async function seedPreviewApp(
   id: string,
-  opts: { teamId?: string; slug?: string; maxActive?: number; forkPolicy?: string } = {},
+  opts: {
+    teamId?: string;
+    slug?: string;
+    maxActive?: number;
+    forkPolicy?: string;
+  } = {},
 ): Promise<string> {
   await seedApp(db, {
     id,
@@ -144,7 +149,11 @@ test("a preview's deploy key and host are minted once and never move", async () 
 
   // Three more pushes to the same pull request.
   for (const sha of ["def5678", "aaa1111", "bbb2222"]) {
-    await openOrSyncPreview("prj_1", { ...PR, headSha: sha }, { actor: "octocat" });
+    await openOrSyncPreview(
+      "prj_1",
+      { ...PR, headSha: sha },
+      { actor: "octocat" },
+    );
   }
   const after = (
     await db
@@ -153,7 +162,11 @@ test("a preview's deploy key and host are minted once and never move", async () 
       .where(eq(appPreviewsTable.id, first.previewId!))
   )[0]!;
   assert.equal(after.deployKey, before.deployKey);
-  assert.equal(after.host, before.host, "the link on the pull request must keep working");
+  assert.equal(
+    after.host,
+    before.host,
+    "the link on the pull request must keep working",
+  );
   assert.equal(after.headSha, "bbb2222");
 });
 
@@ -190,7 +203,11 @@ test("at the cap a new preview EVICTS the least recently active one", async () =
   await openOrSyncPreview("prj_1", { ...PR, number: 2 }, { actor: "o" });
   // #1 is now the stalest. Touching #2 is not needed — insertion order already
   // ordered `last_activity_at`, and that is precisely what must decide.
-  const c = await openOrSyncPreview("prj_1", { ...PR, number: 3 }, { actor: "o" });
+  const c = await openOrSyncPreview(
+    "prj_1",
+    { ...PR, number: 3 },
+    { actor: "o" },
+  );
 
   assert.ok(c.previewId, "the new pull request builds");
   assert.equal(c.refusal, undefined);
@@ -198,7 +215,11 @@ test("at the cap a new preview EVICTS the least recently active one", async () =
   // Evicted by ACTIVITY, not by pull request age: the row survives so the same
   // URL can come back, and #2 — more recently active — is untouched.
   assert.equal((await previewOf(1)).status, "evicted");
-  assert.equal((await previewOf(1)).state, "open", "the pull request is still open");
+  assert.equal(
+    (await previewOf(1)).state,
+    "open",
+    "the pull request is still open",
+  );
   assert.notEqual((await previewOf(2)).status, "evicted");
   assert.notEqual((await previewOf(3)).status, "evicted");
 });
@@ -220,7 +241,11 @@ test("a push does NOT revive an evicted preview, but Redeploy does", async () =>
   );
   assert.deepEqual(push.refusal, { kind: "evicted", max: 1 });
   assert.equal(push.deploymentId, null);
-  assert.equal((await previewOf(1)).headSha, "newsha1", "facts still track the PR");
+  assert.equal(
+    (await previewOf(1)).headSha,
+    "newsha1",
+    "facts still track the PR",
+  );
   assert.equal((await previewOf(1)).status, "evicted");
   assert.notEqual((await previewOf(2)).status, "evicted");
 
@@ -233,8 +258,16 @@ test("a push does NOT revive an evicted preview, but Redeploy does", async () =>
   );
   assert.equal(back.refusal, undefined);
   assert.notEqual((await previewOf(1)).status, "evicted");
-  assert.equal((await previewOf(1)).deployKey, evictedKey, "same stack, same URL");
-  assert.equal((await previewOf(2)).status, "evicted", "the cap of 1 still holds");
+  assert.equal(
+    (await previewOf(1)).deployKey,
+    evictedKey,
+    "same stack, same URL",
+  );
+  assert.equal(
+    (await previewOf(2)).status,
+    "evicted",
+    "the cap of 1 still holds",
+  );
 });
 
 test("a blocked fork evicts NOTHING — a stranger cannot knock a preview over", async () => {
@@ -290,11 +323,20 @@ test("approving a fork through the gated API still respects the cap", async () =
     await approvePreview((await previewOf(3)).id);
   });
 
-  const live = (await db.select().from(appPreviewsTable))
-    .filter((p) => p.state === "open" && !["blocked", "evicted"].includes(p.status));
-  assert.equal(live.length, 2, `cap of 2 exceeded: ${live.map((p) => p.prNumber)}`);
+  const live = (await db.select().from(appPreviewsTable)).filter(
+    (p) => p.state === "open" && !["blocked", "evicted"].includes(p.status),
+  );
+  assert.equal(
+    live.length,
+    2,
+    `cap of 2 exceeded: ${live.map((p) => p.prNumber)}`,
+  );
   assert.equal((await previewOf(1)).status, "evicted", "the stalest made room");
-  assert.notEqual((await previewOf(3)).status, "blocked", "the fork is building");
+  assert.notEqual(
+    (await previewOf(3)).status,
+    "blocked",
+    "the fork is building",
+  );
 });
 
 test("a blocked fork holds no slot: it has no stack to evict", async () => {
@@ -309,16 +351,28 @@ test("a blocked fork holds no slot: it has no stack to evict", async () => {
   );
   assert.deepEqual(fork.refusal, { kind: "awaiting-approval" });
 
-  const mine = await openOrSyncPreview("prj_1", { ...PR, number: 10 }, { actor: "o" });
+  const mine = await openOrSyncPreview(
+    "prj_1",
+    { ...PR, number: 10 },
+    { actor: "o" },
+  );
   assert.ok(mine.previewId);
   assert.equal(mine.refusal, undefined);
-  assert.equal((await previewOf(9)).status, "blocked", "the fork is still waiting");
+  assert.equal(
+    (await previewOf(9)).status,
+    "blocked",
+    "the fork is still waiting",
+  );
 });
 
 test("an EXISTING preview keeps building once the app is at its cap", async () => {
   // Refusing its next push would leave a stale URL live on the pull request.
   await seedPreviewApp("prj_1", { slug: "blog", maxActive: 1 });
-  const a = await openOrSyncPreview("prj_1", { ...PR, number: 1 }, { actor: "o" });
+  const a = await openOrSyncPreview(
+    "prj_1",
+    { ...PR, number: 1 },
+    { actor: "o" },
+  );
   const again = await openOrSyncPreview(
     "prj_1",
     { ...PR, number: 1, headSha: "zzz" },
@@ -400,7 +454,11 @@ test("a close that could not reach the host stays queued for the reaper", async 
       .where(eq(appPreviewsTable.id, res.previewId!))
   )[0]!;
   assert.equal(row.state, "closed");
-  assert.equal(row.tornDownAt, null, "the only honest record that a stack is still out there");
+  assert.equal(
+    row.tornDownAt,
+    null,
+    "the only honest record that a stack is still out there",
+  );
   assert.ok(row.closedAt);
 
   const due = await previewsDueForReaping(new Date(), 20);
@@ -456,8 +514,16 @@ test("reopening a closed pull request revives the SAME preview and host", async 
 
 test("an idle preview is reaped, a fresh one is not", async () => {
   await seedPreviewApp("prj_1", { slug: "blog" });
-  const fresh = await openOrSyncPreview("prj_1", { ...PR, number: 1 }, { actor: "o" });
-  const stale = await openOrSyncPreview("prj_1", { ...PR, number: 2 }, { actor: "o" });
+  const fresh = await openOrSyncPreview(
+    "prj_1",
+    { ...PR, number: 1 },
+    { actor: "o" },
+  );
+  const stale = await openOrSyncPreview(
+    "prj_1",
+    { ...PR, number: 2 },
+    { actor: "o" },
+  );
   await db
     .update(appPreviewsTable)
     .set({ lastActivityAt: "2020-01-01T00:00:00.000Z" })

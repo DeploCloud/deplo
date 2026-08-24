@@ -201,8 +201,7 @@ builder.mutationFields((t) => ({
       createToken({
         name: input.name,
         capabilities: (input.capabilities ?? undefined) as
-          | Capability[]
-          | undefined,
+          Capability[] | undefined,
         teamIds: input.teamIds ?? undefined,
         projectIds: input.projectIds ?? undefined,
         folderIds: input.folderIds ?? undefined,
@@ -223,8 +222,7 @@ builder.mutationFields((t) => ({
         id: input.id,
         name: input.name,
         capabilities: (input.capabilities ?? undefined) as
-          | Capability[]
-          | undefined,
+          Capability[] | undefined,
         teamIds: input.teamIds ?? undefined,
         projectIds: input.projectIds ?? undefined,
         folderIds: input.folderIds ?? undefined,

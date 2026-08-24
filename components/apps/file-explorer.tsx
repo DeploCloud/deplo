@@ -123,7 +123,9 @@ export function FileExplorer({ appId }: { appId: string }) {
   const [draft, setDraft] = React.useState("");
   const [saving, setSaving] = React.useState(false);
   // null = no dialog; "file" / "folder" = the create-X dialog is open.
-  const [creating, setCreating] = React.useState<null | "file" | "folder">(null);
+  const [creating, setCreating] = React.useState<null | "file" | "folder">(
+    null,
+  );
   const [newName, setNewName] = React.useState("");
   const fileInputRef = React.useRef<HTMLInputElement | null>(null);
 
@@ -274,7 +276,7 @@ export function FileExplorer({ appId }: { appId: string }) {
     return (
       <div className="space-y-4">
         <div className="flex items-center justify-between gap-3">
-          <div className="flex items-center gap-2 min-w-0">
+          <div className="flex min-w-0 items-center gap-2">
             <Button
               variant="ghost"
               size="sm"
@@ -448,7 +450,7 @@ export function FileExplorer({ appId }: { appId: string }) {
                 )}
                 <span className="truncate">{entry.name}</span>
               </button>
-              <span className="shrink-0 text-xs tabular-nums text-muted-foreground">
+              <span className="shrink-0 text-xs text-muted-foreground tabular-nums">
                 {entry.kind === "file" ? formatSize(entry.size) : "—"}
               </span>
               {canWrite && (
@@ -456,7 +458,7 @@ export function FileExplorer({ appId }: { appId: string }) {
                   <Button
                     variant="ghost"
                     size="sm"
-                    className="shrink-0 text-muted-foreground opacity-0 transition-opacity hover:text-destructive group-hover:opacity-100"
+                    className="shrink-0 text-muted-foreground opacity-0 transition-opacity group-hover:opacity-100 hover:text-destructive"
                     onClick={() => remove(entry)}
                   >
                     <Trash2 className="size-4" />
@@ -480,7 +482,9 @@ export function FileExplorer({ appId }: { appId: string }) {
             </DialogTitle>
             <DialogDescription>
               Created in{" "}
-              <span className="font-mono">{dir ? `files/${dir}` : "files"}</span>
+              <span className="font-mono">
+                {dir ? `files/${dir}` : "files"}
+              </span>
               .
             </DialogDescription>
           </DialogHeader>
@@ -491,9 +495,7 @@ export function FileExplorer({ appId }: { appId: string }) {
                 id="new-entry-name"
                 autoFocus
                 value={newName}
-                placeholder={
-                  creating === "folder" ? "config" : "config.toml"
-                }
+                placeholder={creating === "folder" ? "config" : "config.toml"}
                 onChange={(e) => setNewName(e.target.value)}
               />
             </div>

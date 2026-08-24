@@ -56,7 +56,10 @@ test("randomWords yields a hyphenated adjective-animal pair (lowercase, two part
     const w = randomWords();
     const parts = w.split("-");
     assert.equal(parts.length, 2, `expected two words, got "${w}"`);
-    assert.ok(parts.every((p) => /^[a-z]+$/.test(p)), `non-[a-z] word in "${w}"`);
+    assert.ok(
+      parts.every((p) => /^[a-z]+$/.test(p)),
+      `non-[a-z] word in "${w}"`,
+    );
   }
 });
 
@@ -73,8 +76,18 @@ test("productionDomain bakes fresh random words for the slug", () => {
 test("a preview host is DETERMINISTIC per (app, pull request)", () => {
   // The URL gets commented on the pull request, so a host regenerated on each
   // rebuild would strand a link somebody is testing.
-  const first = previewHost({ appId: "prj_1", slug: "blog", prNumber: 42, ip: IP });
-  const again = previewHost({ appId: "prj_1", slug: "blog", prNumber: 42, ip: IP });
+  const first = previewHost({
+    appId: "prj_1",
+    slug: "blog",
+    prNumber: 42,
+    ip: IP,
+  });
+  const again = previewHost({
+    appId: "prj_1",
+    slug: "blog",
+    prNumber: 42,
+    ip: IP,
+  });
   assert.deepEqual(first, again);
   assert.ok(
     new RegExp(`^blog-pr-42-[a-z0-9]+-${HEX}\\.nip\\.io$`).test(first.host),
@@ -96,7 +109,8 @@ test("a nip.io preview host asks for NO certificate", () => {
   // shared with the entire internet: asking for a cert there gets none, and
   // Traefik serves its self-signed default instead (the browser interstitial).
   assert.equal(
-    previewHost({ appId: "prj_1", slug: "blog", prNumber: 42, ip: IP }).certProvider,
+    previewHost({ appId: "prj_1", slug: "blog", prNumber: 42, ip: IP })
+      .certProvider,
     "none",
   );
 });
@@ -124,7 +138,12 @@ test("a custom base domain gives each preview its own HTTP-01 certificate", () =
 
 test("leading and trailing dots on a base domain are tolerated", () => {
   assert.equal(
-    previewHost({ appId: "a", slug: "blog", prNumber: 1, baseDomain: ".preview.example.com." }).host,
+    previewHost({
+      appId: "a",
+      slug: "blog",
+      prNumber: 1,
+      baseDomain: ".preview.example.com.",
+    }).host,
     "blog-pr-1.preview.example.com",
   );
 });
@@ -133,7 +152,11 @@ test("a preview base domain must be a plain dotted hostname", () => {
   assert.equal(isValidPreviewBaseDomain("preview.example.com"), true);
   assert.equal(isValidPreviewBaseDomain("Preview.Example.COM"), true);
   assert.equal(isValidPreviewBaseDomain("example.com"), true);
-  assert.equal(isValidPreviewBaseDomain("localhost"), false, "a bare label is never meant");
+  assert.equal(
+    isValidPreviewBaseDomain("localhost"),
+    false,
+    "a bare label is never meant",
+  );
   assert.equal(isValidPreviewBaseDomain(""), false);
   assert.equal(isValidPreviewBaseDomain("has space.com"), false);
   assert.equal(isValidPreviewBaseDomain("*.example.com"), false);

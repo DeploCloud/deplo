@@ -18,8 +18,8 @@ const Label = React.forwardRef<
       // between its label and control. Making the label a block box lets that
       // margin apply again. Usages that pass their own `flex`/`inline-flex`
       // (e.g. a label with an inline icon) still win via tailwind-merge.
-      "block text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70",
-      className
+      "block text-sm leading-none font-medium peer-disabled:cursor-not-allowed peer-disabled:opacity-70",
+      className,
     )}
     {...props}
   />

@@ -56,7 +56,8 @@ import { cn } from "@/lib/utils";
  * `ServerReadinessReport`, which is the contract that actually crosses the wire.
  */
 type ReadinessSeverity = "pass" | "info" | "warn" | "fail" | "skip";
-type ReadinessGroup = "agent" | "docker" | "routing" | "capacity" | "build" | "config";
+type ReadinessGroup =
+  "agent" | "docker" | "routing" | "capacity" | "build" | "config";
 type ReadinessVerdict = "ready" | "degraded" | "not_ready" | "provisioning";
 
 interface ReadinessCheckRow {
@@ -103,7 +104,12 @@ const CHECK_READINESS = /* GraphQL */ `
 
 const VERDICT_META: Record<
   ReadinessVerdict,
-  { icon: React.ComponentType<{ className?: string }>; label: string; box: string; tone: string }
+  {
+    icon: React.ComponentType<{ className?: string }>;
+    label: string;
+    box: string;
+    tone: string;
+  }
 > = {
   ready: {
     icon: CircleCheck,
@@ -149,15 +155,30 @@ const COUNTS: readonly {
   icon: React.ComponentType<{ className?: string }>;
   tone: string;
 }[] = [
-  { severity: "fail", label: "failed", icon: CircleX, tone: "text-destructive" },
+  {
+    severity: "fail",
+    label: "failed",
+    icon: CircleX,
+    tone: "text-destructive",
+  },
   {
     severity: "warn",
     label: "warnings",
     icon: TriangleAlert,
     tone: "text-[var(--warning)]",
   },
-  { severity: "skip", label: "skipped", icon: CircleHelp, tone: "text-muted-foreground" },
-  { severity: "pass", label: "passed", icon: CircleCheck, tone: "text-[var(--success)]" },
+  {
+    severity: "skip",
+    label: "skipped",
+    icon: CircleHelp,
+    tone: "text-muted-foreground",
+  },
+  {
+    severity: "pass",
+    label: "passed",
+    icon: CircleCheck,
+    tone: "text-[var(--success)]",
+  },
 ];
 
 const GROUP_ORDER: readonly ReadinessGroup[] = [
@@ -219,29 +240,31 @@ export function ServerReadinessDialog({
    * rather than in the effect body because a setState called straight from an effect
    * is a cascading render (react-hooks/set-state-in-effect).
    */
-  const run = React.useCallback((opts?: { reset?: boolean }) => {
-    const id = ++runId.current;
-    if (opts?.reset) setReport(null);
-    setLoading(true);
-    setError(null);
-    (async () => {
-      const res = await gqlAction<{ checkServerReadiness: ReadinessReportRow }>(
-        CHECK_READINESS,
-        { id: serverId },
-      );
-      // A newer run — or a reopen — superseded this one; its answer is stale.
-      if (id !== runId.current) return;
-      setLoading(false);
-      if (!res.ok) {
-        // The server's message, verbatim (e.g. "Server not found").
-        setError(res.error);
-        toast.error(res.error);
-        return;
-      }
-      if (!res.data) return;
-      setReport(res.data.checkServerReadiness);
-    })();
-  }, [serverId]);
+  const run = React.useCallback(
+    (opts?: { reset?: boolean }) => {
+      const id = ++runId.current;
+      if (opts?.reset) setReport(null);
+      setLoading(true);
+      setError(null);
+      (async () => {
+        const res = await gqlAction<{
+          checkServerReadiness: ReadinessReportRow;
+        }>(CHECK_READINESS, { id: serverId });
+        // A newer run — or a reopen — superseded this one; its answer is stale.
+        if (id !== runId.current) return;
+        setLoading(false);
+        if (!res.ok) {
+          // The server's message, verbatim (e.g. "Server not found").
+          setError(res.error);
+          toast.error(res.error);
+          return;
+        }
+        if (!res.data) return;
+        setReport(res.data.checkServerReadiness);
+      })();
+    },
+    [serverId],
+  );
 
   React.useEffect(() => {
     if (!open) return;
@@ -264,9 +287,9 @@ export function ServerReadinessDialog({
             Deploy readiness for {serverName}
           </DialogTitle>
           <DialogDescription>
-            A live look at what this server can actually do: Deplo dials the agent,
-            asks the host what it can see, and lists what it found. Nothing is
-            stored — re-run it whenever you like.
+            A live look at what this server can actually do: Deplo dials the
+            agent, asks the host what it can see, and lists what it found.
+            Nothing is stored — re-run it whenever you like.
           </DialogDescription>
         </DialogHeader>
 
@@ -280,31 +303,45 @@ export function ServerReadinessDialog({
           </div>
         ) : null}
 
-        {error ? <p className="py-6 text-sm text-destructive">{error}</p> : null}
+        {error ? (
+          <p className="py-6 text-sm text-destructive">{error}</p>
+        ) : null}
 
         {report && verdict && VerdictIcon ? (
           <div className="space-y-4">
             <div
-              className={cn("flex items-start gap-2 rounded-lg border p-3", verdict.box)}
+              className={cn(
+                "flex items-start gap-2 rounded-lg border p-3",
+                verdict.box,
+              )}
             >
               <VerdictIcon
                 className={cn("mt-0.5 size-4 shrink-0", verdict.tone)}
                 aria-hidden
               />
               <div className="min-w-0">
-                <p className={cn("text-sm font-medium", verdict.tone)}>{verdict.label}</p>
-                <p className="mt-1 text-xs text-muted-foreground">{report.summary}</p>
+                <p className={cn("text-sm font-medium", verdict.tone)}>
+                  {verdict.label}
+                </p>
+                <p className="mt-1 text-xs text-muted-foreground">
+                  {report.summary}
+                </p>
               </div>
             </div>
 
             <div className="flex items-center gap-3">
               {COUNTS.map(({ severity, label, icon: Icon, tone }) => {
-                const n = report.checks.filter((c) => c.severity === severity).length;
+                const n = report.checks.filter(
+                  (c) => c.severity === severity,
+                ).length;
                 if (n === 0) return null;
                 return (
                   <span
                     key={severity}
-                    className={cn("flex items-center gap-1 text-xs font-medium", tone)}
+                    className={cn(
+                      "flex items-center gap-1 text-xs font-medium",
+                      tone,
+                    )}
                   >
                     <Icon className="size-3.5" aria-hidden />
                     {n} {label}

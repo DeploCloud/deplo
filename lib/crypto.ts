@@ -125,7 +125,12 @@ function scryptAsync(
  */
 export async function hashPassword(password: string): Promise<string> {
   const salt = randomBytes(16);
-  const derived = await scryptAsync(password, salt, SCRYPT_KEYLEN, SCRYPT_PARAMS);
+  const derived = await scryptAsync(
+    password,
+    salt,
+    SCRYPT_KEYLEN,
+    SCRYPT_PARAMS,
+  );
   const { N, r, p } = SCRYPT_PARAMS;
   return `scrypt$${N}$${r}$${p}$${salt.toString("hex")}$${derived.toString("hex")}`;
 }

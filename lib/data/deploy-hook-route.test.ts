@@ -23,7 +23,11 @@ import {
 } from "../db/schema/control-plane";
 import { runWithIdentity } from "../auth/request-context";
 import { seedIdentity, TEAM_A, TEAM_B, USER_1 } from "./identity-test-helpers";
-import { seedApp, seedServer, TRUNCATE_PROJECT_GRAPH } from "./app-graph-test-helpers";
+import {
+  seedApp,
+  seedServer,
+  TRUNCATE_PROJECT_GRAPH,
+} from "./app-graph-test-helpers";
 import { createToken } from "./tokens";
 import { revealDeployHook, setDeployHookEnabled } from "./deploy-hook";
 import { setFolderGrant } from "./folder-access";
@@ -92,8 +96,18 @@ beforeEach(async () => {
   await seedIdentity(db, {
     users: [
       { id: USER_1, teamId: TEAM_A, role: "owner" },
-      { id: DEPLOYER, teamId: TEAM_A, role: "member", capabilities: ["view", "deploy_apps", "manage_tokens"] },
-      { id: VIEWER, teamId: TEAM_A, role: "member", capabilities: ["view", "manage_tokens"] },
+      {
+        id: DEPLOYER,
+        teamId: TEAM_A,
+        role: "member",
+        capabilities: ["view", "deploy_apps", "manage_tokens"],
+      },
+      {
+        id: VIEWER,
+        teamId: TEAM_A,
+        role: "member",
+        capabilities: ["view", "manage_tokens"],
+      },
       { id: "user_other", teamId: TEAM_B, role: "owner" },
     ],
   });
@@ -101,8 +115,11 @@ beforeEach(async () => {
   await seedApp(db, { id: APP, teamId: TEAM_A, slug: "hooked" });
 });
 
-const as = <T>(userId: string, teamId: string, fn: () => Promise<T>): Promise<T> =>
-  runWithIdentity({ userId, teamId }, fn);
+const as = <T>(
+  userId: string,
+  teamId: string,
+  fn: () => Promise<T>,
+): Promise<T> => runWithIdentity({ userId, teamId }, fn);
 
 /** The secret last segment of the hook URL, minted on first reveal. */
 async function hookToken(appId = APP): Promise<string> {
@@ -139,7 +156,10 @@ async function post(
     }),
     { params: Promise.resolve({ id: appId, token }) },
   );
-  return { status: res.status, body: (await res.json()) as Record<string, unknown> };
+  return {
+    status: res.status,
+    body: (await res.json()) as Record<string, unknown>,
+  };
 }
 
 /* ------------------------------------------------------------------ */
@@ -177,7 +197,11 @@ test("an unknown app and a wrong secret answer identically - the hook is no orac
   const unknown = await post("prj_does_not_exist", token, bearer);
   const wrong = await post(APP, "wrong-secret", bearer);
   assert.equal(unknown.status, 404);
-  assert.deepEqual(unknown.body, wrong.body, "the two answers must be the same");
+  assert.deepEqual(
+    unknown.body,
+    wrong.body,
+    "the two answers must be the same",
+  );
 });
 
 /* ------------------------------------------------------------------ */
@@ -265,13 +289,19 @@ test("GET explains itself instead of deploying, whatever the URL says", async ()
   assert.equal(res.status, 405);
   assert.equal(res.headers.get("Allow"), "POST");
   assert.match(String(((await res.json()) as { error: string }).error), /POST/);
-  assert.equal(await deploymentCount(), 0, `a GET on ${token.slice(0, 4)}… deployed nothing`);
+  assert.equal(
+    await deploymentCount(),
+    0,
+    `a GET on ${token.slice(0, 4)}… deployed nothing`,
+  );
 });
 
 test("rotating the URL kills the old one over HTTP too", async () => {
   const old = await hookToken();
   const { rotateDeployHook } = await import("./deploy-hook");
-  const fresh = (await as(USER_1, TEAM_A, () => rotateDeployHook(APP))).split("/").pop()!;
+  const fresh = (await as(USER_1, TEAM_A, () => rotateDeployHook(APP)))
+    .split("/")
+    .pop()!;
   assert.notEqual(old, fresh);
   const bearer = await mint(DEPLOYER, TEAM_A, ["deploy_apps"]);
   assert.equal((await post(APP, old, bearer)).status, 404);
@@ -326,7 +356,8 @@ test("the right token and the right permission queue a deploy", async () => {
 });
 
 async function deploymentCount(): Promise<number> {
-  return (await db.select({ id: deploymentsTable.id }).from(deploymentsTable)).length;
+  return (await db.select({ id: deploymentsTable.id }).from(deploymentsTable))
+    .length;
 }
 
 test("a hook can't reach into a folder its token's creator can't see", async () => {

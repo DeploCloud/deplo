@@ -9,10 +9,7 @@
  * network or a database. Same split as favicon detection (`favicon-shared` ranks,
  * `favicon-detect` reads).
  */
-import {
-  FRAMEWORKS,
-  type FrameworkId,
-} from "./framework-catalog";
+import { FRAMEWORKS, type FrameworkId } from "./framework-catalog";
 
 /** The `package.json` fields recognition reads. Everything is optional — the
  * file is arbitrary user JSON, not a contract. */
@@ -72,7 +69,8 @@ export function rootFileNames(
   paths: readonly string[],
   rootRel = "",
 ): string[] {
-  const prefix = rootRel && rootRel !== "." ? `${rootRel.replace(/\/+$/, "")}/` : "";
+  const prefix =
+    rootRel && rootRel !== "." ? `${rootRel.replace(/\/+$/, "")}/` : "";
   const out: string[] = [];
   for (const path of paths) {
     const normalized = path.replace(/\\/g, "/").replace(/^\.\//, "");

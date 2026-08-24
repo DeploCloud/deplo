@@ -42,7 +42,8 @@ function principal(
     // Never called here: this file drives the SDK with a hand-built principal
     // and no request behind it. The team argument's own behaviour is covered in
     // lib/mcp/route.test.ts, against a real connection.
-    forTeam: () => Promise.reject(new Error("no team switching in this fixture")),
+    forTeam: () =>
+      Promise.reject(new Error("no team switching in this fixture")),
     gql: {
       viewer: null,
       teamId: "team_a",
@@ -199,16 +200,22 @@ test("a client that cannot prompt is served exactly like one that can", async ()
     { name: "delete_app", arguments: { appId: "prj_whatever" } },
     {},
   );
-  assert.equal(withPrompt.json.result?.isError, withoutPrompt.json.result?.isError);
+  assert.equal(
+    withPrompt.json.result?.isError,
+    withoutPrompt.json.result?.isError,
+  );
   assert.notEqual(withoutPrompt.json.result?.resultType, "input_required");
 });
 
 test("every destructive tool advertises destructiveHint so the client can ask", async () => {
   const { json } = await rpc("tools/list", principal(ALL, true));
   const byName = new Map(
-    (json.result.tools as { name: string; annotations?: Record<string, unknown> }[]).map(
-      (t) => [t.name, t.annotations ?? {}],
-    ),
+    (
+      json.result.tools as {
+        name: string;
+        annotations?: Record<string, unknown>;
+      }[]
+    ).map((t) => [t.name, t.annotations ?? {}]),
   );
   for (const t of MCP_TOOLS.filter((t) => t.destructive))
     assert.equal(

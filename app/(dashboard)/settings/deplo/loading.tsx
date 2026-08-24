@@ -25,13 +25,13 @@ export default function Loading() {
 
       <div className="space-y-4">
         <Card>
-        <CardHeader>
-          <div className="flex items-center gap-2">
-            <Skeleton className="size-4 rounded" />
-            <Skeleton className="h-5 w-28" />
-            <Skeleton className="size-3.5 rounded-full" />
-          </div>
-        </CardHeader>
+          <CardHeader>
+            <div className="flex items-center gap-2">
+              <Skeleton className="size-4 rounded" />
+              <Skeleton className="h-5 w-28" />
+              <Skeleton className="size-3.5 rounded-full" />
+            </div>
+          </CardHeader>
           <CardContent className="space-y-3">
             <div className="flex flex-wrap items-center gap-2">
               <Skeleton shimmer className="h-9 w-full max-w-sm rounded-md" />
@@ -42,13 +42,13 @@ export default function Loading() {
         </Card>
 
         <Card>
-        <CardHeader>
-          <div className="flex items-center gap-2">
-            <Skeleton className="size-4 rounded" />
-            <Skeleton className="h-5 w-24" />
-            <Skeleton className="size-3.5 rounded-full" />
-          </div>
-        </CardHeader>
+          <CardHeader>
+            <div className="flex items-center gap-2">
+              <Skeleton className="size-4 rounded" />
+              <Skeleton className="h-5 w-24" />
+              <Skeleton className="size-3.5 rounded-full" />
+            </div>
+          </CardHeader>
           <CardContent className="space-y-3">
             <div className="flex flex-wrap items-center gap-2">
               <Skeleton shimmer className="h-9 w-full max-w-xs rounded-md" />

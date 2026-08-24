@@ -8,7 +8,10 @@ import { __setTestDb, __resetTestDb } from "../db/client";
 import { runWithIdentity } from "../auth/request-context";
 import { seedIdentity, TEAM_A, USER_1 } from "./identity-test-helpers";
 import { seedServer, SERVER_1 } from "./app-graph-test-helpers";
-import { seedCleanupRun, TRUNCATE_CLEANUP } from "./docker-cleanup-test-helpers";
+import {
+  seedCleanupRun,
+  TRUNCATE_CLEANUP,
+} from "./docker-cleanup-test-helpers";
 import { publishCleanupRunsChanged } from "../graphql/pubsub";
 import { cleanupRunsStream } from "../graphql/types/cleanup";
 import { __settleCleanupSweeps, runCleanupNow } from "./docker-cleanup";
@@ -43,12 +46,17 @@ after(async () => {
 beforeEach(async () => {
   await pg.exec(`${TRUNCATE_CLEANUP}
     truncate table activities, servers, users, teams restart identity cascade;`);
-  await seedIdentity(db, { users: [{ id: USER_1, teamId: TEAM_A, role: "owner" }] });
+  await seedIdentity(db, {
+    users: [{ id: USER_1, teamId: TEAM_A, role: "owner" }],
+  });
   await seedServer(db);
 });
 
 test("cleanupRunsStream yields the initial snapshot + multiple change pings (cookie-free)", async () => {
-  await seedCleanupRun(db, { id: "dcr_1", startedAt: "2026-01-01T00:00:00.000Z" });
+  await seedCleanupRun(db, {
+    id: "dcr_1",
+    startedAt: "2026-01-01T00:00:00.000Z",
+  });
 
   // NO runWithIdentity — there is no request scope. The gate lives on the subscription
   // field (instance-admin, evaluated when the stream is opened); if the generator read
@@ -64,7 +72,10 @@ test("cleanupRunsStream yields the initial snapshot + multiple change pings (coo
 
   // Ping 1: the history changed → a fresh snapshot, newest first.
   const p1 = gen.next();
-  await seedCleanupRun(db, { id: "dcr_2", startedAt: "2026-01-02T00:00:00.000Z" });
+  await seedCleanupRun(db, {
+    id: "dcr_2",
+    startedAt: "2026-01-02T00:00:00.000Z",
+  });
   publishCleanupRunsChanged();
   const second = await p1;
   assert.equal(second.done, false);
@@ -76,7 +87,10 @@ test("cleanupRunsStream yields the initial snapshot + multiple change pings (coo
   // Ping 2: a SECOND change across another iteration tick — the case the cookie-free
   // guarantee protects.
   const p2 = gen.next();
-  await seedCleanupRun(db, { id: "dcr_3", startedAt: "2026-01-03T00:00:00.000Z" });
+  await seedCleanupRun(db, {
+    id: "dcr_3",
+    startedAt: "2026-01-03T00:00:00.000Z",
+  });
   publishCleanupRunsChanged();
   const third = await p2;
   assert.equal(third.done, false);
@@ -91,8 +105,9 @@ test("cleanupRunsStream yields the initial snapshot + multiple change pings (coo
 test("a detached sweep's outcome is in the stream, with no caller left to catch it", async () => {
   // The whole point of the background sweep: the admin who clicked may be gone. The
   // run starts inside a request…
-  const started = await runWithIdentity({ userId: USER_1, teamId: TEAM_A }, () =>
-    runCleanupNow(SERVER_1),
+  const started = await runWithIdentity(
+    { userId: USER_1, teamId: TEAM_A },
+    () => runCleanupNow(SERVER_1),
   );
   assert.equal(started.status, "running");
 

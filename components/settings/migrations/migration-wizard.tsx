@@ -1052,7 +1052,7 @@ export function MigrationWizard({
               it - at this width its name column truncates a long hostname - so
               its own columns are as narrow as their labels allow, and the last
               resort is the `overflow-x-auto` it already had. */}
-          <div className="w-full min-w-0 max-w-xl space-y-6">
+          <div className="w-full max-w-xl min-w-0 space-y-6">
             {/* Centred, because the column under it is centred: a rail hugging
                 the left edge of a narrow centred column reads as misaligned
                 with the heading below it, not as an anchor. */}

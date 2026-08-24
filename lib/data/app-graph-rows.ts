@@ -67,8 +67,7 @@ export type FolderRow = typeof folders.$inferSelect;
 
 type AppInsert = typeof apps.$inferInsert;
 type AppBuildInsert = typeof appBuild.$inferInsert;
-type AppBuildMethodSettingsInsert =
-  typeof appBuildMethodSettings.$inferInsert;
+type AppBuildMethodSettingsInsert = typeof appBuildMethodSettings.$inferInsert;
 type AppVolumeInsert = typeof appVolumes.$inferInsert;
 type AppMountInsert = typeof appMounts.$inferInsert;
 type DomainInsert = typeof domains.$inferInsert;
@@ -154,10 +153,7 @@ export function assembleMethodSettings(
  * caller has already applied the read-time normalizers (this is the post-
  * normalize shape), so no further migration runs here.
  */
-export function assembleApp(
-  row: AppRow,
-  children: AppChildRows,
-): App {
+export function assembleApp(row: AppRow, children: AppChildRows): App {
   if (!children.build)
     // Every project has a 1-to-1 build row (NOT NULL FK), so a missing one is a
     // data-integrity bug, not a tri-state — surface it loudly rather than emit a
@@ -190,7 +186,9 @@ export function assembleApp(
     // Derived, and read back defensively: an id this binary's catalog doesn't
     // know (a row written by a newer Deplo) reads as "no framework" rather than
     // leaking an unrenderable value into the UI.
-    framework: isFrameworkId(row.framework ?? "") ? (row.framework as App["framework"]) : null,
+    framework: isFrameworkId(row.framework ?? "")
+      ? (row.framework as App["framework"])
+      : null,
     // The user's correction, read back with the same defensiveness. Null (the
     // common case) means "trust detection".
     frameworkOverride: isFrameworkId(row.frameworkOverride ?? "")
@@ -431,7 +429,9 @@ export function appToRow(p: App): AppInsert {
     repoInstallationId: p.repo?.installationId ?? null,
     repoConnectionId: p.repo?.connectionId ?? null,
     repoTriggerType: p.repo?.triggerType ?? null,
-    repoWatchPaths: p.repo?.watchPaths?.length ? p.repo.watchPaths.join("\n") : null,
+    repoWatchPaths: p.repo?.watchPaths?.length
+      ? p.repo.watchPaths.join("\n")
+      : null,
     repoSubmodules: p.repo?.submodules ?? false,
     dockerImage: p.dockerImage ?? null,
     uploadId: p.upload?.id ?? null,
@@ -558,7 +558,9 @@ export function assembleDomain(
   row: DomainRow,
   middlewares: DomainMiddlewareRow[],
 ): Domain {
-  const mw = [...middlewares].sort((a, b) => a.position - b.position).map((m) => m.name);
+  const mw = [...middlewares]
+    .sort((a, b) => a.position - b.position)
+    .map((m) => m.name);
   return {
     id: row.id,
     appId: row.appId,
@@ -693,7 +695,9 @@ export function assembleDeployment(row: DeploymentRow): Deployment {
 }
 
 /** A {@link Deployment} → its insert row. `seq` is DB-generated (omitted). */
-export function deploymentToRow(d: Deployment): typeof deployments.$inferInsert {
+export function deploymentToRow(
+  d: Deployment,
+): typeof deployments.$inferInsert {
   return {
     id: d.id,
     appId: d.appId,

@@ -21,11 +21,7 @@ import {
 } from "../membership";
 import { assertUser } from "../auth";
 import { ALL_CAPABILITIES, type Capability } from "../types";
-import {
-  createToken,
-  tokenIdsReaching,
-  type TokenScopeInput,
-} from "./tokens";
+import { createToken, tokenIdsReaching, type TokenScopeInput } from "./tokens";
 import { getMcpSettings } from "./mcp-settings";
 import { recordActivity } from "./activity";
 

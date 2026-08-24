@@ -24,7 +24,9 @@ function filterFolder(
   const folders = folder.folders
     .map((f) => filterFolder(f, terms))
     .filter((f): f is ScopeTreeFolder => f !== null);
-  const apps = folder.apps.filter((a) => hit(a.name, terms) || hit(a.slug, terms));
+  const apps = folder.apps.filter(
+    (a) => hit(a.name, terms) || hit(a.slug, terms),
+  );
   return folders.length || apps.length ? { ...folder, folders, apps } : null;
 }
 

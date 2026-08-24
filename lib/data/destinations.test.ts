@@ -125,7 +125,10 @@ test("listDestinations is team-scoped and newest-first", async () => {
 
   await asUser1(async () => {
     const list = await listDestinations();
-    assert.deepEqual(list.map((s) => s.id), ["s3_b", "s3_a"]);
+    assert.deepEqual(
+      list.map((s) => s.id),
+      ["s3_b", "s3_a"],
+    );
   });
 });
 
@@ -162,20 +165,30 @@ test("testDestinations probes every destination and records each verdict", async
       "same order as listDestinations — newest first",
     );
     for (const d of probed) {
-      assert.equal(d.status, "error", `${d.id} should be repainted from the live probe`);
+      assert.equal(
+        d.status,
+        "error",
+        `${d.id} should be repainted from the live probe`,
+      );
       assert.match(d.lastTestError ?? "", /No provisioned server is available/);
       assert.ok(d.lastTestAt, "the probe stamps when it ran");
     }
   });
 
   // Persisted, not just returned — a reopened dialog reads the same verdict.
-  const rows = await db.select().from(destTable).where(eq(destTable.teamId, TEAM_A));
-  assert.deepEqual(
-    rows.map((r) => r.status).sort(),
-    ["error", "error"],
+  const rows = await db
+    .select()
+    .from(destTable)
+    .where(eq(destTable.teamId, TEAM_A));
+  assert.deepEqual(rows.map((r) => r.status).sort(), ["error", "error"]);
+  const foreign = (
+    await db.select().from(destTable).where(eq(destTable.id, "s3_other"))
+  )[0]!;
+  assert.equal(
+    foreign.status,
+    "connected",
+    "another team's destination is untouched",
   );
-  const foreign = (await db.select().from(destTable).where(eq(destTable.id, "s3_other")))[0]!;
-  assert.equal(foreign.status, "connected", "another team's destination is untouched");
 });
 
 test("toDestinationOption keeps only what a picker needs, for both kinds", async () => {
@@ -260,19 +273,41 @@ test("destinationServerId routes a store to its own host and S3 to the workload'
 test("deleteDestination removes dependent schedules AND run history in one transaction", async () => {
   await seedDatabase(db, { id: "db_1" });
   await seedDestination(db, { id: "s3_1" });
-  await seedBackup(db, { id: "bkp_1", destinationId: "s3_1", databaseId: "db_1" });
-  await seedRun(db, { id: "brun_1", destinationId: "s3_1", databaseId: "db_1", backupId: "bkp_1" });
+  await seedBackup(db, {
+    id: "bkp_1",
+    destinationId: "s3_1",
+    databaseId: "db_1",
+  });
+  await seedRun(db, {
+    id: "brun_1",
+    destinationId: "s3_1",
+    databaseId: "db_1",
+    backupId: "bkp_1",
+  });
 
   await asUser1(() => deleteDestination("s3_1"));
 
-  assert.equal((await db.select().from(destTable).where(eq(destTable.id, "s3_1"))).length, 0);
   assert.equal(
-    (await db.select().from(backupsTable).where(eq(backupsTable.destinationId, "s3_1"))).length,
+    (await db.select().from(destTable).where(eq(destTable.id, "s3_1"))).length,
+    0,
+  );
+  assert.equal(
+    (
+      await db
+        .select()
+        .from(backupsTable)
+        .where(eq(backupsTable.destinationId, "s3_1"))
+    ).length,
     0,
     "dependent schedule removed (RESTRICT FK ⇒ explicit delete)",
   );
   assert.equal(
-    (await db.select().from(backupRunsTable).where(eq(backupRunsTable.destinationId, "s3_1"))).length,
+    (
+      await db
+        .select()
+        .from(backupRunsTable)
+        .where(eq(backupRunsTable.destinationId, "s3_1"))
+    ).length,
     0,
     "dependent run history removed (no dangling destinationId)",
   );
@@ -284,7 +319,10 @@ test("deleteDestination is team-scoped (a foreign destination is not found)", as
     await assert.rejects(() => deleteDestination("s3_b"), /Not found/);
   });
   // Still present.
-  assert.equal((await db.select().from(destTable).where(eq(destTable.id, "s3_b"))).length, 1);
+  assert.equal(
+    (await db.select().from(destTable).where(eq(destTable.id, "s3_b"))).length,
+    1,
+  );
 });
 
 /* ------------------------------------------------------------------ */
@@ -298,7 +336,11 @@ test("deleteDestination is team-scoped (a foreign destination is not found)", as
  * s3-test-report.test.ts; here we pin what the STORED verdict turns into.
  */
 test("destinationTestReport: never tested ⇒ a `never` report, not a failure", async () => {
-  await seedDestination(db, { id: "s3_1", name: "Backups", status: "unverified" });
+  await seedDestination(db, {
+    id: "s3_1",
+    name: "Backups",
+    status: "unverified",
+  });
   await asUser1(async () => {
     const r = await destinationTestReport("s3_1");
     assert.equal(r.never, true);
@@ -332,7 +374,10 @@ test("destinationTestReport: a stored failure keeps the agent's words verbatim",
     const r = await destinationTestReport("s3_1");
     assert.equal(r.never, false);
     assert.equal(r.ok, false);
-    assert.equal(r.error, 'write probe to bucket "deplo-backups": Access Denied.');
+    assert.equal(
+      r.error,
+      'write probe to bucket "deplo-backups": Access Denied.',
+    );
     assert.equal(r.durationMs, 731);
     // The stored server_id is resolved to the server's display name.
     assert.equal(r.serverName, "eu-main-1");
@@ -359,7 +404,11 @@ test("destinationTestReport: the last verdict rides the DTO, so the card can exp
   await seedDestination(db, {
     id: "s3_1",
     status: "error",
-    lastTest: { at: "2026-07-29T09:00:00.000Z", error: "Access Denied.", ms: 5 },
+    lastTest: {
+      at: "2026-07-29T09:00:00.000Z",
+      error: "Access Denied.",
+      ms: 5,
+    },
   });
   await asUser1(async () => {
     const [dto] = await listDestinations();
@@ -370,7 +419,10 @@ test("destinationTestReport: the last verdict rides the DTO, so the card can exp
 
 test("destinationTestReport refuses a cross-team destination", async () => {
   await seedDestination(db, { id: "s3_other", teamId: TEAM_B });
-  await assert.rejects(asUser1(() => destinationTestReport("s3_other")), /not found/i);
+  await assert.rejects(
+    asUser1(() => destinationTestReport("s3_other")),
+    /not found/i,
+  );
 });
 
 /* ------------------------------------------------------------------ */
@@ -417,14 +469,19 @@ test("a hostname is resolved, so a name pointing inside is refused too", async (
   );
   try {
     await assert.rejects(
-      () => assertSafeOutboundUrl("https://internal.example.com/hook", "Webhook URL"),
+      () =>
+        assertSafeOutboundUrl(
+          "https://internal.example.com/hook",
+          "Webhook URL",
+        ),
       /private or internal/,
       "a name that answers with a private address is the same attack, spelled politely",
     );
     // ANY answer being internal is enough — a round-robin that mixes one in is
     // still a way in.
     await assert.rejects(
-      () => assertSafeOutboundUrl("https://split.example.com/hook", "Webhook URL"),
+      () =>
+        assertSafeOutboundUrl("https://split.example.com/hook", "Webhook URL"),
       /private or internal/,
     );
     // The control: a public name passes, and so does the scheme check.
@@ -462,7 +519,14 @@ test("the bare-host guard resolves non-canonical numeric IPs instead of trusting
     return [{ address: addr }];
   });
   try {
-    for (const host of ["2130706433", "127.1", "0177.0.0.1", "2852039166", "127.0.0.1", "private.example.com"]) {
+    for (const host of [
+      "2130706433",
+      "127.1",
+      "0177.0.0.1",
+      "2852039166",
+      "127.0.0.1",
+      "private.example.com",
+    ]) {
       await assert.rejects(
         () => assertSafeOutboundHost(host, "SMTP host"),
         /private or internal/,
@@ -628,7 +692,10 @@ test("a team that already has a destination is never given another", async () =>
   await seedDestination(db, { id: "s3_mine", name: "mine" });
   await asUser1(async () => {
     await ensureDefaultDestination();
-    assert.deepEqual((await listDestinations()).map((d) => d.id), ["s3_mine"]);
+    assert.deepEqual(
+      (await listDestinations()).map((d) => d.id),
+      ["s3_mine"],
+    );
   });
   // The claim is kept, so deleting that one later does not summon a default.
   assert.ok(await seededFlag());
@@ -671,7 +738,10 @@ test("a new S3 destination gets its own keypair, and never leaks the private hal
       accessKey: "AKIA_TEST",
       secretKey: "secret_test",
     });
-    assert.ok(created.ageRecipient?.startsWith("age1"), "a bucket is encrypted now");
+    assert.ok(
+      created.ageRecipient?.startsWith("age1"),
+      "a bucket is encrypted now",
+    );
     assert.equal("ageIdentityEnc" in created, false);
     assert.equal(JSON.stringify(created).includes("AGE-SECRET-KEY"), false);
   });
@@ -681,7 +751,11 @@ test("an S3 destination created before encryption keeps writing plaintext", asyn
   // Its existing objects already are plaintext, and rewriting history is not on
   // offer — so a null recipient stays null and the run's own key extension is
   // what says which of the two any artifact is.
-  await seedDestination(db, { id: "dst_old", kind: "s3", legacyPlaintext: true });
+  await seedDestination(db, {
+    id: "dst_old",
+    kind: "s3",
+    legacyPlaintext: true,
+  });
   await asUser1(async () => {
     const dto = (await listDestinations()).find((d) => d.id === "dst_old")!;
     assert.equal(dto.ageRecipient, null);
@@ -696,20 +770,28 @@ test("a bucket name or region carrying shell syntax is refused at creation", asy
     await assert.rejects(
       () =>
         createDestination({
-          name: "x", kind: "s3", provider: "aws",
-          endpoint: "https://s3.us-east-1.amazonaws.com", region: "us-east-1",
+          name: "x",
+          kind: "s3",
+          provider: "aws",
+          endpoint: "https://s3.us-east-1.amazonaws.com",
+          region: "us-east-1",
           bucket: "b'; rm -rf /; echo '",
-          accessKey: "a", secretKey: "s",
+          accessKey: "a",
+          secretKey: "s",
         }),
       /bucket names/i,
     );
     await assert.rejects(
       () =>
         createDestination({
-          name: "x", kind: "s3", provider: "aws",
+          name: "x",
+          kind: "s3",
+          provider: "aws",
           endpoint: "https://s3.us-east-1.amazonaws.com",
           region: "eu-west-1; curl evil",
-          bucket: "fine", accessKey: "a", secretKey: "s",
+          bucket: "fine",
+          accessKey: "a",
+          secretKey: "s",
         }),
       /region/i,
     );
@@ -733,8 +815,14 @@ test("listDestinationOptions carries no credential and no test history", async (
     // that those backups are locked by a key nobody has taken yet. Neither is a
     // secret - one is a boolean, the other a timestamp.
     assert.deepEqual(Object.keys(one).sort(), [
-      "encrypted", "id", "kind", "name", "recoveryKeySavedAt",
-      "serverId", "status", "where",
+      "encrypted",
+      "id",
+      "kind",
+      "name",
+      "recoveryKeySavedAt",
+      "serverId",
+      "status",
+      "where",
     ]);
     const json = JSON.stringify(opts);
     assert.equal(json.includes("AKIA"), false);
@@ -762,10 +850,17 @@ test("destinationRemovalImpact counts what the confirm dialog has to name", asyn
   // schedules and the whole run history are DELETED, and saying so needs numbers.
   await seedDestination(db, { id: "dst_1", kind: "s3" });
   await seedDatabase(db, { id: "db_1", name: "main" });
-  await seedBackup(db, { id: "bkp_1", destinationId: "dst_1", databaseId: "db_1" });
+  await seedBackup(db, {
+    id: "bkp_1",
+    destinationId: "dst_1",
+    databaseId: "db_1",
+  });
   await seedRun(db, { id: "r_ok", destinationId: "dst_1", databaseId: "db_1" });
   await seedRun(db, {
-    id: "r_bad", destinationId: "dst_1", databaseId: "db_1", status: "failed",
+    id: "r_bad",
+    destinationId: "dst_1",
+    databaseId: "db_1",
+    status: "failed",
   });
   await asUser1(async () => {
     const impact = await destinationRemovalImpact("dst_1");
@@ -792,7 +887,10 @@ test("an encrypted BUCKET has a recovery key, and an older one honestly has none
       secretKey: "secret_test",
     });
     const key = await revealRecoveryKey(bucket.id);
-    assert.ok(key.identity.startsWith("AGE-SECRET-KEY"), "the private half comes back");
+    assert.ok(
+      key.identity.startsWith("AGE-SECRET-KEY"),
+      "the private half comes back",
+    );
     assert.equal(key.recipient, bucket.ageRecipient);
     // The file is read in exactly one situation: this instance is gone. A key
     // with no address is most of the way to no key at all, so it carries where
@@ -801,7 +899,11 @@ test("an encrypted BUCKET has a recovery key, and an older one honestly has none
     assert.match(key.where, /s3\.us-east-1\.amazonaws\.com/);
   });
 
-  await seedDestination(db, { id: "dst_old", kind: "s3", legacyPlaintext: true });
+  await seedDestination(db, {
+    id: "dst_old",
+    kind: "s3",
+    legacyPlaintext: true,
+  });
   await asUser1(async () => {
     await assert.rejects(
       () => revealRecoveryKey("dst_old"),
@@ -816,7 +918,11 @@ test("a server destination's key file says which host and which folder", async (
   // path is not running any more. An untested destination has no resolved path
   // yet and must still say something an operator can act on, rather than a bare
   // host name and a shrug.
-  await seedDestination(db, { id: "dst_where", kind: "server", serverId: SERVER_1 });
+  await seedDestination(db, {
+    id: "dst_where",
+    kind: "server",
+    serverId: SERVER_1,
+  });
   await asUser1(async () => {
     const fresh = await revealRecoveryKey("dst_where");
     assert.match(fresh.where, /managed backups folder/);
@@ -837,7 +943,11 @@ test("deleteDestination can take the backup files with it, or leave them", async
   // only over SSH, which is the one thing this platform exists to remove.
   await seedDestination(db, { id: "dst_keep", kind: "s3" });
   await seedDatabase(db, { id: "db_2", name: "two" });
-  await seedRun(db, { id: "r_keep", destinationId: "dst_keep", databaseId: "db_2" });
+  await seedRun(db, {
+    id: "r_keep",
+    destinationId: "dst_keep",
+    databaseId: "db_2",
+  });
   await asUser1(async () => {
     await deleteDestination("dst_keep");
   });
@@ -851,9 +961,15 @@ test("deleteDestination can take the backup files with it, or leave them", async
   // With the sweep asked for, an unreachable destination ABORTS the removal
   // rather than dropping the rows that name the files.
   await seedDestination(db, { id: "dst_sweep", kind: "s3" });
-  await seedRun(db, { id: "r_sweep", destinationId: "dst_sweep", databaseId: "db_2" });
+  await seedRun(db, {
+    id: "r_sweep",
+    destinationId: "dst_sweep",
+    databaseId: "db_2",
+  });
   await asUser1(async () => {
-    await assert.rejects(() => deleteDestination("dst_sweep", { deleteArtifacts: true }));
+    await assert.rejects(() =>
+      deleteDestination("dst_sweep", { deleteArtifacts: true }),
+    );
   });
   const survivors = await db.select().from(backupRunsTable);
   assert.equal(

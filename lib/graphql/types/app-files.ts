@@ -81,8 +81,7 @@ builder.queryFields((t) => ({
       appId: t.arg.string({ required: true }),
       path: t.arg.string({ required: false }),
     },
-    resolve: (_r, { appId, path }) =>
-      listAppFiles(appId, path ?? ""),
+    resolve: (_r, { appId, path }) => listAppFiles(appId, path ?? ""),
   }),
   appFile: t.field({
     type: FileContentRef,
@@ -99,7 +98,7 @@ builder.queryFields((t) => ({
     authScopes: { capability: "read_app_files" },
     description:
       "Read the file a File storage entry points at (Settings → Storage). " +
-      "A path that is not there yet answers state \"new\" with an empty body " +
+      'A path that is not there yet answers state "new" with an empty body ' +
       "instead of failing, so the editor can offer it as a file to write.",
     args: {
       appId: t.arg.string({ required: true }),

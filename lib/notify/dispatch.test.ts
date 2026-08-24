@@ -246,8 +246,14 @@ test("a channel that is switched off is never dialed", async () => {
     body: "y",
   });
   assert.equal(capture.calls.length, 7);
-  assert.equal(capture.calls.some((c) => c.url.includes("slack")), false);
-  assert.equal(capture.calls.some((c) => c.url.includes("ops")), false);
+  assert.equal(
+    capture.calls.some((c) => c.url.includes("slack")),
+    false,
+  );
+  assert.equal(
+    capture.calls.some((c) => c.url.includes("ops")),
+    false,
+  );
 });
 
 test("a channel enabled but not configured is not dialed either", async () => {
@@ -264,7 +270,10 @@ test("a channel enabled but not configured is not dialed either", async () => {
     title: "x",
     body: "y",
   });
-  assert.equal(capture.calls.some((c) => c.url.includes("ops")), false);
+  assert.equal(
+    capture.calls.some((c) => c.url.includes("ops")),
+    false,
+  );
 });
 
 test("one dead channel does not silence the others, and nothing throws", async () => {

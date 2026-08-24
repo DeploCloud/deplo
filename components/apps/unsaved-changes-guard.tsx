@@ -83,7 +83,11 @@ export function UnsavedChangesGuard({
       const href = anchor.getAttribute("href");
       if (!href) return;
       // Only guard internal, same-document navigations.
-      if (/^[a-z]+:/i.test(href) || href.startsWith("//") || href.startsWith("#")) {
+      if (
+        /^[a-z]+:/i.test(href) ||
+        href.startsWith("//") ||
+        href.startsWith("#")
+      ) {
         return;
       }
       if (href === window.location.pathname + window.location.search) return;
@@ -98,7 +102,10 @@ export function UnsavedChangesGuard({
   }, [when]);
 
   return (
-    <Dialog open={pendingHref !== null} onOpenChange={(o) => !o && setPendingHref(null)}>
+    <Dialog
+      open={pendingHref !== null}
+      onOpenChange={(o) => !o && setPendingHref(null)}
+    >
       <DialogContent>
         <DialogHeader>
           <DialogTitle>{title}</DialogTitle>

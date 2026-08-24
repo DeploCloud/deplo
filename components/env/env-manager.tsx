@@ -52,8 +52,7 @@ import type { AppSharedVarDTO, SharedVarDTO } from "@/lib/data/shared-vars";
  * marks a row the app doesn't own.
  */
 type EnvRow =
-  | ({ kind: "standalone" } & EnvVarDTO)
-  | ({ kind: "shared" } & AppSharedVarDTO);
+  ({ kind: "standalone" } & EnvVarDTO) | ({ kind: "shared" } & AppSharedVarDTO);
 
 /**
  * A row's identity in this table — also its React key and what an optimistic
@@ -112,10 +111,11 @@ export function EnvManager({
   // page's variables — the window in which a second click on the same row used
   // to earn a "Not found". Everything below reads `rows`, so the filters, the
   // counts and the empty states all agree the variable is gone.
-  const { visible: rows, remove, restore } = useOptimisticRemove(
-    serverRows,
-    rowKey,
-  );
+  const {
+    visible: rows,
+    remove,
+    restore,
+  } = useOptimisticRemove(serverRows, rowKey);
 
   // One app's table: the variable is either its own or shared with it (Source),
   // and beyond that only what/who/when apply — a Project or Environment filter
@@ -201,9 +201,13 @@ export function EnvManager({
               <TableRow>
                 <TableHead className="whitespace-nowrap">Key</TableHead>
                 <TableHead className="w-full">Value</TableHead>
-                <TableHead className="whitespace-nowrap">Last modified</TableHead>
+                <TableHead className="whitespace-nowrap">
+                  Last modified
+                </TableHead>
                 <TableHead className="whitespace-nowrap">Modified by</TableHead>
-                <TableHead className="whitespace-nowrap text-right">Actions</TableHead>
+                <TableHead className="text-right whitespace-nowrap">
+                  Actions
+                </TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -216,7 +220,7 @@ export function EnvManager({
                     <TableCell>
                       <EnvValueCell value={row.value} masked={row.masked} />
                     </TableCell>
-                    <TableCell className="whitespace-nowrap text-xs text-muted-foreground">
+                    <TableCell className="text-xs whitespace-nowrap text-muted-foreground">
                       <SimpleTooltip
                         content={new Date(row.updatedAt).toLocaleString()}
                       >
@@ -232,7 +236,10 @@ export function EnvManager({
                       <div className="flex justify-end gap-1">
                         <EnvEditButton
                           secret={row.type === "secret"}
-                          onClick={() => { setEditing(row); setAddOpen(true); }}
+                          onClick={() => {
+                            setEditing(row);
+                            setAddOpen(true);
+                          }}
                         />
                         <Button
                           variant="ghost"
@@ -253,7 +260,7 @@ export function EnvManager({
                         {row.key}
                         <Badge
                           variant="muted"
-                          className="gap-1 whitespace-nowrap text-[10px] font-normal"
+                          className="gap-1 text-[10px] font-normal whitespace-nowrap"
                         >
                           <Share2 className="size-3" />
                           Shared
@@ -263,7 +270,7 @@ export function EnvManager({
                     <TableCell>
                       <EnvValueCell value={row.value} masked={row.masked} />
                     </TableCell>
-                    <TableCell className="whitespace-nowrap text-xs text-muted-foreground">
+                    <TableCell className="text-xs whitespace-nowrap text-muted-foreground">
                       <SimpleTooltip
                         content={new Date(row.updatedAt).toLocaleString()}
                       >
@@ -447,8 +454,8 @@ function SharedRowActions({
         description={
           <>
             This deletes <span className="font-mono">{row.key}</span> for the
-            whole team. Every app it reaches — not just this one — stops receiving
-            it on new deployments.
+            whole team. Every app it reaches — not just this one — stops
+            receiving it on new deployments.
           </>
         }
         confirmLabel="Delete everywhere"

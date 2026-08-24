@@ -125,7 +125,11 @@ test("an agent too old to report a byte count is not treated as having written n
 
 test("a destination that writes fewer bytes than were sent is a failure", async () => {
   const from = source({ data: REAL });
-  const to = dest((b) => ({ ok: true, error: "", bytesWritten: b.length - 10 }));
+  const to = dest((b) => ({
+    ok: true,
+    error: "",
+    bytesWritten: b.length - 10,
+  }));
 
   await assert.rejects(
     () => copyVolumeBetween(from.conn, to.conn, "data"),

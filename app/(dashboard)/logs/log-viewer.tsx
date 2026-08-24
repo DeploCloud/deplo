@@ -53,7 +53,7 @@ export function LogViewer({
 
   const selected = React.useMemo(
     () => deployments.find((d) => d.id === selectedId) ?? deployments[0],
-    [deployments, selectedId]
+    [deployments, selectedId],
   );
 
   const allLines = logsById[selected?.id ?? ""] ?? [];
@@ -72,10 +72,10 @@ export function LogViewer({
       filteredLines
         .map(
           (l) =>
-            `[${fmtTime(l.ts)}] ${levelLabelPadded(l.level)} ${stripAnsi(l.text)}`
+            `[${fmtTime(l.ts)}] ${levelLabelPadded(l.level)} ${stripAnsi(l.text)}`,
         )
         .join("\n"),
-    [filteredLines]
+    [filteredLines],
   );
 
   const downloadName = selected
@@ -87,7 +87,7 @@ export function LogViewer({
       {/* Deployment list */}
       <div className="rounded-xl border border-border bg-card">
         <div className="border-b border-border px-4 py-3">
-          <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+          <p className="text-xs font-medium tracking-wide text-muted-foreground uppercase">
             Recent deployments
           </p>
         </div>
@@ -102,7 +102,7 @@ export function LogViewer({
                   onClick={() => setSelectedId(d.id)}
                   className={cn(
                     "flex w-full cursor-pointer flex-col gap-1.5 px-4 py-3 text-left transition-colors hover:bg-secondary/60",
-                    isActive && "bg-secondary"
+                    isActive && "bg-secondary",
                   )}
                 >
                   <div className="flex items-center gap-2">

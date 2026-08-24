@@ -40,7 +40,8 @@ const RESOURCE_ROUTES: ReadonlyArray<{ base: string; fallback: string }> = [
 export function teamSwitchDestination(pathname: string): string {
   const path = pathname.split("?")[0].split("#")[0] || "/";
   // Tolerate a trailing slash so "/variables/" doesn't become its own case.
-  const clean = path.length > 1 && path.endsWith("/") ? path.slice(0, -1) : path;
+  const clean =
+    path.length > 1 && path.endsWith("/") ? path.slice(0, -1) : path;
 
   for (const route of RESOURCE_ROUTES) {
     if (clean === route.base || clean.startsWith(route.base + "/")) {

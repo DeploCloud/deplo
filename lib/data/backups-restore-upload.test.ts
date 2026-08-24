@@ -94,7 +94,10 @@ function databaseArtifact(): Buffer {
   return zlib.gzipSync(dump);
 }
 
-async function encryptedAppArtifact(): Promise<{ artifact: Buffer; key: string }> {
+async function encryptedAppArtifact(): Promise<{
+  artifact: Buffer;
+  key: string;
+}> {
   const age = await import("age-encryption");
   const key = await age.generateX25519Identity();
   const encrypter = new age.Encrypter();
@@ -282,14 +285,20 @@ test("an app with no stack on its host refuses an uploaded archive", () => {
     uploadRestoreRefusal({ kind: "app", project: { composeYaml: "" } }) ?? "",
     /never been deployed/,
   );
-  assert.match(uploadRestoreRefusal({ kind: "app" }) ?? "", /never been deployed/);
+  assert.match(
+    uploadRestoreRefusal({ kind: "app" }) ?? "",
+    /never been deployed/,
+  );
 });
 
 test("an app with a live stack proceeds, and a database is never in scope", () => {
   // A non-empty control-plane compose is what makes the agent's unproven branch
   // keep ITS config, so there is nothing left to fall back to.
   assert.equal(
-    uploadRestoreRefusal({ kind: "app", project: { composeYaml: "services: {}" } }),
+    uploadRestoreRefusal({
+      kind: "app",
+      project: { composeYaml: "services: {}" },
+    }),
     null,
   );
   // A database restore replays a dump into an engine; it re-applies no stack

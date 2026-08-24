@@ -113,7 +113,10 @@ export async function listInstances(p: App): Promise<ConsoleInstance[]> {
   const exposeService = await primaryDomainApp(p.id);
   const conn = await connectAgent(p.serverId);
   try {
-    return orderInstances(p, await conn.listInstances(p.id, p.slug, exposeService));
+    return orderInstances(
+      p,
+      await conn.listInstances(p.id, p.slug, exposeService),
+    );
   } finally {
     conn.close();
   }
@@ -129,7 +132,10 @@ export async function listInstances(p: App): Promise<ConsoleInstance[]> {
  * healthy would default the console and the log viewer to Postgres, hiding the
  * one container whose output explains the crash.
  */
-function orderInstances(p: App, instances: ConsoleInstance[]): ConsoleInstance[] {
+function orderInstances(
+  p: App,
+  instances: ConsoleInstance[],
+): ConsoleInstance[] {
   const own = (i: ConsoleInstance) => i.service === p.slug;
   return [...instances].sort((a, b) => {
     if (own(a) !== own(b)) return own(a) ? -1 : 1;
@@ -206,7 +212,11 @@ function displayFallback(p: App): ConsoleInstance {
  */
 async function listInstancesForDisplay(
   p: App,
-): Promise<{ instances: ConsoleInstance[]; real: boolean; unreachable: boolean }> {
+): Promise<{
+  instances: ConsoleInstance[];
+  real: boolean;
+  unreachable: boolean;
+}> {
   try {
     const instances = await listInstances(p);
     return instances.length
@@ -214,7 +224,11 @@ async function listInstancesForDisplay(
       : { instances: [displayFallback(p)], real: false, unreachable: false };
   } catch (e) {
     if (e instanceof AgentUnreachableError)
-      return { instances: [displayFallback(p)], real: false, unreachable: true };
+      return {
+        instances: [displayFallback(p)],
+        real: false,
+        unreachable: true,
+      };
     throw e;
   }
 }
@@ -416,7 +430,9 @@ export interface ConsoleInfo {
   instances: ConsoleInstance[];
 }
 
-export async function getConsoleInfo(appId: string): Promise<ConsoleInfo | null> {
+export async function getConsoleInfo(
+  appId: string,
+): Promise<ConsoleInfo | null> {
   const teamId = await requireActiveTeamId();
   const p = await loadTeamApp(appId, teamId);
   if (!p) return null;
@@ -453,7 +469,7 @@ export async function getShellLabel(
   // target this one does prefer a running instance over the app's own.
   const pick = target
     ? instances.find((i) => i.name === target)
-    : instances.find((i) => i.running) ?? instances[0];
+    : (instances.find((i) => i.running) ?? instances[0]);
   if (!pick || !pick.running) return "raw exec (no shell)";
   return probeShellLabel(p, pick.name, pick.image);
 }
@@ -473,7 +489,13 @@ export async function getAttachInfo(appId: string): Promise<AttachInfo | null> {
   if (running) {
     shell = await probeShellLabel(p, def.name, def.image);
   }
-  return { containerName: def.name, image: def.image, running, shell, instances };
+  return {
+    containerName: def.name,
+    image: def.image,
+    running,
+    shell,
+    instances,
+  };
 }
 
 /** Shell-label probe (via the owning agent) that degrades to raw when unreachable. */
@@ -504,7 +526,10 @@ export async function resolveAttachTarget(
   target?: string,
 ): Promise<
   | { ok: true; instance: ConsoleInstance; server: Server | undefined }
-  | { ok: false; reason: "not-found" | "no-instance" | "stopped" | "unreachable" }
+  | {
+      ok: false;
+      reason: "not-found" | "no-instance" | "stopped" | "unreachable";
+    }
 > {
   // Attaching to PID 1 (full-duplex, stdin to the live container) is a
   // deploy-class operation — never available to a view-only member.
@@ -518,12 +543,13 @@ export async function resolveAttachTarget(
   } catch (e) {
     // A remote whose agent is unreachable: fail clearly, never fall back to the
     // local socket (which would attach a foreign/empty container).
-    if (e instanceof AgentUnreachableError) return { ok: false, reason: "unreachable" };
+    if (e instanceof AgentUnreachableError)
+      return { ok: false, reason: "unreachable" };
     throw e;
   }
   const pick = target
     ? instances.find((i) => i.name === target)
-    : instances.find((i) => i.running) ?? instances[0];
+    : (instances.find((i) => i.running) ?? instances[0]);
   if (!pick) return { ok: false, reason: "no-instance" };
   // Attaching to a stopped container's PID 1 would just hang — refuse early.
   if (!pick.running) return { ok: false, reason: "stopped" };
@@ -542,7 +568,10 @@ export async function resolveLogsTarget(
   target?: string,
 ): Promise<
   | { ok: true; instance: ConsoleInstance; server: Server | undefined }
-  | { ok: false; reason: "not-found" | "no-instance" | "unreachable" | "forbidden" }
+  | {
+      ok: false;
+      reason: "not-found" | "no-instance" | "unreachable" | "forbidden";
+    }
 > {
   const teamId = await requireActiveTeamId();
   const p = await loadTeamApp(appId, teamId);
@@ -557,7 +586,8 @@ export async function resolveLogsTarget(
   try {
     instances = await listInstances(p);
   } catch (e) {
-    if (e instanceof AgentUnreachableError) return { ok: false, reason: "unreachable" };
+    if (e instanceof AgentUnreachableError)
+      return { ok: false, reason: "unreachable" };
     throw e;
   }
   // Default to the app's own container (orderInstances puts it first), NOT to
@@ -608,7 +638,8 @@ export async function execInContainer(
     // these from a guest non-zero exit (both land on 126 on modern Docker), so
     // classify on the docker/OCI-owned stderr text instead.
     if (isDockerLevelStderr(res.stderr)) {
-      const reason = res.stderr.trim() || `docker exec failed (exit ${res.code})`;
+      const reason =
+        res.stderr.trim() || `docker exec failed (exit ${res.code})`;
       return { output: `! ${reason}` };
     }
 

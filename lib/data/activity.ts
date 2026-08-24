@@ -55,9 +55,7 @@ async function queryActivity(
     .where(
       and(
         eq(activitiesTable.teamId, teamId),
-        actorUserId
-          ? eq(activitiesTable.actorUserId, actorUserId)
-          : undefined,
+        actorUserId ? eq(activitiesTable.actorUserId, actorUserId) : undefined,
         // An API token limited to Projects reads only its own apps' history.
         // Team-level events (`app_id IS NULL` — members, roles, tokens, the team
         // itself) belong to nothing it can reach, so they drop out with the rest.
@@ -93,9 +91,7 @@ async function queryActivity(
 async function scopedActivityWhere(): Promise<SQL | undefined> {
   const roleScope = await currentMemberScope();
   if (!narrowedScope() && !roleScope) return undefined;
-  const clauses = [appScopeWhere()].filter(
-    (c): c is SQL => c !== undefined,
-  );
+  const clauses = [appScopeWhere()].filter((c): c is SQL => c !== undefined);
   if (roleScope) {
     const alt: SQL[] = [];
     if (roleScope.projectIds.length)
@@ -104,10 +100,13 @@ async function scopedActivityWhere(): Promise<SQL | undefined> {
       alt.push(inArray(appsTable.environmentId, roleScope.environmentIds));
     if (roleScope.folderIds.length)
       alt.push(inArray(appsTable.folderId, roleScope.folderIds));
-    if (roleScope.appIds.length) alt.push(inArray(appsTable.id, roleScope.appIds));
+    if (roleScope.appIds.length)
+      alt.push(inArray(appsTable.id, roleScope.appIds));
     // Spelled out rather than relying on `inArray(col, [])`, whose behaviour has
     // changed across Drizzle versions: a scope with nothing left reaches nothing.
-    clauses.push(alt.length === 0 ? sql`false` : alt.length === 1 ? alt[0] : or(...alt)!);
+    clauses.push(
+      alt.length === 0 ? sql`false` : alt.length === 1 ? alt[0] : or(...alt)!,
+    );
   }
   // Reuses the ONE app predicate the whole data layer scopes by, so the feed can
   // never disagree with what `listApps` shows.
@@ -293,7 +292,9 @@ async function flushDroppedMarker(teamId: string): Promise<void> {
  *  - a NON-HUMAN actor ("system" / "github") must never be attributed to whoever
  *    happens to be logged in, so the string has to match the user it names.
  */
-export async function resolveActorUserId(actor: string): Promise<string | null> {
+export async function resolveActorUserId(
+  actor: string,
+): Promise<string | null> {
   try {
     const u = await getCurrentUser();
     if (u && (u.name === actor || u.username === actor)) return u.id;

@@ -111,7 +111,11 @@ export function McpTabs({
         />
       </div>
 
-      <TabsContent value="connect" forceMount className="data-[state=inactive]:hidden">
+      <TabsContent
+        value="connect"
+        forceMount
+        className="data-[state=inactive]:hidden"
+      >
         <ConnectWizard
           mcpEnabled={enabled}
           canManageMcp={canManageMcp}
@@ -173,9 +177,7 @@ function ConnectedCount({
   const shared = "group inline-flex items-center gap-1.5 pb-3 text-sm";
 
   if (!onOpen)
-    return (
-      <span className={cn(shared, "text-muted-foreground")}>{inner}</span>
-    );
+    return <span className={cn(shared, "text-muted-foreground")}>{inner}</span>;
   return (
     <button
       type="button"
@@ -183,7 +185,7 @@ function ConnectedCount({
       className={cn(
         shared,
         "cursor-pointer text-muted-foreground underline-offset-4 transition-colors hover:text-foreground hover:underline",
-        "focus-visible:outline-none focus-visible:text-foreground focus-visible:underline",
+        "focus-visible:text-foreground focus-visible:underline focus-visible:outline-none",
       )}
     >
       {inner}

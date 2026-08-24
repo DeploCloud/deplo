@@ -286,7 +286,11 @@ export function domainTlsConfig(domain: {
     return { entrypoint: "web", tls: false, certResolver: "" };
   }
   if (provider === "custom") {
-    return { entrypoint: domain.entrypoint ?? "websecure", tls: true, certResolver: "" };
+    return {
+      entrypoint: domain.entrypoint ?? "websecure",
+      tls: true,
+      certResolver: "",
+    };
   }
   const resolver =
     provider === "cloudflare" ? cloudflareCertResolver() : certResolver();
@@ -369,7 +373,9 @@ export function ipToHex(ip: string): string {
  * is not exactly 8 hex digits decoding to a valid IPv4. */
 export function hexToIp(hex: string): string | null {
   if (!/^[0-9a-f]{8}$/i.test(hex)) return null;
-  const ip = [0, 2, 4, 6].map((i) => parseInt(hex.slice(i, i + 2), 16)).join(".");
+  const ip = [0, 2, 4, 6]
+    .map((i) => parseInt(hex.slice(i, i + 2), 16))
+    .join(".");
   return isIpv4(ip) ? ip : null;
 }
 
@@ -443,12 +449,17 @@ export function rehostBlueprintHosts<T extends BlueprintHosts>(
     nipEmbeddedIp(host) === fromIp ? rehostNip(host, toIp) : host;
   return {
     ...input,
-    autoDomain: input.autoDomain ? rehostHost(input.autoDomain) : input.autoDomain,
+    autoDomain: input.autoDomain
+      ? rehostHost(input.autoDomain)
+      : input.autoDomain,
     extraDomains: input.extraDomains?.length
       ? input.extraDomains.map((e) => ({ ...e, host: rehostHost(e.host) }))
       : input.extraDomains,
     env: input.env?.length
-      ? input.env.map((e) => ({ ...e, value: rehostEmbeddedNip(e.value, fromIp, toIp) }))
+      ? input.env.map((e) => ({
+          ...e,
+          value: rehostEmbeddedNip(e.value, fromIp, toIp),
+        }))
       : input.env,
   };
 }
@@ -478,7 +489,10 @@ export function nipDomain(
   ip = instanceHost(),
 ): string {
   const clean = (s: string): string =>
-    s.toLowerCase().replace(/[^a-z0-9-]/g, "-").replace(/^-+|-+$/g, "");
+    s
+      .toLowerCase()
+      .replace(/[^a-z0-9-]/g, "-")
+      .replace(/^-+|-+$/g, "");
   return `${clean(label)}-${clean(words)}-${ipToHex(ip)}.nip.io`;
 }
 
@@ -549,7 +563,10 @@ export function previewHost(opts: {
  * not a plain dotted hostname is refused rather than escaped.
  */
 export function isValidPreviewBaseDomain(base: string): boolean {
-  const clean = base.trim().replace(/^\.+|\.+$/g, "").toLowerCase();
+  const clean = base
+    .trim()
+    .replace(/^\.+|\.+$/g, "")
+    .toLowerCase();
   if (!clean || clean.length > 200) return false;
   // At least one dot (a bare TLD is never what anyone means), and each label is
   // alphanumeric with inner dashes.

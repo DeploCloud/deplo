@@ -57,7 +57,9 @@ export function isOfficialEngineImage(
   const colon = ref.lastIndexOf(":");
   const repo = colon > slash ? ref.slice(0, colon) : ref;
   const want = DB_REPOS[type];
-  return repo === want || repo === `library/${want}` || repo === `docker.io/${want}`;
+  return (
+    repo === want || repo === `library/${want}` || repo === `docker.io/${want}`
+  );
 }
 
 const DB_PORTS: Record<DatabaseType, number> = {
@@ -217,8 +219,16 @@ export function generateDatabaseCompose(input: {
    */
   filesDir?: string | null;
 }): string {
-  const { name, databaseId, type, version, username, password, dbName, hostPort } =
-    input;
+  const {
+    name,
+    databaseId,
+    type,
+    version,
+    username,
+    password,
+    dbName,
+    hostPort,
+  } = input;
   const port = DB_PORTS[type];
   const image = effectiveDatabaseImage({
     type,

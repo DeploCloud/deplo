@@ -9,7 +9,11 @@
 import { desc, eq, asc } from "drizzle-orm";
 
 import { getDb } from "../lib/db/client";
-import { apps, deployments, deploymentLogs } from "../lib/db/schema/control-plane";
+import {
+  apps,
+  deployments,
+  deploymentLogs,
+} from "../lib/db/schema/control-plane";
 import { startDeployment } from "../lib/deploy/build";
 
 const slug = process.argv[2];
@@ -48,7 +52,9 @@ const [dep] = await db
   .from(deployments)
   .where(eq(deployments.id, depId))
   .limit(1);
-console.log(`\nstatus=${dep?.status}  total=${((dep?.buildDurationMs ?? 0) / 1000).toFixed(1)}s`);
+console.log(
+  `\nstatus=${dep?.status}  total=${((dep?.buildDurationMs ?? 0) / 1000).toFixed(1)}s`,
+);
 
 // Where the time went: every BuildKit "#N ... DONE Xs" plus our own phase lines.
 const logs = await db
@@ -66,19 +72,27 @@ for (const l of logs) {
     /^(git clone|docker |nixpacks |railpack |buildctl)/.test(t) ||
     /Checked out|Waiting for|Deployment ready|error/i.test(t)
   ) {
-    console.log(`${new Date(l.ts as unknown as string).toISOString().slice(11, 19)}  ${t.slice(0, 150)}`);
+    console.log(
+      `${new Date(l.ts as unknown as string).toISOString().slice(11, 19)}  ${t.slice(0, 150)}`,
+    );
   }
 }
 
 // Recent history for the same app, so a change is visible as a trend.
 const recent = await db
-  .select({ id: deployments.id, status: deployments.status, ms: deployments.buildDurationMs })
+  .select({
+    id: deployments.id,
+    status: deployments.status,
+    ms: deployments.buildDurationMs,
+  })
   .from(deployments)
   .where(eq(deployments.appId, app.id))
   .orderBy(desc(deployments.createdAt))
   .limit(8);
 console.log("\n--- recent deploys (newest first) ---");
 for (const r of recent) {
-  console.log(`${r.id}  ${String(r.status).padEnd(8)}  ${((r.ms ?? 0) / 1000).toFixed(1)}s`);
+  console.log(
+    `${r.id}  ${String(r.status).padEnd(8)}  ${((r.ms ?? 0) / 1000).toFixed(1)}s`,
+  );
 }
 process.exit(0);

@@ -123,7 +123,10 @@ export function TeamSwitcher({
     <>
       <DropdownMenu>
         <DropdownMenuTrigger asChild>
-          <button type="button" className="flex cursor-pointer items-center gap-2 rounded-md px-2 py-1.5 text-sm hover:bg-accent">
+          <button
+            type="button"
+            className="flex cursor-pointer items-center gap-2 rounded-md px-2 py-1.5 text-sm hover:bg-accent"
+          >
             <TeamAvatar name={team.name} avatarUrl={team.avatarUrl} size="md" />
             <span className="max-w-40 truncate font-medium">{team.name}</span>
             <ChevronDown className="size-3.5 text-muted-foreground" />
@@ -189,8 +192,14 @@ function TeamRow({
   disabled: boolean;
   onSelect: () => void;
 }) {
-  const { attributes, listeners, setNodeRef, transform, transition, isDragging } =
-    useSortable({ id: team.id, disabled: !sortable });
+  const {
+    attributes,
+    listeners,
+    setNodeRef,
+    transform,
+    transition,
+    isDragging,
+  } = useSortable({ id: team.id, disabled: !sortable });
 
   return (
     <DropdownMenuItem
@@ -208,7 +217,7 @@ function TeamRow({
           onClick={(e) => e.stopPropagation()}
           onPointerDown={(e) => e.stopPropagation()}
           aria-label={`Reorder ${team.name}`}
-          className="-ml-1 cursor-grab text-muted-foreground opacity-0 transition-opacity group-hover:opacity-100 group-focus-within:opacity-100 active:cursor-grabbing"
+          className="-ml-1 cursor-grab text-muted-foreground opacity-0 transition-opacity group-focus-within:opacity-100 group-hover:opacity-100 active:cursor-grabbing"
         >
           <GripVertical className="size-3.5" />
         </span>
@@ -216,7 +225,7 @@ function TeamRow({
       <TeamAvatar name={team.name} avatarUrl={team.avatarUrl} size="sm" />
       <span className="flex min-w-0 flex-col">
         <span className="truncate">{team.name}</span>
-        <span className="text-xs capitalize text-muted-foreground">
+        <span className="text-xs text-muted-foreground capitalize">
           {team.role} · {team.memberCount} member
           {team.memberCount === 1 ? "" : "s"}
         </span>

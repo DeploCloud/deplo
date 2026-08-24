@@ -17,10 +17,10 @@ produces a merge conflict on the one line where a conflict is worst.
 
 deplo is in **beta**, so every release is `0.x.y` and there are exactly two buckets.
 
-| Bump | When | Example |
-| --- | --- | --- |
-| **minor** `0.2.0` | The user notices: a new feature, changed behaviour, a DB migration, or a release that needs a newer `deplo-agent` | Preview environments ship |
-| **patch** `0.1.1` | Everything else: a fix, copy, performance, security, an invisible refactor | A dialog stops swallowing Enter |
+| Bump              | When                                                                                                              | Example                         |
+| ----------------- | ----------------------------------------------------------------------------------------------------------------- | ------------------------------- |
+| **minor** `0.2.0` | The user notices: a new feature, changed behaviour, a DB migration, or a release that needs a newer `deplo-agent` | Preview environments ship       |
+| **patch** `0.1.1` | Everything else: a fix, copy, performance, security, an invisible refactor                                        | A dialog stops swallowing Enter |
 
 **No major during the beta.** `1.0.0` is the launch itself, and the owner decides when that is. It
 is not something you reach by accumulating minors.

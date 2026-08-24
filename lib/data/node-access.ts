@@ -137,7 +137,11 @@ interface GrantIndex {
   roleScope: NodeScope | null;
   folders: Map<
     string,
-    { parentId: string | null; projectId: string | null; ownerUserId: string | null }
+    {
+      parentId: string | null;
+      projectId: string | null;
+      ownerUserId: string | null;
+    }
   >;
   projectOwners: Map<string, string | null>;
   /** environmentId → its project, so an environment rung can find its container. */
@@ -202,83 +206,92 @@ async function buildIndex(
     envRows,
     eGrants,
   ] = await Promise.all([
-      db
-        .select({
-          id: foldersTable.id,
-          parentId: foldersTable.parentId,
-          projectId: foldersTable.projectId,
-          ownerUserId: foldersTable.ownerUserId,
-        })
-        .from(foldersTable)
-        .where(eq(foldersTable.teamId, teamId)),
-      db
-        .select({ id: projectsTable.id, ownerUserId: projectsTable.ownerUserId })
-        .from(projectsTable)
-        .where(eq(projectsTable.teamId, teamId)),
-      db
-        .select({
-          key: folderGrantsTable.folderId,
-          capability: folderGrantsTable.capability,
-        })
-        .from(folderGrantsTable)
-        .innerJoin(foldersTable, eq(foldersTable.id, folderGrantsTable.folderId))
-        .where(
-          and(
-            eq(folderGrantsTable.userId, userId),
-            eq(foldersTable.teamId, teamId),
-          ),
+    db
+      .select({
+        id: foldersTable.id,
+        parentId: foldersTable.parentId,
+        projectId: foldersTable.projectId,
+        ownerUserId: foldersTable.ownerUserId,
+      })
+      .from(foldersTable)
+      .where(eq(foldersTable.teamId, teamId)),
+    db
+      .select({ id: projectsTable.id, ownerUserId: projectsTable.ownerUserId })
+      .from(projectsTable)
+      .where(eq(projectsTable.teamId, teamId)),
+    db
+      .select({
+        key: folderGrantsTable.folderId,
+        capability: folderGrantsTable.capability,
+      })
+      .from(folderGrantsTable)
+      .innerJoin(foldersTable, eq(foldersTable.id, folderGrantsTable.folderId))
+      .where(
+        and(
+          eq(folderGrantsTable.userId, userId),
+          eq(foldersTable.teamId, teamId),
         ),
-      db
-        .select({
-          key: projectGrantsTable.projectId,
-          capability: projectGrantsTable.capability,
-        })
-        .from(projectGrantsTable)
-        .innerJoin(
-          projectsTable,
-          eq(projectsTable.id, projectGrantsTable.projectId),
-        )
-        .where(
-          and(
-            eq(projectGrantsTable.userId, userId),
-            eq(projectsTable.teamId, teamId),
-          ),
+      ),
+    db
+      .select({
+        key: projectGrantsTable.projectId,
+        capability: projectGrantsTable.capability,
+      })
+      .from(projectGrantsTable)
+      .innerJoin(
+        projectsTable,
+        eq(projectsTable.id, projectGrantsTable.projectId),
+      )
+      .where(
+        and(
+          eq(projectGrantsTable.userId, userId),
+          eq(projectsTable.teamId, teamId),
         ),
-      db
-        .select({
-          key: appGrantsTable.appId,
-          capability: appGrantsTable.capability,
-        })
-        .from(appGrantsTable)
-        .innerJoin(appsTable, eq(appsTable.id, appGrantsTable.appId))
-        .where(
-          and(eq(appGrantsTable.userId, userId), eq(appsTable.teamId, teamId)),
+      ),
+    db
+      .select({
+        key: appGrantsTable.appId,
+        capability: appGrantsTable.capability,
+      })
+      .from(appGrantsTable)
+      .innerJoin(appsTable, eq(appsTable.id, appGrantsTable.appId))
+      .where(
+        and(eq(appGrantsTable.userId, userId), eq(appsTable.teamId, teamId)),
+      ),
+    holdsManageTeam(userId, teamId),
+    memberScopeFor(userId, teamId),
+    db
+      .select({
+        id: environmentsTable.id,
+        projectId: environmentsTable.projectId,
+      })
+      .from(environmentsTable)
+      .innerJoin(
+        projectsTable,
+        eq(projectsTable.id, environmentsTable.projectId),
+      )
+      .where(eq(projectsTable.teamId, teamId)),
+    db
+      .select({
+        key: environmentGrantsTable.environmentId,
+        capability: environmentGrantsTable.capability,
+      })
+      .from(environmentGrantsTable)
+      .innerJoin(
+        environmentsTable,
+        eq(environmentsTable.id, environmentGrantsTable.environmentId),
+      )
+      .innerJoin(
+        projectsTable,
+        eq(projectsTable.id, environmentsTable.projectId),
+      )
+      .where(
+        and(
+          eq(environmentGrantsTable.userId, userId),
+          eq(projectsTable.teamId, teamId),
         ),
-      holdsManageTeam(userId, teamId),
-      memberScopeFor(userId, teamId),
-      db
-        .select({ id: environmentsTable.id, projectId: environmentsTable.projectId })
-        .from(environmentsTable)
-        .innerJoin(projectsTable, eq(projectsTable.id, environmentsTable.projectId))
-        .where(eq(projectsTable.teamId, teamId)),
-      db
-        .select({
-          key: environmentGrantsTable.environmentId,
-          capability: environmentGrantsTable.capability,
-        })
-        .from(environmentGrantsTable)
-        .innerJoin(
-          environmentsTable,
-          eq(environmentsTable.id, environmentGrantsTable.environmentId),
-        )
-        .innerJoin(projectsTable, eq(projectsTable.id, environmentsTable.projectId))
-        .where(
-          and(
-            eq(environmentGrantsTable.userId, userId),
-            eq(projectsTable.teamId, teamId),
-          ),
-        ),
-    ]);
+      ),
+  ]);
 
   return {
     teamId,
@@ -297,7 +310,9 @@ async function buildIndex(
         },
       ]),
     ),
-    projectOwners: new Map(projectRows.map((p) => [p.id, p.ownerUserId ?? null])),
+    projectOwners: new Map(
+      projectRows.map((p) => [p.id, p.ownerUserId ?? null]),
+    ),
     environmentProjects: new Map(envRows.map((e) => [e.id, e.projectId])),
     folderGrants: groupCaps(fGrants),
     environmentGrants: groupCaps(eGrants),
@@ -347,7 +362,10 @@ async function teamOf(node: NodeRef): Promise<string | null> {
     const rows = await db
       .select({ teamId: projectsTable.teamId })
       .from(environmentsTable)
-      .innerJoin(projectsTable, eq(projectsTable.id, environmentsTable.projectId))
+      .innerJoin(
+        projectsTable,
+        eq(projectsTable.id, environmentsTable.projectId),
+      )
       .where(eq(environmentsTable.id, node.id))
       .limit(1);
     return rows[0]?.teamId ?? null;
@@ -390,8 +408,18 @@ function ladder(
     projectId?: string | null;
     environmentId?: string | null;
   },
-): { kind: NodeRef["kind"]; id: string; owner: boolean; grants: Capability[] }[] {
-  const rungs: { kind: NodeRef["kind"]; id: string; owner: boolean; grants: Capability[] }[] = [];
+): {
+  kind: NodeRef["kind"];
+  id: string;
+  owner: boolean;
+  grants: Capability[];
+}[] {
+  const rungs: {
+    kind: NodeRef["kind"];
+    id: string;
+    owner: boolean;
+    grants: Capability[];
+  }[] = [];
   let projectId = node.projectId ?? null;
 
   if (node.kind === "app") {

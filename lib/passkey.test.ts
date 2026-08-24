@@ -39,7 +39,12 @@ import {
 } from "./data/passkeys";
 import { resetUserPasskeys } from "./data/members";
 import { changePassword } from "./data/account";
-import { seedIdentity, TEAM_A, TEAM_B, USER_1 } from "./data/identity-test-helpers";
+import {
+  seedIdentity,
+  TEAM_A,
+  TEAM_B,
+  USER_1,
+} from "./data/identity-test-helpers";
 import { setStoredPublicBaseUrl } from "./public-url";
 import { ALL_CAPABILITIES } from "./types";
 
@@ -450,7 +455,9 @@ test("a session refresh does not wash the stamp off", async () => {
     .select({ token: sessionTable.token })
     .from(sessionTable)
     .where(eq(sessionTable.id, id));
-  await (await requireAuth().$context).internalAdapter.updateSession(row!.token, {
+  await (
+    await requireAuth().$context
+  ).internalAdapter.updateSession(row!.token, {
     expiresAt: new Date(Date.now() + 7 * 24 * 3600 * 1000),
     updatedAt: new Date(),
   });
@@ -490,7 +497,10 @@ test("changing the password keeps a passkey session's standing", async () => {
   await markCurrentSession("passkey");
 
   await asSession(USER_1, () =>
-    changePassword({ currentPassword: PASSWORD, newPassword: "Nq7-Zx4wPl2rTv" }),
+    changePassword({
+      currentPassword: PASSWORD,
+      newPassword: "Nq7-Zx4wPl2rTv",
+    }),
   );
 
   const [row] = await db
@@ -509,14 +519,21 @@ test("changing the password does not INVENT a standing", async () => {
   await login(EMAIL_1, PASSWORD); // password session, never stamped
 
   await asSession(USER_1, () =>
-    changePassword({ currentPassword: PASSWORD, newPassword: "Nq7-Zx4wPl2rTv" }),
+    changePassword({
+      currentPassword: PASSWORD,
+      newPassword: "Nq7-Zx4wPl2rTv",
+    }),
   );
 
   const [row] = await db
     .select({ method: sessionTable.authMethod })
     .from(sessionTable)
     .where(eq(sessionTable.userId, USER_1));
-  assert.equal(row?.method, null, "a password session stays a password session");
+  assert.equal(
+    row?.method,
+    null,
+    "a password session stays a password session",
+  );
 });
 
 test("signing out and back in with the password loses the standing", async () => {
@@ -717,7 +734,11 @@ test("an unusable passkey is still listed, flagged, and removable", async () => 
 
   await asUser(USER_1, async () => {
     const rows = await listMyPasskeys();
-    assert.equal(rows.length, 2, "a dead credential must not vanish from the list");
+    assert.equal(
+      rows.length,
+      2,
+      "a dead credential must not vanish from the list",
+    );
     assert.equal(rows.find((r) => r.id === "pk-here")?.usableHere, true);
     assert.equal(rows.find((r) => r.id === "pk-old")?.usableHere, false);
     // The guard counts only the usable ones, so the stale row is never what
@@ -806,7 +827,11 @@ test("the plugin's adapter can write, find and update a passkey row", async () =
     model: "passkey",
     where: [{ field: "credentialID", value: "cred-probe" }],
   })) as { userId: string } | null;
-  assert.equal(found?.userId, USER_1, "the authentication path resolves by credentialID");
+  assert.equal(
+    found?.userId,
+    USER_1,
+    "the authentication path resolves by credentialID",
+  );
 
   await adapter.update({
     model: "passkey",

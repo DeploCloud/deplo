@@ -74,7 +74,7 @@ builder.queryFields((t) => ({
       "Find apps and databases by name, slug or id across EVERY team the " +
       "caller can reach - the one read in deplo that is not scoped to the " +
       "active team. Each hit says which team it is in. Separators and case are " +
-      "ignored, so \"better auth\" finds `better-auth-docs`. Teams the caller " +
+      'ignored, so "better auth" finds `better-auth-docs`. Teams the caller ' +
       "cannot enter right now (an unmet two-factor policy, a narrowed token) " +
       "contribute nothing rather than failing the search.",
     args: {

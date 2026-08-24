@@ -29,7 +29,11 @@ test("Resend gets one POST with the key, the sender and the text", async () => {
   capture = captureFetch();
   await sendEmail(
     { provider: "resend", apiKey: "re_test", from: "deplo@acme.com" },
-    { to: "ops@acme.com", subject: "api failed to deploy", text: "See the log." },
+    {
+      to: "ops@acme.com",
+      subject: "api failed to deploy",
+      text: "See the log.",
+    },
   );
   assert.equal(capture.calls.length, 1);
   const call = capture.calls[0];
@@ -47,9 +51,12 @@ test("Resend gets one POST with the key, the sender and the text", async () => {
 test("a refusal surfaces Resend's own words, not a generic failure", async () => {
   capture = captureFetch(
     () =>
-      new Response(JSON.stringify({ message: "The acme.com domain is not verified" }), {
-        status: 403,
-      }),
+      new Response(
+        JSON.stringify({ message: "The acme.com domain is not verified" }),
+        {
+          status: 403,
+        },
+      ),
   );
   await assert.rejects(
     () =>
@@ -62,7 +69,9 @@ test("a refusal surfaces Resend's own words, not a generic failure", async () =>
 });
 
 test("a non-JSON refusal still says something useful", async () => {
-  capture = captureFetch(() => new Response("<html>502</html>", { status: 502 }));
+  capture = captureFetch(
+    () => new Response("<html>502</html>", { status: 502 }),
+  );
   await assert.rejects(
     () =>
       sendEmail(

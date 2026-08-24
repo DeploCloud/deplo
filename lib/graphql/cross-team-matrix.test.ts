@@ -37,10 +37,17 @@ import { runWithIdentity, type RequestIdentity } from "../auth/request-context";
 import { getCurrentUser } from "../auth";
 import { getActiveTeamId, reachableCapabilities } from "../membership";
 import { seedIdentity, TEAM_A, TEAM_B } from "../data/identity-test-helpers";
-import { seedApp, seedServer, seedDeployment } from "../data/app-graph-test-helpers";
+import {
+  seedApp,
+  seedServer,
+  seedDeployment,
+} from "../data/app-graph-test-helpers";
 import { ALL_CAPABILITIES } from "../types";
 import { encryptSecret } from "../crypto";
-import { __setRunnerForTest, __resetQueueForTest } from "../deploy/deploy-queue";
+import {
+  __setRunnerForTest,
+  __resetQueueForTest,
+} from "../deploy/deploy-queue";
 
 /**
  * The CROSS-TEAM matrix: every field of the public API, driven by a bearer token
@@ -100,7 +107,9 @@ after(async () => {
 async function seedAll(): Promise<void> {
   await pg.exec(TRUNCATE_ALL);
   await seedIdentity(db, {
-    users: [{ id: BOTH, teamId: TEAM_A, role: "owner", isInstanceAdmin: false }],
+    users: [
+      { id: BOTH, teamId: TEAM_A, role: "owner", isInstanceAdmin: false },
+    ],
   });
   await db.insert(membershipsTable).values({
     id: MEM_IN_B,
@@ -109,9 +118,14 @@ async function seedAll(): Promise<void> {
     role: "owner",
     createdAt: T0,
   });
-  await db.insert(membershipCapabilitiesTable).values(
-    ALL_CAPABILITIES.map((capability) => ({ membershipId: MEM_IN_B, capability })),
-  );
+  await db
+    .insert(membershipCapabilitiesTable)
+    .values(
+      ALL_CAPABILITIES.map((capability) => ({
+        membershipId: MEM_IN_B,
+        capability,
+      })),
+    );
   await seedServer(db);
   await db.insert(projectsTable).values({
     id: B.project,
@@ -130,7 +144,12 @@ async function seedAll(): Promise<void> {
     createdAt: T0,
     updatedAt: T0,
   });
-  await seedApp(db, { id: B.app, slug: B.slug, teamId: TEAM_B, folderId: B.folder });
+  await seedApp(db, {
+    id: B.app,
+    slug: B.slug,
+    teamId: TEAM_B,
+    folderId: B.folder,
+  });
   await seedDeployment(db, { id: B.deployment, appId: B.app, status: "ready" });
   await db.insert(envVarsTable).values({
     id: B.envVar,
@@ -195,7 +214,8 @@ function literal(
   depth = 0,
 ): string {
   if (isNonNullType(type)) return literal(type.ofType, argName, field, depth);
-  if (isListType(type)) return `[${literal(type.ofType, argName, field, depth)}]`;
+  if (isListType(type))
+    return `[${literal(type.ofType, argName, field, depth)}]`;
   if (isEnumType(type)) return type.getValues()[0]?.name ?? "null";
   if (isScalarType(type)) {
     switch (type.name) {
@@ -266,7 +286,8 @@ const SKIP = new Set([
 ]);
 
 function docsFor(kind: "query" | "mutation") {
-  const type = kind === "query" ? schema.getQueryType()! : schema.getMutationType()!;
+  const type =
+    kind === "query" ? schema.getQueryType()! : schema.getMutationType()!;
   return Object.values(type.getFields())
     .filter((f) => !SKIP.has(f.name))
     .map((f) => {
@@ -335,8 +356,14 @@ async function snapshot(): Promise<string> {
     db.select().from(envVarsTable).where(eq(envVarsTable.appId, B.app)),
     db.select().from(domainsTable).where(eq(domainsTable.appId, B.app)),
     db.select().from(basicAuthTable).where(eq(basicAuthTable.appId, B.app)),
-    db.select().from(folderGrantsTable).where(eq(folderGrantsTable.folderId, B.folder)),
-    db.select().from(membershipCapabilitiesTable).where(eq(membershipCapabilitiesTable.membershipId, MEM_IN_B)),
+    db
+      .select()
+      .from(folderGrantsTable)
+      .where(eq(folderGrantsTable.folderId, B.folder)),
+    db
+      .select()
+      .from(membershipCapabilitiesTable)
+      .where(eq(membershipCapabilitiesTable.membershipId, MEM_IN_B)),
   ]);
   return JSON.stringify(rows);
 }
@@ -372,7 +399,15 @@ test("the sweep can see: beta's own owner moves the same fixture", async () => {
   );
 });
 
-const SENTINELS = [B.app, B.slug, B.folder, B.project, B.envVar, B.domain, B.deployment];
+const SENTINELS = [
+  B.app,
+  B.slug,
+  B.folder,
+  B.project,
+  B.envVar,
+  B.domain,
+  B.deployment,
+];
 
 test("nor read another team's records back", async () => {
   await seedAll();

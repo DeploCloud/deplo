@@ -4,12 +4,7 @@ import * as React from "react";
 import { toast } from "sonner";
 import { Loader2 } from "lucide-react";
 
-import {
-  Card,
-  CardContent,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -39,7 +34,11 @@ const CHANGE_PASSWORD = /* GraphQL */ `
  * sign-in to do — so the card says so instead of appearing to log you out at
  * random.
  */
-export function PasswordCard({ twoFactorEnabled }: { twoFactorEnabled: boolean }) {
+export function PasswordCard({
+  twoFactorEnabled,
+}: {
+  twoFactorEnabled: boolean;
+}) {
   const [pending, startTransition] = React.useTransition();
   const [current, setCurrent] = React.useState("");
   const [next, setNext] = React.useState("");

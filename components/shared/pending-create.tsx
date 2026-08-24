@@ -233,7 +233,7 @@ export function PendingCards({
           key={item.id}
           aria-busy
           className={cn(
-            "animate-pulse select-none border-dashed bg-card/60",
+            "animate-pulse border-dashed bg-card/60 select-none",
             className,
           )}
         >

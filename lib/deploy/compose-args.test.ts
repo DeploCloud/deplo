@@ -15,11 +15,10 @@ import {
 
 test("flags are split into argv tokens, whitespace and all", () => {
   assert.deepEqual(parseComposeUpArgs("--pull always"), ["--pull", "always"]);
-  assert.deepEqual(parseComposeUpArgs("  --wait   --timeout=60 \n --no-deps "), [
-    "--wait",
-    "--timeout=60",
-    "--no-deps",
-  ]);
+  assert.deepEqual(
+    parseComposeUpArgs("  --wait   --timeout=60 \n --no-deps "),
+    ["--wait", "--timeout=60", "--no-deps"],
+  );
   for (const empty of [null, undefined, "", "   "])
     assert.deepEqual(parseComposeUpArgs(empty), []);
 });
@@ -65,7 +64,12 @@ test("a whole command, pasted in, is refused with a reason", () => {
 });
 
 test("shell syntax and quoting are refused — the command runs without a shell", () => {
-  for (const bad of ["--pull always; rm -rf /", '--label "a b"', "--pull $(id)", "--x|y"]) {
+  for (const bad of [
+    "--pull always; rm -rf /",
+    '--label "a b"',
+    "--pull $(id)",
+    "--x|y",
+  ]) {
     const problem = validateComposeUpArgs(bad);
     assert.ok(problem, `${bad} must be refused`);
   }
@@ -76,7 +80,10 @@ test("the set is bounded", () => {
     validateComposeUpArgs(new Array(25).fill("--wait").join(" "))!,
     /25 arguments/,
   );
-  assert.match(validateComposeUpArgs(`--${"x".repeat(200)}`)!, /longer than 128/);
+  assert.match(
+    validateComposeUpArgs(`--${"x".repeat(200)}`)!,
+    /longer than 128/,
+  );
 });
 
 test("the preview is the command, not a description of it", () => {

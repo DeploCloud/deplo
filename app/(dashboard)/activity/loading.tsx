@@ -35,7 +35,7 @@ export default function Loading() {
                   {/* Vertical timeline connector */}
                   <span
                     aria-hidden
-                    className="absolute left-[18px] top-2 bottom-2 w-px bg-border"
+                    className="absolute top-2 bottom-2 left-[18px] w-px bg-border"
                   />
 
                   {Array.from({ length: group.rows }).map((_, i) => (

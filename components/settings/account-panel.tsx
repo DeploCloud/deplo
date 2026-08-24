@@ -3,12 +3,7 @@
 import * as React from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
-import {
-  Card,
-  CardContent,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { UserAvatar } from "@/components/shared/user-avatar";
 import { AvatarPicker } from "@/components/shared/avatar-picker";
 import { Button } from "@/components/ui/button";
@@ -87,11 +82,7 @@ function ProfileCard({ user }: { user: PublicUser }) {
           </div>
         </div>
         <div className="flex justify-end">
-          <Button
-            size="sm"
-            onClick={save}
-            disabled={!dirty || !name.trim()}
-          >
+          <Button size="sm" onClick={save} disabled={!dirty || !name.trim()}>
             Save
           </Button>
         </div>

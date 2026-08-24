@@ -36,7 +36,13 @@ export {
  */
 export const CAPABILITY_PRESETS: Record<Role, Capability[]> = {
   owner: [...ALL_CAPABILITIES],
-  member: presetOf("view", "deploy", "manage_domains", "manage_env", "manage_files"),
+  member: presetOf(
+    "view",
+    "deploy",
+    "manage_domains",
+    "manage_env",
+    "manage_files",
+  ),
   viewer: presetOf("view"),
 };
 
@@ -50,7 +56,9 @@ export const CAPABILITY_PRESETS: Record<Role, Capability[]> = {
  * floor). Here the question is "what did this role already grant".
  */
 function presetOf(...legacy: string[]): Capability[] {
-  const set = new Set(legacy.flatMap((n) => LEGACY_CAPABILITY_EXPANSION[n] ?? []));
+  const set = new Set(
+    legacy.flatMap((n) => LEGACY_CAPABILITY_EXPANSION[n] ?? []),
+  );
   set.add("view");
   return ALL_CAPABILITIES.filter((c) => set.has(c));
 }
@@ -170,13 +178,14 @@ export const PROJECT_SCOPED_CAPABILITIES: Capability[] = [
  *    for a project-scoped token (a folder never lives in a project), but it is
  *    the whole point of handing someone one corner of the fleet.
  */
-export const NODE_GRANTABLE_CAPABILITIES: Capability[] = ALL_CAPABILITIES.filter(
-  (c) =>
-    PROJECT_SCOPED_CAPABILITIES.includes(c) ||
-    c === "move_apps" ||
-    c === "organize_folders" ||
-    c === "delete_folders",
-);
+export const NODE_GRANTABLE_CAPABILITIES: Capability[] =
+  ALL_CAPABILITIES.filter(
+    (c) =>
+      PROJECT_SCOPED_CAPABILITIES.includes(c) ||
+      c === "move_apps" ||
+      c === "organize_folders" ||
+      c === "delete_folders",
+  );
 
 /**
  * How one member's access compares with the role they hold: `null` when they are

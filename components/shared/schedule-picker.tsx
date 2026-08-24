@@ -111,7 +111,9 @@ export function SchedulePicker({
     () => partsFromCron(value) ?? DEFAULT_PARTS,
   );
   // An expression the controls can't express opens straight in the escape hatch.
-  const [custom, setCustom] = React.useState(() => partsFromCron(value) === null);
+  const [custom, setCustom] = React.useState(
+    () => partsFromCron(value) === null,
+  );
 
   const mode: ScheduleMode = custom ? "custom" : parts.mode;
   const valid = isValidSchedule(value);
@@ -122,8 +124,14 @@ export function SchedulePicker({
   // so rendering it during SSR would paint the host's answer and then disagree.
   // `useSyncExternalStore` gives the flag with no effect and no cascading render
   // — the value flips exactly once, server → client.
-  const hydrated = React.useSyncExternalStore(NEVER_CHANGES, onClient, onServer);
-  const nextRun = hydrated ? nextCronRunInZone(value, new Date(), timezone) : null;
+  const hydrated = React.useSyncExternalStore(
+    NEVER_CHANGES,
+    onClient,
+    onServer,
+  );
+  const nextRun = hydrated
+    ? nextCronRunInZone(value, new Date(), timezone)
+    : null;
 
   function apply(next: ScheduleParts) {
     setParts(next);
@@ -158,7 +166,10 @@ export function SchedulePicker({
   const dayField =
     mode === "weekly" ? (
       <div className="space-y-2">
-        <FieldLabel htmlFor={`${id}-weekday`} info="Which day of the week it runs on.">
+        <FieldLabel
+          htmlFor={`${id}-weekday`}
+          info="Which day of the week it runs on."
+        >
           Day
         </FieldLabel>
         <Select
@@ -223,11 +234,13 @@ export function SchedulePicker({
               {GROUPS.map((group) => (
                 <SelectGroup key={group}>
                   <SelectLabel>{group}</SelectLabel>
-                  {SCHEDULE_OPTIONS.filter((o) => o.group === group).map((o) => (
-                    <SelectItem key={o.mode} value={o.mode}>
-                      {o.label}
-                    </SelectItem>
-                  ))}
+                  {SCHEDULE_OPTIONS.filter((o) => o.group === group).map(
+                    (o) => (
+                      <SelectItem key={o.mode} value={o.mode}>
+                        {o.label}
+                      </SelectItem>
+                    ),
+                  )}
                 </SelectGroup>
               ))}
               <SelectSeparator />
@@ -291,7 +304,9 @@ export function SchedulePicker({
               {nextRun && (
                 <>
                   {" · next run "}
-                  <span className="text-foreground">{formatLocal(nextRun)}</span>
+                  <span className="text-foreground">
+                    {formatLocal(nextRun)}
+                  </span>
                   {" your time"}
                 </>
               )}
@@ -299,7 +314,8 @@ export function SchedulePicker({
           )
         ) : (
           <p className="text-xs text-destructive">
-            Not a valid cron expression. Use 5 fields — minute hour day month weekday.
+            Not a valid cron expression. Use 5 fields — minute hour day month
+            weekday.
           </p>
         )}
       </div>

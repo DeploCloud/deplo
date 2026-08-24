@@ -24,7 +24,10 @@ import {
   type PreviewForkPolicy,
 } from "../deploy/preview-lifecycle";
 import { isValidPreviewBaseDomain } from "../deploy/domains";
-import { listOpenPullRequests, type GithubPullRequestSummary } from "../github/app";
+import {
+  listOpenPullRequests,
+  type GithubPullRequestSummary,
+} from "../github/app";
 import { githubFullName } from "../github/repo-id";
 import { newId, nowIso } from "../ids";
 import { requireActiveTeamId, requireCapability } from "../membership";
@@ -90,10 +93,7 @@ export interface AppPreviewDTO {
  * builds.
  */
 export type PreviewsUnavailable =
-  | "not-github"
-  | "no-installation"
-  | "app-needs-update"
-  | "disabled";
+  "not-github" | "no-installation" | "app-needs-update" | "disabled";
 
 export interface AppPreviewsView {
   appId: string;
@@ -315,7 +315,9 @@ export async function deployPullRequest(
 }
 
 /** Rebuild an existing preview at its current head. */
-export async function redeployPreview(previewId: string): Promise<AppPreviewDTO> {
+export async function redeployPreview(
+  previewId: string,
+): Promise<AppPreviewDTO> {
   await requireCapability("manage_previews");
   const p = await ownedPreview(previewId);
   await requireFolderCapabilityForApp(p.appId, "manage_previews");
@@ -338,7 +340,9 @@ export async function redeployPreview(previewId: string): Promise<AppPreviewDTO>
  * records WHAT was reviewed so the UI can show it. The independent second layer
  * is that a fork preview never receives `secret`-typed variables at all.
  */
-export async function approvePreview(previewId: string): Promise<AppPreviewDTO> {
+export async function approvePreview(
+  previewId: string,
+): Promise<AppPreviewDTO> {
   const { userId } = await requireCapability("manage_previews");
   const p = await ownedPreview(previewId);
   await requireFolderCapabilityForApp(p.appId, "manage_previews");
@@ -357,7 +361,10 @@ export async function approvePreview(previewId: string): Promise<AppPreviewDTO> 
       updatedAt: now,
     })
     .where(
-      and(eq(appPreviewsTable.id, previewId), eq(appPreviewsTable.appId, p.appId)),
+      and(
+        eq(appPreviewsTable.id, previewId),
+        eq(appPreviewsTable.appId, p.appId),
+      ),
     )
     .returning({ id: appPreviewsTable.id });
   if (updated.length === 0) throw new Error("Preview not found");
@@ -406,7 +413,8 @@ export async function setAppPreviewSettings(
 ): Promise<void> {
   const { membership } = await requireCapability("manage_previews");
   const app = await loadAppGraph(appId);
-  if (!app || app.teamId !== membership.teamId) throw new Error("App not found");
+  if (!app || app.teamId !== membership.teamId)
+    throw new Error("App not found");
   await requireFolderCapabilityForApp(appId, "manage_previews");
   const user = await getCurrentUser();
 
@@ -428,7 +436,10 @@ export async function setAppPreviewSettings(
   }
   if (input.maxActive !== undefined) {
     // A cap, not a quota — bounded generously, and never clamped silently.
-    if (input.maxActive != null && (input.maxActive < 1 || input.maxActive > 50)) {
+    if (
+      input.maxActive != null &&
+      (input.maxActive < 1 || input.maxActive > 50)
+    ) {
       throw new Error("Keep the preview limit between 1 and 50");
     }
     patch.previewMaxActive = input.maxActive ?? null;
@@ -460,7 +471,9 @@ export async function setAppPreviewSettings(
       // this check only asked about access, so a storage/build host, or another
       // platform's machine, could be pinned here through the API.
       if (!canHostWorkloads(picked))
-        throw new Error("Nothing is deployed on that server - pick one that runs apps");
+        throw new Error(
+          "Nothing is deployed on that server - pick one that runs apps",
+        );
     }
     // The app's own server IS the default, so storing it explicitly would only
     // pin what is already true and survive a later app move.
@@ -473,9 +486,14 @@ export async function setAppPreviewSettings(
   if (input.buildDrafts !== undefined) {
     patch.previewBuildDrafts = Boolean(input.buildDrafts);
   }
-  if (input.comment !== undefined) patch.previewComment = Boolean(input.comment);
+  if (input.comment !== undefined)
+    patch.previewComment = Boolean(input.comment);
   if (input.port !== undefined) {
-    if (input.port != null && input.port !== 0 && (input.port < 1 || input.port > 65535)) {
+    if (
+      input.port != null &&
+      input.port !== 0 &&
+      (input.port < 1 || input.port > 65535)
+    ) {
       throw new Error("Enter a port between 1 and 65535");
     }
     // 0 and null both mean "back to the app's build port" — a cleared number
@@ -496,7 +514,9 @@ export async function setAppPreviewSettings(
   const rows = await getDb()
     .update(appsTable)
     .set(patch)
-    .where(and(eq(appsTable.id, appId), eq(appsTable.teamId, membership.teamId)))
+    .where(
+      and(eq(appsTable.id, appId), eq(appsTable.teamId, membership.teamId)),
+    )
     .returning({ id: appsTable.id });
   if (rows.length === 0) throw new Error("App not found");
   // Turning previews OFF destroys the stacks that are up. The switch means "no
@@ -648,7 +668,9 @@ async function ownedPreview(
     .select({ preview: appPreviewsTable })
     .from(appPreviewsTable)
     .innerJoin(appsTable, eq(appsTable.id, appPreviewsTable.appId))
-    .where(and(eq(appPreviewsTable.id, previewId), eq(appsTable.teamId, teamId)))
+    .where(
+      and(eq(appPreviewsTable.id, previewId), eq(appsTable.teamId, teamId)),
+    )
     .limit(1);
   const row = rows[0]?.preview;
   if (!row) throw new Error("Preview not found");

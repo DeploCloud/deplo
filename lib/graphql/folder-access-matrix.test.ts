@@ -35,10 +35,17 @@ import { runWithIdentity, type RequestIdentity } from "../auth/request-context";
 import { getCurrentUser } from "../auth";
 import { getActiveTeamId, reachableCapabilities } from "../membership";
 import { seedIdentity, TEAM_A } from "../data/identity-test-helpers";
-import { seedApp, seedServer, seedDeployment } from "../data/app-graph-test-helpers";
+import {
+  seedApp,
+  seedServer,
+  seedDeployment,
+} from "../data/app-graph-test-helpers";
 import { ALL_CAPABILITIES } from "../types";
 import { encryptSecret } from "../crypto";
-import { __setRunnerForTest, __resetQueueForTest } from "../deploy/deploy-queue";
+import {
+  __setRunnerForTest,
+  __resetQueueForTest,
+} from "../deploy/deploy-queue";
 import { eq } from "drizzle-orm";
 
 /**
@@ -110,10 +117,12 @@ async function seedAll(): Promise<void> {
       membershipId: `mem_${OWNER}`,
       capability,
     })),
-    ...ALL_CAPABILITIES.filter((c) => c !== "manage_team").map((capability) => ({
-      membershipId: `mem_${INTRUDER}`,
-      capability,
-    })),
+    ...ALL_CAPABILITIES.filter((c) => c !== "manage_team").map(
+      (capability) => ({
+        membershipId: `mem_${INTRUDER}`,
+        capability,
+      }),
+    ),
   ]);
   await seedServer(db);
   await db.insert(foldersTable).values({
@@ -125,7 +134,10 @@ async function seedAll(): Promise<void> {
     updatedAt: T0,
   });
   await seedApp(db, { id: P.app, slug: P.slug, teamId: TEAM_A });
-  await db.update(appsTable).set({ folderId: P.folder }).where(eq(appsTable.id, P.app));
+  await db
+    .update(appsTable)
+    .set({ folderId: P.folder })
+    .where(eq(appsTable.id, P.app));
   await seedDeployment(db, { id: P.deployment, appId: P.app, status: "ready" });
   await db.insert(envVarsTable).values({
     id: P.envVar,
@@ -187,7 +199,8 @@ function literal(
   depth = 0,
 ): string {
   if (isNonNullType(type)) return literal(type.ofType, argName, field, depth);
-  if (isListType(type)) return `[${literal(type.ofType, argName, field, depth)}]`;
+  if (isListType(type))
+    return `[${literal(type.ofType, argName, field, depth)}]`;
   if (isEnumType(type)) return type.getValues()[0]?.name ?? "null";
   if (isScalarType(type)) {
     switch (type.name) {
@@ -235,9 +248,25 @@ function deepSelection(type: GraphQLOutputType, depth = 0): string {
 }
 
 function docsFor(kind: "query" | "mutation") {
-  const type = kind === "query" ? schema.getQueryType()! : schema.getMutationType()!;
+  const type =
+    kind === "query" ? schema.getQueryType()! : schema.getMutationType()!;
   return Object.values(type.getFields())
-    .filter((f) => !["me", "apiContext", "login", "logout", "completeSetup", "registerThroughLink", "verifyTwoFactorLogin", "deleteTeam", "deleteUser", "removeUserFromTeam", "removeMember"].includes(f.name))
+    .filter(
+      (f) =>
+        ![
+          "me",
+          "apiContext",
+          "login",
+          "logout",
+          "completeSetup",
+          "registerThroughLink",
+          "verifyTwoFactorLogin",
+          "deleteTeam",
+          "deleteUser",
+          "removeUserFromTeam",
+          "removeMember",
+        ].includes(f.name),
+    )
     .map((f) => {
       const field = f as GraphQLField<unknown, unknown>;
       const args = field.args.length
@@ -265,7 +294,10 @@ async function principalFor(userId: string) {
   return { ctx, identity };
 }
 
-async function run(p: { ctx: GraphQLContext; identity: RequestIdentity }, doc: string) {
+async function run(
+  p: { ctx: GraphQLContext; identity: RequestIdentity },
+  doc: string,
+) {
   return (await Promise.race([
     runWithIdentity(p.identity, () =>
       graphql({ schema, source: doc, contextValue: p.ctx }),
@@ -274,7 +306,15 @@ async function run(p: { ctx: GraphQLContext; identity: RequestIdentity }, doc: s
   ])) as { data?: unknown; errors?: readonly { message: string }[] };
 }
 
-const SENTINELS = [P.app, P.slug, P.folder, P.envVar, P.domain, P.deployment, P.basicAuth];
+const SENTINELS = [
+  P.app,
+  P.slug,
+  P.folder,
+  P.envVar,
+  P.domain,
+  P.deployment,
+  P.basicAuth,
+];
 
 test("no query hands the private folder's app to a member without access", async () => {
   await seedAll();

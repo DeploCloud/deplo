@@ -22,7 +22,10 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { FieldLabel } from "@/components/ui/info-tip";
-import { RepoBrowser, type RepoSelection } from "@/components/apps/repo-browser";
+import {
+  RepoBrowser,
+  type RepoSelection,
+} from "@/components/apps/repo-browser";
 import { GitProviderMark } from "@/components/shared/brand-icons";
 import type { GitConnectionDTO } from "@/lib/data/git-connections";
 
@@ -175,11 +178,14 @@ export function GitSourcePicker({
           <DropdownMenuTrigger asChild>
             <button
               type="button"
-              className="flex min-w-0 items-center gap-2 rounded-lg border border-border bg-background px-3 py-2 text-left text-sm outline-none transition-colors hover:bg-accent focus-visible:ring-2 focus-visible:ring-ring sm:w-80"
+              className="flex min-w-0 items-center gap-2 rounded-lg border border-border bg-background px-3 py-2 text-left text-sm transition-colors outline-none hover:bg-accent focus-visible:ring-2 focus-visible:ring-ring sm:w-80"
             >
               {active ? (
                 <>
-                  <GitProviderMark provider={active.provider} className="size-5" />
+                  <GitProviderMark
+                    provider={active.provider}
+                    className="size-5"
+                  />
                   <span className="min-w-0 flex-1 truncate">
                     <span className="font-medium">{active.label}</span>
                     {active.accountLogin && (
@@ -196,7 +202,9 @@ export function GitSourcePicker({
               ) : (
                 <>
                   <GitProviderMark provider="git" className="size-5" />
-                  <span className="min-w-0 flex-1 truncate">Repository URL</span>
+                  <span className="min-w-0 flex-1 truncate">
+                    Repository URL
+                  </span>
                 </>
               )}
               <ChevronsUpDown className="size-4 shrink-0 text-muted-foreground" />

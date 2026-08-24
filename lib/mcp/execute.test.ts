@@ -5,7 +5,12 @@ import type { PGlite } from "@electric-sql/pglite";
 
 import { makeTestDb, type TestDb } from "../db/test-harness";
 import { __setTestDb, __resetTestDb } from "../db/client";
-import { seedIdentity, TEAM_A, TEAM_B, USER_1 } from "../data/leaf-test-helpers";
+import {
+  seedIdentity,
+  TEAM_A,
+  TEAM_B,
+  USER_1,
+} from "../data/leaf-test-helpers";
 import { runWithIdentity } from "../auth/request-context";
 import { createToken, authenticateToken } from "../data/tokens";
 import { getCurrentUser } from "../auth";
@@ -47,7 +52,9 @@ beforeEach(async () => {
 });
 
 /** Mint a token, authenticate it, and build the context `/api/mcp` would build. */
-async function contextFor(capabilities: Parameters<typeof createToken>[0]["capabilities"]) {
+async function contextFor(
+  capabilities: Parameters<typeof createToken>[0]["capabilities"],
+) {
   const raw = await runWithIdentity({ userId: USER_1, teamId: TEAM_A }, () =>
     createToken({ name: "mcp", capabilities }),
   );
@@ -74,7 +81,11 @@ test("a tool's document resolves as the token, in the token's team", async () =>
     me: { id: string } | null;
     viewerTeam: { id: string };
   };
-  assert.equal(result.apiContext.via, "token", "the request must read as token auth");
+  assert.equal(
+    result.apiContext.via,
+    "token",
+    "the request must read as token auth",
+  );
   assert.equal(result.apiContext.teamId, TEAM_A);
   assert.equal(result.me?.id, USER_1, "resolved as the token's creator");
   assert.equal(result.viewerTeam.id, TEAM_A);
@@ -101,5 +112,9 @@ test("the team hint decides which team a document resolves in", async () => {
   );
   const identity = await authenticateToken(raw.raw, TEAM_B);
   assert.ok(identity);
-  assert.equal(identity.teamId, TEAM_A, "an unreachable hint falls back, never through");
+  assert.equal(
+    identity.teamId,
+    TEAM_A,
+    "an unreachable hint falls back, never through",
+  );
 });

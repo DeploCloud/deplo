@@ -94,7 +94,10 @@ async function exists(
   table: typeof teamsTable | typeof usersTable | typeof appsTable,
   id: string,
 ): Promise<boolean> {
-  const rows = await db.select({ id: table.id }).from(table).where(eq(table.id, id));
+  const rows = await db
+    .select({ id: table.id })
+    .from(table)
+    .where(eq(table.id, id));
   return rows.length > 0;
 }
 
@@ -125,7 +128,11 @@ const ALL_OFF = {
 test("a team the user is alone in is deleted with the account, apps and all", async () => {
   await seedAdminAndTarget();
   await seedServer(db);
-  await seedApp(db, { id: "prj_solo", teamId: TEAM_B, createdByUserId: USER_2 });
+  await seedApp(db, {
+    id: "prj_solo",
+    teamId: TEAM_B,
+    createdByUserId: USER_2,
+  });
 
   const impact = await runWithIdentity({ userId: USER_1, teamId: TEAM_A }, () =>
     getDeleteUserImpact(USER_2),
@@ -201,8 +208,16 @@ test("apps they created in a surviving team are kept unless asked for", async ()
   await seedAdminAndTarget();
   await addMembership(USER_2, TEAM_A, "member");
   await seedServer(db);
-  await seedApp(db, { id: "prj_theirs", teamId: TEAM_A, createdByUserId: USER_2 });
-  await seedApp(db, { id: "prj_mine", teamId: TEAM_A, createdByUserId: USER_1 });
+  await seedApp(db, {
+    id: "prj_theirs",
+    teamId: TEAM_A,
+    createdByUserId: USER_2,
+  });
+  await seedApp(db, {
+    id: "prj_mine",
+    teamId: TEAM_A,
+    createdByUserId: USER_1,
+  });
   // TEAM_B is USER_2's solo team and would be deleted regardless — drop it so
   // this case is only about the shared team.
   await db.delete(teamsTable).where(eq(teamsTable.id, TEAM_B));
@@ -230,8 +245,16 @@ test("deleteCreatedApps removes their apps and only theirs", async () => {
   await seedAdminAndTarget();
   await addMembership(USER_2, TEAM_A, "member");
   await seedServer(db);
-  await seedApp(db, { id: "prj_theirs", teamId: TEAM_A, createdByUserId: USER_2 });
-  await seedApp(db, { id: "prj_mine", teamId: TEAM_A, createdByUserId: USER_1 });
+  await seedApp(db, {
+    id: "prj_theirs",
+    teamId: TEAM_A,
+    createdByUserId: USER_2,
+  });
+  await seedApp(db, {
+    id: "prj_mine",
+    teamId: TEAM_A,
+    createdByUserId: USER_1,
+  });
   await db.delete(teamsTable).where(eq(teamsTable.id, TEAM_B));
 
   const res = await runWithIdentity({ userId: USER_1, teamId: TEAM_A }, () =>

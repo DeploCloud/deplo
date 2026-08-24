@@ -101,7 +101,10 @@ test("render → parseStackVolumes round-trips the mount set", () => {
 });
 
 test("parseStackVolumes: empty / missing-service stacks yield []", () => {
-  assert.deepEqual(parseStackVolumes("services:\n  deplo-demo:\n    image: x\n", "deplo-demo"), []);
+  assert.deepEqual(
+    parseStackVolumes("services:\n  deplo-demo:\n    image: x\n", "deplo-demo"),
+    [],
+  );
   assert.deepEqual(parseStackVolumes("services: {}", "missing"), []);
 });
 
@@ -119,21 +122,36 @@ test("host bind mount: emits hostPath source and NO top-level volumes entry", ()
   const yaml = renderCompose({
     ...base,
     volumes: [
-      { type: "host", name: "", hostPath: "/srv/data", mountPath: "/data", readOnly: false },
+      {
+        type: "host",
+        name: "",
+        hostPath: "/srv/data",
+        mountPath: "/data",
+        readOnly: false,
+      },
     ],
   });
   // App line binds the host path directly.
   assert.match(yaml, /\n {6}- \/srv\/data:\/data\n/);
   // A host bind is NOT a named volume, so no TOP-LEVEL (column-0) volumes: key is
   // emitted (the service-level `    volumes:` list is still present).
-  assert.ok(!/\nvolumes:/.test(yaml), "no top-level volumes block for a pure host bind");
+  assert.ok(
+    !/\nvolumes:/.test(yaml),
+    "no top-level volumes block for a pure host bind",
+  );
 });
 
 test("host bind read-only flag emits :ro", () => {
   const yaml = renderCompose({
     ...base,
     volumes: [
-      { type: "host", name: "", hostPath: "/srv/ro", mountPath: "/ro", readOnly: true },
+      {
+        type: "host",
+        name: "",
+        hostPath: "/srv/ro",
+        mountPath: "/ro",
+        readOnly: true,
+      },
     ],
   });
   assert.match(yaml, /- \/srv\/ro:\/ro:ro/);
@@ -146,7 +164,14 @@ test("host bind propagation renders as an option, alongside :ro", () => {
   const follows = renderCompose({
     ...base,
     volumes: [
-      { type: "host", name: "", hostPath: "/srv/neon", mountPath: "/srv/neon", readOnly: false, propagation: "rslave" },
+      {
+        type: "host",
+        name: "",
+        hostPath: "/srv/neon",
+        mountPath: "/srv/neon",
+        readOnly: false,
+        propagation: "rslave",
+      },
     ],
   });
   assert.match(follows, /- \/srv\/neon:\/srv\/neon:rslave\n/);
@@ -155,7 +180,14 @@ test("host bind propagation renders as an option, alongside :ro", () => {
   const both = renderCompose({
     ...base,
     volumes: [
-      { type: "host", name: "", hostPath: "/srv/neon", mountPath: "/srv/neon", readOnly: true, propagation: "rslave" },
+      {
+        type: "host",
+        name: "",
+        hostPath: "/srv/neon",
+        mountPath: "/srv/neon",
+        readOnly: true,
+        propagation: "rslave",
+      },
     ],
   });
   assert.match(both, /- \/srv\/neon:\/srv\/neon:ro,rslave\n/);
@@ -166,14 +198,40 @@ test("propagation round-trips through parseStackVolumes, :ro included", () => {
   // field as a single word (`flag === "ro"`) dropped BOTH flags off this line,
   // which would have silently re-rendered the mount read-write and rprivate.
   const volumes = [
-    { type: "host" as const, name: "", hostPath: "/srv/neon", mountPath: "/srv/neon", readOnly: true, propagation: "rslave" as const },
-    { type: "host" as const, name: "", hostPath: "/srv/plain", mountPath: "/plain", readOnly: false },
+    {
+      type: "host" as const,
+      name: "",
+      hostPath: "/srv/neon",
+      mountPath: "/srv/neon",
+      readOnly: true,
+      propagation: "rslave" as const,
+    },
+    {
+      type: "host" as const,
+      name: "",
+      hostPath: "/srv/plain",
+      mountPath: "/plain",
+      readOnly: false,
+    },
   ];
   const yaml = renderCompose({ ...base, volumes });
   assert.deepEqual(parseStackVolumes(yaml, base.name), [
-    { type: "host", name: "", hostPath: "/srv/neon", mountPath: "/srv/neon", readOnly: true, propagation: "rslave" },
+    {
+      type: "host",
+      name: "",
+      hostPath: "/srv/neon",
+      mountPath: "/srv/neon",
+      readOnly: true,
+      propagation: "rslave",
+    },
     // No propagation ⇒ the key stays absent, so an untouched mount is unchanged.
-    { type: "host", name: "", hostPath: "/srv/plain", mountPath: "/plain", readOnly: false },
+    {
+      type: "host",
+      name: "",
+      hostPath: "/srv/plain",
+      mountPath: "/plain",
+      readOnly: false,
+    },
   ]);
 });
 
@@ -182,26 +240,47 @@ test("mixed named + host: named gets a top-level entry, host does not", () => {
     ...base,
     volumes: [
       { name: "data", mountPath: "/data", readOnly: false },
-      { type: "host", name: "", hostPath: "/srv/h", mountPath: "/h", readOnly: false },
+      {
+        type: "host",
+        name: "",
+        hostPath: "/srv/h",
+        mountPath: "/h",
+        readOnly: false,
+      },
     ],
   });
   assert.match(yaml, /\n {6}- data:\/data\n/);
   assert.match(yaml, /\n {6}- \/srv\/h:\/h\n/);
   // Exactly one named volume in the top-level block.
   assert.match(yaml, /\nvolumes:\n {2}data:\n {4}name: deplo-demo-data\n/);
-  assert.ok(!/name: deplo-demo-h\b/.test(yaml), "host bind has no namespaced volume name");
+  assert.ok(
+    !/name: deplo-demo-h\b/.test(yaml),
+    "host bind has no namespaced volume name",
+  );
 });
 
 test("host bind round-trips through parseStackVolumes as type: host", () => {
   const volumes = [
     { name: "data", mountPath: "/data", readOnly: false },
-    { type: "host" as const, name: "", hostPath: "/srv/h", mountPath: "/h", readOnly: true },
+    {
+      type: "host" as const,
+      name: "",
+      hostPath: "/srv/h",
+      mountPath: "/h",
+      readOnly: true,
+    },
   ];
   const yaml = renderCompose({ ...base, volumes });
   const parsed = parseStackVolumes(yaml, base.name);
   assert.deepEqual(parsed, [
     { name: "data", mountPath: "/data", readOnly: false },
-    { type: "host", name: "", hostPath: "/srv/h", mountPath: "/h", readOnly: true },
+    {
+      type: "host",
+      name: "",
+      hostPath: "/srv/h",
+      mountPath: "/h",
+      readOnly: true,
+    },
   ]);
 });
 
@@ -209,35 +288,68 @@ test("project file mount: source resolves to the project's files dir, NO top-lev
   const yaml = renderCompose({
     ...base,
     volumes: [
-      { type: "app", name: "", projectPath: "config.toml", mountPath: "/app/config.toml", readOnly: false },
+      {
+        type: "app",
+        name: "",
+        projectPath: "config.toml",
+        mountPath: "/app/config.toml",
+        readOnly: false,
+      },
     ],
   });
   // The source is the absolute per-project files dir (…/files/<slug>/<rel>),
   // never a raw "./" that docker would resolve against the stack dir.
-  assert.match(yaml, /\n {6}- \/.*\/files\/demo\/config\.toml:\/app\/config\.toml\n/);
+  assert.match(
+    yaml,
+    /\n {6}- \/.*\/files\/demo\/config\.toml:\/app\/config\.toml\n/,
+  );
   // A project bind, like a host bind, gets NO top-level volumes block.
-  assert.ok(!/\nvolumes:/.test(yaml), "no top-level volumes block for a project bind");
+  assert.ok(
+    !/\nvolumes:/.test(yaml),
+    "no top-level volumes block for a project bind",
+  );
 });
 
 test("project file mount: nested path and :ro flag render correctly", () => {
   const yaml = renderCompose({
     ...base,
     volumes: [
-      { type: "app", name: "", projectPath: "volumes/db/init.sql", mountPath: "/init.sql", readOnly: true },
+      {
+        type: "app",
+        name: "",
+        projectPath: "volumes/db/init.sql",
+        mountPath: "/init.sql",
+        readOnly: true,
+      },
     ],
   });
-  assert.match(yaml, /\n {6}- \/.*\/files\/demo\/volumes\/db\/init\.sql:\/init\.sql:ro\n/);
+  assert.match(
+    yaml,
+    /\n {6}- \/.*\/files\/demo\/volumes\/db\/init\.sql:\/init\.sql:ro\n/,
+  );
 });
 
 test("project file mount round-trips through parseStackVolumes as type: project", () => {
   const volumes = [
     { name: "data", mountPath: "/data", readOnly: false },
-    { type: "app" as const, name: "", projectPath: "config.toml", mountPath: "/app/config.toml", readOnly: false },
+    {
+      type: "app" as const,
+      name: "",
+      projectPath: "config.toml",
+      mountPath: "/app/config.toml",
+      readOnly: false,
+    },
   ];
   const yaml = renderCompose({ ...base, volumes });
   const parsed = parseStackVolumes(yaml, base.name);
   assert.deepEqual(parsed, [
     { name: "data", mountPath: "/data", readOnly: false },
-    { type: "app", name: "", projectPath: "config.toml", mountPath: "/app/config.toml", readOnly: false },
+    {
+      type: "app",
+      name: "",
+      projectPath: "config.toml",
+      mountPath: "/app/config.toml",
+      readOnly: false,
+    },
   ]);
 });

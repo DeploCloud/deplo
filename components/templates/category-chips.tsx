@@ -135,7 +135,9 @@ export function CategoryChips({
         "flex items-center gap-2",
         // Phone: one scrolling line, no bar. Desktop: nothing overflows, so
         // there is nothing to scroll.
-        fits === null ? "scrollbar-none -mx-1 overflow-x-auto px-1 pb-1" : "min-w-0",
+        fits === null
+          ? "-mx-1 scrollbar-none overflow-x-auto px-1 pb-1"
+          : "min-w-0",
       )}
     >
       <Chip

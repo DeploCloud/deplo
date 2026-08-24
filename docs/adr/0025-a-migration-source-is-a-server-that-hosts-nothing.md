@@ -109,7 +109,7 @@ a failed registration now that the page is gone.
 version of this ADR made it a button on the report, reasoning that an import is usually several
 passes and uninstalling after the first would lock the operator out of the rest. The pass is not
 what ends the migration - **Finish** is, and it is pressed once - so the sweep hangs off that
-instead, and a run that is merely *stopped* still takes its sources with it untouched.
+instead, and a run that is merely _stopped_ still takes its sources with it untouched.
 
 The intent is durable, on the `servers` row that has to die: `uninstall_next_at` /
 `uninstall_attempts` / `uninstall_error` / `uninstall_run_id` (migration 0118). One attempt is

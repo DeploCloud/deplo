@@ -119,8 +119,6 @@ async function toPublic(u: {
   };
 }
 
-
-
 /** True if a username is already in use (case-insensitive, normalized). */
 export async function isUsernameTaken(username: string): Promise<boolean> {
   const n = normalizeUsername(username);
@@ -319,7 +317,8 @@ export async function createAccountWithTeam(
       ),
     );
     let finalSlug = slugBase;
-    for (let i = 2; takenSlugs.has(finalSlug); i++) finalSlug = `${slugBase}-${i}`;
+    for (let i = 2; takenSlugs.has(finalSlug); i++)
+      finalSlug = `${slugBase}-${i}`;
 
     const team: Team = {
       id: `team_${randomBytes(8).toString("hex")}`,
@@ -528,7 +527,9 @@ const currentSession = cache(async () => {
   if (currentIdentity()) return null;
   const auth = getAuth();
   if (!auth) return null;
-  return auth.api.getSession({ headers: await authHeaders() }).catch(() => null);
+  return auth.api
+    .getSession({ headers: await authHeaders() })
+    .catch(() => null);
 });
 
 /**
@@ -570,7 +571,9 @@ export const currentSessionId = cache(async (): Promise<string | null> => {
   // An identity that names its session wins: see `RequestIdentity.sessionId`.
   // A bearer token never names one, so it still falls through to null.
   return (
-    currentIdentity()?.sessionId ?? (await currentSession())?.session?.id ?? null
+    currentIdentity()?.sessionId ??
+    (await currentSession())?.session?.id ??
+    null
   );
 });
 
@@ -784,7 +787,10 @@ async function upgradePasswordHash(
       // credential they had just replaced.
       .set({ password: fresh, updatedAt: new Date() })
       .where(
-        and(eq(accountTable.id, row.id), eq(accountTable.password, row.password)),
+        and(
+          eq(accountTable.id, row.id),
+          eq(accountTable.password, row.password),
+        ),
       );
   } catch {
     // Deliberately swallowed - see the docblock.
@@ -998,7 +1004,8 @@ export async function completeSetup(input: {
   email: string;
   password: string;
 }): Promise<{ ok: boolean; error?: string }> {
-  const existing = (await getDb().select({ n: count() }).from(usersTable))[0]!.n;
+  const existing = (await getDb().select({ n: count() }).from(usersTable))[0]!
+    .n;
   if (existing > 0)
     return { ok: false, error: "Setup has already been completed" };
 
@@ -1020,7 +1027,10 @@ export async function completeSetup(input: {
       { isInstanceAdmin: true, isInstanceOwner: true },
     ));
   } catch (e) {
-    return { ok: false, error: e instanceof Error ? e.message : "Setup failed" };
+    return {
+      ok: false,
+      error: e instanceof Error ? e.message : "Setup failed",
+    };
   }
 
   await startSessionFor(user.email, input.password, team.id);
@@ -1060,7 +1070,9 @@ export async function startSessionFor(
  * in the same request, so we write the cookie directly rather than round-trip
  * the membership validation, which may read a stale per-request cache).
  */
-export async function setActiveTeamForCurrentUser(teamId: string): Promise<void> {
+export async function setActiveTeamForCurrentUser(
+  teamId: string,
+): Promise<void> {
   await setActiveTeamCookie(teamId);
 }
 

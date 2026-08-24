@@ -51,7 +51,12 @@ export function CheckAllStatusButton() {
   const { checkAll, sweeping } = useServerHealth();
 
   return (
-    <Button variant="outline" size="sm" onClick={() => checkAll()} disabled={sweeping}>
+    <Button
+      variant="outline"
+      size="sm"
+      onClick={() => checkAll()}
+      disabled={sweeping}
+    >
       <RefreshCw className={sweeping ? "size-4 animate-spin" : "size-4"} />
       {sweeping ? "Checking…" : "Check status"}
     </Button>

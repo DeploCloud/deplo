@@ -34,7 +34,7 @@ config, or an AI agent's configuration file.
    do, and nothing has to be re-materialized when a role changes. One
    intersection, no new authorization concept, no new gate at 132 call sites.
 
-3. **A token's scope is a TREE, and "limited" includes reads.** *(amended: it
+3. **A token's scope is a TREE, and "limited" includes reads.** _(amended: it
    started as one team plus a set of projects; migration `0062` made it whole
    teams, whole projects or individual apps, and `0063` added the level most apps
    actually live in — whole FOLDERS, subtree included, expanded at authentication
@@ -50,7 +50,7 @@ config, or an AI agent's configuration file.
    and refresh token of a connection. Revoking was briefly per-team, dropping only
    the acting team's grant; that made one button mean two things and left a token
    somebody had just revoked still answering requests next door, so delete now
-   means delete, with the trail written into every team that lost it.)* A
+   means delete, with the trail written into every team that lost it.)_ A
    scoped token cannot READ an app outside its projects, not merely not write
    one — an out-of-scope app answers exactly what a nonexistent id answers, so
    the scope is never an oracle for which ids exist. Enforcement is a pure,

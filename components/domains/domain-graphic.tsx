@@ -42,11 +42,7 @@ export function DomainGraphic({ className }: { className?: string }) {
       aria-label="A pin landing on a globe, with a signal rippling out from it"
       className={cn("size-32", className)}
     >
-      <g
-        className="stroke-ring"
-        strokeWidth="2.5"
-        strokeLinecap="round"
-      >
+      <g className="stroke-ring" strokeWidth="2.5" strokeLinecap="round">
         {/* The world: always there, never fading. It is what a domain is added
             TO, so it is structure, and the pin is the subject. */}
         <circle cx="60" cy="45" r="34" />

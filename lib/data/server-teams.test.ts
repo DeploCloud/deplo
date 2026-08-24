@@ -73,7 +73,10 @@ test("setServerTeams restricts the server to the selected teams only", async () 
     setServerTeams(SERVER_1, { allTeams: false, teamIds: [TEAM_A] }),
   );
 
-  assert.ok(has(await listServersForTeam(TEAM_A), SERVER_1), "granted team sees it");
+  assert.ok(
+    has(await listServersForTeam(TEAM_A), SERVER_1),
+    "granted team sees it",
+  );
   assert.ok(
     !has(await listServersForTeam(TEAM_B), SERVER_1),
     "excluded team does not",
@@ -86,7 +89,9 @@ test("widening back to all teams clears the specific grants", async () => {
   await asUser1(() =>
     setServerTeams(SERVER_1, { allTeams: false, teamIds: [TEAM_A] }),
   );
-  await asUser1(() => setServerTeams(SERVER_1, { allTeams: true, teamIds: [] }));
+  await asUser1(() =>
+    setServerTeams(SERVER_1, { allTeams: true, teamIds: [] }),
+  );
 
   assert.equal((await getServerById(SERVER_1))!.allTeams, true);
   assert.deepEqual(await getServerTeamIds(SERVER_1), []);

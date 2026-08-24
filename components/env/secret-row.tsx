@@ -25,9 +25,10 @@ export function SecretRow({
       <div className="flex items-start gap-2.5">
         <KeyRound className="mt-0.5 size-4 shrink-0 text-muted-foreground" />
         <div>
-          <p className="text-sm font-medium leading-none">Secret</p>
+          <p className="text-sm leading-none font-medium">Secret</p>
           <p className="mt-1.5 text-xs text-muted-foreground">
-            Hide the value in the UI after saving. It can never be read back or edited.
+            Hide the value in the UI after saving. It can never be read back or
+            edited.
           </p>
         </div>
       </div>

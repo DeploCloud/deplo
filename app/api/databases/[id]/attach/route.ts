@@ -64,9 +64,20 @@ export async function GET(
   let session;
   try {
     const conn = await connectAgent(resolved.serverId);
-    const handle = conn.attach(databaseId, resolved.instance.name, tty, cols, rows);
-    session = attach.open(databaseId, teamId, user.id, resolved.instance.name, handle, () =>
-      conn.close(),
+    const handle = conn.attach(
+      databaseId,
+      resolved.instance.name,
+      tty,
+      cols,
+      rows,
+    );
+    session = attach.open(
+      databaseId,
+      teamId,
+      user.id,
+      resolved.instance.name,
+      handle,
+      () => conn.close(),
     );
   } catch {
     return Response.json({ error: "unreachable" }, { status: 503 });
@@ -217,8 +228,12 @@ function parseResize(raw: unknown): { cols: number; rows: number } | null {
   const { cols, rows } = raw as { cols?: unknown; rows?: unknown };
   const c = Number(cols);
   const r = Number(rows);
-  if (!Number.isFinite(c) || !Number.isFinite(r) || c <= 0 || r <= 0) return null;
-  return { cols: Math.min(Math.floor(c), 500), rows: Math.min(Math.floor(r), 300) };
+  if (!Number.isFinite(c) || !Number.isFinite(r) || c <= 0 || r <= 0)
+    return null;
+  return {
+    cols: Math.min(Math.floor(c), 500),
+    rows: Math.min(Math.floor(r), 300),
+  };
 }
 
 export async function DELETE(

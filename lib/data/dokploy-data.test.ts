@@ -81,7 +81,11 @@ const PROJECT_TREE = [
         // Exactly what a real instance returns: an application carries an id, a
         // name and a status, and a DATABASE carries nothing but its id.
         applications: [
-          { applicationId: "dok-app-web", name: "blink-web", applicationStatus: "done" },
+          {
+            applicationId: "dok-app-web",
+            name: "blink-web",
+            applicationStatus: "done",
+          },
           {
             applicationId: "dok-app-ghost",
             name: "never-imported",
@@ -124,8 +128,16 @@ const INSPECT: Record<string, unknown> = {
     Name: "/blink-web-abc",
     State: { Running: true },
     Mounts: [
-      { Type: "volume", Name: "blink-web-abc_uploads", Destination: "/app/uploads" },
-      { Type: "bind", Source: "/etc/dokploy/x", Destination: "/app/config.json" },
+      {
+        Type: "volume",
+        Name: "blink-web-abc_uploads",
+        Destination: "/app/uploads",
+      },
+      {
+        Type: "bind",
+        Source: "/etc/dokploy/x",
+        Destination: "/app/config.json",
+      },
     ],
   },
   "ct-db": {
@@ -143,21 +155,28 @@ const INSPECT: Record<string, unknown> = {
 };
 
 /** Which containers each `appName` has. */
-const CONTAINERS: Record<string, { containerId: string; name: string; state: string }[]> =
-  {
-    "blink-web-abc": [
-      { containerId: "ct-web", name: "blink-web-abc.1", state: "running" },
-    ],
-    "blink-db-abc": [{ containerId: "ct-db", name: "blink-db-abc.1", state: "running" }],
-    "ghost-xyz": [],
-  };
+const CONTAINERS: Record<
+  string,
+  { containerId: string; name: string; state: string }[]
+> = {
+  "blink-web-abc": [
+    { containerId: "ct-web", name: "blink-web-abc.1", state: "running" },
+  ],
+  "blink-db-abc": [
+    { containerId: "ct-db", name: "blink-db-abc.1", state: "running" },
+  ],
+  "ghost-xyz": [],
+};
 
 function fakeDokploy() {
   return async (input: string, init?: RequestInit): Promise<Response> => {
     const url = new URL(input);
     const procedure = url.pathname.replace(/^\/api\//, "");
     calls.push(procedure);
-    assert.equal((init?.headers as Record<string, string>)["x-api-key"], CONNECT.apiKey);
+    assert.equal(
+      (init?.headers as Record<string, string>)["x-api-key"],
+      CONNECT.apiKey,
+    );
 
     const json = (body: unknown) =>
       new Response(JSON.stringify(body), {
@@ -200,7 +219,8 @@ const EMPTY_ARCHIVE = Buffer.alloc(45, 0);
 let importRefusal = "";
 
 function fakeAgent(serverId: string) {
-  const say = (verb: string, arg: string) => agentCalls.push(`${serverId}:${verb}:${arg}`);
+  const say = (verb: string, arg: string) =>
+    agentCalls.push(`${serverId}:${verb}:${arg}`);
   return {
     // The pre-flight. A migration source can be enrolled and still unreachable -
     // the agent enrols by calling home OUTBOUND, and a copy needs the opposite
@@ -209,7 +229,12 @@ function fakeAgent(serverId: string) {
       say("hello", "");
       if (unreachableAgents.has(serverId))
         throw new Error("14 UNAVAILABLE: No connection established");
-      return { contractVersion: 1, dockerAvailable: true, capabilities: [], version: "1.0.0" };
+      return {
+        contractVersion: 1,
+        dockerAvailable: true,
+        capabilities: [],
+        version: "1.0.0",
+      };
     },
     async *exportVolume(name: string) {
       say("export", name);
@@ -217,7 +242,11 @@ function fakeAgent(serverId: string) {
       // one that is not here answers with a complete, empty archive.
       yield volumes[serverId]?.[name] ?? EMPTY_ARCHIVE;
     },
-    async importVolume(name: string, wipeFirst: boolean, chunks: AsyncIterable<Buffer>) {
+    async importVolume(
+      name: string,
+      wipeFirst: boolean,
+      chunks: AsyncIterable<Buffer>,
+    ) {
       say("import", name);
       if (wipeFirst) {
         say("wipe", name);
@@ -234,7 +263,11 @@ function fakeAgent(serverId: string) {
       say("export-path", path);
       yield hostPaths[serverId]?.[path] ?? EMPTY_ARCHIVE;
     },
-    async importHostPath(path: string, wipeFirst: boolean, chunks: AsyncIterable<Buffer>) {
+    async importHostPath(
+      path: string,
+      wipeFirst: boolean,
+      chunks: AsyncIterable<Buffer>,
+    ) {
       say("import-path", path);
       if (wipeFirst) say("wipe-path", path);
       const parts: Buffer[] = [];
@@ -281,7 +314,14 @@ function fakeAgent(serverId: string) {
  *  never be reached. */
 async function seedRunItems(
   runId: string,
-  rows: { sourceKind: string; sourceId: string; sourceName: string; targetKind: string; targetId: string; outcome?: string }[],
+  rows: {
+    sourceKind: string;
+    sourceId: string;
+    sourceName: string;
+    targetKind: string;
+    targetId: string;
+    outcome?: string;
+  }[],
 ): Promise<void> {
   for (const [i, r] of rows.entries())
     await db.insert(itemsTable).values({
@@ -383,9 +423,10 @@ beforeEach(async () => {
     },
   };
   __setAgentConnectorForTest(
-    async (serverId) => fakeAgent(serverId) as unknown as Awaited<
-      ReturnType<typeof import("../infra/agent-client").connectAgent>
-    >,
+    async (serverId) =>
+      fakeAgent(serverId) as unknown as Awaited<
+        ReturnType<typeof import("../infra/agent-client").connectAgent>
+      >,
   );
 
   // The state an import leaves behind: the project, its production environment,
@@ -419,8 +460,7 @@ beforeEach(async () => {
     projectId: "prc_blink",
     environmentId: "environ_prod",
   });
-  await db
-    .execute("update apps set name = 'blink-web' where id = 'prj_web'");
+  await db.execute("update apps set name = 'blink-web' where id = 'prj_web'");
   await db.insert(appVolumesTable).values({
     appId: "prj_web",
     position: 0,
@@ -487,7 +527,9 @@ test("the plan pairs an imported app's volume with the one Deplo will mount", as
   assert.equal(web.targetId, "prj_web");
   assert.equal(web.running, true);
   assert.deepEqual(
-    web.volumes.map((v) => `${v.sourceVolume}->${v.targetVolume}@${v.mountPath}`),
+    web.volumes.map(
+      (v) => `${v.sourceVolume}->${v.targetVolume}@${v.mountPath}`,
+    ),
     [
       "blink-web-abc_uploads->deplo-blink-web-uploads@/app/uploads",
       // The bind mount is listed as what it is - a host DIRECTORY, moved by a
@@ -516,7 +558,10 @@ test("a database pairs 1:1 and says the data directory moved", async () => {
   assert.ok(database);
   assert.equal(database.targetId, "db_blink");
   assert.equal(database.volumes.length, 1);
-  assert.equal(database.volumes[0].targetVolume, "deplo-db-blink-db_db-blink-db-data");
+  assert.equal(
+    database.volumes[0].targetVolume,
+    "deplo-db-blink-db_db-blink-db-data",
+  );
   assert.match(database.volumes[0].note!, /data directory moved/);
 });
 
@@ -538,7 +583,9 @@ test("the plan says so when Deplo has no agent on the machine holding the data",
   // on it carries the warning - on the REVIEW screen, not at the cutover with the
   // old platform already stopped.
   assert.ok(
-    plan.every((svc) => svc.notes.some((n) => /no agent on the machine/.test(n))),
+    plan.every((svc) =>
+      svc.notes.some((n) => /no agent on the machine/.test(n)),
+    ),
     JSON.stringify(plan.map((s) => s.notes)),
   );
 });
@@ -678,7 +725,10 @@ test("a copy that fails marks the app, and the marker holds the deploy", async (
     () => asOwner(() => startDeployment("prj_web", { creator: "test" })),
     /did not come across/,
   );
-  await assert.rejects(() => asOwner(() => startApp("prj_web")), /did not come across/);
+  await assert.rejects(
+    () => asOwner(() => startApp("prj_web")),
+    /did not come across/,
+  );
 });
 
 test("a copy that works clears a marker an earlier attempt left", async () => {
@@ -771,7 +821,9 @@ test("a copied database is started again and checked, and the report says what l
   // copy of nothing said for as long as this was broken.
   assert.ok(
     messages.some((m) =>
-      /Copied 8\.19 kB \(compressed\) into deplo-db-blink-db_db-blink-db-data/.test(m),
+      /Copied 8\.19 kB \(compressed\) into deplo-db-blink-db_db-blink-db-data/.test(
+        m,
+      ),
     ),
     messages.join(" | "),
   );
@@ -779,7 +831,9 @@ test("a copied database is started again and checked, and the report says what l
     messages.some((m) => /is up on the copied data/.test(m)),
     messages.join(" | "),
   );
-  const running = await db.execute("select status from databases where id = 'db_blink'");
+  const running = await db.execute(
+    "select status from databases where id = 'db_blink'",
+  );
   assert.equal(running.rows[0].status, "running");
 });
 
@@ -834,11 +888,18 @@ test("a bind mount's host directory is copied too, and says it is a directory", 
     agentCalls.includes("srv_dokploy_host:export-path:/etc/dokploy/x"),
     agentCalls.join(" | "),
   );
-  assert.deepEqual(hostPaths[SERVER_1]["/etc/dokploy/x"], Buffer.alloc(2048, 5));
+  assert.deepEqual(
+    hostPaths[SERVER_1]["/etc/dokploy/x"],
+    Buffer.alloc(2048, 5),
+  );
   const items = await db.execute(
     `select message from dokploy_import_items where run_id = '${runId}' and message like '%host directory%'`,
   );
-  assert.equal(items.rows.length, 1, "the report has to say it was a host directory");
+  assert.equal(
+    items.rows.length,
+    1,
+    "the report has to say it was a host directory",
+  );
 });
 
 test("a host directory already on this machine is not copied over itself", async () => {

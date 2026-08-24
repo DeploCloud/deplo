@@ -21,7 +21,9 @@ export const ResourceLimitsRef = builder
       "GiB, CPU in milli-CPUs (1000 = one core).",
     fields: (t) => ({
       memoryMb: t.exposeInt("memoryMb", { nullable: true }),
-      memoryReservationMb: t.exposeInt("memoryReservationMb", { nullable: true }),
+      memoryReservationMb: t.exposeInt("memoryReservationMb", {
+        nullable: true,
+      }),
       swapMb: t.exposeInt("swapMb", { nullable: true }),
       cpuMilli: t.exposeInt("cpuMilli", { nullable: true }),
       cpuShares: t.exposeInt("cpuShares", { nullable: true }),
@@ -35,24 +37,27 @@ export const ResourceLimitsRef = builder
     }),
   });
 
-export const ResourceLimitsInputType = builder.inputType("ResourceLimitsInput", {
-  description:
-    "Per-container resource caps. Every field is optional and independently " +
-    "nullable (null ⇒ that dimension is uncapped); the form sends the full set " +
-    "on each save. Memory in MiB, disk in GiB, CPU in milli-CPUs (1000 = one " +
-    "core).",
-  fields: (t) => ({
-    memoryMb: t.int({ required: false }),
-    memoryReservationMb: t.int({ required: false }),
-    swapMb: t.int({ required: false }),
-    cpuMilli: t.int({ required: false }),
-    cpuShares: t.int({ required: false }),
-    cpuset: t.string({ required: false }),
-    pidsLimit: t.int({ required: false }),
-    shmSizeMb: t.int({ required: false }),
-    storageGb: t.int({ required: false }),
-    nofile: t.int({ required: false }),
-    nproc: t.int({ required: false }),
-    oomScoreAdj: t.int({ required: false }),
-  }),
-});
+export const ResourceLimitsInputType = builder.inputType(
+  "ResourceLimitsInput",
+  {
+    description:
+      "Per-container resource caps. Every field is optional and independently " +
+      "nullable (null ⇒ that dimension is uncapped); the form sends the full set " +
+      "on each save. Memory in MiB, disk in GiB, CPU in milli-CPUs (1000 = one " +
+      "core).",
+    fields: (t) => ({
+      memoryMb: t.int({ required: false }),
+      memoryReservationMb: t.int({ required: false }),
+      swapMb: t.int({ required: false }),
+      cpuMilli: t.int({ required: false }),
+      cpuShares: t.int({ required: false }),
+      cpuset: t.string({ required: false }),
+      pidsLimit: t.int({ required: false }),
+      shmSizeMb: t.int({ required: false }),
+      storageGb: t.int({ required: false }),
+      nofile: t.int({ required: false }),
+      nproc: t.int({ required: false }),
+      oomScoreAdj: t.int({ required: false }),
+    }),
+  },
+);

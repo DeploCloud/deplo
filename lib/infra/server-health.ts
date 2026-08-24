@@ -43,10 +43,12 @@ export const HEALTH_MESSAGES = {
     "The agent's certificate has expired (or is not yet valid). The host is up — re-run the install command on this server to re-provision the certificate.",
   contract:
     "The agent speaks an unsupported protocol version. Update the agent on this server.",
-  agentError: "The agent answered with an error. Check the agent's logs on the host.",
+  agentError:
+    "The agent answered with an error. Check the agent's logs on the host.",
   dockerDown:
     "The agent is up but Docker is unreachable — deploys to this server will fail.",
-  refused: "The agent did not answer (connection refused). Is it running on the host?",
+  refused:
+    "The agent did not answer (connection refused). Is it running on the host?",
   timedOut: "The agent did not answer within the health-check deadline.",
 } as const;
 
@@ -133,7 +135,8 @@ export function classifyServerHealth(
   opts: { storageOnly?: boolean } = {},
 ): ServerHealth {
   if (err instanceof AgentUnreachableError) {
-    if (err.trust) return { status: "error", message: HEALTH_MESSAGES.untrusted };
+    if (err.trust)
+      return { status: "error", message: HEALTH_MESSAGES.untrusted };
     // A cert-validity failure (expired / not-yet-valid) is the host answering with a
     // stale identity, not a dead host — surface it as its own re-bootstrap `error`
     // rather than the misleading "connection refused" it flattens into.

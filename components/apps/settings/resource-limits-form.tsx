@@ -126,7 +126,7 @@ function LimitGroup({
 }) {
   return (
     <fieldset className="space-y-3">
-      <legend className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+      <legend className="flex items-center gap-2 text-xs font-semibold tracking-wider text-muted-foreground uppercase">
         {Icon && <Icon className="size-3.5" />}
         {title}
       </legend>
@@ -163,7 +163,9 @@ export function ResourceLimitsForm({
   savedMessage?: string;
 }) {
   const router = useRouter();
-  const [form, setForm] = React.useState<FormState>(() => resourcesToForm(resources));
+  const [form, setForm] = React.useState<FormState>(() =>
+    resourcesToForm(resources),
+  );
   const [pending, startTransition] = React.useTransition();
 
   const [savedKey, setSavedKey] = React.useState(() =>
@@ -177,7 +179,11 @@ export function ResourceLimitsForm({
   const activePreset = activeResourcePreset(form);
 
   function applyPreset(p: (typeof RESOURCE_PRESETS)[number]) {
-    setForm((f) => ({ ...f, memoryMb: String(p.memoryMb), cpuCores: String(p.cpuCores) }));
+    setForm((f) => ({
+      ...f,
+      memoryMb: String(p.memoryMb),
+      cpuCores: String(p.cpuCores),
+    }));
   }
 
   function save() {
@@ -226,7 +232,7 @@ export function ResourceLimitsForm({
         <CardContent className="space-y-8">
           {/* Quick-pick sizes fill Memory + CPU together. */}
           <div className="space-y-2.5">
-            <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+            <p className="text-xs font-semibold tracking-wider text-muted-foreground uppercase">
               Quick size
             </p>
             <div className="flex flex-wrap gap-2">
@@ -240,7 +246,7 @@ export function ResourceLimitsForm({
                     onClick={() => applyPreset(p)}
                     className="h-auto flex-col items-start gap-0.5 px-3 py-1.5"
                   >
-                    <span className="text-sm font-medium leading-none">
+                    <span className="text-sm leading-none font-medium">
                       {p.label}
                     </span>
                     <span
@@ -284,7 +290,11 @@ export function ResourceLimitsForm({
           </div>
 
           {/* Everything else, folded away so the happy path is two fields. */}
-          <Accordion type="single" collapsible className="border-t border-border">
+          <Accordion
+            type="single"
+            collapsible
+            className="border-t border-border"
+          >
             <AccordionItem value="advanced" className="border-none">
               <AccordionTrigger className="text-sm hover:no-underline">
                 Advanced limits

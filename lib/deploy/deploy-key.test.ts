@@ -52,7 +52,10 @@ test("__ separator makes non-default keys collision-proof across services", () =
   // A slug is `[a-z0-9-]` and can NEVER contain `__`, so a non-default env key
   // can never equal ANY other app's bare key — even the adversarial case of an
   // app literally slugged `app-preview` sitting next to `app` env `preview`.
-  const envKey = environmentStackName("app", { slug: "preview", isDefault: false });
+  const envKey = environmentStackName("app", {
+    slug: "preview",
+    isDefault: false,
+  });
   const adversarialBare = environmentStackName("app-preview", null);
   assert.notEqual(envKey, adversarialBare);
   assert.equal(envKey, "deplo-app__preview");
@@ -98,7 +101,9 @@ test("a deploy key resolves back to its app slug without a query", () => {
   assert.equal(appSlugFromDeployKey("blog"), "blog");
   assert.equal(appSlugFromDeployKey(previewDeployKey("blog", 42)), "blog");
   assert.equal(
-    appSlugFromDeployKey(environmentDeployKey("blog", { slug: "staging", isDefault: false })),
+    appSlugFromDeployKey(
+      environmentDeployKey("blog", { slug: "staging", isDefault: false }),
+    ),
     "blog",
   );
   // A slug that merely LOOKS suffixed is still returned whole.

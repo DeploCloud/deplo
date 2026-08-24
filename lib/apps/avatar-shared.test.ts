@@ -1,9 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import {
-  isValidAvatarValue,
-  MAX_AVATAR_STRING_LEN,
-} from "./avatar-shared";
+import { isValidAvatarValue, MAX_AVATAR_STRING_LEN } from "./avatar-shared";
 
 test("isValidAvatarValue: accepts png / jpeg / webp data-URIs", () => {
   for (const mime of ["png", "jpeg", "webp"]) {
@@ -54,7 +51,9 @@ test("isValidAvatarValue: rejects a data-URI over the cap, accepts one under", (
     false,
   );
   assert.equal(
-    isValidAvatarValue(prefix + "A".repeat(MAX_AVATAR_STRING_LEN - prefix.length - 1)),
+    isValidAvatarValue(
+      prefix + "A".repeat(MAX_AVATAR_STRING_LEN - prefix.length - 1),
+    ),
     true,
   );
 });

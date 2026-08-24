@@ -19,7 +19,7 @@ the production image (`EXPOSE`, `PORT=` build-arg) and used as Traefik's
 A port is **per-target**: at most one port per `production | development` runtime — a
 map keyed by target, not a list (which would admit two ports claiming the same target).
 `preview` is image-based and reuses the **production** port, so the port axis is the
-two-valued `PortTarget`, deliberately *narrower* than the three-valued env `EnvTarget`.
+two-valued `PortTarget`, deliberately _narrower_ than the three-valued env `EnvTarget`.
 
 We realize the map as the existing `build.port` (production, image-baked — untouched)
 plus `dev.port` (development, defaults to `build.port`), read through one accessor

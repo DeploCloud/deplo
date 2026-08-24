@@ -19,7 +19,11 @@ import {
   SERVER_1,
   TRUNCATE_PROJECT_GRAPH,
 } from "./app-graph-test-helpers";
-import { listDeployments, rollbackDeployment, getDeployment } from "./deployments";
+import {
+  listDeployments,
+  rollbackDeployment,
+  getDeployment,
+} from "./deployments";
 import { loadDeploymentsForApp } from "./app-graph-load";
 import { getDb } from "../db/client";
 import { apps as appsTable } from "../db/schema/control-plane";
@@ -109,8 +113,18 @@ test("a deployment with no image of ours is never a target", async () => {
   // What a compose stack or a prebuilt `docker-image` source leaves behind: a
   // successful deployment that minted nothing this host can re-run.
   await seedApp(db, { id: "prj_1", teamId: TEAM_A, slug: "web" });
-  await seedDeployment(db, { id: "dpl_0", appId: "prj_1", createdAt: at(0), serverId: SERVER_1 });
-  await seedDeployment(db, { id: "dpl_1", appId: "prj_1", createdAt: at(1), serverId: SERVER_1 });
+  await seedDeployment(db, {
+    id: "dpl_0",
+    appId: "prj_1",
+    createdAt: at(0),
+    serverId: SERVER_1,
+  });
+  await seedDeployment(db, {
+    id: "dpl_1",
+    appId: "prj_1",
+    createdAt: at(1),
+    serverId: SERVER_1,
+  });
   assert.deepEqual(await rollbackable(), []);
 });
 
@@ -293,7 +307,12 @@ test("a member without rollback_apps cannot roll back", async () => {
  * does not error, it lies.
  */
 test("an app that has SINCE become a compose stack offers none of its old builds", async () => {
-  await seedApp(db, { id: "prj_1", teamId: TEAM_A, slug: "web", source: "github" });
+  await seedApp(db, {
+    id: "prj_1",
+    teamId: TEAM_A,
+    slug: "web",
+    source: "github",
+  });
   for (const [id, ago] of [
     ["dpl_0", 1],
     ["dpl_1", 2],
@@ -311,7 +330,10 @@ test("an app that has SINCE become a compose stack offers none of its old builds
   // image, so its row carries image_ref NULL.
   await getDb()
     .update(appsTable)
-    .set({ source: "compose", compose: "services:\n  web:\n    image: nginx\n" })
+    .set({
+      source: "compose",
+      compose: "services:\n  web:\n    image: nginx\n",
+    })
     .where(eq(appsTable.id, "prj_1"));
   await seedDeployment(db, {
     id: "dpl_c",
@@ -329,7 +351,12 @@ test("an app that has SINCE become a compose stack offers none of its old builds
 });
 
 test("an app that has SINCE become a prebuilt image offers none of its old builds", async () => {
-  await seedApp(db, { id: "prj_1", teamId: TEAM_A, slug: "web", source: "github" });
+  await seedApp(db, {
+    id: "prj_1",
+    teamId: TEAM_A,
+    slug: "web",
+    source: "github",
+  });
   for (const [id, ago] of [
     ["dpl_0", 1],
     ["dpl_1", 2],
@@ -346,7 +373,12 @@ test("an app that has SINCE become a prebuilt image offers none of its old build
   // A registry tag pins nothing: "back" would land on whatever it points at today.
   await getDb()
     .update(appsTable)
-    .set({ source: "docker-image", dockerImage: "nginx:1.27", repoUrl: null, repoRepo: null })
+    .set({
+      source: "docker-image",
+      dockerImage: "nginx:1.27",
+      repoUrl: null,
+      repoRepo: null,
+    })
     .where(eq(appsTable.id, "prj_1"));
   await seedDeployment(db, {
     id: "dpl_i",
@@ -370,7 +402,12 @@ test("an app that has SINCE become a prebuilt image offers none of its old build
  * page that offers a button the list would not is the same lie either way round.
  */
 test("the single-row read agrees with the list, over a history long enough to bound", async () => {
-  await seedApp(db, { id: "prj_1", teamId: TEAM_A, slug: "web", rollbackKeep: 2 });
+  await seedApp(db, {
+    id: "prj_1",
+    teamId: TEAM_A,
+    slug: "web",
+    rollbackKeep: 2,
+  });
   for (let i = 0; i < 40; i++) {
     await seedDeployment(db, {
       id: `dpl_${String(i).padStart(3, "0")}`,

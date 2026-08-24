@@ -90,7 +90,9 @@ export function groupRowsByProject<R extends { app: GroupableApp }>(
         // the read didn't return) still gets a section: dropping its apps would
         // silently take their variables off a page that says it shows them all.
         name:
-          sectionId === TOP_LEVEL ? TOP_LEVEL_NAME : (project?.name ?? "Project"),
+          sectionId === TOP_LEVEL
+            ? TOP_LEVEL_NAME
+            : (project?.name ?? "Project"),
         color: project?.color ?? null,
         apps: [],
         rowCount: 0,

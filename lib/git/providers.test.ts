@@ -28,8 +28,14 @@ const api = (id: "gitlab" | "bitbucket" | "gitea") => {
 
 test("gitlab: the shared token must match exactly", () => {
   const gl = api("gitlab");
-  assert.equal(gl.verify(SECRET, headers({ "x-gitlab-token": SECRET }), ""), "ok");
-  assert.equal(gl.verify(SECRET, headers({ "x-gitlab-token": "nope" }), ""), "bad");
+  assert.equal(
+    gl.verify(SECRET, headers({ "x-gitlab-token": SECRET }), ""),
+    "ok",
+  );
+  assert.equal(
+    gl.verify(SECRET, headers({ "x-gitlab-token": "nope" }), ""),
+    "bad",
+  );
   // A missing header is a forgery, not an unsigned delivery: GitLab always sends
   // back the token it was configured with.
   assert.equal(gl.verify(SECRET, headers({}), ""), "bad");
@@ -62,7 +68,11 @@ test("bitbucket: signed when a secret is set, 'unsigned' when it is not", () => 
   const bb = api("bitbucket");
   const body = '{"push":{}}';
   assert.equal(
-    bb.verify(SECRET, headers({ "x-hub-signature": `sha256=${hmac(body)}` }), body),
+    bb.verify(
+      SECRET,
+      headers({ "x-hub-signature": `sha256=${hmac(body)}` }),
+      body,
+    ),
     "ok",
   );
   assert.equal(
@@ -77,16 +87,19 @@ test("bitbucket: signed when a secret is set, 'unsigned' when it is not", () => 
 /* ---- push parsing ---------------------------------------------------- */
 
 test("gitlab: a branch push carries its ref, files and newest message", () => {
-  const [p] = api("gitlab").parsePush(headers({ "x-gitlab-event": "Push Hook" }), {
-    ref: "refs/heads/main",
-    after: "abc1234",
-    project: { path_with_namespace: "acme/site" },
-    user_username: "rita",
-    commits: [
-      { message: "first", added: ["a.ts"] },
-      { message: "second line\nbody", modified: ["src/b.ts"] },
-    ],
-  });
+  const [p] = api("gitlab").parsePush(
+    headers({ "x-gitlab-event": "Push Hook" }),
+    {
+      ref: "refs/heads/main",
+      after: "abc1234",
+      project: { path_with_namespace: "acme/site" },
+      user_username: "rita",
+      commits: [
+        { message: "first", added: ["a.ts"] },
+        { message: "second line\nbody", modified: ["src/b.ts"] },
+      ],
+    },
+  );
   assert.equal(p.repoFullName, "acme/site");
   assert.equal(p.author, "rita");
   assert.equal(p.commitMessage, "second line");
@@ -97,11 +110,14 @@ test("gitlab: a branch push carries its ref, files and newest message", () => {
 });
 
 test("gitlab: an all-zero after sha is a branch deletion", () => {
-  const [p] = api("gitlab").parsePush(headers({ "x-gitlab-event": "Push Hook" }), {
-    ref: "refs/heads/gone",
-    after: "0000000000000000000000000000000000000000",
-    project: { path_with_namespace: "acme/site" },
-  });
+  const [p] = api("gitlab").parsePush(
+    headers({ "x-gitlab-event": "Push Hook" }),
+    {
+      ref: "refs/heads/gone",
+      after: "0000000000000000000000000000000000000000",
+      project: { path_with_namespace: "acme/site" },
+    },
+  );
   assert.equal(p.event.deleted, true);
   // …and a deletion never deploys, whatever else is configured.
   assert.equal(
@@ -152,19 +168,26 @@ test("gitea: the GitHub-shaped payload parses like GitHub's", () => {
 });
 
 test("bitbucket: every moved ref becomes its own event", () => {
-  const out = api("bitbucket").parsePush(headers({ "x-event-key": "repo:push" }), {
-    repository: { full_name: "team/app" },
-    actor: { nickname: "sam" },
-    push: {
-      changes: [
-        {
-          new: { type: "branch", name: "main", target: { message: "ship it" } },
-        },
-        { new: { type: "tag", name: "v1.0.0", target: { message: "tag" } } },
-        { new: null, old: { name: "stale" } },
-      ],
+  const out = api("bitbucket").parsePush(
+    headers({ "x-event-key": "repo:push" }),
+    {
+      repository: { full_name: "team/app" },
+      actor: { nickname: "sam" },
+      push: {
+        changes: [
+          {
+            new: {
+              type: "branch",
+              name: "main",
+              target: { message: "ship it" },
+            },
+          },
+          { new: { type: "tag", name: "v1.0.0", target: { message: "tag" } } },
+          { new: null, old: { name: "stale" } },
+        ],
+      },
     },
-  });
+  );
   assert.equal(out.length, 3);
   assert.equal(out[0].event.refName, "main");
   assert.equal(out[0].event.isTag, false);
@@ -175,10 +198,15 @@ test("bitbucket: every moved ref becomes its own event", () => {
 });
 
 test("bitbucket: no file list means path filters fall open", () => {
-  const [p] = api("bitbucket").parsePush(headers({ "x-event-key": "repo:push" }), {
-    repository: { full_name: "team/app" },
-    push: { changes: [{ new: { type: "branch", name: "main", target: {} } }] },
-  });
+  const [p] = api("bitbucket").parsePush(
+    headers({ "x-event-key": "repo:push" }),
+    {
+      repository: { full_name: "team/app" },
+      push: {
+        changes: [{ new: { type: "branch", name: "main", target: {} } }],
+      },
+    },
+  );
   assert.deepEqual(p.event.changedPaths, []);
   // Bitbucket sends no changed files, so a watch-path allowlist cannot be
   // evaluated and must NOT silently block every deploy.
@@ -193,9 +221,12 @@ test("bitbucket: no file list means path filters fall open", () => {
 
 test("bitbucket: a non-push event key yields nothing", () => {
   assert.deepEqual(
-    api("bitbucket").parsePush(headers({ "x-event-key": "pullrequest:created" }), {
-      repository: { full_name: "team/app" },
-    }),
+    api("bitbucket").parsePush(
+      headers({ "x-event-key": "pullrequest:created" }),
+      {
+        repository: { full_name: "team/app" },
+      },
+    ),
     [],
   );
 });
@@ -235,12 +266,20 @@ test("an empty secret never verifies, whatever arrives", () => {
     "bad",
   );
   assert.equal(
-    PROVIDERS.gitlab.api!.verify("", headers({ "x-gitlab-token": "guess" }), ""),
+    PROVIDERS.gitlab.api!.verify(
+      "",
+      headers({ "x-gitlab-token": "guess" }),
+      "",
+    ),
     "bad",
   );
   // A real secret still matches, so the guard did not simply break verification.
   assert.equal(
-    PROVIDERS.gitlab.api!.verify("s3cret", headers({ "x-gitlab-token": "s3cret" }), ""),
+    PROVIDERS.gitlab.api!.verify(
+      "s3cret",
+      headers({ "x-gitlab-token": "s3cret" }),
+      "",
+    ),
     "ok",
   );
 });

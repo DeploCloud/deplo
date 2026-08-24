@@ -137,7 +137,9 @@ export function DestinationCard({
   function test() {
     startTransition(async () => {
       try {
-        const data = await gql<{ testDestination: { report: S3TestReportView } }>(
+        const data = await gql<{
+          testDestination: { report: S3TestReportView };
+        }>(
           `mutation ($id: String!) { testDestination(id: $id) { report { ${S3_TEST_REPORT_FIELDS} } } }`,
           { id: dest.id },
         );
@@ -152,10 +154,13 @@ export function DestinationCard({
           );
           return;
         }
-        toast.error(firstLine(report.error) || "The destination could not be reached", {
-          description: "Open the connection log for the full output",
-          action: { label: "Open log", onClick: () => setLogOpen(true) },
-        });
+        toast.error(
+          firstLine(report.error) || "The destination could not be reached",
+          {
+            description: "Open the connection log for the full output",
+            action: { label: "Open log", onClick: () => setLogOpen(true) },
+          },
+        );
       } catch (e) {
         // The mutation itself failed (offline, not permitted, destination gone):
         // no verdict was recorded, so say only what we know.
@@ -212,13 +217,20 @@ export function DestinationCard({
           <div className="flex items-start justify-between">
             <div className="flex items-center gap-3">
               <div className="flex size-10 items-center justify-center rounded-lg border border-border bg-secondary">
-                {isServer ? <Server className="size-5" /> : <Cloud className="size-5" />}
+                {isServer ? (
+                  <Server className="size-5" />
+                ) : (
+                  <Cloud className="size-5" />
+                )}
               </div>
               <div>
                 <p className="flex items-center gap-2 font-medium">
                   {dest.name}
                   {isServer && (
-                    <Badge variant="info" className="px-1.5 py-0 text-[10px] font-normal">
+                    <Badge
+                      variant="info"
+                      className="px-1.5 py-0 text-[10px] font-normal"
+                    >
                       Beta
                     </Badge>
                   )}
@@ -251,7 +263,11 @@ export function DestinationCard({
               <StatusBadge status={dest.status} />
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
-                  <Button variant="ghost" size="icon-sm" aria-label="Destination menu">
+                  <Button
+                    variant="ghost"
+                    size="icon-sm"
+                    aria-label="Destination menu"
+                  >
                     <MoreHorizontal className="size-4" />
                   </Button>
                 </DropdownMenuTrigger>
@@ -260,7 +276,10 @@ export function DestinationCard({
                     content="Verify this destination is reachable and writable"
                     side="left"
                   >
-                    <DropdownMenuItem onClick={test} disabled={pending || !canManage}>
+                    <DropdownMenuItem
+                      onClick={test}
+                      disabled={pending || !canManage}
+                    >
                       <PlugZap className="size-4" />
                       Test connection
                     </DropdownMenuItem>
@@ -318,7 +337,9 @@ export function DestinationCard({
               <>
                 <div className="col-span-2">
                   <dt className="text-muted-foreground">Folder</dt>
-                  <dd className="truncate font-mono">{dest.resolvedPath ?? "Not set up yet"}</dd>
+                  <dd className="truncate font-mono">
+                    {dest.resolvedPath ?? "Not set up yet"}
+                  </dd>
                 </div>
                 <div>
                   <dt className="text-muted-foreground">Free space</dt>
@@ -380,9 +401,9 @@ export function DestinationCard({
                   Backups here are not encrypted
                 </span>
                 <span className="block text-xs text-muted-foreground">
-                  This destination was added before encryption, so anyone who can
-                  read the bucket can read these backups. Add it again to get an
-                  encrypted one, then point your schedules at it.
+                  This destination was added before encryption, so anyone who
+                  can read the bucket can read these backups. Add it again to
+                  get an encrypted one, then point your schedules at it.
                 </span>
               </span>
             </div>

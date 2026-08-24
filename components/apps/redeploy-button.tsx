@@ -78,7 +78,12 @@ export function RedeployButton({
           : "Redeploy the latest successful build"
       }
     >
-      <Button variant={variant} size={size} onClick={redeploy} disabled={pending}>
+      <Button
+        variant={variant}
+        size={size}
+        onClick={redeploy}
+        disabled={pending}
+      >
         {/* The house spinner while it fires — a spinning rocket is not a thing. */}
         {pending ? (
           <Loader2 className="size-4 animate-spin" />

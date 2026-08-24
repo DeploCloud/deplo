@@ -70,7 +70,9 @@ export async function listServerCertificates(
 /** The certificates in a host's stack file, described. Pure, so a caller that
  *  already holds that host's stack (the fleet-wide certificate page does) can
  *  read them without dialing it a second time. */
-export function describeStackCertificates(stackYaml: string): ServerCertificate[] {
+export function describeStackCertificates(
+  stackYaml: string,
+): ServerCertificate[] {
   return describeAll(traefikCertificates(stackYaml));
 }
 
@@ -126,19 +128,22 @@ export async function addServerCertificate(
   const covered = new Set(description.domains);
 
   const { withTraefikStackLock } = await import("../infra/agent-client");
-  const { next, serverName } = await withTraefikStackLock(serverId, async () => {
-    const { server, yaml } = await readStack(serverId);
-    const current = traefikCertificates(yaml);
-    const kept = [
-      ...current.filter((c) => {
-        const d = identify(c);
-        return !d || !supersedes(covered, d);
-      }),
-      added,
-    ];
-    await applyCertificates(serverId, server.name, yaml, kept);
-    return { next: kept, serverName: server.name };
-  });
+  const { next, serverName } = await withTraefikStackLock(
+    serverId,
+    async () => {
+      const { server, yaml } = await readStack(serverId);
+      const current = traefikCertificates(yaml);
+      const kept = [
+        ...current.filter((c) => {
+          const d = identify(c);
+          return !d || !supersedes(covered, d);
+        }),
+        added,
+      ];
+      await applyCertificates(serverId, server.name, yaml, kept);
+      return { next: kept, serverName: server.name };
+    },
+  );
 
   await recordActivity(
     "member",
@@ -161,20 +166,24 @@ export async function removeServerCertificate(
   const user = (await getCurrentUser())!;
 
   const { withTraefikStackLock } = await import("../infra/agent-client");
-  const { next, removed, serverName } = await withTraefikStackLock(serverId, async () => {
-    const { server, yaml } = await readStack(serverId);
-    const current = traefikCertificates(yaml);
-    const target = current.find((c) => identify(c)?.id === certificateId);
-    if (!target)
-      throw new Error(`That certificate is not installed on ${server.name}`);
-    const kept = current.filter((c) => c !== target);
-    await applyCertificates(serverId, server.name, yaml, kept);
-    return {
-      next: kept,
-      removed: identify(target)?.domains.join(", ") ?? "an unreadable certificate",
-      serverName: server.name,
-    };
-  });
+  const { next, removed, serverName } = await withTraefikStackLock(
+    serverId,
+    async () => {
+      const { server, yaml } = await readStack(serverId);
+      const current = traefikCertificates(yaml);
+      const target = current.find((c) => identify(c)?.id === certificateId);
+      if (!target)
+        throw new Error(`That certificate is not installed on ${server.name}`);
+      const kept = current.filter((c) => c !== target);
+      await applyCertificates(serverId, server.name, yaml, kept);
+      return {
+        next: kept,
+        removed:
+          identify(target)?.domains.join(", ") ?? "an unreadable certificate",
+        serverName: server.name,
+      };
+    },
+  );
 
   await recordActivity(
     "member",
@@ -220,7 +229,9 @@ async function applyCertificates(
   const res = await applyTraefikConfig(serverId, { composeYaml });
   if (!res.ok)
     throw new Error(
-      addComposeHint(res.error || `Could not apply the certificate on ${serverName}`),
+      addComposeHint(
+        res.error || `Could not apply the certificate on ${serverName}`,
+      ),
     );
 }
 
@@ -319,7 +330,10 @@ function splitChain(pem: string): string[] {
 }
 
 /** Whether this PEM's certificate was issued for `key`. Unreadable ⇒ no. */
-function matchesKey(pem: string, key: ReturnType<typeof createPrivateKey>): boolean {
+function matchesKey(
+  pem: string,
+  key: ReturnType<typeof createPrivateKey>,
+): boolean {
   try {
     return new X509Certificate(pem).checkPrivateKey(key);
   } catch {
@@ -339,9 +353,13 @@ function matchesKey(pem: string, key: ReturnType<typeof createPrivateKey>): bool
  * A certificate naming no hostname at all is never superseded: nothing can be
  * shown to cover it, so removing it would be a guess.
  */
-export function supersedes(incoming: Set<string>, installed: ServerCertificate): boolean {
+export function supersedes(
+  incoming: Set<string>,
+  installed: ServerCertificate,
+): boolean {
   return (
-    installed.domains.length > 0 && installed.domains.every((name) => incoming.has(name))
+    installed.domains.length > 0 &&
+    installed.domains.every((name) => incoming.has(name))
   );
 }
 
@@ -359,7 +377,10 @@ function describe(certificate: CustomCertificate): ServerCertificate {
     id: cert.fingerprint256,
     subject: cn || domains[0] || "Unnamed certificate",
     domains: domains.length > 0 ? domains : cn ? [cn] : [],
-    issuer: subjectCommonName(cert.issuer) || cert.issuer.split("\n")[0] || "Unknown issuer",
+    issuer:
+      subjectCommonName(cert.issuer) ||
+      cert.issuer.split("\n")[0] ||
+      "Unknown issuer",
     notBefore: notBefore.toISOString(),
     notAfter: notAfter.toISOString(),
     expired: msLeft < 0,

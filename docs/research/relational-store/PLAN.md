@@ -149,7 +149,7 @@ The original plan kept JSONB for "read/written whole, never queried element-wise
 fields (`projects.build`/`dev`/`exposes`/`mounts`/`volumes`, `teams.projectOrder`/
 `folderOrder`, `memberships.capabilities`, `env_vars.targets`,
 `notification_settings.events`, …). **The grilling reversed this.** Motivation: DB
-integrity on *every* field + future queryability + a single paradigm (no "is this one
+integrity on _every_ field + future queryability + a single paradigm (no "is this one
 a column or a JSON blob?" cognitive tax). Concretely:
 
 - Every **nested object** → its own 1-to-1 child table:
@@ -176,7 +176,7 @@ time (never coerce to `'websecure'`, and **no column DEFAULT** — see
 
 ### Ordering junctions replace the deliberate stale-id self-healing ([superseded] note)
 
-The original §2 kept `teams.project_order`/`folder_order` as `jsonb` ID[] *because*
+The original §2 kept `teams.project_order`/`folder_order` as `jsonb` ID[] _because_
 [listProjects](../../../lib/data/projects.ts#L185) and
 [listFolders](../../../lib/data/folders.ts#L71) **deliberately tolerate stale ids**:
 a dead id ranks `Infinity` and is pruned only at the next reorder. A naive junction
@@ -228,7 +228,7 @@ call to an agent — the call can block for the whole dump/teardown, holding a D
 connection + locks hostage. Concretely:
 
 - [executeBackup](../../../lib/data/backups.ts#L301) is **two short transactions**
-  (the *start* mutate at line 301, the *terminal* mutate at line 379) with the gRPC
+  (the _start_ mutate at line 301, the _terminal_ mutate at line 379) with the gRPC
   `conn.backup(req)` dump **between** them — never one tx around the agent call. This
   is already the shape of the code; the migration must preserve it.
 - Same structure for `deleteDatabase` (`DestroyStack`), the `deleteProject` cascade
@@ -237,14 +237,14 @@ connection + locks hostage. Concretely:
 
 **(b) The keyed-mutex survives intact.** [lib/data/keyed-mutex.ts](../../../lib/data/keyed-mutex.ts)
 serializes DB-lifecycle RPCs to close the delete-during-provision window. **No DB
-constraint replaces it** — it orders *agent Docker state*, not control-plane rows.
+constraint replaces it** — it orders _agent Docker state_, not control-plane rows.
 Keep it exactly as-is.
 
 **(c) `recordActivity` stays best-effort and non-transactional ([supersedes] the
 `recordActivityTx` proposal).** The original §1 proposed threading a `tx` into a
 `recordActivityTx(tx, …)` across ~65 call sites so the activity insert commits with
 the primary write. **Dropped.** [recordActivity](../../../lib/data/activity.ts#L26) is
-a *standalone separate mutate today* (it is not inside the caller's `mutate`), and an
+a _standalone separate mutate today_ (it is not inside the caller's `mutate`), and an
 audit-log insert failure must **never** roll back the user's action. It stays a
 fire-and-forget best-effort insert. This also removes the ~65-call-site tx-threading
 churn entirely.
@@ -301,7 +301,7 @@ count-invariants are NOT constraints — see §Concurrency.**
 - **The `globalThis` `StoreState` cache, `queuePostgresWrite`, `writeChain`,
   `state.dirty`, and the seed-then-adopt crutch in `load()`
   ([lib/store.ts:157](../../../lib/store.ts#L157)) are deleted.** Asyncifying reads
-  actually *simplifies* the store — that crutch exists only to serve sync reads
+  actually _simplifies_ the store — that crutch exists only to serve sync reads
   before hydration.
 - **`ensureStoreReady()` is kept but repurposed** as the **per-cut-set backfill
   gate** (§Backfill): it no longer hydrates a cache, it runs each cut-set's one-time
@@ -322,44 +322,44 @@ All control-plane tables in `lib/db/schema/control-plane.ts`. **No JSONB columns
 Non-obvious calls flagged. New columns added by the grilling: `seq` (bigint
 identity, §Concurrency Decision 10) and tri-state sentinels.
 
-| Table | Notes / trickiest decisions |
-|---|---|
-| `users` | Flat. `UNIQUE(lower(email))` (expression index — app does case-insensitive checks). `UNIQUE(username)`. 4 optional booleans → `NOT NULL DEFAULT false`. `password_hash` excluded from projections. No FKs out. |
-| `teams` | `UNIQUE(slug)`. **`project_order`/`folder_order` are NO LONGER columns** — moved to the `team_project_order`/`team_folder_order` junctions (was jsonb; see below). |
-| `team_project_order` | **Ordering junction** `(team_id, project_id, position)`, PK `(team_id, project_id)`. `ON DELETE CASCADE` on both FKs makes stale-id self-healing a DB invariant (replaces the `listProjects` Infinity-rank prune). Backfill intersects the legacy array with live team project ids. |
-| `team_folder_order` | Same shape for folders, `(team_id, folder_id, position)`. |
-| `folders` | Self-FK `parent_id`. **App re-parenting in `deleteFolder` is authoritative** — the FK is a safety net (`ON DELETE SET NULL`, or omit). `CASCADE` on `parent_id` would wrongly delete subtrees. |
-| `memberships` | `UNIQUE(user_id, team_id)` closes the double-add race. **`capabilities` → `membership_capabilities` junction** (was inline jsonb/text[]). |
-| `membership_capabilities` | `(membership_id, capability)`, PK on both. Loaded into memory and `.includes()`-checked as today (run `cleanCapabilities` at backfill). |
-| `invites` | `token_hash` `UNIQUE`. Partial `UNIQUE (team_id, email) WHERE status='pending'`. **`capabilities` → `invite_capabilities` junction.** `status` soft-lifecycle (never hard-delete on revoke). `invited_by` is a display name, NOT an FK. |
-| `registration_links` | `token_hash` `UNIQUE`. **Consume via conditional `UPDATE … WHERE status='pending' AND expires_at>=now() RETURNING`** for single-use atomicity. `created_by`/`used_by_username` denormalized strings, NOT FKs. |
-| `servers` | No `team_id` (instance-wide). `agent_*`/`bootstrap_*` **flattened from nested objects** so `agent_cert_fingerprint` and `bootstrap_token_hash` are indexable for the two lookup paths (dial / call-home). Partial-unique on fingerprint excluding `''`/NULL; partial index on live token hash. |
-| `projects` | Flat scalar columns only. `slug` `UNIQUE` *globally*. `folder_id` `ON DELETE SET NULL` (orphan tolerated). `server_id` `RESTRICT`. `latest_deployment_id` `SET NULL`. `repo`/`upload` flattened to columns (small fixed shapes). `expose` is **NOT stored** — it is derived as `exposes[0]` in the row-assembler (Decision 14). Legacy `source="dockerfile"` rewritten on backfill via the shared normalizer (Decision 12/13). |
-| `project_build` | **1-to-1 child** (was `projects.build` jsonb). `project_id` PK + FK CASCADE. `framework`/`build_method` plain **text, no CHECK**. `runtime_version` (legacy `nodeVersion` remapped by `normalizeBuildConfig` at backfill). `NOT NULL` columns → backfill MUST run the read-time normalizer first (Decision 12). |
-| `project_build_method_settings` | **1-to-1 child** (was nested `methodSettings`). `project_id` PK + FK. Every [BuildMethodSettings](../../../lib/types.ts#L422) field is a column; an `updateProjectBuild` with a provided `methodSettings` object **fully replaces this row** while the parent `project_build` columns merge field-by-field (Decision 15). |
-| `project_dev` | **1-to-1 child** (was `projects.dev` jsonb). `project_id` PK + FK. **Row ABSENT = dev never enabled** (the [DevConfig](../../../lib/types.ts#L488) tri-state — do NOT seed a default row). `dev_status` pgEnum, legacy unknown → `'off'`. |
-| `project_exposes` | **Ordered child** `(project_id, position)` of `{service, port, host?}`. `expose := exposes[0]` is derived, never stored. |
-| `project_volumes` | **Ordered child**; `type` column NULLABLE (named/`host`/`project` discriminant). Backfill runs `normalizeVolumes` first (drops mountless entries) so NOT-NULL child columns hold. |
-| `project_mounts` | **Ordered child** of `{filePath, content}` template config files. `content` byte-preserved (reconciliation asserts byte-equality, Decision 14). |
-| `deployments` | Fully flat. **`seq bigint identity`** (Decision 10) — sorts are `ORDER BY created_at DESC, seq DESC`. `(project_id, created_at DESC, seq DESC)` index. No `team_id` (joined via project). |
-| `deployment_logs` | **The `logs: Record<ID, LogLine[]>` map becomes this child table** — map key → `deployment_id` FK, each `LogLine` → one row, `id bigint identity` PK reproduces `Array.push` order; `(deployment_id, id)` index. `level` is pgEnum `deployment_log_level`. **Write via a batched buffer, NOT per-line — see §Reads Decision 18.** |
-| `env_vars` | `value_enc` secret. `UNIQUE(project_id, key)` enables `ON CONFLICT` upsert. **`targets` → `env_var_targets` junction.** |
-| `env_var_targets` | `(env_var_id, target)`, PK both. `target` ∈ production/preview/development. |
-| `domains` | `primary` is a **SQL reserved word** — map TS `isPrimary`/db `is_primary` or quote. Partial `UNIQUE (project_id) WHERE is_primary`. `UNIQUE (name, COALESCE(path_prefix,''))`. `entrypoint`/`cert_provider`/`source` **NULLABLE, no DEFAULT** (auto/manual tri-state — never coerce NULL→`'websecure'`). **`middlewares` → `domain_middlewares` junction.** |
-| `domain_middlewares` | Ordered child `(domain_id, position, name)`. |
-| `databases` | `connection_string_enc` secret. `server_id` `RESTRICT`. `UNIQUE(team_id, name)`. |
-| `s3_destination` | `access_key_enc`/`secret_key_enc` secrets (secret key never even masked-returned). `(team_id, created_at DESC)` index. Backfill may have rows without `team_id` → populate before NOT NULL. |
-| `backups` | Schedule table (not run history). `target_kind` XOR CHECK on `database_id`/`project_id`. `destination_id` `RESTRICT`; database/project/team `CASCADE`. `last_status` enum includes `'never'` (wider than run status). |
-| `backup_runs` | History; **separate table, NOT a child of backups**. **`seq bigint identity`** (Decision 10). `backup_id` `SET NULL` (history outlives schedule). `database_id`/`project_id` `SET NULL`. `size_bytes` **must be `bigint`**. Partial index `WHERE status='running'` for boot reconcile. Retention (`selectDoomedRuns`) orders by `(created_at, seq)`, never timestamp alone (Decision 10). |
-| `api_tokens` | `token_hash` `UNIQUE` (hot auth lookup). CASCADE on team and user. **Leaf collection** (zero-cost-revert cut-set, Decision 3a). |
-| `activities` | Append-only. **`seq bigint identity`** (Decision 10) — all sorts `ORDER BY created_at DESC, seq DESC`, push-down `LIMIT` into SQL. `(team_id, created_at DESC, seq DESC)` index. `actor` free text (incl. `"system"`), NOT an FK. `project_id` `SET NULL`. Backfill maps empty-string `team_id` to a real team before NOT NULL+FK, and assigns `seq` in source-array order. |
-| `notification_settings` | **Map keyed by teamId → `team_id` IS the PK** (one row/team). Channels AND **`events` flattened to columns** (no jsonb — `*_enabled`/`*_url`/`email_address` + one boolean column per event). Missing row = `defaultNotificationSettings()`. **Leaf collection** (cut-set 3a). |
-| `shared_env_groups` (+3 children) | **`shared_env_group_vars`** (`value_enc` secret, PK `(group_id, key)`, whole-set replace); **`shared_env_group_projects`** (true junction, PK `(group_id, project_id)`, index `project_id`); **`shared_env_group_targets`** (was `targets` jsonb on the parent → now a junction). |
-| `registries` | `password_enc` secret. `(team_id, created_at DESC)` index. **Leaf collection** (cut-set 3a). |
-| `github_apps` | 3 secrets (`client_secret_enc`/`webhook_secret_enc`/`private_key_enc`). `app_id` `bigint UNIQUE`. |
-| `github_installation` | `installation_id` `bigint UNIQUE` (upsert conflict target; do NOT touch `created_at` on conflict). `account_type` pgEnum. No `team_id` (scoped via parent). |
-| `dev_ssh_user` | `password_enc` reversible secret (write-only, masked as `hasPassword`). `UNIQUE(username)` **globally**. CHECK `public_key IS NOT NULL OR password_enc IS NOT NULL`. |
-| `installed_apps` | `UNIQUE(team_id, catalog_id)` + `UNIQUE(slug)`. `(team_id, created_at DESC)` index. `status`/`url` deliberately NOT stored (computed). Backfill the derived `slug` for legacy empty-slug rows. **Leaf collection** (cut-set 3a). |
+| Table                             | Notes / trickiest decisions                                                                                                                                                                                                                                                                                                                                                                                                    |
+| --------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `users`                           | Flat. `UNIQUE(lower(email))` (expression index — app does case-insensitive checks). `UNIQUE(username)`. 4 optional booleans → `NOT NULL DEFAULT false`. `password_hash` excluded from projections. No FKs out.                                                                                                                                                                                                                 |
+| `teams`                           | `UNIQUE(slug)`. **`project_order`/`folder_order` are NO LONGER columns** — moved to the `team_project_order`/`team_folder_order` junctions (was jsonb; see below).                                                                                                                                                                                                                                                             |
+| `team_project_order`              | **Ordering junction** `(team_id, project_id, position)`, PK `(team_id, project_id)`. `ON DELETE CASCADE` on both FKs makes stale-id self-healing a DB invariant (replaces the `listProjects` Infinity-rank prune). Backfill intersects the legacy array with live team project ids.                                                                                                                                            |
+| `team_folder_order`               | Same shape for folders, `(team_id, folder_id, position)`.                                                                                                                                                                                                                                                                                                                                                                      |
+| `folders`                         | Self-FK `parent_id`. **App re-parenting in `deleteFolder` is authoritative** — the FK is a safety net (`ON DELETE SET NULL`, or omit). `CASCADE` on `parent_id` would wrongly delete subtrees.                                                                                                                                                                                                                                 |
+| `memberships`                     | `UNIQUE(user_id, team_id)` closes the double-add race. **`capabilities` → `membership_capabilities` junction** (was inline jsonb/text[]).                                                                                                                                                                                                                                                                                      |
+| `membership_capabilities`         | `(membership_id, capability)`, PK on both. Loaded into memory and `.includes()`-checked as today (run `cleanCapabilities` at backfill).                                                                                                                                                                                                                                                                                        |
+| `invites`                         | `token_hash` `UNIQUE`. Partial `UNIQUE (team_id, email) WHERE status='pending'`. **`capabilities` → `invite_capabilities` junction.** `status` soft-lifecycle (never hard-delete on revoke). `invited_by` is a display name, NOT an FK.                                                                                                                                                                                        |
+| `registration_links`              | `token_hash` `UNIQUE`. **Consume via conditional `UPDATE … WHERE status='pending' AND expires_at>=now() RETURNING`** for single-use atomicity. `created_by`/`used_by_username` denormalized strings, NOT FKs.                                                                                                                                                                                                                  |
+| `servers`                         | No `team_id` (instance-wide). `agent_*`/`bootstrap_*` **flattened from nested objects** so `agent_cert_fingerprint` and `bootstrap_token_hash` are indexable for the two lookup paths (dial / call-home). Partial-unique on fingerprint excluding `''`/NULL; partial index on live token hash.                                                                                                                                 |
+| `projects`                        | Flat scalar columns only. `slug` `UNIQUE` _globally_. `folder_id` `ON DELETE SET NULL` (orphan tolerated). `server_id` `RESTRICT`. `latest_deployment_id` `SET NULL`. `repo`/`upload` flattened to columns (small fixed shapes). `expose` is **NOT stored** — it is derived as `exposes[0]` in the row-assembler (Decision 14). Legacy `source="dockerfile"` rewritten on backfill via the shared normalizer (Decision 12/13). |
+| `project_build`                   | **1-to-1 child** (was `projects.build` jsonb). `project_id` PK + FK CASCADE. `framework`/`build_method` plain **text, no CHECK**. `runtime_version` (legacy `nodeVersion` remapped by `normalizeBuildConfig` at backfill). `NOT NULL` columns → backfill MUST run the read-time normalizer first (Decision 12).                                                                                                                |
+| `project_build_method_settings`   | **1-to-1 child** (was nested `methodSettings`). `project_id` PK + FK. Every [BuildMethodSettings](../../../lib/types.ts#L422) field is a column; an `updateProjectBuild` with a provided `methodSettings` object **fully replaces this row** while the parent `project_build` columns merge field-by-field (Decision 15).                                                                                                      |
+| `project_dev`                     | **1-to-1 child** (was `projects.dev` jsonb). `project_id` PK + FK. **Row ABSENT = dev never enabled** (the [DevConfig](../../../lib/types.ts#L488) tri-state — do NOT seed a default row). `dev_status` pgEnum, legacy unknown → `'off'`.                                                                                                                                                                                      |
+| `project_exposes`                 | **Ordered child** `(project_id, position)` of `{service, port, host?}`. `expose := exposes[0]` is derived, never stored.                                                                                                                                                                                                                                                                                                       |
+| `project_volumes`                 | **Ordered child**; `type` column NULLABLE (named/`host`/`project` discriminant). Backfill runs `normalizeVolumes` first (drops mountless entries) so NOT-NULL child columns hold.                                                                                                                                                                                                                                              |
+| `project_mounts`                  | **Ordered child** of `{filePath, content}` template config files. `content` byte-preserved (reconciliation asserts byte-equality, Decision 14).                                                                                                                                                                                                                                                                                |
+| `deployments`                     | Fully flat. **`seq bigint identity`** (Decision 10) — sorts are `ORDER BY created_at DESC, seq DESC`. `(project_id, created_at DESC, seq DESC)` index. No `team_id` (joined via project).                                                                                                                                                                                                                                      |
+| `deployment_logs`                 | **The `logs: Record<ID, LogLine[]>` map becomes this child table** — map key → `deployment_id` FK, each `LogLine` → one row, `id bigint identity` PK reproduces `Array.push` order; `(deployment_id, id)` index. `level` is pgEnum `deployment_log_level`. **Write via a batched buffer, NOT per-line — see §Reads Decision 18.**                                                                                              |
+| `env_vars`                        | `value_enc` secret. `UNIQUE(project_id, key)` enables `ON CONFLICT` upsert. **`targets` → `env_var_targets` junction.**                                                                                                                                                                                                                                                                                                        |
+| `env_var_targets`                 | `(env_var_id, target)`, PK both. `target` ∈ production/preview/development.                                                                                                                                                                                                                                                                                                                                                    |
+| `domains`                         | `primary` is a **SQL reserved word** — map TS `isPrimary`/db `is_primary` or quote. Partial `UNIQUE (project_id) WHERE is_primary`. `UNIQUE (name, COALESCE(path_prefix,''))`. `entrypoint`/`cert_provider`/`source` **NULLABLE, no DEFAULT** (auto/manual tri-state — never coerce NULL→`'websecure'`). **`middlewares` → `domain_middlewares` junction.**                                                                    |
+| `domain_middlewares`              | Ordered child `(domain_id, position, name)`.                                                                                                                                                                                                                                                                                                                                                                                   |
+| `databases`                       | `connection_string_enc` secret. `server_id` `RESTRICT`. `UNIQUE(team_id, name)`.                                                                                                                                                                                                                                                                                                                                               |
+| `s3_destination`                  | `access_key_enc`/`secret_key_enc` secrets (secret key never even masked-returned). `(team_id, created_at DESC)` index. Backfill may have rows without `team_id` → populate before NOT NULL.                                                                                                                                                                                                                                    |
+| `backups`                         | Schedule table (not run history). `target_kind` XOR CHECK on `database_id`/`project_id`. `destination_id` `RESTRICT`; database/project/team `CASCADE`. `last_status` enum includes `'never'` (wider than run status).                                                                                                                                                                                                          |
+| `backup_runs`                     | History; **separate table, NOT a child of backups**. **`seq bigint identity`** (Decision 10). `backup_id` `SET NULL` (history outlives schedule). `database_id`/`project_id` `SET NULL`. `size_bytes` **must be `bigint`**. Partial index `WHERE status='running'` for boot reconcile. Retention (`selectDoomedRuns`) orders by `(created_at, seq)`, never timestamp alone (Decision 10).                                      |
+| `api_tokens`                      | `token_hash` `UNIQUE` (hot auth lookup). CASCADE on team and user. **Leaf collection** (zero-cost-revert cut-set, Decision 3a).                                                                                                                                                                                                                                                                                                |
+| `activities`                      | Append-only. **`seq bigint identity`** (Decision 10) — all sorts `ORDER BY created_at DESC, seq DESC`, push-down `LIMIT` into SQL. `(team_id, created_at DESC, seq DESC)` index. `actor` free text (incl. `"system"`), NOT an FK. `project_id` `SET NULL`. Backfill maps empty-string `team_id` to a real team before NOT NULL+FK, and assigns `seq` in source-array order.                                                    |
+| `notification_settings`           | **Map keyed by teamId → `team_id` IS the PK** (one row/team). Channels AND **`events` flattened to columns** (no jsonb — `*_enabled`/`*_url`/`email_address` + one boolean column per event). Missing row = `defaultNotificationSettings()`. **Leaf collection** (cut-set 3a).                                                                                                                                                 |
+| `shared_env_groups` (+3 children) | **`shared_env_group_vars`** (`value_enc` secret, PK `(group_id, key)`, whole-set replace); **`shared_env_group_projects`** (true junction, PK `(group_id, project_id)`, index `project_id`); **`shared_env_group_targets`** (was `targets` jsonb on the parent → now a junction).                                                                                                                                              |
+| `registries`                      | `password_enc` secret. `(team_id, created_at DESC)` index. **Leaf collection** (cut-set 3a).                                                                                                                                                                                                                                                                                                                                   |
+| `github_apps`                     | 3 secrets (`client_secret_enc`/`webhook_secret_enc`/`private_key_enc`). `app_id` `bigint UNIQUE`.                                                                                                                                                                                                                                                                                                                              |
+| `github_installation`             | `installation_id` `bigint UNIQUE` (upsert conflict target; do NOT touch `created_at` on conflict). `account_type` pgEnum. No `team_id` (scoped via parent).                                                                                                                                                                                                                                                                    |
+| `dev_ssh_user`                    | `password_enc` reversible secret (write-only, masked as `hasPassword`). `UNIQUE(username)` **globally**. CHECK `public_key IS NOT NULL OR password_enc IS NOT NULL`.                                                                                                                                                                                                                                                           |
+| `installed_apps`                  | `UNIQUE(team_id, catalog_id)` + `UNIQUE(slug)`. `(team_id, created_at DESC)` index. `status`/`url` deliberately NOT stored (computed). Backfill the derived `slug` for legacy empty-slug rows. **Leaf collection** (cut-set 3a).                                                                                                                                                                                               |
 
 **FK ordering for creation/backfill** (roots first): `users`, `teams`, `servers` →
 `memberships`(+`membership_capabilities`), `invites`(+`invite_capabilities`),
@@ -379,18 +379,18 @@ second pass after deployments exist (or left `SET NULL`-deferred).
 
 > **[Supersedes] the original "migrate per data module" plan (old Steps 4–6).** The
 > grilling proved per-module migration is **invalid**: a collection is read and
-> written by modules scattered across *different* steps, so migrating "module by
+> written by modules scattered across _different_ steps, so migrating "module by
 > module" leaves a half-relational/half-JSONB store where one side reads stale data
 > from the other. The fix is to migrate by **cut-set**: the closure of a collection
-> *and every module that reads or writes it*, atomically in one PR.
+> _and every module that reads or writes it_, atomically in one PR.
 
 ### Why per-module is broken (verified contradictions)
 
 - **users:** `account.ts` would write users at the old Step 4, but `auth.ts` login
-  *reads* users at the old Step 6 → a password changed via the new relational path
+  _reads_ users at the old Step 6 → a password changed via the new relational path
   is invisible to the still-JSONB login → **stale-password login**.
 - **memberships/users:** [membership.ts](../../../lib/membership.ts) (`membershipFor`,
-  `teamsForUser`) is an **unassigned reader** sitting behind *all* of
+  `teamsForUser`) is an **unassigned reader** sitting behind _all_ of
   `requireCapability` — if memberships migrate but `membership.ts` still reads JSONB,
   a newly-added member is **invisible to authz**.
 - **envVars/sharedEnvGroups/domains:** read by
@@ -406,7 +406,7 @@ second pass after deployments exist (or left `SET NULL`-deferred).
 The original plan claimed the JSONB row stays a safe rollback artifact through Step 7
 because it is "frozen read-only during the transition". **False.**
 [saveDocument](../../../lib/db/document-store.ts#L35) writes the **whole** document, so
-any *not-yet-migrated* module that calls `mutate()` overwrites the JSONB with stale
+any _not-yet-migrated_ module that calls `mutate()` overwrites the JSONB with stale
 cache data — **clobbering collections that were already migrated**. Therefore:
 
 - The **clean-rollback window closes at the END of the leaf cut-set** (the only
@@ -461,7 +461,7 @@ COMMITTED does **not** fix on its own, and that **no constraint can express**
 (they're "at least one row still satisfies P", not "this row is unique"):
 
 - [updateUserAdmin](../../../lib/data/members.ts#L409): "the instance must keep ≥1
-  active (non-suspended) admin" — counts admins as they *would be* after the edit.
+  active (non-suspended) admin" — counts admins as they _would be_ after the edit.
 - [assertAdminCoverage](../../../lib/data/members.ts#L234): "the team must keep ≥1
   holder of each critical capability".
 - [setPrimaryDomain](../../../lib/data/domains.ts#L616): "exactly one primary per
@@ -510,7 +510,7 @@ arbitrary order. Add a **`bigint` identity column `seq`** to `activities`,
 Because §1 removed JSONB (every project read JOINs 5–6 child tables) and because the
 data layer is going async, the N+1 patterns that were free over an in-memory cache
 become real round-trips. **This corrects the original §4 claim that "resolvers/RSC
-need essentially zero edits"** — the *shape* of the list resolvers changes.
+need essentially zero edits"** — the _shape_ of the list resolvers changes.
 
 - **`summarize()` is N+1.** [summarize](../../../lib/data/projects.ts#L166) reads
   `deployments` and `domains` per project (lines 166–183). Fix: a **batch-load
@@ -597,7 +597,7 @@ cut-sets use it.
 
 ### Fidelity: normalize BEFORE exploding into strict child tables
 
-Store rows are **never rewritten today** (projects are normalized on *read*, e.g.
+Store rows are **never rewritten today** (projects are normalized on _read_, e.g.
 [projects.ts:148](../../../lib/data/projects.ts#L148), but the stored shape stays
 legacy). So a raw legacy row would violate the **NOT-NULL child columns** at INSERT.
 The backfill MUST run the **per-entity read-time normalizers first**:
@@ -641,8 +641,8 @@ transaction** → the instance becomes **un-migratable**, and a count-only asser
     `satisfies Record<keyof BuildMethodSettings, …>` (so a new settings field can't be
     silently dropped);
   - **every FK resolves**.
-  A mismatch **aborts the cut-set's backfill transaction** (crash → full rollback →
-  clean re-run).
+    A mismatch **aborts the cut-set's backfill transaction** (crash → full rollback →
+    clean re-run).
 - Derive `expose := exposes[0]` in the **row-assembler**, don't store it independently
   (Decision 14, also §2 `projects`).
 
@@ -716,7 +716,7 @@ steps:
 
 ### Migration runs as an explicit step — NOT inside `ensureStoreReady`
 
-Migration does **NOT run in production today** (drizzle-kit is a *devDependency*, the
+Migration does **NOT run in production today** (drizzle-kit is a _devDependency_, the
 Dockerfile `CMD` is `node server.js`, there is no migrate step). Decision:
 
 - **At scale:** migration runs as a **dedicated step in the Docker image BEFORE
@@ -782,7 +782,7 @@ globalThis-pinned) and the **timestamp type parser** in `pg.ts`. Split `schema.t
 `schema/auth.ts`, `schema/legacy.ts`, re-exporting `schema`. **Reconcile the two DDL
 regimes** (§8): align legacy declarations to the real runtime type, generate a
 **baseline** migration, remove the runtime `CREATE TABLE IF NOT EXISTS` from
-`document-store.ts`/`lease.ts`. *Test:* the round-trip test passes; `db:generate` shows
+`document-store.ts`/`lease.ts`. _Test:_ the round-trip test passes; `db:generate` shows
 no drift.
 
 **Step 1 — Relational table definitions + generated migration + backfill ENGINE
@@ -792,7 +792,7 @@ emits the `CREATE TABLE` migration. Build the **backfill engine**: the `store_mi
 per-cut-set markers, the `scheduler_lease`-CAS **+ poll-for-marker loop**, the FK-ordered
 copy transaction, the **element-granular reconciliation assert**, and the shared
 normalize/coerce helpers. Nothing reads the new tables yet; no cut-set has run.
-*Test:* a `schema.test.ts` asserts the table set matches the design; an engine test
+_Test:_ a `schema.test.ts` asserts the table set matches the design; an engine test
 seeds a `DeploData` doc and runs one cut-set's backfill against pglite, asserting
 element-granular fidelity + idempotent re-run + fresh-install marks-done-with-zero-rows.
 
@@ -823,7 +823,7 @@ blocking). **Full suite 400 pass / 0 fail.** Two refinements made during build:
   `mode:"string"` returns the space-separated `'…+00'` form — neither yields the
   canonical `T…Z` string the 15+ lexicographic sorts need. The fix is `isoTimestamptz`
   ([lib/db/schema/columns.ts](../../../lib/db/schema/columns.ts)), a `timestamp with
-  time zone` customType whose `fromDriver` canonicalises in Drizzle's codec layer
+time zone` customType whose `fromDriver` canonicalises in Drizzle's codec layer
   (reusing the one `isoTimestampParser`), used for every `*_at` column. The driver OID
   parser stays for the legacy RAW-query path (`document-store.ts`/`lease.ts`) only.
   The DDL is identical to `timestamptz`. (The `client.ts`/`pg.ts`/`test-harness.ts`
@@ -849,7 +849,7 @@ Step 0/1 land the schema + a Drizzle test harness — now `lib/db/test-harness.t
 **Step 2 — Cut-set (a): leaf collections.** Migrate `apiTokens`,
 `notificationSettings`, `registries`, `installedApps` **atomically** (schema reads +
 writes + per-cut-set backfill + test-seed-helper rewrite) in one PR. The **only**
-zero-cost-revert cut-set. *Test:* per-collection data-layer tests against pglite;
+zero-cost-revert cut-set. _Test:_ per-collection data-layer tests against pglite;
 backfill fidelity; revert leaves JSONB authoritative.
 
 **Step 3 — Cut-set (b): identity / auth.** `users` + `teams` +
@@ -857,42 +857,43 @@ backfill fidelity; revert leaves JSONB authoritative.
 **`members.ts` critical section** + **`membership.ts`** — one PR. Includes the
 `createAccountWithTeam` `db.transaction` with the conditional registration-link
 `UPDATE … RETURNING`, and the **count-invariant fixes** (`updateUserAdmin`,
-`assertAdminCoverage` via `SELECT … FOR UPDATE`). *Test:* two-concurrent-registration
+`assertAdminCoverage` via `SELECT … FOR UPDATE`). _Test:_ two-concurrent-registration
 race (one wins), two-concurrent-demotion races for admin coverage + active-admin,
 stale-password-login regression (proves the cut-set closed it), backfill fidelity.
 
 #### STEP 3 RESULT (2026-06-24) — DONE ✅
 
 Cut-set (b) shipped: `users` + `teams` + `memberships`(+`membership_capabilities`)
-+ `registrationLinks` are relational, migrated atomically with
-[lib/auth.ts](../../../lib/auth.ts), [lib/data/members.ts](../../../lib/data/members.ts),
-[lib/membership.ts](../../../lib/membership.ts),
-[lib/data/teams.ts](../../../lib/data/teams.ts),
-[lib/data/account.ts](../../../lib/data/account.ts), and the GraphQL register
-resolver. **Full suite 434 pass / 0 fail**, `tsc` clean (only the pre-existing
-`migrate.test.ts` cast), `db:generate` no schema changes (Step 1 emitted the
-tables). Highlights and decisions made during build:
 
-- **The authz backbone went sync→async.** `membershipFor`/`teamsForUser`/`hasGrant`
+- `registrationLinks` are relational, migrated atomically with
+  [lib/auth.ts](../../../lib/auth.ts), [lib/data/members.ts](../../../lib/data/members.ts),
+  [lib/membership.ts](../../../lib/membership.ts),
+  [lib/data/teams.ts](../../../lib/data/teams.ts),
+  [lib/data/account.ts](../../../lib/data/account.ts), and the GraphQL register
+  resolver. **Full suite 434 pass / 0 fail**, `tsc` clean (only the pre-existing
+  `migrate.test.ts` cast), `db:generate` no schema changes (Step 1 emitted the
+  tables). Highlights and decisions made during build:
+
+* **The authz backbone went sync→async.** `membershipFor`/`teamsForUser`/`hasGrant`
   now query Postgres; every call site awaits (verified no Promise-truthy bypass).
   `membershipFor` reassembles `capabilities` from the junction batch-loaded via
   `inArray` (no N+1). `getActiveTeamId` stays the single per-request `cache()`.
-- **`createAccountWithTeam` is one `db.transaction`** (team→user→membership→caps);
+* **`createAccountWithTeam` is one `db.transaction`** (team→user→membership→caps);
   its `guard` runs the single-use registration consume as the conditional
   `UPDATE … WHERE status='pending' AND expires_at>=now() RETURNING` — the loser of
   a concurrent double-submit updates 0 rows and throws, rolling the whole tx back.
   A `DbTx` alias ([lib/db/client.ts](../../../lib/db/client.ts)) types the
   tx-threaded helpers (`consumeRegistrationLink`, `assertAdminCoverage`).
-- **Count-invariants via `SELECT … FOR UPDATE`** (§4): `updateUserAdmin` locks
+* **Count-invariants via `SELECT … FOR UPDATE`** (§4): `updateUserAdmin` locks
   `isInstanceAdmin=true OR id=target`; `assertAdminCoverage` locks the critical-cap
   holder set. Two-concurrent-demotion tests assert "exactly one wins, invariant
   holds" (pglite serializes the txs on the event loop — it validates the logic, not
   real lock contention).
-- **Actor-username — resolve relationally, NOT dual-write (user decision).** The 53
+* **Actor-username — resolve relationally, NOT dual-write (user decision).** The 53
   `read().users.find(u=>u.id===membership.userId)!` actor lookups in cut-set c/d
   modules (the actor is always the current user) became `(await getCurrentUser())!`
   — relational + React-cached. No stale-JSONB identity read remains in live code.
-- **NEW hazard found + fixed — the team-ordering bridge.** `projectOrder`/
+* **NEW hazard found + fixed — the team-ordering bridge.** `projectOrder`/
   `folderOrder` are NOT relational `teams` columns (they move to the junctions in
   cut-set (c)); they still live ONLY on the JSONB team object, read/written by
   `projects.ts`/`folders.ts`. Since `createTeam`/`createAccountWithTeam` no longer
@@ -900,7 +901,7 @@ tables). Highlights and decisions made during build:
   [lib/data/team-order.ts](../../../lib/data/team-order.ts) `ensureTeamOrderStub`
   writes a minimal JSONB stub (id + empty order arrays) on team create as a bridge
   — **cut-set (c) deletes it** when it migrates those arrays to the junctions.
-- **Test backend:** `leaf-test-helpers` now seeds memberships+caps relationally;
+* **Test backend:** `leaf-test-helpers` now seeds memberships+caps relationally;
   new `identity-test-helpers.ts` is the seed pattern for b/c/d. `login()` is not
   unit-testable (`cookies()` throws outside a request scope) — the regression test
   asserts the rejection cases + that the accept path reaches the cookie write.
@@ -912,7 +913,7 @@ batch-load + list push-down, the **`deployment_logs` buffered writer**, the
 `setPrimaryDomain` single-UPDATE flip, `createProject`/`updateProjectBuild`
 transactions with **post-commit deploy** (ensureAutoDomain + startDeployment fire only
 AFTER commit), the ordering junctions, and the **`deleteProject` cascade orphan fix**.
-*Test:* project-delete cascade (no orphaned deployments/logs/env/domains/backups/shared
+_Test:_ project-delete cascade (no orphaned deployments/logs/env/domains/backups/shared
 ids), two-concurrent primary-domain races, SSE generator driven across >1 ping
 (cookie-free), buffered-log final-flush + drain-then-DELETE, backfill fidelity.
 
@@ -951,7 +952,7 @@ emitted the tables). Highlights and decisions:
   `shared_env_group_projects` attachment (the orphan the JSONB version leaked),
   and `backups.project_id` is `SET NULL`. A data-layer test asserts no orphans.
 - **`setPrimaryDomain` is the single-UPDATE flip** (`SET is_primary = (id =
-  $target) WHERE project_id`), backstopped by the partial-unique; a
+$target) WHERE project_id`), backstopped by the partial-unique; a
   two-concurrent-flip test asserts exactly one primary survives.
 - **The buffered `deployment_logs` writer**
   ([lib/data/deployment-logs.ts](../../../lib/data/deployment-logs.ts)) is the
@@ -994,7 +995,7 @@ emitted the tables). Highlights and decisions:
 databases+s3 then backups, kept adjacent). Includes the **two-tx `executeBackup`**
 (agent call OUTSIDE the tx), `reconcileInFlightBackupRuns` (**awaited** before
 `startBackupScheduler`), the `(created_at, seq)` retention ordering, and the
-scheduler-test rewrite. *Test:* backup start/terminal atomicity, retention picks the
+scheduler-test rewrite. _Test:_ backup start/terminal atomicity, retention picks the
 right object under a same-millisecond tie, reconcile-before-scheduler ordering, backfill
 fidelity.
 
@@ -1092,7 +1093,7 @@ no-op once all FIVE markers exist). Update the doc comments in
 [lib/store.ts](../../../lib/store.ts) and
 [lib/graphql/context.ts:42](../../../lib/graphql/context.ts#L42). **Leave
 `deploState`/`document-store.ts` in place** (frozen snapshot, rollback artifact for the
-period before any non-leaf cut-set — see §3/§7). *Test:* full `node --test` against
+period before any non-leaf cut-set — see §3/§7). _Test:_ full `node --test` against
 pglite; manual smoke of register/deploy/backup flows.
 
 #### STEP 6 RESULT (2026-06-24) — DONE ✅ (with a NEW cut-set (e))
@@ -1108,21 +1109,21 @@ global-error / s3 warnings only), `db:generate` reports "No schema changes" (Ste
 every table — cut-set (e) added ZERO DDL). Highlights:
 
 - **Cut-set (e) — infra / integrations.** `servers` + `github_apps`(+`github_installation`)
-  + `dev_ssh_user` + `activities` are relational, migrated atomically with
-  [servers.ts](../../../lib/data/servers.ts), [github.ts](../../../lib/data/github.ts),
-  [github/app.ts](../../../lib/github/app.ts), [dev-ssh.ts](../../../lib/data/dev-ssh.ts),
-  [activity.ts](../../../lib/data/activity.ts), and every reader of them (closure). The ONE
-  shared row-assembler is [infra-rows.ts](../../../lib/data/infra-rows.ts) (the anti-drift
-  seam, same as `backup-rows.ts` for (d)); `serverToRow` flattens the nested
-  `ServerAgent`/`ServerBootstrap` onto columns and `assembleServer` rebuilds them from the
-  `agent_port`/`bootstrap_token_hash` discriminants. The backfill is
-  [cut-sets/infra.ts](../../../lib/db/backfill/cut-sets/infra.ts) (FK-ordered copy, prunes a
-  dead-project `dev_ssh_user` (CASCADE FK), NULLs a dead-project `activity` (SET NULL FK),
-  guards a dangling-app installation, `cleanCapabilities` on invite caps, `seq` in
-  source-array order, element-granular reconcile), wired LAST in `store.ts`'s
-  `runCutSetBackfills` (its FKs reference teams (b) + projects (c)).
+  - `dev_ssh_user` + `activities` are relational, migrated atomically with
+    [servers.ts](../../../lib/data/servers.ts), [github.ts](../../../lib/data/github.ts),
+    [github/app.ts](../../../lib/github/app.ts), [dev-ssh.ts](../../../lib/data/dev-ssh.ts),
+    [activity.ts](../../../lib/data/activity.ts), and every reader of them (closure). The ONE
+    shared row-assembler is [infra-rows.ts](../../../lib/data/infra-rows.ts) (the anti-drift
+    seam, same as `backup-rows.ts` for (d)); `serverToRow` flattens the nested
+    `ServerAgent`/`ServerBootstrap` onto columns and `assembleServer` rebuilds them from the
+    `agent_port`/`bootstrap_token_hash` discriminants. The backfill is
+    [cut-sets/infra.ts](../../../lib/db/backfill/cut-sets/infra.ts) (FK-ordered copy, prunes a
+    dead-project `dev_ssh_user` (CASCADE FK), NULLs a dead-project `activity` (SET NULL FK),
+    guards a dangling-app installation, `cleanCapabilities` on invite caps, `seq` in
+    source-array order, element-granular reconcile), wired LAST in `store.ts`'s
+    `runCutSetBackfills` (its FKs reference teams (b) + projects (c)).
 - **`invites` was a DEAD collection.** Zero read/write paths exist anywhere (the only
-  `Invite` mention was a capability *description* string); it is seeded `[]` and never
+  `Invite` mention was a capability _description_ string); it is seeded `[]` and never
   touched. Cut-set (e) carries it backfill-only for fidelity (zero rows in practice).
 - **`completeBootstrap` consume became a conditional UPDATE** (PLAN §1 the
   single-UPDATE/RETURNING pattern): the old in-memory `mutate()` re-check is now
@@ -1209,7 +1210,7 @@ and decisions:
 - **KEPT — the read-time per-entity normalizers are NOT the JSONB migrate.**
   [normalize-project.ts](../../../lib/data/normalize-project.ts) (`deriveVolumeName`,
   live in `projects.ts`) and the live coercion helpers (`cleanCapabilities`,
-  `sanitizeTargets`) stay; only the JSONB-*document* normalize/migrate (which ran on
+  `sanitizeTargets`) stay; only the JSONB-_document_ normalize/migrate (which ran on
   hydrate) was deleted. The row-assembler seams (`project-graph-rows.ts`,
   `backup-rows.ts`, `infra-rows.ts`, `notification-row.ts`) stay as the live
   read↔write anti-drift mapping — their comments dropped the now-dead backfill half.

@@ -54,7 +54,9 @@ async function teamsWithWorkloads(serverId: string): Promise<string[]> {
  * ponytail: a shared server nobody uses alerts the FIRST team, not all of them.
  * Per-team server subscriptions the day somebody asks.
  */
-export async function teamsForServerAlerts(serverId: string): Promise<string[]> {
+export async function teamsForServerAlerts(
+  serverId: string,
+): Promise<string[]> {
   const withWork = await teamsWithWorkloads(serverId);
   if (withWork.length > 0) return withWork;
 

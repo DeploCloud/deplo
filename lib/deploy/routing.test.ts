@@ -181,7 +181,11 @@ test("per-route mode: one router per route in input order (compose multi-service
     "traefik.http.routers.deplo-svc-9000.rule=Host(`api.example.com`)",
   ]);
   // per-route mode always names the service.
-  assert.ok(labels.includes("traefik.http.routers.deplo-svc-8080.service=deplo-svc-8080"));
+  assert.ok(
+    labels.includes(
+      "traefik.http.routers.deplo-svc-8080.service=deplo-svc-8080",
+    ),
+  );
 });
 
 test("custom cert resolver propagates", () => {
@@ -192,7 +196,9 @@ test("custom cert resolver propagates", () => {
     certResolver: "letsencrypt-http",
   });
   assert.ok(
-    labels.includes("traefik.http.routers.deplo-app.tls.certresolver=letsencrypt-http"),
+    labels.includes(
+      "traefik.http.routers.deplo-app.tls.certresolver=letsencrypt-http",
+    ),
   );
 });
 
@@ -206,8 +212,12 @@ test("__ separator keeps a non-default port group from colliding with a sibling 
     defaultPort: 3000,
     certResolver: CR,
   });
-  assert.ok(labels.some((l) => l.startsWith("traefik.http.routers.deplo-app__8080.")));
-  assert.ok(!labels.some((l) => l.startsWith("traefik.http.routers.deplo-app-8080.")));
+  assert.ok(
+    labels.some((l) => l.startsWith("traefik.http.routers.deplo-app__8080.")),
+  );
+  assert.ok(
+    !labels.some((l) => l.startsWith("traefik.http.routers.deplo-app-8080.")),
+  );
 });
 
 // --- Per-route TLS triplet (entrypoint / tls on-off / cert resolver) --------
@@ -246,7 +256,11 @@ test("an HTTPS default route and an HTTP route split into two routers", () => {
   ]);
   // The HTTP router carries no tls labels; the default one does.
   assert.ok(labels.includes("traefik.http.routers.deplo-app.tls=true"));
-  assert.ok(!labels.some((l) => l.startsWith("traefik.http.routers.deplo-app__3000-http.tls")));
+  assert.ok(
+    !labels.some((l) =>
+      l.startsWith("traefik.http.routers.deplo-app__3000-http.tls"),
+    ),
+  );
 });
 
 test("a per-route cert resolver overriding the default suffixes the resolver", () => {
@@ -261,7 +275,9 @@ test("a per-route cert resolver overriding the default suffixes the resolver", (
   });
   // Default-resolver host keeps the bare key; the cloudflare host gets its own.
   assert.ok(
-    labels.includes("traefik.http.routers.deplo-app.tls.certresolver=letsencrypt"),
+    labels.includes(
+      "traefik.http.routers.deplo-app.tls.certresolver=letsencrypt",
+    ),
   );
   assert.ok(
     labels.includes(
@@ -291,11 +307,23 @@ test("a resolver matching the default does NOT suffix (byte-stable key)", () => 
   // router key — the route still belongs to the bare default group.
   const labels = traefikRouterLabels({
     baseKey: "deplo-app",
-    routes: [{ name: "x.example.com", port: null, certResolver: CR, entrypoint: "websecure", tls: true }],
+    routes: [
+      {
+        name: "x.example.com",
+        port: null,
+        certResolver: CR,
+        entrypoint: "websecure",
+        tls: true,
+      },
+    ],
     defaultPort: 3000,
     certResolver: CR,
   });
-  assert.ok(labels.includes("traefik.http.routers.deplo-app.rule=Host(`x.example.com`)"));
+  assert.ok(
+    labels.includes(
+      "traefik.http.routers.deplo-app.rule=Host(`x.example.com`)",
+    ),
+  );
   assert.ok(!labels.some((l) => l.includes("deplo-app__")));
 });
 
@@ -303,7 +331,13 @@ test("a middleware chain emits an ordered middlewares= label on the default rout
   assert.deepEqual(
     traefikRouterLabels({
       baseKey: "deplo-app",
-      routes: [{ name: "app.com", port: null, middlewares: ["redirect-https", "auth@file"] }],
+      routes: [
+        {
+          name: "app.com",
+          port: null,
+          middlewares: ["redirect-https", "auth@file"],
+        },
+      ],
       defaultPort: 3000,
       certResolver: CR,
     }),
@@ -328,7 +362,9 @@ test("an empty / whitespace-only middleware chain emits NO middlewares label (by
   });
   assert.ok(!labels.some((l) => l.includes(".middlewares=")));
   // Blank-only chain collapses to empty ⇒ the route stays in the bare default group.
-  assert.ok(labels.includes("traefik.http.routers.deplo-app.rule=Host(`app.com`)"));
+  assert.ok(
+    labels.includes("traefik.http.routers.deplo-app.rule=Host(`app.com`)"),
+  );
 });
 
 test("two hosts with different chains split into separate routers", () => {
@@ -400,12 +436,18 @@ test("non-default ports sort NUMERICALLY (:80 before :100), not as strings", () 
 test("a resolver name with unsafe characters is sanitised in the router key", () => {
   const labels = traefikRouterLabels({
     baseKey: "deplo-app",
-    routes: [{ name: "x.example.com", port: null, certResolver: "My Resolver!" }],
+    routes: [
+      { name: "x.example.com", port: null, certResolver: "My Resolver!" },
+    ],
     defaultPort: 3000,
     certResolver: CR,
   });
   // The key segment is sanitised to [a-z0-9-]; the LABEL value keeps the raw name.
-  assert.ok(labels.some((l) => l.startsWith("traefik.http.routers.deplo-app__3000-my-resolver.")));
+  assert.ok(
+    labels.some((l) =>
+      l.startsWith("traefik.http.routers.deplo-app__3000-my-resolver."),
+    ),
+  );
   assert.ok(
     labels.includes(
       "traefik.http.routers.deplo-app__3000-my-resolver.tls.certresolver=My Resolver!",
@@ -427,12 +469,19 @@ test("a path prefix appends && PathPrefix to a parenthesised Host group + priori
   // router) plus the prefix length; NO stripprefix / middlewares label (strip
   // not requested).
   assert.ok(
-    labels.some((l) => l.includes(".rule=(Host(`app.com`)) && PathPrefix(`/api`)")),
+    labels.some((l) =>
+      l.includes(".rule=(Host(`app.com`)) && PathPrefix(`/api`)"),
+    ),
   );
   const ruleLine = labels.find((l) => l.includes(".rule="))!;
-  const key = ruleLine.slice("traefik.http.routers.".length, ruleLine.indexOf(".rule="));
+  const key = ruleLine.slice(
+    "traefik.http.routers.".length,
+    ruleLine.indexOf(".rule="),
+  );
   assert.ok(key.startsWith("deplo-app__3000-path-api-"), `key was ${key}`);
-  assert.ok(labels.includes(`traefik.http.routers.${key}.priority=${1_000_000 + 4}`));
+  assert.ok(
+    labels.includes(`traefik.http.routers.${key}.priority=${1_000_000 + 4}`),
+  );
   assert.ok(!labels.some((l) => l.includes(".stripprefix.")));
   assert.ok(!labels.some((l) => l.includes(".middlewares=")));
 });
@@ -449,7 +498,8 @@ test("a path prefix appends && PathPrefix to a parenthesised Host group + priori
  * label when we emit one, else its rule-string length (Traefik's default). */
 function effectivePriority(labels: string[]): number {
   const prio = labels.find((l) => l.includes(".priority="));
-  if (prio) return Number(prio.slice(prio.indexOf(".priority=") + ".priority=".length));
+  if (prio)
+    return Number(prio.slice(prio.indexOf(".priority=") + ".priority=".length));
   const rule = labels.find((l) => l.includes(".rule="))!;
   return rule.slice(rule.indexOf(".rule=") + ".rule=".length).length;
 }
@@ -465,7 +515,9 @@ test("a path router OUTRANKS a whole-host router on the same host (other app)", 
   });
   const pathRoute = traefikRouterLabels({
     baseKey: "deplo-api",
-    routes: [{ name: "app.com", port: null, pathPrefix: "/api", stripPrefix: true }],
+    routes: [
+      { name: "app.com", port: null, pathPrefix: "/api", stripPrefix: true },
+    ],
     defaultPort: 8080,
     certResolver: CR,
   });
@@ -491,11 +543,16 @@ test("a path router outranks a whole-host router with MANY hosts (long rule)", (
   });
   const pathRoute = traefikRouterLabels({
     baseKey: "deplo-api",
-    routes: [{ name: "app.com", port: null, pathPrefix: "/a", stripPrefix: true }],
+    routes: [
+      { name: "app.com", port: null, pathPrefix: "/a", stripPrefix: true },
+    ],
     defaultPort: 8080,
     certResolver: CR,
   });
-  assert.ok(effectivePriority(manyHosts) > 100, "sanity: the long rule has a big default");
+  assert.ok(
+    effectivePriority(manyHosts) > 100,
+    "sanity: the long rule has a big default",
+  );
   assert.ok(effectivePriority(pathRoute) > effectivePriority(manyHosts));
 });
 
@@ -527,13 +584,23 @@ test("one app serving BOTH the bare host and a path on it ranks the path first",
     certResolver: CR,
   });
   const bareRule = labels.find((l) => l.endsWith(".rule=Host(`app.com`)"))!;
-  const bareKey = bareRule.slice("traefik.http.routers.".length, bareRule.indexOf(".rule="));
+  const bareKey = bareRule.slice(
+    "traefik.http.routers.".length,
+    bareRule.indexOf(".rule="),
+  );
   const pathRule = labels.find((l) => l.includes("PathPrefix(`/api`)"))!;
-  const pathKey = pathRule.slice("traefik.http.routers.".length, pathRule.indexOf(".rule="));
+  const pathKey = pathRule.slice(
+    "traefik.http.routers.".length,
+    pathRule.indexOf(".rule="),
+  );
 
   // The bare router stays un-pinned (byte-identical to a path-less app), so its
   // effective priority is its rule length; the path router must exceed it.
-  assert.ok(!labels.some((l) => l.startsWith(`traefik.http.routers.${bareKey}.priority`)));
+  assert.ok(
+    !labels.some((l) =>
+      l.startsWith(`traefik.http.routers.${bareKey}.priority`),
+    ),
+  );
   const bare = "Host(`app.com`)".length;
   const path = Number(
     labels
@@ -548,19 +615,26 @@ test("one app serving BOTH the bare host and a path on it ranks the path first",
     ),
   );
   assert.ok(
-    labels.includes(`traefik.http.routers.${pathKey}.middlewares=${pathKey}-stripprefix`),
+    labels.includes(
+      `traefik.http.routers.${pathKey}.middlewares=${pathKey}-stripprefix`,
+    ),
   );
 });
 
 test("strip prefix emits a stripprefix middleware prepended to the (empty) chain", () => {
   const labels = traefikRouterLabels({
     baseKey: "deplo-app",
-    routes: [{ name: "app.com", port: null, pathPrefix: "/api", stripPrefix: true }],
+    routes: [
+      { name: "app.com", port: null, pathPrefix: "/api", stripPrefix: true },
+    ],
     defaultPort: 3000,
     certResolver: CR,
   });
   const ruleLine = labels.find((l) => l.includes(".rule="))!;
-  const key = ruleLine.slice("traefik.http.routers.".length, ruleLine.indexOf(".rule="));
+  const key = ruleLine.slice(
+    "traefik.http.routers.".length,
+    ruleLine.indexOf(".rule="),
+  );
   assert.ok(key.endsWith("-strip"), `key was ${key}`);
   assert.ok(
     labels.includes(
@@ -569,7 +643,9 @@ test("strip prefix emits a stripprefix middleware prepended to the (empty) chain
   );
   // With no user middlewares the chain is exactly the generated strip mw.
   assert.ok(
-    labels.includes(`traefik.http.routers.${key}.middlewares=${key}-stripprefix`),
+    labels.includes(
+      `traefik.http.routers.${key}.middlewares=${key}-stripprefix`,
+    ),
   );
 });
 
@@ -577,13 +653,22 @@ test("strip prefix prepends the strip mw BEFORE user middlewares (order)", () =>
   const labels = traefikRouterLabels({
     baseKey: "deplo-app",
     routes: [
-      { name: "app.com", port: null, pathPrefix: "/api", stripPrefix: true, middlewares: ["auth@file"] },
+      {
+        name: "app.com",
+        port: null,
+        pathPrefix: "/api",
+        stripPrefix: true,
+        middlewares: ["auth@file"],
+      },
     ],
     defaultPort: 3000,
     certResolver: CR,
   });
   const ruleLine = labels.find((l) => l.includes(".rule="))!;
-  const key = ruleLine.slice("traefik.http.routers.".length, ruleLine.indexOf(".rule="));
+  const key = ruleLine.slice(
+    "traefik.http.routers.".length,
+    ruleLine.indexOf(".rule="),
+  );
   assert.ok(
     labels.includes(
       `traefik.http.routers.${key}.middlewares=${key}-stripprefix,auth@file`,
@@ -619,7 +704,9 @@ test("two hosts with the SAME path fold into one parenthesised OR rule", () => {
   });
   const rules = labels.filter((l) => l.includes(".rule="));
   assert.equal(rules.length, 1);
-  assert.ok(rules[0].includes("(Host(`a.com`) || Host(`b.com`)) && PathPrefix(`/api`)"));
+  assert.ok(
+    rules[0].includes("(Host(`a.com`) || Host(`b.com`)) && PathPrefix(`/api`)"),
+  );
 });
 
 test("two hosts with DIFFERENT paths do NOT fold", () => {
@@ -677,7 +764,9 @@ test("a path prefix is re-rendered byte-identically (deterministic key/hash)", (
   const make = () =>
     traefikRouterLabels({
       baseKey: "deplo-app",
-      routes: [{ name: "app.com", port: null, pathPrefix: "/api", stripPrefix: true }],
+      routes: [
+        { name: "app.com", port: null, pathPrefix: "/api", stripPrefix: true },
+      ],
       defaultPort: 3000,
       certResolver: CR,
     });
@@ -697,18 +786,32 @@ test("per-route mode applies PathPrefix + stripprefix too (compose path)", () =>
     perRouteKey: (r) => `deplo-svc-${r.port}`,
   });
   assert.ok(
-    labels.some((l) => l.includes("traefik.http.routers.deplo-svc-8080.rule=(Host(`app.com`)) && PathPrefix(`/api`)")),
+    labels.some((l) =>
+      l.includes(
+        "traefik.http.routers.deplo-svc-8080.rule=(Host(`app.com`)) && PathPrefix(`/api`)",
+      ),
+    ),
   );
   assert.ok(
-    labels.includes("traefik.http.middlewares.deplo-svc-8080-stripprefix.stripprefix.prefixes=/api"),
+    labels.includes(
+      "traefik.http.middlewares.deplo-svc-8080-stripprefix.stripprefix.prefixes=/api",
+    ),
   );
   assert.ok(
-    labels.includes(`traefik.http.routers.deplo-svc-8080.priority=${1_000_000 + 4}`),
+    labels.includes(
+      `traefik.http.routers.deplo-svc-8080.priority=${1_000_000 + 4}`,
+    ),
   );
   // The path-less route stays byte-identical (no PathPrefix / priority / strip)
   // — and the path router must still outrank it (its default = its rule length).
-  assert.ok(labels.includes("traefik.http.routers.deplo-svc-3000.rule=Host(`app.com`)"));
-  assert.ok(!labels.some((l) => l.startsWith("traefik.http.routers.deplo-svc-3000.priority")));
+  assert.ok(
+    labels.includes("traefik.http.routers.deplo-svc-3000.rule=Host(`app.com`)"),
+  );
+  assert.ok(
+    !labels.some((l) =>
+      l.startsWith("traefik.http.routers.deplo-svc-3000.priority"),
+    ),
+  );
   assert.ok(1_000_000 + 4 > "Host(`app.com`)".length);
 });
 
@@ -750,7 +853,9 @@ test("single-image: mixed null + explicit-default ports still fold into ONE rout
     ),
   );
   assert.ok(
-    labels.includes("traefik.http.services.deplo-app.loadbalancer.server.port=3000"),
+    labels.includes(
+      "traefik.http.services.deplo-app.loadbalancer.server.port=3000",
+    ),
   );
   assert.ok(!labels.some((l) => l.includes("deplo-app__3000")));
 });
@@ -815,7 +920,9 @@ test("basicAuth: defines the middleware and prepends it to a single router", () 
 test("basicAuth: prepends ahead of an existing user middleware, order preserved", () => {
   const labels = traefikRouterLabels({
     baseKey: "deplo-app",
-    routes: [{ name: "app.example.com", port: null, middlewares: ["redirect-https"] }],
+    routes: [
+      { name: "app.example.com", port: null, middlewares: ["redirect-https"] },
+    ],
     defaultPort: 3000,
     certResolver: CR,
     basicAuth: { name: "deplo-app-basicauth", users: "u:h" },
@@ -840,10 +947,18 @@ test("basicAuth: gates EVERY host across distinct routers (per-route mode)", () 
     basicAuth: { name: "mw-auth", users: "u:h" },
   });
   // Both routers reference the auth middleware.
-  assert.ok(labels.includes("traefik.http.routers.k-a.example.com.middlewares=mw-auth"));
-  assert.ok(labels.includes("traefik.http.routers.k-b.example.com.middlewares=mw-auth"));
+  assert.ok(
+    labels.includes("traefik.http.routers.k-a.example.com.middlewares=mw-auth"),
+  );
+  assert.ok(
+    labels.includes("traefik.http.routers.k-b.example.com.middlewares=mw-auth"),
+  );
   // The definition label is present (emitted once before the routers).
-  assert.ok(labels.some((l) => l.startsWith("traefik.http.middlewares.mw-auth.basicauth.users=")));
+  assert.ok(
+    labels.some((l) =>
+      l.startsWith("traefik.http.middlewares.mw-auth.basicauth.users="),
+    ),
+  );
 });
 
 test("basicAuth: absent (and empty users) ⇒ byte-identical to no basic auth", () => {
@@ -873,21 +988,33 @@ test("redirectTo: a redirecting host gets its OWN router + redirectregex middlew
     baseKey: "deplo-app",
     routes: [
       { name: "example.com", port: null },
-      { name: "www.example.com", port: null, redirectTo: "https://example.com" },
+      {
+        name: "www.example.com",
+        port: null,
+        redirectTo: "https://example.com",
+      },
     ],
     defaultPort: 3000,
     certResolver: CR,
   });
   // The canonical host keeps the bare key and NO redirect labels.
-  assert.ok(labels.includes("traefik.http.routers.deplo-app.rule=Host(`example.com`)"));
+  assert.ok(
+    labels.includes("traefik.http.routers.deplo-app.rule=Host(`example.com`)"),
+  );
   // The www host never folds into that rule: one shared router would 301 the
   // canonical host to itself, and one shared ACME order would let an
   // unresolvable www sink the real host's certificate.
   const rules = labels.filter((l) => l.includes(".rule="));
   assert.equal(rules.length, 2, "two hosts, two routers");
   const wwwRule = rules.find((l) => l.includes("www.example.com"))!;
-  const key = wwwRule.slice("traefik.http.routers.".length, wwwRule.indexOf(".rule="));
-  assert.ok(key.startsWith("deplo-app__"), `redirect router keeps a suffixed key: ${key}`);
+  const key = wwwRule.slice(
+    "traefik.http.routers.".length,
+    wwwRule.indexOf(".rule="),
+  );
+  assert.ok(
+    key.startsWith("deplo-app__"),
+    `redirect router keeps a suffixed key: ${key}`,
+  );
   assert.deepEqual(
     labels.filter((l) => l.includes(`middlewares.${key}-redirect.`)),
     [
@@ -923,7 +1050,10 @@ test("redirectTo: the redirect fires FIRST — ahead of basic auth and strippref
     basicAuth: { name: "auth", users: "u:h" },
   });
   const chain = labels.find((l) => l.includes(".middlewares="))!;
-  const key = chain.slice("traefik.http.routers.".length, chain.indexOf(".middlewares="));
+  const key = chain.slice(
+    "traefik.http.routers.".length,
+    chain.indexOf(".middlewares="),
+  );
   // Nobody should be asked to log in on the hostname they are being sent away
   // from, and no path should be rewritten before the 301 is answered.
   assert.equal(
@@ -936,7 +1066,11 @@ test("redirectTo: two hosts redirecting to the SAME target fold into one router"
   const labels = traefikRouterLabels({
     baseKey: "deplo-app",
     routes: [
-      { name: "www.example.com", port: null, redirectTo: "https://example.com" },
+      {
+        name: "www.example.com",
+        port: null,
+        redirectTo: "https://example.com",
+      },
       { name: "example.net", port: null, redirectTo: "https://example.com" },
     ],
     defaultPort: 3000,
@@ -944,7 +1078,9 @@ test("redirectTo: two hosts redirecting to the SAME target fold into one router"
   });
   const rules = labels.filter((l) => l.includes(".rule="));
   assert.equal(rules.length, 1);
-  assert.ok(rules[0].endsWith("Host(`www.example.com`) || Host(`example.net`)"));
+  assert.ok(
+    rules[0].endsWith("Host(`www.example.com`) || Host(`example.net`)"),
+  );
 });
 
 test("redirectTo: different targets never share a router key", () => {
@@ -967,7 +1103,12 @@ test("redirectTo: a plain-HTTP host redirects to an https canonical", () => {
   const labels = traefikRouterLabels({
     baseKey: "deplo-app",
     routes: [
-      { name: "www.example.com", port: null, tls: false, redirectTo: "https://example.com" },
+      {
+        name: "www.example.com",
+        port: null,
+        tls: false,
+        redirectTo: "https://example.com",
+      },
     ],
     defaultPort: 3000,
     certResolver: CR,
@@ -975,7 +1116,9 @@ test("redirectTo: a plain-HTTP host redirects to an https canonical", () => {
   assert.ok(labels.some((l) => l.endsWith(".entrypoints=web")));
   assert.ok(!labels.some((l) => l.includes(".tls=")));
   assert.ok(
-    labels.some((l) => l.endsWith(".redirectregex.replacement=https://example.com$${1}")),
+    labels.some((l) =>
+      l.endsWith(".redirectregex.replacement=https://example.com$${1}"),
+    ),
   );
 });
 
@@ -988,11 +1131,17 @@ test("redirectTo: a non-absolute target is dropped, not guessed at", () => {
   });
   const junk = traefikRouterLabels({
     baseKey: "deplo-app",
-    routes: [{ name: "www.example.com", port: null, redirectTo: "example.com" }],
+    routes: [
+      { name: "www.example.com", port: null, redirectTo: "example.com" },
+    ],
     defaultPort: 3000,
     certResolver: CR,
   });
-  assert.deepEqual(junk, base, "a bare hostname is not an absolute redirect target");
+  assert.deepEqual(
+    junk,
+    base,
+    "a bare hostname is not an absolute redirect target",
+  );
 });
 
 test("redirectTo: absent ⇒ byte-identical to the pre-redirect output", () => {
@@ -1030,7 +1179,9 @@ test("an empty cert resolver emits tls=true and NO certresolver label", () => {
   // that, exactly as a per-route resolver override already behaves.
   const key = "deplo-app__3000-owncert";
   assert.ok(labels.includes(`traefik.http.routers.${key}.tls=true`));
-  assert.ok(labels.includes(`traefik.http.routers.${key}.entrypoints=websecure`));
+  assert.ok(
+    labels.includes(`traefik.http.routers.${key}.entrypoints=websecure`),
+  );
   assert.ok(
     !labels.some((l) => l.includes("certresolver")),
     "a router with no resolver must not name one",
@@ -1055,12 +1206,22 @@ test("a no-resolver route gets its own router key, never the default one", () =>
       .map((l) => l.match(/^traefik\.http\.routers\.([^.]+)\./)?.[1])
       .filter(Boolean),
   );
-  assert.equal(keys.size, 2, `expected two routers, got ${[...keys].join(", ")}`);
+  assert.equal(
+    keys.size,
+    2,
+    `expected two routers, got ${[...keys].join(", ")}`,
+  );
   assert.ok(
-    labels.includes("traefik.http.routers.deplo-app__3000-owncert.rule=Host(`own.example.com`)"),
+    labels.includes(
+      "traefik.http.routers.deplo-app__3000-owncert.rule=Host(`own.example.com`)",
+    ),
     labels.join("\n"),
   );
   assert.ok(
-    !labels.some((l) => l.startsWith("traefik.http.routers.deplo-app__3000-owncert.tls.certresolver")),
+    !labels.some((l) =>
+      l.startsWith(
+        "traefik.http.routers.deplo-app__3000-owncert.tls.certresolver",
+      ),
+    ),
   );
 });

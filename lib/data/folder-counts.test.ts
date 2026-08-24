@@ -44,7 +44,10 @@ beforeEach(async () => {
     membership_capabilities, memberships, users, teams
     restart identity cascade;`);
   await seedIdentity(db, {
-    teams: [{ id: TEAM_A, slug: "alpha" }, { id: TEAM_B, slug: "beta" }],
+    teams: [
+      { id: TEAM_A, slug: "alpha" },
+      { id: TEAM_B, slug: "beta" },
+    ],
     users: [{ id: USER_1, teamId: TEAM_A, role: "owner" }],
   });
   await seedServer(db);

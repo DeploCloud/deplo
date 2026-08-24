@@ -26,7 +26,7 @@ an app unless a developer explicitly opted the app in.**
 
 2. **The three modes become AVAILABILITY scopes.** `team_wide`,
    `shared_env_var_environments` and `shared_env_var_projects` now only say who
-   the variable is *offered* to: the app UI shows a covered variable as
+   the variable is _offered_ to: the app UI shows a covered variable as
    suggested ("Shared with this app's project"), sorted and labelled, but never
    applies it. Scopes are suggestions, not gates — any team variable remains
    linkable from any app (this is also what keeps migration-0027 link-only vars
@@ -40,7 +40,7 @@ an app unless a developer explicitly opted the app in.**
    `lib/deploy/env-resolve.ts::resolveEnvEntries`.
 
 4. **`saveSharedVar`'s reach rule is unchanged in shape**: a variable must be
-   shared *with* something — ≥1 availability scope or ≥1 link — so an authored
+   shared _with_ something — ≥1 availability scope or ≥1 link — so an authored
    value can never strand unreachable-and-invisible.
 
 ## Consequences

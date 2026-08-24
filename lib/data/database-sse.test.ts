@@ -37,7 +37,9 @@ after(async () => {
 beforeEach(async () => {
   await pg.exec(`${TRUNCATE_BACKUPS}
     truncate table users, teams restart identity cascade;`);
-  await seedIdentity(db, { users: [{ id: USER_1, teamId: TEAM_A, role: "owner" }] });
+  await seedIdentity(db, {
+    users: [{ id: USER_1, teamId: TEAM_A, role: "owner" }],
+  });
   await seedServer(db);
 });
 

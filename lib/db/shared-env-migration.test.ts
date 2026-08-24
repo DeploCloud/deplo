@@ -14,11 +14,7 @@ import {
   envVarTargets as envVarTargetsTable,
   apps as appsTable,
 } from "./schema/control-plane";
-import {
-  seedIdentity,
-  TEAM_A,
-  USER_1,
-} from "../data/identity-test-helpers";
+import { seedIdentity, TEAM_A, USER_1 } from "../data/identity-test-helpers";
 import { loadEnvVarsForApp } from "../data/app-graph-load";
 import { loadSharedVarsForApp } from "../data/shared-vars";
 import { loadInstanceEnv } from "../data/global-env";
@@ -137,7 +133,9 @@ before(async () => {
 
   // --- Seed old-world fixtures BETWEEN 0026 and 0027 (via the seed helpers so
   // the many required team/app columns stay correct) ---
-  await seedIdentity(db, { users: [{ id: USER_1, teamId: TEAM_A, role: "owner" }] });
+  await seedIdentity(db, {
+    users: [{ id: USER_1, teamId: TEAM_A, role: "owner" }],
+  });
   // RAW SQL, not the drizzle `seedServer` helper: the schema is frozen at 0026 here,
   // but drizzle names EVERY column the live `servers` object knows in its INSERT — so
   // the helper reaches for columns a later migration adds (0030's status_checked_at /
@@ -234,21 +232,32 @@ after(async () => {
 });
 
 /** The resolved key→valueEnc map for one (app, target), exactly like build.ts appEnv. */
-async function resolved(appId: string, target: EnvTarget): Promise<Record<string, string>> {
+async function resolved(
+  appId: string,
+  target: EnvTarget,
+): Promise<Record<string, string>> {
   const [vars, sharedVars, instanceGlobals] = await Promise.all([
     loadEnvVarsForApp(appId),
     loadSharedVarsForApp(appId),
     loadInstanceEnv(),
   ]);
   const out: Record<string, string> = {};
-  for (const e of resolveEnvEntries(target, appId, vars, sharedVars, instanceGlobals)) {
+  for (const e of resolveEnvEntries(
+    target,
+    appId,
+    vars,
+    sharedVars,
+    instanceGlobals,
+  )) {
     out[e.key] = e.valueEnc;
   }
   return out;
 }
 
 test("backfill produced one shared var per legacy source", async () => {
-  const rows = await pg.query<{ key: string }>(`select key from shared_env_vars order by key`);
+  const rows = await pg.query<{ key: string }>(
+    `select key from shared_env_vars order by key`,
+  );
   assert.deepEqual(rows.rows.map((r) => r.key).sort(), [
     "DUP",
     "EE",
@@ -271,7 +280,10 @@ test("the only mode-less/link-less var is the one whose group reached no app", a
       and not exists (select 1 from shared_env_var_projects p where p.var_id = v.id)
       and not exists (select 1 from shared_env_var_apps a where a.var_id = v.id)
   `);
-  assert.deepEqual(orphans.rows.map((r) => r.key), ["UNUSED"]);
+  assert.deepEqual(
+    orphans.rows.map((r) => r.key),
+    ["UNUSED"],
+  );
 });
 
 test("the unattached group's var reaches nothing, on every app and target", async () => {

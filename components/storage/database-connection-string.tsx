@@ -74,7 +74,11 @@ export function DatabaseConnectionString({
 
   if (!canReveal) {
     return (
-      <RevealChip readOnly placeholder={masked} className={cn("min-w-0", className)} />
+      <RevealChip
+        readOnly
+        placeholder={masked}
+        className={cn("min-w-0", className)}
+      />
     );
   }
 
@@ -98,7 +102,11 @@ export function DatabaseConnectionString({
 }
 
 /** Copy the connection string, fetching it first if it hasn't been revealed. */
-function CopyConnection({ resolve }: { resolve: () => Promise<string | null> }) {
+function CopyConnection({
+  resolve,
+}: {
+  resolve: () => Promise<string | null>;
+}) {
   const [copied, setCopied] = React.useState(false);
   const [busy, setBusy] = React.useState(false);
   const timer = React.useRef<number | undefined>(undefined);

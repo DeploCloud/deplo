@@ -9,7 +9,9 @@ import { join } from "node:path";
 // bounding helpers here (boundedBy / withView), which is where the escalation
 // math lives; the DB-touching authorization paths are integration-level and not
 // covered by this no-Postgres runner. Imports are lazy (runner transpiles to CJS).
-process.env.DEPLO_DATA_DIR = mkdtempSync(join(tmpdir(), "deplo-folder-access-"));
+process.env.DEPLO_DATA_DIR = mkdtempSync(
+  join(tmpdir(), "deplo-folder-access-"),
+);
 delete process.env.DEPLO_DATABASE_URL;
 delete process.env.DATABASE_URL;
 
@@ -18,12 +20,18 @@ test("boundedBy intersects and returns canonical capability order", async () => 
   // Requested caps are clamped to the bound; order follows ALL_CAPABILITIES,
   // not the input order, and duplicates collapse.
   assert.deepEqual(
-    boundedBy(["deploy_apps", "manage_backups", "view"], ["view", "deploy_apps"]),
+    boundedBy(
+      ["deploy_apps", "manage_backups", "view"],
+      ["view", "deploy_apps"],
+    ),
     ["view", "deploy_apps"],
     "manage_infra dropped (out of bound); canonical order",
   );
   assert.deepEqual(
-    boundedBy(["manage_env", "deploy_apps"], ["deploy_apps", "manage_env", "view"]),
+    boundedBy(
+      ["manage_env", "deploy_apps"],
+      ["deploy_apps", "manage_env", "view"],
+    ),
     ["deploy_apps", "manage_env"],
     "canonical order regardless of input order",
   );
@@ -60,15 +68,21 @@ test("a granter can never hand out a capability they lack (double-bound)", async
   const requested = ["deploy_apps", "manage_backups"] as const;
   const granterCaps = ["view", "deploy_apps"] as const;
   const result = withView(
-    boundedBy(boundedBy([...requested], [...granterCaps]), NODE_GRANTABLE_CAPABILITIES),
+    boundedBy(
+      boundedBy([...requested], [...granterCaps]),
+      NODE_GRANTABLE_CAPABILITIES,
+    ),
   );
-  assert.deepEqual(result, ["view", "deploy_apps"], "manage_backups can't be granted");
+  assert.deepEqual(
+    result,
+    ["view", "deploy_apps"],
+    "manage_backups can't be granted",
+  );
 });
 
 test("a node grant can never name a team-wide capability", async () => {
-  const { NODE_GRANTABLE_CAPABILITIES, PROJECT_SCOPED_CAPABILITIES } = await import(
-    "../membership-shared"
-  );
+  const { NODE_GRANTABLE_CAPABILITIES, PROJECT_SCOPED_CAPABILITIES } =
+    await import("../membership-shared");
   // The bound that replaced the grantee clamp. Nothing in here can satisfy the
   // last-admin check, mint a credential, or re-share, so a node grant is never a
   // route back to team administration however it is asked for.
@@ -94,10 +108,17 @@ test("a node grant can never name a team-wide capability", async () => {
   // It is the token's project set plus exactly three, for the reasons documented
   // beside the constant.
   for (const cap of PROJECT_SCOPED_CAPABILITIES) {
-    assert.ok(NODE_GRANTABLE_CAPABILITIES.includes(cap), `${cap} is node-grantable`);
+    assert.ok(
+      NODE_GRANTABLE_CAPABILITIES.includes(cap),
+      `${cap} is node-grantable`,
+    );
   }
   const extra = NODE_GRANTABLE_CAPABILITIES.filter(
     (c) => !PROJECT_SCOPED_CAPABILITIES.includes(c),
   );
-  assert.deepEqual(extra.sort(), ["delete_folders", "move_apps", "organize_folders"]);
+  assert.deepEqual(extra.sort(), [
+    "delete_folders",
+    "move_apps",
+    "organize_folders",
+  ]);
 });

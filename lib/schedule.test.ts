@@ -51,18 +51,36 @@ test("every offered preset round-trips back into the same controls", () => {
 
 test("the fixed intervals emit the canonical expressions", () => {
   assert.equal(cronFromParts(parts({ mode: "every-minute" })), "* * * * *");
-  assert.equal(cronFromParts(parts({ mode: "every-5-minutes" })), "*/5 * * * *");
-  assert.equal(cronFromParts(parts({ mode: "every-15-minutes" })), "*/15 * * * *");
-  assert.equal(cronFromParts(parts({ mode: "every-30-minutes" })), "*/30 * * * *");
+  assert.equal(
+    cronFromParts(parts({ mode: "every-5-minutes" })),
+    "*/5 * * * *",
+  );
+  assert.equal(
+    cronFromParts(parts({ mode: "every-15-minutes" })),
+    "*/15 * * * *",
+  );
+  assert.equal(
+    cronFromParts(parts({ mode: "every-30-minutes" })),
+    "*/30 * * * *",
+  );
   assert.equal(cronFromParts(parts({ mode: "hourly" })), "0 * * * *");
   assert.equal(cronFromParts(parts({ mode: "every-2-hours" })), "0 */2 * * *");
   assert.equal(cronFromParts(parts({ mode: "every-6-hours" })), "0 */6 * * *");
-  assert.equal(cronFromParts(parts({ mode: "every-12-hours" })), "0 */12 * * *");
+  assert.equal(
+    cronFromParts(parts({ mode: "every-12-hours" })),
+    "0 */12 * * *",
+  );
 });
 
 test("daily / weekly / monthly carry the chosen time into the expression", () => {
-  assert.equal(cronFromParts(parts({ mode: "daily", hour: 3, minute: 0 })), "0 3 * * *");
-  assert.equal(cronFromParts(parts({ mode: "daily", hour: 17, minute: 45 })), "45 17 * * *");
+  assert.equal(
+    cronFromParts(parts({ mode: "daily", hour: 3, minute: 0 })),
+    "0 3 * * *",
+  );
+  assert.equal(
+    cronFromParts(parts({ mode: "daily", hour: 17, minute: 45 })),
+    "45 17 * * *",
+  );
   assert.equal(
     cronFromParts(parts({ mode: "weekly", weekday: 5, hour: 9, minute: 30 })),
     "30 9 * * 5",
@@ -79,17 +97,31 @@ test("the daily default is what the platform default says it is", () => {
 });
 
 test("out-of-range parts are clamped, never emitted as a broken cron", () => {
-  const cron = cronFromParts(parts({ mode: "monthly", day: 99, hour: 99, minute: -3 }));
+  const cron = cronFromParts(
+    parts({ mode: "monthly", day: 99, hour: 99, minute: -3 }),
+  );
   assert.equal(cron, `0 23 ${MAX_MONTH_DAY} * *`);
   assert.ok(isValidSchedule(cron));
 });
 
 test("a stored expression reads back into the controls that made it", () => {
   const weekly = partsFromCron("30 9 * * 5");
-  assert.deepEqual(weekly, { mode: "weekly", hour: 9, minute: 30, weekday: 5, day: 1 });
+  assert.deepEqual(weekly, {
+    mode: "weekly",
+    hour: 9,
+    minute: 30,
+    weekday: 5,
+    day: 1,
+  });
 
   const monthly = partsFromCron("15 4 12 * *");
-  assert.deepEqual(monthly, { mode: "monthly", hour: 4, minute: 15, weekday: 0, day: 12 });
+  assert.deepEqual(monthly, {
+    mode: "monthly",
+    hour: 4,
+    minute: 15,
+    weekday: 0,
+    day: 12,
+  });
 });
 
 test("day-of-week 7 reads back as Sunday (cron accepts both, the control knows 0)", () => {
@@ -125,13 +157,25 @@ test("describeCron says what the schedule does", () => {
   assert.equal(describeCron("0 */6 * * *"), "Every 6 hours");
   assert.equal(describeCron("0 3 * * *"), "Every day at 03:00 UTC");
   assert.equal(describeCron("30 9 * * 5"), "Every week on Friday at 09:30 UTC");
-  assert.equal(describeCron("15 4 12 * *"), "Every month on the 12th at 04:15 UTC");
+  assert.equal(
+    describeCron("15 4 12 * *"),
+    "Every month on the 12th at 04:15 UTC",
+  );
 });
 
 test("the compact description keeps the facts and drops the filler", () => {
-  assert.equal(describeCron("0 3 * * *", { compact: true }), "Daily, 03:00 UTC");
-  assert.equal(describeCron("30 9 * * 5", { compact: true }), "Weekly, Fri 09:30 UTC");
-  assert.equal(describeCron("15 4 12 * *", { compact: true }), "Monthly, 12th 04:15 UTC");
+  assert.equal(
+    describeCron("0 3 * * *", { compact: true }),
+    "Daily, 03:00 UTC",
+  );
+  assert.equal(
+    describeCron("30 9 * * 5", { compact: true }),
+    "Weekly, Fri 09:30 UTC",
+  );
+  assert.equal(
+    describeCron("15 4 12 * *", { compact: true }),
+    "Monthly, 12th 04:15 UTC",
+  );
   // Fixed intervals are already short — compact leaves them alone.
   assert.equal(describeCron("0 * * * *", { compact: true }), "Every hour");
 });
@@ -151,9 +195,19 @@ test("ordinals read naturally across the offered days", () => {
 });
 
 test("isValidSchedule rejects what the scheduler would silently never run", () => {
-  for (const bad of ["", "0 3 * *", "not a cron", "60 3 * * *", "0 24 * * *", "0 3 * * 8"]) {
-    assert.equal(isValidSchedule(bad), false, `${JSON.stringify(bad)} should be invalid`);
+  for (const bad of [
+    "",
+    "0 3 * *",
+    "not a cron",
+    "60 3 * * *",
+    "0 24 * * *",
+    "0 3 * * 8",
+  ]) {
+    assert.equal(
+      isValidSchedule(bad),
+      false,
+      `${JSON.stringify(bad)} should be invalid`,
+    );
   }
   assert.ok(isValidSchedule("0 3 * * *"));
 });
-

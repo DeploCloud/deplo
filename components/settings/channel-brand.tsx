@@ -157,7 +157,9 @@ export function ChannelMark({
       {Icon ? (
         <Icon className={cn("size-4.5", iconClassName)} />
       ) : (
-        <span className={cn("text-sm font-semibold leading-none", iconClassName)}>
+        <span
+          className={cn("text-sm leading-none font-semibold", iconClassName)}
+        >
           {brand.initial}
         </span>
       )}

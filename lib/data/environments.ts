@@ -31,12 +31,26 @@ import type { Environment, EnvironmentKind } from "../types";
 const MAX_NAME = 40;
 
 /** The seeded three, in display order. Production is the default. */
-const SEED: { name: string; slug: string; kind: EnvironmentKind; isDefault: boolean }[] =
-  [
-    { name: "Development", slug: "development", kind: "development", isDefault: false },
-    { name: "Preview", slug: "preview", kind: "preview", isDefault: false },
-    { name: "Production", slug: "production", kind: "production", isDefault: true },
-  ];
+const SEED: {
+  name: string;
+  slug: string;
+  kind: EnvironmentKind;
+  isDefault: boolean;
+}[] = [
+  {
+    name: "Development",
+    slug: "development",
+    kind: "development",
+    isDefault: false,
+  },
+  { name: "Preview", slug: "preview", kind: "preview", isDefault: false },
+  {
+    name: "Production",
+    slug: "production",
+    kind: "production",
+    isDefault: true,
+  },
+];
 
 /** The default environment rows for a freshly-created Project (pure builder). */
 export function defaultEnvironmentRows(
@@ -57,7 +71,9 @@ export function defaultEnvironmentRows(
   }));
 }
 
-function assembleEnvironment(r: typeof environmentsTable.$inferSelect): Environment {
+function assembleEnvironment(
+  r: typeof environmentsTable.$inferSelect,
+): Environment {
   return {
     id: r.id,
     projectId: r.projectId,
@@ -76,7 +92,9 @@ function cleanName(name: string): string {
   const trimmed = name.trim();
   if (!trimmed) throw new Error("Environment name is required.");
   if (trimmed.length > MAX_NAME)
-    throw new Error(`Environment name must be ${MAX_NAME} characters or fewer.`);
+    throw new Error(
+      `Environment name must be ${MAX_NAME} characters or fewer.`,
+    );
   return trimmed;
 }
 
@@ -159,16 +177,17 @@ export async function listAllEnvironmentsForTeam(): Promise<TeamEnvironment[]> {
   const roleScope = await currentMemberScope();
   return rows
     .filter(
-      (r) => inProjectScope(r.projectId) && projectInScope(roleScope, r.projectId),
+      (r) =>
+        inProjectScope(r.projectId) && projectInScope(roleScope, r.projectId),
     )
     .map((r) => ({
-    id: r.id,
-    name: r.name,
-    slug: r.slug,
-    kind: r.kind as EnvironmentKind,
-    projectId: r.projectId,
-    projectName: r.projectName,
-  }));
+      id: r.id,
+      name: r.name,
+      slug: r.slug,
+      kind: r.kind as EnvironmentKind,
+      projectId: r.projectId,
+      projectName: r.projectName,
+    }));
 }
 
 /** A URL-safe slug from a name, unique within the project. */
@@ -232,12 +251,19 @@ export async function createEnvironment(
   return assembleEnvironment(env as typeof environmentsTable.$inferSelect);
 }
 
-export async function renameEnvironment(id: string, name: string): Promise<void> {
+export async function renameEnvironment(
+  id: string,
+  name: string,
+): Promise<void> {
   await requireCapability("manage_environments");
   await assertContainerNotMigrating("environment", id);
   const clean = cleanName(name);
   const env = (
-    await getDb().select().from(environmentsTable).where(eq(environmentsTable.id, id)).limit(1)
+    await getDb()
+      .select()
+      .from(environmentsTable)
+      .where(eq(environmentsTable.id, id))
+      .limit(1)
   )[0];
   if (!env) throw new Error("Environment not found");
   await requireOwnedProject(env.projectId);
@@ -248,11 +274,18 @@ export async function renameEnvironment(id: string, name: string): Promise<void>
 }
 
 /** Set the git branch this environment builds from ("" ⇒ the app default). */
-export async function setEnvironmentBranch(id: string, branch: string): Promise<void> {
+export async function setEnvironmentBranch(
+  id: string,
+  branch: string,
+): Promise<void> {
   await requireCapability("manage_environments");
   await assertContainerNotMigrating("environment", id);
   const env = (
-    await getDb().select().from(environmentsTable).where(eq(environmentsTable.id, id)).limit(1)
+    await getDb()
+      .select()
+      .from(environmentsTable)
+      .where(eq(environmentsTable.id, id))
+      .limit(1)
   )[0];
   if (!env) throw new Error("Environment not found");
   await requireOwnedProject(env.projectId);
@@ -267,7 +300,11 @@ export async function setDefaultEnvironment(id: string): Promise<void> {
   await requireCapability("manage_environments");
   await assertContainerNotMigrating("environment", id);
   const env = (
-    await getDb().select().from(environmentsTable).where(eq(environmentsTable.id, id)).limit(1)
+    await getDb()
+      .select()
+      .from(environmentsTable)
+      .where(eq(environmentsTable.id, id))
+      .limit(1)
   )[0];
   if (!env) throw new Error("Environment not found");
   await requireOwnedProject(env.projectId);
@@ -300,14 +337,23 @@ export async function deleteEnvironment(id: string): Promise<void> {
   // Takes the apps in it with it, and a run may still be creating them.
   await assertContainerNotMigrating("environment", id);
   const env = (
-    await getDb().select().from(environmentsTable).where(eq(environmentsTable.id, id)).limit(1)
+    await getDb()
+      .select()
+      .from(environmentsTable)
+      .where(eq(environmentsTable.id, id))
+      .limit(1)
   )[0];
   if (!env) throw new Error("Environment not found");
   await requireOwnedProject(env.projectId);
   if (env.isDefault)
-    throw new Error("Can't delete the default environment — pick another default first.");
+    throw new Error(
+      "Can't delete the default environment — pick another default first.",
+    );
   const siblings = await getDb()
-    .select({ id: environmentsTable.id, isDefault: environmentsTable.isDefault })
+    .select({
+      id: environmentsTable.id,
+      isDefault: environmentsTable.isDefault,
+    })
     .from(environmentsTable)
     .where(eq(environmentsTable.projectId, env.projectId))
     .orderBy(asc(environmentsTable.position));

@@ -80,18 +80,20 @@ export const holdsAPasskey = (userIdColumn: typeof usersTable.id) => {
  * Request-cached: the dashboard layout asks on every page load (the reminder and
  * the lock screen both need it) and the Security page asks again.
  */
-export const userHasPasskey = cache(async (userId: string): Promise<boolean> => {
-  const rp = passkeyRelyingParty();
-  if (!rp) return false;
-  const rows = await getDb()
-    .select({ id: passkeyTable.id })
-    .from(passkeyTable)
-    .where(
-      and(eq(passkeyTable.userId, userId), eq(passkeyTable.rpId, rp.rpId)),
-    )
-    .limit(1);
-  return rows.length > 0;
-});
+export const userHasPasskey = cache(
+  async (userId: string): Promise<boolean> => {
+    const rp = passkeyRelyingParty();
+    if (!rp) return false;
+    const rows = await getDb()
+      .select({ id: passkeyTable.id })
+      .from(passkeyTable)
+      .where(
+        and(eq(passkeyTable.userId, userId), eq(passkeyTable.rpId, rp.rpId)),
+      )
+      .limit(1);
+    return rows.length > 0;
+  },
+);
 
 /**
  * Whether a passkey may count as this REQUEST's second factor.

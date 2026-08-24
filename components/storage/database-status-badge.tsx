@@ -41,7 +41,10 @@ function useDisplayStatus(
 function detailFor(runtime: DatabaseRuntimeView | null): string | null {
   if (!runtime || runtime.unreachable) return null;
   if (runtime.restarting > 0) {
-    const restarts = Math.max(...runtime.containers.map((c) => c.restartCount), 0);
+    const restarts = Math.max(
+      ...runtime.containers.map((c) => c.restartCount),
+      0,
+    );
     const times = restarts > 0 ? ` It has restarted ${restarts} times.` : "";
     return `Docker keeps restarting this container: it starts, dies, and starts again.${times} The Logs tab shows why.`;
   }

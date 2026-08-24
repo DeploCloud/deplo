@@ -19,15 +19,23 @@ import {
  * the common trap).
  */
 
-const PNG = new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 1, 2]);
+const PNG = new Uint8Array([
+  0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 1, 2,
+]);
 const ICO = new Uint8Array([0x00, 0x00, 0x01, 0x00, 1, 0, 16, 16]);
 const GIF = new Uint8Array([0x47, 0x49, 0x46, 0x38, 0x39, 0x61]);
 const JPEG = new Uint8Array([0xff, 0xd8, 0xff, 0xe0, 0, 16]);
-const HTML = new TextEncoder().encode("<!DOCTYPE html><html><body>404</body></html>");
-const SVG = new TextEncoder().encode('<?xml version="1.0"?><svg viewBox="0 0 8 8"></svg>');
+const HTML = new TextEncoder().encode(
+  "<!DOCTYPE html><html><body>404</body></html>",
+);
+const SVG = new TextEncoder().encode(
+  '<?xml version="1.0"?><svg viewBox="0 0 8 8"></svg>',
+);
 
 const paths = (html: string, opts = { basePath: "", host: "" }): string[] =>
-  iconCandidates(html, opts).flatMap((c) => (c.kind === "path" ? [c.path] : []));
+  iconCandidates(html, opts).flatMap((c) =>
+    c.kind === "path" ? [c.path] : [],
+  );
 
 test("parseIconLinks: takes icon and apple-touch-icon links, ignores everything else", () => {
   const links = parseIconLinks(`
@@ -52,8 +60,13 @@ test("parseIconLinks: takes icon and apple-touch-icon links, ignores everything 
 });
 
 test("parseIconLinks: reads a link with no quotes and decodes entities in the href", () => {
-  const links = parseIconLinks(`<head><link rel=icon href=/icon.png?v=1&amp;t=2></head>`);
-  assert.deepEqual(links.map((l) => l.href), ["/icon.png?v=1&t=2"]);
+  const links = parseIconLinks(
+    `<head><link rel=icon href=/icon.png?v=1&amp;t=2></head>`,
+  );
+  assert.deepEqual(
+    links.map((l) => l.href),
+    ["/icon.png?v=1&t=2"],
+  );
 });
 
 test("rankIconLinks: format first, then declared size", () => {
@@ -76,9 +89,10 @@ test("iconCandidates: always ends with the /favicon.ico fallback, deduped and ca
   // An API that serves no HTML at all still gets the well-known path tried.
   assert.deepEqual(paths(""), ["/favicon.ico"]);
   // A page that already declares /favicon.ico doesn't get it twice.
-  assert.deepEqual(paths(`<head><link rel="icon" href="/favicon.ico"></head>`), [
-    "/favicon.ico",
-  ]);
+  assert.deepEqual(
+    paths(`<head><link rel="icon" href="/favicon.ico"></head>`),
+    ["/favicon.ico"],
+  );
   const many = Array.from(
     { length: 10 },
     (_, i) => `<link rel="icon" href="/i${i}.png" sizes="${64 - i}x${64 - i}">`,
@@ -87,19 +101,25 @@ test("iconCandidates: always ends with the /favicon.ico fallback, deduped and ca
 });
 
 test("resolveIconHref: relative hrefs resolve against the path the app is served on", () => {
-  assert.deepEqual(resolveIconHref("/favicon.ico", { basePath: "", host: "" }), {
-    kind: "path",
-    path: "/favicon.ico",
-  });
+  assert.deepEqual(
+    resolveIconHref("/favicon.ico", { basePath: "", host: "" }),
+    {
+      kind: "path",
+      path: "/favicon.ico",
+    },
+  );
   assert.deepEqual(resolveIconHref("favicon.ico", { basePath: "", host: "" }), {
     kind: "path",
     path: "/favicon.ico",
   });
   // An app routed on /api that does NOT strip the prefix sees it in every URL.
-  assert.deepEqual(resolveIconHref("./icon.png", { basePath: "/api", host: "" }), {
-    kind: "path",
-    path: "/api/icon.png",
-  });
+  assert.deepEqual(
+    resolveIconHref("./icon.png", { basePath: "/api", host: "" }),
+    {
+      kind: "path",
+      path: "/api/icon.png",
+    },
+  );
 });
 
 test("resolveIconHref: an absolute URL is kept only when it points back at this app", () => {
@@ -134,7 +154,10 @@ test("resolveIconHref: an inlined data: icon needs no request at all", () => {
   );
   assert.equal(base64?.kind, "inline");
   assert.equal(base64?.kind === "inline" && base64.mime, "image/png");
-  assert.deepEqual(base64?.kind === "inline" && Array.from(base64.bytes), Array.from(PNG));
+  assert.deepEqual(
+    base64?.kind === "inline" && Array.from(base64.bytes),
+    Array.from(PNG),
+  );
   // The percent-encoded form real sites use for inline SVGs.
   const svg = resolveIconHref("data:image/svg+xml,%3Csvg%3E%3C/svg%3E", {
     basePath: "",
@@ -142,7 +165,10 @@ test("resolveIconHref: an inlined data: icon needs no request at all", () => {
   });
   assert.equal(svg?.kind === "inline" && svg.mime, "image/svg+xml");
   // Not an image type we can store.
-  assert.equal(resolveIconHref("data:text/html,<b>x</b>", { basePath: "", host: "" }), null);
+  assert.equal(
+    resolveIconHref("data:text/html,<b>x</b>", { basePath: "", host: "" }),
+    null,
+  );
 });
 
 test("sniffImageMime: recognises the formats a favicon actually comes in", () => {
@@ -161,15 +187,24 @@ test("imageMimeFor: the BYTES decide, not the header", () => {
   // An SPA answering /favicon.ico with index.html — a 200, even a plausible
   // content type. Storing that would render a broken image on every page.
   assert.equal(imageMimeFor(HTML, "image/x-icon", "/favicon.ico"), null);
-  assert.equal(imageMimeFor(HTML, "text/html; charset=utf-8", "/favicon.ico"), null);
+  assert.equal(
+    imageMimeFor(HTML, "text/html; charset=utf-8", "/favicon.ico"),
+    null,
+  );
   // A real image with a useless content type is still recognised.
-  assert.equal(imageMimeFor(PNG, "application/octet-stream", "/icon"), "image/png");
+  assert.equal(
+    imageMimeFor(PNG, "application/octet-stream", "/icon"),
+    "image/png",
+  );
   // Content type disagreeing with the bytes: the bytes win.
   assert.equal(imageMimeFor(PNG, "image/gif", "/icon.gif"), "image/png");
 });
 
 test("imageMimeFor: SVG has no magic number, so it is read", () => {
-  assert.equal(imageMimeFor(SVG, "image/svg+xml", "/icon.svg"), "image/svg+xml");
+  assert.equal(
+    imageMimeFor(SVG, "image/svg+xml", "/icon.svg"),
+    "image/svg+xml",
+  );
   assert.equal(imageMimeFor(SVG, "", "/icon.svg"), "image/svg+xml");
   // Declared SVG that is really an HTML error page.
   assert.equal(imageMimeFor(HTML, "image/svg+xml", "/icon.svg"), null);

@@ -1,6 +1,10 @@
 import { status as GrpcStatus } from "@grpc/grpc-js";
 
-import { ContractVersion, type HelloResponse, type HostMetrics } from "../agent/gen/agent";
+import {
+  ContractVersion,
+  type HelloResponse,
+  type HostMetrics,
+} from "../agent/gen/agent";
 import { AgentUnreachableError } from "./agent-client";
 import type { Server } from "../types";
 
@@ -47,12 +51,7 @@ import type { Server } from "../types";
 export type ReadinessSeverity = "pass" | "info" | "warn" | "fail" | "skip";
 
 export type ReadinessGroup =
-  | "agent"
-  | "docker"
-  | "routing"
-  | "capacity"
-  | "build"
-  | "config";
+  "agent" | "docker" | "routing" | "capacity" | "build" | "config";
 
 export interface ReadinessCheck {
   /** Stable id, e.g. "build.nixpacks". Not a GraphQL enum (it contains a dot). */
@@ -67,7 +66,8 @@ export interface ReadinessCheck {
   hint?: string;
 }
 
-export type ReadinessVerdict = "ready" | "degraded" | "not_ready" | "provisioning";
+export type ReadinessVerdict =
+  "ready" | "degraded" | "not_ready" | "provisioning";
 
 export interface ReadinessReport {
   serverId: string;
@@ -138,8 +138,10 @@ export const READINESS_MESSAGES = {
     "The agent's certificate is not the one we trust for this server. Reissue the install command to re-provision it.",
   contract:
     "The agent speaks an unsupported protocol version, so nothing else it reports can be trusted.",
-  agentError: "The agent answered with an error. Check the agent's logs on the host.",
-  refused: "The agent did not answer (connection refused). Is it running on the host?",
+  agentError:
+    "The agent answered with an error. Check the agent's logs on the host.",
+  refused:
+    "The agent did not answer (connection refused). Is it running on the host?",
   timedOut: "The agent did not answer within the readiness check's deadline.",
   featuresUnknown:
     "This agent does not report which features it supports — it predates the feature list.",
@@ -183,7 +185,8 @@ export const READINESS_HINTS = {
     "Stop whatever holds the port on the host, then re-run the install command so Traefik can bind it.",
   freeDisk:
     "Free space on the host — remove unused images and build caches (docker system prune -af).",
-  retry: "Run the check again; if it keeps failing, check the agent's logs on the host.",
+  retry:
+    "Run the check again; if it keeps failing, check the agent's logs on the host.",
   grantTeamAccess:
     "Grant a team access (Server actions → Team access), or open the server to all teams.",
 } as const;
@@ -215,7 +218,7 @@ export const READINESS_DETAILS = {
   // entrypoints are the web ports. State the observation, hedge the consequence — the same
   // register the sibling port rows already use.
   traefikOk:
-    "A container whose image or name contains \"traefik\" is running on this host — consistent with a proxy that can route apps to their domains. Deplo cannot verify from here that it is the one it installed, or that it is on the deplo network.",
+    'A container whose image or name contains "traefik" is running on this host — consistent with a proxy that can route apps to their domains. Deplo cannot verify from here that it is the one it installed, or that it is on the deplo network.',
   portHeldWithTraefik: (port: number) =>
     `Port ${port} is held by a listener on the host, and a Traefik container is running — consistent with Traefik serving it.`,
   portHeldNoTraefik: (port: number) =>
@@ -226,10 +229,12 @@ export const READINESS_DETAILS = {
     `Nothing is listening on port ${port}, although a Traefik container is running — it is up but not publishing the web ports, so apps here won't be reachable on their domains.`,
   portFreeNoTraefik: (port: number) =>
     `Nothing is listening on port ${port} — consistent with no Traefik container running on this host.`,
-  portFreeTraefikUnknown: (port: number) => `Nothing is listening on port ${port}.`,
+  portFreeTraefikUnknown: (port: number) =>
+    `Nothing is listening on port ${port}.`,
   portUnsupported: (port: number) =>
     `This server's agent is too old to test host ports, so port ${port} was not checked.`,
-  portFailed: (port: number) => `Port ${port} could not be checked on the host.`,
+  portFailed: (port: number) =>
+    `Port ${port} could not be checked on the host.`,
   portSkipped: (port: number) => `Port ${port} was not checked.`,
   diskOk: (pct: number, free: string) =>
     `The host's root filesystem is ${pct}% full (${free} free).`,
@@ -338,7 +343,10 @@ export const BUILD_METHODS: readonly BuildMethodSpec[] = [
  * value is the ABSENCE case (a missing one means the agent predates the feature → "update the
  * agent"), exactly how BACKUP_CAPABILITY / SELF_UPDATE_CAPABILITY are already used.
  */
-export const PLATFORM_FEATURES: readonly { capability: string; name: string }[] = [
+export const PLATFORM_FEATURES: readonly {
+  capability: string;
+  name: string;
+}[] = [
   { capability: "metrics", name: "host metrics" },
   { capability: "container-stats", name: "per-app monitoring" },
   { capability: "checkport", name: "host port checks" },
@@ -410,7 +418,9 @@ export function readinessSummary(
  * A wall of grey "skipped" rows under a dead agent would bury the one fact that matters, and a
  * response from an agent speaking a protocol we don't understand is not evidence of anything.
  */
-export function classifyServerReadiness(probe: ReadinessProbe): ReadinessReport {
+export function classifyServerReadiness(
+  probe: ReadinessProbe,
+): ReadinessReport {
   const { server } = probe;
   const checks: ReadinessCheck[] = [];
 
@@ -506,11 +516,27 @@ export function classifyServerReadiness(probe: ReadinessProbe): ReadinessReport 
   // routing. `traefikRunning` is FORCED false by the agent when Docker is unreachable, so with
   // Docker down we never actually looked — that is `skip`, not `warn`. Downstream, `traefik`
   // becomes null ("unknown") so the port rows stop reasoning about a fact we don't have.
-  const traefik: boolean | null = hello.dockerAvailable ? hello.traefikRunning : null;
+  const traefik: boolean | null = hello.dockerAvailable
+    ? hello.traefikRunning
+    : null;
   checks.push(traefikCheck(traefik, probe.server.buildOnly));
-  checks.push(portCheck("routing.port80", "Port 80 (HTTP)", HTTP_PORT, probe.port80, traefik));
   checks.push(
-    portCheck("routing.port443", "Port 443 (HTTPS)", HTTPS_PORT, probe.port443, traefik),
+    portCheck(
+      "routing.port80",
+      "Port 80 (HTTP)",
+      HTTP_PORT,
+      probe.port80,
+      traefik,
+    ),
+  );
+  checks.push(
+    portCheck(
+      "routing.port443",
+      "Port 443 (HTTPS)",
+      HTTPS_PORT,
+      probe.port443,
+      traefik,
+    ),
   );
 
   // capacity
@@ -560,7 +586,8 @@ function helloFailure(err: unknown): ReadinessCheck {
     hint,
   });
   if (err instanceof AgentUnreachableError) {
-    if (err.trust) return row(READINESS_MESSAGES.untrusted, READINESS_HINTS.reissue);
+    if (err.trust)
+      return row(READINESS_MESSAGES.untrusted, READINESS_HINTS.reissue);
     return err.code === GrpcStatus.DEADLINE_EXCEEDED
       ? row(READINESS_MESSAGES.timedOut, READINESS_HINTS.agentLogs)
       : row(READINESS_MESSAGES.refused, READINESS_HINTS.agentLogs);
@@ -582,9 +609,17 @@ const stripV = (v: string) => v.replace(/^v/i, "");
  * has to read past on every check.
  */
 function versionCheck(agentVersion: string): ReadinessCheck {
-  const base = { id: "agent.version", group: "agent" as const, label: "Agent version" };
+  const base = {
+    id: "agent.version",
+    group: "agent" as const,
+    label: "Agent version",
+  };
   if (!agentVersion)
-    return { ...base, severity: "info", detail: READINESS_DETAILS.versionUnreported };
+    return {
+      ...base,
+      severity: "info",
+      detail: READINESS_DETAILS.versionUnreported,
+    };
   if (!AGENT_SEMVER_RE.test(agentVersion))
     return {
       ...base,
@@ -599,7 +634,11 @@ function versionCheck(agentVersion: string): ReadinessCheck {
 }
 
 function featuresCheck(capabilities: string[]): ReadinessCheck {
-  const base = { id: "agent.features", group: "agent" as const, label: "Agent features" };
+  const base = {
+    id: "agent.features",
+    group: "agent" as const,
+    label: "Agent features",
+  };
   if (capabilities.length === 0)
     return {
       ...base,
@@ -607,9 +646,15 @@ function featuresCheck(capabilities: string[]): ReadinessCheck {
       detail: READINESS_MESSAGES.featuresUnknown,
       hint: READINESS_HINTS.updateAgent,
     };
-  const missing = PLATFORM_FEATURES.filter((f) => !capabilities.includes(f.capability));
+  const missing = PLATFORM_FEATURES.filter(
+    (f) => !capabilities.includes(f.capability),
+  );
   if (missing.length === 0)
-    return { ...base, severity: "pass", detail: READINESS_DETAILS.featuresAllSupported };
+    return {
+      ...base,
+      severity: "pass",
+      detail: READINESS_DETAILS.featuresAllSupported,
+    };
   return {
     ...base,
     severity: "warn",
@@ -623,8 +668,15 @@ function featuresCheck(capabilities: string[]): ReadinessCheck {
  * none, and a status that fires on a normal configuration is one operators learn to ignore
  * (the same decision `classifyServerHealth` makes and lib/infra/server-health.test.ts pins).
  */
-function traefikCheck(traefik: boolean | null, buildOnly = false): ReadinessCheck {
-  const base = { id: "routing.traefik", group: "routing" as const, label: "Traefik proxy" };
+function traefikCheck(
+  traefik: boolean | null,
+  buildOnly = false,
+): ReadinessCheck {
+  const base = {
+    id: "routing.traefik",
+    group: "routing" as const,
+    label: "Traefik proxy",
+  };
   // A BUILD SERVER has no proxy by design - the installer skips it, because nothing
   // is routed to a host that runs nothing. Reporting the absence would leave every
   // build server permanently amber for working exactly as intended, which is the
@@ -696,7 +748,11 @@ function portCheck(
           detail: READINESS_DETAILS.portHeldTraefikUnknown(port),
         };
       return traefik
-        ? { ...base, severity: "pass", detail: READINESS_DETAILS.portHeldWithTraefik(port) }
+        ? {
+            ...base,
+            severity: "pass",
+            detail: READINESS_DETAILS.portHeldWithTraefik(port),
+          }
         : {
             ...base,
             severity: "warn",
@@ -718,13 +774,21 @@ function portCheck(
             hint: READINESS_HINTS.publishWebPorts,
           }
         : // Restating what routing.traefik already warned about — `info`, not a second warn.
-          { ...base, severity: "info", detail: READINESS_DETAILS.portFreeNoTraefik(port) };
+          {
+            ...base,
+            severity: "info",
+            detail: READINESS_DETAILS.portFreeNoTraefik(port),
+          };
   }
 }
 
 /** `diskTotal === 0` means the agent's statfs FAILED. It is not "0% used" — it is unknown. */
 function diskCheck(metrics: HostMetrics | null): ReadinessCheck {
-  const base = { id: "capacity.disk", group: "capacity" as const, label: "Disk headroom" };
+  const base = {
+    id: "capacity.disk",
+    group: "capacity" as const,
+    label: "Disk headroom",
+  };
   if (!metrics)
     return {
       ...base,
@@ -766,7 +830,11 @@ function diskCheck(metrics: HostMetrics | null): ReadinessCheck {
       detail: READINESS_DETAILS.diskLow(pct, free),
       hint: READINESS_HINTS.freeDisk,
     };
-  return { ...base, severity: "pass", detail: READINESS_DETAILS.diskOk(pct, free) };
+  return {
+    ...base,
+    severity: "pass",
+    detail: READINESS_DETAILS.diskOk(pct, free),
+  };
 }
 
 function buildChecks(capabilities: string[]): ReadinessCheck[] {

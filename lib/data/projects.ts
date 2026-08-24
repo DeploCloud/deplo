@@ -87,7 +87,10 @@ function assembleProject(r: typeof projectsTable.$inferSelect): Project {
 }
 
 /** A URL-safe slug from a name, UNIQUE within the team (first free suffix). */
-async function uniqueProjectSlug(teamId: string, name: string): Promise<string> {
+async function uniqueProjectSlug(
+  teamId: string,
+  name: string,
+): Promise<string> {
   const base =
     name
       .toLowerCase()
@@ -112,16 +115,17 @@ async function uniqueProjectSlug(teamId: string, name: string): Promise<string> 
 /** Team-wide manual container order (`team_project_order`), id→rank. */
 async function projectOrderRank(teamId: string): Promise<Map<string, number>> {
   const rows = await getDb()
-    .select({ projectId: teamProjectOrder.projectId, position: teamProjectOrder.position })
+    .select({
+      projectId: teamProjectOrder.projectId,
+      position: teamProjectOrder.position,
+    })
     .from(teamProjectOrder)
     .where(eq(teamProjectOrder.teamId, teamId));
   return new Map(rows.map((r) => [r.projectId, r.position] as const));
 }
 
 /** Live folder/app/environment counts per container, in one query each. */
-async function counts(
-  teamId: string,
-): Promise<{
+async function counts(teamId: string): Promise<{
   folders: Map<string, number>;
   apps: Map<string, number>;
   environments: Map<string, number>;
@@ -136,7 +140,8 @@ async function counts(
     .where(eq(foldersTable.teamId, teamId));
   const folders = new Map<string, number>();
   for (const r of folderRows)
-    if (r.projectId) folders.set(r.projectId, (folders.get(r.projectId) ?? 0) + 1);
+    if (r.projectId)
+      folders.set(r.projectId, (folders.get(r.projectId) ?? 0) + 1);
   // An app counts toward a project either DIRECTLY (its own `project_id` —
   // the ADR-0009 per-environment membership) or through a LEGACY
   // folder-in-project row: filing into a folder clears the app's own
@@ -162,7 +167,8 @@ async function counts(
     })
     .from(appsTable)
     .where(and(eq(appsTable.teamId, teamId), appScopeWhere()))) {
-    const pid = r.projectId ?? (r.folderId ? projectOfFolder(r.folderId) : null);
+    const pid =
+      r.projectId ?? (r.folderId ? projectOfFolder(r.folderId) : null);
     if (pid) apps.set(pid, (apps.get(pid) ?? 0) + 1);
   }
   // Environments are project-scoped (no team column); count via the join.
@@ -207,10 +213,11 @@ export const listProjects = cache(async function listProjects(): Promise<
       .select()
       .from(projectsTable)
       .where(eq(projectsTable.teamId, teamId))
-  // A narrowed API token, or a member on a limited role, sees ONLY the
-  // containers it reaches — the ones given wholly, plus the ones holding a node
-  // it was given individually.
-  ).filter((p) => inProjectScope(p.id) && projectInScope(roleScope, p.id));
+  )
+    // A narrowed API token, or a member on a limited role, sees ONLY the
+    // containers it reaches — the ones given wholly, plus the ones holding a node
+    // it was given individually.
+    .filter((p) => inProjectScope(p.id) && projectInScope(roleScope, p.id));
   const rank = await projectOrderRank(teamId);
   const { folders, apps, environments } = await counts(teamId);
   return rows
@@ -243,9 +250,18 @@ export async function projectContents(projectId: string): Promise<{
   if (!projectInScope(scope, projectId)) return { folders: [], apps: [] };
   const folders = (
     await getDb()
-      .select({ id: foldersTable.id, name: foldersTable.name, color: foldersTable.color })
+      .select({
+        id: foldersTable.id,
+        name: foldersTable.name,
+        color: foldersTable.color,
+      })
       .from(foldersTable)
-      .where(and(eq(foldersTable.teamId, teamId), eq(foldersTable.projectId, projectId)))
+      .where(
+        and(
+          eq(foldersTable.teamId, teamId),
+          eq(foldersTable.projectId, projectId),
+        ),
+      )
   )
     .filter((f) => folderInScope(scope, f.id))
     .map((f) => ({ id: f.id, name: f.name, color: f.color ?? null }));
@@ -261,7 +277,9 @@ export async function projectContents(projectId: string): Promise<{
         environmentId: appsTable.environmentId,
       })
       .from(appsTable)
-      .where(and(eq(appsTable.teamId, teamId), eq(appsTable.projectId, projectId)))
+      .where(
+        and(eq(appsTable.teamId, teamId), eq(appsTable.projectId, projectId)),
+      )
   )
     .filter((s) =>
       appInScope(scope, {
@@ -352,7 +370,13 @@ export async function createProject(
       .insert(environmentsTable)
       .values(defaultEnvironmentRows(project.id, project.createdAt));
   });
-  await recordActivity("project", `Created project ${project.name}`, userName, null, teamId);
+  await recordActivity(
+    "project",
+    `Created project ${project.name}`,
+    userName,
+    null,
+    teamId,
+  );
   const { folders, apps, environments } = await counts(teamId);
   return summarize(project, folders, apps, environments);
 }
@@ -374,10 +398,17 @@ export async function renameProject(id: string, name: string): Promise<void> {
     )
     .returning({ id: projectsTable.id });
   if (updated.length === 0) {
-    if (!(await projectInTeam(id, teamId))) throw new Error("Project not found");
+    if (!(await projectInTeam(id, teamId)))
+      throw new Error("Project not found");
     return;
   }
-  await recordActivity("project", `Renamed project to ${clean}`, userName, null, teamId);
+  await recordActivity(
+    "project",
+    `Renamed project to ${clean}`,
+    userName,
+    null,
+    teamId,
+  );
 }
 
 export async function setProjectColor(
@@ -402,7 +433,9 @@ export async function setProjectColor(
     .where(eq(projectsTable.id, id));
   await recordActivity(
     "project",
-    next ? `Changed colour of project ${p.name}` : `Cleared colour of project ${p.name}`,
+    next
+      ? `Changed colour of project ${p.name}`
+      : `Cleared colour of project ${p.name}`,
     userName,
     null,
     teamId,
@@ -446,7 +479,9 @@ export async function deleteProject(
     await tx
       .update(foldersTable)
       .set({ projectId: null })
-      .where(and(eq(foldersTable.teamId, teamId), eq(foldersTable.projectId, id)));
+      .where(
+        and(eq(foldersTable.teamId, teamId), eq(foldersTable.projectId, id)),
+      );
     await tx
       .update(appsTable)
       .set({ projectId: null, environmentId: null })
@@ -456,7 +491,13 @@ export async function deleteProject(
   });
   // Record OUTSIDE the transaction: recordActivity opens its own connection, which
   // would deadlock against the open tx on pglite's single connection.
-  await recordActivity("project", `Deleted project ${name}`, userName, null, teamId);
+  await recordActivity(
+    "project",
+    `Deleted project ${name}`,
+    userName,
+    null,
+    teamId,
+  );
 }
 
 /**
@@ -476,11 +517,15 @@ export async function reorderProjects(orderedIds: string[]): Promise<void> {
         .where(eq(projectsTable.teamId, teamId))
     ).map((r) => r.id);
     const next = mergeOrder(orderedIds, teamProjectIds);
-    await tx.delete(teamProjectOrder).where(eq(teamProjectOrder.teamId, teamId));
+    await tx
+      .delete(teamProjectOrder)
+      .where(eq(teamProjectOrder.teamId, teamId));
     if (next.length > 0)
       await tx
         .insert(teamProjectOrder)
-        .values(next.map((projectId, position) => ({ teamId, projectId, position })));
+        .values(
+          next.map((projectId, position) => ({ teamId, projectId, position })),
+        );
   });
 }
 
@@ -518,7 +563,11 @@ export async function moveAppToProject(
   const userName = (await getCurrentUser())?.name ?? "Someone";
   const s = (
     await getDb()
-      .select({ id: appsTable.id, name: appsTable.name, projectId: appsTable.projectId })
+      .select({
+        id: appsTable.id,
+        name: appsTable.name,
+        projectId: appsTable.projectId,
+      })
       .from(appsTable)
       .where(and(eq(appsTable.id, appId), eq(appsTable.teamId, teamId)))
       .limit(1)
@@ -555,7 +604,12 @@ export async function moveAppToProject(
       await getDb()
         .select({ name: projectsTable.name })
         .from(projectsTable)
-        .where(and(eq(projectsTable.id, projectId), eq(projectsTable.teamId, teamId)))
+        .where(
+          and(
+            eq(projectsTable.id, projectId),
+            eq(projectsTable.teamId, teamId),
+          ),
+        )
         .limit(1)
     )[0];
     // The DESTINATION, which was only ever checked against the team: a caller
@@ -619,7 +673,10 @@ export async function moveAppToEnvironment(
         teamId: projectsTable.teamId,
       })
       .from(environmentsTable)
-      .innerJoin(projectsTable, eq(environmentsTable.projectId, projectsTable.id))
+      .innerJoin(
+        projectsTable,
+        eq(environmentsTable.projectId, projectsTable.id),
+      )
       .where(eq(environmentsTable.id, environmentId))
       .limit(1)
   )[0];

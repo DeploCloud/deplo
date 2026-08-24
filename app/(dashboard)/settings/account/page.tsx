@@ -9,7 +9,10 @@ export default async function SettingsAccountPage() {
 
   return (
     <div className="space-y-6">
-      <PageHeader title="Account" description="Your personal account details." />
+      <PageHeader
+        title="Account"
+        description="Your personal account details."
+      />
       {user && <AccountPanel user={user} />}
     </div>
   );

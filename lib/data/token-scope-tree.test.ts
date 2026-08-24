@@ -95,15 +95,13 @@ beforeEach(async () => {
   );
   await seedIdentity(db);
   // The same person in a SECOND team — the case a one-team token could not express.
-  await db
-    .insert(membershipsTable)
-    .values({
-      id: "mem_user_1_b",
-      userId: USER_1,
-      teamId: TEAM_B,
-      role: "owner",
-      createdAt: T0,
-    });
+  await db.insert(membershipsTable).values({
+    id: "mem_user_1_b",
+    userId: USER_1,
+    teamId: TEAM_B,
+    role: "owner",
+    createdAt: T0,
+  });
   await db.insert(membershipCapabilitiesTable).values(
     capabilitiesForRole("owner").map((c) => ({
       membershipId: "mem_user_1_b",
@@ -158,7 +156,10 @@ test("an app-scoped token can still see the project its app lives in", async () 
   await as(
     TEAM_A,
     async () => {
-      assert.deepEqual((await listProjects()).map((p) => p.id), [PRC_IN]);
+      assert.deepEqual(
+        (await listProjects()).map((p) => p.id),
+        [PRC_IN],
+      );
     },
     appScope(["prj_in"], [PRC_IN]),
   );
@@ -208,7 +209,11 @@ test("holding a WHOLE team is breadth: nothing inside it is restricted", async (
   // The SAME token, acting in the other team, sees that team's apps instead.
   await as(
     TEAM_B,
-    async () => assert.deepEqual((await listApps()).map((a) => a.id), ["prj_b"]),
+    async () =>
+      assert.deepEqual(
+        (await listApps()).map((a) => a.id),
+        ["prj_b"],
+      ),
     whole,
   );
 });
@@ -228,10 +233,10 @@ test("a token narrowed in one team is unrestricted in another it holds wholly", 
     TEAM_A,
     async () => {
       // Narrowed here: a project, and no team-wide capabilities.
-      assert.deepEqual(
-        (await listApps()).map((a) => a.id).sort(),
-        ["prj_in", "prj_sibling"],
-      );
+      assert.deepEqual((await listApps()).map((a) => a.id).sort(), [
+        "prj_in",
+        "prj_sibling",
+      ]);
       await assert.rejects(() => listMembers(), /limited to specific projects/);
     },
     mixed,
@@ -240,7 +245,10 @@ test("a token narrowed in one team is unrestricted in another it holds wholly", 
     TEAM_B,
     async () => {
       // Whole team there: everything, including the team-wide reads.
-      assert.deepEqual((await listApps()).map((a) => a.id), ["prj_b"]);
+      assert.deepEqual(
+        (await listApps()).map((a) => a.id),
+        ["prj_b"],
+      );
       assert.ok(Array.isArray(await listMembers()));
     },
     mixed,
@@ -313,8 +321,15 @@ test("a token is listed in every team it can reach, not only where it was made",
   const inB = await runWithIdentity({ userId: USER_1, teamId: TEAM_B }, () =>
     listTokens(),
   );
-  assert.deepEqual(inB.map((t) => t.id), [id]);
-  assert.equal(inB[0]!.homeTeamId, TEAM_A, "still managed from where it was made");
+  assert.deepEqual(
+    inB.map((t) => t.id),
+    [id],
+  );
+  assert.equal(
+    inB[0]!.homeTeamId,
+    TEAM_A,
+    "still managed from where it was made",
+  );
 });
 
 test("a foreign team can't be put in a scope", async () => {
@@ -342,13 +357,41 @@ test("a foreign team can't be put in a scope", async () => {
  */
 async function seedFolders() {
   await db.insert(foldersTable).values([
-    { id: "fld_root", teamId: TEAM_A, name: "Root", projectId: PRC_IN, createdAt: T0, updatedAt: T0 },
-    { id: "fld_child", teamId: TEAM_A, name: "Child", parentId: "fld_root", createdAt: T0, updatedAt: T0 },
-    { id: "fld_loose", teamId: TEAM_A, name: "Loose", createdAt: T0, updatedAt: T0 },
+    {
+      id: "fld_root",
+      teamId: TEAM_A,
+      name: "Root",
+      projectId: PRC_IN,
+      createdAt: T0,
+      updatedAt: T0,
+    },
+    {
+      id: "fld_child",
+      teamId: TEAM_A,
+      name: "Child",
+      parentId: "fld_root",
+      createdAt: T0,
+      updatedAt: T0,
+    },
+    {
+      id: "fld_loose",
+      teamId: TEAM_A,
+      name: "Loose",
+      createdAt: T0,
+      updatedAt: T0,
+    },
   ]);
   await seedApp(db, { id: "prj_root", slug: "root-app", folderId: "fld_root" });
-  await seedApp(db, { id: "prj_child", slug: "child-app", folderId: "fld_child" });
-  await seedApp(db, { id: "prj_loose_f", slug: "loose-app", folderId: "fld_loose" });
+  await seedApp(db, {
+    id: "prj_child",
+    slug: "child-app",
+    folderId: "fld_child",
+  });
+  await seedApp(db, {
+    id: "prj_loose_f",
+    slug: "loose-app",
+    folderId: "fld_loose",
+  });
 }
 
 /** Resolve a real stored scope the way a request does, then run `fn` under it. */
@@ -365,7 +408,11 @@ async function underToken<T>(
 test("a folder scope reaches its whole subtree, resolved live", async () => {
   await seedFolders();
   await underToken(
-    { name: "Root folder", capabilities: ["deploy_apps"], folderIds: ["fld_root"] },
+    {
+      name: "Root folder",
+      capabilities: ["deploy_apps"],
+      folderIds: ["fld_root"],
+    },
     async () => {
       assert.deepEqual(
         (await listApps()).map((a) => a.id).sort(),
@@ -373,10 +420,10 @@ test("a folder scope reaches its whole subtree, resolved live", async () => {
         "the nested folder's app comes with the parent",
       );
       // The folders it reaches are listed; the unrelated one is not.
-      assert.deepEqual(
-        (await listFolders()).map((f) => f.id).sort(),
-        ["fld_child", "fld_root"],
-      );
+      assert.deepEqual((await listFolders()).map((f) => f.id).sort(), [
+        "fld_child",
+        "fld_root",
+      ]);
     },
   );
 });
@@ -384,14 +431,21 @@ test("a folder scope reaches its whole subtree, resolved live", async () => {
 test("a project scope covers the folders filed under it, not just its own apps", async () => {
   await seedFolders();
   await underToken(
-    { name: "Whole project", capabilities: ["deploy_apps"], projectIds: [PRC_IN] },
+    {
+      name: "Whole project",
+      capabilities: ["deploy_apps"],
+      projectIds: [PRC_IN],
+    },
     async () => {
       assert.deepEqual(
         (await listApps()).map((a) => a.id).sort(),
         ["prj_child", "prj_in", "prj_root", "prj_sibling"],
         "its direct apps AND everything in its folders",
       );
-      assert.deepEqual((await listProjects()).map((p) => p.id), [PRC_IN]);
+      assert.deepEqual(
+        (await listProjects()).map((p) => p.id),
+        [PRC_IN],
+      );
     },
   );
 });
@@ -399,10 +453,20 @@ test("a project scope covers the folders filed under it, not just its own apps",
 test("a top-level folder is reachable, and reaches nothing outside itself", async () => {
   await seedFolders();
   await underToken(
-    { name: "Loose folder", capabilities: ["deploy_apps"], folderIds: ["fld_loose"] },
+    {
+      name: "Loose folder",
+      capabilities: ["deploy_apps"],
+      folderIds: ["fld_loose"],
+    },
     async () => {
-      assert.deepEqual((await listApps()).map((a) => a.id), ["prj_loose_f"]);
-      assert.deepEqual((await listFolders()).map((f) => f.id), ["fld_loose"]);
+      assert.deepEqual(
+        (await listApps()).map((a) => a.id),
+        ["prj_loose_f"],
+      );
+      assert.deepEqual(
+        (await listFolders()).map((f) => f.id),
+        ["fld_loose"],
+      );
       // It sits in no project, so there is no container to surface.
       assert.deepEqual(await listProjects(), []);
     },
@@ -421,15 +485,17 @@ test("moving a folder re-scopes the token on the next request, with nothing stor
         })
       ).raw,
   );
-  const before = await runWithIdentity((await authenticateToken(raw))!, async () =>
-    (await listApps()).map((a) => a.id).sort(),
+  const before = await runWithIdentity(
+    (await authenticateToken(raw))!,
+    async () => (await listApps()).map((a) => a.id).sort(),
   );
   assert.deepEqual(before, ["prj_child", "prj_root"]);
 
   // Un-nest the child folder: it leaves the subtree, and so does its app.
   await pg.exec(`update folders set parent_id = null where id = 'fld_child';`);
-  const after = await runWithIdentity((await authenticateToken(raw))!, async () =>
-    (await listApps()).map((a) => a.id).sort(),
+  const after = await runWithIdentity(
+    (await authenticateToken(raw))!,
+    async () => (await listApps()).map((a) => a.id).sort(),
   );
   assert.deepEqual(after, ["prj_root"]);
 });
@@ -440,18 +506,37 @@ test("the scope tree nests folders instead of dumping their apps at the top leve
   const teamA = tree.find((t) => t.id === TEAM_A)!;
 
   // The regression this level exists for: an app in a folder is NOT loose.
-  assert.deepEqual(teamA.looseApps.map((a) => a.id), ["prj_top"]);
+  assert.deepEqual(
+    teamA.looseApps.map((a) => a.id),
+    ["prj_top"],
+  );
 
   const project = teamA.projects.find((p) => p.id === PRC_IN)!;
-  assert.deepEqual(project.apps.map((a) => a.id).sort(), ["prj_in", "prj_sibling"]);
-  assert.deepEqual(project.folders.map((f) => f.id), ["fld_root"]);
-  assert.deepEqual(project.folders[0]!.apps.map((a) => a.id), ["prj_root"]);
-  assert.deepEqual(project.folders[0]!.folders.map((f) => f.id), ["fld_child"]);
-  assert.deepEqual(project.folders[0]!.folders[0]!.apps.map((a) => a.id), [
-    "prj_child",
+  assert.deepEqual(project.apps.map((a) => a.id).sort(), [
+    "prj_in",
+    "prj_sibling",
   ]);
+  assert.deepEqual(
+    project.folders.map((f) => f.id),
+    ["fld_root"],
+  );
+  assert.deepEqual(
+    project.folders[0]!.apps.map((a) => a.id),
+    ["prj_root"],
+  );
+  assert.deepEqual(
+    project.folders[0]!.folders.map((f) => f.id),
+    ["fld_child"],
+  );
+  assert.deepEqual(
+    project.folders[0]!.folders[0]!.apps.map((a) => a.id),
+    ["prj_child"],
+  );
 
-  assert.deepEqual(teamA.folders.map((f) => f.id), ["fld_loose"]);
+  assert.deepEqual(
+    teamA.folders.map((f) => f.id),
+    ["fld_loose"],
+  );
 });
 
 test("a folder in a team you don't belong to can't be put in a scope", async () => {
@@ -528,23 +613,19 @@ async function seedPrivateFolder(): Promise<void> {
     role: "member",
     createdAt: T0,
   });
-  await db
-    .insert(membershipCapabilitiesTable)
-    .values(
-      (["view", "manage_tokens", "deploy_apps"] as Capability[]).map((c) => ({
-        membershipId: "mem_outsider",
-        capability: c,
-      })),
-    );
+  await db.insert(membershipCapabilitiesTable).values(
+    (["view", "manage_tokens", "deploy_apps"] as Capability[]).map((c) => ({
+      membershipId: "mem_outsider",
+      capability: c,
+    })),
+  );
 }
 
 const asOutsider = <T>(fn: () => Promise<T>): Promise<T> =>
   runWithIdentity({ userId: "u_outsider", teamId: TEAM_A }, fn);
 
 test("the scope picker never offers a folder its author can't see", async () => {
-  await db.insert(
-    (await import("../db/schema/control-plane")).users,
-  ).values({
+  await db.insert((await import("../db/schema/control-plane")).users).values({
     id: "u_outsider",
     email: "outsider@example.io",
     username: "u_outsider",
@@ -575,14 +656,17 @@ test("the scope picker never offers a folder its author can't see", async () => 
   });
 
   // The owner's own picker still shows it — the bound is access, not existence.
-  const mine = (await asUser1(() => listScopeTree())).find((t) => t.id === TEAM_A)!;
-  assert.deepEqual(mine.folders.map((f) => f.id), ["fld_private"]);
+  const mine = (await asUser1(() => listScopeTree())).find(
+    (t) => t.id === TEAM_A,
+  )!;
+  assert.deepEqual(
+    mine.folders.map((f) => f.id),
+    ["fld_private"],
+  );
 });
 
 test("a token ticked onto a folder its author can't see reads nothing", async () => {
-  await db.insert(
-    (await import("../db/schema/control-plane")).users,
-  ).values({
+  await db.insert((await import("../db/schema/control-plane")).users).values({
     id: "u_outsider",
     email: "outsider@example.io",
     username: "u_outsider",
@@ -615,7 +699,10 @@ test("a token ticked onto a folder its author can't see reads nothing", async ()
       [],
       "the folder's app stays invisible — a token is never more than its author",
     );
-    assert.deepEqual((await listFolders()).map((f) => f.id), []);
+    assert.deepEqual(
+      (await listFolders()).map((f) => f.id),
+      [],
+    );
     // The same app, read through its deployments and its domains. Both used to
     // exempt a narrowed principal from the per-app check, so both listed what
     // the folder exists to hide.
@@ -650,12 +737,24 @@ test("a token ticked onto a folder its author can't see reads nothing", async ()
   );
   const ownerIdentity = await authenticateToken(ownerRaw);
   await runWithIdentity(ownerIdentity!, async () => {
-    assert.deepEqual((await listApps()).map((a) => a.id), ["prj_private"]);
-    assert.deepEqual((await listFolders()).map((f) => f.id), ["fld_private"]);
+    assert.deepEqual(
+      (await listApps()).map((a) => a.id),
+      ["prj_private"],
+    );
+    assert.deepEqual(
+      (await listFolders()).map((f) => f.id),
+      ["fld_private"],
+    );
     // The control that keeps the fix honest: dropping the exemption must not
     // blind the token that IS entitled to the folder.
-    assert.deepEqual((await listDeployments()).map((d) => d.id), ["dep_private"]);
-    assert.deepEqual((await listDomains()).map((d) => d.id), ["dom_private"]);
+    assert.deepEqual(
+      (await listDeployments()).map((d) => d.id),
+      ["dep_private"],
+    );
+    assert.deepEqual(
+      (await listDomains()).map((d) => d.id),
+      ["dom_private"],
+    );
   });
 });
 
@@ -666,11 +765,17 @@ test("a token ticked onto a folder its author can't see reads nothing", async ()
 test("a folder-scoped token creates apps in its own folder, and nowhere else", async () => {
   await seedFolders();
   const { createApp } = await import("./apps");
-  const newApp = (name: string, where: { folderId?: string; projectId?: string }) =>
-    createApp({ name, source: "upload" as const, repo: null, ...where });
+  const newApp = (
+    name: string,
+    where: { folderId?: string; projectId?: string },
+  ) => createApp({ name, source: "upload" as const, repo: null, ...where });
 
   await underToken(
-    { name: "Folder CI", capabilities: ["create_apps"], folderIds: ["fld_root"] },
+    {
+      name: "Folder CI",
+      capabilities: ["create_apps"],
+      folderIds: ["fld_root"],
+    },
     async () => {
       // The scope IS a folder, and a folder has no `project_id` of its own — so
       // asking "is your PROJECT in scope?" answered "you have no project" and
@@ -730,14 +835,15 @@ test("the whole team and one app inside it is refused, not merged", async () => 
 
 test("a token minted before that refusal reads as narrowed, never as the whole team", async () => {
   // Exactly the row shape `createToken` used to accept: one app, plus its own team.
-  const raw = await asUser1(async () =>
-    (
-      await createToken({
-        name: "Legacy both",
-        capabilities: ["deploy_apps", "manage_members"],
-        appIds: ["prj_in"],
-      })
-    ).raw,
+  const raw = await asUser1(
+    async () =>
+      (
+        await createToken({
+          name: "Legacy both",
+          capabilities: ["deploy_apps", "manage_members"],
+          appIds: ["prj_in"],
+        })
+      ).raw,
   );
   const tokenId = (await asUser1(() => listTokens()))[0]!.id;
   await db.insert(apiTokenTeams).values({ tokenId, teamId: TEAM_A });

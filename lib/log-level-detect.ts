@@ -98,10 +98,16 @@ function levelFromNumber(n: number): LogLevel | null {
 const LEVEL_KEY = "level|severity|levelname|loglevel|log\\.level|lvl";
 
 /** `"level":"error"` / `"severity":"WARN"` / `"log.level":"debug"` — JSON. */
-const JSON_LEVEL = new RegExp(`"(?:${LEVEL_KEY})"\\s*:\\s*"([A-Za-z]{3,11})"`, "i");
+const JSON_LEVEL = new RegExp(
+  `"(?:${LEVEL_KEY})"\\s*:\\s*"([A-Za-z]{3,11})"`,
+  "i",
+);
 
 /** `"level":50` — pino's numeric scale, or syslog's, inside a JSON log line. */
-const JSON_LEVEL_NUM = new RegExp(`"(?:${LEVEL_KEY})"\\s*:\\s*(\\d{1,2})(?![\\d.])`, "i");
+const JSON_LEVEL_NUM = new RegExp(
+  `"(?:${LEVEL_KEY})"\\s*:\\s*(\\d{1,2})(?![\\d.])`,
+  "i",
+);
 
 /** logfmt, as Go's slog / zap's console encoder / Traefik's text mode print it. */
 const LOGFMT_LEVEL = new RegExp(

@@ -95,7 +95,9 @@ export function DeleteWithArtifacts({
       onOpenChange={handleOpenChange}
       title={title}
       description={description}
-      confirmLabel={force && forceRetry ? forceRetry.confirmLabel : confirmLabel}
+      confirmLabel={
+        force && forceRetry ? forceRetry.confirmLabel : confirmLabel
+      }
       successMessage={
         force && forceRetry ? forceRetry.successMessage : successMessage
       }

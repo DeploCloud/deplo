@@ -31,7 +31,9 @@ after(async () => {
 });
 
 beforeEach(async () => {
-  await pg.exec(`truncate table registries, users, teams restart identity cascade;`);
+  await pg.exec(
+    `truncate table registries, users, teams restart identity cascade;`,
+  );
   // Two owners: user_1 in alpha, user_2 in beta (for the cross-team delete check).
   await seedIdentity(db, {
     users: [
@@ -59,28 +61,56 @@ test("addRegistry stores an encrypted password; the DTO carries no secret", asyn
   });
 
   const rows = await db.select().from(registriesTable);
-  assert.notEqual(rows[0]!.passwordEnc, "s3cret", "stored encrypted, not plaintext");
-  assert.equal(decryptSecret(rows[0]!.passwordEnc), "s3cret", "decrypts back to plaintext");
+  assert.notEqual(
+    rows[0]!.passwordEnc,
+    "s3cret",
+    "stored encrypted, not plaintext",
+  );
+  assert.equal(
+    decryptSecret(rows[0]!.passwordEnc),
+    "s3cret",
+    "decrypts back to plaintext",
+  );
 });
 
 test("listRegistries returns newest-first", async () => {
   await asUser1(async () => {
-    await addRegistry({ name: "first", type: "ghcr", username: "u", password: "p" });
+    await addRegistry({
+      name: "first",
+      type: "ghcr",
+      username: "u",
+      password: "p",
+    });
     await new Promise((r) => setTimeout(r, 5));
-    await addRegistry({ name: "second", type: "dockerhub", username: "u", password: "p" });
+    await addRegistry({
+      name: "second",
+      type: "dockerhub",
+      username: "u",
+      password: "p",
+    });
     const list = await listRegistries();
-    assert.deepEqual(list.map((r) => r.name), ["second", "first"]);
+    assert.deepEqual(
+      list.map((r) => r.name),
+      ["second", "first"],
+    );
   });
 });
 
 test("addRegistry validates required fields", async () => {
   await asUser1(async () => {
     await assert.rejects(
-      () => addRegistry({ name: "", type: "ghcr", username: "u", password: "p" }),
+      () =>
+        addRegistry({ name: "", type: "ghcr", username: "u", password: "p" }),
       /Enter a name/,
     );
     await assert.rejects(
-      () => addRegistry({ name: "x", type: "generic", username: "u", password: "p" }),
+      () =>
+        addRegistry({
+          name: "x",
+          type: "generic",
+          username: "u",
+          password: "p",
+        }),
       /Enter the registry host/,
     );
   });
@@ -89,14 +119,23 @@ test("addRegistry validates required fields", async () => {
 test("deleteRegistry removes only the active team's matching registry", async () => {
   // user_2 (team B) adds one; user_1 (team A) must not be able to delete it.
   await runWithIdentity({ userId: "user_2", teamId: TEAM_B }, async () => {
-    await addRegistry({ name: "B-reg", type: "ghcr", username: "u", password: "p" });
+    await addRegistry({
+      name: "B-reg",
+      type: "ghcr",
+      username: "u",
+      password: "p",
+    });
   });
   const bRow = (await db.select().from(registriesTable))[0]!;
 
   await asUser1(async () => {
     await assert.rejects(() => deleteRegistry(bRow.id), /Registry not found/);
   });
-  assert.equal((await db.select().from(registriesTable)).length, 1, "team-B row survives");
+  assert.equal(
+    (await db.select().from(registriesTable)).length,
+    1,
+    "team-B row survives",
+  );
 
   await runWithIdentity({ userId: "user_2", teamId: TEAM_B }, async () => {
     await deleteRegistry(bRow.id);

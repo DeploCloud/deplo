@@ -27,7 +27,7 @@ export function EmptyState({
     <div
       className={cn(
         "flex flex-col items-center justify-center rounded-xl border border-dashed border-border bg-card/40 px-6 py-16 text-center",
-        className
+        className,
       )}
     >
       {graphic ? (
@@ -35,7 +35,9 @@ export function EmptyState({
       ) : (
         Icon && (
           <div className="mb-4 flex size-12 items-center justify-center rounded-full border border-border bg-secondary">
-            <Icon className={cn("size-5 text-muted-foreground", iconClassName)} />
+            <Icon
+              className={cn("size-5 text-muted-foreground", iconClassName)}
+            />
           </div>
         )
       )}

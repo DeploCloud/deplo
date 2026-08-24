@@ -137,7 +137,8 @@ export function nextTeardownAttempt(
   now: Date,
 ): { giveUp: true } | { giveUp: false; at: string } {
   if (attempts >= MAX_TEARDOWN_ATTEMPTS) return { giveUp: true };
-  const step = BACKOFF_MS[Math.min(Math.max(attempts, 1), BACKOFF_MS.length) - 1];
+  const step =
+    BACKOFF_MS[Math.min(Math.max(attempts, 1), BACKOFF_MS.length) - 1];
   return { giveUp: false, at: new Date(now.getTime() + step).toISOString() };
 }
 
@@ -147,7 +148,9 @@ export function nextTeardownAttempt(
  * Never throws - a queue write that fails must not fail the delete the user
  * asked for (the boot drain still has the app row's own stamp to work from).
  */
-export async function enqueueTeardowns(entries: TeardownEntry[]): Promise<void> {
+export async function enqueueTeardowns(
+  entries: TeardownEntry[],
+): Promise<void> {
   if (entries.length === 0) return;
   const now = nowIso();
   const firstDrain = new Date(Date.now() + INLINE_GRACE_MS).toISOString();
@@ -218,9 +221,14 @@ async function attemptTeardown(
   try {
     if (opts.verifyFirst) {
       const before = await stackContainers(conn, entry);
-      if (before !== null && before.length === 0) return { gone: true, error: "" };
+      if (before !== null && before.length === 0)
+        return { gone: true, error: "" };
     }
-    const res = await conn.destroyStack(entry.deployKey, true, entry.reclaimVolumes);
+    const res = await conn.destroyStack(
+      entry.deployKey,
+      true,
+      entry.reclaimVolumes,
+    );
     const left = await stackContainers(conn, entry);
     // An agent too old for the probe (or one that errored on it) answers null:
     // we cannot verify, so the destroy's own verdict stands.
@@ -360,7 +368,10 @@ export async function teardownOrQueue(entry: TeardownEntry): Promise<boolean> {
   return true;
 }
 
-async function dropTeardown(serverId: string, deployKey: string): Promise<void> {
+async function dropTeardown(
+  serverId: string,
+  deployKey: string,
+): Promise<void> {
   await getDb()
     .delete(pendingTeardowns)
     .where(
@@ -408,7 +419,9 @@ export async function drainTeardowns(now: Date = new Date()): Promise<void> {
       teamId: row.teamId,
     };
     try {
-      const { gone, error } = await attemptTeardown(entry, { verifyFirst: true });
+      const { gone, error } = await attemptTeardown(entry, {
+        verifyFirst: true,
+      });
       if (!gone) {
         await recordFailure(entry, error, row.serverName, now);
         return;
@@ -429,7 +442,9 @@ export async function drainTeardowns(now: Date = new Date()): Promise<void> {
 }
 
 /** How many teardowns are still queued for a host. */
-export async function pendingTeardownsForServer(serverId: string): Promise<number> {
+export async function pendingTeardownsForServer(
+  serverId: string,
+): Promise<number> {
   const rows = await getDb()
     .select({ n: sql<number>`count(*)::int` })
     .from(pendingTeardowns)

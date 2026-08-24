@@ -64,7 +64,9 @@ export function mintBootstrap(): MintedBootstrap {
  * at rest, the expiry, single use, `completeBootstrap` - is byte-identical to a
  * minted one; only the source of the randomness differs.
  */
-export function storedBootstrapFor(rawToken: string): MintedBootstrap["stored"] {
+export function storedBootstrapFor(
+  rawToken: string,
+): MintedBootstrap["stored"] {
   return {
     tokenHash: sha256Hex(rawToken),
     expiresAt: new Date(Date.now() + BOOTSTRAP_TTL_MS).toISOString(),
@@ -110,7 +112,8 @@ export function installCommand(opts: {
    */
   importOnly?: boolean;
 }): string {
-  const { baseUrl, rawToken, fingerprint, storageOnly, buildOnly, importOnly } = opts;
+  const { baseUrl, rawToken, fingerprint, storageOnly, buildOnly, importOnly } =
+    opts;
   // Order: <token> <control-plane-url> [fingerprint]. The script forwards them
   // to the agent's --bootstrap-* flags. Single-quoted so the shell treats them
   // as literals (the token is base64url, the url/fingerprint are constrained).
@@ -199,13 +202,13 @@ export async function controlPlaneCertFingerprint(
 
 /** Why a bootstrap attempt was rejected — surfaced to the agent + the log. */
 export type BootstrapRejection =
-  | "unknown-token"
-  | "expired-token"
-  | "already-used"
-  | "bad-csr";
+  "unknown-token" | "expired-token" | "already-used" | "bad-csr";
 
 export class BootstrapError extends Error {
-  constructor(public readonly reason: BootstrapRejection, message: string) {
+  constructor(
+    public readonly reason: BootstrapRejection,
+    message: string,
+  ) {
     super(message);
   }
 }
@@ -225,10 +228,16 @@ export function findServerForToken(
   const hash = sha256Hex(rawToken);
   const server = servers.find((s) => s.bootstrap?.tokenHash === hash);
   if (!server || !server.bootstrap) {
-    throw new BootstrapError("unknown-token", "bootstrap token is not recognised");
+    throw new BootstrapError(
+      "unknown-token",
+      "bootstrap token is not recognised",
+    );
   }
   if (server.bootstrap.usedAt) {
-    throw new BootstrapError("already-used", "bootstrap token has already been used");
+    throw new BootstrapError(
+      "already-used",
+      "bootstrap token has already been used",
+    );
   }
   if (new Date(server.bootstrap.expiresAt).getTime() < Date.now()) {
     throw new BootstrapError("expired-token", "bootstrap token has expired");

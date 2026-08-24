@@ -99,7 +99,10 @@ test("a migration source belongs to the team that is migrating, and to no other"
   // would put the machine somebody is migrating from, by name and address, in
   // every other team's picker.
   const mine = await listServersForTeam(TEAM_A);
-  assert.ok(mine.some((s) => s.id === id), "the importing team must see it");
+  assert.ok(
+    mine.some((s) => s.id === id),
+    "the importing team must see it",
+  );
   const theirs = await listServersForTeam(TEAM_B);
   assert.equal(
     theirs.some((s) => s.id === id),
@@ -110,7 +113,12 @@ test("a migration source belongs to the team that is migrating, and to no other"
 
 test("an app cannot be MOVED onto a migration source", async () => {
   const id = await migrationSource();
-  await seedApp(db, { id: "prj_web", slug: "web", teamId: TEAM_A, serverId: SERVER_1 });
+  await seedApp(db, {
+    id: "prj_web",
+    slug: "web",
+    teamId: TEAM_A,
+    serverId: SERVER_1,
+  });
   await assert.rejects(
     () =>
       asTeamA(() =>
@@ -127,7 +135,12 @@ test("an app cannot be MOVED onto a migration source", async () => {
 
 test("previews cannot be pinned to a migration source", async () => {
   const id = await migrationSource();
-  await seedApp(db, { id: "prj_web", slug: "web", teamId: TEAM_A, serverId: SERVER_1 });
+  await seedApp(db, {
+    id: "prj_web",
+    slug: "web",
+    teamId: TEAM_A,
+    serverId: SERVER_1,
+  });
   await assert.rejects(
     () => asTeamA(() => setAppPreviewSettings("prj_web", { serverId: id })),
     /Nothing is deployed on that server/i,
@@ -141,7 +154,11 @@ test("a migration source is never the team's primary server", async () => {
   await db.delete(serversTable).where(eq(serversTable.id, SERVER_1));
   await asTeamA(async () => {
     const primary = await getPrimaryServer();
-    assert.equal(primary, null, `getPrimaryServer returned the migration source ${id}`);
+    assert.equal(
+      primary,
+      null,
+      `getPrimaryServer returned the migration source ${id}`,
+    );
   });
 });
 
@@ -161,7 +178,10 @@ test("Deplo does not reclaim disk on a machine it is only importing from", async
   // scheduler's own filter does not cover it. A prune there would delete the
   // other platform's images while it is running on them.
   const id = await migrationSource();
-  await assert.rejects(() => asTeamA(() => runCleanupNow(id)), /migration source/i);
+  await assert.rejects(
+    () => asTeamA(() => runCleanupNow(id)),
+    /migration source/i,
+  );
 });
 
 test("readiness is not a question asked of a migration source", async () => {

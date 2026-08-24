@@ -106,7 +106,11 @@ export function AvatarPicker({
 
   async function pick(file: File | null | undefined) {
     if (!file || busy) return;
-    if (!AVATAR_IMAGE_TYPES.includes(file.type as (typeof AVATAR_IMAGE_TYPES)[number])) {
+    if (
+      !AVATAR_IMAGE_TYPES.includes(
+        file.type as (typeof AVATAR_IMAGE_TYPES)[number],
+      )
+    ) {
       toast.error("Unsupported image - use PNG, JPEG or WebP");
       return;
     }
@@ -145,7 +149,7 @@ export function AvatarPicker({
         }}
         aria-label={label}
         className={cn(
-          "group relative cursor-pointer rounded-full outline-none transition",
+          "group relative cursor-pointer rounded-full transition outline-none",
           "focus-visible:ring-2 focus-visible:ring-ring",
           dragging && "ring-2 ring-ring",
           busy && "cursor-not-allowed opacity-60",

@@ -42,13 +42,7 @@ export type DokployBuildType =
 
 /** Where an application's code comes from. `drop` is an uploaded archive. */
 export type DokploySourceType =
-  | "docker"
-  | "git"
-  | "github"
-  | "gitlab"
-  | "bitbucket"
-  | "gitea"
-  | "drop";
+  "docker" | "git" | "github" | "gitlab" | "bitbucket" | "gitea" | "drop";
 
 export interface DokployDomain {
   domainId: string;
@@ -370,10 +364,7 @@ export interface DokploySchedule {
  */
 const REQUEST_TIMEOUT_MS = 15_000;
 
-type FetchLike = (
-  input: string,
-  init?: RequestInit,
-) => Promise<Response>;
+type FetchLike = (input: string, init?: RequestInit) => Promise<Response>;
 
 let doFetch: FetchLike = (input, init) => fetch(input, init);
 
@@ -395,12 +386,21 @@ export function __resetDokployFetchForTest(): void {
  * typo in the host. All three read the same otherwise, so the user is left
  * guessing on the one screen where guessing costs the most.
  */
-export function describeDokployTransportError(err: unknown, baseUrl: string): string {
+export function describeDokployTransportError(
+  err: unknown,
+  baseUrl: string,
+): string {
   const at = `at ${baseUrl}`;
-  if (err instanceof Error && (err.name === "TimeoutError" || err.name === "AbortError"))
+  if (
+    err instanceof Error &&
+    (err.name === "TimeoutError" || err.name === "AbortError")
+  )
     return `Dokploy did not answer within ${REQUEST_TIMEOUT_MS / 1000} seconds ${at}. It may be slow, or something on the way is dropping the connection.`;
 
-  const cause = err instanceof Error ? (err.cause as { code?: string } | undefined) : undefined;
+  const cause =
+    err instanceof Error
+      ? (err.cause as { code?: string } | undefined)
+      : undefined;
   const code = typeof cause?.code === "string" ? cause.code : "";
   const message = err instanceof Error ? err.message : String(err);
 
@@ -447,12 +447,12 @@ async function send(
 /** Origin with no trailing slash and no trailing `/api`, however it was typed. */
 export function normalizeDokployBaseUrl(raw: string): string {
   const trimmed = raw.trim();
-  const withScheme = /^https?:\/\//i.test(trimmed) ? trimmed : `https://${trimmed}`;
+  const withScheme = /^https?:\/\//i.test(trimmed)
+    ? trimmed
+    : `https://${trimmed}`;
   const u = new URL(withScheme);
   if (u.username || u.password)
-    throw new Error(
-      "Put the key in the API key field, not in the address.",
-    );
+    throw new Error("Put the key in the API key field, not in the address.");
   const path = u.pathname.replace(/\/+$/, "").replace(/\/api$/i, "");
   return `${u.origin}${path}`;
 }
@@ -543,11 +543,7 @@ async function post<T>(
 /* Reads                                                               */
 /* ------------------------------------------------------------------ */
 
-const SERVICE_KEYS = [
-  "applications",
-  "compose",
-  ...DOKPLOY_DB_KINDS,
-] as const;
+const SERVICE_KEYS = ["applications", "compose", ...DOKPLOY_DB_KINDS] as const;
 
 /** True when a project row carries services directly (pre-environments Dokploy). */
 function hasLooseServices(p: DokployProject): boolean {
@@ -576,7 +572,8 @@ export async function listProjects(
   if (!Array.isArray(projects)) return [];
   return projects.map((p) => {
     const envs = Array.isArray(p.environments) ? p.environments : [];
-    if (envs.length > 0 || !hasLooseServices(p)) return { ...p, environments: envs };
+    if (envs.length > 0 || !hasLooseServices(p))
+      return { ...p, environments: envs };
     const synthetic: DokployEnvironment = {
       environmentId: `legacy-${p.projectId}`,
       name: "production",
@@ -607,7 +604,9 @@ export async function getEnvironment(
   environmentId: string,
 ): Promise<DokployEnvironment | null> {
   try {
-    return await get<DokployEnvironment>(c, "environment.one", { environmentId });
+    return await get<DokployEnvironment>(c, "environment.one", {
+      environmentId,
+    });
   } catch {
     // An older Dokploy has no environments at all (the tree is synthesised), and
     // a member key can be refused here. Neither is worth failing an import over.

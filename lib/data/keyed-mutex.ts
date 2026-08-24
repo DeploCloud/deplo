@@ -34,7 +34,10 @@ const chains: Map<string, Tail> = (g[REGISTRY_KEY] ??= new Map());
  * the chain. When a key's chain fully drains it is dropped from the registry so the
  * map stays bounded to currently-contended keys.
  */
-export function withKeyedLock<T>(key: string, fn: () => Promise<T>): Promise<T> {
+export function withKeyedLock<T>(
+  key: string,
+  fn: () => Promise<T>,
+): Promise<T> {
   // Chain onto the key's current tail; swallow the predecessor's result/rejection
   // so one operation's failure can't reject a later, unrelated one waiting behind
   // it. `prev` is only a sequencing barrier, never a value/error source.

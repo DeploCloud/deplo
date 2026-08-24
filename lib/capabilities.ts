@@ -147,7 +147,8 @@ export const CAPABILITY_META: Record<Capability, CapabilityMeta> = {
   },
   delete_folders: {
     label: "Delete folders",
-    description: "Remove a folder (its apps move back out, they aren't deleted).",
+    description:
+      "Remove a folder (its apps move back out, they aren't deleted).",
     keywords: "remove",
   },
   create_projects: {
@@ -231,7 +232,8 @@ export const CAPABILITY_META: Record<Capability, CapabilityMeta> = {
     label: "Manage backup destinations",
     description:
       "Connect, test and remove the places backups are stored, and download the key that decrypts them.",
-    keywords: "bucket s3 server disk storage remote credentials minio garage path recovery key",
+    keywords:
+      "bucket s3 server disk storage remote credentials minio garage path recovery key",
     // Sensitive, and not because connecting a bucket is dangerous: this is the
     // capability that hands over the recovery key, which decrypts EVERY artifact
     // at a destination - including backups of apps the holder has no grant on.
@@ -289,7 +291,8 @@ export const CAPABILITY_META: Record<Capability, CapabilityMeta> = {
   },
   manage_monitoring: {
     label: "Change monitoring settings",
-    description: "Turn metrics history on or off for servers, apps and databases.",
+    description:
+      "Turn metrics history on or off for servers, apps and databases.",
     keywords: "history retention save metrics settings",
   },
   view_activity: {

@@ -41,7 +41,11 @@ test("isoTimestampParser: null passes through, every shape canonicalises to T…
   assert.equal(isoTimestampParser(null), null);
 
   const written = nowIso();
-  assert.equal(isoTimestampParser(written), written, "an ISO 'T…Z' write is byte-for-byte stable");
+  assert.equal(
+    isoTimestampParser(written),
+    written,
+    "an ISO 'T…Z' write is byte-for-byte stable",
+  );
 
   // node-postgres' native rendering (space separator, '+00', trimmed fraction)
   // is canonicalised back to the sortable 'T…Z' form.
@@ -107,16 +111,34 @@ test("round-trip: a nowIso() write reads back byte-for-byte canonical T…Z (tim
   );
   const readBack = r.rows[0]?.created_at;
 
-  assert.equal(typeof readBack, "string", "the parser yields a string, not a Date");
-  assert.match(readBack!, ISO_RE, "read-back is canonical 'YYYY-MM-DDTHH:MM:SS.sssZ'");
-  assert.equal(readBack, written, "byte-for-byte equal to the original nowIso() write");
+  assert.equal(
+    typeof readBack,
+    "string",
+    "the parser yields a string, not a Date",
+  );
+  assert.match(
+    readBack!,
+    ISO_RE,
+    "read-back is canonical 'YYYY-MM-DDTHH:MM:SS.sssZ'",
+  );
+  assert.equal(
+    readBack,
+    written,
+    "byte-for-byte equal to the original nowIso() write",
+  );
 });
 
 test("round-trip: mixed-origin timestamps still sort lexicographically", async () => {
   // The decisive property for the migration window: legacy-'T' writes and fresh
   // writes interleave, yet ORDER BY is correct because every read is canonical.
-  await db.query("insert into stamped values ($1,$2)", ["s0", "2020-01-01T00:00:00.000Z"]);
-  await db.query("insert into stamped values ($1,$2)", ["s2", "2030-01-01T00:00:00.000Z"]);
+  await db.query("insert into stamped values ($1,$2)", [
+    "s0",
+    "2020-01-01T00:00:00.000Z",
+  ]);
+  await db.query("insert into stamped values ($1,$2)", [
+    "s2",
+    "2030-01-01T00:00:00.000Z",
+  ]);
 
   const ordered = await db.query<{ id: string }>(
     "select id from stamped order by created_at asc",

@@ -139,10 +139,7 @@ export function CreateDatabase({
     if (!effectiveServerId) return;
     setGeneratingPort(true);
     startTransition(async () => {
-      const res = await gqlAction<
-        { generateAvailableDbPort: number },
-        number
-      >(
+      const res = await gqlAction<{ generateAvailableDbPort: number }, number>(
         `mutation($serverId: ID) { generateAvailableDbPort(serverId: $serverId) }`,
         { serverId: effectiveServerId },
         (d) => d.generateAvailableDbPort,
@@ -245,7 +242,9 @@ export function CreateDatabase({
             </DialogTrigger>
           )}
         </TooltipTrigger>
-        <TooltipContent>{blocked ?? "Create a managed database"}</TooltipContent>
+        <TooltipContent>
+          {blocked ?? "Create a managed database"}
+        </TooltipContent>
       </Tooltip>
       <DialogContent>
         <DialogHeader>
@@ -288,7 +287,11 @@ export function CreateDatabase({
                 <FieldLabel info="Any published Docker Hub tag works — suggestions load as you type. Pick the version your app targets.">
                   Version
                 </FieldLabel>
-                <DbVersionInput engine={type} value={version} onChange={setVersion} />
+                <DbVersionInput
+                  engine={type}
+                  value={version}
+                  onChange={setVersion}
+                />
               </div>
             </div>
             <div className="space-y-3 rounded-lg border border-border p-3">
@@ -296,8 +299,8 @@ export function CreateDatabase({
                 <p className="text-sm font-medium">Credentials</p>
                 <p className="mt-1 text-xs text-muted-foreground">
                   Optional. Leave blank to use generated defaults. These are set
-                  only when the database is first created and can&apos;t be changed
-                  later.
+                  only when the database is first created and can&apos;t be
+                  changed later.
                 </p>
               </div>
               {creds.username && (
@@ -344,7 +347,9 @@ export function CreateDatabase({
                       variant="outline"
                       size="icon"
                       onClick={() => setShowPassword((s) => !s)}
-                      aria-label={showPassword ? "Hide password" : "Show password"}
+                      aria-label={
+                        showPassword ? "Hide password" : "Show password"
+                      }
                     >
                       {showPassword ? (
                         <EyeOff className="size-4" />

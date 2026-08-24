@@ -55,12 +55,19 @@ after(async () => {
 beforeEach(async () => {
   await pg.exec(`${TRUNCATE_PROJECT_GRAPH}
     truncate table projects, users, teams restart identity cascade;`);
-  await seedIdentity(db, { users: [{ id: USER_1, teamId: TEAM_A, role: "owner" }] });
+  await seedIdentity(db, {
+    users: [{ id: USER_1, teamId: TEAM_A, role: "owner" }],
+  });
   await seedServer(db);
 });
 
 test("appStatusStream yields the initial snapshot + multiple change pings (cookie-free)", async () => {
-  await seedApp(db, { id: "prj_1", slug: "alpha", teamId: TEAM_A, status: "active" });
+  await seedApp(db, {
+    id: "prj_1",
+    slug: "alpha",
+    teamId: TEAM_A,
+    status: "active",
+  });
 
   // NO runWithIdentity — there is no request scope. If the generator read a
   // cookie it would throw here.
@@ -91,14 +98,33 @@ test("appStatusStream yields the initial snapshot + multiple change pings (cooki
 });
 
 test("appStatusStream rejects an unknown slug / wrong team", async () => {
-  await seedApp(db, { id: "prj_1", slug: "alpha", teamId: TEAM_A, status: "active" });
-  await assert.rejects(() => appStatusStream("nope", TEAM_A, USER_1).next(), /App not found/);
-  await assert.rejects(() => appStatusStream("alpha", "team_other", USER_1).next(), /App not found/);
-  await assert.rejects(() => appStatusStream("alpha", null, USER_1).next(), /App not found/);
+  await seedApp(db, {
+    id: "prj_1",
+    slug: "alpha",
+    teamId: TEAM_A,
+    status: "active",
+  });
+  await assert.rejects(
+    () => appStatusStream("nope", TEAM_A, USER_1).next(),
+    /App not found/,
+  );
+  await assert.rejects(
+    () => appStatusStream("alpha", "team_other", USER_1).next(),
+    /App not found/,
+  );
+  await assert.rejects(
+    () => appStatusStream("alpha", null, USER_1).next(),
+    /App not found/,
+  );
 });
 
 test("appStatusStream ends when the project is deleted mid-stream", async () => {
-  await seedApp(db, { id: "prj_1", slug: "alpha", teamId: TEAM_A, status: "active" });
+  await seedApp(db, {
+    id: "prj_1",
+    slug: "alpha",
+    teamId: TEAM_A,
+    status: "active",
+  });
   const gen = appStatusStream("alpha", TEAM_A, USER_1);
   await gen.next(); // initial
   // Delete the project, then ping — the reload returns null → the generator ends.
@@ -213,7 +239,12 @@ test("a member who can't see the folder can't watch the app inside it", async ()
     createdAt: "2026-01-01T00:00:00.000Z",
     updatedAt: "2026-01-01T00:00:00.000Z",
   });
-  await seedApp(db, { id: "prj_1", slug: "alpha", teamId: TEAM_A, status: "active" });
+  await seedApp(db, {
+    id: "prj_1",
+    slug: "alpha",
+    teamId: TEAM_A,
+    status: "active",
+  });
   await db
     .update(appsTable)
     .set({ folderId: "fld_private" })
@@ -266,7 +297,12 @@ test("an app moved into a folder the watcher can't see ends their stream", async
     createdAt: "2026-01-01T00:00:00.000Z",
     updatedAt: "2026-01-01T00:00:00.000Z",
   });
-  await seedApp(db, { id: "prj_1", slug: "alpha", teamId: TEAM_A, status: "active" });
+  await seedApp(db, {
+    id: "prj_1",
+    slug: "alpha",
+    teamId: TEAM_A,
+    status: "active",
+  });
 
   // Opens fine: the app is at the top level, where team capabilities govern.
   const gen = appStatusStream("alpha", TEAM_A, "u_outsider");
@@ -280,7 +316,11 @@ test("an app moved into a folder the watcher can't see ends their stream", async
     .set({ folderId: "fld_private" })
     .where(eq(appsTable.id, "prj_1"));
   publishAppChanged("prj_1");
-  assert.equal((await pending).done, true, "the stream must end, not keep feeding");
+  assert.equal(
+    (await pending).done,
+    true,
+    "the stream must end, not keep feeding",
+  );
 });
 
 /* ------------------------------------------------------------------ */
@@ -288,7 +328,12 @@ test("an app moved into a folder the watcher can't see ends their stream", async
 /* ------------------------------------------------------------------ */
 
 test("activeDeploymentsStream counts in-flight builds and only pushes on change", async () => {
-  await seedApp(db, { id: "prj_1", slug: "alpha", teamId: TEAM_A, status: "active" });
+  await seedApp(db, {
+    id: "prj_1",
+    slug: "alpha",
+    teamId: TEAM_A,
+    status: "active",
+  });
   await seedDeployment(db, { id: "dep_1", appId: "prj_1", status: "building" });
   await seedDeployment(db, { id: "dep_2", appId: "prj_1", status: "queued" });
   // Finished history never counts.
@@ -305,7 +350,9 @@ test("activeDeploymentsStream counts in-flight builds and only pushes on change"
   publishAppChanged("prj_1");
   assert.equal((await pending).value, 1);
 
-  await pg.exec(`update deployments set status = 'canceled' where id = 'dep_2';`);
+  await pg.exec(
+    `update deployments set status = 'canceled' where id = 'dep_2';`,
+  );
   const drained = gen.next();
   publishAppChanged("prj_1");
   assert.equal((await drained).value, 0);
@@ -337,7 +384,12 @@ test("a build inside a folder the member can't see is not counted", async () => 
     createdAt: "2026-01-01T00:00:00.000Z",
     updatedAt: "2026-01-01T00:00:00.000Z",
   });
-  await seedApp(db, { id: "prj_1", slug: "alpha", teamId: TEAM_A, status: "active" });
+  await seedApp(db, {
+    id: "prj_1",
+    slug: "alpha",
+    teamId: TEAM_A,
+    status: "active",
+  });
   await db
     .update(appsTable)
     .set({ folderId: "fld_private" })
@@ -346,6 +398,12 @@ test("a build inside a folder the member can't see is not counted", async () => 
 
   // A count is small, but it is still "something is happening in a folder you
   // are refused" — and clicking the chip would show an empty Deployments page.
-  assert.equal((await activeDeploymentsStream(TEAM_A, "u_outsider").next()).value, 0);
-  assert.equal((await activeDeploymentsStream(TEAM_A, "u_folder_owner").next()).value, 1);
+  assert.equal(
+    (await activeDeploymentsStream(TEAM_A, "u_outsider").next()).value,
+    0,
+  );
+  assert.equal(
+    (await activeDeploymentsStream(TEAM_A, "u_folder_owner").next()).value,
+    1,
+  );
 });

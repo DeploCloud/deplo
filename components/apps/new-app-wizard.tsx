@@ -35,7 +35,10 @@ import { FieldLabel } from "@/components/ui/info-tip";
 import { ComposeEditor } from "@/components/apps/compose-editor";
 import { ComposeLintSummary } from "@/components/apps/compose-lint-summary";
 import { ImageInput } from "@/components/apps/image-input";
-import { hasBlockingErrors, type LintDiagnostic } from "@/lib/deploy/compose-lint";
+import {
+  hasBlockingErrors,
+  type LintDiagnostic,
+} from "@/lib/deploy/compose-lint";
 import { Switch } from "@/components/ui/switch";
 import {
   Select,
@@ -46,14 +49,20 @@ import {
 } from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
 import { BuildConfigFields } from "@/components/apps/build-config-fields";
-import { FrameworkRow, FrameworkRowSkeleton } from "@/components/apps/framework-badge";
+import {
+  FrameworkRow,
+  FrameworkRowSkeleton,
+} from "@/components/apps/framework-badge";
 import { useRepoFramework } from "@/components/apps/use-repo-framework";
 import { buildConfigFor } from "@/lib/frameworks";
 import type { BuildConfig, DeploySource } from "@/lib/types";
 import { deploySourceEnumName } from "@/lib/types";
 import { gqlAction } from "@/lib/graphql-client";
 import { cn, serverLabel } from "@/lib/utils";
-import { GithubRepoPicker, type GithubSelection } from "@/components/apps/github-repo-picker";
+import {
+  GithubRepoPicker,
+  type GithubSelection,
+} from "@/components/apps/github-repo-picker";
 import {
   GitSourcePicker,
   type GitSourceValue,
@@ -108,9 +117,7 @@ export interface WizardPlacement {
   environmentId?: string | null;
 }
 
-function parseRepo(
-  url: string,
-): {
+function parseRepo(url: string): {
   repo: string;
   provider: "github" | "gitlab" | "bitbucket" | "git";
 } | null {
@@ -210,9 +217,9 @@ export function NewAppWizard({
   // non-template Compose source tab; env rows stay template-only.
   const [compose, setCompose] = React.useState(template?.compose ?? "");
   const [composeDiags, setComposeDiags] = React.useState<LintDiagnostic[]>([]);
-  const [envRows, setEnvRows] = React.useState<{ key: string; value: string }[]>(
-    template?.env ?? [],
-  );
+  const [envRows, setEnvRows] = React.useState<
+    { key: string; value: string }[]
+  >(template?.env ?? []);
 
   const usesGit = source === "github" || source === "git";
   // Build & output settings only apply when Deplo turns code into an image. A
@@ -242,7 +249,7 @@ export function NewAppWizard({
         : null;
 
   const { framework, detecting: detectingFramework } = useRepoFramework({
-    repo: buildsImage && !locked ? detectRepo?.repo ?? null : null,
+    repo: buildsImage && !locked ? (detectRepo?.repo ?? null) : null,
     url: detectRepo?.url,
     branch: detectRepo?.branch,
     installationId: detectRepo?.installationId,
@@ -405,9 +412,7 @@ export function NewAppWizard({
             // template carries its icon; editable later from app settings.
             logo: isTemplate ? template!.logo : null,
             compose: useCompose ? compose : null,
-            env: isTemplate
-              ? envRows.filter((e) => e.key.trim())
-              : undefined,
+            env: isTemplate ? envRows.filter((e) => e.key.trim()) : undefined,
             repo,
             build: {
               buildMethod: payloadBuild.buildMethod,
@@ -426,14 +431,20 @@ export function NewAppWizard({
             // routes to the first declared service (composeService/composePort);
             // every OTHER declared host becomes an extra Domain row at creation.
             composeService: templateCompose
-              ? template!.expose?.service ?? null
+              ? (template!.expose?.service ?? null)
               : null,
-            composePort: templateCompose ? template!.expose?.port ?? null : null,
+            composePort: templateCompose
+              ? (template!.expose?.port ?? null)
+              : null,
             extraDomains: templateCompose
               ? template!.exposes
                   .slice(1)
                   .filter((e) => e.host)
-                  .map((e) => ({ service: e.service, port: e.port, host: e.host! }))
+                  .map((e) => ({
+                    service: e.service,
+                    port: e.port,
+                    host: e.host!,
+                  }))
               : null,
             autoDomain: templateCompose ? template!.autoDomain : null,
             mounts: templateCompose ? template!.mounts : null,
@@ -530,7 +541,7 @@ export function NewAppWizard({
     ? template!.variantName
       ? `${template!.name} · ${template!.variantName}`
       : template!.name
-    : SOURCE_TABS.find((t) => t.id === source)?.label ?? source;
+    : (SOURCE_TABS.find((t) => t.id === source)?.label ?? source);
   const selectedServer = servers.find((s) => s.id === serverId);
   const serverSummary = selectedServer ? serverLabel(selectedServer) : "—";
   const domainSummary = template?.autoDomain ?? "Auto · HTTPS";
@@ -589,7 +600,9 @@ export function NewAppWizard({
                   onClick={() => setAdvanced((v) => !v)}
                   className="flex w-full cursor-pointer items-center justify-between rounded-md border border-border px-3 py-2 text-sm hover:bg-accent"
                 >
-                  <span className="font-medium">Build &amp; Output Settings</span>
+                  <span className="font-medium">
+                    Build &amp; Output Settings
+                  </span>
                   <ChevronDown
                     className={cn(
                       "size-4 transition-transform",
@@ -600,7 +613,10 @@ export function NewAppWizard({
 
                 {advanced && (
                   <div className="rounded-lg border border-border p-4">
-                    <BuildConfigFields build={build} onBuildChange={onBuildChange} />
+                    <BuildConfigFields
+                      build={build}
+                      onBuildChange={onBuildChange}
+                    />
                   </div>
                 )}
               </>
@@ -642,8 +658,8 @@ export function NewAppWizard({
               <div className="space-y-1.5">
                 <CardTitle>Template</CardTitle>
                 <CardDescription>
-                  Deplo provisions the template&apos;s container stack and exposes
-                  it through Traefik with automatic HTTPS.
+                  Deplo provisions the template&apos;s container stack and
+                  exposes it through Traefik with automatic HTTPS.
                 </CardDescription>
               </div>
               <Button
@@ -662,7 +678,11 @@ export function NewAppWizard({
                   // eslint-disable-next-line @next/next/no-img-element
                   <img
                     src={template!.logo}
-                    alt={template!.variantName ? `${template!.name} · ${template!.variantName}` : template!.name}
+                    alt={
+                      template!.variantName
+                        ? `${template!.name} · ${template!.variantName}`
+                        : template!.name
+                    }
                     className="size-full object-contain"
                   />
                 ) : (
@@ -736,7 +756,9 @@ export function NewAppWizard({
                   <div className="flex flex-col items-center gap-3 rounded-lg border border-dashed border-border p-6 text-center">
                     <GitHubIcon className="size-6 text-muted-foreground" />
                     <div className="space-y-1">
-                      <p className="text-sm font-medium">Connect GitHub to import a repo</p>
+                      <p className="text-sm font-medium">
+                        Connect GitHub to import a repo
+                      </p>
                       <p className="text-xs text-muted-foreground">
                         Deplo creates a GitHub App with only the permissions it
                         needs, then you pick which repositories it can access.
@@ -790,9 +812,7 @@ export function NewAppWizard({
                 </div>
               )}
 
-              {source === "upload" && (
-                <UploadInput onSelect={setUploadFile} />
-              )}
+              {source === "upload" && <UploadInput onSelect={setUploadFile} />}
 
               {source === "compose" && (
                 <div className="space-y-2">
@@ -868,8 +888,8 @@ export function NewAppWizard({
                 Docker Compose
               </CardTitle>
               <CardDescription>
-                The stack Deplo will deploy. Edit it directly to customise images,
-                ports, volumes or services before deploying.
+                The stack Deplo will deploy. Edit it directly to customise
+                images, ports, volumes or services before deploying.
               </CardDescription>
             </CardHeader>
             <CardContent className="space-y-2">
@@ -890,15 +910,18 @@ export function NewAppWizard({
               <div className="space-y-1.5">
                 <CardTitle>Environment variables</CardTitle>
                 <CardDescription>
-                  Referenced as <code className="font-mono">{"${VAR}"}</code> in the
-                  compose file. Generated secrets are prefilled; edit as needed.
+                  Referenced as <code className="font-mono">{"${VAR}"}</code> in
+                  the compose file. Generated secrets are prefilled; edit as
+                  needed.
                 </CardDescription>
               </div>
               <Button
                 type="button"
                 variant="outline"
                 size="sm"
-                onClick={() => setEnvRows((rows) => [...rows, { key: "", value: "" }])}
+                onClick={() =>
+                  setEnvRows((rows) => [...rows, { key: "", value: "" }])
+                }
               >
                 <Plus className="size-4" />
                 Add
@@ -952,7 +975,6 @@ export function NewAppWizard({
             </CardContent>
           </Card>
         )}
-
       </div>
 
       {/* Right rail: an at-a-glance summary + the primary deploy action,

@@ -54,11 +54,7 @@ export function EnvGraphic({ className }: { className?: string }) {
 
       {/* The equals. Muted because it is grammar, not content - it is the same
           on every row that will ever land here. */}
-      <g
-        className="stroke-border"
-        strokeWidth="2"
-        strokeLinecap="round"
-      >
+      <g className="stroke-border" strokeWidth="2" strokeLinecap="round">
         <line x1="48" y1="41" x2="55" y2="41" />
         <line x1="48" y1="49" x2="55" y2="49" />
       </g>

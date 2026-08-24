@@ -25,7 +25,9 @@ const hello = (caps: string[]): HelloResponse => ({
   hostArch: "amd64",
 });
 
-const req = (over: Partial<DockerCleanupRequest> = {}): DockerCleanupRequest => ({
+const req = (
+  over: Partial<DockerCleanupRequest> = {},
+): DockerCleanupRequest => ({
   scopes: [CleanupScope.CLEANUP_SCOPE_UNUSED_APP_IMAGES],
   dryRun: false,
   minAgeHours: 24,
@@ -72,7 +74,10 @@ test("a request with no map is passed through by either agent, unchanged", async
 });
 
 test("an agent that advertises no capabilities at all is treated as old", async () => {
-  const out = compensateKeepPerSlug(req({ keepPerSlug: { web: 6 } }), hello([]));
+  const out = compensateKeepPerSlug(
+    req({ keepPerSlug: { web: 6 } }),
+    hello([]),
+  );
   assert.equal(out.keepImagesPerApp, 6);
   assert.deepEqual(out.keepPerSlug, {});
 });

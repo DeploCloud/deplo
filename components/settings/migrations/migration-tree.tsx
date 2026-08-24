@@ -144,7 +144,9 @@ export function visible(
     for (const e of p.environments) {
       const wholeEnv = wholeProject || nameHit(e.name, terms);
       const path = `${p.name} ${e.name}`;
-      const services = e.services.filter((s) => wholeEnv || hit(s, path, terms));
+      const services = e.services.filter(
+        (s) => wholeEnv || hit(s, path, terms),
+      );
       if (services.length === 0 && !wholeEnv) continue;
       anyEnv = true;
       out.environments.add(e.sourceId);
@@ -189,7 +191,13 @@ export function MigrationTree({
   // Everything open on arrival: a migration is read top to bottom once, and a
   // tree that hides the thing you came to check is a tree you fight.
   const [open, setOpen] = React.useState<Set<string>>(
-    () => new Set(projects.flatMap((p) => [p.sourceId, ...p.environments.map((e) => e.sourceId)])),
+    () =>
+      new Set(
+        projects.flatMap((p) => [
+          p.sourceId,
+          ...p.environments.map((e) => e.sourceId),
+        ]),
+      ),
   );
 
   const [query, setQuery] = React.useState("");
@@ -246,7 +254,9 @@ export function MigrationTree({
   const runIds = all.map((x) => x.sourceId);
   const buildIds = all.filter((x) => x.buildsFromSource).map((x) => x.sourceId);
   const commonRun = shared(runIds.map((id) => placements[id]?.serverId));
-  const commonBuild = shared(buildIds.map((id) => placements[id]?.buildServerId));
+  const commonBuild = shared(
+    buildIds.map((id) => placements[id]?.buildServerId),
+  );
 
   return (
     <div className="space-y-3">
@@ -264,20 +274,20 @@ export function MigrationTree({
             screen wide enough to matter, and a search box that stops growing
             while its table keeps going reads as a leftover. */}
         <div className="relative min-w-[11rem] flex-1 basis-full sm:basis-auto">
-          <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
+          <Search className="pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2 text-muted-foreground" />
           <Input
             value={query}
             onChange={(e) => setQuery(e.target.value)}
             placeholder="Search apps and databases"
             aria-label="Search what will come over"
-            className="pl-9 pr-9"
+            className="pr-9 pl-9"
           />
           {query && (
             <button
               type="button"
               onClick={() => setQuery("")}
               aria-label="Clear the search"
-              className="absolute right-2 top-1/2 -translate-y-1/2 rounded p-1 text-muted-foreground transition-colors hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+              className="absolute top-1/2 right-2 -translate-y-1/2 rounded p-1 text-muted-foreground transition-colors hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"
             >
               <X className="size-3.5" />
             </button>
@@ -333,14 +343,18 @@ export function MigrationTree({
               {rows.map((p) => {
                 // Counted over the WHOLE project, never the filtered slice.
                 const pickable = importableOf(p);
-                const on = pickable.filter((s) => chosen.has(s.sourceId)).length;
+                const on = pickable.filter((s) =>
+                  chosen.has(s.sourceId),
+                ).length;
                 return (
                   <React.Fragment key={p.sourceId}>
                     <Row
                       id={`imp-p-${p.sourceId}`}
                       depth={0}
                       label={p.name}
-                      mark={<FolderTree className="size-3.5 text-muted-foreground" />}
+                      mark={
+                        <FolderTree className="size-3.5 text-muted-foreground" />
+                      }
                       meta={countLabel(on, pickable.length)}
                       expandable
                       expanded={isOpen(p.sourceId)}
@@ -349,11 +363,17 @@ export function MigrationTree({
                       disabled={pickable.length === 0}
                       onCheckedChange={(v) => set(pickable, v)}
                       showBuild={showBuild}
-                      status={p.exists ? <Badge variant="info">Already here</Badge> : null}
+                      status={
+                        p.exists ? (
+                          <Badge variant="info">Already here</Badge>
+                        ) : null
+                      }
                     />
                     {isOpen(p.sourceId) &&
                       p.environments
-                        .filter((e) => !shown || shown.environments.has(e.sourceId))
+                        .filter(
+                          (e) => !shown || shown.environments.has(e.sourceId),
+                        )
                         .map((e) => (
                           <EnvironmentRows
                             key={e.sourceId}
@@ -486,7 +506,9 @@ function ServiceRows({
   // What this database will publish, after whatever the review decided. Absent
   // means nobody decided anything, which is the source's own port.
   const port =
-    placement?.exposedPort !== undefined ? placement.exposedPort : service.exposedPort;
+    placement?.exposedPort !== undefined
+      ? placement.exposedPort
+      : service.exposedPort;
   return (
     <>
       <Row
@@ -608,11 +630,16 @@ function PortConflictRow({
             onCheckedChange={(v) =>
               onPlace({
                 exposedPort:
-                  v === true ? (service.exposedPort ?? conflict.takenPort) : null,
+                  v === true
+                    ? (service.exposedPort ?? conflict.takenPort)
+                    : null,
               })
             }
           />
-          <label htmlFor={toggleField} className="cursor-pointer text-foreground">
+          <label
+            htmlFor={toggleField}
+            className="cursor-pointer text-foreground"
+          >
             Expose publicly
           </label>
         </span>
@@ -883,10 +910,13 @@ function Row({
           onClick={onToggleExpand}
           aria-label={expanded ? `Collapse ${label}` : `Expand ${label}`}
           aria-expanded={expanded}
-          className="rounded text-muted-foreground transition-colors hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+          className="rounded text-muted-foreground transition-colors hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"
         >
           <ChevronRight
-            className={cn("size-4 transition-transform", expanded && "rotate-90")}
+            className={cn(
+              "size-4 transition-transform",
+              expanded && "rotate-90",
+            )}
           />
         </button>
       ) : (
@@ -905,7 +935,9 @@ function Row({
           !disabled && "cursor-pointer",
         )}
       >
-        <span className="flex size-4 shrink-0 items-center justify-center">{mark}</span>
+        <span className="flex size-4 shrink-0 items-center justify-center">
+          {mark}
+        </span>
         {/* Name over meta, not name beside meta. Side by side they competed for
             one shrinking box and the NAME lost - "storefront-web" came out as
             "st…" next to a hostname printed in full, which is exactly backwards
@@ -914,7 +946,10 @@ function Row({
             on the line under it. */}
         <span className="min-w-0 flex-1">
           <span
-            className={cn("block truncate text-sm", depth === 0 && "font-medium")}
+            className={cn(
+              "block truncate text-sm",
+              depth === 0 && "font-medium",
+            )}
           >
             {label}
           </span>

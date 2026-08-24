@@ -77,7 +77,10 @@ test("buildObjectKey nests under the target prefix, stamped + run-suffixed", () 
     ext: "dump.gz",
     at: new Date("2026-06-23T17:45:11.000Z"),
   });
-  assert.equal(key, "deplo/team_1/database/db_9/20260623T174511Z-brun_abc.dump.gz");
+  assert.equal(
+    key,
+    "deplo/team_1/database/db_9/20260623T174511Z-brun_abc.dump.gz",
+  );
   // The key must live under the retention prefix so a prefix-delete sweeps it.
   assert.ok(key.startsWith(targetPrefix("team_1", "database", "db_9")));
 });
@@ -104,7 +107,11 @@ const DAY = 24 * 60 * 60 * 1000;
 const NOW = new Date("2026-06-23T00:00:00.000Z");
 
 /** A success run started `daysAgo` before NOW. */
-const run = (id: string, daysAgo: number, over: Partial<BackupRun> = {}): BackupRun => ({
+const run = (
+  id: string,
+  daysAgo: number,
+  over: Partial<BackupRun> = {},
+): BackupRun => ({
   id,
   teamId: "t",
   backupId: null,
@@ -169,7 +176,11 @@ test("retention: FAILED runs do not evict a kept success", () => {
   // The regression this rule exists for: three bad nights in a row must not
   // silently delete the three good backups "keep the last 3" promised.
   const failed = (id: string, daysAgo: number) =>
-    run(id, daysAgo, { status: "failed" as const, objectKey: "", sizeBytes: 0 });
+    run(id, daysAgo, {
+      status: "failed" as const,
+      objectKey: "",
+      sizeBytes: 0,
+    });
   const runs = [
     failed("f1", 0),
     failed("f2", 1),
@@ -185,8 +196,17 @@ test("retention: FAILED runs do not evict a kept success", () => {
 
 test("retention: failed runs are bounded by the record cap, not by the count", () => {
   const failed = (id: string, daysAgo: number) =>
-    run(id, daysAgo, { status: "failed" as const, objectKey: "", sizeBytes: 0 });
-  const runs = [failed("f1", 0), failed("f2", 1), failed("f3", 2), run("ok", 3)];
+    run(id, daysAgo, {
+      status: "failed" as const,
+      objectKey: "",
+      sizeBytes: 0,
+    });
+  const runs = [
+    failed("f1", 0),
+    failed("f2", 1),
+    failed("f3", 2),
+    run("ok", 3),
+  ];
   // maxRecords 2 → newest-first, everything from index 2 on is dropped. The
   // success at index 3 is an ARTIFACT and answers to keepLast instead, so it
   // survives; only the record-only rows past the cap go.
@@ -223,8 +243,11 @@ test("retention: same-ms tiebreak is independent of input array order", () => {
 
 test("retention: the count walks newest-first by (startedAt, seq) under a tie", () => {
   const runs = [
-    sameMsRun("s1", 1), sameMsRun("s2", 2), sameMsRun("s3", 3),
-    sameMsRun("s4", 4), sameMsRun("s5", 5),
+    sameMsRun("s1", 1),
+    sameMsRun("s2", 2),
+    sameMsRun("s3", 3),
+    sameMsRun("s4", 4),
+    sameMsRun("s5", 5),
   ];
   // newest-first = s5,s4,s3,s2,s1; keeping 2 dooms the other three.
   const doomed = selectDoomedRuns(runs, opts(2));

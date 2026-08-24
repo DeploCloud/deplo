@@ -272,7 +272,11 @@ export async function ensureAutoDomain(
     // domain by hand. Only the hex IP label is rewritten — the words are kept,
     // so the host stays recognisably the same project's. Only auto domains are
     // touched, and never rewritten toward a loopback address.
-    if (primary.source === "auto" && isIpv4(opts.ip) && !isLoopbackIp(opts.ip)) {
+    if (
+      primary.source === "auto" &&
+      isIpv4(opts.ip) &&
+      !isLoopbackIp(opts.ip)
+    ) {
       const embedded = nipEmbeddedIp(primary.name);
       if (embedded && embedded !== opts.ip) {
         const fixed = rehostNip(primary.name, opts.ip);
@@ -297,7 +301,8 @@ export async function ensureAutoDomain(
   // at least a syntactically valid hostname; a garbage value is dropped and a
   // fresh nip.io host is generated instead of being persisted.
   const preferredOk =
-    !!preferred && (nipEmbeddedIp(preferred) != null || DOMAIN_RE.test(preferred));
+    !!preferred &&
+    (nipEmbeddedIp(preferred) != null || DOMAIN_RE.test(preferred));
   const name =
     preferredOk && !(await domainNameExists(preferred!))
       ? preferred!
@@ -329,7 +334,9 @@ export async function ensureAutoDomain(
     status,
     primary: true,
     redirectTo: null,
-    ssl: certProvider !== "none" && (status === "valid" || status === "cloudflare"),
+    ssl:
+      certProvider !== "none" &&
+      (status === "valid" || status === "cloudflare"),
     source: "auto",
     // Always born complete: the resolved container port (and, on a compose
     // stack, the service it routes to) so no auto domain is ever portless or
@@ -464,7 +471,9 @@ export async function addImportedDomains(
   const landed = new Map<string, string>(opts.seed);
   if (routes.length === 0) return landed;
   const existing = await loadDomainsForApp(appId);
-  const taken = new Set(existing.map((d) => `${d.name}\u0000${d.pathPrefix ?? ""}`));
+  const taken = new Set(
+    existing.map((d) => `${d.name}\u0000${d.pathPrefix ?? ""}`),
+  );
 
   for (const route of routes) {
     // One mint per source host; every later row on that host joins it.
@@ -712,7 +721,10 @@ export async function addDomain(
   // The hostname must also not already belong to another team, whatever the path.
   await assertHostnameNotAnotherTeams(clean, membership.teamId, null);
 
-  await assertTeamLetsencryptQuota(membership.teamId, config.certProvider ?? "none");
+  await assertTeamLetsencryptQuota(
+    membership.teamId,
+    config.certProvider ?? "none",
+  );
 
   const service = resolveApp(config.service, project, isCompose);
   // On a compose stack the port is required (the chosen service's container
@@ -734,7 +746,8 @@ export async function addDomain(
   // out of `routableRoutes` (which only routes `valid`/`cloudflare`) and the path
   // silently never routes until the user hunts down the Verify button.
   const sibling = existing.find(
-    (d) => d.name === clean && (d.status === "valid" || d.status === "cloudflare"),
+    (d) =>
+      d.name === clean && (d.status === "valid" || d.status === "cloudflare"),
   );
   // No verified sibling ⇒ check DNS RIGHT NOW instead of parking the row at
   // `pending` until someone finds the Verify button: a host whose record is
@@ -744,15 +757,17 @@ export async function addDomain(
   // yet lands on `pending` (no record) or `misconfigured` (wrong address) and
   // the domains page keeps re-checking it automatically.
   const status =
-    sibling?.status ??
-    (await checkDomainDns(clean, await appServerIp(appId)));
+    sibling?.status ?? (await checkDomainDns(clean, await appServerIp(appId)));
   // A host the check found PROXIED is served over HTTPS by Cloudflare, so it is
   // born with the `cloudflare` provider instead of the cert-less default — the
   // user never has to open Advanced settings to match what Cloudflare already
   // does. An explicit `letsencrypt` (or a pre-existing sibling row's provider,
   // which the caller passes back in) is left exactly as asked; see
   // certProviderForDns for why this only ever fires out of `none`.
-  const certProvider = certProviderForDns(status, config.certProvider ?? "none");
+  const certProvider = certProviderForDns(
+    status,
+    config.certProvider ?? "none",
+  );
   const domain: Domain = {
     id: newId("dom"),
     appId,
@@ -838,7 +853,10 @@ async function assertTeamLetsencryptQuota(
         ),
       ),
   ]);
-  assertLetsencryptQuota((domains[0]?.n ?? 0) + (previews[0]?.n ?? 0), provider);
+  assertLetsencryptQuota(
+    (domains[0]?.n ?? 0) + (previews[0]?.n ?? 0),
+    provider,
+  );
 }
 
 /** Normalise a router path prefix to its canonical stored form: trim, strip a
@@ -873,9 +891,12 @@ export function normalizePath(input?: string | null): string {
 export function composeServiceNames(compose?: string | null): string[] {
   if (!compose || !compose.trim()) return [];
   try {
-    const doc = yaml.load(compose) as { services?: Record<string, unknown> } | undefined;
+    const doc = yaml.load(compose) as
+      { services?: Record<string, unknown> } | undefined;
     const svc = doc?.services;
-    return svc && typeof svc === "object" && !Array.isArray(svc) ? Object.keys(svc) : [];
+    return svc && typeof svc === "object" && !Array.isArray(svc)
+      ? Object.keys(svc)
+      : [];
   } catch {
     return [];
   }
@@ -976,7 +997,10 @@ export async function updateDomain(
   const user = (await getCurrentUser())!;
   const current = await loadDomain(id);
   if (!current) throw new Error("Not found");
-  const { membership } = await requireAppCapability(current.appId, "manage_domains");
+  const { membership } = await requireAppCapability(
+    current.appId,
+    "manage_domains",
+  );
   const project = await loadAppGraph(current.appId);
   if (!project || project.teamId !== membership.teamId)
     throw new Error("App not found");
@@ -1000,14 +1024,15 @@ export async function updateDomain(
   const nextPath =
     patch.pathPrefix !== undefined
       ? normalizePath(patch.pathPrefix)
-      : current.pathPrefix ?? "";
+      : (current.pathPrefix ?? "");
   const nextApp =
     patch.service !== undefined
       ? resolveApp(patch.service, project, isCompose)
-      : current.service ?? null;
+      : (current.service ?? null);
   // On a compose stack the resulting domain must name a service and a port; the
   // Edit dialog always sends both, this guards a direct/legacy call.
-  const nextPort = patch.port !== undefined ? patch.port : current.port ?? null;
+  const nextPort =
+    patch.port !== undefined ? patch.port : (current.port ?? null);
   if (isCompose) {
     if (!nextApp) throw new Error("Select the container this domain routes to");
     if (nextPort == null) throw new Error("Container port is required");
@@ -1045,12 +1070,13 @@ export async function updateDomain(
     const mws = normalizeMiddlewares(patch.middlewares);
     next.middlewares = mws.length ? mws : undefined;
   }
-  if (patch.pathPrefix !== undefined)
-    next.pathPrefix = nextPath || undefined;
+  if (patch.pathPrefix !== undefined) next.pathPrefix = nextPath || undefined;
   // Strip needs a path; recompute against the path now in effect.
   if (patch.stripPrefix !== undefined || patch.pathPrefix !== undefined) {
-    const effPath = patch.pathPrefix !== undefined ? nextPath : current.pathPrefix ?? "";
-    const strip = Boolean(effPath) && (patch.stripPrefix ?? current.stripPrefix ?? false);
+    const effPath =
+      patch.pathPrefix !== undefined ? nextPath : (current.pathPrefix ?? "");
+    const strip =
+      Boolean(effPath) && (patch.stripPrefix ?? current.stripPrefix ?? false);
     next.stripPrefix = strip ? true : undefined;
   }
   if (patch.service !== undefined) next.service = nextApp ?? undefined;
@@ -1068,7 +1094,10 @@ export async function updateDomain(
   // itself on a valid one. Status is a fact about the hostname, not about who
   // first put it there.
   if (renamed) {
-    next.status = await checkDomainDns(nextName, await appServerIp(current.appId));
+    next.status = await checkDomainDns(
+      nextName,
+      await appServerIp(current.appId),
+    );
     next.ssl = next.status === "valid" || next.status === "cloudflare";
     // The rename's check can discover the NEW host is proxied, so it gets the
     // same automatic Cloudflare provider an add would have given it — UNLESS this
@@ -1079,15 +1108,22 @@ export async function updateDomain(
     const chosen =
       patch.certProvider !== undefined &&
       patch.certProvider !== current.certProvider;
-    if (!chosen) next.certProvider = certProviderForDns(next.status, next.certProvider);
+    if (!chosen)
+      next.certProvider = certProviderForDns(next.status, next.certProvider);
   }
 
   await getDb().transaction(async (tx) => {
-    await tx.update(domainsTable).set(domainToRow(next)).where(eq(domainsTable.id, id));
+    await tx
+      .update(domainsTable)
+      .set(domainToRow(next))
+      .where(eq(domainsTable.id, id));
     // Whole-set replace of the ordered middleware child rows.
-    await tx.delete(domainMiddlewaresTable).where(eq(domainMiddlewaresTable.domainId, id));
+    await tx
+      .delete(domainMiddlewaresTable)
+      .where(eq(domainMiddlewaresTable.domainId, id));
     const mwRows = domainMiddlewaresToRows(next);
-    if (mwRows.length > 0) await tx.insert(domainMiddlewaresTable).values(mwRows);
+    if (mwRows.length > 0)
+      await tx.insert(domainMiddlewaresTable).values(mwRows);
   });
   const dom = next;
   // A rename moves the hostname every dependent redirect points AT, so the
@@ -1244,7 +1280,9 @@ async function movePrimaryToServingHost(
     await tx
       .update(domainsTable)
       .set({ isPrimary: false })
-      .where(and(eq(domainsTable.appId, appId), eq(domainsTable.isPrimary, true)));
+      .where(
+        and(eq(domainsTable.appId, appId), eq(domainsTable.isPrimary, true)),
+      );
     await tx
       .update(domainsTable)
       .set({ isPrimary: true })
@@ -1285,7 +1323,10 @@ async function repointRedirects(
       await writeRedirectTo(dep.id, newName);
       continue;
     }
-    const status = await checkDomainDns(nextCounterpart!, await appServerIp(appId));
+    const status = await checkDomainDns(
+      nextCounterpart!,
+      await appServerIp(appId),
+    );
     await getDb()
       .update(domainsTable)
       .set({
@@ -1303,7 +1344,10 @@ async function repointRedirects(
 /** Point a domain at another hostname (or clear the pointer). The single writer
  * of `redirect_to`, so every path through the pairing above stays one statement
  * and one meaning: "this hostname answers 301 to that one". */
-async function writeRedirectTo(id: string, target: string | null): Promise<void> {
+async function writeRedirectTo(
+  id: string,
+  target: string | null,
+): Promise<void> {
   await getDb()
     .update(domainsTable)
     .set({ redirectTo: target })
@@ -1332,7 +1376,11 @@ async function deleteDomainRow(id: string): Promise<void> {
 async function insertPairedDomain(
   from: Domain,
   name: string,
-  opts: { redirectTo: string | null; source: "redirect" | "custom"; teamId: string },
+  opts: {
+    redirectTo: string | null;
+    source: "redirect" | "custom";
+    teamId: string;
+  },
 ): Promise<void> {
   if (await domainNameExists(name))
     throw new Error(
@@ -1350,7 +1398,9 @@ async function insertPairedDomain(
     status,
     primary: false,
     redirectTo: opts.redirectTo,
-    ssl: certProvider !== "none" && (status === "valid" || status === "cloudflare"),
+    ssl:
+      certProvider !== "none" &&
+      (status === "valid" || status === "cloudflare"),
     source: opts.source,
     port: from.port ?? null,
     ...(from.entrypoint ? { entrypoint: from.entrypoint } : {}),
@@ -1479,7 +1529,10 @@ export async function sweepDomainDns(): Promise<void> {
 
   for (const row of rows) {
     try {
-      const status = await checkDomainDns(row.name, await appServerIp(row.appId));
+      const status = await checkDomainDns(
+        row.name,
+        await appServerIp(row.appId),
+      );
       if (status === "valid") continue;
       // Write the new status too, so the page and the alert agree.
       await db
@@ -1643,9 +1696,7 @@ export function defaultRoute(
  * the project's default port". Same `valid`/`cloudflare` filtering rationale as
  * {@link routableDomains}.
  */
-export async function routableRoutes(
-  appId: string,
-): Promise<RoutableDomain[]> {
+export async function routableRoutes(appId: string): Promise<RoutableDomain[]> {
   const all = await loadDomainsForApp(appId);
   return (
     all
@@ -1823,7 +1874,9 @@ export async function syncProductionUrl(appId: string): Promise<void> {
     .set({
       // Scheme follows the primary's certificate provider: a cert-less (`none`)
       // domain is served plain-HTTP, so its canonical URL must say so.
-      productionUrl: primary ? `${domainScheme(primary)}://${primary.name}` : null,
+      productionUrl: primary
+        ? `${domainScheme(primary)}://${primary.name}`
+        : null,
       updatedAt: nowIso(),
     })
     .where(eq(appsTable.id, appId));
@@ -1877,8 +1930,11 @@ export function successorPrimary(
   return [...remaining].sort((a, b) => {
     const ra = rank(a);
     const rb = rank(b);
-    for (let i = 0; i < ra.length; i++) if (ra[i] !== rb[i]) return rb[i] - ra[i];
-    return a.createdAt.localeCompare(b.createdAt) || a.name.localeCompare(b.name);
+    for (let i = 0; i < ra.length; i++)
+      if (ra[i] !== rb[i]) return rb[i] - ra[i];
+    return (
+      a.createdAt.localeCompare(b.createdAt) || a.name.localeCompare(b.name)
+    );
   })[0]!;
 }
 

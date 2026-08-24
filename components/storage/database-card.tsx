@@ -81,7 +81,7 @@ export function DatabaseCard({
       <div
         aria-busy
         title="This is still being brought over by a migration"
-        className="pointer-events-none animate-pulse select-none opacity-70"
+        className="pointer-events-none animate-pulse opacity-70 select-none"
       >
         <DatabaseLiveStatusProvider
           initial={{ id: db.id, name: db.name, status: db.status }}
@@ -199,7 +199,13 @@ function DatabaseCardGrid({
   );
 }
 
-function DatabaseCardList({ db, serverName, dragHandle, dragActive, pollMs }: Inner) {
+function DatabaseCardList({
+  db,
+  serverName,
+  dragHandle,
+  dragActive,
+  pollMs,
+}: Inner) {
   const href = `/storage/databases/${db.id}`;
   return (
     <Card className="group relative flex items-center gap-4 p-4 transition-colors hover:border-foreground/20">
@@ -337,7 +343,7 @@ function CardActions({
       {/* Drag handle is out of the flow at rest (display:none) so it leaves no
           empty gap; it slides + fades in on hover / keyboard focus. */}
       {dragHandle && (
-        <span className="hidden items-center animate-in fade-in-0 slide-in-from-right-2 duration-200 group-hover:flex focus-within:flex">
+        <span className="hidden animate-in items-center duration-200 fade-in-0 slide-in-from-right-2 group-hover:flex focus-within:flex">
           {dragHandle}
         </span>
       )}
@@ -360,7 +366,11 @@ function CardActions({
               </Link>
             </DropdownMenuItem>
             <DropdownMenuItem onSelect={toggleRunning} disabled={pending}>
-              {running ? <Square className="size-4" /> : <Play className="size-4" />}
+              {running ? (
+                <Square className="size-4" />
+              ) : (
+                <Play className="size-4" />
+              )}
               {running ? "Stop" : "Start"}
             </DropdownMenuItem>
             <DropdownMenuSeparator />

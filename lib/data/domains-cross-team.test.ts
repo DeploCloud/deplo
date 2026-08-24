@@ -103,9 +103,7 @@ test("another team cannot attach a path route to a hostname this team owns", asy
   assert.equal(own.status, "valid");
 
   await assert.rejects(
-    asAttacker(() =>
-      addDomain("prj_attacker", HOST, { pathPrefix: "/login" }),
-    ),
+    asAttacker(() => addDomain("prj_attacker", HOST, { pathPrefix: "/login" })),
     /already routed by another team/,
   );
 

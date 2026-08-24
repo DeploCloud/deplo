@@ -348,14 +348,21 @@ test("another team's channel is out of reach, and its row survives", async () =>
 });
 
 test("parseChannelInput survives junk, and refuses an unknown kind", () => {
-  const parsed = parseChannelInput({ kind: "ntfy", alerts: 7, smtpPort: "nope" });
+  const parsed = parseChannelInput({
+    kind: "ntfy",
+    alerts: 7,
+    smtpPort: "nope",
+  });
   assert.deepEqual(parsed.alerts, [], "unknown or absent keys drop out");
   assert.equal(parsed.url, "https://ntfy.sh", "ntfy's one meaningful default");
   assert.equal(parsed.smtpPort, 587);
   assert.equal(parsed.enabled, false);
   // A save is for ONE channel, so coercing an unknown kind would create a
   // channel nobody asked for.
-  assert.throws(() => parseChannelInput({ kind: "myspace" }), /Unknown channel/);
+  assert.throws(
+    () => parseChannelInput({ kind: "myspace" }),
+    /Unknown channel/,
+  );
 });
 
 test("channelsForAlert resolves without any request identity", async () => {

@@ -67,7 +67,9 @@ beforeEach(async () => {
     membership_capabilities, memberships, users, teams
     restart identity cascade;`);
   await seedIdentity(db, {
-    users: [{ id: USER_1, teamId: TEAM_A, role: "owner", isInstanceAdmin: true }],
+    users: [
+      { id: USER_1, teamId: TEAM_A, role: "owner", isInstanceAdmin: true },
+    ],
   });
   await seedServer(db);
 });
@@ -115,19 +117,31 @@ function fakeAgent(opts: {
 }
 
 const queued = () =>
-  db.select().from(pendingTeardownsTable).orderBy(pendingTeardownsTable.deployKey);
+  db
+    .select()
+    .from(pendingTeardownsTable)
+    .orderBy(pendingTeardownsTable.deployKey);
 
 const messages = async () =>
-  (await db.select({ m: activitiesTable.message }).from(activitiesTable)).map((r) => r.m);
+  (await db.select({ m: activitiesTable.message }).from(activitiesTable)).map(
+    (r) => r.m,
+  );
 
 test("the backoff ladder is 1m, 5m, 15m, 1h, 6h, 24h, 24h, then it gives up", () => {
   const minutes = (n: number) => {
     const r = nextTeardownAttempt(n, T0);
     assert.equal(r.giveUp, false);
-    return (new Date((r as { at: string }).at).getTime() - T0.getTime()) / 60_000;
+    return (
+      (new Date((r as { at: string }).at).getTime() - T0.getTime()) / 60_000
+    );
   };
-  assert.deepEqual([1, 2, 3, 4, 5, 6, 7].map(minutes), [1, 5, 15, 60, 360, 1440, 1440]);
-  assert.deepEqual(nextTeardownAttempt(MAX_TEARDOWN_ATTEMPTS, T0), { giveUp: true });
+  assert.deepEqual(
+    [1, 2, 3, 4, 5, 6, 7].map(minutes),
+    [1, 5, 15, 60, 360, 1440, 1440],
+  );
+  assert.deepEqual(nextTeardownAttempt(MAX_TEARDOWN_ATTEMPTS, T0), {
+    giveUp: true,
+  });
 });
 
 test("a delete an unreachable host cannot confirm is queued, not forgotten", async () => {
@@ -234,9 +248,15 @@ test("a host with nothing of ours left is never asked to destroy anything", asyn
   ]);
   const calls = fakeAgent({ containers: [] });
   await drainTeardowns(LATER());
-  assert.equal(calls.destroy, 0, "no destructive call against somebody else's stack");
+  assert.equal(
+    calls.destroy,
+    0,
+    "no destructive call against somebody else's stack",
+  );
   assert.equal((await queued()).length, 0, "and the intent is settled");
-  assert.ok((await messages()).some((m) => /Finished the teardown of blink/.test(m)));
+  assert.ok(
+    (await messages()).some((m) => /Finished the teardown of blink/.test(m)),
+  );
 });
 
 test("a container that survives the teardown keeps the row and is stopped", async () => {
@@ -374,7 +394,9 @@ test("removing a server drops its queued teardowns and says how many", async () 
     ["other"],
   );
   assert.ok(
-    (await messages()).some((m) => /1 pending teardown on srv_1 was dropped/.test(m)),
+    (await messages()).some((m) =>
+      /1 pending teardown on srv_1 was dropped/.test(m),
+    ),
   );
 });
 

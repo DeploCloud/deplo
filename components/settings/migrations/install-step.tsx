@@ -2,7 +2,12 @@
 
 import * as React from "react";
 import { toast } from "sonner";
-import { Check, Loader2, Server as ServerIcon, TriangleAlert } from "lucide-react";
+import {
+  Check,
+  Loader2,
+  Server as ServerIcon,
+  TriangleAlert,
+} from "lucide-react";
 
 import { gqlAction } from "@/lib/graphql-client";
 import { CommandLine } from "@/components/shared/code-block";
@@ -160,7 +165,9 @@ export function InstallStep({
   onDone: () => void;
 }) {
   const [failed, setFailed] = React.useState<Record<string, string>>({});
-  const [unreachable, setUnreachable] = React.useState<Record<string, Unreachable>>({});
+  const [unreachable, setUnreachable] = React.useState<
+    Record<string, Unreachable>
+  >({});
   const [draft, setDraft] = React.useState<Record<string, string>>({});
   const [busy, setBusy] = React.useState<Record<string, boolean>>({});
 
@@ -222,7 +229,9 @@ export function InstallStep({
           attempted.current.delete(m.sourceId);
           setFailed((p) => ({
             ...p,
-            [m.sourceId]: res.ok ? "Deplo could not register that machine." : res.error,
+            [m.sourceId]: res.ok
+              ? "Deplo could not register that machine."
+              : res.error,
           }));
           continue;
         }
@@ -340,7 +349,10 @@ export function InstallStep({
     runBusy(sourceId, async () => {
       const address = (draft[sourceId] ?? "").trim();
       if (!address) return;
-      const res = await gqlAction<{ updateServerAddress: string | null }, string | null>(
+      const res = await gqlAction<
+        { updateServerAddress: string | null },
+        string | null
+      >(
         CHANGE_ADDRESS,
         { id: p.serverId, address },
         (d) => d.updateServerAddress,
@@ -371,7 +383,9 @@ export function InstallStep({
 
   return (
     <StepShell
-      title={settled ? "Every machine is connected" : "Run one line on each machine"}
+      title={
+        settled ? "Every machine is connected" : "Run one line on each machine"
+      }
       lead={
         settled
           ? "Deplo can read the disks it needs. Carrying on."
@@ -431,7 +445,9 @@ export function InstallStep({
               {p && !bad && (
                 <>
                   <CommandLine command={p.installCommand} truncate />
-                  <p className="text-xs text-muted-foreground">{AGENT_PORT_NOTICE}</p>
+                  <p className="text-xs text-muted-foreground">
+                    {AGENT_PORT_NOTICE}
+                  </p>
                 </>
               )}
 
@@ -451,7 +467,10 @@ export function InstallStep({
                         <Input
                           value={draft[m.sourceId] ?? m.ipAddress ?? ""}
                           onChange={(e) =>
-                            setDraft((prev) => ({ ...prev, [m.sourceId]: e.target.value }))
+                            setDraft((prev) => ({
+                              ...prev,
+                              [m.sourceId]: e.target.value,
+                            }))
                           }
                           placeholder="The machine's own address"
                           className="w-56"
@@ -466,7 +485,11 @@ export function InstallStep({
                           disabled={working}
                           onClick={() => void checkAgain(m.sourceId, p)}
                         >
-                          {working ? <Loader2 className="size-4 animate-spin" /> : "Check again"}
+                          {working ? (
+                            <Loader2 className="size-4 animate-spin" />
+                          ) : (
+                            "Check again"
+                          )}
                         </Button>
                       </form>
                     ) : (
@@ -481,7 +504,11 @@ export function InstallStep({
                       disabled={working}
                       onClick={() => void checkAgain(m.sourceId, p)}
                     >
-                      {working ? <Loader2 className="size-4 animate-spin" /> : "Check again"}
+                      {working ? (
+                        <Loader2 className="size-4 animate-spin" />
+                      ) : (
+                        "Check again"
+                      )}
                     </Button>
                   )}
                 </div>

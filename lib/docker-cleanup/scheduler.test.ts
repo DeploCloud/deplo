@@ -63,7 +63,9 @@ beforeEach(async () => {
   await scheduler.__stopDockerCleanupScheduler();
   await pg.exec(`${TRUNCATE_CLEANUP}
     truncate table activities, servers, users, teams restart identity cascade;`);
-  await seedIdentity(db, { users: [{ id: USER_1, teamId: TEAM_A, role: "owner" }] });
+  await seedIdentity(db, {
+    users: [{ id: USER_1, teamId: TEAM_A, role: "owner" }],
+  });
   await seedServer(db, SERVER_1);
   await seedServer(db, SERVER_2);
   lease.__resetLocalLeases();
@@ -109,8 +111,16 @@ test("an excluded server is never swept by the schedule", async () => {
 
   await tick(NOW);
 
-  assert.equal((await runsFor(SERVER_1)).length, 0, "the opted-out host sat the sweep out");
-  assert.equal((await runsFor(SERVER_2)).length, 1, "its neighbour still swept");
+  assert.equal(
+    (await runsFor(SERVER_1)).length,
+    0,
+    "the opted-out host sat the sweep out",
+  );
+  assert.equal(
+    (await runsFor(SERVER_2)).length,
+    1,
+    "its neighbour still swept",
+  );
 });
 
 test("dedup: two ticks in the same minute sweep a server only once", async () => {
@@ -158,7 +168,11 @@ test("catch-up: a server overdue by 26h sweeps even when the cron does not match
   await tick(NOW);
 
   const s1 = await runsFor(SERVER_1);
-  assert.equal(s1.length, 2, "the overdue host ran LATE rather than not at all");
+  assert.equal(
+    s1.length,
+    2,
+    "the overdue host ran LATE rather than not at all",
+  );
   assert.equal(
     s1.filter((r) => r.trigger === "scheduled").length,
     1,
@@ -189,7 +203,11 @@ test("a server with a run already in flight does not stack a second one", async 
   assert.equal(s1.length, 1, "no second run stacked on the busy host");
   assert.equal(s1[0]!.id, "dcr_inflight");
   assert.equal(s1[0]!.status, "running", "and the in-flight run is left alone");
-  assert.equal((await runsFor(SERVER_2)).length, 1, "the idle host still swept");
+  assert.equal(
+    (await runsFor(SERVER_2)).length,
+    1,
+    "the idle host still swept",
+  );
 });
 
 test("the cleanup lease and the backup lease are independent", async () => {
@@ -198,7 +216,11 @@ test("the cleanup lease and the backup lease are independent", async () => {
   // Another live instance holds the CLEANUP lease → this tick must do nothing, or a
   // horizontally-scaled deploy would run `docker rmi` N times on the same host.
   assert.equal(
-    await lease.acquireLease(lease.DOCKER_CLEANUP_LEASE, "another-instance", NOW),
+    await lease.acquireLease(
+      lease.DOCKER_CLEANUP_LEASE,
+      "another-instance",
+      NOW,
+    ),
     true,
   );
 
@@ -213,7 +235,11 @@ test("the cleanup lease and the backup lease are independent", async () => {
   // separate rows in `scheduler_lease`, so a long nightly dump must not block cleanup.
   await lease.releaseLease(lease.DOCKER_CLEANUP_LEASE, "another-instance");
   assert.equal(
-    await lease.acquireLease(lease.BACKUP_SCHEDULER_LEASE, "another-instance", NOW),
+    await lease.acquireLease(
+      lease.BACKUP_SCHEDULER_LEASE,
+      "another-instance",
+      NOW,
+    ),
     true,
   );
 

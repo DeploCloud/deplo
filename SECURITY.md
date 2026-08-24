@@ -18,11 +18,11 @@ you know to reproduce it. A working proof of concept is welcome but never requir
 
 ## What to expect
 
-| | |
-| --- | --- |
-| **Acknowledgement** | within 72 hours |
-| **Assessment and severity** | within 7 days |
-| **Coordinated disclosure** | within 90 days of the report, or as soon as a fix ships |
+|                             |                                                         |
+| --------------------------- | ------------------------------------------------------- |
+| **Acknowledgement**         | within 72 hours                                         |
+| **Assessment and severity** | within 7 days                                           |
+| **Coordinated disclosure**  | within 90 days of the report, or as soon as a fix ships |
 
 If a report turns out not to be a vulnerability, you get that answer with the reasoning,
 not silence.
@@ -36,8 +36,8 @@ Only the **latest minor release** receives security fixes. deplo checks for newe
 and tells you in the dashboard, so staying current is the supported path.
 
 | Version | Supported |
-| --- | :-: |
-| 0.x | yes |
+| ------- | :-------: |
+| 0.x     |    yes    |
 
 ## Scope
 

@@ -65,7 +65,10 @@ export async function POST(request: NextRequest) {
     // been touched, so this is still an ordinary JSON error with a status that
     // means what it says.
     const message = e instanceof Error ? e.message : String(e);
-    return Response.json({ error: message }, { status: statusForBackupError(message) });
+    return Response.json(
+      { error: message },
+      { status: statusForBackupError(message) },
+    );
   }
 
   const events = restore.events;
@@ -94,7 +97,10 @@ export async function POST(request: NextRequest) {
         // line rather than a status. The data layer settles the app's status and
         // records the failure on its own way out.
         controller.enqueue(
-          line({ ok: false, error: e instanceof Error ? e.message : String(e) }),
+          line({
+            ok: false,
+            error: e instanceof Error ? e.message : String(e),
+          }),
         );
         controller.close();
       }

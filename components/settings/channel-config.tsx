@@ -128,7 +128,9 @@ function trimSecret(url: string): string {
   try {
     const u = new URL(url);
     const parts = u.pathname.split("/").filter(Boolean);
-    return u.host + (parts.length > 1 ? `/${parts.slice(0, -1).join("/")}` : "");
+    return (
+      u.host + (parts.length > 1 ? `/${parts.slice(0, -1).join("/")}` : "")
+    );
   } catch {
     return "";
   }
@@ -188,7 +190,10 @@ export function ChannelConfig(props: ChannelConfigProps) {
             borderColor: `color-mix(in oklab, ${brand.bg} 35%, transparent)`,
           }}
         >
-          <Bell className="mt-0.5 size-4 shrink-0" style={{ color: brand.bg }} />
+          <Bell
+            className="mt-0.5 size-4 shrink-0"
+            style={{ color: brand.bg }}
+          />
           <p className="text-sm leading-snug">
             Nothing to configure. Turning this on asks this browser for
             permission, once per device.
@@ -262,7 +267,12 @@ export function ChannelConfig(props: ChannelConfigProps) {
                   className="font-mono text-sm"
                 />
               </Field>
-              {text("Username", i.smtpUser, (v) => onPatch({ smtpUser: v }), "")}
+              {text(
+                "Username",
+                i.smtpUser,
+                (v) => onPatch({ smtpUser: v }),
+                "",
+              )}
               {secret("Password", "secret", i.secretSet, "Your SMTP password")}
             </>
           ) : (
@@ -330,8 +340,18 @@ export function ChannelConfig(props: ChannelConfigProps) {
     case "ntfy":
       return (
         <div className="grid gap-3 sm:grid-cols-2">
-          {text("Server URL", i.url, (v) => onPatch({ url: v }), "https://ntfy.sh")}
-          {text("Topic", i.target, (v) => onPatch({ target: v }), "deplo-alerts")}
+          {text(
+            "Server URL",
+            i.url,
+            (v) => onPatch({ url: v }),
+            "https://ntfy.sh",
+          )}
+          {text(
+            "Topic",
+            i.target,
+            (v) => onPatch({ target: v }),
+            "deplo-alerts",
+          )}
           {secret(
             "Access token",
             "secret",

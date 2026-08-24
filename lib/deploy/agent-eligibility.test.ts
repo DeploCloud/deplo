@@ -59,7 +59,10 @@ test("buildSpecFor flattens the build config", () => {
   b.buildCommand = "npm run build";
   b.startCommand = "node server.js";
   b.runtimeVersion = "20";
-  b.methodSettings = { nixpacksPublishDirectory: "dist", staticSinglePageApp: true };
+  b.methodSettings = {
+    nixpacksPublishDirectory: "dist",
+    staticSinglePageApp: true,
+  };
   const spec = buildSpecFor(b);
   assert.equal(spec.method, "nixpacks");
   assert.equal(spec.port, 3000);

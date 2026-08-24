@@ -3,9 +3,7 @@ import "server-only";
 import { and, asc, eq } from "drizzle-orm";
 
 import { getDb } from "../db/client";
-import {
-  appBasicAuthUsers as basicAuthTable,
-} from "../db/schema/control-plane";
+import { appBasicAuthUsers as basicAuthTable } from "../db/schema/control-plane";
 import { getCurrentUser } from "../auth";
 import { newId, nowIso } from "../ids";
 import { recordActivity } from "./activity";
@@ -115,7 +113,10 @@ function assemble(row: typeof basicAuthTable.$inferSelect): BasicAuthUser {
  * with what the next list render shows.
  */
 async function withAuthors(u: BasicAuthUser): Promise<BasicAuthUserDTO> {
-  const authors = await loadUserIdentities([u.createdByUserId, u.updatedByUserId]);
+  const authors = await loadUserIdentities([
+    u.createdByUserId,
+    u.updatedByUserId,
+  ]);
   return toDTO(u, authors);
 }
 
@@ -220,10 +221,7 @@ export async function addBasicAuthUser(
     .select({ id: basicAuthTable.id })
     .from(basicAuthTable)
     .where(
-      and(
-        eq(basicAuthTable.appId, appId),
-        eq(basicAuthTable.username, name),
-      ),
+      and(eq(basicAuthTable.appId, appId), eq(basicAuthTable.username, name)),
     )
     .limit(1);
   if (dup.length > 0) throw new Error("A user with that name already exists");

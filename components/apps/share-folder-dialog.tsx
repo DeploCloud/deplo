@@ -161,7 +161,11 @@ export function ShareFolderDialog({
         const res = await gqlAction<
           { folderShareCandidates: ShareCandidate[] },
           ShareCandidate[]
-        >(CANDIDATES_QUERY, { folderId, query: q }, (d) => d.folderShareCandidates);
+        >(
+          CANDIDATES_QUERY,
+          { folderId, query: q },
+          (d) => d.folderShareCandidates,
+        );
         if (!cancelled) {
           setCandidates(res.ok && res.data ? res.data : []);
           setSearching(false);
@@ -229,7 +233,10 @@ export function ShareFolderDialog({
     ]);
     resetAddFlow();
     startTransition(async () => {
-      const res = await gqlAction<{ setFolderGrant: FolderGrant[] }, FolderGrant[]>(
+      const res = await gqlAction<
+        { setFolderGrant: FolderGrant[] },
+        FolderGrant[]
+      >(
         `mutation($folderId: ID!, $userId: ID!, $capabilities: [String!]!) {
           setFolderGrant(folderId: $folderId, userId: $userId, capabilities: $capabilities) {
             folderId
@@ -386,7 +393,7 @@ export function ShareFolderDialog({
               <>
                 <Label>Add someone</Label>
                 <div className="relative">
-                  <Search className="absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
+                  <Search className="absolute top-1/2 left-3 size-4 -translate-y-1/2 text-muted-foreground" />
                   <Input
                     value={query}
                     onChange={(e) => setQuery(e.target.value)}
@@ -394,7 +401,7 @@ export function ShareFolderDialog({
                     className="pl-9"
                   />
                 </div>
-                <div className="min-h-20 max-h-44 space-y-1 overflow-y-auto focus-safe-scroll">
+                <div className="focus-safe-scroll max-h-44 min-h-20 space-y-1 overflow-y-auto">
                   {searching && (
                     <div className="space-y-1" aria-hidden>
                       {[0, 1].map((i) => (
@@ -489,7 +496,7 @@ export function ShareFolderDialog({
                       className="mt-0.5 size-4 accent-primary"
                     />
                     <div className="space-y-0.5">
-                      <p className="text-sm font-medium leading-none">
+                      <p className="text-sm leading-none font-medium">
                         {CAPABILITY_META.view.label}
                       </p>
                       <p className="text-xs text-muted-foreground">
@@ -513,7 +520,7 @@ export function ShareFolderDialog({
                           className="mt-0.5 size-4 accent-primary"
                         />
                         <div className="space-y-0.5">
-                          <p className="text-sm font-medium leading-none">
+                          <p className="text-sm leading-none font-medium">
                             {CAPABILITY_META[cap].label}
                           </p>
                           <p className="text-xs text-muted-foreground">

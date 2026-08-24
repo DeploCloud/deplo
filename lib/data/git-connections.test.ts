@@ -138,7 +138,10 @@ test("another team can neither edit nor delete it", async () => {
     () => asTeamB(() => removeGitConnection(created.id)),
     /not found/i,
   );
-  assert.equal((await asTeamA(() => listGitConnections()))[0].label, "Acme git");
+  assert.equal(
+    (await asTeamA(() => listGitConnections()))[0].label,
+    "Acme git",
+  );
 });
 
 test("rotating the token replaces it and keeps the rest", async () => {
@@ -213,10 +216,7 @@ test("a connection-backed clone carries its credentials in the userinfo", async 
   assert.equal(url, "https://deploy:s3cret-token@git.acme.com/acme/site.git");
   // Deploy logs are readable by anyone with view_logs, a far wider set than the
   // people who may manage the connection.
-  assert.equal(
-    redactCloneUrl(url),
-    "https://git.acme.com/acme/site.git",
-  );
+  assert.equal(redactCloneUrl(url), "https://git.acme.com/acme/site.git");
 });
 
 test("a repo URL on a FOREIGN host does NOT carry the connection's token", async () => {

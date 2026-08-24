@@ -68,10 +68,11 @@ export function PreviewsTable({
   // A destroyed preview leaves the table on the click: the row is dropped
   // server-side before its stack comes down, so waiting out the teardown only
   // leaves a dead row with a live Destroy under the cursor.
-  const { visible: rows, remove, restore } = useOptimisticRemove(
-    previews,
-    (p) => p.id,
-  );
+  const {
+    visible: rows,
+    remove,
+    restore,
+  } = useOptimisticRemove(previews, (p) => p.id);
 
   // Any change to the owning app (a preview build starting, finishing, failing)
   // arrives on the same stream the header uses — re-read the rows when one lands
@@ -81,7 +82,9 @@ export function PreviewsTable({
   );
   const lastSeen = React.useRef<string | null>(null);
   React.useEffect(() => {
-    const stamp = live ? `${live.status}:${live.latestDeploymentId ?? ""}` : null;
+    const stamp = live
+      ? `${live.status}:${live.latestDeploymentId ?? ""}`
+      : null;
     if (stamp && stamp !== lastSeen.current) {
       lastSeen.current = stamp;
       if (inFlight) router.refresh();

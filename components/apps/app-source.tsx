@@ -34,9 +34,7 @@ export interface AppSourceDescriptor {
  * template apps), then a real git repo, then docker-image / upload, then a
  * generic container fallback.
  */
-export function describeAppSource(
-  project: AppSourceLike,
-): AppSourceDescriptor {
+export function describeAppSource(project: AppSourceLike): AppSourceDescriptor {
   if (usesComposeStack(project)) {
     return { Icon: Layers, label: "Compose", isGit: false };
   }

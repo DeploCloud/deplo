@@ -53,11 +53,7 @@ export function DeploymentGraphic({ className }: { className?: string }) {
       {/* The server: the destination, already there before anything is deployed,
           so it is drawn as recessive structure. Three empty bays waiting for
           something to run in them. */}
-      <g
-        className="stroke-ring"
-        strokeWidth="2"
-        strokeLinejoin="round"
-      >
+      <g className="stroke-ring" strokeWidth="2" strokeLinejoin="round">
         <rect x="76" y="18" width="34" height="54" rx="4" />
         <rect x="82" y="26" width="22" height="6" rx="2" />
         <rect x="82" y="37" width="22" height="6" rx="2" />
@@ -66,11 +62,7 @@ export function DeploymentGraphic({ className }: { className?: string }) {
 
       {/* Vents. Two thin lines are the whole difference between a rounded
           rectangle and a machine. */}
-      <g
-        className="stroke-border"
-        strokeWidth="1.75"
-        strokeLinecap="round"
-      >
+      <g className="stroke-border" strokeWidth="1.75" strokeLinecap="round">
         <line x1="82" y1="61" x2="92" y2="61" />
         <line x1="82" y1="66" x2="92" y2="66" />
       </g>
@@ -105,11 +97,7 @@ export function DeploymentGraphic({ className }: { className?: string }) {
 
       {/* The conveyor: two pulleys with the belt surface tangent across their
           tops and the ground doubling as the return side. */}
-      <g
-        className="stroke-ring"
-        strokeWidth="2"
-        strokeLinecap="round"
-      >
+      <g className="stroke-ring" strokeWidth="2" strokeLinecap="round">
         <circle cx="15" cy="65" r="7" />
         <circle cx="65" cy="65" r="7" />
         <line x1="15" y1="58" x2="65" y2="58" />

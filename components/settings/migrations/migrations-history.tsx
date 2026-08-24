@@ -98,7 +98,7 @@ export function MigrationsHistory({
                     </div>
                   )}
                 </TableCell>
-                <TableCell className="whitespace-nowrap text-sm">
+                <TableCell className="text-sm whitespace-nowrap">
                   {/* No seconds: nobody has two migrations in the same minute,
                       and the column is read for "which run", not for timing. */}
                   {new Date(r.startedAt).toLocaleString(undefined, {

@@ -86,7 +86,9 @@ test("GAP_MS is derived from the stream cadence + the supervisor's backoff cap, 
 test("a hole fully inside the window is banded with its own endpoints", () => {
   // 5s cadence, then a 90s hole (the host was pinned by its own deploy).
   const ts = [100_000, 105_000, 195_000, 200_000];
-  assert.deepEqual(visibleGapSpans(ts, GAP, 100_000, 200_000), [[105_000, 195_000]]);
+  assert.deepEqual(visibleGapSpans(ts, GAP, 100_000, 200_000), [
+    [105_000, 195_000],
+  ]);
 });
 
 test("a hole straddling the window start is dropped, not half-banded", () => {
@@ -99,7 +101,9 @@ test("a hole straddling the window start is dropped, not half-banded", () => {
 test("a hole running past the window end IS clamped to the visible part", () => {
   // Starts inside the window, so it is an observed hole; only its tail is cut.
   const ts = [160_000, 400_000];
-  assert.deepEqual(visibleGapSpans(ts, GAP, 150_000, 200_000), [[160_000, 200_000]]);
+  assert.deepEqual(visibleGapSpans(ts, GAP, 150_000, 200_000), [
+    [160_000, 200_000],
+  ]);
 });
 
 test("an off-window straggler does NOT band the plot — history just doesn't reach", () => {
@@ -108,7 +112,10 @@ test("an off-window straggler does NOT band the plot — history just doesn't re
   // 14-minute-old straggler plus dense recent data, the raw span covered ~87% of
   // a 5m plot — claiming a failure across a stretch the window never showed.
   const t1 = 1_000_000;
-  const ts = [t1 - 840_000, ...Array.from({ length: 20 }, (_, i) => t1 - 40_000 + i * 2000)];
+  const ts = [
+    t1 - 840_000,
+    ...Array.from({ length: 20 }, (_, i) => t1 - 40_000 + i * 2000),
+  ];
   for (const windowMs of [60_000, 300_000]) {
     assert.deepEqual(
       visibleGapSpans(ts, GAP, t1 - windowMs, t1),
@@ -136,7 +143,9 @@ test("real interior holes still band once the window reaches back to them", () =
   const ts = [t1 - 300_000, t1 - 295_000, t1 - 60_000, t1 - 55_000, t1];
   // The 1m window opens exactly on a sample, so the 235s hole before it is
   // pre-history and dropped — but the 55s hole inside the window is banded.
-  assert.deepEqual(visibleGapSpans(ts, GAP, t1 - 60_000, t1), [[t1 - 55_000, t1]]);
+  assert.deepEqual(visibleGapSpans(ts, GAP, t1 - 60_000, t1), [
+    [t1 - 55_000, t1],
+  ]);
   // Widen, and the earlier hole comes into view as well.
   assert.deepEqual(visibleGapSpans(ts, GAP, t1 - 900_000, t1), [
     [t1 - 295_000, t1 - 60_000],

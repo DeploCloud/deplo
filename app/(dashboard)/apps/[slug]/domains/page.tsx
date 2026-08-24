@@ -28,7 +28,7 @@ import { OptimisticList } from "@/components/shared/optimistic-list";
 export const metadata = { title: "App Domains" };
 
 export default async function AppDomainsPage(
-  props: PageProps<"/apps/[slug]/domains">
+  props: PageProps<"/apps/[slug]/domains">,
 ) {
   const { slug } = await props.params;
   const project = await getAppBySlug(slug);
@@ -169,17 +169,17 @@ export default async function AppDomainsPage(
                     dropped server-side before the routing is re-applied. */}
                 <OptimisticList>
                   {domains.map((d) => (
-                  <DomainRow
-                    key={d.id}
-                    domain={d}
-                    compose={project.compose}
-                    isCompose={isComposeStack}
-                    showContainer={showContainer}
-                    serverIp={serverIp}
-                    // Every row of THIS app, so each Edit dialog can derive the
-                    // hostname's www pairing from the rows that exist.
-                    siblings={domains}
-                  />
+                    <DomainRow
+                      key={d.id}
+                      domain={d}
+                      compose={project.compose}
+                      isCompose={isComposeStack}
+                      showContainer={showContainer}
+                      serverIp={serverIp}
+                      // Every row of THIS app, so each Edit dialog can derive the
+                      // hostname's www pairing from the rows that exist.
+                      siblings={domains}
+                    />
                   ))}
                 </OptimisticList>
                 <PendingRows columns={showContainer ? 4 : 3} />

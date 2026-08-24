@@ -26,7 +26,11 @@ const SLUG = "agent-partb-demo";
 const NAME = `deplo-${SLUG}`;
 const DEPLOY_ID = "dpl_e2e_partb_1";
 
-function sh(cmd: string, args: string[], opts: { cwd?: string } = {}): Promise<{ code: number; out: string }> {
+function sh(
+  cmd: string,
+  args: string[],
+  opts: { cwd?: string } = {},
+): Promise<{ code: number; out: string }> {
   return new Promise((resolve) => {
     const c = spawn(cmd, args, { windowsHide: true, cwd: opts.cwd });
     let out = "";
@@ -40,11 +44,8 @@ const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 async function main() {
   const { signAgentCsr } = await import("../lib/agent/pki");
   const { connectAgent } = await import("../lib/infra/agent-client");
-  const {
-    SourceKind,
-    BuildKind,
-    ContractVersion,
-  } = await import("../lib/agent/gen/agent");
+  const { SourceKind, BuildKind, ContractVersion } =
+    await import("../lib/agent/gen/agent");
 
   // ---- 1. A tiny stand-in for POST /api/agent/bootstrap (HTTP trust path). ----
   // It signs the CSR with the REAL control-plane PKI and HMAC-binds the response.
@@ -55,16 +56,25 @@ async function main() {
     req.on("data", (c) => (body += c));
     req.on("end", async () => {
       try {
-        const { token, csrPem } = JSON.parse(body) as { token: string; csrPem: string };
+        const { token, csrPem } = JSON.parse(body) as {
+          token: string;
+          csrPem: string;
+        };
         if (token !== "e2e-bootstrap-token") {
           res.writeHead(401).end(JSON.stringify({ error: "unknown-token" }));
           return;
         }
         const signed = await signAgentCsr(csrPem, [AGENT_HOST]);
         pinnedFingerprint = signed.fingerprint;
-        const payload = JSON.stringify({ certPem: signed.certPem, caPem: signed.caPem });
+        const payload = JSON.stringify({
+          certPem: signed.certPem,
+          caPem: signed.caPem,
+        });
         const mac = createHmac("sha256", token).update(payload).digest("hex");
-        res.writeHead(200, { "content-type": "application/json", "x-deplo-bootstrap-mac": mac });
+        res.writeHead(200, {
+          "content-type": "application/json",
+          "x-deplo-bootstrap-mac": mac,
+        });
         res.end(payload);
       } catch (e) {
         res.writeHead(500).end(String(e));
@@ -85,13 +95,19 @@ async function main() {
   const agent: ChildProcess = spawn(
     AGENT_BIN,
     [
-      "--addr", AGENT_ADDR,
-      "--agent-dir", agentDir,
-      "--bootstrap-url", cpUrl,
-      "--bootstrap-token", "e2e-bootstrap-token",
+      "--addr",
+      AGENT_ADDR,
+      "--agent-dir",
+      agentDir,
+      "--bootstrap-url",
+      cpUrl,
+      "--bootstrap-token",
+      "e2e-bootstrap-token",
       // no fingerprint => HTTP trust path (HMAC)
-      "--stack-dir", join(agentDir, "stacks"),
-      "--build-tmp", join(agentDir, "tmp"),
+      "--stack-dir",
+      join(agentDir, "stacks"),
+      "--build-tmp",
+      join(agentDir, "tmp"),
     ],
     { stdio: ["ignore", "inherit", "inherit"] },
   );
@@ -103,15 +119,17 @@ async function main() {
   // for the agent to start serving.
   for (let i = 0; i < 100 && !pinnedFingerprint; i++) await sleep(100);
   if (!pinnedFingerprint) throw new Error("agent never called home");
-  console.log("  agent provisioned; pinned fingerprint:", pinnedFingerprint.slice(0, 16) + "…");
+  console.log(
+    "  agent provisioned; pinned fingerprint:",
+    pinnedFingerprint.slice(0, 16) + "…",
+  );
 
   // Dial through the real connectAgent by inserting a Server row directly into the
   // relational `servers` table (servers are relational as of cut-set (e); the JSONB
   // store + its `mutate()` are gone — Step 6 cutover).
   const { getDb } = await import("../lib/db/client");
-  const { servers: serversTable } = await import(
-    "../lib/db/schema/control-plane"
-  );
+  const { servers: serversTable } =
+    await import("../lib/db/schema/control-plane");
   const { serverToRow } = await import("../lib/data/infra-rows");
   const { eq } = await import("drizzle-orm");
   const { caCertPem } = await import("../lib/agent/pki");
@@ -128,8 +146,13 @@ async function main() {
       ip: AGENT_HOST,
       dockerVersion: "",
       traefikEnabled: false,
-      cpuCores: 0, memoryMb: 0, diskGb: 0,
-      cpuUsage: 0, memoryUsage: 0, diskUsage: 0, allTeams: true,
+      cpuCores: 0,
+      memoryMb: 0,
+      diskGb: 0,
+      cpuUsage: 0,
+      memoryUsage: 0,
+      diskUsage: 0,
+      allTeams: true,
       storageOnly: false,
       buildOnly: false,
       importOnly: false,
@@ -138,7 +161,12 @@ async function main() {
       hostArch: "amd64",
       deployConcurrency: 1,
       createdAt: new Date(0).toISOString(),
-      agent: { port: AGENT_PORT, certFingerprint: pinnedFingerprint, certPem: "", version: "" },
+      agent: {
+        port: AGENT_PORT,
+        certFingerprint: pinnedFingerprint,
+        certPem: "",
+        version: "",
+      },
     }),
   );
 
@@ -151,7 +179,11 @@ async function main() {
       conn.close();
       if (h.contractVersion === ContractVersion.CONTRACT_VERSION_V1) {
         helloOk = true;
-        console.log("== Hello over pinned mTLS OK ==", "docker:", h.dockerAvailable);
+        console.log(
+          "== Hello over pinned mTLS OK ==",
+          "docker:",
+          h.dockerAvailable,
+        );
         break;
       }
     } catch {
@@ -162,24 +194,30 @@ async function main() {
 
   // ---- 4. A GIT deploy (D3): a tiny local git repo with a Dockerfile. ----
   const repoDir = mkdtempSync(join(tmpdir(), "deplo-partb-repo-"));
-  writeFileSync(join(repoDir, "Dockerfile"), "FROM busybox\nCMD [\"sh\",\"-c\",\"sleep 3600\"]\n");
+  writeFileSync(
+    join(repoDir, "Dockerfile"),
+    'FROM busybox\nCMD ["sh","-c","sleep 3600"]\n',
+  );
   await sh("git", ["init", "-q"], { cwd: repoDir });
   await sh("git", ["config", "user.email", "e2e@deplo.test"], { cwd: repoDir });
   await sh("git", ["config", "user.name", "e2e"], { cwd: repoDir });
   await sh("git", ["add", "-A"], { cwd: repoDir });
   await sh("git", ["commit", "-q", "-m", "init"], { cwd: repoDir });
-  const expectedSha = (await sh("git", ["rev-parse", "HEAD"], { cwd: repoDir })).out.trim();
+  const expectedSha = (
+    await sh("git", ["rev-parse", "HEAD"], { cwd: repoDir })
+  ).out.trim();
 
-  const composeYaml = [
-    "services:",
-    `  ${SLUG}:`,
-    `    image: deplo/${SLUG}:e2e`,
-    `    container_name: ${NAME}`,
-    "    networks: [deplo]",
-    "networks:",
-    "  deplo:",
-    "    external: true",
-  ].join("\n") + "\n";
+  const composeYaml =
+    [
+      "services:",
+      `  ${SLUG}:`,
+      `    image: deplo/${SLUG}:e2e`,
+      `    container_name: ${NAME}`,
+      "    networks: [deplo]",
+      "networks:",
+      "  deplo:",
+      "    external: true",
+    ].join("\n") + "\n";
 
   console.log("== GIT deploy through the agent (agent clones file:// repo) ==");
   const conn = await connectAgent("srv-e2e-remote");
@@ -193,7 +231,13 @@ async function main() {
     imageRef: `deplo/${SLUG}:e2e`,
     sourceKind: SourceKind.SOURCE_KIND_GIT,
     buildKind: BuildKind.BUILD_KIND_DOCKERFILE,
-    dockerfile: { dockerfilePath: "Dockerfile", contextPath: ".", targetStage: "", generated: false, generatedDockerfile: "" },
+    dockerfile: {
+      dockerfilePath: "Dockerfile",
+      contextPath: ".",
+      targetStage: "",
+      generated: false,
+      generatedDockerfile: "",
+    },
     git: { url: `file://${repoDir}`, branch: "", token: "", subdir: "" },
     composeYaml,
     env: {},
@@ -209,13 +253,19 @@ async function main() {
   })) {
     if (ev.seq) lastSeq = Number(ev.seq);
     if (ev.log) process.stdout.write(`  [${ev.log.level}] ${ev.log.text}\n`);
-    if (ev.result) { ready = ev.result.ready; gotSha = ev.result.commitSha; }
+    if (ev.result) {
+      ready = ev.result.ready;
+      gotSha = ev.result.commitSha;
+    }
   }
   conn.close();
   if (!ready) throw new Error("git deploy did not reach ready");
   console.log("  git deploy ready; agent-resolved sha:", gotSha);
-  if (gotSha !== expectedSha) throw new Error(`commit sha mismatch: got ${gotSha}, want ${expectedSha}`);
-  const running = (await sh("docker", ["inspect", "-f", "{{.State.Running}}", NAME])).out.trim();
+  if (gotSha !== expectedSha)
+    throw new Error(`commit sha mismatch: got ${gotSha}, want ${expectedSha}`);
+  const running = (
+    await sh("docker", ["inspect", "-f", "{{.State.Running}}", NAME])
+  ).out.trim();
   if (running !== "true") throw new Error(`container not running: ${running}`);
   console.log("  container is running ✓");
 
@@ -229,9 +279,13 @@ async function main() {
     if (ev.result) replayResult = ev.result.ready;
   }
   conn2.close();
-  console.log(`  replayed ${replayCount} events (live stream had seq up to ${lastSeq}); terminal ready=${replayResult}`);
-  if (!replayResult) throw new Error("reattach did not replay the terminal result");
-  if (replayCount < lastSeq) throw new Error("reattach replayed fewer events than were buffered");
+  console.log(
+    `  replayed ${replayCount} events (live stream had seq up to ${lastSeq}); terminal ready=${replayResult}`,
+  );
+  if (!replayResult)
+    throw new Error("reattach did not replay the terminal result");
+  if (replayCount < lastSeq)
+    throw new Error("reattach replayed fewer events than were buffered");
 
   // ---- 6. MID-FLIGHT drop + reattach (D5, the real promise). ----
   // Start a second deploy, abandon the Deploy stream after the first event (as if
@@ -249,7 +303,13 @@ async function main() {
     imageRef: `deplo/${SLUG}:e2e`,
     sourceKind: SourceKind.SOURCE_KIND_GIT,
     buildKind: BuildKind.BUILD_KIND_DOCKERFILE,
-    dockerfile: { dockerfilePath: "Dockerfile", contextPath: ".", targetStage: "", generated: false, generatedDockerfile: "" },
+    dockerfile: {
+      dockerfilePath: "Dockerfile",
+      contextPath: ".",
+      targetStage: "",
+      generated: false,
+      generatedDockerfile: "",
+    },
     git: { url: `file://${repoDir}`, branch: "", token: "", subdir: "" },
     composeYaml,
     env: {},
@@ -272,14 +332,25 @@ async function main() {
   const c4 = await connectAgent("srv-e2e-remote");
   let reReady = false;
   let reGotResultAfterDrop = false;
-  for await (const ev of c4.reattach({ deployId: DEPLOY_ID_2, fromSeq: cursor })) {
-    if (Number(ev.seq) <= cursor) throw new Error("reattach replayed an event we already saw");
-    if (ev.result) { reReady = ev.result.ready; reGotResultAfterDrop = true; }
+  for await (const ev of c4.reattach({
+    deployId: DEPLOY_ID_2,
+    fromSeq: cursor,
+  })) {
+    if (Number(ev.seq) <= cursor)
+      throw new Error("reattach replayed an event we already saw");
+    if (ev.result) {
+      reReady = ev.result.ready;
+      reGotResultAfterDrop = true;
+    }
   }
   c4.close();
-  if (!reGotResultAfterDrop || !reReady) throw new Error("mid-flight reattach did not complete the deploy");
-  const running2 = (await sh("docker", ["inspect", "-f", "{{.State.Running}}", NAME])).out.trim();
-  if (running2 !== "true") throw new Error(`mid-flight: container not running: ${running2}`);
+  if (!reGotResultAfterDrop || !reReady)
+    throw new Error("mid-flight reattach did not complete the deploy");
+  const running2 = (
+    await sh("docker", ["inspect", "-f", "{{.State.Running}}", NAME])
+  ).out.trim();
+  if (running2 !== "true")
+    throw new Error(`mid-flight: container not running: ${running2}`);
   console.log("  reattached from the cursor and the deploy completed ✓");
 
   // ---- Cleanup ----
@@ -288,7 +359,9 @@ async function main() {
   bootstrapServer.close();
   rmSync(agentDir, { recursive: true, force: true });
   rmSync(repoDir, { recursive: true, force: true });
-  console.log("\n✅ Part B e2e passed: bootstrap (CSR-signed) + pinned mTLS + git deploy + reattach.");
+  console.log(
+    "\n✅ Part B e2e passed: bootstrap (CSR-signed) + pinned mTLS + git deploy + reattach.",
+  );
   process.exit(0);
 }
 

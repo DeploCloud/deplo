@@ -81,7 +81,10 @@ class ProbeTimeout extends Error {}
 function withDeadline<T>(p: Promise<T>, ms: number): Promise<T> {
   let timer: ReturnType<typeof setTimeout>;
   const timeout = new Promise<never>((_, reject) => {
-    timer = setTimeout(() => reject(new ProbeTimeout("readiness probe timed out")), ms);
+    timer = setTimeout(
+      () => reject(new ProbeTimeout("readiness probe timed out")),
+      ms,
+    );
   });
   return Promise.race([p.finally(() => clearTimeout(timer)), timeout]);
 }
@@ -124,7 +127,9 @@ const NOT_DIALED: DialedProbe = {
  * HERE, in the data layer — the GraphQL `authScopes` is the introspectable contract, this is
  * the boundary.
  */
-export async function checkServerReadiness(id: string): Promise<ReadinessReport> {
+export async function checkServerReadiness(
+  id: string,
+): Promise<ReadinessReport> {
   await requireInstanceAdmin();
 
   const server = await getServerById(id);
@@ -159,17 +164,18 @@ export async function checkServerReadiness(id: string): Promise<ReadinessReport>
     });
   }
 
-  const dialed = await withDeadline(probeAgent(server), READINESS_DEADLINE_MS).catch(
-    (e: unknown) => {
-      if (e instanceof ProbeTimeout) {
-        console.error(`[deplo] readiness check for ${server.name} timed out`);
-        // Honest, not a guess: the deploy pre-flight budgets only 8s for its Hello, so a
-        // server that cannot finish a 12s bounded probe would not pass one either.
-        return TIMED_OUT;
-      }
-      throw e;
-    },
-  );
+  const dialed = await withDeadline(
+    probeAgent(server),
+    READINESS_DEADLINE_MS,
+  ).catch((e: unknown) => {
+    if (e instanceof ProbeTimeout) {
+      console.error(`[deplo] readiness check for ${server.name} timed out`);
+      // Honest, not a guess: the deploy pre-flight budgets only 8s for its Hello, so a
+      // server that cannot finish a 12s bounded probe would not pass one either.
+      return TIMED_OUT;
+    }
+    throw e;
+  });
 
   return classifyServerReadiness({
     server,
@@ -203,7 +209,13 @@ async function probeAgent(server: Server): Promise<DialedProbe> {
     conn = await connectAgent(server.id);
   } catch (e) {
     console.error(`[deplo] readiness check for ${server.name}: ${String(e)}`);
-    return { hello: null, helloError: e, port80: SKIPPED, port443: SKIPPED, metrics: null };
+    return {
+      hello: null,
+      helloError: e,
+      port80: SKIPPED,
+      port443: SKIPPED,
+      metrics: null,
+    };
   }
 
   try {
@@ -214,10 +226,18 @@ async function probeAgent(server: Server): Promise<DialedProbe> {
       // The raw error carries the PINNED FINGERPRINT and the dial address. Console only —
       // the classifier turns the outcome into one of its curated, closed-set strings.
       console.error(`[deplo] readiness check for ${server.name}: ${String(e)}`);
-      return { hello: null, helloError: e, port80: SKIPPED, port443: SKIPPED, metrics: null };
+      return {
+        hello: null,
+        helloError: e,
+        port80: SKIPPED,
+        port443: SKIPPED,
+        metrics: null,
+      };
     }
 
-    const portsSupported = (hello.capabilities ?? []).includes(CHECKPORT_CAPABILITY);
+    const portsSupported = (hello.capabilities ?? []).includes(
+      CHECKPORT_CAPABILITY,
+    );
     const collected = await withDeadline(
       Promise.all([
         probePort(conn, HTTP_PORT, portsSupported, server.name),
@@ -270,8 +290,11 @@ async function probePort(
     return res.available ? { kind: "free" } : { kind: "held" };
   } catch (e) {
     const mapped = mapCheckPortUnsupported(e);
-    if (mapped instanceof AgentCheckPortUnsupportedError) return { kind: "unsupported" };
-    console.error(`[deplo] readiness check for ${name}: checkPort(${port}): ${String(e)}`);
+    if (mapped instanceof AgentCheckPortUnsupportedError)
+      return { kind: "unsupported" };
+    console.error(
+      `[deplo] readiness check for ${name}: checkPort(${port}): ${String(e)}`,
+    );
     return { kind: "failed" };
   }
 }
@@ -281,7 +304,10 @@ async function probePort(
  * doesn't gate it either; an agent old enough to lack the flag may still answer. A failure is
  * simply "we don't know", which the classifier reports as a skipped disk row.
  */
-async function probeMetrics(conn: AgentConnection, name: string): Promise<HostMetrics | null> {
+async function probeMetrics(
+  conn: AgentConnection,
+  name: string,
+): Promise<HostMetrics | null> {
   try {
     // "" => the agent measures its own --data-dir (the installer points it at the host root).
     return await conn.metrics("");

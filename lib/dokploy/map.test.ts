@@ -63,7 +63,7 @@ test("parseEnvBlob follows the .env grammar deplo already uses", () => {
       "# a comment",
       "",
       "PLAIN=value",
-      "QUOTED=\"with spaces\"",
+      'QUOTED="with spaces"',
       "SINGLE='single'",
       "export EXPORTED=shell-style",
       "EMPTY=",
@@ -169,7 +169,10 @@ test("adaptComposeForDeplo also reads the nested external.name form", () => {
   ].join("\n");
   const { compose, changes } = adaptComposeForDeplo(source);
   assert.ok(changes.length > 0);
-  assert.equal((yaml.load(compose) as { networks?: unknown }).networks, undefined);
+  assert.equal(
+    (yaml.load(compose) as { networks?: unknown }).networks,
+    undefined,
+  );
 });
 
 test("adaptComposeForDeplo leaves a clean compose byte-identical", () => {
@@ -233,8 +236,12 @@ test("adaptComposeForDeplo maps Dokploy's file mounts onto Deplo's convention", 
 });
 
 test("adaptComposeForDeplo leaves a stack that needs neither rewrite alone", () => {
-  const source = "services:\n  web:\n    image: nginx\n    volumes:\n      - data:/data\n";
-  assert.deepEqual(adaptComposeForDeplo(source), { compose: source, changes: [] });
+  const source =
+    "services:\n  web:\n    image: nginx\n    volumes:\n      - data:/data\n";
+  assert.deepEqual(adaptComposeForDeplo(source), {
+    compose: source,
+    changes: [],
+  });
 });
 
 /* ---- build settings ------------------------------------------------- */
@@ -309,8 +316,8 @@ test("mapBuildSettings ignores the settings the chosen builder never reads", () 
 
   // The same values DO come across when they are the ones that build the app.
   assert.equal(
-    mapBuildSettings(app({ buildType: "railpack", railpackVersion: "0.15.4" })).value
-      .methodSettings?.railpackVersion,
+    mapBuildSettings(app({ buildType: "railpack", railpackVersion: "0.15.4" }))
+      .value.methodSettings?.railpackVersion,
     "0.15.4",
   );
 });
@@ -323,7 +330,10 @@ test("mapBuildSettings notes replicas, which deplo does not scale", () => {
 
 test("mapBuildSettings ignores a build path that is really the root", () => {
   for (const buildPath of ["/", "./", "  "])
-    assert.equal(mapBuildSettings(app({ buildPath })).value.rootDirectory, undefined);
+    assert.equal(
+      mapBuildSettings(app({ buildPath })).value.rootDirectory,
+      undefined,
+    );
 });
 
 /* ---- resources ------------------------------------------------------ */
@@ -438,7 +448,10 @@ test("mapSource builds an https clone URL for every git flavour", () => {
 
   assert.equal(
     cloneTarget(
-      app({ sourceType: "git", customGitUrl: "https://git.example.com/a/b.git" }),
+      app({
+        sourceType: "git",
+        customGitUrl: "https://git.example.com/a/b.git",
+      }),
     )?.repo,
     "a/b",
   );
@@ -447,7 +460,11 @@ test("mapSource builds an https clone URL for every git flavour", () => {
 test("mapSource falls back to the public host when the provider row is absent", () => {
   assert.equal(
     cloneTarget(
-      app({ sourceType: "gitlab", gitlabOwner: "acme", gitlabRepository: "api" }),
+      app({
+        sourceType: "gitlab",
+        gitlabOwner: "acme",
+        gitlabRepository: "api",
+      }),
     )?.url,
     "https://gitlab.com/acme/api.git",
   );
@@ -461,7 +478,11 @@ test("mapSource always warns that no git credential came across", () => {
 
 test("mapSource carries the git deploy options", () => {
   const { value } = mapSource(
-    app({ triggerType: "tag", watchPaths: ["apps/web/**", "  "], enableSubmodules: true }),
+    app({
+      triggerType: "tag",
+      watchPaths: ["apps/web/**", "  "],
+      enableSubmodules: true,
+    }),
   );
   assert.equal(value.kind, "git");
   if (value.kind !== "git") return;
@@ -471,18 +492,29 @@ test("mapSource carries the git deploy options", () => {
 });
 
 test("mapSource takes a docker image and refuses one deplo would interpolate", () => {
-  const ok = mapSource(app({ sourceType: "docker", dockerImage: "ghcr.io/acme/api:1.2" }));
-  assert.deepEqual(ok.value, { kind: "docker-image", image: "ghcr.io/acme/api:1.2" });
+  const ok = mapSource(
+    app({ sourceType: "docker", dockerImage: "ghcr.io/acme/api:1.2" }),
+  );
+  assert.deepEqual(ok.value, {
+    kind: "docker-image",
+    image: "ghcr.io/acme/api:1.2",
+  });
   assert.deepEqual(ok.notes, []);
 
-  const bad = mapSource(app({ sourceType: "docker", dockerImage: "acme/api:1 && rm -rf /" }));
+  const bad = mapSource(
+    app({ sourceType: "docker", dockerImage: "acme/api:1 && rm -rf /" }),
+  );
   assert.deepEqual(bad.value, { kind: "none" });
   assert.match(bad.notes.join(" "), /not one Deplo accepts/);
 });
 
 test("mapSource reports a private registry, whose password never leaves Dokploy", () => {
   const { notes } = mapSource(
-    app({ sourceType: "docker", dockerImage: "reg.acme.com/api:1", registryId: "reg-1" }),
+    app({
+      sourceType: "docker",
+      dockerImage: "reg.acme.com/api:1",
+      registryId: "reg-1",
+    }),
   );
   assert.match(notes.join(" "), /private registry/);
 
@@ -504,7 +536,10 @@ test("mapSource reports a private registry, whose password never leaves Dokploy"
 
 test("mapSource flags an image that only exists on the source machine", () => {
   const { value, notes } = mapSource(
-    app({ sourceType: "docker", dockerImage: "localhost:5000/database-fdo:1.0" }),
+    app({
+      sourceType: "docker",
+      dockerImage: "localhost:5000/database-fdo:1.0",
+    }),
   );
   // Still imported - the reference is what the app is - but it cannot be pulled
   // from here, and "pull access denied" three days later points at the image
@@ -525,13 +560,21 @@ test("mapSource cannot import an uploaded archive", () => {
 test("repoNameFromUrl handles https and scp-style remotes", () => {
   assert.equal(repoNameFromUrl("https://github.com/acme/web.git"), "acme/web");
   assert.equal(repoNameFromUrl("git@github.com:acme/web.git"), "acme/web");
-  assert.equal(repoNameFromUrl("ssh://git@git.acme.com:2222/acme/web"), "acme/web");
+  assert.equal(
+    repoNameFromUrl("ssh://git@git.acme.com:2222/acme/web"),
+    "acme/web",
+  );
 });
 
 /* ---- domains -------------------------------------------------------- */
 
 test("isThrowawayHost only matches the generated hosts", () => {
-  for (const host of ["app-abc.traefik.me", "1.2.3.4.sslip.io", "x.nip.io", "api.localhost"])
+  for (const host of [
+    "app-abc.traefik.me",
+    "1.2.3.4.sslip.io",
+    "x.nip.io",
+    "api.localhost",
+  ])
     assert.equal(isThrowawayHost(host), true, host);
   for (const host of ["acme.com", "api.acme.com", "traefik.mecca.com"])
     assert.equal(isThrowawayHost(host), false, host);
@@ -540,11 +583,26 @@ test("isThrowawayHost only matches the generated hosts", () => {
 test("mapDomains keeps every host in order and drops only what cannot route", () => {
   const { value } = mapDomains(
     [
-      { domainId: "1", host: "app-x.traefik.me", certificateType: "letsencrypt" },
-      { domainId: "2", host: "Acme.com", port: 8080, certificateType: "letsencrypt" },
+      {
+        domainId: "1",
+        host: "app-x.traefik.me",
+        certificateType: "letsencrypt",
+      },
+      {
+        domainId: "2",
+        host: "Acme.com",
+        port: 8080,
+        certificateType: "letsencrypt",
+      },
       { domainId: "3", host: "old.acme.com", enabled: false },
       { domainId: "4", host: "pr.acme.com", domainType: "preview" },
-      { domainId: "5", host: "api.acme.com", path: "/api", stripPath: true, port: 3000 },
+      {
+        domainId: "5",
+        host: "api.acme.com",
+        path: "/api",
+        stripPath: true,
+        port: 3000,
+      },
     ],
     { isCompose: false },
   );
@@ -616,7 +674,14 @@ test("mapDomains keeps the compose service and needs a port there", () => {
 
 test("mapDomains routes plain http to the web entrypoint", () => {
   const { value } = mapDomains(
-    [{ domainId: "1", host: "acme.com", https: false, certificateType: "none" }],
+    [
+      {
+        domainId: "1",
+        host: "acme.com",
+        https: false,
+        certificateType: "none",
+      },
+    ],
     { isCompose: false },
   );
   assert.equal(value[0].entrypoint, "web");
@@ -640,8 +705,18 @@ test("mapMounts splits the three Dokploy kinds into deplo's two writers", () => 
         content: "a = 1",
         mountPath: "",
       },
-      { mountId: "2", type: "volume", volumeName: "PG_DATA", mountPath: "/var/lib/data" },
-      { mountId: "3", type: "bind", hostPath: "/srv/uploads", mountPath: "/uploads" },
+      {
+        mountId: "2",
+        type: "volume",
+        volumeName: "PG_DATA",
+        mountPath: "/var/lib/data",
+      },
+      {
+        mountId: "3",
+        type: "bind",
+        hostPath: "/srv/uploads",
+        mountPath: "/uploads",
+      },
     ],
     { isCompose: true },
   );
@@ -649,7 +724,12 @@ test("mapMounts splits the three Dokploy kinds into deplo's two writers", () => 
     { filePath: "config.toml", content: "a = 1", mountPath: "" },
   ]);
   assert.deepEqual(value.volumes, [
-    { type: "named", name: "pg-data", mountPath: "/var/lib/data", readOnly: false },
+    {
+      type: "named",
+      name: "pg-data",
+      mountPath: "/var/lib/data",
+      readOnly: false,
+    },
     {
       type: "host",
       name: "uploads",
@@ -714,7 +794,11 @@ test("mapMounts does not pair a compose stack's file mount with a volume", () =>
     { isCompose: true },
   );
   assert.deepEqual(value.files, [
-    { filePath: "fix.sh", content: "#!/bin/sh", mountPath: "/usr/local/bin/fix.sh" },
+    {
+      filePath: "fix.sh",
+      content: "#!/bin/sh",
+      mountPath: "/usr/local/bin/fix.sh",
+    },
   ]);
   assert.deepEqual(value.volumes, []);
 });
@@ -725,8 +809,18 @@ test("mapMounts does not pair a compose stack's file mount with a volume", () =>
 test("mapMounts keeps two file mounts with the same file name apart", () => {
   const { value, notes } = mapMounts(
     [
-      { mountId: "1", type: "file", content: "one", mountPath: "/etc/a/app.ini" },
-      { mountId: "2", type: "file", content: "two", mountPath: "/etc/b/app.ini" },
+      {
+        mountId: "1",
+        type: "file",
+        content: "one",
+        mountPath: "/etc/a/app.ini",
+      },
+      {
+        mountId: "2",
+        type: "file",
+        content: "two",
+        mountPath: "/etc/b/app.ini",
+      },
     ],
     { isCompose: false },
   );
@@ -793,8 +887,14 @@ test("imageTag reads the tag and ignores a registry port", () => {
 
 test("mapDatabase maps each engine deplo has and refuses libsql", () => {
   assert.equal(mapDatabase("postgres", db()).value?.type, "postgres");
-  assert.equal(mapDatabase("mongo", db({ dockerImage: "mongo:7" })).value?.type, "mongodb");
-  assert.equal(mapDatabase("redis", db({ dockerImage: "redis:7" })).value?.type, "redis");
+  assert.equal(
+    mapDatabase("mongo", db({ dockerImage: "mongo:7" })).value?.type,
+    "mongodb",
+  );
+  assert.equal(
+    mapDatabase("redis", db({ dockerImage: "redis:7" })).value?.type,
+    "redis",
+  );
 
   const libsql = mapDatabase("libsql", db());
   assert.equal(libsql.value, null);
@@ -850,7 +950,10 @@ test("mapDatabase keeps a non-canonical image and says so", () => {
   assert.equal(value?.version, "pg16");
   assert.match(notes.join(" "), /plain postgres/);
   // A canonical image is pinned too, but silently — there is nothing to warn about.
-  assert.equal(mapDatabase("postgres", db()).notes.join(" ").includes("plain postgres"), false);
+  assert.equal(
+    mapDatabase("postgres", db()).notes.join(" ").includes("plain postgres"),
+    false,
+  );
 });
 
 test("mapDatabase carries the external port and reports what a database cannot take", () => {
@@ -859,7 +962,14 @@ test("mapDatabase carries the external port and reports what a database cannot t
     db({
       externalPort: 5432,
       command: "postgres -c max_connections=200",
-      mounts: [{ mountId: "1", type: "bind", hostPath: "/srv/pg", mountPath: "/srv/pg" }],
+      mounts: [
+        {
+          mountId: "1",
+          type: "bind",
+          hostPath: "/srv/pg",
+          mountPath: "/srv/pg",
+        },
+      ],
     }),
   );
   assert.equal(value?.exposedPort, 5432);
@@ -897,7 +1007,11 @@ test("mapDatabase imports the engine's config files", () => {
       mountPath: "/etc/postgresql.conf",
     },
   ]);
-  assert.equal(notes.join(" ").includes("not imported"), false, notes.join(" "));
+  assert.equal(
+    notes.join(" ").includes("not imported"),
+    false,
+    notes.join(" "),
+  );
 });
 
 // Dokploy models a database's DATA volume as a mount row. Warning "extra files
@@ -918,7 +1032,11 @@ test("mapDatabase does not call the data volume an extra file mount", () => {
       ],
     }),
   );
-  assert.equal(notes.join(" ").includes("mounted on Dokploy"), false, notes.join(" "));
+  assert.equal(
+    notes.join(" ").includes("mounted on Dokploy"),
+    false,
+    notes.join(" "),
+  );
 });
 
 /* ---- the data cutover ----------------------------------------------- */
@@ -934,7 +1052,9 @@ test("sourceVolumesFrom keeps named volumes and drops bind mounts", () => {
   });
   // Trailing slash normalised, the duplicate collapsed, the bind and the
   // anonymous mount left out - neither is something a data move can pair.
-  assert.deepEqual(volumes, [{ name: "app_uploads", mountPath: "/app/uploads" }]);
+  assert.deepEqual(volumes, [
+    { name: "app_uploads", mountPath: "/app/uploads" },
+  ]);
 });
 
 test("pairVolumes matches on the container path, whatever either side calls them", () => {
@@ -950,7 +1070,10 @@ test("pairVolumes matches on the container path, whatever either side calls them
   );
   assert.deepEqual(
     value.map((p) => `${p.sourceVolume}->${p.targetVolume}@${p.mountPath}`),
-    ["dok_uploads->deplo-web-uploads@/app/uploads", "dok_cache->deplo-web-cache@/app/cache"],
+    [
+      "dok_uploads->deplo-web-uploads@/app/uploads",
+      "dok_cache->deplo-web-cache@/app/cache",
+    ],
   );
   assert.deepEqual(notes, []);
 });
@@ -983,7 +1106,10 @@ test("pairVolumes will not guess for an app, only for the single-data case", () 
   const source = [{ name: "a", mountPath: "/one" }];
   const target = [{ name: "b", mountPath: "/two" }];
   assert.equal(pairVolumes(source, target).value.length, 0);
-  assert.equal(pairVolumes(source, target, { singleData: true }).value.length, 1);
+  assert.equal(
+    pairVolumes(source, target, { singleData: true }).value.length,
+    1,
+  );
 });
 
 test("deploVolumeName knows which volumes carry an explicit name", () => {
@@ -991,7 +1117,10 @@ test("deploVolumeName knows which volumes carry an explicit name", () => {
   assert.equal(deploVolumeName("web", "uploads", true), "deplo-web-uploads");
   // One declared in the user's own compose is prefixed by the project instead.
   assert.equal(deploVolumeName("web", "uploads", false), "deplo-web_uploads");
-  assert.equal(deploDatabaseVolumeName("db-main"), "deplo-db-main_db-main-data");
+  assert.equal(
+    deploDatabaseVolumeName("db-main"),
+    "deplo-db-main_db-main-data",
+  );
 });
 
 test("composeVolumeMounts reads the named volumes and where they mount", () => {
@@ -1050,13 +1179,20 @@ test("declaredSourceVolumes reads a stopped service's volumes from its mounts", 
     kind: "postgres",
     appName: "test2-test-u9vb1j",
     mounts: [
-      { type: "volume", volumeName: "test2-test-u9vb1j-data", mountPath: "/var/lib/postgresql/18/docker" },
+      {
+        type: "volume",
+        volumeName: "test2-test-u9vb1j-data",
+        mountPath: "/var/lib/postgresql/18/docker",
+      },
       { type: "file", volumeName: null, mountPath: "/etc/thing.conf" },
       { type: "bind", volumeName: null, mountPath: "/srv/x" },
     ],
   });
   assert.deepEqual(out, [
-    { name: "test2-test-u9vb1j-data", mountPath: "/var/lib/postgresql/18/docker" },
+    {
+      name: "test2-test-u9vb1j-data",
+      mountPath: "/var/lib/postgresql/18/docker",
+    },
   ]);
 });
 
@@ -1080,7 +1216,10 @@ test("declaredSourceVolumes prefixes a compose stack's volumes with its project"
 });
 
 test("declaredSourceVolumes has nothing to say about a service with no volumes", () => {
-  assert.deepEqual(declaredSourceVolumes({ kind: "application", appName: "x" }), []);
+  assert.deepEqual(
+    declaredSourceVolumes({ kind: "application", appName: "x" }),
+    [],
+  );
 });
 
 // A Postgres 18 container on Dokploy reports TWO volumes: its data volume at
@@ -1156,7 +1295,11 @@ test("mapDatabase imports mysql as root, because that is who Deplo acts as", () 
 test("mapDatabase leaves the application user alone when it IS root's password", () => {
   const { value, notes } = mapDatabase(
     "mysql",
-    db({ databaseUser: "appuser", databasePassword: "same", databaseRootPassword: "same" }),
+    db({
+      databaseUser: "appuser",
+      databasePassword: "same",
+      databaseRootPassword: "same",
+    }),
   );
   assert.equal(value?.username, "root");
   assert.equal(notes.join(" ").includes("Connects as root"), false);
@@ -1165,7 +1308,11 @@ test("mapDatabase leaves the application user alone when it IS root's password",
 test("mapDatabase keeps the application user for engines with a single credential", () => {
   const { value } = mapDatabase(
     "postgres",
-    db({ databaseUser: "appuser", databasePassword: "app-pw", databaseRootPassword: "root-pw" }),
+    db({
+      databaseUser: "appuser",
+      databasePassword: "app-pw",
+      databaseRootPassword: "root-pw",
+    }),
   );
   assert.equal(value?.username, "appuser");
   assert.equal(value?.password, "app-pw");
@@ -1198,7 +1345,10 @@ configs:
     file: ../files/cfg.yml
 `);
   const doc = yaml.load(compose) as {
-    services: Record<string, { env_file?: unknown; build?: { context?: string } }>;
+    services: Record<
+      string,
+      { env_file?: unknown; build?: { context?: string } }
+    >;
     secrets: Record<string, { file: string }>;
     configs: Record<string, { file: string }>;
   };
@@ -1338,7 +1488,10 @@ test("mapLogo drops what deplo would not store, and never throws", () => {
   assert.equal(mapLogo(""), null);
   assert.equal(mapLogo("   "), null);
   // A remote URL is the shape the strict CSP exists to refuse.
-  assert.equal(mapLogo("https://templates.dokploy.com/blueprints/n8n/logo.png"), null);
+  assert.equal(
+    mapLogo("https://templates.dokploy.com/blueprints/n8n/logo.png"),
+    null,
+  );
   // An image type outside deplo's allowlist, and a non-image data URI.
   assert.equal(mapLogo("data:image/avif;base64,AAAA"), null);
   assert.equal(mapLogo("data:text/html;base64,PHNjcmlwdD4="), null);

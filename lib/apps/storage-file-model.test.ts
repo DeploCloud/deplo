@@ -32,7 +32,11 @@ const editable = (p: Partial<StorageFileDraft> = {}): StorageFileDraft => ({
 /* ---- what the server's answer means -------------------------------- */
 
 test("an existing text file opens with its own contents", () => {
-  const d = storageFileDraft({ path: "config.toml", state: "text", text: "a = 1" });
+  const d = storageFileDraft({
+    path: "config.toml",
+    state: "text",
+    text: "a = 1",
+  });
   assert.equal(d.status, "editable");
   assert.equal(d.exists, true);
   assert.equal(d.draft, "a = 1");
@@ -85,7 +89,10 @@ test("typed content counts as unsaved work; an untouched file does not", () => {
     fileDraftIsDirty(editable({ draft: "a = 2" }), "other.toml"),
     false,
   );
-  assert.equal(fileDraftIsDirty(loadingFileDraft("config.toml"), "config.toml"), false);
+  assert.equal(
+    fileDraftIsDirty(loadingFileDraft("config.toml"), "config.toml"),
+    false,
+  );
   assert.equal(fileDraftIsDirty(undefined, "config.toml"), false);
 });
 
@@ -96,7 +103,10 @@ test("an unchanged file that already exists is not rewritten", () => {
 });
 
 test("changed content is written", () => {
-  assert.equal(pendingFileWrite(editable({ draft: "a = 2" }), "config.toml"), "a = 2");
+  assert.equal(
+    pendingFileWrite(editable({ draft: "a = 2" }), "config.toml"),
+    "a = 2",
+  );
 });
 
 test("a file that isn't there yet is created even when it is empty", () => {
@@ -104,7 +114,10 @@ test("a file that isn't there yet is created even when it is empty", () => {
   // inventing an empty DIRECTORY at the mount path, so the app would boot with a
   // folder where its config file should be — silently.
   assert.equal(
-    pendingFileWrite(editable({ exists: false, saved: "", draft: "" }), "config.toml"),
+    pendingFileWrite(
+      editable({ exists: false, saved: "", draft: "" }),
+      "config.toml",
+    ),
     "",
   );
 });
@@ -112,7 +125,10 @@ test("a file that isn't there yet is created even when it is empty", () => {
 test("content read for a different path is never written", () => {
   // The user typed content for config.toml, then edited the path. Writing this
   // to nginx.conf would truncate a file nobody looked at.
-  assert.equal(pendingFileWrite(editable({ draft: "a = 2" }), "nginx.conf"), null);
+  assert.equal(
+    pendingFileWrite(editable({ draft: "a = 2" }), "nginx.conf"),
+    null,
+  );
   assert.equal(pendingFileWrite(undefined, "config.toml"), null);
 });
 
@@ -137,7 +153,10 @@ test("nothing is ever written until the entry names a file", () => {
   // The whole point of holding it with an empty path: there is no file to
   // truncate and no folder to invent, whatever the save does next.
   assert.equal(pendingFileWrite(unpathedFileDraft("server { }"), ""), null);
-  assert.equal(pendingFileWrite(editable({ path: "", saved: "", exists: false }), ""), null);
+  assert.equal(
+    pendingFileWrite(editable({ path: "", saved: "", exists: false }), ""),
+    null,
+  );
 });
 
 test("naming the file afterwards carries the typed text over", () => {
@@ -173,12 +192,19 @@ test("the whole write-then-name flow: nothing is saved until the entry is comple
 
   // 3. Name it, and leave the path inside the app empty on purpose.
   const named = { ...row, projectPath: "nginx.conf" };
-  assert.equal(volumeProblem(named, "/app"), null, "complete: the path derives");
+  assert.equal(
+    volumeProblem(named, "/app"),
+    null,
+    "complete: the path derives",
+  );
   assert.equal(effectiveMountPath(named, "/app"), "/app/nginx.conf");
 
   // 4. The read for that path lands and carries the text over; the save writes
   //    the file, then the row, at the derived path.
-  const read = storageFileDraft({ path: "nginx.conf", state: "new", text: "" }, typed.draft);
+  const read = storageFileDraft(
+    { path: "nginx.conf", state: "new", text: "" },
+    typed.draft,
+  );
   assert.equal(pendingFileWrite(read, "nginx.conf"), "server { listen 80; }");
 
   // 5. The same entry on a prebuilt image: nothing to derive from, so it asks.
@@ -186,9 +212,15 @@ test("the whole write-then-name flow: nothing is saved until the entry is comple
 });
 
 test("what deplo could not read or cannot edit, it does not touch", () => {
-  assert.equal(pendingFileWrite(loadingFileDraft("config.toml"), "config.toml"), null);
   assert.equal(
-    pendingFileWrite(failedFileDraft("config.toml", "server unreachable"), "config.toml"),
+    pendingFileWrite(loadingFileDraft("config.toml"), "config.toml"),
+    null,
+  );
+  assert.equal(
+    pendingFileWrite(
+      failedFileDraft("config.toml", "server unreachable"),
+      "config.toml",
+    ),
     null,
   );
   assert.equal(

@@ -99,7 +99,13 @@ export function DestinationCombobox({
     probeInFlight = true;
     setProbing(true);
     void gqlAction<
-      { testDestinations: { id: string; status: DestinationStatus; lastTestError: string | null }[] },
+      {
+        testDestinations: {
+          id: string;
+          status: DestinationStatus;
+          lastTestError: string | null;
+        }[];
+      },
       { id: string; status: DestinationStatus; lastTestError: string | null }[]
     >(
       `mutation { testDestinations { id status lastTestError } }`,
@@ -112,7 +118,10 @@ export function DestinationCombobox({
         if (!res.ok || !res.data) return;
         setLive(
           Object.fromEntries(
-            res.data.map((d) => [d.id, { status: d.status, error: d.lastTestError }]),
+            res.data.map((d) => [
+              d.id,
+              { status: d.status, error: d.lastTestError },
+            ]),
           ),
         );
       })
@@ -194,8 +203,8 @@ export function DestinationCombobox({
                 Same disk as this {sameDiskNoun}
               </p>
               <p className="text-xs text-muted-foreground">
-                {selected.name} is on the server this {sameDiskNoun} runs on.
-                It protects against a mistake, not against a disk failure.
+                {selected.name} is on the server this {sameDiskNoun} runs on. It
+                protects against a mistake, not against a disk failure.
               </p>
             </div>
           </div>

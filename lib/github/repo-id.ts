@@ -21,7 +21,8 @@ export function githubFullName(
   repo: Pick<GitRepo, "repo" | "url"> | null | undefined,
 ): string | null {
   if (!repo) return null;
-  if (repo.repo && OWNER_REPO.test(repo.repo)) return repo.repo.replace(/\.git$/, "");
+  if (repo.repo && OWNER_REPO.test(repo.repo))
+    return repo.repo.replace(/\.git$/, "");
   try {
     const url = new URL(repo.url ?? "");
     if (url.hostname.toLowerCase() !== "github.com") return null;

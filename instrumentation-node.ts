@@ -51,7 +51,10 @@ export async function register(): Promise<void> {
     const { runMigrations } = await import("./lib/db/migrate");
     await runMigrations();
   } catch (e) {
-    console.error("[deplo] DB migration failed at boot — refusing to serve on an out-of-date schema:", e);
+    console.error(
+      "[deplo] DB migration failed at boot — refusing to serve on an out-of-date schema:",
+      e,
+    );
     throw e;
   }
   try {
@@ -61,19 +64,24 @@ export async function register(): Promise<void> {
     // this lands on a panel moved to http would mint a cookie the browser then
     // refuses to send back - a login screen that accepts the password and
     // returns to the login screen. One indexed SELECT.
-    const { hydratePublicBaseUrl } = await import("./lib/data/instance-settings");
+    const { hydratePublicBaseUrl } =
+      await import("./lib/data/instance-settings");
     await hydratePublicBaseUrl();
     // Immediately after, and for the same reason it had to come first: the OAuth
     // audience is DERIVED from that address, and since Better Auth 1.7.0 it is a
     // stored row rather than config. An instance whose address changed while it
     // was down would otherwise boot with the old audience still requestable
     // alongside the new one. Two SELECT-shaped UPDATEs on a table with one row.
-    const { reconcileOAuthResources } = await import("./lib/auth/oauth-resources");
+    const { reconcileOAuthResources } =
+      await import("./lib/auth/oauth-resources");
     await reconcileOAuthResources();
   } catch (e) {
     // Not fatal: without it the address falls back to DEPLO_PUBLIC_URL, which is
     // what every Deplo did before the setting existed.
-    console.error("[deplo] could not read the stored panel address at boot:", e);
+    console.error(
+      "[deplo] could not read the stored panel address at boot:",
+      e,
+    );
   }
   try {
     // Register this host as a server if nothing has yet - the first server a new
@@ -138,9 +146,8 @@ export async function register(): Promise<void> {
     console.error("[deplo] backup reconcile/scheduler startup failed:", e);
   }
   try {
-    const { reconcileInFlightCleanupRuns } = await import(
-      "./lib/data/docker-cleanup"
-    );
+    const { reconcileInFlightCleanupRuns } =
+      await import("./lib/data/docker-cleanup");
     // AWAITED, same rule as the backup reconcile: the cleanup tick SKIPS a server
     // that already has a `running` run (two `docker rmi` sweeps on one host would
     // race each other's candidate lists), so a run stranded by the restart that
@@ -149,12 +156,14 @@ export async function register(): Promise<void> {
     // Then the cleanup loop — a sibling of the backup scheduler under its own lease.
     // Its boot tick is load-bearing: unlike backups, cleanup CATCHES UP, so a control
     // plane that was down at 04:00 sweeps on the way back up.
-    const { startDockerCleanupScheduler } = await import(
-      "./lib/docker-cleanup/scheduler"
-    );
+    const { startDockerCleanupScheduler } =
+      await import("./lib/docker-cleanup/scheduler");
     startDockerCleanupScheduler();
   } catch (e) {
-    console.error("[deplo] docker-cleanup reconcile/scheduler startup failed:", e);
+    console.error(
+      "[deplo] docker-cleanup reconcile/scheduler startup failed:",
+      e,
+    );
   }
   try {
     // Deletes stamped by a control plane that died mid-teardown. A confirmed
@@ -215,10 +224,10 @@ export async function register(): Promise<void> {
     if (!g.__deploCertSweep) {
       g.__deploCertSweep = true;
       try {
-        const { sweepExpiringAgentCerts } = await import(
-          "./lib/agent/cert-renewal"
-        );
-        const { runMaintenanceSweep } = await import("./lib/notify/maintenance");
+        const { sweepExpiringAgentCerts } =
+          await import("./lib/agent/cert-renewal");
+        const { runMaintenanceSweep } =
+          await import("./lib/notify/maintenance");
         const run = () => {
           void sweepExpiringAgentCerts().catch((e) =>
             console.error("[cert-renewal] sweep failed:", e),
@@ -252,7 +261,9 @@ export async function register(): Promise<void> {
         .then(({ stopMetricsStreams }) => stopMetricsStreams())
         .catch(() => {});
       void import("./lib/backups/scheduler")
-        .then(({ releaseBackupSchedulerLease }) => releaseBackupSchedulerLease())
+        .then(({ releaseBackupSchedulerLease }) =>
+          releaseBackupSchedulerLease(),
+        )
         .catch(() => {});
       void import("./lib/docker-cleanup/scheduler")
         .then(({ releaseDockerCleanupLease }) => releaseDockerCleanupLease())

@@ -25,14 +25,18 @@ export default async function AppDeploymentsPage(
     hasAppCapability(project.id, "rollback_apps"),
     isInstanceAdmin(),
   ]);
-  const inProgress = deployments.filter((d) => IN_PROGRESS.has(d.status)).length;
+  const inProgress = deployments.filter((d) =>
+    IN_PROGRESS.has(d.status),
+  ).length;
   const canManage = canDeploy || isAdmin;
 
   // Passed into the table so it sits opposite the bulk-action buttons on one
   // justify-between row; reused above the empty state.
   const header = (
     <div className="space-y-1">
-      <h2 className="text-lg font-semibold tracking-tight">Deployment history</h2>
+      <h2 className="text-lg font-semibold tracking-tight">
+        Deployment history
+      </h2>
       <p className="text-sm text-muted-foreground">
         {deployments.length} total
         {inProgress > 0 && (

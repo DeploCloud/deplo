@@ -44,7 +44,9 @@ import type {
 export type DatabaseRow = InferSelectModel<typeof databases>;
 export type DatabaseInsert = InferInsertModel<typeof databases>;
 export type BackupDestinationRow = InferSelectModel<typeof backupDestination>;
-export type BackupDestinationInsert = InferInsertModel<typeof backupDestination>;
+export type BackupDestinationInsert = InferInsertModel<
+  typeof backupDestination
+>;
 export type BackupRow = InferSelectModel<typeof backups>;
 export type BackupInsert = InferInsertModel<typeof backups>;
 export type BackupRunRow = InferSelectModel<typeof backupRuns>;
@@ -144,7 +146,9 @@ export function assembleDatabase(
  * `""` server id, or a `server` row with an empty bucket, would be rejected at
  * write time — which is exactly what should happen.
  */
-export function destinationToRow(d: BackupDestination): BackupDestinationInsert {
+export function destinationToRow(
+  d: BackupDestination,
+): BackupDestinationInsert {
   return {
     id: d.id,
     teamId: d.teamId,
@@ -172,11 +176,16 @@ export function destinationToRow(d: BackupDestination): BackupDestinationInsert 
     lastFreeBytes: d.lastFreeBytes,
     lastTotalBytes: d.lastTotalBytes,
     resolvedPath: d.resolvedPath,
-  } satisfies Record<keyof BackupDestination, unknown> as BackupDestinationInsert;
+  } satisfies Record<
+    keyof BackupDestination,
+    unknown
+  > as BackupDestinationInsert;
 }
 
 /** Reassemble a `backup_destination` row into a {@link BackupDestination}. */
-export function assembleDestination(row: BackupDestinationRow): BackupDestination {
+export function assembleDestination(
+  row: BackupDestinationRow,
+): BackupDestination {
   return {
     id: row.id,
     teamId: row.teamId,

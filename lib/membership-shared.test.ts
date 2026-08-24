@@ -72,8 +72,14 @@ test("capabilitiesForRole returns a fresh copy (not the preset reference)", () =
 
 test("roleLabelForCapabilities recognizes exact presets, else 'custom'", () => {
   assert.equal(roleLabelForCapabilities(capabilitiesForRole("owner")), "owner");
-  assert.equal(roleLabelForCapabilities(capabilitiesForRole("viewer")), "viewer");
-  assert.equal(roleLabelForCapabilities(capabilitiesForRole("member")), "member");
+  assert.equal(
+    roleLabelForCapabilities(capabilitiesForRole("viewer")),
+    "viewer",
+  );
+  assert.equal(
+    roleLabelForCapabilities(capabilitiesForRole("member")),
+    "member",
+  );
   assert.equal(roleLabelForCapabilities(["view", "deploy_apps"]), "custom");
 });
 
@@ -143,10 +149,18 @@ test("expandLegacyCapabilities expands only the RETIRED names", () => {
   // turning those into more permissions would grant what nobody chose.
   assert.deepEqual(expandLegacyCapabilities(["view"]), ["view"]);
   assert.deepEqual(expandLegacyCapabilities(["manage_env"]), ["manage_env"]);
-  assert.deepEqual(expandLegacyCapabilities(["manage_members"]), ["manage_members"]);
+  assert.deepEqual(expandLegacyCapabilities(["manage_members"]), [
+    "manage_members",
+  ]);
   // …while the three that no longer exist do expand.
-  assert.ok(expandLegacyCapabilities(["manage_files"]).includes("write_app_files"));
-  assert.ok(expandLegacyCapabilities(["manage_infra"]).includes("manage_backup_destinations"));
+  assert.ok(
+    expandLegacyCapabilities(["manage_files"]).includes("write_app_files"),
+  );
+  assert.ok(
+    expandLegacyCapabilities(["manage_infra"]).includes(
+      "manage_backup_destinations",
+    ),
+  );
 });
 
 test("cleanCapabilities accepts an old-world list from an API client", () => {
@@ -162,7 +176,9 @@ test("search finds a permission by what it does, not only by its name", () => {
   assert.ok(searchCapabilities("ssh").includes("open_app_console"));
   assert.ok(searchCapabilities("api").includes("manage_tokens"));
   assert.ok(searchCapabilities("delete database").includes("delete_databases"));
-  assert.ok(searchCapabilities("bucket").includes("manage_backup_destinations"));
+  assert.ok(
+    searchCapabilities("bucket").includes("manage_backup_destinations"),
+  );
   // Multi-term search is AND, and an empty query is everything.
   assert.deepEqual(searchCapabilities(""), ALL_CAPABILITIES);
   assert.deepEqual(searchCapabilities("zzzznope"), []);

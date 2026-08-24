@@ -56,7 +56,9 @@ export async function POST(
     // secret that no longer decrypts, and then every delivery 401s forever.
     console.warn(
       `[git-webhook] 401 invalid signature for ${conn.provider} connection ${conn.id}` +
-        (secret ? "" : " (stored webhook secret is empty — DEPLO_SECRET changed?)"),
+        (secret
+          ? ""
+          : " (stored webhook secret is empty — DEPLO_SECRET changed?)"),
     );
     return new Response("invalid signature", { status: 401 });
   }

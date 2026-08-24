@@ -57,7 +57,9 @@ function linearTicks(max: number, target: number): number[] {
   const step = niceStep(max / target);
   const n = Math.max(1, Math.ceil(max / step - 1e-9));
   // Multiply instead of accumulating so float dust never reaches the labels.
-  return Array.from({ length: n + 1 }, (_, i) => Number((i * step).toFixed(10)));
+  return Array.from({ length: n + 1 }, (_, i) =>
+    Number((i * step).toFixed(10)),
+  );
 }
 
 function yTicksFor(unit: ChartUnit, dataMax: number): number[] {
@@ -95,7 +97,8 @@ function timeTicks(
   const stepMs =
     (TIME_STEPS_S.find((s) => span / (s * 1000) <= maxCount) ?? 3600) * 1000;
   const ticks: number[] = [];
-  for (let t = Math.ceil(t0 / stepMs) * stepMs; t <= t1; t += stepMs) ticks.push(t);
+  for (let t = Math.ceil(t0 / stepMs) * stepMs; t <= t1; t += stepMs)
+    ticks.push(t);
   return { ticks, stepMs };
 }
 
@@ -224,7 +227,8 @@ export function TimeSeriesChart({
   // Points inside the window, plus one earlier sample so the line enters from
   // the left edge instead of starting mid-plot (the clip rect crops it).
   const firstIdx = points.findIndex((p) => p.ts >= t0);
-  const drawPoints = firstIdx >= 0 ? points.slice(Math.max(0, firstIdx - 1)) : [];
+  const drawPoints =
+    firstIdx >= 0 ? points.slice(Math.max(0, firstIdx - 1)) : [];
   const hoverPoints = firstIdx >= 0 ? points.slice(firstIdx) : [];
 
   // Stretches with no measurements (the poll skipped: agent busy deploying,
@@ -275,7 +279,8 @@ export function TimeSeriesChart({
   if (hoverTs != null && hoverPoints.length) {
     hoverPoint = hoverPoints[0];
     for (const p of hoverPoints) {
-      if (Math.abs(p.ts - hoverTs) < Math.abs(hoverPoint.ts - hoverTs)) hoverPoint = p;
+      if (Math.abs(p.ts - hoverTs) < Math.abs(hoverPoint.ts - hoverTs))
+        hoverPoint = p;
     }
   }
 
@@ -287,10 +292,13 @@ export function TimeSeriesChart({
 
   function onKeyDown(e: React.KeyboardEvent<HTMLDivElement>) {
     if (!hoverPoints.length) return;
-    const idx = hoverPoint ? hoverPoints.indexOf(hoverPoint) : hoverPoints.length - 1;
+    const idx = hoverPoint
+      ? hoverPoints.indexOf(hoverPoint)
+      : hoverPoints.length - 1;
     let next: number | null = null;
     if (e.key === "ArrowLeft") next = Math.max(0, idx - 1);
-    else if (e.key === "ArrowRight") next = Math.min(hoverPoints.length - 1, idx + 1);
+    else if (e.key === "ArrowRight")
+      next = Math.min(hoverPoints.length - 1, idx + 1);
     else if (e.key === "Home") next = 0;
     else if (e.key === "End") next = hoverPoints.length - 1;
     else if (e.key === "Escape") {
@@ -314,7 +322,9 @@ export function TimeSeriesChart({
     });
   }
 
-  const tooltipFlips = hoverPoint ? xOf(hoverPoint.ts) > mLeft + plotW * 0.55 : false;
+  const tooltipFlips = hoverPoint
+    ? xOf(hoverPoint.ts) > mLeft + plotW * 0.55
+    : false;
 
   return (
     <div
@@ -348,7 +358,11 @@ export function TimeSeriesChart({
               height={7}
               patternTransform="rotate(45)"
             >
-              <rect width={7} height={7} className="fill-muted-foreground/[0.06]" />
+              <rect
+                width={7}
+                height={7}
+                className="fill-muted-foreground/[0.06]"
+              />
               <line
                 x1={0}
                 y1={0}
@@ -603,7 +617,10 @@ export function TimeSeriesChart({
             {visibleSeries.map((s) => {
               const v = hoverPoint.values[s.key];
               return (
-                <div key={s.key} className="flex items-center justify-between gap-4">
+                <div
+                  key={s.key}
+                  className="flex items-center justify-between gap-4"
+                >
                   <span className="flex items-center gap-1.5 whitespace-nowrap text-muted-foreground">
                     <span
                       className="h-0.5 w-3 shrink-0 rounded-full"
@@ -611,7 +628,7 @@ export function TimeSeriesChart({
                     />
                     {s.label}
                   </span>
-                  <span className="whitespace-nowrap font-medium tabular-nums text-popover-foreground">
+                  <span className="font-medium whitespace-nowrap text-popover-foreground tabular-nums">
                     {v != null && Number.isFinite(v) ? fmtValue(v, unit) : "—"}
                   </span>
                 </div>
@@ -645,7 +662,9 @@ export function TimeSeriesChart({
                 />
                 <span className="text-muted-foreground">{s.label}</span>
                 {v != null && Number.isFinite(v) && (
-                  <span className="font-medium tabular-nums">{fmtValue(v, unit)}</span>
+                  <span className="font-medium tabular-nums">
+                    {fmtValue(v, unit)}
+                  </span>
                 )}
               </button>
             );

@@ -180,10 +180,13 @@ export function nextCronRunInZone(
     const horizonMs = Math.min(cursor.getTime() + SCAN_WINDOW_MS, deadline);
     const horizon = new Date(horizonMs);
     if (offsetAt(cursor, tz) === offsetAt(horizon, tz)) {
-      const remainingDays = Math.ceil((deadline - cursor.getTime()) / 86_400_000);
+      const remainingDays = Math.ceil(
+        (deadline - cursor.getTime()) / 86_400_000,
+      );
       return walkWallClock(expr, cursor, tz, Math.max(1, remainingDays));
     }
-    const start = Math.floor(cursor.getTime() / MINUTE_MS) * MINUTE_MS + MINUTE_MS;
+    const start =
+      Math.floor(cursor.getTime() / MINUTE_MS) * MINUTE_MS + MINUTE_MS;
     for (let t = start; t <= horizonMs; t += MINUTE_MS) {
       const at = new Date(t);
       if (cronMatchesInZone(expr, at, tz)) return at;
@@ -271,10 +274,15 @@ export function canonicalTimeZone(tz: string): string | null {
  *   DST for Ramadan) can hold a second gap this does not name. Upgrade: return
  *   the list and warn on each.
  */
-function springForwardGap(tz: string, from: Date): { start: Date; end: Date } | null {
+function springForwardGap(
+  tz: string,
+  from: Date,
+): { start: Date; end: Date } | null {
   const probes = [from];
   for (let i = 1; i <= 13; i++) {
-    probes.push(new Date(Date.UTC(from.getUTCFullYear(), from.getUTCMonth() + i, 1)));
+    probes.push(
+      new Date(Date.UTC(from.getUTCFullYear(), from.getUTCMonth() + i, 1)),
+    );
   }
   for (let i = 0; i < probes.length - 1; i++) {
     const before = offsetAt(probes[i], tz);
@@ -289,7 +297,9 @@ function springForwardGap(tz: string, from: Date): { start: Date; end: Date } | 
       else hi = mid;
     }
     return {
-      start: new Date(fakeUtcOf(new Date(lo * MINUTE_MS), tz).getTime() + MINUTE_MS),
+      start: new Date(
+        fakeUtcOf(new Date(lo * MINUTE_MS), tz).getTime() + MINUTE_MS,
+      ),
       end: fakeUtcOf(new Date(hi * MINUTE_MS), tz),
     };
   }
@@ -304,7 +314,8 @@ const wallDay = new Intl.DateTimeFormat("en-US", {
 });
 
 /** `hh:mm` of a fake-UTC wall clock. */
-const wallTime = (at: Date) => `${pad(at.getUTCHours())}:${pad(at.getUTCMinutes())}`;
+const wallTime = (at: Date) =>
+  `${pad(at.getUTCHours())}:${pad(at.getUTCMinutes())}`;
 
 /**
  * The sentence to show under a schedule spring forward will skip, or null.

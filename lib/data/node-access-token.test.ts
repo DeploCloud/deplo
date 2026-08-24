@@ -52,7 +52,10 @@ const grant = (over: Partial<TokenGrant> = {}): TokenGrant => ({
 const asUser = <T>(fn: () => Promise<T>): Promise<T> =>
   runWithIdentity({ userId: DEV, teamId: TEAM_A }, fn);
 
-const asToken = <T>(fn: () => Promise<T>, over?: Partial<TokenGrant>): Promise<T> =>
+const asToken = <T>(
+  fn: () => Promise<T>,
+  over?: Partial<TokenGrant>,
+): Promise<T> =>
   runWithIdentity({ userId: DEV, teamId: TEAM_A, token: grant(over) }, fn);
 
 before(async () => {
@@ -72,7 +75,13 @@ beforeEach(async () => {
     membership_capabilities, memberships, users, teams restart identity cascade;`);
   await seedIdentity(db, {
     users: [
-      { id: DEV, teamId: TEAM_A, role: "member", isInstanceAdmin: false, capabilities: ROLE_CAPS },
+      {
+        id: DEV,
+        teamId: TEAM_A,
+        role: "member",
+        isInstanceAdmin: false,
+        capabilities: ROLE_CAPS,
+      },
     ],
   });
   await seedServer(db);
@@ -105,8 +114,13 @@ test("a token never inherits its creator's node grant", async () => {
   assert.ok(mine.includes("delete_apps"));
 
   // The same request made with a token that was granted neither must hold neither.
-  const viaToken = await asToken(() => nodeCapabilities({ kind: "app", id: APP }));
-  assert.ok(!viaToken.includes("manage_env"), "the token's own set is the ceiling");
+  const viaToken = await asToken(() =>
+    nodeCapabilities({ kind: "app", id: APP }),
+  );
+  assert.ok(
+    !viaToken.includes("manage_env"),
+    "the token's own set is the ceiling",
+  );
   assert.ok(!viaToken.includes("delete_apps"));
 });
 
@@ -116,7 +130,10 @@ test("a token holding the capability keeps it at the node", async () => {
     { capabilities: ["view", "manage_env"] },
   );
   assert.ok(viaToken.includes("manage_env"), "granted to both ⇒ it applies");
-  assert.ok(!viaToken.includes("delete_apps"), "and nothing else leaks through");
+  assert.ok(
+    !viaToken.includes("delete_apps"),
+    "and nothing else leaks through",
+  );
 });
 
 test("a NARROWED token also loses the team-wide capabilities at a node", async () => {
@@ -137,5 +154,8 @@ test("a NARROWED token also loses the team-wide capabilities at a node", async (
     },
   );
   assert.ok(viaToken.includes("manage_env"));
-  assert.ok(!viaToken.includes("manage_members"), "team-wide caps drop for a narrowed token");
+  assert.ok(
+    !viaToken.includes("manage_members"),
+    "team-wide caps drop for a narrowed token",
+  );
 });

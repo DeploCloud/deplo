@@ -76,7 +76,9 @@ async function joinTeam(
   if (capabilities.length > 0)
     await db
       .insert(membershipCapabilitiesTable)
-      .values(capabilities.map((capability) => ({ membershipId: id, capability })));
+      .values(
+        capabilities.map((capability) => ({ membershipId: id, capability })),
+      );
 }
 
 /** A GitHub App owned by `teamId` with one installation on `accountLogin`. */
@@ -133,7 +135,11 @@ beforeEach(async () => {
     users: [
       { id: USER_1, teamId: TEAM_A, role: "owner" },
       // A deployer WITHOUT manage_env — the source-side secret gate.
-      { id: "user_2", teamId: TEAM_A, capabilities: ["view", "move_apps", "create_apps"] },
+      {
+        id: "user_2",
+        teamId: TEAM_A,
+        capabilities: ["view", "move_apps", "create_apps"],
+      },
     ],
   });
   await seedServer(db);
@@ -141,7 +147,12 @@ beforeEach(async () => {
 });
 
 test("transfers the app, and severs every tie to the team it came from", async () => {
-  await joinTeam(USER_1, TEAM_B, ["view", "move_apps", "create_apps", "manage_env"]);
+  await joinTeam(USER_1, TEAM_B, [
+    "view",
+    "move_apps",
+    "create_apps",
+    "manage_env",
+  ]);
   const dest = await seedS3(db, { id: "s3_1", teamId: TEAM_A });
   await seedBackup(db, {
     id: "bkp_1",
@@ -177,19 +188,30 @@ test("transfers the app, and severs every tie to the team it came from", async (
   });
 
   await asOwner(async () => {
-    const { appGrants: agTable, teamRoles: trTable, teamRoleScopeApps: trsTable } =
-      await import("../db/schema/control-plane");
+    const {
+      appGrants: agTable,
+      teamRoles: trTable,
+      teamRoleScopeApps: trsTable,
+    } = await import("../db/schema/control-plane");
     await db
       .insert(agTable)
       .values({ appId: APP, userId: USER_1, capability: "manage_env" });
     await db.insert(trTable).values({
-      id: "role_src", teamId: TEAM_A, builtinKey: null, name: "Src",
-      description: null, requireTwoFactor: false, scoped: true,
+      id: "role_src",
+      teamId: TEAM_A,
+      builtinKey: null,
+      name: "Src",
+      description: null,
+      requireTwoFactor: false,
+      scoped: true,
       createdAt: "2026-01-01T00:00:00.000Z",
     });
     await db.insert(trsTable).values({ roleId: "role_src", appId: APP });
-    const { cronJobs: cronTable, apiTokens: tokTable, apiTokenApps: tokAppsTable } =
-      await import("../db/schema/control-plane");
+    const {
+      cronJobs: cronTable,
+      apiTokens: tokTable,
+      apiTokenApps: tokAppsTable,
+    } = await import("../db/schema/control-plane");
     await db.insert(tokTable).values({
       id: "tok_src",
       teamId: TEAM_A,
@@ -225,15 +247,18 @@ test("transfers the app, and severs every tie to the team it came from", async (
   });
 
   const row = await appRow();
-  assert.equal(row.teamId, TEAM_B, "the app now belongs to the destination team");
+  assert.equal(
+    row.teamId,
+    TEAM_B,
+    "the app now belongs to the destination team",
+  );
   assert.equal(row.folderId, null, "it left the source team's folder");
   // Per-node access is a fact about the team it came FROM: a grant that
   // travelled would hand a destination member capabilities their own team never
   // voted on, and a scope row would limit a source-team role to an app that is
   // no longer in it.
-  const { appGrants, teamRoleScopeApps, cronJobs, apiTokenApps } = await import(
-    "../db/schema/control-plane"
-  );
+  const { appGrants, teamRoleScopeApps, cronJobs, apiTokenApps } =
+    await import("../db/schema/control-plane");
   assert.equal(
     (await db.select().from(appGrants).where(eq(appGrants.appId, APP))).length,
     0,
@@ -250,7 +275,8 @@ test("transfers the app, and severs every tie to the team it came from", async (
     "a role scope row travelled with the app",
   );
   assert.equal(
-    (await db.select().from(backupsTable).where(eq(backupsTable.appId, APP))).length,
+    (await db.select().from(backupsTable).where(eq(backupsTable.appId, APP)))
+      .length,
     0,
     "backup schedules pointing at the source team's storage are gone",
   );
@@ -260,7 +286,8 @@ test("transfers the app, and severs every tie to the team it came from", async (
     "cron jobs do not travel — a surviving one would run the source team's command in the destination container",
   );
   assert.equal(
-    (await db.select().from(apiTokenApps).where(eq(apiTokenApps.appId, APP))).length,
+    (await db.select().from(apiTokenApps).where(eq(apiTokenApps.appId, APP)))
+      .length,
     0,
     "a source-team token's scope row does not follow the app into the destination team",
   );
@@ -275,7 +302,8 @@ test("transfers the app, and severs every tie to the team it came from", async (
     "shared-variable links do not travel",
   );
   assert.equal(
-    (await db.select().from(teamAppOrder).where(eq(teamAppOrder.appId, APP))).length,
+    (await db.select().from(teamAppOrder).where(eq(teamAppOrder.appId, APP)))
+      .length,
     0,
     "the source team's display order no longer lists it",
   );
@@ -285,7 +313,11 @@ test("transfers the app, and severs every tie to the team it came from", async (
       .from(activitiesTable)
       .where(eq(activitiesTable.id, "act_1"))
   )[0];
-  assert.equal(oldActivity.teamId, TEAM_A, "history stays with the source team");
+  assert.equal(
+    oldActivity.teamId,
+    TEAM_A,
+    "history stays with the source team",
+  );
   assert.equal(oldActivity.appId, null, "but stops pointing at the app");
   const received = await db
     .select({ message: activitiesTable.message })
@@ -314,7 +346,12 @@ test("refuses a team the caller doesn't belong to, or can't deploy in", async ()
 });
 
 test("refuses a caller who may deploy here but not read the variables", async () => {
-  await joinTeam("user_2", TEAM_B, ["view", "move_apps", "create_apps", "manage_env"]);
+  await joinTeam("user_2", TEAM_B, [
+    "view",
+    "move_apps",
+    "create_apps",
+    "manage_env",
+  ]);
   await asUser("user_2", async () => {
     await assert.rejects(transferAppToTeam(APP, TEAM_B), /permission/i);
   });
@@ -322,7 +359,12 @@ test("refuses a caller who may deploy here but not read the variables", async ()
 });
 
 test("refuses to strand the app on a server the destination team can't target", async () => {
-  await joinTeam(USER_1, TEAM_B, ["view", "move_apps", "create_apps", "manage_env"]);
+  await joinTeam(USER_1, TEAM_B, [
+    "view",
+    "move_apps",
+    "create_apps",
+    "manage_env",
+  ]);
   await db
     .update(serversTable)
     .set({ allTeams: false })
@@ -335,7 +377,10 @@ test("refuses to strand the app on a server the destination team can't target", 
     const info = await appTransferInfo(APP);
     assert.equal(info.targets.length, 1);
     assert.equal(info.targets[0].serverAvailable, false);
-    await assert.rejects(transferAppToTeam(APP, TEAM_B), /can't use the server/i);
+    await assert.rejects(
+      transferAppToTeam(APP, TEAM_B),
+      /can't use the server/i,
+    );
   });
   assert.equal((await appRow()).teamId, TEAM_A);
 
@@ -357,7 +402,12 @@ test("a foreign app id is not found, and its team is never touched", async () =>
     createdAt: T0,
   });
   await seedApp(db, { id: "prj_other", teamId: TEAM_B, slug: "other" });
-  await joinTeam(USER_1, TEAM_B, ["view", "move_apps", "create_apps", "manage_env"]);
+  await joinTeam(USER_1, TEAM_B, [
+    "view",
+    "move_apps",
+    "create_apps",
+    "manage_env",
+  ]);
   await asOwner(async () => {
     await assert.rejects(
       transferAppToTeam("prj_other", TEAM_B),
@@ -367,7 +417,12 @@ test("a foreign app id is not found, and its team is never touched", async () =>
 });
 
 test("the GitHub connection is dropped unless the destination owns one on that account", async () => {
-  await joinTeam(USER_1, TEAM_B, ["view", "move_apps", "create_apps", "manage_env"]);
+  await joinTeam(USER_1, TEAM_B, [
+    "view",
+    "move_apps",
+    "create_apps",
+    "manage_env",
+  ]);
   const sourceInstall = await seedGithub(TEAM_A, "acme", {
     app: "gha_a",
     install: "ghi_a",
@@ -389,12 +444,25 @@ test("the GitHub connection is dropped unless the destination owns one on that a
     await transferAppToTeam(APP, TEAM_B);
   });
   const dropped = await appRow();
-  assert.equal(dropped.repoInstallationId, null, "the source team's credential does not travel");
-  assert.equal(dropped.autoDeploy, false, "auto-deploy can no longer fire, so it is turned off");
+  assert.equal(
+    dropped.repoInstallationId,
+    null,
+    "the source team's credential does not travel",
+  );
+  assert.equal(
+    dropped.autoDeploy,
+    false,
+    "auto-deploy can no longer fire, so it is turned off",
+  );
 });
 
 test("the GitHub connection follows when the destination has its own installation", async () => {
-  await joinTeam(USER_1, TEAM_B, ["view", "move_apps", "create_apps", "manage_env"]);
+  await joinTeam(USER_1, TEAM_B, [
+    "view",
+    "move_apps",
+    "create_apps",
+    "manage_env",
+  ]);
   const sourceInstall = await seedGithub(TEAM_A, "acme", {
     app: "gha_a",
     install: "ghi_a",
@@ -455,13 +523,23 @@ test("appTransferInfo offers only the viewer's OTHER teams that can deploy", asy
 });
 
 test("a scoped API token can't move an app into a team outside its scope", async () => {
-  await joinTeam(USER_1, TEAM_B, ["view", "move_apps", "create_apps", "manage_env"]);
+  await joinTeam(USER_1, TEAM_B, [
+    "view",
+    "move_apps",
+    "create_apps",
+    "manage_env",
+  ]);
   // A second and third app so the two SUCCESS cases each have their own row to
   // move (a transfer is destructive — the app leaves TEAM_A).
   await seedApp(db, { id: "prj_app2", teamId: TEAM_A });
   await seedApp(db, { id: "prj_app3", teamId: TEAM_A });
 
-  const tokenCaps: Capability[] = ["view", "move_apps", "create_apps", "manage_env"];
+  const tokenCaps: Capability[] = [
+    "view",
+    "move_apps",
+    "create_apps",
+    "manage_env",
+  ];
   const scopeFor = (teamIds: string[]) => ({
     teamIds,
     wholeTeamIds: teamIds,
@@ -470,7 +548,10 @@ test("a scoped API token can't move an app into a team outside its scope", async
     appIds: [],
     appProjectIds: [],
   });
-  const asToken = <T>(scopeTeamIds: string[], fn: () => Promise<T>): Promise<T> =>
+  const asToken = <T>(
+    scopeTeamIds: string[],
+    fn: () => Promise<T>,
+  ): Promise<T> =>
     runWithIdentity(
       {
         userId: USER_1,
@@ -493,7 +574,11 @@ test("a scoped API token can't move an app into a team outside its scope", async
       /can't move apps into that team/i,
     );
   });
-  assert.equal((await appRow()).teamId, TEAM_A, "the out-of-scope move was blocked");
+  assert.equal(
+    (await appRow()).teamId,
+    TEAM_A,
+    "the out-of-scope move was blocked",
+  );
 
   // A cookie session (no token) is unaffected.
   await asOwner(() => transferAppToTeam("prj_app2", TEAM_B));
@@ -524,12 +609,20 @@ test("a scoped API token can't move an app into a team outside its scope", async
 
 test("a transfer into the app's own team is refused", async () => {
   await asOwner(async () => {
-    await assert.rejects(transferAppToTeam(APP, TEAM_A), /already in this team/i);
+    await assert.rejects(
+      transferAppToTeam(APP, TEAM_A),
+      /already in this team/i,
+    );
   });
 });
 
 test("only the app's own team may transfer it", async () => {
-  await joinTeam(USER_1, TEAM_B, ["view", "move_apps", "create_apps", "manage_env"]);
+  await joinTeam(USER_1, TEAM_B, [
+    "view",
+    "move_apps",
+    "create_apps",
+    "manage_env",
+  ]);
   await asOwner(() => transferAppToTeam(APP, TEAM_B));
   // The app is TEAM_B's now: acting as TEAM_A, it is invisible again.
   await asOwner(async () => {

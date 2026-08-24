@@ -59,7 +59,11 @@ const CANCEL = /* GraphQL */ `
 
 const STATUS: Record<
   string,
-  { variant: "success" | "destructive" | "warning" | "muted"; label: string; note?: string }
+  {
+    variant: "success" | "destructive" | "warning" | "muted";
+    label: string;
+    note?: string;
+  }
 > = {
   running: { variant: "warning", label: "Running" },
   succeeded: { variant: "success", label: "Succeeded" },
@@ -81,7 +85,11 @@ const STATUS: Record<
   },
 };
 
-function RunRow({ run, canManage, onChanged }: {
+function RunRow({
+  run,
+  canManage,
+  onChanged,
+}: {
   run: CronRunDTO;
   canManage: boolean;
   onChanged: () => void;
@@ -89,7 +97,10 @@ function RunRow({ run, canManage, onChanged }: {
   const router = useRouter();
   const [open, setOpen] = React.useState(false);
   const [pending, startTransition] = React.useTransition();
-  const meta = STATUS[run.status] ?? { variant: "muted" as const, label: run.status };
+  const meta = STATUS[run.status] ?? {
+    variant: "muted" as const,
+    label: run.status,
+  };
   const output = [run.stdout, run.stderr].filter(Boolean).join("\n");
 
   function cancel() {
@@ -112,14 +123,21 @@ function RunRow({ run, canManage, onChanged }: {
           onClick={() => setOpen((o) => !o)}
           aria-expanded={open}
         >
-          <Badge variant={meta.variant} className="shrink-0 text-[10px] font-normal">
+          <Badge
+            variant={meta.variant}
+            className="shrink-0 text-[10px] font-normal"
+          >
             {run.retrying ? "Retrying" : meta.label}
           </Badge>
           <span className="truncate text-xs text-muted-foreground">
             {timeAgo(run.startedAt)}
             {run.trigger === "manual" ? ` · by ${run.actor}` : ""}
-            {run.attempt > 0 ? ` · attempt ${run.attempt + 1} of ${run.maxAttempts}` : ""}
-            {run.exitCode != null && run.status !== "running" ? ` · exit ${run.exitCode}` : ""}
+            {run.attempt > 0
+              ? ` · attempt ${run.attempt + 1} of ${run.maxAttempts}`
+              : ""}
+            {run.exitCode != null && run.status !== "running"
+              ? ` · exit ${run.exitCode}`
+              : ""}
           </span>
         </button>
         {canManage && run.status === "running" && (
@@ -143,8 +161,12 @@ function RunRow({ run, canManage, onChanged }: {
       {open && (
         <div className="space-y-2 border-t border-border px-3 py-2">
           {/* The sentence a colour cannot carry: why this is not a failure. */}
-          {meta.note && <p className="text-xs text-muted-foreground">{meta.note}</p>}
-          {run.error && <p className="text-xs text-muted-foreground">{run.error}</p>}
+          {meta.note && (
+            <p className="text-xs text-muted-foreground">{meta.note}</p>
+          )}
+          {run.error && (
+            <p className="text-xs text-muted-foreground">{run.error}</p>
+          )}
           {run.attempt > 0 && (
             <p className="text-xs text-muted-foreground">
               Showing the last of {run.attempt + 1} attempts.
@@ -156,7 +178,9 @@ function RunRow({ run, canManage, onChanged }: {
             </pre>
           ) : (
             <p className="text-xs text-muted-foreground">
-              {run.status === "running" ? "Output appears when the run ends." : "No output."}
+              {run.status === "running"
+                ? "Output appears when the run ends."
+                : "No output."}
             </p>
           )}
         </div>
@@ -216,7 +240,9 @@ export function CronRunHistory({
     );
   }
   if (runs.length === 0) {
-    return <p className="text-xs text-muted-foreground">This job has not run yet.</p>;
+    return (
+      <p className="text-xs text-muted-foreground">This job has not run yet.</p>
+    );
   }
   return (
     <div className="space-y-2">

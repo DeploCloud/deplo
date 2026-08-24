@@ -1,6 +1,15 @@
 import "server-only";
 
-import { and, type AnyColumn, eq, inArray, isNotNull, isNull, or, sql } from "drizzle-orm";
+import {
+  and,
+  type AnyColumn,
+  eq,
+  inArray,
+  isNotNull,
+  isNull,
+  or,
+  sql,
+} from "drizzle-orm";
 
 import { getDb } from "../db/client";
 import {
@@ -16,7 +25,12 @@ import {
 import { requireInstanceAdmin } from "../membership";
 import { dispatchServerAlert } from "../notify/dispatch";
 import { nowIso } from "../ids";
-import { getServerById, listAllServers, markServerSeen, observedTraefik } from "./servers";
+import {
+  getServerById,
+  listAllServers,
+  markServerSeen,
+  observedTraefik,
+} from "./servers";
 import type { HelloResponse } from "../agent/gen/agent";
 import type { Server } from "../types";
 
@@ -78,7 +92,10 @@ class ProbeTimeout extends Error {}
 function withDeadline<T>(p: Promise<T>, ms: number): Promise<T> {
   let timer: ReturnType<typeof setTimeout>;
   const timeout = new Promise<never>((_, reject) => {
-    timer = setTimeout(() => reject(new ProbeTimeout("health probe timed out")), ms);
+    timer = setTimeout(
+      () => reject(new ProbeTimeout("health probe timed out")),
+      ms,
+    );
   });
   return Promise.race([p.finally(() => clearTimeout(timer)), timeout]);
 }
@@ -152,7 +169,9 @@ async function serversDeployingNow(ids: string[]): Promise<Set<string>> {
         inArray(deploymentsTable.status, [...ACTIVE_DEPLOY_STATES]),
       ),
     );
-  return new Set(rows.map((r) => r.serverId).filter((s): s is string => s !== null));
+  return new Set(
+    rows.map((r) => r.serverId).filter((s): s is string => s !== null),
+  );
 }
 
 /**
@@ -233,7 +252,9 @@ function alertServerHealth(
     warning: {
       key: "server_unmanageable" as const,
       title: `${name} cannot run apps`,
-      body: health.message || "Deplo reached the server but not its container runtime.",
+      body:
+        health.message ||
+        "Deplo reached the server but not its container runtime.",
     },
     offline: {
       key: "server_offline" as const,
@@ -243,7 +264,9 @@ function alertServerHealth(
     error: {
       key: "server_trust_changed" as const,
       title: `${name} was refused`,
-      body: health.message || "The server did not present the identity Deplo trusts.",
+      body:
+        health.message ||
+        "The server did not present the identity Deplo trusts.",
     },
   }[health.status];
   dispatchServerAlert(id, { ...alert, dedupe, path: "/settings/servers" });
@@ -265,7 +288,10 @@ function alertServerHealth(
  *    observation and its previous timestamp, so the UI ages it out to "Unknown" on its
  *    own rather than being handed a fresh, fabricated verdict.
  */
-async function probeServer(server: Server, force: boolean): Promise<Server | null> {
+async function probeServer(
+  server: Server,
+  force: boolean,
+): Promise<Server | null> {
   if (!(await claimProbe(server.id, force))) return null;
 
   // Watermark on probe START, not on write. See recordServerHealth.
@@ -286,7 +312,9 @@ async function probeServer(server: Server, force: boolean): Promise<Server | nul
     hello = await withDeadline(dialHello(), PROBE_DEADLINE_MS);
   } catch (e) {
     if (e instanceof ProbeTimeout) {
-      console.error(`[deplo] health probe for ${server.name} timed out; leaving status as-is`);
+      console.error(
+        `[deplo] health probe for ${server.name} timed out; leaving status as-is`,
+      );
       return null;
     }
     if (isRetryableProbeFailure(e)) {
@@ -315,7 +343,10 @@ async function probeServer(server: Server, force: boolean): Promise<Server | nul
   // provably alive (it is streaming build events to us); a Hello that lost a race with
   // a build-pegged host is a false negative, and persisting it would tell the operator
   // their server is down in the middle of a deploy that is visibly working.
-  if (health.status === "offline" && (await serversDeployingNow([server.id])).has(server.id)) {
+  if (
+    health.status === "offline" &&
+    (await serversDeployingNow([server.id])).has(server.id)
+  ) {
     console.error(
       `[deplo] health probe for ${server.name} failed while it is deploying; not demoting`,
     );
@@ -328,7 +359,8 @@ async function probeServer(server: Server, force: boolean): Promise<Server | nul
   // refreshed by a deploy pre-flight or the monitoring stream, and a host nobody deployed
   // to wore whatever flag it had when it last called home. AWAITED, not fire-and-forget:
   // the row we read below is what the mutation returns to the card.
-  if (hello) await markServerSeen(server.id, hello.agentVersion, observedTraefik(hello));
+  if (hello)
+    await markServerSeen(server.id, hello.agentVersion, observedTraefik(hello));
   return getServerById(server.id);
 }
 
@@ -390,6 +422,8 @@ export async function checkAllServerHealth(
   await requireInstanceAdmin();
   const servers = await listAllServers();
   return Promise.all(
-    servers.map((s) => (isProbeable(s) ? probeCoalesced(s, opts.force ?? false) : s)),
+    servers.map((s) =>
+      isProbeable(s) ? probeCoalesced(s, opts.force ?? false) : s,
+    ),
   );
 }

@@ -68,7 +68,8 @@ export const MAX_AVATAR_BYTES = 256 * 1024; // 256 KiB raw
  * `data:<mime>;base64,` prefix, with headroom. The server's last-line guard,
  * independent of anything the client claims.
  */
-export const MAX_AVATAR_STRING_LEN = Math.ceil((MAX_AVATAR_BYTES * 4) / 3) + 100;
+export const MAX_AVATAR_STRING_LEN =
+  Math.ceil((MAX_AVATAR_BYTES * 4) / 3) + 100;
 
 const AVATAR_DATA_URI_RE =
   /^data:image\/(png|jpeg|webp);base64,[A-Za-z0-9+/]+=*$/;

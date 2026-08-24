@@ -11,12 +11,7 @@ process.env.DEPLO_DATA_DIR = mkdtempSync(join(tmpdir(), "deplo-pg-"));
 import { makeTestDb, type TestDb } from "../db/test-harness";
 import { __setTestDb, __resetTestDb } from "../db/client";
 import { runWithIdentity, type TokenGrant } from "../auth/request-context";
-import {
-  seedIdentity,
-  TEAM_A,
-  TEAM_B,
-  USER_1,
-} from "./identity-test-helpers";
+import { seedIdentity, TEAM_A, TEAM_B, USER_1 } from "./identity-test-helpers";
 import {
   seedServer,
   seedApp,
@@ -94,8 +89,11 @@ beforeEach(async () => {
   await seedServer(db);
 });
 
-const as = <T,>(userId: string, teamId: string, fn: () => Promise<T>): Promise<T> =>
-  runWithIdentity({ userId, teamId }, fn);
+const as = <T>(
+  userId: string,
+  teamId: string,
+  fn: () => Promise<T>,
+): Promise<T> => runWithIdentity({ userId, teamId }, fn);
 
 const grant = (over: Partial<TokenGrant> = {}): TokenGrant => ({
   id: "tok_test",
@@ -172,7 +170,9 @@ test("the member who cannot roll back is not offered the action either", async (
   // canRollback describes the DEPLOYMENT, not the viewer - it stays true, and the
   // permission is what the UI greys out. What must not happen is the reverse: a
   // list that hides it while the server would allow it, or vice versa.
-  const rows = await as(GRANTEE, TEAM_A, () => listDeployments({ appId: "prj_1" }));
+  const rows = await as(GRANTEE, TEAM_A, () =>
+    listDeployments({ appId: "prj_1" }),
+  );
   assert.equal(rows.find((d) => d.id === "dpl_1")?.canRollback, true);
 });
 
@@ -252,7 +252,9 @@ test("a folder grant stores rollback_apps like any other node-grantable verb", a
     setFolderGrant("fld_1", GRANTEE, ["rollback_apps"]),
   );
   assert.deepEqual(
-    rows.find((r) => r.userId === GRANTEE)?.capabilities.filter((c) => c !== "view"),
+    rows
+      .find((r) => r.userId === GRANTEE)
+      ?.capabilities.filter((c) => c !== "view"),
     ["rollback_apps"],
     "the grant did not persist rollback_apps",
   );

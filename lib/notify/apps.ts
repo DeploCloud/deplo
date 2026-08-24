@@ -58,7 +58,8 @@ export async function reportAppHealth(
 
   // Recovered: an app we ACTUALLY warned about that the frame now says is up.
   const recovered = healthy.filter(
-    (id) => alerted.delete(id) && shouldFire("app_crash_loop", `app:${id}`, "ok"),
+    (id) =>
+      alerted.delete(id) && shouldFire("app_crash_loop", `app:${id}`, "ok"),
   );
   // Confirmed: restarting on this pass AND on the one before it.
   const confirmed = crashing.filter((id) => previous.has(id));

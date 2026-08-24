@@ -79,14 +79,24 @@ test("a match three folders deep pulls its whole ancestry through", () => {
   const folder = team!.projects[0]!.folders[0]!;
   assert.equal(folder.id, "fld_web");
   assert.deepEqual(folder.apps, [], "the sibling app is filtered out");
-  assert.deepEqual(folder.folders[0]!.apps.map((a) => a.name), ["black-friday"]);
+  assert.deepEqual(
+    folder.folders[0]!.apps.map((a) => a.name),
+    ["black-friday"],
+  );
 });
 
 test("a node that matches itself keeps everything under it", () => {
-  const folder = filterScopeTree(TREE, ["websites"])[0]!.projects[0]!.folders[0]!;
+  const folder = filterScopeTree(TREE, ["websites"])[0]!.projects[0]!
+    .folders[0]!;
   assert.equal(folder.id, "fld_web");
-  assert.deepEqual(folder.apps.map((a) => a.name), ["corporate-site"]);
-  assert.deepEqual(folder.folders[0]!.apps.map((a) => a.name), ["black-friday"]);
+  assert.deepEqual(
+    folder.apps.map((a) => a.name),
+    ["corporate-site"],
+  );
+  assert.deepEqual(
+    folder.folders[0]!.apps.map((a) => a.name),
+    ["black-friday"],
+  );
 });
 
 test("a matching team is returned whole", () => {
@@ -105,7 +115,10 @@ test("apps match on their slug as well as their name", () => {
     ],
     ["cron-runner"],
   );
-  assert.deepEqual(hit[0]!.looseApps.map((a) => a.id), ["prj_x"]);
+  assert.deepEqual(
+    hit[0]!.looseApps.map((a) => a.id),
+    ["prj_x"],
+  );
 });
 
 test("every term must match — the search is an AND", () => {

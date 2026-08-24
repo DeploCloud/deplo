@@ -81,12 +81,21 @@ test("servers: listServers is creation-ordered; assembleServer rebuilds agent/bo
   await seedServerRow(db, {
     id: "srv_b",
     createdAt: "2026-02-02T00:00:00.000Z",
-    agent: { port: 9443, certFingerprint: "fp", certPem: "pem", version: "1.0" },
+    agent: {
+      port: 9443,
+      certFingerprint: "fp",
+      certPem: "pem",
+      version: "1.0",
+    },
   });
   await seedServerRow(db, {
     id: "srv_a",
     createdAt: "2026-01-01T00:00:00.000Z",
-    bootstrap: { tokenHash: "th", expiresAt: "2099-01-01T00:00:00.000Z", usedAt: null },
+    bootstrap: {
+      tokenHash: "th",
+      expiresAt: "2099-01-01T00:00:00.000Z",
+      usedAt: null,
+    },
   });
   await asUser1(async () => {
     const list = await listServers();
@@ -126,18 +135,32 @@ test("servers: markServerSeen updates lastSeenAt + traefik, and pins version onl
   await markServerSeen("srv_unprov", "9.9", true);
 
   const prov = (await getServerById("srv_prov"))!;
-  assert.equal(prov.agent?.version, "2.0", "provisioned server takes the new version");
+  assert.equal(
+    prov.agent?.version,
+    "2.0",
+    "provisioned server takes the new version",
+  );
   assert.equal(prov.traefikEnabled, true);
   assert.notEqual(prov.lastSeenAt, undefined);
 
   const unprov = (await getServerById("srv_unprov"))!;
-  assert.equal(unprov.agent, undefined, "unprovisioned server stays agent-less");
+  assert.equal(
+    unprov.agent,
+    undefined,
+    "unprovisioned server stays agent-less",
+  );
   assert.equal(unprov.traefikEnabled, true, "traefik flag still updates");
 });
 
 test("servers: observedTraefik reports nothing when the Hello never looked", () => {
-  assert.equal(observedTraefik({ dockerAvailable: true, traefikRunning: true }), true);
-  assert.equal(observedTraefik({ dockerAvailable: true, traefikRunning: false }), false);
+  assert.equal(
+    observedTraefik({ dockerAvailable: true, traefikRunning: true }),
+    true,
+  );
+  assert.equal(
+    observedTraefik({ dockerAvailable: true, traefikRunning: false }),
+    false,
+  );
   // The agent FORCES traefikRunning false when Docker is unreachable — it has no
   // container list to match against. That is "we didn't look", not "it's off".
   assert.equal(
@@ -163,8 +186,16 @@ test("servers: markServerSeen keeps the last-known traefik flag when nothing was
   );
 
   const row = (await getServerById("srv_dockerless"))!;
-  assert.equal(row.traefikEnabled, true, "unobserved leaves the stored flag alone");
-  assert.equal(row.agent?.version, "2.0", "the rest of the heartbeat still lands");
+  assert.equal(
+    row.traefikEnabled,
+    true,
+    "unobserved leaves the stored flag alone",
+  );
+  assert.equal(
+    row.agent?.version,
+    "2.0",
+    "the rest of the heartbeat still lands",
+  );
 });
 
 test("servers: markServerSeen swallows an unknown id (best-effort)", async () => {
@@ -179,9 +210,23 @@ test("servers: markServerSeen swallows an unknown id (best-effort)", async () =>
 /* ------------------------------------------------------------------ */
 
 test("github: listGithubApps is team-scoped and folds in installations (no secrets)", async () => {
-  await seedGithubApp(db, { id: "gha_a", teamId: TEAM_A, appId: 1, name: "AppA" });
-  await seedGithubApp(db, { id: "gha_b", teamId: TEAM_B, appId: 2, name: "AppB" });
-  await seedGithubInstallation(db, { id: "ghi_1", appId: "gha_a", installationId: 11 });
+  await seedGithubApp(db, {
+    id: "gha_a",
+    teamId: TEAM_A,
+    appId: 1,
+    name: "AppA",
+  });
+  await seedGithubApp(db, {
+    id: "gha_b",
+    teamId: TEAM_B,
+    appId: 2,
+    name: "AppB",
+  });
+  await seedGithubInstallation(db, {
+    id: "ghi_1",
+    appId: "gha_a",
+    installationId: 11,
+  });
 
   await asUser1(async () => {
     const apps = await listGithubApps();
@@ -223,7 +268,11 @@ test("github: upsertInstallation is idempotent on the numeric id and keeps creat
     assert.equal(second.id, first.id);
     assert.equal(second.accountLogin, "octo-renamed");
     assert.equal(second.accountType, "Organization");
-    assert.equal(second.createdAt, first.createdAt, "created_at untouched on conflict");
+    assert.equal(
+      second.createdAt,
+      first.createdAt,
+      "created_at untouched on conflict",
+    );
   });
   const rows = await db.select().from(githubInstallationTable);
   assert.equal(rows.length, 1, "still exactly one installation row");
@@ -247,8 +296,16 @@ test("github: upsertInstallation refuses an app owned by another team (cross-ten
 
 test("github: removeGithubApp cascades its installations in one delete", async () => {
   await seedGithubApp(db, { id: "gha_a", teamId: TEAM_A });
-  await seedGithubInstallation(db, { id: "ghi_1", appId: "gha_a", installationId: 1 });
-  await seedGithubInstallation(db, { id: "ghi_2", appId: "gha_a", installationId: 2 });
+  await seedGithubInstallation(db, {
+    id: "ghi_1",
+    appId: "gha_a",
+    installationId: 1,
+  });
+  await seedGithubInstallation(db, {
+    id: "ghi_2",
+    appId: "gha_a",
+    installationId: 2,
+  });
   await asUser1(async () => {
     await removeGithubApp("gha_a");
   });
@@ -287,11 +344,31 @@ test("activities: recordActivity falls back to the first team when none resolves
 test("activities: listActivity is team-scoped, newest-first, and seq breaks a same-instant tie", async () => {
   // Three activities at the SAME timestamp in team_a — insertion order (seq) must
   // break the tie deterministically, newest (last inserted) first.
-  await seedActivity(db, { id: "act_1", teamId: TEAM_A, createdAt: T0, message: "first" });
-  await seedActivity(db, { id: "act_2", teamId: TEAM_A, createdAt: T0, message: "second" });
-  await seedActivity(db, { id: "act_3", teamId: TEAM_A, createdAt: T0, message: "third" });
+  await seedActivity(db, {
+    id: "act_1",
+    teamId: TEAM_A,
+    createdAt: T0,
+    message: "first",
+  });
+  await seedActivity(db, {
+    id: "act_2",
+    teamId: TEAM_A,
+    createdAt: T0,
+    message: "second",
+  });
+  await seedActivity(db, {
+    id: "act_3",
+    teamId: TEAM_A,
+    createdAt: T0,
+    message: "third",
+  });
   // A different team's activity must not appear.
-  await seedActivity(db, { id: "act_b", teamId: TEAM_B, createdAt: T0, message: "other team" });
+  await seedActivity(db, {
+    id: "act_b",
+    teamId: TEAM_B,
+    createdAt: T0,
+    message: "other team",
+  });
 
   await asUser1(async () => {
     const list = await listActivity();
@@ -302,4 +379,3 @@ test("activities: listActivity is team-scoped, newest-first, and seq breaks a sa
     );
   });
 });
-

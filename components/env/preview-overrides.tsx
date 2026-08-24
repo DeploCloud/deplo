@@ -216,7 +216,7 @@ export function PreviewOverrides({
                     <TableHead className="whitespace-nowrap">
                       Last modified
                     </TableHead>
-                    <TableHead className="whitespace-nowrap text-right">
+                    <TableHead className="text-right whitespace-nowrap">
                       Actions
                     </TableHead>
                   </TableRow>
@@ -229,7 +229,7 @@ export function PreviewOverrides({
                           {o.key}
                           <Badge
                             variant="muted"
-                            className="gap-1 whitespace-nowrap text-[10px] font-normal"
+                            className="gap-1 text-[10px] font-normal whitespace-nowrap"
                           >
                             <GitPullRequest className="size-3" />
                             Preview
@@ -241,7 +241,7 @@ export function PreviewOverrides({
                             back, secret or not, so there is nothing to reveal. */}
                         <EnvValueCell value="" masked />
                       </TableCell>
-                      <TableCell className="whitespace-nowrap text-xs text-muted-foreground">
+                      <TableCell className="text-xs whitespace-nowrap text-muted-foreground">
                         <SimpleTooltip
                           content={new Date(o.updatedAt).toLocaleString()}
                         >
@@ -312,9 +312,7 @@ export function PreviewOverrides({
               </Button>
               <Button
                 type="submit"
-                disabled={
-                  pending || filled.length === 0 || invalid.length > 0
-                }
+                disabled={pending || filled.length === 0 || invalid.length > 0}
               >
                 {pending && <Loader2 className="size-4 animate-spin" />}
                 {filled.length > 1 ? `Save ${filled.length}` : "Save"}

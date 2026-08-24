@@ -14,10 +14,7 @@ import {
 test("parsePushEvent: branch push strips refs/heads and unions changed files", () => {
   const ev = parsePushEvent({
     ref: "refs/heads/main",
-    commits: [
-      { added: ["a.ts"], modified: ["b.ts"] },
-      { removed: ["a.ts"] },
-    ],
+    commits: [{ added: ["a.ts"], modified: ["b.ts"] }, { removed: ["a.ts"] }],
     head_commit: { message: "x", modified: ["c.ts"] },
   });
   assert.equal(ev.isTag, false);
@@ -106,14 +103,20 @@ test("watch paths gate a push: only a matching change deploys", () => {
   assert.equal(
     shouldAutoDeploy(
       cfg,
-      parsePushEvent({ ref: "refs/heads/main", head_commit: { modified: ["apps/web/page.tsx"] } }),
+      parsePushEvent({
+        ref: "refs/heads/main",
+        head_commit: { modified: ["apps/web/page.tsx"] },
+      }),
     ),
     true,
   );
   assert.equal(
     shouldAutoDeploy(
       cfg,
-      parsePushEvent({ ref: "refs/heads/main", head_commit: { modified: ["docs/readme.md"] } }),
+      parsePushEvent({
+        ref: "refs/heads/main",
+        head_commit: { modified: ["docs/readme.md"] },
+      }),
     ),
     false,
   );
@@ -127,7 +130,10 @@ test("watch paths fail open when the delivery carries no file list", () => {
   };
   // An annotated-tag push has no commits/head_commit files → deploy anyway.
   assert.equal(
-    shouldAutoDeploy(cfg, parsePushEvent({ ref: "refs/tags/v2", head_commit: null })),
+    shouldAutoDeploy(
+      cfg,
+      parsePushEvent({ ref: "refs/tags/v2", head_commit: null }),
+    ),
     true,
   );
 });
@@ -145,7 +151,10 @@ test("skipUnchanged: a push that touches the root directory deploys", () => {
   assert.equal(
     shouldAutoDeploy(
       cfg,
-      parsePushEvent({ ref: "refs/heads/main", head_commit: { modified: ["apps/web/page.tsx"] } }),
+      parsePushEvent({
+        ref: "refs/heads/main",
+        head_commit: { modified: ["apps/web/page.tsx"] },
+      }),
     ),
     true,
   );
@@ -162,7 +171,10 @@ test("skipUnchanged: a push that leaves the root directory untouched is skipped"
   assert.equal(
     shouldAutoDeploy(
       cfg,
-      parsePushEvent({ ref: "refs/heads/main", head_commit: { modified: ["apps/api/server.ts"] } }),
+      parsePushEvent({
+        ref: "refs/heads/main",
+        head_commit: { modified: ["apps/api/server.ts"] },
+      }),
     ),
     false,
   );
@@ -179,7 +191,10 @@ test("skipUnchanged normalises a ./-prefixed root and matches changed files unde
   assert.equal(
     shouldAutoDeploy(
       cfg,
-      parsePushEvent({ ref: "refs/heads/main", head_commit: { modified: ["apps/web/lib/x.ts"] } }),
+      parsePushEvent({
+        ref: "refs/heads/main",
+        head_commit: { modified: ["apps/web/lib/x.ts"] },
+      }),
     ),
     true,
   );
@@ -196,7 +211,10 @@ test("skipUnchanged is inert at the repo root (rootDirectory empty/'.') — alwa
   assert.equal(
     shouldAutoDeploy(
       cfg,
-      parsePushEvent({ ref: "refs/heads/main", head_commit: { modified: ["anywhere.ts"] } }),
+      parsePushEvent({
+        ref: "refs/heads/main",
+        head_commit: { modified: ["anywhere.ts"] },
+      }),
     ),
     true,
   );
@@ -211,7 +229,10 @@ test("skipUnchanged fails open when the delivery carries no file list", () => {
     skipUnchanged: true,
   };
   assert.equal(
-    shouldAutoDeploy(cfg, parsePushEvent({ ref: "refs/heads/main", head_commit: null })),
+    shouldAutoDeploy(
+      cfg,
+      parsePushEvent({ ref: "refs/heads/main", head_commit: null }),
+    ),
     true,
   );
 });
@@ -227,7 +248,10 @@ test("skipUnchanged off (default): a push outside the root directory still deplo
   assert.equal(
     shouldAutoDeploy(
       cfg,
-      parsePushEvent({ ref: "refs/heads/main", head_commit: { modified: ["apps/api/server.ts"] } }),
+      parsePushEvent({
+        ref: "refs/heads/main",
+        head_commit: { modified: ["apps/api/server.ts"] },
+      }),
     ),
     true,
   );

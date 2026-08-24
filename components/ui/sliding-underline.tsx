@@ -128,7 +128,7 @@ export function SlidingBackground({
     <span
       aria-hidden
       className={cn(
-        "pointer-events-none absolute left-0 top-0 z-0 rounded-md bg-sidebar-accent transition-[transform,width,height] duration-200 ease-out",
+        "pointer-events-none absolute top-0 left-0 z-0 rounded-md bg-sidebar-accent transition-[transform,width,height] duration-200 ease-out",
         className,
       )}
       style={{

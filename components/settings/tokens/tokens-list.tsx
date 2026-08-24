@@ -66,10 +66,11 @@ export function TokensList({
   // A revoked token leaves the table on the click: the row is gone server-side
   // by the time the mutation answers, and a live Revoke button under the cursor
   // is one stray second click away from a red "Not found".
-  const { visible: rows, remove, restore } = useOptimisticRemove(
-    tokens,
-    (t) => t.id,
-  );
+  const {
+    visible: rows,
+    remove,
+    restore,
+  } = useOptimisticRemove(tokens, (t) => t.id);
   const copyFor = (t: ApiTokenDTO) => ({
     teams: t.teamsReached,
     activeTeamId,
@@ -94,7 +95,9 @@ export function TokensList({
           {rows.map((t) => {
             const presetId = presetIdFor(t.capabilities);
             const preset = TOKEN_PRESETS.find((p) => p.id === presetId);
-            const Icon = presetId ? TOKEN_PRESET_ICON[presetId] : CUSTOM_TOKEN_ICON;
+            const Icon = presetId
+              ? TOKEN_PRESET_ICON[presetId]
+              : CUSTOM_TOKEN_ICON;
             const granted = t.capabilities.filter((c) => c !== "view").length;
             const sensitive = t.capabilities.some(
               (c) => CAPABILITY_META[c]?.sensitive,

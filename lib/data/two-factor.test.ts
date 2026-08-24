@@ -7,7 +7,10 @@ import { eq } from "drizzle-orm";
 import { makeTestDb, type TestDb } from "../db/test-harness";
 import { __setTestDb, __resetTestDb } from "../db/client";
 import { twoFactor as twoFactorTable } from "../db/schema/auth";
-import { users as usersTable, teams as teamsTable } from "../db/schema/control-plane";
+import {
+  users as usersTable,
+  teams as teamsTable,
+} from "../db/schema/control-plane";
 import { runWithIdentity } from "../auth/request-context";
 import { seedIdentity, TEAM_A, USER_1 } from "./identity-test-helpers";
 import { requireAuth } from "../auth/better-auth";

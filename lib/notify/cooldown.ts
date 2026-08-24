@@ -87,14 +87,11 @@ const MAX_COOLDOWN_MS = Math.max(
 );
 
 if (typeof setInterval === "function" && process.env.NEXT_RUNTIME !== "edge") {
-  const t = setInterval(
-    () => {
-      const now = Date.now();
-      for (const [slot, seen] of store)
-        if (now - seen.at > MAX_COOLDOWN_MS) store.delete(slot);
-    },
-    60 * 60_000,
-  );
+  const t = setInterval(() => {
+    const now = Date.now();
+    for (const [slot, seen] of store)
+      if (now - seen.at > MAX_COOLDOWN_MS) store.delete(slot);
+  }, 60 * 60_000);
   (t as unknown as { unref?: () => void }).unref?.();
 }
 

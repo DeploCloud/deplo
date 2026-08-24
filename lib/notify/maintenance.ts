@@ -15,7 +15,11 @@ import { sweepDomainDns } from "../data/domains";
 import { describeStackCertificates } from "../data/server-certificates";
 import { getUpdateInfo } from "../data/updates";
 import { connectAgent } from "../infra/agent-client";
-import { dispatchAlert, dispatchServerAlert, dispatchToTeams } from "./dispatch";
+import {
+  dispatchAlert,
+  dispatchServerAlert,
+  dispatchToTeams,
+} from "./dispatch";
 import { allTeamIds } from "./server-teams";
 import type { GitProviderId } from "../types";
 
@@ -69,7 +73,9 @@ export async function runMaintenanceSweep(): Promise<void> {
  * takes nothing away from anybody.
  */
 async function sweepExpiredVerifications(): Promise<void> {
-  await getDb().delete(verification).where(lt(verification.expiresAt, new Date()));
+  await getDb()
+    .delete(verification)
+    .where(lt(verification.expiresAt, new Date()));
 }
 
 /**
@@ -136,7 +142,12 @@ async function checkCustomCertificates(): Promise<void> {
     .from(serversTable)
     // A migration source has no Traefik stack of ours to read: dialing it would
     // only ever produce a miss, on a machine we are borrowing.
-    .where(and(isNotNull(serversTable.agentCertPem), eq(serversTable.importOnly, false)));
+    .where(
+      and(
+        isNotNull(serversTable.agentCertPem),
+        eq(serversTable.importOnly, false),
+      ),
+    );
   for (const s of rows) {
     let yaml: string;
     try {

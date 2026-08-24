@@ -3,7 +3,10 @@ import "server-only";
 import { getCurrentUser } from "@/lib/auth";
 import { getActiveTeamId, reachableCapabilities } from "@/lib/membership";
 import { authenticateToken } from "@/lib/data/tokens";
-import { runWithIdentity, type RequestIdentity } from "@/lib/auth/request-context";
+import {
+  runWithIdentity,
+  type RequestIdentity,
+} from "@/lib/auth/request-context";
 import type { Capability, PublicUser } from "@/lib/types";
 
 /**
@@ -42,9 +45,7 @@ export interface GraphQLContext {
  * the token's principal instead of cookies. Otherwise we fall through to the
  * cookie-based session (the browser path), which needs no override.
  */
-export async function buildContext(
-  request: Request,
-): Promise<GraphQLContext> {
+export async function buildContext(request: Request): Promise<GraphQLContext> {
   const auth = request.headers.get("authorization");
   const bearer = auth?.toLowerCase().startsWith("bearer ")
     ? auth.slice(7).trim()

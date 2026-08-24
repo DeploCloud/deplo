@@ -99,7 +99,7 @@ function inV4Cidr(ipInt: number, cidr: string): boolean {
   if (bits === 0) return true;
   // A /bits mask, unsigned. (bits is 13–22 for every Cloudflare range, never 0.)
   const mask = (0xffffffff << (32 - bits)) >>> 0;
-  return ((ipInt & mask) >>> 0) === ((baseInt & mask) >>> 0);
+  return (ipInt & mask) >>> 0 === (baseInt & mask) >>> 0;
 }
 
 /** Expand an IPv6 literal (including `::` compression) to a 128-bit BigInt, or
@@ -111,7 +111,8 @@ function ipv6ToBigInt(ip: string): bigint | null {
   const halves = raw.split("::");
   if (halves.length > 2) return null; // more than one "::" is illegal
   const head = halves[0] ? halves[0].split(":") : [];
-  const tail = halves.length === 2 ? (halves[1] ? halves[1].split(":") : []) : [];
+  const tail =
+    halves.length === 2 ? (halves[1] ? halves[1].split(":") : []) : [];
   const missing = 8 - (head.length + tail.length);
   if (halves.length === 1 ? head.length !== 8 : missing < 0) return null;
   const groups =

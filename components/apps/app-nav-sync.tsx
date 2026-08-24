@@ -46,7 +46,15 @@ export function AppNavSync({
       previewsEnabled,
       cronsEnabled,
     });
-  }, [slug, running, showFiles, caps, isGithubApp, previewsEnabled, cronsEnabled]);
+  }, [
+    slug,
+    running,
+    showFiles,
+    caps,
+    isGithubApp,
+    previewsEnabled,
+    cronsEnabled,
+  ]);
 
   // Clear only on unmount (leaving the app). Keeping this separate from the
   // publish effect above means a live `running` change re-publishes in place

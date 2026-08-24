@@ -37,7 +37,10 @@ const LABELS: Record<ServerStatus, string> = {
   provisioning: "Provisioning",
 };
 
-const VARIANTS: Record<ServerStatus, "success" | "warning" | "destructive" | "muted"> = {
+const VARIANTS: Record<
+  ServerStatus,
+  "success" | "warning" | "destructive" | "muted"
+> = {
   online: "success",
   warning: "warning",
   error: "destructive",

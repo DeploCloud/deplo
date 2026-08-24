@@ -48,7 +48,7 @@ ID=$(gh api repos/DeploCloud/deplo/issues/<number> --jq '.id')
   gh api repos/DeploCloud/deplo/issues/<n>/dependencies/blocked_by --jq '.[] | "\(.number)\t\(.state)"'
   ```
 
-- **The frontier** — open children with no *open* blockers and no assignee:
+- **The frontier** — open children with no _open_ blockers and no assignee:
 
   ```sh
   for n in $(gh api repos/DeploCloud/deplo/issues/<map>/sub_issues --jq '.[] | select(.state=="open") | .number'); do
@@ -61,4 +61,4 @@ ID=$(gh api repos/DeploCloud/deplo/issues/<number> --jq '.id')
 - **Claim a ticket** before any work, so concurrent sessions skip it:
   `gh issue edit <number> --add-assignee @me`
 - **Resolve**: post the answer as a comment, then `gh issue close <number>`, then append a one-line
-  pointer to the map's *Decisions so far*.
+  pointer to the map's _Decisions so far_.

@@ -82,7 +82,10 @@ export function UninstallAgentMenu({
       // closes itself on success - leaving it open would stack the two.
       setOpen(false);
       setFailed(data);
-      return { ok: false as const, error: data.error ?? "The agent is still installed" };
+      return {
+        ok: false as const,
+        error: data.error ?? "The agent is still installed",
+      };
     }
     if (data.warning) toast.warning(data.warning);
     // The row is gone server-side; re-run the page's reads so the card goes with
@@ -105,7 +108,10 @@ export function UninstallAgentMenu({
           </Button>
         </DropdownMenuTrigger>
         <DropdownMenuContent align="end" className="w-52">
-          <DropdownMenuItem variant="destructive" onSelect={() => setOpen(true)}>
+          <DropdownMenuItem
+            variant="destructive"
+            onSelect={() => setOpen(true)}
+          >
             <Trash2 className="size-4" />
             Uninstall agent
           </DropdownMenuItem>
@@ -138,8 +144,8 @@ export function UninstallAgentMenu({
           <div className="space-y-2">
             {failed ? <CommandLine command={failed.uninstallCommand} /> : null}
             <p className="mt-1 text-xs text-muted-foreground">
-              Run it on the host, as root. The server stays in this list until the
-              agent is gone.
+              Run it on the host, as root. The server stays in this list until
+              the agent is gone.
             </p>
           </div>
           <DialogFooter>

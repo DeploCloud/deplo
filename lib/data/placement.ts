@@ -31,7 +31,9 @@ export async function resolveOverviewPlacement(
   requested: OverviewPlacement,
 ): Promise<ResolvedPlacement | null> {
   if (requested.folderId) {
-    const folder = (await listFolders()).find((f) => f.id === requested.folderId);
+    const folder = (await listFolders()).find(
+      (f) => f.id === requested.folderId,
+    );
     return folder
       ? {
           label: folder.name,
@@ -57,7 +59,9 @@ export async function resolveOverviewPlacement(
       environments[0] ??
       null;
     return {
-      label: environment ? `${project.name} · ${environment.name}` : project.name,
+      label: environment
+        ? `${project.name} · ${environment.name}`
+        : project.name,
       folderId: null,
       projectId: project.id,
       environmentId: environment?.id ?? null,

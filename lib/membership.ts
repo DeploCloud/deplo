@@ -20,7 +20,12 @@ import {
   users as usersTable,
 } from "./db/schema/control-plane";
 import { assertUser, getCurrentUser } from "./auth";
-import { ALL_CAPABILITIES, type Capability, type Membership, type Team } from "./types";
+import {
+  ALL_CAPABILITIES,
+  type Capability,
+  type Membership,
+  type Team,
+} from "./types";
 import {
   CAPABILITY_META,
   PROJECT_SCOPED_CAPABILITIES,
@@ -95,10 +100,7 @@ export async function teamsForUser(userId: string): Promise<Team[]> {
       createdAt: teamsTable.createdAt,
     })
     .from(teamsTable)
-    .innerJoin(
-      membershipsTable,
-      eq(membershipsTable.teamId, teamsTable.id),
-    )
+    .innerJoin(membershipsTable, eq(membershipsTable.teamId, teamsTable.id))
     .where(eq(membershipsTable.userId, userId))
     .orderBy(teamsTable.createdAt);
   return rows.map((t) => ({
@@ -425,20 +427,31 @@ export async function reachableCapabilities(): Promise<Capability[]> {
       .selectDistinct({ capability: appGrantsTable.capability })
       .from(appGrantsTable)
       .innerJoin(appsTable, eq(appsTable.id, appGrantsTable.appId))
-      .where(and(eq(appGrantsTable.userId, user.id), eq(appsTable.teamId, teamId))),
+      .where(
+        and(eq(appGrantsTable.userId, user.id), eq(appsTable.teamId, teamId)),
+      ),
     db
       .selectDistinct({ capability: folderGrantsTable.capability })
       .from(folderGrantsTable)
       .innerJoin(foldersTable, eq(foldersTable.id, folderGrantsTable.folderId))
       .where(
-        and(eq(folderGrantsTable.userId, user.id), eq(foldersTable.teamId, teamId)),
+        and(
+          eq(folderGrantsTable.userId, user.id),
+          eq(foldersTable.teamId, teamId),
+        ),
       ),
     db
       .selectDistinct({ capability: projectGrantsTable.capability })
       .from(projectGrantsTable)
-      .innerJoin(projectsTable, eq(projectsTable.id, projectGrantsTable.projectId))
+      .innerJoin(
+        projectsTable,
+        eq(projectsTable.id, projectGrantsTable.projectId),
+      )
       .where(
-        and(eq(projectGrantsTable.userId, user.id), eq(projectsTable.teamId, teamId)),
+        and(
+          eq(projectGrantsTable.userId, user.id),
+          eq(projectsTable.teamId, teamId),
+        ),
       ),
   ]);
   const granted = [...fromApps, ...fromFolders, ...fromProjects].map(
@@ -469,7 +482,9 @@ export async function requireCapability(
 ): Promise<ActiveMembership> {
   const ctx = await requireMembership();
   if (!ctx.membership.capabilities.includes(cap)) {
-    throw new Error(`You don't have permission to ${CAPABILITY_META[cap].label.toLowerCase()}`);
+    throw new Error(
+      `You don't have permission to ${CAPABILITY_META[cap].label.toLowerCase()}`,
+    );
   }
   return ctx;
 }

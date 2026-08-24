@@ -37,7 +37,9 @@ export function WizardStepper<T extends string>({
         const open = reachable(s.id);
         return (
           <li key={s.id} className="flex min-w-0 items-center gap-1">
-            {i > 0 && <span aria-hidden className="w-3 border-t border-border" />}
+            {i > 0 && (
+              <span aria-hidden className="w-3 border-t border-border" />
+            )}
             <button
               type="button"
               onClick={() => onSelect(s.id)}
@@ -45,7 +47,7 @@ export function WizardStepper<T extends string>({
               aria-current={active ? "step" : undefined}
               className={cn(
                 "flex items-center gap-1.5 rounded-md px-2 py-1 text-xs transition-colors",
-                "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+                "focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none",
                 active
                   ? "bg-secondary font-medium text-foreground"
                   : open

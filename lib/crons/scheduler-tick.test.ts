@@ -15,7 +15,11 @@ import {
   TRUNCATE_CRONS,
 } from "../data/cron-test-helpers";
 import { __resetCronConnector, __setCronConnector } from "./runner";
-import { runCronSchedulerTick, shouldFire, __stopCronScheduler } from "./scheduler";
+import {
+  runCronSchedulerTick,
+  shouldFire,
+  __stopCronScheduler,
+} from "./scheduler";
 import * as lease from "../backups/lease";
 
 /**
@@ -58,7 +62,9 @@ beforeEach(async () => {
   await pg.exec(`${TRUNCATE_CRONS}
     truncate table app_build_method_settings, app_build, apps, servers,
       users, teams restart identity cascade;`);
-  await seedIdentity(db, { users: [{ id: USER_1, teamId: TEAM_A, role: "owner" }] });
+  await seedIdentity(db, {
+    users: [{ id: USER_1, teamId: TEAM_A, role: "owner" }],
+  });
   await seedServer(db);
   await seedApp(db, { id: "prj_1", slug: "web" });
   await enableCrons(db, "app", "prj_1");
@@ -105,7 +111,11 @@ test("the ticks inside a minute never fire again", async () => {
 });
 
 test("a minute stepped over during a long drain is still replayed", async () => {
-  await seedCronJob(db, { id: "cron_1", schedule: "2 1 * * *", timezone: "UTC" });
+  await seedCronJob(db, {
+    id: "cron_1",
+    schedule: "2 1 * * *",
+    timezone: "UTC",
+  });
   await runCronSchedulerTick(T0); // 01:00 - not due
   assert.equal((await runsOf(db, "cron_1")).length, 0);
 

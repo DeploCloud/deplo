@@ -6,7 +6,10 @@ import { eq } from "drizzle-orm";
 
 import { makeTestDb, type TestDb } from "../db/test-harness";
 import { __setTestDb, __resetTestDb } from "../db/client";
-import { cronJobs as cronJobsTable, cronRuns as cronRunsTable } from "../db/schema/control-plane";
+import {
+  cronJobs as cronJobsTable,
+  cronRuns as cronRunsTable,
+} from "../db/schema/control-plane";
 import { seedIdentity, TEAM_A, USER_1 } from "../data/identity-test-helpers";
 import { seedApp, seedServer } from "../data/app-graph-test-helpers";
 import {
@@ -57,7 +60,9 @@ beforeEach(async () => {
   await pg.exec(`${TRUNCATE_CRONS}
     truncate table app_build_method_settings, app_build, apps, servers,
       users, teams restart identity cascade;`);
-  await seedIdentity(db, { users: [{ id: USER_1, teamId: TEAM_A, role: "owner" }] });
+  await seedIdentity(db, {
+    users: [{ id: USER_1, teamId: TEAM_A, role: "owner" }],
+  });
   await seedServer(db);
   await seedApp(db, { id: "prj_1", slug: "web" });
   await enableCrons(db, "app", "prj_1");
@@ -93,7 +98,12 @@ test("a command that ends at once settles inside the launch", async () => {
   // milliseconds, and only the reaper's next tick used to notice. The launch
   // polls it out on the connection it already has.
   __setQuickFinishPolls([5]);
-  agent.nextState = { found: true, running: false, exitCode: 0, stdout: "Test\n" };
+  agent.nextState = {
+    found: true,
+    running: false,
+    exitCode: 0,
+    stdout: "Test\n",
+  };
   await seedCronJob(db, { id: "cron_1", command: 'echo "Test"' });
   await fireDueJobs([MINUTE]);
 
@@ -102,7 +112,10 @@ test("a command that ends at once settles inside the launch", async () => {
   assert.equal(run.status, "succeeded");
   assert.equal(run.stdout, "Test\n");
   assert.equal(run.exitCode, 0);
-  const [job] = await db.select().from(cronJobsTable).where(eq(cronJobsTable.id, "cron_1"));
+  const [job] = await db
+    .select()
+    .from(cronJobsTable)
+    .where(eq(cronJobsTable.id, "cron_1"));
   assert.equal(job.lastStatus, "succeeded", "and the job row is current too");
 });
 
@@ -113,7 +126,11 @@ test("a command still going when the ladder runs out is left to the reaper", asy
 
   const run = await oneRun("cron_1");
   assert.equal(run.status, "running");
-  assert.equal(run.agentJobId, "agentjob_1", "still attached, for the next tick");
+  assert.equal(
+    run.agentJobId,
+    "agentjob_1",
+    "still attached, for the next tick",
+  );
 });
 
 test("the same minute cannot fire twice, however many instances try", async () => {
@@ -130,7 +147,9 @@ test("a replay window fires once, on its last matching minute", async () => {
   await seedCronJob(db, { id: "cron_1" });
   // A 5-minute drain: the job matched every minute of it. Late is right; five
   // times is not.
-  const window = [0, 1, 2, 3, 4].map((i) => new Date(MINUTE.getTime() + i * 60_000));
+  const window = [0, 1, 2, 3, 4].map(
+    (i) => new Date(MINUTE.getTime() + i * 60_000),
+  );
   await fireDueJobs(window);
 
   const run = await oneRun("cron_1");
@@ -139,7 +158,10 @@ test("a replay window fires once, on its last matching minute", async () => {
 
 test("the master switch stops the schedule and keeps the jobs", async () => {
   await seedCronJob(db, { id: "cron_1" });
-  await db.update(cronJobsTable).set({ enabled: true }).where(eq(cronJobsTable.id, "cron_1"));
+  await db
+    .update(cronJobsTable)
+    .set({ enabled: true })
+    .where(eq(cronJobsTable.id, "cron_1"));
   await db.execute("update apps set cron_enabled = false");
 
   await fireDueJobs([MINUTE]);
@@ -158,14 +180,26 @@ test("a disabled job does not fire", async () => {
 test("the schedule is read in the job's timezone", async () => {
   // 03:00 in Rome is 01:00Z in July. A UTC-only evaluator would miss this minute
   // entirely and fire two hours late.
-  await seedCronJob(db, { id: "cron_1", schedule: "0 3 * * *", timezone: "Europe/Rome" });
+  await seedCronJob(db, {
+    id: "cron_1",
+    schedule: "0 3 * * *",
+    timezone: "Europe/Rome",
+  });
   await fireDueJobs([MINUTE]);
   await oneRun("cron_1");
 
   await pg.exec(TRUNCATE_CRONS);
-  await seedCronJob(db, { id: "cron_2", schedule: "0 3 * * *", timezone: "UTC" });
+  await seedCronJob(db, {
+    id: "cron_2",
+    schedule: "0 3 * * *",
+    timezone: "UTC",
+  });
   await fireDueJobs([MINUTE]);
-  assert.equal((await runsOf(db, "cron_2")).length, 0, "01:00Z is not 03:00 UTC");
+  assert.equal(
+    (await runsOf(db, "cron_2")).length,
+    0,
+    "01:00Z is not 03:00 UTC",
+  );
 });
 
 test("overlap=skip records a skipped run instead of a second execution", async () => {
@@ -194,7 +228,9 @@ test("overlap=allow runs them side by side", async () => {
 
 test("a stopped container is skipped, not failed", async () => {
   // An app stopped on purpose must not page anyone at 03:00.
-  agent.instances = [{ name: "deplo-web", service: "web", image: "img", running: false }];
+  agent.instances = [
+    { name: "deplo-web", service: "web", image: "img", running: false },
+  ];
   await seedCronJob(db, { id: "cron_1" });
   await fireDueJobs([MINUTE]);
 
@@ -205,7 +241,9 @@ test("a stopped container is skipped, not failed", async () => {
 });
 
 test("a named service that is not up is skipped by name", async () => {
-  agent.instances = [{ name: "deplo-web", service: "web", image: "img", running: true }];
+  agent.instances = [
+    { name: "deplo-web", service: "web", image: "img", running: true },
+  ];
   await seedCronJob(db, { id: "cron_1", service: "worker" });
   await fireDueJobs([MINUTE]);
 
@@ -218,7 +256,12 @@ test("the app's own service is preferred over a healthy sidecar", async () => {
   // A crash-looping app whose Postgres sidecar is fine must not silently run its
   // job inside Postgres.
   agent.instances = [
-    { name: "deplo-web-postgres-1", service: "postgres", image: "pg", running: true },
+    {
+      name: "deplo-web-postgres-1",
+      service: "postgres",
+      image: "pg",
+      running: true,
+    },
     { name: "deplo-web-web-1", service: "web", image: "img", running: true },
   ];
   await seedCronJob(db, { id: "cron_1" });
@@ -239,9 +282,14 @@ test("a clean exit settles as succeeded with its output", async () => {
   assert.equal(run.agentJobId, null);
   assert.ok(run.finishedAt);
 
-  const job = (await db.select().from(cronJobsTable).where(eq(cronJobsTable.id, "cron_1")))[0];
+  const job = (
+    await db.select().from(cronJobsTable).where(eq(cronJobsTable.id, "cron_1"))
+  )[0];
   assert.equal(job.lastStatus, "succeeded");
-  assert.ok(job.lastSuccessAt, "a success stamps lastSuccessAt for the job row");
+  assert.ok(
+    job.lastSuccessAt,
+    "a success stamps lastSuccessAt for the job row",
+  );
 });
 
 test("a healthy poll writes nothing at all", async () => {
@@ -250,7 +298,11 @@ test("a healthy poll writes nothing at all", async () => {
   const before = await oneRun("cron_1");
   await reapInFlightRuns(new Date(MINUTE.getTime() + 60_000));
   const after = await oneRun("cron_1");
-  assert.deepEqual(after, before, "polling a running job must not touch the row");
+  assert.deepEqual(
+    after,
+    before,
+    "polling a running job must not touch the row",
+  );
 });
 
 test("a non-zero exit fails when there are no retries left", async () => {
@@ -296,7 +348,11 @@ test("a retry stays in the SAME row and relaunches after the backoff", async () 
   await reapInFlightRuns(new Date(t1.getTime() + RETRY_BACKOFF_MS + 120_000));
   run = await oneRun("cron_1");
   assert.equal(run.status, "failed");
-  assert.equal(run.attempt, 1, "one row, and it says which attempt produced this");
+  assert.equal(
+    run.attempt,
+    1,
+    "one row, and it says which attempt produced this",
+  );
   assert.equal(run.stderr, "second", "the stored output is the LAST attempt's");
 });
 
@@ -373,7 +429,9 @@ test("a bad timezone stops that job only", async () => {
 
 test("a too-old agent fails the attempt with an actionable message", async () => {
   const { AgentCronUnsupportedError } = await import("../infra/agent-client");
-  agent.connectError = new AgentCronUnsupportedError("This server's agent is too old to run cron jobs.");
+  agent.connectError = new AgentCronUnsupportedError(
+    "This server's agent is too old to run cron jobs.",
+  );
   await seedCronJob(db, { id: "cron_1" });
   await fireDueJobs([MINUTE]);
 
@@ -463,7 +521,11 @@ test("a manual run whose server cannot be reached settles, and never fires later
 
   agent.connectError = null;
   await reapInFlightRuns(new Date(MINUTE.getTime() + 60_000));
-  assert.equal(agent.started.length, 0, "and no command appears out of nowhere");
+  assert.equal(
+    agent.started.length,
+    0,
+    "and no command appears out of nowhere",
+  );
 });
 
 test("a claim the control plane never launched is skipped, not run late", async () => {
@@ -506,7 +568,9 @@ test("cancelling settles the row even when the agent cannot be reached", async (
   await cancelRun(inflight, "Ada");
 
   // Leaving it `running` would starve every later fire under overlap=skip.
-  const after = (await db.select().from(cronRunsTable).where(eq(cronRunsTable.id, run.id)))[0];
+  const after = (
+    await db.select().from(cronRunsTable).where(eq(cronRunsTable.id, run.id))
+  )[0];
   assert.equal(after.status, "failed");
   assert.match(after.error ?? "", /Stopped by Ada/);
 });

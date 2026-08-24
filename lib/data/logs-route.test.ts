@@ -7,7 +7,11 @@ import { makeTestDb, type TestDb } from "../db/test-harness";
 import { __setTestDb, __resetTestDb } from "../db/client";
 import { runWithIdentity } from "../auth/request-context";
 import { seedIdentity, TEAM_A } from "./identity-test-helpers";
-import { seedApp, seedServer, TRUNCATE_PROJECT_GRAPH } from "./app-graph-test-helpers";
+import {
+  seedApp,
+  seedServer,
+  TRUNCATE_PROJECT_GRAPH,
+} from "./app-graph-test-helpers";
 import * as logs from "../logs/session";
 import type { AttachHandle } from "../infra/docker";
 
@@ -76,7 +80,11 @@ test("only the member who opened a log stream can close it", async () => {
 
   // Another member of the same team — holding the session id and nothing else.
   const res = await del(OTHER, session.id);
-  assert.equal(res.status, 200, "the answer says nothing about whose session it is");
+  assert.equal(
+    res.status,
+    200,
+    "the answer says nothing about whose session it is",
+  );
   assert.ok(
     logs.get(session.id, APP),
     "a stranger's DELETE must not cut short a live log stream",
@@ -93,7 +101,12 @@ test("only the member who opened a log stream can close it", async () => {
 
 test("a session id from another app is not this app's to close", async () => {
   await seedApp(db, { id: "prj_second", slug: "second", teamId: TEAM_A });
-  const session = logs.open("prj_second", OWNER, "deplo-second-1", inertHandle());
+  const session = logs.open(
+    "prj_second",
+    OWNER,
+    "deplo-second-1",
+    inertHandle(),
+  );
   await del(OWNER, session.id);
   assert.ok(
     logs.get(session.id, "prj_second"),

@@ -10,14 +10,20 @@ function vol(p: Partial<VolumeMount>): VolumeMount {
 }
 
 test("accepts a clean named volume and keeps its id", () => {
-  const out = validateVolumes([vol({ id: "vol_keep", name: "data", mountPath: "/data" })], null);
+  const out = validateVolumes(
+    [vol({ id: "vol_keep", name: "data", mountPath: "/data" })],
+    null,
+  );
   assert.deepEqual(out, [
     { id: "vol_keep", name: "data", mountPath: "/data", readOnly: false },
   ]);
 });
 
 test("derives the name from the mount path when blank", () => {
-  const out = validateVolumes([vol({ name: "", mountPath: "/var/data" })], null);
+  const out = validateVolumes(
+    [vol({ name: "", mountPath: "/var/data" })],
+    null,
+  );
   assert.equal(out?.[0].name, "var-data");
 });
 
@@ -31,37 +37,63 @@ test("empty list normalizes to null (byte-identical render)", () => {
 });
 
 test("rejects relative paths", () => {
-  assert.throws(() => validateVolumes([vol({ mountPath: "data" })], null), /absolute/);
+  assert.throws(
+    () => validateVolumes([vol({ mountPath: "data" })], null),
+    /absolute/,
+  );
 });
 
 test("rejects paths containing a colon (flag smuggling)", () => {
-  assert.throws(() => validateVolumes([vol({ mountPath: "/data:ro" })], null), /":"/);
+  assert.throws(
+    () => validateVolumes([vol({ mountPath: "/data:ro" })], null),
+    /":"/,
+  );
 });
 
 test("rejects paths with whitespace", () => {
-  assert.throws(() => validateVolumes([vol({ mountPath: "/my data" })], null), /spaces/);
+  assert.throws(
+    () => validateVolumes([vol({ mountPath: "/my data" })], null),
+    /spaces/,
+  );
 });
 
 test("rejects '..' traversal", () => {
-  assert.throws(() => validateVolumes([vol({ mountPath: "/a/../b" })], null), /".."/);
+  assert.throws(
+    () => validateVolumes([vol({ mountPath: "/a/../b" })], null),
+    /".."/,
+  );
 });
 
 test("rejects reserved system prefixes", () => {
   for (const p of ["/etc", "/etc/passwd", "/proc", "/usr/lib", "/var/run/x"]) {
-    assert.throws(() => validateVolumes([vol({ mountPath: p })], null), /reserved/, p);
+    assert.throws(
+      () => validateVolumes([vol({ mountPath: p })], null),
+      /reserved/,
+      p,
+    );
   }
 });
 
 test("rejects a name with illegal characters or too long", () => {
-  assert.throws(() => validateVolumes([vol({ name: "bad name", mountPath: "/d" })], null), /lowercase/);
-  assert.throws(() => validateVolumes([vol({ name: "a".repeat(41), mountPath: "/d" })], null), /max 40/);
+  assert.throws(
+    () => validateVolumes([vol({ name: "bad name", mountPath: "/d" })], null),
+    /lowercase/,
+  );
+  assert.throws(
+    () =>
+      validateVolumes([vol({ name: "a".repeat(41), mountPath: "/d" })], null),
+    /max 40/,
+  );
 });
 
 test("rejects duplicate mount paths", () => {
   assert.throws(
     () =>
       validateVolumes(
-        [vol({ name: "a", mountPath: "/data" }), vol({ name: "b", mountPath: "/data" })],
+        [
+          vol({ name: "a", mountPath: "/data" }),
+          vol({ name: "b", mountPath: "/data" }),
+        ],
         null,
       ),
     /Duplicate mount path/,
@@ -72,7 +104,10 @@ test("rejects duplicate names", () => {
   assert.throws(
     () =>
       validateVolumes(
-        [vol({ name: "data", mountPath: "/x" }), vol({ name: "data", mountPath: "/y" })],
+        [
+          vol({ name: "data", mountPath: "/x" }),
+          vol({ name: "data", mountPath: "/y" }),
+        ],
         null,
       ),
     /Duplicate volume name/,
@@ -81,18 +116,29 @@ test("rejects duplicate names", () => {
 
 test("rejects a mount path that collides with a template config file", () => {
   assert.throws(
-    () => validateVolumes([vol({ mountPath: "/app/config" })], [{ filePath: "/app/config" }]),
+    () =>
+      validateVolumes(
+        [vol({ mountPath: "/app/config" })],
+        [{ filePath: "/app/config" }],
+      ),
     /config file/,
   );
   // Also when the volume would shadow a directory holding a config file.
   assert.throws(
-    () => validateVolumes([vol({ mountPath: "/app" })], [{ filePath: "/app/config.yml" }]),
+    () =>
+      validateVolumes(
+        [vol({ mountPath: "/app" })],
+        [{ filePath: "/app/config.yml" }],
+      ),
     /config file/,
   );
 });
 
 test("mints an id when a row has none", () => {
-  const out = validateVolumes([vol({ id: "", name: "data", mountPath: "/d" })], null);
+  const out = validateVolumes(
+    [vol({ id: "", name: "data", mountPath: "/d" })],
+    null,
+  );
   assert.match(out![0].id, /^vol_/);
 });
 
@@ -106,7 +152,14 @@ test("deriveVolumeName falls back to 'data' for the root path", () => {
 
 test("accepts a host bind mount and keeps type + hostPath", () => {
   const out = validateVolumes(
-    [vol({ id: "vol_h", type: "host", hostPath: "/srv/data", mountPath: "/data" })],
+    [
+      vol({
+        id: "vol_h",
+        type: "host",
+        hostPath: "/srv/data",
+        mountPath: "/data",
+      }),
+    ],
     null,
   );
   assert.deepEqual(out, [
@@ -123,21 +176,33 @@ test("accepts a host bind mount and keeps type + hostPath", () => {
 
 test("host mount: rejects a relative host path", () => {
   assert.throws(
-    () => validateVolumes([vol({ type: "host", hostPath: "srv/data", mountPath: "/data" })], null),
+    () =>
+      validateVolumes(
+        [vol({ type: "host", hostPath: "srv/data", mountPath: "/data" })],
+        null,
+      ),
     /path on the server must be absolute/,
   );
 });
 
 test("host mount: rejects a host path with a colon (flag smuggling)", () => {
   assert.throws(
-    () => validateVolumes([vol({ type: "host", hostPath: "/srv:data", mountPath: "/data" })], null),
+    () =>
+      validateVolumes(
+        [vol({ type: "host", hostPath: "/srv:data", mountPath: "/data" })],
+        null,
+      ),
     /path on the server/,
   );
 });
 
 test("host mount: rejects '..' traversal in the host path", () => {
   assert.throws(
-    () => validateVolumes([vol({ type: "host", hostPath: "/srv/../etc", mountPath: "/data" })], null),
+    () =>
+      validateVolumes(
+        [vol({ type: "host", hostPath: "/srv/../etc", mountPath: "/data" })],
+        null,
+      ),
     /path on the server cannot contain "\.\."/,
   );
 });
@@ -153,14 +218,26 @@ test("host mount: the host SOURCE may point at an otherwise-reserved path", () =
 
 test("host mount: the in-container mountPath is still reserved-checked", () => {
   assert.throws(
-    () => validateVolumes([vol({ type: "host", hostPath: "/srv/x", mountPath: "/etc" })], null),
+    () =>
+      validateVolumes(
+        [vol({ type: "host", hostPath: "/srv/x", mountPath: "/etc" })],
+        null,
+      ),
     /reserved/,
   );
 });
 
 test("host mount: keeps a propagation, and leaves the key ABSENT without one", () => {
   const out = validateVolumes(
-    [vol({ id: "vol_h", type: "host", hostPath: "/srv/neon", mountPath: "/srv/neon", propagation: "rslave" })],
+    [
+      vol({
+        id: "vol_h",
+        type: "host",
+        hostPath: "/srv/neon",
+        mountPath: "/srv/neon",
+        propagation: "rslave",
+      }),
+    ],
     null,
   );
   assert.deepEqual(out, [
@@ -210,7 +287,12 @@ test("propagation is dropped for a named volume and an app-files bind", () => {
   const out = validateVolumes(
     [
       vol({ name: "data", mountPath: "/data", propagation: "rslave" }),
-      vol({ type: "app", projectPath: "conf.toml", mountPath: "/conf.toml", propagation: "rslave" }),
+      vol({
+        type: "app",
+        projectPath: "conf.toml",
+        mountPath: "/conf.toml",
+        propagation: "rslave",
+      }),
     ],
     null,
   );
@@ -236,7 +318,14 @@ test("host mount: does not enforce docker-name rules and ignores name dupes", ()
 
 test("accepts a project bind and keeps type + projectPath", () => {
   const out = validateVolumes(
-    [vol({ id: "vol_p", type: "app", projectPath: "config.toml", mountPath: "/app/config.toml" })],
+    [
+      vol({
+        id: "vol_p",
+        type: "app",
+        projectPath: "config.toml",
+        mountPath: "/app/config.toml",
+      }),
+    ],
     null,
   );
   assert.deepEqual(out, [
@@ -262,7 +351,13 @@ test("project bind: strips a leading './' from the projectPath", () => {
 
 test("project bind: accepts a nested relative path", () => {
   const out = validateVolumes(
-    [vol({ type: "app", projectPath: "volumes/db/init.sql", mountPath: "/init.sql" })],
+    [
+      vol({
+        type: "app",
+        projectPath: "volumes/db/init.sql",
+        mountPath: "/init.sql",
+      }),
+    ],
     null,
   );
   assert.equal(out?.[0].projectPath, "volumes/db/init.sql");
@@ -270,34 +365,70 @@ test("project bind: accepts a nested relative path", () => {
 
 test("project bind: rejects a '..' escape (the rename-vuln guard)", () => {
   assert.throws(
-    () => validateVolumes([vol({ type: "app", projectPath: "../other/data", mountPath: "/data" })], null),
+    () =>
+      validateVolumes(
+        [
+          vol({
+            type: "app",
+            projectPath: "../other/data",
+            mountPath: "/data",
+          }),
+        ],
+        null,
+      ),
     /cannot contain "\.\."/,
   );
   // …including a climb dressed up as same-project self-reference.
   assert.throws(
-    () => validateVolumes([vol({ type: "app", projectPath: "../demo/appdata", mountPath: "/appdata" })], null),
+    () =>
+      validateVolumes(
+        [
+          vol({
+            type: "app",
+            projectPath: "../demo/appdata",
+            mountPath: "/appdata",
+          }),
+        ],
+        null,
+      ),
     /cannot contain "\.\."/,
   );
 });
 
 test("project bind: rejects an absolute or empty projectPath", () => {
   assert.throws(
-    () => validateVolumes([vol({ type: "app", projectPath: "/abs", mountPath: "/data" })], null),
+    () =>
+      validateVolumes(
+        [vol({ type: "app", projectPath: "/abs", mountPath: "/data" })],
+        null,
+      ),
     /must be relative/,
   );
   assert.throws(
-    () => validateVolumes([vol({ type: "app", projectPath: "", mountPath: "/data" })], null),
+    () =>
+      validateVolumes(
+        [vol({ type: "app", projectPath: "", mountPath: "/data" })],
+        null,
+      ),
     /must be relative/,
   );
 });
 
 test("project bind: rejects spaces or a colon in the projectPath", () => {
   assert.throws(
-    () => validateVolumes([vol({ type: "app", projectPath: "my file", mountPath: "/data" })], null),
+    () =>
+      validateVolumes(
+        [vol({ type: "app", projectPath: "my file", mountPath: "/data" })],
+        null,
+      ),
     /spaces or ":"/,
   );
   assert.throws(
-    () => validateVolumes([vol({ type: "app", projectPath: "a:b", mountPath: "/data" })], null),
+    () =>
+      validateVolumes(
+        [vol({ type: "app", projectPath: "a:b", mountPath: "/data" })],
+        null,
+      ),
     /spaces or ":"/,
   );
 });
@@ -309,7 +440,13 @@ test("project bind: rejects spaces or a colon in the projectPath", () => {
 
 test("compose: keeps a service the compose declares", () => {
   const out = validateVolumes(
-    [vol({ name: "pgdata", service: "db", mountPath: "/var/lib/postgresql/data" })],
+    [
+      vol({
+        name: "pgdata",
+        service: "db",
+        mountPath: "/var/lib/postgresql/data",
+      }),
+    ],
     null,
     ["web", "db"],
   );
@@ -317,19 +454,28 @@ test("compose: keeps a service the compose declares", () => {
 });
 
 test("compose: a blank service is stored as null (⇒ the stack's default)", () => {
-  const out = validateVolumes([vol({ name: "data", service: "  " })], null, ["web"]);
+  const out = validateVolumes([vol({ name: "data", service: "  " })], null, [
+    "web",
+  ]);
   assert.equal(out![0].service, undefined);
 });
 
 test("compose: rejects a service the compose does not declare", () => {
   assert.throws(
-    () => validateVolumes([vol({ name: "data", service: "worker" })], null, ["web"]),
+    () =>
+      validateVolumes([vol({ name: "data", service: "worker" })], null, [
+        "web",
+      ]),
     /not in this app's compose file/,
   );
 });
 
 test("single-container: the service field is dropped, not stored", () => {
-  const out = validateVolumes([vol({ name: "data", service: "web" })], null, null);
+  const out = validateVolumes(
+    [vol({ name: "data", service: "web" })],
+    null,
+    null,
+  );
   assert.equal(out![0].service, undefined);
 });
 

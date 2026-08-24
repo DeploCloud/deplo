@@ -66,7 +66,10 @@ beforeEach(async () => {
     membership_capabilities, memberships, users, teams
     restart identity cascade;`);
   await seedIdentity(db, {
-    teams: [{ id: TEAM_A, slug: "alpha" }, { id: TEAM_B, slug: "beta" }],
+    teams: [
+      { id: TEAM_A, slug: "alpha" },
+      { id: TEAM_B, slug: "beta" },
+    ],
     users: [{ id: USER_1, teamId: TEAM_A, role: "owner" }],
   });
   await seedServer(db);
@@ -127,8 +130,14 @@ test("moveAppToProject lands in the DEFAULT environment and updates live counts"
         .where(eq(appsTable.id, "prj_svc1"))
     )[0];
     assert.equal(row.projectId, p.id);
-    const prod = (await listEnvironmentsForProject(p.id)).find((e) => e.isDefault)!;
-    assert.equal(row.environmentId, prod.id, "lands in the default environment");
+    const prod = (await listEnvironmentsForProject(p.id)).find(
+      (e) => e.isDefault,
+    )!;
+    assert.equal(
+      row.environmentId,
+      prod.id,
+      "lands in the default environment",
+    );
     // move back out → project AND environment cleared, count drops
     await moveAppToProject("prj_svc1", null);
     const out = (
@@ -227,7 +236,11 @@ test("deleteEnvironment re-parents its apps to the default environment", async (
         .where(eq(appsTable.id, "prj_svc1"))
     )[0];
     assert.equal(row.projectId, p.id, "stays in the project");
-    assert.equal(row.environmentId, prod.id, "falls back to the default environment");
+    assert.equal(
+      row.environmentId,
+      prod.id,
+      "falls back to the default environment",
+    );
   });
 });
 
@@ -295,8 +308,13 @@ test("environment CRUD: add custom, switch default, delete guards", async () => 
     assert.equal((await listEnvironmentsForProject(p.id)).length, 4);
 
     // Can't delete the default (Production) until another is made default.
-    const prod = (await listEnvironmentsForProject(p.id)).find((e) => e.isDefault)!;
-    await assert.rejects(() => deleteEnvironment(prod.id), /default environment/);
+    const prod = (await listEnvironmentsForProject(p.id)).find(
+      (e) => e.isDefault,
+    )!;
+    await assert.rejects(
+      () => deleteEnvironment(prod.id),
+      /default environment/,
+    );
 
     // Switch default to the custom one, then Production is deletable.
     await setDefaultEnvironment(custom.id);
@@ -367,7 +385,9 @@ test("createApp with a project but no environment uses the default one", async (
   await asOwner(async () => {
     const p = await createProject("Container");
     const app = await newApp({ projectId: p.id });
-    const prod = (await listEnvironmentsForProject(p.id)).find((e) => e.isDefault)!;
+    const prod = (await listEnvironmentsForProject(p.id)).find(
+      (e) => e.isDefault,
+    )!;
     assert.equal((await placementOf(app.id)).environmentId, prod.id);
   });
 });

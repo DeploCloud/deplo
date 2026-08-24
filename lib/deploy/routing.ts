@@ -192,7 +192,9 @@ export function traefikRouterLabels(opts: RouterLabelOptions): string[] {
   if (opts.perRouteKey) {
     for (const route of routes) {
       const key = opts.perRouteKey(route);
-      labels.push(...routerBlock(key, [route.name], resolveTls(route, opts), true));
+      labels.push(
+        ...routerBlock(key, [route.name], resolveTls(route, opts), true),
+      );
     }
     return labels;
   }
@@ -365,7 +367,8 @@ function sigSuffix(sig: RouterSig, defaultResolver: string): string {
     // `custom` provider), not "the default one" - it needs a segment of its own,
     // and `safe("")` would contribute nothing and let the two share a key.
     if (sig.certResolver === "") parts.push("owncert");
-    else if (sig.certResolver !== defaultResolver) parts.push(safe(sig.certResolver));
+    else if (sig.certResolver !== defaultResolver)
+      parts.push(safe(sig.certResolver));
   }
   // A path prefix must distinguish the key. `safe(pathPrefix)` alone is NOT
   // injective (`/a/b` and `/a-b` both collapse to `a-b`, and the strip flag is
@@ -375,7 +378,11 @@ function sigSuffix(sig: RouterSig, defaultResolver: string): string {
   // the RAW path + strip flag, which is injective for our purposes, so two
   // signatures that differ in sigId() can never share a key.
   if (sig.pathPrefix) {
-    parts.push("path", safe(sig.pathPrefix), hash6(`${sig.pathPrefix}|${sig.stripPrefix ? 1 : 0}`));
+    parts.push(
+      "path",
+      safe(sig.pathPrefix),
+      hash6(`${sig.pathPrefix}|${sig.stripPrefix ? 1 : 0}`),
+    );
     if (sig.stripPrefix) parts.push("strip");
   }
   // A middleware chain must distinguish the key too: two routes identical except
@@ -392,7 +399,10 @@ function sigSuffix(sig: RouterSig, defaultResolver: string): string {
 /** Lower-case and collapse anything outside `[a-z0-9-]` so a router key derived
  * from a resolver/entrypoint name can never break the Traefik label grammar. */
 function safe(s: string): string {
-  return s.toLowerCase().replace(/[^a-z0-9-]+/g, "-").replace(/^-+|-+$/g, "");
+  return s
+    .toLowerCase()
+    .replace(/[^a-z0-9-]+/g, "-")
+    .replace(/^-+|-+$/g, "");
 }
 
 /** A short, stable, slug-safe hash of an arbitrary string — the injective
@@ -456,7 +466,9 @@ function routerBlock(
           // empty one would point the router at a resolver that does not exist,
           // and Traefik answers those with its self-signed default.
           ...(sig.certResolver
-            ? [`traefik.http.routers.${key}.tls.certresolver=${sig.certResolver}`]
+            ? [
+                `traefik.http.routers.${key}.tls.certresolver=${sig.certResolver}`,
+              ]
             : []),
         ]
       : []),
@@ -488,7 +500,9 @@ function routerBlock(
         ]
       : []),
     ...(stripName
-      ? [`traefik.http.middlewares.${stripName}.stripprefix.prefixes=${sig.pathPrefix}`]
+      ? [
+          `traefik.http.middlewares.${stripName}.stripprefix.prefixes=${sig.pathPrefix}`,
+        ]
       : []),
     ...(middlewares.length
       ? [`traefik.http.routers.${key}.middlewares=${middlewares.join(",")}`]

@@ -74,9 +74,11 @@ const AUTHORIZE = /* GraphQL */ `
  * `message` is empty, which is exactly how this once became an error toast with
  * nothing written in it.
  */
-async function postConsent(
-  body: { accept: boolean; scope?: string; oauth_query?: string },
-): Promise<{ url?: string; error?: string }> {
+async function postConsent(body: {
+  accept: boolean;
+  scope?: string;
+  oauth_query?: string;
+}): Promise<{ url?: string; error?: string }> {
   try {
     const res = await fetch("/api/auth/oauth2/consent", {
       method: "POST",
@@ -547,7 +549,9 @@ function SummaryRow({
       className="flex w-full cursor-pointer items-center gap-3 p-3 text-left transition-colors hover:bg-accent disabled:pointer-events-none disabled:opacity-60"
     >
       <span className="shrink-0 text-muted-foreground">{label}</span>
-      <span className="ml-auto flex min-w-0 items-center gap-2">{children}</span>
+      <span className="ml-auto flex min-w-0 items-center gap-2">
+        {children}
+      </span>
       <Pencil className="size-3.5 shrink-0 text-muted-foreground" />
     </button>
   );

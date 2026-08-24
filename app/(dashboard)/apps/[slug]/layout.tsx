@@ -75,90 +75,90 @@ export default async function AppLayout(props: LayoutProps<"/apps/[slug]">) {
 
   return (
     <AppLiveStatusProvider key={initialLive.slug} initial={initialLive}>
-    <AppCapabilitiesProvider capabilities={capabilities}>
-    {/* An app's pages are forms and detail views, not grids — they stay at a
+      <AppCapabilitiesProvider capabilities={capabilities}>
+        {/* An app's pages are forms and detail views, not grids — they stay at a
         readable width instead of the wide shell the list pages use. The one
         exception is the full-screen log pane, where DetailFrame drops both this
         measure and the header below it. */}
-    <DetailFrame
-      header={
-        <div>
-        <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-          <div className="flex items-center gap-3">
-            <AppLogo logo={project.logo} size={44} />
+        <DetailFrame
+          header={
             <div>
-              <div className="flex items-center gap-2">
-                <h1 className="text-xl font-semibold tracking-tight">
-                  {project.name}
-                </h1>
-                {/* The live container lifecycle (Running / Stopped / Building /
+              <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+                <div className="flex items-center gap-3">
+                  <AppLogo logo={project.logo} size={44} />
+                  <div>
+                    <div className="flex items-center gap-2">
+                      <h1 className="text-xl font-semibold tracking-tight">
+                        {project.name}
+                      </h1>
+                      {/* The live container lifecycle (Running / Stopped / Building /
                     Error) — the header's headline status, distinct from any
                     deployment status shown further down the page. */}
-                <AppStatusBadge status={project.status} />
-              </div>
-              {/* The subtitle slot: the live URL when a domain is linked,
+                      <AppStatusBadge status={project.status} />
+                    </div>
+                    {/* The subtitle slot: the live URL when a domain is linked,
                   otherwise what this App *is* — never an empty line under the
                   name. */}
-              {project.productionUrl ? (
-                <a
-                  href={project.productionUrl}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="flex cursor-pointer items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground"
-                >
-                  {project.productionUrl.replace(/^https?:\/\//, "")}
-                </a>
-              ) : (
-                <p className="text-sm text-muted-foreground">
-                  {appTypeLabel(project)}
-                </p>
-              )}
+                    {project.productionUrl ? (
+                      <a
+                        href={project.productionUrl}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="flex cursor-pointer items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground"
+                      >
+                        {project.productionUrl.replace(/^https?:\/\//, "")}
+                      </a>
+                    ) : (
+                      <p className="text-sm text-muted-foreground">
+                        {appTypeLabel(project)}
+                      </p>
+                    )}
+                  </div>
+                </div>
+                <div className="flex flex-wrap items-center gap-2">
+                  {project.productionUrl && (
+                    <SimpleTooltip content="Open the live site in a new tab">
+                      <Button variant="default" size="sm" asChild>
+                        <a
+                          href={project.productionUrl}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                        >
+                          <ExternalLink className="size-4" />
+                          Visit
+                        </a>
+                      </Button>
+                    </SimpleTooltip>
+                  )}
+                  <AppControls appId={project.id} status={project.status} />
+                  <RedeployButton
+                    appId={project.id}
+                    slug={project.slug}
+                    variant="default"
+                  />
+                </div>
+              </div>
             </div>
-          </div>
-          <div className="flex flex-wrap items-center gap-2">
-            {project.productionUrl && (
-              <SimpleTooltip content="Open the live site in a new tab">
-                <Button variant="default" size="sm" asChild>
-                  <a
-                    href={project.productionUrl}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                  >
-                    <ExternalLink className="size-4" />
-                    Visit
-                  </a>
-                </Button>
-              </SimpleTooltip>
-            )}
-            <AppControls appId={project.id} status={project.status} />
-            <RedeployButton
-              appId={project.id}
-              slug={project.slug}
-              variant="default"
-            />
-          </div>
-        </div>
-        </div>
-      }
-      sidecars={
-        /* Publishes this app's live/per-app facts to the sidebar, which renders
+          }
+          sidecars={
+            /* Publishes this app's live/per-app facts to the sidebar, which renders
            the app sub-menu in place of the main nav. Renders nothing, and has to
            survive the header being dropped — otherwise a full-bleed route would
            lose the section menu along with the title. */
-        <AppNavSync
-          slug={slug}
-          running={project.status === "active"}
-          showFiles={showFiles}
-          capabilities={capabilities}
-          isGithubApp={project.source === "github"}
-          previewsEnabled={project.previewEnabled}
-          cronsEnabled={project.cronEnabled}
-        />
-      }
-    >
-      {props.children}
-    </DetailFrame>
-    </AppCapabilitiesProvider>
+            <AppNavSync
+              slug={slug}
+              running={project.status === "active"}
+              showFiles={showFiles}
+              capabilities={capabilities}
+              isGithubApp={project.source === "github"}
+              previewsEnabled={project.previewEnabled}
+              cronsEnabled={project.cronEnabled}
+            />
+          }
+        >
+          {props.children}
+        </DetailFrame>
+      </AppCapabilitiesProvider>
     </AppLiveStatusProvider>
   );
 }

@@ -73,7 +73,7 @@ export function FullComposeDialog({ appId }: { appId: string }) {
           <p className="py-8 text-center text-sm text-destructive">{error}</p>
         ) : yaml ? (
           <div className="relative">
-            <CopyButton value={yaml} className="absolute right-2 top-2 z-10" />
+            <CopyButton value={yaml} className="absolute top-2 right-2 z-10" />
             <pre className="max-h-[60vh] overflow-auto rounded-lg border border-border bg-muted/40 p-4 text-xs leading-relaxed">
               <code className="font-mono">{yaml}</code>
             </pre>

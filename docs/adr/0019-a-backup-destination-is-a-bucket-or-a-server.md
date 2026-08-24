@@ -163,8 +163,8 @@ block the delete forever.
 ### The MANAGED root is the agent's own; only a CUSTOM one needs vetting
 
 Creating the store root was gated on a "test the destination" probe, which made
-the platform's own auto-seeded default fail its first backup with *"test the
-destination first"* — and the only thing that ran a probe required
+the platform's own auto-seeded default fail its first backup with _"test the
+destination first"_ — and the only thing that ran a probe required
 `manage_backup_destinations`, so a member holding `manage_backups` alone could
 not get out of it. The managed root is derived agent-side from `--stack-dir`,
 so there is nothing about it to vet: every path creates it on demand. A custom

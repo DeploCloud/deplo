@@ -80,14 +80,30 @@ beforeEach(async () => {
         teamId: TEAM_A,
         role: "member",
         isInstanceAdmin: false,
-        capabilities: ["view", "create_apps", "deploy_apps", "configure_apps", "manage_domains", "manage_env", "write_app_files"],
+        capabilities: [
+          "view",
+          "create_apps",
+          "deploy_apps",
+          "configure_apps",
+          "manage_domains",
+          "manage_env",
+          "write_app_files",
+        ],
       },
       {
         id: GRANTEE,
         teamId: TEAM_A,
         role: "member",
         isInstanceAdmin: false,
-        capabilities: ["view", "create_apps", "deploy_apps", "configure_apps", "manage_domains", "manage_env", "write_app_files"],
+        capabilities: [
+          "view",
+          "create_apps",
+          "deploy_apps",
+          "configure_apps",
+          "manage_domains",
+          "manage_env",
+          "write_app_files",
+        ],
       },
       {
         id: INFRA,
@@ -130,8 +146,14 @@ test("a team member without folder access can't act on a project inside the fold
     );
   });
   // The rename never happened.
-  const row = (await db.select().from(appsTable).where(eq(appsTable.id, PRJ_IN)))[0]!;
-  assert.equal(row.name, PRJ_IN, "project name unchanged after the blocked rename");
+  const row = (
+    await db.select().from(appsTable).where(eq(appsTable.id, PRJ_IN))
+  )[0]!;
+  assert.equal(
+    row.name,
+    PRJ_IN,
+    "project name unchanged after the blocked rename",
+  );
 });
 
 test("an app in a folder they can't see is INVISIBLE, not merely unwritable", async () => {
@@ -144,19 +166,29 @@ test("an app in a folder they can't see is INVISIBLE, not merely unwritable", as
       [PRJ_TOP],
       "the folder's app is filtered out of the list",
     );
-    assert.equal(await getAppBySlug(PRJ_IN), null, "and its page refuses to load");
+    assert.equal(
+      await getAppBySlug(PRJ_IN),
+      null,
+      "and its page refuses to load",
+    );
     assert.ok(await getAppBySlug(PRJ_TOP), "the top-level app still opens");
   });
 
   // The folder owner sees both, and a grant makes it visible to the grantee.
   await as(OWNER, async () => {
-    assert.deepEqual((await listApps()).map((a) => a.id).sort(), [PRJ_IN, PRJ_TOP]);
+    assert.deepEqual((await listApps()).map((a) => a.id).sort(), [
+      PRJ_IN,
+      PRJ_TOP,
+    ]);
   });
   // `view` alone is never stored (it is implied), so a real grant is what makes
   // the folder - and the app inside it - visible.
   await as(OWNER, () => setFolderGrant(FLD, GRANTEE, ["configure_apps"]));
   await as(GRANTEE, async () => {
-    assert.deepEqual((await listApps()).map((a) => a.id).sort(), [PRJ_IN, PRJ_TOP]);
+    assert.deepEqual((await listApps()).map((a) => a.id).sort(), [
+      PRJ_IN,
+      PRJ_TOP,
+    ]);
     assert.ok(await getAppBySlug(PRJ_IN), "the granted folder's app opens");
   });
 });
@@ -165,15 +197,23 @@ test("the same member CAN act on a TOP-LEVEL project (team caps govern)", async 
   await as(MEMBER, async () => {
     await renameApp(PRJ_TOP, "renamed-top");
   });
-  const row = (await db.select().from(appsTable).where(eq(appsTable.id, PRJ_TOP)))[0]!;
-  assert.equal(row.name, "renamed-top", "a top-level project is team-scoped only");
+  const row = (
+    await db.select().from(appsTable).where(eq(appsTable.id, PRJ_TOP))
+  )[0]!;
+  assert.equal(
+    row.name,
+    "renamed-top",
+    "a top-level project is team-scoped only",
+  );
 });
 
 test("the folder owner can act on a project inside their folder", async () => {
   await as(OWNER, async () => {
     await renameApp(PRJ_IN, "owner-renamed");
   });
-  const row = (await db.select().from(appsTable).where(eq(appsTable.id, PRJ_IN)))[0]!;
+  const row = (
+    await db.select().from(appsTable).where(eq(appsTable.id, PRJ_IN))
+  )[0]!;
   assert.equal(row.name, "owner-renamed");
 });
 
@@ -184,7 +224,8 @@ test("a grantee with a folder grant can act; without it they can't", async () =>
     await renameApp(PRJ_IN, "grantee-renamed");
   });
   assert.equal(
-    (await db.select().from(appsTable).where(eq(appsTable.id, PRJ_IN)))[0]!.name,
+    (await db.select().from(appsTable).where(eq(appsTable.id, PRJ_IN)))[0]!
+      .name,
     "grantee-renamed",
   );
 
@@ -203,7 +244,9 @@ test("a grant EXCEEDS the grantee's team caps and holds (ADR-0016)", async () =>
   // you hand someone one corner of the fleet without widening their role, so it
   // must survive — that is the invariant ADR-0016 reversed. The granter's own
   // bound is what still keeps it safe, and it is asserted below.
-  await as(OWNER, () => setFolderGrant(FLD, GRANTEE, ["deploy_apps", "manage_backups"]));
+  await as(OWNER, () =>
+    setFolderGrant(FLD, GRANTEE, ["deploy_apps", "manage_backups"]),
+  );
   const caps = await as(GRANTEE, () => folderCapabilities(FLD));
   assert.ok(caps.includes("deploy_apps"), "granted+held deploy_apps survives");
   assert.ok(
@@ -223,10 +266,15 @@ test("a grant can't exceed the GRANTER, and can't name a team-wide capability", 
   // themselves hold on this folder. `manage_members` is team-wide by nature and is
   // absent from NODE_GRANTABLE_CAPABILITIES, so a node can never become a route
   // back to team administration however it is asked for.
-  await as(OWNER, () => setFolderGrant(FLD, GRANTEE, ["manage_members", "deploy_apps"]));
+  await as(OWNER, () =>
+    setFolderGrant(FLD, GRANTEE, ["manage_members", "deploy_apps"]),
+  );
   const caps = await as(GRANTEE, () => folderCapabilities(FLD));
   assert.ok(caps.includes("deploy_apps"));
-  assert.ok(!caps.includes("manage_members"), "a team-wide capability is never node-grantable");
+  assert.ok(
+    !caps.includes("manage_members"),
+    "a team-wide capability is never node-grantable",
+  );
 });
 
 test("manage_infra: a member without folder access can't back up a project in the folder", async () => {
@@ -282,15 +330,26 @@ test("manage_infra: the folder owner CAN back up a project inside their folder",
 test("listFolders hides folders the caller can't see", async () => {
   // OWNER sees their folder; MEMBER (no access) sees nothing; a super-user sees all.
   const ownerFolders = await as(OWNER, () => listFolders());
-  assert.deepEqual(ownerFolders.map((f) => f.id), [FLD]);
+  assert.deepEqual(
+    ownerFolders.map((f) => f.id),
+    [FLD],
+  );
 
   const memberFolders = await as(MEMBER, () => listFolders());
-  assert.deepEqual(memberFolders.map((f) => f.id), [], "a non-member of the folder sees none");
+  assert.deepEqual(
+    memberFolders.map((f) => f.id),
+    [],
+    "a non-member of the folder sees none",
+  );
 
   // Grant MEMBER view access → the folder appears for them.
   await as(OWNER, () => setFolderGrant(FLD, MEMBER, ["deploy_apps"]));
   const afterGrant = await as(MEMBER, () => listFolders());
-  assert.deepEqual(afterGrant.map((f) => f.id), [FLD], "a grantee now sees the shared folder");
+  assert.deepEqual(
+    afterGrant.map((f) => f.id),
+    [FLD],
+    "a grantee now sees the shared folder",
+  );
 });
 
 /* ------------------------------------------------------------------ */
@@ -303,8 +362,14 @@ const newAppIn = (folderId: string | null, name = "Made here") =>
 
 test("createApp files the new app IN the folder it was created from", async () => {
   const app = await as(OWNER, () => newAppIn(FLD));
-  const row = (await db.select().from(appsTable).where(eq(appsTable.id, app.id)))[0]!;
-  assert.equal(row.folderId, FLD, "an app created inside a folder must stay in it");
+  const row = (
+    await db.select().from(appsTable).where(eq(appsTable.id, app.id))
+  )[0]!;
+  assert.equal(
+    row.folderId,
+    FLD,
+    "an app created inside a folder must stay in it",
+  );
   assert.equal(row.projectId, null, "one home only — no project link");
   assert.equal(row.environmentId, null);
   // …and the DTO the wizard redirects on agrees with the row.
@@ -313,7 +378,9 @@ test("createApp files the new app IN the folder it was created from", async () =
 
 test("createApp with no placement still lands at the top level", async () => {
   const app = await as(OWNER, () => newAppIn(null, "Top level"));
-  const row = (await db.select().from(appsTable).where(eq(appsTable.id, app.id)))[0]!;
+  const row = (
+    await db.select().from(appsTable).where(eq(appsTable.id, app.id))
+  )[0]!;
   assert.equal(row.folderId, null);
 });
 
@@ -327,14 +394,23 @@ test("creating into a folder needs `create_apps` ON THAT FOLDER, not just at tea
     );
   });
   // The whole create was refused — no orphan app row left behind.
-  const rows = await db.select().from(appsTable).where(eq(appsTable.folderId, FLD));
-  assert.deepEqual(rows.map((r) => r.id), [PRJ_IN], "only the pre-seeded app is in the folder");
+  const rows = await db
+    .select()
+    .from(appsTable)
+    .where(eq(appsTable.folderId, FLD));
+  assert.deepEqual(
+    rows.map((r) => r.id),
+    [PRJ_IN],
+    "only the pre-seeded app is in the folder",
+  );
 });
 
 test("a grantee with folder `create_apps` CAN create an app inside the folder", async () => {
   await as(OWNER, () => setFolderGrant(FLD, GRANTEE, ["create_apps"]));
   const app = await as(GRANTEE, () => newAppIn(FLD, "Grantee app"));
-  const row = (await db.select().from(appsTable).where(eq(appsTable.id, app.id)))[0]!;
+  const row = (
+    await db.select().from(appsTable).where(eq(appsTable.id, app.id))
+  )[0]!;
   assert.equal(row.folderId, FLD);
 });
 
@@ -356,7 +432,10 @@ test("only the owner/super-user can administer grants; a grantee can't re-share"
   await as(OWNER, () => setFolderGrant(FLD, GRANTEE, ["deploy_apps"]));
   // GRANTEE, even with folder deploy, cannot list or hand out grants.
   await as(GRANTEE, async () => {
-    await assert.rejects(() => listFolderGrants(FLD), /owner|not found|permission/i);
+    await assert.rejects(
+      () => listFolderGrants(FLD),
+      /owner|not found|permission/i,
+    );
     await assert.rejects(
       () => setFolderGrant(FLD, MEMBER, ["deploy_apps"]),
       /owner|not found|permission/i,

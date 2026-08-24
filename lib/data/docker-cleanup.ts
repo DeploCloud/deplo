@@ -177,7 +177,12 @@ const MAX_RUN_LIMIT = 100;
  */
 const CLEANUP_ORPHAN_AFTER_MS = 90 * 60_000;
 
-function clampInt(n: number, min: number, max: number, fallback: number): number {
+function clampInt(
+  n: number,
+  min: number,
+  max: number,
+  fallback: number,
+): number {
   if (!Number.isFinite(n)) return fallback;
   return Math.min(max, Math.max(min, Math.trunc(n)));
 }
@@ -239,7 +244,9 @@ function toRunItems(results: CleanupScopeResult[]): CleanupRunItem[] {
   for (const r of results) {
     const scope = WIRE_TO_SCOPE.get(r.scope);
     if (!scope) {
-      console.warn(`[cleanup] agent reported an unknown scope (${r.scope}); ignoring it`);
+      console.warn(
+        `[cleanup] agent reported an unknown scope (${r.scope}); ignoring it`,
+      );
       continue;
     }
     if (byScope.has(scope)) continue;
@@ -251,7 +258,9 @@ function toRunItems(results: CleanupScopeResult[]): CleanupRunItem[] {
       error: r.error || null,
     });
   }
-  return CLEANUP_SCOPES.filter((s) => byScope.has(s)).map((s) => byScope.get(s)!);
+  return CLEANUP_SCOPES.filter((s) => byScope.has(s)).map((s) =>
+    byScope.get(s)!,
+  );
 }
 
 /* ------------------------------------------------------------------ */
@@ -268,8 +277,15 @@ function toRunItems(results: CleanupScopeResult[]): CleanupRunItem[] {
 async function loadPolicy(): Promise<CleanupPolicy> {
   const db = getDb();
   const [rows, scopeRows, excludedRows] = await Promise.all([
-    db.select().from(dockerCleanupPolicy).where(eq(dockerCleanupPolicy.id, POLICY_ID)).limit(1),
-    db.select().from(dockerCleanupPolicyScopes).where(eq(dockerCleanupPolicyScopes.policyId, POLICY_ID)),
+    db
+      .select()
+      .from(dockerCleanupPolicy)
+      .where(eq(dockerCleanupPolicy.id, POLICY_ID))
+      .limit(1),
+    db
+      .select()
+      .from(dockerCleanupPolicyScopes)
+      .where(eq(dockerCleanupPolicyScopes.policyId, POLICY_ID)),
     // Read unconditionally: the exclusion list FKs to `servers`, not to the policy, so
     // it can legitimately outlive a policy that was never written.
     db.select().from(dockerCleanupExcludedServers),
@@ -327,14 +343,18 @@ export async function listServersWithCleanupRunning(): Promise<string[]> {
     .select({ serverId: dockerCleanupRuns.serverId })
     .from(dockerCleanupRuns)
     .where(eq(dockerCleanupRuns.status, "running"));
-  return [...new Set(rows.map((r) => r.serverId).filter((id): id is string => !!id))];
+  return [
+    ...new Set(rows.map((r) => r.serverId).filter((id): id is string => !!id)),
+  ];
 }
 
 /** The history cap AND the read's default page: `3 × serverCount`, floored at
  *  {@link RUNS_KEPT_PER_SERVER} so a zero-server instance still shows the failure rows
  *  it may hold for servers that were since removed. */
 async function runHistoryCap(): Promise<number> {
-  const servers = await getDb().select({ id: serversTable.id }).from(serversTable);
+  const servers = await getDb()
+    .select({ id: serversTable.id })
+    .from(serversTable);
   return Math.max(RUNS_KEPT_PER_SERVER, servers.length * RUNS_KEPT_PER_SERVER);
 }
 
@@ -378,7 +398,11 @@ async function loadRuns(
   const rows = await getDb()
     .select()
     .from(dockerCleanupRuns)
-    .where(filter.serverId ? eq(dockerCleanupRuns.serverId, filter.serverId) : undefined)
+    .where(
+      filter.serverId
+        ? eq(dockerCleanupRuns.serverId, filter.serverId)
+        : undefined,
+    )
     .orderBy(desc(dockerCleanupRuns.startedAt), desc(dockerCleanupRuns.seq))
     .limit(limit);
   if (rows.length === 0) return [];
@@ -386,7 +410,12 @@ async function loadRuns(
   const itemRows = await getDb()
     .select()
     .from(dockerCleanupRunItems)
-    .where(inArray(dockerCleanupRunItems.runId, rows.map((r) => r.id)));
+    .where(
+      inArray(
+        dockerCleanupRunItems.runId,
+        rows.map((r) => r.id),
+      ),
+    );
   const byRun = new Map<string, CleanupRunItem[]>();
   for (const i of itemRows) {
     const list = byRun.get(i.runId) ?? [];
@@ -497,10 +526,22 @@ export async function updateCleanupPolicy(
   // An enabled policy with nothing to reclaim is the same silent lie as an unparseable
   // cron: a job that runs nightly and does nothing, reported as working.
   if (input.enabled && scopes.length === 0) {
-    throw new Error("Select at least one thing to reclaim before enabling the scheduled cleanup");
+    throw new Error(
+      "Select at least one thing to reclaim before enabling the scheduled cleanup",
+    );
   }
-  const minAgeHours = clampInt(input.minAgeHours, 0, MIN_AGE_HOURS_MAX, DEFAULT_MIN_AGE_HOURS);
-  const keepImagesPerApp = clampInt(input.keepImagesPerApp, 1, KEEP_IMAGES_MAX, DEFAULT_KEEP_IMAGES_PER_APP);
+  const minAgeHours = clampInt(
+    input.minAgeHours,
+    0,
+    MIN_AGE_HOURS_MAX,
+    DEFAULT_MIN_AGE_HOURS,
+  );
+  const keepImagesPerApp = clampInt(
+    input.keepImagesPerApp,
+    1,
+    KEEP_IMAGES_MAX,
+    DEFAULT_KEEP_IMAGES_PER_APP,
+  );
   const excluded = input.excludedServerIds
     ? [...new Set(input.excludedServerIds)]
     : undefined;
@@ -522,7 +563,13 @@ export async function updateCleanupPolicy(
       // saves settle on one row rather than minting two policies.
       .onConflictDoUpdate({
         target: dockerCleanupPolicy.id,
-        set: { enabled: input.enabled, schedule, minAgeHours, keepImagesPerApp, updatedAt: now },
+        set: {
+          enabled: input.enabled,
+          schedule,
+          minAgeHours,
+          keepImagesPerApp,
+          updatedAt: now,
+        },
       });
 
     await tx
@@ -704,7 +751,8 @@ async function finishCleanupRun(args: {
     // and an actionable message, rather than the dial's "not provisioned" internals.
     const server = await getServerById(serverId);
     if (!server) throw new Error("Server not found");
-    if (!server.agent?.certFingerprint) throw new Error(notProvisionedMessage(serverName));
+    if (!server.agent?.certFingerprint)
+      throw new Error(notProvisionedMessage(serverName));
 
     const resp = await runAgentCleanup(serverId, {
       scopes: policy.scopes.map((s) => SCOPE_TO_WIRE[s]),
@@ -740,44 +788,46 @@ async function finishCleanupRun(args: {
   // TERMINAL transaction (short): the run's final status + its per-scope breakdown,
   // together — a run that reports bytes with no lines, or lines with no status, is a
   // half-truth. Rule (b): the agent call is already done, outside any tx.
-  const finished = await getDb().transaction(async (tx): Promise<CleanupRunDTO> => {
-    const updated = await tx
-      .update(dockerCleanupRuns)
-      .set({
-        status: failure ? "failed" : "success",
-        error: failure,
-        reclaimedBytes,
-        finishedAt,
-      })
-      .where(eq(dockerCleanupRuns.id, runId))
-      .returning();
-    if (items.length > 0) {
-      await tx.insert(dockerCleanupRunItems).values(
-        items.map((i) => ({
-          runId,
-          scope: i.scope,
-          reclaimedBytes: i.reclaimedBytes,
-          itemsRemoved: i.itemsRemoved,
-          skipped: i.skipped,
-          error: i.error,
-        })),
-      );
-    }
-    const row = updated[0]!;
-    return {
-      id: row.id,
-      serverId: row.serverId,
-      serverName: row.serverName,
-      trigger: row.trigger as CleanupTrigger,
-      actor: row.actor,
-      status: row.status as CleanupRunStatus,
-      error: row.error,
-      reclaimedBytes: row.reclaimedBytes,
-      startedAt: row.startedAt,
-      finishedAt: row.finishedAt,
-      items: orderItems(items),
-    };
-  });
+  const finished = await getDb().transaction(
+    async (tx): Promise<CleanupRunDTO> => {
+      const updated = await tx
+        .update(dockerCleanupRuns)
+        .set({
+          status: failure ? "failed" : "success",
+          error: failure,
+          reclaimedBytes,
+          finishedAt,
+        })
+        .where(eq(dockerCleanupRuns.id, runId))
+        .returning();
+      if (items.length > 0) {
+        await tx.insert(dockerCleanupRunItems).values(
+          items.map((i) => ({
+            runId,
+            scope: i.scope,
+            reclaimedBytes: i.reclaimedBytes,
+            itemsRemoved: i.itemsRemoved,
+            skipped: i.skipped,
+            error: i.error,
+          })),
+        );
+      }
+      const row = updated[0]!;
+      return {
+        id: row.id,
+        serverId: row.serverId,
+        serverName: row.serverName,
+        trigger: row.trigger as CleanupTrigger,
+        actor: row.actor,
+        status: row.status as CleanupRunStatus,
+        error: row.error,
+        reclaimedBytes: row.reclaimedBytes,
+        startedAt: row.startedAt,
+        finishedAt: row.finishedAt,
+        items: orderItems(items),
+      };
+    },
+  );
 
   // Retention rides the executor: every finished sweep — success or failure — trims
   // the history to its cap. Best-effort: a failed trim must never turn a recorded
@@ -849,7 +899,9 @@ function detachSweep(runId: string, work: Promise<CleanupRunDTO>): void {
   const tracked = work
     .then((run) => {
       if (run.status === "failed") {
-        console.warn(`[cleanup] sweep on ${run.serverName} failed: ${run.error}`);
+        console.warn(
+          `[cleanup] sweep on ${run.serverName} failed: ${run.error}`,
+        );
       }
     })
     .catch((e) => {
@@ -925,7 +977,9 @@ export async function runCleanupNow(serverId: string): Promise<CleanupRunDTO> {
   // Fail fast rather than record a run that asks the agent for nothing: an empty scope
   // set is an ok response with zero bytes, indistinguishable from a sweep that worked.
   if (policy.scopes.length === 0) {
-    throw new Error("No cleanup scopes are selected — choose what to reclaim, then clean up");
+    throw new Error(
+      "No cleanup scopes are selected — choose what to reclaim, then clean up",
+    );
   }
   // The same never-stack-sweeps rule the scheduler follows, and it matters more now
   // that the button answers instantly: two concurrent `docker rmi` sweeps would race
@@ -1132,7 +1186,9 @@ export async function liveStackSlugs(): Promise<string[]> {
  * a failed sweep must not fail a shipped deploy. Returns the freed bytes (0 when
  * skipped or failed) so the deploy log can mention it.
  */
-export async function sweepSupersededAppImages(serverId: string): Promise<number> {
+export async function sweepSupersededAppImages(
+  serverId: string,
+): Promise<number> {
   if (deploySweepInFlight.has(serverId)) return 0;
   deploySweepInFlight.add(serverId);
   try {
@@ -1159,7 +1215,9 @@ export async function sweepSupersededAppImages(serverId: string): Promise<number
       liveSlugs: [],
     });
     if (!resp.ok) {
-      console.warn(`[cleanup] deploy-time image sweep on ${serverId} failed: ${resp.error || "unknown"}`);
+      console.warn(
+        `[cleanup] deploy-time image sweep on ${serverId} failed: ${resp.error || "unknown"}`,
+      );
       return 0;
     }
     return Number(resp.reclaimedBytes ?? 0);
@@ -1190,7 +1248,9 @@ export async function sweepSupersededAppImages(serverId: string): Promise<number
  * only settles rows that are already stranded.
  */
 export async function reconcileInFlightCleanupRuns(): Promise<number> {
-  const cutoffIso = new Date(Date.now() - CLEANUP_ORPHAN_AFTER_MS).toISOString();
+  const cutoffIso = new Date(
+    Date.now() - CLEANUP_ORPHAN_AFTER_MS,
+  ).toISOString();
   const flipped = await getDb()
     .update(dockerCleanupRuns)
     .set({

@@ -48,7 +48,8 @@ export function RollbackDialog({
       (d) => d.rollbackDeployment,
     );
     if (res.ok) {
-      if (res.data?.id) router.push(`/apps/${appSlug}/deployments/${res.data.id}`);
+      if (res.data?.id)
+        router.push(`/apps/${appSlug}/deployments/${res.data.id}`);
       else router.refresh();
     }
     return res;

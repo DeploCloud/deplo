@@ -42,7 +42,8 @@ export function useRepoFramework(input: RepoFrameworkInput): {
   framework: RecognizedFramework | null;
   detecting: boolean;
 } {
-  const { repo, url, branch, installationId, buildMethod, rootDirectory } = input;
+  const { repo, url, branch, installationId, buildMethod, rootDirectory } =
+    input;
 
   /**
    * Everything the answer depends on, as one value. Results are STAMPED with it,
@@ -54,7 +55,14 @@ export function useRepoFramework(input: RepoFrameworkInput): {
    */
   const query =
     repo && supportsFrameworkDetection(buildMethod)
-      ? JSON.stringify({ repo, url, branch, installationId, buildMethod, rootDirectory })
+      ? JSON.stringify({
+          repo,
+          url,
+          branch,
+          installationId,
+          buildMethod,
+          rootDirectory,
+        })
       : null;
 
   const [answer, setAnswer] = React.useState<{

@@ -17,7 +17,7 @@ export function TemplateScreenshots({
   name: string;
 }) {
   return (
-    <div className="scrollbar-none -mx-1 flex snap-x snap-mandatory gap-3 overflow-x-auto px-1">
+    <div className="-mx-1 scrollbar-none flex snap-x snap-mandatory gap-3 overflow-x-auto px-1">
       {images.map((src, i) => (
         // eslint-disable-next-line @next/next/no-img-element
         <img

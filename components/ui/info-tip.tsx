@@ -46,7 +46,7 @@ export function InfoTip({
           // on something they can't act on (and used to pop the tooltip open).
           data-hint-trigger=""
           className={cn(
-            "inline-flex size-3.5 shrink-0 cursor-help items-center justify-center rounded-full text-muted-foreground/70 outline-none transition-colors hover:text-foreground focus-visible:text-foreground focus-visible:ring-2 focus-visible:ring-ring",
+            "inline-flex size-3.5 shrink-0 cursor-help items-center justify-center rounded-full text-muted-foreground/70 transition-colors outline-none hover:text-foreground focus-visible:text-foreground focus-visible:ring-2 focus-visible:ring-ring",
             className,
           )}
         >
@@ -83,9 +83,14 @@ export function FieldLabel({
     // instead of stretching the full column width. A stretched label would give
     // the hover/click target (and the tooltip's anchor) a misleading width; the
     // tooltip and its container should span only the title + icon.
-    <Label className={cn("flex w-fit items-center gap-1.5", className)} {...props}>
+    <Label
+      className={cn("flex w-fit items-center gap-1.5", className)}
+      {...props}
+    >
       {children}
-      {info != null && <InfoTip content={info} side={infoSide} label={infoLabel} />}
+      {info != null && (
+        <InfoTip content={info} side={infoSide} label={infoLabel} />
+      )}
     </Label>
   );
 }

@@ -1,4 +1,7 @@
-import { ChannelMark, CHANNEL_BRAND } from "@/components/settings/channel-brand";
+import {
+  ChannelMark,
+  CHANNEL_BRAND,
+} from "@/components/settings/channel-brand";
 import type { NotificationChannel } from "@/lib/types";
 
 /**
@@ -53,7 +56,7 @@ export function NotificationIllustration({
     <div aria-hidden className="pointer-events-none select-none">
       <div className="relative mx-auto w-full max-w-[260px]">
         {/* The halo, breathing on the same clock as the cards. */}
-        <div className="absolute inset-x-4 top-10 -z-10 h-56 rounded-full bg-[var(--violet)]/25 blur-3xl animate-notif-halo" />
+        <div className="animate-notif-halo absolute inset-x-4 top-10 -z-10 h-56 rounded-full bg-[var(--violet)]/25 blur-3xl" />
 
         <div className="relative overflow-hidden rounded-[2rem] border-[6px] border-border bg-sidebar shadow-xl ring-1 ring-border">
           {/* Notch */}
@@ -61,7 +64,7 @@ export function NotificationIllustration({
             <div className="h-1.5 w-16 rounded-full bg-border" />
           </div>
 
-          <div className="space-y-2.5 px-3 pb-8 pt-5">
+          <div className="space-y-2.5 px-3 pt-5 pb-8">
             {INBOX.map((n) => (
               <div
                 key={n.channel}
@@ -74,7 +77,7 @@ export function NotificationIllustration({
                   iconClassName="size-3.5"
                 />
                 <div className="min-w-0 flex-1">
-                  <p className="truncate text-[11px] font-medium leading-tight">
+                  <p className="truncate text-[11px] leading-tight font-medium">
                     {n.title}
                   </p>
                   <p className="mt-0.5 truncate text-[10px] leading-tight text-muted-foreground">

@@ -25,7 +25,10 @@ const request = new Headers({
 
 test("the session metadata Better Auth stamps onto a new session is forwarded", () => {
   const out = authRequestHeaders(request, "deplo.session_token=fresh");
-  assert.equal(out.get("user-agent"), "Mozilla/5.0 (Macintosh) Chrome/120.0.0.0");
+  assert.equal(
+    out.get("user-agent"),
+    "Mozilla/5.0 (Macintosh) Chrome/120.0.0.0",
+  );
   assert.equal(out.get("x-forwarded-for"), "203.0.113.7, 10.0.0.1");
   assert.equal(out.get("cf-connecting-ip"), "203.0.113.7");
 });
@@ -40,7 +43,11 @@ test("origin, referer and host are NOT forwarded", () => {
 
 test("nothing else rides along either", () => {
   const out = authRequestHeaders(request, "");
-  assert.equal(out.get("authorization"), null, "the bearer token is not relayed");
+  assert.equal(
+    out.get("authorization"),
+    null,
+    "the bearer token is not relayed",
+  );
   assert.deepEqual(
     [...out.keys()].sort(),
     ["cf-connecting-ip", "user-agent", "x-forwarded-for"],
@@ -52,7 +59,10 @@ test("the supplied cookie wins over the request's own", () => {
   // The cookie STORE sees writes made earlier in this request; the raw request
   // headers still carry the pre-login value.
   const out = authRequestHeaders(request, "deplo.session_token=fresh");
-  assert.match(out.get("cookie") ?? "", /(^|; )deplo\.session_token=fresh(;|$)/);
+  assert.match(
+    out.get("cookie") ?? "",
+    /(^|; )deplo\.session_token=fresh(;|$)/,
+  );
   assert.doesNotMatch(out.get("cookie") ?? "", /stale-pre-login-value/);
 });
 

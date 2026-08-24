@@ -19,7 +19,7 @@ ever narrow.
 That makes the most ordinary team request unexpressible. "Marta runs Prod, and
 nothing else" has to be built out of two moves: give her `manage_env` **team-wide**,
 then hope no folder grant elsewhere lets her use it. The clamp does not prevent
-the over-grant — it *forces* it. A model whose safe path is "widen the role first"
+the over-grant — it _forces_ it. A model whose safe path is "widen the role first"
 is upside down, and it is the opposite of what the fine-grained split was for.
 
 The second half of the problem is administrative. Roles and per-team capabilities
@@ -44,7 +44,7 @@ explicitly rules out.
 2. **The live clamp becomes membership EXISTENCE, not membership capabilities.**
    Removing someone from the team, suspending them, or an unmet 2FA policy still
    revokes everything, everywhere, live — every path goes through `membershipFor`
-   first. Revoking a single *capability* no longer revokes it everywhere; the
+   first. Revoking a single _capability_ no longer revokes it everywhere; the
    answer to "take their access away" is "remove them", and the UI says so.
 
 3. **One semantics, not two.** The folder Share dialog writes the same

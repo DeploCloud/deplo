@@ -193,7 +193,8 @@ export function previewIntent(
     (ev.action === "labeled" && cfg.requiredLabels.length > 0)
   ) {
     if (!ev.headRepo) return { kind: "ignore", reason: "no-head-repo" };
-    if (ev.draft && !cfg.buildDrafts) return { kind: "ignore", reason: "draft" };
+    if (ev.draft && !cfg.buildDrafts)
+      return { kind: "ignore", reason: "draft" };
     if (ev.action === "synchronize" && !cfg.autoDeploy) {
       return { kind: "ignore", reason: "manual-only" };
     }

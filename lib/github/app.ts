@@ -8,7 +8,10 @@ import {
   githubApps as githubAppsTable,
   githubInstallation as githubInstallationTable,
 } from "../db/schema/control-plane";
-import { assembleGithubApp, assembleGithubInstallation } from "../data/infra-rows";
+import {
+  assembleGithubApp,
+  assembleGithubInstallation,
+} from "../data/infra-rows";
 import { decryptSecret } from "../crypto";
 import { requireActiveTeamId, requireTeamWide } from "../membership";
 import type { GithubApp, GithubInstallation } from "../types";
@@ -164,7 +167,9 @@ async function githubFetch(
  * minting and caching one when needed. The token authorizes repo listing and
  * cloning for the repositories the user selected during installation.
  */
-export async function getInstallationToken(installationId: string): Promise<string> {
+export async function getInstallationToken(
+  installationId: string,
+): Promise<string> {
   const cached = tokenCache.get(installationId);
   if (cached && cached.expiresAt - 60_000 > Date.now()) return cached.token;
 
@@ -287,10 +292,9 @@ export async function listRepoBranches(
   if (!OWNER_REPO_RE.test(fullName)) throw new Error("Invalid repository");
   await assertInstallationInActiveTeam(installationId);
   const token = await getInstallationToken(installationId);
-  const res = await githubFetch(
-    `/repos/${fullName}/branches?per_page=100`,
-    { token },
-  );
+  const res = await githubFetch(`/repos/${fullName}/branches?per_page=100`, {
+    token,
+  });
   if (!res.ok) throw new Error(`GitHub branch list failed (${res.status})`);
   const json = (await res.json()) as { name: string }[];
   return json.map((b) => b.name);
@@ -336,7 +340,9 @@ export async function checkRepoVisible(
   signal?: AbortSignal,
 ): Promise<void> {
   if (!OWNER_REPO_RE.test(fullName)) throw new Error("Invalid repository");
-  const token = installationId ? await getInstallationToken(installationId) : null;
+  const token = installationId
+    ? await getInstallationToken(installationId)
+    : null;
   const res = await githubGet(`/repos/${fullName}`, token, signal);
   if (!res.ok) throw new Error(`GitHub repo check failed (${res.status})`);
 }
@@ -393,13 +399,15 @@ export async function fetchRepoBlob(
   sha: string,
   installationId: string | null,
 ): Promise<Buffer | null> {
-  if (!OWNER_REPO_RE.test(fullName) || !/^[0-9a-f]{40}$/i.test(sha)) return null;
+  if (!OWNER_REPO_RE.test(fullName) || !/^[0-9a-f]{40}$/i.test(sha))
+    return null;
   const token = installationId
     ? await getInstallationToken(installationId).catch(() => null)
     : null;
-  const res = await githubGet(`/repos/${fullName}/git/blobs/${sha}`, token).catch(
-    () => null,
-  );
+  const res = await githubGet(
+    `/repos/${fullName}/git/blobs/${sha}`,
+    token,
+  ).catch(() => null);
   if (!res || !res.ok) return null;
   const json = (await res.json().catch(() => null)) as {
     content?: string;
@@ -591,7 +599,11 @@ interface RawPullRequest {
   html_url?: string;
   updated_at?: string;
   user?: { login?: string };
-  head?: { ref?: string; sha?: string; repo?: { full_name?: string; clone_url?: string } | null };
+  head?: {
+    ref?: string;
+    sha?: string;
+    repo?: { full_name?: string; clone_url?: string } | null;
+  };
   base?: { ref?: string };
 }
 
@@ -614,7 +626,8 @@ export async function listOpenPullRequests(
     `/repos/${fullName}/pulls?state=open&per_page=100&sort=updated&direction=desc`,
     { token },
   );
-  if (!res.ok) throw new Error(`GitHub pull request list failed (${res.status})`);
+  if (!res.ok)
+    throw new Error(`GitHub pull request list failed (${res.status})`);
   const json = (await res.json()) as RawPullRequest[];
   return json.map((p) => toPullRequestSummary(p, fullName));
 }
@@ -629,7 +642,9 @@ export async function getPullRequestState(
   if (!OWNER_REPO_RE.test(fullName)) return null;
   try {
     const token = await getInstallationToken(installationId);
-    const res = await githubFetch(`/repos/${fullName}/pulls/${number}`, { token });
+    const res = await githubFetch(`/repos/${fullName}/pulls/${number}`, {
+      token,
+    });
     if (res.status === 404) return "closed"; // deleted repo/PR — nothing to keep alive
     if (!res.ok) return null;
     const json = (await res.json()) as RawPullRequest;

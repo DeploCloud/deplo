@@ -52,8 +52,12 @@ const BASE_RANGES = [
 
 /** The offered ranges for a given ceiling. The ceiling's own row is appended
  *  only when it says something the three fixed rows do not. */
-export function rangesFor(maxDays: number): { minutes: number; label: string }[] {
-  const capped = BASE_RANGES.filter((r) => r.minutes <= maxDays * MINUTES_PER_DAY);
+export function rangesFor(
+  maxDays: number,
+): { minutes: number; label: string }[] {
+  const capped = BASE_RANGES.filter(
+    (r) => r.minutes <= maxDays * MINUTES_PER_DAY,
+  );
   const ranges = capped.length > 0 ? capped : [BASE_RANGES[0]!];
   if (maxDays > 1) {
     ranges.push({
@@ -117,7 +121,7 @@ export function TimelineMenu({
       aria-label="Time range"
       className={cn(
         "flex h-9 shrink-0 cursor-pointer items-center gap-1.5 rounded-md border border-input bg-transparent px-3 text-sm shadow-sm transition-colors",
-        "focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-1 focus:ring-offset-background",
+        "focus:ring-2 focus:ring-ring focus:ring-offset-1 focus:ring-offset-background focus:outline-none",
         "disabled:cursor-not-allowed disabled:opacity-50",
         "text-muted-foreground hover:text-foreground",
       )}
@@ -153,7 +157,9 @@ export function TimelineMenu({
             <button
               key={range.minutes}
               type="button"
-              onClick={() => onChange({ ...value, sinceMinutes: range.minutes })}
+              onClick={() =>
+                onChange({ ...value, sinceMinutes: range.minutes })
+              }
               className={cn(
                 "flex w-full cursor-pointer items-center gap-2 rounded-md px-2 py-1.5 text-sm hover:bg-accent",
                 on && "font-medium",

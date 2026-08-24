@@ -117,17 +117,27 @@ const HEAVY_METHOD: Record<
   { kind: BuildKind; capability: string } | undefined
 > = {
   static: { kind: BuildKind.BUILD_KIND_STATIC, capability: "deploy.static" },
-  nixpacks: { kind: BuildKind.BUILD_KIND_NIXPACKS, capability: "deploy.nixpacks" },
-  railpack: { kind: BuildKind.BUILD_KIND_RAILPACK, capability: "deploy.railpack" },
+  nixpacks: {
+    kind: BuildKind.BUILD_KIND_NIXPACKS,
+    capability: "deploy.nixpacks",
+  },
+  railpack: {
+    kind: BuildKind.BUILD_KIND_RAILPACK,
+    capability: "deploy.railpack",
+  },
 };
 
 /** The agent capability a build method requires, or null for the Dockerfile family
  * (always supported via the base deploy.dockerfile capability). The deploy path
  * checks this against the server's Hello capabilities before routing — an older
  * agent without it gets a clear "update the agent" error. */
-export function agentCapabilityForMethod(build: BuildConfig | null): string | null {
+export function agentCapabilityForMethod(
+  build: BuildConfig | null,
+): string | null {
   if (!build) return null;
-  return HEAVY_METHOD[normalizeBuildConfig(build).buildMethod]?.capability ?? null;
+  return (
+    HEAVY_METHOD[normalizeBuildConfig(build).buildMethod]?.capability ?? null
+  );
 }
 
 /** The heavy BuildKind for a method, or null for the Dockerfile family (which uses
@@ -166,7 +176,8 @@ export function buildSpecFor(build: BuildConfig): BuildSpec {
     outputDirectory: b.outputDirectory ?? "",
     runtimeVersion,
     runtimeLanguage: runtimeVersion ? "node" : "",
-    nixpacksPublishDirectory: b.methodSettings.nixpacksPublishDirectory?.trim() ?? "",
+    nixpacksPublishDirectory:
+      b.methodSettings.nixpacksPublishDirectory?.trim() ?? "",
     herokuVersion: "",
     railpackVersion: b.methodSettings.railpackVersion?.trim() ?? "",
     staticSinglePageApp: b.methodSettings.staticSinglePageApp ?? false,
@@ -276,7 +287,10 @@ export async function runAgentDeploy(opts: {
         "cached layers. Update the agent (reissue the install command from the server's actions menu).",
     );
   }
-  if (opts.forceRecreate && !hello.capabilities.includes("deploy.force-recreate")) {
+  if (
+    opts.forceRecreate &&
+    !hello.capabilities.includes("deploy.force-recreate")
+  ) {
     opts.sink.log(
       "warn",
       "This server's agent is too old to force a fresh container — if nothing about the " +
@@ -312,9 +326,14 @@ export async function runAgentDeploy(opts: {
   let started = false;
   const first = await connectAgent(opts.serverId);
   try {
-    const outcome = await consumeStream(first.deploy(req), opts.sink, cursor, () => {
-      started = true;
-    });
+    const outcome = await consumeStream(
+      first.deploy(req),
+      opts.sink,
+      cursor,
+      () => {
+        started = true;
+      },
+    );
     if (outcome.terminal) return outcome.terminal;
     if (!started) {
       // No events at all == agent unavailable: safe to fall back to local.
@@ -325,7 +344,9 @@ export async function runAgentDeploy(opts: {
     if (e instanceof AgentUnavailableError && !started) throw e;
     if (!started) {
       // Pure connect/transport failure before any work: agent unavailable.
-      throw new AgentUnavailableError(e instanceof Error ? e.message : String(e));
+      throw new AgentUnavailableError(
+        e instanceof Error ? e.message : String(e),
+      );
     }
     opts.sink.log(
       "warn",
@@ -349,7 +370,10 @@ export async function runAgentDeploy(opts: {
       continue; // agent not back yet; retry
     }
     try {
-      opts.sink.log("info", `Reattaching to deploy ${opts.deployId} (from #${cursor.seq})…`);
+      opts.sink.log(
+        "info",
+        `Reattaching to deploy ${opts.deployId} (from #${cursor.seq})…`,
+      );
       const outcome = await consumeStream(
         conn.reattach({ deployId: opts.deployId, fromSeq: cursor.seq }),
         opts.sink,
@@ -364,7 +388,10 @@ export async function runAgentDeploy(opts: {
       // unrecoverable, stop retrying.
       const msg = e instanceof Error ? e.message : String(e);
       if (/not.?found/i.test(msg)) {
-        opts.sink.log("error", `Agent has no record of deploy ${opts.deployId}; giving up.`);
+        opts.sink.log(
+          "error",
+          `Agent has no record of deploy ${opts.deployId}; giving up.`,
+        );
         return { ready: false, commitSha: "" };
       }
       opts.sink.log("warn", `Reattach attempt ${attempt} failed (${msg}).`);
@@ -372,7 +399,10 @@ export async function runAgentDeploy(opts: {
       conn.close();
     }
   }
-  opts.sink.log("error", "Could not reconnect to the agent to follow the deploy.");
+  opts.sink.log(
+    "error",
+    "Could not reconnect to the agent to follow the deploy.",
+  );
   return { ready: false, commitSha: "" };
 }
 
@@ -405,7 +435,9 @@ async function consumeStream(
     if (seq) cursor.seq = seq;
     const terminal = handleEvent(ev, sink);
     if (terminal !== undefined) {
-      return { terminal: { ready: terminal.ready, commitSha: terminal.commitSha } };
+      return {
+        terminal: { ready: terminal.ready, commitSha: terminal.commitSha },
+      };
     }
   }
   return { terminal: null };
@@ -592,13 +624,22 @@ export async function buildDeployRequest(opts: {
     // (NEXT_PUBLIC_* et al.) works — the agent feeds the values as build args.
     const hasDockerfile = await fileExists(join(buildDir, "Dockerfile"));
     dockerfile = hasDockerfile
-      ? { dockerfilePath: "Dockerfile", contextPath: ".", targetStage: "", generated: false, generatedDockerfile: "" }
+      ? {
+          dockerfilePath: "Dockerfile",
+          contextPath: ".",
+          targetStage: "",
+          generated: false,
+          generatedDockerfile: "",
+        }
       : {
           dockerfilePath: "",
           contextPath: ".",
           targetStage: "",
           generated: true,
-          generatedDockerfile: generateDockerfile(normalized, Object.keys(opts.env)),
+          generatedDockerfile: generateDockerfile(
+            normalized,
+            Object.keys(opts.env),
+          ),
         };
   }
 
@@ -656,11 +697,9 @@ function noProbeBuildFields(
  */
 function tarDir(dir: string): Promise<Uint8Array> {
   return new Promise((resolve, reject) => {
-    const child = spawn(
-      "tar",
-      ["--format=ustar", "-cf", "-", "-C", dir, "."],
-      { windowsHide: true },
-    );
+    const child = spawn("tar", ["--format=ustar", "-cf", "-", "-C", dir, "."], {
+      windowsHide: true,
+    });
     const chunks: Buffer[] = [];
     child.stdout.on("data", (c: Buffer) => chunks.push(c));
     child.on("error", reject);

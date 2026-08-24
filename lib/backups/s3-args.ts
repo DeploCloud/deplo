@@ -73,8 +73,7 @@ export function validateS3Args(raw: string): string | null {
     if (!TOKEN_RE.test(token))
       return `"${token}" isn't a plain flag. Write each one separately as --flag=value, with no quotes and no shell syntax.`;
     const eq = token.indexOf("=");
-    if (eq < 0)
-      return `"${token}" needs a value, like ${token}=true.`;
+    if (eq < 0) return `"${token}" needs a value, like ${token}=true.`;
     const name = token.slice(0, eq);
     const value = token.slice(eq + 1);
     if (!(name in S3_ARGS_ALLOWED))

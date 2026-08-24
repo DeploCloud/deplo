@@ -42,7 +42,11 @@ export function previewCommentBody(input: {
 }): string {
   const link = input.url ? `[${input.host}](${input.url})` : "Not deployed";
   const row = (status: string, preview: string): string =>
-    ["| Status | Preview |", "| --- | --- |", `| ${status} | ${preview} |`].join("\n");
+    [
+      "| Status | Preview |",
+      "| --- | --- |",
+      `| ${status} | ${preview} |`,
+    ].join("\n");
 
   let table: string;
   let note = "";
@@ -134,7 +138,10 @@ export async function syncPreviewComment(
         .update(appPreviewsTable)
         .set({ commentId })
         .where(
-          and(eq(appPreviewsTable.id, previewId), isNull(appPreviewsTable.commentId)),
+          and(
+            eq(appPreviewsTable.id, previewId),
+            isNull(appPreviewsTable.commentId),
+          ),
         );
     }
   } catch (e) {

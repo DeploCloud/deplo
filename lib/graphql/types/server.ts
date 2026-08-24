@@ -20,7 +20,10 @@ import {
   type ServerRemoval,
   type ServerUninstall,
 } from "@/lib/data/servers";
-import { checkServerHealth, checkAllServerHealth } from "@/lib/data/server-health";
+import {
+  checkServerHealth,
+  checkAllServerHealth,
+} from "@/lib/data/server-health";
 import {
   serverHostInfo,
   setServerTimezone,
@@ -38,13 +41,22 @@ import {
   removeServerCertificate,
   type ServerCertificate,
 } from "@/lib/data/server-certificates";
-import { deploHostSelfAddresses, isDeploHostServer } from "@/lib/deploy/domains";
+import {
+  deploHostSelfAddresses,
+  isDeploHostServer,
+} from "@/lib/deploy/domains";
 import { refreshAgentVersion } from "@/lib/data/updates";
 import { checkServerReadiness } from "@/lib/data/server-readiness";
-import { reportedAgentVersion, resolveExpectedAgentVersion } from "@/lib/version";
+import {
+  reportedAgentVersion,
+  resolveExpectedAgentVersion,
+} from "@/lib/version";
 // (resolveExpectedAgentVersion is awaited per-request; it is cached so the agent
 // fields below don't each hit GitHub.)
-import type { ReadinessCheck, ReadinessReport } from "@/lib/infra/server-readiness";
+import type {
+  ReadinessCheck,
+  ReadinessReport,
+} from "@/lib/infra/server-readiness";
 import type { Server } from "@/lib/types";
 
 /* ------------------------------------------------------------------ */
@@ -65,14 +77,24 @@ const ServerTypeEnum = builder.enumType("ServerType", {
 
 // Readiness is a live, never-persisted REPORT, not a sixth ServerStatus: its enums describe
 // one row's weight and one report's overall answer, and nothing gates on either.
-const ServerReadinessSeverityEnum = builder.enumType("ServerReadinessSeverity", {
-  description:
-    "How much a readiness row matters. fail = a deployment to this server cannot succeed. warn = a deployment succeeds, but the result is not fully usable. info = a true, neutral fact. pass = verified good. skip = we could not evaluate it (the agent is too old, or an upstream fact is missing) — a skip never moves the verdict.",
-  values: ["pass", "info", "warn", "fail", "skip"] as const,
-});
+const ServerReadinessSeverityEnum = builder.enumType(
+  "ServerReadinessSeverity",
+  {
+    description:
+      "How much a readiness row matters. fail = a deployment to this server cannot succeed. warn = a deployment succeeds, but the result is not fully usable. info = a true, neutral fact. pass = verified good. skip = we could not evaluate it (the agent is too old, or an upstream fact is missing) — a skip never moves the verdict.",
+    values: ["pass", "info", "warn", "fail", "skip"] as const,
+  },
+);
 
 const ServerReadinessGroupEnum = builder.enumType("ServerReadinessGroup", {
-  values: ["agent", "docker", "routing", "capacity", "build", "config"] as const,
+  values: [
+    "agent",
+    "docker",
+    "routing",
+    "capacity",
+    "build",
+    "config",
+  ] as const,
 });
 
 const ServerReadinessVerdictEnum = builder.enumType("ServerReadinessVerdict", {
@@ -144,7 +166,8 @@ export const ServerRef = builder.objectRef<Server>("Server").implement({
     // not-yet-provisioned server). Never expose secret-shaped material — only
     // the agent VERSION + a "is it provisioned" signal + the heartbeat cache.
     provisioned: t.boolean({
-      description: "True once the server's agent has called home and been trusted.",
+      description:
+        "True once the server's agent has called home and been trusted.",
       resolve: (s) => Boolean(s.agent?.certFingerprint),
     }),
     agentPort: t.int({
@@ -181,7 +204,7 @@ export const ServerRef = builder.objectRef<Server>("Server").implement({
       // every member who can merely target the server.
       authScopes: { instanceAdmin: true },
       description:
-        "Why `status` is not `online` — e.g. \"The agent is up but Docker is unreachable\". Null when online or never probed. Requires instanceAdmin.",
+        'Why `status` is not `online` — e.g. "The agent is up but Docker is unreachable". Null when online or never probed. Requires instanceAdmin.',
       resolve: (s) => s.statusMessage ?? null,
     }),
     isDeploHost: t.boolean({
@@ -230,26 +253,39 @@ const ServerHostInfoRef = builder
       cpuThreads: t.exposeInt("cpuThreads", {
         description: "Logical processors — what schedulers and `nproc` count.",
       }),
-      memTotalBytes: t.exposeFloat("memTotalBytes", { description: "Installed RAM, in bytes." }),
-      diskTotalBytes: t.exposeFloat("diskTotalBytes", {
-        description: "Size of the filesystem the agent's data lives on, in bytes.",
+      memTotalBytes: t.exposeFloat("memTotalBytes", {
+        description: "Installed RAM, in bytes.",
       }),
-      diskUsedBytes: t.exposeFloat("diskUsedBytes", { description: "Used bytes on that filesystem." }),
+      diskTotalBytes: t.exposeFloat("diskTotalBytes", {
+        description:
+          "Size of the filesystem the agent's data lives on, in bytes.",
+      }),
+      diskUsedBytes: t.exposeFloat("diskUsedBytes", {
+        description: "Used bytes on that filesystem.",
+      }),
       osPretty: t.exposeString("osPretty", {
         description: 'The distribution, e.g. "Ubuntu 24.04.1 LTS".',
       }),
-      kernel: t.exposeString("kernel", { description: "Kernel release (uname -r)." }),
-      arch: t.exposeString("arch", { description: 'Machine architecture, e.g. "x86_64".' }),
+      kernel: t.exposeString("kernel", {
+        description: "Kernel release (uname -r).",
+      }),
+      arch: t.exposeString("arch", {
+        description: 'Machine architecture, e.g. "x86_64".',
+      }),
       dockerVersion: t.exposeString("dockerVersion", {
-        description: "Docker engine version, empty when the daemon is unreachable.",
+        description:
+          "Docker engine version, empty when the daemon is unreachable.",
       }),
       dockerRootDir: t.exposeString("dockerRootDir", {
         description:
           "Where Docker actually keeps images and volumes — on a host with a mounted data disk this is not the root filesystem.",
       }),
-      uptimeSec: t.exposeFloat("uptimeSec", { description: "Seconds since the host booted." }),
+      uptimeSec: t.exposeFloat("uptimeSec", {
+        description: "Seconds since the host booted.",
+      }),
       timezone: t.exposeString("timezone", {
-        description: 'The host clock\'s IANA zone, e.g. "Europe/Rome". Empty if it reports none.',
+        description:
+          'The host clock\'s IANA zone, e.g. "Europe/Rome". Empty if it reports none.',
       }),
       timeUnixMs: t.exposeFloat("timeUnixMs", {
         description:
@@ -331,7 +367,8 @@ interface AddServerPayload {
 const AddServerPayloadRef = builder
   .objectRef<AddServerPayload>("AddServerPayload")
   .implement({
-    description: "A newly registered server + its one-time agent install command.",
+    description:
+      "A newly registered server + its one-time agent install command.",
     fields: (t) => ({
       server: t.field({ type: ServerRef, resolve: (p) => p.server }),
       installCommand: t.exposeString("installCommand", {
@@ -375,11 +412,13 @@ const ServerUninstallRef = builder
       }),
       error: t.exposeString("error", {
         nullable: true,
-        description: "Why the uninstall did not happen, or null. Surface it verbatim.",
+        description:
+          "Why the uninstall did not happen, or null. Surface it verbatim.",
       }),
       warning: t.exposeString("warning", {
         nullable: true,
-        description: "A non-blocking hazard, same meaning as on ServerRemoval, or null.",
+        description:
+          "A non-blocking hazard, same meaning as on ServerRemoval, or null.",
       }),
     }),
   });
@@ -392,11 +431,18 @@ const ServerReadinessCheckRef = builder
     fields: (t) => ({
       // A String, not an enum: the ids contain dots ("build.nixpacks").
       id: t.exposeString("id", {
-        description: 'Stable row id, e.g. "docker.available" or "build.nixpacks".',
+        description:
+          'Stable row id, e.g. "docker.available" or "build.nixpacks".',
       }),
-      group: t.field({ type: ServerReadinessGroupEnum, resolve: (c) => c.group }),
+      group: t.field({
+        type: ServerReadinessGroupEnum,
+        resolve: (c) => c.group,
+      }),
       label: t.exposeString("label"),
-      severity: t.field({ type: ServerReadinessSeverityEnum, resolve: (c) => c.severity }),
+      severity: t.field({
+        type: ServerReadinessSeverityEnum,
+        resolve: (c) => c.severity,
+      }),
       detail: t.exposeString("detail", {
         description:
           "What we found. Drawn from a closed, curated set whenever it describes a failure — never a raw agent error (which would leak the pinned certificate fingerprint and the dial address).",
@@ -420,9 +466,17 @@ const ServerReadinessReportRef = builder
       checkedAt: t.exposeString("checkedAt", {
         description: "When the probe STARTED (ISO). Never fabricated.",
       }),
-      verdict: t.field({ type: ServerReadinessVerdictEnum, resolve: (r) => r.verdict }),
-      summary: t.exposeString("summary", { description: "One sentence for the banner." }),
-      checks: t.field({ type: [ServerReadinessCheckRef], resolve: (r) => r.checks }),
+      verdict: t.field({
+        type: ServerReadinessVerdictEnum,
+        resolve: (r) => r.verdict,
+      }),
+      summary: t.exposeString("summary", {
+        description: "One sentence for the banner.",
+      }),
+      checks: t.field({
+        type: [ServerReadinessCheckRef],
+        resolve: (r) => r.checks,
+      }),
     }),
   });
 
@@ -457,9 +511,12 @@ const AddServerInputType = builder.inputType("AddServerInput", {
 });
 
 const BuildServerChoiceRef = builder
-  .objectRef<{ id: string; name: string; hostArch: string; buildOnly: boolean }>(
-    "BuildServerChoice",
-  )
+  .objectRef<{
+    id: string;
+    name: string;
+    hostArch: string;
+    buildOnly: boolean;
+  }>("BuildServerChoice")
   .implement({
     description:
       "One entry in the 'Build on' picker: a host this team may compile on.",
@@ -493,9 +550,13 @@ const TraefikDashboardInputType = builder.inputType("TraefikDashboardInput", {
   fields: (t) => ({
     domain: t.string({
       required: true,
-      description: "The host the dashboard answers on. Point its DNS at this server first.",
+      description:
+        "The host the dashboard answers on. Point its DNS at this server first.",
     }),
-    username: t.string({ required: true, description: "Basic-auth username. No colons." }),
+    username: t.string({
+      required: true,
+      description: "Basic-auth username. No colons.",
+    }),
     password: t.string({
       required: false,
       description:
@@ -519,15 +580,20 @@ const ServerCertificateRef = builder
           "The certificate's SHA-256 fingerprint, which is also how it is addressed for removal. Nothing is minted: a certificate identifies itself.",
       }),
       subject: t.exposeString("subject", {
-        description: "Its common name, or its first domain when it carries none.",
+        description:
+          "Its common name, or its first domain when it carries none.",
       }),
       domains: t.exposeStringList("domains", {
         description:
           "Every hostname this certificate is valid for. Traefik picks a certificate by the domain the browser asked for, so these are the domains it will serve on this host.",
       }),
       issuer: t.exposeString("issuer", { description: "Who signed it." }),
-      notBefore: t.exposeString("notBefore", { description: "Valid from (ISO-8601)." }),
-      notAfter: t.exposeString("notAfter", { description: "Expires at (ISO-8601)." }),
+      notBefore: t.exposeString("notBefore", {
+        description: "Valid from (ISO-8601).",
+      }),
+      notAfter: t.exposeString("notAfter", {
+        description: "Expires at (ISO-8601).",
+      }),
       expired: t.exposeBoolean("expired", {
         description:
           "Whether it is already past its expiry. A certificate can lapse in place long after it was installed, so this is computed, not stored.",
@@ -540,7 +606,8 @@ const ServerCertificateRef = builder
   });
 
 const ServerCertificateInputType = builder.inputType("ServerCertificateInput", {
-  description: "A certificate and the private key it was issued for, as PEM text.",
+  description:
+    "A certificate and the private key it was issued for, as PEM text.",
   fields: (t) => ({
     certificate: t.string({
       required: true,
@@ -614,7 +681,7 @@ builder.mutationFields((t) => ({
     type: ServerUninstallRef,
     authScopes: { instanceAdmin: true },
     description:
-      "Take Deplo off a MIGRATION SOURCE: uninstall the agent from the host (systemd unit, binary, state dir - never Docker), then forget the server. Only a server whose role is \"import\" - an ordinary server is removed with removeServer, which is trust revocation and leaves the host alone. `removed: false` means the host still has the agent on it and the server row was KEPT; `uninstallCommand` is returned either way, because an unreachable or de-trusted host will always need the host-side path. A registration whose install command was never run has nothing to uninstall and is simply forgotten.",
+      'Take Deplo off a MIGRATION SOURCE: uninstall the agent from the host (systemd unit, binary, state dir - never Docker), then forget the server. Only a server whose role is "import" - an ordinary server is removed with removeServer, which is trust revocation and leaves the host alone. `removed: false` means the host still has the agent on it and the server row was KEPT; `uninstallCommand` is returned either way, because an unreachable or de-trusted host will always need the host-side path. A registration whose install command was never run has nothing to uninstall and is simply forgotten.',
     args: { id: t.arg.string({ required: true }) },
     resolve: (_r, { id }) => uninstallServerAgent(id),
   }),
@@ -726,7 +793,8 @@ builder.mutationFields((t) => ({
           "Bypass the ambient throttle (the operator asked for this check explicitly). A short floor still applies.",
       }),
     },
-    resolve: (_r, { id, force }) => checkServerHealth(id, { force: force ?? false }),
+    resolve: (_r, { id, force }) =>
+      checkServerHealth(id, { force: force ?? false }),
   }),
   checkAllServerHealth: t.field({
     type: [ServerRef],
@@ -736,7 +804,8 @@ builder.mutationFields((t) => ({
     args: {
       force: t.arg.boolean({
         required: false,
-        description: "Bypass the ambient throttle (the header's 'Check all' button).",
+        description:
+          "Bypass the ambient throttle (the header's 'Check all' button).",
       }),
     },
     resolve: (_r, { force }) => checkAllServerHealth({ force: force ?? false }),
@@ -867,7 +936,8 @@ builder.mutationFields((t) => ({
       id: t.arg.string({ required: true }),
       certificateId: t.arg.string({ required: true }),
     },
-    resolve: (_r, { id, certificateId }) => removeServerCertificate(id, certificateId),
+    resolve: (_r, { id, certificateId }) =>
+      removeServerCertificate(id, certificateId),
   }),
   checkAgentUpdates: t.field({
     type: "String",

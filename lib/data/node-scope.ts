@@ -79,7 +79,10 @@ export async function expandFolders(
   ticked: string[],
   scopedProjectIds: string[],
 ): Promise<{ folderIds: string[]; folderProjectIds: string[] }> {
-  if (teamIds.length === 0 || (ticked.length === 0 && scopedProjectIds.length === 0))
+  if (
+    teamIds.length === 0 ||
+    (ticked.length === 0 && scopedProjectIds.length === 0)
+  )
     return { folderIds: [], folderProjectIds: [] };
   const rows = await getDb()
     .select({
@@ -100,7 +103,9 @@ export async function expandFolders(
   const projects = new Set(scopedProjectIds);
   const roots = [
     ...ticked,
-    ...rows.filter((f) => f.projectId && projects.has(f.projectId)).map((f) => f.id),
+    ...rows
+      .filter((f) => f.projectId && projects.has(f.projectId))
+      .map((f) => f.id),
   ];
 
   const reached = new Set<string>();
@@ -194,7 +199,9 @@ async function loadMemberScope(
       .selectDistinct({ id: projectGrants.projectId })
       .from(projectGrants)
       .innerJoin(projectsTable, eq(projectsTable.id, projectGrants.projectId))
-      .where(and(eq(projectGrants.userId, userId), eq(projectsTable.teamId, teamId))),
+      .where(
+        and(eq(projectGrants.userId, userId), eq(projectsTable.teamId, teamId)),
+      ),
     db
       .selectDistinct({
         id: folderGrants.folderId,
@@ -202,7 +209,9 @@ async function loadMemberScope(
       })
       .from(folderGrants)
       .innerJoin(foldersTable, eq(foldersTable.id, folderGrants.folderId))
-      .where(and(eq(folderGrants.userId, userId), eq(foldersTable.teamId, teamId))),
+      .where(
+        and(eq(folderGrants.userId, userId), eq(foldersTable.teamId, teamId)),
+      ),
     db
       .selectDistinct({ id: appGrants.appId, projectId: appsTable.projectId })
       .from(appGrants)
@@ -263,7 +272,10 @@ export async function loadRoleScope(
         projectId: foldersTable.projectId,
       })
       .from(teamRoleScopeFolders)
-      .innerJoin(foldersTable, eq(foldersTable.id, teamRoleScopeFolders.folderId))
+      .innerJoin(
+        foldersTable,
+        eq(foldersTable.id, teamRoleScopeFolders.folderId),
+      )
       .where(eq(teamRoleScopeFolders.roleId, roleId)),
     db
       .select({
@@ -326,7 +338,8 @@ export function appInScope(
 ): boolean {
   if (!scope) return true;
   if (scope.appIds.includes(app.id)) return true;
-  if (app.folderId != null && scope.folderIds.includes(app.folderId)) return true;
+  if (app.folderId != null && scope.folderIds.includes(app.folderId))
+    return true;
   if (
     app.environmentId != null &&
     scope.environmentIds.includes(app.environmentId)
@@ -361,6 +374,7 @@ export function projectInScope(
   if (!scope) return true;
   if (projectId == null) return false;
   return (
-    scope.projectIds.includes(projectId) || scope.appProjectIds.includes(projectId)
+    scope.projectIds.includes(projectId) ||
+    scope.appProjectIds.includes(projectId)
   );
 }

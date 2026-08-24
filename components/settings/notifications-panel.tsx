@@ -91,10 +91,11 @@ export function NotificationsPanel({
     React.useState<NotificationChannelInstance | null>(null);
   // A removed channel leaves the grid on the click; the count above it follows,
   // because a list that shed a row and a badge that still counts it disagree.
-  const { visible: channels, remove, restore } = useOptimisticRemove(
-    initial,
-    (c) => c.id,
-  );
+  const {
+    visible: channels,
+    remove,
+    restore,
+  } = useOptimisticRemove(initial, (c) => c.id);
 
   const onCount = channels.filter((c) => c.enabled).length;
   const dirty = JSON.stringify({ draft, secrets }) !== snapshot;
@@ -261,7 +262,7 @@ export function NotificationsPanel({
           // No sidebar column while the list is empty: the phone moves INTO the
           // empty state there, and a 260px hole beside it would be a column
           // holding nothing.
-          channels.length > 0 && "xl:grid-cols-[minmax(0,1fr)_260px]"
+          channels.length > 0 && "xl:grid-cols-[minmax(0,1fr)_260px]",
         )}
       >
         <div className="min-w-0 space-y-4">
@@ -327,7 +328,9 @@ export function NotificationsPanel({
           viewports - without it a 600px laptop would push the footer off screen. */}
       <Dialog open={open} onOpenChange={(next) => !next && setOpen(false)}>
         <DialogContent
-        selfManaged className="h-[46rem] max-h-[85vh] max-w-2xl gap-0 p-0 grid-rows-[minmax(0,1fr)]">
+          selfManaged
+          className="h-[46rem] max-h-[85vh] max-w-2xl grid-rows-[minmax(0,1fr)] gap-0 p-0"
+        >
           {/* A real form, so Enter in a webhook field saves instead of doing
               nothing. THIS is where a channel is saved: a page-level Save made
               no sense when everything you can change lives in here. */}
@@ -383,7 +386,12 @@ export function NotificationsPanel({
                 <div className="space-y-4">
                   <div className="grid gap-2 sm:grid-cols-3">
                     {FEATURED.map((kind) => (
-                      <KindTile key={kind} kind={kind} featured onPick={pickKind} />
+                      <KindTile
+                        key={kind}
+                        kind={kind}
+                        featured
+                        onPick={pickKind}
+                      />
                     ))}
                   </div>
                   <div className="space-y-2">
@@ -609,7 +617,7 @@ function ChannelRow({
       <button
         type="button"
         onClick={onOpen}
-        className="flex min-w-0 flex-1 items-center gap-3 rounded-md text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+        className="flex min-w-0 flex-1 items-center gap-3 rounded-md text-left focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"
       >
         <ChannelMark channel={instance.kind} />
         <span className="min-w-0 flex-1">

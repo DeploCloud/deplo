@@ -16,7 +16,10 @@ import {
 
 const BASE = "acme/blog";
 
-function payload(over: Partial<RawPullRequestPayload["pull_request"]> = {}, action = "opened"): RawPullRequestPayload {
+function payload(
+  over: Partial<RawPullRequestPayload["pull_request"]> = {},
+  action = "opened",
+): RawPullRequestPayload {
   return {
     action,
     repository: { full_name: BASE },
@@ -30,7 +33,10 @@ function payload(over: Partial<RawPullRequestPayload["pull_request"]> = {}, acti
       head: {
         ref: "feat/dark-mode",
         sha: "abc1234",
-        repo: { full_name: BASE, clone_url: "https://github.com/acme/blog.git" },
+        repo: {
+          full_name: BASE,
+          clone_url: "https://github.com/acme/blog.git",
+        },
       },
       base: { ref: "main" },
       ...over,
@@ -48,7 +54,9 @@ const CFG: PreviewTriggerConfig = {
 };
 
 /** CFG with one thing changed — the shape most of these tests want. */
-const cfg = (over: Partial<PreviewTriggerConfig> = {}): PreviewTriggerConfig => ({
+const cfg = (
+  over: Partial<PreviewTriggerConfig> = {},
+): PreviewTriggerConfig => ({
   ...CFG,
   ...over,
 });
@@ -68,7 +76,10 @@ test("a same-repo pull request parses into the facts a preview needs", () => {
 test("a payload with no pull request is refused rather than guessed at", () => {
   assert.equal(parsePullRequestEvent({ action: "opened" }), null);
   assert.equal(
-    parsePullRequestEvent({ action: "opened", repository: { full_name: BASE } }),
+    parsePullRequestEvent({
+      action: "opened",
+      repository: { full_name: BASE },
+    }),
     null,
   );
 });
@@ -78,7 +89,9 @@ test("a head in another repository is a fork, whatever GitHub's fork flag says",
   // and is every bit as untrusted. The only question is whether the head lives
   // somewhere the operator controls.
   const ev = parsePullRequestEvent(
-    payload({ head: { ref: "patch", sha: "d3", repo: { full_name: "mallory/blog" } } }),
+    payload({
+      head: { ref: "patch", sha: "d3", repo: { full_name: "mallory/blog" } },
+    }),
   )!;
   assert.equal(ev.isFork, true);
   assert.equal(ev.headRepo, "mallory/blog");
@@ -97,7 +110,12 @@ test("a deleted head repository still parses, and is treated as a fork", () => {
 });
 
 test("opened, reopened, synchronize and ready_for_review all build", () => {
-  for (const action of ["opened", "reopened", "synchronize", "ready_for_review"]) {
+  for (const action of [
+    "opened",
+    "reopened",
+    "synchronize",
+    "ready_for_review",
+  ]) {
     const ev = parsePullRequestEvent(payload({}, action))!;
     assert.deepEqual(previewIntent(CFG, ev), { kind: "deploy" }, action);
   }
@@ -109,14 +127,12 @@ test("closed tears down BEFORE any gate is consulted", () => {
   // otherwise the switch silently strands containers on the host.
   const ev = parsePullRequestEvent(payload({}, "closed"))!;
   assert.deepEqual(previewIntent(CFG, ev), { kind: "destroy" });
-  assert.deepEqual(
-    previewIntent(cfg({ previewsEnabled: false }), ev),
-    { kind: "destroy" },
-  );
-  assert.deepEqual(
-    previewIntent(cfg({ branch: "release/v2" }), ev),
-    { kind: "destroy" },
-  );
+  assert.deepEqual(previewIntent(cfg({ previewsEnabled: false }), ev), {
+    kind: "destroy",
+  });
+  assert.deepEqual(previewIntent(cfg({ branch: "release/v2" }), ev), {
+    kind: "destroy",
+  });
 });
 
 test("a merged pull request is just a closed one", () => {
@@ -141,24 +157,33 @@ test("a pull request must TARGET the branch the app tracks", () => {
     kind: "ignore",
     reason: "base-branch",
   });
-  assert.deepEqual(
-    previewIntent(cfg({ branch: "release/v2" }), ev),
-    { kind: "deploy" },
-  );
+  assert.deepEqual(previewIntent(cfg({ branch: "release/v2" }), ev), {
+    kind: "deploy",
+  });
 });
 
 test("drafts wait for ready_for_review", () => {
   const draft = parsePullRequestEvent(payload({ draft: true }))!;
-  assert.deepEqual(previewIntent(CFG, draft), { kind: "ignore", reason: "draft" });
-  const ready = parsePullRequestEvent(payload({ draft: false }, "ready_for_review"))!;
+  assert.deepEqual(previewIntent(CFG, draft), {
+    kind: "ignore",
+    reason: "draft",
+  });
+  const ready = parsePullRequestEvent(
+    payload({ draft: false }, "ready_for_review"),
+  )!;
   assert.deepEqual(previewIntent(CFG, ready), { kind: "deploy" });
 });
 
 test("converting back to a draft does NOT tear the preview down", () => {
   // Pulling a URL out from under someone because the author ticked a box is a
   // surprise with no upside — one container is cheaper than that.
-  const ev = parsePullRequestEvent(payload({ draft: true }, "converted_to_draft"))!;
-  assert.deepEqual(previewIntent(CFG, ev), { kind: "ignore", reason: "action" });
+  const ev = parsePullRequestEvent(
+    payload({ draft: true }, "converted_to_draft"),
+  )!;
+  assert.deepEqual(previewIntent(CFG, ev), {
+    kind: "ignore",
+    reason: "action",
+  });
 });
 
 test("the chatty actions are ignored, not acted on", () => {
@@ -197,7 +222,9 @@ test("the label filter: a pull request must carry one of the app's labels", () =
   assert.deepEqual(previewIntent(c, one), { kind: "deploy" });
 
   // GitHub labels are case-insensitive and so is the filter.
-  const shouty = parsePullRequestEvent(payload({ labels: [{ name: "PREVIEW" }] }))!;
+  const shouty = parsePullRequestEvent(
+    payload({ labels: [{ name: "PREVIEW" }] }),
+  )!;
   assert.deepEqual(previewIntent(c, shouty), { kind: "deploy" });
 
   // No filter ⇒ every pull request qualifies, labels or not.
@@ -235,12 +262,18 @@ test("applying the label is what builds; removing the last one tears down", () =
   const chatter = parsePullRequestEvent(
     payload({ labels: [{ name: "bug" }] }, "labeled"),
   )!;
-  assert.deepEqual(previewIntent(CFG, chatter), { kind: "ignore", reason: "action" });
+  assert.deepEqual(previewIntent(CFG, chatter), {
+    kind: "ignore",
+    reason: "action",
+  });
 });
 
 test("build drafts is opt-in, and only changes the draft answer", () => {
   const draft = parsePullRequestEvent(payload({ draft: true }))!;
-  assert.deepEqual(previewIntent(CFG, draft), { kind: "ignore", reason: "draft" });
+  assert.deepEqual(previewIntent(CFG, draft), {
+    kind: "ignore",
+    reason: "draft",
+  });
   assert.deepEqual(previewIntent(cfg({ buildDrafts: true }), draft), {
     kind: "deploy",
   });

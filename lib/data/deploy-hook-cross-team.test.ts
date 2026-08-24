@@ -19,10 +19,17 @@ import {
 } from "../db/schema/control-plane";
 import { runWithIdentity } from "../auth/request-context";
 import { seedIdentity, TEAM_A, TEAM_B, USER_1 } from "./identity-test-helpers";
-import { seedApp, seedServer, TRUNCATE_PROJECT_GRAPH } from "./app-graph-test-helpers";
+import {
+  seedApp,
+  seedServer,
+  TRUNCATE_PROJECT_GRAPH,
+} from "./app-graph-test-helpers";
 import { createToken } from "./tokens";
 import { revealDeployHook } from "./deploy-hook";
-import { __setRunnerForTest, __resetQueueForTest } from "../deploy/deploy-queue";
+import {
+  __setRunnerForTest,
+  __resetQueueForTest,
+} from "../deploy/deploy-queue";
 import { ALL_CAPABILITIES, type Capability } from "../types";
 
 import { POST } from "@/app/api/apps/[id]/deploy-hook/[token]/route";
@@ -87,7 +94,9 @@ beforeEach(async () => {
     createdAt: "2026-01-01T00:00:00.000Z",
   });
   await db.insert(membershipCapabilitiesTable).values(
-    (["view", "deploy_apps", "configure_apps", "manage_tokens"] as Capability[]).map((capability) => ({
+    (
+      ["view", "deploy_apps", "configure_apps", "manage_tokens"] as Capability[]
+    ).map((capability) => ({
       membershipId: "mem_both_in_b",
       capability,
     })),
@@ -96,8 +105,11 @@ beforeEach(async () => {
   await seedApp(db, { id: APP_IN_BETA, teamId: TEAM_B, slug: "beta-hooked" });
 });
 
-const as = <T>(userId: string, teamId: string, fn: () => Promise<T>): Promise<T> =>
-  runWithIdentity({ userId, teamId }, fn);
+const as = <T>(
+  userId: string,
+  teamId: string,
+  fn: () => Promise<T>,
+): Promise<T> => runWithIdentity({ userId, teamId }, fn);
 
 async function hookToken(): Promise<string> {
   const url = await as(BOTH, TEAM_B, () => revealDeployHook(APP_IN_BETA));
@@ -134,7 +146,11 @@ test("a read-only token minted in alpha can't fire beta's hook, though its creat
   const urlToken = await hookToken();
   const bearer = await mint(TEAM_A, ["view", "manage_tokens"]);
   const res = await fire(urlToken, bearer);
-  assert.notEqual(res.status, 200, `the hook deployed: ${JSON.stringify(res.body)}`);
+  assert.notEqual(
+    res.status,
+    200,
+    `the hook deployed: ${JSON.stringify(res.body)}`,
+  );
   assert.equal(await deploymentCount(), 0);
 });
 
@@ -142,9 +158,15 @@ test("a token narrowed to alpha's own tree can't fire beta's hook either", async
   const urlToken = await hookToken();
   // Every capability, but its reach is pinned to ALPHA as a whole. Breadth in one
   // team is not reach into another.
-  const bearer = await mint(TEAM_A, [...ALL_CAPABILITIES], { teamIds: [TEAM_A] });
+  const bearer = await mint(TEAM_A, [...ALL_CAPABILITIES], {
+    teamIds: [TEAM_A],
+  });
   const res = await fire(urlToken, bearer);
-  assert.notEqual(res.status, 200, `the hook deployed: ${JSON.stringify(res.body)}`);
+  assert.notEqual(
+    res.status,
+    200,
+    `the hook deployed: ${JSON.stringify(res.body)}`,
+  );
   assert.equal(await deploymentCount(), 0);
 });
 
@@ -152,6 +174,10 @@ test("the same person's beta token, holding deploy_apps, does fire it", async ()
   const urlToken = await hookToken();
   const bearer = await mint(TEAM_B, ["view", "deploy_apps"]);
   const res = await fire(urlToken, bearer);
-  assert.equal(res.status, 200, `expected a queued deploy, got ${JSON.stringify(res.body)}`);
+  assert.equal(
+    res.status,
+    200,
+    `expected a queued deploy, got ${JSON.stringify(res.body)}`,
+  );
   assert.equal(await deploymentCount(), 1);
 });

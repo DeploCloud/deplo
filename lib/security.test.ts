@@ -65,7 +65,8 @@ test("the count SURVIVES a restart", async () => {
   // the process was holding; if the counter lived in one, the second half of
   // this test would start from zero and pass three more attempts.
   const key = "test:restart";
-  for (let i = 0; i < 3; i++) await rateLimit(key, { limit: 3, windowMs: 60_000 });
+  for (let i = 0; i < 3; i++)
+    await rateLimit(key, { limit: 3, windowMs: 60_000 });
 
   __resetTestDb();
   __setTestDb(db);
@@ -80,9 +81,14 @@ test("a closed window starts a fresh allowance", async () => {
   // is aged directly instead - the same state the clock would reach, without
   // making the suite wait for it.
   await rateLimit(key, { limit: 1, windowMs: 60_000 });
-  assert.equal((await rateLimit(key, { limit: 1, windowMs: 60_000 })).ok, false);
+  assert.equal(
+    (await rateLimit(key, { limit: 1, windowMs: 60_000 })).ok,
+    false,
+  );
 
-  await pg.exec(`update rate_limits set reset_at = now() - interval '1 second'`);
+  await pg.exec(
+    `update rate_limits set reset_at = now() - interval '1 second'`,
+  );
 
   const reopened = await rateLimit(key, { limit: 1, windowMs: 60_000 });
   assert.equal(reopened.ok, true, "the window closed, so the count restarts");
@@ -97,7 +103,9 @@ test("concurrent attempts are all counted", async () => {
   // refusal for the eleventh, never a bucket that lost writes.
   const key = "test:concurrent";
   await Promise.all(
-    Array.from({ length: 10 }, () => rateLimit(key, { limit: 10, windowMs: 60_000 })),
+    Array.from({ length: 10 }, () =>
+      rateLimit(key, { limit: 10, windowMs: 60_000 }),
+    ),
   );
   const over = await rateLimit(key, { limit: 10, windowMs: 60_000 });
   assert.equal(over.ok, false, "ten attempts must consume the whole allowance");
@@ -105,7 +113,9 @@ test("concurrent attempts are all counted", async () => {
 
 test("the sweep removes closed windows and leaves open ones", async () => {
   await rateLimit("test:old", { limit: 5, windowMs: 60_000 });
-  await pg.exec(`update rate_limits set reset_at = now() - interval '1 second'`);
+  await pg.exec(
+    `update rate_limits set reset_at = now() - interval '1 second'`,
+  );
   await rateLimit("test:fresh", { limit: 5, windowMs: 60_000 });
 
   await sweepRateLimits();
