@@ -39,6 +39,7 @@ import type { AppRuntimeView } from "@/components/apps/use-app-runtime";
 import type { ConsoleInstance } from "@/lib/data/console";
 import { stripAnsi } from "@/lib/ansi";
 import { mergeLogBurst } from "@/lib/logs/merge";
+import { splitTimestamp } from "@/lib/logs/window";
 import { detectLogLevel, isLogContinuation } from "@/lib/log-level-detect";
 import { DEFAULT_LOG_RANGE_DAYS, type LogLevel } from "@/lib/types";
 import { cn } from "@/lib/utils";
@@ -82,21 +83,6 @@ function capBuffer(text: string): string {
   const tail = text.slice(-MAX_BUFFER_CHARS);
   const nl = tail.indexOf("\n");
   return nl === -1 ? tail : tail.slice(nl + 1);
-}
-
-/**
- * `docker logs --timestamps` prefixes every line with an RFC3339Nano instant and
- * a single space. Split it back off: the viewer shows it in its own gutter, and
- * leaving it inline would both waste 30 columns of every row and feed the level
- * detector a date it has to look past. Docker writes the prefix ahead of the
- * raw line, so this matches before any ANSI the producer emitted.
- */
-const TIMESTAMP_PREFIX =
-  /^(\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?Z)\s([\s\S]*)$/;
-
-function splitTimestamp(line: string): { ts: string | null; rest: string } {
-  const m = TIMESTAMP_PREFIX.exec(line);
-  return m ? { ts: m[1]!, rest: m[2]! } : { ts: null, rest: line };
 }
 
 /** Classify one raw line, scanning only a bounded head (a pathological line is
