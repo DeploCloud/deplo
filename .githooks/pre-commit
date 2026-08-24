@@ -1,0 +1,6 @@
+#!/bin/sh
+# Format what is about to be committed. lint-staged runs Prettier on the STAGED
+# copy of each file and re-stages the result, so `git add -p` keeps meaning what
+# it says. Set up by `bun install` (the `prepare` script points core.hooksPath
+# here); bypass with `git commit --no-verify` when you must.
+exec bunx lint-staged

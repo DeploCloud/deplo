@@ -1,0 +1,10 @@
+# Generated output: reformatting it only creates drift with the generator.
+schema.graphql
+lib/agent/gen/
+lib/db/migrations/
+next-env.d.ts
+bun.lock
+
+# Build artifacts and vendored trees.
+.next/
+node_modules/
