@@ -10,6 +10,7 @@ import { requireUser } from "@/lib/auth";
 import { getToken, listScopeTree } from "@/lib/data/tokens";
 
 import { PageHeader } from "@/components/shared/page-header";
+import { UserAvatar } from "@/components/shared/user-avatar";
 import { TokenEditor } from "@/components/settings/tokens/token-editor";
 import { timeAgo } from "@/lib/utils";
 import { instancePublicBaseUrl } from "@/lib/data/instance-settings";
@@ -63,7 +64,21 @@ export default async function TokenPage(
               <code className="font-mono">{`${token.prefix}${"•".repeat(8)}`}</code>
               {" · created "}
               {timeAgo(token.createdAt)}
-              {token.createdByUsername ? ` by ${token.createdByUsername}` : ""}
+              {token.createdByUsername ? (
+                <>
+                  {" by "}
+                  <UserAvatar
+                    username={token.createdByUsername}
+                    avatarColor={token.createdByAvatarColor}
+                    avatarUrl={token.createdByAvatarUrl}
+                    size="xs"
+                    className="inline-block align-text-bottom"
+                  />{" "}
+                  {token.createdByUsername}
+                </>
+              ) : (
+                ""
+              )}
               {" · "}
               {token.lastUsedAt
                 ? `last used ${timeAgo(token.lastUsedAt)}`

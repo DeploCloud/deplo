@@ -19,7 +19,9 @@ import {
   normalizePanelUrl,
   setPanelHttps,
   setPanelUrl,
+  setGravatarEnabled,
 } from "./instance-settings";
+import { gravatarEnabled } from "../avatar";
 
 /**
  * The panel address is not an ordinary text setting: it is interpolated into
@@ -324,4 +326,36 @@ test("no route of ours: only a panel with no domain at all is a refusal", () => 
   assert.equal(noRouteReason("https://deplo.example.com"), null);
   // A nip.io host is routable too - it is the address a fresh install hands out.
   assert.equal(noRouteReason("https://deplo.203-0-113-10.nip.io"), null);
+});
+
+/* ------------------------------------------------------------------ */
+/* Gravatar                                                            */
+/* ------------------------------------------------------------------ */
+
+test("Gravatar defaults ON, and only an instance admin can turn it off", async () => {
+  // No settings row at all is a fresh instance: it must read the column's own
+  // default, not a `false` that would silently turn the feature off before
+  // anybody chose to.
+  assert.equal(await asUser(ADMIN, () => gravatarEnabled()), true);
+
+  await assert.rejects(
+    asUser(MEMBER, () => setGravatarEnabled(false)),
+    /admin/i,
+    "a plain member must not decide this for the instance",
+  );
+  assert.equal(await asUser(ADMIN, () => gravatarEnabled()), true);
+});
+
+test("setGravatarEnabled round-trips, and the read is ungated", async () => {
+  await asUser(ADMIN, () => setGravatarEnabled(false));
+  // Read as the MEMBER: the flag is consulted while building every DTO that
+  // names a person, so a gate here would take the whole dashboard down for them.
+  assert.equal(await asUser(MEMBER, () => gravatarEnabled()), false);
+  assert.equal(
+    (await asUser(ADMIN, () => getInstanceSettings())).gravatarEnabled,
+    false,
+  );
+
+  await asUser(ADMIN, () => setGravatarEnabled(true));
+  assert.equal(await asUser(MEMBER, () => gravatarEnabled()), true);
 });

@@ -546,6 +546,7 @@ const AppTransferTargetRef = builder
     fields: (t) => ({
       id: t.exposeID("id"),
       name: t.exposeString("name"),
+      avatarUrl: t.exposeString("avatarUrl", { nullable: true }),
       serverAvailable: t.exposeBoolean("serverAvailable", {
         description:
           "False when the app's server is restricted and not shared with that " +

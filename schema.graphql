@@ -450,6 +450,8 @@ type AppTransferInfo {
 A team the viewer could hand this app to — one of their OWN other teams where they hold the deploy capability.
 """
 type AppTransferTarget {
+  avatarUrl: String
+
   """
   True when the repository connection survives the move, because that team has its own GitHub App installed on the repository's account. False ⇒ the connection and auto-deploy are dropped and must be reconnected there. Always true when the app has no GitHub connection.
   """

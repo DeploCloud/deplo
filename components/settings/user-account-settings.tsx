@@ -29,7 +29,7 @@ import {
   AccordionItem,
   AccordionTrigger,
 } from "@/components/ui/accordion";
-import { UserAvatar } from "@/components/shared/user-avatar";
+import { TeamAvatar, UserAvatar } from "@/components/shared/user-avatar";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { InfoTip } from "@/components/ui/info-tip";
@@ -196,6 +196,7 @@ export function UserAccountSettings({
           name
           email
           avatarColor
+          avatarUrl
           createdAt
           isInstanceAdmin
           isInstanceOwner
@@ -204,7 +205,7 @@ export function UserAccountSettings({
           canMountHostVolumes
           twoFactorEnabled
           passkeyCount
-          teams { teamId teamName role }
+          teams { teamId teamName teamAvatarUrl role }
         }
       }`,
       { userId: user.userId },
@@ -470,6 +471,11 @@ export function UserAccountSettings({
                     key={t.teamId}
                     className="inline-flex items-center gap-1.5 rounded-full border border-border px-2 py-0.5 text-xs"
                   >
+                    <TeamAvatar
+                      name={t.teamName}
+                      avatarUrl={t.teamAvatarUrl}
+                      size="xs"
+                    />
                     <span className="font-medium">{t.teamName}</span>
                     <span className="capitalize text-muted-foreground">
                       {t.role}

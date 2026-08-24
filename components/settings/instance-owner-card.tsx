@@ -6,6 +6,7 @@ import { useRouter } from "next/navigation";
 import { Crown } from "lucide-react";
 
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { UserAvatar } from "@/components/shared/user-avatar";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -20,7 +21,12 @@ import { InfoTip } from "@/components/ui/info-tip";
 import { ConfirmAction } from "@/components/shared/confirm-action";
 import { gqlAction } from "@/lib/graphql-client";
 
-export type OwnerCandidate = { userId: string; username: string };
+export type OwnerCandidate = {
+  userId: string;
+  username: string;
+  avatarColor: string;
+  avatarUrl: string | null;
+};
 
 /**
  * Who owns this instance, and the one place ownership changes hands.
@@ -105,7 +111,15 @@ export function InstanceOwnerCard({
                 <SelectContent>
                   {candidates.map((c) => (
                     <SelectItem key={c.userId} value={c.userId}>
-                      @{c.username}
+                      <span className="flex items-center gap-2">
+                        <UserAvatar
+                          username={c.username}
+                          avatarColor={c.avatarColor}
+                          avatarUrl={c.avatarUrl}
+                          size="sm"
+                        />
+                        @{c.username}
+                      </span>
                     </SelectItem>
                   ))}
                 </SelectContent>

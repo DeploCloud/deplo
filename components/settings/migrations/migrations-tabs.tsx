@@ -38,6 +38,7 @@ type TabId = (typeof TABS)[number];
 export function MigrationsTabs({
   teamId,
   teamName,
+  teamAvatarUrl,
   servers,
   buildServers,
   runs,
@@ -47,6 +48,7 @@ export function MigrationsTabs({
 }: {
   teamId: string;
   teamName: string;
+  teamAvatarUrl: string | null;
   servers: ServerChoice[];
   buildServers: ServerChoice[];
   runs: ImportRun[];
@@ -112,6 +114,7 @@ export function MigrationsTabs({
         <MigrationWizard
           teamId={teamId}
           teamName={teamName}
+          teamAvatarUrl={teamAvatarUrl}
           servers={servers}
           buildServers={buildServers}
           isInstanceAdmin={isInstanceAdmin}

@@ -4,6 +4,7 @@ import { cache } from "react";
 import { and, asc, count, eq, inArray, ne, sql } from "drizzle-orm";
 
 import { getDb } from "../db/client";
+import { teamAvatarUrl } from "../avatar";
 import {
   activities as activitiesTable,
   appEnvironments as appEnvironmentsTable,
@@ -71,6 +72,8 @@ import { withKeyedLock } from "./keyed-mutex";
 export interface AppTransferTarget {
   id: string;
   name: string;
+  /** The team's picture, so the picker names it the way the switcher does. */
+  avatarUrl: string | null;
   /**
    * False when the app's server is restricted and NOT shared with that team.
    * The transfer is refused (an app must stay on a host its team may target);
@@ -159,7 +162,11 @@ export const appTransferInfo = cache(
     // "can manage apps there" bar, resolved from the capability junction (the
     // role name is only a preset, never the authority).
     const candidates = await db
-      .select({ id: teamsTable.id, name: teamsTable.name })
+      .select({
+        id: teamsTable.id,
+        name: teamsTable.name,
+        image: teamsTable.image,
+      })
       .from(membershipsTable)
       .innerJoin(teamsTable, eq(teamsTable.id, membershipsTable.teamId))
       .innerJoin(
@@ -247,6 +254,7 @@ export const appTransferInfo = cache(
       targets: candidates.map((c) => ({
         id: c.id,
         name: c.name,
+        avatarUrl: teamAvatarUrl(c.image),
         serverAvailable: serverTeamIds ? serverTeamIds.has(c.id) : true,
         githubFollows: !githubConnected || followTeams.has(c.id),
       })),

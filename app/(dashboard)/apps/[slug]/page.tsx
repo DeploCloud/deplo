@@ -10,6 +10,7 @@ import {
 import { getAppBySlug } from "@/lib/data/apps";
 import { hasAppCapability } from "@/lib/data/node-access";
 import { DataCopyNotice } from "@/components/shared/data-copy-notice";
+import { UserAvatar } from "@/components/shared/user-avatar";
 import { listDeployments } from "@/lib/data/deployments";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -38,7 +39,13 @@ export default async function AppOverview(
   // Only for the banner's "Deploy anyway": the mutation gates itself, this
   // decides whether the affordance is worth showing.
   const canDeploy = await hasAppCapability(project.id, "deploy_apps");
-  const prod = project.latestDeployment;
+  // Prefer the row out of `deployments` (loaded two lines up) over the app
+  // graph's copy of it: only the list resolves `creatorUser`, and the graph's
+  // copy would show "by <name>" with no face beside it. Falls back to the graph
+  // for a latest deployment the list did not return.
+  const prod =
+    deployments.find((d) => d.id === project.latestDeployment?.id) ??
+    project.latestDeployment;
   // What backs this app — a git repo (real branch/commit) or a compose
   // stack / docker image / upload (no git, so no branch). Same source of truth
   // as the Overview card, so the page never invents a "main" branch for a
@@ -96,8 +103,18 @@ export default async function AppOverview(
                 </div>
                 <div>
                   <p className="text-xs text-muted-foreground">Created</p>
-                  <p className="text-sm">
-                    {timeAgo(prod.createdAt)} by {prod.creator}
+                  <p className="flex items-center gap-1.5 text-sm">
+                    {timeAgo(prod.createdAt)} by
+                    {prod.creatorUser && (
+                      <UserAvatar
+                        name={prod.creatorUser.name}
+                        username={prod.creatorUser.username}
+                        avatarColor={prod.creatorUser.avatarColor}
+                        avatarUrl={prod.creatorUser.avatarUrl}
+                        size="sm"
+                      />
+                    )}
+                    {prod.creator}
                   </p>
                 </div>
               </div>

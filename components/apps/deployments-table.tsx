@@ -18,6 +18,7 @@ import {
   X,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { UserAvatar } from "@/components/shared/user-avatar";
 import { Badge } from "@/components/ui/badge";
 import { Card } from "@/components/ui/card";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -209,6 +210,14 @@ export interface DeploymentRow {
   branch: string;
   createdAt: string;
   creator: string;
+  /** The account behind `creator`, when there is one. Null for a webhook push
+   *  (a GitHub login, not a deplo user) — that row keeps the bare name. */
+  creatorUser?: {
+    name: string;
+    username: string;
+    avatarColor: string;
+    avatarUrl: string | null;
+  } | null;
   url: string;
   /** The app can be put back on this deployment - the SERVER's answer (whether
    *  its image is still on the host), never re-derived in the browser. */
@@ -943,7 +952,16 @@ export function DeploymentsTable({
                       <p className="whitespace-nowrap text-foreground">
                         {timeAgo(d.createdAt)}
                       </p>
-                      <p className="truncate text-xs text-muted-foreground">
+                      <p className="flex items-center gap-1.5 truncate text-xs text-muted-foreground">
+                        {d.creatorUser && (
+                          <UserAvatar
+                            name={d.creatorUser.name}
+                            username={d.creatorUser.username}
+                            avatarColor={d.creatorUser.avatarColor}
+                            avatarUrl={d.creatorUser.avatarUrl}
+                            size="xs"
+                          />
+                        )}
                         by {d.creator}
                       </p>
                     </TableCell>

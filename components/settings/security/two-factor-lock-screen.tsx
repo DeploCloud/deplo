@@ -6,6 +6,7 @@ import { useRouter } from "next/navigation";
 import { ShieldAlert } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
+import { TeamAvatar } from "@/components/shared/user-avatar";
 import {
   Card,
   CardContent,
@@ -38,7 +39,7 @@ export function TwoFactorLockScreen({
   hasPasskey = false,
 }: {
   reason: string;
-  otherTeams: { id: string; name: string }[];
+  otherTeams: { id: string; name: string; avatarUrl: string | null }[];
   /** This account holds a passkey that works here, but did not sign in with it. */
   hasPasskey?: boolean;
 }) {
@@ -110,6 +111,7 @@ export function TwoFactorLockScreen({
                     disabled={switching}
                     onClick={() => void switchTeam(t.id)}
                   >
+                    <TeamAvatar name={t.name} avatarUrl={t.avatarUrl} size="sm" />
                     {t.name}
                   </Button>
                 ))}

@@ -69,6 +69,7 @@ export default async function SettingsMigrationsPage() {
       <MigrationsTabs
         teamId={team.id}
         teamName={team.name}
+        teamAvatarUrl={team.avatarUrl}
         servers={servers}
         buildServers={buildServers}
         runs={runs}

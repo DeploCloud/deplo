@@ -286,7 +286,11 @@ test("the right token and the right permission queue a deploy", async () => {
   assert.equal(res.body.appId, APP);
   assert.equal(typeof res.body.deploymentId, "string");
   const rows = await db
-    .select({ id: deploymentsTable.id, creator: deploymentsTable.creator })
+    .select({
+      id: deploymentsTable.id,
+      creator: deploymentsTable.creator,
+      creatorUserId: deploymentsTable.creatorUserId,
+    })
     .from(deploymentsTable)
     .where(eq(deploymentsTable.appId, APP));
   assert.equal(rows.length, 1, "exactly one deployment was queued");
@@ -294,6 +298,15 @@ test("the right token and the right permission queue a deploy", async () => {
     rows[0].creator,
     DEPLOYER,
     "the deploy is attributed to the member the token acts as, not to nobody",
+  );
+  // The free-text name has always been there; this is what lets the row show a
+  // FACE. A hook runs under runWithIdentity, so the actor resolves to an account
+  // — unlike a GitHub webhook push, whose creator is a GitHub login and stays
+  // null.
+  assert.equal(
+    rows[0].creatorUserId,
+    DEPLOYER,
+    "the deploy names the account behind the token, not just its display name",
   );
   // Wait for the queue to actually dispatch it (the stub settles the row), so
   // the fixture isn't torn down under a pump that would then retry forever.

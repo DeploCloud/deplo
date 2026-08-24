@@ -4,6 +4,7 @@ import { ArrowLeft, GitBranch, Clock, ExternalLink, Lock } from "lucide-react";
 import { getAppBySlug } from "@/lib/data/apps";
 import { hasAppCapability } from "@/lib/data/node-access";
 import { EmptyState } from "@/components/shared/empty-state";
+import { UserAvatar } from "@/components/shared/user-avatar";
 import {
   getDeployment,
   getLogs,
@@ -104,8 +105,18 @@ export default async function DeploymentDetailPage(
             />
           </Meta>
           <Meta label="Created">
-            <span className="text-sm">
-              {timeAgo(deployment.createdAt)} by {deployment.creator}
+            <span className="flex items-center gap-1.5 text-sm">
+              {timeAgo(deployment.createdAt)} by
+              {deployment.creatorUser && (
+                <UserAvatar
+                  name={deployment.creatorUser.name}
+                  username={deployment.creatorUser.username}
+                  avatarColor={deployment.creatorUser.avatarColor}
+                  avatarUrl={deployment.creatorUser.avatarUrl}
+                  size="sm"
+                />
+              )}
+              {deployment.creator}
             </span>
           </Meta>
           <div className="flex items-end gap-2">

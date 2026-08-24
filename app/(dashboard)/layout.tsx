@@ -56,7 +56,7 @@ export default async function DashboardLayout({
           hasPasskey={await userHasPasskey(user.id)}
           otherTeams={teams
             .filter((t) => t.id !== e.teamId)
-            .map((t) => ({ id: t.id, name: t.name }))}
+            .map((t) => ({ id: t.id, name: t.name, avatarUrl: t.avatarUrl }))}
         />
       );
     throw e;

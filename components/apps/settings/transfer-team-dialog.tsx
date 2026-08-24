@@ -10,6 +10,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Skeleton } from "@/components/ui/skeleton";
+import { TeamAvatar } from "@/components/shared/user-avatar";
 import { FieldLabel } from "@/components/ui/info-tip";
 import { ConfirmAction } from "@/components/shared/confirm-action";
 import { gql, gqlAction } from "@/lib/graphql-client";
@@ -17,6 +18,7 @@ import { gql, gqlAction } from "@/lib/graphql-client";
 type TransferTarget = {
   id: string;
   name: string;
+  avatarUrl: string | null;
   serverAvailable: boolean;
   githubFollows: boolean;
 };
@@ -177,7 +179,10 @@ export function TransferTeamDialog({
                 <SelectContent>
                   {info.targets.map((t) => (
                     <SelectItem key={t.id} value={t.id}>
-                      {t.name}
+                      <span className="flex items-center gap-2">
+                        <TeamAvatar name={t.name} avatarUrl={t.avatarUrl} size="sm" />
+                        {t.name}
+                      </span>
                     </SelectItem>
                   ))}
                 </SelectContent>

@@ -5,6 +5,7 @@ import { Layers, Server as ServerIcon, TriangleAlert } from "lucide-react";
 
 import { gqlAction } from "@/lib/graphql-client";
 import { Button } from "@/components/ui/button";
+import { TeamAvatar } from "@/components/shared/user-avatar";
 import { SimpleTooltip } from "@/components/ui/tooltip";
 import { EmptyState } from "@/components/shared/empty-state";
 import { CreateTeamDialog } from "@/components/teams/create-team-dialog";
@@ -286,6 +287,7 @@ function usePortConflicts({
 export function ReviewStep({
   plan,
   teamName,
+  teamAvatarUrl,
   chosen,
   setChosen,
   servers,
@@ -300,6 +302,7 @@ export function ReviewStep({
   plan: Plan;
   /** The active team, named in the card at the top: everything lands there. */
   teamName: string;
+  teamAvatarUrl: string | null;
   chosen: Set<string>;
   setChosen: (v: Set<string>) => void;
   servers: ServerChoice[];
@@ -396,7 +399,11 @@ export function ReviewStep({
         <div className="flex flex-wrap items-center gap-4 rounded-lg border border-border p-4">
           <TeamTargetGraphic />
           <div className="min-w-0 flex-1">
-            <div className="text-sm font-medium">Everything lands in {teamName}</div>
+            <div className="flex items-center gap-1.5 text-sm font-medium">
+              Everything lands in
+              <TeamAvatar name={teamName} avatarUrl={teamAvatarUrl} size="sm" />
+              {teamName}
+            </div>
             <p className="mt-1 text-sm text-muted-foreground">
               Apps, databases and the variables that go with them.
             </p>

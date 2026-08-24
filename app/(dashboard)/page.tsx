@@ -24,6 +24,7 @@ import {
 } from "@/lib/data/folder-access";
 import { nodeCapabilities } from "@/lib/data/node-access";
 import { Button } from "@/components/ui/button";
+import { UserAvatar } from "@/components/shared/user-avatar";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { EmptyState } from "@/components/shared/empty-state";
 import { AppsGrid, FolderTrail } from "@/components/apps/apps-grid";
@@ -273,7 +274,16 @@ export default async function OverviewPage(props: PageProps<"/">) {
                 </div>
                 <div className="min-w-0">
                   <p className="text-foreground">{a.message}</p>
-                  <p className="text-muted-foreground">
+                  <p className="flex items-center gap-1.5 text-muted-foreground">
+                    {a.actorUser && (
+                      <UserAvatar
+                        name={a.actorUser.name}
+                        username={a.actorUser.username}
+                        avatarColor={a.actorUser.avatarColor}
+                        avatarUrl={a.actorUser.avatarUrl}
+                        size="xs"
+                      />
+                    )}
                     {a.actor} · {timeAgo(a.createdAt)}
                   </p>
                 </div>

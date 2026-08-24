@@ -3,7 +3,22 @@
 import * as React from "react";
 import { usePathname, useRouter } from "next/navigation";
 import { toast } from "sonner";
-import { Check, ChevronDown, Plus } from "lucide-react";
+import { Check, ChevronDown, GripVertical, Plus } from "lucide-react";
+import {
+  DndContext,
+  PointerSensor,
+  closestCenter,
+  useSensor,
+  useSensors,
+  type DragEndEvent,
+} from "@dnd-kit/core";
+import {
+  SortableContext,
+  arrayMove,
+  useSortable,
+  verticalListSortingStrategy,
+} from "@dnd-kit/sortable";
+import { CSS } from "@dnd-kit/utilities";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -16,6 +31,7 @@ import { TeamAvatar } from "@/components/shared/user-avatar";
 import { CreateTeamDialog } from "@/components/teams/create-team-dialog";
 import { gqlAction } from "@/lib/graphql-client";
 import { teamSwitchDestination } from "@/lib/team-switch";
+import { cn } from "@/lib/utils";
 import type { TeamIdentity, TeamSummary } from "@/lib/types";
 
 export function TeamSwitcher({
@@ -28,6 +44,53 @@ export function TeamSwitcher({
   const router = useRouter();
   const pathname = usePathname();
   const [pending, startTransition] = React.useTransition();
+  // What the drag has said so far, as ids — null until somebody drags. The list
+  // itself is DERIVED from it and the prop rather than copied into state: state
+  // seeded from a prop needs an effect to stay in step, and an effect that calls
+  // setState is exactly the thing that makes a list flicker when the server
+  // answers. Ids the drag never saw (a team joined in another tab) fall in at
+  // the end instead of vanishing.
+  const [draggedIds, setDraggedIds] = React.useState<string[] | null>(null);
+  const order = React.useMemo(() => {
+    if (!draggedIds) return teams;
+    const byId = new Map(teams.map((t) => [t.id, t]));
+    const picked = draggedIds
+      .map((id) => byId.get(id))
+      .filter((t): t is TeamSummary => Boolean(t));
+    const seen = new Set(picked.map((t) => t.id));
+    return [...picked, ...teams.filter((t) => !seen.has(t.id))];
+  }, [teams, draggedIds]);
+  // Distance, so a click that switches team is never swallowed by a drag that
+  // was not one. Pointer only: the menu is keyboard-navigable and dragging is
+  // not the only way to reach a team.
+  const sensors = useSensors(
+    useSensor(PointerSensor, { activationConstraint: { distance: 4 } }),
+  );
+  // Nothing to arrange with one team, and a handle beside a single row reads as
+  // a broken control.
+  const sortable = order.length > 1;
+
+  function handleDragEnd(e: DragEndEvent) {
+    const { active, over } = e;
+    if (!over || active.id === over.id) return;
+    const from = order.findIndex((t) => t.id === active.id);
+    const to = order.findIndex((t) => t.id === over.id);
+    if (from < 0 || to < 0) return;
+    const next = arrayMove(order, from, to).map((t) => t.id);
+    const previous = draggedIds;
+    setDraggedIds(next);
+    startTransition(async () => {
+      const res = await gqlAction(
+        `mutation($teamIds: [String!]!) { reorderMyTeams(teamIds: $teamIds) }`,
+        { teamIds: next },
+      );
+      if (res.ok) router.refresh();
+      else {
+        setDraggedIds(previous);
+        toast.error(res.error);
+      }
+    });
+  }
   const [createOpen, setCreateOpen] = React.useState(false);
 
   function switchTo(teamId: string) {
@@ -68,24 +131,27 @@ export function TeamSwitcher({
         </DropdownMenuTrigger>
         <DropdownMenuContent align="start" className="w-64">
           <DropdownMenuLabel>Teams</DropdownMenuLabel>
-          {teams.map((t) => (
-            <DropdownMenuItem
-              key={t.id}
-              className="cursor-pointer"
-              disabled={pending}
-              onSelect={() => switchTo(t.id)}
+          <DndContext
+            sensors={sensors}
+            collisionDetection={closestCenter}
+            onDragEnd={handleDragEnd}
+          >
+            <SortableContext
+              items={order.map((t) => t.id)}
+              strategy={verticalListSortingStrategy}
             >
-              <TeamAvatar name={t.name} avatarUrl={t.avatarUrl} size="sm" />
-              <span className="flex flex-col">
-                <span className="truncate">{t.name}</span>
-                <span className="text-xs capitalize text-muted-foreground">
-                  {t.role} · {t.memberCount} member
-                  {t.memberCount === 1 ? "" : "s"}
-                </span>
-              </span>
-              {t.id === team.id && <Check className="ml-auto size-4" />}
-            </DropdownMenuItem>
-          ))}
+              {order.map((t) => (
+                <TeamRow
+                  key={t.id}
+                  team={t}
+                  active={t.id === team.id}
+                  sortable={sortable}
+                  disabled={pending}
+                  onSelect={() => switchTo(t.id)}
+                />
+              ))}
+            </SortableContext>
+          </DndContext>
           <DropdownMenuSeparator />
           <DropdownMenuItem
             className="cursor-pointer"
@@ -99,5 +165,63 @@ export function TeamSwitcher({
 
       <CreateTeamDialog open={createOpen} onOpenChange={setCreateOpen} />
     </>
+  );
+}
+
+/**
+ * One team in the switcher, draggable by its handle.
+ *
+ * The handle is separate from the row on purpose: the row's whole job is to
+ * switch team on click, and making the row itself the drag surface turns every
+ * slightly-imprecise click into a reorder. It appears on hover so it costs
+ * nothing to anyone who never rearranges anything.
+ */
+function TeamRow({
+  team,
+  active,
+  sortable,
+  disabled,
+  onSelect,
+}: {
+  team: TeamSummary;
+  active: boolean;
+  sortable: boolean;
+  disabled: boolean;
+  onSelect: () => void;
+}) {
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } =
+    useSortable({ id: team.id, disabled: !sortable });
+
+  return (
+    <DropdownMenuItem
+      ref={setNodeRef}
+      style={{ transform: CSS.Transform.toString(transform), transition }}
+      className={cn("group cursor-pointer", isDragging && "z-10 opacity-80")}
+      disabled={disabled}
+      onSelect={onSelect}
+    >
+      {sortable && (
+        <span
+          {...attributes}
+          {...listeners}
+          // The handle drags; it must never also switch team.
+          onClick={(e) => e.stopPropagation()}
+          onPointerDown={(e) => e.stopPropagation()}
+          aria-label={`Reorder ${team.name}`}
+          className="-ml-1 cursor-grab text-muted-foreground opacity-0 transition-opacity group-hover:opacity-100 group-focus-within:opacity-100 active:cursor-grabbing"
+        >
+          <GripVertical className="size-3.5" />
+        </span>
+      )}
+      <TeamAvatar name={team.name} avatarUrl={team.avatarUrl} size="sm" />
+      <span className="flex min-w-0 flex-col">
+        <span className="truncate">{team.name}</span>
+        <span className="text-xs capitalize text-muted-foreground">
+          {team.role} · {team.memberCount} member
+          {team.memberCount === 1 ? "" : "s"}
+        </span>
+      </span>
+      {active && <Check className="ml-auto size-4" />}
+    </DropdownMenuItem>
   );
 }

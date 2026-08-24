@@ -24,6 +24,7 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { UserAvatar } from "@/components/shared/user-avatar";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Switch } from "@/components/ui/switch";
@@ -411,7 +412,15 @@ export function TokenEditor({
                         } loses a permission, this token loses it too.`}
                       />
                     </dt>
-                    <dd className="min-w-0 flex-1 truncate text-right font-medium">
+                    <dd className="flex min-w-0 flex-1 items-center justify-end gap-1.5 truncate text-right font-medium">
+                      {token!.createdByUsername && (
+                        <UserAvatar
+                          username={token!.createdByUsername}
+                          avatarColor={token!.createdByAvatarColor}
+                          avatarUrl={token!.createdByAvatarUrl}
+                          size="sm"
+                        />
+                      )}
                       {token!.createdByUsername ?? "—"}
                     </dd>
                   </div>

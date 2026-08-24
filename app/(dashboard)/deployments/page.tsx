@@ -60,6 +60,7 @@ export default async function DeploymentsPage() {
             branch: d.branch,
             createdAt: d.createdAt,
             creator: d.creator,
+            creatorUser: d.creatorUser,
             url: d.url,
             canRollback: d.canRollback,
             rollbackOf: d.rollbackOf,

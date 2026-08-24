@@ -523,7 +523,7 @@ function SharedTab({
       `query($appId: String!) {
         sharedVarsForApp(appId: $appId) {
           id key masked type targets linked inScope scope
-          updatedAt updatedBy { id name username avatarColor }
+          updatedAt updatedBy { id name username avatarColor avatarUrl }
         }
       }`,
       { appId },

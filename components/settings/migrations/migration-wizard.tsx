@@ -321,6 +321,7 @@ function dataNote(message: string, outcome: string = "manual"): ReportItem {
 export function MigrationWizard({
   teamId,
   teamName,
+  teamAvatarUrl,
   servers,
   buildServers,
   isInstanceAdmin,
@@ -330,6 +331,7 @@ export function MigrationWizard({
 }: {
   teamId: string;
   teamName: string;
+  teamAvatarUrl: string | null;
   servers: ServerChoice[];
   buildServers: ServerChoice[];
   isInstanceAdmin: boolean;
@@ -1163,6 +1165,7 @@ export function MigrationWizard({
                   <ReviewStep
                     plan={plan}
                     teamName={teamName}
+                    teamAvatarUrl={teamAvatarUrl}
                     chosen={chosen}
                     setChosen={setChosen}
                     servers={servers}

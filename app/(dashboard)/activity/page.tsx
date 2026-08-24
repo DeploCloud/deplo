@@ -17,6 +17,7 @@ import {
 } from "lucide-react";
 import { listActivity } from "@/lib/data/activity";
 import { Card, CardContent } from "@/components/ui/card";
+import { UserAvatar } from "@/components/shared/user-avatar";
 import { PageHeader } from "@/components/shared/page-header";
 import { EmptyState } from "@/components/shared/empty-state";
 import { timeAgo } from "@/lib/utils";
@@ -135,7 +136,20 @@ export default async function ActivityPage() {
                             <p className="text-sm text-foreground">
                               {activity.message}
                             </p>
-                            <p className="mt-0.5 text-xs text-muted-foreground">
+                            {/* The circle above says WHAT happened; the mark
+                                here says who. A non-human actor ("system" /
+                                "github") and a deleted account resolve to null
+                                and keep the bare name. */}
+                            <p className="mt-0.5 flex items-center gap-1.5 text-xs text-muted-foreground">
+                              {activity.actorUser && (
+                                <UserAvatar
+                                  name={activity.actorUser.name}
+                                  username={activity.actorUser.username}
+                                  avatarColor={activity.actorUser.avatarColor}
+                                  avatarUrl={activity.actorUser.avatarUrl}
+                                  size="xs"
+                                />
+                              )}
                               {activity.actor} · {timeAgo(activity.createdAt)}
                             </p>
                           </div>

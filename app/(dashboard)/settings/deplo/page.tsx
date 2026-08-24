@@ -37,7 +37,12 @@ export default async function DeploSettingsPage() {
   // Settings, Users, not to a dropdown here.
   const ownerCandidates = users
     .filter((u) => u.isInstanceAdmin && !u.isInstanceOwner && !u.suspended)
-    .map((u) => ({ userId: u.userId, username: u.username }));
+    .map((u) => ({
+      userId: u.userId,
+      username: u.username,
+      avatarColor: u.avatarColor,
+      avatarUrl: u.avatarUrl,
+    }));
 
   return (
     <div className="space-y-6">

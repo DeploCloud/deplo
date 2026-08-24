@@ -21,6 +21,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
+import { UserAvatar } from "@/components/shared/user-avatar";
 import { Button } from "@/components/ui/button";
 import { SimpleTooltip } from "@/components/ui/tooltip";
 import { ConfirmAction } from "@/components/shared/confirm-action";
@@ -189,7 +190,19 @@ export function TokensList({
                     ))}
                 </TableCell>
                 <TableCell className="text-muted-foreground">
-                  {t.createdByUsername ?? "—"}
+                  {t.createdByUsername ? (
+                    <span className="flex items-center gap-1.5">
+                      <UserAvatar
+                        username={t.createdByUsername}
+                        avatarColor={t.createdByAvatarColor}
+                        avatarUrl={t.createdByAvatarUrl}
+                        size="sm"
+                      />
+                      {t.createdByUsername}
+                    </span>
+                  ) : (
+                    "—"
+                  )}
                 </TableCell>
                 <TableCell className="text-right">
                   <div className="flex justify-end gap-1">
