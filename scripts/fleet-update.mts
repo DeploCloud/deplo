@@ -56,7 +56,14 @@ async function busyServerIds(): Promise<Set<string>> {
 }
 
 const all = await listAllServers();
-const provisioned = all.filter((s) => Boolean(s.agent?.certFingerprint));
+// A MIGRATION SOURCE is not fleet: it is somebody else's machine, registered by
+// the import wizard to be read once and then let go (ADR-0025). Rolling a release
+// onto it is meaningless at best - and it is the one host that can be BEHIND the
+// release rather than on it, which stops the roll dead on a downgrade, before it
+// ever reaches agent 0.
+const provisioned = all.filter(
+  (s) => Boolean(s.agent?.certFingerprint) && !s.importOnly,
+);
 const remotes = provisioned.filter((s) => s.ip !== localIp);
 const agentZero = provisioned.filter((s) => s.ip === localIp);
 // Canary first, then the other remotes, then this host.
