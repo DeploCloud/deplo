@@ -447,7 +447,7 @@ export function InstallStep({
               {p && bad && (
                 <div className="space-y-2">
                   <CommandLine command={p.installCommand} truncate />
-                  <p className="text-xs text-muted-foreground">
+                  <p className="text-xs text-destructive">
                     {bad.message}
                     {bad.status === "offline" ? ` ${AGENT_PORT_NOTICE}` : ""}
                   </p>
@@ -460,19 +460,29 @@ export function InstallStep({
                           void saveAddress(m.sourceId, p);
                         }}
                       >
+                        {/* EMPTY, not prefilled with the address we already have:
+                            that address is the one that just failed, and handing it
+                            back invites a Save that changes nothing. The placeholder
+                            carries the shape instead - what goes here is an IP, and
+                            showing one is quicker to read than a sentence saying so. */}
                         <Input
-                          value={draft[m.sourceId] ?? m.ipAddress ?? ""}
+                          value={draft[m.sourceId] ?? ""}
                           onChange={(e) =>
                             setDraft((prev) => ({
                               ...prev,
                               [m.sourceId]: e.target.value,
                             }))
                           }
-                          placeholder="The machine's own address"
+                          placeholder="1.1.1.1"
                           className="w-56"
                           disabled={working}
                         />
-                        <Button type="submit" disabled={working}>
+                        <Button
+                          type="submit"
+                          disabled={
+                            working || !(draft[m.sourceId] ?? "").trim()
+                          }
+                        >
                           Save
                         </Button>
                         <Button
