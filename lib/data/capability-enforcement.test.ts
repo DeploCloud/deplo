@@ -40,7 +40,7 @@ import { listActivity, recordActivity } from "./activity";
 import { getAppMetrics, getAppMetricsHistory } from "./container-metrics";
 import { getLogsInfo, resolveLogsTarget } from "./console";
 import { resolveDatabaseLogsTarget } from "./database-console";
-import { revealEnv, upsertEnv } from "./env";
+import { listEnv, upsertEnv } from "./env";
 import { deleteTeam } from "./team-delete";
 import { setFolderGrant } from "./folder-access";
 import { authenticateToken, createToken } from "./tokens";
@@ -378,24 +378,38 @@ test("a member without create_apps cannot create at all", async () => {
 });
 
 /* ------------------------------------------------------------------ */
-/* Roles — reveal_secrets                                              */
+/* Secrets are write-only, for EVERY role                              */
 /* ------------------------------------------------------------------ */
 
-test("reveal_secrets gates reading a secret back, manage_env does not", async () => {
-  const id = await as(OWNER, async () => {
-    await upsertEnv({ appId: APP, key: "API_KEY", value: "s3cr3t", type: "secret" });
-    return (await db.query.envVars.findFirst({ where: (v, { eq: e }) => e(v.key, "API_KEY") }))!.id;
-  });
+test("nobody reads a secret back — not even the owner", async () => {
+  await as(OWNER, () =>
+    upsertEnv({ appId: APP, key: "API_KEY", value: "s3cr3t", type: "secret" }),
+  );
 
-  assert.equal(await as(OWNER, () => revealEnv(id)), "s3cr3t", "the control");
+  // There is no reveal mutation left, so the only read is the list, and the list
+  // masks. The owner is the control: this is not a capability the actor lacks,
+  // it is a value the system will not hand to anyone.
+  for (const actor of [OWNER, ENV_ONLY]) {
+    const [row] = await as(actor, () => listEnv(APP));
+    assert.equal(row!.masked, true);
+    assert.notEqual(row!.value, "s3cr3t", `${actor} must not see the plaintext`);
+  }
 
-  await as(ENV_ONLY, async () => {
-    assert.equal(
-      await outcome(() => revealEnv(id)),
-      "refused",
-      "writing a variable must not imply reading one back — that is what reveal_secrets is for",
-    );
-  });
+  // And the door that used to open it: relabel the row plain, keeping the
+  // ciphertext, then read it off the list. `manage_env` was all it took.
+  await assert.rejects(
+    () =>
+      as(ENV_ONLY, () =>
+        upsertEnv({
+          appId: APP,
+          key: "API_KEY",
+          value: "••••••••••••",
+          type: "plain",
+        }),
+      ),
+    /cannot be edited/i,
+  );
+  assert.equal((await as(OWNER, () => listEnv(APP)))[0]!.masked, true);
 });
 
 /* ------------------------------------------------------------------ */
@@ -453,7 +467,12 @@ test("a token can never exceed its own capability set", async () => {
   await asToken(OWNER, ["view"], async () => {
     assert.equal(await outcome(() => redeploy(APP)), "refused");
     assert.deepEqual(await getLogs(DEP), []);
-    assert.equal(await outcome(() => revealEnv("env_nope")), "refused");
+    assert.equal(
+      await outcome(() =>
+        upsertEnv({ appId: APP, key: "NOPE", value: "x", type: "plain" }),
+      ),
+      "refused",
+    );
   });
 });
 

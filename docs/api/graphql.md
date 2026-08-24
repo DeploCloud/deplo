@@ -127,7 +127,7 @@ the ones you will meet most:
 | `configure_apps` · `delete_apps` · `move_apps`       | build & source settings · delete · folder/project/team |
 | `open_app_console`                                   | shell into a running container                       |
 | `manage_domains` · `manage_basic_auth`               | custom domains & routing · the edge password gate    |
-| `manage_env` · `reveal_secrets`                      | variables · reading a masked value back              |
+| `manage_env` · `reveal_secrets`                      | variables · reading back a database or basic-auth credential (an env secret has no reveal at all) |
 | `read_app_files` · `write_app_files`                 | browse/download · edit/upload/delete                 |
 | `create_folders` · `organize_folders` · `delete_folders` | the overview's folders                          |
 | `create_projects` · `organize_projects` · `delete_projects` · `manage_environments` | projects & their environments |
@@ -318,6 +318,13 @@ mutation {
   }) { id key isMasked }
 }
 ```
+
+**A `secret` variable is write-only AND immutable.** Once a row is `secret`,
+`upsertEnv`, `renameEnv` and `saveSharedVar` refuse it, `setAppEnv` skips it and
+`importEnv` counts it in `skippedSecrets` instead of writing over it - a downgrade
+to `plain` would have handed the stored value straight back on the next read.
+Rotating one is delete + create. The reverse (`plain` -> `secret`) is always
+allowed.
 
 Share a variable with several apps at once (a shared variable, linked per app —
 ADR-0012: the link is what injects it, the scope only suggests):

@@ -33,6 +33,7 @@ import { gqlAction } from "@/lib/graphql-client";
 import { cn, readableTextColor } from "@/lib/utils";
 import { WizardStepper } from "@/components/shared/wizard-stepper";
 import { ChoiceCard, CheckMark } from "@/components/shared/choice-card";
+import { SECRET_EDIT_BLOCKED } from "@/components/env/env-edit-button";
 import type { SharedVarDTO } from "@/lib/data/shared-vars";
 import type { TeamEnvironment } from "@/lib/data/environments";
 
@@ -185,6 +186,8 @@ export function SharedVarDialog({
   const [appIds, setAppIds] = React.useState<string[]>(editing?.appIds ?? []);
   const [pending, startTransition] = React.useTransition();
   const router = useRouter();
+  /** Editing a stored secret: its value, key and type are frozen server-side. */
+  const frozen = editing?.type === "secret";
 
   const envsByProject = React.useMemo(() => {
     const m = new Map<string, TeamEnvironment[]>();
@@ -355,21 +358,37 @@ export function SharedVarDialog({
               </div>
               <div className="space-y-2">
                 <label className="text-sm font-medium">Value</label>
+                {/* Editing a SECRET, this wizard only changes who receives it: the
+                    value and the type are frozen, so both controls go read-only
+                    rather than pretending the save would carry them. */}
                 <Textarea
                   value={value}
                   onChange={(e) => setValue(e.target.value)}
                   placeholder={editing ? "Enter a new value" : "value"}
                   rows={3}
+                  readOnly={frozen}
+                  className={cn(frozen && "text-muted-foreground")}
                 />
+                {frozen && (
+                  <p className="text-xs text-muted-foreground">
+                    {SECRET_EDIT_BLOCKED} You can still change who it is shared
+                    with.
+                  </p>
+                )}
               </div>
               <div className="flex items-center justify-between rounded-lg border border-border p-3">
                 <div>
                   <p className="text-sm font-medium">Secret</p>
                   <p className="mt-1 text-xs text-muted-foreground">
-                    Hide the value in the UI after saving. It can never be read back.
+                    Hide the value in the UI after saving. It can never be read back
+                    or edited.
                   </p>
                 </div>
-                <Switch checked={secret} onCheckedChange={setSecret} />
+                <Switch
+                  checked={secret}
+                  onCheckedChange={setSecret}
+                  disabled={frozen}
+                />
               </div>
             </div>
           )}

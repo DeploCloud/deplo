@@ -769,6 +769,20 @@ pull request's preview at a scratch database. Advanced, collapsed, and empty for
 every app.
 _Avoid_: preview variable (it overrides an existing one), env override (name the runtime).
 
+**Secret variable** (the `secret` value of `EnvVarType`, on every env layer):
+A variable whose value is **write-only and immutable**. It is masked in every DTO, has no
+reveal path of any kind, and once stored it cannot be edited: not its value, not its key,
+not its type. Rotating one is **delete + add again**. The reverse — marking a `plain`
+variable secret — is always allowed, because hardening is never the thing you gate. The rule
+holds on all four layers (an app's own vars, **shared variables**, instance globals, preview
+overrides): `upsertEnv` / `renameEnv` / `saveSharedVar` / `upsertInstanceEnv` /
+`setPreviewEnvVar` refuse it, `setAppEnv` skips it, `importEnv` counts it in
+`skippedSecrets`. A shared secret can still be **re-shared** (who receives it is not the
+value). It exists because `type` is the sole authority for whether a read decrypts, so a
+downgrade to `plain` was a read-back that `manage_env` alone could perform.
+_Avoid_: "reveal a variable" (there is nothing to reveal), "edit the secret" (it is delete +
+add), masked as a synonym for secret (`masked` is what the DTO does about it).
+
 **Shared variable** (ADR-0010, opt-in per ADR-0012):
 ONE variable owned by a team, the unified replacement for shared-env groups,
 environment-scoped vars, and team-global vars. It INJECTS into an app through exactly one

@@ -3,7 +3,6 @@ import { EnvTargetEnum } from "./enums";
 import {
   listEnv,
   listAllAppEnv,
-  revealEnv,
   upsertEnv,
   renameEnv,
   importEnv,
@@ -107,6 +106,21 @@ const AppEnvGroupRef = builder
     }),
   });
 
+const EnvImportResultRef = builder
+  .objectRef<{ added: number; skippedSecrets: number }>("EnvImportResult")
+  .implement({
+    description: "What a .env import wrote, and what it deliberately left alone.",
+    fields: (t) => ({
+      added: t.exposeInt("added", {
+        description: "Variables created or updated.",
+      }),
+      skippedSecrets: t.exposeInt("skippedSecrets", {
+        description:
+          "Lines whose key already exists as a secret. A secret cannot be edited, so those were left untouched.",
+      }),
+    }),
+  });
+
 /* ------------------------------------------------------------------ */
 /* Inputs                                                              */
 /* ------------------------------------------------------------------ */
@@ -198,10 +212,10 @@ builder.mutationFields((t) => ({
     },
   }),
   importEnv: t.field({
-    type: "Int",
+    type: EnvImportResultRef,
     authScopes: { capability: "manage_env" },
     description:
-      "Bulk-import a .env-style blob; returns the number of vars imported.",
+      "Bulk-import a .env-style blob. Every line lands as plain, so a key that already exists as a secret is skipped rather than downgraded.",
     args: {
       appId: t.arg.string({ required: true }),
       blob: t.arg.string({ required: true }),
@@ -214,7 +228,7 @@ builder.mutationFields((t) => ({
     type: "Int",
     authScopes: { capability: "manage_env" },
     description:
-      "Replace an app's whole env set from the .env editor (upsert the given entries, delete the rest). New vars default to plain; unchanged secrets are preserved. Returns the resulting variable count.",
+      "Replace an app's whole env set from the .env editor (upsert the given entries, delete the rest). New vars default to plain; existing secrets are left untouched. Returns the resulting variable count.",
     args: {
       appId: t.arg.string({ required: true }),
       entries: t.arg({ type: [EnvEntryInputType], required: true }),
@@ -226,13 +240,6 @@ builder.mutationFields((t) => ({
         entries.map((e) => ({ key: e.key, value: e.value })),
         defaultTargets ?? undefined,
       ),
-  }),
-  revealEnv: t.field({
-    type: "String",
-    authScopes: { capability: "reveal_secrets" },
-    description: "Reveal a single secret's plaintext value.",
-    args: { id: t.arg.string({ required: true }) },
-    resolve: (_r, { id }) => revealEnv(id),
   }),
 }));
 

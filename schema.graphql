@@ -1877,6 +1877,17 @@ input EnvEntryInput {
   value: String!
 }
 
+"""What a .env import wrote, and what it deliberately left alone."""
+type EnvImportResult {
+  """Variables created or updated."""
+  added: Int
+
+  """
+  Lines whose key already exists as a secret. A secret cannot be edited, so those were left untouched.
+  """
+  skippedSecrets: Int
+}
+
 enum EnvTarget {
   preview
   production
@@ -2746,8 +2757,10 @@ type Mutation {
     serviceIds: [String!]
   ): DokployImportProjectResult
 
-  """Bulk-import a .env-style blob; returns the number of vars imported."""
-  importEnv(appId: String!, blob: String!, targets: [EnvTarget!]): Int
+  """
+  Bulk-import a .env-style blob. Every line lands as plain, so a key that already exists as a secret is skipped rather than downgraded.
+  """
+  importEnv(appId: String!, blob: String!, targets: [EnvTarget!]): EnvImportResult
 
   """Sign in with email + password. Sets the session cookie."""
   login(email: String!, password: String!): AuthPayload
@@ -2982,21 +2995,10 @@ type Mutation {
   """Reveal the full (unmasked) connection string for a database."""
   revealConnection(id: String!): String
 
-  """Reveal a single secret's plaintext value."""
-  revealEnv(id: String!): String
-
-  """Reveal an instance-wide secret's plaintext value."""
-  revealInstanceEnv(id: String!): String
-
   """
   The full registration URL of a link that is still pending — so the admin who minted it can hand it over again instead of minting a second one. Errors, rather than returning a dead URL, when the link was used, revoked, expired, or minted before the token was stored encrypted.
   """
   revealRegistrationLink(id: String!): String
-
-  """
-  Reveal one shared variable's decrypted value (the `manage_env`-gated reveal; the UI keeps secrets masked).
-  """
-  revealSharedVar(id: String!): String
 
   """
   Remove everything this run CREATED in Deplo - apps, databases, and the projects it made. Anything it merely reused is left alone, and Dokploy is not restarted. Each delete keeps its own capability gate, so what the actor may not remove comes back in `failed`.
@@ -3095,7 +3097,7 @@ type Mutation {
   setAppDeployHookEnabled(id: String!, value: Boolean!): App
 
   """
-  Replace an app's whole env set from the .env editor (upsert the given entries, delete the rest). New vars default to plain; unchanged secrets are preserved. Returns the resulting variable count.
+  Replace an app's whole env set from the .env editor (upsert the given entries, delete the rest). New vars default to plain; existing secrets are left untouched. Returns the resulting variable count.
   """
   setAppEnv(appId: String!, defaultTargets: [EnvTarget!], entries: [EnvEntryInput!]!): Int
 

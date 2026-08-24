@@ -70,6 +70,11 @@ export function EnvVarDialog({
   /** In-scope shared vars for this app; lazy-fetched when omitted. */
   sharedVars?: LinkableSharedVar[];
 }) {
+  // A secret has no edit form: it is write-only, and the pencil that opens this
+  // is already disabled for a secret row (EnvEditButton). The data layer refuses
+  // the write too — this is the lock that keeps a stray mount from ever putting
+  // a secret's fields on screen.
+  if (editing?.type === "secret") return null;
   if (editing) {
     return (
       <EditForm
@@ -105,8 +110,9 @@ function EditForm({
   appId: string;
   editing: EnvVarDTO;
 }) {
-  // Prefill: a plain var shows its value; a secret shows the MASK, which the
-  // server keeps as-is (so editing only the secret flag can't blank the value).
+  // Only a PLAIN var reaches this form (a secret is write-only and frozen), so
+  // the value prefills with the real thing. The Secret switch below still
+  // promotes one — hardening is the one type change that stays open.
   const [key, setKey] = React.useState(editing.key);
   const [value, setValue] = React.useState(editing.value);
   const [secret, setSecret] = React.useState(editing.type === "secret");
@@ -318,7 +324,7 @@ function AddDialog({
       <DialogContent
         selfManaged className="flex max-h-[85vh] flex-col gap-0 overflow-hidden p-0 sm:max-w-xl">
         <DialogHeader className="px-6 pb-4 pt-6">
-          <DialogTitle>Add variables</DialogTitle>
+          <DialogTitle>Add environment variables</DialogTitle>
           <DialogDescription>
             Add variables to this app, or link existing shared variables.
           </DialogDescription>
@@ -445,15 +451,24 @@ function StandaloneTab({ appId, onDone }: { appId: string; onDone: () => void })
       // Multiple rows → the additive importEnv path (all land as plain; flip to
       // secret from the table afterwards).
       const blob = filled.map((r) => `${r.key.trim()}=${r.value}`).join("\n");
-      const res = await gqlAction<{ importEnv: number }, number>(
+      type ImportResult = { added: number; skippedSecrets: number };
+      const res = await gqlAction<{ importEnv: ImportResult }, ImportResult>(
         `mutation($appId: String!, $blob: String!) {
-          importEnv(appId: $appId, blob: $blob)
+          importEnv(appId: $appId, blob: $blob) { added skippedSecrets }
         }`,
         { appId, blob },
         (d) => d.importEnv,
       );
       if (res.ok && res.data != null) {
-        toast.success(`Added ${res.data} variable(s)`);
+        // A secret cannot be overwritten, so a pasted line naming one is left
+        // alone. Say so: a variable that quietly did not import is worse than
+        // one that refused out loud.
+        const { added, skippedSecrets } = res.data;
+        toast.success(
+          skippedSecrets > 0
+            ? `Added ${added} variable(s), ${skippedSecrets} secret(s) skipped`
+            : `Added ${added} variable(s)`,
+        );
       } else if (!res.ok) {
         toast.error(res.error);
       }
@@ -480,16 +495,23 @@ function StandaloneTab({ appId, onDone }: { appId: string; onDone: () => void })
         )}
       </div>
 
-      <DialogFooter className="border-t border-border px-6 py-4">
-        <Button variant="outline" onClick={onDone}>
-          Cancel
-        </Button>
-        <Button
-          type="submit"
-          disabled={filled.length === 0 || invalid.length > 0}
-        >
-          {filled.length > 1 ? `Add ${filled.length}` : "Add"}
-        </Button>
+      <DialogFooter className="items-center border-t border-border px-6 py-4 sm:justify-between">
+        {/* The paste shortcut is the fastest way in and nothing else announces
+            it: the Key input explodes a whole .env into rows on paste. */}
+        <p className="text-xs text-muted-foreground">
+          or paste .env contents in the Key field
+        </p>
+        <div className="flex gap-2">
+          <Button variant="outline" onClick={onDone}>
+            Cancel
+          </Button>
+          <Button
+            type="submit"
+            disabled={filled.length === 0 || invalid.length > 0}
+          >
+            {filled.length > 1 ? `Add ${filled.length}` : "Add"}
+          </Button>
+        </div>
       </DialogFooter>
     </form>
   );

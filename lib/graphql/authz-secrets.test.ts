@@ -15,7 +15,7 @@ import type { GraphQLContext } from "./context";
 import { runWithIdentity } from "../auth/request-context";
 import { getCurrentUser } from "../auth";
 import { getActiveTeamId, reachableCapabilities } from "../membership";
-import { upsertEnv, revealEnv, listEnv } from "../data/env";
+import { upsertEnv, listEnv } from "../data/env";
 import { addBasicAuthUser } from "../data/basic-auth";
 import { saveSharedVar } from "../data/shared-vars";
 import { revealDeployHook } from "../data/deploy-hook";
@@ -220,20 +220,36 @@ test("the masked value is a mask, not the first characters of the secret", async
   assert.ok(!secret.value.includes(ENV_SECRET.slice(0, 8)), "no prefix of the value survives");
 });
 
-test("reveal is what reveals - with the permission, and only with it", async () => {
-  const [row] = await runWithIdentity({ userId: USER_1, teamId: TEAM_A }, () =>
+test("an env secret has no reveal at all - every capability still gets the mask", async () => {
+  // `revealEnv` used to be the sanctioned read-back, gated on `reveal_secrets`.
+  // It is gone: an env variable marked secret is write-only for everyone, and
+  // the mask is the only answer the schema has.
+  await setCaps([...ALL_CAPABILITIES]);
+  const [row] = await runWithIdentity({ userId: USER_M, teamId: TEAM_A }, () =>
     listEnv(APP),
   );
-  await setCaps(ALL_CAPABILITIES.filter((c) => c !== "reveal_secrets"));
+  assert.equal(row.masked, true);
+  assert.notEqual(row.value, ENV_SECRET);
+
+  // And the door that used to walk around the mask: relabel the row plain while
+  // sending the mask back, then read the list. Holding EVERY capability is not
+  // enough, because it is not a permission question any more.
   await assert.rejects(
-    () => runWithIdentity({ userId: USER_M, teamId: TEAM_A }, () => revealEnv(row.id)),
-    /permission/i,
-    "thirty-nine permissions must not add up to reading a secret",
+    () =>
+      runWithIdentity({ userId: USER_M, teamId: TEAM_A }, () =>
+        upsertEnv({
+          appId: APP,
+          key: "API_KEY",
+          value: row.value,
+          type: "plain",
+        }),
+      ),
+    /cannot be edited/i,
+    "forty permissions must not add up to reading a secret",
   );
-  await setCaps(["reveal_secrets"]);
-  assert.equal(
-    await runWithIdentity({ userId: USER_M, teamId: TEAM_A }, () => revealEnv(row.id)),
-    ENV_SECRET,
-    "and the permission has to actually work",
+  const [after] = await runWithIdentity({ userId: USER_M, teamId: TEAM_A }, () =>
+    listEnv(APP),
   );
+  assert.equal(after.masked, true);
+  assert.notEqual(after.value, ENV_SECRET);
 });

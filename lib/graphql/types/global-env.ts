@@ -5,7 +5,6 @@ import {
   listInstanceEnv,
   upsertInstanceEnv,
   deleteInstanceEnv,
-  revealInstanceEnv,
 } from "@/lib/data/global-env";
 import type { GlobalEnvVarDTO } from "@/lib/types";
 
@@ -94,13 +93,6 @@ builder.mutationFields((t) => ({
       await deleteInstanceEnv(id);
       return true;
     },
-  }),
-  revealInstanceEnv: t.field({
-    type: "String",
-    authScopes: { instanceAdmin: true },
-    description: "Reveal an instance-wide secret's plaintext value.",
-    args: { id: t.arg.string({ required: true }) },
-    resolve: (_r, { id }) => revealInstanceEnv(id),
   }),
 }));
 

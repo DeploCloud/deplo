@@ -27,7 +27,7 @@ import {
   appScopeWhere,
 } from "./app-graph-load";
 import { authorOf, loadUserIdentities } from "./user-identity";
-import { ALL_ENV_TARGETS, sanitizeTargets } from "../types";
+import { ALL_ENV_TARGETS, sanitizeTargets, secretImmutable } from "../types";
 import type { EnvTarget, EnvVar, EnvVarDTO, VarAuthor } from "../types";
 
 const MASK = "••••••••••••";
@@ -38,8 +38,8 @@ function toDTO(e: EnvVar, authors: Map<string, VarAuthor>): EnvVarDTO {
     id: e.id,
     key: e.key,
     // Secret values are always masked in the DTO, so don't pay to decrypt them.
-    // Only plain vars need their stored value back. Revealing a secret goes
-    // through revealEnv(), which decrypts the single requested var on demand.
+    // Only plain vars need their stored value back — a secret has NO read-back
+    // path at all, which is what makes its immutability worth anything.
     value: isSecret ? MASK : decryptSecret(e.valueEnc),
     masked: isSecret,
     targets: e.targets,
@@ -162,17 +162,6 @@ export async function listAllAppEnv(): Promise<AppEnvGroup[]> {
     }));
 }
 
-/** Reveal a single secret value. Requires `manage_env`; returns plaintext. */
-export async function revealEnv(id: string): Promise<string> {
-  const e = await loadEnvVar(id);
-  if (!e) throw new Error("Not found");
-  // `reveal_secrets`, not `manage_env`: setting a variable and reading one back
-  // are different powers, which is the whole reason they are two permissions
-  // (and why the write-only model holds for a role that only edits config).
-  await requireAppCapability(e.appId, "reveal_secrets");
-  return decryptSecret(e.valueEnc);
-}
-
 const KEY_RE = /^[A-Z_][A-Z0-9_]*$/i;
 
 export async function upsertEnv(input: {
@@ -194,15 +183,10 @@ export async function upsertEnv(input: {
   // update. Silently widening a legacy production-only secret would leak it into
   // runtimes it was never meant to reach.
   const targets = input.targets?.length ? sanitizeTargets(input.targets) : null;
-  // The editor sends the MASK back unchanged when only the targets/type changed on
-  // a secret (you cannot read back a secret you didn't set) — keep the stored value
-  // rather than encrypting the mask string over it. Same contract as the shared and
-  // global scopes; without it, editing a secret's environments WIPED its value.
-  const keepValue = input.value === MASK;
 
   await getDb().transaction(async (tx) => {
     const existing = await tx
-      .select({ id: envVarsTable.id })
+      .select({ id: envVarsTable.id, type: envVarsTable.type })
       .from(envVarsTable)
       .where(
         and(
@@ -212,11 +196,17 @@ export async function upsertEnv(input: {
       )
       .limit(1);
     if (existing.length > 0) {
+      // A SECRET is frozen. Writing `type` from caller input is what used to hand
+      // the plaintext back: the editor round-tripped the MASK so the row kept its
+      // ciphertext while the label flipped to plain, and the very next read
+      // decrypted it. Promotion plain -> secret still lands here: `existing` is
+      // plain, so there is nothing to protect yet.
+      if (existing[0]!.type === "secret") throw new Error(secretImmutable(key));
       const varId = existing[0]!.id;
       await tx
         .update(envVarsTable)
         .set({
-          ...(keepValue ? {} : { valueEnc: encryptSecret(input.value) }),
+          valueEnc: encryptSecret(input.value),
           type: input.type,
           // An edit never rewrites who created the var.
           updatedByUserId: userId,
@@ -265,6 +255,9 @@ export async function renameEnv(id: string, newKeyRaw: string): Promise<string> 
   if (!existing) throw new Error("Env var not found");
   // Env vars are owned through their app; an out-of-team id reads as "not found".
   const { userId } = await requireAppCapability(existing.appId, "manage_env");
+  // A secret is frozen whole, key included: "cannot be edited" that still let you
+  // rename it would be a promise kept in one field only.
+  if (existing.type === "secret") throw new Error(secretImmutable(existing.key));
   if (existing.key === newKey) return existing.appId; // no-op rename
   // Guard the `env_vars_app_key_uq (appId, key)` uniqueness with a readable message
   // instead of leaking the raw constraint violation the DB would otherwise throw.
@@ -288,34 +281,58 @@ export async function renameEnv(id: string, newKeyRaw: string): Promise<string> 
   return existing.appId;
 }
 
-/** Bulk import from a .env style blob. */
+/**
+ * Bulk import from a .env style blob.
+ *
+ * A line whose key already exists as a SECRET is SKIPPED, not written: every line
+ * imports as `plain`, so without the skip a paste containing a secret's name would
+ * silently downgrade it (and `upsertEnv` would refuse the whole import instead).
+ * The count comes back so the toast can say how many were left alone — a variable
+ * that quietly did not import is worse than one that refused out loud.
+ */
 export async function importEnv(
   appId: string,
   blob: string,
   targets?: EnvTarget[],
-): Promise<number> {
+): Promise<{ added: number; skippedSecrets: number }> {
   await requireAppCapability(appId, "manage_env");
-  let count = 0;
+  // One query, not one per line: the whole point is to know which keys to leave.
+  const secretKeys = new Set(
+    (
+      await getDb()
+        .select({ key: envVarsTable.key })
+        .from(envVarsTable)
+        .where(
+          and(eq(envVarsTable.appId, appId), eq(envVarsTable.type, "secret")),
+        )
+    ).map((r) => r.key),
+  );
+  let added = 0;
+  let skippedSecrets = 0;
   const lines = blob.split("\n");
   for (const raw of lines) {
     const line = raw.trim();
     if (!line || line.startsWith("#")) continue;
-    const eq = line.indexOf("=");
-    if (eq === -1) continue;
-    const key = line.slice(0, eq).trim();
-    let value = line.slice(eq + 1).trim();
+    const sep = line.indexOf("=");
+    if (sep === -1) continue;
+    const key = line.slice(0, sep).trim();
+    let value = line.slice(sep + 1).trim();
     if (
       (value.startsWith('"') && value.endsWith('"')) ||
       (value.startsWith("'") && value.endsWith("'"))
     )
       value = value.slice(1, -1);
     if (!KEY_RE.test(key)) continue;
+    if (secretKeys.has(key)) {
+      skippedSecrets++;
+      continue;
+    }
     // Imported vars are PLAIN by default — never silently marked secret. A user
     // can flip individual vars to secret afterwards from the table.
     await upsertEnv({ appId, key, value, targets, type: "plain" });
-    count++;
+    added++;
   }
-  return count;
+  return { added, skippedSecrets };
 }
 
 /**
@@ -326,10 +343,9 @@ export async function importEnv(
  *    (omitted ⇒ every runtime).
  *  - Existing keys keep their `type` and `targets` (the flat editor can't express
  *    them); only the value changes.
- *  - A SECRET whose incoming value is still the mask (the editor hides secret
- *    values) is left untouched — so editing the file never clobbers a secret you
- *    couldn't see. Changing a secret's masked value to anything else updates it
- *    (and it stays secret).
+ *  - A SECRET is left untouched, whatever the incoming value is. You cannot read
+ *    one back, so you cannot meaningfully rewrite one from a flat file either;
+ *    the row is frozen until somebody deletes it.
  */
 export async function setAppEnv(
   appId: string,
@@ -357,8 +373,9 @@ export async function setAppEnv(
     for (const [key, value] of wanted) {
       const e = byKey.get(key);
       if (e) {
-        // Skip an unchanged secret (its masked value came back verbatim).
-        if (e.type === "secret" && value === MASK) continue;
+        // A secret is frozen: skip it unconditionally. Comparing against the MASK
+        // used to be the whole guard, so any OTHER string overwrote the value.
+        if (e.type === "secret") continue;
         await tx
           .update(envVarsTable)
           .set({

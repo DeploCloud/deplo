@@ -1335,6 +1335,19 @@ export function sanitizeTargets(targets: EnvTarget[]): EnvTarget[] {
 }
 
 /**
+ * The refusal every env layer raises when a write would touch a SECRET row.
+ *
+ * A secret is write-only: its `type` column is the sole authority for whether a
+ * DTO decrypts the value, so a mutation that rewrote `type` from caller input
+ * (which every upsert used to do) handed the plaintext back to anyone holding
+ * `manage_env`, with no `reveal_secrets` in sight. Immutability is what closes
+ * it: create it, delete it, never edit it. Promotion `plain` -> `secret` stays
+ * open, because hardening is never the thing you gate.
+ */
+export const secretImmutable = (key: string) =>
+  `${key} is a secret and cannot be edited. Delete it and add it again.`;
+
+/**
  * Who created or last modified a variable. `null` when the author's account was
  * deleted (the FK is ON DELETE SET NULL) or the row predates authorship tracking
  * (migration 0029 does not backfill) — the UI renders "—".

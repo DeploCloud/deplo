@@ -293,8 +293,8 @@ export function PreviewOverrides({
                 <p className="flex items-start gap-2 rounded-lg border border-border bg-secondary/30 px-3 py-2.5 text-xs text-muted-foreground">
                   <Info className="mt-px size-3.5 shrink-0" />
                   <span>
-                    Pasted overrides are added as plain - flip individual ones to
-                    secret from the table.
+                    Pasted overrides are added as plain. Add a secret one at a
+                    time - a secret cannot be edited afterwards.
                   </span>
                 </p>
               ) : (

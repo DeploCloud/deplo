@@ -13,7 +13,7 @@ import { requireInstanceAdmin } from "../membership";
 import { recordActivity } from "./activity";
 import { authorOf, loadUserIdentities } from "./user-identity";
 import { encryptSecret, decryptSecret } from "../crypto";
-import { ALL_ENV_TARGETS, sanitizeTargets } from "../types";
+import { ALL_ENV_TARGETS, sanitizeTargets, secretImmutable } from "../types";
 import type {
   EnvTarget,
   GlobalEnvVar,
@@ -150,17 +150,6 @@ export async function listInstanceEnv(): Promise<GlobalEnvVarDTO[]> {
   return vars.map((v) => toDTO(v, authors));
 }
 
-export async function revealInstanceEnv(id: string): Promise<string> {
-  await requireInstanceAdmin();
-  const rows = await getDb()
-    .select({ valueEnc: instVars.valueEnc })
-    .from(instVars)
-    .where(eq(instVars.id, id))
-    .limit(1);
-  if (!rows[0]) throw new Error("Not found");
-  return decryptSecret(rows[0].valueEnc);
-}
-
 export async function upsertInstanceEnv(input: {
   key: string;
   value: string;
@@ -179,20 +168,24 @@ export async function upsertInstanceEnv(input: {
   // update. Silently widening a legacy production-only secret would leak it into
   // runtimes it was never meant to reach.
   const targets = input.targets?.length ? sanitizeTargets(input.targets) : null;
-  const keepValue = input.value === MASK;
 
   await getDb().transaction(async (tx) => {
     const existing = await tx
-      .select({ id: instVars.id })
+      .select({ id: instVars.id, type: instVars.type })
       .from(instVars)
       .where(eq(instVars.key, key))
       .limit(1);
     if (existing.length > 0) {
+      // Same rule as every other env layer: a secret is frozen. An instance admin
+      // could always read one back, so this is not what stops them — it is what
+      // stops the type column from being the one thing standing between a
+      // `manage_env` member and a plaintext an admin pasted for every team.
+      if (existing[0]!.type === "secret") throw new Error(secretImmutable(key));
       const id = existing[0]!.id;
       await tx
         .update(instVars)
         .set({
-          ...(keepValue ? {} : { valueEnc: encryptSecret(input.value) }),
+          valueEnc: encryptSecret(input.value),
           type: input.type,
           // An edit never rewrites who created the var.
           updatedByUserId: userId,

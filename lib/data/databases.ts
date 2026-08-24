@@ -595,7 +595,7 @@ export async function getConnectionString(id: string): Promise<string> {
   // This returns the plaintext connection string (embeds the DB password), so it
   // must enforce the capability at the data-layer boundary itself — not lean on
   // the revealConnection field's authScope alone (keep BOTH gates). Matches
-  // revealEnv/rotateDatabasePassword, which self-gate their secret reveals.
+  // rotateDatabasePassword, which self-gates its secret reveal the same way.
   const { teamId } = await requireCapability("reveal_secrets");
   // A read: the credentials of a database still arriving are the same
   // credentials it will have, and somebody watching it land may want them.

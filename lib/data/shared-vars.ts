@@ -31,7 +31,7 @@ import {
 } from "./node-access";
 import { authorOf, loadUserIdentities } from "./user-identity";
 import { encryptSecret, decryptSecret } from "../crypto";
-import { ALL_ENV_TARGETS, sanitizeTargets } from "../types";
+import { ALL_ENV_TARGETS, sanitizeTargets, secretImmutable } from "../types";
 import type { EnvTarget, SharedVar, VarAuthor } from "../types";
 import type { SharedVarEntry } from "../deploy/env-resolve";
 
@@ -414,26 +414,6 @@ export async function listAppliedSharedVarsByApp(): Promise<AppliedSharedVarDTO[
   return out;
 }
 
-export async function revealSharedVar(id: string): Promise<string> {
-  // Reading a value back is `reveal_secrets`, exactly like an app's own var —
-  // editing shared variables (`manage_env`) never implies reading one.
-  //
-  // The library itself is team-level, and BOTH capabilities that reach it
-  // (`reveal_secrets`, `manage_env`) survive the project clamp because they mean
-  // something on an app. So the refusal has to be explicit here, exactly as it is
-  // on the two list functions — otherwise a token narrowed to one project reads
-  // back every shared secret in the team by id.
-  await requireTeamWide("shared variables");
-  const { teamId } = await requireCapability("reveal_secrets");
-  const rows = await getDb()
-    .select({ valueEnc: varsTable.valueEnc })
-    .from(varsTable)
-    .where(and(eq(varsTable.id, id), eq(varsTable.teamId, teamId)))
-    .limit(1);
-  if (!rows[0]) throw new Error("Not found");
-  return decryptSecret(rows[0].valueEnc);
-}
-
 /* ------------------------------------------------------------------ */
 /* Mutations — gated `manage_env`, scoped to the active team.          */
 /* ------------------------------------------------------------------ */
@@ -574,19 +554,35 @@ export async function saveSharedVar(input: {
   if (!teamWide && environmentIds.length === 0 && projectIds.length === 0 && !reachesByLink)
     throw new Error("Share with at least one app, project, or the whole team");
 
-  // The editor sends the MASK back unchanged when only scope/type changed on a
-  // secret — keep the stored value rather than encrypting the mask string.
+  // The editor sends the MASK back unchanged when only the SCOPE changed on a
+  // secret — keep the stored value rather than encrypting the mask string. That
+  // round-trip is the only write a secret still accepts (see the refusal below).
   const keepValue = input.value === MASK;
   let savedId = input.id ?? "";
 
   await getDb().transaction(async (tx) => {
     if (input.id) {
       const existing = await tx
-        .select({ id: varsTable.id })
+        .select({
+          id: varsTable.id,
+          key: varsTable.key,
+          type: varsTable.type,
+        })
         .from(varsTable)
         .where(and(eq(varsTable.id, input.id), eq(varsTable.teamId, teamId)))
         .limit(1);
       if (!existing[0]) throw new Error("Variable not found");
+      // A secret's VALUE, KEY and TYPE are frozen; WHO it reaches is not. Changing
+      // the sharing of an existing secret is the one edit that neither reads it
+      // back nor could ever expose it, and forbidding it would mean deleting and
+      // retyping a credential every time a new app needs it. Anything else is
+      // refused whatever the client sends: `type` used to be written straight from
+      // the input, and with the mask round-trip that handed back the plaintext.
+      if (existing[0].type === "secret") {
+        const frozen =
+          key !== existing[0].key || input.type !== "secret" || !keepValue;
+        if (frozen) throw new Error(secretImmutable(existing[0].key));
+      }
       await tx
         .update(varsTable)
         .set({
@@ -687,7 +683,7 @@ export async function setSharedVarAppLink(
   // Belonging to the team is not enough for a NARROWED caller. A link injects
   // the value at the highest precedence of the deploy edge, into an app they
   // hold a console and logs on — so linking a team-wide variable would be a way
-  // to read one, and `revealSharedVar` refusing them would mean nothing. Same
+  // to read one, and the masking on every list would mean nothing. Same
   // message as an unknown id: a scope must never say which ids exist.
   if (
     !(await reachesWholeTeam()) &&

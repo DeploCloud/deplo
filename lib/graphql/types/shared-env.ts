@@ -4,7 +4,6 @@ import { EnvVarTypeEnum, VarAuthorRef } from "./env";
 import {
   listSharedVars,
   listSharedVarsForApp,
-  revealSharedVar,
   saveSharedVar,
   setSharedVarAppLink,
   deleteSharedVar,
@@ -234,13 +233,5 @@ builder.mutationFields((t) => ({
       await deleteSharedVar(id);
       return true;
     },
-  }),
-  revealSharedVar: t.field({
-    type: "String",
-    authScopes: { capability: "reveal_secrets" },
-    description:
-      "Reveal one shared variable's decrypted value (the `manage_env`-gated reveal; the UI keeps secrets masked).",
-    args: { id: t.arg.string({ required: true }) },
-    resolve: (_r, { id }) => revealSharedVar(id),
   }),
 }));

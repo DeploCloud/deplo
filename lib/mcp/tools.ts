@@ -691,7 +691,7 @@ const ENV: McpToolDef[] = [
     name: "set_env_var",
     title: "Set an environment variable",
     description:
-      "Create or update one variable. Mark it secret unless it is genuinely public; it takes effect on the next deploy.",
+      "Create one variable, or update a plain one. Mark it secret unless it is genuinely public - a secret can never be edited afterwards, only deleted. Takes effect on the next deploy.",
     group: "Environment",
     requires: "manage_env",
     idempotent: true,
@@ -736,7 +736,7 @@ const ENV: McpToolDef[] = [
     name: "import_env",
     title: "Import a .env file",
     description:
-      "Bulk-add variables from .env text. Returns how many were written.",
+      "Bulk-add variables from .env text. Every line lands as plain, so a key that already exists as a secret is skipped and counted, never overwritten.",
     group: "Environment",
     requires: "manage_env",
     input: z.object({
@@ -745,7 +745,7 @@ const ENV: McpToolDef[] = [
     }),
     query: /* GraphQL */ `
       mutation McpImportEnv($appId: String!, $blob: String!) {
-        importEnv(appId: $appId, blob: $blob)
+        importEnv(appId: $appId, blob: $blob) { added skippedSecrets }
       }
     `,
   }),
@@ -1745,8 +1745,9 @@ const SERVERS: McpToolDef[] = [
  * Every tool, in the order the settings page groups them.
  *
  * DELIBERATELY ABSENT, and each for a reason worth keeping:
- *  - every `reveal*` (revealEnv, revealConnection, revealBasicAuthPassword,
- *    revealSharedVar, revealAppDeployHook, revealInstanceEnv): rule 1 above.
+ *  - every `reveal*` (revealConnection, revealBasicAuthPassword,
+ *    revealAppDeployHook, revealRecoveryKey): rule 1 above. The env layers have
+ *    no reveal left to withhold — a secret variable has no read-back path at all.
  *  - the account surface (updateProfile, changePassword, sessions, 2FA): an API
  *    token is a principal, not a stand-in for the person, and `lib/data` already
  *    refuses every one of these for any token (`requirePersonalSession`).

@@ -18,11 +18,12 @@ import {
   environments as environmentsTable,
   apps as appsTable,
   folders as foldersTable,
+  sharedEnvVars as sharedVarsTable,
 } from "../db/schema/control-plane";
+import { decryptSecret } from "../crypto";
 import {
   saveSharedVar,
   deleteSharedVar,
-  revealSharedVar,
   setSharedVarAppLink,
   listSharedVars,
   listSharedVarsForApp,
@@ -224,19 +225,20 @@ test("an omitted target set means every runtime", async () => {
 });
 
 test("an edit that names no targets PRESERVES the stored ones", async () => {
-  // The dialogs no longer send targets. A legacy production-only SECRET must not
-  // silently widen to every runtime on a value rotation.
+  // The dialogs no longer send targets. A legacy production-only variable must
+  // not silently widen to every runtime on a value edit. (Plain on purpose: a
+  // secret takes no value edit at all — env-secret-immutable.test.ts.)
   // Linked to app_p so the deploy-loader assertion below has an injecting row
   // to read (a scope alone no longer injects — ADR-0012).
   const id = await asUser1(() =>
-    mkVar({ key: "STRIPE_LIVE_KEY", value: "live", type: "secret", targets: ["production"], teamWide: true, appIds: ["app_p"] }),
+    mkVar({ key: "STRIPE_LIVE_KEY", value: "live", type: "plain", targets: ["production"], teamWide: true, appIds: ["app_p"] }),
   );
   await asUser1(() =>
     saveSharedVar({
       id,
       key: "STRIPE_LIVE_KEY",
       value: "rotated",
-      type: "secret",
+      type: "plain",
       teamWide: true,
       environmentIds: [],
       projectIds: [],
@@ -254,8 +256,8 @@ test("an edit that names no targets PRESERVES the stored ones", async () => {
     saveSharedVar({
       id,
       key: "STRIPE_LIVE_KEY",
-      value: "••••••••••••",
-      type: "secret",
+      value: "rotated",
+      type: "plain",
       targets: [...ALL],
       teamWide: true,
       environmentIds: [],
@@ -449,17 +451,24 @@ test("listSharedVarsForApp reads values like the Variables page does", async () 
   assert.notEqual(secret.value, "s3cr3t");
 });
 
-test("a secret shared var is masked in the list and revealed on demand", async () => {
-  const id = await asUser1(() =>
+test("a secret shared var is masked, and NOTHING reads it back", async () => {
+  await asUser1(() =>
     mkVar({ key: "SECRET", value: "s3cr3t", type: "secret", teamWide: true }),
   );
   const [v] = await asUser1(() => listSharedVars());
   assert.equal(v!.masked, true);
   assert.notEqual(v!.value, "s3cr3t");
-  assert.equal(await asUser1(() => revealSharedVar(id)), "s3cr3t");
+  // There is no reveal path left: `revealSharedVar` is gone, and the only other
+  // way the plaintext ever surfaced was flipping the row to plain, which
+  // `saveSharedVar` now refuses (see env-secret-immutable.test.ts).
+  const forApp = await asUser1(() => listSharedVarsForApp("app_p"));
+  assert.notEqual(forApp.find((r) => r.key === "SECRET")!.value, "s3cr3t");
 });
 
-test("editing a secret with the MASK keeps the stored value", async () => {
+test("a scope-only edit of a secret keeps the stored value", async () => {
+  // The wizard sends the MASK back for a secret while it changes WHO gets it —
+  // the one write a secret still accepts. `keepValue` is what stops that mask
+  // from being encrypted over the real value.
   const id = await asUser1(() =>
     mkVar({ key: "S", value: "real", type: "secret", teamWide: true }),
   );
@@ -470,12 +479,21 @@ test("editing a secret with the MASK keeps the stored value", async () => {
       value: "••••••••••••",
       type: "secret",
       targets: ["production"],
-      teamWide: true,
+      teamWide: false,
       environmentIds: [],
-      projectIds: [],
+      projectIds: [PRJ],
     }),
   );
-  assert.equal(await asUser1(() => revealSharedVar(id)), "real");
+  const after = await asUser1(() => dtoOf("S"));
+  assert.deepEqual(after.projectIds, [PRJ], "the scope DID change");
+  assert.equal(after.type, "secret");
+  assert.equal(after.masked, true);
+  // Not blanked, not overwritten with dots: the ciphertext still opens.
+  const [row] = await db
+    .select({ valueEnc: sharedVarsTable.valueEnc })
+    .from(sharedVarsTable)
+    .where(eq(sharedVarsTable.id, id));
+  assert.equal(decryptSecret(row!.valueEnc), "real");
 });
 
 test("loadSharedVarsForApp: an availability scope alone injects NOTHING (opt-in, ADR-0012)", async () => {
@@ -612,20 +630,29 @@ test("a value-only edit of a LINK-ONLY variable still saves (links count as reac
   });
 });
 
-test("re-sending a secret's MASK keeps the stored value; typing over it replaces it", async () => {
+test("a secret is frozen: the mask round-trip can no longer downgrade it", async () => {
   await asUser1(async () => {
     await mkVar({ key: "SEC", value: "s3cret", type: "secret", teamWide: true });
     const masked = await dtoOf("SEC");
     assert.notEqual(masked.value, "s3cret", "the DTO never carries the plaintext");
 
-    // Flip secret → plain WITHOUT touching the prefilled mask.
-    await editValueLikeDialog(masked, { type: "plain" });
-    const revealed = await dtoOf("SEC");
-    assert.equal(revealed.type, "plain");
-    assert.equal(revealed.value, "s3cret", "the mask round-trip kept the value");
+    // THE hole this test used to assert as correct: flip secret → plain without
+    // touching the prefilled mask, and the row kept its ciphertext while the
+    // label changed — so the very next list decrypted it for anyone holding
+    // `manage_env`.
+    await assert.rejects(
+      () => editValueLikeDialog(masked, { type: "plain" }),
+      /cannot be edited/i,
+    );
+    const after = await dtoOf("SEC");
+    assert.equal(after.type, "secret", "still secret");
+    assert.equal(after.masked, true);
+    assert.notEqual(after.value, "s3cret");
 
-    // Now actually type a new value.
-    await editValueLikeDialog(revealed, { value: "n3w", type: "secret" });
-    assert.equal(await asUser1(() => revealSharedVar(masked.id)), "n3w");
+    // Typing a new value over it is refused too — a secret is write-once.
+    await assert.rejects(
+      () => editValueLikeDialog(masked, { value: "n3w", type: "secret" }),
+      /cannot be edited/i,
+    );
   });
 });

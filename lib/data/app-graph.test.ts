@@ -302,8 +302,9 @@ test("an app env var records its author and defaults to every runtime", async ()
 });
 
 test("an edit that names no targets PRESERVES the stored ones", async () => {
-  // The dialogs no longer send targets. A legacy production-only SECRET must not
-  // silently widen to every runtime on a value rotation.
+  // The dialogs no longer send targets. A legacy production-only variable must
+  // not silently widen to every runtime on a value edit. (Plain on purpose: a
+  // secret accepts no edit at all — see env-secret-immutable.test.ts.)
   await seedApp(db, { id: "prj_1", status: "active" });
   await asUser1(async () => {
     await upsertEnv({
@@ -311,9 +312,9 @@ test("an edit that names no targets PRESERVES the stored ones", async () => {
       key: "STRIPE",
       value: "live",
       targets: ["production"],
-      type: "secret",
+      type: "plain",
     });
-    await upsertEnv({ appId: "prj_1", key: "STRIPE", value: "rotated", type: "secret" });
+    await upsertEnv({ appId: "prj_1", key: "STRIPE", value: "rotated", type: "plain" });
     const [v] = await listEnv("prj_1");
     assert.deepEqual(v!.targets, ["production"]);
     // An explicit set still replaces them.
@@ -322,17 +323,19 @@ test("an edit that names no targets PRESERVES the stored ones", async () => {
       key: "STRIPE",
       value: "rotated",
       targets: ["production", "preview"],
-      type: "secret",
+      type: "plain",
     });
     const [v2] = await listEnv("prj_1");
     assert.deepEqual([...v2!.targets].sort(), ["preview", "production"]);
   });
 });
 
-test("re-saving a secret with the MASK keeps its value (editing targets can't wipe it)", async () => {
-  // The edit dialog prefills a secret's value with the MASK (you can't read back a
-  // secret you didn't set). Without a keep-value contract, changing ONLY the
-  // environments would silently overwrite the real value with the mask string.
+test("re-saving a secret is refused outright, targets and all", async () => {
+  // This used to be the keep-value contract: the edit dialog prefilled a secret
+  // with the MASK, and re-sending it preserved the stored ciphertext so a
+  // targets-only edit couldn't wipe the value. It also made the type flip free —
+  // send the mask, ask for `plain`, and the next read decrypted it. A secret is
+  // frozen now, so there is nothing left to preserve.
   await seedApp(db, { id: "prj_1", status: "active" });
   await asUser1(async () => {
     await upsertEnv({
@@ -346,21 +349,24 @@ test("re-saving a secret with the MASK keeps its value (editing targets can't wi
       .select()
       .from(envVarsTable)
       .where(eq(envVarsTable.appId, "prj_1"));
-    // Re-save with the MASK sentinel and an extra target.
-    await upsertEnv({
-      appId: "prj_1",
-      key: "API_KEY",
-      value: "••••••••••••",
-      targets: ["production", "preview"],
-      type: "secret",
-    });
+    await assert.rejects(
+      () =>
+        upsertEnv({
+          appId: "prj_1",
+          key: "API_KEY",
+          value: "••••••••••••",
+          targets: ["production", "preview"],
+          type: "secret",
+        }),
+      /cannot be edited/i,
+    );
     const after = await db
       .select()
       .from(envVarsTable)
       .where(eq(envVarsTable.appId, "prj_1"));
-    assert.equal(after[0]!.valueEnc, before[0]!.valueEnc, "value preserved");
+    assert.equal(after[0]!.valueEnc, before[0]!.valueEnc, "value untouched");
     const list = await listEnv("prj_1");
-    assert.deepEqual([...list[0]!.targets].sort(), ["preview", "production"]);
+    assert.deepEqual(list[0]!.targets, ["production"], "targets untouched");
   });
 });
 

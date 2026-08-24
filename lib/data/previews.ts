@@ -34,6 +34,7 @@ import { requireFolderCapabilityForApp } from "./folder-access";
 import { assertPreviewBaseNotAnotherTeams } from "./domains";
 import { canHostWorkloads, listServersForTeam } from "./servers";
 import { requireAppCapability } from "./node-access";
+import { secretImmutable } from "../types";
 
 /**
  * The gated surface for **pull request previews** — the security boundary the
@@ -561,6 +562,21 @@ export async function setPreviewEnvVar(
       `"${clean}" is not a valid variable name — use letters, numbers and underscores, starting with a letter or underscore`,
     );
   }
+  // A secret override is frozen like every other secret. This upsert was blind,
+  // and its `type` defaults to "plain": re-adding the same key downgraded the row,
+  // which also strips the one filter that keeps a secret OUT of a fork's preview
+  // container (lib/deploy/build.ts drops secret-typed entries for a fork).
+  const stored = await getDb()
+    .select({ type: appPreviewEnvVarsTable.type })
+    .from(appPreviewEnvVarsTable)
+    .where(
+      and(
+        eq(appPreviewEnvVarsTable.appId, appId),
+        eq(appPreviewEnvVarsTable.key, clean),
+      ),
+    )
+    .limit(1);
+  if (stored[0]?.type === "secret") throw new Error(secretImmutable(clean));
   const user = await getCurrentUser();
   const now = nowIso();
   await getDb()

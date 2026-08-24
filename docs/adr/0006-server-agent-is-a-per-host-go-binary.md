@@ -165,7 +165,7 @@ the gateway-config sentinel substitution.
    logic in Go.
 
 7. **Decrypted env crosses the wire; the agent never holds the encryption key (D4).** The
-   control plane decrypts via `revealEnv` ([`lib/data/env.ts`](../../lib/data/env.ts)) and sends
+   control plane decrypts at the deploy edge ([`lib/deploy/build.ts`](../../lib/deploy/build.ts)) and sends
    the resolved plaintext map inside the deploy request over mTLS. The master key lives in
    exactly one place. The container needs plaintext to run regardless, so the only real variable
    is *where the master key lives* — one place beats every-server, on both simplicity and blast

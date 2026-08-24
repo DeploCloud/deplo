@@ -9,7 +9,13 @@ process.env.DEPLO_PUBLIC_URL = "https://deplo.test";
 
 import { makeTestDb, type TestDb } from "../db/test-harness";
 import { __setTestDb, __resetTestDb } from "../db/client";
-import { projects as projectsTable } from "../db/schema/control-plane";
+import { eq } from "drizzle-orm";
+
+import {
+  projects as projectsTable,
+  sharedEnvVars as sharedEnvVarsTable,
+} from "../db/schema/control-plane";
+import { decryptSecret } from "../crypto";
 import { runWithIdentity, type TokenGrant } from "../auth/request-context";
 import {
   seedIdentity,
@@ -37,7 +43,6 @@ import {
   deleteSharedVar,
   listSharedVars,
   listSharedVarsForApp,
-  revealSharedVar,
   saveSharedVar,
   setSharedVarAppLink,
 } from "./shared-vars";
@@ -201,14 +206,19 @@ async function teamWideSecret(): Promise<string> {
 }
 
 test("a project-scoped token can't read the team's shared secrets back", async () => {
-  const id = await teamWideSecret();
+  await teamWideSecret();
 
-  // The control: the same secret, the same user, over a session.
-  assert.equal(await asUser(() => revealSharedVar(id)), "sk_live_hunter2");
+  // The control: the same library, the same user, over a session — masked even
+  // there, because a secret has no read-back path for anyone.
+  const mine = await asUser(() => listSharedVars());
+  assert.ok(
+    !JSON.stringify(mine).includes("sk_live_hunter2"),
+    "not even a session carries the plaintext",
+  );
 
   await refused(
-    () => scoped(() => revealSharedVar(id)),
-    "a token limited to one project revealed a team-wide secret",
+    () => scoped(() => listSharedVars()),
+    "a token limited to one project read the team-wide shared library",
   );
 });
 
@@ -248,8 +258,12 @@ test("nor author one — a team-wide var reaches every app in the team", async (
     "a narrowed token rewrote a team-wide shared variable",
   );
 
+  const [row] = await db
+    .select({ valueEnc: sharedEnvVarsTable.valueEnc })
+    .from(sharedEnvVarsTable)
+    .where(eq(sharedEnvVarsTable.id, id));
   assert.equal(
-    await asUser(() => revealSharedVar(id)),
+    decryptSecret(row!.valueEnc),
     "sk_live_hunter2",
     "and the stored value is untouched",
   );
@@ -298,8 +312,8 @@ test("nor link one into an app it controls", async () => {
   const id = await teamWideSecret();
 
   // Linking injects the value at the highest deploy precedence into an app the
-  // token holds a console and logs on, so it is `revealSharedVar` by other
-  // means — which is why that one is `requireTeamWide`.
+  // token holds a console and logs on, so it is a read-back by other means —
+  // which is why the whole shared library is `requireTeamWide`.
   const refusal = await refused(
     () => scoped(() => setSharedVarAppLink(id, APP_IN, true)),
     "a narrowed token linked a team-wide secret into its own app",

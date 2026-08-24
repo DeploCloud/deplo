@@ -2,7 +2,7 @@
 
 import * as React from "react";
 import { useRouter } from "next/navigation";
-import { Loader2, Plus, Trash2, Pencil, SearchX } from "lucide-react";
+import { Loader2, Plus, Trash2, SearchX } from "lucide-react";
 import {
   Dialog,
   DialogContent,
@@ -31,6 +31,7 @@ import { useOptimisticRemove } from "@/components/shared/use-optimistic-remove";
 import { GlobalVarsGraphic } from "@/components/env/global-vars-graphic";
 import { EnvValueCell } from "@/components/env/env-value-cell";
 import { EnvAuthorCell } from "@/components/env/env-author-cell";
+import { EnvEditButton } from "@/components/env/env-edit-button";
 import {
   EnvFilters,
   useEnvFilters,
@@ -178,17 +179,13 @@ export function GlobalEnvManager({
                   </TableCell>
                   <TableCell className="text-right">
                     <div className="flex justify-end gap-1">
-                      <Button
-                        variant="ghost"
-                        size="icon-sm"
+                      <EnvEditButton
+                        secret={v.type === "secret"}
                         onClick={() => {
                           setEditing(v);
                           setAddOpen(true);
                         }}
-                        aria-label="Edit"
-                      >
-                        <Pencil className="size-4" />
-                      </Button>
+                      />
                       <Button
                         variant="ghost"
                         size="icon-sm"

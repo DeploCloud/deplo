@@ -40,13 +40,16 @@ const KEY_RE = /^[A-Z_][A-Z0-9_]*$/i;
  * reason: an edit must never widen the deploy runtimes a legacy variable reaches.
  * So a save here can only ever change the value and the type.
  */
-export function SharedVarEditDialog({
-  open,
-  onOpenChange,
-  editing,
-  onChangeSharing,
-  warnShared = false,
-}: {
+export function SharedVarEditDialog(props: SharedVarEditDialogProps) {
+  // A secret has no edit form. Every affordance that opens this one is already
+  // disabled for a secret row (EnvEditButton) and the data layer refuses the
+  // write — this is the third lock, so a stray mount cannot put a secret's
+  // fields on screen at all.
+  if (props.editing.type === "secret") return null;
+  return <SharedVarEditForm {...props} />;
+}
+
+interface SharedVarEditDialogProps {
   open: boolean;
   onOpenChange: (v: boolean) => void;
   editing: SharedVarDTO;
@@ -59,9 +62,16 @@ export function SharedVarEditDialog({
    * whole frame, so it defaults off.
    */
   warnShared?: boolean;
-}) {
-  // Prefill: a plain var shows its value; a secret shows the MASK, which the
-  // server keeps as-is — so flipping only the type can't blank the stored value.
+}
+
+function SharedVarEditForm({
+  open,
+  onOpenChange,
+  editing,
+  onChangeSharing,
+  warnShared = false,
+}: SharedVarEditDialogProps) {
+  // Prefill: a plain var shows its value.
   const [key, setKey] = React.useState(editing.key);
   const [value, setValue] = React.useState(editing.value);
   const [secret, setSecret] = React.useState(editing.type === "secret");

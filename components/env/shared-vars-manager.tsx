@@ -4,7 +4,6 @@ import * as React from "react";
 import { useRouter } from "next/navigation";
 import {
   Plus,
-  Pencil,
   Trash2,
   Share2,
   SearchX,
@@ -29,6 +28,7 @@ import { SharedVarsGraphic } from "@/components/env/shared-vars-graphic";
 import { EnvValueCell } from "@/components/env/env-value-cell";
 import { EnvAuthorCell } from "@/components/env/env-author-cell";
 import { SharedVarEditDialog } from "@/components/env/shared-var-edit-dialog";
+import { EnvEditButton } from "@/components/env/env-edit-button";
 import { SharedWithChips } from "@/components/env/shared-with-chips";
 import {
   EnvFilters,
@@ -277,16 +277,12 @@ export function SharedVarsManager({
                   </TableCell>
                   <TableCell className="text-right">
                     <div className="flex justify-end gap-1">
-                      <SimpleTooltip content="Edit value">
-                        <Button
-                          variant="ghost"
-                          size="icon-sm"
-                          onClick={() => setEditing(v)}
-                          aria-label="Edit value"
-                        >
-                          <Pencil className="size-4" />
-                        </Button>
-                      </SimpleTooltip>
+                      <EnvEditButton
+                        secret={v.type === "secret"}
+                        label="Edit value"
+                        tooltip="Edit value"
+                        onClick={() => setEditing(v)}
+                      />
                       <SimpleTooltip content="Change sharing">
                         <Button
                           variant="ghost"

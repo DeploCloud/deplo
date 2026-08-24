@@ -16,7 +16,6 @@ import {
   listInstanceEnv,
   upsertInstanceEnv,
   deleteInstanceEnv,
-  revealInstanceEnv,
   loadInstanceEnv,
 } from "./global-env";
 import { upsertEnv } from "./env";
@@ -25,8 +24,8 @@ import { appEnvSnapshot } from "./project-backup-descriptor";
 /**
  * Data-layer tests for INSTANCE-wide global env vars (the one scope that survives
  * ADR-0010; team-global vars became team-wide shared vars — see shared-vars.test).
- * Covers instance-admin gating, secret masking/reveal, the MASK keep-value edit,
- * the deploy loader, and the backup snapshot.
+ * Covers instance-admin gating, secret masking (a secret has no read-back path
+ * and takes no edit), the deploy loader, and the backup snapshot.
  */
 
 let db: TestDb;
@@ -92,14 +91,27 @@ test("instance upsert updates the existing var (no duplicate)", async () => {
   assert.equal(list[0]!.targets.length, ALL.length);
 });
 
-test("a secret instance global is masked in the list and revealed on demand", async () => {
+test("a secret instance global is masked, and NOTHING reads it back", async () => {
   await asUser1(() =>
     upsertInstanceEnv({ key: "SECRET", value: "s3cr3t", targets: [...ALL], type: "secret" }),
   );
   const list = await asUser1(() => listInstanceEnv());
   assert.equal(list[0]!.masked, true);
   assert.notEqual(list[0]!.value, "s3cr3t");
-  assert.equal(await asUser1(() => revealInstanceEnv(list[0]!.id)), "s3cr3t");
+  // `revealInstanceEnv` is gone, and so is the other way out: relabelling the
+  // row plain, which the upsert now refuses.
+  await assert.rejects(
+    () =>
+      asUser1(() =>
+        upsertInstanceEnv({
+          key: "SECRET",
+          value: "••••••••••••",
+          type: "plain",
+        }),
+      ),
+    /cannot be edited/i,
+  );
+  assert.equal((await asUser1(() => listInstanceEnv()))[0]!.masked, true);
 });
 
 test("deleteInstanceEnv removes it", async () => {
@@ -111,18 +123,27 @@ test("deleteInstanceEnv removes it", async () => {
   assert.deepEqual(await asUser1(() => listInstanceEnv()), []);
 });
 
-test("editing a secret with the MASK keeps the stored value (targets-only edit)", async () => {
+test("an instance secret refuses every edit, targets included", async () => {
   await asUser1(() =>
     upsertInstanceEnv({ key: "S", value: "real", targets: ["production"], type: "secret" }),
   );
-  const [v] = await asUser1(() => listInstanceEnv());
-  // Re-upsert with the MASK sentinel + more targets — value preserved, targets updated.
-  await asUser1(() =>
-    upsertInstanceEnv({ key: "S", value: "••••••••••••", targets: [...ALL], type: "secret" }),
+  // The MASK round-trip used to be the way to edit a secret's targets while
+  // keeping its value. It is also what made the type flip free, so the whole
+  // write is refused: a secret is created and deleted, never edited.
+  await assert.rejects(
+    () =>
+      asUser1(() =>
+        upsertInstanceEnv({
+          key: "S",
+          value: "••••••••••••",
+          targets: [...ALL],
+          type: "secret",
+        }),
+      ),
+    /cannot be edited/i,
   );
-  assert.equal(await asUser1(() => revealInstanceEnv(v!.id)), "real");
   const [v2] = await asUser1(() => listInstanceEnv());
-  assert.equal(v2!.targets.length, ALL.length);
+  assert.deepEqual(v2!.targets, ["production"], "nothing moved");
 });
 
 test("an omitted target set means every runtime", async () => {
@@ -134,18 +155,19 @@ test("an omitted target set means every runtime", async () => {
 });
 
 test("an edit that names no targets PRESERVES the stored ones", async () => {
-  // The dialogs no longer send targets. A legacy production-only SECRET must not
-  // silently widen to every runtime on a value rotation.
+  // The dialogs no longer send targets. A legacy production-only variable must
+  // not silently widen to every runtime on a value edit. (Plain: a secret takes
+  // no edit at all.)
   await asUser1(() =>
-    upsertInstanceEnv({ key: "STRIPE", value: "live", targets: ["production"], type: "secret" }),
+    upsertInstanceEnv({ key: "STRIPE", value: "live", targets: ["production"], type: "plain" }),
   );
-  await asUser1(() => upsertInstanceEnv({ key: "STRIPE", value: "rotated", type: "secret" }));
+  await asUser1(() => upsertInstanceEnv({ key: "STRIPE", value: "rotated", type: "plain" }));
   const [v] = await asUser1(() => listInstanceEnv());
   assert.deepEqual(v!.targets, ["production"]);
-  assert.equal(await asUser1(() => revealInstanceEnv(v!.id)), "rotated");
+  assert.equal(v!.value, "rotated");
   // An explicit set still replaces them.
   await asUser1(() =>
-    upsertInstanceEnv({ key: "STRIPE", value: "rotated", targets: [...ALL], type: "secret" }),
+    upsertInstanceEnv({ key: "STRIPE", value: "rotated", targets: [...ALL], type: "plain" }),
   );
   assert.equal((await asUser1(() => listInstanceEnv()))[0]!.targets.length, ALL.length);
 });

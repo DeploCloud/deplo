@@ -12,7 +12,7 @@ import { runWithIdentity } from "../auth/request-context";
 import { seedIdentity, TEAM_A } from "./identity-test-helpers";
 import { seedApp, seedServer } from "./app-graph-test-helpers";
 import { listAllAppEnv, listEnv, upsertEnv } from "./env";
-import { deleteSharedVar, revealSharedVar, saveSharedVar } from "./shared-vars";
+import { deleteSharedVar, listSharedVars, saveSharedVar } from "./shared-vars";
 import type { Capability } from "../types";
 
 /**
@@ -133,7 +133,7 @@ test("the team's shared-variable library stays closed to a node-only holder", as
   await as(DEV, async () => {
     // Both of these read or destroy a TEAM resource with no node dimension, so
     // they stay behind the team capability however many folders you hold.
-    await assert.rejects(() => revealSharedVar(varId), /permission/i);
+    await assert.rejects(() => listSharedVars(), /permission/i);
     await assert.rejects(() => deleteSharedVar(varId), /permission/i);
   });
 });

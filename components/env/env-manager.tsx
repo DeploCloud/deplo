@@ -3,7 +3,7 @@
 import * as React from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
-import { Plus, Trash2, Pencil, Share2, SearchX, Unlink } from "lucide-react";
+import { Plus, Trash2, Share2, SearchX, Unlink } from "lucide-react";
 import {
   Table,
   TableBody,
@@ -30,6 +30,7 @@ import { EnvValueCell } from "@/components/env/env-value-cell";
 import { EnvVarDialog } from "@/components/env/env-var-dialog";
 import { EnvAuthorCell } from "@/components/env/env-author-cell";
 import { SharedVarEditDialog } from "@/components/env/shared-var-edit-dialog";
+import { EnvEditButton } from "@/components/env/env-edit-button";
 import {
   EnvFilters,
   useEnvFilters,
@@ -229,14 +230,10 @@ export function EnvManager({
                     </TableCell>
                     <TableCell className="text-right">
                       <div className="flex justify-end gap-1">
-                        <Button
-                          variant="ghost"
-                          size="icon-sm"
+                        <EnvEditButton
+                          secret={row.type === "secret"}
                           onClick={() => { setEditing(row); setAddOpen(true); }}
-                          aria-label="Edit"
-                        >
-                          <Pencil className="size-4" />
-                        </Button>
+                        />
                         <Button
                           variant="ghost"
                           size="icon-sm"
@@ -385,17 +382,12 @@ function SharedRowActions({
 
   return (
     <div className="flex justify-end gap-1">
-      <SimpleTooltip content="Edit value">
-        <Button
-          variant="ghost"
-          size="icon-sm"
-          disabled={!detail}
-          onClick={() => setEditOpen(true)}
-          aria-label="Edit"
-        >
-          <Pencil className="size-4" />
-        </Button>
-      </SimpleTooltip>
+      <EnvEditButton
+        secret={row.type === "secret"}
+        disabled={!detail}
+        tooltip="Edit value"
+        onClick={() => setEditOpen(true)}
+      />
 
       <DropdownMenu>
         <SimpleTooltip content="Delete…">

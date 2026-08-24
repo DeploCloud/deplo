@@ -24,7 +24,6 @@ import {
 import { CSS } from "@dnd-kit/utilities";
 import {
   Plus,
-  Pencil,
   Trash2,
   Share2,
   ArrowUpRight,
@@ -64,6 +63,7 @@ import { EnvValueCell } from "@/components/env/env-value-cell";
 import { EnvVarDialog } from "@/components/env/env-var-dialog";
 import { EnvAuthorCell } from "@/components/env/env-author-cell";
 import { SharedVarEditDialog } from "@/components/env/shared-var-edit-dialog";
+import { EnvEditButton } from "@/components/env/env-edit-button";
 import {
   EnvFilters,
   useEnvFilters,
@@ -952,14 +952,10 @@ function AppVarsCard({
                       </TableCell>
                       <TableCell className="text-right">
                         <div className="flex justify-end gap-1">
-                          <Button
-                            variant="ghost"
-                            size="icon-sm"
+                          <EnvEditButton
+                            secret={row.type === "secret"}
                             onClick={() => onEdit(row)}
-                            aria-label="Edit"
-                          >
-                            <Pencil className="size-4" />
-                          </Button>
+                          />
                           <Button
                             variant="ghost"
                             size="icon-sm"
@@ -996,14 +992,11 @@ function AppVarsCard({
                       </TableCell>
                       <TableCell className="text-right">
                         <div className="flex justify-end gap-1">
-                          <Button
-                            variant="ghost"
-                            size="icon-sm"
+                          <EnvEditButton
+                            secret={row.type === "secret"}
+                            label="Edit shared variable"
                             onClick={() => onEditShared(row.id)}
-                            aria-label="Edit shared variable"
-                          >
-                            <Pencil className="size-4" />
-                          </Button>
+                          />
                         </div>
                       </TableCell>
                     </TableRow>
