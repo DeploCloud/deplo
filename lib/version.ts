@@ -51,6 +51,37 @@ export function isNewer(latest: string, current: string): boolean {
 }
 
 /**
+ * Whether to offer "Update agent" for a host at all.
+ *
+ * The button used to be unconditional, on the reasoning that it IS the update
+ * path so it should not wait to exist. In practice that reads as a permanent
+ * chore on a fleet that is already current, and it makes the one moment that
+ * matters (a release landed) indistinguishable from every other day.
+ *
+ * The question it answers is "is this host on the release that exists", NOT
+ * "is there a newer one" — deliberately, in both directions:
+ *
+ *  - A host AHEAD of the release is the documented fleet rollback
+ *    (`docs/agents/fleet-rollout.md` §10): deleting a bad release walks
+ *    `releases/latest` backwards, and the button is what then puts every host
+ *    back on the older artifact. `isNewer` alone would hide it exactly there.
+ *  - An agent that reported nothing, or a version this cannot parse, gets the
+ *    button too. That is where an operator needs the repair path most, and
+ *    `isNewer` answers false for both.
+ *
+ * So only a confident, parsed, exact match hides it.
+ */
+export function agentUpdateAvailable(
+  reported: string | null,
+  expected: string,
+): boolean {
+  const a = reported ? parseSemver(reported) : null;
+  const b = parseSemver(expected);
+  if (!a || !b) return true;
+  return !(a[0] === b[0] && a[1] === b[1] && a[2] === b[2]);
+}
+
+/**
  * The agent version a server is effectively running, for display. Every server (the host running Deplo included) runs an agent
  * installed via install-agent.sh that reports its version on each Hello (cached
  * in `agent.version`); an empty string or absent agent (not-yet-provisioned)

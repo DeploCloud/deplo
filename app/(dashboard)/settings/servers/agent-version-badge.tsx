@@ -12,7 +12,8 @@ import { SimpleTooltip } from "@/components/ui/tooltip";
  * GitHub release. That fired on every healthy server the day a release landed,
  * and what actually decides whether a host can do something is the agent's
  * feature list (the readiness report's "Agent features" row), not its version
- * number. "Update agent" is still one click away in the server's actions.
+ * number. The server's actions offer "Update agent" whenever the host is not on
+ * the current release (`agentUpdateAvailable`), so this pill never has to nag.
  */
 export function AgentVersionBadge({ version }: { version: string | null }) {
   if (!version) {

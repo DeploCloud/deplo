@@ -96,6 +96,10 @@ export type ServerSummary = {
   agentVersion: string | null;
   /** The version "Update agent" would install — the latest agent release. */
   expectedAgentVersion: string;
+  /** Whether to offer the update at all. Computed server-side (lib/version.ts is
+   *  server-only), and true when the reported version is unknown or unparseable
+   *  so the repair path never disappears on the hosts that need it. */
+  agentUpdateAvailable: boolean;
 };
 
 const TABS = [
@@ -277,18 +281,21 @@ function OverviewTab({ server }: { server: ServerSummary }) {
         </CardHeader>
         <CardContent className="flex flex-wrap items-center gap-3">
           <AgentVersionBadge version={server.agentVersion} />
-          {/* Always offered, never nagged about: the button is how you update an
-              agent, so it does not wait for the version to fall behind a release
-              before it exists. */}
-          <Button
-            size="sm"
-            variant="outline"
-            onClick={() => setConfirmUpdate(true)}
-            disabled={pending}
-          >
-            <CircleFadingArrowUp className="size-4" />
-            Update to v{server.expectedAgentVersion}
-          </Button>
+          {/* Only when there is something to install. A button that is always
+              there reads as a permanent chore and makes the one day a release
+              lands look like every other day; the badge next to it already says
+              which version is running. */}
+          {server.agentUpdateAvailable ? (
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={() => setConfirmUpdate(true)}
+              disabled={pending}
+            >
+              <CircleFadingArrowUp className="size-4" />
+              Update to v{server.expectedAgentVersion}
+            </Button>
+          ) : null}
           <Button
             size="sm"
             variant="outline"
